@@ -281,7 +281,7 @@ describe("handleRollback", () => {
         buildBundle({ id: "and-1", platform: "android" }),
       ],
     });
-    databaseHarness.commit.mockResolvedValue({ applied: true });
+    databaseHarness.commit.mockResolvedValue({ committed: true });
     const { exitSpy } = expectExit(1);
     const { handleRollback } = await import("./rollback");
     await expect(handleRollback("dev", { yes: true })).rejects.toThrow(

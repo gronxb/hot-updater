@@ -28,10 +28,10 @@ setupGetUpdateInfoTestSuite({
     const plugin = createPlugin();
     const database = createDatabaseClient(plugin);
     for (const bundle of bundles) await database.insertBundle(bundle);
-    if (!plugin.getUpdateInfo) {
+    if (!plugin.queries.getUpdateInfo) {
       throw new Error("DynamoDB database plugin has no update-check fast path");
     }
-    return plugin.getUpdateInfo(args);
+    return plugin.queries.getUpdateInfo(args);
   },
 });
 

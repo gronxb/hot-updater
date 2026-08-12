@@ -1,10 +1,10 @@
 import type { Bundle } from "@hot-updater/core";
 import { createDatabaseClient } from "@hot-updater/plugin-core";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 
 import { createInMemoryDatabasePlugin } from "./inMemoryDatabasePlugin";
 
-it("stores channel names directly on bundles", async () => {
+it("dual-writes the canonical channel id and name to bundles", async () => {
   const plugin = createInMemoryDatabasePlugin();
   const client = createDatabaseClient(plugin);
   const bundle: Bundle = {
@@ -23,16 +23,23 @@ it("stores channel names directly on bundles", async () => {
 
   await client.insertBundle(bundle);
 
-  await expect(plugin.bundles.findById(bundle.id)).resolves.toMatchObject({
+  const { channels } = await plugin.models.channels.list({});
+  await expect(
+    plugin.models.bundles.findById(bundle.id),
+  ).resolves.toMatchObject({
     channel: "beta",
+    channel_id: channels[0]?.id,
   });
-  await expect(client.getChannels()).resolves.toEqual(["beta"]);
+  expect(channels).toEqual([
+    expect.objectContaining({ id: expect.any(String), name: "beta" }),
+  ]);
+  await expect(client.getChannels()).resolves.toEqual(channels);
   await expect(client.getBundleById(bundle.id)).resolves.toMatchObject({
     channel: "beta",
   });
 });
 
-it("updates the bundle channel directly", async () => {
+it("moves a bundle to a canonical channel and keeps the old channel", async () => {
   const plugin = createInMemoryDatabasePlugin();
   const client = createDatabaseClient(plugin);
   const bundle: Bundle = {
@@ -52,10 +59,18 @@ it("updates the bundle channel directly", async () => {
 
   await client.updateBundleById(bundle.id, { channel: "stable" });
 
-  await expect(plugin.bundles.findById(bundle.id)).resolves.toMatchObject({
+  const { channels } = await plugin.models.channels.list({});
+  const stable = channels.find(({ name }) => name === "stable");
+  await expect(
+    plugin.models.bundles.findById(bundle.id),
+  ).resolves.toMatchObject({
     channel: "stable",
+    channel_id: stable?.id,
   });
-  await expect(client.getChannels()).resolves.toEqual(["stable"]);
+  expect((await client.getChannels()).map(({ name }) => name)).toEqual([
+    "beta",
+    "stable",
+  ]);
 });
 
 it("returns distinct sorted channel names", async () => {
@@ -81,8 +96,35 @@ it("returns distinct sorted channel names", async () => {
     });
   }
 
-  await expect(client.getChannels()).resolves.toEqual([
+  expect((await client.getChannels()).map(({ name }) => name)).toEqual([
     "production",
     "staging",
   ]);
+});
+
+it("lists channels without reading any bundle rows", async () => {
+  const plugin = createInMemoryDatabasePlugin();
+  const client = createDatabaseClient(plugin);
+  await client.insertBundle({
+    id: "109",
+    platform: "ios",
+    shouldForceUpdate: false,
+    enabled: true,
+    fileHash: "hash-109",
+    gitCommitHash: null,
+    message: "109",
+    channel: "production",
+    storageUri: "storage://109",
+    targetAppVersion: "1.0.0",
+    fingerprintHash: null,
+  });
+  const findMany = vi.spyOn(plugin.models.bundles, "findMany");
+  const list = vi.spyOn(plugin.models.channels, "list");
+
+  await expect(client.getChannels()).resolves.toEqual([
+    expect.objectContaining({ name: "production" }),
+  ]);
+
+  expect(list).toHaveBeenCalledWith({});
+  expect(findMany).not.toHaveBeenCalled();
 });

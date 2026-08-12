@@ -41,7 +41,7 @@ const hotUpdater = createHotUpdater<WorkerContext>({
     }),
   ],
   basePath: HOT_UPDATER_BASE_PATH,
-  routes: {
+  features: {
     updateCheck: true,
     bundles: false,
   },

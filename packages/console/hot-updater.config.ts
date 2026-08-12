@@ -651,7 +651,12 @@ const bundles: Bundle[] = [
 
 const databaseData = createMockDatabaseData();
 for (const bundle of bundles) {
-  databaseData.bundles.set(bundle.id, bundleToRow(bundle));
+  const channelId = `channel-${bundle.channel}`;
+  databaseData.channels.set(channelId, {
+    id: channelId,
+    name: bundle.channel,
+  });
+  databaseData.bundles.set(bundle.id, bundleToRow(bundle, channelId));
   for (const patch of bundleToPatchRows(bundle)) {
     databaseData.bundlePatches.set(patch.id, patch);
   }

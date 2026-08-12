@@ -515,6 +515,13 @@ describe("deploy rollout wiring", () => {
     expect(
       (await databaseHarness.bundles()).map(({ id }) => id).sort(),
     ).toEqual(["bundle-android", "bundle-ios"]);
+    expect(await databasePlugin.models.channels.list({})).toEqual({
+      channels: [
+        expect.objectContaining({
+          name: "production",
+        }),
+      ],
+    });
     expect(databaseHarness.commit).toHaveBeenCalledTimes(1);
   });
 
@@ -522,7 +529,7 @@ describe("deploy rollout wiring", () => {
     const transactionlessDatabasePlugin: DatabasePlugin = {
       ...databasePlugin,
       commit: async (input) => {
-        if (input.mutations.length > 1) {
+        if (input.changes.length > 1) {
           throw new DatabaseAtomicCommitUnsupportedError(databasePlugin.name);
         }
         return databasePlugin.commit(input);

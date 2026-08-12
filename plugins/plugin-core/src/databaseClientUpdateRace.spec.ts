@@ -24,7 +24,7 @@ const createBundle = (): Bundle => ({
 });
 
 const createFixture = (expectedUpdates: number) => {
-  let row = bundleToRow(createBundle());
+  let row = bundleToRow(createBundle(), "channel-production");
   let updateCount = 0;
   let releaseUpdates = (): void => undefined;
   const updatesReady = new Promise<void>((resolve) => {
@@ -56,6 +56,11 @@ const createFixture = (expectedUpdates: number) => {
       count: async () => 1,
       findOne: async (input) => (input.model === "bundles" ? { ...row } : null),
       findMany: async () => [],
+      insertChannel: async (input) => ({
+        row: input.row,
+        inserted: true,
+      }),
+      deleteChannel: async () => ({ deleted: false, reason: "not_found" }),
     }),
   });
 

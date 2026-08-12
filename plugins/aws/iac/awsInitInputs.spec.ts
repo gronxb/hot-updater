@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   assertAwsNonInteractiveInputs,
@@ -6,10 +6,6 @@ import {
 } from "./awsInitInputs";
 
 describe("AWS non-interactive init inputs", () => {
-  afterEach(() => {
-    delete process.env.HOT_UPDATER_AWS_MIGRATION_APPROVED;
-  });
-
   it("reports account credentials and resource inputs together", () => {
     // Given
     const inputs = resolveAwsInitInputs({
@@ -34,12 +30,11 @@ describe("AWS non-interactive init inputs", () => {
     );
   });
 
-  it("reuses saved migration approval", () => {
+  it("accepts the complete DynamoDB-backed resource inputs", () => {
     // Given
     const existingEnv = {
       HOT_UPDATER_AWS_AUTH_MODE: "local-session",
       HOT_UPDATER_AWS_LAMBDA_NAME: "hot-updater-edge",
-      HOT_UPDATER_AWS_MIGRATION_APPROVED: "true",
       HOT_UPDATER_DYNAMODB_TABLE_NAME: "hot-updater-metadata",
       HOT_UPDATER_S3_BUCKET_NAME: "bucket-name",
       HOT_UPDATER_S3_REGION: "ap-northeast-2",
@@ -48,7 +43,6 @@ describe("AWS non-interactive init inputs", () => {
     const inputs = resolveAwsInitInputs(existingEnv);
 
     // Then
-    expect(inputs.migrationApproved).toBe("true");
     expect(() => assertAwsNonInteractiveInputs(inputs, true)).not.toThrow();
   });
 

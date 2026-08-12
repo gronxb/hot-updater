@@ -2,7 +2,7 @@ import type {
   CountDatabaseImplementationInput,
   DatabaseImplementationResult,
   FindManyDatabaseImplementationInput,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 import type { Kysely, OrderByItemBuilder, RawBuilder } from "kysely";
 
 import type { Database } from "./types";
@@ -85,6 +85,17 @@ export const findManyPostgresRows = async (
       if (input.distinctOn !== undefined) {
         query = query.distinctOn(input.distinctOn.fields);
       }
+      for (const clause of input.orderBy ??
+        (input.sortBy ? [input.sortBy] : [])) {
+        query = query.orderBy(clause.field, (order) =>
+          applyOrder(order, clause),
+        );
+      }
+      return query.limit(input.limit).offset(input.offset).execute();
+    }
+    case "channels": {
+      let query = db.selectFrom("channels").selectAll();
+      if (where !== undefined) query = query.where(where);
       for (const clause of input.orderBy ??
         (input.sortBy ? [input.sortBy] : [])) {
         query = query.orderBy(clause.field, (order) =>

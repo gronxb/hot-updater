@@ -21,6 +21,7 @@ const bundleD1Row = {
   git_commit_hash: null,
   message: "Alpha Release",
   channel: "production",
+  channel_id: "channel-production",
   storage_uri: "storage://bundle",
   target_app_version: "1.0.0",
   fingerprint_hash: null,
@@ -68,7 +69,7 @@ it("queries bundles through domain filters", async () => {
     databaseId: "database",
   });
 
-  const rows = await plugin.bundles.findMany({
+  const rows = await plugin.models.bundles.findMany({
     where: { channel: "production", id: { gte: "bundle-1" } },
     orderBy: { field: "id", direction: "desc" },
     limit: 10,
@@ -89,20 +90,23 @@ it("queries bundles through domain filters", async () => {
   expect(state.queries[0]?.sql).toContain("ORDER BY id DESC");
 });
 
-it("uses a native distinct channel query", async () => {
-  state.results.push({ channel: "production" });
+it("lists normalized channels without scanning bundles", async () => {
+  state.results.push({ id: "channel-production", name: "production" });
   const plugin = d1Database({
     accountId: "account",
     cloudflareApiToken: "token",
     databaseId: "database",
   });
 
-  await expect(plugin.getChannels?.()).resolves.toEqual(["production"]);
+  await expect(plugin.models.channels.list({})).resolves.toEqual({
+    channels: [{ id: "channel-production", name: "production" }],
+  });
 
-  expect(state.queries[0]?.params).toEqual([]);
+  expect(state.queries[0]?.params).toEqual(["100", "0"]);
   expect(state.queries[0]?.sql).toBe(
-    "SELECT DISTINCT channel FROM bundles ORDER BY channel ASC",
+    "SELECT * FROM channels ORDER BY name ASC LIMIT json_extract(?, '$') OFFSET json_extract(?, '$')",
   );
+  expect(state.queries[0]?.sql).not.toContain("bundles");
 });
 
 it("counts domain-filtered bundle rows in SQL", async () => {
@@ -113,7 +117,10 @@ it("counts domain-filtered bundle rows in SQL", async () => {
     databaseId: "database",
   });
 
-  await plugin.bundles.count({ platform: "ios", channel: "production" });
+  await plugin.models.bundles.count({
+    platform: "ios",
+    channel: "production",
+  });
 
   expect(state.queries[0]?.sql).toContain(
     "SELECT COUNT(*) AS count FROM bundles",

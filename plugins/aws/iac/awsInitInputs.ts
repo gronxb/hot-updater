@@ -22,7 +22,6 @@ export type AwsInitInputs = {
   readonly distributionId?: string;
   readonly dynamodbTableName?: string;
   readonly lambdaName?: string;
-  readonly migrationApproved?: string;
   readonly profile?: string;
   readonly secretAccessKey?: string;
 };
@@ -47,10 +46,6 @@ export const resolveAwsInitInputs = (
       inputs.dynamodbTableName,
     ),
     lambdaName: resolveInitProviderInput(existingEnv, inputs.lambdaName),
-    migrationApproved: resolveInitProviderInput(
-      existingEnv,
-      inputs.migrationApproved,
-    ),
     profile: resolveInitProviderInput(existingEnv, inputs.profile),
     secretAccessKey: resolveInitProviderInput(
       existingEnv,

@@ -32,6 +32,8 @@ const baseBundle: Bundle = {
 function createDatabaseClient(bundle: Bundle | null = baseBundle) {
   return {
     getChannels: vi.fn(),
+    insertChannel: vi.fn(),
+    deleteChannel: vi.fn(),
     getBundleById: vi.fn(async () => bundle),
     getBundles: vi.fn(),
     getUpdateInfo: vi.fn(),

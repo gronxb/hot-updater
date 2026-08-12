@@ -17,7 +17,7 @@ import {
   isDatabasePlugin,
   type StoragePluginFactory,
 } from "./db/types";
-import { createHotUpdaterHandler, type HandlerRoutes } from "./handler";
+import { createHotUpdaterHandler, type HandlerFeatures } from "./handler";
 import { normalizeBasePath } from "./route";
 import { createStorageAccess } from "./storageAccess";
 
@@ -35,14 +35,20 @@ export type RuntimeHotUpdaterAPI<TContext = undefined> =
 export type HotUpdaterAPI<TContext = undefined> =
   RuntimeHotUpdaterAPI<TContext>;
 
-export interface CreateHotUpdaterOptions<TContext = undefined> {
-  readonly database: DatabasePlugin;
-  readonly analytics?: {
-    /** Query routes deny access by default; client access keys never grant query access. */
-    readonly queryAccess?: AnalyticsQueryAccess;
-  };
+export interface CreateHotUpdaterFeatures extends HandlerFeatures {
+  readonly analytics?:
+    | boolean
+    | {
+        /** Query routes deny access by default; client access keys never grant query access. */
+        readonly queryAccess?: AnalyticsQueryAccess;
+      };
   /** Protect update-check and Analytics ingestion routes with `x-api-key`. */
   readonly clientAccessKeys?: boolean;
+}
+
+export interface CreateHotUpdaterOptions<TContext = undefined> {
+  readonly database: DatabasePlugin;
+  readonly features?: CreateHotUpdaterFeatures;
   readonly storages?: readonly (
     | RuntimeStoragePlugin<TContext>
     | StoragePluginFactory<TContext>
@@ -56,13 +62,13 @@ export interface CreateHotUpdaterOptions<TContext = undefined> {
   )[];
   readonly basePath?: string;
   readonly cwd?: string;
-  readonly routes?: HandlerRoutes;
 }
 
 const normalizeAnalyticsQueryAccess = (
-  analytics: CreateHotUpdaterOptions["analytics"],
+  analytics: CreateHotUpdaterFeatures["analytics"],
 ): AnalyticsQueryAccess | undefined => {
-  if (analytics === undefined) return undefined;
+  if (analytics === undefined || analytics === false) return undefined;
+  if (analytics === true) return "protected";
   if (typeof analytics !== "object" || analytics === null) {
     throw new TypeError("Analytics options must be an object.");
   }
@@ -74,11 +80,11 @@ const normalizeAnalyticsQueryAccess = (
 };
 
 const normalizeClientAccessKeys = (
-  clientAccessKeys: CreateHotUpdaterOptions["clientAccessKeys"],
+  clientAccessKeys: CreateHotUpdaterFeatures["clientAccessKeys"],
 ): boolean => {
   if (clientAccessKeys === undefined) return false;
   if (typeof clientAccessKeys !== "boolean") {
-    throw new TypeError("Client access-keys option must be a boolean.");
+    throw new TypeError("Client access-keys feature must be a boolean.");
   }
   return clientAccessKeys;
 };
@@ -145,9 +151,11 @@ export function createHotUpdaterCore<TContext = undefined>(
     beforeOperation: assertSchemaReady,
     readStorageText,
   });
-  const analyticsQueryAccess = normalizeAnalyticsQueryAccess(options.analytics);
+  const analyticsQueryAccess = normalizeAnalyticsQueryAccess(
+    options.features?.analytics,
+  );
   const clientAccessKeysEnabled = normalizeClientAccessKeys(
-    options.clientAccessKeys,
+    options.features?.clientAccessKeys,
   );
   const analytics =
     analyticsQueryAccess === undefined
@@ -155,11 +163,11 @@ export function createHotUpdaterCore<TContext = undefined>(
       : createAnalyticsProvider({
           async append(row) {
             await assertSchemaReady();
-            return plugin.analytics.append(row);
+            return plugin.models.analytics.append(row);
           },
           async scan(input) {
             await assertSchemaReady();
-            return plugin.analytics.scan(input);
+            return plugin.models.analytics.scan(input);
           },
         });
 
@@ -167,7 +175,7 @@ export function createHotUpdaterCore<TContext = undefined>(
     core.api,
     {
       basePath,
-      routes: options.routes,
+      features: options.features,
     },
     analytics === undefined
       ? undefined
@@ -180,7 +188,7 @@ export function createHotUpdaterCore<TContext = undefined>(
           authenticate: (request) =>
             authenticateClientAccessKey({
               beforeLookup: assertSchemaReady,
-              clientAccessKeys: plugin.clientAccessKeys,
+              clientAccessKeys: plugin.models.clientAccessKeys,
               request,
             }),
         }

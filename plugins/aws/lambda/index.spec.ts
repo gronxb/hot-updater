@@ -134,8 +134,12 @@ describe("aws lambda entrypoint", () => {
     });
     expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
       expect.objectContaining({
-        analytics: {},
-        clientAccessKeys: true,
+        features: {
+          analytics: {},
+          bundles: false,
+          clientAccessKeys: true,
+          updateCheck: true,
+        },
       }),
     );
   });

@@ -1,4 +1,5 @@
 import type { Bundle, Platform } from "@hot-updater/core";
+import type { ChannelRow } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it } from "vitest";
 
 interface PaginationInfo {
@@ -64,7 +65,7 @@ export const setupBundleMethodsTestSuite = ({
   deleteBundleById,
 }: {
   getBundleById: (id: string) => Promise<Bundle | null>;
-  getChannels: () => Promise<string[]>;
+  getChannels: () => Promise<readonly ChannelRow[]>;
   insertBundle: (bundle: Bundle) => Promise<void>;
   getBundles: (
     options: DatabaseBundleQueryOptions,
@@ -188,10 +189,11 @@ export const setupBundleMethodsTestSuite = ({
 
       // This should not throw a Prisma validation error
       const channels = await getChannels();
+      const names = channels.map(({ name }) => name);
 
       expect(channels.length).toBeGreaterThanOrEqual(2);
-      expect(channels).toContain("production");
-      expect(channels).toContain("staging");
+      expect(names).toContain("production");
+      expect(names).toContain("staging");
     });
   });
 

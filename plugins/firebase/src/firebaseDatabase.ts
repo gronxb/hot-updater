@@ -1,10 +1,12 @@
 import {
   createDatabasePlugin,
-  type DatabasePluginImplementation,
   resolveUpdateInfoFromBundles,
-  type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
-import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
+import {
+  createDatabasePluginAdapter,
+  type DatabasePluginImplementation,
+  type TransactionDatabasePluginImplementation,
+} from "@hot-updater/plugin-core/internal";
 import {
   getApp,
   getApps,
@@ -15,20 +17,26 @@ import { getFirestore } from "firebase-admin/firestore";
 
 import {
   parseFirebaseBundleRow,
+  parseFirebaseChannelRow,
   parseFirebaseClientAccessKeyRow,
   parseFirebasePatchRow,
 } from "./firebaseDatabaseParser";
 import {
   createFirebaseDatabaseCollections,
+  firebaseChannelDocumentId,
+  firebaseChannelIdDocumentId,
+  loadFirebaseChannels,
   loadFirebaseDatabaseSnapshot,
   loadFirebaseTransactionSnapshot,
   migrateFirebaseDatabase,
   persistFirebaseDatabaseSnapshot,
   requireFirebaseDocumentKey,
 } from "./firebaseDatabasePersistence";
+import { queryFirebaseDatabaseRows } from "./firebaseDatabaseQuery";
 import {
   cloneFirebaseDatabaseSnapshot,
   createFirebaseDatabaseState,
+  FirebaseDatabaseConstraintError,
 } from "./firebaseDatabaseState";
 import { loadFirebaseUpdateBundles } from "./firebaseDatabaseUpdateInfo";
 
@@ -144,17 +152,96 @@ export const firebaseDatabase = (config: AppOptions) => {
                 )
               : null;
           }
+          case "channels":
+            return read((database) => database.findOne(input));
         }
       },
-      findMany: (input) => read((database) => database.findMany(input)),
-      getChannels: async () => {
+      findMany: async (input) => {
+        if (input.model !== "channels") {
+          return read((database) => database.findMany(input));
+        }
         await ensureMigrated();
-        const snapshot = await collections.bundles.select("channel").get();
-        return [
-          ...new Set(
-            snapshot.docs.map((document) => String(document.get("channel"))),
-          ),
-        ].sort();
+        return queryFirebaseDatabaseRows(
+          await loadFirebaseChannels(collections),
+          input,
+        );
+      },
+      insertChannel: async (input) => {
+        await ensureMigrated();
+        return db.runTransaction(async (transaction) => {
+          const reference = collections.channels.doc(
+            firebaseChannelDocumentId(input.row.name),
+          );
+          const idReference = collections.settings.doc(
+            firebaseChannelIdDocumentId(input.row.id),
+          );
+          const [document, idDocument] = await transaction.getAll(
+            reference,
+            idReference,
+          );
+          if (idDocument.exists) {
+            const row = parseFirebaseChannelRow(
+              idDocument.data(),
+              `private_hot_updater_settings/${idDocument.id}`,
+            );
+            if (row.id !== input.row.id || row.name !== input.row.name) {
+              throw new FirebaseDatabaseConstraintError("channels.id.registry");
+            }
+          }
+          if (idDocument.exists && !document.exists) {
+            throw new FirebaseDatabaseConstraintError("channels.id.unique");
+          }
+          if (document.exists) {
+            const row = parseFirebaseChannelRow(
+              document.data(),
+              `channels/${document.id}`,
+            );
+            if (document.id !== firebaseChannelDocumentId(row.name)) {
+              throw new FirebaseDatabaseConstraintError(
+                "channels.name.document-key",
+              );
+            }
+            return {
+              row,
+              inserted: false,
+            };
+          }
+          transaction.create(reference, input.row);
+          transaction.create(idReference, input.row);
+          return { row: input.row, inserted: true };
+        });
+      },
+      deleteChannel: async ({ id }) => {
+        await ensureMigrated();
+        return db.runTransaction(async (transaction) => {
+          const idReference = collections.settings.doc(
+            firebaseChannelIdDocumentId(id),
+          );
+          const idDocument = await transaction.get(idReference);
+          if (!idDocument.exists) {
+            return { deleted: false, reason: "not_found" };
+          }
+          const row = parseFirebaseChannelRow(
+            idDocument.data(),
+            `private_hot_updater_settings/${idDocument.id}`,
+          );
+          const reference = collections.channels.doc(
+            firebaseChannelDocumentId(row.name),
+          );
+          const document = await transaction.get(reference);
+          if (!document.exists || row.id !== id) {
+            throw new FirebaseDatabaseConstraintError("channels.id.registry");
+          }
+          const referencedBundles = await transaction.get(
+            collections.bundles.where("channel_id", "==", id).limit(1),
+          );
+          if (!referencedBundles.empty) {
+            return { deleted: false, reason: "not_empty" };
+          }
+          transaction.delete(reference);
+          transaction.delete(idReference);
+          return { deleted: true };
+        });
       },
       getUpdateInfo: async (args) => {
         await ensureMigrated();
@@ -172,12 +259,8 @@ export const firebaseDatabase = (config: AppOptions) => {
   );
   return createDatabasePlugin({
     name: "firebaseDatabase",
-    bundles: adapter.bundles,
-    bundlePatches: adapter.bundlePatches,
-    analytics: adapter.analytics,
-    clientAccessKeys: adapter.clientAccessKeys,
+    models: adapter.models,
+    queries: adapter.queries,
     commit: adapter.commit,
-    getChannels: adapter.getChannels,
-    getUpdateInfo: adapter.getUpdateInfo,
   });
 };

@@ -28,14 +28,18 @@ describe("client access-key runtime", () => {
 
     const store = createClientAccessKeyStore({ database });
 
-    expect(store).toBe(database.clientAccessKeys);
+    expect(store).toBe(database.models.clientAccessKeys);
     expect(
       createClientAccessKeyStore({
         database: {
-          bundles: database.bundles,
-          bundlePatches: database.bundlePatches,
+          models: {
+            bundles: database.models.bundles,
+            bundlePatches: database.models.bundlePatches,
+            channels: database.models.channels,
+          },
           commit: database.commit,
           name: database.name,
+          queries: database.queries,
         },
       }),
     ).toBeNull();
@@ -58,7 +62,7 @@ describe("analytics runtime input validation", () => {
   it("composes Analytics from the official database domain", async () => {
     // Given
     const database = createDatabase();
-    const scan = vi.spyOn(database.analytics, "scan");
+    const scan = vi.spyOn(database.models.analytics, "scan");
 
     // When
     const runtime = createRuntimeHotUpdater({

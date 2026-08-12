@@ -7,14 +7,13 @@ import {
   getInitProviderTextPromptValues,
   link,
   makeEnv,
-  MissingInitInputsError,
   p,
   readHotUpdaterInitEnv,
   type RunInitOptions,
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
-import type { ClientAccessKeyTable } from "@hot-updater/plugin-core";
+import type { ClientAccessKeyModel } from "@hot-updater/plugin-core";
 import {
   createClientAccessKey,
   registerClientAccessKey,
@@ -32,8 +31,6 @@ import { DynamoDBManager } from "./dynamodb";
 import { IAMManager } from "./iam";
 import { initProvider as AWS_INIT_PROVIDER } from "./init/index";
 import { LambdaEdgeDeployer } from "./lambdaEdge";
-import { Migration0001HotUpdater0_13_0 } from "./migrations/Migration0001HotUpdater0_13_0";
-import { Migration0001HotUpdater0_18_0 } from "./migrations/Migration0001HotUpdater0_18_0";
 import { type AwsRegion, regionLocationMap } from "./regionLocationMap";
 import { S3Manager } from "./s3";
 import { SSMKeyPairManager } from "./ssm";
@@ -66,7 +63,7 @@ export const prepareDynamoDBDeployment = async (input: {
 };
 
 export const prepareDynamoDBClientAccessKey = async (input: {
-  readonly clientAccessKeys: ClientAccessKeyTable;
+  readonly clientAccessKeys: ClientAccessKeyModel;
   readonly existingApiKey?: string;
 }): Promise<string> => {
   const existingApiKey = input.existingApiKey?.trim();
@@ -161,9 +158,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     savedBucketName !== undefined &&
     isAwsRegion(savedBucketRegion) &&
     !existingBucket;
-  if (createSavedBucket && savedInputs.migrationApproved !== "true") {
-    throw new MissingInitInputsError(["HOT_UPDATER_AWS_MIGRATION_APPROVED"]);
-  }
   if (savedBucketName && !existingBucket && !createSavedBucket) {
     p.log.warn("Saved S3 bucket was not found. Select a bucket again.");
   }
@@ -291,7 +285,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     distributionId: selectedDistribution?.Id,
     dynamodbTableName: resolvedDynamoDBTableName,
     lambdaName,
-    migrationApproved: savedInputs.migrationApproved,
   };
   const persistCredentialInputs = await confirmInitInputPersistence({
     existingEnv: managedEnv,
@@ -334,23 +327,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   p.log.info(`Selected S3 Bucket: ${bucketName} (${bucketRegion})`);
 
-  // Run S3 migrations
-  const migrationsApplied = await s3Manager.runMigrations({
-    approved: savedInputs.migrationApproved === "true",
-    bucketName,
-    nonInteractive,
-    region: bucketRegion,
-    migrations: [
-      new Migration0001HotUpdater0_13_0(),
-      new Migration0001HotUpdater0_18_0(),
-    ],
-  });
-  if (migrationsApplied && savedInputs.migrationApproved !== "true") {
-    await makeEnv({
-      [AWS_INIT_PROVIDER.inputs.migrationApproved.envKey]: "true",
-    });
-  }
-
   await prepareDynamoDBDeployment({
     credentials,
     region: bucketRegion,
@@ -363,7 +339,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   });
   try {
     const apiKey = await prepareDynamoDBClientAccessKey({
-      clientAccessKeys: databasePlugin.clientAccessKeys,
+      clientAccessKeys: databasePlugin.models.clientAccessKeys,
       existingApiKey: providerEnv.HOT_UPDATER_API_KEY,
     });
     await makeEnv({ HOT_UPDATER_API_KEY: apiKey });

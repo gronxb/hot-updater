@@ -1,22 +1,22 @@
-import {
-  DatabasePluginInputError,
-  type DatabaseImplementationResult,
-  type DatabasePluginImplementation,
-  type FindManyDatabaseImplementationInput,
-} from "@hot-updater/plugin-core";
+import { DatabasePluginInputError } from "@hot-updater/plugin-core";
+import type {
+  DatabaseImplementationResult,
+  DatabasePluginImplementation,
+  FindManyDatabaseImplementationInput,
+} from "@hot-updater/plugin-core/internal";
 import type { ClientSession } from "mongodb";
 
 import { hasNullOrderOverrides, sortRowsByOrder } from "./databasePluginUtils";
 import {
   activeBundleFilter,
   type MongoCollections,
-  MongoAdapterConstraintError,
   mongoSessionOptions,
   WITHOUT_INTERNAL_FIELDS,
   WITHOUT_MONGO_ID,
 } from "./mongodbCollections";
 import {
   createMongoBundleWhere,
+  createMongoChannelWhere,
   createMongoClientAccessKeyWhere,
   createMongoEventWhere,
   createMongoPatchWhere,
@@ -142,12 +142,38 @@ const findMongoRows = async (
         ? cursor.toArray()
         : cursor.sort(sort).toArray();
     }
+    case "channels": {
+      const cursor = collections.channels
+        .find(createMongoChannelWhere(input.where), {
+          projection: WITHOUT_MONGO_ID,
+          ...mongoSessionOptions(session),
+        })
+        .skip(input.offset)
+        .limit(input.limit);
+      if (rawOrderBy === undefined) return cursor.toArray();
+      if (needsInMemoryOrder) {
+        const rows = await collections.channels
+          .find(createMongoChannelWhere(input.where), {
+            projection: WITHOUT_MONGO_ID,
+            ...mongoSessionOptions(session),
+          })
+          .toArray();
+        return sortRowsByOrder(rows, rawOrderBy).slice(
+          input.offset,
+          input.offset + input.limit,
+        );
+      }
+      const sort = createMongoSort(input);
+      return sort === undefined
+        ? cursor.toArray()
+        : cursor.sort(sort).toArray();
+    }
   }
 };
 
 type MongoReadImplementation = Pick<
   DatabasePluginImplementation,
-  "count" | "findMany" | "findOne" | "getChannels" | "getUpdateInfo"
+  "count" | "findMany" | "findOne" | "getUpdateInfo"
 >;
 
 export const createMongoReads = (
@@ -181,6 +207,14 @@ export const createMongoReads = (
             ...mongoSessionOptions(session),
           },
         );
+      case "channels":
+        return collections.channels.findOne(
+          createMongoChannelWhere(input.where),
+          {
+            projection: WITHOUT_MONGO_ID,
+            ...mongoSessionOptions(session),
+          },
+        );
       case "client_access_keys":
         return collections.clientAccessKeys.findOne(
           createMongoClientAccessKeyWhere(input.where),
@@ -204,19 +238,6 @@ export const createMongoReads = (
       throw new DatabasePluginInputError("invalid-operation");
     }
     return findMongoRows(collections, input, session);
-  },
-  getChannels: async () => {
-    const channels = await collections.bundles.distinct(
-      "channel",
-      activeBundleFilter({}),
-      mongoSessionOptions(session),
-    );
-    if (!channels.every((channel) => typeof channel === "string")) {
-      throw new MongoAdapterConstraintError(
-        "bundles.channel must contain only strings",
-      );
-    }
-    return channels.sort();
   },
   getUpdateInfo: createMongoGetUpdateInfo(collections),
 });

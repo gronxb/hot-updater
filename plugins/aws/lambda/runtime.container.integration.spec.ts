@@ -324,8 +324,6 @@ describe.sequential("aws lambda runtime acceptance", () => {
     });
     seedHotUpdater = createHotUpdater({
       database,
-      analytics: {},
-      clientAccessKeys: true,
       storages: [
         s3LambdaEdgeStorage({
           bucketName: S3_BUCKET_NAME,
@@ -343,9 +341,11 @@ describe.sequential("aws lambda runtime acceptance", () => {
         }),
       ],
       basePath: HOT_UPDATER_BASE_PATH,
-      routes: {
+      features: {
+        analytics: {},
         updateCheck: true,
         bundles: false,
+        clientAccessKeys: true,
       },
     });
 
@@ -385,7 +385,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       clearDynamoDBTable(dynamodbClient),
     ]);
     const created = await createClientAccessKey({
-      clientAccessKeys: database.clientAccessKeys,
+      clientAccessKeys: database.models.clientAccessKeys,
       name: "Runtime test",
     });
     rawApiKey = created.apiKey;
@@ -748,7 +748,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     });
 
     await expect(
-      database.analytics.scan({
+      database.models.analytics.scan({
         beforeReceivedAtMs: Date.now() + 1_000,
         limit: 10,
       }),

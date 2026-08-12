@@ -125,8 +125,16 @@ const createDataset = () => {
 
 const createBenchHotUpdater = () => {
   const data = createMockDatabaseData();
+  const channelIds = new Map<string, string>();
+  for (const [index, name] of CHANNELS.entries()) {
+    const id = createBundleId(10_000 + index);
+    data.channels.set(id, { id, name });
+    channelIds.set(name, id);
+  }
   for (const bundle of createDataset()) {
-    data.bundles.set(bundle.id, bundleToRow(bundle));
+    const channelId = channelIds.get(bundle.channel);
+    if (!channelId) throw new Error(`Unknown channel: ${bundle.channel}`);
+    data.bundles.set(bundle.id, bundleToRow(bundle, channelId));
   }
   const database = mockDatabase({ data, latency: { min: 0, max: 0 } });
 
@@ -153,7 +161,7 @@ const createBenchHotUpdater = () => {
       },
     ],
     basePath: BASE_PATH,
-    routes: {
+    features: {
       updateCheck: true,
       bundles: false,
     },

@@ -1,16 +1,22 @@
 import type {
   BundlePatchRow,
   BundleRow,
-  CreateDatabaseImplementationInput,
+  ChannelInsertInput,
+  ChannelInsertResult,
+  ChannelRow,
+  ChannelDeleteInput,
+  ChannelDeleteResult,
   DatabaseChange,
-  DatabaseBundleMutation,
   DatabaseCommit,
   DatabaseCommitResult,
+} from "@hot-updater/plugin-core";
+import type {
+  CreateDatabaseImplementationInput,
   DatabasePluginImplementation,
   DeleteDatabaseImplementationInput,
   FindOneDatabaseImplementationInput,
   UpdateDatabaseImplementationInput,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 
 import { countD1Rows, d1TableNames, findManyD1Rows } from "./d1Query";
 import { parseD1Row } from "./d1Rows";
@@ -18,9 +24,9 @@ import { buildD1Where, d1Placeholders, encodeD1Values } from "./d1Sql";
 
 export interface D1Executor {
   query(sql: string, params: readonly string[]): Promise<readonly unknown[]>;
-  batch?: (
+  batch(
     statements: readonly D1Statement[],
-  ) => Promise<readonly (readonly unknown[])[]>;
+  ): Promise<readonly (readonly unknown[])[]>;
 }
 
 export interface D1Statement {
@@ -33,21 +39,6 @@ type D1Guard = {
   readonly params: readonly string[];
 };
 
-class InvalidD1ChannelAggregateError extends Error {
-  readonly name = "InvalidD1ChannelAggregateError";
-}
-
-const parseChannel = (row: unknown): string => {
-  if (typeof row !== "object" || row === null || !("channel" in row)) {
-    throw new InvalidD1ChannelAggregateError();
-  }
-  const channel = row.channel;
-  if (typeof channel !== "string") {
-    throw new InvalidD1ChannelAggregateError();
-  }
-  return channel;
-};
-
 const bundleValues = (row: BundleRow): readonly unknown[] => [
   row.id,
   row.platform,
@@ -57,6 +48,7 @@ const bundleValues = (row: BundleRow): readonly unknown[] => [
   row.git_commit_hash,
   row.message,
   row.channel,
+  row.channel_id,
   row.storage_uri,
   row.target_app_version,
   row.fingerprint_hash,
@@ -78,13 +70,21 @@ const patchValues = (row: BundlePatchRow): readonly unknown[] => [
   row.order_index,
 ];
 
+const channelValues = (row: ChannelRow): readonly unknown[] => [
+  row.id,
+  row.name,
+];
+
 const insertQuery = (
   input: CreateDatabaseImplementationInput,
   guard?: D1Guard,
-) => {
+  conflictMode: "returnExisting" | "ignore" = "returnExisting",
+): D1Statement => {
+  let columns: readonly string[];
+  let values: readonly unknown[];
   switch (input.model) {
-    case "bundles": {
-      const columns = [
+    case "bundles":
+      columns = [
         "id",
         "platform",
         "should_force_update",
@@ -93,6 +93,7 @@ const insertQuery = (
         "git_commit_hash",
         "message",
         "channel",
+        "channel_id",
         "storage_uri",
         "target_app_version",
         "fingerprint_hash",
@@ -103,17 +104,10 @@ const insertQuery = (
         "manifest_file_hash",
         "asset_base_storage_uri",
       ];
-      const values = bundleValues(input.data);
-      return {
-        sql:
-          guard === undefined
-            ? `INSERT INTO bundles (${columns.join(", ")}) VALUES (${d1Placeholders(values.length)}) RETURNING *`
-            : `INSERT INTO bundles (${columns.join(", ")}) SELECT ${d1Placeholders(values.length)} WHERE ${guard.sql} RETURNING *`,
-        params: [...encodeD1Values(values), ...(guard?.params ?? [])],
-      };
-    }
-    case "bundle_patches": {
-      const columns = [
+      values = bundleValues(input.data);
+      break;
+    case "bundle_patches":
+      columns = [
         "id",
         "bundle_id",
         "base_bundle_id",
@@ -122,53 +116,39 @@ const insertQuery = (
         "patch_storage_uri",
         "order_index",
       ];
-      const values = patchValues(input.data);
-      return {
-        sql:
-          guard === undefined
-            ? `INSERT INTO bundle_patches (${columns.join(", ")}) VALUES (${d1Placeholders(values.length)}) RETURNING *`
-            : `INSERT INTO bundle_patches (${columns.join(", ")}) SELECT ${d1Placeholders(values.length)} WHERE ${guard.sql} RETURNING *`,
-        params: [...encodeD1Values(values), ...(guard?.params ?? [])],
-      };
-    }
+      values = patchValues(input.data);
+      break;
+    case "channels":
+      columns = ["id", "name"];
+      values = channelValues(input.data);
+      break;
     case "bundle_events":
-    case "client_access_keys": {
-      const columns = Object.keys(input.data);
-      const values = Object.values(input.data);
-      return {
-        sql:
-          guard === undefined
-            ? `INSERT INTO ${d1TableNames[input.model]} (${columns.join(", ")}) VALUES (${d1Placeholders(values.length)}) RETURNING *`
-            : `INSERT INTO ${d1TableNames[input.model]} (${columns.join(", ")}) SELECT ${d1Placeholders(values.length)} WHERE ${guard.sql} RETURNING *`,
-        params: [...encodeD1Values(values), ...(guard?.params ?? [])],
-      };
-    }
+    case "client_access_keys":
+      columns = Object.keys(input.data);
+      values = Object.values(input.data);
+      break;
   }
-};
 
-const guardedPatchInsertQuery = (
-  row: BundlePatchRow,
-  bundleId: string,
-  guard?: D1Guard,
-): D1Statement => {
-  const columns = [
-    "id",
-    "bundle_id",
-    "base_bundle_id",
-    "base_file_hash",
-    "patch_file_hash",
-    "patch_storage_uri",
-    "order_index",
-  ];
-  const values = patchValues(row);
-  const ownerGuard =
-    "EXISTS (SELECT 1 FROM bundles WHERE id = json_extract(?, '$'))";
+  const conflict =
+    input.onConflict !== "ignore"
+      ? ""
+      : input.model === "channels"
+        ? conflictMode === "ignore"
+          ? " ON CONFLICT(name) DO NOTHING"
+          : " ON CONFLICT(name) DO UPDATE SET name = excluded.name"
+        : input.model === "client_access_keys"
+          ? conflictMode === "ignore"
+            ? " ON CONFLICT(hash) DO NOTHING"
+            : " ON CONFLICT(hash) DO UPDATE SET hash = excluded.hash"
+          : "";
+
   return {
-    sql: `INSERT INTO bundle_patches (${columns.join(", ")}) SELECT ${d1Placeholders(values.length)} WHERE ${ownerGuard}${guard ? ` AND ${guard.sql}` : ""} RETURNING *`,
-    params: [
-      ...encodeD1Values([...values, bundleId]),
-      ...(guard?.params ?? []),
-    ],
+    sql: `INSERT INTO ${d1TableNames[input.model]} (${columns.join(", ")}) ${
+      guard === undefined
+        ? `VALUES (${d1Placeholders(values.length)})`
+        : `SELECT ${d1Placeholders(values.length)} WHERE ${guard.sql}`
+    }${conflict} RETURNING *`,
+    params: [...encodeD1Values(values), ...(guard?.params ?? [])],
   };
 };
 
@@ -212,78 +192,256 @@ const deleteQuery = (
   };
 };
 
-const changeQuery = (
-  change: DatabaseChange,
-  input: DatabaseBundleMutation,
-  guard: D1Guard,
-): D1Statement => {
-  if (change.table === "bundles") {
-    switch (change.operation) {
-      case "insert":
-        return insertQuery({ model: "bundles", data: change.row }, guard);
-      case "update":
-        return updateQuery(
-          {
-            model: "bundles",
-            where: [{ field: "id", value: change.id }],
-            update: change.update,
-          },
-          guard,
-        );
-      case "delete":
-        return deleteQuery(
-          {
-            model: "bundles",
-            where: [{ field: "id", value: change.id }],
-          },
-          guard,
-        );
-    }
-  }
-  if (change.operation === "insert") {
-    return input.operation === "update"
-      ? guardedPatchInsertQuery(change.row, input.bundleId, guard)
-      : insertQuery({ model: "bundle_patches", data: change.row }, guard);
-  }
-  return deleteQuery(
-    {
-      model: "bundle_patches",
-      where: [{ field: "bundle_id", value: change.bundleId }],
-    },
-    guard,
-  );
+type D1RequiredRow = {
+  readonly model: "bundles" | "client_access_keys";
+  readonly id: string;
+  readonly changeIndex: number;
+};
+
+type D1Check = {
+  readonly changeIndex: number;
+  readonly resultIndex: number;
+  readonly conflictWhen: "empty" | "nonempty";
+  readonly reason: "not_found" | "referenced";
 };
 
 type D1CommitPlan = {
-  readonly checks: readonly {
-    readonly bundleId: string;
-    readonly resultIndex: number;
-  }[];
+  readonly checks: readonly D1Check[];
   readonly statements: readonly D1Statement[];
 };
 
-const createCommitPlan = (input: DatabaseCommit): D1CommitPlan => {
-  const checks: { bundleId: string; resultIndex: number }[] = [];
-  const statements: D1Statement[] = [];
-  const updateBundleIds = input.mutations.flatMap((mutation) =>
-    mutation.operation === "update" ? [mutation.bundleId] : [],
-  );
-  for (const bundleId of updateBundleIds) {
-    checks.push({ bundleId, resultIndex: statements.length });
-    statements.push({
-      sql: "SELECT id FROM bundles WHERE id = json_extract(?, '$') LIMIT 1",
-      params: encodeD1Values([bundleId]),
-    });
+const insertedKey = (change: DatabaseChange): string | undefined => {
+  if (change.operation !== "insert") return undefined;
+  if (change.model === "bundles") return `bundles:${change.row.id}`;
+  if (change.model === "clientAccessKeys") {
+    return `client_access_keys:${change.row.id}`;
   }
-  const guard: D1Guard = {
-    sql: "NOT EXISTS (SELECT 1 FROM json_each(?) AS required WHERE NOT EXISTS (SELECT 1 FROM bundles WHERE id = required.value))",
-    params: encodeD1Values([updateBundleIds]),
+  return undefined;
+};
+
+const requiredRow = (
+  change: DatabaseChange,
+  changeIndex: number,
+): D1RequiredRow | undefined => {
+  if (change.operation !== "update") return undefined;
+  if (change.model === "bundles") {
+    return {
+      model: "bundles",
+      id: change.where.id,
+      changeIndex,
+    };
+  }
+  if (change.model === "clientAccessKeys") {
+    return {
+      model: "client_access_keys",
+      id: change.where.id,
+      changeIndex,
+    };
+  }
+  return undefined;
+};
+
+type D1ChannelDeletePrecondition = {
+  readonly id: string;
+  readonly excludedBundleIds: readonly string[];
+  readonly addedReferenceBundleIds: readonly string[];
+};
+
+const channelDeletePrecondition = (
+  changes: readonly DatabaseChange[],
+  changeIndex: number,
+  channelId: string,
+): D1ChannelDeletePrecondition => {
+  const bundleEffects = new Map<string, string | null>();
+  for (const change of changes.slice(0, changeIndex)) {
+    if (change.model !== "bundles") continue;
+    switch (change.operation) {
+      case "insert":
+        bundleEffects.set(change.row.id, change.row.channel_id);
+        break;
+      case "update":
+        if (change.update.channel_id !== undefined) {
+          bundleEffects.set(change.where.id, change.update.channel_id);
+        }
+        break;
+      case "delete":
+        bundleEffects.set(change.where.id, null);
+        break;
+    }
+  }
+  return {
+    id: channelId,
+    excludedBundleIds: [...bundleEffects.keys()],
+    addedReferenceBundleIds: [...bundleEffects]
+      .filter(([, finalChannelId]) => finalChannelId === channelId)
+      .map(([bundleId]) => bundleId),
   };
-  for (const mutation of input.mutations) {
-    statements.push(
-      ...mutation.changes.map((change) => changeQuery(change, mutation, guard)),
-    );
+};
+
+const changeQuery = (change: DatabaseChange, guard: D1Guard): D1Statement => {
+  switch (change.model) {
+    case "bundles":
+      switch (change.operation) {
+        case "insert":
+          return insertQuery({ model: "bundles", data: change.row }, guard);
+        case "update":
+          return updateQuery(
+            {
+              model: "bundles",
+              where: [{ field: "id", value: change.where.id }],
+              update: change.update,
+            },
+            guard,
+          );
+        case "delete":
+          return deleteQuery(
+            {
+              model: "bundles",
+              where: [{ field: "id", value: change.where.id }],
+            },
+            guard,
+          );
+      }
+    case "bundlePatches":
+      return change.operation === "insert"
+        ? insertQuery({ model: "bundle_patches", data: change.row }, guard)
+        : deleteQuery(
+            {
+              model: "bundle_patches",
+              where: [{ field: "bundle_id", value: change.where.bundleId }],
+            },
+            guard,
+          );
+    case "channels":
+      return change.operation === "insert"
+        ? insertQuery(
+            {
+              model: "channels",
+              data: change.row,
+              onConflict: change.onConflict,
+            },
+            guard,
+            "ignore",
+          )
+        : {
+            sql: `DELETE FROM channels WHERE id = json_extract(?, '$') AND NOT EXISTS (SELECT 1 FROM bundles WHERE channel_id = json_extract(?, '$')) AND ${guard.sql}`,
+            params: [
+              ...encodeD1Values([change.where.id, change.where.id]),
+              ...guard.params,
+            ],
+          };
+    case "analytics":
+      return insertQuery({ model: "bundle_events", data: change.row }, guard);
+    case "clientAccessKeys":
+      return change.operation === "insert"
+        ? insertQuery(
+            {
+              model: "client_access_keys",
+              data: change.row,
+              onConflict: change.onConflict,
+            },
+            guard,
+            "ignore",
+          )
+        : updateQuery(
+            {
+              model: "client_access_keys",
+              where: [{ field: "id", value: change.where.id }],
+              update: { revoked_at_ms: change.update.revokedAtMs },
+            },
+            guard,
+          );
   }
+};
+
+const createCommitPlan = (input: DatabaseCommit): D1CommitPlan => {
+  const checks: D1Check[] = [];
+  const statements: D1Statement[] = [];
+  const requiredRows: D1RequiredRow[] = [];
+  const channelDeletes: D1ChannelDeletePrecondition[] = [];
+  const inserted = new Set<string>();
+  for (const [changeIndex, change] of input.changes.entries()) {
+    const required = requiredRow(change, changeIndex);
+    if (required !== undefined) {
+      if (!inserted.has(`${required.model}:${required.id}`)) {
+        requiredRows.push(required);
+        checks.push({
+          changeIndex,
+          resultIndex: statements.length,
+          conflictWhen: "empty",
+          reason: "not_found",
+        });
+        statements.push({
+          sql: `SELECT id FROM ${d1TableNames[required.model]} WHERE id = json_extract(?, '$') LIMIT 1`,
+          params: encodeD1Values([required.id]),
+        });
+      }
+    }
+    if (change.model === "channels" && change.operation === "delete") {
+      const precondition = channelDeletePrecondition(
+        input.changes,
+        changeIndex,
+        change.where.id,
+      );
+      channelDeletes.push(precondition);
+      checks.push({
+        changeIndex,
+        resultIndex: statements.length,
+        conflictWhen: "nonempty",
+        reason: "referenced",
+      });
+      statements.push({
+        sql: "SELECT id FROM bundles WHERE channel_id = json_extract(?, '$') AND id NOT IN (SELECT value FROM json_each(?)) UNION ALL SELECT value AS id FROM json_each(?) LIMIT 1",
+        params: encodeD1Values([
+          precondition.id,
+          precondition.excludedBundleIds,
+          precondition.addedReferenceBundleIds,
+        ]),
+      });
+    }
+    const key = insertedKey(change);
+    if (key !== undefined) inserted.add(key);
+  }
+
+  const guard: D1Guard = {
+    sql: `NOT EXISTS (
+      SELECT 1 FROM json_each(?) AS required
+      WHERE NOT EXISTS (
+        SELECT 1 FROM bundles
+        WHERE json_extract(required.value, '$.model') = 'bundles'
+          AND bundles.id = json_extract(required.value, '$.id')
+        UNION ALL
+        SELECT 1 FROM client_access_keys
+        WHERE json_extract(required.value, '$.model') = 'client_access_keys'
+          AND client_access_keys.id = json_extract(required.value, '$.id')
+        UNION ALL
+        SELECT 1 FROM channels
+        WHERE json_extract(required.value, '$.model') = 'channels'
+          AND channels.id = json_extract(required.value, '$.id')
+      )
+    ) AND NOT EXISTS (
+      SELECT 1 FROM json_each(?) AS channel_delete
+      WHERE EXISTS (
+        SELECT 1 FROM bundles
+        WHERE bundles.channel_id = json_extract(channel_delete.value, '$.id')
+          AND bundles.id NOT IN (
+            SELECT value FROM json_each(
+              json_extract(channel_delete.value, '$.excludedBundleIds')
+            )
+          )
+        UNION ALL
+        SELECT value FROM json_each(
+          json_extract(channel_delete.value, '$.addedReferenceBundleIds')
+        )
+      )
+    )`,
+    params: encodeD1Values([
+      requiredRows.map(({ model, id }) => ({ model, id })),
+      channelDeletes,
+    ]),
+  };
+
+  statements.push(...input.changes.map((change) => changeQuery(change, guard)));
   return { checks, statements };
 };
 
@@ -291,78 +449,127 @@ const resultForPlan = (
   plan: D1CommitPlan,
   results: readonly (readonly unknown[])[],
 ): DatabaseCommitResult => {
-  const missing = plan.checks.find(
-    ({ resultIndex }) => (results[resultIndex]?.length ?? 0) === 0,
+  const missing = plan.checks.find(({ conflictWhen, resultIndex }) =>
+    conflictWhen === "empty"
+      ? (results[resultIndex]?.length ?? 0) === 0
+      : (results[resultIndex]?.length ?? 0) > 0,
   );
   return missing === undefined
-    ? { applied: true }
-    : { applied: false, missingBundleId: missing.bundleId };
+    ? { committed: true }
+    : {
+        committed: false,
+        conflict: {
+          changeIndex: missing.changeIndex,
+          reason: missing.reason,
+        },
+      };
+};
+
+const insertChannel = async (
+  executor: D1Executor,
+  input: ChannelInsertInput,
+): Promise<ChannelInsertResult> => {
+  const insert = insertQuery(
+    { model: "channels", data: input.row, onConflict: "ignore" },
+    undefined,
+    "ignore",
+  );
+  const select = {
+    sql: "SELECT id, name FROM channels WHERE name = json_extract(?, '$') LIMIT 1",
+    params: encodeD1Values([input.row.name]),
+  };
+  const [insertedRows = [], canonicalRows = []] = await executor.batch([
+    insert,
+    select,
+  ]);
+  return {
+    row: parseD1Row("channels", canonicalRows[0]),
+    inserted: insertedRows.length > 0,
+  };
+};
+
+const deleteChannel = async (
+  executor: D1Executor,
+  input: ChannelDeleteInput,
+): Promise<ChannelDeleteResult> => {
+  const [channelRows = [], referenceRows = [], deletedRows = []] =
+    await executor.batch([
+      {
+        sql: "SELECT id FROM channels WHERE id = json_extract(?, '$') LIMIT 1",
+        params: encodeD1Values([input.id]),
+      },
+      {
+        sql: "SELECT id FROM bundles WHERE channel_id = json_extract(?, '$') LIMIT 1",
+        params: encodeD1Values([input.id]),
+      },
+      {
+        sql: "DELETE FROM channels WHERE id = json_extract(?, '$') AND NOT EXISTS (SELECT 1 FROM bundles WHERE channel_id = json_extract(?, '$')) RETURNING id",
+        params: encodeD1Values([input.id, input.id]),
+      },
+    ]);
+  if (channelRows.length === 0) return { deleted: false, reason: "not_found" };
+  if (referenceRows.length > 0) return { deleted: false, reason: "not_empty" };
+  return deletedRows.length > 0
+    ? { deleted: true }
+    : { deleted: false, reason: "not_empty" };
 };
 
 export const createD1Implementation = (
   executor: D1Executor,
-): DatabasePluginImplementation => {
-  const implementation: DatabasePluginImplementation = {
-    async create(input) {
-      const query = insertQuery(input);
-      const rows = await executor.query(query.sql, query.params);
-      switch (input.model) {
-        case "bundles":
-          return parseD1Row("bundles", rows[0]);
-        case "bundle_patches":
-          return parseD1Row("bundle_patches", rows[0]);
-        case "bundle_events":
-          return parseD1Row("bundle_events", rows[0]);
-        case "client_access_keys":
-          return parseD1Row("client_access_keys", rows[0]);
-      }
-    },
-    async update(input) {
-      const query = updateQuery(input);
-      const rows = await executor.query(query.sql, query.params);
-      if (rows[0] === undefined) return null;
-      return input.model === "bundles"
-        ? parseD1Row("bundles", rows[0])
-        : parseD1Row("client_access_keys", rows[0]);
-    },
-    async delete(input: DeleteDatabaseImplementationInput) {
-      const query = deleteQuery(input);
-      await executor.query(query.sql, query.params);
-    },
-    count: (input) => countD1Rows(executor, input),
-    async findOne(input: FindOneDatabaseImplementationInput) {
-      const where = buildD1Where(input.where);
-      const rows = await executor.query(
-        `SELECT * FROM ${d1TableNames[input.model]}${where.sql} LIMIT 1`,
-        where.params,
-      );
-      if (rows[0] === undefined) return null;
-      switch (input.model) {
-        case "bundles":
-          return parseD1Row("bundles", rows[0]);
-        case "bundle_patches":
-          return parseD1Row("bundle_patches", rows[0]);
-        case "client_access_keys":
-          return parseD1Row("client_access_keys", rows[0]);
-      }
-    },
-    findMany: (input) => findManyD1Rows(executor, input),
-    async getChannels() {
-      const rows = await executor.query(
-        "SELECT DISTINCT channel FROM bundles ORDER BY channel ASC",
-        [],
-      );
-      return rows.map(parseChannel);
-    },
-  };
-
-  if (executor.batch) {
-    implementation.commit = async (input) => {
-      const plan = createCommitPlan(input);
-      if (plan.statements.length === 0) return { applied: true };
-      return resultForPlan(plan, await executor.batch!(plan.statements));
-    };
-  }
-
-  return implementation;
-};
+): DatabasePluginImplementation => ({
+  async create(input) {
+    const query = insertQuery(input);
+    const rows = await executor.query(query.sql, query.params);
+    switch (input.model) {
+      case "bundles":
+        return parseD1Row("bundles", rows[0]);
+      case "bundle_patches":
+        return parseD1Row("bundle_patches", rows[0]);
+      case "channels":
+        return parseD1Row("channels", rows[0]);
+      case "bundle_events":
+        return parseD1Row("bundle_events", rows[0]);
+      case "client_access_keys":
+        return parseD1Row("client_access_keys", rows[0]);
+    }
+  },
+  async update(input) {
+    const query = updateQuery(input);
+    const rows = await executor.query(query.sql, query.params);
+    if (rows[0] === undefined) return null;
+    return input.model === "bundles"
+      ? parseD1Row("bundles", rows[0])
+      : parseD1Row("client_access_keys", rows[0]);
+  },
+  async delete(input) {
+    const query = deleteQuery(input);
+    await executor.query(query.sql, query.params);
+  },
+  count: (input) => countD1Rows(executor, input),
+  async findOne(input: FindOneDatabaseImplementationInput) {
+    const where = buildD1Where(input.where);
+    const rows = await executor.query(
+      `SELECT * FROM ${d1TableNames[input.model]}${where.sql} LIMIT 1`,
+      where.params,
+    );
+    if (rows[0] === undefined) return null;
+    switch (input.model) {
+      case "bundles":
+        return parseD1Row("bundles", rows[0]);
+      case "bundle_patches":
+        return parseD1Row("bundle_patches", rows[0]);
+      case "channels":
+        return parseD1Row("channels", rows[0]);
+      case "client_access_keys":
+        return parseD1Row("client_access_keys", rows[0]);
+    }
+  },
+  findMany: (input) => findManyD1Rows(executor, input),
+  insertChannel: (input) => insertChannel(executor, input),
+  deleteChannel: (input) => deleteChannel(executor, input),
+  async commit(input) {
+    if (input.changes.length === 0) return { committed: true };
+    const plan = createCommitPlan(input);
+    return resultForPlan(plan, await executor.batch(plan.statements));
+  },
+});

@@ -19,7 +19,7 @@ import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.t
 import type { Bundle } from "../../../packages/core/src/types.ts";
 import { createAnalyticsProvider } from "../../../packages/server/dist/index.mjs";
 import {
-  type AnalyticsTable,
+  type AnalyticsModel,
   type BundleRepository,
   createDatabaseClient,
   type DatabaseClient,
@@ -1363,13 +1363,17 @@ async function withDatabaseClient<T>(
   );
 }
 
-function readAnalyticsTable(database: BundleRepository): AnalyticsTable | null {
-  const analytics: unknown = Reflect.get(database, "analytics");
+function readAnalyticsModel(database: BundleRepository): AnalyticsModel | null {
+  const models: unknown = Reflect.get(database, "models");
+  const analytics: unknown =
+    typeof models === "object" && models !== null
+      ? Reflect.get(models, "analytics")
+      : undefined;
   return typeof analytics === "object" &&
     analytics !== null &&
     typeof Reflect.get(analytics, "append") === "function" &&
     typeof Reflect.get(analytics, "scan") === "function"
-    ? (analytics as AnalyticsTable)
+    ? (analytics as AnalyticsModel)
     : null;
 }
 
@@ -1378,7 +1382,7 @@ async function verifyConfiguredConsoleAnalytics(args: {
   sinceMs: number;
 }) {
   return withConfiguredDatabase(async (database) => {
-    const analytics = readAnalyticsTable(database);
+    const analytics = readAnalyticsModel(database);
     const client = analytics
       ? createConsoleAnalyticsProviderClient(createAnalyticsProvider(analytics))
       : createConsoleAnalyticsHttpClient({

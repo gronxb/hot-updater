@@ -12,11 +12,14 @@ type Tables = {
   bundle_patches: MongoTestRow[];
   bundles: MongoTestRow[];
   bundle_events: MongoTestRow[];
+  channels: MongoTestRow[];
   client_access_keys: MongoTestRow[];
 };
 
 type FindOptions = { readonly projection?: unknown };
-type UpdateInput = { readonly $set: Partial<BundleRow> };
+type UpdateInput =
+  | { readonly $set: Readonly<Record<string, unknown>> }
+  | { readonly $setOnInsert: MongoTestRow };
 type MongoTestHooks = {
   beforeBundlePatchInsert?: () => Promise<void>;
   failNextBundleTombstone: boolean;
@@ -135,7 +138,10 @@ const createCollection = (
     );
     const current = tables[model][index];
     if (current === undefined) return null;
-    const updated = { ...current, ...update.$set };
+    if (!("$set" in update)) {
+      throw new MongoTestConstraintError("findOneAndUpdate requires $set");
+    }
+    const updated = { ...current, ...update.$set } as MongoTestRow;
     tables[model][index] = updated;
     return structuredClone(updated);
   },
@@ -144,6 +150,15 @@ const createCollection = (
     if (model === "bundle_patches") await hooks.beforeBundlePatchInsert?.();
     if (tables[model].some(({ id }) => id === row.id)) {
       throw new MongoTestConstraintError("duplicate id");
+    }
+    if (
+      model === "channels" &&
+      "name" in row &&
+      tables.channels.some(
+        (candidate) => "name" in candidate && candidate.name === row.name,
+      )
+    ) {
+      throw new MongoTestConstraintError("duplicate channel name");
     }
     if (
       model === "client_access_keys" &&
@@ -158,13 +173,43 @@ const createCollection = (
   },
   updateMany: async (filter: unknown, update: UpdateInput): Promise<void> => {
     hooks.operationCount += 1;
+    const values = "$set" in update ? update.$set : {};
     tables[model] = tables[model].map((row) =>
-      matchesMongoTestFilter(row, filter) ? { ...row, ...update.$set } : row,
+      matchesMongoTestFilter(row, filter)
+        ? ({ ...row, ...values } as MongoTestRow)
+        : row,
     );
     if (model === "bundles" && hooks.failNextBundleTombstone) {
       hooks.failNextBundleTombstone = false;
       throw new MongoTestConstraintError("injected tombstone failure");
     }
+  },
+  updateOne: async (
+    filter: unknown,
+    update: UpdateInput,
+    options?: { readonly upsert?: boolean },
+  ): Promise<{ matchedCount: number; upsertedCount: number }> => {
+    hooks.operationCount += 1;
+    const index = tables[model].findIndex((row) =>
+      matchesMongoTestFilter(row, filter),
+    );
+    if (index >= 0) {
+      if ("$set" in update) {
+        tables[model][index] = {
+          ...tables[model][index],
+          ...update.$set,
+        } as MongoTestRow;
+      }
+      return { matchedCount: 1, upsertedCount: 0 };
+    }
+    if (options?.upsert === true && "$setOnInsert" in update) {
+      if (tables[model].some((row) => row.id === update.$setOnInsert.id)) {
+        throw new MongoTestConstraintError("duplicate id");
+      }
+      tables[model].push(structuredClone(update.$setOnInsert));
+      return { matchedCount: 0, upsertedCount: 1 };
+    }
+    return { matchedCount: 0, upsertedCount: 0 };
   },
 });
 
@@ -177,6 +222,8 @@ const createDatabase = (tables: Tables, hooks: MongoTestHooks) => ({
         return createCollection(tables, "bundle_patches", hooks);
       case "bundle_events":
         return createCollection(tables, "bundle_events", hooks);
+      case "channels":
+        return createCollection(tables, "channels", hooks);
       case "client_access_keys":
         return createCollection(tables, "client_access_keys", hooks);
       default:
@@ -190,6 +237,7 @@ export const createMongoTestHarness = () => {
     bundle_patches: [],
     bundles: [],
     bundle_events: [],
+    channels: [],
     client_access_keys: [],
   };
   const hooks: MongoTestHooks = {
@@ -197,6 +245,7 @@ export const createMongoTestHarness = () => {
     operationCount: 0,
   };
   let activeTables = tables;
+  let transactionQueue = Promise.resolve();
   const client = new MongoClient("mongodb://127.0.0.1:27017/hot_updater_test");
   Object.defineProperty(client, "db", {
     value: () => createDatabase(activeTables, hooks),
@@ -207,17 +256,25 @@ export const createMongoTestHarness = () => {
     ): Promise<unknown> => {
       const session = {
         withTransaction: async (transaction: () => Promise<unknown>) => {
-          const staged = structuredClone(tables);
-          activeTables = staged;
+          const previous = transactionQueue;
+          let release!: () => void;
+          transactionQueue = new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          await previous;
           try {
+            const staged = structuredClone(tables);
+            activeTables = staged;
             const result = await transaction();
             tables.bundle_patches = staged.bundle_patches;
             tables.bundles = staged.bundles;
             tables.bundle_events = staged.bundle_events;
+            tables.channels = staged.channels;
             tables.client_access_keys = staged.client_access_keys;
             return result;
           } finally {
             activeTables = tables;
+            release();
           }
         },
       } as unknown as ClientSession;
@@ -230,9 +287,11 @@ export const createMongoTestHarness = () => {
     reset: (): void => {
       hooks.failNextBundleTombstone = false;
       hooks.operationCount = 0;
+      transactionQueue = Promise.resolve();
       tables.bundle_patches = [];
       tables.bundles = [];
       tables.bundle_events = [];
+      tables.channels = [];
       tables.client_access_keys = [];
     },
     getOperationCount: (): number => hooks.operationCount,

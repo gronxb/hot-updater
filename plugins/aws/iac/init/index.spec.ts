@@ -29,7 +29,6 @@ describe("AWS init provider", () => {
     const env = {
       HOT_UPDATER_AWS_AUTH_MODE: "invalid",
       HOT_UPDATER_AWS_LAMBDA_NAME: "hot-updater-edge",
-      HOT_UPDATER_AWS_MIGRATION_APPROVED: "true",
       HOT_UPDATER_S3_BUCKET_NAME: "updates",
       HOT_UPDATER_S3_REGION: "not-a-region",
     };

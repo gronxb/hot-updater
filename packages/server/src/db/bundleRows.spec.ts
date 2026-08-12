@@ -24,7 +24,8 @@ const createBundle = (id: string): Bundle => ({
   fingerprintHash: null,
 });
 
-const toRow = (bundle: Bundle): BundleRow => bundleToRow(bundle);
+const toRow = (bundle: Bundle): BundleRow =>
+  bundleToRow(bundle, "channel-production");
 
 const createPatchRow = (
   id: string,

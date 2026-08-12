@@ -4,16 +4,18 @@ description: Protect OTA reads and Analytics writes with the built-in client acc
 ---
 
 Client access-key authentication is built into `createHotUpdater` and uses the
-official `database.clientAccessKeys` domain. No authentication package or server
-plugin is required.
+official `database.models.clientAccessKeys` domain. No authentication package
+or server plugin is required.
 
 ```ts
 import { createHotUpdater } from "@hot-updater/server";
 
 export const hotUpdater = createHotUpdater({
   database,
-  analytics: {},
-  clientAccessKeys: true,
+  features: {
+    analytics: true,
+    clientAccessKeys: true,
+  },
 });
 ```
 
@@ -30,7 +32,7 @@ official database domain. A custom management surface can use the server helper:
 import { createClientAccessKey } from "@hot-updater/server";
 
 const { apiKey, record } = await createClientAccessKey({
-  clientAccessKeys: database.clientAccessKeys,
+  clientAccessKeys: database.models.clientAccessKeys,
   name: "Production app",
 });
 ```

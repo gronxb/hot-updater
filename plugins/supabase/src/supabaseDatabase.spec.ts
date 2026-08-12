@@ -1,15 +1,17 @@
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
-import { vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { supabaseDatabase } from "./supabaseDatabase";
+import { supabaseEdgeFunctionDatabase } from "./supabaseEdgeFunctionDatabase";
 
 // allow: SIZE_OK — hoisted PostgREST query/filter state machine for public plugin conformance.
-const { createMockClient, resetMockClient } = vi.hoisted(() => {
+const supabaseMock = vi.hoisted(() => {
   type Row = Record<string, unknown>;
   type TableName =
     | "bundle_events"
     | "bundle_patches"
     | "bundles"
+    | "channels"
     | "client_access_keys";
   type QueryError = { readonly message: string };
   type QueryResult = {
@@ -22,7 +24,15 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
     bundle_events: new Map(),
     bundle_patches: new Map(),
     bundles: new Map(),
+    channels: new Map(),
     client_access_keys: new Map(),
+  };
+  const tableReadCounts: Record<TableName, number> = {
+    bundle_events: 0,
+    bundle_patches: 0,
+    bundles: 0,
+    channels: 0,
+    client_access_keys: 0,
   };
 
   const splitTopLevel = (value: string): readonly string[] => {
@@ -150,13 +160,20 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
     private filter: string | undefined;
     private head = false;
     private limitValue: number | undefined;
-    private mode: "delete" | "insert" | "select" | "update" = "select";
+    private mode: "delete" | "insert" | "select" | "update" | "upsert" =
+      "select";
     private readonly orderClauses: {
       readonly field: string;
       readonly ascending: boolean;
       readonly nullsFirst: boolean | undefined;
     }[] = [];
     private payload: Row | undefined;
+    private upsertOptions:
+      | {
+          readonly ignoreDuplicates?: boolean;
+          readonly onConflict?: string;
+        }
+      | undefined;
     private rangeStart = 0;
     private rangeEnd: number | undefined;
     private singleRow = false;
@@ -166,6 +183,18 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
     insert(payload: Row) {
       this.mode = "insert";
       this.payload = payload;
+      return this;
+    }
+    upsert(
+      payload: Row,
+      options?: {
+        readonly ignoreDuplicates?: boolean;
+        readonly onConflict?: string;
+      },
+    ) {
+      this.mode = "upsert";
+      this.payload = payload;
+      this.upsertOptions = options;
       return this;
     }
     update(payload: Row) {
@@ -183,6 +212,14 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
     }
     or(filter: string) {
       this.filter = filter;
+      return this;
+    }
+    eq(field: string, value: unknown) {
+      const encoded =
+        typeof value === "string"
+          ? `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`
+          : String(value);
+      this.filter = `${field}.eq.${encoded}`;
       return this;
     }
     order(
@@ -257,7 +294,10 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
     }
 
     private async execute(): Promise<QueryResult> {
-      if (this.mode === "insert") return this.executeInsert();
+      if (this.mode === "insert" || this.mode === "upsert") {
+        return this.executeInsert();
+      }
+      if (this.mode === "select") tableReadCounts[this.table] += 1;
       const selected = this.selectedRows();
       if (this.mode === "update") {
         for (const row of selected) Object.assign(row, this.payload);
@@ -300,8 +340,33 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
         };
       }
       const id = String(payload.id);
-      if (rows[this.table].has(id)) {
-        return { count: null, data: null, error: { message: "duplicate id" } };
+      const conflictField = this.upsertOptions?.onConflict;
+      const uniqueField =
+        conflictField ??
+        (this.table === "channels"
+          ? "name"
+          : this.table === "client_access_keys"
+            ? "hash"
+            : undefined);
+      const conflictingEntry =
+        uniqueField === undefined
+          ? undefined
+          : [...rows[this.table]].find(
+              ([, row]) => row[uniqueField] === payload[uniqueField],
+            );
+      if (
+        this.mode === "upsert" &&
+        conflictingEntry !== undefined &&
+        this.upsertOptions?.ignoreDuplicates
+      ) {
+        return { count: 0, data: null, error: null };
+      }
+      if (rows[this.table].has(id) || conflictingEntry !== undefined) {
+        return {
+          count: null,
+          data: null,
+          error: { message: "duplicate id" },
+        };
       }
       if (
         this.table === "bundle_patches" &&
@@ -322,50 +387,110 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
       },
       rpc: async (name: string, args?: Record<string, unknown>) => {
         const bundles = [...rows.bundles.values()];
+        if (name === "hot_updater_delete_channel") {
+          const id = String(args?.p_id);
+          if (!rows.channels.has(id)) {
+            return {
+              data: { deleted: false, reason: "not_found" },
+              error: null,
+            };
+          }
+          if (bundles.some((bundle) => bundle.channel_id === id)) {
+            return {
+              data: { deleted: false, reason: "not_empty" },
+              error: null,
+            };
+          }
+          rows.channels.delete(id);
+          return { data: { deleted: true }, error: null };
+        }
         if (name === "hot_updater_commit") {
           const staged = {
+            bundle_events: new Map(rows.bundle_events),
             bundle_patches: new Map(rows.bundle_patches),
             bundles: new Map(rows.bundles),
+            channels: new Map(rows.channels),
+            client_access_keys: new Map(rows.client_access_keys),
           };
-          const mutations = (args?.p_mutations ?? []) as readonly Row[];
-          for (const mutation of mutations) {
-            if (
-              mutation.operation === "update" &&
-              !staged.bundles.has(String(mutation.bundleId))
-            ) {
-              return {
-                data: {
-                  applied: false,
-                  missingBundleId: String(mutation.bundleId),
-                },
-                error: null,
-              };
+          const commit = (args?.p_commit ?? {}) as Row;
+          const changes = (commit.changes ?? []) as readonly Row[];
+          for (const [changeIndex, change] of changes.entries()) {
+            const operation = String(change.operation);
+            const model = String(change.model);
+            if (model === "channels") {
+              if (operation === "insert") {
+                const channel = change.row as Row;
+                const existing = [...staged.channels.values()].find(
+                  (row) => row.name === channel.name,
+                );
+                if (existing === undefined) {
+                  staged.channels.set(String(channel.id), channel);
+                }
+              } else if (operation === "delete") {
+                const where = change.where as Row;
+                const id = String(where.id);
+                if (
+                  [...staged.bundles.values()].some(
+                    (bundle) => bundle.channel_id === id,
+                  )
+                ) {
+                  return {
+                    data: {
+                      committed: false,
+                      conflict: { changeIndex, reason: "referenced" },
+                    },
+                    error: null,
+                  };
+                }
+                staged.channels.delete(id);
+              }
+              continue;
             }
-          }
-          for (const mutation of mutations) {
-            for (const change of mutation.changes as readonly Row[]) {
-              if (change.table === "bundles") {
-                const id = String(change.id ?? (change.row as Row).id);
-                if (change.operation === "insert") {
-                  if (staged.bundles.has(id)) {
-                    return { data: null, error: { message: "duplicate id" } };
-                  }
-                  staged.bundles.set(id, change.row as Row);
-                } else if (change.operation === "update") {
-                  Object.assign(staged.bundles.get(id)!, change.update);
-                } else {
-                  staged.bundles.delete(id);
-                  for (const [patchId, patch] of staged.bundle_patches) {
-                    if (patch.bundle_id === id || patch.base_bundle_id === id) {
-                      staged.bundle_patches.delete(patchId);
-                    }
+            if (model === "bundles") {
+              const where = change.where as Row | undefined;
+              const bundle = change.row as Row | undefined;
+              const id = String(where?.id ?? bundle?.id);
+              if (operation === "insert" && bundle !== undefined) {
+                const channel = staged.channels.get(String(bundle.channel_id));
+                if (
+                  staged.bundles.has(id) ||
+                  channel?.name !== bundle.channel
+                ) {
+                  return { data: null, error: { message: "constraint" } };
+                }
+                staged.bundles.set(id, bundle);
+              } else if (operation === "update") {
+                const current = staged.bundles.get(id);
+                if (current === undefined) {
+                  return {
+                    data: {
+                      committed: false,
+                      conflict: { changeIndex, reason: "not_found" },
+                    },
+                    error: null,
+                  };
+                }
+                const updated = { ...current, ...(change.update as Row) };
+                const channel = staged.channels.get(String(updated.channel_id));
+                if (channel?.name !== updated.channel) {
+                  return { data: null, error: { message: "constraint" } };
+                }
+                staged.bundles.set(id, updated);
+              } else if (operation === "delete") {
+                staged.bundles.delete(id);
+                for (const [patchId, patch] of staged.bundle_patches) {
+                  if (patch.bundle_id === id || patch.base_bundle_id === id) {
+                    staged.bundle_patches.delete(patchId);
                   }
                 }
-                continue;
               }
-              if (change.operation === "delete") {
+              continue;
+            }
+            if (model === "bundlePatches") {
+              if (operation === "delete") {
+                const where = change.where as Row;
                 for (const [patchId, patch] of staged.bundle_patches) {
-                  if (patch.bundle_id === change.bundleId) {
+                  if (patch.bundle_id === where.bundleId) {
                     staged.bundle_patches.delete(patchId);
                   }
                 }
@@ -379,74 +504,54 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
                 return { data: null, error: { message: "foreign key" } };
               }
               staged.bundle_patches.set(String(patch.id), patch);
+              continue;
+            }
+            if (model === "analytics" && operation === "insert") {
+              const event = change.row as Row;
+              if (staged.bundle_events.has(String(event.id))) {
+                return { data: null, error: { message: "duplicate id" } };
+              }
+              staged.bundle_events.set(String(event.id), event);
+              continue;
+            }
+            if (model === "clientAccessKeys") {
+              const key = change.row as Row | undefined;
+              if (operation === "insert" && key !== undefined) {
+                const existing = [...staged.client_access_keys.values()].find(
+                  (row) => row.hash === key.hash,
+                );
+                if (existing === undefined) {
+                  staged.client_access_keys.set(String(key.id), key);
+                }
+              } else if (operation === "update") {
+                const where = change.where as Row;
+                const current = staged.client_access_keys.get(String(where.id));
+                if (current === undefined) {
+                  return {
+                    data: {
+                      committed: false,
+                      conflict: { changeIndex, reason: "not_found" },
+                    },
+                    error: null,
+                  };
+                }
+                const update = change.update as Row;
+                current.revoked_at_ms = update.revokedAtMs;
+              }
             }
           }
+          rows.bundle_events = staged.bundle_events;
           rows.bundles = staged.bundles;
           rows.bundle_patches = staged.bundle_patches;
-          return { data: { applied: true }, error: null };
-        }
-        if (name === "hot_updater_create_bundle_with_patches") {
-          const bundle = args?.p_bundle as Row;
-          const patches = (args?.p_patches ?? []) as readonly Row[];
-          const stagedBundleIds = new Set([
-            ...rows.bundles.keys(),
-            String(bundle.id),
-          ]);
-          const invalid =
-            rows.bundles.has(String(bundle.id)) ||
-            patches.some(
-              (patch) =>
-                !stagedBundleIds.has(String(patch.bundle_id)) ||
-                !stagedBundleIds.has(String(patch.base_bundle_id)) ||
-                rows.bundle_patches.has(String(patch.id)),
-            );
-          if (invalid) {
-            return { data: null, error: { message: "constraint" } };
-          }
-          rows.bundles.set(String(bundle.id), bundle);
-          for (const patch of patches) {
-            rows.bundle_patches.set(String(patch.id), patch);
-          }
-          return { data: null, error: null };
-        }
-        if (name === "hot_updater_update_bundle_with_patches") {
-          const bundleId = String(args?.p_bundle_id);
-          const bundle = rows.bundles.get(bundleId);
-          if (bundle === undefined) return { data: false, error: null };
-          const patches = (args?.p_patches ?? []) as readonly Row[];
-          const invalid = patches.some(
-            (patch) =>
-              !rows.bundles.has(String(patch.bundle_id)) ||
-              !rows.bundles.has(String(patch.base_bundle_id)) ||
-              (rows.bundle_patches.has(String(patch.id)) &&
-                rows.bundle_patches.get(String(patch.id))?.bundle_id !==
-                  bundleId),
-          );
-          if (invalid) {
-            return { data: null, error: { message: "constraint" } };
-          }
-          Object.assign(bundle, args?.p_update);
-          for (const [id, patch] of rows.bundle_patches) {
-            if (patch.bundle_id === bundleId) rows.bundle_patches.delete(id);
-          }
-          for (const patch of patches) {
-            rows.bundle_patches.set(String(patch.id), patch);
-          }
-          return { data: true, error: null };
+          rows.channels = staged.channels;
+          rows.client_access_keys = staged.client_access_keys;
+          return { data: { committed: true }, error: null };
         }
         if (name === "get_target_app_version_list") {
           return {
             data: bundles.map((bundle) => ({
               target_app_version: bundle.target_app_version,
             })),
-            error: null,
-          };
-        }
-        if (name === "get_channels") {
-          return {
-            data: [...new Set(bundles.map((bundle) => String(bundle.channel)))]
-              .sort()
-              .map((channel) => ({ channel })),
             error: null,
           };
         }
@@ -471,14 +576,20 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
         };
       },
     }),
+    getTableReadCount: (table: TableName) => tableReadCounts[table],
     resetMockClient: () => {
       rows.bundle_events.clear();
       rows.bundle_patches.clear();
       rows.bundles.clear();
+      rows.channels.clear();
       rows.client_access_keys.clear();
+      for (const table of Object.keys(tableReadCounts) as TableName[]) {
+        tableReadCounts[table] = 0;
+      }
     },
   };
 });
+const { createMockClient, getTableReadCount, resetMockClient } = supabaseMock;
 
 vi.mock("@supabase/supabase-js", () => ({
   createClient: () => createMockClient(),
@@ -494,4 +605,98 @@ setupDatabasePluginTestSuite({
     }),
   reset: () => resetMockClient(),
   dispose: () => undefined,
+});
+
+describe("supabase edge database", () => {
+  it("exposes the same nested database contract as the root entrypoint", () => {
+    const database = supabaseEdgeFunctionDatabase({
+      supabaseUrl: "https://test.supabase.invalid",
+      supabaseServiceRoleKey: "test-service-role-key",
+    });
+
+    expect(Object.keys(database).sort()).toEqual([
+      "commit",
+      "models",
+      "name",
+      "queries",
+    ]);
+    expect(Object.keys(database.models).sort()).toEqual([
+      "analytics",
+      "bundlePatches",
+      "bundles",
+      "channels",
+      "clientAccessKeys",
+    ]);
+  });
+});
+
+describe("supabase Channel model", () => {
+  it("lists the normalized channels table without reading bundles", async () => {
+    resetMockClient();
+    const database = supabaseDatabase({
+      supabaseUrl: "https://test.supabase.invalid",
+      supabaseServiceRoleKey: "test-service-role-key",
+    });
+    const channel = {
+      id: "00000000-0000-0000-0000-000000000001",
+      name: "production",
+    };
+    await database.models.channels.insert({
+      row: channel,
+      onConflict: "returnExisting",
+    });
+
+    await expect(database.models.channels.list({})).resolves.toEqual({
+      channels: [channel],
+    });
+    expect(getTableReadCount("channels")).toBe(1);
+    expect(getTableReadCount("bundles")).toBe(0);
+  });
+
+  it("deletes only an empty channel and reports missing channels", async () => {
+    resetMockClient();
+    const database = supabaseDatabase({
+      supabaseUrl: "https://test.supabase.invalid",
+      supabaseServiceRoleKey: "test-service-role-key",
+    });
+    const channel = {
+      id: "00000000-0000-0000-0000-000000000002",
+      name: "empty",
+    };
+    await database.models.channels.insert({
+      row: channel,
+      onConflict: "returnExisting",
+    });
+
+    await expect(
+      database.models.channels.delete({ id: channel.id }),
+    ).resolves.toEqual({ deleted: true });
+    await expect(
+      database.models.channels.delete({ id: channel.id }),
+    ).resolves.toEqual({ deleted: false, reason: "not_found" });
+  });
+
+  it.each(["id", "name"] as const)(
+    "rejects an overlong Channel %s before calling Supabase",
+    async (field) => {
+      resetMockClient();
+      const database = supabaseDatabase({
+        supabaseUrl: "https://test.supabase.invalid",
+        supabaseServiceRoleKey: "test-service-role-key",
+      });
+      const row = {
+        id: "valid-channel-id",
+        name: "valid-channel-name",
+        [field]: "😀".repeat(256),
+      };
+
+      await expect(
+        database.models.channels.insert({
+          row,
+          onConflict: "returnExisting",
+        }),
+      ).rejects.toMatchObject({ code: "invalid-data" });
+      expect(getTableReadCount("channels")).toBe(0);
+    },
+  );
 });

@@ -1,11 +1,12 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
-  BundleEventRow,
+  ChannelRow,
   ClientAccessKeyRow,
-  DatabaseModel,
 } from "@hot-updater/plugin-core";
 import { isDatabaseMetadataObject } from "@hot-updater/plugin-core";
+import type { DatabaseModel } from "@hot-updater/plugin-core/internal";
 
 import type { PrismaQuery } from "./prismaQuery";
 
@@ -17,6 +18,7 @@ export type PrismaDelegate = {
   readonly findMany: (args?: PrismaQuery) => Promise<readonly unknown[]>;
   readonly update: (args: PrismaQuery) => Promise<unknown>;
   readonly updateMany?: (args: PrismaQuery) => Promise<unknown>;
+  readonly upsert: (args: PrismaQuery) => Promise<unknown>;
 };
 
 export class PrismaAdapterError extends Error {
@@ -37,12 +39,14 @@ const hasDelegateMethods = (value: unknown): value is PrismaDelegate =>
   typeof value["deleteMany"] === "function" &&
   typeof value["findFirst"] === "function" &&
   typeof value["findMany"] === "function" &&
-  typeof value["update"] === "function";
+  typeof value["update"] === "function" &&
+  typeof value["upsert"] === "function";
 
 const modelDelegates = {
   bundles: "bundles",
   bundle_patches: "bundle_patches",
   bundle_events: "bundle_events",
+  channels: "channels",
   client_access_keys: "client_access_keys",
 } as const satisfies Record<DatabaseModel, string>;
 
@@ -118,6 +122,7 @@ export const parsePrismaBundleRow = (value: unknown): BundleRow => {
     git_commit_hash: readNullableString(value, "git_commit_hash"),
     message: readNullableString(value, "message"),
     channel: readString(value, "channel"),
+    channel_id: readString(value, "channel_id"),
     storage_uri: readString(value, "storage_uri"),
     target_app_version: readNullableString(value, "target_app_version"),
     fingerprint_hash: readNullableString(value, "fingerprint_hash"),
@@ -127,6 +132,14 @@ export const parsePrismaBundleRow = (value: unknown): BundleRow => {
     manifest_storage_uri: readNullableString(value, "manifest_storage_uri"),
     manifest_file_hash: readNullableString(value, "manifest_file_hash"),
     asset_base_storage_uri: readNullableString(value, "asset_base_storage_uri"),
+  };
+};
+
+export const parsePrismaChannelRow = (value: unknown): ChannelRow => {
+  if (!isRecord(value)) throw new PrismaAdapterError("invalid channel row");
+  return {
+    id: readString(value, "id"),
+    name: readString(value, "name"),
   };
 };
 

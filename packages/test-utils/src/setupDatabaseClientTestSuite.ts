@@ -1,4 +1,5 @@
 import type { Bundle } from "@hot-updater/core";
+import type { ChannelRow } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import type { DatabasePluginTestLifecycle } from "./databasePluginTestRunner";
@@ -10,7 +11,7 @@ export type DatabaseClientTestContract = {
   readonly getBundles: (
     options: DatabaseClientTestQueryOptions,
   ) => Promise<DatabaseClientTestPage>;
-  readonly getChannels: () => Promise<string[]>;
+  readonly getChannels: () => Promise<readonly ChannelRow[]>;
   readonly insertBundle: (bundle: Bundle) => Promise<void>;
   readonly updateBundleById: (
     id: string,
@@ -110,14 +111,14 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
         expect(result.pagination.total).toBe(3);
       });
 
-      it("removes a derived channel after its last bundle is deleted", async () => {
+      it("keeps an empty channel after its last bundle is deleted", async () => {
         const bundle = createBundleFixture("301", "staging");
         await getClient().insertBundle(bundle);
 
         await getClient().deleteBundleById(bundle.id);
 
-        await expect(getClient().getChannels()).resolves.not.toContain(
-          "staging",
+        await expect(getClient().getChannels()).resolves.toContainEqual(
+          expect.objectContaining({ name: "staging" }),
         );
       });
 

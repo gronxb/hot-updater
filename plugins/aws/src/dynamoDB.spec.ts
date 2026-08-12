@@ -6,9 +6,10 @@ import {
 import {
   DynamoDBDocumentClient,
   QueryCommand,
+  ScanCommand,
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { bundleToRow } from "@hot-updater/plugin-core";
+import { bundleToRow, type BundleEventRow } from "@hot-updater/plugin-core";
 import { mockClient } from "aws-sdk-client-mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -16,6 +17,10 @@ import { dynamoDB } from "./dynamoDB";
 
 const cloudFront = mockClient(CloudFrontClient);
 const documentClient = mockClient(DynamoDBDocumentClient);
+const productionChannel = {
+  id: "00000000-0000-0000-0000-000000000100",
+  name: "production",
+} as const;
 const cloudFrontInvalidation = (status: string) => ({
   Id: "invalidation-id",
   Status: status,
@@ -25,31 +30,54 @@ const cloudFrontInvalidation = (status: string) => ({
     Paths: { Quantity: 0, Items: [] },
   },
 });
-const bundleRow = bundleToRow({
-  id: "00000000-0000-0000-0000-000000000001",
-  platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
-  fileHash: "hash",
-  gitCommitHash: null,
-  message: null,
-  channel: "production",
-  storageUri: "storage://bundle",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
-  metadata: {},
-});
+const bundleRow = bundleToRow(
+  {
+    id: "00000000-0000-0000-0000-000000000001",
+    platform: "ios",
+    shouldForceUpdate: false,
+    enabled: true,
+    fileHash: "hash",
+    gitCommitHash: null,
+    message: null,
+    channel: productionChannel.name,
+    storageUri: "storage://bundle",
+    targetAppVersion: "1.0.0",
+    fingerprintHash: null,
+    metadata: {},
+  },
+  productionChannel.id,
+);
 
 const commitBundle = (plugin: ReturnType<typeof dynamoDB>) =>
   plugin.commit({
-    mutations: [
+    changes: [
       {
+        model: "channels",
         operation: "insert",
-        bundleId: bundleRow.id,
-        changes: [{ table: "bundles", operation: "insert", row: bundleRow }],
+        row: productionChannel,
+        onConflict: "ignore",
       },
+      { model: "bundles", operation: "insert", row: bundleRow },
     ],
   });
+
+const analyticsEvent = (index: number): BundleEventRow => ({
+  id: `00000000-0000-0000-0000-${String(index).padStart(12, "0")}`,
+  type: "UPDATE_APPLIED",
+  install_id: `install-${index}`,
+  user_id: null,
+  username: null,
+  from_bundle_id: bundleRow.id,
+  to_bundle_id: bundleRow.id,
+  platform: "ios",
+  app_version: "1.0.0",
+  channel: productionChannel.name,
+  cohort: "0",
+  update_strategy: "appVersion",
+  fingerprint_hash: null,
+  sdk_version: null,
+  received_at_ms: index,
+});
 
 describe("dynamoDB CloudFront lifecycle", () => {
   beforeEach(() => {
@@ -129,17 +157,24 @@ describe("dynamoDB CloudFront lifecycle", () => {
     await plugin.dispose?.();
   });
 
-  it("exposes only the flat official database contract", async () => {
+  it("exposes only the nested official database contract", async () => {
     const plugin = dynamoDB({
       region: "us-east-1",
       tableName: "hot-updater-metadata",
     });
 
-    expect(plugin.bundles).toBeDefined();
-    expect(plugin.bundlePatches).toBeDefined();
-    expect(plugin.analytics).toBeDefined();
-    expect(plugin.clientAccessKeys).toBeDefined();
-    expect(plugin.commit).toBeTypeOf("function");
+    expect(plugin.models.bundles).toBeDefined();
+    expect(plugin.models.bundlePatches).toBeDefined();
+    expect(plugin.models.channels).toBeDefined();
+    expect(plugin.models.analytics).toBeDefined();
+    expect(plugin.models.clientAccessKeys).toBeDefined();
+    expect(plugin.queries.getUpdateInfo).toBeTypeOf("function");
+    expect(typeof plugin.commit).toBe("function");
+    expect(plugin).not.toHaveProperty("bundles");
+    expect(plugin).not.toHaveProperty("bundlePatches");
+    expect(plugin).not.toHaveProperty("analytics");
+    expect(plugin).not.toHaveProperty("clientAccessKeys");
+    expect(plugin).not.toHaveProperty("getUpdateInfo");
     expect(plugin).not.toHaveProperty("componentData");
     expect(plugin).not.toHaveProperty("create");
     expect(plugin).not.toHaveProperty("findMany");
@@ -147,6 +182,52 @@ describe("dynamoDB CloudFront lifecycle", () => {
     expect(plugin).not.toHaveProperty("onDatabaseUpdated");
     expect(plugin).not.toHaveProperty("onUnmount");
 
+    await plugin.dispose?.();
+  });
+
+  it("lists channels from their dedicated partition without scanning", async () => {
+    documentClient.on(QueryCommand).resolves({ Items: [] });
+    const plugin = dynamoDB({
+      region: "us-east-1",
+      tableName: "hot-updater-metadata",
+    });
+
+    await expect(plugin.models.channels.list({})).resolves.toEqual({
+      channels: [],
+    });
+
+    expect(documentClient.commandCalls(QueryCommand)).toHaveLength(1);
+    const query = documentClient.commandCalls(QueryCommand)[0]?.args[0].input;
+    expect(query).toMatchObject({
+      ConsistentRead: true,
+    });
+    expect(query?.KeyConditionExpression).toMatch(/^#\w+ = :\w+$/);
+    expect(Object.values(query?.ExpressionAttributeValues ?? {})).toContain(
+      "channels",
+    );
+    expect(documentClient.commandCalls(ScanCommand)).toHaveLength(0);
+    await plugin.dispose?.();
+  });
+
+  it("rejects a generic commit above DynamoDB's 100-action boundary", async () => {
+    const plugin = dynamoDB({
+      region: "us-east-1",
+      tableName: "hot-updater-metadata",
+    });
+
+    await expect(
+      plugin.commit({
+        changes: Array.from({ length: 101 }, (_, index) => ({
+          model: "analytics" as const,
+          operation: "insert" as const,
+          row: analyticsEvent(index),
+        })),
+      }),
+    ).rejects.toMatchObject({
+      name: "DynamoDBTransactionLimitError",
+      actionCount: 101,
+    });
+    expect(documentClient.commandCalls(TransactWriteCommand)).toHaveLength(0);
     await plugin.dispose?.();
   });
 });

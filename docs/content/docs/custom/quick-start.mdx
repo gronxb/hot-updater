@@ -54,7 +54,7 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
-  routes: {
+  features: {
     updateCheck: true,
     bundles: true,
   },
@@ -78,7 +78,8 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
 
-app.use( // [!code ++]
+app.use(
+  // [!code ++]
   "/hot-updater/api/*", // [!code ++]
   bearerAuth({ token: process.env.HOT_UPDATER_AUTH_TOKEN ?? "" }), // [!code ++]
 ); // [!code ++]
@@ -102,7 +103,7 @@ deployment choice:
 - `/hot-updater/fingerprint/*`
 
 The bundle management routes under `/hot-updater/api/*` are used by the CLI.
-They are mounted only when `routes.bundles: true`, and your framework
+They are mounted only when `features.bundles: true`, and your framework
 middleware must protect each management request before mounting the handler.
 The server example above uses Bearer authentication for `/hot-updater/api/*`.
 Set your auth token in environment variables:
@@ -186,5 +187,5 @@ export default HotUpdater.wrap({
 ## Next Steps
 
 - Configure your CLI to use this server (see [Overview](./overview#cli-configuration))
-- Explore other [Database Adapters](./database/drizzle) (Drizzle, Prisma, MongoDB, S3)
+- Explore other [Database Adapters](./database/drizzle) (Drizzle, Prisma, MongoDB)
 - Try different [Server Frameworks](./frameworks/hono) (Express, Elysia)

@@ -45,7 +45,7 @@ const createBundle = (index: number): Bundle => ({
 });
 
 const createBenchPlugin = (bundles: readonly Bundle[]): DatabasePlugin => {
-  const rows = bundles.map((bundle) => bundleToRow(bundle));
+  const rows = bundles.map((bundle) => bundleToRow(bundle, "channel-bench"));
   const name = "bench-v2-plugin";
   return createDatabasePlugin({
     name,
@@ -57,6 +57,12 @@ const createBenchPlugin = (bundles: readonly Bundle[]): DatabasePlugin => {
         throw new BenchmarkMutationError();
       },
       async delete() {
+        throw new BenchmarkMutationError();
+      },
+      async insertChannel() {
+        throw new BenchmarkMutationError();
+      },
+      async deleteChannel() {
         throw new BenchmarkMutationError();
       },
       async count(input) {
@@ -72,6 +78,7 @@ const createBenchPlugin = (bundles: readonly Bundle[]): DatabasePlugin => {
               null
             );
           case "bundle_patches":
+          case "channels":
           case "client_access_keys":
             return null;
         }
@@ -89,6 +96,7 @@ const createBenchPlugin = (bundles: readonly Bundle[]): DatabasePlugin => {
             );
           case "bundle_patches":
           case "bundle_events":
+          case "channels":
           case "client_access_keys":
             return [];
         }

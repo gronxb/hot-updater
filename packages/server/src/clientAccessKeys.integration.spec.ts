@@ -23,23 +23,22 @@ describe("createHotUpdater client access keys", () => {
   it("rejects invalid client access-key configuration", () => {
     expect(() =>
       createHotUpdater({
-        clientAccessKeys: "yes" as unknown as boolean,
         database: createInMemoryDatabasePlugin(),
+        features: { clientAccessKeys: "yes" as unknown as boolean },
       }),
-    ).toThrow("Client access-keys option must be a boolean.");
+    ).toThrow("Client access-keys feature must be a boolean.");
   });
 
   it("protects only client OTA and Analytics write routes", async () => {
     const database = createInMemoryDatabasePlugin();
     await registerClientAccessKey({
       apiKey: API_KEY,
-      clientAccessKeys: database.clientAccessKeys,
+      clientAccessKeys: database.models.clientAccessKeys,
       name: "App",
     });
     const hotUpdater = createHotUpdater({
-      analytics: {},
-      clientAccessKeys: true,
       database,
+      features: { analytics: true, clientAccessKeys: true },
     });
 
     expect((await hotUpdater.handler(new Request(updateUrl))).status).toBe(401);
@@ -61,13 +60,15 @@ describe("createHotUpdater client access keys", () => {
     const database = createInMemoryDatabasePlugin();
     await registerClientAccessKey({
       apiKey: API_KEY,
-      clientAccessKeys: database.clientAccessKeys,
+      clientAccessKeys: database.models.clientAccessKeys,
       name: "App",
     });
     const hotUpdater = createHotUpdater({
-      analytics: { queryAccess: "public" },
-      clientAccessKeys: true,
       database,
+      features: {
+        analytics: { queryAccess: "public" },
+        clientAccessKeys: true,
+      },
     });
     const invalidBody = {
       method: "POST",
@@ -93,12 +94,12 @@ describe("createHotUpdater client access keys", () => {
 
   it("returns 503 when credential storage is unavailable", async () => {
     const database = createInMemoryDatabasePlugin();
-    vi.spyOn(database.clientAccessKeys, "findByHash").mockRejectedValue(
+    vi.spyOn(database.models.clientAccessKeys, "findByHash").mockRejectedValue(
       new Error("database offline"),
     );
     const hotUpdater = createHotUpdater({
-      clientAccessKeys: true,
       database,
+      features: { clientAccessKeys: true },
     });
 
     const response = await hotUpdater.handler(withApiKey(updateUrl));
@@ -109,11 +110,19 @@ describe("createHotUpdater client access keys", () => {
     });
   });
 
-  it("keeps client routes public unless access keys are enabled", async () => {
-    const hotUpdater = createHotUpdater({
-      database: createInMemoryDatabasePlugin(),
-    });
+  it.each([undefined, false])(
+    "keeps client routes public when the access-key feature is %s",
+    async (clientAccessKeys) => {
+      const hotUpdater = createHotUpdater({
+        database: createInMemoryDatabasePlugin(),
+        ...(clientAccessKeys === undefined
+          ? {}
+          : { features: { clientAccessKeys } }),
+      });
 
-    expect((await hotUpdater.handler(new Request(updateUrl))).status).toBe(200);
-  });
+      expect((await hotUpdater.handler(new Request(updateUrl))).status).toBe(
+        200,
+      );
+    },
+  );
 });

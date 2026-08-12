@@ -1,4 +1,7 @@
-import type { DatabaseModel, DatabaseWhere } from "@hot-updater/plugin-core";
+import type {
+  DatabaseModel,
+  DatabaseWhere,
+} from "@hot-updater/plugin-core/internal";
 
 type SupabaseWhere = {
   readonly [TModel in DatabaseModel]: DatabaseWhere<TModel>;

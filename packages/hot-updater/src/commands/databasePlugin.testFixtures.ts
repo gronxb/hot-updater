@@ -16,37 +16,45 @@ export const createDatabasePluginHarness = () => {
   const dispose = vi.fn(async (): Promise<void> => {});
   const plugin: DatabasePlugin = {
     name: "test-database-v2",
-    bundles: {
-      async findById(id) {
-        await read();
-        return basePlugin.bundles.findById(id);
+    models: {
+      bundles: {
+        async findById(id) {
+          await read();
+          return basePlugin.models.bundles.findById(id);
+        },
+        async findMany(query) {
+          await read();
+          return basePlugin.models.bundles.findMany(query);
+        },
+        async count(where) {
+          await read();
+          return basePlugin.models.bundles.count(where);
+        },
       },
-      async findMany(query) {
-        await read();
-        return basePlugin.bundles.findMany(query);
+      bundlePatches: {
+        async findByBundleIds(bundleIds) {
+          await read();
+          return basePlugin.models.bundlePatches.findByBundleIds(bundleIds);
+        },
       },
-      async count(where) {
+      channels: {
+        insert: (input) => basePlugin.models.channels.insert(input),
+        async list(input) {
+          await read();
+          return basePlugin.models.channels.list(input);
+        },
+        delete: (input) => basePlugin.models.channels.delete(input),
+      },
+      analytics: basePlugin.models.analytics,
+      clientAccessKeys: basePlugin.models.clientAccessKeys,
+    },
+    queries: {
+      async getUpdateInfo(args) {
         await read();
-        return basePlugin.bundles.count(where);
+        return basePlugin.queries.getUpdateInfo?.(args) ?? null;
       },
     },
-    bundlePatches: {
-      async findByBundleIds(bundleIds) {
-        await read();
-        return basePlugin.bundlePatches.findByBundleIds(bundleIds);
-      },
-    },
-    analytics: basePlugin.analytics,
-    clientAccessKeys: basePlugin.clientAccessKeys,
     commit,
-    async getChannels() {
-      await read();
-      return basePlugin.getChannels?.() ?? [];
-    },
-    async getUpdateInfo(args) {
-      await read();
-      return basePlugin.getUpdateInfo?.(args) ?? null;
-    },
     dispose,
   };
 
@@ -65,6 +73,7 @@ export const createDatabasePluginHarness = () => {
       data.bundles.clear();
       data.bundlePatches.clear();
       data.bundleEvents.clear();
+      data.channels.clear();
       data.clientAccessKeys.clear();
       read.mockReset().mockResolvedValue(undefined);
       commit
@@ -74,8 +83,17 @@ export const createDatabasePluginHarness = () => {
     setBundles: (bundles: readonly Bundle[]): void => {
       data.bundles.clear();
       data.bundlePatches.clear();
+      data.channels.clear();
+      const channels = [...new Set(bundles.map(({ channel }) => channel))].map(
+        (name) => ({ id: `channel-${name}`, name }),
+      );
+      const channelIds = new Map(channels.map(({ id, name }) => [name, id]));
+      for (const channel of channels) data.channels.set(channel.id, channel);
       for (const bundle of bundles) {
-        data.bundles.set(bundle.id, bundleToRow(bundle));
+        data.bundles.set(
+          bundle.id,
+          bundleToRow(bundle, channelIds.get(bundle.channel)!),
+        );
         for (const patch of bundleToPatchRows(bundle)) {
           data.bundlePatches.set(patch.id, patch);
         }

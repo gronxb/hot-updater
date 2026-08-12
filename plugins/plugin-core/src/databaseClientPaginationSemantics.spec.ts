@@ -41,7 +41,7 @@ describe("database client pagination semantics", () => {
   });
 
   it("pushes an ascending page offset into the owner query", async () => {
-    const findMany = vi.spyOn(plugin.bundles, "findMany");
+    const findMany = vi.spyOn(plugin.models.bundles, "findMany");
 
     const page = await client.getBundles({
       limit: 2,
@@ -60,7 +60,7 @@ describe("database client pagination semantics", () => {
   });
 
   it("pushes an after cursor into a descending owner query", async () => {
-    const findMany = vi.spyOn(plugin.bundles, "findMany");
+    const findMany = vi.spyOn(plugin.models.bundles, "findMany");
 
     const page = await client.getBundles({
       limit: 2,
@@ -80,7 +80,7 @@ describe("database client pagination semantics", () => {
   });
 
   it("reverses a before query back into descending response order", async () => {
-    const findMany = vi.spyOn(plugin.bundles, "findMany");
+    const findMany = vi.spyOn(plugin.models.bundles, "findMany");
 
     const page = await client.getBundles({
       limit: 2,
@@ -102,8 +102,8 @@ describe("database client pagination semantics", () => {
   it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
     "rejects invalid aggregate limit %s before querying the provider",
     async (limit) => {
-      const findMany = vi.spyOn(plugin.bundles, "findMany").mockClear();
-      const count = vi.spyOn(plugin.bundles, "count").mockClear();
+      const findMany = vi.spyOn(plugin.models.bundles, "findMany").mockClear();
+      const count = vi.spyOn(plugin.models.bundles, "count").mockClear();
 
       const result = Reflect.apply(client.getBundles, client, [{ limit }]);
 
@@ -116,8 +116,8 @@ describe("database client pagination semantics", () => {
   );
 
   it("rejects an unsafe page offset before querying the provider", async () => {
-    const findMany = vi.spyOn(plugin.bundles, "findMany").mockClear();
-    const count = vi.spyOn(plugin.bundles, "count").mockClear();
+    const findMany = vi.spyOn(plugin.models.bundles, "findMany").mockClear();
+    const count = vi.spyOn(plugin.models.bundles, "count").mockClear();
 
     const result = client.getBundles({
       limit: 2,
@@ -132,8 +132,8 @@ describe("database client pagination semantics", () => {
   });
 
   it("rejects an unsafe cursor lookahead before querying the provider", async () => {
-    const findMany = vi.spyOn(plugin.bundles, "findMany").mockClear();
-    const count = vi.spyOn(plugin.bundles, "count").mockClear();
+    const findMany = vi.spyOn(plugin.models.bundles, "findMany").mockClear();
+    const count = vi.spyOn(plugin.models.bundles, "count").mockClear();
 
     const result = client.getBundles({
       limit: Number.MAX_SAFE_INTEGER,
@@ -150,8 +150,8 @@ describe("database client pagination semantics", () => {
   it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
     "rejects invalid aggregate page %s before querying the provider",
     async (page) => {
-      const findMany = vi.spyOn(plugin.bundles, "findMany").mockClear();
-      const count = vi.spyOn(plugin.bundles, "count").mockClear();
+      const findMany = vi.spyOn(plugin.models.bundles, "findMany").mockClear();
+      const count = vi.spyOn(plugin.models.bundles, "count").mockClear();
 
       const result = Reflect.apply(client.getBundles, client, [
         { limit: 2, page },
@@ -166,8 +166,8 @@ describe("database client pagination semantics", () => {
   );
 
   it("rejects competing cursors before querying the provider", async () => {
-    const findMany = vi.spyOn(plugin.bundles, "findMany").mockClear();
-    const count = vi.spyOn(plugin.bundles, "count").mockClear();
+    const findMany = vi.spyOn(plugin.models.bundles, "findMany").mockClear();
+    const count = vi.spyOn(plugin.models.bundles, "count").mockClear();
 
     const result = Reflect.apply(client.getBundles, client, [
       { limit: 2, cursor: { after: "004", before: "002" } },
@@ -191,8 +191,8 @@ describe("database client pagination semantics", () => {
   ])(
     "rejects a malformed $name cursor before querying the provider",
     async ({ cursor }) => {
-      const findMany = vi.spyOn(plugin.bundles, "findMany").mockClear();
-      const count = vi.spyOn(plugin.bundles, "count").mockClear();
+      const findMany = vi.spyOn(plugin.models.bundles, "findMany").mockClear();
+      const count = vi.spyOn(plugin.models.bundles, "count").mockClear();
 
       const result = Reflect.apply(client.getBundles, client, [
         { limit: 2, cursor },
@@ -207,8 +207,8 @@ describe("database client pagination semantics", () => {
   );
 
   it("rejects a page combined with a cursor before querying the provider", async () => {
-    const findMany = vi.spyOn(plugin.bundles, "findMany").mockClear();
-    const count = vi.spyOn(plugin.bundles, "count").mockClear();
+    const findMany = vi.spyOn(plugin.models.bundles, "findMany").mockClear();
+    const count = vi.spyOn(plugin.models.bundles, "count").mockClear();
 
     const result = Reflect.apply(client.getBundles, client, [
       { limit: 2, page: 1, cursor: { after: "004" } },

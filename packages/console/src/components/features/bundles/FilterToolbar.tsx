@@ -1,9 +1,12 @@
-import { Filter, X } from "lucide-react";
+import { Filter, Settings2, X } from "lucide-react";
+import { useState } from "react";
 
+import { ChannelManagementDialog } from "@/components/features/bundles/ChannelManagementDialog";
 import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -13,6 +16,7 @@ import { useFilterParams } from "@/hooks/useFilterParams";
 import { useChannelsQuery } from "@/lib/api";
 
 export function FilterToolbar() {
+  const [isChannelManagementOpen, setIsChannelManagementOpen] = useState(false);
   const { filters, setFilters, resetFilters } = useFilterParams();
   const { data: channels = [] } = useChannelsQuery();
 
@@ -40,9 +44,11 @@ export function FilterToolbar() {
           <SelectValue placeholder="All Platforms" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">All Platforms</SelectItem>
-          <SelectItem value="ios">iOS</SelectItem>
-          <SelectItem value="android">Android</SelectItem>
+          <SelectGroup>
+            <SelectItem value="all">All Platforms</SelectItem>
+            <SelectItem value="ios">iOS</SelectItem>
+            <SelectItem value="android">Android</SelectItem>
+          </SelectGroup>
         </SelectContent>
       </Select>
 
@@ -56,14 +62,27 @@ export function FilterToolbar() {
           <SelectValue placeholder="All Channels" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">All Channels</SelectItem>
-          {channels.map((channel) => (
-            <SelectItem key={channel} value={channel}>
-              {channel}
-            </SelectItem>
-          ))}
+          <SelectGroup>
+            <SelectItem value="all">All Channels</SelectItem>
+            {channels.map((channel) => (
+              <SelectItem key={channel.id} value={channel.name}>
+                {channel.name}
+              </SelectItem>
+            ))}
+          </SelectGroup>
         </SelectContent>
       </Select>
+
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setIsChannelManagementOpen(true)}
+        aria-label="Manage channels"
+        className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+      >
+        <Settings2 data-icon="inline-start" />
+        <span className="hidden sm:inline">Channels</span>
+      </Button>
 
       {hasActiveFilters && (
         <Button
@@ -72,10 +91,15 @@ export function FilterToolbar() {
           onClick={resetFilters}
           className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground sm:ml-auto"
         >
-          <X className="h-3.5 w-3.5 mr-1" />
+          <X data-icon="inline-start" />
           Clear
         </Button>
       )}
+
+      <ChannelManagementDialog
+        open={isChannelManagementOpen}
+        onOpenChange={setIsChannelManagementOpen}
+      />
     </header>
   );
 }

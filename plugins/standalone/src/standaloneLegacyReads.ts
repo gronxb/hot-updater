@@ -6,8 +6,7 @@ import type {
   DatabaseRow,
   DatabaseSortBy,
   DatabaseWhere,
-} from "@hot-updater/plugin-core";
-import { bundleToRow } from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 
 import type { StandaloneBundleRemote } from "./standaloneBundleRemote";
 import {
@@ -142,8 +141,7 @@ export const createLegacyReads = (
         (idSelector.operator === undefined || idSelector.operator === "eq") &&
         typeof idSelector.value === "string"
       ) {
-        const bundle = await remote.loadBundle(idSelector.value);
-        const row = bundle ? bundleToRow(bundle) : null;
+        const row = await remote.loadBundleRow(idSelector.value);
         return row && matchesStandaloneWhere(row, input.where) ? row : null;
       }
       return (

@@ -2,7 +2,7 @@ import type {
   DatabaseStringComparisonMode,
   DatabaseWhereConnector,
   DatabaseWhereOperator,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 
 export type D1Query = {
   readonly sql: string;

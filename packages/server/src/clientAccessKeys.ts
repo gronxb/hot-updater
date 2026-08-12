@@ -1,6 +1,6 @@
 import type {
   ClientAccessKeyRow,
-  ClientAccessKeyTable,
+  ClientAccessKeyModel,
 } from "@hot-updater/plugin-core";
 
 export const CLIENT_ACCESS_KEY_HEADER_NAME = "x-api-key";
@@ -67,7 +67,7 @@ export interface CreatedClientAccessKey {
 
 export const registerClientAccessKey = async (input: {
   readonly apiKey: string;
-  readonly clientAccessKeys: ClientAccessKeyTable;
+  readonly clientAccessKeys: ClientAccessKeyModel;
   readonly createdAtMs?: number;
   readonly name: string;
 }): Promise<CreatedClientAccessKey> => {
@@ -99,7 +99,7 @@ export const registerClientAccessKey = async (input: {
 };
 
 export const createClientAccessKey = (input: {
-  readonly clientAccessKeys: ClientAccessKeyTable;
+  readonly clientAccessKeys: ClientAccessKeyModel;
   readonly name: string;
 }): Promise<CreatedClientAccessKey> => {
   const bytes = new Uint8Array(32);
@@ -113,7 +113,7 @@ export const createClientAccessKey = (input: {
 
 export const authenticateClientAccessKey = async (input: {
   readonly beforeLookup?: () => Promise<void>;
-  readonly clientAccessKeys: ClientAccessKeyTable;
+  readonly clientAccessKeys: ClientAccessKeyModel;
   readonly request: Request;
 }): Promise<boolean> => {
   const apiKey = input.request.headers.get(CLIENT_ACCESS_KEY_HEADER_NAME);

@@ -2,6 +2,7 @@ import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
+  ChannelRow,
   ClientAccessKeyRow,
 } from "@hot-updater/plugin-core";
 
@@ -9,6 +10,7 @@ export type MongoTestRow =
   | BundleEventRow
   | BundlePatchRow
   | BundleRow
+  | ChannelRow
   | ClientAccessKeyRow;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

@@ -11,6 +11,7 @@ const bundleD1Row = {
   git_commit_hash: null,
   message: null,
   channel: "production",
+  channel_id: "channel-production",
   storage_uri: "storage://bundle",
   target_app_version: null,
   fingerprint_hash: "fingerprint",
@@ -29,6 +30,7 @@ it("parses SQLite booleans and JSON columns into public bundle rows", () => {
     should_force_update: true,
     enabled: false,
     channel: "production",
+    channel_id: "channel-production",
     metadata: { build: 1 },
     target_cohorts: ["stable", "beta"],
   });
