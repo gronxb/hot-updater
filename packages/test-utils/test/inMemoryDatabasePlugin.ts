@@ -1,15 +1,18 @@
 import {
   createDatabasePlugin,
-  type CreateDatabaseImplementationInput,
   type DatabasePlugin,
+  resolveUpdateInfoFromBundles,
+  rowsToBundles,
+} from "@hot-updater/plugin-core";
+import {
+  createDatabasePluginAdapter,
+  type CreateDatabaseImplementationInput,
   type DatabasePluginImplementation,
   type DatabaseModel,
   type DatabaseModelMap,
-  resolveUpdateInfoFromBundles,
-  rowsToBundles,
+  DatabaseRowReferencedError,
   type TransactionDatabasePluginImplementation,
-} from "@hot-updater/plugin-core";
-import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core/internal";
 
 import { matchesAll, queryRows } from "./inMemoryDatabaseQuery";
 
@@ -31,9 +34,22 @@ class MemoryConstraintError extends Error {
 const createTables = (): Tables => ({
   bundles: { rows: [] },
   bundle_patches: { rows: [] },
+  channels: { rows: [] },
   bundle_events: { rows: [] },
   client_access_keys: { rows: [] },
 });
+
+const assertBundleChannel = (
+  tables: Tables,
+  bundle: DatabaseModelMap["bundles"],
+): void => {
+  const channel = tables.channels.rows.find(
+    ({ id }) => id === bundle.channel_id,
+  );
+  if (channel?.name !== bundle.channel) {
+    throw new MemoryConstraintError("Bundle channel reference does not match");
+  }
+};
 
 const assertReferences = (
   tables: Tables,
@@ -41,6 +57,9 @@ const assertReferences = (
 ): void => {
   switch (input.model) {
     case "bundles":
+      assertBundleChannel(tables, input.data);
+      return;
+    case "channels":
     case "bundle_events":
     case "client_access_keys":
       return;
@@ -80,6 +99,17 @@ const createCrudImplementation = (
         if (tables.bundles.rows.some(({ id }) => id === input.data.id)) break;
         tables.bundles.rows.push(structuredClone(input.data));
         return input.data;
+      case "channels": {
+        const existing = tables.channels.rows.find(
+          ({ id, name }) => id === input.data.id || name === input.data.name,
+        );
+        if (existing !== undefined && input.onConflict === "ignore") {
+          return existing;
+        }
+        if (existing !== undefined) break;
+        tables.channels.rows.push(structuredClone(input.data));
+        return input.data;
+      }
       case "bundle_patches":
         if (tables.bundle_patches.rows.some(({ id }) => id === input.data.id))
           break;
@@ -91,12 +121,15 @@ const createCrudImplementation = (
         tables.bundle_events.rows.push(structuredClone(input.data));
         return input.data;
       case "client_access_keys":
-        if (
-          tables.client_access_keys.rows.some(
+        {
+          const existing = tables.client_access_keys.rows.find(
             ({ id, hash }) => id === input.data.id || hash === input.data.hash,
-          )
-        )
-          break;
+          );
+          if (existing !== undefined && input.onConflict === "ignore") {
+            return existing;
+          }
+          if (existing !== undefined) break;
+        }
         tables.client_access_keys.rows.push(structuredClone(input.data));
         return input.data;
     }
@@ -119,6 +152,7 @@ const createCrudImplementation = (
     const current = tables.bundles.rows[index];
     if (current === undefined) return null;
     const updated = { ...current, ...input.update };
+    assertBundleChannel(tables, updated);
     tables.bundles.rows[index] = updated;
     return structuredClone(updated);
   },
@@ -145,6 +179,24 @@ const createCrudImplementation = (
           (row) => !matchesAll(row, input.where),
         );
         return;
+      case "channels": {
+        const selectedIds = new Set(
+          tables.channels.rows
+            .filter((row) => matchesAll(row, input.where))
+            .map(({ id }) => id),
+        );
+        if (
+          tables.bundles.rows.some(({ channel_id }) =>
+            selectedIds.has(channel_id),
+          )
+        ) {
+          throw new DatabaseRowReferencedError();
+        }
+        tables.channels.rows = tables.channels.rows.filter(
+          ({ id }) => !selectedIds.has(id),
+        );
+        return;
+      }
     }
   },
   count: async (input) => {
@@ -188,6 +240,11 @@ const createCrudImplementation = (
             matchesAll(row, input.where),
           ) ?? null
         );
+      case "channels":
+        return (
+          tables.channels.rows.find((row) => matchesAll(row, input.where)) ??
+          null
+        );
     }
   },
   findMany: async (input) => {
@@ -219,6 +276,15 @@ const createCrudImplementation = (
           input.offset,
           input.limit,
         );
+      case "channels":
+        return queryRows(
+          tables.channels.rows,
+          input.where,
+          input.orderBy,
+          input.distinctOn,
+          input.offset,
+          input.limit,
+        );
       case "client_access_keys":
         return queryRows(
           tables.client_access_keys.rows,
@@ -232,33 +298,72 @@ const createCrudImplementation = (
   },
 });
 
-const createImplementation = (
-  tables: Tables,
-): DatabasePluginImplementation => ({
-  ...createCrudImplementation(tables),
-  getChannels: async () =>
-    Array.from(
-      new Set(tables.bundles.rows.map(({ channel }) => channel)),
-    ).sort(),
-  getUpdateInfo: async (args) =>
-    resolveUpdateInfoFromBundles({
-      args,
-      bundles: rowsToBundles(
-        tables.bundles.rows,
-        tables.bundle_patches.rows,
-        tables.bundles.rows,
-      ),
-    }),
-  transaction: async (callback) => {
-    const transactionTables = structuredClone(tables);
-    const result = await callback(createCrudImplementation(transactionTables));
-    tables.bundles.rows = transactionTables.bundles.rows;
-    tables.bundle_patches.rows = transactionTables.bundle_patches.rows;
-    tables.bundle_events.rows = transactionTables.bundle_events.rows;
-    tables.client_access_keys.rows = transactionTables.client_access_keys.rows;
+const createImplementation = (tables: Tables): DatabasePluginImplementation => {
+  let mutationQueue: Promise<void> = Promise.resolve();
+  const withMutationLock = <TResult>(
+    operation: () => Promise<TResult> | TResult,
+  ): Promise<TResult> => {
+    const result = mutationQueue.then(operation, operation);
+    mutationQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
     return result;
-  },
-});
+  };
+
+  return {
+    ...createCrudImplementation(tables),
+    insertChannel: ({ row }) =>
+      withMutationLock(() => {
+        const existing = tables.channels.rows.find(
+          ({ name }) => name === row.name,
+        );
+        if (existing !== undefined) {
+          return { row: structuredClone(existing), inserted: false };
+        }
+        if (tables.channels.rows.some(({ id }) => id === row.id)) {
+          throw new MemoryConstraintError("Duplicate channels id");
+        }
+        tables.channels.rows.push(structuredClone(row));
+        return { row: structuredClone(row), inserted: true };
+      }),
+    deleteChannel: ({ id }) =>
+      withMutationLock(() => {
+        const index = tables.channels.rows.findIndex((row) => row.id === id);
+        if (index === -1) {
+          return { deleted: false, reason: "not_found" as const };
+        }
+        if (tables.bundles.rows.some(({ channel_id }) => channel_id === id)) {
+          return { deleted: false, reason: "not_empty" as const };
+        }
+        tables.channels.rows.splice(index, 1);
+        return { deleted: true as const };
+      }),
+    getUpdateInfo: async (args) =>
+      resolveUpdateInfoFromBundles({
+        args,
+        bundles: rowsToBundles(
+          tables.bundles.rows,
+          tables.bundle_patches.rows,
+          tables.bundles.rows,
+        ),
+      }),
+    transaction: (callback) =>
+      withMutationLock(async () => {
+        const transactionTables = structuredClone(tables);
+        const result = await callback(
+          createCrudImplementation(transactionTables),
+        );
+        tables.bundles.rows = transactionTables.bundles.rows;
+        tables.bundle_patches.rows = transactionTables.bundle_patches.rows;
+        tables.channels.rows = transactionTables.channels.rows;
+        tables.bundle_events.rows = transactionTables.bundle_events.rows;
+        tables.client_access_keys.rows =
+          transactionTables.client_access_keys.rows;
+        return result;
+      }),
+  };
+};
 
 export const createInMemoryDatabasePlugin = (
   tables: Tables = createTables(),
@@ -269,13 +374,9 @@ export const createInMemoryDatabasePlugin = (
   );
   return createDatabasePlugin({
     name: "in-memory-v2",
-    bundles: adapter.bundles,
-    bundlePatches: adapter.bundlePatches,
-    analytics: adapter.analytics,
-    clientAccessKeys: adapter.clientAccessKeys,
+    models: adapter.models,
+    queries: adapter.queries,
     commit: adapter.commit,
-    getChannels: adapter.getChannels,
-    getUpdateInfo: adapter.getUpdateInfo,
   });
 };
 
@@ -286,6 +387,7 @@ export const createInMemoryDatabaseHarness = () => {
     reset: (): void => {
       tables.bundles.rows = [];
       tables.bundle_patches.rows = [];
+      tables.channels.rows = [];
       tables.bundle_events.rows = [];
       tables.client_access_keys.rows = [];
     },

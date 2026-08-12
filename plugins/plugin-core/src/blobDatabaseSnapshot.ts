@@ -4,8 +4,10 @@ import {
 } from "./blobDatabaseErrors";
 import {
   getBlobDatabaseRowUnknownFields,
+  blobDatabaseBackfillChannelId,
   parseBundleEventRow,
   parseBundleRow,
+  parseChannelRow,
   parseClientAccessKeyRow,
   parsePatchRow,
 } from "./blobDatabaseSnapshotRows";
@@ -14,6 +16,7 @@ import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
+  ChannelRow,
   ClientAccessKeyRow,
 } from "./types";
 
@@ -38,6 +41,7 @@ export type BlobDatabaseSnapshot = {
   readonly version: 2;
   readonly bundles: readonly BundleRow[];
   readonly bundle_patches: readonly BundlePatchRow[];
+  readonly channels: readonly ChannelRow[];
   readonly bundle_events: readonly BundleEventRow[];
   readonly client_access_keys: readonly ClientAccessKeyRow[];
 };
@@ -50,6 +54,7 @@ const snapshotFields = new Set([
   "version",
   "bundles",
   "bundle_patches",
+  "channels",
   "bundle_events",
   "client_access_keys",
 ]);
@@ -58,6 +63,7 @@ export const emptyBlobDatabaseSnapshot = (): BlobDatabaseSnapshot => ({
   version: 2,
   bundles: [],
   bundle_patches: [],
+  channels: [],
   bundle_events: [],
   client_access_keys: [],
 });
@@ -79,15 +85,49 @@ export const parseBlobDatabaseSnapshot = (
   if (blobProperty(input, "version") !== 2) {
     throw new BlobDatabaseSnapshotError(source);
   }
+  const explicitChannels = blobArray(
+    blobProperty(input, "channels") ?? [],
+    source,
+  ).map((row) => parseChannelRow(row, source));
+  if (
+    new Set(explicitChannels.map(({ id }) => id)).size !==
+      explicitChannels.length ||
+    new Set(explicitChannels.map(({ name }) => name)).size !==
+      explicitChannels.length
+  ) {
+    throw new BlobDatabaseSnapshotError(source);
+  }
+  const explicitChannelsByName = new Map(
+    explicitChannels.map((row) => [row.name, row]),
+  );
+  const bundles = blobArray(blobProperty(input, "bundles"), source).map((row) =>
+    parseBundleRow(
+      row,
+      source,
+      (name) =>
+        explicitChannelsByName.get(name)?.id ??
+        blobDatabaseBackfillChannelId(name),
+    ),
+  );
+  const channelsByName = new Map(
+    explicitChannels.map((row) => [row.name, row]),
+  );
+  for (const bundle of bundles) {
+    if (!channelsByName.has(bundle.channel)) {
+      channelsByName.set(bundle.channel, {
+        id: bundle.channel_id,
+        name: bundle.channel,
+      });
+    }
+  }
   const snapshot = normalizeBlobDatabaseSnapshot({
     version: 2,
-    bundles: blobArray(blobProperty(input, "bundles"), source).map((row) =>
-      parseBundleRow(row, source),
-    ),
+    bundles,
     bundle_patches: blobArray(
       blobProperty(input, "bundle_patches"),
       source,
     ).map((row) => parsePatchRow(row, source)),
+    channels: [...channelsByName.values()],
     bundle_events: blobArray(
       blobProperty(input, "bundle_events") ?? [],
       source,
@@ -107,6 +147,11 @@ export const parseBlobDatabaseSnapshot = (
     ...snapshot.bundle_patches.flatMap((row, index) =>
       getBlobDatabaseRowUnknownFields(row).map(
         (field) => `bundle_patches[${index}].${field}`,
+      ),
+    ),
+    ...snapshot.channels.flatMap((row, index) =>
+      getBlobDatabaseRowUnknownFields(row).map(
+        (field) => `channels[${index}].${field}`,
       ),
     ),
     ...snapshot.bundle_events.flatMap((row, index) =>
@@ -133,6 +178,8 @@ const validateSnapshotRelations = (
 ): void => {
   const bundleIds = new Set(snapshot.bundles.map(({ id }) => id));
   const patchIds = new Set(snapshot.bundle_patches.map(({ id }) => id));
+  const channelIds = new Set(snapshot.channels.map(({ id }) => id));
+  const channelNames = new Set(snapshot.channels.map(({ name }) => name));
   const eventIds = new Set(snapshot.bundle_events.map(({ id }) => id));
   const accessKeyIds = new Set(snapshot.client_access_keys.map(({ id }) => id));
   const accessKeyHashes = new Set(
@@ -141,13 +188,19 @@ const validateSnapshotRelations = (
   if (
     bundleIds.size !== snapshot.bundles.length ||
     patchIds.size !== snapshot.bundle_patches.length ||
+    channelIds.size !== snapshot.channels.length ||
+    channelNames.size !== snapshot.channels.length ||
     eventIds.size !== snapshot.bundle_events.length ||
     accessKeyIds.size !== snapshot.client_access_keys.length ||
     accessKeyHashes.size !== snapshot.client_access_keys.length ||
     snapshot.bundle_patches.some(
       ({ base_bundle_id, bundle_id }) =>
         !bundleIds.has(bundle_id) || !bundleIds.has(base_bundle_id),
-    )
+    ) ||
+    snapshot.bundles.some(({ channel, channel_id }) => {
+      const stored = snapshot.channels.find(({ id }) => id === channel_id);
+      return stored?.name !== channel;
+    })
   ) {
     throw new BlobDatabaseSnapshotError(source);
   }
@@ -165,6 +218,10 @@ export const normalizeBlobDatabaseSnapshot = (
       left.bundle_id.localeCompare(right.bundle_id) ||
       left.order_index - right.order_index ||
       left.id.localeCompare(right.id),
+  ),
+  channels: [...snapshot.channels].sort(
+    (left, right) =>
+      left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
   ),
   bundle_events: [...snapshot.bundle_events].sort(
     (left, right) =>

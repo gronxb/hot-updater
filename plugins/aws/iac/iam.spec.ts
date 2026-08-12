@@ -49,7 +49,7 @@ describe("IAMManager DynamoDB access", () => {
     mocks.deleteRolePolicy.mockResolvedValue({});
   });
 
-  it("grants only update reads and built-in runtime domain access", async () => {
+  it("grants update reads and atomic CRUD for every official domain", async () => {
     // Given
     const manager = new IAMManager("ap-northeast-2", {
       accessKeyId: "test-access-key",
@@ -83,27 +83,27 @@ describe("IAMManager DynamoDB access", () => {
         ],
       },
       {
-        Action: ["dynamodb:BatchGetItem", "dynamodb:GetItem"],
+        Action: [
+          "dynamodb:BatchGetItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:Query",
+          "dynamodb:TransactWriteItems",
+          "dynamodb:UpdateItem",
+        ],
         Condition: {
           "ForAllValues:StringEquals": {
             "dynamodb:LeadingKeys": [
+              "_hot-updater",
               "bundles",
               "bundle_patches",
+              "channels",
+              "_hot-updater#channel-names",
+              "bundle_events",
               "client_access_keys",
               "_hot-updater#client-access-key-hashes",
             ],
-          },
-        },
-        Effect: "Allow",
-        Resource: [
-          "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata",
-        ],
-      },
-      {
-        Action: ["dynamodb:PutItem", "dynamodb:Query"],
-        Condition: {
-          "ForAllValues:StringEquals": {
-            "dynamodb:LeadingKeys": ["bundle_events"],
           },
         },
         Effect: "Allow",

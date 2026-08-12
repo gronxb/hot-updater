@@ -1,4 +1,4 @@
-import type { ClientAccessKeyTable } from "@hot-updater/plugin-core";
+import type { ClientAccessKeyModel } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -79,12 +79,13 @@ import {
 
 const EXISTING_API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 
-const createClientAccessKeyTable = (): ClientAccessKeyTable => ({
-  create: vi.fn(async () => "created" as const),
-  findByHash: vi.fn(async () => null),
-  list: vi.fn(async () => []),
-  revoke: vi.fn(async () => null),
-});
+const createClientAccessKeyTable = () =>
+  ({
+    create: vi.fn(async () => "created" as const),
+    findByHash: vi.fn(async () => null),
+    list: vi.fn(async () => []),
+    revoke: vi.fn(async () => null),
+  }) satisfies ClientAccessKeyModel;
 
 describe("AWS DynamoDB client access-key preparation", () => {
   it("registers the existing app key without persisting the raw value", async () => {

@@ -2,15 +2,22 @@ import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
+  ChannelRow,
   ClientAccessKeyRow,
 } from "@hot-updater/plugin-core";
 
-type Row = BundleEventRow | BundlePatchRow | BundleRow | ClientAccessKeyRow;
+type Row =
+  | BundleEventRow
+  | BundlePatchRow
+  | BundleRow
+  | ChannelRow
+  | ClientAccessKeyRow;
 type Table = Row[];
 type Tables = {
   bundle_patches: Table;
   bundles: Table;
   bundle_events: Table;
+  channels: Table;
   client_access_keys: Table;
 };
 
@@ -28,6 +35,10 @@ type QueryArgs = {
 };
 type CreateArgs = QueryArgs & { readonly data: Row };
 type UpdateArgs = QueryArgs & { readonly data: Partial<BundleRow> };
+type UpsertArgs = QueryArgs & {
+  readonly create: Row;
+  readonly update: Partial<Row>;
+};
 
 class PrismaTestConstraintError extends Error {
   readonly name = "PrismaTestConstraintError";
@@ -145,6 +156,17 @@ const assertReferences = (
       throw new PrismaTestConstraintError("missing patch reference");
     }
   }
+  if (model === "bundles" && "channel_id" in row) {
+    const channel = tables.channels.find(
+      (candidate) =>
+        "name" in candidate &&
+        candidate.id === row.channel_id &&
+        candidate.name === row.channel,
+    );
+    if (channel === undefined) {
+      throw new PrismaTestConstraintError("missing channel reference");
+    }
+  }
 };
 
 const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
@@ -153,6 +175,13 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
   create: async ({ data }: CreateArgs): Promise<Row> => {
     if (tables[model].some(({ id }) => id === data.id)) {
       throw new PrismaTestConstraintError("duplicate id");
+    }
+    if (
+      model === "channels" &&
+      "name" in data &&
+      tables.channels.some((row) => "name" in row && row.name === data.name)
+    ) {
+      throw new PrismaTestConstraintError("duplicate channel name");
     }
     if (
       model === "client_access_keys" &&
@@ -230,12 +259,29 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
     });
     return { count };
   },
+  upsert: async ({ create, update, where }: UpsertArgs): Promise<Row> => {
+    const index = tables[model].findIndex((row) => matchesWhere(row, where));
+    const current = tables[model][index];
+    if (current !== undefined) {
+      const updated = { ...current, ...update } as Row;
+      assertReferences(tables, model, updated);
+      tables[model][index] = updated;
+      return structuredClone(updated);
+    }
+    if (tables[model].some((row) => row.id === create.id)) {
+      throw new PrismaTestConstraintError("duplicate id");
+    }
+    assertReferences(tables, model, create);
+    tables[model].push(structuredClone(create));
+    return structuredClone(create);
+  },
 });
 
 const createClient = (tables: Tables, hooks: Hooks) => ({
   bundle_events: createDelegate(tables, "bundle_events", hooks),
   bundle_patches: createDelegate(tables, "bundle_patches", hooks),
   bundles: createDelegate(tables, "bundles", hooks),
+  channels: createDelegate(tables, "channels", hooks),
   client_access_keys: createDelegate(tables, "client_access_keys", hooks),
 });
 
@@ -244,6 +290,7 @@ export const createPrismaTestHarness = () => {
     bundle_patches: [],
     bundles: [],
     bundle_events: [],
+    channels: [],
     client_access_keys: [],
   };
   const hooks: Hooks = {
@@ -251,6 +298,7 @@ export const createPrismaTestHarness = () => {
     failNextBundleDelete: false,
     transactionOptions: [],
   };
+  let transactionQueue = Promise.resolve();
   const client = {
     ...createClient(tables, hooks),
     $transaction: async <TResult>(
@@ -258,13 +306,24 @@ export const createPrismaTestHarness = () => {
       options?: { readonly isolationLevel?: string },
     ): Promise<TResult> => {
       hooks.transactionOptions.push(options);
-      const transactionTables = structuredClone(tables);
-      const result = await callback(createClient(transactionTables, hooks));
-      tables.bundle_patches = transactionTables.bundle_patches;
-      tables.bundles = transactionTables.bundles;
-      tables.bundle_events = transactionTables.bundle_events;
-      tables.client_access_keys = transactionTables.client_access_keys;
-      return result;
+      const previous = transactionQueue;
+      let release!: () => void;
+      transactionQueue = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await previous;
+      try {
+        const transactionTables = structuredClone(tables);
+        const result = await callback(createClient(transactionTables, hooks));
+        tables.bundle_patches = transactionTables.bundle_patches;
+        tables.bundles = transactionTables.bundles;
+        tables.bundle_events = transactionTables.bundle_events;
+        tables.channels = transactionTables.channels;
+        tables.client_access_keys = transactionTables.client_access_keys;
+        return result;
+      } finally {
+        release();
+      }
     },
   };
   return {
@@ -293,9 +352,11 @@ export const createPrismaTestHarness = () => {
       hooks.failNextBundleDelete = false;
       hooks.beforeNextBundleUpdateMany = undefined;
       hooks.transactionOptions.length = 0;
+      transactionQueue = Promise.resolve();
       tables.bundle_patches = [];
       tables.bundles = [];
       tables.bundle_events = [];
+      tables.channels = [];
       tables.client_access_keys = [];
     },
   };

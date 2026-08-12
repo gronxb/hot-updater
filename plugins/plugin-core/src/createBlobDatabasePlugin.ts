@@ -36,9 +36,10 @@ import {
 } from "./createDatabasePlugin";
 import { resolveUpdateInfoFromBundles } from "./resolveUpdateInfoFromBundles";
 import type {
+  ChannelRow,
   DatabasePluginImplementation,
   TransactionDatabasePluginImplementation,
-} from "./types";
+} from "./types/internal";
 import { createUUIDv7 } from "./uuidv7";
 
 export {
@@ -154,6 +155,11 @@ const mergeSnapshotMutation = (
           intended.bundle_patches,
           latest.bundle_patches,
         ),
+        channels: mergeChangedRows(
+          base.channels,
+          intended.channels,
+          latest.channels,
+        ),
         bundle_events: mergeChangedRows(
           base.bundle_events,
           intended.bundle_events,
@@ -209,12 +215,17 @@ const loadLegacySnapshot = async (
     string,
     BlobDatabaseSnapshot["bundle_patches"][number]
   >();
+  const channels = new Map<string, BlobDatabaseSnapshot["channels"][number]>();
   for (const key of keys) {
     const value = await loadOptionalObject(operations, key);
     if (value === null) continue;
     for (const item of blobArray(value, key)) {
       const parsed = parseLegacyBundle(item, key);
       bundles.set(parsed.bundle.id, parsed.bundle);
+      channels.set(parsed.bundle.channel_id, {
+        id: parsed.bundle.channel_id,
+        name: parsed.channelName,
+      });
       for (const [patchId, patch] of patches) {
         if (patch.bundle_id === parsed.bundle.id) patches.delete(patchId);
       }
@@ -226,6 +237,7 @@ const loadLegacySnapshot = async (
       version: 2,
       bundles: [...bundles.values()],
       bundle_patches: [...patches.values()],
+      channels: [...channels.values()],
       bundle_events: [],
       client_access_keys: [],
     },
@@ -395,6 +407,94 @@ export const createBlobDatabasePlugin = ({
     return query(createBlobSnapshotCrud(state));
   };
 
+  const insertChannel: DatabasePluginImplementation["insertChannel"] = (
+    input,
+  ) => {
+    const run = mutationQueue.then(async () => {
+      for (
+        let attempt = 1;
+        attempt <= BLOB_DATABASE_COMMIT_MAX_ATTEMPTS;
+        attempt += 1
+      ) {
+        const before = await loadSnapshot();
+        const existing = before.snapshot.channels.find(
+          ({ name }) => name === input.row.name,
+        );
+        if (existing) return { row: existing, inserted: false };
+
+        const state: BlobSnapshotState = { snapshot: before.snapshot };
+        const row = (await createBlobSnapshotCrud(state).create({
+          model: "channels",
+          data: input.row,
+        })) as ChannelRow;
+        try {
+          await persistSnapshot(before, state.snapshot);
+          return { row, inserted: true };
+        } catch (error) {
+          if (
+            !(error instanceof BlobDatabaseWriteConflictError) ||
+            attempt === BLOB_DATABASE_COMMIT_MAX_ATTEMPTS
+          ) {
+            throw error;
+          }
+        }
+        await waitForCommitRetry(attempt);
+      }
+      throw new BlobDatabaseWriteConflictError();
+    });
+    mutationQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  };
+
+  const deleteChannel: DatabasePluginImplementation["deleteChannel"] = ({
+    id,
+  }) => {
+    const run = mutationQueue.then(async () => {
+      for (
+        let attempt = 1;
+        attempt <= BLOB_DATABASE_COMMIT_MAX_ATTEMPTS;
+        attempt += 1
+      ) {
+        const before = await loadSnapshot();
+        if (!before.snapshot.channels.some((channel) => channel.id === id)) {
+          return { deleted: false, reason: "not_found" } as const;
+        }
+        if (
+          before.snapshot.bundles.some(({ channel_id }) => channel_id === id)
+        ) {
+          return { deleted: false, reason: "not_empty" } as const;
+        }
+
+        const state: BlobSnapshotState = { snapshot: before.snapshot };
+        await createBlobSnapshotCrud(state).delete({
+          model: "channels",
+          where: [{ field: "id", value: id }],
+        });
+        try {
+          await persistSnapshot(before, state.snapshot);
+          return { deleted: true } as const;
+        } catch (error) {
+          if (
+            !(error instanceof BlobDatabaseWriteConflictError) ||
+            attempt === BLOB_DATABASE_COMMIT_MAX_ATTEMPTS
+          ) {
+            throw error;
+          }
+        }
+        await waitForCommitRetry(attempt);
+      }
+      throw new BlobDatabaseWriteConflictError();
+    });
+    mutationQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  };
+
   const implementation: DatabasePluginImplementation = {
     create: (input) => mutate((database) => database.create(input)),
     update: (input) => mutate((database) => database.update(input)),
@@ -402,13 +502,8 @@ export const createBlobDatabasePlugin = ({
     count: (input) => read((database) => database.count(input)),
     findOne: (input) => read((database) => database.findOne(input)),
     findMany: (input) => read((database) => database.findMany(input)),
-    getChannels: async () => {
-      await mutationQueue;
-      const channels = new Set(
-        (await loadSnapshot()).snapshot.bundles.map(({ channel }) => channel),
-      );
-      return [...channels].sort();
-    },
+    insertChannel,
+    deleteChannel,
     getUpdateInfo: async (args) => {
       assertBlobUpdateRouteArgs(args);
       await mutationQueue;
@@ -468,13 +563,9 @@ export const createBlobDatabasePlugin = ({
   const adapter = createDatabasePluginAdapter(name, implementation);
   return createDatabasePlugin({
     name,
-    bundles: adapter.bundles,
-    bundlePatches: adapter.bundlePatches,
-    analytics: adapter.analytics,
-    clientAccessKeys: adapter.clientAccessKeys,
+    models: adapter.models,
+    queries: adapter.queries,
     commit: adapter.commit,
-    getChannels: adapter.getChannels,
-    getUpdateInfo: adapter.getUpdateInfo,
     ...(adapter.dispose ? { dispose: adapter.dispose } : {}),
   });
 };

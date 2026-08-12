@@ -1,5 +1,5 @@
 export { createHandler } from "./handler";
-export type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./handler";
+export type { HandlerAPI, HandlerFeatures, HandlerOptions } from "./handler";
 export { createAnalyticsProvider } from "./analytics/bounded/provider";
 export type * from "./analytics/domain";
 export type { AnalyticsQueryAccess } from "./analytics/routes";
@@ -12,6 +12,7 @@ export {
 export type { CreatedClientAccessKey } from "./clientAccessKeys";
 export { createHotUpdater } from "./createHotUpdaterCore";
 export type {
+  CreateHotUpdaterFeatures,
   CreateHotUpdaterOptions,
   HotUpdaterAPI,
   RuntimeHotUpdaterAPI,

@@ -1,16 +1,16 @@
-import type {
-  DatabaseBundleMutation,
-  DatabasePlugin,
-} from "@hot-updater/plugin-core";
+import type { DatabaseChange, DatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import type { DatabasePluginTestState } from "./databasePluginTestRunner";
-import { createBundleRowFixture } from "./databaseTestFixtures";
+import {
+  createBundleRowFixture,
+  createChannelRowFixture,
+} from "./databaseTestFixtures";
 
 type QueryTestState = DatabasePluginTestState<DatabasePlugin>;
 
-const commit = (plugin: DatabasePlugin, mutation: DatabaseBundleMutation) =>
-  plugin.commit({ mutations: [mutation] });
+const commit = (plugin: DatabasePlugin, ...changes: DatabaseChange[]) =>
+  plugin.commit({ changes });
 
 const seedRows = async (plugin: DatabasePlugin) => {
   const rows = [
@@ -27,10 +27,14 @@ const seedRows = async (plugin: DatabasePlugin) => {
     },
   ];
   for (const row of rows) {
+    await plugin.models.channels.insert({
+      row: createChannelRowFixture(row.channel),
+      onConflict: "returnExisting",
+    });
     await commit(plugin, {
+      model: "bundles",
       operation: "insert",
-      bundleId: row.id,
-      changes: [{ table: "bundles", operation: "insert", row }],
+      row,
     });
   }
   return rows;
@@ -44,7 +48,7 @@ export const registerDatabasePluginQueryTests = (
       const plugin = state.getPlugin();
       const rows = await seedRows(plugin);
 
-      const result = await plugin.bundles.findMany({
+      const result = await plugin.models.bundles.findMany({
         where: { id: { gte: rows[1]!.id, lt: rows[2]!.id } },
         limit: 100,
         offset: 0,
@@ -59,7 +63,7 @@ export const registerDatabasePluginQueryTests = (
       const rows = await seedRows(plugin);
 
       await expect(
-        plugin.bundles.findMany({
+        plugin.models.bundles.findMany({
           where: {
             channel: "production",
             platform: "ios",
@@ -72,7 +76,7 @@ export const registerDatabasePluginQueryTests = (
         }),
       ).resolves.toEqual([rows[0]]);
       await expect(
-        plugin.bundles.findMany({
+        plugin.models.bundles.findMany({
           where: { targetAppVersionNotNull: true },
           limit: 100,
           offset: 0,
@@ -85,7 +89,7 @@ export const registerDatabasePluginQueryTests = (
       const plugin = state.getPlugin();
       const rows = await seedRows(plugin);
 
-      const result = await plugin.bundles.findMany({
+      const result = await plugin.models.bundles.findMany({
         where: { id: { in: [rows[0]!.id, rows[2]!.id] } },
         limit: 100,
         offset: 0,
@@ -97,7 +101,7 @@ export const registerDatabasePluginQueryTests = (
 
     it("returns an empty page for an empty id set", async () => {
       await expect(
-        state.getPlugin().bundles.findMany({
+        state.getPlugin().models.bundles.findMany({
           where: { id: { in: [] } },
           limit: 100,
           offset: 0,

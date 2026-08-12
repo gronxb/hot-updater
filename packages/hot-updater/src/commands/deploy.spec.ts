@@ -518,18 +518,25 @@ describe("deploy rollout wiring", () => {
     expect(
       (await databaseHarness.bundles()).map(({ id }) => id).sort(),
     ).toEqual(["bundle-android", "bundle-ios"]);
+    expect(await databasePlugin.models.channels.list({})).toEqual({
+      channels: [
+        expect.objectContaining({
+          name: "production",
+        }),
+      ],
+    });
     expect(
       databaseHarness.compareAndSwapObject.mock.calls.filter(
         ([key]) => key === BLOB_DATABASE_SNAPSHOT_KEY,
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
   });
 
   it("does not partially persist an unsupported two-platform commit", async () => {
     const transactionlessDatabasePlugin: DatabasePlugin = {
       ...databasePlugin,
       commit: async (input) => {
-        if (input.mutations.length > 1) {
+        if (input.changes.length > 1) {
           throw new DatabaseAtomicCommitUnsupportedError(databasePlugin.name);
         }
         return databasePlugin.commit(input);

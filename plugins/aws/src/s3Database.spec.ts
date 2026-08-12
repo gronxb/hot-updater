@@ -15,6 +15,7 @@ import {
   BLOB_DATABASE_SNAPSHOT_KEY,
   createDatabaseClient,
   type BundleRow,
+  type ChannelRow,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 import {
@@ -154,6 +155,7 @@ describe("s3Database storage behavior", () => {
       version: 2,
       bundles: [bundleRow("1")],
       bundle_patches: [],
+      channels: [channelRow("production")],
       bundle_events: [],
       client_access_keys: [],
     });
@@ -219,9 +221,9 @@ describe("s3Database storage behavior", () => {
 
     await insertBundleRow(plugin, bundleRow("2"));
 
-    await expect(plugin.bundles.count()).resolves.toBe(3);
+    await expect(plugin.models.bundles.count()).resolves.toBe(3);
     await expect(
-      plugin.bundles.findById(bundleRow("99").id),
+      plugin.models.bundles.findById(bundleRow("99").id),
     ).resolves.toMatchObject(bundleRow("99"));
   });
 
@@ -263,7 +265,7 @@ describe("s3Database storage behavior", () => {
     });
 
     await expect(insertBundleRow(plugin, bundleRow("1"))).resolves.toEqual({
-      applied: true,
+      committed: true,
     });
 
     expect(cloudFrontMock.commandCalls(CreateInvalidationCommand)).toHaveLength(
@@ -282,14 +284,14 @@ describe("s3Database storage behavior", () => {
     });
 
     await expect(insertBundleRow(plugin, bundleRow("1"))).resolves.toEqual({
-      applied: true,
+      committed: true,
     });
 
     expect(cloudFrontMock.commandCalls(CreateInvalidationCommand)).toHaveLength(
       3,
     );
     expect(warn).toHaveBeenCalledOnce();
-    await expect(plugin.bundles.count()).resolves.toBe(1);
+    await expect(plugin.models.bundles.count()).resolves.toBe(1);
     warn.mockRestore();
   });
 
@@ -298,10 +300,7 @@ describe("s3Database storage behavior", () => {
       bucketName,
       cloudfrontDistributionId: "distribution-1",
     });
-    await insertBundleRow(plugin, {
-      ...bundleRow("1"),
-      channel: "release candidate",
-    });
+    await insertBundleRow(plugin, bundleRow("1", "release candidate"));
 
     expect(
       cloudFrontMock.commandCalls(CreateInvalidationCommand).at(-1)?.args[0]
@@ -325,7 +324,7 @@ describe("s3Database storage behavior", () => {
     archivedKeys.add(manifestKey);
 
     await expect(
-      plugin.getUpdateInfo?.({
+      plugin.queries.getUpdateInfo?.({
         _updateStrategy: "appVersion",
         appVersion: "1.0.0",
         bundleId: fixtureId("0"),
@@ -338,9 +337,9 @@ describe("s3Database storage behavior", () => {
   it("rejects an empty active database root", async () => {
     objects.set(BLOB_DATABASE_SNAPSHOT_KEY, "");
 
-    await expect(s3Database({ bucketName }).bundles.count()).rejects.toThrow(
-      "is empty",
-    );
+    await expect(
+      s3Database({ bucketName }).models.bundles.count(),
+    ).rejects.toThrow("is empty");
   });
 
   it("does not create invalidations without a distribution", async () => {
@@ -361,7 +360,12 @@ describe("s3Database storage behavior", () => {
 const fixtureId = (suffix: string): string =>
   `00000000-0000-0000-0000-${suffix.padStart(12, "0")}`;
 
-const bundleRow = (suffix: string) => ({
+const channelRow = (name: string): ChannelRow => ({
+  id: fixtureId(name === "production" ? "100" : "101"),
+  name,
+});
+
+const bundleRow = (suffix: string, channel = "production"): BundleRow => ({
   id: fixtureId(suffix),
   platform: "ios" as const,
   should_force_update: false,
@@ -369,7 +373,8 @@ const bundleRow = (suffix: string) => ({
   file_hash: `hash-${suffix}`,
   git_commit_hash: null,
   message: `bundle-${suffix}`,
-  channel: "production",
+  channel,
+  channel_id: channelRow(channel).id,
   storage_uri: `s3://${bucketName}/bundles/${suffix}.zip`,
   target_app_version: "1.0.0",
   fingerprint_hash: null,
@@ -383,11 +388,13 @@ const bundleRow = (suffix: string) => ({
 
 const insertBundleRow = (plugin: DatabasePlugin, row: BundleRow) =>
   plugin.commit({
-    mutations: [
+    changes: [
       {
+        model: "channels",
         operation: "insert",
-        bundleId: row.id,
-        changes: [{ table: "bundles", operation: "insert", row }],
+        row: channelRow(row.channel),
+        onConflict: "ignore",
       },
+      { model: "bundles", operation: "insert", row },
     ],
   });

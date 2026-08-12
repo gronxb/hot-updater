@@ -148,7 +148,7 @@ const createMemoryHotUpdater = () => {
       apiBasePath: BASE_PATH,
       listObjects: async (prefix: string) =>
         keys.filter((key) => key.startsWith(prefix)),
-      loadObject: async (key: string): Promise<unknown | null> => {
+      loadObject: async (key: string): Promise<unknown> => {
         const value = store[key];
         if (!value) return null;
         const parsed: unknown = JSON.parse(value);
@@ -183,7 +183,7 @@ const createMemoryHotUpdater = () => {
       },
     ],
     basePath: BASE_PATH,
-    routes: {
+    features: {
       updateCheck: true,
       bundles: false,
     },

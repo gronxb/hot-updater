@@ -1,9 +1,9 @@
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
-  createDatabasePlugin,
+  createDatabasePluginAdapter,
   type DatabasePluginImplementation,
   type TransactionDatabasePluginImplementation,
-} from "@hot-updater/plugin-core";
-import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core/internal";
 import { asc, desc, inArray } from "drizzle-orm";
 
 import {
@@ -48,6 +48,18 @@ const createImplementation = (
   const transaction = db.transaction?.bind(db);
   return {
     ...crud,
+    deleteChannel: (input) => {
+      if (transaction === undefined) {
+        throw new Error(
+          "Drizzle channel deletion requires transaction support.",
+        );
+      }
+      return transaction((transactionDatabase) =>
+        createDrizzleCrud(transactionDatabase, config.provider).deleteChannel(
+          input,
+        ),
+      );
+    },
     ...(transaction
       ? {
           delete: (input: Parameters<typeof crud.delete>[0]) =>
@@ -81,10 +93,6 @@ const createImplementation = (
         },
         args,
       ),
-    getChannels: async () => {
-      const rows = await db.query.bundles.findMany();
-      return [...new Set(rows.map(({ channel }) => channel))].sort();
-    },
     ...(transaction
       ? {
           transaction: async <TResult>(
@@ -113,28 +121,37 @@ export const drizzleAdapter = (
   };
   const plugin = createDatabasePlugin({
     name: "drizzle",
-    bundles: {
-      findById: (id) => getAdapter().bundles.findById(id),
-      findMany: (query) => getAdapter().bundles.findMany(query),
-      count: (where) => getAdapter().bundles.count(where),
+    models: {
+      bundles: {
+        findById: (id) => getAdapter().models.bundles.findById(id),
+        findMany: (query) => getAdapter().models.bundles.findMany(query),
+        count: (where) => getAdapter().models.bundles.count(where),
+      },
+      bundlePatches: {
+        findByBundleIds: (bundleIds) =>
+          getAdapter().models.bundlePatches.findByBundleIds(bundleIds),
+      },
+      channels: {
+        insert: (input) => getAdapter().models.channels.insert(input),
+        list: (input) => getAdapter().models.channels.list(input),
+        delete: (input) => getAdapter().models.channels.delete(input),
+      },
+      analytics: {
+        append: (row) => getAdapter().models.analytics.append(row),
+        scan: (input) => getAdapter().models.analytics.scan(input),
+      },
+      clientAccessKeys: {
+        create: (row) => getAdapter().models.clientAccessKeys.create(row),
+        findByHash: (hash) =>
+          getAdapter().models.clientAccessKeys.findByHash(hash),
+        list: () => getAdapter().models.clientAccessKeys.list(),
+        revoke: (input) => getAdapter().models.clientAccessKeys.revoke(input),
+      },
     },
-    bundlePatches: {
-      findByBundleIds: (bundleIds) =>
-        getAdapter().bundlePatches.findByBundleIds(bundleIds),
-    },
-    analytics: {
-      append: (row) => getAdapter().analytics.append(row),
-      scan: (input) => getAdapter().analytics.scan(input),
-    },
-    clientAccessKeys: {
-      create: (row) => getAdapter().clientAccessKeys.create(row),
-      findByHash: (hash) => getAdapter().clientAccessKeys.findByHash(hash),
-      list: () => getAdapter().clientAccessKeys.list(),
-      revoke: (input) => getAdapter().clientAccessKeys.revoke(input),
+    queries: {
+      getUpdateInfo: (args) => getAdapter().queries.getUpdateInfo!(args),
     },
     commit: (input) => getAdapter().commit(input),
-    getChannels: () => getAdapter().getChannels!(),
-    getUpdateInfo: (args) => getAdapter().getUpdateInfo!(args),
   });
   return Object.assign(plugin, {
     adapterName: "drizzle",

@@ -182,7 +182,7 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
 
     const db = await import("./db.js");
     const created = await createClientAccessKey({
-      clientAccessKeys: db.database.clientAccessKeys,
+      clientAccessKeys: db.database.models.clientAccessKeys,
       name: "Standalone integration test",
     });
     rawApiKey = created.apiKey;

@@ -51,7 +51,12 @@ vi.mock("@hot-updater/plugin-core", async (importOriginal) => {
 });
 
 vi.mock("@/lib/api", () => ({
-  useChannelsQuery: () => ({ data: ["stable", "beta"] }),
+  useChannelsQuery: () => ({
+    data: [
+      { id: "channel-stable", name: "stable" },
+      { id: "channel-beta", name: "beta" },
+    ],
+  }),
   usePromoteBundleMutation: () => mockPromoteBundleMutation,
 }));
 

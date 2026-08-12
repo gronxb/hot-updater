@@ -17,7 +17,7 @@ describe("client access keys", () => {
 
     const created = await registerClientAccessKey({
       apiKey: API_KEY,
-      clientAccessKeys: database.clientAccessKeys,
+      clientAccessKeys: database.models.clientAccessKeys,
       createdAtMs: 100,
       name: " Production app ",
     });
@@ -33,7 +33,7 @@ describe("client access keys", () => {
       role: "client",
     });
     expect(
-      JSON.stringify(await database.clientAccessKeys.list()),
+      JSON.stringify(await database.models.clientAccessKeys.list()),
     ).not.toContain(API_KEY);
   });
 
@@ -42,7 +42,7 @@ describe("client access keys", () => {
     const beforeLookup = vi.fn(async () => undefined);
     const { record } = await registerClientAccessKey({
       apiKey: API_KEY,
-      clientAccessKeys: database.clientAccessKeys,
+      clientAccessKeys: database.models.clientAccessKeys,
       name: "App",
     });
     const request = new Request("https://example.com", {
@@ -52,19 +52,19 @@ describe("client access keys", () => {
     await expect(
       authenticateClientAccessKey({
         beforeLookup,
-        clientAccessKeys: database.clientAccessKeys,
+        clientAccessKeys: database.models.clientAccessKeys,
         request,
       }),
     ).resolves.toBe(true);
     expect(beforeLookup).toHaveBeenCalledOnce();
 
-    await database.clientAccessKeys.revoke({
+    await database.models.clientAccessKeys.revoke({
       id: record.id,
       revokedAtMs: Date.now(),
     });
     await expect(
       authenticateClientAccessKey({
-        clientAccessKeys: database.clientAccessKeys,
+        clientAccessKeys: database.models.clientAccessKeys,
         request,
       }),
     ).resolves.toBe(false);
@@ -74,7 +74,7 @@ describe("client access keys", () => {
     const database = createInMemoryDatabasePlugin();
 
     const created = await createClientAccessKey({
-      clientAccessKeys: database.clientAccessKeys,
+      clientAccessKeys: database.models.clientAccessKeys,
       name: "App",
     });
 
@@ -83,7 +83,7 @@ describe("client access keys", () => {
     await expect(
       registerClientAccessKey({
         apiKey: API_KEY,
-        clientAccessKeys: database.clientAccessKeys,
+        clientAccessKeys: database.models.clientAccessKeys,
         name: "   ",
       }),
     ).rejects.toThrow("1-64 visible characters");

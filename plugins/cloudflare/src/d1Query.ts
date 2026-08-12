@@ -3,7 +3,7 @@ import type {
   DatabaseImplementationResult,
   DatabaseModel,
   FindManyDatabaseImplementationInput,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 
 import type { D1Executor } from "./d1Implementation";
 import { parseD1Row } from "./d1Rows";
@@ -12,6 +12,7 @@ import { buildD1Order, buildD1Where, encodeD1Values } from "./d1Sql";
 export const d1TableNames = {
   bundles: "bundles",
   bundle_patches: "bundle_patches",
+  channels: "channels",
   bundle_events: "bundle_events",
   client_access_keys: "client_access_keys",
 } as const satisfies Record<DatabaseModel, string>;
@@ -72,6 +73,8 @@ export const findManyD1Rows = async (
       return rows.map((row) => parseD1Row("bundles", row));
     case "bundle_patches":
       return rows.map((row) => parseD1Row("bundle_patches", row));
+    case "channels":
+      return rows.map((row) => parseD1Row("channels", row));
     case "bundle_events":
       return rows.map((row) => parseD1Row("bundle_events", row));
     case "client_access_keys":

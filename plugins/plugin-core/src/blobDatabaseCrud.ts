@@ -10,14 +10,16 @@ import {
 import {
   parseBundleEventRow,
   parseBundleRow,
+  parseChannelRow,
   parseClientAccessKeyRow,
 } from "./blobDatabaseSnapshotRows";
+import { DatabaseRowReferencedError } from "./createDatabasePlugin";
 import type {
   BundleRow,
   ClientAccessKeyRow,
   DatabaseImplementationResult,
   TransactionDatabasePluginImplementation,
-} from "./types";
+} from "./types/internal";
 
 export type BlobSnapshotState = {
   snapshot: BlobDatabaseSnapshot;
@@ -53,6 +55,16 @@ const distinctCount = <TRow extends object>(
   ).size;
 };
 
+const requireBundleChannel = (
+  snapshot: BlobDatabaseSnapshot,
+  row: Pick<BundleRow, "channel" | "channel_id">,
+): void => {
+  const channel = snapshot.channels.find(({ id }) => id === row.channel_id);
+  if (channel?.name !== row.channel) {
+    throw new BlobDatabaseConstraintError("bundles.channel_id.foreign-key");
+  }
+};
+
 export const createBlobSnapshotCrud = (
   state: BlobSnapshotState,
 ): TransactionDatabasePluginImplementation => ({
@@ -70,10 +82,39 @@ export const createBlobSnapshotCrud = (
             "bundles.version-or-fingerprint.check",
           );
         }
+        requireBundleChannel(snapshot, input.data);
         const row = parseBundleRow(input.data, `bundles/${input.data.id}`);
         state.snapshot = normalizeBlobDatabaseSnapshot({
           ...snapshot,
           bundles: [...snapshot.bundles, row],
+        });
+        return row;
+      }
+      case "channels": {
+        const existingByName = snapshot.channels.find(
+          ({ name }) => name === input.data.name,
+        );
+        if (existingByName && input.onConflict === "ignore") {
+          return existingByName;
+        }
+        const existingById = snapshot.channels.find(
+          ({ id }) => id === input.data.id,
+        );
+        if (
+          existingById &&
+          input.onConflict === "ignore" &&
+          existingById.name === input.data.name
+        ) {
+          return existingById;
+        }
+        requireUniqueId(snapshot.channels, input.data.id, input.model);
+        if (existingByName) {
+          throw new BlobDatabaseConstraintError("channels.name.unique");
+        }
+        const row = parseChannelRow(input.data, `channels/${input.data.id}`);
+        state.snapshot = normalizeBlobDatabaseSnapshot({
+          ...snapshot,
+          channels: [...snapshot.channels, row],
         });
         return row;
       }
@@ -109,16 +150,28 @@ export const createBlobSnapshotCrud = (
         return row;
       }
       case "client_access_keys": {
+        const existingByHash = snapshot.client_access_keys.find(
+          ({ hash }) => hash === input.data.hash,
+        );
+        if (existingByHash && input.onConflict === "ignore") {
+          return existingByHash;
+        }
+        const existingById = snapshot.client_access_keys.find(
+          ({ id }) => id === input.data.id,
+        );
+        if (
+          existingById &&
+          input.onConflict === "ignore" &&
+          existingById.hash === input.data.hash
+        ) {
+          return existingById;
+        }
         requireUniqueId(
           snapshot.client_access_keys,
           input.data.id,
           input.model,
         );
-        if (
-          snapshot.client_access_keys.some(
-            ({ hash }) => hash === input.data.hash,
-          )
-        ) {
+        if (existingByHash !== undefined) {
           throw new BlobDatabaseConstraintError(
             "client_access_keys.hash.unique",
           );
@@ -167,6 +220,7 @@ export const createBlobSnapshotCrud = (
         "bundles.version-or-fingerprint.check",
       );
     }
+    requireBundleChannel(state.snapshot, updated);
     const updatedRow = parseBundleRow(updated, `bundles/${updated.id}`);
     state.snapshot = normalizeBlobDatabaseSnapshot({
       ...state.snapshot,
@@ -183,6 +237,27 @@ export const createBlobSnapshotCrud = (
         ...state.snapshot,
         bundle_patches: state.snapshot.bundle_patches.filter(
           (row) => !matchesBlobDatabaseWhere(row, input.where),
+        ),
+      });
+      return;
+    }
+    if (input.model === "channels") {
+      const removedIds = new Set(
+        state.snapshot.channels
+          .filter((row) => matchesBlobDatabaseWhere(row, input.where))
+          .map(({ id }) => id),
+      );
+      if (
+        state.snapshot.bundles.some(({ channel_id }) =>
+          removedIds.has(channel_id),
+        )
+      ) {
+        throw new DatabaseRowReferencedError();
+      }
+      state.snapshot = normalizeBlobDatabaseSnapshot({
+        ...state.snapshot,
+        channels: state.snapshot.channels.filter(
+          ({ id }) => !removedIds.has(id),
         ),
       });
       return;
@@ -239,6 +314,12 @@ export const createBlobSnapshotCrud = (
             matchesBlobDatabaseWhere(row, input.where),
           ) ?? null
         );
+      case "channels":
+        return (
+          state.snapshot.channels.find((row) =>
+            matchesBlobDatabaseWhere(row, input.where),
+          ) ?? null
+        );
     }
   },
   async findMany(input): Promise<readonly DatabaseImplementationResult[]> {
@@ -251,6 +332,8 @@ export const createBlobSnapshotCrud = (
         return queryBlobDatabaseRows(state.snapshot.bundle_events, input);
       case "client_access_keys":
         return queryBlobDatabaseRows(state.snapshot.client_access_keys, input);
+      case "channels":
+        return queryBlobDatabaseRows(state.snapshot.channels, input);
     }
   },
 });

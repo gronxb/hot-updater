@@ -98,9 +98,6 @@ const database = createDatabase();
 
 const hotUpdater = createHotUpdater<SignedUrlContext>({
   database,
-  ...(DATABASE_TYPE === "dynamodb"
-    ? { analytics: {}, clientAccessKeys: true }
-    : {}),
   storages: [
     withCloudFrontSignedUrl(
       s3Storage({
@@ -116,9 +113,12 @@ const hotUpdater = createHotUpdater<SignedUrlContext>({
     ),
   ],
   basePath: HOT_UPDATER_BASE_PATH,
-  routes: {
+  features: {
     updateCheck: true,
     bundles: false,
+    ...(DATABASE_TYPE === "dynamodb"
+      ? { analytics: {}, clientAccessKeys: true }
+      : {}),
   },
 });
 

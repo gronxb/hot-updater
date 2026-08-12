@@ -27,6 +27,7 @@ const bundles = pgTable("bundles", {
   git_commit_hash: text("git_commit_hash"),
   message: text("message"),
   channel: text("channel").notNull().default("production"),
+  channel_id: text("channel_id").notNull(),
   storage_uri: text("storage_uri").notNull(),
   target_app_version: text("target_app_version"),
   fingerprint_hash: text("fingerprint_hash"),
@@ -36,6 +37,10 @@ const bundles = pgTable("bundles", {
   manifest_storage_uri: text("manifest_storage_uri"),
   manifest_file_hash: text("manifest_file_hash"),
   asset_base_storage_uri: text("asset_base_storage_uri"),
+});
+const channels = pgTable("channels", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
 });
 const bundlePatches = pgTable("bundle_patches", {
   id: varchar("id", { length: 255 }).primaryKey(),
@@ -76,6 +81,7 @@ const schema = {
   bundle_events: bundleEvents,
   bundle_patches: bundlePatches,
   bundles,
+  channels,
   client_access_keys: clientAccessKeys,
 };
 
@@ -145,7 +151,9 @@ describe("drizzleAdapter schema requirements", () => {
 
     try {
       expect(getDB).not.toHaveBeenCalled();
-      await expect(plugin.getChannels?.()).resolves.toEqual([]);
+      await expect(plugin.models.channels.list({})).resolves.toEqual({
+        channels: [],
+      });
       expect(getDB).toHaveBeenCalledOnce();
     } finally {
       await lazyClient.close();
@@ -158,7 +166,7 @@ describe("drizzleAdapter schema requirements", () => {
     });
     const plugin = drizzleAdapter({ db: getDB, provider: "postgresql" });
 
-    expect(() => plugin.getChannels?.()).toThrow(
+    expect(() => plugin.models.channels.list({})).toThrow(
       "[hot-updater] Drizzle adapter requires schema when db is lazy.",
     );
     expect(getDB).not.toHaveBeenCalled();
@@ -174,7 +182,7 @@ describe("drizzleAdapter schema requirements", () => {
       schema: { ...schema, bundles: null },
     });
 
-    expect(() => plugin.getChannels?.()).toThrow(
+    expect(() => plugin.models.channels.list({})).toThrow(
       '[hot-updater] Drizzle schema table "bundles" is invalid.',
     );
     expect(getDB).not.toHaveBeenCalled();
@@ -188,7 +196,7 @@ describe("drizzleAdapter schema requirements", () => {
       schema: incompleteSchema,
     });
 
-    expect(() => plugin.getChannels?.()).toThrow(
+    expect(() => plugin.models.channels.list({})).toThrow(
       'Drizzle schema is missing table "bundle_patches".',
     );
   });

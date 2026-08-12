@@ -33,7 +33,7 @@ function createSettingsMongoClient(
 }
 
 describe("MongoDB migration", () => {
-  it("adopts legacy composite version 0.37.0 as Core 0.37", async () => {
+  it("reads legacy composite version 0.37.0 as Core 0.37", async () => {
     const find = vi.fn(({ key }: { readonly key: string }) => ({
       limit: () => ({
         toArray: async () =>
@@ -52,7 +52,7 @@ describe("MongoDB migration", () => {
   });
 
   it("creates a unique settings key index before recording Core readiness", async () => {
-    const settings = new Map<string, unknown>([["version", "0.37.0"]]);
+    const settings = new Map<string, unknown>([["version", "0.38.0"]]);
     const settingsCollection = {
       find: ({ key }: { readonly key: string }) => ({
         limit: () => ({
@@ -74,6 +74,7 @@ describe("MongoDB migration", () => {
       createIndex: async () => "created",
     };
     const database = {
+      command: vi.fn(async () => undefined),
       createCollection: async () => undefined,
       collection: (name: string) =>
         name === "private_hot_updater_settings"
@@ -95,8 +96,8 @@ describe("MongoDB migration", () => {
     );
     expect(settings).toEqual(
       new Map([
-        ["version", "0.37.0"],
-        ["schema.core", "0.37.0"],
+        ["version", "0.38.0"],
+        ["schema.core", "0.38.0"],
       ]),
     );
   });
@@ -111,8 +112,8 @@ describe("MongoDB migration", () => {
             limit: () => ({
               toArray: async () =>
                 key === "schema.core"
-                  ? [{ key, value: "0.37.0" }]
-                  : [{ key, value: "0.37.0" }],
+                  ? [{ key, value: "0.38.0" }]
+                  : [{ key, value: "0.38.0" }],
             }),
           }),
           listIndexes: () => ({ toArray: async () => [] }),
@@ -177,8 +178,8 @@ describe("MongoDB migration", () => {
             limit: () => ({
               toArray: async () =>
                 key === "schema.core"
-                  ? [{ key, value: "0.37.0" }]
-                  : [{ key, value: "0.37.0" }],
+                  ? [{ key, value: "0.38.0" }]
+                  : [{ key, value: "0.38.0" }],
             }),
           }),
           listIndexes: () => ({
@@ -239,6 +240,7 @@ describe("MongoDB migration", () => {
       createIndex: async (): Promise<string> => "created",
     };
     const database = {
+      command: async () => undefined,
       createCollection: async () => undefined,
       collection: (name: string) =>
         name === "private_hot_updater_settings"
@@ -259,37 +261,37 @@ describe("MongoDB migration", () => {
     ]);
     await Promise.all([first.execute(), second.execute()]);
 
-    expect(settings).toEqual([{ key: "schema.core", value: "0.37.0" }]);
+    expect(settings).toEqual([{ key: "schema.core", value: "0.38.0" }]);
     expect(calls.at(-1)).toBe("marker");
   });
 
-  it.each(["0.21.0", "0.29.0", "0.31.0", "0.36.0", "0.37.0"])(
+  it.each(["0.21.0", "0.29.0", "0.31.0", "0.36.0", "0.37.0", "0.38.0"])(
     "accepts known legacy version %s alongside a current Core marker",
     async (legacyVersion) => {
       const client = createSettingsMongoClient({
-        "schema.core": "0.37.0",
+        "schema.core": "0.38.0",
         version: legacyVersion,
       });
       const migrator = createMongoMigrator(client);
 
-      await expect(migrator.getVersion()).resolves.toBe("0.37.0");
+      await expect(migrator.getVersion()).resolves.toBe("0.38.0");
       await expect(
         migrator.migrateToLatest({ mode: "from-schema" }),
       ).resolves.toMatchObject({ operations: [] });
     },
   );
 
-  it.each(["0.38.0", "0.39.0", "unknown"])(
+  it.each(["0.39.0", "unknown"])(
     "rejects legacy MongoDB %s alongside a current Core marker before reading bundle data",
     async (legacyVersion) => {
       const client = createSettingsMongoClient({
-        "schema.core": "0.37.0",
+        "schema.core": "0.38.0",
         version: legacyVersion,
       });
       const migrator = createMongoMigrator(client);
       const plugin = createInMemoryDatabasePlugin();
-      const count = vi.spyOn(plugin.bundles, "count");
-      const findMany = vi.spyOn(plugin.bundles, "findMany");
+      const count = vi.spyOn(plugin.models.bundles, "count");
+      const findMany = vi.spyOn(plugin.models.bundles, "findMany");
       const core = createDatabasePluginCore(plugin, async () => null, {
         beforeOperation: createSchemaReadinessChecker(
           "future-mongodb",
@@ -310,18 +312,18 @@ describe("MongoDB migration", () => {
   it.each([
     [
       "Core marker alone",
-      { "schema.core": { version: "0.37.0" } },
+      { "schema.core": { version: "0.38.0" } },
       "schema.core",
     ],
     ["legacy marker alone", { version: { version: "0.37.0" } }, "version"],
     [
       "Core marker beside a valid legacy marker",
-      { "schema.core": { version: "0.37.0" }, version: "0.37.0" },
+      { "schema.core": { version: "0.38.0" }, version: "0.37.0" },
       "schema.core",
     ],
     [
       "legacy marker beside a current Core marker",
-      { "schema.core": "0.37.0", version: { version: "0.37.0" } },
+      { "schema.core": "0.38.0", version: { version: "0.37.0" } },
       "version",
     ],
   ] as const)("rejects a corrupt %s", async (_case, values, key) => {
@@ -332,16 +334,237 @@ describe("MongoDB migration", () => {
     );
   });
 
-  it("ensures collections and indexes before updating the version", async () => {
+  it("normalizes legacy MongoDB channels before unique indexes and validation", async () => {
+    const calls: string[] = [];
+    const settings = new Map<string, unknown>([["schema.core", "0.37.0"]]);
+    const bundles = [
+      { channel: "production" },
+      { channel: "production" },
+      { channel: "beta" },
+    ] as { channel: string; channel_id?: string }[];
+    const channels: { id: string; name: string }[] = [];
+    const settingsCollection = {
+      find: ({ key }: { readonly key: string }) => ({
+        limit: () => ({
+          toArray: async () => {
+            const value = settings.get(key);
+            return value === undefined ? [] : [{ key, value }];
+          },
+        }),
+      }),
+      listIndexes: () => ({
+        toArray: async () => [{ key: { key: 1 }, unique: true }],
+      }),
+      createIndex: async () => "key_1",
+      updateOne: async (
+        { key }: { readonly key: string },
+        update: { readonly $set: { readonly value: unknown } },
+      ) => {
+        calls.push("marker");
+        settings.set(key, update.$set.value);
+      },
+    };
+    const bundlesCollection = {
+      distinct: async () => [...new Set(bundles.map(({ channel }) => channel))],
+      find: () => ({ toArray: async () => bundles.map((row) => ({ ...row })) }),
+      listIndexes: () => ({ toArray: async () => [] }),
+      createIndex: async () => "created",
+      updateMany: async (
+        { channel }: { readonly channel: string },
+        update: { readonly $set: { readonly channel_id: string } },
+      ) => {
+        calls.push(`backfill:${channel}`);
+        for (const bundle of bundles) {
+          if (bundle.channel === channel) {
+            bundle.channel_id = update.$set.channel_id;
+          }
+        }
+      },
+    };
+    const channelsCollection = {
+      find: (filter: { readonly name?: string }) => {
+        const rows = () =>
+          filter.name === undefined
+            ? [...channels]
+            : channels.filter(({ name }) => name === filter.name);
+        return {
+          limit: (limit: number) => ({
+            toArray: async () => rows().slice(0, limit),
+          }),
+          toArray: async () => rows(),
+        };
+      },
+      findOne: async ({ name }: { readonly name: string }) =>
+        channels.find((channel) => channel.name === name) ?? null,
+      insertOne: async (row: {
+        readonly id: string;
+        readonly name: string;
+      }) => {
+        channels.push(row);
+      },
+      listIndexes: () => ({ toArray: async () => [] }),
+      createIndex: async (
+        _keys: object,
+        options: { readonly name?: string; readonly unique?: boolean },
+      ) => {
+        if (options.name === "channels_name_key") {
+          expect(options.unique).toBe(true);
+          calls.push("unique-channel-name");
+        }
+        return options.name ?? "created";
+      },
+    };
+    const modelCollection = {
+      listIndexes: () => ({ toArray: async () => [] }),
+      createIndex: async () => "created",
+    };
+    const database = {
+      command: vi.fn(async () => {
+        calls.push("validator");
+      }),
+      createCollection: async () => undefined,
+      collection: (name: string) => {
+        if (name === "private_hot_updater_settings") {
+          return settingsCollection;
+        }
+        if (name === "bundles") return bundlesCollection;
+        if (name === "channels") return channelsCollection;
+        return modelCollection;
+      },
+    };
+    const migrator = createMongoMigrator({
+      db: () => database,
+    } as unknown as MongoClient);
+    const migration = await migrator.migrateToLatest({
+      mode: "from-schema",
+      updateSettings: true,
+    });
+
+    expect(migration.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          description:
+            "Backfill persistent MongoDB channels and bundles.channel_id",
+        }),
+        expect.objectContaining({
+          description:
+            "Validate MongoDB bundle Channel references before constraints",
+        }),
+      ]),
+    );
+
+    await migration.execute();
+
+    expect(channels.map(({ name }) => name).sort()).toEqual([
+      "beta",
+      "production",
+    ]);
+    expect(
+      bundles.every((bundle) =>
+        channels.some(
+          (channel) =>
+            channel.id === bundle.channel_id && channel.name === bundle.channel,
+        ),
+      ),
+    ).toBe(true);
+    expect(calls.indexOf("unique-channel-name")).toBeGreaterThan(
+      calls.findLastIndex((call) => call.startsWith("backfill:")),
+    );
+    expect(calls.indexOf("validator")).toBeGreaterThan(
+      calls.indexOf("unique-channel-name"),
+    );
+    expect(calls.at(-1)).toBe("marker");
+    expect(settings.get("schema.core")).toBe("0.38.0");
+    expect(database.command).toHaveBeenCalledWith({
+      collMod: "bundles",
+      validationAction: "error",
+      validationLevel: "strict",
+      validator: {
+        $jsonSchema: expect.objectContaining({
+          properties: expect.objectContaining({
+            channel: {
+              bsonType: "string",
+              maxLength: 255,
+              minLength: 1,
+            },
+            channel_id: {
+              bsonType: "string",
+              maxLength: 255,
+              minLength: 1,
+            },
+          }),
+        }),
+      },
+    });
+  });
+
+  it("rejects a 256-code-point legacy MongoDB channel before indexing or versioning", async () => {
+    const createIndex = vi.fn();
+    const updateOne = vi.fn();
+    const command = vi.fn();
+    const settingsCollection = {
+      find: ({ key }: { readonly key: string }) => ({
+        limit: () => ({
+          toArray: async () =>
+            key === "schema.core" ? [{ key, value: "0.37.0" }] : [],
+        }),
+      }),
+      listIndexes: () => ({
+        toArray: async () => [{ key: { key: 1 }, unique: true }],
+      }),
+      createIndex,
+      updateOne,
+    };
+    const bundlesCollection = {
+      distinct: async () => ["😀".repeat(256)],
+    };
+    const database = {
+      command,
+      createCollection: async () => undefined,
+      collection: (name: string) => {
+        if (name === "private_hot_updater_settings") {
+          return settingsCollection;
+        }
+        if (name === "bundles") return bundlesCollection;
+        return {};
+      },
+    };
+    const migrator = createMongoMigrator({
+      db: () => database,
+    } as unknown as MongoClient);
+    const migration = await migrator.migrateToLatest({
+      mode: "from-schema",
+      updateSettings: true,
+    });
+
+    await expect(migration.execute()).rejects.toThrow(
+      "1 to 255 Unicode code points",
+    );
+    expect(createIndex).not.toHaveBeenCalled();
+    expect(command).not.toHaveBeenCalled();
+    expect(updateOne).not.toHaveBeenCalled();
+  });
+
+  it("backfills, validates, indexes, and enforces before updating the version", async () => {
     const calls: string[] = [];
     const backend: MongoMigrationBackend = {
       ensureCollections: async () => void calls.push("collections"),
+      backfillData: async () => void calls.push("backfill"),
+      validateData: async () => void calls.push("validate"),
       ensureIndexes: async () => void calls.push("indexes"),
+      enforceSchema: async () => void calls.push("schema"),
       updateVersion: async () => void calls.push("version"),
     };
 
     await executeMongoMigration({ backend, updateSettings: true });
 
-    expect(calls).toEqual(["collections", "indexes", "version"]);
+    expect(calls).toEqual([
+      "collections",
+      "backfill",
+      "validate",
+      "indexes",
+      "schema",
+      "version",
+    ]);
   });
 });

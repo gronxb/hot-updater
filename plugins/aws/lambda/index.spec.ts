@@ -146,8 +146,12 @@ describe("aws lambda entrypoint", () => {
     expect(databaseMocks.s3Database).not.toHaveBeenCalled();
     expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
       expect.objectContaining({
-        analytics: {},
-        clientAccessKeys: true,
+        features: {
+          analytics: {},
+          bundles: false,
+          clientAccessKeys: true,
+          updateCheck: true,
+        },
       }),
     );
   });
@@ -156,8 +160,14 @@ describe("aws lambda entrypoint", () => {
     await import("./index");
 
     const options = serverMocks.createHotUpdater.mock.calls[0]?.[0];
-    expect(options).not.toHaveProperty("analytics");
-    expect(options).not.toHaveProperty("clientAccessKeys");
+    expect(options).toMatchObject({
+      features: {
+        bundles: false,
+        updateCheck: true,
+      },
+    });
+    expect(options?.features).not.toHaveProperty("analytics");
+    expect(options?.features).not.toHaveProperty("clientAccessKeys");
   });
 
   it("serves canonical app-version routes without a cohort segment for origin-request events", async () => {

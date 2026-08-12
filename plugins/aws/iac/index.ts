@@ -14,7 +14,7 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
-import type { ClientAccessKeyTable } from "@hot-updater/plugin-core";
+import type { ClientAccessKeyModel } from "@hot-updater/plugin-core";
 import {
   createClientAccessKey,
   registerClientAccessKey,
@@ -70,7 +70,7 @@ export const prepareDynamoDBDeployment = async (input: {
 };
 
 export const prepareDynamoDBClientAccessKey = async (input: {
-  readonly clientAccessKeys: ClientAccessKeyTable;
+  readonly clientAccessKeys: ClientAccessKeyModel;
   readonly existingApiKey?: string;
 }): Promise<string> => {
   const existingApiKey = input.existingApiKey?.trim();
@@ -401,7 +401,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     });
     try {
       const apiKey = await prepareDynamoDBClientAccessKey({
-        clientAccessKeys: databasePlugin.clientAccessKeys,
+        clientAccessKeys: databasePlugin.models.clientAccessKeys,
         existingApiKey: providerEnv.HOT_UPDATER_API_KEY,
       });
       await makeEnv({ HOT_UPDATER_API_KEY: apiKey });

@@ -1,4 +1,7 @@
-import type { DatabaseModel, DatabaseWhere } from "@hot-updater/plugin-core";
+import type {
+  DatabaseModel,
+  DatabaseWhere,
+} from "@hot-updater/plugin-core/internal";
 import { sql, type RawBuilder } from "kysely";
 
 import type { ORMSQLProvider } from "../db/types";

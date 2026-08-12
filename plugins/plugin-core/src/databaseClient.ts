@@ -16,20 +16,26 @@ import { bundleToPatchRows, bundleToRow } from "./databaseRows";
 import { bundleMatchesQueryWhere } from "./queryBundles";
 import { resolveUpdateInfoFromBundles } from "./resolveUpdateInfoFromBundles";
 import type {
+  BundleRepository,
+  BundleRepositoryChange,
+  ChannelDeleteInput,
+  ChannelDeleteResult,
+  ChannelInsertInput,
+  ChannelInsertResult,
+  ChannelRow,
   DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,
-  DatabaseBundleMutation,
   DatabaseCommitResult,
-  BundleRepository,
   PaginatedResult,
 } from "./types";
-
-const PAGE_SIZE = 100;
+import { createUUIDv7 } from "./uuidv7";
 
 export interface DatabaseClient {
   getBundleById(id: string): Promise<Bundle | null>;
   getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null>;
-  getChannels(): Promise<string[]>;
+  getChannels(): Promise<readonly ChannelRow[]>;
+  insertChannel(input: ChannelInsertInput): Promise<ChannelInsertResult>;
+  deleteChannel(input: ChannelDeleteInput): Promise<ChannelDeleteResult>;
   getBundles(options: DatabaseBundleQueryOptions): Promise<PaginatedResult>;
   insertBundle(bundle: Bundle): Promise<void>;
   updateBundleById(bundleId: string, update: Partial<Bundle>): Promise<void>;
@@ -39,7 +45,10 @@ export interface DatabaseClient {
   ): Promise<TResult>;
 }
 
-export type DatabaseMutationClient = Omit<DatabaseClient, "mutate">;
+export type DatabaseMutationClient = Omit<
+  DatabaseClient,
+  "deleteChannel" | "mutate"
+>;
 
 export class DatabaseBundleNotFoundError extends Error {
   readonly name = "DatabaseBundleNotFoundError";
@@ -64,75 +73,83 @@ export class DatabasePatchInsertUnsupportedError extends Error {
 
 export { DatabasePatchUpdateUnsupportedError };
 
+type BundleMutationChange = Extract<
+  BundleRepositoryChange,
+  { readonly model: "bundles" | "bundlePatches" }
+>;
+
 type CommitOperation = (
-  input: DatabaseBundleMutation,
+  changes: readonly BundleMutationChange[],
 ) => Promise<DatabaseCommitResult>;
 
-const insertMutation = (bundle: Bundle): DatabaseBundleMutation => ({
-  operation: "insert",
-  bundleId: bundle.id,
-  changes: [
-    { table: "bundles", operation: "insert", row: bundleToRow(bundle) },
-    ...bundleToPatchRows(bundle).map((row) => ({
-      table: "bundle_patches" as const,
-      operation: "insert" as const,
-      row,
-    })),
-  ],
-});
+const insertChanges = (
+  bundle: Bundle,
+  channel: ChannelRow,
+): readonly BundleMutationChange[] => [
+  {
+    model: "bundles",
+    operation: "insert",
+    row: bundleToRow(bundle, channel.id),
+  },
+  ...bundleToPatchRows(bundle).map((row) => ({
+    model: "bundlePatches" as const,
+    operation: "insert" as const,
+    row,
+  })),
+];
 
-const updateMutation = (
+const updateChanges = (
   bundleId: string,
   update: Partial<Bundle>,
-): DatabaseBundleMutation => {
-  const rowUpdate = bundleUpdateToRow(update);
+  channel: ChannelRow | undefined,
+): readonly BundleMutationChange[] => {
+  const rowUpdate = bundleUpdateToRow(update, channel?.id);
   const patchesPresent = Object.hasOwn(update, "patches");
-  return {
-    operation: "update",
-    bundleId,
-    changes: [
-      ...(Object.keys(rowUpdate).length > 0
-        ? [
-            {
-              table: "bundles" as const,
-              operation: "update" as const,
-              id: bundleId,
-              update: rowUpdate,
-            },
-          ]
-        : []),
-      ...(patchesPresent
-        ? [
-            {
-              table: "bundle_patches" as const,
-              operation: "delete" as const,
-              bundleId,
-            },
-            ...bundleUpdateToPatchRows(bundleId, update).map((row) => ({
-              table: "bundle_patches" as const,
-              operation: "insert" as const,
-              row,
-            })),
-          ]
-        : []),
-    ],
-  };
+  return [
+    {
+      model: "bundles",
+      operation: "update",
+      where: { id: bundleId },
+      update: rowUpdate,
+    },
+    ...(patchesPresent
+      ? [
+          {
+            model: "bundlePatches" as const,
+            operation: "delete" as const,
+            where: { bundleId },
+          },
+          ...bundleUpdateToPatchRows(bundleId, update).map((row) => ({
+            model: "bundlePatches" as const,
+            operation: "insert" as const,
+            row,
+          })),
+        ]
+      : []),
+  ];
 };
 
-const deleteMutation = (bundleId: string): DatabaseBundleMutation => ({
-  operation: "delete",
-  bundleId,
-  changes: [{ table: "bundles", operation: "delete", id: bundleId }],
-});
+const deleteChanges = (bundleId: string): readonly BundleMutationChange[] => [
+  { model: "bundles", operation: "delete", where: { id: bundleId } },
+];
 
 export const createDatabaseClient = (
   plugin: BundleRepository,
 ): DatabaseClient => {
   const getBundleById = async (id: string): Promise<Bundle | null> => {
-    const row = await plugin.bundles.findById(id);
+    const row = await plugin.models.bundles.findById(id);
     if (!row) return null;
     return (await hydrateRows(plugin, [row]))[0] ?? null;
   };
+
+  const insertChannel = (input: ChannelInsertInput) =>
+    plugin.models.channels.insert(input);
+
+  const resolveChannel = (name: string): Promise<ChannelInsertResult> =>
+    insertChannel({
+      row: { id: createUUIDv7(), name },
+      onConflict: "returnExisting",
+    });
 
   const createMutationClient = (
     commit: CommitOperation,
@@ -140,20 +157,13 @@ export const createDatabaseClient = (
     getBundleById,
     getBundles: (options) => responsePage(plugin, options),
     async getChannels() {
-      if (plugin.getChannels) return plugin.getChannels();
-      const channels = new Set<string>();
-      for (let offset = 0; ; offset += PAGE_SIZE) {
-        const rows = await plugin.bundles.findMany({
-          limit: PAGE_SIZE,
-          offset,
-          orderBy: { field: "id", direction: "asc" },
-        });
-        for (const { channel } of rows) channels.add(channel);
-        if (rows.length < PAGE_SIZE) return [...channels].sort();
-      }
+      return (await plugin.models.channels.list({})).channels;
     },
+    insertChannel,
     async getUpdateInfo(args) {
-      if (plugin.getUpdateInfo) return plugin.getUpdateInfo(args);
+      if (plugin.queries.getUpdateInfo) {
+        return plugin.queries.getUpdateInfo(args);
+      }
       const channel = args.channel ?? "production";
       const minBundleId = args.minBundleId ?? NIL_UUID;
       const where: DatabaseBundleQueryWhere = {
@@ -172,8 +182,9 @@ export const createDatabaseClient = (
       return resolveUpdateInfoFromBundles({ args, bundles });
     },
     async insertBundle(bundle) {
+      const { row: channel } = await resolveChannel(bundle.channel);
       try {
-        await commit(insertMutation(bundle));
+        await commit(insertChanges(bundle, channel));
       } catch (error) {
         if (
           error instanceof DatabaseAtomicCommitUnsupportedError &&
@@ -185,9 +196,15 @@ export const createDatabaseClient = (
       }
     },
     async updateBundleById(bundleId, update) {
+      const channel =
+        update.channel === undefined
+          ? undefined
+          : (await resolveChannel(update.channel)).row;
       try {
-        const result = await commit(updateMutation(bundleId, update));
-        if (!result.applied) throw new DatabaseBundleNotFoundError(bundleId);
+        const result = await commit(updateChanges(bundleId, update, channel));
+        if (!result.committed) {
+          throw new DatabaseBundleNotFoundError(bundleId);
+        }
       } catch (error) {
         if (
           error instanceof DatabaseAtomicCommitUnsupportedError &&
@@ -199,40 +216,37 @@ export const createDatabaseClient = (
       }
     },
     async deleteBundleById(bundleId) {
-      await commit(deleteMutation(bundleId));
+      await commit(deleteChanges(bundleId));
     },
   });
 
   const runMutation = async <TResult>(
     operation: (client: DatabaseMutationClient) => Promise<TResult>,
   ): Promise<TResult> => {
-    const mutations: DatabaseBundleMutation[] = [];
+    const changes: BundleMutationChange[] = [];
     const result = await operation(
       createMutationClient(async (input) => {
-        mutations.push(input);
-        return { applied: true };
+        changes.push(...input);
+        return { committed: true };
       }),
     );
-    if (mutations.length === 0) return result;
-    const commitResult = await plugin.commit({ mutations });
-    if (!commitResult.applied) {
-      const missingBundleId =
-        commitResult.missingBundleId ??
-        mutations.find(({ operation }) => operation === "update")?.bundleId;
-      if (missingBundleId === undefined) {
-        throw new Error(`Database plugin "${plugin.name}" rejected a commit.`);
+    if (changes.length === 0) return result;
+    const commitResult = await plugin.commit({ changes });
+    if (!commitResult.committed) {
+      const change = changes[commitResult.conflict.changeIndex];
+      if (change?.model === "bundles" && change.operation === "update") {
+        throw new DatabaseBundleNotFoundError(change.where.id);
       }
-      throw new DatabaseBundleNotFoundError(missingBundleId);
+      throw new Error(`Database plugin "${plugin.name}" rejected a commit.`);
     }
     return result;
   };
 
-  const direct = createMutationClient(async (input) => {
-    return plugin.commit({ mutations: [input] });
-  });
+  const direct = createMutationClient((changes) => plugin.commit({ changes }));
 
   return {
     ...direct,
+    deleteChannel: (input) => plugin.models.channels.delete(input),
     mutate: runMutation,
   };
 };

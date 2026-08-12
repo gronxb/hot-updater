@@ -38,8 +38,12 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 const app = express();
 const handler = toNodeHandler(hotUpdater); // [!code ++]
 
-const authMiddleware = (req, res, next) => { // [!code ++]
-  if (req.get("Authorization") !== `Bearer ${process.env.HOT_UPDATER_AUTH_TOKEN}`) { // [!code ++]
+const authMiddleware = (req, res, next) => {
+  // [!code ++]
+  if (
+    req.get("Authorization") !== `Bearer ${process.env.HOT_UPDATER_AUTH_TOKEN}`
+  ) {
+    // [!code ++]
     return res.status(401).json({ error: "Unauthorized" }); // [!code ++]
   } // [!code ++]
   next(); // [!code ++]
@@ -77,19 +81,21 @@ export default defineConfig({
 ## API Endpoints
 
 The server automatically creates these endpoints. Bundle management endpoints
-under `/hot-updater/api/*` are mounted only when `routes.bundles` is enabled:
+under `/hot-updater/api/*` are mounted only when `features.bundles` is enabled:
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/hot-updater/version` | Get server version |
-| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
-| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
-| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
-| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
-| POST | `/hot-updater/api/bundles` | Create bundles |
-| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
-| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
-| GET | `/hot-updater/api/bundles/channels` | List all channels |
+| Method | Endpoint                                                                              | Description                                                         |
+| ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| GET    | `/hot-updater/version`                                                                | Get server version                                                  |
+| GET    | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint                                    |
+| GET    | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId`         | Check for updates by app version                                    |
+| GET    | `/hot-updater/api/bundles`                                                            | List bundles (query: channel, platform, limit, page, after, before) |
+| GET    | `/hot-updater/api/bundles/:id`                                                        | Get bundle by ID                                                    |
+| POST   | `/hot-updater/api/bundles`                                                            | Create bundles                                                      |
+| PATCH  | `/hot-updater/api/bundles/:id`                                                        | Update a bundle                                                     |
+| DELETE | `/hot-updater/api/bundles/:id`                                                        | Delete bundle                                                       |
+| GET    | `/hot-updater/api/channels`                                                           | List all channels                                                   |
+| POST   | `/hot-updater/api/channels`                                                           | Insert or resolve a channel                                         |
+| DELETE | `/hot-updater/api/channels/:id`                                                       | Delete an empty channel                                             |
 
 ## React Native Setup
 

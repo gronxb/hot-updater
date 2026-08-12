@@ -1,10 +1,10 @@
 import type {
   AnalyticsScanCursor,
   AnalyticsScanInput,
-  AnalyticsTable,
+  AnalyticsModel,
   BundleEventRow,
 } from "@hot-updater/plugin-core";
 
 export type BundleEventPersistenceRow = BundleEventRow;
-export type AnalyticsPersistence = AnalyticsTable;
+export type AnalyticsPersistence = AnalyticsModel;
 export type { AnalyticsScanCursor, AnalyticsScanInput };

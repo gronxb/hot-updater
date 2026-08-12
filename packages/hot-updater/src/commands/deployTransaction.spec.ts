@@ -37,12 +37,14 @@ const createTransactionlessClient = () => {
       },
     }),
     getChannels: async () => [],
+    insertChannel: async ({ row }) => ({ row, inserted: true }),
     getUpdateInfo: async (_args) => null,
     insertBundle,
     updateBundleById: async (_bundleId, _update) => {},
   };
   const database: DatabaseClient = {
     ...mutationClient,
+    deleteChannel: async () => ({ deleted: true }),
     mutate: (operation) => operation(mutationClient),
   };
 

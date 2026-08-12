@@ -6,7 +6,7 @@ const db: D1Like = {
   prepare: () => ({
     bind: () => ({
       all: async () => ({
-        results: [{ channel: "production" }],
+        results: [{ id: "channel-production", name: "production" }],
       }),
     }),
   }),
@@ -17,7 +17,11 @@ const db: D1Like = {
 it("uses the configured D1 binding without request context", async () => {
   const plugin = d1WorkerDatabase(db);
 
-  const channels = plugin.getChannels?.();
+  const channels = plugin.models.channels.list({});
 
-  await expect(channels).resolves.toEqual(["production"]);
+  await expect(channels).resolves.toEqual({
+    channels: [{ id: "channel-production", name: "production" }],
+  });
+  expect(plugin.name).toBe("d1WorkerDatabase");
+  expect("bundles" in plugin).toBe(false);
 });

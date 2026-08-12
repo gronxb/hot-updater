@@ -16,6 +16,8 @@ import { createDatabaseClient } from "./databaseClient";
 import type { BundleRow, DatabasePlugin } from "./types";
 
 const bundleId = "00000000-0000-0000-0000-000000000001";
+const channelId = (name: string): string =>
+  `legacy-channel:${encodeURIComponent(name)}`;
 const commonBundleRow = {
   id: bundleId,
   platform: "ios" as const,
@@ -24,6 +26,7 @@ const commonBundleRow = {
   file_hash: "hash-1",
   git_commit_hash: null,
   message: "bundle-1",
+  channel_id: channelId("production"),
   storage_uri: "storage://bundles/1.zip",
   target_app_version: "1.0.0",
   fingerprint_hash: null,
@@ -54,12 +57,14 @@ const commonLegacyBundle = {
 
 const insertBundleRow = (plugin: DatabasePlugin, row: BundleRow) =>
   plugin.commit({
-    mutations: [
+    changes: [
       {
+        model: "channels",
         operation: "insert",
-        bundleId: row.id,
-        changes: [{ table: "bundles", operation: "insert", row }],
+        row: { id: row.channel_id, name: row.channel },
+        onConflict: "ignore",
       },
+      { model: "bundles", operation: "insert", row },
     ],
   });
 
@@ -325,6 +330,7 @@ describe("blob snapshot compatibility", () => {
       version: 2,
       bundles: [],
       bundle_patches: [],
+      channels: [],
       bundle_events: [],
       client_access_keys: [],
     });
@@ -342,13 +348,33 @@ describe("blob snapshot compatibility", () => {
     });
   });
 
+  it("backfills channels and channel_id from a legacy v2 snapshot", () => {
+    const { channel_id: _channelId, ...legacyBundleRow } =
+      commonStoredBundleRow;
+    const snapshot = parseBlobDatabaseSnapshot({
+      version: 2,
+      bundles: [legacyBundleRow],
+      bundle_patches: [],
+    });
+
+    expect(snapshot.channels).toEqual([
+      { id: channelId("production"), name: "production" },
+    ]);
+    expect(snapshot.bundles[0]).toMatchObject({
+      channel: "production",
+      channel_id: channelId("production"),
+    });
+  });
+
   it("reads and rewrites the direct-channel v2 shape", async () => {
+    const { channel_id: _channelId, ...legacyBundleRow } =
+      commonStoredBundleRow;
     const { plugin, store } = createMemoryBlobDatabase([
       [
         BLOB_DATABASE_SNAPSHOT_KEY,
         {
           version: 2,
-          bundles: [{ ...commonBundleRow, channel: "production" }],
+          bundles: [legacyBundleRow],
           bundle_patches: [],
         },
       ],
@@ -359,6 +385,7 @@ describe("blob snapshot compatibility", () => {
       ...commonBundleRow,
       id: `${bundleId}-staging`,
       channel: "staging",
+      channel_id: channelId("staging"),
     });
 
     expect(bundle?.channel).toBe("production");
@@ -378,9 +405,14 @@ describe("blob snapshot compatibility", () => {
           ...commonBundleRow,
           id: `${bundleId}-staging`,
           channel: "staging",
+          channel_id: channelId("staging"),
         },
       ],
       bundle_patches: [],
+      channels: [
+        { id: channelId("production"), name: "production" },
+        { id: channelId("staging"), name: "staging" },
+      ],
       bundle_events: [],
       client_access_keys: [],
     });
@@ -402,6 +434,7 @@ describe("blob snapshot compatibility", () => {
         ...commonBundleRow,
         id: `${bundleId}-staging`,
         channel: "staging",
+        channel_id: channelId("staging"),
       }),
     ).rejects.toThrow(
       "Blob database snapshot has unknown top-level fields: legacy_extension",
@@ -530,18 +563,12 @@ describe("blob snapshot compatibility", () => {
 
     await expect(
       plugin.commit({
-        mutations: [
+        changes: [
           {
+            model: "bundles",
             operation: "update",
-            bundleId,
-            changes: [
-              {
-                table: "bundles",
-                operation: "update",
-                id: bundleId,
-                update: { message: "updated" },
-              },
-            ],
+            where: { id: bundleId },
+            update: { message: "updated" },
           },
         ],
       }),
@@ -582,17 +609,11 @@ describe("blob snapshot compatibility", () => {
 
     await expect(
       plugin.commit({
-        mutations: [
+        changes: [
           {
-            operation: "update",
-            bundleId: targetBundleId,
-            changes: [
-              {
-                table: "bundle_patches",
-                operation: "delete",
-                bundleId: targetBundleId,
-              },
-            ],
+            model: "bundlePatches",
+            operation: "delete",
+            where: { bundleId: targetBundleId },
           },
         ],
       }),
@@ -670,7 +691,7 @@ describe("blob snapshot compatibility", () => {
     });
 
     await expect(
-      plugin.getUpdateInfo?.({
+      plugin.queries.getUpdateInfo?.({
         _updateStrategy: "appVersion",
         appVersion: "1.0.0",
         bundleId: "00000000-0000-0000-0000-000000000000",

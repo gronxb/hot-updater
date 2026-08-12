@@ -6,6 +6,8 @@ import { p } from "@hot-updater/cli-tools";
 
 import {
   DYNAMODB_ANALYTICS_PARTITION,
+  DYNAMODB_CHANNEL_NAME_PARTITION,
+  DYNAMODB_CHANNEL_PARTITION,
   DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION,
   DYNAMODB_CLIENT_ACCESS_KEY_PARTITION,
   DYNAMODB_UPDATE_INDEX_NAME,
@@ -65,25 +67,27 @@ export class IAMManager {
             Resource: [`${tableArn}/index/${DYNAMODB_UPDATE_INDEX_NAME}`],
           },
           {
-            Action: ["dynamodb:BatchGetItem", "dynamodb:GetItem"],
+            Action: [
+              "dynamodb:BatchGetItem",
+              "dynamodb:DeleteItem",
+              "dynamodb:GetItem",
+              "dynamodb:PutItem",
+              "dynamodb:Query",
+              "dynamodb:TransactWriteItems",
+              "dynamodb:UpdateItem",
+            ],
             Condition: {
               "ForAllValues:StringEquals": {
                 "dynamodb:LeadingKeys": [
+                  "_hot-updater",
                   "bundles",
                   "bundle_patches",
+                  DYNAMODB_CHANNEL_PARTITION,
+                  DYNAMODB_CHANNEL_NAME_PARTITION,
+                  DYNAMODB_ANALYTICS_PARTITION,
                   DYNAMODB_CLIENT_ACCESS_KEY_PARTITION,
                   DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION,
                 ],
-              },
-            },
-            Effect: "Allow",
-            Resource: [tableArn],
-          },
-          {
-            Action: ["dynamodb:PutItem", "dynamodb:Query"],
-            Condition: {
-              "ForAllValues:StringEquals": {
-                "dynamodb:LeadingKeys": [DYNAMODB_ANALYTICS_PARTITION],
               },
             },
             Effect: "Allow",

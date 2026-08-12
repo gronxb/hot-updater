@@ -14,6 +14,7 @@ import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
+  ChannelRow,
   ClientAccessKeyRow,
 } from "./types";
 
@@ -26,6 +27,7 @@ const bundleFields = new Set([
   "git_commit_hash",
   "message",
   "channel",
+  "channel_id",
   "storage_uri",
   "target_app_version",
   "fingerprint_hash",
@@ -36,6 +38,7 @@ const bundleFields = new Set([
   "manifest_file_hash",
   "asset_base_storage_uri",
 ]);
+const channelFields = new Set(["id", "name"]);
 const patchFields = new Set([
   "id",
   "bundle_id",
@@ -86,11 +89,27 @@ const trackUnknownFields = <TRow extends object>(
 };
 
 export const getBlobDatabaseRowUnknownFields = (
-  row: BundleEventRow | BundlePatchRow | BundleRow | ClientAccessKeyRow,
+  row:
+    | BundleEventRow
+    | BundlePatchRow
+    | BundleRow
+    | ChannelRow
+    | ClientAccessKeyRow,
 ): readonly string[] => rowUnknownFields.get(row) ?? [];
 
-export const parseBundleRow = (value: unknown, source: string): BundleRow => {
+export const blobDatabaseBackfillChannelId = (name: string): string =>
+  `legacy-channel:${encodeURIComponent(name)}`;
+
+export const parseBundleRow = (
+  value: unknown,
+  source: string,
+  resolveLegacyChannelId: (
+    name: string,
+  ) => string = blobDatabaseBackfillChannelId,
+): BundleRow => {
   const input = blobRecord(value, source);
+  const channel = blobString(blobProperty(input, "channel"), source);
+  const channelId = blobProperty(input, "channel_id");
   const row: BundleRow = {
     id: blobString(blobProperty(input, "id"), source),
     platform: blobPlatform(blobProperty(input, "platform"), source),
@@ -105,7 +124,11 @@ export const parseBundleRow = (value: unknown, source: string): BundleRow => {
       source,
     ),
     message: blobNullableString(blobProperty(input, "message"), source),
-    channel: blobString(blobProperty(input, "channel"), source),
+    channel,
+    channel_id:
+      channelId === undefined
+        ? resolveLegacyChannelId(channel)
+        : blobString(channelId, source),
     storage_uri: blobString(blobProperty(input, "storage_uri"), source),
     target_app_version: blobNullableString(
       blobProperty(input, "target_app_version"),
@@ -138,6 +161,15 @@ export const parseBundleRow = (value: unknown, source: string): BundleRow => {
     ),
   };
   return trackUnknownFields(row, input, bundleFields);
+};
+
+export const parseChannelRow = (value: unknown, source: string): ChannelRow => {
+  const input = blobRecord(value, source);
+  const row: ChannelRow = {
+    id: blobString(blobProperty(input, "id"), source),
+    name: blobString(blobProperty(input, "name"), source),
+  };
+  return trackUnknownFields(row, input, channelFields);
 };
 
 export const parsePatchRow = (

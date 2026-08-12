@@ -54,7 +54,7 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
-  routes: {
+  features: {
     updateCheck: true,
     bundles: true,
   },
@@ -102,7 +102,7 @@ deployment choice:
 - `/hot-updater/fingerprint/*`
 
 The bundle management routes under `/hot-updater/api/*` are used by the CLI.
-They are mounted only when `routes.bundles: true`, and your framework
+They are mounted only when `features.bundles: true`, and your framework
 middleware must protect each management request before mounting the handler.
 The server example above uses Bearer authentication for `/hot-updater/api/*`.
 Set your auth token in environment variables:
