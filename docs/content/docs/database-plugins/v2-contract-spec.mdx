@@ -452,9 +452,10 @@ builds the same D1 models from `cloudflare:env` bindings inside
 Standalone remains a CLI-side remote management repository, not a complete
 `DatabasePlugin`: it exposes remote bundle, patch, and Channel operations but
 does not pretend to own server Analytics or client access-key persistence.
-Its commit input is correspondingly limited to those three models, so an
-unsupported official domain cannot cross the repository boundary and fail only
-at runtime.
+Its commit input accepts either a bundle/patch aggregate or one Channel
+lifecycle change. It does not claim an atomic Channel-plus-bundle boundary that
+the remote HTTP repository cannot provide, and an unsupported official domain
+cannot cross the repository boundary and fail only at runtime.
 The self-hosted server created with `createHotUpdater` owns the complete real
 database implementation, schema, features, and routes.
 
