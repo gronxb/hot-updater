@@ -7,7 +7,11 @@ import type {
   Platform,
   UpdateInfo,
 } from "@hot-updater/core";
-import { isCohortEligibleForUpdate, NIL_UUID } from "@hot-updater/core";
+import {
+  isBuiltInBaselineBundleId,
+  isCohortEligibleForUpdate,
+  NIL_UUID,
+} from "@hot-updater/core";
 import {
   type DatabaseBundleQueryOptions,
   type DatabaseBundleQueryOrder,
@@ -181,6 +185,13 @@ export function createPluginDatabaseCore<TContext = unknown>(
     isCandidate: (bundle: Bundle) => boolean;
     context?: HotUpdaterContext<TContext>;
   }): Promise<UpdateInfo | null> => {
+    // A build-time generated built-in baseline id never has a bundle record,
+    // so a fresh install reporting it must behave like the nil baseline
+    // instead of triggering rollback resolution against an id that cannot
+    // exist.
+    const requestBundleId = isBuiltInBaselineBundleId(args.bundleId)
+      ? NIL_UUID
+      : args.bundleId;
     let after: string | undefined;
 
     while (true) {
@@ -208,14 +219,14 @@ export function createPluginDatabaseCore<TContext = unknown>(
           continue;
         }
 
-        if (args.bundleId === NIL_UUID) {
+        if (requestBundleId === NIL_UUID) {
           if (isEligibleForUpdate(bundle, args.cohort)) {
             return makeResponse(bundle, "UPDATE");
           }
           continue;
         }
 
-        const compareResult = bundle.id.localeCompare(args.bundleId);
+        const compareResult = bundle.id.localeCompare(requestBundleId);
 
         if (compareResult > 0) {
           if (isEligibleForUpdate(bundle, args.cohort)) {
@@ -244,13 +255,13 @@ export function createPluginDatabaseCore<TContext = unknown>(
       }
     }
 
-    if (args.bundleId === NIL_UUID) {
+    if (requestBundleId === NIL_UUID) {
       return null;
     }
 
     if (
       args.minBundleId &&
-      args.bundleId.localeCompare(args.minBundleId) <= 0
+      requestBundleId.localeCompare(args.minBundleId) <= 0
     ) {
       return null;
     }
@@ -370,6 +381,13 @@ export function createPluginDatabaseCore<TContext = unknown>(
         const seededCurrentBundle = requestBundles.peek(args.bundleId);
         if (seededCurrentBundle || requestBundles.hasSeededBundles()) {
           return seededCurrentBundle;
+        }
+
+        if (isBuiltInBaselineBundleId(args.bundleId)) {
+          // A build-time generated built-in baseline id never has a bundle
+          // record, so skip database resolution instead of scanning for a
+          // record that cannot exist.
+          return null;
         }
 
         return requestBundles.getById(args.bundleId, () =>

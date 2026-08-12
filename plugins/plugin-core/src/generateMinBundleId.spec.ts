@@ -1,3 +1,4 @@
+import { isBuiltInBaselineBundleId, NIL_UUID } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
 import { generateMinBundleId } from "./generateMinBundleId";
@@ -39,5 +40,16 @@ describe("generateMinBundleId", () => {
 
     expect(timestamp).toBeGreaterThanOrEqual(startTime);
     expect(timestamp).toBeLessThanOrEqual(endTime);
+  });
+
+  it("should be detected as a built-in baseline bundle id", () => {
+    expect(isBuiltInBaselineBundleId(generateMinBundleId())).toBe(true);
+    expect(
+      isBuiltInBaselineBundleId("019e37fe-bd30-7000-8000-000000000000"),
+    ).toBe(true);
+    expect(isBuiltInBaselineBundleId(NIL_UUID)).toBe(false);
+    expect(
+      isBuiltInBaselineBundleId("019e3f00-90cc-70c9-bb2b-b7cf2acecf60"),
+    ).toBe(false);
   });
 });

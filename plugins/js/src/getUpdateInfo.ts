@@ -3,6 +3,7 @@ import {
   type Bundle,
   type FingerprintGetBundlesArgs,
   type GetBundlesArgs,
+  isBuiltInBaselineBundleId,
   isCohortEligibleForUpdate,
   NIL_UUID,
   type UpdateInfo,
@@ -61,15 +62,37 @@ const findLatestEligibleUpdateCandidate = (
   return updateCandidate;
 };
 
+const resolveRequestBundleId = (
+  bundles: Bundle[],
+  bundleId: string,
+): string => {
+  if (
+    isBuiltInBaselineBundleId(bundleId) &&
+    !bundles.some((bundle) => bundle.id === bundleId)
+  ) {
+    // A build-time generated built-in baseline id has no bundle record, so a
+    // fresh install reporting it must behave like the nil baseline instead of
+    // triggering rollback resolution against an id that cannot exist.
+    return NIL_UUID;
+  }
+  return bundleId;
+};
+
 export const getUpdateInfo = async (
   bundles: Bundle[],
   args: GetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   switch (args._updateStrategy) {
     case "appVersion":
-      return appVersionStrategy(bundles, args);
+      return appVersionStrategy(bundles, {
+        ...args,
+        bundleId: resolveRequestBundleId(bundles, args.bundleId),
+      });
     case "fingerprint":
-      return fingerprintStrategy(bundles, args);
+      return fingerprintStrategy(bundles, {
+        ...args,
+        bundleId: resolveRequestBundleId(bundles, args.bundleId),
+      });
     default:
       return null;
   }
