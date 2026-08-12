@@ -12,6 +12,7 @@ import { vi } from "vitest";
 
 const emptySnapshot = (): BlobDatabaseSnapshot => ({
   version: 2,
+  channels: [],
   bundles: [],
   bundle_patches: [],
   bundle_events: [],
@@ -104,11 +105,20 @@ export const createDatabasePluginHarness = () => {
       });
     },
     setBundles: (bundles: readonly Bundle[]): void => {
+      const channels = [...new Set(bundles.map(({ channel }) => channel))].map(
+        (name) => ({ id: `channel-${name}`, name }),
+      );
+      const channelIds = new Map(channels.map(({ id, name }) => [name, id]));
       storedObjects.clear();
       storedSnapshot = {
         version: 2,
-        bundles: bundles.map((bundle) => bundleToRow(bundle)),
+        channels,
+        bundles: bundles.map((bundle) =>
+          bundleToRow(bundle, channelIds.get(bundle.channel)!),
+        ),
         bundle_patches: bundles.flatMap(bundleToPatchRows),
+        bundle_events: [],
+        client_access_keys: [],
       };
     },
   };

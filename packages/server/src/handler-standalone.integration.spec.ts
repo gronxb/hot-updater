@@ -23,7 +23,7 @@ const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
 const api = createHotUpdater({
   database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
   basePath: "/hot-updater",
-  routes: { updateCheck: true, bundles: true },
+  features: { updateCheck: true, bundles: true },
 });
 const baseUrl = "http://localhost:3000";
 const server = setupServer();
@@ -52,6 +52,7 @@ beforeAll(async () => {
 afterEach(async () => {
   await db.exec("DELETE FROM bundle_patches");
   await db.exec("DELETE FROM bundles");
+  await db.exec("DELETE FROM channels");
 });
 
 afterAll(async () => {
@@ -168,7 +169,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     expect(production.data).toHaveLength(2);
   });
 
-  it("lists channels through handler GET /bundles/channels", async () => {
+  it("lists Channel rows through handler GET /channels", async () => {
     await api.insertBundle(
       createTestBundle({ id: uuidv7(), channel: "production" }),
     );
@@ -176,8 +177,56 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
     const channels = await createStandaloneClient().getChannels();
 
-    expect(channels).toEqual(expect.arrayContaining(["production", "beta"]));
-    expect(channels).toHaveLength(2);
+    expect(channels.map(({ name }) => name)).toEqual(
+      expect.arrayContaining(["production", "beta"]),
+    );
+    expect(channels.every(({ id }) => id.length > 0)).toBe(true);
+    expect(new Set(channels.map(({ name }) => name)).size).toBe(
+      channels.length,
+    );
+  });
+
+  it("creates and deletes an empty Channel through the canonical routes", async () => {
+    const client = createStandaloneClient();
+    const id = uuidv7();
+
+    await expect(
+      client.insertChannel({
+        row: { id, name: "preview" },
+        onConflict: "returnExisting",
+      }),
+    ).resolves.toEqual({
+      row: { id, name: "preview" },
+      inserted: true,
+    });
+    await expect(client.deleteChannel({ id })).resolves.toEqual({
+      deleted: true,
+    });
+    await expect(client.deleteChannel({ id })).resolves.toEqual({
+      deleted: false,
+      reason: "not_found",
+    });
+  });
+
+  it("refuses to delete a Channel referenced by a bundle", async () => {
+    const client = createStandaloneClient();
+    const bundleId = uuidv7();
+    await client.insertBundle(
+      createTestBundle({ id: bundleId, channel: "preview" }),
+    );
+    const channel = (await client.getChannels()).find(
+      ({ name }) => name === "preview",
+    );
+
+    expect(channel).toBeDefined();
+    if (!channel) throw new Error("preview Channel was not created");
+    await expect(client.deleteChannel({ id: channel.id })).resolves.toEqual({
+      deleted: false,
+      reason: "not_empty",
+    });
+    await expect(client.getBundleById(bundleId)).resolves.toMatchObject({
+      channel: "preview",
+    });
   });
 
   it("creates, retrieves, updates, and deletes through existing routes", async () => {
@@ -233,7 +282,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     const customApi = createHotUpdater({
       database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
       basePath: "/api/v2",
-      routes: { updateCheck: true, bundles: true },
+      features: { updateCheck: true, bundles: true },
     });
     server.use(
       http.all(`${baseUrl}/api/v2/*`, async ({ request }) => {
@@ -267,7 +316,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     const blobApi = createHotUpdater({
       database: createInMemoryBlobDatabase(store),
       basePath: "/blob-hot-updater",
-      routes: { updateCheck: true, bundles: true },
+      features: { updateCheck: true, bundles: true },
     });
     server.use(
       http.all(`${baseUrl}/blob-hot-updater/*`, async ({ request }) => {

@@ -36,7 +36,7 @@ describe("Detox Analytics HTTP client", () => {
     };
     const serverDatabase = createInMemoryDatabasePlugin();
     const deployedServer = createHotUpdater({
-      analytics: { queryAccess: "public" },
+      features: { analytics: { queryAccess: "public" } },
       basePath: "/hot-updater",
       database: serverDatabase,
     });

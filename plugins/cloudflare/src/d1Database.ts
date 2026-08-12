@@ -43,11 +43,9 @@ export const d1Database = (config: D1DatabaseConfig) => {
   );
   return createDatabasePlugin({
     name: "d1Database",
-    bundles: adapter.bundles,
-    bundlePatches: adapter.bundlePatches,
-    analytics: adapter.analytics,
-    clientAccessKeys: adapter.clientAccessKeys,
+    models: adapter.models,
+    queries: adapter.queries,
     commit: adapter.commit,
-    getChannels: adapter.getChannels,
+    ...(adapter.dispose ? { dispose: adapter.dispose } : {}),
   });
 };

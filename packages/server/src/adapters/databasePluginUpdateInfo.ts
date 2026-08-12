@@ -1,14 +1,11 @@
 import type { GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
-import type {
-  BundlePatchRow,
-  BundleRow,
-  DatabaseWhere,
-} from "@hot-updater/plugin-core";
+import type { BundlePatchRow, BundleRow } from "@hot-updater/plugin-core";
 import {
   filterCompatibleAppVersions,
   resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
+import type { DatabaseWhere } from "@hot-updater/plugin-core/internal";
 
 import { rowToBundle } from "../db/bundleRows";
 

@@ -19,9 +19,13 @@ const createInsertBundleQuery = (bundle: Bundle) => {
     : "NULL";
 
   return `
+    INSERT INTO channels (id, name)
+    VALUES ('${bundle.id}', '${bundle.channel}')
+    ON CONFLICT (name) DO NOTHING;
+
     INSERT INTO bundles (
       id, file_hash, platform, target_app_version,
-      should_force_update, enabled, git_commit_hash, message, channel, storage_uri, fingerprint_hash,
+      should_force_update, enabled, git_commit_hash, message, channel, channel_id, storage_uri, fingerprint_hash,
       rollout_cohort_count, target_cohorts
     ) VALUES (
       '${bundle.id}',
@@ -33,6 +37,7 @@ const createInsertBundleQuery = (bundle: Bundle) => {
       ${bundle.gitCommitHash ? `'${bundle.gitCommitHash}'` : "null"},
       ${bundle.message ? `'${bundle.message}'` : "null"},
       '${bundle.channel}',
+      (SELECT id FROM channels WHERE name = '${bundle.channel}'),
       '${bundle.storageUri}',
       ${bundle.fingerprintHash ? `'${bundle.fingerprintHash}'` : "null"},
       ${rolloutCohortCount},
@@ -159,6 +164,7 @@ describe("getUpdateInfo", () => {
   beforeEach(async () => {
     await db.exec("DELETE FROM bundle_patches");
     await db.exec("DELETE FROM bundles");
+    await db.exec("DELETE FROM channels");
   });
 
   afterAll(async () => {

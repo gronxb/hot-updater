@@ -2,9 +2,9 @@ import type {
   BundlePatchRow,
   BundleRow,
   BundleRowUpdate,
-  DatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 import { createUUIDv7 } from "@hot-updater/plugin-core";
+import type { DatabasePluginImplementation } from "@hot-updater/plugin-core/internal";
 import type { ClientSession, Collection } from "mongodb";
 
 import {
@@ -18,6 +18,7 @@ import {
 } from "./mongodbCollections";
 import {
   createMongoBundleWhere,
+  createMongoChannelWhere,
   createMongoClientAccessKeyWhere,
   createMongoPatchWhere,
 } from "./mongodbQuery";
@@ -35,6 +36,26 @@ const assertPatchReferences = async (
   if (count !== ids.length) {
     throw new MongoAdapterConstraintError(
       `patch "${patch.id}" references a missing bundle`,
+    );
+  }
+};
+
+const assertBundleChannel = async (
+  collections: MongoCollections,
+  bundle: Pick<BundleRow, "channel" | "channel_id">,
+  session?: ClientSession,
+): Promise<void> => {
+  const result = await collections.channels.updateOne(
+    createMongoChannelWhere([
+      { field: "id", value: bundle.channel_id },
+      { field: "name", value: bundle.channel },
+    ]),
+    { $set: { name: bundle.channel } },
+    mongoSessionOptions(session),
+  );
+  if (result.matchedCount !== 1) {
+    throw new MongoAdapterConstraintError(
+      "bundles.channel-and-channel_id.foreign-key",
     );
   }
 };
@@ -67,17 +88,55 @@ const targetConstraintFilter = (update: BundleRowUpdate): object => {
 
 type MongoWriteImplementation = Pick<
   DatabasePluginImplementation,
-  "create" | "delete" | "update"
+  "create" | "delete" | "deleteChannel" | "insertChannel" | "update"
 >;
 
 export const createMongoWrites = (
   collections: MongoCollections,
   session?: ClientSession,
 ): MongoWriteImplementation => ({
+  deleteChannel: async ({ id }) => {
+    if (session === undefined) {
+      throw new MongoAdapterConstraintError(
+        "channel deletion requires transaction support",
+      );
+    }
+    const locked = await collections.channels.updateOne(
+      { id },
+      { $set: { id } },
+      mongoSessionOptions(session),
+    );
+    if (locked.matchedCount !== 1) {
+      return { deleted: false, reason: "not_found" };
+    }
+    const referenced = await collections.bundles.countDocuments(
+      activeBundleFilter({ channel_id: id }),
+      mongoSessionOptions(session),
+    );
+    if (referenced > 0) return { deleted: false, reason: "not_empty" };
+    await collections.channels.deleteMany({ id }, mongoSessionOptions(session));
+    return { deleted: true };
+  },
+  insertChannel: async (input) => {
+    const result = await collections.channels.updateOne(
+      { name: input.row.name },
+      { $setOnInsert: input.row },
+      { upsert: true, ...mongoSessionOptions(session) },
+    );
+    const row = await collections.channels.findOne(
+      { name: input.row.name },
+      mongoSessionOptions(session),
+    );
+    if (row === null) {
+      throw new MongoAdapterConstraintError("channels.insert.return-existing");
+    }
+    return { row, inserted: result.upsertedCount === 1 };
+  },
   create: async (input) => {
     switch (input.model) {
       case "bundles":
         assertBundleTarget(input.data);
+        await assertBundleChannel(collections, input.data, session);
         await collections.bundles.insertOne(
           input.data,
           mongoSessionOptions(session),
@@ -106,7 +165,29 @@ export const createMongoWrites = (
         );
         return input.data;
       case "client_access_keys":
+        if (input.onConflict === "ignore") {
+          await collections.clientAccessKeys.updateOne(
+            { hash: input.data.hash },
+            { $setOnInsert: input.data },
+            { upsert: true, ...mongoSessionOptions(session) },
+          );
+          return input.data;
+        }
         await collections.clientAccessKeys.insertOne(
+          input.data,
+          mongoSessionOptions(session),
+        );
+        return input.data;
+      case "channels":
+        if (input.onConflict === "ignore") {
+          await collections.channels.updateOne(
+            { name: input.data.name },
+            { $setOnInsert: input.data },
+            { upsert: true, ...mongoSessionOptions(session) },
+          );
+          return input.data;
+        }
+        await collections.channels.insertOne(
           input.data,
           mongoSessionOptions(session),
         );
@@ -133,6 +214,19 @@ export const createMongoWrites = (
         "bundles.version-or-fingerprint.check",
       );
     }
+    const current = await collections.bundles.findOne(
+      activeBundleFilter(createMongoBundleWhere(input.where)),
+      {
+        projection: WITHOUT_INTERNAL_FIELDS,
+        ...mongoSessionOptions(session),
+      },
+    );
+    if (current === null) return null;
+    await assertBundleChannel(
+      collections,
+      { ...current, ...input.update },
+      session,
+    );
     return collections.bundles.findOneAndUpdate(
       activeBundleFilter({
         $and: [
@@ -189,6 +283,12 @@ export const createMongoWrites = (
         );
         return;
       }
+      case "channels":
+        await collections.channels.deleteMany(
+          createMongoChannelWhere(input.where),
+          mongoSessionOptions(session),
+        );
+        return;
     }
   },
 });

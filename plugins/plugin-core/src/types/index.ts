@@ -10,9 +10,7 @@ export type {
 } from "@hot-updater/core";
 
 export * from "./utils";
-export * from "./database";
-export * from "./databaseFields";
-export * from "./databasePlugin";
+export * from "./public";
 
 export interface BasePluginArgs {
   cwd: string;

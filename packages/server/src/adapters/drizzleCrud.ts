@@ -1,7 +1,11 @@
 import {
   DatabasePluginInputError,
-  type TransactionDatabasePluginImplementation,
+  type BundleRow,
 } from "@hot-updater/plugin-core";
+import type {
+  DatabasePluginImplementation,
+  TransactionDatabasePluginImplementation,
+} from "@hot-updater/plugin-core/internal";
 import {
   and,
   asc,
@@ -12,6 +16,10 @@ import {
   type SQLWrapper,
 } from "drizzle-orm";
 
+import {
+  isChannelDeleteReferencedError,
+  translateChannelDeleteError,
+} from "./databaseConstraintErrors";
 import {
   fromStoredBundleRow,
   toStoredBundleRow,
@@ -56,6 +64,41 @@ export const getDrizzleColumn = (
   return value;
 };
 
+const executeInsert = async (
+  db: DrizzleDB,
+  provider: DrizzleProvider,
+  table: DrizzleTable,
+  data: unknown,
+  onConflict: "ignore" | undefined,
+): Promise<void> => {
+  const builder = db.insert(table);
+  const insert = builder.values(data);
+  if (onConflict === undefined) {
+    await insert.execute();
+    return;
+  }
+  const ignored =
+    provider === "mysql"
+      ? builder.ignore?.().values(data)
+      : insert.onConflictDoNothing?.();
+  if (ignored === undefined) throw new DrizzleAdapterInvariantError();
+  await ignored.execute();
+};
+
+const assertBundleChannel = async (
+  db: DrizzleDB,
+  channels: DrizzleTable,
+  bundle: Pick<BundleRow, "channel" | "channel_id">,
+): Promise<void> => {
+  const row = await db.query.channels.findFirst({
+    where: and(
+      eq(getDrizzleColumn(channels, "id"), bundle.channel_id),
+      eq(getDrizzleColumn(channels, "name"), bundle.channel),
+    ),
+  });
+  if (row === undefined) throw new DrizzleAdapterInvariantError();
+};
+
 const toOrderBy = (
   table: DrizzleTable,
   input: {
@@ -88,28 +131,84 @@ const toOrderBy = (
 export const createDrizzleCrud = (
   db: DrizzleDB,
   provider: DrizzleProvider,
-): TransactionDatabasePluginImplementation => {
+): TransactionDatabasePluginImplementation &
+  Pick<DatabasePluginImplementation, "deleteChannel" | "insertChannel"> => {
   const bundles = getDrizzleTable(db, "bundles");
   const patches = getDrizzleTable(db, "bundle_patches");
   const events = getDrizzleTable(db, "bundle_events");
+  const channels = getDrizzleTable(db, "channels");
   const clientAccessKeys = getDrizzleTable(db, "client_access_keys");
   return {
+    async deleteChannel({ id }) {
+      const idPredicate = eq(getDrizzleColumn(channels, "id"), id);
+      const existing = await db.query.channels.findFirst({
+        where: idPredicate,
+      });
+      if (existing === undefined) {
+        return { deleted: false, reason: "not_found" };
+      }
+      const referenced = await db.$count(
+        bundles,
+        eq(getDrizzleColumn(bundles, "channel_id"), id),
+      );
+      if (referenced > 0) return { deleted: false, reason: "not_empty" };
+      try {
+        await db.delete(channels).where(idPredicate).execute();
+      } catch (error) {
+        if (isChannelDeleteReferencedError(error)) {
+          return { deleted: false, reason: "not_empty" };
+        }
+        throw error;
+      }
+      return { deleted: true };
+    },
+    async insertChannel(input) {
+      const before = await db.query.channels.findFirst({
+        where: eq(getDrizzleColumn(channels, "name"), input.row.name),
+      });
+      if (before !== undefined) return { row: before, inserted: false };
+      await executeInsert(db, provider, channels, input.row, "ignore");
+      const row = await db.query.channels.findFirst({
+        where: eq(getDrizzleColumn(channels, "name"), input.row.name),
+      });
+      if (row === undefined) throw new DrizzleAdapterInvariantError();
+      return { row, inserted: row.id === input.row.id };
+    },
     async create(input) {
       switch (input.model) {
         case "bundles":
-          await db
-            .insert(bundles)
-            .values(toStoredBundleRow(input.data, provider))
-            .execute();
+          await assertBundleChannel(db, channels, input.data);
+          await executeInsert(
+            db,
+            provider,
+            bundles,
+            toStoredBundleRow(input.data, provider),
+            undefined,
+          );
           return input.data;
         case "bundle_patches":
-          await db.insert(patches).values(input.data).execute();
+          await executeInsert(db, provider, patches, input.data, undefined);
           return input.data;
         case "bundle_events":
-          await db.insert(events).values(input.data).execute();
+          await executeInsert(db, provider, events, input.data, undefined);
           return input.data;
         case "client_access_keys":
-          await db.insert(clientAccessKeys).values(input.data).execute();
+          await executeInsert(
+            db,
+            provider,
+            clientAccessKeys,
+            input.data,
+            input.onConflict,
+          );
+          return input.data;
+        case "channels":
+          await executeInsert(
+            db,
+            provider,
+            channels,
+            input.data,
+            input.onConflict,
+          );
           return input.data;
       }
     },
@@ -140,6 +239,14 @@ export const createDrizzleCrud = (
       ) {
         throw new DrizzleAdapterInvariantError();
       }
+      const currentStored = await db.query.bundles.findFirst({
+        where: eq(getDrizzleColumn(bundles, "id"), selector.value),
+      });
+      if (currentStored === undefined) return null;
+      await assertBundleChannel(db, channels, {
+        ...fromStoredBundleRow(currentStored),
+        ...input.update,
+      });
       const idPredicate = eq(getDrizzleColumn(bundles, "id"), selector.value);
       const targetPredicate =
         input.update.target_app_version === null &&
@@ -186,6 +293,16 @@ export const createDrizzleCrud = (
           await db.delete(patches).where(where).execute();
           return;
         }
+        case "channels": {
+          const where = buildDrizzleWhere(provider, channels, input.where);
+          if (where === undefined) throw new DrizzleAdapterInvariantError();
+          try {
+            await db.delete(channels).where(where).execute();
+          } catch (error) {
+            translateChannelDeleteError(error);
+          }
+          return;
+        }
       }
     },
     async count(input) {
@@ -225,6 +342,12 @@ export const createDrizzleCrud = (
               where: buildDrizzleWhere(provider, clientAccessKeys, input.where),
             })) ?? null
           );
+        case "channels":
+          return (
+            (await db.query.channels.findFirst({
+              where: buildDrizzleWhere(provider, channels, input.where),
+            })) ?? null
+          );
       }
     },
     async findMany(input) {
@@ -259,6 +382,13 @@ export const createDrizzleCrud = (
           return db.query.bundle_patches.findMany({
             where: buildDrizzleWhere(provider, patches, input.where),
             orderBy: toOrderBy(patches, input),
+            limit: input.limit,
+            offset: input.offset,
+          });
+        case "channels":
+          return db.query.channels.findMany({
+            where: buildDrizzleWhere(provider, channels, input.where),
+            orderBy: toOrderBy(channels, input),
             limit: input.limit,
             offset: input.offset,
           });

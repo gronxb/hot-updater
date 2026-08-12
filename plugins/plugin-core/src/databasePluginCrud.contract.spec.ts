@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createDatabasePluginCrud } from "./databasePluginCrud";
-import type { DatabasePluginImplementation } from "./types";
+import type { DatabasePluginImplementation } from "./types/internal";
 
 class MissingPluginOperationError extends Error {}
 
@@ -16,6 +16,8 @@ const createMethods = () => ({
   count: unimplemented,
   findOne: unimplemented,
   findMany: unimplemented,
+  insertChannel: unimplemented,
+  deleteChannel: unimplemented,
 });
 
 const createValidatedCrud = (options: {
@@ -32,6 +34,7 @@ const bundleRow = {
   git_commit_hash: null,
   message: null,
   channel: "production",
+  channel_id: "channel-production",
   storage_uri: "storage://bundle-1.zip",
   target_app_version: "1.0.0",
   fingerprint_hash: null,

@@ -13,25 +13,33 @@ vi.mock("@hot-updater/cli-tools", () => ({
 const createTestDatabasePlugin = (name: string) =>
   createDatabasePlugin({
     name,
-    bundles: {
-      findById: vi.fn(async () => null),
-      findMany: vi.fn(async () => []),
-      count: vi.fn(async () => 0),
+    models: {
+      bundles: {
+        findById: vi.fn(async () => null),
+        findMany: vi.fn(async () => []),
+        count: vi.fn(async () => 0),
+      },
+      bundlePatches: {
+        findByBundleIds: vi.fn(async () => []),
+      },
+      channels: {
+        insert: vi.fn(async ({ row }) => ({ row, inserted: true })),
+        list: vi.fn(async () => ({ channels: [] })),
+        delete: vi.fn(async () => ({ deleted: true as const })),
+      },
+      analytics: {
+        append: vi.fn(async () => undefined),
+        scan: vi.fn(async () => []),
+      },
+      clientAccessKeys: {
+        create: vi.fn(async () => "created" as const),
+        findByHash: vi.fn(async () => null),
+        list: vi.fn(async () => []),
+        revoke: vi.fn(async () => null),
+      },
     },
-    bundlePatches: {
-      findByBundleIds: vi.fn(async () => []),
-    },
-    analytics: {
-      append: vi.fn(async () => undefined),
-      scan: vi.fn(async () => []),
-    },
-    clientAccessKeys: {
-      create: vi.fn(async () => "created" as const),
-      findByHash: vi.fn(async () => null),
-      list: vi.fn(async () => []),
-      revoke: vi.fn(async () => null),
-    },
-    commit: vi.fn(async () => ({ applied: true })),
+    queries: {},
+    commit: vi.fn(async () => ({ committed: true as const })),
   });
 
 function createStoragePlugin(): NodeStoragePlugin {

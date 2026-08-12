@@ -1,10 +1,9 @@
+import type { BundlePatchRow, BundleRow } from "@hot-updater/plugin-core";
+import { bundleToPatchRows } from "@hot-updater/plugin-core";
 import type {
-  BundlePatchRow,
-  BundleRow,
   DatabaseImplementationResult,
   DatabaseModel,
-} from "@hot-updater/plugin-core";
-import { bundleToPatchRows, bundleToRow } from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 
 import type { StandaloneBundleRemote } from "./standaloneBundleRemote";
 
@@ -20,8 +19,7 @@ export async function loadRows(
   remote: StandaloneBundleRemote,
   model: DatabaseModel,
 ): Promise<DatabaseImplementationResult[]> {
-  const bundles = await remote.loadBundles();
   return model === "bundles"
-    ? bundles.map(bundleToRow)
-    : bundles.flatMap(bundleToPatchRows);
+    ? remote.loadBundleRows()
+    : (await remote.loadBundles()).flatMap(bundleToPatchRows);
 }

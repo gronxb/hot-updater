@@ -37,7 +37,7 @@ describe("analytics runtime input validation", () => {
   it("composes Analytics from the official database domain", async () => {
     // Given
     const database = createDatabase();
-    const scan = vi.spyOn(database.analytics, "scan");
+    const scan = vi.spyOn(database.models.analytics, "scan");
 
     // When
     const runtime = createRuntimeHotUpdater({

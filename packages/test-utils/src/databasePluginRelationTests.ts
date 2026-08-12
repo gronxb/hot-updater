@@ -1,27 +1,30 @@
-import type {
-  DatabaseBundleMutation,
-  DatabasePlugin,
-} from "@hot-updater/plugin-core";
+import type { DatabaseChange, DatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import type { DatabasePluginTestState } from "./databasePluginTestRunner";
 import {
   createBundlePatchRowFixture,
   createBundleRowFixture,
+  createChannelRowFixture,
 } from "./databaseTestFixtures";
 
 type RelationTestState = DatabasePluginTestState<DatabasePlugin>;
 
-const commit = (plugin: DatabasePlugin, mutation: DatabaseBundleMutation) =>
-  plugin.commit({ mutations: [mutation] });
+const commit = (plugin: DatabasePlugin, ...changes: DatabaseChange[]) =>
+  plugin.commit({ changes });
 
 const insertRow = (plugin: DatabasePlugin, suffix: string) => {
   const row = createBundleRowFixture(suffix);
-  return commit(plugin, {
-    operation: "insert",
-    bundleId: row.id,
-    changes: [{ table: "bundles", operation: "insert", row }],
-  }).then(() => row);
+  return commit(
+    plugin,
+    {
+      model: "channels",
+      operation: "insert",
+      row: createChannelRowFixture(row.channel),
+      onConflict: "ignore",
+    },
+    { model: "bundles", operation: "insert", row },
+  ).then(() => row);
 };
 
 export const registerDatabasePluginRelationTests = (
@@ -35,21 +38,20 @@ export const registerDatabasePluginRelationTests = (
       const patch = createBundlePatchRowFixture("71", owner.id, base.id, 1);
 
       await expect(
-        commit(plugin, {
-          operation: "insert",
-          bundleId: owner.id,
-          changes: [
-            { table: "bundles", operation: "insert", row: owner },
-            { table: "bundle_patches", operation: "insert", row: patch },
-          ],
-        }),
-      ).resolves.toEqual({ applied: true });
-      await expect(plugin.bundles.findById(owner.id)).resolves.toEqual(owner);
+        commit(
+          plugin,
+          { model: "bundles", operation: "insert", row: owner },
+          { model: "bundlePatches", operation: "insert", row: patch },
+        ),
+      ).resolves.toEqual({ committed: true });
+      await expect(plugin.models.bundles.findById(owner.id)).resolves.toEqual(
+        owner,
+      );
       await expect(
-        plugin.bundlePatches.findByBundleIds([owner.id]),
+        plugin.models.bundlePatches.findByBundleIds([owner.id]),
       ).resolves.toEqual([patch]);
       await expect(
-        plugin.bundlePatches.findByBundleIds([base.id]),
+        plugin.models.bundlePatches.findByBundleIds([base.id]),
       ).resolves.toEqual([]);
     });
 
@@ -63,16 +65,15 @@ export const registerDatabasePluginRelationTests = (
       );
 
       await expect(
-        commit(plugin, {
-          operation: "insert",
-          bundleId: owner.id,
-          changes: [
-            { table: "bundles", operation: "insert", row: owner },
-            { table: "bundle_patches", operation: "insert", row: patch },
-          ],
-        }),
+        commit(
+          plugin,
+          { model: "bundles", operation: "insert", row: owner },
+          { model: "bundlePatches", operation: "insert", row: patch },
+        ),
       ).rejects.toThrow();
-      await expect(plugin.bundles.findById(owner.id)).resolves.toBeNull();
+      await expect(
+        plugin.models.bundles.findById(owner.id),
+      ).resolves.toBeNull();
     });
 
     it("cascades patch deletion from either referenced bundle", async () => {
@@ -80,51 +81,24 @@ export const registerDatabasePluginRelationTests = (
       const base = await insertRow(plugin, "91");
       const owner = createBundleRowFixture("92");
       const patch = createBundlePatchRowFixture("93", owner.id, base.id);
-      await commit(plugin, {
-        operation: "insert",
-        bundleId: owner.id,
-        changes: [
-          { table: "bundles", operation: "insert", row: owner },
-          { table: "bundle_patches", operation: "insert", row: patch },
-        ],
-      });
+      await commit(
+        plugin,
+        { model: "bundles", operation: "insert", row: owner },
+        { model: "bundlePatches", operation: "insert", row: patch },
+      );
 
       await commit(plugin, {
+        model: "bundles",
         operation: "delete",
-        bundleId: base.id,
-        changes: [{ table: "bundles", operation: "delete", id: base.id }],
+        where: { id: base.id },
       });
 
       await expect(
-        plugin.bundlePatches.findByBundleIds([owner.id]),
+        plugin.models.bundlePatches.findByBundleIds([owner.id]),
       ).resolves.toEqual([]);
-      await expect(plugin.bundles.findById(owner.id)).resolves.toEqual(owner);
-    });
-  });
-
-  describe("channel aggregate", () => {
-    it("returns distinct sorted channels when the provider has a fast path", async (context) => {
-      const plugin = state.getPlugin();
-      if (plugin.getChannels === undefined) {
-        context.skip();
-        return;
-      }
-      for (const row of [
-        createBundleRowFixture("51", "staging"),
-        createBundleRowFixture("52", "production"),
-        createBundleRowFixture("53", "staging"),
-      ]) {
-        await commit(plugin, {
-          operation: "insert",
-          bundleId: row.id,
-          changes: [{ table: "bundles", operation: "insert", row }],
-        });
-      }
-
-      await expect(plugin.getChannels()).resolves.toEqual([
-        "production",
-        "staging",
-      ]);
+      await expect(plugin.models.bundles.findById(owner.id)).resolves.toEqual(
+        owner,
+      );
     });
   });
 };

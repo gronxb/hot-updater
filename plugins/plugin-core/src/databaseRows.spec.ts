@@ -28,14 +28,16 @@ const createBundle = (id: string): Bundle => ({
 });
 
 describe("database rows", () => {
+  const toRow = (bundle: Bundle) => bundleToRow(bundle, "channel-production");
+
   it("defaults missing metadata but rejects explicit null metadata", () => {
     const missingMetadata = createBundle("missing-metadata");
     Reflect.deleteProperty(missingMetadata, "metadata");
     const nullMetadata = createBundle("null-metadata");
     Reflect.set(nullMetadata, "metadata", null);
 
-    expect(bundleToRow(missingMetadata).metadata).toEqual({});
-    expect(() => bundleToRow(nullMetadata)).toThrowError(
+    expect(toRow(missingMetadata).metadata).toEqual({});
+    expect(() => toRow(nullMetadata)).toThrowError(
       expect.objectContaining({ code: "invalid-data" }),
     );
   });
@@ -45,7 +47,7 @@ describe("database rows", () => {
       app_version: "1.0.0",
       release: { flags: [true, null, 3, "stable"] },
     } as const;
-    const row = { ...bundleToRow(createBundle("metadata")), metadata };
+    const row = { ...toRow(createBundle("metadata")), metadata };
 
     expect(rowToBundle(row).metadata).toEqual(metadata);
   });
@@ -72,9 +74,9 @@ describe("database rows", () => {
     };
     const patchRows = bundleToPatchRows(bundle).toReversed();
 
-    const [hydrated] = rowsToBundles([bundleToRow(bundle)], patchRows, [
-      bundleToRow(firstBase),
-      bundleToRow(secondBase),
+    const [hydrated] = rowsToBundles([toRow(bundle)], patchRows, [
+      toRow(firstBase),
+      toRow(secondBase),
     ]);
 
     expect(hydrated?.patches).toEqual(bundle.patches);
@@ -106,7 +108,7 @@ describe("database rows", () => {
     }
 
     const hydrate = () =>
-      rowsToBundles([bundleToRow(bundle)], [patch, patch], [bundleToRow(base)]);
+      rowsToBundles([toRow(bundle)], [patch, patch], [toRow(base)]);
 
     expect(hydrate).toThrowError(
       expect.objectContaining({
@@ -128,8 +130,8 @@ describe("database rows", () => {
       order_index: 0,
     } as const;
 
-    const orphanOwner = () => rowsToBundles([], [patch], [bundleToRow(base)]);
-    const orphanBase = () => rowsToBundles([bundleToRow(target)], [patch], []);
+    const orphanOwner = () => rowsToBundles([], [patch], [toRow(base)]);
+    const orphanBase = () => rowsToBundles([toRow(target)], [patch], []);
 
     expect(orphanOwner).toThrowError(
       expect.objectContaining({

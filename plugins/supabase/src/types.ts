@@ -2,7 +2,11 @@ import type {
   BundlePatchRow,
   BundleRow,
   BundleEventRowBase,
+  ChannelRow,
+  ChannelDeleteResult,
   ClientAccessKeyRow,
+  DatabaseCommit,
+  DatabaseCommitResult,
   Platform,
 } from "@hot-updater/plugin-core";
 
@@ -22,6 +26,10 @@ export type SupabaseBundleEventRow = BundleEventRowBase & {
 
 export type SupabaseClientAccessKeyRow = {
   [TField in keyof ClientAccessKeyRow]: ClientAccessKeyRow[TField];
+};
+
+export type SupabaseChannelRow = {
+  [TField in keyof ChannelRow]: ChannelRow[TField];
 };
 
 type Table<TRow> = {
@@ -45,6 +53,7 @@ export type Database = {
     Tables: {
       bundles: Table<SupabaseBundleRow>;
       bundle_patches: Table<SupabaseBundlePatchRow>;
+      channels: Table<SupabaseChannelRow>;
       bundle_events: Table<SupabaseBundleEventRow>;
       client_access_keys: Table<SupabaseClientAccessKeyRow>;
     };
@@ -52,31 +61,15 @@ export type Database = {
     Functions: {
       hot_updater_commit: {
         Args: {
-          p_mutations: readonly unknown[];
+          p_commit: DatabaseCommit;
         };
-        Returns: {
-          readonly applied: boolean;
-          readonly missingBundleId?: string;
-        };
+        Returns: DatabaseCommitResult;
       };
-      hot_updater_create_bundle_with_patches: {
+      hot_updater_delete_channel: {
         Args: {
-          p_bundle: SupabaseBundleRow;
-          p_patches: readonly SupabaseBundlePatchRow[];
+          p_id: string;
         };
-        Returns: undefined;
-      };
-      hot_updater_update_bundle_with_patches: {
-        Args: {
-          p_bundle_id: string;
-          p_update: Partial<SupabaseBundleRow>;
-          p_patches: readonly SupabaseBundlePatchRow[];
-        };
-        Returns: boolean;
-      };
-      get_channels: {
-        Args: Record<never, never>;
-        Returns: { readonly channel: string }[];
+        Returns: ChannelDeleteResult;
       };
       get_target_app_version_list: {
         Args: {

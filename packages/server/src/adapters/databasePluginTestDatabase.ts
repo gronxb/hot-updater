@@ -1,4 +1,8 @@
 export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
+  create table channels (
+    id text primary key,
+    name text not null unique
+  );
   create table bundles (
     id text primary key,
     platform text not null,
@@ -8,6 +12,7 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     git_commit_hash text,
     message text,
     channel text not null default 'production',
+    channel_id text not null references channels(id),
     storage_uri text not null,
     target_app_version text,
     fingerprint_hash text,
@@ -60,4 +65,5 @@ export const DATABASE_PLUGIN_TEST_RESET_SQL = `
   delete from client_access_keys;
   delete from bundle_patches;
   delete from bundles;
+  delete from channels;
 `;

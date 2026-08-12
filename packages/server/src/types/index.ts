@@ -1,4 +1,5 @@
 import type { Bundle } from "@hot-updater/core";
+import type { ChannelRow } from "@hot-updater/plugin-core";
 
 export type { Bundle } from "@hot-updater/core";
 export type { HotUpdaterAPI } from "../createHotUpdaterCore";
@@ -29,5 +30,5 @@ export interface Paginated<TData> extends DataResponse<TData> {
 export type PaginatedResult = Paginated<Bundle[]>;
 
 export type ChannelsResponse = DataResponse<{
-  channels: string[];
+  channels: readonly ChannelRow[];
 }>;

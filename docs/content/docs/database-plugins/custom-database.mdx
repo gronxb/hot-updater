@@ -18,23 +18,27 @@ npm install @hot-updater/test-utils vitest --save-dev
 
 ## Contract
 
-`createDatabasePlugin` accepts one flat object. The four persistence domains
-and `commit` are required; optimized reads and cleanup are optional.
+`createDatabasePlugin` groups the five official persistence models and keeps
+cross-model reads separate. Models and `commit` are required; the optimized
+update query and cleanup are optional.
 
 ```ts
 createDatabasePlugin({
   name,
 
-  bundles,
-  bundlePatches,
-  analytics,
-  clientAccessKeys,
+  models: {
+    bundles,
+    bundlePatches,
+    channels,
+    analytics,
+    clientAccessKeys,
+  },
+
+  queries: {
+    getUpdateInfo,
+  },
 
   commit,
-
-  getChannels,
-  getUpdateInfo,
-
   dispose,
 });
 ```
@@ -45,8 +49,9 @@ database provider owns the physical storage for all official domains.
 
 The fixed models are:
 
-- `bundles`: one row per OTA bundle.
+- `bundles`: one row per OTA bundle, including `channel` and `channel_id`.
 - `bundle_patches`: patch artifacts owned by bundles.
+- `channels`: persistent `{ id, name }` deployment channels.
 - `bundle_events`: Analytics events in stable cursor order.
 - `client_access_keys`: hashed client access-key records.
 - `private_hot_updater_settings`: the schema-version marker managed by the
@@ -62,10 +67,11 @@ Use the exported interfaces instead of redeclaring them:
 
 ```ts
 import type {
-  AnalyticsTable,
-  BundlePatchTable,
-  BundleTable,
-  ClientAccessKeyTable,
+  AnalyticsModel,
+  BundleModel,
+  BundlePatchModel,
+  ChannelModel,
+  ClientAccessKeyModel,
   DatabaseCommit,
   DatabaseCommitResult,
 } from "@hot-updater/plugin-core";
@@ -74,9 +80,9 @@ import type {
 ### Bundles
 
 ```ts
-interface BundleTable {
+interface BundleModel {
   findById(id: string): Promise<BundleRow | null>;
-  findMany(query: BundleTableQuery): Promise<readonly BundleRow[]>;
+  findMany(query: BundleModelQuery): Promise<readonly BundleRow[]>;
   count(where?: DatabaseBundleQueryWhere): Promise<number>;
 }
 ```
@@ -87,7 +93,7 @@ explicit order, limit, and offset. An empty `id.in` filter returns no rows.
 ### Bundle patches
 
 ```ts
-interface BundlePatchTable {
+interface BundlePatchModel {
   findByBundleIds(
     bundleIds: readonly string[],
   ): Promise<readonly BundlePatchRow[]>;
@@ -97,10 +103,36 @@ interface BundlePatchTable {
 Return every patch whose `bundle_id` is in the requested set. Return an empty
 array without I/O when the input set is empty.
 
+### Channels
+
+```ts
+interface ChannelModel {
+  insert(input: {
+    row: { id: string; name: string };
+    onConflict: "returnExisting";
+  }): Promise<{
+    row: ChannelRow;
+    inserted: boolean;
+  }>;
+  list(input: {}): Promise<{ channels: readonly ChannelRow[] }>;
+  delete(input: {
+    id: string;
+  }): Promise<
+    { deleted: true } | { deleted: false; reason: "not_found" | "not_empty" }
+  >;
+}
+```
+
+`name` is unique. A concurrent conflict returns the canonical stored row.
+`list` reads Channel storage directly, orders by name, and never derives
+channels from bundle rows. Empty channels remain after their last bundle is
+deleted until an explicit Channel deletion. The reference check and deletion
+must be atomic.
+
 ### Analytics
 
 ```ts
-interface AnalyticsTable {
+interface AnalyticsModel {
   append(row: BundleEventRow): Promise<void>;
   scan(input: AnalyticsScanInput): Promise<readonly BundleEventRow[]>;
 }
@@ -113,7 +145,7 @@ and never returns more than `limit` rows.
 ### Client access keys
 
 ```ts
-interface ClientAccessKeyTable {
+interface ClientAccessKeyModel {
   create(row: ClientAccessKeyRow): Promise<"created" | "existing">;
   findByHash(hash: string): Promise<ClientAccessKeyRow | null>;
   list(): Promise<readonly ClientAccessKeyRow[]>;
@@ -130,34 +162,34 @@ when the ID does not exist.
 
 ## Atomic commit
 
-`commit` receives one envelope containing every bundle mutation in the deploy
-operation:
+`commit` receives one declarative envelope whose changes may address any
+official model:
 
 ```ts
-const commit = async (
-  input: DatabaseCommit,
-): Promise<DatabaseCommitResult> => {
+const commit = async (input: DatabaseCommit): Promise<DatabaseCommitResult> => {
   return db.transaction(async (tx) => {
-    return applyBundleMutations(tx, input.mutations);
+    return applyChanges(tx, input.changes);
   });
 };
 ```
 
-The complete envelope must be atomic across `bundles` and `bundle_patches`.
-This is what makes a multi-platform deploy safe. If any mutation fails, none
-of the changes may remain visible.
+The complete envelope must be atomic. Changes use only `insert`, `update`, and
+`delete`. Model methods such as `append` and `revoke` are not commit operation
+names. If any change fails, none of the changes may remain visible.
 
-For an update whose bundle ID does not exist, return:
+For an expected missing update target, return its source index without naming
+a particular domain:
 
 ```ts
 {
-  applied: false,
-  missingBundleId: bundleId,
+  committed: false,
+  conflict: { changeIndex, reason: "not_found" },
 }
 ```
 
-Do not add a separate batch method. `DatabaseCommit.mutations` is already the
-batch and transaction boundary.
+Do not add a separate batch method. `DatabaseCommit.changes` is already the
+batch and transaction boundary. A provider without an atomic primitive must
+reject a multi-change commit before its first write.
 
 ## Create a provider
 
@@ -167,10 +199,11 @@ and pass the ports directly to `createDatabasePlugin`:
 ```ts title="myDatabase.ts"
 import {
   createDatabasePlugin,
-  type AnalyticsTable,
-  type BundlePatchTable,
-  type BundleTable,
-  type ClientAccessKeyTable,
+  type AnalyticsModel,
+  type BundleModel,
+  type BundlePatchModel,
+  type ChannelModel,
+  type ClientAccessKeyModel,
   type DatabaseCommit,
   type DatabaseCommitResult,
 } from "@hot-updater/plugin-core";
@@ -180,28 +213,28 @@ interface MyDatabaseConfig {
 }
 
 export const myDatabase = ({ db }: MyDatabaseConfig) => {
-  const bundles: BundleTable = createBundleTable(db);
-  const bundlePatches: BundlePatchTable = createBundlePatchTable(db);
-  const analytics: AnalyticsTable = createAnalyticsTable(db);
-  const clientAccessKeys: ClientAccessKeyTable =
-    createClientAccessKeyTable(db);
+  const bundles: BundleModel = createBundleModel(db);
+  const bundlePatches: BundlePatchModel = createBundlePatchModel(db);
+  const channels: ChannelModel = createChannelModel(db);
+  const analytics: AnalyticsModel = createAnalyticsModel(db);
+  const clientAccessKeys: ClientAccessKeyModel = createClientAccessKeyModel(db);
 
-  const commit = (
-    input: DatabaseCommit,
-  ): Promise<DatabaseCommitResult> =>
-    db.transaction((transaction) =>
-      applyBundleMutations(transaction, input.mutations),
-    );
+  const commit = (input: DatabaseCommit): Promise<DatabaseCommitResult> =>
+    db.transaction((transaction) => applyChanges(transaction, input.changes));
 
   return createDatabasePlugin({
     name: "my-database",
-    bundles,
-    bundlePatches,
-    analytics,
-    clientAccessKeys,
+    models: {
+      bundles,
+      bundlePatches,
+      channels,
+      analytics,
+      clientAccessKeys,
+    },
+    queries: {
+      getUpdateInfo: (input) => db.findUpdateInfo(input),
+    },
     commit,
-    getChannels: () => db.findDistinctBundleChannels(),
-    getUpdateInfo: (input) => db.findUpdateInfo(input),
     dispose: () => db.close(),
   });
 };
@@ -211,11 +244,6 @@ The helper names in this example represent your database mapping. Keep SQL
 values parameterized and preserve the canonical snake-case row fields.
 
 ## Optional methods
-
-### `getChannels`
-
-Use `getChannels` when the backend can return sorted, distinct bundle channels
-more efficiently. If omitted, Hot Updater derives channels from bundle pages.
 
 ### `getUpdateInfo`
 
@@ -291,14 +319,12 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-Keep all five physical models in sync with the installed Hot Updater schema
+Keep all official models in sync with the installed Hot Updater schema
 version.
 
 ## Standalone repositories
 
-A standalone bundle repository may implement `BundleRepository` without the
-Analytics or client access-key domains. It is not a database plugin and must
-not be passed to `createHotUpdater` as one.
-
-Use `createBlobDatabasePlugin` when a real database provider stores and
-atomically replaces the complete official snapshot.
+A standalone management repository implements `BundleRepository` with bundle,
+patch, and Channel models. It intentionally omits Analytics and client access
+keys, is not a database plugin, and must not be passed to `createHotUpdater`
+as one.

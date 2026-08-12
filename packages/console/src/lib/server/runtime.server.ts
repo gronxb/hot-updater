@@ -1,5 +1,5 @@
 import type {
-  AnalyticsTable,
+  AnalyticsModel,
   BundleRepository,
 } from "@hot-updater/plugin-core";
 import {
@@ -27,7 +27,11 @@ export type InstallationHistoryResult =
 export function createRuntimeHotUpdater(config: {
   readonly database: BundleRepository;
 }): AnalyticsProvider | null {
-  const analytics: unknown = Reflect.get(config.database, "analytics");
+  const models: unknown = Reflect.get(config.database, "models");
+  const analytics: unknown =
+    typeof models === "object" && models !== null
+      ? Reflect.get(models, "analytics")
+      : undefined;
   if (
     typeof analytics !== "object" ||
     analytics === null ||
@@ -36,7 +40,7 @@ export function createRuntimeHotUpdater(config: {
   ) {
     return null;
   }
-  return createAnalyticsProvider(analytics as AnalyticsTable);
+  return createAnalyticsProvider(analytics as AnalyticsModel);
 }
 
 const providerMethods = [

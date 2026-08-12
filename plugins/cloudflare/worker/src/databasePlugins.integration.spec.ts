@@ -1,6 +1,16 @@
+import type { BundleRow, ChannelRow } from "@hot-updater/plugin-core";
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
-import { inject, vi } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  inject,
+  it,
+  vi,
+} from "vitest";
 
 import { d1WorkerDatabase } from "../../src/cloudflareWorkerDatabase";
 import { d1Database } from "../../src/d1Database";
@@ -57,10 +67,36 @@ vi.mock("cloudflare", () => ({
 const reset = async (): Promise<void> => {
   await getDb()
     .prepare(
-      "DELETE FROM bundle_events; DELETE FROM client_access_keys; DELETE FROM bundle_patches; DELETE FROM bundles;",
+      "DELETE FROM bundle_events; DELETE FROM client_access_keys; DELETE FROM bundle_patches; DELETE FROM bundles; DELETE FROM channels;",
     )
     .run();
 };
+
+const createChannelRow = (name: string): ChannelRow => ({
+  id: `channel-${name}`,
+  name,
+});
+
+const createBundleRow = (channel: ChannelRow): BundleRow => ({
+  id: "00000000-0000-0000-0000-000000000902",
+  platform: "ios",
+  should_force_update: false,
+  enabled: true,
+  file_hash: "hash",
+  git_commit_hash: null,
+  message: null,
+  channel: channel.name,
+  channel_id: channel.id,
+  storage_uri: "storage://bundle",
+  target_app_version: "1.0.0",
+  fingerprint_hash: null,
+  metadata: {},
+  rollout_cohort_count: 1000,
+  target_cohorts: null,
+  manifest_storage_uri: null,
+  manifest_file_hash: null,
+  asset_base_storage_uri: null,
+});
 
 setupDatabasePluginTestSuite({
   name: "cloudflare d1 http fixed-model database plugin",
@@ -86,4 +122,116 @@ setupDatabasePluginTestSuite({
   dispose: () => {
     state.db = undefined;
   },
+});
+
+describe.each([
+  {
+    name: "cloudflare d1 http",
+    createPlugin: () =>
+      d1Database({
+        accountId: "account-id",
+        cloudflareApiToken: "api-token",
+        databaseId: "database-id",
+      }),
+  },
+  {
+    name: "cloudflare worker d1",
+    createPlugin: () => d1WorkerDatabase(env.DB),
+  },
+])("$name Channel deletion", ({ createPlugin }) => {
+  beforeAll(() => {
+    state.db = env.DB;
+  });
+
+  beforeEach(async () => {
+    await reset();
+  });
+
+  afterAll(() => {
+    state.db = undefined;
+  });
+
+  it("deletes only empty channels", async () => {
+    const plugin = createPlugin();
+    const channel = createChannelRow("empty");
+    await plugin.models.channels.insert({
+      row: channel,
+      onConflict: "returnExisting",
+    });
+
+    await expect(
+      plugin.models.channels.delete({ id: channel.id }),
+    ).resolves.toEqual({ deleted: true });
+    await expect(
+      plugin.models.channels.delete({ id: channel.id }),
+    ).resolves.toEqual({ deleted: false, reason: "not_found" });
+  });
+
+  it("rejects direct and committed deletion while a bundle references the channel", async () => {
+    const plugin = createPlugin();
+    const channel = createChannelRow("active");
+    const bundle = createBundleRow(channel);
+    await plugin.models.channels.insert({
+      row: channel,
+      onConflict: "returnExisting",
+    });
+    await plugin.commit({
+      changes: [{ model: "bundles", operation: "insert", row: bundle }],
+    });
+
+    await expect(
+      plugin.models.channels.delete({ id: channel.id }),
+    ).resolves.toEqual({ deleted: false, reason: "not_empty" });
+    await expect(
+      plugin.commit({
+        changes: [
+          {
+            model: "channels",
+            operation: "delete",
+            where: { id: channel.id },
+          },
+        ],
+      }),
+    ).resolves.toEqual({
+      committed: false,
+      conflict: { changeIndex: 0, reason: "referenced" },
+    });
+    await expect(plugin.models.bundles.findById(bundle.id)).resolves.toEqual(
+      bundle,
+    );
+  });
+
+  it("atomically deletes a bundle before deleting its newly empty channel", async () => {
+    const plugin = createPlugin();
+    const channel = createChannelRow("retired");
+    const bundle = createBundleRow(channel);
+    await plugin.models.channels.insert({
+      row: channel,
+      onConflict: "returnExisting",
+    });
+    await plugin.commit({
+      changes: [{ model: "bundles", operation: "insert", row: bundle }],
+    });
+
+    await expect(
+      plugin.commit({
+        changes: [
+          {
+            model: "bundles",
+            operation: "delete",
+            where: { id: bundle.id },
+          },
+          {
+            model: "channels",
+            operation: "delete",
+            where: { id: channel.id },
+          },
+        ],
+      }),
+    ).resolves.toEqual({ committed: true });
+    await expect(plugin.models.bundles.findById(bundle.id)).resolves.toBeNull();
+    await expect(plugin.models.channels.list({})).resolves.toEqual({
+      channels: [],
+    });
+  });
 });

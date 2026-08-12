@@ -24,6 +24,7 @@ const bundleRow = (id: string) => ({
   git_commit_hash: null,
   message: null,
   channel: "production",
+  channel_id: "channel-production",
   storage_uri: "storage://bundle",
   target_app_version: "1.0.0",
   fingerprint_hash: null,
@@ -34,6 +35,11 @@ const bundleRow = (id: string) => ({
   manifest_file_hash: null,
   asset_base_storage_uri: null,
 });
+
+const productionChannel = {
+  id: "channel-production",
+  name: "production",
+} as const;
 
 describe("prismaAdapter capabilities", () => {
   it("excludes MongoDB from the public configuration", () => {
@@ -88,39 +94,33 @@ describe("prismaAdapter capabilities", () => {
       ...bundleRow("bundle-race"),
       fingerprint_hash: "fingerprint",
     };
+    await plugin.models.channels.insert({
+      row: productionChannel,
+      onConflict: "returnExisting",
+    });
     await plugin.commit({
-      mutations: [
-        {
-          operation: "insert",
-          bundleId: row.id,
-          changes: [{ table: "bundles", operation: "insert", row }],
-        },
-      ],
+      changes: [{ model: "bundles", operation: "insert", row }],
     });
     harness.clearTargetBeforeNextBundleUpdate(row.id, "fingerprint_hash");
 
     await expect(
       plugin.commit({
-        mutations: [
+        changes: [
           {
+            model: "bundles",
             operation: "update",
-            bundleId: row.id,
-            changes: [
-              {
-                table: "bundles",
-                operation: "update",
-                id: row.id,
-                update: { target_app_version: null },
-              },
-            ],
+            where: { id: row.id },
+            update: { target_app_version: null },
           },
         ],
       }),
     ).rejects.toThrow("bundle target update was not applied");
-    await expect(plugin.bundles.findById(row.id)).resolves.toMatchObject({
-      target_app_version: "1.0.0",
-      fingerprint_hash: null,
-    });
+    await expect(plugin.models.bundles.findById(row.id)).resolves.toMatchObject(
+      {
+        target_app_version: "1.0.0",
+        fingerprint_hash: null,
+      },
+    );
   });
 
   it("uses serializable transactions for emulated relation commits", async () => {
@@ -142,33 +142,26 @@ describe("prismaAdapter capabilities", () => {
       order_index: 0,
     };
 
+    await plugin.models.channels.insert({
+      row: productionChannel,
+      onConflict: "returnExisting",
+    });
+
     await plugin.commit({
-      mutations: [
-        {
-          operation: "insert",
-          bundleId: base.id,
-          changes: [{ table: "bundles", operation: "insert", row: base }],
-        },
+      changes: [{ model: "bundles", operation: "insert", row: base }],
+    });
+    await plugin.commit({
+      changes: [
+        { model: "bundles", operation: "insert", row: owner },
+        { model: "bundlePatches", operation: "insert", row: patch },
       ],
     });
     await plugin.commit({
-      mutations: [
+      changes: [
         {
-          operation: "insert",
-          bundleId: owner.id,
-          changes: [
-            { table: "bundles", operation: "insert", row: owner },
-            { table: "bundle_patches", operation: "insert", row: patch },
-          ],
-        },
-      ],
-    });
-    await plugin.commit({
-      mutations: [
-        {
+          model: "bundles",
           operation: "delete",
-          bundleId: owner.id,
-          changes: [{ table: "bundles", operation: "delete", id: owner.id }],
+          where: { id: owner.id },
         },
       ],
     });
@@ -193,46 +186,38 @@ describe("prismaAdapter capabilities", () => {
       patch_storage_uri: "storage://patch",
       order_index: 0,
     };
+    await plugin.models.channels.insert({
+      row: productionChannel,
+      onConflict: "returnExisting",
+    });
     for (const row of [base, owner]) {
       await plugin.commit({
-        mutations: [
-          {
-            operation: "insert",
-            bundleId: row.id,
-            changes: [{ table: "bundles", operation: "insert", row }],
-          },
-        ],
+        changes: [{ model: "bundles", operation: "insert", row }],
       });
     }
     await plugin.commit({
-      mutations: [
-        {
-          operation: "update",
-          bundleId: owner.id,
-          changes: [
-            { table: "bundle_patches", operation: "insert", row: patch },
-          ],
-        },
-      ],
+      changes: [{ model: "bundlePatches", operation: "insert", row: patch }],
     });
 
     harness.failNextBundleDelete();
     await expect(
       plugin.commit({
-        mutations: [
+        changes: [
           {
+            model: "bundles",
             operation: "delete",
-            bundleId: owner.id,
-            changes: [{ table: "bundles", operation: "delete", id: owner.id }],
+            where: { id: owner.id },
           },
         ],
       }),
     ).rejects.toThrow("injected bundle delete failure");
-    await expect(plugin.bundles.findById(owner.id)).resolves.toMatchObject({
+    await expect(
+      plugin.models.bundles.findById(owner.id),
+    ).resolves.toMatchObject({
       id: owner.id,
     });
     await expect(
-      plugin.bundlePatches.findByBundleIds([owner.id]),
+      plugin.models.bundlePatches.findByBundleIds([owner.id]),
     ).resolves.toEqual([patch]);
   });
 });
