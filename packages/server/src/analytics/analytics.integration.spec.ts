@@ -33,22 +33,26 @@ afterEach(() => {
 });
 
 describe("createHotUpdater Analytics", () => {
-  it("keeps Analytics routes absent when Analytics is not enabled", async () => {
-    const hotUpdater = createHotUpdater({
-      database: createInMemoryDatabasePlugin(),
-    });
+  it.each([undefined, false] as const)(
+    "keeps Analytics routes absent when the feature is %s",
+    async (analytics) => {
+      const hotUpdater = createHotUpdater({
+        database: createInMemoryDatabasePlugin(),
+        ...(analytics === undefined ? {} : { features: { analytics } }),
+      });
 
-    expect(hotUpdater.analytics).toBeUndefined();
-    expect((await hotUpdater.handler(eventRequest())).status).toBe(404);
-  });
+      expect(hotUpdater.analytics).toBeUndefined();
+      expect((await hotUpdater.handler(eventRequest())).status).toBe(404);
+    },
+  );
 
   it("persists events through the official database domain and serves queries", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-12T00:00:00.000Z"));
     const database = createInMemoryDatabasePlugin();
-    const append = vi.spyOn(database.analytics, "append");
+    const append = vi.spyOn(database.models.analytics, "append");
     const hotUpdater = createHotUpdater({
-      analytics: { queryAccess: "public" },
+      features: { analytics: { queryAccess: "public" } },
       database,
     });
 
@@ -85,7 +89,7 @@ describe("createHotUpdater Analytics", () => {
     );
     const createMigrator = vi.spyOn(database, "createMigrator");
     const hotUpdater = createHotUpdater({
-      analytics: { queryAccess: "public" },
+      features: { analytics: { queryAccess: "public" } },
       database,
     });
 
@@ -97,7 +101,7 @@ describe("createHotUpdater Analytics", () => {
 
   it("keeps ingestion public while protected queries fail closed", async () => {
     const hotUpdater = createHotUpdater({
-      analytics: {},
+      features: { analytics: true },
       database: createInMemoryDatabasePlugin(),
     });
 
@@ -112,7 +116,7 @@ describe("createHotUpdater Analytics", () => {
 
   it("returns a stable client error for malformed event payloads", async () => {
     const hotUpdater = createHotUpdater({
-      analytics: { queryAccess: "public" },
+      features: { analytics: { queryAccess: "public" } },
       database: createInMemoryDatabasePlugin(),
     });
 
@@ -129,7 +133,7 @@ describe("createHotUpdater Analytics", () => {
   it("rejects an invalid query access value instead of exposing queries", () => {
     expect(() =>
       createHotUpdater({
-        analytics: { queryAccess: "invalid" as "public" },
+        features: { analytics: { queryAccess: "invalid" as "public" } },
         database: createInMemoryDatabasePlugin(),
       }),
     ).toThrow("Invalid Analytics queryAccess option.");

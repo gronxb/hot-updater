@@ -1,19 +1,21 @@
 # Built-in Analytics
 
 Analytics is a first-party server domain backed by the official
-`database.analytics` port. It is not a server plugin and does not declare its
+`database.models.analytics` port. It is not a server plugin and does not declare its
 own provider, schema lifecycle, or universal component adapter.
 
 ```ts
 createHotUpdater({
   database,
-  analytics: {
-    queryAccess: "protected",
+  features: {
+    analytics: {
+      queryAccess: "protected",
+    },
   },
 });
 ```
 
-When `analytics` is present, `createHotUpdater` mounts the public event
+When `features.analytics` is enabled, `createHotUpdater` mounts the public event
 ingestion route and the Analytics query routes. `queryAccess` defaults to
 `"protected"`; protected queries fail closed until client access-key
 authentication is configured. `"public"` is intended for explicitly public
@@ -25,9 +27,11 @@ search, and HTTP responses. Every database provider therefore exposes the same
 logical persistence contract:
 
 ```ts
-analytics: {
-  append(row): Promise<void>;
-  scan({ beforeReceivedAtMs, after, limit }): Promise<readonly BundleEventRow[]>;
+models: {
+  analytics: {
+    append(row): Promise<void>;
+    scan({ beforeReceivedAtMs, after, limit }): Promise<readonly BundleEventRow[]>;
+  },
 }
 ```
 

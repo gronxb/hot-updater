@@ -45,7 +45,7 @@ export const createSqlCreateOperations = (
         (table.checks ?? []).map(
           (check): MigrationOperation => ({
             type: "custom",
-            sql: createCheckSql(table, check),
+            sql: createCheckSql(table, check, provider),
           }),
         ),
       )),
@@ -54,7 +54,7 @@ export const createSqlCreateOperations = (
         (table.foreignKeys ?? []).map(
           (foreignKey): MigrationOperation => ({
             type: "custom",
-            sql: createForeignKeySql(table, foreignKey),
+            sql: createForeignKeySql(table, foreignKey, provider),
           }),
         ),
       )

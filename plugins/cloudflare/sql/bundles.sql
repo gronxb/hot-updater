@@ -1,3 +1,8 @@
+CREATE TABLE channels (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL UNIQUE
+);
+
 CREATE TABLE bundles (
     id TEXT PRIMARY KEY,
     platform TEXT NOT NULL CHECK (platform IN ('ios', 'android')),
@@ -8,6 +13,7 @@ CREATE TABLE bundles (
     git_commit_hash TEXT,
     message TEXT,
     channel TEXT NOT NULL DEFAULT 'production',
+    channel_id TEXT NOT NULL REFERENCES channels(id),
     storage_uri TEXT NOT NULL,
     fingerprint_hash TEXT,
     metadata JSONB DEFAULT '{}',
@@ -83,6 +89,7 @@ CREATE TABLE client_access_keys (
 CREATE INDEX bundles_target_app_version_idx ON bundles(target_app_version);
 CREATE INDEX bundles_fingerprint_hash_idx ON bundles(fingerprint_hash);
 CREATE INDEX bundles_channel_idx ON bundles(channel);
+CREATE INDEX bundles_channel_id_idx ON bundles(channel_id);
 CREATE INDEX bundles_rollout_idx ON bundles(rollout_cohort_count);
 CREATE INDEX bundle_patches_bundle_id_idx ON bundle_patches(bundle_id);
 CREATE INDEX bundle_patches_base_bundle_id_idx ON bundle_patches(base_bundle_id);
@@ -101,3 +108,39 @@ CREATE INDEX bundle_events_from_bundle_idx
 CREATE UNIQUE INDEX client_access_keys_hash_key ON client_access_keys(hash);
 CREATE INDEX client_access_keys_created_at_idx
   ON client_access_keys(created_at_ms, id);
+
+CREATE TRIGGER bundles_channel_insert_guard
+BEFORE INSERT ON bundles
+WHEN NOT EXISTS (
+  SELECT 1
+  FROM channels
+  WHERE channels.id = NEW.channel_id
+    AND channels.name = NEW.channel
+)
+BEGIN
+  SELECT RAISE(ABORT, 'bundles channel and channel_id must match');
+END;
+
+CREATE TRIGGER bundles_channel_update_guard
+BEFORE UPDATE OF channel, channel_id ON bundles
+WHEN NOT EXISTS (
+  SELECT 1
+  FROM channels
+  WHERE channels.id = NEW.channel_id
+    AND channels.name = NEW.channel
+)
+BEGIN
+  SELECT RAISE(ABORT, 'bundles channel and channel_id must match');
+END;
+
+CREATE TRIGGER channels_name_update_guard
+BEFORE UPDATE OF name ON channels
+WHEN EXISTS (
+  SELECT 1
+  FROM bundles
+  WHERE bundles.channel_id = OLD.id
+    AND bundles.channel <> NEW.name
+)
+BEGIN
+  SELECT RAISE(ABORT, 'channel name is referenced by bundles');
+END;

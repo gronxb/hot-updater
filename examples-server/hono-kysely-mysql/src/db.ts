@@ -61,7 +61,7 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
-  routes: {
+  features: {
     updateCheck: true,
     bundles: true,
   },

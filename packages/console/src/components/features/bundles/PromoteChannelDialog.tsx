@@ -48,7 +48,9 @@ export function PromoteChannelDialog({
   const promoteBundleMutation = usePromoteBundleMutation();
   const isPromoting = promoteBundleMutation.isPending;
 
-  const availableChannels = channels.filter((c) => c !== bundle.channel);
+  const availableChannels = channels.filter(
+    (channel) => channel.name !== bundle.channel,
+  );
   const isCopy = action === "copy";
   const normalizedTargetChannel = targetChannel.trim();
   const isSameChannel = normalizedTargetChannel === bundle.channel;
@@ -212,22 +214,22 @@ export function PromoteChannelDialog({
             />
             <datalist id="available-channels">
               {availableChannels.map((channel) => (
-                <option key={channel} value={channel} />
+                <option key={channel.id} value={channel.name} />
               ))}
             </datalist>
             {availableChannels.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {availableChannels.map((channel) => (
                   <Button
-                    key={channel}
+                    key={channel.id}
                     type="button"
                     variant="outline"
                     size="xs"
-                    aria-label={`Use ${channel} as target channel`}
-                    onClick={() => setTargetChannel(channel)}
+                    aria-label={`Use ${channel.name} as target channel`}
+                    onClick={() => setTargetChannel(channel.name)}
                     disabled={isPromoting}
                   >
-                    {channel}
+                    {channel.name}
                   </Button>
                 ))}
               </div>

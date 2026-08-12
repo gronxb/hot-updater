@@ -1,10 +1,10 @@
-import {
-  DatabasePluginInputError,
-  type DatabaseModel,
-  type DatabaseOrderBy,
-  type DatabaseSortBy,
-  type DatabaseWhere,
-} from "@hot-updater/plugin-core";
+import { DatabasePluginInputError } from "@hot-updater/plugin-core";
+import type {
+  DatabaseModel,
+  DatabaseOrderBy,
+  DatabaseSortBy,
+  DatabaseWhere,
+} from "@hot-updater/plugin-core/internal";
 
 import type { ORMProvider } from "../db/types";
 

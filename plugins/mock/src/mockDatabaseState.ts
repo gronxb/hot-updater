@@ -3,9 +3,12 @@ import type {
   BundleRow,
   BundleEventRow,
   ClientAccessKeyRow,
+  ChannelRow,
+} from "@hot-updater/plugin-core";
+import type {
   DatabaseImplementationResult,
   TransactionDatabasePluginImplementation,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 
 import {
   matchesMockDatabaseWhere,
@@ -16,6 +19,7 @@ export interface MockDatabaseData {
   readonly bundles: Map<string, BundleRow>;
   readonly bundlePatches: Map<string, BundlePatchRow>;
   readonly bundleEvents: Map<string, BundleEventRow>;
+  readonly channels: Map<string, ChannelRow>;
   readonly clientAccessKeys: Map<string, ClientAccessKeyRow>;
 }
 
@@ -31,6 +35,7 @@ export const createMockDatabaseData = (): MockDatabaseData => ({
   bundles: new Map(),
   bundlePatches: new Map(),
   bundleEvents: new Map(),
+  channels: new Map(),
   clientAccessKeys: new Map(),
 });
 
@@ -40,6 +45,7 @@ export const cloneMockDatabaseData = (
   bundles: new Map(data.bundles),
   bundlePatches: new Map(data.bundlePatches),
   bundleEvents: new Map(data.bundleEvents),
+  channels: new Map(data.channels),
   clientAccessKeys: new Map(data.clientAccessKeys),
 });
 
@@ -50,6 +56,7 @@ export const replaceMockDatabaseData = (
   target.bundles.clear();
   target.bundlePatches.clear();
   target.bundleEvents.clear();
+  target.channels.clear();
   target.clientAccessKeys.clear();
   for (const [id, row] of source.bundles) target.bundles.set(id, row);
   for (const [id, row] of source.bundlePatches) {
@@ -57,6 +64,9 @@ export const replaceMockDatabaseData = (
   }
   for (const [id, row] of source.bundleEvents) {
     target.bundleEvents.set(id, row);
+  }
+  for (const [id, row] of source.channels) {
+    target.channels.set(id, row);
   }
   for (const [id, row] of source.clientAccessKeys) {
     target.clientAccessKeys.set(id, row);
@@ -86,6 +96,19 @@ const distinctCount = <TRow extends object>(
   return seen.size;
 };
 
+const requireBundleChannel = (
+  data: MockDatabaseData,
+  row: Pick<BundleRow, "channel" | "channel_id">,
+): void => {
+  const channel = data.channels.get(row.channel_id);
+  if (channel === undefined) {
+    throw new MockDatabaseConstraintError("bundles.channel_id.foreign-key");
+  }
+  if (channel.name !== row.channel) {
+    throw new MockDatabaseConstraintError("bundles.channel.dual-write");
+  }
+};
+
 export const createMockDatabaseState = (
   data: MockDatabaseData,
 ): TransactionDatabasePluginImplementation => ({
@@ -93,6 +116,7 @@ export const createMockDatabaseState = (
     switch (input.model) {
       case "bundles":
         requireUnique(data.bundles, input.data.id, input.model);
+        requireBundleChannel(data, input.data);
         data.bundles.set(input.data.id, input.data);
         return input.data;
       case "bundle_patches":
@@ -113,19 +137,32 @@ export const createMockDatabaseState = (
         requireUnique(data.bundleEvents, input.data.id, input.model);
         data.bundleEvents.set(input.data.id, input.data);
         return input.data;
-      case "client_access_keys":
+      case "channels": {
+        const existing = [...data.channels.values()].find(
+          ({ name }) => name === input.data.name,
+        );
+        if (existing && input.onConflict === "ignore") return existing;
+        requireUnique(data.channels, input.data.id, input.model);
+        if (existing) {
+          throw new MockDatabaseConstraintError("channels.name.unique");
+        }
+        data.channels.set(input.data.id, input.data);
+        return input.data;
+      }
+      case "client_access_keys": {
+        const existing = [...data.clientAccessKeys.values()].find(
+          ({ hash }) => hash === input.data.hash,
+        );
+        if (existing && input.onConflict === "ignore") return existing;
         requireUnique(data.clientAccessKeys, input.data.id, input.model);
-        if (
-          [...data.clientAccessKeys.values()].some(
-            ({ hash }) => hash === input.data.hash,
-          )
-        ) {
+        if (existing) {
           throw new MockDatabaseConstraintError(
             "client_access_keys.hash.unique",
           );
         }
         data.clientAccessKeys.set(input.data.id, input.data);
         return input.data;
+      }
     }
   },
   async update(input): Promise<Partial<BundleRow | ClientAccessKeyRow> | null> {
@@ -143,10 +180,19 @@ export const createMockDatabaseState = (
     );
     if (!current) return null;
     const updated = { ...current, ...input.update };
+    requireBundleChannel(data, updated);
     data.bundles.set(current.id, updated);
     return updated;
   },
   async delete(input): Promise<void> {
+    if (input.model === "channels") {
+      for (const row of data.channels.values()) {
+        if (matchesMockDatabaseWhere(row, input.where)) {
+          data.channels.delete(row.id);
+        }
+      }
+      return;
+    }
     if (input.model === "bundle_patches") {
       for (const row of data.bundlePatches.values()) {
         if (matchesMockDatabaseWhere(row, input.where)) {
@@ -202,6 +248,12 @@ export const createMockDatabaseState = (
             matchesMockDatabaseWhere<"client_access_keys">(row, input.where),
           ) ?? null
         );
+      case "channels":
+        return (
+          [...data.channels.values()].find((row) =>
+            matchesMockDatabaseWhere(row, input.where),
+          ) ?? null
+        );
       case "bundle_patches":
         return (
           [...data.bundlePatches.values()].find((row) =>
@@ -219,6 +271,11 @@ export const createMockDatabaseState = (
       case "bundle_events":
         return queryMockDatabaseRows<"bundle_events">(
           [...data.bundleEvents.values()],
+          input,
+        );
+      case "channels":
+        return queryMockDatabaseRows<"channels">(
+          [...data.channels.values()],
           input,
         );
       case "client_access_keys":

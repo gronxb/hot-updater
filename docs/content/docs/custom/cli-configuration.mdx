@@ -44,6 +44,7 @@ The `storage` plugin in your CLI config must match the `storages` in your server
 **CLI uses `s3Storage` → Server must use `s3Storage`**
 
 Both sides need the same plugin type and configuration to encode/decode storage URIs correctly.
+
 </Callout>
 
 ## Standalone Repository Configuration
@@ -52,9 +53,9 @@ The `standaloneRepository` plugin connects your CLI to your self-hosted server:
 
 ```typescript
 interface StandaloneRepositoryConfig {
-  baseUrl: string;                        // Your server URL
+  baseUrl: string; // Your server URL
   commonHeaders?: Record<string, string>; // Optional headers (e.g., authentication)
-  routes?: Routes;                        // Optional custom route configuration
+  routes?: Routes; // Optional custom route configuration
 }
 ```
 
@@ -63,7 +64,7 @@ interface StandaloneRepositoryConfig {
 ```typescript
 database: standaloneRepository({
   baseUrl: "http://localhost:3000/hot-updater",
-})
+});
 ```
 
 ### With Authentication
@@ -72,9 +73,9 @@ database: standaloneRepository({
 database: standaloneRepository({
   baseUrl: process.env.HOT_UPDATER_SERVER_URL!,
   commonHeaders: {
-    "Authorization": `Bearer ${process.env.API_TOKEN}`
-  }
-})
+    Authorization: `Bearer ${process.env.API_TOKEN}`,
+  },
+});
 ```
 
 ### With Custom Routes
@@ -85,40 +86,39 @@ database: standaloneRepository({
   routes: {
     create: () => ({
       path: "/v1/hot-updater/api/bundles",
-      headers: { "X-Custom-Header": "value" }
+      headers: { "X-Custom-Header": "value" },
     }),
     update: (bundleId) => ({
       path: `/v1/hot-updater/api/bundles/${bundleId}`,
-      headers: { "X-Custom-Header": "value" }
+      headers: { "X-Custom-Header": "value" },
     }),
     list: () => ({
-      path: "/v1/hot-updater/api/bundles"
-    }),
-    channels: () => ({
-      path: "/v1/hot-updater/api/bundles/channels"
+      path: "/v1/hot-updater/api/bundles",
     }),
     retrieve: (bundleId) => ({
-      path: `/v1/hot-updater/api/bundles/${bundleId}`
+      path: `/v1/hot-updater/api/bundles/${bundleId}`,
     }),
     delete: (bundleId) => ({
-      path: `/v1/hot-updater/api/bundles/${bundleId}`
-    })
-  }
-})
+      path: `/v1/hot-updater/api/bundles/${bundleId}`,
+    }),
+  },
+});
 ```
 
 ## API Endpoints
 
 Your server must implement these endpoints (when using default routes):
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/hot-updater/api/bundles` | Create bundles |
-| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
-| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
-| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
-| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
-| GET | `/hot-updater/api/bundles/channels` | List all channels |
+| Method | Endpoint                        | Description                                                         |
+| ------ | ------------------------------- | ------------------------------------------------------------------- |
+| POST   | `/hot-updater/api/bundles`      | Create bundles                                                      |
+| PATCH  | `/hot-updater/api/bundles/:id`  | Update a bundle                                                     |
+| GET    | `/hot-updater/api/bundles`      | List bundles (query: channel, platform, limit, page, after, before) |
+| GET    | `/hot-updater/api/bundles/:id`  | Get bundle by ID                                                    |
+| DELETE | `/hot-updater/api/bundles/:id`  | Delete bundle                                                       |
+| GET    | `/hot-updater/api/channels`     | List all channels                                                   |
+| POST   | `/hot-updater/api/channels`     | Insert or resolve a channel                                         |
+| DELETE | `/hot-updater/api/channels/:id` | Delete an empty channel                                             |
 
 These endpoints are automatically created when you use `@hot-updater/server` with database adapters.
 
@@ -142,23 +142,37 @@ requests.
 }
 ```
 
-`GET /hot-updater/api/bundles/channels` should return:
+`GET /hot-updater/api/channels` should return normalized Channel rows:
 
 ```json
 {
   "data": {
-    "channels": ["production", "staging"]
+    "channels": [
+      { "id": "channel-production", "name": "production" },
+      { "id": "channel-staging", "name": "staging" }
+    ]
   }
 }
 ```
 
+`POST /hot-updater/api/channels` accepts
+`{ "row": { "id", "name" }, "onConflict": "returnExisting" }` and returns
+`{ "data": { "row": ChannelRow, "inserted": boolean } }`. A name conflict
+returns the canonical stored row.
+
+`DELETE /hot-updater/api/channels/:id` returns `204 No Content` on success. A
+missing Channel returns `404` with reason `not_found`; a Channel still
+referenced by a bundle returns `409` with reason `not_empty`.
+
 ## Next Steps
 
 **Choose your build and storage plugins:**
+
 - [Build Plugins](../build-plugins/bare) - React Native CLI, Expo, Re.Pack
 - [Storage Plugins](../storage-plugins/supabase) - AWS S3, Supabase, Firebase, Cloudflare R2
 
 **Set up your server:**
+
 - [Quick Start Guide](./quick-start) - Set up a server in 5 minutes
 - [Database Adapters](./database/drizzle) - Drizzle, Prisma, Kysely, MongoDB
 - [Server Frameworks](./frameworks/hono) - Hono, Express, Elysia

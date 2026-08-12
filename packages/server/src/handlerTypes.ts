@@ -5,6 +5,11 @@ import type {
   FingerprintGetBundlesArgs,
 } from "@hot-updater/core";
 import type {
+  ChannelDeleteInput,
+  ChannelDeleteResult,
+  ChannelInsertInput,
+  ChannelInsertResult,
+  ChannelRow,
   DatabaseBundleQueryOptions,
   HotUpdaterContext,
 } from "@hot-updater/plugin-core";
@@ -41,20 +46,27 @@ export interface HandlerAPI<TContext = unknown> {
     bundleId: string,
     context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
-  getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
+  getChannels: (
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<readonly ChannelRow[]>;
+  insertChannel: (
+    input: ChannelInsertInput,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<ChannelInsertResult>;
+  deleteChannel: (
+    input: ChannelDeleteInput,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<ChannelDeleteResult>;
 }
 
 export interface HandlerOptions {
   /** Base path for all routes. @default "/api" */
   readonly basePath?: string;
-  /**
-   * Route groups to mount. `GET /version` is always mounted independently.
-   * All paths are relative to `basePath`.
-   */
-  readonly routes?: HandlerRoutes;
+  /** Runtime features to mount. `GET /version` is always available. */
+  readonly features?: HandlerFeatures;
 }
 
-export interface HandlerRoutes {
+export interface HandlerFeatures {
   /**
    * Mounts the React Native update-check endpoints:
    *
@@ -65,11 +77,13 @@ export interface HandlerRoutes {
    *
    * @default true
    */
-  readonly updateCheck: boolean;
+  readonly updateCheck?: boolean;
   /**
    * Mounts the bundle management endpoints used by `standaloneRepository`:
    *
-   * - `GET /api/bundles/channels`
+   * - `GET /api/channels`
+   * - `POST /api/channels`
+   * - `DELETE /api/channels/:id`
    * - `GET /api/bundles/:id`
    * - `GET /api/bundles`
    * - `POST /api/bundles`
@@ -78,7 +92,7 @@ export interface HandlerRoutes {
    *
    * @default false
    */
-  readonly bundles: boolean;
+  readonly bundles?: boolean;
 }
 
 export type RouteHandler<TContext = unknown> = (

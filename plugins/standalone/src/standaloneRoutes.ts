@@ -7,7 +7,6 @@ export interface Routes {
   readonly create?: () => RouteConfig;
   readonly update?: (bundleId: string) => RouteConfig;
   readonly list?: () => RouteConfig;
-  readonly channels?: () => RouteConfig;
   readonly retrieve?: (bundleId: string) => RouteConfig;
   readonly delete?: (bundleId: string) => RouteConfig;
 }
@@ -22,6 +21,10 @@ function bundlePath(bundleId: string): string {
   return `/api/bundles/${encodeURIComponent(bundleId)}`;
 }
 
+function channelPath(channelId: string): string {
+  return `/api/channels/${encodeURIComponent(channelId)}`;
+}
+
 export const defaultRoutes = {
   create: () => ({ path: "/api/bundles" }),
   update: (bundleId: string) => ({
@@ -32,8 +35,12 @@ export const defaultRoutes = {
     headers: { "Cache-Control": "no-cache" },
   }),
   channels: () => ({
-    path: "/api/bundles/channels",
+    path: "/api/channels",
     headers: { "Cache-Control": "no-cache" },
+  }),
+  deleteChannel: (channelId: string) => ({
+    path: channelPath(channelId),
+    headers: {},
   }),
   retrieve: (bundleId: string) => ({
     path: bundlePath(bundleId),
@@ -43,9 +50,6 @@ export const defaultRoutes = {
     path: bundlePath(bundleId),
   }),
 };
-
-export const appendPathSegment = (path: string, segment: string): string =>
-  `${path.replace(/\/+$/, "")}/${segment}`;
 
 export const createRoute = (
   defaultRoute: RouteConfig,

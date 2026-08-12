@@ -1,7 +1,7 @@
 import type {
-  AnalyticsTable,
+  AnalyticsModel,
   BundleRepository,
-  ClientAccessKeyTable,
+  ClientAccessKeyModel,
 } from "@hot-updater/plugin-core";
 import {
   type ActiveInstallationInput,
@@ -28,7 +28,11 @@ export type InstallationHistoryResult =
 export function createRuntimeHotUpdater(config: {
   readonly database: BundleRepository;
 }): AnalyticsProvider | null {
-  const analytics: unknown = Reflect.get(config.database, "analytics");
+  const models: unknown = Reflect.get(config.database, "models");
+  const analytics: unknown =
+    typeof models === "object" && models !== null
+      ? Reflect.get(models, "analytics")
+      : undefined;
   if (
     typeof analytics !== "object" ||
     analytics === null ||
@@ -37,16 +41,17 @@ export function createRuntimeHotUpdater(config: {
   ) {
     return null;
   }
-  return createAnalyticsProvider(analytics as AnalyticsTable);
+  return createAnalyticsProvider(analytics as AnalyticsModel);
 }
 
 export function createClientAccessKeyStore(config: {
   readonly database: BundleRepository;
-}): ClientAccessKeyTable | null {
-  const clientAccessKeys: unknown = Reflect.get(
-    config.database,
-    "clientAccessKeys",
-  );
+}): ClientAccessKeyModel | null {
+  const models: unknown = Reflect.get(config.database, "models");
+  const clientAccessKeys: unknown =
+    typeof models === "object" && models !== null
+      ? Reflect.get(models, "clientAccessKeys")
+      : undefined;
   if (
     typeof clientAccessKeys !== "object" ||
     clientAccessKeys === null ||
@@ -57,7 +62,7 @@ export function createClientAccessKeyStore(config: {
   ) {
     return null;
   }
-  return clientAccessKeys as ClientAccessKeyTable;
+  return clientAccessKeys as ClientAccessKeyModel;
 }
 
 const providerMethods = [

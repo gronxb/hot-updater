@@ -61,7 +61,7 @@ describe("database client", () => {
     });
   });
 
-  it("paginates filtered bundle aggregates and lists derived channels", async () => {
+  it("paginates filtered bundle aggregates and lists persistent channels", async () => {
     const client = createDatabaseClient(plugin);
     await client.insertBundle(createBundle("101"));
     await client.insertBundle(createBundle("102", { channel: "staging" }));
@@ -76,7 +76,8 @@ describe("database client", () => {
 
     expect(page.data.map(({ id }) => id)).toEqual(["103"]);
     expect(page.pagination).toMatchObject({ total: 2, hasNextPage: true });
-    await expect(client.getChannels()).resolves.toEqual(["production"]);
+    const channels = await client.getChannels();
+    expect(channels.map(({ name }) => name)).toEqual(["production", "staging"]);
   });
 
   it("replaces patches and removes both incoming and outgoing patch rows", async () => {
@@ -176,10 +177,7 @@ describe("database client", () => {
       ...plugin,
       name: plugin.name,
       commit: (input) => {
-        if (
-          input.mutations.length > 1 ||
-          input.mutations.some(({ changes }) => changes.length > 1)
-        ) {
+        if (input.changes.length > 1) {
           throw new DatabaseAtomicCommitUnsupportedError(plugin.name);
         }
         return plugin.commit(input);
@@ -209,7 +207,7 @@ describe("database client", () => {
     const fastPath = vi.fn(async () => expected);
     const fastClient = createDatabaseClient({
       ...plugin,
-      getUpdateInfo: fastPath,
+      queries: { getUpdateInfo: fastPath },
     });
 
     const actual = await fastClient.getUpdateInfo(args);

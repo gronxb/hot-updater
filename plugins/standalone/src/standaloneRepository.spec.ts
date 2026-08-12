@@ -16,34 +16,88 @@ import {
 import {
   StandaloneDatabaseError,
   standaloneRepository,
-  type StandaloneRepositoryConfig,
+  type Routes,
 } from "./standaloneRepository";
 
 const BASE_URL = "http://localhost/hot-updater";
 const bundles = new Map<string, Bundle>();
 const channels = new Set<string>();
+const channelIds = new Map<string, string>();
 const requestPaths: string[] = [];
 const createRequestBodies: unknown[] = [];
 
-const bundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
-  id,
-  platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
-  fileHash: `hash-${id}`,
-  gitCommitHash: null,
-  message: id,
-  channel: "production",
-  storageUri: `storage://${id}`,
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
-  ...overrides,
-});
+const bundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => {
+  const value: Bundle = {
+    id,
+    platform: "ios",
+    shouldForceUpdate: false,
+    enabled: true,
+    fileHash: `hash-${id}`,
+    gitCommitHash: null,
+    message: id,
+    channel: "production",
+    storageUri: `storage://${id}`,
+    targetAppVersion: "1.0.0",
+    fingerprintHash: null,
+    ...overrides,
+  };
+  channels.add(value.channel);
+  return value;
+};
 
 const server = setupServer(
-  http.get(`${BASE_URL}/api/bundles/channels`, ({ request }) => {
+  http.get(`${BASE_URL}/api/channels`, ({ request }) => {
     requestPaths.push(new URL(request.url).pathname);
-    return HttpResponse.json({ data: { channels: [...channels] } });
+    return HttpResponse.json({
+      data: {
+        channels: [...channels].map((name) => ({
+          id: channelIds.get(name) ?? `channel-${name}`,
+          name,
+        })),
+      },
+    });
+  }),
+  http.post(`${BASE_URL}/api/channels`, async ({ request }) => {
+    requestPaths.push(new URL(request.url).pathname);
+    const input = (await request.json()) as {
+      row: { id: string; name: string };
+      onConflict: "returnExisting";
+    };
+    const inserted = !channels.has(input.row.name);
+    channels.add(input.row.name);
+    if (inserted) channelIds.set(input.row.name, input.row.id);
+    return HttpResponse.json(
+      {
+        data: {
+          row: {
+            id: channelIds.get(input.row.name) ?? `channel-${input.row.name}`,
+            name: input.row.name,
+          },
+          inserted,
+        },
+      },
+      { status: inserted ? 201 : 200 },
+    );
+  }),
+  http.delete(`${BASE_URL}/api/channels/:id`, ({ params, request }) => {
+    requestPaths.push(new URL(request.url).pathname);
+    const id = String(params.id);
+    const name = id.replace(/^channel-/, "");
+    if (!channels.has(name)) {
+      return HttpResponse.json(
+        { data: { deleted: false, reason: "not_found" } },
+        { status: 404 },
+      );
+    }
+    if ([...bundles.values()].some((bundle) => bundle.channel === name)) {
+      return HttpResponse.json(
+        { data: { deleted: false, reason: "not_empty" } },
+        { status: 409 },
+      );
+    }
+    channels.delete(name);
+    channelIds.delete(name);
+    return new HttpResponse(null, { status: 204 });
   }),
   http.get(`${BASE_URL}/api/bundles/:id`, ({ params, request }) => {
     requestPaths.push(new URL(request.url).pathname);
@@ -109,6 +163,7 @@ beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 beforeEach(() => {
   bundles.clear();
   channels.clear();
+  channelIds.clear();
   requestPaths.length = 0;
   createRequestBodies.length = 0;
 });
@@ -122,27 +177,19 @@ describe("standaloneRepository", () => {
   it("stays a bundle-only remote repository", () => {
     const repository = createRepository();
 
-    expect(repository.bundles.findMany).toBeTypeOf("function");
-    expect(repository.bundlePatches.findByBundleIds).toBeTypeOf("function");
+    expect(repository.models.bundles.findMany).toBeTypeOf("function");
+    expect(repository.models.bundlePatches.findByBundleIds).toBeTypeOf(
+      "function",
+    );
     expect(repository.commit).toBeTypeOf("function");
     expect(Reflect.has(repository, "analytics")).toBe(false);
     expect(Reflect.has(repository, "clientAccessKeys")).toBe(false);
   });
 
-  it("keeps the existing user config source-compatible", () => {
-    type ExistingUserConfig = {
-      baseUrl: string;
-      commonHeaders?: Record<string, string>;
-      routes?: {
-        create?: () => { path: string };
-        list?: () => { path: string };
-        channels?: () => { path: string };
-        retrieve?: (bundleId: string) => { path: string };
-        update?: (bundleId: string) => { path: string };
-        delete?: (bundleId: string) => { path: string };
-      };
-    };
-    expectTypeOf<ExistingUserConfig>().toMatchTypeOf<StandaloneRepositoryConfig>();
+  it("keeps Channel routing canonical instead of exposing an override", () => {
+    expectTypeOf<keyof Routes>().toEqualTypeOf<
+      "create" | "update" | "list" | "retrieve" | "delete"
+    >();
   });
 
   it("uses only the existing bundle routes for aggregate mutations", async () => {
@@ -170,7 +217,11 @@ describe("standaloneRepository", () => {
       expect.stringContaining("/database/"),
     );
     expect(
-      requestPaths.every((path) => path.startsWith("/hot-updater/api/bundles")),
+      requestPaths.every(
+        (path) =>
+          path.startsWith("/hot-updater/api/bundles") ||
+          path === "/hot-updater/api/channels",
+      ),
     ).toBe(true);
   });
 
@@ -271,13 +322,81 @@ describe("standaloneRepository", () => {
     ]);
   });
 
-  it("loads channels through the existing channels route", async () => {
+  it("loads normalized rows through the canonical Channel route", async () => {
     channels.add("preview");
     const repository = createRepository();
 
-    await expect(repository.getChannels?.()).resolves.toEqual(["preview"]);
+    await expect(repository.models.channels.list({})).resolves.toEqual({
+      channels: [{ id: "channel-preview", name: "preview" }],
+    });
     expect(bundles.size).toBe(0);
-    expect(requestPaths).toContain("/hot-updater/api/bundles/channels");
+    expect(requestPaths).toContain("/hot-updater/api/channels");
+  });
+
+  it("inserts a Channel and returns the server's canonical row", async () => {
+    const repository = createRepository();
+
+    await expect(
+      repository.models.channels.insert({
+        row: { id: "candidate-id", name: "preview" },
+        onConflict: "returnExisting",
+      }),
+    ).resolves.toEqual({
+      row: { id: "candidate-id", name: "preview" },
+      inserted: true,
+    });
+    await expect(
+      repository.models.channels.insert({
+        row: { id: "losing-id", name: "preview" },
+        onConflict: "returnExisting",
+      }),
+    ).resolves.toEqual({
+      row: { id: "candidate-id", name: "preview" },
+      inserted: false,
+    });
+  });
+
+  it("rejects an inserted Channel response with a different id", async () => {
+    server.use(
+      http.post(`${BASE_URL}/api/channels`, () =>
+        HttpResponse.json({
+          data: {
+            row: { id: "unexpected-id", name: "preview" },
+            inserted: true,
+          },
+        }),
+      ),
+    );
+
+    await expect(
+      createRepository().models.channels.insert({
+        row: { id: "candidate-id", name: "preview" },
+        onConflict: "returnExisting",
+      }),
+    ).rejects.toEqual(
+      new StandaloneDatabaseError(
+        "invalid-response",
+        "Invalid Channel insert response.",
+        200,
+      ),
+    );
+  });
+
+  it("deletes only an empty Channel through the canonical route", async () => {
+    channels.add("preview");
+    channels.add("production");
+    bundles.set("bundle-production", bundle("bundle-production"));
+    const repository = createRepository();
+
+    await expect(
+      repository.models.channels.delete({ id: "channel-preview" }),
+    ).resolves.toEqual({ deleted: true });
+    await expect(
+      repository.models.channels.delete({ id: "channel-production" }),
+    ).resolves.toEqual({ deleted: false, reason: "not_empty" });
+    await expect(
+      repository.models.channels.delete({ id: "channel-missing" }),
+    ).resolves.toEqual({ deleted: false, reason: "not_found" });
   });
 
   it("keeps aggregate bundle channel names", async () => {
@@ -288,7 +407,7 @@ describe("standaloneRepository", () => {
     channels.add("preview");
 
     await expect(
-      createRepository().bundles.findById(value.id),
+      createRepository().models.bundles.findById(value.id),
     ).resolves.toMatchObject({
       id: value.id,
       channel: "preview",
@@ -303,6 +422,13 @@ describe("standaloneRepository", () => {
         retrieveCalls += 1;
         return HttpResponse.json(value);
       }),
+      http.get("http://localhost/api/channels", () =>
+        HttpResponse.json({
+          data: {
+            channels: [{ id: "channel-production", name: "production" }],
+          },
+        }),
+      ),
     );
     const repository = standaloneRepository({
       baseUrl: "http://localhost",
@@ -311,7 +437,9 @@ describe("standaloneRepository", () => {
       },
     });
 
-    await expect(repository.bundles.findById(value.id)).resolves.toMatchObject({
+    await expect(
+      repository.models.bundles.findById(value.id),
+    ).resolves.toMatchObject({
       id: value.id,
       channel: "production",
     });
@@ -336,7 +464,7 @@ describe("standaloneRepository", () => {
       }),
     );
 
-    await createRepository().bundles.findMany({
+    await createRepository().models.bundles.findMany({
       where: {
         channel: "preview",
         platform: "ios",
@@ -375,7 +503,7 @@ describe("standaloneRepository", () => {
       }),
     );
 
-    const result = await createRepository().bundles.findMany({
+    const result = await createRepository().models.bundles.findMany({
       orderBy: { field: "id", direction: "asc" },
       limit: 1,
       offset: 0,
@@ -415,7 +543,7 @@ describe("standaloneRepository", () => {
       }),
     );
 
-    const result = await createRepository().bundles.count({
+    const result = await createRepository().models.bundles.count({
       channel: "production",
     });
 
@@ -435,7 +563,7 @@ describe("standaloneRepository", () => {
     bundles.set(productionAndroid.id, productionAndroid);
     bundles.set(previewIos.id, previewIos);
 
-    const result = await createRepository().bundles.count();
+    const result = await createRepository().models.bundles.count();
 
     expect(result).toBe(3);
   });
@@ -455,9 +583,10 @@ describe("standaloneRepository", () => {
     bundles.set(base.id, base);
     bundles.set(target.id, target);
 
-    const result = await createRepository().bundlePatches.findByBundleIds([
-      target.id,
-    ]);
+    const result =
+      await createRepository().models.bundlePatches.findByBundleIds([
+        target.id,
+      ]);
 
     expect(result).toHaveLength(1);
   });
@@ -490,7 +619,7 @@ describe("standaloneRepository", () => {
       }),
     );
 
-    const result = await createRepository().bundles.findMany({
+    const result = await createRepository().models.bundles.findMany({
       where: { channel: "preview" },
       orderBy: { field: "id", direction: "desc" },
       limit: 1,
@@ -507,7 +636,7 @@ describe("standaloneRepository", () => {
     bundles.set(value.id, value);
 
     await expect(
-      createRepository().bundles.findMany({
+      createRepository().models.bundles.findMany({
         limit: 0,
         offset: 0,
         orderBy: { field: "id", direction: "asc" },
@@ -537,7 +666,7 @@ describe("standaloneRepository", () => {
     );
 
     await expect(
-      createRepository().bundles.findMany({
+      createRepository().models.bundles.findMany({
         where: { id: { in: [] } },
         limit: 100,
         offset: 0,
@@ -597,7 +726,7 @@ describe("standaloneRepository", () => {
     bundles.set(target.id, target);
     channels.add("production");
 
-    const rows = await createRepository().bundlePatches.findByBundleIds([
+    const rows = await createRepository().models.bundlePatches.findByBundleIds([
       target.id,
     ]);
 
@@ -611,24 +740,29 @@ describe("standaloneRepository", () => {
   });
 
   it("does not expose a standalone update-info capability flag", () => {
-    expect(createRepository().getUpdateInfo).toBeUndefined();
+    expect(createRepository().queries.getUpdateInfo).toBeUndefined();
   });
 
-  it("preserves custom routes and common headers", async () => {
+  it("preserves common headers on the canonical Channel route", async () => {
     let authorization: string | null = null;
     server.use(
-      http.get("http://localhost/custom/channels", ({ request }) => {
+      http.get("http://localhost/api/channels", ({ request }) => {
         authorization = request.headers.get("Authorization");
-        return HttpResponse.json({ data: { channels: ["custom"] } });
+        return HttpResponse.json({
+          data: {
+            channels: [{ id: "channel-custom", name: "custom" }],
+          },
+        });
       }),
     );
     const repository = standaloneRepository({
       baseUrl: "http://localhost",
       commonHeaders: { Authorization: "Bearer token" },
-      routes: { channels: () => ({ path: "/custom/channels" }) },
     });
 
-    await expect(repository.getChannels?.()).resolves.toEqual(["custom"]);
+    await expect(repository.models.channels.list({})).resolves.toEqual({
+      channels: [{ id: "channel-custom", name: "custom" }],
+    });
     expect(authorization).toBe("Bearer token");
   });
 
@@ -640,7 +774,7 @@ describe("standaloneRepository", () => {
     );
 
     await expect(
-      createRepository().bundles.findMany({
+      createRepository().models.bundles.findMany({
         limit: 100,
         offset: 0,
         orderBy: { field: "id", direction: "asc" },
@@ -662,7 +796,7 @@ describe("standaloneRepository", () => {
     );
 
     await expect(
-      createRepository().bundles.findMany({
+      createRepository().models.bundles.findMany({
         limit: 100,
         offset: 0,
         orderBy: { field: "id", direction: "asc" },

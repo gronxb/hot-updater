@@ -51,7 +51,10 @@ describe("database client pagination", () => {
     for (const id of ["001", "002", "003"]) {
       await client.insertBundle(createBundle(id));
     }
-    const findPatches = vi.spyOn(plugin.bundlePatches, "findByBundleIds");
+    const findPatches = vi.spyOn(
+      plugin.models.bundlePatches,
+      "findByBundleIds",
+    );
 
     const page = await client.getBundles({
       limit: 1,
@@ -73,6 +76,7 @@ describe("database client pagination", () => {
       git_commit_hash: null,
       message: null,
       channel: `release-${index}`,
+      channel_id: `channel-${index}`,
       storage_uri: `storage://bundle-${index}.zip`,
       target_app_version: "1.0.0",
       fingerprint_hash: null,
@@ -107,6 +111,8 @@ describe("database client pagination", () => {
               : [];
           return rows.slice(input.offset, input.offset + input.limit);
         },
+        insertChannel: async (input) => ({ row: input.row, inserted: true }),
+        deleteChannel: async () => ({ deleted: false, reason: "not_found" }),
       }),
     });
 
@@ -169,6 +175,8 @@ describe("database client pagination", () => {
           }
           return page;
         },
+        insertChannel: async (input) => ({ row: input.row, inserted: true }),
+        deleteChannel: async () => ({ deleted: false, reason: "not_found" }),
       }),
     });
 
@@ -190,6 +198,7 @@ const bundlesRow = (bundle: Bundle): BundleRow => ({
   git_commit_hash: bundle.gitCommitHash,
   message: bundle.message,
   channel: bundle.channel,
+  channel_id: "channel-production",
   storage_uri: bundle.storageUri,
   target_app_version: bundle.targetAppVersion,
   fingerprint_hash: bundle.fingerprintHash,

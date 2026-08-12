@@ -1,14 +1,17 @@
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import type {
   CreateDatabaseImplementationInput,
-  DatabasePluginImplementation,
   DatabaseModel,
+  DatabasePluginImplementation,
   DatabaseWhere,
   DeleteDatabaseImplementationInput,
   FindOneDatabaseImplementationInput,
   UpdateDatabaseImplementationInput,
-} from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
-import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core/internal";
+import {
+  createDatabasePluginAdapter,
+  DatabaseRowReferencedError,
+} from "@hot-updater/plugin-core/internal";
 import {
   Kysely,
   PostgresDialect,
@@ -39,6 +42,11 @@ export type PostgresConfig = PoolConfig & {
 class InvalidPostgresPredicateError extends Error {
   readonly name = "InvalidPostgresPredicateError";
 }
+
+const isForeignKeyViolation = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  Reflect.get(error, "code") === "23503";
 
 const escapeLikePattern = (value: string): string =>
   value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
@@ -153,12 +161,45 @@ const createPostgresImplementation = (
           .values(input.data)
           .returningAll()
           .executeTakeFirstOrThrow();
-      case "client_access_keys":
-        return db
-          .insertInto("client_access_keys")
-          .values(input.data)
+      case "channels": {
+        const query = db.insertInto("channels").values(input.data);
+        const row = await (
+          input.onConflict === "ignore"
+            ? query.onConflict((conflict) =>
+                conflict.column("name").doNothing(),
+              )
+            : query
+        )
           .returningAll()
-          .executeTakeFirstOrThrow();
+          .executeTakeFirst();
+        return (
+          row ??
+          (await db
+            .selectFrom("channels")
+            .selectAll()
+            .where("name", "=", input.data.name)
+            .executeTakeFirstOrThrow())
+        );
+      }
+      case "client_access_keys":
+        const row = await (
+          input.onConflict === "ignore"
+            ? db
+                .insertInto("client_access_keys")
+                .values(input.data)
+                .onConflict((conflict) => conflict.column("hash").doNothing())
+            : db.insertInto("client_access_keys").values(input.data)
+        )
+          .returningAll()
+          .executeTakeFirst();
+        return (
+          row ??
+          (await db
+            .selectFrom("client_access_keys")
+            .selectAll()
+            .where("hash", "=", input.data.hash)
+            .executeTakeFirstOrThrow())
+        );
     }
   },
   async update(input: UpdateDatabaseImplementationInput) {
@@ -187,6 +228,19 @@ const createPostgresImplementation = (
         let query = db.deleteFrom("bundle_patches");
         if (where !== undefined) query = query.where(where);
         await query.execute();
+        return;
+      }
+      case "channels": {
+        let query = db.deleteFrom("channels");
+        if (where !== undefined) query = query.where(where);
+        try {
+          await query.execute();
+        } catch (error) {
+          if (isForeignKeyViolation(error)) {
+            throw new DatabaseRowReferencedError();
+          }
+          throw error;
+        }
       }
     }
   },
@@ -209,17 +263,45 @@ const createPostgresImplementation = (
         if (where !== undefined) query = query.where(where);
         return (await query.executeTakeFirst()) ?? null;
       }
+      case "channels": {
+        let query = db.selectFrom("channels").selectAll();
+        if (where !== undefined) query = query.where(where);
+        return (await query.executeTakeFirst()) ?? null;
+      }
     }
   },
   findMany: (input) => findManyPostgresRows(db, input, buildWhere(input.where)),
-  async getChannels() {
-    const rows = await db
-      .selectFrom("bundles")
-      .select("channel")
-      .distinct()
-      .orderBy("channel", "asc")
-      .execute();
-    return rows.map(({ channel }) => channel);
+  async insertChannel({ row }) {
+    const inserted = await db
+      .insertInto("channels")
+      .values(row)
+      .onConflict((conflict) => conflict.column("name").doNothing())
+      .returningAll()
+      .executeTakeFirst();
+    if (inserted !== undefined) return { row: inserted, inserted: true };
+    const existing = await db
+      .selectFrom("channels")
+      .selectAll()
+      .where("name", "=", row.name)
+      .executeTakeFirstOrThrow();
+    return { row: existing, inserted: false };
+  },
+  async deleteChannel({ id }) {
+    try {
+      const deleted = await db
+        .deleteFrom("channels")
+        .where("id", "=", id)
+        .returning("id")
+        .executeTakeFirst();
+      return deleted === undefined
+        ? { deleted: false, reason: "not_found" }
+        : { deleted: true };
+    } catch (error) {
+      if (isForeignKeyViolation(error)) {
+        return { deleted: false, reason: "not_empty" };
+      }
+      throw error;
+    }
   },
   transaction: (callback) =>
     db
@@ -248,13 +330,9 @@ export const postgres = (config: PostgresConfig) => {
   const adapter = createDatabasePluginAdapter("postgres", implementation);
   return createDatabasePlugin({
     name: "postgres",
-    bundles: adapter.bundles,
-    bundlePatches: adapter.bundlePatches,
-    analytics: adapter.analytics,
-    clientAccessKeys: adapter.clientAccessKeys,
+    models: adapter.models,
+    queries: adapter.queries,
     commit: adapter.commit,
-    getChannels: adapter.getChannels,
-    getUpdateInfo: adapter.getUpdateInfo,
     dispose: adapter.dispose,
   });
 };

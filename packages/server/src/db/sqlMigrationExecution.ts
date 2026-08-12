@@ -17,6 +17,29 @@ type MysqlSchemaObject = {
 
 type MysqlMigrationObjectType = "column" | "constraint" | "index";
 
+type MysqlColumnMetadata = {
+  readonly character_set_name: string | null;
+  readonly character_maximum_length: number | null;
+  readonly collation_name: string | null;
+  readonly data_type: string;
+  readonly is_nullable: "NO" | "YES";
+};
+
+type MysqlIndexMetadata = {
+  readonly column_name: string;
+  readonly non_unique: number;
+  readonly seq_in_index: number;
+};
+
+type MysqlConstraintMetadata = {
+  readonly check_clause: string | null;
+  readonly constraint_type: string;
+  readonly delete_rule: string | null;
+  readonly referenced_column_name: string | null;
+  readonly referenced_table_name: string | null;
+  readonly update_rule: string | null;
+};
+
 class MysqlMigrationObjectConflictError extends Error {
   readonly name = "MysqlMigrationObjectConflictError";
 
@@ -81,6 +104,26 @@ const mysqlColumnExists = async (
   return result.rows.length > 0;
 };
 
+const mysqlColumnMetadata = async (
+  db: QueryExecutorProvider,
+  { table, name }: MysqlSchemaObject,
+): Promise<MysqlColumnMetadata | undefined> => {
+  const result = await sql<MysqlColumnMetadata>`
+    select
+      data_type,
+      character_maximum_length,
+      character_set_name,
+      collation_name,
+      is_nullable
+    from information_schema.columns
+    where table_schema = database()
+      and table_name = ${table}
+      and column_name = ${name}
+    limit 1
+  `.execute(db);
+  return result.rows[0];
+};
+
 const mysqlIndexExists = async (
   db: QueryExecutorProvider,
   { table, name }: MysqlSchemaObject,
@@ -94,6 +137,21 @@ const mysqlIndexExists = async (
     limit 1
   `.execute(db);
   return result.rows.length > 0;
+};
+
+const mysqlIndexMetadata = async (
+  db: QueryExecutorProvider,
+  { table, name }: MysqlSchemaObject,
+): Promise<readonly MysqlIndexMetadata[]> => {
+  const result = await sql<MysqlIndexMetadata>`
+    select column_name, non_unique, seq_in_index
+    from information_schema.statistics
+    where table_schema = database()
+      and table_name = ${table}
+      and index_name = ${name}
+    order by seq_in_index
+  `.execute(db);
+  return result.rows;
 };
 
 const mysqlConstraintExists = async (
@@ -111,12 +169,115 @@ const mysqlConstraintExists = async (
   return result.rows.length > 0;
 };
 
+const mysqlConstraintMetadata = async (
+  db: QueryExecutorProvider,
+  { table, name }: MysqlSchemaObject,
+): Promise<MysqlConstraintMetadata | undefined> => {
+  const result = await sql<MysqlConstraintMetadata>`
+    select
+      constraint_type,
+      check_clause,
+      referenced_table_name,
+      referenced_column_name,
+      update_rule,
+      delete_rule
+    from information_schema.table_constraints
+    left join information_schema.key_column_usage using (
+      constraint_schema,
+      table_name,
+      constraint_name
+    )
+    left join information_schema.referential_constraints using (
+      constraint_schema,
+      table_name,
+      constraint_name
+    )
+    left join information_schema.check_constraints using (
+      constraint_schema,
+      constraint_name
+    )
+    where constraint_schema = database()
+      and table_name = ${table}
+      and constraint_name = ${name}
+    limit 1
+  `.execute(db);
+  return result.rows[0];
+};
+
+const isResumableV038MysqlColumn = async (
+  db: QueryExecutorProvider,
+  object: MysqlSchemaObject,
+): Promise<boolean> => {
+  if (object.table !== "bundles" || object.name !== "channel_id") return false;
+  const metadata = await mysqlColumnMetadata(db, object);
+  return (
+    metadata?.data_type.toLowerCase() === "varchar" &&
+    metadata.character_maximum_length === 255 &&
+    metadata.character_set_name === "utf8mb4" &&
+    metadata.collation_name === "utf8mb4_bin" &&
+    (metadata.is_nullable === "YES" || metadata.is_nullable === "NO")
+  );
+};
+
+const isResumableV038MysqlIndex = async (
+  db: QueryExecutorProvider,
+  object: MysqlSchemaObject,
+): Promise<boolean> => {
+  const expected =
+    object.table === "channels" && object.name === "channels_name_key"
+      ? { column: "name", nonUnique: 0 }
+      : object.table === "bundles" && object.name === "bundles_channel_id_idx"
+        ? { column: "channel_id", nonUnique: 1 }
+        : undefined;
+  if (!expected) return false;
+  const metadata = await mysqlIndexMetadata(db, object);
+  return (
+    metadata.length === 1 &&
+    metadata[0]?.column_name === expected.column &&
+    metadata[0].non_unique === expected.nonUnique &&
+    metadata[0].seq_in_index === 1
+  );
+};
+
+const isResumableV038MysqlConstraint = async (
+  db: QueryExecutorProvider,
+  object: MysqlSchemaObject,
+): Promise<boolean> => {
+  const metadata = await mysqlConstraintMetadata(db, object);
+  if (
+    object.table === "channels" &&
+    (object.name === "channels_id_length_check" ||
+      object.name === "channels_name_length_check")
+  ) {
+    const column = object.name === "channels_id_length_check" ? "id" : "name";
+    const checkClause = metadata?.check_clause
+      ?.replaceAll("`", "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^\((.*)\)$/, "$1");
+    return (
+      metadata?.constraint_type === "CHECK" &&
+      checkClause === `char_length(${column}) between 1 and 255`
+    );
+  }
+  return (
+    object.table === "bundles" &&
+    object.name === "bundles_channel_id_fk" &&
+    metadata?.constraint_type === "FOREIGN KEY" &&
+    metadata.referenced_table_name === "channels" &&
+    metadata.referenced_column_name === "id" &&
+    metadata.update_rule === "RESTRICT" &&
+    metadata.delete_rule === "RESTRICT"
+  );
+};
+
 const shouldSkipMysqlStatement = async (
   db: QueryExecutorProvider,
   statement: string,
 ): Promise<boolean> => {
   const index = mysqlIndex(statement);
   if (index && (await mysqlIndexExists(db, index))) {
+    if (await isResumableV038MysqlIndex(db, index)) return true;
     throw new MysqlMigrationObjectConflictError(
       "index",
       index.table,
@@ -126,6 +287,7 @@ const shouldSkipMysqlStatement = async (
 
   const addedColumn = mysqlColumn(statement, "add");
   if (addedColumn && (await mysqlColumnExists(db, addedColumn))) {
+    if (await isResumableV038MysqlColumn(db, addedColumn)) return true;
     throw new MysqlMigrationObjectConflictError(
       "column",
       addedColumn.table,
@@ -138,6 +300,7 @@ const shouldSkipMysqlStatement = async (
 
   const constraint = mysqlConstraint(statement);
   if (constraint && (await mysqlConstraintExists(db, constraint))) {
+    if (await isResumableV038MysqlConstraint(db, constraint)) return true;
     throw new MysqlMigrationObjectConflictError(
       "constraint",
       constraint.table,
