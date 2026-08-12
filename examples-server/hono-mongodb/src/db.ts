@@ -47,6 +47,14 @@ export const hotUpdater = createHotUpdater({
     //   bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
     // }),
   ],
+  storageDelivery: {
+    publicBaseUrl:
+      process.env.HOT_UPDATER_PUBLIC_BASE_URL ??
+      `http://localhost:${process.env.PORT ?? 3006}`,
+    signingKey:
+      process.env.HOT_UPDATER_STORAGE_DELIVERY_KEY ??
+      "development-storage-delivery-key",
+  },
   basePath: "/hot-updater",
   routes: {
     updateCheck: true,
