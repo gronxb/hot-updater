@@ -1,6 +1,3 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -9,189 +6,120 @@ import {
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   createStorageKeyBuilder,
-  getContentType,
-  type NodeStorageProfile,
+  createStoragePlugin,
   parseStorageUri,
-  type RuntimeStorageProfile,
+  type StoragePluginWith,
 } from "@hot-updater/plugin-core";
 
 export interface R2S3StorageConfig extends S3ClientConfig {
   accountId: string;
   bucketName: string;
   credentials: NonNullable<S3ClientConfig["credentials"]>;
-  /**
-   * Base path where bundles will be stored in the bucket
-   */
+  /** Base path where bundles will be stored in the bucket. */
   basePath?: string;
 }
 
-const ensureExpectedR2Bucket = (bucket: string, bucketName: string) => {
-  if (bucket !== bucketName) {
-    throw new Error(
-      `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
-    );
+const isObjectNotFoundError = (error: unknown) => {
+  if (
+    error instanceof Error &&
+    (error.name === "NotFound" || error.name === "NoSuchKey")
+  ) {
+    return true;
   }
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "$metadata" in error &&
+    (error as { $metadata?: { httpStatusCode?: number } }).$metadata
+      ?.httpStatusCode === 404
+  );
 };
 
-const isS3ObjectNotFoundError = (error: unknown) => {
-  if (error instanceof Error) {
-    return error.name === "NotFound" || error.name === "NoSuchKey";
-  }
-
-  if (typeof error === "object" && error !== null && "$metadata" in error) {
-    return (
-      (error as { $metadata?: { httpStatusCode?: number } }).$metadata
-        ?.httpStatusCode === 404
-    );
-  }
-
-  return false;
-};
-
-const createS3Client = (config: R2S3StorageConfig) => {
+export const createR2S3Storage = (
+  config: R2S3StorageConfig,
+): StoragePluginWith<"put" | "get" | "exists" | "delete"> => {
   const {
     accountId,
-    basePath: _basePath,
-    bucketName: _bucketName,
+    basePath,
+    bucketName,
     endpoint,
     forcePathStyle,
     region,
     ...s3Config
   } = config;
-
-  return new S3Client({
+  const client = new S3Client({
     ...s3Config,
     endpoint: endpoint ?? `https://${accountId}.r2.cloudflarestorage.com`,
     forcePathStyle: forcePathStyle ?? true,
     region: region ?? "auto",
   });
-};
+  const getStorageKey = createStorageKeyBuilder(basePath);
 
-export const createS3StorageProfile = (
-  config: R2S3StorageConfig,
-): NodeStorageProfile => {
-  const { bucketName } = config;
-  const client = createS3Client(config);
-  const getStorageKey = createStorageKeyBuilder(config.basePath);
-
-  return {
-    async delete(storageUri) {
-      const { bucket, key } = parseStorageUri(storageUri, "r2");
-      ensureExpectedR2Bucket(bucket, bucketName);
-
-      await client.send(
-        new DeleteObjectCommand({ Bucket: bucketName, Key: key }),
+  const parseAndValidate = (storageUri: string) => {
+    const parsed = parseStorageUri(storageUri, "r2");
+    if (parsed.bucket !== bucketName) {
+      throw new Error(
+        `Bucket name mismatch: expected "${bucketName}", but found "${parsed.bucket}".`,
       );
-    },
-    async upload(key, filePath) {
-      const Body = await fs.readFile(filePath);
-      const ContentType = getContentType(filePath);
-      const filename = path.basename(filePath);
-      const Key = getStorageKey(key, filename);
+    }
+    return parsed;
+  };
 
-      const upload = new Upload({
+  return createStoragePlugin({
+    name: "r2Storage",
+    protocol: "r2",
+    async put({ key, body, contentType }) {
+      const storageKey = getStorageKey(key);
+      await new Upload({
         client,
         params: {
-          Body,
+          Body: body,
           Bucket: bucketName,
           CacheControl: "max-age=31536000",
-          ContentType,
-          Key,
+          ContentType: contentType,
+          Key: storageKey,
         },
-      });
-      await upload.done();
-
-      return {
-        storageUri: `r2://${bucketName}/${Key}`,
-      };
+      }).done();
+      return { storageUri: `r2://${bucketName}/${storageKey}` };
     },
-    async exists(storageUri: string) {
-      const { bucket, key } = parseStorageUri(storageUri, "r2");
-      ensureExpectedR2Bucket(bucket, bucketName);
-
+    async get(storageUri) {
+      const { key } = parseAndValidate(storageUri);
+      try {
+        const response = await client.send(
+          new GetObjectCommand({ Bucket: bucketName, Key: key }),
+        );
+        if (!response.Body) return null;
+        const headers = new Headers();
+        if (response.ContentType)
+          headers.set("content-type", response.ContentType);
+        if (response.ContentLength !== undefined) {
+          headers.set("content-length", String(response.ContentLength));
+        }
+        return new Response(response.Body.transformToWebStream(), { headers });
+      } catch (error) {
+        if (isObjectNotFoundError(error)) return null;
+        throw error;
+      }
+    },
+    async exists(storageUri) {
+      const { key } = parseAndValidate(storageUri);
       try {
         await client.send(
           new HeadObjectCommand({ Bucket: bucketName, Key: key }),
         );
         return true;
       } catch (error) {
-        if (isS3ObjectNotFoundError(error)) {
-          return false;
-        }
-
+        if (isObjectNotFoundError(error)) return false;
         throw error;
       }
     },
-    async downloadFile(storageUri, filePath) {
-      const { bucket, key } = parseStorageUri(storageUri, "r2");
-      ensureExpectedR2Bucket(bucket, bucketName);
-
-      const response = await client.send(
-        new GetObjectCommand({ Bucket: bucketName, Key: key }),
+    async delete(storageUri) {
+      const { key } = parseAndValidate(storageUri);
+      await client.send(
+        new DeleteObjectCommand({ Bucket: bucketName, Key: key }),
       );
-
-      if (!response.Body) {
-        throw new Error("R2 object body is empty");
-      }
-
-      await fs.mkdir(path.dirname(filePath), { recursive: true });
-      await fs.writeFile(filePath, await response.Body.transformToByteArray());
     },
-  };
-};
-
-export const createS3RuntimeStorageProfile = (
-  config: R2S3StorageConfig,
-): RuntimeStorageProfile => {
-  const { bucketName } = config;
-  const client = createS3Client(config);
-
-  return {
-    async readText(storageUri) {
-      const { bucket, key } = parseStorageUri(storageUri, "r2");
-      ensureExpectedR2Bucket(bucket, bucketName);
-
-      try {
-        const response = await client.send(
-          new GetObjectCommand({ Bucket: bucketName, Key: key }),
-        );
-
-        if (!response.Body) {
-          return null;
-        }
-
-        return response.Body.transformToString();
-      } catch (error) {
-        if (isS3ObjectNotFoundError(error)) {
-          return null;
-        }
-
-        throw error;
-      }
-    },
-    async getDownloadUrl(storageUri) {
-      const { bucket, key } = parseStorageUri(storageUri, "r2");
-      ensureExpectedR2Bucket(bucket, bucketName);
-
-      const command = new GetObjectCommand({ Bucket: bucketName, Key: key });
-      const signedUrl = await getSignedUrl(
-        client as unknown as Parameters<typeof getSignedUrl>[0],
-        command,
-        {
-          expiresIn: 3600,
-        },
-      );
-
-      if (!signedUrl) {
-        throw new Error("Failed to presign R2 URL");
-      }
-
-      return {
-        fileUrl: signedUrl,
-      };
-    },
-  };
+  });
 };

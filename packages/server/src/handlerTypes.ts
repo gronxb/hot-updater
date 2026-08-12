@@ -4,52 +4,33 @@ import type {
   Bundle,
   FingerprintGetBundlesArgs,
 } from "@hot-updater/core";
-import type {
-  DatabaseBundleQueryOptions,
-  HotUpdaterContext,
-} from "@hot-updater/plugin-core";
+import type { DatabaseBundleQueryOptions } from "@hot-updater/plugin-core";
 
 import type { PaginatedResult } from "./types";
 
-export interface HandlerAPI<TContext = unknown> {
+export interface HandlerAPI {
   getAppUpdateInfo: (
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
-    context?: HotUpdaterContext<TContext>,
   ) => Promise<AppUpdateAvailableInfo | null>;
-  getBundleById: (
-    id: string,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<Bundle | null>;
-  getBundles: (
-    options: DatabaseBundleQueryOptions,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<PaginatedResult>;
-  insertBundle: (
-    bundle: Bundle,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<void>;
-  insertBundles?: (
-    bundles: readonly Bundle[],
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<void>;
+  getBundleById: (id: string) => Promise<Bundle | null>;
+  getBundles: (options: DatabaseBundleQueryOptions) => Promise<PaginatedResult>;
+  insertBundle: (bundle: Bundle) => Promise<void>;
+  insertBundles?: (bundles: readonly Bundle[]) => Promise<void>;
   updateBundleById: (
     bundleId: string,
     bundle: Partial<Bundle>,
-    context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
-  deleteBundleById: (
-    bundleId: string,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<void>;
-  getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
+  deleteBundleById: (bundleId: string) => Promise<void>;
+  getChannels: () => Promise<string[]>;
 }
 
 export interface HandlerOptions {
   /** Base path for all routes. @default "/api" */
   readonly basePath?: string;
   /**
-   * Route groups to mount. `GET /version` is always mounted independently.
-   * All paths are relative to `basePath`.
+   * Route groups to mount. `GET /version` and the storage delivery route are
+   * mounted independently when configured. All paths are relative to
+   * `basePath`.
    */
   readonly routes?: HandlerRoutes;
 }
@@ -87,9 +68,8 @@ export interface HandlerRoutes {
   readonly bundles: boolean;
 }
 
-export type RouteHandler<TContext = unknown> = (
+export type RouteHandler = (
   params: Record<string, string>,
   request: Request,
-  api: HandlerAPI<TContext>,
-  context?: HotUpdaterContext<TContext>,
+  api: HandlerAPI,
 ) => Promise<Response>;

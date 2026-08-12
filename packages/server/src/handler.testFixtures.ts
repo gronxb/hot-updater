@@ -6,14 +6,6 @@ import { createHandler, type HandlerAPI, type HandlerRoutes } from "./handler";
 export const NEXT_SDK_VERSION_FOR_TEST = "0.31.0";
 export const CURRENT_PACKAGE_SDK_VERSION = "0.30.10";
 
-type TestEnv = {
-  tenantId: string;
-};
-
-export type TestContext = {
-  env: TestEnv;
-};
-
 export const testBundle: Bundle = {
   id: "bundle-1",
   platform: "ios",
@@ -31,7 +23,7 @@ export const testBundle: Bundle = {
 export const createApi = () =>
   ({
     getAppUpdateInfo: vi
-      .fn<HandlerAPI<TestContext>["getAppUpdateInfo"]>()
+      .fn<HandlerAPI["getAppUpdateInfo"]>()
       .mockResolvedValue({
         fileHash: null,
         fileUrl: null,
@@ -40,18 +32,18 @@ export const createApi = () =>
         shouldForceUpdate: true,
         status: "ROLLBACK",
       }),
-    getBundleById: vi.fn<HandlerAPI<TestContext>["getBundleById"]>(),
-    getBundles: vi.fn<HandlerAPI<TestContext>["getBundles"]>(),
+    getBundleById: vi.fn<HandlerAPI["getBundleById"]>(),
+    getBundles: vi.fn<HandlerAPI["getBundles"]>(),
     getChannels: vi
-      .fn<HandlerAPI<TestContext>["getChannels"]>()
+      .fn<HandlerAPI["getChannels"]>()
       .mockResolvedValue(["production"]),
-    insertBundle: vi.fn<HandlerAPI<TestContext>["insertBundle"]>(),
-    updateBundleById: vi.fn<HandlerAPI<TestContext>["updateBundleById"]>(),
-    deleteBundleById: vi.fn<HandlerAPI<TestContext>["deleteBundleById"]>(),
-  }) satisfies HandlerAPI<TestContext>;
+    insertBundle: vi.fn<HandlerAPI["insertBundle"]>(),
+    updateBundleById: vi.fn<HandlerAPI["updateBundleById"]>(),
+    deleteBundleById: vi.fn<HandlerAPI["deleteBundleById"]>(),
+  }) satisfies HandlerAPI;
 
 export const createManagementHandler = (
-  api: HandlerAPI<TestContext>,
+  api: HandlerAPI,
   routes: Partial<HandlerRoutes> = {},
 ) =>
   createHandler(api, {

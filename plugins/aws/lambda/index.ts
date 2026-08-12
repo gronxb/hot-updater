@@ -4,9 +4,9 @@ import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
 import { handle } from "hono/lambda-edge";
 
+import { cloudFrontStorageDelivery } from "../src/cloudFrontStorageDelivery";
 import { dynamoDB } from "../src/dynamoDB";
 import { s3Storage } from "../src/s3Storage";
-import { withCloudFrontSignedUrl } from "../src/withCloudFrontSignedUrl";
 
 declare global {
   var HotUpdater: {
@@ -47,63 +47,53 @@ type Bindings = {
   };
 };
 
-type SignedUrlContext = {
-  request?: Request;
-  distributionDomainName?: string;
-};
-
-const resolveRequestOrigin = (context?: SignedUrlContext) => {
-  if (context?.distributionDomainName) {
-    return `https://${context.distributionDomainName}`;
-  }
-
-  if (!context?.request) {
-    throw new Error(
-      "CloudFront signed URL resolution requires a request context.",
-    );
-  }
-
-  return new URL(context.request.url).origin;
-};
-
 const database = dynamoDB({
   region: DYNAMODB_REGION,
   tableName: DYNAMODB_TABLE_NAME,
 });
 
-const hotUpdater = createHotUpdater<SignedUrlContext>({
-  database,
-  features: { analytics: true, clientAccessKeys: true },
-  storages: [
-    withCloudFrontSignedUrl(
+const hotUpdaterByDistribution = new Map<
+  string,
+  ReturnType<typeof createHotUpdater>
+>();
+
+const getHotUpdater = (distributionDomainName: string) => {
+  const cached = hotUpdaterByDistribution.get(distributionDomainName);
+  if (cached) return cached;
+
+  const hotUpdater = createHotUpdater({
+    database,
+    features: { analytics: true, clientAccessKeys: true },
+    storages: [
       s3Storage({
         bucketName: S3_BUCKET_NAME,
         region: SSM_REGION,
       }),
-      {
-        keyPairId: CLOUDFRONT_KEY_PAIR_ID,
-        ssmRegion: SSM_REGION,
-        ssmParameterName: SSM_PARAMETER_NAME,
-        publicBaseUrl: resolveRequestOrigin,
-      },
-    ),
-  ],
-  basePath: HOT_UPDATER_BASE_PATH,
-  routes: {
-    updateCheck: true,
-    bundles: false,
-  },
-});
+    ],
+    storageDelivery: cloudFrontStorageDelivery({
+      keyPairId: CLOUDFRONT_KEY_PAIR_ID,
+      ssmRegion: SSM_REGION,
+      ssmParameterName: SSM_PARAMETER_NAME,
+      publicBaseUrl: `https://${distributionDomainName}`,
+    }),
+    basePath: HOT_UPDATER_BASE_PATH,
+    routes: {
+      updateCheck: true,
+      bundles: false,
+    },
+  });
+  hotUpdaterByDistribution.set(distributionDomainName, hotUpdater);
+  return hotUpdater;
+};
 
 const app = new Hono<{ Bindings: Bindings }>();
 
 app.mount(
   HOT_UPDATER_BASE_PATH,
   async (request: Request, distributionDomainName: string) => {
-    const response = await hotUpdater.handler(request, {
+    const response = await getHotUpdater(distributionDomainName).handler(
       request,
-      distributionDomainName,
-    });
+    );
 
     if (
       request.method === "GET" &&

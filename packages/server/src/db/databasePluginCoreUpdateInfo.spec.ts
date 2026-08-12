@@ -11,7 +11,6 @@ import {
   resolveFileUrl,
   seedBundles,
   targetBundle,
-  type TestContext,
   updateArgs,
 } from "./databasePluginCore.testFixtures";
 
@@ -35,11 +34,7 @@ describe("createDatabasePluginCore update info", () => {
       getUpdateInfo,
     };
     const core = createDatabasePluginCore(plugin, resolveFileUrl);
-    const context: TestContext = {
-      env: { assetHost: "https://assets.example.com" },
-    };
-
-    const result = await core.api.getUpdateInfo(updateArgs, context);
+    const result = await core.api.getUpdateInfo(updateArgs);
 
     expect(result).toEqual(expected);
     expect(getUpdateInfo).toHaveBeenCalledWith(updateArgs);
@@ -84,11 +79,7 @@ describe("createDatabasePluginCore update info", () => {
     const core = createDatabasePluginCore(plugin, resolveFileUrl, {
       readStorageText: async (storageUri) => manifests.get(storageUri) ?? null,
     });
-    const context: TestContext = {
-      env: { assetHost: "https://assets.example.com" },
-    };
-
-    const result = await core.api.getAppUpdateInfo(updateArgs, context);
+    const result = await core.api.getAppUpdateInfo(updateArgs);
 
     expect(result).toMatchObject({
       changedAssets: {

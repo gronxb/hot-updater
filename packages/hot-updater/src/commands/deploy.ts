@@ -11,16 +11,17 @@ import {
   HotUpdateDirUtil,
   loadConfig,
   p,
+  putStorageFile,
 } from "@hot-updater/cli-tools";
 import type {
   Bundle,
   DatabaseMutationClient,
   BundleRepository,
-  NodeStoragePlugin,
   Platform,
+  StoragePluginWith,
 } from "@hot-updater/plugin-core";
 import {
-  assertNodeStoragePlugin,
+  assertStorageOperations,
   createDatabaseClient,
 } from "@hot-updater/plugin-core";
 import { getContentAddressedAssetStoragePath } from "@hot-updater/plugin-core";
@@ -53,6 +54,10 @@ import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import { PLATFORMS } from "../commandOptions";
 import { getConsolePort, openConsole } from "./console";
 import { prepareAndCommitBundles } from "./deployTransaction";
+
+type DeployStoragePlugin = StoragePluginWith<
+  "put" | "get" | "exists" | "delete"
+>;
 
 const MANIFEST_ASSET_UPLOAD_CONCURRENCY = 8;
 
@@ -278,7 +283,7 @@ const createAutoPatches = async ({
   databasePlugin: BundleRepository;
   maxBaseBundles: number;
   platform: Platform;
-  storagePlugin: NodeStoragePlugin;
+  storagePlugin: DeployStoragePlugin;
   target: {
     appVersion: string | null;
     fingerprintHash: string | null;
@@ -760,9 +765,9 @@ const deployPlatform = async ({
     config.build({
       cwd,
     }),
-    config.storage(),
+    config.storage,
   ]);
-  assertNodeStoragePlugin(storagePlugin);
+  assertStorageOperations(storagePlugin, ["put", "get", "exists", "delete"]);
 
   try {
     const taskRef: {
@@ -961,7 +966,8 @@ const deployPlatform = async ({
             };
 
             updateUploadProgress();
-            const { storageUri } = await storagePlugin.profiles.node.upload(
+            const { storageUri } = await putStorageFile(
+              storagePlugin,
               bundleId,
               bundlePath,
             );
@@ -999,10 +1005,11 @@ const deployPlatform = async ({
                   uploadFilename: path.posix.basename(storagePath),
                 });
 
-                if (await storagePlugin.profiles.node.exists(storageUri)) {
+                if (await storagePlugin.exists(storageUri)) {
                   skippedUploadCount += 1;
                 } else {
-                  await storagePlugin.profiles.node.upload(
+                  await putStorageFile(
+                    storagePlugin,
                     uploadKey,
                     uploadSourcePath,
                   );
@@ -1012,7 +1019,8 @@ const deployPlatform = async ({
               },
             );
 
-            const manifestUpload = await storagePlugin.profiles.node.upload(
+            const manifestUpload = await putStorageFile(
+              storagePlugin,
               bundleId,
               taskRef.manifestPath,
             );

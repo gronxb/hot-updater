@@ -50,6 +50,10 @@ export const hotUpdater = createHotUpdater({
       bucketName: process.env.R2_BUCKET_NAME!,
     }),
   ],
+  storageDelivery: {
+    publicBaseUrl: process.env.HOT_UPDATER_PUBLIC_BASE_URL!,
+    signingKey: process.env.HOT_UPDATER_STORAGE_DELIVERY_KEY!,
+  },
   basePath: "/hot-updater",
 });
 ```

@@ -6,3 +6,7 @@ export {
   type SupabaseEdgeFunctionStorageConfig as SupabaseStorageConfig,
   supabaseEdgeFunctionStorage as supabaseStorage,
 } from "./supabaseEdgeFunctionStorage";
+export {
+  supabaseStorageDelivery,
+  type SupabaseStorageDeliveryConfig,
+} from "./supabaseStorageDelivery";

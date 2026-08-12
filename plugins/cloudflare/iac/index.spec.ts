@@ -154,7 +154,9 @@ describe("Cloudflare init discovery", () => {
     mocks.api.r2.buckets.domains.managed.list.mockResolvedValue({
       enabled: false,
     });
-    mocks.api.workers.subdomains.get.mockResolvedValue({});
+    mocks.api.workers.subdomains.get.mockResolvedValue({
+      subdomain: "example",
+    });
     mocks.inputSecrets.mockResolvedValue({
       accessKeyId: "access-key-id",
       apiToken: "api-token",
@@ -169,7 +171,9 @@ describe("Cloudflare init discovery", () => {
     });
     mocks.credentialApi.d1.database.list.mockResolvedValue({ result: [] });
     mocks.credentialApi.r2.buckets.list.mockResolvedValue({ buckets: [] });
-    mocks.credentialApi.workers.subdomains.get.mockResolvedValue({});
+    mocks.credentialApi.workers.subdomains.get.mockResolvedValue({
+      subdomain: "example",
+    });
     mocks.createWrangler.mockResolvedValue(vi.fn());
   });
 

@@ -1,4 +1,4 @@
-import type { RuntimeStoragePlugin } from "@hot-updater/plugin-core";
+import { createStoragePlugin } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createStorageAccess } from "./storageAccess";
@@ -8,50 +8,98 @@ describe("createStorageAccess", () => {
     vi.unstubAllGlobals();
   });
 
-  it("reads text through a matching runtime storage plugin before direct HTTP fetch", async () => {
-    const readText = vi.fn(async () => "manifest text");
-    const storagePlugin: RuntimeStoragePlugin = {
-      name: "httpStorage",
-      supportedProtocol: "http",
-      profiles: {
-        runtime: {
-          readText,
-          async getDownloadUrl(storageUri) {
-            return { fileUrl: storageUri };
-          },
-        },
-      },
-    };
-    const fetchMock = vi.fn<typeof fetch>(async () => {
-      return new Response("should not be used", { status: 500 });
+  it("reads text through a matching storage implementation", async () => {
+    const get = vi.fn(async () => new Response("manifest text"));
+    const storage = createStoragePlugin({
+      name: "r2Storage",
+      protocol: "r2",
+      get,
     });
-    vi.stubGlobal("fetch", fetchMock);
+    const { readStorageText } = createStorageAccess([storage], {
+      basePath: "/api",
+    });
 
-    const { readStorageText } = createStorageAccess([storagePlugin]);
-
-    await expect(
-      readStorageText("http://assets.example.com/manifest.json"),
-    ).resolves.toBe("manifest text");
-    expect(readText).toHaveBeenCalledWith(
-      "http://assets.example.com/manifest.json",
-      undefined,
+    await expect(readStorageText("r2://assets/manifest.json")).resolves.toBe(
+      "manifest text",
     );
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(get).toHaveBeenCalledWith("r2://assets/manifest.json");
   });
 
-  it("reads direct HTTP storage text when no storage plugin owns the protocol", async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () => {
-      return new Response("manifest text", { status: 200 });
-    });
+  it("reads direct HTTP storage when no plugin owns the protocol", async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response("manifest text"),
+    );
     vi.stubGlobal("fetch", fetchMock);
-
-    const { readStorageText } = createStorageAccess([]);
+    const { readStorageText } = createStorageAccess([], { basePath: "/api" });
 
     await expect(
       readStorageText("https://assets.example.com/manifest.json"),
     ).resolves.toBe("manifest text");
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://assets.example.com/manifest.json",
+  });
+
+  it("creates and serves a runtime-neutral delivery URL", async () => {
+    const storage = createStoragePlugin({
+      name: "r2Storage",
+      protocol: "r2",
+      get: vi.fn(
+        async () =>
+          new Response("bundle", {
+            headers: { "content-type": "application/zip" },
+          }),
+      ),
+    });
+    const access = createStorageAccess([storage], {
+      basePath: "/api/check-update",
+      publicBaseUrl: "https://updates.example.com/runtime",
+      signingKey: "test-signing-key",
+    });
+
+    const fileUrl = await access.resolveFileUrl("r2://bucket/bundle.zip");
+    expect(fileUrl).toMatch(
+      /^https:\/\/updates\.example\.com\/runtime\/api\/check-update\/storage\//,
     );
+    const segments = new URL(fileUrl!).pathname.split("/");
+    const token = segments.at(-2)!;
+    const signature = segments.at(-1)!;
+    const response = await access.downloadStorageObject!(token, signature);
+    await expect(response?.text()).resolves.toBe("bundle");
+    await expect(
+      access.downloadStorageObject!(token, `${signature}tampered`),
+    ).resolves.toBeNull();
+  });
+
+  it("lets a CDN resolver bypass built-in server delivery", async () => {
+    const storage = createStoragePlugin({
+      name: "s3Storage",
+      protocol: "s3",
+      get: async () => null,
+    });
+    const resolveUrl = vi.fn(async () => "https://cdn.example.com/bundle.zip");
+    const access = createStorageAccess([storage], {
+      basePath: "/api",
+      resolveUrl,
+    });
+
+    await expect(access.resolveFileUrl("s3://bucket/bundle.zip")).resolves.toBe(
+      "https://cdn.example.com/bundle.zip",
+    );
+    expect(access.downloadStorageObject).toBeUndefined();
+  });
+
+  it("rejects ambiguous storage protocol ownership", () => {
+    const first = createStoragePlugin({
+      name: "firstR2Storage",
+      protocol: "r2",
+      get: async () => null,
+    });
+    const second = createStoragePlugin({
+      name: "secondR2Storage",
+      protocol: "r2",
+      get: async () => null,
+    });
+
+    expect(() =>
+      createStorageAccess([first, second], { basePath: "/api" }),
+    ).toThrow("Multiple storage plugins handle protocol: r2");
   });
 });

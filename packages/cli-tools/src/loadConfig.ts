@@ -5,7 +5,10 @@ import type {
   Platform,
   RequiredDeep,
 } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  createDatabasePlugin,
+  createStoragePlugin,
+} from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
@@ -60,6 +63,19 @@ const missingDatabase = createDatabasePlugin({
   commit: async () => {
     throw new Error("database plugin is required");
   },
+});
+
+const missingStorageError = async (): Promise<never> => {
+  throw new Error("storage plugin is required");
+};
+
+const missingStorage = createStoragePlugin({
+  name: "missingStorage",
+  protocol: "missing",
+  put: missingStorageError,
+  get: missingStorageError,
+  exists: missingStorageError,
+  delete: missingStorageError,
 });
 
 const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
@@ -158,9 +174,7 @@ const getDefaultConfig = (): ConfigInput => {
     build: () => {
       throw new Error("build plugin is required");
     },
-    storage: () => {
-      throw new Error("storage plugin is required");
-    },
+    storage: missingStorage,
     database: missingDatabase,
   };
 };
@@ -176,7 +190,12 @@ const mergeConfigSources = (
   );
 
   const database = sources.find((source) => source?.database)?.database;
-  return database ? { ...mergedConfig, database } : mergedConfig;
+  const storage = sources.find((source) => source?.storage)?.storage;
+  return {
+    ...mergedConfig,
+    ...(database ? { database } : {}),
+    ...(storage ? { storage } : {}),
+  };
 };
 
 const getConfigLoaderOptions = (

@@ -1,9 +1,8 @@
 import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
+  createStoragePlugin,
   type DatabasePlugin,
-  type RuntimeStoragePlugin,
-  type RuntimeStorageProfile,
 } from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
@@ -21,7 +20,6 @@ import {
   createRuntimeStorage,
   createSchemaManagedDatabase,
   runtimeBundle,
-  type TestContext,
 } from "./runtime.testFixtures";
 import { HOT_UPDATER_SCHEMA_VERSION } from "./schema/types";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
@@ -49,7 +47,7 @@ describe("runtime createHotUpdater", () => {
       | "database"
       | "features"
       | "storages"
-      | "storagePlugins"
+      | "storageDelivery"
       | "basePath"
       | "cwd"
       | "routes"
@@ -65,15 +63,10 @@ describe("runtime createHotUpdater", () => {
       ...createInMemoryDatabasePlugin(),
       name: "contextlessTestDatabase",
     };
-    const storage = (): RuntimeStoragePlugin<undefined> => ({
+    const storage = createStoragePlugin({
       name: "contextlessTestStorage",
-      supportedProtocol: "s3",
-      profiles: {
-        runtime: {
-          getDownloadUrl: async () => ({ fileUrl: "https://example.com" }),
-          readText: async () => null,
-        },
-      },
+      protocol: "s3",
+      get: async () => null,
     });
 
     const hotUpdater = createHotUpdater({ database, storages: [storage] });
@@ -85,7 +78,7 @@ describe("runtime createHotUpdater", () => {
     expect("generateSchema" in hotUpdater).toBe(false);
     expectTypeOf(hotUpdater).not.toHaveProperty("createMigrator");
     expectTypeOf(hotUpdater).not.toHaveProperty("generateSchema");
-    expectTypeOf(hotUpdater.handler).parameter(1).toEqualTypeOf<undefined>();
+    expectTypeOf(hotUpdater.handler).parameter(0).toEqualTypeOf<Request>();
   });
 
   it("rejects access when a managed schema is not initialized", async () => {
@@ -126,7 +119,7 @@ describe("runtime createHotUpdater", () => {
     expect(createMigrator).toHaveBeenCalledOnce();
   });
 
-  it("passes handler context to storage but not the database plugin", async () => {
+  it("keeps download URL resolution outside the storage implementation", async () => {
     const request = new Request(updateUrl);
     const getUpdateInfo = vi.fn<NonNullable<DatabasePlugin["getUpdateInfo"]>>(
       async () => ({
@@ -142,26 +135,18 @@ describe("runtime createHotUpdater", () => {
       ...createRuntimeDatabase(),
       getUpdateInfo,
     };
-    const getDownloadUrl = vi.fn<
-      RuntimeStorageProfile<TestContext>["getDownloadUrl"]
-    >(async (_storageUri, context) => ({
-      fileUrl: new URL("/bundle.zip", context?.env?.assetHost).toString(),
-    }));
+    const assetHost = "https://assets.example.com";
+    const resolveUrl = vi.fn(async () =>
+      new URL("/bundle.zip", assetHost).toString(),
+    );
     const hotUpdater = createHotUpdater({
       database,
-      storages: [createRuntimeStorage(getDownloadUrl)],
+      storages: [createRuntimeStorage()],
+      storageDelivery: { resolveUrl },
       basePath: "/api/check-update",
       routes: { updateCheck: true, bundles: false },
     });
-    expectTypeOf(hotUpdater.handler)
-      .parameter(1)
-      .toEqualTypeOf<TestContext | undefined>();
-    const context: TestContext = {
-      env: { assetHost: "https://assets.example.com" },
-      request,
-    };
-
-    const response = await hotUpdater.handler(request, context);
+    const response = await hotUpdater.handler(request);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -170,10 +155,48 @@ describe("runtime createHotUpdater", () => {
       status: "UPDATE",
     });
     expect(getUpdateInfo).toHaveBeenCalledWith(expect.any(Object));
-    expect(getDownloadUrl).toHaveBeenCalledWith(
-      runtimeBundle.storageUri,
-      context,
+    expect(resolveUrl).toHaveBeenCalledWith(runtimeBundle.storageUri);
+  });
+
+  it("streams storage responses through the built-in delivery route", async () => {
+    const database: DatabasePlugin = {
+      ...createRuntimeDatabase(),
+      getUpdateInfo: async () => ({
+        fileHash: runtimeBundle.fileHash,
+        id: runtimeBundle.id,
+        message: runtimeBundle.message,
+        shouldForceUpdate: false,
+        status: "UPDATE",
+        storageUri: runtimeBundle.storageUri,
+      }),
+    };
+    const get = vi.fn(
+      async () =>
+        new Response("bundle bytes", {
+          headers: { "content-type": "application/zip" },
+        }),
     );
+    const hotUpdater = createHotUpdater({
+      database,
+      storages: [createRuntimeStorage(get)],
+      storageDelivery: {
+        publicBaseUrl: "https://updates.example.com",
+        signingKey: "test-signing-key",
+      },
+      basePath: "/api/check-update",
+    });
+
+    const updateResponse = await hotUpdater.handler(new Request(updateUrl));
+    const update = (await updateResponse.json()) as { fileUrl: string };
+    const bundleResponse = await hotUpdater.handler(
+      new Request(update.fileUrl),
+    );
+
+    expect(bundleResponse.status).toBe(200);
+    expect(bundleResponse.headers.get("content-type")).toBe("application/zip");
+    expect(bundleResponse.headers.get("cache-control")).toContain("immutable");
+    await expect(bundleResponse.text()).resolves.toBe("bundle bytes");
+    expect(get).toHaveBeenCalledWith(runtimeBundle.storageUri);
   });
 
   it("does not pass handler context to generic database queries", async () => {
@@ -185,19 +208,14 @@ describe("runtime createHotUpdater", () => {
     const findMany = vi.spyOn(database.bundles, "findMany");
     const hotUpdater = createHotUpdater({
       database,
-      storages: [
-        createRuntimeStorage(async () => ({
-          fileUrl: "https://assets.example.com/bundle.zip",
-        })),
-      ],
+      storages: [createRuntimeStorage()],
+      storageDelivery: {
+        resolveUrl: async () => "https://assets.example.com/bundle.zip",
+      },
       basePath: "/api/check-update",
       routes: { updateCheck: true, bundles: false },
     });
-    const context: TestContext = {
-      env: { assetHost: "https://assets.example.com" },
-    };
-
-    const response = await hotUpdater.handler(request, context);
+    const response = await hotUpdater.handler(request);
 
     expect(response.status).toBe(200);
     expect(findMany).toHaveBeenCalledWith(expect.any(Object));
@@ -218,11 +236,10 @@ describe("runtime createHotUpdater", () => {
     };
     const hotUpdater = createHotUpdater({
       database,
-      storages: [
-        createRuntimeStorage(async () => ({
-          fileUrl: "https://assets.example.com/bundle.zip",
-        })),
-      ],
+      storages: [createRuntimeStorage()],
+      storageDelivery: {
+        resolveUrl: async () => "https://assets.example.com/bundle.zip",
+      },
       basePath: "/api/check-update",
       routes: { updateCheck: true, bundles: false },
     });

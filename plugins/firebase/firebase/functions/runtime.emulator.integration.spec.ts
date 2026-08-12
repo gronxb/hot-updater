@@ -33,7 +33,8 @@ import {
   waitForHttpOk,
 } from "../../../../packages/test-utils/src/runtimeProcess";
 import { firebaseDatabase } from "../../src/firebaseDatabase";
-import { firebaseFunctionsStorage } from "../../src/firebaseFunctionsStorage";
+import { firebaseStorage } from "../../src/firebaseStorage";
+import { firebaseStorageDelivery } from "../../src/firebaseStorageDelivery";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -241,11 +242,14 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     seedHotUpdater = createHotUpdater({
       database: firebaseDatabase(adminOptions),
       storages: [
-        firebaseFunctionsStorage({
+        firebaseStorage({
           ...adminOptions,
-          cdnUrl: cdnBaseUrl,
         }),
       ],
+      storageDelivery: firebaseStorageDelivery({
+        ...adminOptions,
+        cdnUrl: cdnBaseUrl,
+      }),
       basePath: HOT_UPDATER_BASE_PATH,
       routes: {
         updateCheck: true,

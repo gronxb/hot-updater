@@ -268,6 +268,10 @@ import { createHotUpdater } from "@hot-updater/server";
 const hotUpdater = createHotUpdater({
   database,
   storages: [storage],
+  storageDelivery: {
+    publicBaseUrl: process.env.HOT_UPDATER_PUBLIC_BASE_URL!,
+    signingKey: process.env.HOT_UPDATER_STORAGE_DELIVERY_KEY!,
+  },
   basePath: "/hot-updater",
   features: {
     analytics: true,

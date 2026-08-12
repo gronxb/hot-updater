@@ -2,10 +2,10 @@ import { loadConfig, p, promoteBundle } from "@hot-updater/cli-tools";
 import type {
   Bundle,
   BundleRepository,
-  NodeStoragePlugin,
+  StoragePluginWith,
 } from "@hot-updater/plugin-core";
 import {
-  assertNodeStoragePlugin,
+  assertStorageOperations,
   createDatabaseClient,
 } from "@hot-updater/plugin-core";
 
@@ -69,10 +69,10 @@ export const handlePromote = async (
   const config = await loadConfig(null);
   const databasePlugin = config.database;
   const databaseClient = createDatabaseClient(databasePlugin);
-  let storagePlugin: NodeStoragePlugin | null = null;
+  let storagePlugin: StoragePluginWith<"get" | "put" | "delete"> | null = null;
   try {
-    storagePlugin = await config.storage();
-    assertNodeStoragePlugin(storagePlugin);
+    storagePlugin = config.storage;
+    assertStorageOperations(storagePlugin, ["get", "put", "delete"]);
   } catch {
     storagePlugin = null;
   }

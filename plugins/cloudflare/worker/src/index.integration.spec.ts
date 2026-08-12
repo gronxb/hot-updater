@@ -33,7 +33,9 @@ declare module "cloudflare:test" {
   interface ProvidedEnv {
     DB: D1Database;
     BUCKET: R2Bucket;
-    JWT_SECRET: string;
+    BUCKET_NAME: string;
+    PUBLIC_BASE_URL: string;
+    STORAGE_DELIVERY_SIGNING_KEY: string;
   }
 }
 
@@ -125,7 +127,7 @@ const createInsertBundlePatchQueries = (bundle: Bundle) =>
 const toRuntimeBundle = (bundle: Bundle): Bundle => {
   return {
     ...bundle,
-    storageUri: `r2://bundles/${bundle.id}/bundle.zip`,
+    storageUri: `r2://${env.BUCKET_NAME}/${bundle.id}/bundle.zip`,
   };
 };
 
@@ -214,24 +216,22 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
             vi.unstubAllGlobals();
           },
           currentArtifacts: {
-            assetBaseStorageUri: `r2://bundles/${fixture.currentBundleId}/files`,
+            assetBaseStorageUri: `r2://${env.BUCKET_NAME}/${fixture.currentBundleId}/files`,
             manifestFileHash: "sig:manifest-current",
-            manifestStorageUri: `r2://bundles/${fixture.currentBundleId}/manifest.json`,
+            manifestStorageUri: `r2://${env.BUCKET_NAME}/${fixture.currentBundleId}/manifest.json`,
           },
           nextArtifacts: {
-            assetBaseStorageUri: `r2://bundles/${fixture.nextBundleId}/files`,
+            assetBaseStorageUri: `r2://${env.BUCKET_NAME}/${fixture.nextBundleId}/files`,
             manifestFileHash: "sig:manifest-next",
-            manifestStorageUri: `r2://bundles/${fixture.nextBundleId}/manifest.json`,
+            manifestStorageUri: `r2://${env.BUCKET_NAME}/${fixture.nextBundleId}/manifest.json`,
           },
         };
       },
-      expectFileUrl: (fileUrl, fixture) => {
-        expect(fileUrl).toContain(
-          `/bundles/${fixture.nextBundleId}/files/${fixture.changedAssetPath}`,
-        );
+      expectFileUrl: (fileUrl) => {
+        expect(fileUrl).toContain(`${HOT_UPDATER_BASE_PATH}/storage/`);
       },
-      expectManifestUrl: (manifestUrl, fixture) => {
-        expect(manifestUrl).toContain(`/${fixture.nextBundleId}/manifest.json`);
+      expectManifestUrl: (manifestUrl) => {
+        expect(manifestUrl).toContain(`${HOT_UPDATER_BASE_PATH}/storage/`);
       },
     },
   });
@@ -280,27 +280,27 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
           vi.unstubAllGlobals();
         },
         currentArtifacts: {
-          assetBaseStorageUri: `r2://bundles/${fixture.currentBundleId}/files`,
+          assetBaseStorageUri: `r2://${env.BUCKET_NAME}/${fixture.currentBundleId}/files`,
           manifestFileHash: "sig:manifest-current",
-          manifestStorageUri: `r2://bundles/${fixture.currentBundleId}/manifest.json`,
+          manifestStorageUri: `r2://${env.BUCKET_NAME}/${fixture.currentBundleId}/manifest.json`,
         },
         nextArtifacts: {
-          assetBaseStorageUri: `r2://bundles/${fixture.nextBundleId}/files`,
+          assetBaseStorageUri: `r2://${env.BUCKET_NAME}/${fixture.nextBundleId}/files`,
           manifestFileHash: "sig:manifest-next",
-          manifestStorageUri: `r2://bundles/${fixture.nextBundleId}/manifest.json`,
+          manifestStorageUri: `r2://${env.BUCKET_NAME}/${fixture.nextBundleId}/manifest.json`,
           patches: [
             {
               baseBundleId: fixture.currentBundleId,
               baseFileHash: "hash-old-bundle",
               patchFileHash: "hash-bsdiff",
-              patchStorageUri: `r2://bundles/${fixture.patchPath}`,
+              patchStorageUri: `r2://${env.BUCKET_NAME}/${fixture.patchPath}`,
             },
           ],
         },
       };
     },
-    expectPatchUrl: (patchUrl, fixture) => {
-      expect(patchUrl).toContain(`/bundles/${fixture.patchPath}`);
+    expectPatchUrl: (patchUrl) => {
+      expect(patchUrl).toContain(`${HOT_UPDATER_BASE_PATH}/storage/`);
     },
   });
 

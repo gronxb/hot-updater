@@ -1,42 +1,17 @@
-import fs from "node:fs/promises";
-import path from "node:path";
+import { createStoragePlugin } from "@hot-updater/plugin-core";
 
-import type { UniversalStoragePlugin } from "@hot-updater/plugin-core";
-
-export const mockStorage = (_: any) => (): UniversalStoragePlugin => {
-  return {
+export const mockStorage = (_: unknown) =>
+  createStoragePlugin({
     name: "mock",
-    supportedProtocol: "storage",
-    profiles: {
-      node: {
-        upload: (key: string) =>
-          Promise.resolve({
-            storageUri: `storage://my-app/${key}/bundle.zip`,
-          }),
-        exists: (_storageUri: string) => Promise.resolve(false),
-        delete: (_storageUri: string) => Promise.resolve(),
-        async downloadFile(storageUri: string, filePath: string) {
-          await fs.mkdir(path.dirname(filePath), { recursive: true });
-          await fs.writeFile(filePath, storageUri);
-        },
-      },
-      runtime: {
-        async readText() {
-          return null;
-        },
-        async getDownloadUrl(storageUri: string) {
-          try {
-            const url = new URL(storageUri);
-            if (url.protocol === "http:" || url.protocol === "https:") {
-              return { fileUrl: storageUri };
-            }
-          } catch {}
-          // For mock, return a deterministic fake URL for testing.
-          return {
-            fileUrl: `https://example.invalid/download?u=${encodeURIComponent(storageUri)}`,
-          };
-        },
-      },
+    protocol: "storage",
+    async put({ key }) {
+      return { storageUri: `storage://my-app/${key}` };
     },
-  };
-};
+    async get() {
+      return null;
+    },
+    async exists() {
+      return false;
+    },
+    async delete() {},
+  });

@@ -89,7 +89,7 @@ describe("packed provider entrypoints", () => {
     {
       directory: "aws",
       packageName: "@hot-updater/aws",
-      exports: ["awsLambdaEdgeStorage", "s3LambdaEdgeStorage"],
+      exports: ["cloudFrontStorageDelivery", "s3Storage"],
       handler: "@hot-updater/aws/lambda",
     },
     {
@@ -100,7 +100,11 @@ describe("packed provider entrypoints", () => {
     {
       directory: "firebase",
       packageName: "@hot-updater/firebase",
-      exports: ["firebaseDatabase", "firebaseStorage"],
+      exports: [
+        "firebaseDatabase",
+        "firebaseStorage",
+        "firebaseStorageDelivery",
+      ],
       handler: "@hot-updater/firebase/functions",
     },
     {
@@ -111,7 +115,11 @@ describe("packed provider entrypoints", () => {
     {
       directory: "supabase",
       packageName: "@hot-updater/supabase",
-      exports: ["supabaseDatabase", "supabaseStorage"],
+      exports: [
+        "supabaseDatabase",
+        "supabaseStorage",
+        "supabaseStorageDelivery",
+      ],
       absentExports: [
         "supabaseEdgeFunctionDatabase",
         "supabaseEdgeFunctionStorage",
@@ -120,7 +128,11 @@ describe("packed provider entrypoints", () => {
     {
       directory: "supabase",
       packageName: "@hot-updater/supabase/edge",
-      exports: ["supabaseDatabase", "supabaseStorage"],
+      exports: [
+        "supabaseDatabase",
+        "supabaseStorage",
+        "supabaseStorageDelivery",
+      ],
       absentExports: [
         "supabaseEdgeFunctionDatabase",
         "supabaseEdgeFunctionStorage",
@@ -190,6 +202,15 @@ if (database.name !== "d1Database") throw new Error("invalid d1Database name");
 if (typeof database.analytics.append !== "function") throw new Error("missing analytics domain");
 if (typeof database.clientAccessKeys.create !== "function") throw new Error("missing clientAccessKeys domain");
 if ("d1WorkerDatabase" in runtime) throw new Error("unexpected d1WorkerDatabase");
+const storage = runtime.r2Storage({
+  bucket: {},
+  bucketName: "updates",
+});
+if (storage.name !== "r2Storage") throw new Error("invalid r2Storage name");
+for (const operation of ["put", "get", "exists", "delete"]) {
+  if (typeof storage[operation] !== "function") throw new Error("missing storage " + operation);
+}
+if ("getDownloadUrl" in storage) throw new Error("unexpected storage delivery method");
 `;
     await runNode(
       packageDirectory,
@@ -205,7 +226,7 @@ if ("d1WorkerDatabase" in runtime) throw new Error("unexpected d1WorkerDatabase"
     const commonJsConsumer = path.join(packageDirectory, "consumer.cts");
     const consumerSource = `import { d1Database, r2Storage } from ${JSON.stringify(
       moduleSpecifier,
-    )};\ndeclare const binding: Parameters<typeof d1Database>[0];\nconst database = d1Database(binding);\nvoid database.bundles;\nvoid database.bundlePatches;\nvoid database.analytics;\nvoid database.clientAccessKeys;\nvoid database.commit;\nvoid r2Storage;\n`;
+    )};\ndeclare const binding: Parameters<typeof d1Database>[0];\ndeclare const storageConfig: Parameters<typeof r2Storage>[0];\nconst database = d1Database(binding);\nconst storage = r2Storage(storageConfig);\nvoid database.bundles;\nvoid database.bundlePatches;\nvoid database.analytics;\nvoid database.clientAccessKeys;\nvoid database.commit;\nvoid storage.get;\n`;
     await writeFile(moduleConsumer, consumerSource);
     await writeFile(commonJsConsumer, consumerSource);
 

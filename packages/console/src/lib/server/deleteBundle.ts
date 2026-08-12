@@ -1,7 +1,3 @@
-import { randomUUID } from "node:crypto";
-import fs from "node:fs/promises";
-import path from "node:path";
-
 import {
   getAssetBaseStorageUri,
   getBundlePatches,
@@ -10,7 +6,7 @@ import {
 } from "@hot-updater/core";
 import type {
   DatabaseClient,
-  NodeStoragePlugin,
+  StoragePluginWith,
 } from "@hot-updater/plugin-core";
 import { isContentAddressedAssetBaseStorageUri } from "@hot-updater/plugin-core";
 
@@ -22,7 +18,7 @@ interface DeleteBundleInput {
 
 interface DeleteBundleDependencies {
   databaseClient: DatabaseClient;
-  storagePlugin: NodeStoragePlugin;
+  storagePlugin: StoragePluginWith<"get" | "delete">;
   waitForStorageCleanup?: boolean;
 }
 
@@ -30,11 +26,9 @@ interface BundleManifest {
   assets?: Record<string, { fileHash: string; signature?: string }>;
 }
 
-const HOT_UPDATER_DOWNLOAD_DIR_PREFIX = "downloads-";
-
 function resolveStorageUriForDeletion(
   storageUri: string,
-  storagePlugin: NodeStoragePlugin,
+  storagePlugin: StoragePluginWith<"get" | "delete">,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
@@ -42,7 +36,7 @@ function resolveStorageUriForDeletion(
     return null;
   }
 
-  if (storagePlugin.supportedProtocol !== protocol) {
+  if (storagePlugin.protocol !== protocol) {
     throw new Error(`No storage plugin for protocol: ${protocol}`);
   }
 
@@ -51,7 +45,7 @@ function resolveStorageUriForDeletion(
 
 async function downloadStorageBytes(
   storageUri: string,
-  storagePlugin: NodeStoragePlugin,
+  storagePlugin: StoragePluginWith<"get" | "delete">,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
@@ -66,29 +60,20 @@ async function downloadStorageBytes(
     return new Uint8Array(await response.arrayBuffer());
   }
 
-  if (storagePlugin.supportedProtocol !== protocol) {
+  if (storagePlugin.protocol !== protocol) {
     throw new Error(`No storage plugin for protocol: ${protocol}`);
   }
 
-  const downloadRoot = path.join(process.cwd(), ".hot-updater");
-  await fs.mkdir(downloadRoot, { recursive: true });
-  const workDir = await fs.mkdtemp(
-    path.join(downloadRoot, HOT_UPDATER_DOWNLOAD_DIR_PREFIX),
-  );
-  const filename = path.basename(new URL(storageUri).pathname) || randomUUID();
-  const filePath = path.join(workDir, filename);
-
-  try {
-    await storagePlugin.profiles.node.downloadFile(storageUri, filePath);
-    return new Uint8Array(await fs.readFile(filePath));
-  } finally {
-    await fs.rm(workDir, { force: true, recursive: true });
+  const response = await storagePlugin.get(storageUri);
+  if (response === null) {
+    throw new Error(`Storage object not found: ${storageUri}`);
   }
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 async function loadBundleManifest(
   manifestStorageUri: string,
-  storagePlugin: NodeStoragePlugin,
+  storagePlugin: StoragePluginWith<"get" | "delete">,
 ) {
   const manifestBytes = await downloadStorageBytes(
     manifestStorageUri,
@@ -140,7 +125,6 @@ export async function deleteBundle(
         cleanupUris.add(resolvedStorageUri);
       }
     };
-
     addCleanupUri(bundle.storageUri);
     addCleanupUri(getManifestStorageUri(bundle) ?? undefined);
     addCleanupUri(getPatchStorageUri(bundle) ?? undefined);
@@ -153,9 +137,7 @@ export async function deleteBundle(
 
     if (assetBaseStorageUri) {
       if (!manifestStorageUri) {
-        if (!isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
-          addCleanupUri(assetBaseStorageUri);
-        }
+        // Legacy assets cannot be enumerated safely without a manifest.
       } else if (isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
         // New deploys store manifest assets under a shared content-addressed
         // /assets root. Deleting individual shared objects here would require
@@ -179,9 +161,6 @@ export async function deleteBundle(
             "Failed to load bundle manifest for storage cleanup:",
             error,
           );
-          if (!isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
-            addCleanupUri(assetBaseStorageUri);
-          }
         }
       }
     }
@@ -192,7 +171,7 @@ export async function deleteBundle(
 
     for (const storageUri of cleanupUris) {
       try {
-        await storagePlugin.profiles.node.delete(storageUri);
+        await storagePlugin.delete(storageUri);
       } catch (error) {
         console.error("Failed to delete bundle from storage:", error);
       }

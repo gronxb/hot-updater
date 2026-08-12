@@ -1,4 +1,4 @@
-import type { Bundle, HotUpdaterContext } from "./types";
+import type { Bundle } from "./types";
 
 export interface RequestBundleResolver {
   readonly getById: (
@@ -7,56 +7,29 @@ export interface RequestBundleResolver {
   ) => Promise<Bundle | null>;
 }
 
-type BundleCacheEntry = Bundle | null;
+export const createRequestBundleResolver = (): RequestBundleResolver => {
+  const entries = new Map<string, Bundle | null>();
+  const pendingLoads = new Map<string, Promise<Bundle | null>>();
 
-class RequestBundleCache {
-  private readonly entries = new Map<string, BundleCacheEntry>();
-  private readonly pendingLoads = new Map<string, Promise<Bundle | null>>();
-
-  async getById(
-    bundleId: string,
-    loadBundleById: () => Promise<Bundle | null>,
-  ): Promise<Bundle | null> {
-    if (this.entries.has(bundleId)) return this.entries.get(bundleId) ?? null;
-    const pending = this.pendingLoads.get(bundleId);
-    if (pending) return pending;
-
-    const load = loadBundleById().then(
-      (bundle) => {
-        this.pendingLoads.delete(bundleId);
-        if (!this.entries.has(bundleId)) this.entries.set(bundleId, bundle);
-        return this.entries.get(bundleId) ?? null;
-      },
-      (error: unknown) => {
-        this.pendingLoads.delete(bundleId);
-        throw error;
-      },
-    );
-    this.pendingLoads.set(bundleId, load);
-    return load;
-  }
-}
-
-const requestCaches = new WeakMap<object, RequestBundleCache>();
-
-const isCacheContext = (value: unknown): value is object =>
-  (typeof value === "object" && value !== null) || typeof value === "function";
-
-const getRequestCache = (context: unknown): RequestBundleCache | null => {
-  if (!isCacheContext(context)) return null;
-  const current = requestCaches.get(context);
-  if (current) return current;
-  const created = new RequestBundleCache();
-  requestCaches.set(context, created);
-  return created;
-};
-
-export const createRequestBundleResolver = <TContext = unknown>(
-  context: HotUpdaterContext<TContext> | undefined,
-): RequestBundleResolver => {
-  const cache = getRequestCache(context) ?? new RequestBundleCache();
   return {
-    getById: (bundleId, loadBundleById) =>
-      cache.getById(bundleId, loadBundleById),
+    async getById(bundleId, loadBundleById) {
+      if (entries.has(bundleId)) return entries.get(bundleId) ?? null;
+      const pending = pendingLoads.get(bundleId);
+      if (pending) return pending;
+
+      const load = loadBundleById().then(
+        (bundle) => {
+          pendingLoads.delete(bundleId);
+          if (!entries.has(bundleId)) entries.set(bundleId, bundle);
+          return entries.get(bundleId) ?? null;
+        },
+        (error: unknown) => {
+          pendingLoads.delete(bundleId);
+          throw error;
+        },
+      );
+      pendingLoads.set(bundleId, load);
+      return load;
+    },
   };
 };

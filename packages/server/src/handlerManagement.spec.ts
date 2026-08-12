@@ -25,10 +25,12 @@ describe("createHandler management routes", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(api.getBundles).toHaveBeenCalledWith(
-      { cursor: undefined, limit: 50, page: undefined, where: {} },
-      undefined,
-    );
+    expect(api.getBundles).toHaveBeenCalledWith({
+      cursor: undefined,
+      limit: 50,
+      page: undefined,
+      where: {},
+    });
   });
 
   it("forwards an explicit bundle id order direction", async () => {
@@ -42,16 +44,13 @@ describe("createHandler management routes", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(api.getBundles).toHaveBeenCalledWith(
-      {
-        cursor: undefined,
-        limit: 50,
-        orderBy: { field: "id", direction: "asc" },
-        page: undefined,
-        where: {},
-      },
-      undefined,
-    );
+    expect(api.getBundles).toHaveBeenCalledWith({
+      cursor: undefined,
+      limit: 50,
+      orderBy: { field: "id", direction: "asc" },
+      page: undefined,
+      where: {},
+    });
   });
 
   it("rejects an invalid bundle id order direction", async () => {

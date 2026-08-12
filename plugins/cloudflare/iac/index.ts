@@ -97,6 +97,7 @@ const deployWorker = async (
     d1DatabaseId,
     d1DatabaseName,
     nonInteractive,
+    publicBaseUrl,
     r2BucketName,
     workerName,
   }: {
@@ -104,6 +105,7 @@ const deployWorker = async (
     d1DatabaseId: string;
     d1DatabaseName: string;
     nonInteractive: boolean;
+    publicBaseUrl: string;
     r2BucketName: string;
     workerName: string;
   },
@@ -139,10 +141,9 @@ const deployWorker = async (
       },
     ];
 
-    const jwtSecret = crypto.randomBytes(32).toString("hex");
-
     wranglerConfig.vars = {
-      JWT_SECRET: jwtSecret,
+      BUCKET_NAME: r2BucketName,
+      PUBLIC_BASE_URL: publicBaseUrl,
     };
 
     await fs.writeFile(
@@ -176,6 +177,25 @@ const deployWorker = async (
     await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
 
     await wrangler("deploy", "--name", workerName);
+    const secretWrangler = createWrangler({
+      stdio: "pipe",
+      cloudflareApiToken: apiToken,
+      cwd: workerRoot,
+      accountId,
+      nonInteractive,
+    });
+    const secretCommand = secretWrangler(
+      "secret",
+      "put",
+      "STORAGE_DELIVERY_SIGNING_KEY",
+      "--name",
+      workerName,
+    );
+    if (!secretCommand.stdin) {
+      throw new Error("Failed to open Wrangler secret input.");
+    }
+    secretCommand.stdin.end(crypto.randomBytes(32).toString("hex"));
+    await secretCommand;
     return workerName;
   } catch (error) {
     if (error instanceof Error) {
@@ -649,12 +669,18 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       }),
     source: infrastructureCredentialSource,
   });
+  if (!subdomains.subdomain) {
+    throw new Error(
+      "Cloudflare Workers subdomain is required to configure the storage download URL.",
+    );
+  }
 
   await deployWorker(infrastructureApiToken, accountId, {
     credentialSource: infrastructureCredentialSource,
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
     nonInteractive,
+    publicBaseUrl: `https://${workerName}.${subdomains.subdomain}.workers.dev`,
     r2BucketName: selectedBucketName,
     workerName,
   });

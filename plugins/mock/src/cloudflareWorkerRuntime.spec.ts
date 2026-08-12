@@ -14,6 +14,10 @@ const createTestHotUpdater = () =>
     }),
     features: { analytics: true },
     storages: [mockStorage({})],
+    storageDelivery: {
+      publicBaseUrl: "https://example.com",
+      signingKey: "test-storage-delivery-signing-key",
+    },
     basePath: HOT_UPDATER_BASE_PATH,
     routes: {
       updateCheck: true,

@@ -22,13 +22,11 @@ vi.mock("../src/dynamoDB", () => ({
 }));
 
 vi.mock("../src/s3Storage", () => ({
-  s3Storage: vi.fn(() => () => ({ name: "mockStorage" })),
+  s3Storage: vi.fn(() => ({ name: "mockStorage", protocol: "s3" })),
 }));
 
-vi.mock("../src/withCloudFrontSignedUrl", () => ({
-  withCloudFrontSignedUrl: vi.fn(
-    (storageFactory: () => unknown) => storageFactory,
-  ),
+vi.mock("../src/cloudFrontStorageDelivery", () => ({
+  cloudFrontStorageDelivery: vi.fn(() => ({ resolveUrl: vi.fn() })),
 }));
 
 vi.mock("@hot-updater/server", async () => {
@@ -126,7 +124,14 @@ describe("aws lambda entrypoint", () => {
   });
 
   it("uses DynamoDB metadata with built-in Analytics and client keys", async () => {
-    await import("./index");
+    const { handler } = await import("./index");
+    await handler(
+      createCloudFrontRequest(
+        "/api/check-update/app-version/ios/1.0/production/default/default",
+      ),
+      {} as never,
+      () => undefined,
+    );
 
     expect(databaseMocks.dynamoDB).toHaveBeenCalledWith({
       region: "us-east-1",

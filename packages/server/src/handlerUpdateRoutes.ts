@@ -35,10 +35,7 @@ const serializeUpdateInfo = (
   return JSON.stringify(null);
 };
 
-export const createUpdateRouteHandlers = <TContext>(): Record<
-  string,
-  RouteHandler<TContext>
-> => ({
+export const createUpdateRouteHandlers = (): Record<string, RouteHandler> => ({
   version: async () => {
     return new Response(
       JSON.stringify({
@@ -51,38 +48,32 @@ export const createUpdateRouteHandlers = <TContext>(): Record<
     );
   },
 
-  fingerprintUpdateWithCohort: async (params, request, api, context) => {
-    const updateInfo = await api.getAppUpdateInfo(
-      {
-        _updateStrategy: "fingerprint",
-        platform: requirePlatformParam(params),
-        fingerprintHash: requireRouteParam(params, "fingerprintHash"),
-        channel: requireRouteParam(params, "channel"),
-        minBundleId: requireRouteParam(params, "minBundleId"),
-        bundleId: requireRouteParam(params, "bundleId"),
-        cohort: decodeMaybe(params.cohort),
-      },
-      context,
-    );
+  fingerprintUpdateWithCohort: async (params, request, api) => {
+    const updateInfo = await api.getAppUpdateInfo({
+      _updateStrategy: "fingerprint",
+      platform: requirePlatformParam(params),
+      fingerprintHash: requireRouteParam(params, "fingerprintHash"),
+      channel: requireRouteParam(params, "channel"),
+      minBundleId: requireRouteParam(params, "minBundleId"),
+      bundleId: requireRouteParam(params, "bundleId"),
+      cohort: decodeMaybe(params.cohort),
+    });
     return new Response(serializeUpdateInfo(updateInfo, request), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   },
 
-  appVersionUpdateWithCohort: async (params, request, api, context) => {
-    const updateInfo = await api.getAppUpdateInfo(
-      {
-        _updateStrategy: "appVersion",
-        platform: requirePlatformParam(params),
-        appVersion: requireRouteParam(params, "appVersion"),
-        channel: requireRouteParam(params, "channel"),
-        minBundleId: requireRouteParam(params, "minBundleId"),
-        bundleId: requireRouteParam(params, "bundleId"),
-        cohort: decodeMaybe(params.cohort),
-      },
-      context,
-    );
+  appVersionUpdateWithCohort: async (params, request, api) => {
+    const updateInfo = await api.getAppUpdateInfo({
+      _updateStrategy: "appVersion",
+      platform: requirePlatformParam(params),
+      appVersion: requireRouteParam(params, "appVersion"),
+      channel: requireRouteParam(params, "channel"),
+      minBundleId: requireRouteParam(params, "minBundleId"),
+      bundleId: requireRouteParam(params, "bundleId"),
+      cohort: decodeMaybe(params.cohort),
+    });
     return new Response(serializeUpdateInfo(updateInfo, request), {
       status: 200,
       headers: { "Content-Type": "application/json" },

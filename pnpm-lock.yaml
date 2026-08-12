@@ -1927,9 +1927,6 @@ importers:
       '@aws-sdk/lib-storage':
         specifier: 3.1066.0
         version: 3.1066.0(@aws-sdk/client-s3@3.1066.0)
-      '@aws-sdk/s3-request-presigner':
-        specifier: 3.1066.0
-        version: 3.1066.0
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools
@@ -2004,18 +2001,12 @@ importers:
       '@aws-sdk/lib-storage':
         specifier: 3.1008.0
         version: 3.1008.0(@aws-sdk/client-s3@3.1066.0)
-      '@aws-sdk/s3-request-presigner':
-        specifier: 3.1008.0
-        version: 3.1008.0
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@hot-updater/js':
-        specifier: workspace:*
-        version: link:../js
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
@@ -2189,9 +2180,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
-      jose:
-        specifier: ^6.0.10
-        version: 6.2.3
       verkit:
         specifier: 0.3.2
         version: 0.3.2
@@ -2598,14 +2586,6 @@ packages:
     resolution: {integrity: sha512-IYJuLpXp2DEILVQpQOy0PMpkftv0AHEOCn52o0atyOaumA0CdWQ3klPyXdViGYLbNpESsVFMVybvHUeZAuiGxA==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/s3-request-presigner@3.1008.0':
-    resolution: {integrity: sha512-YZMG/5X2TVegzLjw6H5MIIeAUlp+JtkomKOITIZ9P9XS21hRZthRmFO4eJZe0xVLGfuMYZPUYSsiD2eEQuWdQw==}
-    engines: {node: '>=20.0.0'}
-
-  '@aws-sdk/s3-request-presigner@3.1066.0':
-    resolution: {integrity: sha512-hgjGUVKggCKcwS+e7HOoHlElQrhz4nlZkMWGKez/Ycjv2qZaQeTZ8Ps7HGOrpqR3KBPWt7iSrOBcOCVoUYYRWw==}
-    engines: {node: '>=20.0.0'}
-
   '@aws-sdk/signature-v4-multi-region@3.996.34':
     resolution: {integrity: sha512-mx1L5qlumSOt/nKM3BFaHE2HVkWwz0i4Bw0pyYO42FfX/FeLlo8YI6csC0gSPprEk6fTIqI+CZN9RwUwKd5krQ==}
     engines: {node: '>=20.0.0'}
@@ -2627,10 +2607,6 @@ packages:
     engines: {node: '>=20.0.0'}
     peerDependencies:
       '@aws-sdk/client-dynamodb': ^3.1088.0
-
-  '@aws-sdk/util-format-url@3.972.22':
-    resolution: {integrity: sha512-ygzBtG3xDxvMWTg3EjlZ5FSYxUiRCsCZvKPk+sOhXeMcDTdzPqIGQipiUiIYJm/Om8h8qXyhchMb0baW1PhE+w==}
-    engines: {node: '>=20.0.0'}
 
   '@aws-sdk/util-locate-window@3.965.7':
     resolution: {integrity: sha512-M0D6oIpohdNHjc7udzTHEQyot0+0iuA36jc2I9Hps+f/GtKi2HO/pyijQnCnNcwZqLB5+rtn81z3eZK/GyjAmA==}
@@ -8979,10 +8955,6 @@ packages:
 
   '@smithy/node-http-handler@4.7.7':
     resolution: {integrity: sha512-ZAFvHXrEk6K180EVhmZVg8GU5pUH5BSFqRs27JW3j1qEFx9YyYwWFx17x/MHcjALYimGAji7qEOlF1++be+G5A==}
-    engines: {node: '>=18.0.0'}
-
-  '@smithy/protocol-http@5.4.6':
-    resolution: {integrity: sha512-H6S7NyaaL+7qO8kIL7VQ7KyrGnKXdllGzJqvtp3hvDen25UOydKV51qGDVK0UciW125jV3CoLJQy/ihc0OEC6A==}
     engines: {node: '>=18.0.0'}
 
   '@smithy/signature-v4@5.4.6':
@@ -20509,26 +20481,6 @@ snapshots:
       '@smithy/types': 4.16.1
       tslib: 2.8.1
 
-  '@aws-sdk/s3-request-presigner@3.1008.0':
-    dependencies:
-      '@aws-sdk/signature-v4-multi-region': 3.996.34
-      '@aws-sdk/types': 3.973.12
-      '@aws-sdk/util-format-url': 3.972.22
-      '@smithy/middleware-endpoint': 4.5.6
-      '@smithy/protocol-http': 5.4.6
-      '@smithy/smithy-client': 4.13.6
-      '@smithy/types': 4.16.1
-      tslib: 2.8.1
-
-  '@aws-sdk/s3-request-presigner@3.1066.0':
-    dependencies:
-      '@aws-sdk/core': 3.974.20
-      '@aws-sdk/signature-v4-multi-region': 3.996.34
-      '@aws-sdk/types': 3.973.12
-      '@smithy/core': 3.24.6
-      '@smithy/types': 4.16.1
-      tslib: 2.8.1
-
   '@aws-sdk/signature-v4-multi-region@3.996.34':
     dependencies:
       '@aws-sdk/types': 3.973.12
@@ -20558,11 +20510,6 @@ snapshots:
   '@aws-sdk/util-dynamodb@3.996.7(@aws-sdk/client-dynamodb@3.1066.0)':
     dependencies:
       '@aws-sdk/client-dynamodb': 3.1066.0
-      tslib: 2.8.1
-
-  '@aws-sdk/util-format-url@3.972.22':
-    dependencies:
-      '@aws-sdk/core': 3.974.20
       tslib: 2.8.1
 
   '@aws-sdk/util-locate-window@3.965.7':
@@ -29273,11 +29220,6 @@ snapshots:
     dependencies:
       '@smithy/core': 3.24.6
       '@smithy/types': 4.16.1
-      tslib: 2.8.1
-
-  '@smithy/protocol-http@5.4.6':
-    dependencies:
-      '@smithy/core': 3.24.6
       tslib: 2.8.1
 
   '@smithy/signature-v4@5.4.6':

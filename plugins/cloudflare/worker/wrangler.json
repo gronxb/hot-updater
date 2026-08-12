@@ -20,6 +20,7 @@
     }
   ],
   "vars": {
-    "JWT_SECRET": "USER_JWT_SECRET"
+    "BUCKET_NAME": "user-buckets",
+    "PUBLIC_BASE_URL": "https://hot-updater.example.workers.dev"
   }
 }

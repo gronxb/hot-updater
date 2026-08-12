@@ -1,15 +1,21 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createHotUpdater } from "@hot-updater/server";
-import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase/edge";
+import {
+  supabaseDatabase,
+  supabaseStorage,
+  supabaseStorageDelivery,
+} from "@hot-updater/supabase/edge";
 import { Hono } from "npm:hono";
 
 declare global {
   var HotUpdater: {
+    BUCKET_NAME: string;
     FUNCTION_NAME: string;
   };
 }
 
 const functionName = HotUpdater.FUNCTION_NAME;
+const bucketName = HotUpdater.BUCKET_NAME;
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const functionBasePath = `/${functionName}`;
@@ -25,8 +31,14 @@ const hotUpdater = createHotUpdater({
     supabaseStorage({
       supabaseUrl,
       supabaseServiceRoleKey,
+      bucketName,
     }),
   ],
+  storageDelivery: supabaseStorageDelivery({
+    supabaseUrl,
+    supabaseServiceRoleKey,
+    bucketName,
+  }),
   basePath: hotUpdaterBasePath,
   routes: {
     updateCheck: true,

@@ -1,9 +1,9 @@
 import { type ConfigResponse, loadConfig } from "@hot-updater/cli-tools";
 import {
-  assertNodeStoragePlugin,
+  assertStorageOperations,
   createDatabaseClient,
   type DatabaseClient,
-  type NodeStoragePlugin,
+  type StoragePluginWith,
 } from "@hot-updater/plugin-core";
 
 let configPromise: Promise<ConfigResponse> | null = null;
@@ -15,7 +15,9 @@ let clientAccessKeyStore: ReturnType<
   typeof import("./runtime.server").createClientAccessKeyStore
 > | null = null;
 let clientAccessKeyStoreResolved = false;
-let storagePluginPromise: Promise<NodeStoragePlugin> | null = null;
+let storagePluginPromise: Promise<
+  StoragePluginWith<"get" | "put" | "delete">
+> | null = null;
 
 const loadCachedConfig = async () => {
   if (!configPromise) {
@@ -30,13 +32,9 @@ const loadCachedConfig = async () => {
 
 const loadCachedStoragePlugin = async (config: ConfigResponse) => {
   if (!storagePluginPromise) {
-    storagePluginPromise = Promise.resolve(config.storage())
+    storagePluginPromise = Promise.resolve(config.storage)
       .then((storagePlugin) => {
-        if (!storagePlugin) {
-          throw new Error("Storage plugin initialization failed");
-        }
-
-        assertNodeStoragePlugin(storagePlugin);
+        assertStorageOperations(storagePlugin, ["get", "put", "delete"]);
         return storagePlugin;
       })
       .catch((error) => {

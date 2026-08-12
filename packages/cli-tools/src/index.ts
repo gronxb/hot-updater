@@ -25,5 +25,6 @@ export * from "./promoteBundle";
 export * from "./prompts";
 export * from "./readPackageUp";
 export * from "./resolvePackageVersion";
+export * from "./storageFiles";
 export * from "./transformEnv";
 export * from "./transformTemplate";

@@ -327,109 +327,39 @@ export interface NativeBuildArgs {
   ios?: Record<string, NativeBuildIosScheme>;
 }
 
-export interface RequestEnvContext<TEnv = unknown> {
-  request?: Request;
-  env?: TEnv;
+export interface StoragePutInput {
+  /** Complete object key below the provider's configured base path. */
+  readonly key: string;
+  readonly body: Uint8Array;
+  readonly contentType: string;
 }
 
-export type HotUpdaterContext<TContext = unknown> = TContext;
-
-export type StorageResolveContext<TContext = unknown> =
-  HotUpdaterContext<TContext>;
-
-export interface NodeStorageProfile {
-  upload: (
-    key: string,
-    filePath: string,
-  ) => Promise<{
-    storageUri: string;
-  }>;
-
-  /**
-   * Returns true when the object can be safely reused by deploy without
-   * uploading it again. Providers may validate more than physical existence
-   * when runtime access needs an additional readiness check.
-   */
-  exists: (storageUri: string) => Promise<boolean>;
-
-  delete: (storageUri: string) => Promise<void>;
-
-  downloadFile: (storageUri: string, filePath: string) => Promise<void>;
+export interface StoragePutResult {
+  readonly storageUri: string;
 }
 
-export interface RuntimeStorageProfile<TContext = unknown> {
-  getDownloadUrl: (
-    storageUri: string,
-    context?: StorageResolveContext<TContext>,
-  ) => Promise<{
-    fileUrl: string;
-  }>;
-
-  readText: (
-    storageUri: string,
-    context?: StorageResolveContext<TContext>,
-  ) => Promise<string | null>;
-}
-
-export interface StoragePluginProfiles<TContext = unknown> {
+/**
+ * Runtime-independent object storage contract.
+ *
+ * SDK clients, platform bindings, credentials, and local file I/O belong to
+ * provider implementations and consumers, never to this interface.
+ */
+export interface StoragePlugin {
+  readonly name: string;
   /**
-   * Node/deploy/console profile.
-   *
-   * Use this profile when the caller can materialize storage objects to the
-   * local filesystem.
-   */
-  node?: NodeStorageProfile;
-
-  /**
-   * Runtime update-check profile.
-   *
-   * Use this profile when the caller needs signed/public client URLs and direct
-   * server-side reads for small control-plane text objects such as manifests.
-   */
-  runtime?: RuntimeStorageProfile<TContext>;
-}
-
-export interface StoragePlugin<TContext = unknown> {
-  /**
-   * Protocol this storage plugin can resolve.
+   * Protocol this plugin resolves and stores in database storage URIs.
    * @example "s3", "r2", "supabase-storage".
    */
-  supportedProtocol: string;
-
-  name: string;
-
-  profiles: StoragePluginProfiles<TContext>;
-}
-
-export interface NodeStoragePlugin<
-  TContext = unknown,
-> extends StoragePlugin<TContext> {
-  profiles: {
-    node: NodeStorageProfile;
-    runtime?: RuntimeStorageProfile<TContext>;
-  };
-}
-
-export interface RuntimeStoragePlugin<
-  TContext = unknown,
-> extends StoragePlugin<TContext> {
-  profiles: {
-    node?: NodeStorageProfile;
-    runtime: RuntimeStorageProfile<TContext>;
-  };
-}
-
-export interface UniversalStoragePlugin<
-  TContext = unknown,
-> extends StoragePlugin<TContext> {
-  profiles: {
-    node: NodeStorageProfile;
-    runtime: RuntimeStorageProfile<TContext>;
-  };
-}
-
-export interface StoragePluginHooks {
-  onStorageUploaded?: () => Promise<void>;
+  readonly protocol: string;
+  readonly put?: (input: StoragePutInput) => Promise<StoragePutResult>;
+  readonly get?: (storageUri: string) => Promise<Response | null>;
+  /**
+   * Returns true when an object can be safely reused by deploy. Providers may
+   * validate more than physical existence when download readiness is required.
+   */
+  readonly exists?: (storageUri: string) => Promise<boolean>;
+  /** Deletes exactly the object referenced by `storageUri`. */
+  readonly delete?: (storageUri: string) => Promise<void>;
 }
 
 /**
@@ -606,7 +536,7 @@ export type ConfigInput = {
    */
   signing?: SigningConfig;
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
-  storage: () => Promise<NodeStoragePlugin> | NodeStoragePlugin;
+  storage: StoragePlugin;
   database: import("./database").BundleRepository;
 };
 

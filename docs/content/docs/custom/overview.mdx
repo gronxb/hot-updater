@@ -53,20 +53,18 @@ export default defineConfig({
 
 ## Storage Plugins
 
-The `storages` field in your server configuration accepts storage plugins that
-implement the `runtime` profile. Runtime storage plugins translate stored bundle
-locations into client download URLs. They can also read small metadata files
-directly from storage when bundle diffing data is available.
+The `storages` field accepts flat storage objects whose `get` operation returns
+a Web `Response`. `storageDelivery` separately chooses between the built-in
+streaming route and a provider/CDN URL resolver.
 
 1. When you run `npx hot-updater deploy` from your `hot-updater.config.ts`, the bundle is uploaded and a `storageUri` is saved to the database
-2. When the API returns bundle information, the server decodes the `storageUri` using `runtime.getDownloadUrl` to generate an HTTP(S) download URL
+2. When the API returns bundle information, `storageDelivery` turns the stored URI into an HTTP(S) URL, either through the built-in streaming route or a provider CDN resolver
 3. When diffing data is available, the server reads it directly from storage so the client can reuse unchanged files
 4. React Native clients download the update files using the returned URLs
 
-The CLI `storage` field uses the `node` profile for upload/delete/local file
-download operations. A plugin such as `s3Storage` can support both profiles,
-while edge providers such as Cloudflare Workers may use a separate runtime
-plugin that reads from platform bindings.
+The CLI `storage` field uses the same flat contract for upload, exact deletion,
+and reads. Edge providers such as Cloudflare Workers may use a separate runtime
+subpath with the same public plugin name.
 
 ### Multiple Storage Plugins
 
@@ -86,6 +84,10 @@ export const hotUpdater = createHotUpdater({
     supabaseStorage({ /* Supabase config */ }),
     myCustomStorage({ /* My Custom Storage */})
   ],
+  storageDelivery: {
+    publicBaseUrl: process.env.HOT_UPDATER_PUBLIC_BASE_URL!,
+    signingKey: process.env.HOT_UPDATER_STORAGE_DELIVERY_KEY!,
+  },
   basePath: "/hot-updater",
 });
 ```
@@ -119,6 +121,10 @@ be enabled explicitly when the CLI needs bundle-management APIs. When
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
   storages: [s3Storage({ /* storage config */ })],
+  storageDelivery: {
+    publicBaseUrl: process.env.HOT_UPDATER_PUBLIC_BASE_URL!,
+    signingKey: process.env.HOT_UPDATER_STORAGE_DELIVERY_KEY!,
+  },
   basePath: "/hot-updater",
   features: {
     analytics: true,
@@ -142,6 +148,10 @@ If you want to hide bundle management endpoints but keep `/version`, disable the
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
   storages: [s3Storage({ /* storage config */ })],
+  storageDelivery: {
+    publicBaseUrl: process.env.HOT_UPDATER_PUBLIC_BASE_URL!,
+    signingKey: process.env.HOT_UPDATER_STORAGE_DELIVERY_KEY!,
+  },
   basePath: "/hot-updater",
   routes: {
     updateCheck: true,

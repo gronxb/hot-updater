@@ -85,16 +85,12 @@ export default defineConfig({
 
 This prefix is stored in the `storageUri` field in the database.
 
-## Profiles
+## Capabilities
 
-`s3Storage` implements both storage profiles:
-
-- `node`: uploads, deletes, and downloads local files during CLI/console workflows.
-- `runtime`: creates presigned HTTP(S) download URLs and reads small metadata
-  files directly through the S3 API.
-
-This means the same `s3Storage` configuration can be used in both
-`hot-updater.config.ts` and `createHotUpdater`.
+`s3Storage` implements byte upload, streaming Web-response reads, existence
+checks, and exact deletion. HTTP URL generation is deliberately separate. Use
+`cloudFrontStorageDelivery` for the managed Lambda@Edge/CDN path, or the
+built-in `createHotUpdater` delivery route in a self-hosted server.
 
 ## Custom Server Usage
 
@@ -115,6 +111,10 @@ const hotUpdater = createHotUpdater({
       bucketName: process.env.AWS_S3_BUNDLES_BUCKET!,
     }),
   ],
+  storageDelivery: {
+    publicBaseUrl: process.env.HOT_UPDATER_PUBLIC_BASE_URL!,
+    signingKey: process.env.HOT_UPDATER_STORAGE_DELIVERY_KEY!,
+  },
   // ... other options
 });
 ```

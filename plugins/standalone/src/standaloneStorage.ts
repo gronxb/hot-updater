@@ -1,34 +1,22 @@
-import fs from "fs/promises";
-import path from "path";
-
-import type {
-  UniversalStoragePlugin,
-  StoragePluginHooks,
+import {
+  createStoragePlugin,
+  type StoragePutInput,
 } from "@hot-updater/plugin-core";
-import mime from "mime";
 
 import type { RouteConfig } from "./standaloneRepository";
 
 export interface StorageRoutes {
-  upload: (key: string, filePath: string) => RouteConfig;
+  put: (input: Pick<StoragePutInput, "key" | "contentType">) => RouteConfig;
+  get: (storageUri: string) => RouteConfig;
+  exists: (storageUri: string) => RouteConfig;
   delete: (storageUri: string) => RouteConfig;
-  readText: (storageUri: string) => RouteConfig;
-  getDownloadUrl: (storageUri: string) => RouteConfig;
 }
 
 const defaultRoutes: StorageRoutes = {
-  upload: (_key: string, _filePath: string) => ({
-    path: "/upload",
-  }),
-  delete: (_storageUri: string) => ({
-    path: "/delete",
-  }),
-  readText: (_storageUri: string) => ({
-    path: "/readText",
-  }),
-  getDownloadUrl: (_storageUri: string) => ({
-    path: "/getDownloadUrl",
-  }),
+  put: () => ({ path: "/upload" }),
+  get: () => ({ path: "/get" }),
+  exists: () => ({ path: "/exists" }),
+  delete: () => ({ path: "/delete" }),
 };
 
 const createRoute = (
@@ -45,172 +33,88 @@ const createRoute = (
 export interface StandaloneStorageConfig {
   baseUrl: string;
   commonHeaders?: Record<string, string>;
-  routes?: StorageRoutes;
+  routes?: Partial<StorageRoutes>;
 }
 
-export const standaloneStorage =
-  (config: StandaloneStorageConfig, hooks?: StoragePluginHooks) =>
-  (): UniversalStoragePlugin => {
-    const routes: StorageRoutes = {
-      upload: (key: string, filePath: string) =>
-        createRoute(
-          defaultRoutes.upload(key, filePath),
-          config.routes?.upload?.(key, filePath),
-        ),
-      delete: (storageUri: string) =>
-        createRoute(
-          defaultRoutes.delete(storageUri),
-          config.routes?.delete?.(storageUri),
-        ),
-      readText: (storageUri: string) =>
-        createRoute(
-          defaultRoutes.readText(storageUri),
-          config.routes?.readText?.(storageUri),
-        ),
-      getDownloadUrl: (storageUri: string) =>
-        createRoute(
-          defaultRoutes.getDownloadUrl(storageUri),
-          config.routes?.getDownloadUrl?.(storageUri),
-        ),
-    };
+export const standaloneStorage = (config: StandaloneStorageConfig) => {
+  const getHeaders = (routeHeaders?: Record<string, string>) => ({
+    ...config.commonHeaders,
+    ...routeHeaders,
+  });
 
-    const getHeaders = (routeHeaders?: Record<string, string>) => ({
-      ...config.commonHeaders,
-      ...routeHeaders,
-    });
-
-    return {
-      name: "standaloneStorage",
-      supportedProtocol: "http",
-      profiles: {
-        node: {
-          async delete(storageUri: string) {
-            const { path: routePath, headers: routeHeaders } =
-              routes.delete(storageUri);
-            const response = await fetch(`${config.baseUrl}${routePath}`, {
-              method: "DELETE",
-              headers: getHeaders(routeHeaders),
-              body: JSON.stringify({ storageUri }),
-            });
-
-            if (!response.ok) {
-              const error = new Error(
-                `Failed to delete bundle: ${response.statusText}`,
-              );
-              console.error(error);
-              throw error;
-            }
-          },
-          async upload(key: string, filePath: string) {
-            const fileContent = await fs.readFile(filePath);
-            const contentType =
-              mime.getType(filePath) ?? "application/octet-stream";
-            const filename = path.basename(filePath);
-
-            const { path: routePath, headers: routeHeaders } = routes.upload(
-              key,
-              filePath,
-            );
-
-            const formData = new FormData();
-            formData.append(
-              "file",
-              new Blob([fileContent], { type: contentType }),
-              filename,
-            );
-            formData.append("key", key);
-
-            const response = await fetch(`${config.baseUrl}${routePath}`, {
-              method: "POST",
-              headers: getHeaders(routeHeaders),
-              body: formData,
-            });
-
-            if (!response.ok) {
-              const error = `Failed to upload bundle: ${response.statusText}`;
-              console.error(`[upload] ${error}`);
-              throw new Error(error);
-            }
-
-            const result = (await response.json()) as {
-              storageUri: string;
-            };
-
-            if (!result.storageUri) {
-              const error =
-                "Failed to upload bundle - no storageUri in response";
-              console.error(`[upload] ${error}`);
-              throw new Error(error);
-            }
-
-            await hooks?.onStorageUploaded?.();
-
-            return {
-              storageUri: result.storageUri,
-            };
-          },
-          async exists(storageUri: string) {
-            const { fileUrl } = await getDownloadUrl(storageUri);
-            const response = await fetch(fileUrl, { method: "HEAD" });
-            return response.ok;
-          },
-          async downloadFile(storageUri: string, filePath: string) {
-            const { fileUrl } = await getDownloadUrl(storageUri);
-            const response = await fetch(fileUrl);
-            if (!response.ok) {
-              throw new Error(
-                `Failed to download bundle: ${response.statusText}`,
-              );
-            }
-
-            await fs.mkdir(path.dirname(filePath), { recursive: true });
-            await fs.writeFile(
-              filePath,
-              new Uint8Array(await response.arrayBuffer()),
-            );
-          },
-        },
-        runtime: {
-          async readText(storageUri: string) {
-            const { path: routePath, headers: routeHeaders } =
-              routes.readText(storageUri);
-            const response = await fetch(`${config.baseUrl}${routePath}`, {
-              method: "POST",
-              headers: getHeaders(routeHeaders),
-              body: JSON.stringify({ storageUri }),
-            });
-            if (!response.ok) {
-              return null;
-            }
-
-            return response.text();
-          },
-          getDownloadUrl,
-        },
-      },
-    };
-
-    async function getDownloadUrl(storageUri: string) {
-      const { path: routePath, headers: routeHeaders } =
-        routes.getDownloadUrl(storageUri);
-      const response = await fetch(`${config.baseUrl}${routePath}`, {
-        method: "POST",
-        headers: getHeaders(routeHeaders),
-        body: JSON.stringify({ storageUri }),
-      });
-
-      if (!response.ok) {
-        const error = new Error(
-          `Failed to get download URL: ${response.statusText}`,
-        );
-        console.error(error);
-        throw error;
-      }
-      const result = (await response.json()) as {
-        fileUrl: string;
-      };
-      return {
-        fileUrl: result.fileUrl,
-      };
-    }
+  const resolveRoute = <TArgs extends readonly unknown[]>(
+    name: keyof StorageRoutes,
+    args: TArgs,
+  ) => {
+    const fallback = defaultRoutes[name] as unknown as (
+      ...args: TArgs
+    ) => RouteConfig;
+    const custom = config.routes?.[name] as
+      | ((...args: TArgs) => RouteConfig)
+      | undefined;
+    return createRoute(fallback(...args), custom?.(...args));
   };
+
+  const requestStorageUri = async (
+    routeName: "get" | "exists" | "delete",
+    storageUri: string,
+  ) => {
+    const { path, headers } = resolveRoute(routeName, [storageUri] as const);
+    const response = await fetch(`${config.baseUrl}${path}`, {
+      method: routeName === "delete" ? "DELETE" : "POST",
+      headers: {
+        "content-type": "application/json",
+        ...getHeaders(headers),
+      },
+      body: JSON.stringify({ storageUri }),
+    });
+    if (!response.ok && response.status !== 404) {
+      throw new Error(
+        `Failed to ${routeName} storage object: ${response.statusText}`,
+      );
+    }
+    return response;
+  };
+
+  return createStoragePlugin({
+    name: "standaloneStorage",
+    protocol: "http",
+    async put({ key, body, contentType }) {
+      const routeInput = { key, contentType };
+      const { path, headers } = resolveRoute("put", [routeInput] as const);
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new Blob([body], { type: contentType }),
+        key.split("/").at(-1) ?? "object",
+      );
+      formData.append("key", key);
+      const response = await fetch(`${config.baseUrl}${path}`, {
+        method: "POST",
+        headers: getHeaders(headers),
+        body: formData,
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to upload bundle: ${response.statusText}`);
+      }
+      const result = (await response.json()) as { storageUri?: string };
+      if (!result.storageUri) {
+        throw new Error("Storage server returned an empty storage URI");
+      }
+      return { storageUri: result.storageUri };
+    },
+    async get(storageUri) {
+      const response = await requestStorageUri("get", storageUri);
+      if (response.status === 404) return null;
+      return response;
+    },
+    async exists(storageUri) {
+      const response = await requestStorageUri("exists", storageUri);
+      if (response.status === 404) return false;
+      return ((await response.json()) as { exists: boolean }).exists;
+    },
+    async delete(storageUri) {
+      await requestStorageUri("delete", storageUri);
+    },
+  });
+};

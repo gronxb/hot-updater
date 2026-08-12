@@ -10,41 +10,6 @@ icon: cloudflare
 npm install @hot-updater/cloudflare --save-dev
 ```
 
-<Callout title="Recommended Approach">
-For a single plugin that supports both deploy-time storage and runtime presigned
-URLs, use the S3-compatible AWS plugin. See the [AWS S3 Storage
-documentation](/docs/storage-plugins/aws) for more details.
-
-Install the AWS plugin:
-
-```package-install
-npm install @hot-updater/aws --save-dev
-```
-
-Configure with R2:
-
-```typescript
-import { s3Storage } from "@hot-updater/aws";
-import { defineConfig } from "hot-updater";
-
-export default defineConfig({
-  storage: s3Storage({
-    region: "auto",
-    endpoint: "https://your-account-id.r2.cloudflarestorage.com",
-    credentials: {
-      accessKeyId: "your-r2-access-key-id",
-      secretAccessKey: "your-r2-secret-access-key",
-    },
-    bucketName: "my-r2-bucket",
-  }),
-  // ... other config
-});
-```
-
-This approach provides both the `node` and `runtime` storage profiles.
-
-</Callout>
-
 ## Setup
 
 The easiest way to set up your backend is using the init command:
@@ -96,38 +61,44 @@ export default defineConfig({
 
 ## Runtime Usage
 
-`r2Storage` is a CLI/deploy-time storage plugin. It implements the `node`
-profile and uses the R2 S3-compatible API when `credentials` are provided.
-Configs without `credentials` fall back to Wrangler for backward compatibility.
+The root `r2Storage` implementation uses the R2 S3-compatible API when
+`credentials` are provided. Configs without `credentials` fall back to Wrangler
+for backward compatibility. HTTP delivery is separate from storage in both
+cases.
 
 Cloudflare Workers should use the Worker runtime export instead:
 
 ```typescript
 import { r2Storage } from "@hot-updater/cloudflare/worker";
 import { createHotUpdater } from "@hot-updater/server";
+import { env } from "cloudflare:workers";
 
 export const hotUpdater = createHotUpdater({
   storages: [
     r2Storage({
-      publicBaseUrl: (context) => new URL(context!.request!.url).origin,
+      bucket: env.BUCKET,
+      bucketName: env.BUCKET_NAME,
     }),
   ],
+  storageDelivery: {
+    publicBaseUrl: env.PUBLIC_BASE_URL,
+    signingKey: env.STORAGE_DELIVERY_SIGNING_KEY,
+  },
   // ... other options
 });
 ```
 
-The Worker runtime plugin implements the `runtime` profile. It signs bundle
-download URLs and reads small metadata files directly from the R2 binding. This
-lets update checks use bundle diffing without the Worker fetching its own signed
-public URL.
+The Worker subpath exports the same `r2Storage` name with an R2-binding
+implementation. It captures its binding at construction and returns streaming
+Web responses. `createHotUpdater` owns the public delivery route, so Worker
+types and URL policy do not leak into `@hot-updater/plugin-core`.
 
 ## Limitations
 
-- `r2Storage` does not implement the runtime profile.
 - Legacy `r2Storage` configs without `credentials` use Wrangler and are slower
   than the S3-compatible API path.
-- For a single plugin that supports both deploy-time and runtime profiles, use
-  `s3Storage` from `@hot-updater/aws` with R2 S3 API credentials.
+- Worker code must import `r2Storage` from
+  `@hot-updater/cloudflare/worker`, not the root package.
 
 ## Protocol
 

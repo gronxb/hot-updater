@@ -3,6 +3,5 @@ export {
   dynamoDB,
   type DynamoDBConfig,
 } from "./dynamoDB";
-export * from "./s3LambdaEdgeStorage";
+export * from "./cloudFrontStorageDelivery";
 export * from "./s3Storage";
-export * from "./withCloudFrontSignedUrl";

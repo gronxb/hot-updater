@@ -2,7 +2,6 @@ import type { Bundle, GetBundlesArgs } from "@hot-updater/core";
 import {
   createDatabaseClient,
   type DatabasePlugin,
-  type RequestEnvContext,
 } from "@hot-updater/plugin-core";
 
 export const currentBundle: Bundle = {
@@ -47,8 +46,6 @@ export const updateArgs: GetBundlesArgs = {
   bundleId: currentBundle.id,
   platform: "ios",
 };
-
-export type TestContext = RequestEnvContext<{ assetHost: string }>;
 
 export const resolveFileUrl = async (storageUri: string | null) => {
   if (!storageUri) return null;

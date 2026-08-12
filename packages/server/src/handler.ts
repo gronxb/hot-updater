@@ -1,5 +1,3 @@
-import type { HotUpdaterContext } from "@hot-updater/plugin-core";
-
 import {
   type AnalyticsHandlerOptions,
   createAnalyticsRouteHandlers,
@@ -18,42 +16,73 @@ import { addRoute, createRouter, findRoute } from "./internalRouter";
 
 export type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./handlerTypes";
 
-export function createHandler<TContext = unknown>(
-  api: HandlerAPI<TContext>,
+export function createHandler(
+  api: HandlerAPI,
   options: HandlerOptions = {},
-): (
-  request: Request,
-  context?: HotUpdaterContext<TContext>,
-) => Promise<Response> {
+): (request: Request) => Promise<Response> {
   return createHotUpdaterHandler(api, options);
 }
 
-export function createHotUpdaterHandler<TContext = unknown>(
-  api: HandlerAPI<TContext>,
+export function createHotUpdaterHandler(
+  api: HandlerAPI,
   options: HandlerOptions = {},
   analytics?: AnalyticsHandlerOptions,
   clientAccessKeys?: {
     readonly authenticate: (request: Request) => Promise<boolean>;
   },
-): (
-  request: Request,
-  context?: HotUpdaterContext<TContext>,
-) => Promise<Response> {
+  downloadStorageObject?: (
+    token: string,
+    signature: string,
+  ) => Promise<Response | null>,
+): (request: Request) => Promise<Response> {
   const basePath = options.basePath ?? "/api";
   const routeOptions = {
     updateCheck: options.routes?.updateCheck ?? true,
     bundles: options.routes?.bundles ?? false,
   } satisfies HandlerRoutes;
   const router = createRouter<string>();
-  const routeHandlers: Record<string, RouteHandler<TContext>> = {
-    ...createUpdateRouteHandlers<TContext>(),
-    ...createBundleRouteHandlers<TContext>(),
-    ...(analytics === undefined
+  const routeHandlers: Record<string, RouteHandler> = {
+    ...createUpdateRouteHandlers(),
+    ...createBundleRouteHandlers(),
+    ...(analytics === undefined ? {} : createAnalyticsRouteHandlers(analytics)),
+    ...(downloadStorageObject === undefined
       ? {}
-      : createAnalyticsRouteHandlers<TContext>(analytics)),
+      : {
+          downloadStorageObject: async (params) => {
+            const token = params.token;
+            const signature = params.signature;
+            if (!token || !signature) {
+              return Response.json({ error: "Not found" }, { status: 404 });
+            }
+            const response = await downloadStorageObject(token, signature);
+            if (!response) {
+              return Response.json({ error: "Not found" }, { status: 404 });
+            }
+            const headers = new Headers(response.headers);
+            if (!headers.has("cache-control")) {
+              headers.set(
+                "cache-control",
+                "public, max-age=31536000, immutable",
+              );
+            }
+            return new Response(response.body, {
+              headers,
+              status: response.status,
+              statusText: response.statusText,
+            });
+          },
+        }),
   };
 
   addRoute(router, "GET", "/version", "version");
+  if (downloadStorageObject !== undefined) {
+    addRoute(
+      router,
+      "GET",
+      "/storage/:token/:signature",
+      "downloadStorageObject",
+    );
+  }
   if (routeOptions.updateCheck) {
     addRoute(
       router,
@@ -96,7 +125,7 @@ export function createHotUpdaterHandler<TContext = unknown>(
     );
   }
 
-  return async (request, context): Promise<Response> => {
+  return async (request): Promise<Response> => {
     try {
       const path = new URL(request.url).pathname;
       const routePath = path.startsWith(basePath)
@@ -148,7 +177,7 @@ export function createHotUpdaterHandler<TContext = unknown>(
           headers: { "Content-Type": "application/json" },
         });
       }
-      return await handler(match.params, request, api, context);
+      return await handler(match.params, request, api);
     } catch (error) {
       if (error instanceof HandlerBadRequestError) {
         return new Response(JSON.stringify({ error: error.message }), {

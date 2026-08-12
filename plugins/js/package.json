@@ -47,11 +47,9 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "jose": "^6.0.10",
     "verkit": "0.3.2"
   },
   "inlinedDependencies": {
-    "jose": "6.2.3",
     "verkit": "0.3.2"
   }
 }

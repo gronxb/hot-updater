@@ -4,7 +4,8 @@ import { onRequest } from "firebase-functions/v2/https";
 import { Hono } from "hono";
 
 import { firebaseDatabase } from "../../src/firebaseDatabase";
-import { firebaseFunctionsStorage } from "../../src/firebaseFunctionsStorage";
+import { firebaseStorage } from "../../src/firebaseStorage";
+import { firebaseStorageDelivery } from "../../src/firebaseStorageDelivery";
 
 declare global {
   var HotUpdater: {
@@ -29,12 +30,16 @@ const hotUpdater = createHotUpdater({
   database: firebaseDatabase(adminOptions),
   features: { analytics: true },
   storages: [
-    firebaseFunctionsStorage({
+    firebaseStorage({
       ...adminOptions,
       storageBucket,
-      cdnUrl,
     }),
   ],
+  storageDelivery: firebaseStorageDelivery({
+    ...adminOptions,
+    storageBucket,
+    cdnUrl,
+  }),
   basePath: HOT_UPDATER_BASE_PATH,
   routes: {
     updateCheck: true,

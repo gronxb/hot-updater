@@ -1,6 +1,4 @@
-import crypto, { randomUUID } from "node:crypto";
-import fs from "node:fs/promises";
-import os from "node:os";
+import crypto from "node:crypto";
 import path from "node:path";
 import { promisify } from "node:util";
 import { brotliDecompress } from "node:zlib";
@@ -15,7 +13,7 @@ import {
 import type {
   Bundle,
   BundleRepository,
-  NodeStoragePlugin,
+  StoragePluginWith,
 } from "@hot-updater/plugin-core";
 import {
   createDatabaseClient,
@@ -34,7 +32,7 @@ export interface CreateBundleDiffInput {
 
 export interface CreateBundleDiffDependencies {
   databasePlugin: BundleRepository;
-  storagePlugin: NodeStoragePlugin | null;
+  storagePlugin: StoragePluginWith<"get" | "put" | "delete"> | null;
 }
 
 export interface CreateBundleDiffOptions {
@@ -43,7 +41,6 @@ export interface CreateBundleDiffOptions {
 
 const HBC_ASSET_PATH_RE = /\.bundle$/;
 const BR_COMPRESSED_ASSET_PATH_RE = /(^|\/)index\.[^/]+\.bundle$/;
-const HOT_UPDATER_DOWNLOAD_DIR_PREFIX = "downloads-";
 const decompressBrotli = promisify(brotliDecompress);
 
 const isBundleManifest = (value: unknown): value is BundleManifest => {
@@ -101,7 +98,7 @@ async function downloadFromUrl(url: string) {
 
 async function downloadStorageBytes(
   storageUri: string,
-  storagePlugin: NodeStoragePlugin | null,
+  storagePlugin: StoragePluginWith<"get" | "put" | "delete"> | null,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
@@ -113,29 +110,20 @@ async function downloadStorageBytes(
     throw new Error("Storage plugin is not configured");
   }
 
-  if (storagePlugin.supportedProtocol !== protocol) {
+  if (storagePlugin.protocol !== protocol) {
     throw new Error(`No storage plugin for protocol: ${protocol}`);
   }
 
-  const downloadRoot = path.join(process.cwd(), ".hot-updater");
-  await fs.mkdir(downloadRoot, { recursive: true });
-  const workDir = await fs.mkdtemp(
-    path.join(downloadRoot, HOT_UPDATER_DOWNLOAD_DIR_PREFIX),
-  );
-  const filename = path.basename(new URL(storageUri).pathname) || randomUUID();
-  const filePath = path.join(workDir, filename);
-
-  try {
-    await storagePlugin.profiles.node.downloadFile(storageUri, filePath);
-    return new Uint8Array(await fs.readFile(filePath));
-  } finally {
-    await fs.rm(workDir, { force: true, recursive: true });
+  const response = await storagePlugin.get(storageUri);
+  if (response === null) {
+    throw new Error(`Storage object not found: ${storageUri}`);
   }
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 async function fetchManifest(
   bundle: Bundle,
-  storagePlugin: NodeStoragePlugin | null,
+  storagePlugin: StoragePluginWith<"get" | "put" | "delete"> | null,
 ): Promise<BundleManifest> {
   const manifestStorageUri = getManifestStorageUri(bundle);
   if (!manifestStorageUri) {
@@ -176,7 +164,7 @@ async function fetchAssetBytes(
   bundle: Bundle,
   assetPath: string,
   manifest: BundleManifest,
-  storagePlugin: NodeStoragePlugin | null,
+  storagePlugin: StoragePluginWith<"get" | "put" | "delete"> | null,
 ) {
   const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
   if (!assetBaseStorageUri) {
@@ -216,11 +204,6 @@ async function fetchAssetBytes(
     fileHash: asset.fileHash,
   });
   return downloadStorageBytes(assetStorageUri, storagePlugin);
-}
-
-async function getFileHash(filePath: string) {
-  const file = await fs.readFile(filePath);
-  return crypto.createHash("sha256").update(file).digest("hex");
 }
 
 function buildNextPatchState({
@@ -315,65 +298,58 @@ export async function createBundleDiff(
   ]);
 
   const patchBytes = await hdiff(baseBytes, targetBytes);
-  const workDir = await fs.mkdtemp(
-    path.join(os.tmpdir(), "hot-updater-console-bsdiff-"),
-  );
   const patchFilename = `${path.posix.basename(targetAssetPath)}.bsdiff`;
-  const patchPath = path.join(workDir, patchFilename);
   const previousPatch = getBundlePatch(targetBundle, baseBundle.id);
 
-  try {
-    await fs.writeFile(patchPath, patchBytes);
+  const uploadKey = [
+    targetBundle.id,
+    "patches",
+    baseBundle.id,
+    getRelativeStorageDir(targetAssetPath),
+    patchFilename,
+  ]
+    .filter(Boolean)
+    .join("/");
+  const patchUpload = await deps.storagePlugin.put({
+    key: uploadKey,
+    body: patchBytes,
+    contentType: "application/octet-stream",
+  });
+  const patchFileHash = crypto
+    .createHash("sha256")
+    .update(patchBytes)
+    .digest("hex");
 
-    const uploadKey = [
-      targetBundle.id,
-      "patches",
-      baseBundle.id,
-      getRelativeStorageDir(targetAssetPath),
-    ]
-      .filter(Boolean)
-      .join("/");
-    const patchUpload = await deps.storagePlugin.profiles.node.upload(
-      uploadKey,
-      patchPath,
-    );
-    const patchFileHash = await getFileHash(patchPath);
+  const nextPatch = {
+    baseBundleId: baseBundle.id,
+    baseFileHash: baseAssetHash,
+    patchFileHash,
+    patchStorageUri: patchUpload.storageUri,
+  };
+  const nextState = buildNextPatchState({
+    currentBundle: targetBundle,
+    nextPatch,
+    makePrimary: options.makePrimary ?? true,
+  });
 
-    const nextPatch = {
-      baseBundleId: baseBundle.id,
-      baseFileHash: baseAssetHash,
-      patchFileHash,
-      patchStorageUri: patchUpload.storageUri,
-    };
-    const nextState = buildNextPatchState({
-      currentBundle: targetBundle,
-      nextPatch,
-      makePrimary: options.makePrimary ?? true,
+  const updatedBundle: Bundle = {
+    ...targetBundle,
+    patches: nextState.patches,
+    patchBaseBundleId: nextState.primaryPatch.baseBundleId,
+    patchBaseFileHash: nextState.primaryPatch.baseFileHash,
+    patchFileHash: nextState.primaryPatch.patchFileHash,
+    patchStorageUri: nextState.primaryPatch.patchStorageUri,
+  };
+  await database.updateBundleById(targetBundle.id, updatedBundle);
+
+  if (
+    previousPatch?.patchStorageUri &&
+    previousPatch.patchStorageUri !== patchUpload.storageUri
+  ) {
+    await deps.storagePlugin.delete(previousPatch.patchStorageUri).catch(() => {
+      return;
     });
-
-    const updatedBundle: Bundle = {
-      ...targetBundle,
-      patches: nextState.patches,
-      patchBaseBundleId: nextState.primaryPatch.baseBundleId,
-      patchBaseFileHash: nextState.primaryPatch.baseFileHash,
-      patchFileHash: nextState.primaryPatch.patchFileHash,
-      patchStorageUri: nextState.primaryPatch.patchStorageUri,
-    };
-    await database.updateBundleById(targetBundle.id, updatedBundle);
-
-    if (
-      previousPatch?.patchStorageUri &&
-      previousPatch.patchStorageUri !== patchUpload.storageUri
-    ) {
-      await deps.storagePlugin.profiles.node
-        .delete(previousPatch.patchStorageUri)
-        .catch(() => {
-          return;
-        });
-    }
-
-    return updatedBundle;
-  } finally {
-    await fs.rm(workDir, { force: true, recursive: true });
   }
+
+  return updatedBundle;
 }

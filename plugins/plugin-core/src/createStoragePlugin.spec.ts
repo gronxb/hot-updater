@@ -1,194 +1,83 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  createUniversalStoragePlugin,
-  createNodeStoragePlugin,
-  createRuntimeStoragePlugin,
+  assertStorageOperations,
+  createStoragePlugin,
 } from "./createStoragePlugin";
-import {
-  assertNodeStoragePlugin,
-  assertRuntimeStoragePlugin,
-  isNodeStoragePlugin,
-  isRuntimeStoragePlugin,
-} from "./storageProfile";
 
 describe("createStoragePlugin", () => {
-  it("creates a node storage profile and calls upload hooks", async () => {
-    const upload = vi.fn(async (key: string, filePath: string) => ({
-      storageUri: `s3://bucket/${key}/${filePath}`,
-    }));
-    const onStorageUploaded = vi.fn(async () => undefined);
+  it("exposes the configured one-depth runtime-independent contract", () => {
+    const put = vi.fn();
+    const get = vi.fn();
+    const exists = vi.fn();
+    const deleteObject = vi.fn();
 
-    const plugin = createNodeStoragePlugin({
-      name: "testNodeStorage",
-      supportedProtocol: "s3",
-      factory: () => ({
-        delete: vi.fn(),
-        downloadFile: vi.fn(),
-        exists: vi.fn(async () => false),
-        upload,
-      }),
-    })({}, { onStorageUploaded })();
-
-    await expect(
-      plugin.profiles.node.upload("bundle-id", "bundle.zip"),
-    ).resolves.toEqual({
-      storageUri: "s3://bucket/bundle-id/bundle.zip",
+    const plugin = createStoragePlugin({
+      name: "testStorage",
+      protocol: "test",
+      put,
+      get,
+      exists,
+      delete: deleteObject,
     });
 
-    expect(plugin.profiles.runtime).toBeUndefined();
-    expect(upload).toHaveBeenCalledWith("bundle-id", "bundle.zip");
-    expect(onStorageUploaded).toHaveBeenCalledOnce();
+    expect(Object.keys(plugin).sort()).toEqual([
+      "delete",
+      "exists",
+      "get",
+      "name",
+      "protocol",
+      "put",
+    ]);
+    expect(plugin.put).toBe(put);
+    expect(plugin.get).toBe(get);
+    expect(Reflect.has(plugin, "profiles")).toBe(false);
+    expect(Reflect.has(plugin, "factory")).toBe(false);
+    expect(Reflect.has(plugin, "context")).toBe(false);
   });
 
-  it("does not initialize provider profiles before a profile is accessed", async () => {
-    const factory = vi.fn(() => ({
-      delete: vi.fn(),
-      downloadFile: vi.fn(),
-      exists: vi.fn(async () => false),
-      upload: vi.fn(async () => ({ storageUri: "s3://bucket/bundle.zip" })),
-    }));
-
-    const plugin = createNodeStoragePlugin({
-      name: "testNodeStorage",
-      supportedProtocol: "s3",
-      factory,
-    })({})();
-
-    expect(factory).not.toHaveBeenCalled();
-    assertNodeStoragePlugin(plugin);
-    expect(factory).not.toHaveBeenCalled();
-
-    await plugin.profiles.node.upload("bundle-id", "bundle.zip");
-
-    expect(factory).toHaveBeenCalledOnce();
-  });
-
-  it("creates a runtime storage profile with required direct text reads", async () => {
-    const getDownloadUrl = vi.fn(
-      async (
-        _storageUri: string,
-        _context: unknown,
-        _config: { publicHost: string },
-      ) => ({
-        fileUrl: "https://assets.example.com/bundle.zip",
-      }),
-    );
-    const readText = vi.fn(
-      async (
-        _storageUri: string,
-        _context: unknown,
-        _config: { publicHost: string },
-      ) => '{"id":"bundle-id"}',
-    );
-    const context = {
-      env: {
-        bucketName: "assets",
-      },
-    };
-
-    const plugin = createRuntimeStoragePlugin<
-      { publicHost: string },
-      typeof context
-    >({
-      name: "testRuntimeStorage",
-      supportedProtocol: "r2",
-      factory: (config) => ({
-        getDownloadUrl: async (storageUri, runtimeContext) =>
-          getDownloadUrl(storageUri, runtimeContext, config),
-        readText: async (storageUri, runtimeContext) =>
-          readText(storageUri, runtimeContext, config),
-      }),
-    })({ publicHost: "https://assets.example.com" })();
-
-    await expect(
-      plugin.profiles.runtime.getDownloadUrl("r2://bucket/bundle.zip", context),
-    ).resolves.toEqual({
-      fileUrl: "https://assets.example.com/bundle.zip",
+  it("keeps capabilities optional without adding throwing placeholders", () => {
+    const storage = createStoragePlugin({
+      name: "cliOnlyStorage",
+      protocol: "test",
+      put: vi.fn(),
+      exists: vi.fn(),
     });
-    await expect(
-      plugin.profiles.runtime.readText("r2://bucket/manifest.json", context),
-    ).resolves.toBe('{"id":"bundle-id"}');
 
-    expect(plugin.profiles.node).toBeUndefined();
-    expect(getDownloadUrl).toHaveBeenCalledWith(
-      "r2://bucket/bundle.zip",
-      context,
-      { publicHost: "https://assets.example.com" },
-    );
-    expect(readText).toHaveBeenCalledWith(
-      "r2://bucket/manifest.json",
-      context,
-      { publicHost: "https://assets.example.com" },
-    );
+    expect(Object.keys(storage).sort()).toEqual([
+      "exists",
+      "name",
+      "protocol",
+      "put",
+    ]);
+    expect(Reflect.has(storage, "delete")).toBe(false);
   });
 
-  it("creates a universal storage profile for plugins shared by deploy and runtime", async () => {
-    const exists = vi.fn(async () => true);
-    const plugin = createUniversalStoragePlugin({
-      name: "testUniversalStorage",
-      supportedProtocol: "supabase-storage",
-      factory: () => ({
-        node: {
-          delete: vi.fn(),
-          downloadFile: vi.fn(),
-          exists,
-          upload: vi.fn(async () => ({
-            storageUri: "supabase-storage://bucket/bundle.zip",
-          })),
-        },
-        runtime: {
-          getDownloadUrl: vi.fn(async () => ({
-            fileUrl: "https://assets.example.com/bundle.zip",
-          })),
-          readText: vi.fn(async () => null),
-        },
-      }),
-    })({})();
-
-    expect(isNodeStoragePlugin(plugin)).toBe(true);
-    expect(isRuntimeStoragePlugin(plugin)).toBe(true);
-    await expect(
-      plugin.profiles.node.upload("bundle-id", "bundle.zip"),
-    ).resolves.toEqual({
-      storageUri: "supabase-storage://bucket/bundle.zip",
+  it("uses a streaming Web Response for runtime-independent reads", async () => {
+    const storage = createStoragePlugin({
+      name: "streamingStorage",
+      protocol: "test",
+      get: async (_storageUri: string) =>
+        new Response(new TextEncoder().encode("bundle"), {
+          headers: { "content-type": "application/zip" },
+        }),
     });
-    await expect(
-      plugin.profiles.runtime.readText(
-        "supabase-storage://bucket/manifest.json",
-      ),
-    ).resolves.toBeNull();
-    await expect(
-      plugin.profiles.node.exists?.("supabase-storage://bucket/bundle.zip"),
-    ).resolves.toBe(true);
-    expect(exists).toHaveBeenCalledWith("supabase-storage://bucket/bundle.zip");
+
+    const response = await storage.get("test://bucket/bundle.zip");
+    expect(response).toBeInstanceOf(Response);
+    expect(response?.headers.get("content-type")).toBe("application/zip");
+    await expect(response?.text()).resolves.toBe("bundle");
   });
 
-  it("throws clear errors when the required profile is missing", () => {
-    const nodeOnlyPlugin = createNodeStoragePlugin({
-      name: "nodeOnlyStorage",
-      supportedProtocol: "s3",
-      factory: () => ({
-        delete: vi.fn(),
-        downloadFile: vi.fn(),
-        exists: vi.fn(async () => false),
-        upload: vi.fn(),
-      }),
-    })({})();
-    const runtimeOnlyPlugin = createRuntimeStoragePlugin({
-      name: "runtimeOnlyStorage",
-      supportedProtocol: "r2",
-      factory: () => ({
-        getDownloadUrl: vi.fn(),
-        readText: vi.fn(),
-      }),
-    })({})();
+  it("reports the exact capability missing from a consumer boundary", () => {
+    const storage = createStoragePlugin({
+      name: "cliOnlyStorage",
+      protocol: "test",
+      put: vi.fn(),
+    });
 
-    expect(() => assertRuntimeStoragePlugin(nodeOnlyPlugin)).toThrow(
-      'nodeOnlyStorage does not implement the runtime storage profile for protocol "s3".',
-    );
-    expect(() => assertNodeStoragePlugin(runtimeOnlyPlugin)).toThrow(
-      'runtimeOnlyStorage does not implement the node storage profile for protocol "r2".',
+    expect(() => assertStorageOperations(storage, ["put", "get"])).toThrow(
+      'Storage plugin "cliOnlyStorage" does not implement get.',
     );
   });
 });

@@ -1,50 +1,69 @@
-import type { RequestEnvContext } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  type CloudflareWorkerStorageEnv,
-  r2WorkerStorage,
-} from "./r2WorkerStorage";
+import { r2WorkerStorage } from "./r2WorkerStorage";
 
-type TestContext = RequestEnvContext<CloudflareWorkerStorageEnv>;
+const createBucket = (get: ReturnType<typeof vi.fn>) =>
+  ({
+    get,
+    head: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
+    list: vi.fn(),
+  }) as unknown as R2Bucket;
 
 describe("r2WorkerStorage", () => {
-  it("reads manifest text directly from the R2 binding", async () => {
+  it("reads bytes from the R2 binding captured by the implementation", async () => {
     const get = vi.fn(async (key: string) => ({
-      text: async () => `text:${key}`,
+      body: new Response(`text:${key}`).body,
+      httpEtag: '"etag"',
+      size: `text:${key}`.length,
+      writeHttpMetadata: vi.fn(),
     }));
     const storage = r2WorkerStorage({
-      jwtSecret: "secret",
-      publicBaseUrl: "https://assets.example.com",
-    })();
+      bucket: createBucket(get),
+      bucketName: "bundles",
+    });
 
-    await expect(
-      storage.profiles.runtime.readText("r2://bundles/app/manifest.json", {
-        env: {
-          BUCKET: { get },
-          JWT_SECRET: "secret",
-        },
-        request: new Request("https://updates.example.com"),
-      } satisfies TestContext),
-    ).resolves.toBe("text:app/manifest.json");
+    const body = await storage.get("r2://bundles/app/manifest.json");
+
+    expect(await body?.text()).toBe("text:app/manifest.json");
     expect(get).toHaveBeenCalledWith("app/manifest.json");
   });
 
-  it("fails fast when the R2 binding is missing", async () => {
+  it("rejects URIs owned by a different R2 binding", async () => {
+    const get = vi.fn();
     const storage = r2WorkerStorage({
-      jwtSecret: "secret",
-      publicBaseUrl: "https://assets.example.com",
-    })();
+      bucket: createBucket(get),
+      bucketName: "bundles",
+    });
 
-    await expect(
-      storage.profiles.runtime.readText("r2://bundles/app/manifest.json", {
-        env: {
-          JWT_SECRET: "secret",
-        },
-        request: new Request("https://updates.example.com"),
-      } as TestContext),
-    ).rejects.toThrow(
-      "r2WorkerStorage requires env.BUCKET in the hot updater context.",
+    await expect(storage.get("r2://other/app/manifest.json")).rejects.toThrow(
+      'Bucket name mismatch: expected "bundles", but found "other".',
     );
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("writes and deletes the exact object key through the R2 binding", async () => {
+    const bucket = createBucket(vi.fn());
+    const storage = r2WorkerStorage({ bucket, bucketName: "bundles" });
+
+    await storage.put({
+      key: "releases/bundle.zip",
+      body: new TextEncoder().encode("bundle"),
+      contentType: "application/zip",
+    });
+    await storage.delete("r2://bundles/releases/bundle.zip");
+
+    expect(bucket.put).toHaveBeenCalledWith(
+      "releases/bundle.zip",
+      expect.any(Uint8Array),
+      {
+        httpMetadata: {
+          cacheControl: "max-age=31536000",
+          contentType: "application/zip",
+        },
+      },
+    );
+    expect(bucket.delete).toHaveBeenCalledWith("releases/bundle.zip");
   });
 });

@@ -1,14 +1,12 @@
 // @vitest-environment node
 
-import fs from "node:fs/promises";
-
 import type {
   Bundle,
   DatabaseClient,
-  NodeStoragePlugin,
-  NodeStorageProfile,
-  RuntimeStorageProfile,
+  StoragePlugin,
+  StoragePluginWith,
 } from "@hot-updater/plugin-core";
+import { createStoragePlugin as createCoreStoragePlugin } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { deleteBundle } from "./deleteBundle";
@@ -43,44 +41,24 @@ function createDatabaseClient(bundle: Bundle | null = baseBundle) {
 }
 
 function createStoragePlugin(
-  supportedProtocol = "s3",
-  overrides?: Partial<NodeStorageProfile> & Partial<RuntimeStorageProfile>,
-) {
-  const getDownloadUrl =
-    overrides?.getDownloadUrl ??
+  protocol = "s3",
+  overrides?: Partial<StoragePlugin>,
+): StoragePluginWith<"get" | "delete"> {
+  const get =
+    overrides?.get ??
     vi.fn(async (storageUri: string) => {
       const storageUrl = new URL(storageUri);
-      return {
-        fileUrl: `https://assets.example.com${storageUrl.pathname}`,
-      };
+      const response = await fetch(
+        `https://assets.example.com${storageUrl.pathname}`,
+      );
+      return response.ok ? response : null;
     });
-  const storagePlugin = {
+  return createCoreStoragePlugin({
     name: "mockStorage",
-    supportedProtocol,
-    profiles: {
-      node: {
-        upload: overrides?.upload ?? vi.fn(),
-        delete: overrides?.delete ?? vi.fn(),
-        exists: overrides?.exists ?? vi.fn(async () => false),
-        downloadFile:
-          overrides?.downloadFile ??
-          vi.fn(async (storageUri: string, filePath: string) => {
-            const { fileUrl } = await getDownloadUrl(storageUri);
-            const response = await fetch(fileUrl);
-            await fs.writeFile(
-              filePath,
-              new Uint8Array(await response.arrayBuffer()),
-            );
-          }),
-      },
-      runtime: {
-        getDownloadUrl,
-        readText: overrides?.readText ?? vi.fn(async () => null),
-      },
-    },
-  };
-
-  return storagePlugin satisfies NodeStoragePlugin;
+    protocol,
+    get,
+    delete: overrides?.delete ?? vi.fn(),
+  });
 }
 
 afterEach(() => {
@@ -143,7 +121,7 @@ describe("deleteBundle", () => {
     ).rejects.toThrow("No storage plugin for protocol: r2");
 
     expect(databaseClient.deleteBundleById).not.toHaveBeenCalled();
-    expect(storagePlugin.profiles.node.delete).not.toHaveBeenCalled();
+    expect(storagePlugin.delete).not.toHaveBeenCalled();
   });
 
   it("keeps bundle deletion successful when storage cleanup fails", async () => {
@@ -202,12 +180,6 @@ describe("deleteBundle", () => {
     const deleteFromStorage = vi.fn();
     const storagePlugin = createStoragePlugin("s3", {
       delete: deleteFromStorage,
-      getDownloadUrl: vi.fn(async (storageUri) => ({
-        fileUrl:
-          storageUri === bundleWithManifest.manifestStorageUri
-            ? "https://cdn.example.com/manifest.json"
-            : "https://cdn.example.com/unknown",
-      })),
     });
 
     vi.stubGlobal(
@@ -285,7 +257,7 @@ describe("deleteBundle", () => {
     );
   });
 
-  it("falls back to deleting the asset base uri when manifest cleanup lookup fails", async () => {
+  it("does not treat a legacy asset base URI as an exact object when the manifest is unavailable", async () => {
     const bundleWithManifest: Bundle = {
       ...baseBundle,
       assetBaseStorageUri: "s3://bucket/bundles/bundle-copy-id/files",
@@ -296,9 +268,6 @@ describe("deleteBundle", () => {
     const deleteFromStorage = vi.fn();
     const storagePlugin = createStoragePlugin("s3", {
       delete: deleteFromStorage,
-      getDownloadUrl: vi.fn(async () => ({
-        fileUrl: "https://cdn.example.com/manifest.json",
-      })),
     });
     const consoleErrorSpy = vi
       .spyOn(console, "error")
@@ -325,7 +294,10 @@ describe("deleteBundle", () => {
     expect(deleteFromStorage).toHaveBeenCalledWith(
       bundleWithManifest.manifestStorageUri,
     );
-    expect(deleteFromStorage).toHaveBeenCalledWith(
+    expect(deleteFromStorage).not.toHaveBeenCalledWith(
+      bundleWithManifest.assetBaseStorageUri,
+    );
+    expect(deleteFromStorage).not.toHaveBeenCalledWith(
       bundleWithManifest.assetBaseStorageUri,
     );
     expect(consoleErrorSpy).toHaveBeenCalledWith(

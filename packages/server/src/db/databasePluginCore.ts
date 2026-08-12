@@ -8,46 +8,35 @@ import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
   createRequestBundleResolver,
-  type HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 
 import { assertBundlePersistenceConstraints } from "./schemaEnhancements";
 import type { DatabaseAPI, DatabasePlugin } from "./types";
 import { resolveManifestArtifacts } from "./updateArtifacts";
 
-export function createDatabasePluginCore<TContext = unknown>(
+export function createDatabasePluginCore(
   database: DatabasePlugin,
-  resolveFileUrl: (
-    storageUri: string | null,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<string | null>,
+  resolveFileUrl: (storageUri: string | null) => Promise<string | null>,
   options?: {
     beforeOperation?: () => Promise<void>;
-    readStorageText?: (
-      storageUri: string,
-      context?: HotUpdaterContext<TContext>,
-    ) => Promise<string | null>;
+    readStorageText?: (storageUri: string) => Promise<string | null>;
   },
 ): {
-  api: DatabaseAPI<TContext>;
+  api: DatabaseAPI;
   adapterName: string;
   createMigrator: () => never;
   generateSchema: () => never;
 } {
   const client = createDatabaseClient(database);
   const beforeOperation = options?.beforeOperation;
-  const api: DatabaseAPI<TContext> = {
-    async getBundleById(
-      id: string,
-      _context?: HotUpdaterContext<TContext>,
-    ): Promise<Bundle | null> {
+  const api: DatabaseAPI = {
+    async getBundleById(id: string): Promise<Bundle | null> {
       await beforeOperation?.();
       return client.getBundleById(id);
     },
 
     async getUpdateInfo(
       args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
-      _context?: HotUpdaterContext<TContext>,
     ): Promise<import("@hot-updater/core").UpdateInfo | null> {
       await beforeOperation?.();
       return client.getUpdateInfo(args);
@@ -55,9 +44,8 @@ export function createDatabasePluginCore<TContext = unknown>(
 
     async getAppUpdateInfo(
       args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
-      context?: HotUpdaterContext<TContext>,
     ): Promise<AppUpdateAvailableInfo | null> {
-      const info = await this.getUpdateInfo(args, context);
+      const info = await this.getUpdateInfo(args);
       if (!info) return null;
 
       const { storageUri, ...rest } = info;
@@ -65,17 +53,17 @@ export function createDatabasePluginCore<TContext = unknown>(
       if (info.id === NIL_UUID || !readStorageText) {
         return {
           ...rest,
-          fileUrl: await resolveFileUrl(storageUri ?? null, context),
+          fileUrl: await resolveFileUrl(storageUri ?? null),
         };
       }
 
-      const requestBundles = createRequestBundleResolver(context);
+      const requestBundles = createRequestBundleResolver();
       const getBundleById = (id: string) =>
         requestBundles.getById(id, () => client.getBundleById(id));
       const getCurrentBundle = () =>
         args.bundleId === NIL_UUID ? null : getBundleById(args.bundleId);
       const [fileUrl, targetBundle, currentBundle] = await Promise.all([
-        resolveFileUrl(storageUri ?? null, context),
+        resolveFileUrl(storageUri ?? null),
         getBundleById(info.id),
         getCurrentBundle(),
       ]);
@@ -85,38 +73,29 @@ export function createDatabasePluginCore<TContext = unknown>(
         resolveFileUrl,
         readStorageText,
         targetBundle,
-        context,
       });
       return manifestArtifacts
         ? { ...baseResponse, ...manifestArtifacts }
         : baseResponse;
     },
 
-    async getChannels(
-      _context?: HotUpdaterContext<TContext>,
-    ): Promise<string[]> {
+    async getChannels(): Promise<string[]> {
       await beforeOperation?.();
       return client.getChannels();
     },
 
-    async getBundles(options, _context?: HotUpdaterContext<TContext>) {
+    async getBundles(options) {
       await beforeOperation?.();
       return client.getBundles(options);
     },
 
-    async insertBundle(
-      bundle: Bundle,
-      _context?: HotUpdaterContext<TContext>,
-    ): Promise<void> {
+    async insertBundle(bundle: Bundle): Promise<void> {
       await beforeOperation?.();
       assertBundlePersistenceConstraints(bundle);
       await client.insertBundle(bundle);
     },
 
-    async insertBundles(
-      bundles: readonly Bundle[],
-      _context?: HotUpdaterContext<TContext>,
-    ): Promise<void> {
+    async insertBundles(bundles: readonly Bundle[]): Promise<void> {
       await beforeOperation?.();
       for (const bundle of bundles) {
         assertBundlePersistenceConstraints(bundle);
@@ -131,7 +110,6 @@ export function createDatabasePluginCore<TContext = unknown>(
     async updateBundleById(
       bundleId: string,
       update: Partial<Bundle>,
-      _context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
       await beforeOperation?.();
       const current = await client.getBundleById(bundleId);
@@ -145,10 +123,7 @@ export function createDatabasePluginCore<TContext = unknown>(
       await client.updateBundleById(bundleId, update);
     },
 
-    async deleteBundleById(
-      bundleId: string,
-      _context?: HotUpdaterContext<TContext>,
-    ): Promise<void> {
+    async deleteBundleById(bundleId: string): Promise<void> {
       await beforeOperation?.();
       await client.deleteBundleById(bundleId);
     },

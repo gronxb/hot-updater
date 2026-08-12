@@ -640,10 +640,12 @@ const deployEdgeFunction = async (
   workdir: string,
   projectId: string,
   functionName: string,
+  bucketName: string,
 ) => {
   const edgeFunctionsLibPath = path.join(workdir, "supabase", "edge-functions");
   const edgeFunctionsCodePath = path.join(edgeFunctionsLibPath, "index.ts");
   const edgeFunctionsCode = transformEnv(edgeFunctionsCodePath, {
+    BUCKET_NAME: bucketName,
     FUNCTION_NAME: functionName,
   });
 
@@ -1003,7 +1005,13 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   });
 
   await pushDB(tmpDir, { accessToken, dbPassword });
-  await deployEdgeFunction(accessToken, tmpDir, project.id, functionName);
+  await deployEdgeFunction(
+    accessToken,
+    tmpDir,
+    project.id,
+    functionName,
+    bucket.name,
+  );
 
   await removeTmpDir();
 

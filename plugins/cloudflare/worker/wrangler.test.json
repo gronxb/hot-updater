@@ -8,7 +8,9 @@
     "enabled": true
   },
   "vars": {
-    "JWT_SECRET": "test-secret"
+    "BUCKET_NAME": "hot-updater-test",
+    "PUBLIC_BASE_URL": "https://updates.example.com",
+    "STORAGE_DELIVERY_SIGNING_KEY": "test-storage-delivery-signing-key"
   },
   "d1_databases": [
     {
