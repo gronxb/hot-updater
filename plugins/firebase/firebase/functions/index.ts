@@ -27,6 +27,7 @@ if (!storageBucket) {
 
 const hotUpdater = createHotUpdater({
   database: firebaseDatabase(adminOptions),
+  features: { analytics: true },
   storages: [
     firebaseFunctionsStorage({
       ...adminOptions,

@@ -54,6 +54,9 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
+  features: {
+    analytics: true,
+  },
   routes: {
     updateCheck: true,
     bundles: true,
@@ -62,9 +65,14 @@ export const hotUpdater = createHotUpdater({
 ```
 
 By default, `createHotUpdater` mounts update-check routes and `/version`.
-Bundle management routes used by the CLI `standaloneRepository` plugin must be
+Bundle management routes used by the CLI `standaloneRepository` must be
 enabled explicitly and protected by framework middleware before mounting the
 handler.
+
+`routes` controls the core update-check and bundle-management endpoints.
+`features` independently enables optional behavior backed by the same server
+database. The example enables Analytics with protected query routes; add
+`clientAccessKeys: true` only after creating and distributing a client key.
 
 ## Server Setup
 

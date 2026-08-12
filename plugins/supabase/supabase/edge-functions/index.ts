@@ -1,9 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createHotUpdater } from "@hot-updater/server";
-import {
-  supabaseEdgeFunctionDatabase,
-  supabaseEdgeFunctionStorage,
-} from "@hot-updater/supabase";
+import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase/edge";
 import { Hono } from "npm:hono";
 
 declare global {
@@ -19,12 +16,13 @@ const functionBasePath = `/${functionName}`;
 const hotUpdaterBasePath = "/";
 
 const hotUpdater = createHotUpdater({
-  database: supabaseEdgeFunctionDatabase({
+  database: supabaseDatabase({
     supabaseUrl,
     supabaseServiceRoleKey,
   }),
+  features: { analytics: true },
   storages: [
-    supabaseEdgeFunctionStorage({
+    supabaseStorage({
       supabaseUrl,
       supabaseServiceRoleKey,
     }),

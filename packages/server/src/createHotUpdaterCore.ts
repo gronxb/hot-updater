@@ -35,14 +35,31 @@ export type RuntimeHotUpdaterAPI<TContext = undefined> =
 export type HotUpdaterAPI<TContext = undefined> =
   RuntimeHotUpdaterAPI<TContext>;
 
+export interface CreateHotUpdaterFeatures {
+  /**
+   * Mount Analytics ingestion and query routes backed by
+   * `database.analytics`. Protected queries are the default.
+   */
+  readonly analytics?:
+    | boolean
+    | {
+        /** Query routes deny access by default; client access keys never grant query access. */
+        readonly queryAccess?: AnalyticsQueryAccess;
+      };
+  /**
+   * Protect update-check and Analytics ingestion routes with `x-api-key`,
+   * using `database.clientAccessKeys` for authentication.
+   */
+  readonly clientAccessKeys?: boolean;
+}
+
 export interface CreateHotUpdaterOptions<TContext = undefined> {
   readonly database: DatabasePlugin;
-  readonly analytics?: {
-    /** Query routes deny access by default; client access keys never grant query access. */
-    readonly queryAccess?: AnalyticsQueryAccess;
-  };
-  /** Protect update-check and Analytics ingestion routes with `x-api-key`. */
-  readonly clientAccessKeys?: boolean;
+  /**
+   * Optional server features. These are independent from `routes`, which only
+   * controls the core update-check and bundle-management route groups.
+   */
+  readonly features?: CreateHotUpdaterFeatures;
   readonly storages?: readonly (
     | RuntimeStoragePlugin<TContext>
     | StoragePluginFactory<TContext>
@@ -60,11 +77,14 @@ export interface CreateHotUpdaterOptions<TContext = undefined> {
 }
 
 const normalizeAnalyticsQueryAccess = (
-  analytics: CreateHotUpdaterOptions["analytics"],
+  analytics: CreateHotUpdaterFeatures["analytics"],
 ): AnalyticsQueryAccess | undefined => {
-  if (analytics === undefined) return undefined;
+  if (analytics === undefined || analytics === false) return undefined;
+  if (analytics === true) return "protected";
   if (typeof analytics !== "object" || analytics === null) {
-    throw new TypeError("Analytics options must be an object.");
+    throw new TypeError(
+      "The Analytics feature must be a boolean or an options object.",
+    );
   }
   const queryAccess = analytics.queryAccess ?? "protected";
   if (queryAccess !== "protected" && queryAccess !== "public") {
@@ -74,13 +94,23 @@ const normalizeAnalyticsQueryAccess = (
 };
 
 const normalizeClientAccessKeys = (
-  clientAccessKeys: CreateHotUpdaterOptions["clientAccessKeys"],
+  clientAccessKeys: CreateHotUpdaterFeatures["clientAccessKeys"],
 ): boolean => {
   if (clientAccessKeys === undefined) return false;
   if (typeof clientAccessKeys !== "boolean") {
     throw new TypeError("Client access-keys option must be a boolean.");
   }
   return clientAccessKeys;
+};
+
+const normalizeFeatures = (
+  features: CreateHotUpdaterOptions["features"],
+): CreateHotUpdaterFeatures => {
+  if (features === undefined) return {};
+  if (typeof features !== "object" || features === null) {
+    throw new TypeError("Features must be an object.");
+  }
+  return features;
 };
 
 type DatabasePluginCore<TContext> = {
@@ -145,9 +175,12 @@ export function createHotUpdaterCore<TContext = undefined>(
     beforeOperation: assertSchemaReady,
     readStorageText,
   });
-  const analyticsQueryAccess = normalizeAnalyticsQueryAccess(options.analytics);
+  const features = normalizeFeatures(options.features);
+  const analyticsQueryAccess = normalizeAnalyticsQueryAccess(
+    features.analytics,
+  );
   const clientAccessKeysEnabled = normalizeClientAccessKeys(
-    options.clientAccessKeys,
+    features.clientAccessKeys,
   );
   const analytics =
     analyticsQueryAccess === undefined

@@ -73,8 +73,7 @@ const database = dynamoDB({
 
 const hotUpdater = createHotUpdater<SignedUrlContext>({
   database,
-  analytics: {},
-  clientAccessKeys: true,
+  features: { analytics: true, clientAccessKeys: true },
   storages: [
     withCloudFrontSignedUrl(
       s3Storage({

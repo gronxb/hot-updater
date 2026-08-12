@@ -23,8 +23,10 @@ export const database = dynamoDB({
 
 export const hotUpdater = createHotUpdater({
   database,
-  analytics: { queryAccess: "public" },
-  clientAccessKeys: true,
+  features: {
+    analytics: { queryAccess: "public" },
+    clientAccessKeys: true,
+  },
   storages: [
     mockStorage({}),
     s3Storage({

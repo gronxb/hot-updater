@@ -46,6 +46,26 @@ export default defineConfig({
 });
 ```
 
+## Edge Runtime Usage
+
+Use the `/edge` subpath when composing `createHotUpdater` inside a Supabase
+Edge Function. The provider keeps the same name while the subpath makes the
+runtime boundary explicit:
+
+```typescript
+import { createHotUpdater } from "@hot-updater/server";
+import { supabaseDatabase } from "@hot-updater/supabase/edge";
+
+export const hotUpdater = createHotUpdater({
+  database: supabaseDatabase({
+    supabaseUrl: Deno.env.get("SUPABASE_URL")!,
+    supabaseServiceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  }),
+  features: { analytics: true },
+  // ... other options
+});
+```
+
 ## Complete Example
 
 Combined storage and database:

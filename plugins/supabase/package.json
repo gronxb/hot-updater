@@ -17,6 +17,7 @@
       "require": "./dist/init/index.cjs"
     },
     "./edge": {
+      "types": "./dist/edge.d.cts",
       "import": "./dist/edge.mjs",
       "require": "./dist/edge.cjs"
     },

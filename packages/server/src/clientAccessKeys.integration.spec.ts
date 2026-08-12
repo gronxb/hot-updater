@@ -23,8 +23,10 @@ describe("createHotUpdater client access keys", () => {
   it("rejects invalid client access-key configuration", () => {
     expect(() =>
       createHotUpdater({
-        clientAccessKeys: "yes" as unknown as boolean,
         database: createInMemoryDatabasePlugin(),
+        features: {
+          clientAccessKeys: "yes" as unknown as boolean,
+        },
       }),
     ).toThrow("Client access-keys option must be a boolean.");
   });
@@ -37,9 +39,8 @@ describe("createHotUpdater client access keys", () => {
       name: "App",
     });
     const hotUpdater = createHotUpdater({
-      analytics: {},
-      clientAccessKeys: true,
       database,
+      features: { analytics: true, clientAccessKeys: true },
     });
 
     expect((await hotUpdater.handler(new Request(updateUrl))).status).toBe(401);
@@ -65,9 +66,11 @@ describe("createHotUpdater client access keys", () => {
       name: "App",
     });
     const hotUpdater = createHotUpdater({
-      analytics: { queryAccess: "public" },
-      clientAccessKeys: true,
       database,
+      features: {
+        analytics: { queryAccess: "public" },
+        clientAccessKeys: true,
+      },
     });
     const invalidBody = {
       method: "POST",
@@ -97,8 +100,8 @@ describe("createHotUpdater client access keys", () => {
       new Error("database offline"),
     );
     const hotUpdater = createHotUpdater({
-      clientAccessKeys: true,
       database,
+      features: { clientAccessKeys: true },
     });
 
     const response = await hotUpdater.handler(withApiKey(updateUrl));

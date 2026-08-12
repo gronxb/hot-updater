@@ -64,3 +64,18 @@ counts, patch lookup by owner ids, and atomic bundle change-sets. Arbitrary
 distinct, projection, connector, and string-comparison query DSL operations are
 no longer part of the public database plugin contract. Cloudflare D1 rejects
 malformed count results instead of returning zero.
+
+Runtime-specific composition entrypoints keep the same provider names behind
+explicit package subpaths. `@hot-updater/cloudflare/worker` accepts a native D1
+binding through `d1Database(database)`, while `@hot-updater/supabase/edge`
+exports the Edge-compatible `supabaseDatabase` and `supabaseStorage`. Root
+entrypoints remain the configuration-time providers.
+
+Self-hosted runtimes configure optional behavior through
+`createHotUpdater({ features })`. `features.analytics` mounts Analytics
+ingestion and query routes backed by the official database domain, while
+`features.clientAccessKeys` protects update checks and Analytics ingestion.
+`routes` remains limited to the orthogonal update-check and bundle-management
+route groups. The CLI-only `standaloneRepository` stays a bundle repository;
+the physical database passed to the self-hosted `createHotUpdater` instance
+owns Analytics and client access-key persistence.

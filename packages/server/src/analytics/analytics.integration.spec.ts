@@ -36,6 +36,7 @@ describe("createHotUpdater Analytics", () => {
   it("keeps Analytics routes absent when Analytics is not enabled", async () => {
     const hotUpdater = createHotUpdater({
       database: createInMemoryDatabasePlugin(),
+      features: { analytics: false },
     });
 
     expect(hotUpdater.analytics).toBeUndefined();
@@ -48,8 +49,8 @@ describe("createHotUpdater Analytics", () => {
     const database = createInMemoryDatabasePlugin();
     const append = vi.spyOn(database.analytics, "append");
     const hotUpdater = createHotUpdater({
-      analytics: { queryAccess: "public" },
       database,
+      features: { analytics: { queryAccess: "public" } },
     });
 
     const ingestion = await hotUpdater.handler(eventRequest());
@@ -85,8 +86,8 @@ describe("createHotUpdater Analytics", () => {
     );
     const createMigrator = vi.spyOn(database, "createMigrator");
     const hotUpdater = createHotUpdater({
-      analytics: { queryAccess: "public" },
       database,
+      features: { analytics: { queryAccess: "public" } },
     });
 
     expect((await hotUpdater.handler(eventRequest())).status).toBe(204);
@@ -97,8 +98,8 @@ describe("createHotUpdater Analytics", () => {
 
   it("keeps ingestion public while protected queries fail closed", async () => {
     const hotUpdater = createHotUpdater({
-      analytics: {},
       database: createInMemoryDatabasePlugin(),
+      features: { analytics: true },
     });
 
     expect((await hotUpdater.handler(eventRequest())).status).toBe(204);
@@ -112,8 +113,8 @@ describe("createHotUpdater Analytics", () => {
 
   it("returns a stable client error for malformed event payloads", async () => {
     const hotUpdater = createHotUpdater({
-      analytics: { queryAccess: "public" },
       database: createInMemoryDatabasePlugin(),
+      features: { analytics: { queryAccess: "public" } },
     });
 
     const response = await hotUpdater.handler(
@@ -129,8 +130,10 @@ describe("createHotUpdater Analytics", () => {
   it("rejects an invalid query access value instead of exposing queries", () => {
     expect(() =>
       createHotUpdater({
-        analytics: { queryAccess: "invalid" as "public" },
         database: createInMemoryDatabasePlugin(),
+        features: {
+          analytics: { queryAccess: "invalid" as "public" },
+        },
       }),
     ).toThrow("Invalid Analytics queryAccess option.");
   });

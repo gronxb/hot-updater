@@ -1,12 +1,14 @@
 ---
-title: "Standalone Database"
+title: "Standalone Repository"
 description: Connect your CLI to a self-hosted Hot Updater server.
 icon: Server
 ---
 
 ## Overview
 
-The `standaloneRepository` plugin connects your Hot Updater CLI to a self-hosted backend server. This is the **client-side configuration** for connecting to your server.
+The `standaloneRepository` HTTP repository connects your Hot Updater CLI to a
+self-hosted backend server. This is the **client-side configuration** for
+connecting to your server.
 
 <Callout type="info">
 **Building a Self-Hosted Server?**
@@ -40,7 +42,7 @@ export default defineConfig({
 
 ## Configuration
 
-The `standaloneRepository` plugin accepts the following options:
+The `standaloneRepository` HTTP repository accepts the following options:
 
 ```typescript
 interface StandaloneRepositoryConfig {
@@ -267,6 +269,10 @@ const hotUpdater = createHotUpdater({
   database,
   storages: [storage],
   basePath: "/hot-updater",
+  features: {
+    analytics: true,
+    clientAccessKeys: true,
+  },
   routes: {
     updateCheck: true,
     bundles: true,
@@ -278,6 +284,21 @@ This mounts the bundle routes consumed by `standaloneRepository` under
 `/hot-updater/api/bundles*`. `routes.bundles: true` is the explicit opt-in for
 those management APIs; protect them at the framework or reverse proxy layer,
 and configure matching `commonHeaders` in `standaloneRepository`.
+
+`standaloneRepository` remains a bundle-management HTTP client and is used only
+in `hot-updater.config.ts`. It does not own Analytics events or client access
+keys. The server-side `database` passed to `createHotUpdater` owns those
+official domains, and `features` decides whether the self-host runtime exposes
+Analytics and enforces client access keys. `routes` controls only the core
+update-check and bundle-management route groups.
+
+<Callout type="warn">
+  The Console cannot read Analytics or manage client access keys through
+  `standaloneRepository`; its HTTP contract is deliberately bundle-only. Run
+  Console or another protected management surface with direct access to the
+  same server-side database domains. Do not pass `standaloneRepository` to
+  `createHotUpdater`.
+</Callout>
 
 ## Next Steps
 

@@ -20,6 +20,7 @@ const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
 const api = createHotUpdater({
   database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
   basePath: "/hot-updater",
+  features: { analytics: { queryAccess: "public" } },
   routes: { updateCheck: true, bundles: true },
 });
 const baseUrl = "http://localhost:3000";
@@ -47,6 +48,7 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
+  await db.exec("DELETE FROM bundle_events");
   await db.exec("DELETE FROM bundle_patches");
   await db.exec("DELETE FROM bundles");
 });
@@ -76,6 +78,78 @@ const createStandaloneClient = (base = `${baseUrl}/hot-updater`) =>
   createDatabaseClient(standaloneRepository({ baseUrl: base }));
 
 describe("Handler <-> Standalone Repository Integration", () => {
+  it("uses Standalone for bundle management and the server database for Analytics", async () => {
+    const bundleId = uuidv7();
+    const installId = "standalone-install";
+    await createStandaloneClient().insertBundle(
+      createTestBundle({ id: bundleId }),
+    );
+
+    const ingestion = await api.handler(
+      new Request(`${baseUrl}/hot-updater/events`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "hot-updater-sdk-version": "2.0.0",
+        },
+        body: JSON.stringify({
+          appVersion: "1.0.0",
+          channel: "production",
+          cohort: "default",
+          fingerprintHash: null,
+          fromBundleId: NIL_UUID,
+          installId,
+          platform: "ios",
+          toBundleId: bundleId,
+          type: "UPDATE_APPLIED",
+          updateStrategy: "appVersion",
+        }),
+      }),
+    );
+    const overview = await api.handler(
+      new Request(`${baseUrl}/hot-updater/api/installations/overview`),
+    );
+
+    expect(ingestion.status).toBe(204);
+    expect(overview.status).toBe(200);
+    await expect(overview.json()).resolves.toEqual({
+      bundles: [{ bundleId, installations: 1 }],
+      trackedInstallations: 1,
+    });
+  });
+
+  it("keeps Standalone management routes separate from client access-key protection", async () => {
+    const protectedApi = createHotUpdater({
+      database: createInMemoryDatabasePlugin(),
+      basePath: "/protected-hot-updater",
+      features: { clientAccessKeys: true },
+      routes: { updateCheck: true, bundles: true },
+    });
+    server.use(
+      http.all(`${baseUrl}/protected-hot-updater/*`, async ({ request }) => {
+        const response = await protectedApi.handler(request);
+        return new HttpResponse(await response.text(), {
+          status: response.status,
+          headers: response.headers,
+        });
+      }),
+    );
+    const bundleId = uuidv7();
+    const client = createStandaloneClient(`${baseUrl}/protected-hot-updater`);
+
+    await client.insertBundle(createTestBundle({ id: bundleId }));
+    const updateCheck = await protectedApi.handler(
+      new Request(
+        `${baseUrl}/protected-hot-updater/app-version/ios/1.0.0/production/${NIL_UUID}/${NIL_UUID}`,
+      ),
+    );
+
+    await expect(client.getBundleById(bundleId)).resolves.toMatchObject({
+      id: bundleId,
+    });
+    expect(updateCheck.status).toBe(401);
+  });
+
   it("creates a bundle through handler POST /bundles", async () => {
     const client = createStandaloneClient();
     const bundleId = uuidv7();

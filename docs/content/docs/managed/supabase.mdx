@@ -171,7 +171,11 @@ export default HotUpdater.wrap({
 ```
 
 <Callout type="info">
-The managed Supabase runtime exposes the public update-check endpoints and `/version`. Internally, it is equivalent to `createHotUpdater({ routes: { updateCheck: true, bundles: false } })`, so bundle management endpoints are not mounted on the public function URL.
+The managed Supabase runtime exposes public update checks, Analytics event
+ingestion, and `/version`. Internally, it enables
+`features.analytics` with `routes: { updateCheck: true, bundles: false }`.
+Analytics query routes stay protected, and bundle management routes are not
+mounted on the public function URL.
 </Callout>
 
 ## Step 5: If You Use Expo, Add the Config Plugin

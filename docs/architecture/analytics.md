@@ -7,17 +7,20 @@ own provider, schema lifecycle, or universal component adapter.
 ```ts
 createHotUpdater({
   database,
-  analytics: {
-    queryAccess: "protected",
+  features: {
+    analytics: true,
   },
 });
 ```
 
-When `analytics` is present, `createHotUpdater` mounts the public event
-ingestion route and the Analytics query routes. `queryAccess` defaults to
-`"protected"`; protected queries fail closed until client access-key
-authentication is configured. `"public"` is intended for explicitly public
-deployments and local test fixtures.
+When `features.analytics` is enabled, `createHotUpdater` mounts the public
+event ingestion route and the Analytics query routes. Queries are protected by
+default and fail closed. `features.analytics: { queryAccess: "public" }` is
+intended only for explicitly public deployments and local test fixtures.
+
+`routes` and `features` are independent. `routes.updateCheck` and
+`routes.bundles` control the two core route groups; Analytics owns its event and
+query routes and is enabled only by `features.analytics`.
 
 The database plugin owns physical storage and migration for `bundle_events`.
 The server owns event input validation, bounded scans, aggregation, installation
