@@ -20,13 +20,13 @@ import type {
   CountDatabaseImplementationInput,
   CreateDatabaseImplementationInput,
   DatabasePluginCrud as DatabasePluginCrudContract,
-  DatabasePluginImplementation,
   DeleteDatabaseImplementationInput,
   FindManyDatabasePluginInput,
   FindOneDatabaseImplementationInput,
   SelectedDatabaseInputRow,
+  TransactionDatabasePluginImplementation,
   UpdateDatabaseImplementationInput,
-} from "./types";
+} from "./types/internal";
 
 export {
   DatabasePluginInputError,
@@ -36,13 +36,22 @@ export {
 export type DatabasePluginCrud = DatabasePluginCrudContract;
 
 export const createDatabasePluginCrud = (
-  implementation: DatabasePluginImplementation,
+  implementation: TransactionDatabasePluginImplementation,
 ): DatabasePluginCrud => {
   async function create<TInput extends CreateDatabaseImplementationInput>(
     input: TInput,
   ): Promise<SelectedDatabaseInputRow<TInput>> {
     validateModel(input.model);
     validateCreateData(input.model, input.data);
+    if (
+      input.onConflict !== undefined &&
+      !(
+        input.onConflict === "ignore" &&
+        (input.model === "channels" || input.model === "client_access_keys")
+      )
+    ) {
+      throw new DatabasePluginInputError("invalid-operation");
+    }
     validateSelect(input.model, input.select);
     const row = await implementation.create(input);
     validateResult(input.model, row, input.select);
@@ -77,7 +86,11 @@ export const createDatabasePluginCrud = (
     input: DeleteDatabaseImplementationInput,
   ): Promise<void> {
     validateModel(input.model);
-    if (input.model !== "bundles" && input.model !== "bundle_patches") {
+    if (
+      input.model !== "bundles" &&
+      input.model !== "bundle_patches" &&
+      input.model !== "channels"
+    ) {
       throw new DatabasePluginInputError("invalid-operation");
     }
     validateWhere(input.model, input.where);

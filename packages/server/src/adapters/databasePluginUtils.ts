@@ -1,10 +1,10 @@
+import type { BundleRow } from "@hot-updater/plugin-core";
+import { isDatabaseMetadataObject } from "@hot-updater/plugin-core";
 import type {
-  BundleRow,
   DatabaseModel,
   DatabaseOrderBy,
   DatabaseSortBy,
-} from "@hot-updater/plugin-core";
-import { isDatabaseMetadataObject } from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 
 import type { ORMSQLProvider } from "../db/types";
 

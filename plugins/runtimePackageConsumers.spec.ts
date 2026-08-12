@@ -76,6 +76,37 @@ const runNode = (packageDirectory: string, source: string, asModule = false) =>
     { cwd: packageDirectory },
   );
 
+const typeCheckConsumers = async (
+  packageDirectory: string,
+  consumers: readonly string[],
+) => {
+  const typescriptCli = path.join(
+    workspaceRoot,
+    "node_modules",
+    "typescript",
+    "bin",
+    "tsc6",
+  );
+  await access(typescriptCli);
+  const compilerArguments = [
+    typescriptCli,
+    "--noEmit",
+    "--module",
+    "NodeNext",
+    "--moduleResolution",
+    "NodeNext",
+    "--target",
+    "ES2022",
+    "--skipLibCheck",
+  ];
+
+  for (const consumer of consumers) {
+    await execFileAsync(process.execPath, [...compilerArguments, consumer], {
+      cwd: packageDirectory,
+    });
+  }
+};
+
 afterAll(async () => {
   await Promise.all(
     temporaryDirectories.map((directory) =>
@@ -187,8 +218,9 @@ const databaseBinding = {
 };
 const database = runtime.d1Database(databaseBinding);
 if (database.name !== "d1Database") throw new Error("invalid d1Database name");
-if (typeof database.analytics.append !== "function") throw new Error("missing analytics domain");
-if (typeof database.clientAccessKeys.create !== "function") throw new Error("missing clientAccessKeys domain");
+if (typeof database.models.analytics.append !== "function") throw new Error("missing analytics model");
+if (typeof database.models.clientAccessKeys.create !== "function") throw new Error("missing clientAccessKeys model");
+if (typeof database.models.channels.list !== "function") throw new Error("missing channels model");
 if ("d1WorkerDatabase" in runtime) throw new Error("unexpected d1WorkerDatabase");
 `;
     await runNode(
@@ -205,41 +237,58 @@ if ("d1WorkerDatabase" in runtime) throw new Error("unexpected d1WorkerDatabase"
     const commonJsConsumer = path.join(packageDirectory, "consumer.cts");
     const consumerSource = `import { d1Database, r2Storage } from ${JSON.stringify(
       moduleSpecifier,
-    )};\ndeclare const binding: Parameters<typeof d1Database>[0];\nconst database = d1Database(binding);\nvoid database.bundles;\nvoid database.bundlePatches;\nvoid database.analytics;\nvoid database.clientAccessKeys;\nvoid database.commit;\nvoid r2Storage;\n`;
+    )};\ndeclare const binding: Parameters<typeof d1Database>[0];\nconst database = d1Database(binding);\nvoid database.models.bundles;\nvoid database.models.bundlePatches;\nvoid database.models.channels;\nvoid database.models.analytics;\nvoid database.models.clientAccessKeys;\nvoid database.queries.getUpdateInfo;\nvoid database.commit;\nvoid r2Storage;\n`;
     await writeFile(moduleConsumer, consumerSource);
     await writeFile(commonJsConsumer, consumerSource);
 
-    const typescriptCli = path.join(
-      workspaceRoot,
-      "node_modules",
-      "typescript",
-      "bin",
-      "tsc6",
-    );
-    await access(typescriptCli);
-    const compilerArguments = [
-      typescriptCli,
-      "--noEmit",
-      "--module",
-      "NodeNext",
-      "--moduleResolution",
-      "NodeNext",
-      "--target",
-      "ES2022",
-      "--skipLibCheck",
-    ];
+    await typeCheckConsumers(packageDirectory, [
+      moduleConsumer,
+      commonJsConsumer,
+    ]);
+  });
 
-    await execFileAsync(
-      process.execPath,
-      [...compilerArguments, moduleConsumer],
-      {
-        cwd: packageDirectory,
-      },
+  it("exposes the same Supabase database name and contract from root and edge entrypoints", async () => {
+    const { packageDirectory } = await packProvider("supabase");
+    const rootSpecifier = "@hot-updater/supabase";
+    const edgeSpecifier = "@hot-updater/supabase/edge";
+    const runtimeAssertions = `
+const config = {
+  supabaseUrl: "https://test.supabase.invalid",
+  supabaseServiceRoleKey: "test-service-role-key",
+};
+for (const runtime of [rootRuntime, edgeRuntime]) {
+  const database = runtime.supabaseDatabase(config);
+  if (database.name !== "supabaseDatabase") throw new Error("invalid supabaseDatabase name");
+  if (typeof database.models.channels.list !== "function") throw new Error("missing channels model");
+  if ("supabaseEdgeFunctionDatabase" in runtime) throw new Error("unexpected supabaseEdgeFunctionDatabase");
+}
+`;
+
+    await runNode(
+      packageDirectory,
+      `const rootRuntime = await import(${JSON.stringify(rootSpecifier)});\nconst edgeRuntime = await import(${JSON.stringify(edgeSpecifier)});${runtimeAssertions}`,
+      true,
     );
-    await execFileAsync(
-      process.execPath,
-      [...compilerArguments, commonJsConsumer],
-      { cwd: packageDirectory },
+    await runNode(
+      packageDirectory,
+      `const rootRuntime = require(${JSON.stringify(rootSpecifier)});\nconst edgeRuntime = require(${JSON.stringify(edgeSpecifier)});${runtimeAssertions}`,
     );
+
+    const moduleConsumer = path.join(packageDirectory, "supabase-consumer.mts");
+    const commonJsConsumer = path.join(
+      packageDirectory,
+      "supabase-consumer.cts",
+    );
+    const consumerSource = `import { supabaseDatabase as rootDatabase } from ${JSON.stringify(
+      rootSpecifier,
+    )};\nimport { supabaseDatabase as edgeDatabase } from ${JSON.stringify(
+      edgeSpecifier,
+    )};\nconst config: Parameters<typeof rootDatabase>[0] = { supabaseUrl: "https://test.supabase.invalid", supabaseServiceRoleKey: "test-service-role-key" };\nconst edgeConfig: Parameters<typeof edgeDatabase>[0] = config;\nvoid rootDatabase(config).models.channels;\nvoid edgeDatabase(edgeConfig).models.channels;\n`;
+    await writeFile(moduleConsumer, consumerSource);
+    await writeFile(commonJsConsumer, consumerSource);
+    await typeCheckConsumers(packageDirectory, [
+      moduleConsumer,
+      commonJsConsumer,
+    ]);
   });
 });

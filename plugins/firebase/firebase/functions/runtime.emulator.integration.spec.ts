@@ -247,7 +247,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
         }),
       ],
       basePath: HOT_UPDATER_BASE_PATH,
-      routes: {
+      features: {
         updateCheck: true,
         bundles: false,
       },

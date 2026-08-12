@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   createBundlePatchRowFixture,
   createBundleRowFixture,
+  createChannelRowFixture,
 } from "../../../test-utils/src/databaseTestFixtures";
 import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import { mongoAdapter } from "./mongodb";
@@ -42,14 +43,16 @@ describe("mongoAdapter capabilities", () => {
 
     await expect(
       plugin.commit({
-        mutations: [
+        changes: [
           {
+            model: "bundles",
             operation: "insert",
-            bundleId: owner.id,
-            changes: [
-              { table: "bundles", operation: "insert", row: owner },
-              { table: "bundle_patches", operation: "insert", row: patch },
-            ],
+            row: owner,
+          },
+          {
+            model: "bundlePatches",
+            operation: "insert",
+            row: patch,
           },
         ],
       }),
@@ -92,17 +95,15 @@ describe("mongoAdapter capabilities", () => {
     harness.reset();
     const plugin = mongoAdapter({ client: harness.client });
     const row = createBundleRowFixture("972");
+    await plugin.models.channels.insert({
+      row: createChannelRowFixture(),
+      onConflict: "returnExisting",
+    });
     await plugin.commit({
-      mutations: [
-        {
-          operation: "insert",
-          bundleId: row.id,
-          changes: [{ table: "bundles", operation: "insert", row }],
-        },
-      ],
+      changes: [{ model: "bundles", operation: "insert", row }],
     });
     harness.setBundleField(row.id, "should_force_update", "false");
-    const getUpdateInfo = plugin.getUpdateInfo;
+    const getUpdateInfo = plugin.queries.getUpdateInfo;
     if (getUpdateInfo === undefined) throw new Error("fast path unavailable");
 
     await expect(

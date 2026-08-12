@@ -248,7 +248,7 @@ describe("handleBundleSetEnabled", () => {
   it("exits 1 when verification reads a state mismatch after commit", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     databaseHarness.setBundles([buildBundle({ id: "B1", enabled: true })]);
-    databaseHarness.commit.mockResolvedValue({ applied: true });
+    databaseHarness.commit.mockResolvedValue({ committed: true });
 
     const { exitSpy } = expectExit(1);
     const { handleBundleSetEnabled } = await import("./bundle");

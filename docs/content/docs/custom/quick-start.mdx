@@ -56,8 +56,6 @@ export const hotUpdater = createHotUpdater({
   basePath: "/hot-updater",
   features: {
     analytics: true,
-  },
-  routes: {
     updateCheck: true,
     bundles: true,
   },
@@ -69,10 +67,10 @@ Bundle management routes used by the CLI `standaloneRepository` must be
 enabled explicitly and protected by framework middleware before mounting the
 handler.
 
-`routes` controls the core update-check and bundle-management endpoints.
-`features` independently enables optional behavior backed by the same server
-database. The example enables Analytics with protected query routes; add
-`clientAccessKeys: true` only after creating and distributing a client key.
+The same `features` object controls the core route groups and optional behavior
+backed by the server database. The example enables Analytics with protected
+query routes; add `clientAccessKeys: true` only after creating and distributing
+a client key.
 
 ## Server Setup
 
@@ -86,7 +84,8 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
 
-app.use( // [!code ++]
+app.use(
+  // [!code ++]
   "/hot-updater/api/*", // [!code ++]
   bearerAuth({ token: process.env.HOT_UPDATER_AUTH_TOKEN ?? "" }), // [!code ++]
 ); // [!code ++]
@@ -110,7 +109,7 @@ deployment choice:
 - `/hot-updater/fingerprint/*`
 
 The bundle management routes under `/hot-updater/api/*` are used by the CLI.
-They are mounted only when `routes.bundles: true`, and your framework
+They are mounted only when `features.bundles: true`, and your framework
 middleware must protect each management request before mounting the handler.
 The server example above uses Bearer authentication for `/hot-updater/api/*`.
 Set your auth token in environment variables:
@@ -194,5 +193,5 @@ export default HotUpdater.wrap({
 ## Next Steps
 
 - Configure your CLI to use this server (see [Overview](./overview#cli-configuration))
-- Explore other [Database Adapters](./database/drizzle) (Drizzle, Prisma, MongoDB, S3)
+- Explore other [Database Adapters](./database/drizzle) (Drizzle, Prisma, MongoDB)
 - Try different [Server Frameworks](./frameworks/hono) (Express, Elysia)

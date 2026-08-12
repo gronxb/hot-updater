@@ -1,7 +1,6 @@
 import { type BucketLocationConstraint, S3 } from "@aws-sdk/client-s3";
-import { MissingInitInputsError, p } from "@hot-updater/cli-tools";
+import { p } from "@hot-updater/cli-tools";
 
-import { type S3Migration, S3Migrator } from "./migrations/migrator";
 import type { AwsRegion } from "./regionLocationMap";
 
 function normalizeBucketRegion(
@@ -67,54 +66,6 @@ export class S3Manager {
           }),
     });
     p.log.info(`Created S3 bucket: ${bucketName}`);
-  }
-
-  async runMigrations({
-    approved,
-    bucketName,
-    nonInteractive,
-    region,
-    migrations,
-  }: {
-    approved?: boolean;
-    bucketName: string;
-    nonInteractive?: boolean;
-    region: AwsRegion;
-    migrations: S3Migration[];
-  }): Promise<boolean> {
-    const migrator = new S3Migrator({
-      s3: new S3({ region: region, credentials: this.credentials }),
-      bucketName,
-      migrations: migrations,
-    });
-
-    const { pending } = await migrator.list();
-    await migrator.migrate({ dryRun: true });
-    if (pending.length === 0) {
-      return false;
-    }
-
-    p.log.step("Pending migrations:");
-    for (const migration of pending) {
-      p.log.step(`- ${migration.name}`);
-    }
-    if (!nonInteractive || !approved) {
-      if (nonInteractive) {
-        throw new MissingInitInputsError([
-          "HOT_UPDATER_AWS_MIGRATION_APPROVED",
-        ]);
-      }
-      const confirm = await p.confirm({
-        initialValue: approved,
-        message: "Do you want to continue?",
-      });
-      if (p.isCancel(confirm) || !confirm) {
-        p.log.info("Migration cancelled.");
-        process.exit(1);
-      }
-    }
-    await migrator.migrate({ dryRun: false });
-    return true;
   }
 
   async updateBucketPolicy({

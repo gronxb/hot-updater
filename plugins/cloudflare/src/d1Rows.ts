@@ -2,11 +2,14 @@ import type {
   BundlePatchRow,
   BundleRow,
   BundleEventRow,
+  ChannelRow,
   ClientAccessKeyRow,
-  DatabaseModel,
-  DatabaseRow,
 } from "@hot-updater/plugin-core";
 import { isDatabaseMetadataObject } from "@hot-updater/plugin-core";
+import type {
+  DatabaseModel,
+  DatabaseRow,
+} from "@hot-updater/plugin-core/internal";
 
 class InvalidD1RowError extends Error {
   readonly name = "InvalidD1RowError";
@@ -106,6 +109,7 @@ const bundleRow = (row: Record<string, unknown>): BundleRow => {
     git_commit_hash: nullableString(row, "git_commit_hash", "bundles"),
     message: nullableString(row, "message", "bundles"),
     channel: stringValue(row, "channel", "bundles"),
+    channel_id: stringValue(row, "channel_id", "bundles"),
     storage_uri: stringValue(row, "storage_uri", "bundles"),
     target_app_version: nullableString(row, "target_app_version", "bundles"),
     fingerprint_hash: nullableString(row, "fingerprint_hash", "bundles"),
@@ -134,6 +138,11 @@ const patchRow = (row: Record<string, unknown>): BundlePatchRow => ({
   patch_file_hash: stringValue(row, "patch_file_hash", "bundle_patches"),
   patch_storage_uri: stringValue(row, "patch_storage_uri", "bundle_patches"),
   order_index: numberValue(row, "order_index", "bundle_patches"),
+});
+
+const channelRow = (row: Record<string, unknown>): ChannelRow => ({
+  id: stringValue(row, "id", "channels"),
+  name: stringValue(row, "name", "channels"),
 });
 
 const eventRow = (row: Record<string, unknown>): BundleEventRow => {
@@ -197,6 +206,7 @@ const clientAccessKeyRow = (
 };
 
 export function parseD1Row(model: "bundles", value: unknown): BundleRow;
+export function parseD1Row(model: "channels", value: unknown): ChannelRow;
 export function parseD1Row(
   model: "bundle_patches",
   value: unknown,
@@ -223,6 +233,8 @@ export function parseD1Row(
       return bundleRow(value);
     case "bundle_patches":
       return patchRow(value);
+    case "channels":
+      return channelRow(value);
     case "bundle_events":
       return eventRow(value);
     case "client_access_keys":

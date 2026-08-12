@@ -4,12 +4,12 @@ import {
   modelValidators,
   validateFields,
 } from "./databasePluginCrudValidationFields";
+import { databaseFields } from "./types/databaseFields";
 import type {
   DatabaseImplementationResult,
   DatabaseModel,
   SelectedDatabaseInputRow,
-} from "./types";
-import { databaseFields } from "./types/databaseFields";
+} from "./types/internal";
 
 export const validateCreateData = (
   model: DatabaseModel,

@@ -17,20 +17,44 @@ describe("isDatabasePlugin", () => {
     const factory = () => plugin;
     const malformedBundles = {
       ...plugin,
-      bundles: { ...plugin.bundles, findMany: null },
+      models: {
+        ...plugin.models,
+        bundles: { ...plugin.models.bundles, findMany: null },
+      },
     };
     const missingAnalytics = {
       ...plugin,
-      analytics: undefined,
+      models: { ...plugin.models, analytics: undefined },
+    };
+    const malformedChannels = {
+      ...plugin,
+      models: {
+        ...plugin.models,
+        channels: { ...plugin.models.channels, delete: null },
+      },
     };
     const malformedClientAccessKeys = {
       ...plugin,
-      clientAccessKeys: { ...plugin.clientAccessKeys, revoke: null },
+      models: {
+        ...plugin.models,
+        clientAccessKeys: {
+          ...plugin.models.clientAccessKeys,
+          revoke: null,
+        },
+      },
     };
+    const malformedQueries = {
+      ...plugin,
+      queries: { getUpdateInfo: null },
+    };
+    const malformedDispose = { ...plugin, dispose: null };
 
     expect(isDatabasePlugin(factory)).toBe(false);
     expect(isDatabasePlugin(malformedBundles)).toBe(false);
     expect(isDatabasePlugin(missingAnalytics)).toBe(false);
+    expect(isDatabasePlugin(malformedChannels)).toBe(false);
     expect(isDatabasePlugin(malformedClientAccessKeys)).toBe(false);
+    expect(isDatabasePlugin(malformedQueries)).toBe(false);
+    expect(isDatabasePlugin(malformedDispose)).toBe(false);
   });
 });

@@ -20,7 +20,6 @@ const hotUpdater = createHotUpdater({
     supabaseUrl,
     supabaseServiceRoleKey,
   }),
-  features: { analytics: true },
   storages: [
     supabaseStorage({
       supabaseUrl,
@@ -28,7 +27,8 @@ const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: hotUpdaterBasePath,
-  routes: {
+  features: {
+    analytics: true,
     updateCheck: true,
     bundles: false,
   },

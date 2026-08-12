@@ -1,10 +1,9 @@
+import type { Bundle, BundleRow, ChannelRow } from "@hot-updater/plugin-core";
+import { bundleToRow } from "@hot-updater/plugin-core";
 import type {
-  Bundle,
-  BundleRow,
   DatabaseSortBy,
   DatabaseWhere,
-} from "@hot-updater/plugin-core";
-import { bundleToRow } from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 
 import { appendBundleWhere } from "./standaloneBundleWhere";
 import {
@@ -13,11 +12,12 @@ import {
 } from "./standaloneHttp";
 import {
   hasChannels,
+  hasChannelInsertResult,
+  hasChannelDeleteResult,
   isBundle,
   isPaginatedResult,
 } from "./standaloneResponseGuards";
 import {
-  appendPathSegment,
   createRoute,
   defaultRoutes,
   type StandaloneRepositoryConfig,
@@ -35,21 +35,10 @@ export interface BundleWindowInput {
 export const createStandaloneBundleRemote = (
   config: StandaloneRepositoryConfig,
 ) => {
-  const customListRoute = config.routes?.list?.();
   const routes = {
-    list: () => createRoute(defaultRoutes.list(), customListRoute),
-    channels: () => {
-      const defaultChannelsRoute = customListRoute
-        ? {
-            path: appendPathSegment(customListRoute.path, "channels"),
-            headers: {
-              ...defaultRoutes.channels().headers,
-              ...customListRoute.headers,
-            },
-          }
-        : defaultRoutes.channels();
-      return createRoute(defaultChannelsRoute, config.routes?.channels?.());
-    },
+    list: () => createRoute(defaultRoutes.list(), config.routes?.list?.()),
+    channels: defaultRoutes.channels,
+    deleteChannel: defaultRoutes.deleteChannel,
     create: () =>
       createRoute(defaultRoutes.create(), config.routes?.create?.()),
     update: (bundleId: string) =>
@@ -100,6 +89,42 @@ export const createStandaloneBundleRemote = (
     }
   };
 
+  const loadChannels = async (): Promise<readonly ChannelRow[]> => {
+    const route = routes.channels();
+    const response = await fetch(http.buildUrl(route.path), {
+      method: "GET",
+      headers: http.headers(route.headers),
+    });
+    const value = await http.parseJson(response);
+    if (!hasChannels(value)) {
+      throw new StandaloneDatabaseError(
+        "invalid-response",
+        "Invalid channels response.",
+        response.status,
+      );
+    }
+    return value.data.channels;
+  };
+
+  const bundlesToRows = async (
+    bundles: readonly Bundle[],
+  ): Promise<BundleRow[]> => {
+    const channelIds = new Map(
+      (await loadChannels()).map(({ id, name }) => [name, id]),
+    );
+    return bundles.map((bundle) => {
+      const channelId = channelIds.get(bundle.channel);
+      if (channelId === undefined) {
+        throw new StandaloneDatabaseError(
+          "invalid-response",
+          `Bundle ${bundle.id} references an unknown Channel ${bundle.channel}.`,
+          500,
+        );
+      }
+      return bundleToRow(bundle, channelId);
+    });
+  };
+
   const loadBundleWindow = async (input: BundleWindowInput) => {
     if (input.limit === 0) return { rows: [] as BundleRow[], total: 0 };
     if (input.sortBy && input.sortBy.field !== "id") {
@@ -135,26 +160,68 @@ export const createStandaloneBundleRemote = (
       ? value.data
       : value.data.slice(input.offset, input.offset + input.limit);
     return {
-      rows: bundles.map(bundleToRow),
+      rows: await bundlesToRows(bundles),
       total: value.pagination.total,
     };
   };
 
-  const loadChannels = async (): Promise<string[]> => {
+  const insertChannel = async (
+    input: import("@hot-updater/plugin-core").ChannelInsertInput,
+  ): Promise<import("@hot-updater/plugin-core").ChannelInsertResult> => {
     const route = routes.channels();
     const response = await fetch(http.buildUrl(route.path), {
-      method: "GET",
+      method: "POST",
       headers: http.headers(route.headers),
+      body: JSON.stringify(input),
     });
     const value = await http.parseJson(response);
-    if (!hasChannels(value)) {
+    if (!hasChannelInsertResult(value)) {
       throw new StandaloneDatabaseError(
         "invalid-response",
-        "Invalid channels response.",
+        "Invalid Channel insert response.",
         response.status,
       );
     }
-    return [...value.data.channels];
+    if (
+      value.data.row.name !== input.row.name ||
+      (value.data.inserted && value.data.row.id !== input.row.id)
+    ) {
+      throw new StandaloneDatabaseError(
+        "invalid-response",
+        "Invalid Channel insert response.",
+        response.status,
+      );
+    }
+    return value.data;
+  };
+
+  const deleteChannel = async (
+    input: import("@hot-updater/plugin-core").ChannelDeleteInput,
+  ): Promise<import("@hot-updater/plugin-core").ChannelDeleteResult> => {
+    const route = routes.deleteChannel(input.id);
+    const response = await fetch(http.buildUrl(route.path), {
+      method: "DELETE",
+      headers: http.headers(route.headers),
+    });
+    if (response.status === 204) return { deleted: true };
+    let value: unknown;
+    try {
+      value = await response.json();
+    } catch {
+      throw new StandaloneDatabaseError(
+        "invalid-response",
+        "Database response must contain JSON.",
+        response.status,
+      );
+    }
+    if (!hasChannelDeleteResult(value)) {
+      throw new StandaloneDatabaseError(
+        "invalid-response",
+        "Invalid Channel delete response.",
+        response.status,
+      );
+    }
+    return value.data;
   };
 
   const loadBundle = async (bundleId: string): Promise<Bundle | null> => {
@@ -174,6 +241,14 @@ export const createStandaloneBundleRemote = (
     }
     return value;
   };
+
+  const loadBundleRow = async (bundleId: string): Promise<BundleRow | null> => {
+    const bundle = await loadBundle(bundleId);
+    return bundle ? ((await bundlesToRows([bundle]))[0] ?? null) : null;
+  };
+
+  const loadBundleRows = async (): Promise<BundleRow[]> =>
+    bundlesToRows(await loadBundles());
 
   const updateBundle = async (bundle: Bundle): Promise<void> => {
     const route = routes.update(bundle.id);
@@ -208,7 +283,11 @@ export const createStandaloneBundleRemote = (
     createBundle: (bundle: Bundle) => createBundles([bundle]),
     createBundles,
     deleteBundle,
+    deleteChannel,
+    insertChannel,
     loadBundle,
+    loadBundleRow,
+    loadBundleRows,
     loadBundles,
     loadBundleWindow,
     loadChannels,

@@ -46,7 +46,6 @@
   },
   "devDependencies": {
     "@hot-updater/core": "workspace:*",
-    "@hot-updater/js": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/aws-lambda": "^8.10.147",

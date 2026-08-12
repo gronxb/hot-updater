@@ -1,4 +1,4 @@
-import type { DatabaseWhere } from "@hot-updater/plugin-core";
+import type { DatabaseWhere } from "@hot-updater/plugin-core/internal";
 
 export const appendBundleWhere = (
   url: URL,

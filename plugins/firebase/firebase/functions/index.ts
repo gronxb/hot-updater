@@ -27,7 +27,6 @@ if (!storageBucket) {
 
 const hotUpdater = createHotUpdater({
   database: firebaseDatabase(adminOptions),
-  features: { analytics: true },
   storages: [
     firebaseFunctionsStorage({
       ...adminOptions,
@@ -36,7 +35,8 @@ const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: HOT_UPDATER_BASE_PATH,
-  routes: {
+  features: {
+    analytics: true,
     updateCheck: true,
     bundles: false,
   },

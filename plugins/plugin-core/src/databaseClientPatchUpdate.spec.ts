@@ -13,7 +13,9 @@ import {
 } from "./databaseClient";
 import { createMemoryDatabasePlugin } from "./databasePluginMemory.testFixtures";
 import { bundleToRow } from "./databaseRows";
-import type { DatabasePluginImplementation } from "./types";
+import type { DatabasePluginImplementation } from "./types/internal";
+
+const channelRow = { id: "channel-production", name: "production" } as const;
 
 const createBundle = (id: string): Bundle => ({
   id,
@@ -42,6 +44,8 @@ const createNativePlugin = (
       count: async () => 0,
       findOne: async () => null,
       findMany: async () => [],
+      insertChannel: async () => ({ row: channelRow, inserted: false }),
+      deleteChannel: async () => ({ deleted: false, reason: "not_found" }),
       commit,
     }),
   });
@@ -80,6 +84,8 @@ describe("database client patch updates", () => {
         count: async () => 0,
         findOne: async () => null,
         findMany: async () => [],
+        insertChannel: async () => ({ row: channelRow, inserted: false }),
+        deleteChannel: async () => ({ deleted: false, reason: "not_found" }),
       }),
     });
     const base = createBundle("base");
@@ -106,7 +112,7 @@ describe("database client patch updates", () => {
   });
 
   it("rejects patch replacement before mutating a non-transaction provider", async () => {
-    const row = bundleToRow(createBundle("owner"));
+    const row = bundleToRow(createBundle("owner"), channelRow.id);
     let scalarUpdateCount = 0;
     let patchDeleteCount = 0;
     const name = "non-transaction";
@@ -124,6 +130,8 @@ describe("database client patch updates", () => {
         count: async () => 1,
         findOne: async (input) => (input.model === "bundles" ? row : null),
         findMany: async () => [],
+        insertChannel: async () => ({ row: channelRow, inserted: false }),
+        deleteChannel: async () => ({ deleted: false, reason: "not_found" }),
       }),
     });
 
@@ -142,7 +150,7 @@ describe("database client patch updates", () => {
   });
 
   it("uses a provider-native atomic aggregate without exposing a transaction", async () => {
-    const commit = vi.fn(async () => ({ applied: true }));
+    const commit = vi.fn(async () => ({ committed: true as const }));
     const plugin = createNativePlugin(commit);
     const owner = {
       ...createBundle("owner"),
@@ -159,37 +167,31 @@ describe("database client patch updates", () => {
     await createDatabaseClient(plugin).insertBundle(owner);
 
     expect(commit).toHaveBeenCalledWith({
-      mutations: [
+      changes: [
         {
+          model: "bundles",
           operation: "insert",
-          bundleId: "owner",
-          changes: [
-            {
-              table: "bundles",
-              operation: "insert",
-              row: bundleToRow(owner),
-            },
-            {
-              table: "bundle_patches",
-              operation: "insert",
-              row: {
-                base_bundle_id: "base",
-                base_file_hash: "base-hash",
-                bundle_id: "owner",
-                id: "owner:base",
-                order_index: 0,
-                patch_file_hash: "patch-hash",
-                patch_storage_uri: "storage://patch",
-              },
-            },
-          ],
+          row: bundleToRow(owner, channelRow.id),
+        },
+        {
+          model: "bundlePatches",
+          operation: "insert",
+          row: {
+            base_bundle_id: "base",
+            base_file_hash: "base-hash",
+            bundle_id: "owner",
+            id: "owner:base",
+            order_index: 0,
+            patch_file_hash: "patch-hash",
+            patch_storage_uri: "storage://patch",
+          },
         },
       ],
     });
   });
 
   it("rejects explicit null metadata before a provider-native aggregate update", async () => {
-    const commit = vi.fn(async () => ({ applied: true }));
+    const commit = vi.fn(async () => ({ committed: true as const }));
     const plugin = createNativePlugin(commit);
     const update: Partial<Bundle> = { patches: [] };
     Reflect.set(update, "metadata", null);
@@ -204,7 +206,7 @@ describe("database client patch updates", () => {
   });
 
   it("preserves provider-native aggregates inside a transactionless batch", async () => {
-    const commit = vi.fn(async () => ({ applied: true }));
+    const commit = vi.fn(async () => ({ committed: true as const }));
     const plugin = createNativePlugin(commit);
     const owner = {
       ...createBundle("owner"),
@@ -228,30 +230,36 @@ describe("database client patch updates", () => {
 
     expect(commit).toHaveBeenCalledOnce();
     expect(commit).toHaveBeenCalledWith({
-      mutations: [
-        expect.objectContaining({ operation: "insert", bundleId: "owner" }),
+      changes: [
+        expect.objectContaining({
+          model: "bundles",
+          operation: "insert",
+          row: expect.objectContaining({ id: "owner" }),
+        }),
+        expect.objectContaining({
+          model: "bundlePatches",
+          operation: "insert",
+        }),
         expect.objectContaining({
           operation: "update",
-          bundleId: "owner",
-          changes: expect.arrayContaining([
-            expect.objectContaining({
-              table: "bundles",
-              operation: "update",
-              update: { enabled: false },
-            }),
-            expect.objectContaining({
-              table: "bundle_patches",
-              operation: "delete",
-              bundleId: "owner",
-            }),
-          ]),
+          model: "bundles",
+          where: { id: "owner" },
+          update: { enabled: false },
+        }),
+        expect.objectContaining({
+          model: "bundlePatches",
+          operation: "delete",
+          where: { bundleId: "owner" },
         }),
       ],
     });
   });
 
   it("does not report a native aggregate failure as a completed update", async () => {
-    const plugin = createNativePlugin(async () => ({ applied: false }));
+    const plugin = createNativePlugin(async () => ({
+      committed: false,
+      conflict: { changeIndex: 0, reason: "not_found" },
+    }));
 
     const result = createDatabaseClient(plugin).updateBundleById("missing", {
       enabled: false,

@@ -36,14 +36,14 @@ const resolveRequestOrigin = (context?: WorkerContext) => {
 
 const hotUpdater = createHotUpdater<WorkerContext>({
   database: d1Database(env.DB),
-  features: { analytics: true },
   storages: [
     r2Storage<WorkerContext>({
       publicBaseUrl: resolveRequestOrigin,
     }),
   ],
   basePath: HOT_UPDATER_BASE_PATH,
-  routes: {
+  features: {
+    analytics: true,
     updateCheck: true,
     bundles: false,
   },

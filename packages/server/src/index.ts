@@ -1,5 +1,5 @@
 export { createHandler } from "./handler";
-export type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./handler";
+export type { HandlerAPI, HandlerFeatures, HandlerOptions } from "./handler";
 export { createAnalyticsProvider } from "./analytics/bounded/provider";
 export type * from "./analytics/domain";
 export type { AnalyticsQueryAccess } from "./analytics/routes";

@@ -3,10 +3,13 @@ import type {
   BundleRow,
   BundleEventRow,
   ClientAccessKeyRow,
+  ChannelRow,
+} from "@hot-updater/plugin-core";
+import type {
   DatabaseModel,
   DatabaseOrderBy,
   DatabaseWhere,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 import type { Document, Filter, Sort } from "mongodb";
 
 type AnyDatabaseWhere = {
@@ -162,6 +165,15 @@ export function createMongoClientAccessKeyWhere(
 ): Filter<ClientAccessKeyRow>;
 export function createMongoClientAccessKeyWhere(
   where: readonly DatabaseWhere<"client_access_keys">[] | undefined,
+): Document {
+  return createMongoWhereDocument(where);
+}
+
+export function createMongoChannelWhere(
+  where: readonly DatabaseWhere<"channels">[] | undefined,
+): Filter<ChannelRow>;
+export function createMongoChannelWhere(
+  where: readonly DatabaseWhere<"channels">[] | undefined,
 ): Document {
   return createMongoWhereDocument(where);
 }

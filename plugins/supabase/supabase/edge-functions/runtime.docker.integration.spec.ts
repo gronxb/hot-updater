@@ -20,7 +20,7 @@ import {
   NIL_UUID,
   type UpdateInfo,
 } from "@hot-updater/core";
-import { bundleToRow, createDatabaseClient } from "@hot-updater/plugin-core";
+import { createDatabaseClient } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
@@ -290,7 +290,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
         }),
       ],
       basePath: HOT_UPDATER_BASE_PATH,
-      routes: {
+      features: {
         updateCheck: true,
         bundles: false,
       },
@@ -542,6 +542,39 @@ describe.sequential("supabase edge runtime acceptance", () => {
     },
   });
 
+  it("returns one canonical Channel row under concurrent inserts", async () => {
+    const database = supabaseDatabase({
+      supabaseUrl: gatewayBaseUrl,
+      supabaseAnonKey: SERVICE_ROLE_KEY,
+    });
+    const channelName = "concurrent-channel";
+    const results = await Promise.all([
+      database.models.channels.insert({
+        row: {
+          id: "00000000-0000-0000-0000-000000000091",
+          name: channelName,
+        },
+        onConflict: "returnExisting",
+      }),
+      database.models.channels.insert({
+        row: {
+          id: "00000000-0000-0000-0000-000000000092",
+          name: channelName,
+        },
+        onConflict: "returnExisting",
+      }),
+    ]);
+
+    expect(new Set(results.map(({ row }) => row.id)).size).toBe(1);
+    expect(results.filter(({ inserted }) => inserted)).toHaveLength(1);
+    const stored = await supabaseAdmin
+      .from("channels")
+      .select("id, name")
+      .eq("name", channelName);
+    if (stored.error) throw stored.error;
+    expect(stored.data).toEqual([results[0]?.row]);
+  });
+
   it("rolls back a patch-bearing insert when one base bundle is missing", async () => {
     const base = runtimeBundle("00000000-0000-0000-0000-000000000101");
     const owner = {
@@ -763,10 +796,9 @@ describe.sequential("supabase edge runtime acceptance", () => {
     });
   });
 
-  it("denies atomic mutation RPCs to the anonymous role", async () => {
-    const bundle = runtimeBundle("00000000-0000-0000-0000-000000000501");
+  it("denies the generic commit RPC to the anonymous role", async () => {
     const response = await fetch(
-      `${gatewayBaseUrl}/rest/v1/rpc/hot_updater_create_bundle_with_patches`,
+      `${gatewayBaseUrl}/rest/v1/rpc/hot_updater_commit`,
       {
         method: "POST",
         headers: {
@@ -774,18 +806,11 @@ describe.sequential("supabase edge runtime acceptance", () => {
           Authorization: `Bearer ${ANON_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ p_bundle: bundleToRow(bundle), p_patches: [] }),
+        body: JSON.stringify({ p_commit: { changes: [] } }),
       },
     );
 
     expect(response.ok).toBe(false);
-    const result = await supabaseAdmin
-      .from("bundles")
-      .select("id")
-      .eq("id", bundle.id)
-      .maybeSingle();
-    if (result.error) throw result.error;
-    expect(result.data).toBeNull();
   });
 
   it("serves canonical routes from the edge function entrypoint", async () => {
@@ -1055,15 +1080,10 @@ GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO service_role;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role;
 
-REVOKE EXECUTE ON FUNCTION public.hot_updater_create_bundle_with_patches(
-  jsonb,
-  jsonb
-) FROM anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.hot_updater_update_bundle_with_patches(
-  uuid,
-  jsonb,
-  jsonb
-) FROM anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.hot_updater_commit(jsonb)
+  FROM anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.hot_updater_delete_channel(text)
+  FROM anon, authenticated;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT ON TABLES TO anon, authenticated;

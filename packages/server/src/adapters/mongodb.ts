@@ -1,9 +1,9 @@
-import type {
-  DatabasePluginImplementation,
-  TransactionDatabasePluginImplementation,
-} from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
-import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
+import {
+  createDatabasePluginAdapter,
+  type DatabasePluginImplementation,
+  type TransactionDatabasePluginImplementation,
+} from "@hot-updater/plugin-core/internal";
 import type { ClientSession, MongoClient } from "mongodb";
 
 import { createMongoMigrator } from "../db/fixedMigrator";
@@ -32,6 +32,12 @@ const createTransactionalMongoImplementation = (
   client: MongoClient,
 ): DatabasePluginImplementation => ({
   ...createMongoImplementation(client),
+  deleteChannel: (input) =>
+    client.withSession((session) =>
+      session.withTransaction(() =>
+        createMongoImplementation(client, session).deleteChannel(input),
+      ),
+    ),
   transaction: <TResult>(
     callback: (
       transaction: TransactionDatabasePluginImplementation,
@@ -56,13 +62,9 @@ export const mongoAdapter = (
   return Object.assign(
     createDatabasePlugin({
       name: "mongodb",
-      bundles: adapter.bundles,
-      bundlePatches: adapter.bundlePatches,
-      analytics: adapter.analytics,
-      clientAccessKeys: adapter.clientAccessKeys,
+      models: adapter.models,
+      queries: adapter.queries,
       commit: adapter.commit,
-      getChannels: adapter.getChannels,
-      getUpdateInfo: adapter.getUpdateInfo,
     }),
     {
       adapterName: "mongodb",

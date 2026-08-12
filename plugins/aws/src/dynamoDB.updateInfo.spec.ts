@@ -9,6 +9,7 @@ import { toDynamoDBBundleItem } from "./dynamoDB";
 import { createDynamoDBGetUpdateInfo } from "./dynamoDB";
 
 const dynamodb = mockClient(DynamoDBDocumentClient);
+const productionChannelId = "00000000-0000-0000-0000-000000000100";
 
 const bundle = (id: string, targetAppVersion: string): Bundle => ({
   id,
@@ -43,7 +44,9 @@ describe("DynamoDB getUpdateInfo", () => {
       return {
         Items: candidates
           .slice(offset, offset + 50)
-          .map((candidate) => toDynamoDBBundleItem(bundleToRow(candidate))),
+          .map((candidate) =>
+            toDynamoDBBundleItem(bundleToRow(candidate, productionChannelId)),
+          ),
         ...(offset === 0
           ? { LastEvaluatedKey: { pk: "bundles", sk: candidates[49]?.id } }
           : {}),

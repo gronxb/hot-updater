@@ -6,10 +6,10 @@ import {
 } from "./databasePluginCrudValidationFields";
 import { validateResult } from "./databasePluginCrudValidationRows";
 import type {
-  DatabasePluginImplementation,
   DatabaseSelect,
+  TransactionDatabasePluginImplementation,
   UpdateDatabaseInput,
-} from "./types";
+} from "./types/internal";
 
 export const validateMutationWhere = (where: readonly unknown[]): void => {
   if (where.length === 0) {
@@ -45,6 +45,11 @@ export const validateBundleUpdateData = (update: unknown): void => {
     }
   }
   if (
+    Object.hasOwn(update, "channel") !== Object.hasOwn(update, "channel_id")
+  ) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+  if (
     Reflect.get(update, "target_app_version") === null &&
     Reflect.get(update, "fingerprint_hash") === null
   ) {
@@ -66,7 +71,7 @@ export const validateClientAccessKeyUpdateData = (update: unknown): void => {
 };
 
 export const validateBundleTargetUpdate = async (
-  implementation: DatabasePluginImplementation,
+  implementation: TransactionDatabasePluginImplementation,
   input: UpdateDatabaseInput<"bundles", DatabaseSelect<"bundles"> | undefined>,
 ): Promise<void> => {
   if (

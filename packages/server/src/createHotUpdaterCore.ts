@@ -17,7 +17,7 @@ import {
   isDatabasePlugin,
   type StoragePluginFactory,
 } from "./db/types";
-import { createHotUpdaterHandler, type HandlerRoutes } from "./handler";
+import { createHotUpdaterHandler, type HandlerFeatures } from "./handler";
 import { normalizeBasePath } from "./route";
 import { createStorageAccess } from "./storageAccess";
 
@@ -35,30 +35,19 @@ export type RuntimeHotUpdaterAPI<TContext = undefined> =
 export type HotUpdaterAPI<TContext = undefined> =
   RuntimeHotUpdaterAPI<TContext>;
 
-export interface CreateHotUpdaterFeatures {
-  /**
-   * Mount Analytics ingestion and query routes backed by
-   * `database.analytics`. Protected queries are the default.
-   */
+export interface CreateHotUpdaterFeatures extends HandlerFeatures {
   readonly analytics?:
     | boolean
     | {
         /** Query routes deny access by default; client access keys never grant query access. */
         readonly queryAccess?: AnalyticsQueryAccess;
       };
-  /**
-   * Protect update-check and Analytics ingestion routes with `x-api-key`,
-   * using `database.clientAccessKeys` for authentication.
-   */
+  /** Protect update-check and Analytics ingestion routes with `x-api-key`. */
   readonly clientAccessKeys?: boolean;
 }
 
 export interface CreateHotUpdaterOptions<TContext = undefined> {
   readonly database: DatabasePlugin;
-  /**
-   * Optional server features. These are independent from `routes`, which only
-   * controls the core update-check and bundle-management route groups.
-   */
   readonly features?: CreateHotUpdaterFeatures;
   readonly storages?: readonly (
     | RuntimeStoragePlugin<TContext>
@@ -73,7 +62,6 @@ export interface CreateHotUpdaterOptions<TContext = undefined> {
   )[];
   readonly basePath?: string;
   readonly cwd?: string;
-  readonly routes?: HandlerRoutes;
 }
 
 const normalizeAnalyticsQueryAccess = (
@@ -82,9 +70,7 @@ const normalizeAnalyticsQueryAccess = (
   if (analytics === undefined || analytics === false) return undefined;
   if (analytics === true) return "protected";
   if (typeof analytics !== "object" || analytics === null) {
-    throw new TypeError(
-      "The Analytics feature must be a boolean or an options object.",
-    );
+    throw new TypeError("Analytics options must be an object.");
   }
   const queryAccess = analytics.queryAccess ?? "protected";
   if (queryAccess !== "protected" && queryAccess !== "public") {
@@ -98,19 +84,9 @@ const normalizeClientAccessKeys = (
 ): boolean => {
   if (clientAccessKeys === undefined) return false;
   if (typeof clientAccessKeys !== "boolean") {
-    throw new TypeError("Client access-keys option must be a boolean.");
+    throw new TypeError("Client access-keys feature must be a boolean.");
   }
   return clientAccessKeys;
-};
-
-const normalizeFeatures = (
-  features: CreateHotUpdaterOptions["features"],
-): CreateHotUpdaterFeatures => {
-  if (features === undefined) return {};
-  if (typeof features !== "object" || features === null) {
-    throw new TypeError("Features must be an object.");
-  }
-  return features;
 };
 
 type DatabasePluginCore<TContext> = {
@@ -175,12 +151,11 @@ export function createHotUpdaterCore<TContext = undefined>(
     beforeOperation: assertSchemaReady,
     readStorageText,
   });
-  const features = normalizeFeatures(options.features);
   const analyticsQueryAccess = normalizeAnalyticsQueryAccess(
-    features.analytics,
+    options.features?.analytics,
   );
   const clientAccessKeysEnabled = normalizeClientAccessKeys(
-    features.clientAccessKeys,
+    options.features?.clientAccessKeys,
   );
   const analytics =
     analyticsQueryAccess === undefined
@@ -188,11 +163,11 @@ export function createHotUpdaterCore<TContext = undefined>(
       : createAnalyticsProvider({
           async append(row) {
             await assertSchemaReady();
-            return plugin.analytics.append(row);
+            return plugin.models.analytics.append(row);
           },
           async scan(input) {
             await assertSchemaReady();
-            return plugin.analytics.scan(input);
+            return plugin.models.analytics.scan(input);
           },
         });
 
@@ -200,7 +175,7 @@ export function createHotUpdaterCore<TContext = undefined>(
     core.api,
     {
       basePath,
-      routes: options.routes,
+      features: options.features,
     },
     analytics === undefined
       ? undefined
@@ -213,7 +188,7 @@ export function createHotUpdaterCore<TContext = undefined>(
           authenticate: (request) =>
             authenticateClientAccessKey({
               beforeLookup: assertSchemaReady,
-              clientAccessKeys: plugin.clientAccessKeys,
+              clientAccessKeys: plugin.models.clientAccessKeys,
               request,
             }),
         }

@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   createBundlePatchRowFixture,
   createBundleRowFixture,
+  createChannelRowFixture,
 } from "../../../test-utils/src/databaseTestFixtures";
 import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
@@ -70,15 +71,14 @@ describe("kyselyAdapter SQLite JSON storage", () => {
       metadata: { app_version: "1.0.0" },
       target_cohorts: ["17", "qa-group"],
     };
+    const channel = createChannelRowFixture();
+    await sqliteClient.query(
+      "insert into channels (id, name) values ($1, $2)",
+      [channel.id, channel.name],
+    );
 
     await plugin.commit({
-      mutations: [
-        {
-          operation: "insert",
-          bundleId: row.id,
-          changes: [{ table: "bundles", operation: "insert", row }],
-        },
-      ],
+      changes: [{ model: "bundles", operation: "insert", row }],
     });
     const stored = await sqliteClient.query<{
       metadata: string;
@@ -89,7 +89,7 @@ describe("kyselyAdapter SQLite JSON storage", () => {
       metadata: JSON.stringify(row.metadata),
       target_cohorts: JSON.stringify(row.target_cohorts),
     });
-    await expect(plugin.bundles.findById(row.id)).resolves.toEqual(row);
+    await expect(plugin.models.bundles.findById(row.id)).resolves.toEqual(row);
     await sqliteDatabase.destroy();
     await sqliteClient.close();
   });
@@ -118,23 +118,33 @@ describe("kyselyAdapter soft relations", () => {
       owner.id,
       "missing-base",
     );
+    const channel = createChannelRowFixture();
 
     try {
       await expect(
         plugin.commit({
-          mutations: [
+          changes: [
             {
+              model: "channels",
               operation: "insert",
-              bundleId: owner.id,
-              changes: [
-                { table: "bundles", operation: "insert", row: owner },
-                { table: "bundle_patches", operation: "insert", row: patch },
-              ],
+              row: channel,
+              onConflict: "ignore",
+            },
+            { model: "bundles", operation: "insert", row: owner },
+            {
+              model: "bundlePatches",
+              operation: "insert",
+              row: patch,
             },
           ],
         }),
       ).rejects.toThrow("bundle_patches.base_bundle_id.foreign-key");
-      await expect(plugin.bundles.findById(owner.id)).resolves.toBeNull();
+      await expect(
+        plugin.models.bundles.findById(owner.id),
+      ).resolves.toBeNull();
+      await expect(plugin.models.channels.list({})).resolves.toEqual({
+        channels: [],
+      });
     } finally {
       await softDatabase.destroy();
       await softClient.close();

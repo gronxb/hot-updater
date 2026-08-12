@@ -14,7 +14,7 @@ import type {
   CreateHotUpdaterOptions,
   HandlerAPI,
   HandlerOptions,
-  HandlerRoutes,
+  HandlerFeatures,
 } from "./index";
 import {
   createRuntimeDatabase,
@@ -43,8 +43,10 @@ describe("runtime createHotUpdater", () => {
 
   it("exports runtime-safe handler types from the root entry", () => {
     expectTypeOf<HandlerAPI>().toHaveProperty("getBundles");
-    expectTypeOf<HandlerOptions>().toHaveProperty("routes");
-    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<"basePath" | "routes">();
+    expectTypeOf<HandlerOptions>().toHaveProperty("features");
+    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<
+      "basePath" | "features"
+    >();
     expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
       | "database"
       | "features"
@@ -52,12 +54,17 @@ describe("runtime createHotUpdater", () => {
       | "storagePlugins"
       | "basePath"
       | "cwd"
-      | "routes"
     >();
-    expectTypeOf<HandlerRoutes>().toEqualTypeOf<{
-      readonly updateCheck: boolean;
-      readonly bundles: boolean;
+    expectTypeOf<HandlerFeatures>().toEqualTypeOf<{
+      readonly updateCheck?: boolean;
+      readonly bundles?: boolean;
     }>();
+    expectTypeOf<
+      NonNullable<CreateHotUpdaterOptions["features"]>
+    >().toHaveProperty("analytics");
+    expectTypeOf<
+      NonNullable<CreateHotUpdaterOptions["features"]>
+    >().toHaveProperty("clientAccessKeys");
   });
 
   it("accepts a direct v2 plugin object without exposing maintenance methods", () => {
@@ -128,19 +135,19 @@ describe("runtime createHotUpdater", () => {
 
   it("passes handler context to storage but not the database plugin", async () => {
     const request = new Request(updateUrl);
-    const getUpdateInfo = vi.fn<NonNullable<DatabasePlugin["getUpdateInfo"]>>(
-      async () => ({
-        fileHash: runtimeBundle.fileHash,
-        id: runtimeBundle.id,
-        message: runtimeBundle.message,
-        shouldForceUpdate: false,
-        status: "UPDATE",
-        storageUri: runtimeBundle.storageUri,
-      }),
-    );
+    const getUpdateInfo = vi.fn<
+      NonNullable<DatabasePlugin["queries"]["getUpdateInfo"]>
+    >(async () => ({
+      fileHash: runtimeBundle.fileHash,
+      id: runtimeBundle.id,
+      message: runtimeBundle.message,
+      shouldForceUpdate: false,
+      status: "UPDATE",
+      storageUri: runtimeBundle.storageUri,
+    }));
     const database: DatabasePlugin = {
       ...createRuntimeDatabase(),
-      getUpdateInfo,
+      queries: { getUpdateInfo },
     };
     const getDownloadUrl = vi.fn<
       RuntimeStorageProfile<TestContext>["getDownloadUrl"]
@@ -151,7 +158,7 @@ describe("runtime createHotUpdater", () => {
       database,
       storages: [createRuntimeStorage(getDownloadUrl)],
       basePath: "/api/check-update",
-      routes: { updateCheck: true, bundles: false },
+      features: { updateCheck: true, bundles: false },
     });
     expectTypeOf(hotUpdater.handler)
       .parameter(1)
@@ -178,11 +185,10 @@ describe("runtime createHotUpdater", () => {
 
   it("does not pass handler context to generic database queries", async () => {
     const request = new Request(updateUrl);
-    const { getUpdateInfo: ignoredGetUpdateInfo, ...database } =
-      createRuntimeDatabase();
-    void ignoredGetUpdateInfo;
+    const baseDatabase = createRuntimeDatabase();
+    const database: DatabasePlugin = { ...baseDatabase, queries: {} };
     await createDatabaseClient(database).insertBundle(runtimeBundle);
-    const findMany = vi.spyOn(database.bundles, "findMany");
+    const findMany = vi.spyOn(database.models.bundles, "findMany");
     const hotUpdater = createHotUpdater({
       database,
       storages: [
@@ -191,7 +197,7 @@ describe("runtime createHotUpdater", () => {
         })),
       ],
       basePath: "/api/check-update",
-      routes: { updateCheck: true, bundles: false },
+      features: { updateCheck: true, bundles: false },
     });
     const context: TestContext = {
       env: { assetHost: "https://assets.example.com" },
@@ -214,7 +220,7 @@ describe("runtime createHotUpdater", () => {
     }));
     const database: DatabasePlugin = {
       ...createRuntimeDatabase(),
-      getUpdateInfo,
+      queries: { getUpdateInfo },
     };
     const hotUpdater = createHotUpdater({
       database,
@@ -224,7 +230,7 @@ describe("runtime createHotUpdater", () => {
         })),
       ],
       basePath: "/api/check-update",
-      routes: { updateCheck: true, bundles: false },
+      features: { updateCheck: true, bundles: false },
     });
     const request = new Request(updateUrl.replace("/api/check-update", ""));
 
@@ -243,11 +249,11 @@ describe("runtime createHotUpdater", () => {
     { updateCheck: false, bundles: false },
   ])(
     "keeps the version route mounted for $updateCheck/$bundles",
-    async (routes) => {
+    async (features) => {
       const hotUpdater = createHotUpdater({
         database: createRuntimeDatabase(),
         basePath: "/api/check-update",
-        routes,
+        features,
       });
 
       const response = await hotUpdater.handler(

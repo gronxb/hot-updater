@@ -186,3 +186,168 @@ export const assertV036MigrationSchemaDriftIsAllowlisted = (
   }
   assertSameSchemaValue("0.36.0.tables", 0, addedTables.length);
 };
+
+export const assertV038MigrationSchemaDriftIsAllowlisted = (
+  previous: HotUpdaterVersionedSchema,
+  next: HotUpdaterVersionedSchema,
+  provider: ORMSQLProvider,
+): void => {
+  const previousTables = new Map(
+    previous.tables
+      .filter((table) => !table.internal)
+      .map((table) => [table.ormName, table]),
+  );
+  const nextTables = new Map(
+    next.tables
+      .filter((table) => !table.internal)
+      .map((table) => [table.ormName, table]),
+  );
+  for (const previousTable of previousTables.values()) {
+    const nextTable = nextTables.get(previousTable.ormName);
+    if (!nextTable) {
+      throw new Error(
+        `Unsupported Hot Updater schema change at ${previousTable.ormName}. Removing tables requires an explicit migration step.`,
+      );
+    }
+    assertExistingSchemaMetadataIsPreserved(previousTable, nextTable, provider);
+    const previousColumns = new Set(
+      previousTable.columns.map((column) => column.ormName),
+    );
+    const additions = {
+      columns: nextTable.columns.filter(
+        (column) => !previousColumns.has(column.ormName),
+      ),
+      indexes: addedNamedMetadata(previousTable.indexes, nextTable.indexes),
+      checks: addedNamedMetadata(previousTable.checks, nextTable.checks),
+      foreignKeys: addedNamedMetadata(
+        previousTable.foreignKeys,
+        nextTable.foreignKeys,
+      ),
+      relations: addedNamedMetadata(
+        previousTable.relations,
+        nextTable.relations,
+      ),
+    };
+    const expected =
+      previousTable.ormName === "bundles"
+        ? {
+            columns: [
+              {
+                ormName: "channel_id",
+                type: "varchar(255)",
+                providerCollations: {
+                  mysql: "utf8mb4_bin",
+                  mssql: "Latin1_General_100_BIN2_SC",
+                  sqlite: "binary",
+                },
+              },
+            ] as const,
+            indexes: [
+              {
+                name: "bundles_channel_id_idx",
+                columns: ["channel_id"],
+              },
+            ] as const,
+            checks: [] as const,
+            foreignKeys: [
+              {
+                name: "bundles_channel_id_fk",
+                columns: ["channel_id"],
+                referencedTable: "channels",
+                referencedColumns: ["id"],
+                onUpdate: "restrict",
+                onDelete: "restrict",
+              },
+            ] as const,
+            relations: [
+              {
+                name: "channelRecord",
+                fieldName: "bundles",
+                targetFieldName: "channelRecord",
+                relationName: "bundles_channels",
+                columns: ["channel_id"],
+                referencedTable: "channels",
+                referencedColumns: ["id"],
+              },
+            ] as const,
+          }
+        : {
+            columns: [] as const,
+            indexes: [] as const,
+            checks: [] as const,
+            foreignKeys: [] as const,
+            relations: [] as const,
+          };
+    for (const kind of [
+      "columns",
+      "indexes",
+      "checks",
+      "foreignKeys",
+      "relations",
+    ] as const) {
+      assertSameSchemaValue(
+        `${previousTable.ormName}.${kind}`,
+        expected[kind],
+        additions[kind],
+      );
+    }
+  }
+  const addedTables = [...nextTables.values()].filter(
+    (table) => !previousTables.has(table.ormName),
+  );
+  assertSameSchemaValue(
+    "channels",
+    [
+      {
+        ormName: "channels",
+        columns: [
+          {
+            ormName: "id",
+            type: "varchar(255)",
+            providerCollations: {
+              mysql: "utf8mb4_bin",
+              mssql: "Latin1_General_100_BIN2_SC",
+              sqlite: "binary",
+            },
+            primaryKey: true,
+          },
+          {
+            ormName: "name",
+            type: "varchar(255)",
+            providerCollations: {
+              mysql: "utf8mb4_bin",
+              mssql: "Latin1_General_100_BIN2_SC",
+              sqlite: "binary",
+            },
+          },
+        ],
+        indexes: [
+          { name: "channels_name_key", columns: ["name"], unique: true },
+        ],
+        checks: [
+          {
+            name: "channels_id_length_check",
+            expression: "char_length(id) between 1 and 255",
+            providerExpressions: {
+              mssql:
+                "len(id collate Latin1_General_100_BIN2_SC + N'#') - 1 between 1 and 255",
+              sqlite: "length(id) between 1 and 255",
+            },
+            sqliteInline: true,
+          },
+          {
+            name: "channels_name_length_check",
+            expression: "char_length(name) between 1 and 255",
+            providerExpressions: {
+              mssql:
+                "len(name collate Latin1_General_100_BIN2_SC + N'#') - 1 between 1 and 255",
+              sqlite: "length(name) between 1 and 255",
+            },
+            sqliteInline: true,
+          },
+        ],
+      },
+    ],
+    addedTables,
+  );
+};

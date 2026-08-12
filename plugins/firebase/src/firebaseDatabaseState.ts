@@ -3,9 +3,12 @@ import type {
   BundleRow,
   BundleEventRow,
   ClientAccessKeyRow,
+  ChannelRow,
+} from "@hot-updater/plugin-core";
+import type {
   DatabaseImplementationResult,
   TransactionDatabasePluginImplementation,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 
 import {
   matchesFirebaseDatabaseWhere,
@@ -16,6 +19,7 @@ export interface FirebaseDatabaseSnapshot {
   readonly bundles: Map<string, BundleRow>;
   readonly bundlePatches: Map<string, BundlePatchRow>;
   readonly bundleEvents: Map<string, BundleEventRow>;
+  readonly channels: Map<string, ChannelRow>;
   readonly clientAccessKeys: Map<string, ClientAccessKeyRow>;
 }
 
@@ -33,6 +37,7 @@ export const cloneFirebaseDatabaseSnapshot = (
   bundles: new Map(snapshot.bundles),
   bundlePatches: new Map(snapshot.bundlePatches),
   bundleEvents: new Map(snapshot.bundleEvents),
+  channels: new Map(snapshot.channels),
   clientAccessKeys: new Map(snapshot.clientAccessKeys),
 });
 
@@ -59,6 +64,19 @@ const distinctCount = <TRow extends object>(
   return seen.size;
 };
 
+const requireBundleChannel = (
+  snapshot: FirebaseDatabaseSnapshot,
+  row: Pick<BundleRow, "channel" | "channel_id">,
+): void => {
+  const channel = snapshot.channels.get(row.channel_id);
+  if (channel === undefined) {
+    throw new FirebaseDatabaseConstraintError("bundles.channel_id.foreign-key");
+  }
+  if (channel.name !== row.channel) {
+    throw new FirebaseDatabaseConstraintError("bundles.channel.dual-write");
+  }
+};
+
 export const createFirebaseDatabaseState = (
   snapshot: FirebaseDatabaseSnapshot,
 ): TransactionDatabasePluginImplementation => ({
@@ -66,6 +84,7 @@ export const createFirebaseDatabaseState = (
     switch (input.model) {
       case "bundles":
         requireUnique(snapshot.bundles, input.data.id, input.model);
+        requireBundleChannel(snapshot, input.data);
         if (
           input.data.target_app_version === null &&
           input.data.fingerprint_hash === null
@@ -94,19 +113,32 @@ export const createFirebaseDatabaseState = (
         requireUnique(snapshot.bundleEvents, input.data.id, input.model);
         snapshot.bundleEvents.set(input.data.id, input.data);
         return input.data;
-      case "client_access_keys":
+      case "channels": {
+        const existing = [...snapshot.channels.values()].find(
+          ({ name }) => name === input.data.name,
+        );
+        if (existing && input.onConflict === "ignore") return existing;
+        requireUnique(snapshot.channels, input.data.id, input.model);
+        if (existing) {
+          throw new FirebaseDatabaseConstraintError("channels.name.unique");
+        }
+        snapshot.channels.set(input.data.id, input.data);
+        return input.data;
+      }
+      case "client_access_keys": {
+        const existing = [...snapshot.clientAccessKeys.values()].find(
+          ({ hash }) => hash === input.data.hash,
+        );
+        if (existing && input.onConflict === "ignore") return existing;
         requireUnique(snapshot.clientAccessKeys, input.data.id, input.model);
-        if (
-          [...snapshot.clientAccessKeys.values()].some(
-            ({ hash }) => hash === input.data.hash,
-          )
-        ) {
+        if (existing) {
           throw new FirebaseDatabaseConstraintError(
             "client_access_keys.hash.unique",
           );
         }
         snapshot.clientAccessKeys.set(input.data.id, input.data);
         return input.data;
+      }
     }
   },
   async update(input): Promise<Partial<BundleRow | ClientAccessKeyRow> | null> {
@@ -132,10 +164,19 @@ export const createFirebaseDatabaseState = (
         "bundles.version-or-fingerprint.check",
       );
     }
+    requireBundleChannel(snapshot, updated);
     snapshot.bundles.set(current.id, updated);
     return updated;
   },
   async delete(input): Promise<void> {
+    if (input.model === "channels") {
+      for (const row of snapshot.channels.values()) {
+        if (matchesFirebaseDatabaseWhere(row, input.where)) {
+          snapshot.channels.delete(row.id);
+        }
+      }
+      return;
+    }
     if (input.model === "bundle_patches") {
       for (const row of snapshot.bundlePatches.values()) {
         if (matchesFirebaseDatabaseWhere(row, input.where)) {
@@ -191,6 +232,12 @@ export const createFirebaseDatabaseState = (
             matchesFirebaseDatabaseWhere(row, input.where),
           ) ?? null
         );
+      case "channels":
+        return (
+          [...snapshot.channels.values()].find((row) =>
+            matchesFirebaseDatabaseWhere(row, input.where),
+          ) ?? null
+        );
       case "bundle_patches":
         return (
           [...snapshot.bundlePatches.values()].find((row) =>
@@ -211,6 +258,11 @@ export const createFirebaseDatabaseState = (
       case "bundle_events":
         return queryFirebaseDatabaseRows(
           [...snapshot.bundleEvents.values()],
+          input,
+        );
+      case "channels":
+        return queryFirebaseDatabaseRows(
+          [...snapshot.channels.values()],
           input,
         );
       case "client_access_keys":

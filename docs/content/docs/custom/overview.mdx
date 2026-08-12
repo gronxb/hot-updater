@@ -92,9 +92,9 @@ export const hotUpdater = createHotUpdater({
 
 The server automatically uses the correct plugin to decode each `storageUri` based on its format.
 
-## Route Groups
+## Features
 
-`createHotUpdater` exposes two configurable route groups:
+`createHotUpdater` exposes runtime features through one `features` object:
 
 - `updateCheck`: update-check endpoints used by React Native clients
 - `bundles`: bundle management endpoints used by the CLI `standaloneRepository`
@@ -102,13 +102,9 @@ The server automatically uses the correct plugin to decode each `storageUri` bas
 Optional server behavior is configured separately under `features`:
 
 - `analytics`: mounts event ingestion and Analytics query routes backed by
-  `database.analytics`
+  `database.models.analytics`
 - `clientAccessKeys`: authenticates update checks and Analytics ingestion
-  through `database.clientAccessKeys`
-
-This separation is intentional: `routes` decides which core API groups exist,
-while `features` enables cross-cutting behavior backed by official database
-domains.
+  through `database.models.clientAccessKeys`
 
 `updateCheck` is mounted by default. `bundles` is disabled by default and must
 be enabled explicitly when the CLI needs bundle-management APIs. When
@@ -123,8 +119,6 @@ export const hotUpdater = createHotUpdater({
   features: {
     analytics: true,
     clientAccessKeys: true,
-  },
-  routes: {
     updateCheck: true,
     bundles: true,
   },
@@ -143,7 +137,7 @@ export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
   storages: [s3Storage({ /* storage config */ })],
   basePath: "/hot-updater",
-  routes: {
+  features: {
     updateCheck: true,
     bundles: false,
   },

@@ -15,17 +15,27 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { NIL_UUID } from "@hot-updater/core";
 import {
-  type AnalyticsTable,
   type BundleEventRow,
   type BundlePatchRow,
-  type BundlePatchTable,
   type BundleRow,
+  type AnalyticsModel,
+  type ChannelDeleteInput,
+  type ChannelDeleteResult,
+  type ChannelInsertInput,
+  type ChannelInsertResult,
+  type ChannelRow,
   type ClientAccessKeyRow,
-  type ClientAccessKeyTable,
+  type ClientAccessKeyModel,
   createDatabasePlugin,
-  type DatabaseChange,
   type DatabaseCommit,
   type DatabaseCommitResult,
+  filterCompatibleAppVersions,
+  isDatabaseMetadataObject,
+  resolveUpdateInfoFromBundles,
+  rowToBundle,
+} from "@hot-updater/plugin-core";
+import {
+  createDatabasePluginAdapter,
   type DatabaseDistinctOn,
   type DatabaseImplementationResult,
   type DatabaseModel,
@@ -33,12 +43,7 @@ import {
   type DatabasePluginImplementation,
   type DatabaseRow,
   type DatabaseWhere,
-  filterCompatibleAppVersions,
-  isDatabaseMetadataObject,
-  resolveUpdateInfoFromBundles,
-  rowToBundle,
-} from "@hot-updater/plugin-core";
-import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core/internal";
 
 import { invalidateCloudFront } from "./cloudFrontInvalidation";
 
@@ -84,7 +89,21 @@ export type DynamoDBPatchItem = {
   readonly row: BundlePatchRow;
 };
 
-export type DynamoDBItem = DynamoDBBundleItem | DynamoDBPatchItem;
+export const DYNAMODB_CHANNEL_PARTITION = "channels";
+export const DYNAMODB_CHANNEL_NAME_PARTITION = "_hot-updater#channel-names";
+
+export type DynamoDBChannelItem = {
+  readonly pk: typeof DYNAMODB_CHANNEL_PARTITION;
+  readonly sk: string;
+  readonly version: number;
+  readonly reference_count: number;
+  readonly row: ChannelRow;
+};
+
+export type DynamoDBItem =
+  | DynamoDBBundleItem
+  | DynamoDBPatchItem
+  | DynamoDBChannelItem;
 
 export class DynamoDBStoredItemError extends Error {
   readonly name = "DynamoDBStoredItemError";
@@ -118,6 +137,7 @@ const isBundleRow = (value: unknown): value is BundleRow =>
   isNullableString(field(value, "git_commit_hash")) &&
   isNullableString(field(value, "message")) &&
   typeof field(value, "channel") === "string" &&
+  typeof field(value, "channel_id") === "string" &&
   typeof field(value, "storage_uri") === "string" &&
   isNullableString(field(value, "target_app_version")) &&
   isNullableString(field(value, "fingerprint_hash")) &&
@@ -139,6 +159,12 @@ const isPatchRow = (value: unknown): value is BundlePatchRow =>
   typeof field(value, "patch_storage_uri") === "string" &&
   typeof field(value, "order_index") === "number";
 
+const isChannelRow = (value: unknown): value is ChannelRow =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof field(value, "id") === "string" &&
+  typeof field(value, "name") === "string";
+
 export const parseDynamoDBItem = (
   value: Record<string, unknown>,
 ): DynamoDBItem => {
@@ -150,12 +176,17 @@ export const parseDynamoDBItem = (
   const gsi1pk = value.gsi1pk;
   const gsi1sk = value.gsi1sk;
   const row = value.row;
+  if (typeof sk !== "string" || typeof version !== "number") {
+    throw new DynamoDBStoredItemError();
+  }
   if (
-    typeof sk !== "string" ||
-    typeof version !== "number" ||
-    typeof gsi1pk !== "string" ||
-    typeof gsi1sk !== "string"
+    pk === DYNAMODB_CHANNEL_PARTITION &&
+    typeof value.reference_count === "number" &&
+    isChannelRow(row)
   ) {
+    return { pk, sk, version, reference_count: value.reference_count, row };
+  }
+  if (typeof gsi1pk !== "string" || typeof gsi1sk !== "string") {
     throw new DynamoDBStoredItemError();
   }
   if (pk === "bundles" && isBundleRow(row)) {
@@ -229,7 +260,22 @@ export const toDynamoDBPatchItem = (
   };
 };
 
-export const itemKey = (model: "bundles" | "bundle_patches", id: string) => ({
+export const toDynamoDBChannelItem = (
+  row: ChannelRow,
+  version = 1,
+  referenceCount = 0,
+): DynamoDBChannelItem => ({
+  pk: DYNAMODB_CHANNEL_PARTITION,
+  sk: row.id,
+  version,
+  reference_count: referenceCount,
+  row,
+});
+
+export const itemKey = (
+  model: "bundles" | "bundle_patches" | "channels",
+  id: string,
+) => ({
   pk: model,
   sk: id,
 });
@@ -453,13 +499,13 @@ export const queryBundleItemsPage = async (
 
 const loadModelItems = (
   store: DynamoDBStore,
-  model: "bundle_patches" | "bundles",
+  model: "bundle_patches" | "bundles" | "channels",
 ): Promise<DynamoDBItem[]> =>
   queryItems(store, { partition: model, consistentRead: true });
 
 const loadModelItem = async (
   store: DynamoDBStore,
-  model: "bundle_patches" | "bundles",
+  model: "bundle_patches" | "bundles" | "channels",
   id: string,
 ): Promise<DynamoDBItem | undefined> => {
   const { Item } = await store.client.send(
@@ -488,6 +534,14 @@ export const loadPatchItem = async (
   return item?.pk === "bundle_patches" ? item : undefined;
 };
 
+export const loadChannelItem = async (
+  store: DynamoDBStore,
+  id: string,
+): Promise<DynamoDBChannelItem | undefined> => {
+  const item = await loadModelItem(store, DYNAMODB_CHANNEL_PARTITION, id);
+  return item?.pk === DYNAMODB_CHANNEL_PARTITION ? item : undefined;
+};
+
 export const loadBundleItems = async (
   store: DynamoDBStore,
 ): Promise<DynamoDBBundleItem[]> => {
@@ -504,6 +558,134 @@ export const loadPatchItems = async (
   return items.filter(
     (item): item is DynamoDBPatchItem => item.pk === "bundle_patches",
   );
+};
+
+export const loadChannelItems = async (
+  store: DynamoDBStore,
+): Promise<DynamoDBChannelItem[]> => {
+  const items = await loadModelItems(store, DYNAMODB_CHANNEL_PARTITION);
+  return items.filter(
+    (item): item is DynamoDBChannelItem =>
+      item.pk === DYNAMODB_CHANNEL_PARTITION,
+  );
+};
+
+const loadChannelByName = async (
+  store: DynamoDBStore,
+  name: string,
+): Promise<DynamoDBChannelItem | undefined> => {
+  const { Item } = await store.client.send(
+    new GetCommand({
+      TableName: store.tableName,
+      Key: { pk: DYNAMODB_CHANNEL_NAME_PARTITION, sk: name },
+      ConsistentRead: true,
+    }),
+  );
+  const id = Item?.channel_id;
+  if (Item === undefined) return undefined;
+  if (typeof id !== "string") throw new DynamoDBStoredItemError();
+  const channel = await loadChannelItem(store, id);
+  if (channel === undefined || channel.row.name !== name) {
+    throw new DynamoDBStoredItemError();
+  }
+  return channel;
+};
+
+export const insertDynamoDBChannel = async (
+  store: DynamoDBStore,
+  input: ChannelInsertInput,
+): Promise<ChannelInsertResult> => {
+  const existing = await loadChannelByName(store, input.row.name);
+  if (existing !== undefined) return { row: existing.row, inserted: false };
+  const existingId = await loadChannelItem(store, input.row.id);
+  if (existingId !== undefined) {
+    if (existingId.row.name === input.row.name) {
+      return { row: existingId.row, inserted: false };
+    }
+    throw new DynamoDBStoredItemError();
+  }
+  try {
+    await commitDynamoDBTransaction(store, [
+      {
+        Put: {
+          TableName: store.tableName,
+          Item: boundedDynamoDBMetadataItem(toDynamoDBChannelItem(input.row)),
+          ConditionExpression: "attribute_not_exists(#pk)",
+          ExpressionAttributeNames: { "#pk": "pk" },
+        },
+      },
+      {
+        Put: {
+          TableName: store.tableName,
+          Item: {
+            pk: DYNAMODB_CHANNEL_NAME_PARTITION,
+            sk: input.row.name,
+            channel_id: input.row.id,
+          },
+          ConditionExpression: "attribute_not_exists(#pk)",
+          ExpressionAttributeNames: { "#pk": "pk" },
+        },
+      },
+    ]);
+    return { row: input.row, inserted: true };
+  } catch (error) {
+    const canonical = await loadChannelByName(store, input.row.name);
+    if (canonical !== undefined) {
+      return { row: canonical.row, inserted: false };
+    }
+    throw error;
+  }
+};
+
+export const deleteDynamoDBChannel = async (
+  store: DynamoDBStore,
+  input: ChannelDeleteInput,
+): Promise<ChannelDeleteResult> => {
+  const current = await loadChannelItem(store, input.id);
+  if (current === undefined) return { deleted: false, reason: "not_found" };
+  if (current.reference_count !== 0) {
+    return { deleted: false, reason: "not_empty" };
+  }
+  try {
+    await commitDynamoDBTransaction(store, [
+      {
+        Delete: {
+          TableName: store.tableName,
+          Key: itemKey(DYNAMODB_CHANNEL_PARTITION, current.sk),
+          ConditionExpression:
+            "#version = :version AND #referenceCount = :zero",
+          ExpressionAttributeNames: {
+            "#version": "version",
+            "#referenceCount": "reference_count",
+          },
+          ExpressionAttributeValues: {
+            ":version": current.version,
+            ":zero": 0,
+          },
+        },
+      },
+      {
+        Delete: {
+          TableName: store.tableName,
+          Key: {
+            pk: DYNAMODB_CHANNEL_NAME_PARTITION,
+            sk: current.row.name,
+          },
+          ConditionExpression: "#channelId = :channelId",
+          ExpressionAttributeNames: { "#channelId": "channel_id" },
+          ExpressionAttributeValues: { ":channelId": current.sk },
+        },
+      },
+    ]);
+    return { deleted: true };
+  } catch (error) {
+    const latest = await loadChannelItem(store, input.id);
+    if (latest !== undefined && latest.reference_count > 0) {
+      return { deleted: false, reason: "not_empty" };
+    }
+    if (latest === undefined) return { deleted: false, reason: "not_found" };
+    throw error;
+  }
 };
 
 export const queryUpdateBundles = async (
@@ -857,7 +1039,7 @@ export const queryCompleteOwnersPatches = async (
 const createDynamoDBBundlePatchTable = (
   store: DynamoDBStore,
   indexName: string,
-): BundlePatchTable => ({
+): import("@hot-updater/plugin-core").BundlePatchModel => ({
   findByBundleIds: (bundleIds) =>
     bundleIds.length === 0
       ? Promise.resolve([])
@@ -870,7 +1052,7 @@ const compare = (left: unknown, right: unknown): number => {
   }
   if (left == null) return right == null ? 0 : -1;
   if (right == null) return 1;
-  return String(left).localeCompare(String(right));
+  return JSON.stringify(left).localeCompare(JSON.stringify(right));
 };
 
 const compareString = (
@@ -1239,6 +1421,13 @@ export const createDynamoDBCrud = (
       case "bundle_patches":
         await createDynamoDBPatch(store, input.data);
         return input.data;
+      case "channels":
+        return (
+          await insertDynamoDBChannel(store, {
+            row: input.data,
+            onConflict: "returnExisting",
+          })
+        ).row;
     }
     throw new DynamoDBUnsupportedModelError();
   },
@@ -1259,6 +1448,11 @@ export const createDynamoDBCrud = (
     return updated;
   },
   async delete(input): Promise<void> {
+    if (input.model === "channels") {
+      const id = exactDynamoDBId(input.where);
+      if (id !== undefined) await deleteDynamoDBChannel(store, { id });
+      return;
+    }
     if (input.model === "bundle_patches") {
       const items = (await loadPatchItems(store)).filter(({ row }) =>
         matchesDynamoDBWhere(row, input.where),
@@ -1327,6 +1521,14 @@ export const createDynamoDBCrud = (
           );
         }
         break;
+      case "channels":
+        if (id !== undefined)
+          return (await loadChannelItem(store, id))?.row ?? null;
+        return (
+          (await loadChannelItems(store))
+            .map(({ row }) => row)
+            .find((row) => matchesDynamoDBWhere(row, input.where)) ?? null
+        );
     }
     if (input.model === "bundle_patches") {
       return (
@@ -1391,14 +1593,16 @@ export const createDynamoDBCrud = (
           input,
         );
       }
+      case "channels":
+        return queryDynamoDBRows(
+          (await loadChannelItems(store)).map(({ row }) => row),
+          input,
+        );
     }
     throw new DynamoDBUnsupportedModelError();
   },
-  async getChannels(): Promise<string[]> {
-    return [
-      ...new Set((await loadBundleItems(store)).map(({ row }) => row.channel)),
-    ].sort();
-  },
+  insertChannel: (input) => insertDynamoDBChannel(store, input),
+  deleteChannel: (input) => deleteDynamoDBChannel(store, input),
 });
 
 class DynamoDBDuplicatePatchError extends Error {
@@ -1596,317 +1800,479 @@ export const createDynamoDBAggregateMutations = (
   },
 });
 
-class DynamoDBCommitShapeError extends TypeError {
-  readonly name = "DynamoDBCommitShapeError";
+class DynamoDBCommitStateError extends Error {
+  readonly name = "DynamoDBCommitStateError";
 
-  constructor(readonly input: DatabaseCommit) {
-    super("DynamoDB received an invalid domain commit");
+  constructor(message: string) {
+    super(message);
   }
 }
 
 const rowsEqual = (left: object, right: object): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
 
-const commitSingleDynamoDBMutation = async (
+const putChannel = (
+  store: DynamoDBStore,
+  row: ChannelRow,
+  current: DynamoDBChannelItem | undefined,
+  referenceCount: number,
+): DynamoDBTransactItem => ({
+  Put: {
+    TableName: store.tableName,
+    Item: boundedDynamoDBMetadataItem(
+      toDynamoDBChannelItem(row, (current?.version ?? 0) + 1, referenceCount),
+    ),
+    ConditionExpression: current
+      ? "#version = :version"
+      : "attribute_not_exists(#pk)",
+    ExpressionAttributeNames: current
+      ? { "#version": "version" }
+      : { "#pk": "pk" },
+    ...(current
+      ? { ExpressionAttributeValues: { ":version": current.version } }
+      : {}),
+  },
+});
+
+const deleteChannelActions = (
+  store: DynamoDBStore,
+  current: DynamoDBChannelItem,
+): readonly DynamoDBTransactItem[] => [
+  {
+    Delete: {
+      TableName: store.tableName,
+      Key: itemKey(DYNAMODB_CHANNEL_PARTITION, current.sk),
+      ConditionExpression: "#version = :version",
+      ExpressionAttributeNames: {
+        "#version": "version",
+      },
+      ExpressionAttributeValues: {
+        ":version": current.version,
+      },
+    },
+  },
+  {
+    Delete: {
+      TableName: store.tableName,
+      Key: {
+        pk: DYNAMODB_CHANNEL_NAME_PARTITION,
+        sk: current.row.name,
+      },
+      ConditionExpression: "#channelId = :channelId",
+      ExpressionAttributeNames: { "#channelId": "channel_id" },
+      ExpressionAttributeValues: { ":channelId": current.sk },
+    },
+  },
+];
+
+const updateChannelReferenceCount = (
+  store: DynamoDBStore,
+  current: DynamoDBChannelItem,
+  delta: number,
+): DynamoDBTransactItem => ({
+  Update: {
+    TableName: store.tableName,
+    Key: itemKey(DYNAMODB_CHANNEL_PARTITION, current.sk),
+    ConditionExpression:
+      "#row.#name = :name" +
+      (delta < 0 ? " AND #referenceCount >= :removal" : ""),
+    UpdateExpression:
+      "SET #version = #version + :one ADD #referenceCount :delta",
+    ExpressionAttributeNames: {
+      "#row": "row",
+      "#name": "name",
+      "#version": "version",
+      "#referenceCount": "reference_count",
+    },
+    ExpressionAttributeValues: {
+      ":name": current.row.name,
+      ":one": 1,
+      ":delta": delta,
+      ...(delta < 0 ? { ":removal": -delta } : {}),
+    },
+  },
+});
+
+type VersionedAccessKey = {
+  readonly row: ClientAccessKeyRow;
+  readonly version: number;
+};
+
+const loadClientAccessKeyByHash = async (
+  store: DynamoDBStore,
+  hash: string,
+): Promise<VersionedAccessKey | null> => {
+  const { Item } = await store.client.send(
+    new GetCommand({
+      TableName: store.tableName,
+      Key: { pk: DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION, sk: hash },
+      ConsistentRead: true,
+    }),
+  );
+  if (Item === undefined) return null;
+  const id = Item.client_access_key_id;
+  if (typeof id !== "string") throw new DynamoDBStoredItemError();
+  return loadClientAccessKey(store, id);
+};
+
+const compileAndCommitDynamoDBChanges = async (
   store: DynamoDBStore,
   input: DatabaseCommit,
 ): Promise<DatabaseCommitResult> => {
-  const mutation = input.mutations[0];
-  if (mutation === undefined) return { applied: true };
-  const aggregate = createDynamoDBAggregateMutations(store);
+  if (input.changes.length === 0) return { committed: true };
+  const [originalBundleItems, originalPatchItems, originalChannelItems] =
+    await Promise.all([
+      loadBundleItems(store),
+      loadPatchItems(store),
+      loadChannelItems(store),
+    ]);
+  const bundles = new Map(
+    originalBundleItems.map(({ sk, row }) => [sk, row] as const),
+  );
+  const patches = new Map(
+    originalPatchItems.map(({ sk, row }) => [sk, row] as const),
+  );
+  const channels = new Map(
+    originalChannelItems.map(({ sk, row }) => [sk, row] as const),
+  );
+  const channelNames = new Map(
+    originalChannelItems.map(({ sk, row }) => [row.name, sk] as const),
+  );
+  const originalAccessKeys = new Map<string, VersionedAccessKey>();
+  const accessKeys = new Map<string, VersionedAccessKey>();
+  const accessKeyHashes = new Map<string, string>();
+  const analytics = new Map<string, BundleEventRow>();
 
-  if (mutation.operation === "insert") {
-    let bundle: BundleRow | undefined;
-    const patches: BundlePatchRow[] = [];
-    for (const change of mutation.changes) {
-      if (change.table === "bundles" && change.operation === "insert") {
-        if (bundle !== undefined || change.row.id !== mutation.bundleId) {
-          throw new DynamoDBCommitShapeError(input);
+  const rememberAccessKey = (value: VersionedAccessKey | null): void => {
+    if (value === null || accessKeys.has(value.row.id)) return;
+    originalAccessKeys.set(value.row.id, value);
+    accessKeys.set(value.row.id, value);
+    accessKeyHashes.set(value.row.hash, value.row.id);
+  };
+
+  const requireBundleChannel = (row: BundleRow): void => {
+    if (channels.get(row.channel_id)?.name !== row.channel) {
+      throw new DynamoDBCommitStateError(
+        `Bundle "${row.id}" references an invalid channel`,
+      );
+    }
+  };
+
+  for (const [changeIndex, change] of input.changes.entries()) {
+    switch (change.model) {
+      case "channels":
+        if (change.operation === "insert") {
+          const canonicalId = channelNames.get(change.row.name);
+          if (canonicalId !== undefined) break;
+          const reusedId = channels.get(change.row.id);
+          if (reusedId !== undefined) {
+            throw new DynamoDBCommitStateError(
+              `Channel id "${change.row.id}" already exists`,
+            );
+          }
+          channels.set(change.row.id, change.row);
+          channelNames.set(change.row.name, change.row.id);
+        } else {
+          const current = channels.get(change.where.id);
+          if (current === undefined) break;
+          if (
+            [...bundles.values()].some(
+              ({ channel_id }) => channel_id === change.where.id,
+            )
+          ) {
+            return {
+              committed: false,
+              conflict: { changeIndex, reason: "referenced" },
+            };
+          }
+          channels.delete(change.where.id);
+          channelNames.delete(current.name);
         }
-        bundle = change.row;
-      } else if (
-        change.table === "bundle_patches" &&
-        change.operation === "insert" &&
-        change.row.bundle_id === mutation.bundleId
-      ) {
-        patches.push(change.row);
-      } else {
-        throw new DynamoDBCommitShapeError(input);
+        break;
+      case "bundles":
+        if (change.operation === "insert") {
+          requireBundleChannel(change.row);
+          if (bundles.has(change.row.id)) {
+            throw new DynamoDBCommitStateError(
+              `Bundle "${change.row.id}" already exists`,
+            );
+          }
+          bundles.set(change.row.id, change.row);
+        } else {
+          const current = bundles.get(change.where.id);
+          if (current === undefined) {
+            if (change.operation === "update") {
+              return {
+                committed: false,
+                conflict: { changeIndex, reason: "not_found" },
+              };
+            }
+            break;
+          }
+          if (change.operation === "update") {
+            const row = { ...current, ...change.update };
+            requireBundleChannel(row);
+            bundles.set(row.id, row);
+          } else {
+            bundles.delete(change.where.id);
+            for (const [id, patch] of patches) {
+              if (
+                patch.bundle_id === change.where.id ||
+                patch.base_bundle_id === change.where.id
+              ) {
+                patches.delete(id);
+              }
+            }
+          }
+        }
+        break;
+      case "bundlePatches":
+        if (change.operation === "insert") {
+          if (
+            !bundles.has(change.row.bundle_id) ||
+            !bundles.has(change.row.base_bundle_id)
+          ) {
+            throw new DynamoDBCommitStateError(
+              `Patch "${change.row.id}" references a missing bundle`,
+            );
+          }
+          if (patches.has(change.row.id)) {
+            throw new DynamoDBDuplicatePatchError(change.row.id);
+          }
+          patches.set(change.row.id, change.row);
+        } else {
+          for (const [id, patch] of patches) {
+            if (patch.bundle_id === change.where.bundleId) {
+              patches.delete(id);
+            }
+          }
+        }
+        break;
+      case "analytics": {
+        const key = analyticsSortKey(change.row);
+        if (analytics.has(key)) {
+          throw new DynamoDBCommitStateError(
+            `Analytics event "${change.row.id}" is duplicated`,
+          );
+        }
+        analytics.set(key, change.row);
+        break;
+      }
+      case "clientAccessKeys":
+        if (change.operation === "insert") {
+          rememberAccessKey(
+            await loadClientAccessKeyByHash(store, change.row.hash),
+          );
+          if (accessKeyHashes.has(change.row.hash)) break;
+          rememberAccessKey(await loadClientAccessKey(store, change.row.id));
+          if (accessKeys.has(change.row.id)) {
+            throw new DynamoDBCommitStateError(
+              `Client access key id "${change.row.id}" already exists`,
+            );
+          }
+          const inserted = { row: change.row, version: 1 };
+          accessKeys.set(change.row.id, inserted);
+          accessKeyHashes.set(change.row.hash, change.row.id);
+        } else {
+          rememberAccessKey(await loadClientAccessKey(store, change.where.id));
+          const current = accessKeys.get(change.where.id);
+          if (current === undefined) {
+            return {
+              committed: false,
+              conflict: { changeIndex, reason: "not_found" },
+            };
+          }
+          accessKeys.set(change.where.id, {
+            row: {
+              ...current.row,
+              revoked_at_ms: change.update.revokedAtMs,
+            },
+            version: current.version,
+          });
+        }
+        break;
+    }
+  }
+
+  const relationCounts = new Map<string, number>();
+  const ownedPatchCounts = new Map<string, number>();
+  for (const patch of patches.values()) {
+    for (const id of new Set([patch.bundle_id, patch.base_bundle_id])) {
+      relationCounts.set(id, (relationCounts.get(id) ?? 0) + 1);
+    }
+    ownedPatchCounts.set(
+      patch.bundle_id,
+      (ownedPatchCounts.get(patch.bundle_id) ?? 0) + 1,
+    );
+  }
+  const channelReferenceCounts = new Map<string, number>();
+  for (const bundle of bundles.values()) {
+    channelReferenceCounts.set(
+      bundle.channel_id,
+      (channelReferenceCounts.get(bundle.channel_id) ?? 0) + 1,
+    );
+  }
+
+  const actions: DynamoDBTransactItem[] = [];
+  const originalChannels = new Map(
+    originalChannelItems.map((item) => [item.sk, item] as const),
+  );
+  for (const original of originalChannelItems) {
+    if (!channels.has(original.sk)) {
+      actions.push(...deleteChannelActions(store, original));
+    }
+  }
+  for (const [id, row] of channels) {
+    const original = originalChannels.get(id);
+    const referenceCount = channelReferenceCounts.get(id) ?? 0;
+    if (original === undefined) {
+      actions.push(putChannel(store, row, original, referenceCount));
+      actions.push({
+        Put: {
+          TableName: store.tableName,
+          Item: {
+            pk: DYNAMODB_CHANNEL_NAME_PARTITION,
+            sk: row.name,
+            channel_id: id,
+          },
+          ConditionExpression: "attribute_not_exists(#pk)",
+          ExpressionAttributeNames: { "#pk": "pk" },
+        },
+      });
+    } else {
+      if (!rowsEqual(original.row, row)) {
+        throw new DynamoDBCommitStateError(`Channel "${id}" cannot be updated`);
+      }
+      const delta = referenceCount - original.reference_count;
+      if (delta !== 0) {
+        actions.push(updateChannelReferenceCount(store, original, delta));
       }
     }
-    if (bundle === undefined) throw new DynamoDBCommitShapeError(input);
-    await aggregate.insertBundleWithPatches({ bundle, patches });
-    return { applied: true };
   }
 
-  if (mutation.operation === "update") {
-    let bundleUpdate: Extract<
-      DatabaseChange,
-      { readonly operation: "update"; readonly table: "bundles" }
-    >["update"] = {};
-    let hasBundleUpdate = false;
-    let replacesPatches = false;
-    const patches: BundlePatchRow[] = [];
-    for (const change of mutation.changes) {
-      if (change.table === "bundles" && change.operation === "update") {
-        if (hasBundleUpdate || change.id !== mutation.bundleId) {
-          throw new DynamoDBCommitShapeError(input);
-        }
-        bundleUpdate = change.update;
-        hasBundleUpdate = true;
-      } else if (
-        change.table === "bundle_patches" &&
-        change.operation === "delete"
-      ) {
-        if (replacesPatches || change.bundleId !== mutation.bundleId) {
-          throw new DynamoDBCommitShapeError(input);
-        }
-        replacesPatches = true;
-      } else if (
-        change.table === "bundle_patches" &&
-        change.operation === "insert" &&
-        change.row.bundle_id === mutation.bundleId
-      ) {
-        patches.push(change.row);
-      } else {
-        throw new DynamoDBCommitShapeError(input);
+  const originalBundles = new Map(
+    originalBundleItems.map((item) => [item.sk, item] as const),
+  );
+  for (const original of originalBundleItems) {
+    if (!bundles.has(original.sk)) actions.push(deleteAction(store, original));
+  }
+  for (const [id, row] of bundles) {
+    const original = originalBundles.get(id);
+    const relationCount = relationCounts.get(id) ?? 0;
+    const ownedPatchCount = ownedPatchCounts.get(id) ?? 0;
+    if (original === undefined) {
+      actions.push(putNewBundle(store, row, relationCount, ownedPatchCount));
+    } else if (!rowsEqual(original.row, row)) {
+      actions.push(
+        putUpdatedBundle(store, original, row, relationCount, ownedPatchCount),
+      );
+    } else {
+      const relationDelta = relationCount - original.relation_count;
+      const ownedPatchDelta = ownedPatchCount - original.owned_patch_count;
+      if (relationDelta !== 0 || ownedPatchDelta !== 0) {
+        actions.push(
+          updateBundleRelation(store, id, relationDelta, ownedPatchDelta),
+        );
       }
     }
-    if (patches.length > 0 && !replacesPatches) {
-      throw new DynamoDBCommitShapeError(input);
-    }
-    if (replacesPatches) {
-      const applied = await aggregate.updateBundleWithPatches({
-        bundleId: mutation.bundleId,
-        patches,
-        update: bundleUpdate,
-      });
-      return applied
-        ? { applied: true }
-        : { applied: false, missingBundleId: mutation.bundleId };
-    }
-    const current = await loadBundleItem(store, mutation.bundleId);
-    if (current === undefined) {
-      return { applied: false, missingBundleId: mutation.bundleId };
-    }
-    if (hasBundleUpdate) {
-      await replaceDynamoDBBundle(store, current, {
-        ...current.row,
-        ...bundleUpdate,
-      });
-    }
-    return { applied: true };
   }
 
-  if (
-    mutation.changes.length !== 1 ||
-    mutation.changes[0]?.table !== "bundles" ||
-    mutation.changes[0].operation !== "delete" ||
-    mutation.changes[0].id !== mutation.bundleId
-  ) {
-    throw new DynamoDBCommitShapeError(input);
+  const originalPatches = new Map(
+    originalPatchItems.map((item) => [item.sk, item] as const),
+  );
+  for (const original of originalPatchItems) {
+    if (!patches.has(original.sk)) actions.push(deletePatch(store, original));
   }
-  const bundle = await loadBundleItem(store, mutation.bundleId);
-  if (bundle !== undefined) {
-    await deleteDynamoDBBundles(store, [bundle], await loadPatchItems(store));
+  for (const [id, row] of patches) {
+    const original = originalPatches.get(id);
+    if (original === undefined || !rowsEqual(original.row, row)) {
+      actions.push(putPatch(store, row, original));
+    }
   }
-  return { applied: true };
+
+  const counter = metadataUpdate(store, {
+    bundles: bundles.size - originalBundles.size,
+    bundle_patches: patches.size - originalPatches.size,
+  });
+  if (counter !== undefined) actions.push(counter);
+
+  for (const [key, row] of analytics) {
+    actions.push({
+      Put: {
+        TableName: store.tableName,
+        Item: boundedDynamoDBMetadataItem({
+          pk: DYNAMODB_ANALYTICS_PARTITION,
+          sk: key,
+          version: 1,
+          row,
+        }),
+        ConditionExpression: "attribute_not_exists(#pk)",
+        ExpressionAttributeNames: { "#pk": "pk" },
+      },
+    });
+  }
+
+  for (const [id, current] of accessKeys) {
+    const original = originalAccessKeys.get(id);
+    if (original !== undefined && rowsEqual(original.row, current.row)) {
+      continue;
+    }
+    actions.push({
+      Put: {
+        TableName: store.tableName,
+        Item: boundedDynamoDBMetadataItem(
+          clientAccessKeyItem(
+            current.row,
+            original === undefined ? 1 : original.version + 1,
+          ),
+        ),
+        ConditionExpression: original
+          ? "#version = :version"
+          : "attribute_not_exists(#pk)",
+        ExpressionAttributeNames: original
+          ? { "#version": "version" }
+          : { "#pk": "pk" },
+        ...(original
+          ? {
+              ExpressionAttributeValues: { ":version": original.version },
+            }
+          : {}),
+      },
+    });
+    if (original === undefined) {
+      actions.push({
+        Put: {
+          TableName: store.tableName,
+          Item: {
+            pk: DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION,
+            sk: current.row.hash,
+            client_access_key_id: current.row.id,
+          },
+          ConditionExpression: "attribute_not_exists(#pk)",
+          ExpressionAttributeNames: { "#pk": "pk" },
+        },
+      });
+    }
+  }
+
+  if (actions.length > 0) await commitDynamoDBTransaction(store, actions);
+  return { committed: true };
 };
+
+const isDynamoDBTransactionConflict = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  Reflect.get(error, "name") === "TransactionCanceledException";
 
 const createDynamoDBCommit =
   (store: DynamoDBStore) =>
   async (input: DatabaseCommit): Promise<DatabaseCommitResult> => {
-    if (input.mutations.length <= 1) {
-      return commitSingleDynamoDBMutation(store, input);
+    try {
+      return await compileAndCommitDynamoDBChanges(store, input);
+    } catch (error) {
+      if (!isDynamoDBTransactionConflict(error)) throw error;
+      return compileAndCommitDynamoDBChanges(store, input);
     }
-    const currentBundles = await loadBundleItems(store);
-    const currentPatches = await loadPatchItems(store);
-    const bundles = new Map(
-      currentBundles.map((item) => [item.sk, item.row] as const),
-    );
-    const patches = new Map(
-      currentPatches.map((item) => [item.sk, item.row] as const),
-    );
-
-    for (const mutation of input.mutations) {
-      if (mutation.operation === "insert") {
-        let bundle: BundleRow | undefined;
-        const insertedPatches: BundlePatchRow[] = [];
-        for (const change of mutation.changes) {
-          if (change.table === "bundles" && change.operation === "insert") {
-            if (bundle !== undefined || change.row.id !== mutation.bundleId) {
-              throw new DynamoDBCommitShapeError(input);
-            }
-            bundle = change.row;
-          } else if (
-            change.table === "bundle_patches" &&
-            change.operation === "insert" &&
-            change.row.bundle_id === mutation.bundleId
-          ) {
-            insertedPatches.push(change.row);
-          } else {
-            throw new DynamoDBCommitShapeError(input);
-          }
-        }
-        if (bundle === undefined || bundles.has(bundle.id)) {
-          throw new DynamoDBCommitShapeError(input);
-        }
-        assertUniquePatches(insertedPatches);
-        bundles.set(bundle.id, bundle);
-        for (const patch of insertedPatches) {
-          if (patches.has(patch.id)) {
-            throw new DynamoDBDuplicatePatchError(patch.id);
-          }
-          patches.set(patch.id, patch);
-        }
-        continue;
-      }
-
-      if (mutation.operation === "update") {
-        const current = bundles.get(mutation.bundleId);
-        if (current === undefined) {
-          return {
-            applied: false,
-            missingBundleId: mutation.bundleId,
-          };
-        }
-        let bundleUpdate: Extract<
-          DatabaseChange,
-          { readonly operation: "update"; readonly table: "bundles" }
-        >["update"] = {};
-        let hasBundleUpdate = false;
-        let replacesPatches = false;
-        const insertedPatches: BundlePatchRow[] = [];
-        for (const change of mutation.changes) {
-          if (change.table === "bundles" && change.operation === "update") {
-            if (hasBundleUpdate || change.id !== mutation.bundleId) {
-              throw new DynamoDBCommitShapeError(input);
-            }
-            bundleUpdate = change.update;
-            hasBundleUpdate = true;
-          } else if (
-            change.table === "bundle_patches" &&
-            change.operation === "delete"
-          ) {
-            if (replacesPatches || change.bundleId !== mutation.bundleId) {
-              throw new DynamoDBCommitShapeError(input);
-            }
-            replacesPatches = true;
-          } else if (
-            change.table === "bundle_patches" &&
-            change.operation === "insert" &&
-            change.row.bundle_id === mutation.bundleId
-          ) {
-            insertedPatches.push(change.row);
-          } else {
-            throw new DynamoDBCommitShapeError(input);
-          }
-        }
-        if (insertedPatches.length > 0 && !replacesPatches) {
-          throw new DynamoDBCommitShapeError(input);
-        }
-        if (hasBundleUpdate) {
-          bundles.set(mutation.bundleId, { ...current, ...bundleUpdate });
-        }
-        if (replacesPatches) {
-          for (const [id, patch] of patches) {
-            if (patch.bundle_id === mutation.bundleId) patches.delete(id);
-          }
-          assertUniquePatches(insertedPatches);
-          for (const patch of insertedPatches) {
-            if (patches.has(patch.id)) {
-              throw new DynamoDBDuplicatePatchError(patch.id);
-            }
-            patches.set(patch.id, patch);
-          }
-        }
-        continue;
-      }
-
-      if (
-        mutation.changes.length !== 1 ||
-        mutation.changes[0]?.table !== "bundles" ||
-        mutation.changes[0].operation !== "delete" ||
-        mutation.changes[0].id !== mutation.bundleId
-      ) {
-        throw new DynamoDBCommitShapeError(input);
-      }
-      bundles.delete(mutation.bundleId);
-      for (const [id, patch] of patches) {
-        if (
-          patch.bundle_id === mutation.bundleId ||
-          patch.base_bundle_id === mutation.bundleId
-        ) {
-          patches.delete(id);
-        }
-      }
-    }
-
-    for (const patch of patches.values()) {
-      if (!bundles.has(patch.bundle_id) || !bundles.has(patch.base_bundle_id)) {
-        throw new DynamoDBCommitShapeError(input);
-      }
-    }
-
-    const relationCounts = new Map<string, number>();
-    const ownedPatchCounts = new Map<string, number>();
-    for (const patch of patches.values()) {
-      for (const bundleId of new Set([patch.bundle_id, patch.base_bundle_id])) {
-        relationCounts.set(bundleId, (relationCounts.get(bundleId) ?? 0) + 1);
-      }
-      ownedPatchCounts.set(
-        patch.bundle_id,
-        (ownedPatchCounts.get(patch.bundle_id) ?? 0) + 1,
-      );
-    }
-
-    const actions: DynamoDBTransactItem[] = [];
-    const counter = metadataUpdate(store, {
-      bundles: bundles.size - currentBundles.length,
-      bundle_patches: patches.size - currentPatches.length,
-    });
-    if (counter !== undefined) actions.push(counter);
-
-    const currentBundleById = new Map(
-      currentBundles.map((item) => [item.sk, item] as const),
-    );
-    for (const current of currentBundles) {
-      if (!bundles.has(current.sk)) actions.push(deleteAction(store, current));
-    }
-    for (const [id, row] of bundles) {
-      const current = currentBundleById.get(id);
-      const relationCount = relationCounts.get(id) ?? 0;
-      const ownedPatchCount = ownedPatchCounts.get(id) ?? 0;
-      if (current === undefined) {
-        actions.push(putNewBundle(store, row, relationCount, ownedPatchCount));
-      } else if (
-        !rowsEqual(current.row, row) ||
-        current.relation_count !== relationCount ||
-        current.owned_patch_count !== ownedPatchCount
-      ) {
-        actions.push(
-          putUpdatedBundle(store, current, row, relationCount, ownedPatchCount),
-        );
-      }
-    }
-
-    const currentPatchById = new Map(
-      currentPatches.map((item) => [item.sk, item] as const),
-    );
-    for (const current of currentPatches) {
-      if (!patches.has(current.sk)) actions.push(deletePatch(store, current));
-    }
-    for (const [id, row] of patches) {
-      const current = currentPatchById.get(id);
-      if (current === undefined || !rowsEqual(current.row, row)) {
-        actions.push(putPatch(store, row, current));
-      }
-    }
-
-    if (actions.length > 0) {
-      await commitDynamoDBTransaction(store, actions);
-    }
-    return { applied: true };
   };
 type GetUpdateInfo = NonNullable<DatabasePluginImplementation["getUpdateInfo"]>;
 
@@ -2005,7 +2371,7 @@ const analyticsSortKey = (
 
 export const createDynamoDBAnalyticsTable = (
   store: DynamoDBStore,
-): AnalyticsTable => ({
+): AnalyticsModel => ({
   async append(row) {
     await store.client.send(
       new PutCommand({
@@ -2106,7 +2472,7 @@ const loadClientAccessKey = async (
 
 export const createDynamoDBClientAccessKeyTable = (
   store: DynamoDBStore,
-): ClientAccessKeyTable => {
+): ClientAccessKeyModel => {
   const findByHash = async (
     hash: string,
   ): Promise<ClientAccessKeyRow | null> => {
@@ -2271,22 +2637,28 @@ export const dynamoDB = (config: DynamoDBConfig) => {
   });
   return createDatabasePlugin({
     name: "dynamoDB",
-    bundles: adapter.bundles,
-    bundlePatches: createDynamoDBBundlePatchTable(
-      store,
-      DYNAMODB_UPDATE_INDEX_NAME,
-    ),
-    analytics: createDynamoDBAnalyticsTable(store),
-    clientAccessKeys: createDynamoDBClientAccessKeyTable(store),
+    models: {
+      ...adapter.models,
+      bundlePatches: createDynamoDBBundlePatchTable(
+        store,
+        DYNAMODB_UPDATE_INDEX_NAME,
+      ),
+      analytics: createDynamoDBAnalyticsTable(store),
+      clientAccessKeys: createDynamoDBClientAccessKeyTable(store),
+    },
+    queries: adapter.queries,
     async commit(input) {
       const result = await adapter.commit(input);
-      if (result.applied && input.mutations.length > 0) {
+      if (
+        result.committed &&
+        input.changes.some(
+          ({ model }) => model === "bundles" || model === "bundlePatches",
+        )
+      ) {
         await invalidateUpdateRoutes();
       }
       return result;
     },
-    getChannels: adapter.getChannels,
-    getUpdateInfo: adapter.getUpdateInfo,
     dispose: adapter.dispose,
   });
 };

@@ -6,7 +6,7 @@ const database: D1Like = {
   prepare: () => ({
     bind: () => ({
       all: async () => ({
-        results: [{ channel: "production" }],
+        results: [{ id: "channel-production", name: "production" }],
       }),
     }),
   }),
@@ -18,5 +18,14 @@ it("uses the D1 binding supplied at the Worker composition boundary", async () =
   const plugin = d1Database(database);
 
   expect(plugin.name).toBe("d1Database");
-  await expect(plugin.getChannels?.()).resolves.toEqual(["production"]);
+  expect(Object.keys(plugin.models).sort()).toEqual([
+    "analytics",
+    "bundlePatches",
+    "bundles",
+    "channels",
+    "clientAccessKeys",
+  ]);
+  await expect(plugin.models.channels.list({})).resolves.toEqual({
+    channels: [{ id: "channel-production", name: "production" }],
+  });
 });

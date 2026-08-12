@@ -1,7 +1,7 @@
 import { isDatabaseMetadataObject } from "./databaseJsonValue";
 import { DatabasePluginInputError } from "./databasePluginCrudValidationErrors";
-import type { DatabaseModel } from "./types";
 import { databaseFields } from "./types/databaseFields";
+import type { DatabaseModel } from "./types/internal";
 
 export type ValidatorMap = Record<
   DatabaseModel,
@@ -19,6 +19,16 @@ export const isRecord = (
 ): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+export const isChannelText = (value: unknown): value is string => {
+  if (typeof value !== "string" || value.length === 0) return false;
+  let codePointCount = 0;
+  for (const _codePoint of value) {
+    codePointCount += 1;
+    if (codePointCount > 255) return false;
+  }
+  return true;
+};
+
 export const modelValidators: ValidatorMap = {
   bundles: {
     id: (value) => typeof value === "string",
@@ -28,7 +38,8 @@ export const modelValidators: ValidatorMap = {
     file_hash: (value) => typeof value === "string",
     git_commit_hash: (value) => value === null || typeof value === "string",
     message: (value) => value === null || typeof value === "string",
-    channel: (value) => typeof value === "string",
+    channel: isChannelText,
+    channel_id: isChannelText,
     storage_uri: (value) => typeof value === "string",
     target_app_version: (value) => value === null || typeof value === "string",
     fingerprint_hash: (value) => value === null || typeof value === "string",
@@ -56,6 +67,10 @@ export const modelValidators: ValidatorMap = {
     patch_storage_uri: (value) => typeof value === "string",
     order_index: (value) =>
       typeof value === "number" && Number.isInteger(value) && value >= 0,
+  },
+  channels: {
+    id: isChannelText,
+    name: isChannelText,
   },
   bundle_events: {
     id: (value) => typeof value === "string",
@@ -100,6 +115,7 @@ export const stringFields = new Set<string>([
   "git_commit_hash",
   "message",
   "channel",
+  "channel_id",
   "storage_uri",
   "target_app_version",
   "fingerprint_hash",
@@ -145,6 +161,7 @@ export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
     "git_commit_hash",
     "message",
     "channel",
+    "channel_id",
     "storage_uri",
     "target_app_version",
     "fingerprint_hash",
@@ -162,6 +179,7 @@ export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
     "patch_storage_uri",
     "order_index",
   ]),
+  channels: new Set(["id", "name"]),
   bundle_events: new Set([
     "id",
     "type",
