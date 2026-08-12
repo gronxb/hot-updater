@@ -1236,6 +1236,7 @@ const writeSupabaseRuntimeFiles = async ({
       "plugins/supabase/supabase/edge-functions/index.ts",
     ),
     {
+      BUCKET_NAME,
       FUNCTION_NAME,
     },
   );
@@ -1255,6 +1256,7 @@ const writeSupabaseRuntimeFiles = async ({
     `
 export { supabaseDatabase } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseDatabase.ts")).href)};
 export { supabaseEdgeFunctionStorage as supabaseStorage } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseEdgeFunctionStorage.ts")).href)};
+export { supabaseStorageDelivery } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseStorageDelivery.ts")).href)};
 `.trim(),
   );
   await writeFile(
