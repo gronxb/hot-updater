@@ -1,5 +1,10 @@
 import { createDatabasePluginCrud } from "./databasePluginCrud";
 import { DatabasePluginInputError } from "./databasePluginCrudValidation";
+import { isChannelText, isRecord } from "./databasePluginCrudValidationFields";
+import {
+  validateBundleUpdateData,
+  validateClientAccessKeyUpdateData,
+} from "./databasePluginCrudValidationMutations";
 import {
   validateCreateData,
   validateResult,
@@ -262,6 +267,154 @@ const applyChanges = async (
   return { committed: true };
 };
 
+const hasOnlyKeys = (
+  value: Record<PropertyKey, unknown>,
+  keys: readonly string[],
+): boolean => {
+  const actual = Reflect.ownKeys(value);
+  return (
+    actual.length === keys.length &&
+    keys.every((key) => Object.hasOwn(value, key))
+  );
+};
+
+const validateWhere = (
+  where: unknown,
+  field: "bundleId" | "id",
+  validateValue: (value: unknown) => boolean = (value) =>
+    typeof value === "string",
+): void => {
+  if (
+    !isRecord(where) ||
+    !hasOnlyKeys(where, [field]) ||
+    !validateValue(Reflect.get(where, field))
+  ) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+};
+
+const validateDatabaseChange = (change: unknown): void => {
+  if (!isRecord(change)) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+  switch (change.model) {
+    case "bundles":
+      switch (change.operation) {
+        case "insert":
+          if (!hasOnlyKeys(change, ["model", "operation", "row"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateCreateData("bundles", change.row);
+          return;
+        case "update":
+          if (!hasOnlyKeys(change, ["model", "operation", "where", "update"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateWhere(change.where, "id");
+          validateBundleUpdateData(change.update);
+          return;
+        case "delete":
+          if (!hasOnlyKeys(change, ["model", "operation", "where"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateWhere(change.where, "id");
+          return;
+        default:
+          throw new DatabasePluginInputError("invalid-operation");
+      }
+    case "bundlePatches":
+      switch (change.operation) {
+        case "insert":
+          if (!hasOnlyKeys(change, ["model", "operation", "row"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateCreateData("bundle_patches", change.row);
+          return;
+        case "delete":
+          if (!hasOnlyKeys(change, ["model", "operation", "where"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateWhere(change.where, "bundleId");
+          return;
+        default:
+          throw new DatabasePluginInputError("invalid-operation");
+      }
+    case "channels":
+      switch (change.operation) {
+        case "insert":
+          if (
+            !hasOnlyKeys(change, ["model", "operation", "row", "onConflict"]) ||
+            change.onConflict !== "ignore"
+          ) {
+            throw new DatabasePluginInputError("invalid-operation");
+          }
+          validateCreateData("channels", change.row);
+          return;
+        case "delete":
+          if (!hasOnlyKeys(change, ["model", "operation", "where"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateWhere(change.where, "id", isChannelText);
+          return;
+        default:
+          throw new DatabasePluginInputError("invalid-operation");
+      }
+    case "analytics":
+      if (
+        change.operation !== "insert" ||
+        !hasOnlyKeys(change, ["model", "operation", "row"])
+      ) {
+        throw new DatabasePluginInputError("invalid-operation");
+      }
+      validateCreateData("bundle_events", change.row);
+      return;
+    case "clientAccessKeys":
+      switch (change.operation) {
+        case "insert":
+          if (
+            !hasOnlyKeys(change, ["model", "operation", "row", "onConflict"]) ||
+            change.onConflict !== "ignore"
+          ) {
+            throw new DatabasePluginInputError("invalid-operation");
+          }
+          validateCreateData("client_access_keys", change.row);
+          return;
+        case "update":
+          if (!hasOnlyKeys(change, ["model", "operation", "where", "update"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateWhere(change.where, "id");
+          if (!isRecord(change.update)) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          if (!hasOnlyKeys(change.update, ["revokedAtMs"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateClientAccessKeyUpdateData({
+            revoked_at_ms: change.update.revokedAtMs,
+          });
+          return;
+        default:
+          throw new DatabasePluginInputError("invalid-operation");
+      }
+    default:
+      throw new DatabasePluginInputError("invalid-model");
+  }
+};
+
+function validateDatabaseCommit(
+  input: unknown,
+): asserts input is DatabaseCommit {
+  if (
+    !isRecord(input) ||
+    !hasOnlyKeys(input, ["changes"]) ||
+    !Array.isArray(input.changes)
+  ) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+  input.changes.forEach(validateDatabaseChange);
+}
+
 const validateChannelInsertResult = (
   input: ChannelInsertInput,
   result: ChannelInsertResult,
@@ -291,7 +444,7 @@ export const createDatabasePluginAdapter = (
 ): DatabasePluginAdapter => {
   const crud = createDatabasePluginCrud(implementation);
   const transaction = implementation.transaction;
-  const commit = implementation.commit
+  const executeCommit = implementation.commit
     ? implementation.commit
     : async (input: DatabaseCommit): Promise<DatabaseCommitResult> => {
         if (transaction) {
@@ -322,6 +475,12 @@ export const createDatabasePluginAdapter = (
           throw error;
         }
       };
+  const commit = async (
+    input: DatabaseCommit,
+  ): Promise<DatabaseCommitResult> => {
+    validateDatabaseCommit(input);
+    return executeCommit(input);
+  };
 
   const findClientAccessKeyByHash = (
     database: DatabasePluginCrud,
@@ -395,7 +554,7 @@ export const createDatabasePluginAdapter = (
           }
         },
         async delete(input) {
-          if (typeof input.id !== "string") {
+          if (!isChannelText(input.id)) {
             throw new DatabasePluginInputError("invalid-data");
           }
           const result = await implementation.deleteChannel(input);

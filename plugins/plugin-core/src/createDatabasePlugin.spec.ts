@@ -4,9 +4,11 @@ import {
   createDatabasePlugin,
   createDatabasePluginAdapter,
   DatabaseAtomicCommitUnsupportedError,
+  DatabasePluginInputError,
 } from "./createDatabasePlugin";
 import type {
   DatabaseChange,
+  DatabaseCommit,
   DatabasePluginImplementation,
   TransactionDatabasePluginImplementation,
 } from "./types/internal";
@@ -316,6 +318,22 @@ describe("createDatabasePlugin", () => {
     expect(deleteChannel).toHaveBeenCalledWith({ id: channelRow.id });
   });
 
+  it.each(["", "😀".repeat(256)])(
+    "rejects an invalid Channel delete identity before calling the provider",
+    async (id) => {
+      const deleteChannel = vi.fn(async () => ({ deleted: true as const }));
+      const plugin = createTestPlugin("memory", {
+        ...createMethods(),
+        deleteChannel,
+      });
+
+      await expect(plugin.models.channels.delete({ id })).rejects.toEqual(
+        new DatabasePluginInputError("invalid-data"),
+      );
+      expect(deleteChannel).not.toHaveBeenCalled();
+    },
+  );
+
   it("commits model changes in one adapter transaction", async () => {
     const create = vi.fn(async (input) => input.data);
     const findOne = vi.fn(async (input) =>
@@ -459,6 +477,122 @@ describe("createDatabasePlugin", () => {
     await plugin.commit(input);
 
     expect(commit).toHaveBeenCalledWith(input);
+  });
+
+  it("rejects an invalid native commit envelope before calling the provider", async () => {
+    const commit = vi.fn(async () => ({ committed: true as const }));
+    const plugin = createTestPlugin("native", {
+      ...createMethods(),
+      commit,
+    });
+
+    await expect(
+      plugin.commit(null as unknown as DatabaseCommit),
+    ).rejects.toEqual(new DatabasePluginInputError("invalid-data"));
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed native change before calling the provider", async () => {
+    const commit = vi.fn(async () => ({ committed: true as const }));
+    const plugin = createTestPlugin("native", {
+      ...createMethods(),
+      commit,
+    });
+    const input = {
+      changes: [{ model: "channels", operation: "replace" }],
+    } as unknown as DatabaseCommit;
+
+    await expect(plugin.commit(input)).rejects.toBeInstanceOf(
+      DatabasePluginInputError,
+    );
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it("validates every native change, including Channel limits, before calling the provider", async () => {
+    const commit = vi.fn(async () => ({ committed: true as const }));
+    const plugin = createTestPlugin("native", {
+      ...createMethods(),
+      commit,
+    });
+    const input = {
+      changes: [
+        {
+          model: "channels",
+          operation: "insert",
+          row: channelRow,
+          onConflict: "ignore",
+        },
+        {
+          model: "channels",
+          operation: "insert",
+          row: { id: "channel-2", name: "😀".repeat(256) },
+          onConflict: "ignore",
+        },
+      ],
+    } as const;
+
+    await expect(plugin.commit(input)).rejects.toEqual(
+      new DatabasePluginInputError("invalid-data"),
+    );
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it.each(["insert", "update"] as const)(
+    "rejects invalid bundle Channel identity in a native %s before calling the provider",
+    async (operation) => {
+      const commit = vi.fn(async () => ({ committed: true as const }));
+      const plugin = createTestPlugin("native", {
+        ...createMethods(),
+        commit,
+      });
+      const invalidChannel = "😀".repeat(256);
+      const change =
+        operation === "insert"
+          ? {
+              model: "bundles" as const,
+              operation,
+              row: {
+                ...bundleRow,
+                channel: invalidChannel,
+                channel_id: "",
+              },
+            }
+          : {
+              model: "bundles" as const,
+              operation,
+              where: { id: bundleRow.id },
+              update: {
+                channel: invalidChannel,
+                channel_id: "",
+              },
+            };
+
+      await expect(plugin.commit({ changes: [change] })).rejects.toEqual(
+        new DatabasePluginInputError("invalid-data"),
+      );
+      expect(commit).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects an invalid native Channel delete identity before calling the provider", async () => {
+    const commit = vi.fn(async () => ({ committed: true as const }));
+    const plugin = createTestPlugin("native", {
+      ...createMethods(),
+      commit,
+    });
+
+    await expect(
+      plugin.commit({
+        changes: [
+          {
+            model: "channels",
+            operation: "delete",
+            where: { id: "" },
+          },
+        ],
+      }),
+    ).rejects.toEqual(new DatabasePluginInputError("invalid-data"));
+    expect(commit).not.toHaveBeenCalled();
   });
 
   it("composes optional lifecycle and cross-model query methods", async () => {

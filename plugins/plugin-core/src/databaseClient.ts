@@ -73,14 +73,19 @@ export class DatabasePatchInsertUnsupportedError extends Error {
 
 export { DatabasePatchUpdateUnsupportedError };
 
+type BundleMutationChange = Extract<
+  BundleRepositoryChange,
+  { readonly model: "bundles" | "bundlePatches" }
+>;
+
 type CommitOperation = (
-  changes: readonly BundleRepositoryChange[],
+  changes: readonly BundleMutationChange[],
 ) => Promise<DatabaseCommitResult>;
 
 const insertChanges = (
   bundle: Bundle,
   channel: ChannelRow,
-): readonly BundleRepositoryChange[] => [
+): readonly BundleMutationChange[] => [
   {
     model: "bundles",
     operation: "insert",
@@ -97,7 +102,7 @@ const updateChanges = (
   bundleId: string,
   update: Partial<Bundle>,
   channel: ChannelRow | undefined,
-): readonly BundleRepositoryChange[] => {
+): readonly BundleMutationChange[] => {
   const rowUpdate = bundleUpdateToRow(update, channel?.id);
   const patchesPresent = Object.hasOwn(update, "patches");
   return [
@@ -124,7 +129,7 @@ const updateChanges = (
   ];
 };
 
-const deleteChanges = (bundleId: string): readonly BundleRepositoryChange[] => [
+const deleteChanges = (bundleId: string): readonly BundleMutationChange[] => [
   { model: "bundles", operation: "delete", where: { id: bundleId } },
 ];
 
@@ -218,7 +223,7 @@ export const createDatabaseClient = (
   const runMutation = async <TResult>(
     operation: (client: DatabaseMutationClient) => Promise<TResult>,
   ): Promise<TResult> => {
-    const changes: BundleRepositoryChange[] = [];
+    const changes: BundleMutationChange[] = [];
     const result = await operation(
       createMutationClient(async (input) => {
         changes.push(...input);

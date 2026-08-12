@@ -166,6 +166,11 @@ describe("Supabase normalized Channel migration", () => {
     const sql = await fs.readFile(normalizedChannelsMigrationPath, "utf8");
 
     expect(sql).toContain("CREATE TABLE IF NOT EXISTS public.channels");
+    expect(sql).toContain('id text COLLATE "C" PRIMARY KEY NOT NULL');
+    expect(sql).toContain('name text COLLATE "C" NOT NULL UNIQUE');
+    expect(sql).toContain("ADD COLUMN IF NOT EXISTS channel_id text");
+    expect(sql).toContain("pg_catalog.char_length(id) BETWEEN 1 AND 255");
+    expect(sql).toContain("pg_catalog.char_length(name) BETWEEN 1 AND 255");
     expect(sql).toContain("ALTER COLUMN channel_id SET NOT NULL");
     expect(sql).toContain("FOREIGN KEY (channel_id)");
     expect(sql).toContain("DROP FUNCTION IF EXISTS public.get_channels()");
@@ -179,7 +184,7 @@ describe("Supabase normalized Channel migration", () => {
       "CREATE FUNCTION public.hot_updater_commit(p_commit jsonb)",
     );
     expect(sql).toContain(
-      "CREATE FUNCTION public.hot_updater_delete_channel(p_id uuid)",
+      "CREATE FUNCTION public.hot_updater_delete_channel(p_id text)",
     );
     expect(sql).toContain("v_change->>'model'");
     expect(sql).toContain("'changeIndex', v_change_index");
@@ -197,7 +202,7 @@ describe("Supabase normalized Channel migration", () => {
         await database.exec(migration.sql);
       }
 
-      const channelId = "00000000-0000-0000-0000-000000000030";
+      const channelId = "tenant/acme:Production";
       const bundleId = "00000000-0000-0000-0000-000000000031";
       await database.exec(`
         INSERT INTO public.channels (id, name)
@@ -213,7 +218,7 @@ describe("Supabase normalized Channel migration", () => {
       `);
 
       const directReferenced = await database.query<{ result: unknown }>(
-        "SELECT public.hot_updater_delete_channel($1::uuid) AS result",
+        "SELECT public.hot_updater_delete_channel($1::text) AS result",
         [channelId],
       );
       expect(directReferenced.rows[0]?.result).toEqual({
@@ -222,8 +227,8 @@ describe("Supabase normalized Channel migration", () => {
       });
 
       const missing = await database.query<{ result: unknown }>(
-        "SELECT public.hot_updater_delete_channel($1::uuid) AS result",
-        ["00000000-0000-0000-0000-000000000039"],
+        "SELECT public.hot_updater_delete_channel($1::text) AS result",
+        ["missing/non-uuid-channel"],
       );
       expect(missing.rows[0]?.result).toEqual({
         deleted: false,
@@ -264,7 +269,7 @@ describe("Supabase normalized Channel migration", () => {
         `DELETE FROM public.bundles WHERE id = '${bundleId}'`,
       );
       const deleted = await database.query<{ result: unknown }>(
-        "SELECT public.hot_updater_delete_channel($1::uuid) AS result",
+        "SELECT public.hot_updater_delete_channel($1::text) AS result",
         [channelId],
       );
       expect(deleted.rows[0]?.result).toEqual({ deleted: true });
@@ -272,6 +277,72 @@ describe("Supabase normalized Channel migration", () => {
       await database.close();
     }
   });
+
+  it("persists opaque Channel ids and case-sensitive names exactly", async () => {
+    const database = new PGlite();
+    try {
+      await database.exec(
+        "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;",
+      );
+      for (const migration of await readMigrations()) {
+        await database.exec(migration.sql);
+      }
+
+      const channels = [
+        { id: "channel:production/lower", name: "production" },
+        { id: "channel:production/upper", name: "Production" },
+      ];
+      const commit = await database.query<{ result: unknown }>(
+        "SELECT public.hot_updater_commit($1::jsonb) AS result",
+        [
+          JSON.stringify({
+            changes: channels.map((row) => ({
+              model: "channels",
+              operation: "insert",
+              row,
+              onConflict: "ignore",
+            })),
+          }),
+        ],
+      );
+      const stored = await database.query<{ id: string; name: string }>(
+        'SELECT id, name FROM public.channels ORDER BY name COLLATE "C"',
+      );
+
+      expect(commit.rows[0]?.result).toEqual({ committed: true });
+      expect(stored.rows).toEqual([channels[1], channels[0]]);
+    } finally {
+      await database.close();
+    }
+  });
+
+  it.each(["id", "name"] as const)(
+    "rejects a stored Channel %s longer than 255 Unicode code points",
+    async (field) => {
+      const database = new PGlite();
+      try {
+        await database.exec(
+          "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;",
+        );
+        for (const migration of await readMigrations()) {
+          await database.exec(migration.sql);
+        }
+        const row = {
+          id: field === "id" ? "😀".repeat(256) : "valid-channel-id",
+          name: field === "name" ? "😀".repeat(256) : "valid-channel-name",
+        };
+
+        await expect(
+          database.query(
+            "INSERT INTO public.channels (id, name) VALUES ($1, $2)",
+            [row.id, row.name],
+          ),
+        ).rejects.toMatchObject({ code: "23514" });
+      } finally {
+        await database.close();
+      }
+    },
+  );
 
   it("atomically maps every official model and conflict-ignored insert", async () => {
     const database = new PGlite();
@@ -283,7 +354,7 @@ describe("Supabase normalized Channel migration", () => {
         await database.exec(migration.sql);
       }
 
-      const channelId = "00000000-0000-0000-0000-000000000020";
+      const channelId = "opaque:production/channel";
       const baseBundleId = "00000000-0000-0000-0000-000000000021";
       const ownerBundleId = "00000000-0000-0000-0000-000000000022";
       const bundleRow = (id: string) => ({

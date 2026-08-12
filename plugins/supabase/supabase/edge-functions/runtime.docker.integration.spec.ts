@@ -1082,7 +1082,7 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_
 
 REVOKE EXECUTE ON FUNCTION public.hot_updater_commit(jsonb)
   FROM anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.hot_updater_delete_channel(uuid)
+REVOKE EXECUTE ON FUNCTION public.hot_updater_delete_channel(text)
   FROM anon, authenticated;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA public

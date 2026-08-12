@@ -145,14 +145,30 @@ export interface DatabaseCommit {
   readonly changes: readonly DatabaseChange[];
 }
 
-export type BundleRepositoryChange = Extract<
+type BundleRepositoryBundleChange = Extract<
   DatabaseChange,
-  { readonly model: "bundles" | "bundlePatches" | "channels" }
+  { readonly model: "bundles" | "bundlePatches" }
 >;
 
-export interface BundleRepositoryCommit {
-  readonly changes: readonly BundleRepositoryChange[];
-}
+type BundleRepositoryChannelChange = Extract<
+  DatabaseChange,
+  { readonly model: "channels" }
+>;
+
+export type BundleRepositoryChange =
+  | BundleRepositoryBundleChange
+  | BundleRepositoryChannelChange;
+
+/**
+ * The atomic envelopes supported by a bundle-management repository.
+ *
+ * Bundle and patch changes form one aggregate commit. Channel lifecycle is a
+ * separate single-change commit because the standalone HTTP boundary cannot
+ * atomically combine a Channel write with a bundle aggregate write.
+ */
+export type BundleRepositoryCommit =
+  | { readonly changes: readonly BundleRepositoryBundleChange[] }
+  | { readonly changes: readonly [BundleRepositoryChannelChange] };
 
 export type DatabaseCommitResult =
   | { readonly committed: true }

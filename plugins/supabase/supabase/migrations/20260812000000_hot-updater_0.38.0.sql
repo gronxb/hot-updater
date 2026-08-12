@@ -1,15 +1,17 @@
 -- HotUpdater.channels_0_38_0
 
 CREATE TABLE IF NOT EXISTS public.channels (
-  id uuid PRIMARY KEY NOT NULL,
-  name text NOT NULL UNIQUE
+  id text COLLATE "C" PRIMARY KEY NOT NULL
+    CHECK (pg_catalog.char_length(id) BETWEEN 1 AND 255),
+  name text COLLATE "C" NOT NULL UNIQUE
+    CHECK (pg_catalog.char_length(name) BETWEEN 1 AND 255)
 );
 
 ALTER TABLE public.bundles
-  ADD COLUMN IF NOT EXISTS channel_id uuid;
+  ADD COLUMN IF NOT EXISTS channel_id text COLLATE "C";
 
 INSERT INTO public.channels (id, name)
-SELECT pg_catalog.gen_random_uuid(), legacy.channel
+SELECT pg_catalog.gen_random_uuid()::text, legacy.channel
 FROM (
   SELECT DISTINCT bundle.channel
   FROM public.bundles AS bundle
@@ -71,7 +73,7 @@ DROP FUNCTION IF EXISTS public.hot_updater_update_bundle_with_patches(
 );
 DROP FUNCTION IF EXISTS public.hot_updater_commit(jsonb);
 
-CREATE FUNCTION public.hot_updater_delete_channel(p_id uuid)
+CREATE FUNCTION public.hot_updater_delete_channel(p_id text)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY INVOKER
@@ -149,7 +151,7 @@ BEGIN
             WHEN 'delete' THEN
               BEGIN
                 DELETE FROM public.channels
-                WHERE id = (v_change->'where'->>'id')::uuid;
+                WHERE id = v_change->'where'->>'id';
               EXCEPTION
                 WHEN foreign_key_violation THEN
                   RAISE SQLSTATE 'HU001';
@@ -436,7 +438,7 @@ REVOKE EXECUTE ON FUNCTION public.hot_updater_commit(jsonb)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.hot_updater_commit(jsonb)
   TO service_role;
-REVOKE EXECUTE ON FUNCTION public.hot_updater_delete_channel(uuid)
+REVOKE EXECUTE ON FUNCTION public.hot_updater_delete_channel(text)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.hot_updater_delete_channel(uuid)
+GRANT EXECUTE ON FUNCTION public.hot_updater_delete_channel(text)
   TO service_role;

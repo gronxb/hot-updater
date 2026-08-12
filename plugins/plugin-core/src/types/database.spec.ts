@@ -3,6 +3,7 @@ import { describe, expectTypeOf, it } from "vitest";
 import type {
   BundlePatchRow,
   BundleRepositoryChange,
+  BundleRepositoryCommit,
   BundleRow,
   ChannelRow,
   DatabaseBundleMetadata,
@@ -44,6 +45,55 @@ describe("database plugin types", () => {
       readonly operation: "append";
       readonly row: never;
     }>().not.toMatchTypeOf<DatabaseChange>();
+  });
+
+  it("matches BundleRepository commits to the standalone atomic boundary", () => {
+    expectTypeOf<{
+      readonly model: "analytics";
+      readonly operation: "insert";
+      readonly row: never;
+    }>().not.toMatchTypeOf<BundleRepositoryChange>();
+    expectTypeOf<{
+      readonly model: "clientAccessKeys";
+      readonly operation: "insert";
+      readonly row: never;
+      readonly onConflict: "ignore";
+    }>().not.toMatchTypeOf<BundleRepositoryChange>();
+    expectTypeOf<{
+      readonly changes: readonly [
+        {
+          readonly model: "channels";
+          readonly operation: "delete";
+          readonly where: { readonly id: "channel-1" };
+        },
+      ];
+    }>().toMatchTypeOf<BundleRepositoryCommit>();
+    expectTypeOf<{
+      readonly changes: readonly [
+        {
+          readonly model: "channels";
+          readonly operation: "delete";
+          readonly where: { readonly id: "channel-1" };
+        },
+        {
+          readonly model: "bundles";
+          readonly operation: "delete";
+          readonly where: { readonly id: "bundle-1" };
+        },
+      ];
+    }>().not.toMatchTypeOf<BundleRepositoryCommit>();
+    expectTypeOf<{
+      readonly changes: readonly [
+        {
+          readonly model: "analytics";
+          readonly operation: "insert";
+          readonly row: never;
+        },
+      ];
+    }>().not.toMatchTypeOf<BundleRepositoryCommit>();
+    expectTypeOf<{
+      readonly changes: readonly [];
+    }>().toMatchTypeOf<BundleRepositoryCommit>();
   });
 
   it("keeps the remote bundle repository narrower than a database plugin", () => {

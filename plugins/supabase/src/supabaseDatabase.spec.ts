@@ -675,4 +675,28 @@ describe("supabase Channel model", () => {
       database.models.channels.delete({ id: channel.id }),
     ).resolves.toEqual({ deleted: false, reason: "not_found" });
   });
+
+  it.each(["id", "name"] as const)(
+    "rejects an overlong Channel %s before calling Supabase",
+    async (field) => {
+      resetMockClient();
+      const database = supabaseDatabase({
+        supabaseUrl: "https://test.supabase.invalid",
+        supabaseServiceRoleKey: "test-service-role-key",
+      });
+      const row = {
+        id: "valid-channel-id",
+        name: "valid-channel-name",
+        [field]: "😀".repeat(256),
+      };
+
+      await expect(
+        database.models.channels.insert({
+          row,
+          onConflict: "returnExisting",
+        }),
+      ).rejects.toMatchObject({ code: "invalid-data" });
+      expect(getTableReadCount("channels")).toBe(0);
+    },
+  );
 });
