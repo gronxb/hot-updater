@@ -32,15 +32,15 @@ function resolveStorageUriForDeletion(
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
+  if (storagePlugin.protocol === protocol) {
+    return storageUri;
+  }
+
   if (protocol === "http" || protocol === "https") {
     return null;
   }
 
-  if (storagePlugin.protocol !== protocol) {
-    throw new Error(`No storage plugin for protocol: ${protocol}`);
-  }
-
-  return storageUri;
+  throw new Error(`No storage plugin for protocol: ${protocol}`);
 }
 
 async function downloadStorageBytes(
@@ -48,6 +48,14 @@ async function downloadStorageBytes(
   storagePlugin: StoragePluginWith<"get" | "delete">,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
+
+  if (storagePlugin.protocol === protocol) {
+    const { response } = await storagePlugin.get({ storageUri });
+    if (response === null) {
+      throw new Error(`Storage object not found: ${storageUri}`);
+    }
+    return new Uint8Array(await response.arrayBuffer());
+  }
 
   if (protocol === "http" || protocol === "https") {
     const response = await fetch(storageUri);
@@ -60,15 +68,7 @@ async function downloadStorageBytes(
     return new Uint8Array(await response.arrayBuffer());
   }
 
-  if (storagePlugin.protocol !== protocol) {
-    throw new Error(`No storage plugin for protocol: ${protocol}`);
-  }
-
-  const { response } = await storagePlugin.get({ storageUri });
-  if (response === null) {
-    throw new Error(`Storage object not found: ${storageUri}`);
-  }
-  return new Uint8Array(await response.arrayBuffer());
+  throw new Error(`No storage plugin for protocol: ${protocol}`);
 }
 
 async function loadBundleManifest(

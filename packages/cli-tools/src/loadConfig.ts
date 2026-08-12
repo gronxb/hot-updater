@@ -22,44 +22,58 @@ export type HotUpdaterConfigOptions = {
 
 const missingDatabase = createDatabasePlugin({
   name: "missingDatabase",
-  bundles: {
-    findById: async () => {
-      throw new Error("database plugin is required");
+  models: {
+    bundles: {
+      findById: async () => {
+        throw new Error("database plugin is required");
+      },
+      findMany: async () => {
+        throw new Error("database plugin is required");
+      },
+      count: async () => {
+        throw new Error("database plugin is required");
+      },
     },
-    findMany: async () => {
-      throw new Error("database plugin is required");
+    bundlePatches: {
+      findByBundleIds: async () => {
+        throw new Error("database plugin is required");
+      },
     },
-    count: async () => {
-      throw new Error("database plugin is required");
+    channels: {
+      insert: async () => {
+        throw new Error("database plugin is required");
+      },
+      list: async () => {
+        throw new Error("database plugin is required");
+      },
+      delete: async () => {
+        throw new Error("database plugin is required");
+      },
+    },
+    analytics: {
+      append: async () => {
+        throw new Error("database plugin is required");
+      },
+      scan: async () => {
+        throw new Error("database plugin is required");
+      },
+    },
+    clientAccessKeys: {
+      create: async () => {
+        throw new Error("database plugin is required");
+      },
+      findByHash: async () => {
+        throw new Error("database plugin is required");
+      },
+      list: async () => {
+        throw new Error("database plugin is required");
+      },
+      revoke: async () => {
+        throw new Error("database plugin is required");
+      },
     },
   },
-  bundlePatches: {
-    findByBundleIds: async () => {
-      throw new Error("database plugin is required");
-    },
-  },
-  analytics: {
-    append: async () => {
-      throw new Error("database plugin is required");
-    },
-    scan: async () => {
-      throw new Error("database plugin is required");
-    },
-  },
-  clientAccessKeys: {
-    create: async () => {
-      throw new Error("database plugin is required");
-    },
-    findByHash: async () => {
-      throw new Error("database plugin is required");
-    },
-    list: async () => {
-      throw new Error("database plugin is required");
-    },
-    revoke: async () => {
-      throw new Error("database plugin is required");
-    },
-  },
+  queries: {},
   commit: async () => {
     throw new Error("database plugin is required");
   },
@@ -179,7 +193,10 @@ const getDefaultConfig = (): ConfigInput => {
   };
 };
 
-export type ConfigResponse = RequiredDeep<ConfigInput>;
+export type ConfigResponse = RequiredDeep<
+  Omit<ConfigInput, "database" | "storage">
+> &
+  Pick<ConfigInput, "database" | "storage">;
 
 const mergeConfigSources = (
   ...sources: Array<ConfigInput | null | undefined>

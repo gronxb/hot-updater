@@ -10,7 +10,10 @@ import {
   validateField,
   validateFields,
 } from "./databasePluginCrudValidationFields";
-import type { DatabaseBundleQueryOptions, DatabaseModel } from "./types";
+import type {
+  DatabaseBundleQueryOptions,
+  DatabaseModel,
+} from "./types/internal";
 
 export const validateSelect = (model: DatabaseModel, select: unknown): void => {
   if (select === undefined) return;

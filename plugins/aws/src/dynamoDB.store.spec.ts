@@ -10,20 +10,23 @@ import { toDynamoDBBundleItem } from "./dynamoDB";
 const dynamodb = mockClient(DynamoDBDocumentClient);
 const tableName = "hot-updater-metadata";
 const bundle = toDynamoDBBundleItem(
-  bundleToRow({
-    id: "00000000-0000-0000-0000-000000000001",
-    platform: "ios",
-    shouldForceUpdate: false,
-    enabled: true,
-    fileHash: "hash",
-    gitCommitHash: null,
-    message: null,
-    channel: "production",
-    storageUri: "storage://bundle.zip",
-    targetAppVersion: "1.0.0",
-    fingerprintHash: null,
-    metadata: {},
-  }),
+  bundleToRow(
+    {
+      id: "00000000-0000-0000-0000-000000000001",
+      platform: "ios",
+      shouldForceUpdate: false,
+      enabled: true,
+      fileHash: "hash",
+      gitCommitHash: null,
+      message: null,
+      channel: "production",
+      storageUri: "storage://bundle.zip",
+      targetAppVersion: "1.0.0",
+      fingerprintHash: null,
+      metadata: {},
+    },
+    "00000000-0000-0000-0000-000000000100",
+  ),
 );
 
 const createStore = () => ({

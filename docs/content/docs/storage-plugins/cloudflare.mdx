@@ -101,6 +101,7 @@ Web responses. Its `getDownloadUrl` operation returns a signed URL handled by
 
 ## Protocol
 
-`r2://`
+`r2://bucket/encoded/key`
 
-This prefix is stored in the `storageUri` field in the database.
+For example, `r2://updates/releases/1.0.0/bundle%20ios.zip` is stored in the
+`storageUri` field. Keys retain their slash hierarchy and encode each segment.

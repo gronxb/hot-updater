@@ -12,8 +12,12 @@ import {
   inferLegacyCoreSchemaVersion,
   isCurrentSchemaVersion,
 } from "./fixedMigratorShared";
+import { hotUpdaterSchema } from "./schema/registry";
 import { createTableSql } from "./schema/sql";
-import { createSchemaMigrationSql } from "./schema/sqlMigrations";
+import {
+  createSchemaMigrationSql,
+  SQLITE_RESTORE_BUNDLES_SCHEMA_MARKER,
+} from "./schema/sqlMigrations";
 import {
   createSqlCreateOperations,
   getSettingsInsertSql,
@@ -52,6 +56,52 @@ const toCustomOperations = (
   ),
   ...(settingsOperation ? [settingsOperation] : []),
 ];
+
+const expandSqliteUserSchemaRestore = async (
+  db: QueryExecutorProvider,
+  statements: readonly string[],
+): Promise<readonly string[]> => {
+  if (!statements.includes(SQLITE_RESTORE_BUNDLES_SCHEMA_MARKER)) {
+    return statements;
+  }
+  const officialIndexes = new Set(
+    hotUpdaterSchema.tables
+      .find(({ ormName }) => ormName === "bundles")
+      ?.indexes?.map(({ name }) => name) ?? [],
+  );
+  const result = await sql<{
+    readonly name: unknown;
+    readonly sql: unknown;
+    readonly type: unknown;
+  }>`
+    select name, sql, type
+    from sqlite_master
+    where tbl_name = 'bundles'
+      and type in ('index', 'trigger')
+      and sql is not null
+    order by type, name
+  `.execute(db);
+  const userSchema = result.rows.flatMap((row) => {
+    if (
+      typeof row.name !== "string" ||
+      typeof row.sql !== "string" ||
+      (row.type !== "index" && row.type !== "trigger")
+    ) {
+      throw new Error(
+        "Invalid SQLite bundle index or trigger metadata during 0.38.0 migration.",
+      );
+    }
+    return row.type === "index" && officialIndexes.has(row.name)
+      ? []
+      : [row.sql];
+  });
+
+  return statements.flatMap((statement) =>
+    statement === SQLITE_RESTORE_BUNDLES_SCHEMA_MARKER
+      ? userSchema
+      : [statement],
+  );
+};
 
 export const createKyselyMigrator = ({
   db,
@@ -126,7 +176,7 @@ export const createKyselyMigrator = ({
           } satisfies MigrationOperation);
     const executableSettingsStatements =
       options.updateSettings === false ? [] : [settingsStatement];
-    const migrationStatements =
+    const rawMigrationStatements =
       currentVersion === undefined
         ? []
         : createSchemaMigrationSql(
@@ -135,6 +185,10 @@ export const createKyselyMigrator = ({
             provider,
             relationMode,
           );
+    const migrationStatements =
+      provider === "sqlite"
+        ? await expandSqliteUserSchemaRestore(db, rawMigrationStatements)
+        : rawMigrationStatements;
     const statements =
       currentVersion === undefined
         ? [...createTableSql(provider, relationMode), settingsStatement]

@@ -76,6 +76,37 @@ const runNode = (packageDirectory: string, source: string, asModule = false) =>
     { cwd: packageDirectory },
   );
 
+const typeCheckConsumers = async (
+  packageDirectory: string,
+  consumers: readonly string[],
+) => {
+  const typescriptCli = path.join(
+    workspaceRoot,
+    "node_modules",
+    "typescript",
+    "bin",
+    "tsc6",
+  );
+  await access(typescriptCli);
+  const compilerArguments = [
+    typescriptCli,
+    "--noEmit",
+    "--module",
+    "NodeNext",
+    "--moduleResolution",
+    "NodeNext",
+    "--target",
+    "ES2022",
+    "--skipLibCheck",
+  ];
+
+  for (const consumer of consumers) {
+    await execFileAsync(process.execPath, [...compilerArguments, consumer], {
+      cwd: packageDirectory,
+    });
+  }
+};
+
 afterAll(async () => {
   await Promise.all(
     temporaryDirectories.map((directory) =>
@@ -168,6 +199,7 @@ describe("packed provider entrypoints", () => {
 
   it("resolves the packed Cloudflare Worker entrypoint for ESM and CommonJS consumers", async () => {
     const { packageDirectory } = await packProvider("cloudflare");
+    const rootSpecifier = "@hot-updater/cloudflare";
     const moduleSpecifier = "@hot-updater/cloudflare/worker";
 
     const { stdout } = await runNode(
@@ -184,14 +216,28 @@ describe("packed provider entrypoints", () => {
     expect(commonJsPath).toMatch(/[/\\]dist[/\\]worker[/\\]index\.cjs$/);
 
     const runtimeAssertions = `
+const rootStorage = rootRuntime.r2Storage({
+  accountId: "account-id",
+  bucketName: "updates",
+  credentials: {
+    accessKeyId: "access-key-id",
+    secretAccessKey: "secret-access-key",
+  },
+});
+if (rootStorage.name !== "r2Storage") throw new Error("invalid root r2Storage name");
+for (const operation of ["put", "get", "exists", "delete"]) {
+  if (typeof rootStorage[operation] !== "function") throw new Error("missing root storage " + operation);
+}
+if ("getDownloadUrl" in rootStorage) throw new Error("unexpected root storage download capability");
 const databaseBinding = {
   prepare: () => ({ bind: () => ({ all: async () => ({ results: [] }) }) }),
   batch: async (statements) => Promise.all(statements.map((statement) => statement.all())),
 };
 const database = runtime.d1Database(databaseBinding);
 if (database.name !== "d1Database") throw new Error("invalid d1Database name");
-if (typeof database.analytics.append !== "function") throw new Error("missing analytics domain");
-if (typeof database.clientAccessKeys.create !== "function") throw new Error("missing clientAccessKeys domain");
+if (typeof database.models.analytics.append !== "function") throw new Error("missing analytics model");
+if (typeof database.models.clientAccessKeys.create !== "function") throw new Error("missing clientAccessKeys model");
+if (typeof database.models.channels.list !== "function") throw new Error("missing channels model");
 if ("d1WorkerDatabase" in runtime) throw new Error("unexpected d1WorkerDatabase");
 const storage = runtime.r2Storage({
   bucket: {},
@@ -205,53 +251,77 @@ for (const operation of ["put", "get", "getDownloadUrl", "exists", "delete"]) {
 `;
     await runNode(
       packageDirectory,
-      `const runtime = await import(${JSON.stringify(moduleSpecifier)});${runtimeAssertions}`,
+      `const rootRuntime = await import(${JSON.stringify(rootSpecifier)});\nconst runtime = await import(${JSON.stringify(moduleSpecifier)});${runtimeAssertions}`,
       true,
     );
     await runNode(
       packageDirectory,
-      `const runtime = require(${JSON.stringify(moduleSpecifier)});${runtimeAssertions}`,
+      `const rootRuntime = require(${JSON.stringify(rootSpecifier)});\nconst runtime = require(${JSON.stringify(moduleSpecifier)});${runtimeAssertions}`,
     );
 
     const moduleConsumer = path.join(packageDirectory, "consumer.mts");
     const commonJsConsumer = path.join(packageDirectory, "consumer.cts");
-    const consumerSource = `import { d1Database, r2Storage } from ${JSON.stringify(
+    const consumerSource = `import { r2Storage as rootStorage } from ${JSON.stringify(
+      rootSpecifier,
+    )};\nimport { d1Database, r2Storage } from ${JSON.stringify(
       moduleSpecifier,
-    )};\ndeclare const binding: Parameters<typeof d1Database>[0];\ndeclare const storageConfig: Parameters<typeof r2Storage>[0];\nconst database = d1Database(binding);\nconst storage = r2Storage(storageConfig);\nvoid database.bundles;\nvoid database.bundlePatches;\nvoid database.analytics;\nvoid database.clientAccessKeys;\nvoid database.commit;\nvoid storage.get;\n`;
+    )};\ndeclare const binding: Parameters<typeof d1Database>[0];\ndeclare const rootStorageConfig: Parameters<typeof rootStorage>[0];\ndeclare const storageConfig: Parameters<typeof r2Storage>[0];\nconst database = d1Database(binding);\nconst nodeStorage = rootStorage(rootStorageConfig);\nconst workerStorage = r2Storage(storageConfig);\nvoid database.models.bundles;\nvoid database.models.bundlePatches;\nvoid database.models.channels;\nvoid database.models.analytics;\nvoid database.models.clientAccessKeys;\nvoid database.queries.getUpdateInfo;\nvoid database.commit;\nvoid nodeStorage.put;\nvoid nodeStorage.get;\nvoid nodeStorage.exists;\nvoid nodeStorage.delete;\nvoid workerStorage.put;\nvoid workerStorage.get;\nvoid workerStorage.getDownloadUrl;\nvoid workerStorage.exists;\nvoid workerStorage.delete;\n`;
     await writeFile(moduleConsumer, consumerSource);
     await writeFile(commonJsConsumer, consumerSource);
 
-    const typescriptCli = path.join(
-      workspaceRoot,
-      "node_modules",
-      "typescript",
-      "bin",
-      "tsc6",
-    );
-    await access(typescriptCli);
-    const compilerArguments = [
-      typescriptCli,
-      "--noEmit",
-      "--module",
-      "NodeNext",
-      "--moduleResolution",
-      "NodeNext",
-      "--target",
-      "ES2022",
-      "--skipLibCheck",
-    ];
+    await typeCheckConsumers(packageDirectory, [
+      moduleConsumer,
+      commonJsConsumer,
+    ]);
+  });
 
-    await execFileAsync(
-      process.execPath,
-      [...compilerArguments, moduleConsumer],
-      {
-        cwd: packageDirectory,
-      },
+  it("exposes the same Supabase database name and contract from root and edge entrypoints", async () => {
+    const { packageDirectory } = await packProvider("supabase");
+    const rootSpecifier = "@hot-updater/supabase";
+    const edgeSpecifier = "@hot-updater/supabase/edge";
+    const runtimeAssertions = `
+const config = {
+  supabaseUrl: "https://test.supabase.invalid",
+  supabaseServiceRoleKey: "test-service-role-key",
+};
+for (const runtime of [rootRuntime, edgeRuntime]) {
+  const database = runtime.supabaseDatabase(config);
+  if (database.name !== "supabaseDatabase") throw new Error("invalid supabaseDatabase name");
+  if (typeof database.models.channels.list !== "function") throw new Error("missing channels model");
+  if ("supabaseEdgeFunctionDatabase" in runtime) throw new Error("unexpected supabaseEdgeFunctionDatabase");
+  const storage = runtime.supabaseStorage({ ...config, bucketName: "updates" });
+  if (storage.name !== "supabaseStorage") throw new Error("invalid supabaseStorage name");
+  for (const operation of ["put", "get", "getDownloadUrl", "exists", "delete"]) {
+    if (typeof storage[operation] !== "function") throw new Error("missing storage " + operation);
+  }
+}
+`;
+
+    await runNode(
+      packageDirectory,
+      `const rootRuntime = await import(${JSON.stringify(rootSpecifier)});\nconst edgeRuntime = await import(${JSON.stringify(edgeSpecifier)});${runtimeAssertions}`,
+      true,
     );
-    await execFileAsync(
-      process.execPath,
-      [...compilerArguments, commonJsConsumer],
-      { cwd: packageDirectory },
+    await runNode(
+      packageDirectory,
+      `const rootRuntime = require(${JSON.stringify(rootSpecifier)});\nconst edgeRuntime = require(${JSON.stringify(edgeSpecifier)});${runtimeAssertions}`,
     );
+
+    const moduleConsumer = path.join(packageDirectory, "supabase-consumer.mts");
+    const commonJsConsumer = path.join(
+      packageDirectory,
+      "supabase-consumer.cts",
+    );
+    const consumerSource = `import { supabaseDatabase as rootDatabase, supabaseStorage as rootStorage } from ${JSON.stringify(
+      rootSpecifier,
+    )};\nimport { supabaseDatabase as edgeDatabase, supabaseStorage as edgeStorage } from ${JSON.stringify(
+      edgeSpecifier,
+    )};\nconst config: Parameters<typeof rootDatabase>[0] = { supabaseUrl: "https://test.supabase.invalid", supabaseServiceRoleKey: "test-service-role-key" };\nconst edgeConfig: Parameters<typeof edgeDatabase>[0] = config;\nconst rootStorageConfig: Parameters<typeof rootStorage>[0] = { ...config, bucketName: "updates" };\nconst edgeStorageConfig: Parameters<typeof edgeStorage>[0] = rootStorageConfig;\nvoid rootDatabase(config).models.channels;\nvoid edgeDatabase(edgeConfig).models.channels;\nvoid rootStorage(rootStorageConfig).getDownloadUrl;\nvoid edgeStorage(edgeStorageConfig).getDownloadUrl;\n`;
+    await writeFile(moduleConsumer, consumerSource);
+    await writeFile(commonJsConsumer, consumerSource);
+    await typeCheckConsumers(packageDirectory, [
+      moduleConsumer,
+      commonJsConsumer,
+    ]);
   });
 });

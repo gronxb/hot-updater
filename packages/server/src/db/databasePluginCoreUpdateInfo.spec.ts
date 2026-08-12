@@ -17,7 +17,7 @@ import {
 describe("createDatabasePluginCore update info", () => {
   it("uses the optional low-plugin update fast-path", async () => {
     const basePlugin = createInMemoryDatabasePlugin();
-    const findMany = vi.spyOn(basePlugin.bundles, "findMany");
+    const findMany = vi.spyOn(basePlugin.models.bundles, "findMany");
     const expected: UpdateInfo = {
       fileHash: targetBundle.fileHash,
       id: targetBundle.id,
@@ -26,12 +26,12 @@ describe("createDatabasePluginCore update info", () => {
       status: "UPDATE",
       storageUri: targetBundle.storageUri,
     };
-    const getUpdateInfo = vi.fn<NonNullable<DatabasePlugin["getUpdateInfo"]>>(
-      async () => expected,
-    );
+    const getUpdateInfo = vi.fn<
+      NonNullable<DatabasePlugin["queries"]["getUpdateInfo"]>
+    >(async () => expected);
     const plugin: DatabasePlugin = {
       ...basePlugin,
-      getUpdateInfo,
+      queries: { getUpdateInfo },
     };
     const core = createDatabasePluginCore(plugin, resolveFileUrl);
     const result = await core.api.getUpdateInfo(updateArgs);
@@ -43,10 +43,10 @@ describe("createDatabasePluginCore update info", () => {
 
   it("does not scan when the optional update fast-path returns null", async () => {
     const basePlugin = createInMemoryDatabasePlugin();
-    const findMany = vi.spyOn(basePlugin.bundles, "findMany");
+    const findMany = vi.spyOn(basePlugin.models.bundles, "findMany");
     const plugin: DatabasePlugin = {
       ...basePlugin,
-      getUpdateInfo: vi.fn(async () => null),
+      queries: { getUpdateInfo: vi.fn(async () => null) },
     };
     const core = createDatabasePluginCore(plugin, resolveFileUrl);
 
@@ -127,14 +127,16 @@ describe("createDatabasePluginCore update info", () => {
     const basePlugin = createInMemoryDatabasePlugin();
     const plugin: DatabasePlugin = {
       ...basePlugin,
-      getUpdateInfo: async () => ({
-        fileHash: null,
-        id: NIL_UUID,
-        message: null,
-        shouldForceUpdate: true,
-        status: "ROLLBACK",
-        storageUri: null,
-      }),
+      queries: {
+        getUpdateInfo: async () => ({
+          fileHash: null,
+          id: NIL_UUID,
+          message: null,
+          shouldForceUpdate: true,
+          status: "ROLLBACK",
+          storageUri: null,
+        }),
+      },
     };
     const readStorageText = vi.fn(async () => null);
     const core = createDatabasePluginCore(plugin, resolveFileUrl, {

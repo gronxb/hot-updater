@@ -51,8 +51,7 @@ export const hotUpdater = createHotUpdater({
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
       },
       bucketName: process.env.R2_BUCKET_NAME!,
-      downloadUrlSigningKey:
-        process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
+      downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
     }),
   ],
   basePath: "/hot-updater",
@@ -69,9 +68,10 @@ Bundle management routes used by the CLI `standaloneRepository` must be
 enabled explicitly and protected by framework middleware before mounting the
 handler.
 
-`features` controls the core routes and optional database-backed behavior. The
-example enables bundle-management routes and Analytics; add
-`clientAccessKeys: true` only after creating and distributing a client key.
+The same `features` object controls the core route groups and optional behavior
+backed by the server database. The example enables Analytics with protected
+query routes; add `clientAccessKeys: true` only after creating and distributing
+a client key.
 
 ## Server Setup
 
@@ -85,7 +85,8 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
 
-app.use( // [!code ++]
+app.use(
+  // [!code ++]
   "/hot-updater/api/*", // [!code ++]
   bearerAuth({ token: process.env.HOT_UPDATER_AUTH_TOKEN ?? "" }), // [!code ++]
 ); // [!code ++]
@@ -168,7 +169,7 @@ export default defineConfig({
 
 <Callout type="warn">
   The CLI `storage` plugin must match one entry in the server's
-  `createHotUpdater({ storage })` array. Both use `s3Storage` here.
+  `createHotUpdater({storage})` array. Both use `s3Storage` here.
 </Callout>
 
 ## React Native Setup
@@ -193,5 +194,5 @@ export default HotUpdater.wrap({
 ## Next Steps
 
 - Configure your CLI to use this server (see [Overview](./overview#cli-configuration))
-- Explore other [Database Adapters](./database/drizzle) (Drizzle, Prisma, MongoDB, S3)
+- Explore other [Database Adapters](./database/drizzle) (Drizzle, Prisma, MongoDB)
 - Try different [Server Frameworks](./frameworks/hono) (Express, Elysia)

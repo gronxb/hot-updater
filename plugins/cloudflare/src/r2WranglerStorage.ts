@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   createStorageKeyBuilder,
   createStoragePlugin,
+  createStorageUri,
   parseStorageUri,
   type StoragePluginWith,
 } from "@hot-updater/plugin-core";
@@ -91,7 +92,8 @@ export const createR2WranglerStorage = (
     async put({ key, body, contentType }) {
       const storageKey = getStorageKey(key);
       await withTempFile(async (filePath) => {
-        await fs.writeFile(filePath, body);
+        const bytes = new Uint8Array(await new Response(body).arrayBuffer());
+        await fs.writeFile(filePath, bytes);
         await wrangler(
           "r2",
           "object",
@@ -104,7 +106,13 @@ export const createR2WranglerStorage = (
           "--remote",
         );
       });
-      return { storageUri: `r2://${bucketName}/${storageKey}` };
+      return {
+        storageUri: createStorageUri({
+          protocol: "r2",
+          bucket: bucketName,
+          key: storageKey,
+        }),
+      };
     },
     async get({ storageUri }) {
       return { response: await getResponse(storageUri) };
@@ -114,14 +122,20 @@ export const createR2WranglerStorage = (
     },
     async delete({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
-      await wrangler(
-        "r2",
-        "object",
-        "delete",
-        `${bucketName}/${key}`,
-        "--remote",
-      );
-      return { storageUri };
+      try {
+        await wrangler(
+          "r2",
+          "object",
+          "delete",
+          `${bucketName}/${key}`,
+          "--remote",
+        );
+      } catch (error) {
+        if (!(error instanceof ExecaError) || !isObjectNotFoundError(error)) {
+          throw error;
+        }
+      }
+      return { deleted: true };
     },
   });
 };

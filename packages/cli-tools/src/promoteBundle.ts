@@ -18,6 +18,8 @@ import type {
 import {
   createUUIDv7,
   detectCompressionFormat,
+  parseStorageUri,
+  replaceStorageUriKeySuffix,
 } from "@hot-updater/plugin-core";
 import JSZip from "jszip";
 import * as tar from "tar";
@@ -26,7 +28,11 @@ import { createTarBrTargetFiles } from "./createTarBr";
 import { createTarGzTargetFiles } from "./createTarGz";
 import { createZipTargetFiles } from "./createZip";
 import type { ConfigResponse } from "./loadConfig";
-import { putStorageFile, writeStorageFile } from "./storageFiles";
+import {
+  putStorageFile,
+  writeStorageFile,
+  writeStorageResponseFile,
+} from "./storageFiles";
 
 type PromoteStoragePlugin = StoragePluginWith<"get" | "put" | "delete">;
 
@@ -72,8 +78,9 @@ async function signFileHash(fileHash: string, privateKeyPath: string) {
 }
 
 function getArchiveFilename(storageUri: string) {
-  const { pathname } = new URL(storageUri);
-  const filename = path.basename(pathname);
+  const protocol = new URL(storageUri).protocol.replace(":", "");
+  const { key } = parseStorageUri(storageUri, protocol);
+  const filename = path.posix.basename(key);
   return filename || "bundle.zip";
 }
 
@@ -129,17 +136,6 @@ async function prepareManifestAssetUploadFile({
   return uploadPath;
 }
 
-const replaceStorageUriLeaf = (storageUri: string, nextLeaf: string) => {
-  const storageUrl = new URL(storageUri);
-  const normalizedPath = storageUrl.pathname.replace(/\/+$/, "");
-  const lastSlashIndex = normalizedPath.lastIndexOf("/");
-  const parentPath =
-    lastSlashIndex >= 0 ? normalizedPath.slice(0, lastSlashIndex) : "";
-
-  storageUrl.pathname = `${parentPath}/${nextLeaf}`;
-  return storageUrl.toString();
-};
-
 function resolveExtractedPath(rootDir: string, entryName: string) {
   const normalizedEntryName = entryName.replaceAll("\\", "/");
   const entryPath = path.resolve(rootDir, normalizedEntryName);
@@ -163,16 +159,20 @@ async function downloadArchive(
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
-  if (protocol === "http" || protocol === "https") {
-    const archiveBuffer = await downloadFromUrl(storageUri);
-    await fs.writeFile(archivePath, archiveBuffer);
+  if (storagePlugin?.protocol === protocol) {
+    await writeStorageFile(storagePlugin, storageUri, archivePath);
     return;
   }
 
-  await downloadFromStorage(storageUri, storagePlugin, archivePath);
+  if (protocol === "http" || protocol === "https") {
+    await downloadFromUrl(storageUri, archivePath);
+    return;
+  }
+
+  throw new Error(`No storage plugin for protocol: ${protocol}`);
 }
 
-async function downloadFromUrl(fileUrl: string) {
+async function downloadFromUrl(fileUrl: string, filePath: string) {
   const response = await fetch(fileUrl);
   if (!response.ok) {
     throw new Error(
@@ -180,24 +180,7 @@ async function downloadFromUrl(fileUrl: string) {
     );
   }
 
-  return new Uint8Array(await response.arrayBuffer());
-}
-
-async function downloadFromStorage(
-  storageUri: string,
-  storagePlugin: PromoteStoragePlugin | null,
-  filePath: string,
-) {
-  if (!storagePlugin) {
-    throw new Error("Storage plugin is not configured");
-  }
-
-  const protocol = new URL(storageUri).protocol.replace(":", "");
-  if (storagePlugin.protocol !== protocol) {
-    throw new Error(`No storage plugin for protocol: ${protocol}`);
-  }
-
-  await writeStorageFile(storagePlugin, storageUri, filePath);
+  await writeStorageResponseFile(response, filePath);
 }
 
 async function extractZipArchive(archivePath: string, extractDir: string) {
@@ -419,10 +402,11 @@ export async function createCopiedBundleArchive({
       uploadedStorageUris.push(assetUpload.storageUri);
     }
 
-    const assetBaseStorageUri = replaceStorageUriLeaf(
-      manifestUpload.storageUri,
-      "files",
-    );
+    const assetBaseStorageUri = replaceStorageUriKeySuffix({
+      storageUri: manifestUpload.storageUri,
+      keySuffix: path.basename(manifestPath),
+      replacement: "files",
+    });
 
     return {
       bundle: {
@@ -461,7 +445,12 @@ async function deleteUploadedCopy(
 
   for (const storageUri of new Set(storageUris)) {
     try {
-      await storagePlugin.delete({ storageUri });
+      const protocol = new URL(storageUri).protocol.replace(":", "");
+      if (storagePlugin.protocol === protocol) {
+        await storagePlugin.delete({ storageUri });
+      } else if (protocol !== "http" && protocol !== "https") {
+        throw new Error(`No storage plugin for protocol: ${protocol}`);
+      }
     } catch (error) {
       console.error("Failed to delete uploaded bundle copy:", error);
     }

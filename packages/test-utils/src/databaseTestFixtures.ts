@@ -3,11 +3,25 @@ import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
+  ChannelRow,
   ClientAccessKeyRow,
 } from "@hot-updater/plugin-core";
 
 const fixtureId = (suffix: string): string =>
   `00000000-0000-0000-0000-${suffix.padStart(12, "0")}`;
+
+const channelFixtureSuffix = (name: string): string => {
+  let hash = 0;
+  for (const character of name) {
+    hash = (hash * 31 + character.codePointAt(0)!) % 1_000_000_000_000;
+  }
+  return String(hash);
+};
+
+export const createChannelRowFixture = (name = "production"): ChannelRow => ({
+  id: fixtureId(channelFixtureSuffix(name)),
+  name,
+});
 
 export const createBundleRowFixture = (
   suffix: string,
@@ -21,6 +35,7 @@ export const createBundleRowFixture = (
   git_commit_hash: null,
   message: `bundle-${suffix}`,
   channel,
+  channel_id: createChannelRowFixture(channel).id,
   storage_uri: `storage://bundles/${suffix}.zip`,
   target_app_version: "1.0.0",
   fingerprint_hash: null,

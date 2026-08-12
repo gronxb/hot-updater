@@ -66,7 +66,7 @@ const getHotUpdater = (distributionDomainName: string) => {
     features: {
       updateCheck: true,
       bundles: false,
-      analytics: true,
+      analytics: {},
       clientAccessKeys: true,
     },
     storage: [

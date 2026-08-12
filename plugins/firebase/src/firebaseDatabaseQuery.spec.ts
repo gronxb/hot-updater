@@ -12,6 +12,7 @@ const createBundle = (suffix: string, channel = "production"): BundleRow => ({
   git_commit_hash: null,
   message: null,
   channel,
+  channel_id: `channel-${channel}`,
   storage_uri: `storage://bundles/${suffix}.zip`,
   target_app_version: "1.0.0",
   fingerprint_hash: null,

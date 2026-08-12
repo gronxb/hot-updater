@@ -102,15 +102,13 @@ async function downloadStorageBytes(
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
-  if (protocol === "http" || protocol === "https") {
-    return downloadFromUrl(storageUri);
-  }
-
-  if (!storagePlugin) {
-    throw new Error("Storage plugin is not configured");
-  }
-
-  if (storagePlugin.protocol !== protocol) {
+  if (!storagePlugin || storagePlugin.protocol !== protocol) {
+    if (protocol === "http" || protocol === "https") {
+      return downloadFromUrl(storageUri);
+    }
+    if (!storagePlugin) {
+      throw new Error("Storage plugin is not configured");
+    }
     throw new Error(`No storage plugin for protocol: ${protocol}`);
   }
 
@@ -312,7 +310,13 @@ export async function createBundleDiff(
     .join("/");
   const patchUpload = await deps.storagePlugin.put({
     key: uploadKey,
-    body: patchBytes,
+    body: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(patchBytes);
+        controller.close();
+      },
+    }),
+    contentLength: patchBytes.byteLength,
     contentType: "application/octet-stream",
   });
   const patchFileHash = crypto

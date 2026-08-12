@@ -49,20 +49,27 @@ const createDatabasePlugin = async (
 
 const createStoragePlugin = (
   put: NonNullable<StoragePlugin["put"]>,
+  options: {
+    get?: NonNullable<StoragePlugin["get"]>;
+    protocol?: string;
+  } = {},
 ): StoragePluginWith<"get" | "put" | "delete"> =>
   createCoreStoragePlugin({
     name: "mockStorage",
-    protocol: "s3",
+    protocol: options.protocol ?? "s3",
     async delete({ storageUri }) {
-      return { storageUri };
+      void storageUri;
+      return { deleted: true };
     },
-    async get({ storageUri }) {
-      const storageUrl = new URL(storageUri);
-      const response = await fetch(
-        `https://assets.example.com${storageUrl.pathname}`,
-      );
-      return { response: response.ok ? response : null };
-    },
+    get:
+      options.get ??
+      (async ({ storageUri }) => {
+        const storageUrl = new URL(storageUri);
+        const response = await fetch(
+          `https://assets.example.com${storageUrl.pathname}`,
+        );
+        return { response: response.ok ? response : null };
+      }),
     put,
   });
 
@@ -82,9 +89,12 @@ describe("createBundleDiff", () => {
     const databasePlugin: DatabasePlugin = plugin;
     const commit = vi.spyOn(databasePlugin, "commit");
     const upload = vi.fn<NonNullable<StoragePlugin["put"]>>(
-      async ({ key }) => ({
-        storageUri: `s3://test-bucket/${key}`,
-      }),
+      async ({ key, body, contentLength }) => {
+        const bytes = new Uint8Array(await new Response(body).arrayBuffer());
+        expect(bytes).toEqual(new Uint8Array([1, 2, 3, 4]));
+        expect(contentLength).toBe(bytes.byteLength);
+        return { storageUri: `s3://test-bucket/${key}` };
+      },
     );
 
     vi.stubGlobal(
@@ -241,6 +251,84 @@ describe("createBundleDiff", () => {
         ),
       ).rejects.toThrow("Expected exactly one Hermes bundle asset in manifest");
       expect(upload).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("uses a matching HTTPS storage plugin before direct fetch", async () => {
+    const baseBundle = createBundle("00000000-0000-0000-0000-000000000001", {
+      assetBaseStorageUri: "https://storage.example.com/releases/base/files",
+      manifestStorageUri:
+        "https://storage.example.com/releases/base/manifest.json",
+    });
+    const targetBundle = createBundle("00000000-0000-0000-0000-000000000002", {
+      assetBaseStorageUri: "https://storage.example.com/releases/target/files",
+      manifestStorageUri:
+        "https://storage.example.com/releases/target/manifest.json",
+    });
+    const databasePlugin = await createDatabasePlugin([
+      baseBundle,
+      targetBundle,
+    ]);
+    const responses = new Map<string, string | Uint8Array>([
+      [
+        baseBundle.manifestStorageUri!,
+        JSON.stringify({
+          assets: { "index.ios.bundle": { fileHash: "hash-old" } },
+          bundleId: baseBundle.id,
+        }),
+      ],
+      [
+        targetBundle.manifestStorageUri!,
+        JSON.stringify({
+          assets: { "index.ios.bundle": { fileHash: "hash-new" } },
+          bundleId: targetBundle.id,
+        }),
+      ],
+      [
+        `${baseBundle.assetBaseStorageUri}/index.ios.bundle`,
+        new Uint8Array([1, 2, 3]),
+      ],
+      [
+        `${targetBundle.assetBaseStorageUri}/index.ios.bundle`,
+        new Uint8Array([1, 9, 3]),
+      ],
+    ]);
+    const get = vi.fn<NonNullable<StoragePlugin["get"]>>(
+      async ({ storageUri }) => ({
+        response: responses.has(storageUri)
+          ? new Response(responses.get(storageUri))
+          : null,
+      }),
+    );
+    const directFetch = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", directFetch);
+    const upload = vi.fn<NonNullable<StoragePlugin["put"]>>(
+      async ({ key }) => ({
+        storageUri: `https://storage.example.com/${key}`,
+      }),
+    );
+
+    try {
+      await createBundleDiff(
+        { baseBundleId: baseBundle.id, bundleId: targetBundle.id },
+        {
+          databasePlugin,
+          storagePlugin: createStoragePlugin(upload, {
+            get,
+            protocol: "https",
+          }),
+        },
+      );
+
+      expect(get).toHaveBeenCalledWith({
+        storageUri: baseBundle.manifestStorageUri,
+      });
+      expect(get).toHaveBeenCalledWith({
+        storageUri: targetBundle.manifestStorageUri,
+      });
+      expect(directFetch).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
     }

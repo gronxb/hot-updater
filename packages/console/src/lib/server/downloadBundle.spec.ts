@@ -49,4 +49,23 @@ describe("downloadBundle", () => {
     expect(response.headers.get("content-disposition")).toBe("attachment");
     await expect(response.text()).resolves.toBe("bundle");
   });
+
+  it("uses an owning https plugin before redirecting", async () => {
+    const storageUri = "https://cdn.example.com/private/bundle.zip";
+    const get = vi.fn(async () => ({ response: new Response("private") }));
+    const storagePlugin = createStoragePlugin({
+      name: "privateHttpsStorage",
+      protocol: "https",
+      get,
+    });
+
+    const response = await downloadBundle("bundle-id", {
+      databaseClient: createDatabaseClient(storageUri),
+      storagePlugin,
+    });
+
+    expect(response.status).toBe(200);
+    expect(get).toHaveBeenCalledWith({ storageUri });
+    await expect(response.text()).resolves.toBe("private");
+  });
 });

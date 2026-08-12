@@ -1,6 +1,7 @@
 import {
   createStorageKeyBuilder,
   createStoragePlugin,
+  createStorageUri,
   parseStorageUri,
   type StoragePluginWith,
 } from "@hot-updater/plugin-core";
@@ -51,15 +52,23 @@ export const supabaseStorage = (
   return createStoragePlugin({
     name: "supabaseStorage",
     protocol: "supabase-storage",
-    async put({ key, body, contentType }) {
+    async put({ key, body, contentLength, contentType }) {
       const storageKey = getStorageKey(key);
-      const { data, error } = await bucket.upload(storageKey, body, {
+      const { error } = await bucket.upload(storageKey, body, {
         contentType,
         cacheControl: "max-age=31536000",
+        duplex: "half",
+        ...(contentLength === undefined
+          ? {}
+          : { headers: { "content-length": String(contentLength) } }),
       });
       if (error) throw error;
       return {
-        storageUri: `supabase-storage://${data.fullPath}`,
+        storageUri: createStorageUri({
+          protocol: "supabase-storage",
+          bucket: config.bucketName,
+          key: storageKey,
+        }),
       };
     },
     async get({ storageUri }) {
@@ -100,7 +109,7 @@ export const supabaseStorage = (
       if (error && !isNotFoundError(error)) {
         throw new Error(`Failed to delete storage object: ${error.message}`);
       }
-      return { storageUri };
+      return { deleted: true };
     },
   });
 };

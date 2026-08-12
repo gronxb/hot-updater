@@ -15,55 +15,68 @@
 "hot-updater": minor
 ---
 
-Replace the legacy database plugin API with a fixed, one-depth official-domain
-contract. Providers return `bundles`, `bundlePatches`, `analytics`,
-`clientAccessKeys`, and the atomic `commit` boundary directly from
-`createDatabasePlugin`. Provider callback transactions and generic CRUD remain
-implementation details; `commit({ mutations })` atomically applies any number
-of bundle change-sets. The v1 factory, nested `plugin`, request-context, staged
-mutation, unit-of-work, `commitBatch`, lifecycle callback, generic capability,
-and universal component contracts have been removed.
+Replace the legacy database plugin API with the fixed official-domain contract:
 
-Keep channel names on `bundles.channel`; this release does not add a channel
-model, table, collection, or foreign key. The shared client can derive sorted,
-distinct channel names when a provider does not implement the optimized
-aggregate.
+```ts
+createDatabasePlugin({
+  name,
+  models: {
+    bundles,
+    bundlePatches,
+    channels,
+    analytics,
+    clientAccessKeys,
+  },
+  queries: { getUpdateInfo },
+  commit,
+  dispose,
+});
+```
 
-The shared client pages and orders bundle owners in the provider before
-hydrating selected patches and referenced base bundles. Bundle updates forward
-only caller-present scalar fields. Replacing patches and patch-bearing inserts
-are one change-set across the two tables and fail before mutation when the
-provider cannot commit that set atomically. Supabase uses service-role-only
-database functions for these commits. Cloudflare D1 uses transactional batches
-through both its HTTP and Worker APIs. The shared multi-read hydration fallback
-does not promise snapshot isolation; providers needing that guarantee should
-implement the optimized update-check capability. MongoDB supports cross-table
-commits when configured with `transactions: true` and rejects them otherwise.
+Provider callback transactions, generic CRUD, factories, runtime contexts,
+capability registries, `commitBatch`, and the former top-level model and query
+members are no longer public. `commit({ changes })` is now a declarative,
+ordered, atomic write boundary across every official model. Expected missing-row
+and live-reference conflicts identify the original change index; failed commits
+roll back all earlier changes. Providers without a suitable atomic primitive
+reject a multi-change commit before its first write.
 
-Core schema `0.37.0` adds the official `bundle_events` and
-`client_access_keys` models. Kysely, MongoDB, D1, Supabase, Firebase, and the
-official provider adapters map those models through their native schema and
-migration mechanisms. Known legacy post-Core `version` values remain
-compatible with Core `0.36.0`; unknown future revisions remain blocked.
+Add Channels as a normalized, persistent model with opaque `id` and exact,
+case-sensitive `name`. Channel IDs and names are non-empty and limited to 255
+Unicode code points. Bundle rows retain `channel` for compatibility and add the
+required `channel_id`; new writes validate both values against the same Channel.
+Channel listing reads the Channel model directly instead of scanning or applying
+`DISTINCT` to bundles. Channels remain after their last bundle is removed and
+can be deleted explicitly only when no bundle references them.
 
-The mock provider now accepts every official row through `MockDatabaseData`.
-`@hot-updater/test-utils` publishes reusable official-domain plugin and
-aggregate-client conformance suites for custom provider authors.
+Core schema `0.38.0` creates Channel storage, backfills one Channel for each
+legacy bundle channel, fills `bundles.channel_id`, validates the dual values,
+and applies the non-null, uniqueness, and reference constraints before recording
+the new version. Kysely, Drizzle, Prisma, MongoDB, Cloudflare D1, PostgreSQL,
+Supabase, Firebase, and Mock implement the same logical contract and migration
+semantics.
 
-Multi-platform deploy performs build, archive, and content-addressed upload
-work before preparing database change-sets. Providers receive the prepared
-change-sets once through `commit`, so provider retries cannot rerun build
-or upload side effects. Uploaded objects remain reusable when the database
-commit fails. Multi-platform bundle creation uses one atomic array request;
-servers reject the request before insertion when they cannot guarantee
-atomicity.
+Add canonical Channel management routes: `GET /api/channels`,
+`POST /api/channels`, and empty-only `DELETE /api/channels/:id`. Remove the
+legacy `/api/bundles/channels` route. Standalone remains a narrower remote
+`BundleRepository`, while self-hosted `createHotUpdater` owns the full database
+contract. The Console can create Channels and request safe deletion; a concurrent
+bundle reference is reported as `not_empty` without losing data.
 
 Official providers implement the fixed bundle access patterns used by the
 shared client: exact domain filters, id ordering, bounded pagination, row
-counts, patch lookup by owner ids, and atomic bundle change-sets. Arbitrary
+counts, patch lookup by owner ids, and atomic ordered changes across official
+models. Arbitrary
 distinct, projection, connector, and string-comparison query DSL operations are
 no longer part of the public database plugin contract. Cloudflare D1 rejects
 malformed count results instead of returning zero.
+
+The shared database client resolves the canonical Channel row before bundle
+writes, keeps `channel` and `channel_id` synchronized on moves, and uses the
+optional `queries.getUpdateInfo` optimization without exposing provider query
+languages. `@hot-updater/test-utils` now publishes conformance coverage for
+all-model commits, rollback, Channel persistence, canonical concurrent inserts,
+safe deletion, and the absence of bundle-scan channel reads.
 
 Runtime-specific composition entrypoints keep the same provider names behind
 explicit package subpaths. `@hot-updater/cloudflare/worker` accepts a native D1
@@ -71,11 +84,12 @@ binding through `d1Database(database)`, while `@hot-updater/supabase/edge`
 exports the Edge-compatible `supabaseDatabase` and `supabaseStorage`. Root
 entrypoints remain the configuration-time providers.
 
-Self-hosted runtimes configure optional behavior through
+Self-hosted runtimes configure all route groups and optional behavior through
 `createHotUpdater({ features })`. `features.analytics` mounts Analytics
-ingestion and query routes backed by the official database domain, while
-`features.clientAccessKeys` protects update checks and Analytics ingestion.
-`features.updateCheck` and `features.bundles` control the core route groups in
-the same object. The CLI-only `standaloneRepository` stays a bundle repository;
-the physical database passed to the self-hosted `createHotUpdater` instance
-owns Analytics and client access-key persistence.
+ingestion and query routes backed by `database.models.analytics`, while
+`features.clientAccessKeys` protects update checks and Analytics ingestion
+through `database.models.clientAccessKeys`. `features.updateCheck` and
+`features.bundles` control the core route groups in the same object. The
+CLI-only `standaloneRepository` stays a bundle repository; the physical
+database passed to the self-hosted `createHotUpdater` instance owns the full
+official contract.

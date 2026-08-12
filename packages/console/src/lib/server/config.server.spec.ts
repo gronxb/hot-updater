@@ -15,25 +15,33 @@ vi.mock("@hot-updater/cli-tools", () => ({
 const createTestDatabasePlugin = (name: string) =>
   createDatabasePlugin({
     name,
-    bundles: {
-      findById: vi.fn(async () => null),
-      findMany: vi.fn(async () => []),
-      count: vi.fn(async () => 0),
+    models: {
+      bundles: {
+        findById: vi.fn(async () => null),
+        findMany: vi.fn(async () => []),
+        count: vi.fn(async () => 0),
+      },
+      bundlePatches: {
+        findByBundleIds: vi.fn(async () => []),
+      },
+      channels: {
+        insert: vi.fn(async ({ row }) => ({ row, inserted: true })),
+        list: vi.fn(async () => ({ channels: [] })),
+        delete: vi.fn(async () => ({ deleted: true as const })),
+      },
+      analytics: {
+        append: vi.fn(async () => undefined),
+        scan: vi.fn(async () => []),
+      },
+      clientAccessKeys: {
+        create: vi.fn(async () => "created" as const),
+        findByHash: vi.fn(async () => null),
+        list: vi.fn(async () => []),
+        revoke: vi.fn(async () => null),
+      },
     },
-    bundlePatches: {
-      findByBundleIds: vi.fn(async () => []),
-    },
-    analytics: {
-      append: vi.fn(async () => undefined),
-      scan: vi.fn(async () => []),
-    },
-    clientAccessKeys: {
-      create: vi.fn(async () => "created" as const),
-      findByHash: vi.fn(async () => null),
-      list: vi.fn(async () => []),
-      revoke: vi.fn(async () => null),
-    },
-    commit: vi.fn(async () => ({ applied: true })),
+    queries: {},
+    commit: vi.fn(async () => ({ committed: true as const })),
   });
 
 function createTestStoragePlugin() {
@@ -42,7 +50,7 @@ function createTestStoragePlugin() {
     protocol: "s3",
     put: vi.fn(),
     get: vi.fn(async () => ({ response: null })),
-    delete: vi.fn(async ({ storageUri }) => ({ storageUri })),
+    delete: vi.fn(async () => ({ deleted: true as const })),
   });
 }
 
@@ -73,7 +81,7 @@ describe("config.server", () => {
     expect(loadConfigMock).toHaveBeenCalledTimes(1);
     expect(first.databaseClient).toBe(second.databaseClient);
     expect(first.config.database).toBe(database);
-    expect(first.clientAccessKeyStore).toBe(database.clientAccessKeys);
+    expect(first.clientAccessKeyStore).toBe(database.models.clientAccessKeys);
     expect(second.clientAccessKeyStore).toBe(first.clientAccessKeyStore);
     expect(first.storagePlugin).toBe(storagePlugin);
     expect(second.storagePlugin).toBe(storagePlugin);

@@ -11,6 +11,7 @@ import { createDynamoDBCrud } from "./dynamoDB";
 import { DynamoDBIntegrationFixture } from "./dynamoDB.integration-fixture";
 
 const fixture = new DynamoDBIntegrationFixture();
+const productionChannelId = "00000000-0000-0000-0000-000000000100";
 
 const bundle = (sequence: number): Bundle => ({
   id: `00000000-0000-0000-0000-${sequence.toString().padStart(12, "0")}`,
@@ -42,6 +43,42 @@ afterAll(() => fixture.stop());
 
 describe("DynamoDB metadata concurrency and delete serialization", () => {
   beforeEach(() => fixture.reset());
+
+  it("retries concurrent idempotent channel inserts without dropping either bundle", async () => {
+    const plugin = fixture.createPlugin();
+    const channel = { id: productionChannelId, name: "production" } as const;
+    const rows = [
+      bundleToRow(bundle(901), channel.id),
+      bundleToRow(bundle(902), channel.id),
+    ];
+
+    await expect(
+      Promise.all(
+        rows.map((row) =>
+          plugin.commit({
+            changes: [
+              {
+                model: "channels",
+                operation: "insert",
+                row: channel,
+                onConflict: "ignore",
+              },
+              { model: "bundles", operation: "insert", row },
+            ],
+          }),
+        ),
+      ),
+    ).resolves.toEqual([{ committed: true }, { committed: true }]);
+    await expect(plugin.models.channels.list({})).resolves.toEqual({
+      channels: [channel],
+    });
+    await expect(plugin.models.bundles.findById(rows[0]!.id)).resolves.toEqual(
+      rows[0],
+    );
+    await expect(plugin.models.bundles.findById(rows[1]!.id)).resolves.toEqual(
+      rows[1],
+    );
+  });
 
   it("allows concurrent inserts beyond the former bundle ceiling", async () => {
     await fixture.client.send(
@@ -109,7 +146,7 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
         client: fixture.client,
         tableName: fixture.tableName,
       }).insertBundleWithPatches({
-        bundle: bundleToRow(bundle(200)),
+        bundle: bundleToRow(bundle(200), productionChannelId),
         patches: Array.from({ length: 101 }, (_, index) =>
           patchRow(bundle(200), bundle(index + 300)),
         ),

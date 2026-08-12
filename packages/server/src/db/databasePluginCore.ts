@@ -6,6 +6,7 @@ import type {
 } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import {
+  type ChannelRow,
   createDatabaseClient,
   createRequestBundleResolver,
 } from "@hot-updater/plugin-core";
@@ -79,9 +80,19 @@ export function createDatabasePluginCore(
         : baseResponse;
     },
 
-    async getChannels(): Promise<string[]> {
+    async getChannels(): Promise<readonly ChannelRow[]> {
       await beforeOperation?.();
       return client.getChannels();
+    },
+
+    async insertChannel(input) {
+      await beforeOperation?.();
+      return database.models.channels.insert(input);
+    },
+
+    async deleteChannel(input) {
+      await beforeOperation?.();
+      return database.models.channels.delete(input);
     },
 
     async getBundles(options) {

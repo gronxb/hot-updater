@@ -1,7 +1,11 @@
 import { type Bundle, NIL_UUID } from "@hot-updater/core";
 import { vi } from "vitest";
 
-import { createHandler, type HandlerAPI, type HandlerRoutes } from "./handler";
+import {
+  createHandler,
+  type HandlerAPI,
+  type HandlerFeatures,
+} from "./handler";
 
 export const NEXT_SDK_VERSION_FOR_TEST = "0.31.0";
 export const CURRENT_PACKAGE_SDK_VERSION = "0.30.10";
@@ -36,7 +40,9 @@ export const createApi = () =>
     getBundles: vi.fn<HandlerAPI["getBundles"]>(),
     getChannels: vi
       .fn<HandlerAPI["getChannels"]>()
-      .mockResolvedValue(["production"]),
+      .mockResolvedValue([{ id: "channel-production", name: "production" }]),
+    insertChannel: vi.fn<HandlerAPI["insertChannel"]>(),
+    deleteChannel: vi.fn<HandlerAPI["deleteChannel"]>(),
     insertBundle: vi.fn<HandlerAPI["insertBundle"]>(),
     updateBundleById: vi.fn<HandlerAPI["updateBundleById"]>(),
     deleteBundleById: vi.fn<HandlerAPI["deleteBundleById"]>(),
@@ -44,13 +50,13 @@ export const createApi = () =>
 
 export const createManagementHandler = (
   api: HandlerAPI,
-  routes: Partial<HandlerRoutes> = {},
+  features: Partial<HandlerFeatures> = {},
 ) =>
   createHandler(api, {
     basePath: "/hot-updater",
-    routes: {
+    features: {
       updateCheck: true,
       bundles: true,
-      ...routes,
+      ...features,
     },
   });

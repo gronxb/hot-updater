@@ -32,7 +32,7 @@ export const loadBundleRows = async (
   if (finiteIds) {
     if (finiteIds.length === 0) return [];
     return [
-      ...(await database.bundles.findMany({
+      ...(await database.models.bundles.findMany({
         where,
         limit: finiteIds.length,
         offset: 0,
@@ -40,7 +40,7 @@ export const loadBundleRows = async (
       })),
     ];
   }
-  const [cutoff] = await database.bundles.findMany({
+  const [cutoff] = await database.models.bundles.findMany({
     where,
     limit: 1,
     offset: 0,
@@ -51,7 +51,7 @@ export const loadBundleRows = async (
   const rows: BundleRow[] = [];
   let after: string | undefined;
   for (;;) {
-    const page = await database.bundles.findMany({
+    const page = await database.models.bundles.findMany({
       where: mergeIdFilter(where, {
         lte: cutoff.id,
         ...(after ? { gt: after } : {}),
@@ -70,7 +70,7 @@ export const hydrateRows = async (
   database: BundleRepository,
   ownerRows: readonly BundleRow[],
 ): Promise<Bundle[]> => {
-  const patchRows = await database.bundlePatches.findByBundleIds(
+  const patchRows = await database.models.bundlePatches.findByBundleIds(
     ownerRows.map(({ id }) => id),
   );
   const ownerIds = new Set(ownerRows.map(({ id }) => id));
@@ -129,13 +129,13 @@ export const responsePage = async (
       : "desc"
     : direction;
   const [queriedRows, total] = await Promise.all([
-    database.bundles.findMany({
+    database.models.bundles.findMany({
       where,
       limit: queryLimit,
       offset,
       orderBy: { field: "id", direction: queryDirection },
     }),
-    database.bundles.count(options.where),
+    database.models.bundles.count(options.where),
   ]);
   const hasMore = cursor ? queriedRows.length > options.limit : false;
   const pageRows = cursor ? queriedRows.slice(0, options.limit) : queriedRows;

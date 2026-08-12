@@ -10,6 +10,7 @@ import {
   createStorageKeyBuilder,
   createStorageDownloadUrl,
   createStoragePlugin,
+  createStorageUri,
   parseStorageUri,
   type StoragePluginWith,
 } from "@hot-updater/plugin-core";
@@ -77,7 +78,7 @@ export const createR2S3Storage = (
   return createStoragePlugin({
     name: "r2Storage",
     protocol: "r2",
-    async put({ key, body, contentType }) {
+    async put({ key, body, contentLength, contentType }) {
       const storageKey = getStorageKey(key);
       await new Upload({
         client,
@@ -85,11 +86,18 @@ export const createR2S3Storage = (
           Body: body,
           Bucket: bucketName,
           CacheControl: "max-age=31536000",
+          ContentLength: contentLength,
           ContentType: contentType,
           Key: storageKey,
         },
       }).done();
-      return { storageUri: `r2://${bucketName}/${storageKey}` };
+      return {
+        storageUri: createStorageUri({
+          protocol: "r2",
+          bucket: bucketName,
+          key: storageKey,
+        }),
+      };
     },
     async get({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
@@ -139,7 +147,7 @@ export const createR2S3Storage = (
       await client.send(
         new DeleteObjectCommand({ Bucket: bucketName, Key: key }),
       );
-      return { storageUri };
+      return { deleted: true };
     },
   });
 };

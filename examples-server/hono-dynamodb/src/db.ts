@@ -35,10 +35,7 @@ export const hotUpdater = createHotUpdater({
       region,
       endpoint: process.env.AWS_S3_ENDPOINT ?? "http://localhost:9000",
       credentials,
-      bucketName:
-        process.env.AWS_S3_BUCKET_NAME ??
-        process.env.AWS_S3_METADATA_BUCKET ??
-        "hot-updater-bundles",
+      bucketName: process.env.AWS_S3_BUCKET_NAME ?? "hot-updater-bundles",
       basePath: providerNamespace,
       forcePathStyle: true,
       downloadUrlSigningKey:

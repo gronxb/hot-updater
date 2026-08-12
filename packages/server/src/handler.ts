@@ -7,14 +7,18 @@ import { createBundleRouteHandlers } from "./handlerBundleRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
 import type {
   HandlerAPI,
+  HandlerFeatures,
   HandlerOptions,
-  HandlerRoutes,
   RouteHandler,
 } from "./handlerTypes";
 import { createUpdateRouteHandlers } from "./handlerUpdateRoutes";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 
-export type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./handlerTypes";
+export type {
+  HandlerAPI,
+  HandlerFeatures,
+  HandlerOptions,
+} from "./handlerTypes";
 
 export function createHandler(
   api: HandlerAPI,
@@ -36,10 +40,10 @@ export function createHotUpdaterHandler(
   ) => Promise<Response | null>,
 ): (request: Request) => Promise<Response> {
   const basePath = options.basePath ?? "/api";
-  const routeOptions = {
-    updateCheck: options.routes?.updateCheck ?? true,
-    bundles: options.routes?.bundles ?? false,
-  } satisfies HandlerRoutes;
+  const features = {
+    updateCheck: options.features?.updateCheck ?? true,
+    bundles: options.features?.bundles ?? false,
+  } satisfies HandlerFeatures;
   const router = createRouter<string>();
   const routeHandlers: Record<string, RouteHandler> = {
     ...createUpdateRouteHandlers(),
@@ -83,7 +87,7 @@ export function createHotUpdaterHandler(
       "downloadStorageObject",
     );
   }
-  if (routeOptions.updateCheck) {
+  if (features.updateCheck) {
     addRoute(
       router,
       "GET",
@@ -110,8 +114,10 @@ export function createHotUpdaterHandler(
     );
   }
 
-  if (routeOptions.bundles) {
-    addRoute(router, "GET", "/api/bundles/channels", "getChannels");
+  if (features.bundles) {
+    addRoute(router, "GET", "/api/channels", "getChannels");
+    addRoute(router, "POST", "/api/channels", "createChannel");
+    addRoute(router, "DELETE", "/api/channels/:id", "deleteChannel");
     addRoute(router, "GET", "/api/bundles/:id", "getBundle");
     addRoute(router, "GET", "/api/bundles", "getBundles");
     addRoute(router, "POST", "/api/bundles", "createBundles");

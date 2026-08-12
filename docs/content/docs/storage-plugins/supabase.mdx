@@ -26,26 +26,26 @@ For manual configuration, use the settings below.
 
 ```typescript
 interface SupabaseStorageConfig {
-  supabaseUrl: string;             // Your Supabase project URL
-  supabaseServiceRoleKey: string;  // Your Supabase service role or secret key
-  bucketName: string;              // Storage bucket name
-  basePath?: string;               // Optional base path within bucket
-  signedUrlExpiresIn?: number;     // Default: 3600 seconds
+  supabaseUrl: string; // Your Supabase project URL
+  supabaseServiceRoleKey: string; // Your Supabase service role or secret key
+  bucketName: string; // Storage bucket name
+  basePath?: string; // Optional base path within bucket
+  signedUrlExpiresIn?: number; // Default: 3600 seconds
 }
 ```
 
 ## Usage
 
 ```typescript
-import { supabaseStorage } from '@hot-updater/supabase';
-import { defineConfig } from 'hot-updater';
+import { supabaseStorage } from "@hot-updater/supabase";
+import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   storage: supabaseStorage({
     supabaseUrl: process.env.SUPABASE_URL,
     supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    bucketName: 'hot-updater-bundles',
-    basePath: 'bundles'  // Optional
+    bucketName: "hot-updater-bundles",
+    basePath: "bundles", // Optional
   }),
   // ... other config
 });
@@ -53,14 +53,16 @@ export default defineConfig({
 
 ## Protocol
 
-`supabase-storage://`
+`supabase-storage://bucket/encoded/key`
 
-This prefix is stored in the `storageUri` field in the database.
+For example,
+`supabase-storage://updates/releases/1.0.0/bundle%20ios.zip` is stored in the
+`storageUri` field. Keys retain their slash hierarchy and encode each segment.
 
 ## Capabilities
 
-`supabaseStorage` implements byte upload, Web-response reads, signed download
-URL generation, existence checks, and exact deletion. For Supabase Edge
+`supabaseStorage` implements streaming upload, streaming Web-response reads,
+signed download URL generation, existence checks, and exact deletion. For Supabase Edge
 Functions, import the same `supabaseStorage` name from
 `@hot-updater/supabase/edge`; that implementation captures the edge-compatible
 client configuration without changing the core contract.

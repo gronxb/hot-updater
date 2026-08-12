@@ -30,6 +30,8 @@ const baseBundle: Bundle = {
 function createDatabaseClient(bundle: Bundle | null = baseBundle) {
   return {
     getChannels: vi.fn(),
+    insertChannel: vi.fn(),
+    deleteChannel: vi.fn(),
     getBundleById: vi.fn(async () => bundle),
     getBundles: vi.fn(),
     getUpdateInfo: vi.fn(),
@@ -58,10 +60,7 @@ function createStoragePlugin(
     protocol,
     get,
     delete:
-      overrides?.delete ??
-      vi.fn(async ({ storageUri }: { storageUri: string }) => ({
-        storageUri,
-      })),
+      overrides?.delete ?? vi.fn(async () => ({ deleted: true as const })),
   });
 }
 
@@ -110,6 +109,25 @@ describe("deleteBundle", () => {
 
     expect(databaseClient.deleteBundleById).toHaveBeenCalledOnce();
     expect(deleteFromStorage).not.toHaveBeenCalled();
+  });
+
+  it("uses an owning https plugin before the direct URL fallback", async () => {
+    const storageUri = "https://cdn.example.com/bundle.zip";
+    const databaseClient = createDatabaseClient({
+      ...baseBundle,
+      storageUri,
+    });
+    const deleteFromStorage = vi.fn(async () => ({ deleted: true as const }));
+    const storagePlugin = createStoragePlugin("https", {
+      delete: deleteFromStorage,
+    });
+
+    await deleteBundle(
+      { bundleId: baseBundle.id },
+      { databaseClient, storagePlugin },
+    );
+
+    expect(deleteFromStorage).toHaveBeenCalledWith({ storageUri });
   });
 
   it("throws before database deletion when the storage protocol is unsupported", async () => {
@@ -162,7 +180,7 @@ describe("deleteBundle", () => {
   it("can return without waiting for storage cleanup", async () => {
     const databaseClient = createDatabaseClient();
     const deleteFromStorage = vi.fn(
-      () => new Promise<{ storageUri: string }>(() => undefined),
+      () => new Promise<{ deleted: true }>(() => undefined),
     );
     const storagePlugin = createStoragePlugin("s3", {
       delete: deleteFromStorage,

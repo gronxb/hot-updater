@@ -296,12 +296,12 @@ export default HotUpdater.wrap({
 ```
 
 <Callout type="info">
-  The AWS DynamoDB runtime exposes only `/version` publicly. OTA selectors and
-  Analytics ingestion at `/api/check-update/events` require `x-api-key:
-  $HOT_UPDATER_API_KEY`, using a key created from the Console. That key does not
-  authorize Analytics query routes under `/api/check-update/api`; they remain
-  unavailable with `401`. Bundle management endpoints are not mounted on the
-  public function URL.
+  The managed AWS runtime exposes `/version` publicly. OTA update checks and
+  Analytics ingestion require `x-api-key: $HOT_UPDATER_API_KEY`, using a key
+  created from the Console. Internally, it enables `updateCheck`, `analytics`,
+  and `clientAccessKeys`, while disabling `bundles`. Client access keys do not
+  authorize Analytics query routes, and bundle management endpoints are not
+  mounted on the public function URL.
 </Callout>
 
 ## Step 6: If You Use Expo, Add the Config Plugin

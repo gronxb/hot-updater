@@ -1,5 +1,6 @@
 import {
   createStoragePlugin,
+  parseStorageUri,
   type StorageDeleteInput,
   type StorageExistsInput,
   type StorageGetInput,
@@ -9,7 +10,7 @@ import {
 import type { RouteConfig } from "./standaloneRepository";
 
 export interface StorageRoutes {
-  put: (input: Pick<StoragePutInput, "key" | "contentType">) => RouteConfig;
+  put: (input: Omit<StoragePutInput, "body">) => RouteConfig;
   get: (input: StorageGetInput) => RouteConfig;
   exists: (input: StorageExistsInput) => RouteConfig;
   delete: (input: StorageDeleteInput) => RouteConfig;
@@ -35,6 +36,8 @@ const createRoute = (
 
 export interface StandaloneStorageConfig {
   baseUrl: string;
+  /** Storage URI protocol owned by the remote implementation. */
+  protocol: string;
   commonHeaders?: Record<string, string>;
   routes?: Partial<StorageRoutes>;
 }
@@ -62,6 +65,7 @@ export const standaloneStorage = (config: StandaloneStorageConfig) => {
     routeName: "get" | "exists" | "delete",
     storageUri: string,
   ) => {
+    parseStorageUri(storageUri, config.protocol);
     const { path, headers } = resolveRoute(routeName, [
       { storageUri },
     ] as const);
@@ -83,14 +87,20 @@ export const standaloneStorage = (config: StandaloneStorageConfig) => {
 
   return createStoragePlugin({
     name: "standaloneStorage",
-    protocol: "http",
-    async put({ key, body, contentType }) {
-      const routeInput = { key, contentType };
+    protocol: config.protocol,
+    async put({ key, body, contentType, contentLength }) {
+      const routeInput = { key, contentLength, contentType };
       const { path, headers } = resolveRoute("put", [routeInput] as const);
+      const bytes = await new Response(body).arrayBuffer();
+      if (contentLength !== undefined && bytes.byteLength !== contentLength) {
+        throw new Error(
+          `Storage upload length mismatch: expected ${contentLength}, got ${bytes.byteLength}`,
+        );
+      }
       const formData = new FormData();
       formData.append(
         "file",
-        new Blob([body], { type: contentType }),
+        new Blob([bytes], { type: contentType }),
         key.split("/").at(-1) ?? "object",
       );
       formData.append("key", key);
@@ -106,6 +116,7 @@ export const standaloneStorage = (config: StandaloneStorageConfig) => {
       if (!result.storageUri) {
         throw new Error("Storage server returned an empty storage URI");
       }
+      parseStorageUri(result.storageUri, config.protocol);
       return { storageUri: result.storageUri };
     },
     async get({ storageUri }) {
@@ -121,7 +132,7 @@ export const standaloneStorage = (config: StandaloneStorageConfig) => {
     },
     async delete({ storageUri }) {
       await requestStorageUri("delete", storageUri);
-      return { storageUri };
+      return { deleted: true };
     },
   });
 };

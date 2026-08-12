@@ -22,7 +22,9 @@ import type {
 } from "@hot-updater/plugin-core";
 import {
   assertStorageOperations,
+  createStorageUriWithRelativePath,
   createDatabaseClient,
+  replaceStorageUriKeySuffix,
 } from "@hot-updater/plugin-core";
 import { getContentAddressedAssetStoragePath } from "@hot-updater/plugin-core";
 import { createBundleDiff } from "@hot-updater/server/db";
@@ -357,41 +359,6 @@ const getManifestAssetUploadName = (relativePath: string) =>
   isBrotliManifestBundleAsset(relativePath)
     ? `${relativePath}.br`
     : relativePath;
-
-const replaceBundleStorageUriPath = (
-  storageUri: string,
-  bundleId: string,
-  nextPath: string,
-) => {
-  const storageUrl = new URL(storageUri);
-  const segments = storageUrl.pathname.split("/").filter(Boolean);
-  const bundleIndex = segments.lastIndexOf(bundleId);
-  const parentSegments =
-    bundleIndex >= 0 ? segments.slice(0, bundleIndex) : segments.slice(0, -2);
-
-  storageUrl.pathname = `/${[...parentSegments, nextPath]
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment))
-    .join("/")}`;
-  return storageUrl.toString();
-};
-
-const createStorageUriWithRelativePath = (
-  baseStorageUri: string,
-  relativePath: string,
-) => {
-  const storageUrl = new URL(baseStorageUri);
-  const normalizedBasePath = storageUrl.pathname.replace(/\/+$/, "");
-  const normalizedRelativePath = relativePath
-    .replace(/\\/g, "/")
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment))
-    .join("/");
-
-  storageUrl.pathname = `${normalizedBasePath}/${normalizedRelativePath}`;
-  return storageUrl.toString();
-};
 
 const ensureUploadSourcePath = async ({
   outputPath,
@@ -980,19 +947,19 @@ const deployPlatform = async ({
             // from manifest fileHash values. LEGACY: existing /files bundles
             // still resolve through the server fallback until that layout is
             // intentionally removed.
-            taskRef.assetBaseStorageUri = replaceBundleStorageUriPath(
+            taskRef.assetBaseStorageUri = replaceStorageUriKeySuffix({
               storageUri,
-              bundleId,
-              "assets",
-            );
+              keySuffix: path.posix.join(bundleId, path.basename(bundlePath)),
+              replacement: "assets",
+            });
             await runWithConcurrency(
               assetUploadTargets,
               MANIFEST_ASSET_UPLOAD_CONCURRENCY,
               async ({ storagePath, targetFile }) => {
-                const storageUri = createStorageUriWithRelativePath(
-                  taskRef.assetBaseStorageUri!,
-                  storagePath,
-                );
+                const storageUri = createStorageUriWithRelativePath({
+                  baseStorageUri: taskRef.assetBaseStorageUri!,
+                  relativePath: storagePath,
+                });
 
                 const relativeDir = getRelativeStorageDir(storagePath);
                 const uploadKey = ["assets", relativeDir]

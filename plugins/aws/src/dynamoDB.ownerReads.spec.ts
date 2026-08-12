@@ -14,20 +14,23 @@ import { toDynamoDBBundleItem, toDynamoDBPatchItem } from "./dynamoDB";
 
 const dynamodb = mockClient(DynamoDBDocumentClient);
 const ownerId = "00000000-0000-0000-0000-000000000001";
-const bundleRow = bundleToRow({
-  id: ownerId,
-  platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
-  fileHash: "hash",
-  gitCommitHash: null,
-  message: null,
-  channel: "production",
-  storageUri: "storage://bundle.zip",
-  targetAppVersion: "1.x",
-  fingerprintHash: null,
-  metadata: {},
-});
+const bundleRow = bundleToRow(
+  {
+    id: ownerId,
+    platform: "ios",
+    shouldForceUpdate: false,
+    enabled: true,
+    fileHash: "hash",
+    gitCommitHash: null,
+    message: null,
+    channel: "production",
+    storageUri: "storage://bundle.zip",
+    targetAppVersion: "1.x",
+    fingerprintHash: null,
+    metadata: {},
+  },
+  "00000000-0000-0000-0000-000000000100",
+);
 const patch = (sequence: number) => ({
   id: `patch-${sequence}`,
   bundle_id: ownerId,

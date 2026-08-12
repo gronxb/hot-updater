@@ -4,7 +4,7 @@ import type {
   DatabaseOrderBy,
   DatabaseRow,
   DatabaseWhere,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 
 const compareOrdered = (left: unknown, right: unknown): number => {
   if (typeof left === "number" && typeof right === "number") {

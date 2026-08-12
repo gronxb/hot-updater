@@ -1,26 +1,32 @@
-import type {
-  DatabaseBundleMutation,
-  DatabasePlugin,
-} from "@hot-updater/plugin-core";
+import type { DatabaseChange, DatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import type { DatabasePluginTestState } from "./databasePluginTestRunner";
-import { createBundleRowFixture } from "./databaseTestFixtures";
+import {
+  createBundleRowFixture,
+  createChannelRowFixture,
+} from "./databaseTestFixtures";
 
 type BundleTestState = DatabasePluginTestState<DatabasePlugin>;
 
-const commit = (plugin: DatabasePlugin, mutation: DatabaseBundleMutation) =>
-  plugin.commit({ mutations: [mutation] });
+const commit = (plugin: DatabasePlugin, ...changes: DatabaseChange[]) =>
+  plugin.commit({ changes });
 
 const insertBundle = (plugin: DatabasePlugin, suffix: string) => {
   const row = createBundleRowFixture(suffix);
+  const channel = createChannelRowFixture(row.channel);
   return {
     row,
-    result: commit(plugin, {
-      operation: "insert",
-      bundleId: row.id,
-      changes: [{ table: "bundles", operation: "insert", row }],
-    }),
+    result: commit(
+      plugin,
+      {
+        model: "channels",
+        operation: "insert",
+        row: channel,
+        onConflict: "ignore",
+      },
+      { model: "bundles", operation: "insert", row },
+    ),
   };
 };
 
@@ -32,8 +38,10 @@ export const registerDatabasePluginBundleTests = (
       const plugin = state.getPlugin();
       const { row, result } = insertBundle(plugin, "1");
 
-      await expect(result).resolves.toEqual({ applied: true });
-      await expect(plugin.bundles.findById(row.id)).resolves.toEqual(row);
+      await expect(result).resolves.toEqual({ committed: true });
+      await expect(plugin.models.bundles.findById(row.id)).resolves.toEqual(
+        row,
+      );
     });
 
     it("updates explicit false, null, and empty-array values", async () => {
@@ -43,19 +51,15 @@ export const registerDatabasePluginBundleTests = (
 
       await expect(
         commit(plugin, {
+          model: "bundles",
           operation: "update",
-          bundleId: row.id,
-          changes: [
-            {
-              table: "bundles",
-              operation: "update",
-              id: row.id,
-              update: { enabled: false, message: null, target_cohorts: [] },
-            },
-          ],
+          where: { id: row.id },
+          update: { enabled: false, message: null, target_cohorts: [] },
         }),
-      ).resolves.toEqual({ applied: true });
-      await expect(plugin.bundles.findById(row.id)).resolves.toMatchObject({
+      ).resolves.toEqual({ committed: true });
+      await expect(
+        plugin.models.bundles.findById(row.id),
+      ).resolves.toMatchObject({
         id: row.id,
         enabled: false,
         message: null,
@@ -72,34 +76,41 @@ export const registerDatabasePluginBundleTests = (
         createBundleRowFixture("13"),
       ];
       for (const row of rows) {
+        await plugin.models.channels.insert({
+          row: createChannelRowFixture(row.channel),
+          onConflict: "returnExisting",
+        });
         await commit(plugin, {
+          model: "bundles",
           operation: "insert",
-          bundleId: row.id,
-          changes: [{ table: "bundles", operation: "insert", row }],
+          row,
         });
       }
 
       await expect(
-        plugin.bundles.findMany({
+        plugin.models.bundles.findMany({
           where: { enabled: true },
           limit: 1,
           offset: 1,
           orderBy: { field: "id", direction: "asc" },
         }),
       ).resolves.toEqual([rows[2]]);
-      await expect(plugin.bundles.count({ enabled: true })).resolves.toBe(2);
+      await expect(
+        plugin.models.bundles.count({ enabled: true }),
+      ).resolves.toBe(2);
     });
 
-    it("returns applied false when an update target is missing", async () => {
+    it("returns an indexed conflict when an update target is missing", async () => {
       await expect(
         commit(state.getPlugin(), {
+          model: "bundles",
           operation: "update",
-          bundleId: "ffffffff-ffff-ffff-ffff-ffffffffffff",
-          changes: [],
+          where: { id: "ffffffff-ffff-ffff-ffff-ffffffffffff" },
+          update: { enabled: false },
         }),
       ).resolves.toEqual({
-        applied: false,
-        missingBundleId: "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        committed: false,
+        conflict: { changeIndex: 0, reason: "not_found" },
       });
     });
 
@@ -110,15 +121,17 @@ export const registerDatabasePluginBundleTests = (
       await Promise.all([first.result, second.result]);
 
       await commit(plugin, {
+        model: "bundles",
         operation: "delete",
-        bundleId: first.row.id,
-        changes: [{ table: "bundles", operation: "delete", id: first.row.id }],
+        where: { id: first.row.id },
       });
 
-      await expect(plugin.bundles.findById(first.row.id)).resolves.toBeNull();
-      await expect(plugin.bundles.findById(second.row.id)).resolves.toEqual(
-        second.row,
-      );
+      await expect(
+        plugin.models.bundles.findById(first.row.id),
+      ).resolves.toBeNull();
+      await expect(
+        plugin.models.bundles.findById(second.row.id),
+      ).resolves.toEqual(second.row);
     });
 
     it("rejects duplicate bundle ids", async () => {
@@ -128,9 +141,9 @@ export const registerDatabasePluginBundleTests = (
 
       await expect(
         commit(plugin, {
+          model: "bundles",
           operation: "insert",
-          bundleId: first.row.id,
-          changes: [{ table: "bundles", operation: "insert", row: first.row }],
+          row: first.row,
         }),
       ).rejects.toThrow();
     });

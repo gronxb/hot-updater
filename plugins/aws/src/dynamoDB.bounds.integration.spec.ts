@@ -16,6 +16,7 @@ import { toDynamoDBBundleItem, toDynamoDBPatchItem } from "./dynamoDB";
 import { DynamoDBIntegrationFixture } from "./dynamoDB.integration-fixture";
 
 const fixture = new DynamoDBIntegrationFixture();
+const productionChannelId = "00000000-0000-0000-0000-000000000100";
 const bundleCount = 1_001;
 const patchCount = 1_001;
 const patchesPerOwner = 25;
@@ -28,20 +29,23 @@ describe("DynamoDB reads beyond the former metadata ceiling", () => {
 
   it("keeps cursor pages constant and owner hydration targeted", async () => {
     const bundleRows = Array.from({ length: bundleCount }, (_, index) =>
-      bundleToRow({
-        id: `10000000-0000-0000-0000-${index.toString().padStart(12, "0")}`,
-        platform: "ios",
-        shouldForceUpdate: false,
-        enabled: true,
-        fileHash: `hash-${index}`,
-        gitCommitHash: null,
-        message: null,
-        channel: "production",
-        storageUri: `storage://bundle-${index}.zip`,
-        targetAppVersion: "1.0.0",
-        fingerprintHash: null,
-        metadata: {},
-      }),
+      bundleToRow(
+        {
+          id: `10000000-0000-0000-0000-${index.toString().padStart(12, "0")}`,
+          platform: "ios",
+          shouldForceUpdate: false,
+          enabled: true,
+          fileHash: `hash-${index}`,
+          gitCommitHash: null,
+          message: null,
+          channel: "production",
+          storageUri: `storage://bundle-${index}.zip`,
+          targetAppVersion: "1.0.0",
+          fingerprintHash: null,
+          metadata: {},
+        },
+        productionChannelId,
+      ),
     );
     const relationCounts = new Map<string, number>();
     const ownedPatchCounts = new Map<string, number>();
@@ -174,14 +178,17 @@ describe("DynamoDB reads beyond the former metadata ceiling", () => {
     const trackedPlugin = createDatabasePlugin({
       ...plugin,
       name: "tracked-dynamodb",
-      bundles: adapter.bundles,
-      bundlePatches: {
-        findByBundleIds: (bundleIds) =>
-          queryCompleteOwnersPatches(
-            { client: fixture.client, tableName: fixture.tableName },
-            "hot-updater-update-index",
-            bundleIds,
-          ),
+      models: {
+        ...plugin.models,
+        bundles: adapter.models.bundles,
+        bundlePatches: {
+          findByBundleIds: (bundleIds) =>
+            queryCompleteOwnersPatches(
+              { client: fixture.client, tableName: fixture.tableName },
+              "hot-updater-update-index",
+              bundleIds,
+            ),
+        },
       },
     });
     const page = await createDatabaseClient(trackedPlugin).getBundles({

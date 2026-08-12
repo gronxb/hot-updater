@@ -5,10 +5,13 @@
 ---
 
 Add Analytics as a built-in `createHotUpdater` domain backed directly by the
-official `database.analytics` port. Event ingestion, bounded aggregation,
+official `database.models.analytics` port. Event ingestion, bounded aggregation,
 installation search, HTTP routes, and Console views now live with the server;
 there is no Analytics plugin, provider override, universal component schema, or
 separate `@hot-updater/analytics` package.
+
+Runtime feature switches now share `createHotUpdater({ features: { ... } })`;
+the former top-level `analytics` and `routes` options are removed.
 
 Database providers own the physical `bundle_events` table through the shared
 database contract and schema version.

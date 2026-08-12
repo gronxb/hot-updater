@@ -5,6 +5,7 @@ import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
+  ChannelRow,
   ClientAccessKeyRow,
 } from "./databaseRows";
 import type {
@@ -12,20 +13,20 @@ import type {
   DatabaseBundleQueryWhere,
 } from "./index";
 
-export interface BundleTableQuery {
+export interface BundleModelQuery {
   readonly where?: DatabaseBundleQueryWhere;
   readonly limit: number;
   readonly offset: number;
   readonly orderBy: DatabaseBundleQueryOrder;
 }
 
-export interface BundleTable {
+export interface BundleModel {
   findById(id: string): Promise<BundleRow | null>;
-  findMany(query: BundleTableQuery): Promise<readonly BundleRow[]>;
+  findMany(query: BundleModelQuery): Promise<readonly BundleRow[]>;
   count(where?: DatabaseBundleQueryWhere): Promise<number>;
 }
 
-export interface BundlePatchTable {
+export interface BundlePatchModel {
   findByBundleIds(
     bundleIds: readonly string[],
   ): Promise<readonly BundlePatchRow[]>;
@@ -42,12 +43,12 @@ export interface AnalyticsScanInput {
   readonly limit: number;
 }
 
-export interface AnalyticsTable {
+export interface AnalyticsModel {
   append(row: BundleEventRow): Promise<void>;
   scan(input: AnalyticsScanInput): Promise<readonly BundleEventRow[]>;
 }
 
-export interface ClientAccessKeyTable {
+export interface ClientAccessKeyModel {
   create(row: ClientAccessKeyRow): Promise<"created" | "existing">;
   findByHash(hash: string): Promise<ClientAccessKeyRow | null>;
   list(): Promise<readonly ClientAccessKeyRow[]>;
@@ -57,67 +58,157 @@ export interface ClientAccessKeyTable {
   }): Promise<ClientAccessKeyRow | null>;
 }
 
+export interface ChannelInsertInput {
+  readonly row: ChannelRow;
+  readonly onConflict: "returnExisting";
+}
+
+export interface ChannelInsertResult {
+  readonly row: ChannelRow;
+  readonly inserted: boolean;
+}
+
+export interface ChannelDeleteInput {
+  readonly id: string;
+}
+
+export type ChannelDeleteResult =
+  | { readonly deleted: true }
+  | {
+      readonly deleted: false;
+      readonly reason: "not_found" | "not_empty";
+    };
+
+export interface ChannelModel {
+  insert(input: ChannelInsertInput): Promise<ChannelInsertResult>;
+  list(input: {}): Promise<{ readonly channels: readonly ChannelRow[] }>;
+  delete(input: ChannelDeleteInput): Promise<ChannelDeleteResult>;
+}
+
 export type DatabaseChange =
   | {
-      readonly table: "bundles";
+      readonly model: "bundles";
       readonly operation: "insert";
       readonly row: BundleRow;
     }
   | {
-      readonly table: "bundles";
+      readonly model: "bundles";
       readonly operation: "update";
-      readonly id: string;
+      readonly where: { readonly id: string };
       readonly update: BundleRowUpdate;
     }
   | {
-      readonly table: "bundles";
+      readonly model: "bundles";
       readonly operation: "delete";
-      readonly id: string;
+      readonly where: { readonly id: string };
     }
   | {
-      readonly table: "bundle_patches";
+      readonly model: "bundlePatches";
       readonly operation: "insert";
       readonly row: BundlePatchRow;
     }
   | {
-      readonly table: "bundle_patches";
+      readonly model: "bundlePatches";
       readonly operation: "delete";
-      readonly bundleId: string;
+      readonly where: { readonly bundleId: string };
+    }
+  | {
+      readonly model: "channels";
+      readonly operation: "insert";
+      readonly row: ChannelRow;
+      readonly onConflict: "ignore";
+    }
+  | {
+      readonly model: "channels";
+      readonly operation: "delete";
+      readonly where: { readonly id: string };
+    }
+  | {
+      readonly model: "analytics";
+      readonly operation: "insert";
+      readonly row: BundleEventRow;
+    }
+  | {
+      readonly model: "clientAccessKeys";
+      readonly operation: "insert";
+      readonly row: ClientAccessKeyRow;
+      readonly onConflict: "ignore";
+    }
+  | {
+      readonly model: "clientAccessKeys";
+      readonly operation: "update";
+      readonly where: { readonly id: string };
+      readonly update: { readonly revokedAtMs: number };
     };
 
-export interface DatabaseBundleMutation {
-  readonly operation: "insert" | "update" | "delete";
-  readonly bundleId: string;
+export interface DatabaseCommit {
   readonly changes: readonly DatabaseChange[];
 }
 
-export interface DatabaseCommit {
-  readonly mutations: readonly DatabaseBundleMutation[];
+type BundleRepositoryBundleChange = Extract<
+  DatabaseChange,
+  { readonly model: "bundles" | "bundlePatches" }
+>;
+
+type BundleRepositoryChannelChange = Extract<
+  DatabaseChange,
+  { readonly model: "channels" }
+>;
+
+export type BundleRepositoryChange =
+  | BundleRepositoryBundleChange
+  | BundleRepositoryChannelChange;
+
+/**
+ * The atomic envelopes supported by a bundle-management repository.
+ *
+ * Bundle and patch changes form one aggregate commit. Channel lifecycle is a
+ * separate single-change commit because the standalone HTTP boundary cannot
+ * atomically combine a Channel write with a bundle aggregate write.
+ */
+export type BundleRepositoryCommit =
+  | { readonly changes: readonly BundleRepositoryBundleChange[] }
+  | { readonly changes: readonly [BundleRepositoryChannelChange] };
+
+export type DatabaseCommitResult =
+  | { readonly committed: true }
+  | {
+      readonly committed: false;
+      readonly conflict: {
+        readonly changeIndex: number;
+        readonly reason: "not_found" | "referenced";
+      };
+    };
+
+export interface DatabaseModels {
+  readonly bundles: BundleModel;
+  readonly bundlePatches: BundlePatchModel;
+  readonly channels: ChannelModel;
+  readonly analytics: AnalyticsModel;
+  readonly clientAccessKeys: ClientAccessKeyModel;
 }
 
-export interface DatabaseCommitResult {
-  readonly applied: boolean;
-  readonly missingBundleId?: string;
+export interface DatabaseQueries {
+  readonly getUpdateInfo?: (
+    input: GetBundlesArgs,
+  ) => Promise<UpdateInfo | null>;
 }
 
-export interface BundleRepositoryCore {
-  readonly bundles: BundleTable;
-  readonly bundlePatches: BundlePatchTable;
-  commit(input: DatabaseCommit): Promise<DatabaseCommitResult>;
-  getChannels?: () => Promise<string[]>;
-  getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;
+export interface BundleRepository {
+  readonly name: string;
+  readonly models: Pick<
+    DatabaseModels,
+    "bundles" | "bundlePatches" | "channels"
+  >;
+  readonly queries: DatabaseQueries;
+  commit(input: BundleRepositoryCommit): Promise<DatabaseCommitResult>;
   dispose?: () => Promise<void>;
 }
 
-export interface BundleRepository extends BundleRepositoryCore {
+export interface DatabasePlugin {
   readonly name: string;
-}
-
-export interface DatabasePluginCore extends BundleRepositoryCore {
-  readonly analytics: AnalyticsTable;
-  readonly clientAccessKeys: ClientAccessKeyTable;
-}
-
-export interface DatabasePlugin extends BundleRepository, DatabasePluginCore {
-  readonly name: string;
+  readonly models: DatabaseModels;
+  readonly queries: DatabaseQueries;
+  commit(input: DatabaseCommit): Promise<DatabaseCommitResult>;
+  dispose?: () => Promise<void>;
 }

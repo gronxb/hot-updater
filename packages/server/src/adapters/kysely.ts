@@ -1,8 +1,8 @@
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
-  createDatabasePlugin,
+  createDatabasePluginAdapter,
   type DatabasePluginImplementation,
-} from "@hot-updater/plugin-core";
-import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core/internal";
 import type { Kysely } from "kysely";
 
 import { createKyselyMigrator } from "../db/fixedMigrator";
@@ -15,7 +15,6 @@ import { getDatabasePluginUpdateInfo } from "./databasePluginUpdateInfo";
 import { fromStoredBundleRow } from "./databasePluginUtils";
 import {
   createKyselyCrud,
-  findKyselyChannels,
   findKyselyBundles,
   findKyselyPatches,
 } from "./kyselyCrud";
@@ -38,6 +37,16 @@ const createImplementation = <TDatabase extends object>(
   const crud = createKyselyCrud(db, config.provider, relationMode);
   return {
     ...crud,
+    deleteChannel: (input) =>
+      db
+        .transaction()
+        .execute((transaction) =>
+          createKyselyCrud(
+            transaction,
+            config.provider,
+            relationMode,
+          ).deleteChannel(input),
+        ),
     create: (input) =>
       db
         .transaction()
@@ -73,7 +82,6 @@ const createImplementation = <TDatabase extends object>(
         },
         args,
       ),
-    getChannels: () => findKyselyChannels(db),
     transaction: (callback) =>
       db
         .transaction()
@@ -94,13 +102,9 @@ export const kyselyAdapter = <TDatabase extends object>(
   );
   const plugin = createDatabasePlugin({
     name: "kysely",
-    bundles: adapter.bundles,
-    bundlePatches: adapter.bundlePatches,
-    analytics: adapter.analytics,
-    clientAccessKeys: adapter.clientAccessKeys,
+    models: adapter.models,
+    queries: adapter.queries,
     commit: adapter.commit,
-    getChannels: adapter.getChannels,
-    getUpdateInfo: adapter.getUpdateInfo,
   });
   return Object.assign(plugin, {
     adapterName: "kysely",

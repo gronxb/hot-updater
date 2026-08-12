@@ -6,6 +6,8 @@ import { p } from "@hot-updater/cli-tools";
 
 import {
   DYNAMODB_ANALYTICS_PARTITION,
+  DYNAMODB_CHANNEL_NAME_PARTITION,
+  DYNAMODB_CHANNEL_PARTITION,
   DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION,
   DYNAMODB_CLIENT_ACCESS_KEY_PARTITION,
   DYNAMODB_UPDATE_INDEX_NAME,
@@ -65,25 +67,27 @@ export class IAMManager {
             Resource: [`${tableArn}/index/${DYNAMODB_UPDATE_INDEX_NAME}`],
           },
           {
-            Action: ["dynamodb:BatchGetItem", "dynamodb:GetItem"],
+            Action: [
+              "dynamodb:BatchGetItem",
+              "dynamodb:DeleteItem",
+              "dynamodb:GetItem",
+              "dynamodb:PutItem",
+              "dynamodb:Query",
+              "dynamodb:TransactWriteItems",
+              "dynamodb:UpdateItem",
+            ],
             Condition: {
               "ForAllValues:StringEquals": {
                 "dynamodb:LeadingKeys": [
+                  "_hot-updater",
                   "bundles",
                   "bundle_patches",
+                  DYNAMODB_CHANNEL_PARTITION,
+                  DYNAMODB_CHANNEL_NAME_PARTITION,
+                  DYNAMODB_ANALYTICS_PARTITION,
                   DYNAMODB_CLIENT_ACCESS_KEY_PARTITION,
                   DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION,
                 ],
-              },
-            },
-            Effect: "Allow",
-            Resource: [tableArn],
-          },
-          {
-            Action: ["dynamodb:PutItem", "dynamodb:Query"],
-            Condition: {
-              "ForAllValues:StringEquals": {
-                "dynamodb:LeadingKeys": [DYNAMODB_ANALYTICS_PARTITION],
               },
             },
             Effect: "Allow",
@@ -94,22 +98,6 @@ export class IAMManager {
       PolicyName: "HotUpdaterDynamoDBReadAccess",
       RoleName: roleName,
     });
-  }
-
-  private async removeDynamoDBPolicy(
-    iamClient: IAM,
-    roleName: string,
-  ): Promise<void> {
-    try {
-      await iamClient.deleteRolePolicy({
-        PolicyName: "HotUpdaterDynamoDBReadAccess",
-        RoleName: roleName,
-      });
-    } catch (error) {
-      if (!(error instanceof Error && error.name === "NoSuchEntityException")) {
-        throw error;
-      }
-    }
   }
 
   private async ensureS3Policy(
@@ -163,7 +151,7 @@ export class IAMManager {
 
   async createOrSelectRole(options: {
     readonly bucketName: string;
-    readonly dynamodbTableName?: string;
+    readonly dynamodbTableName: string;
     readonly lambdaName: string;
     readonly ssmParameterName: string;
   }): Promise<string> {
@@ -214,16 +202,12 @@ export class IAMManager {
           accountId,
           options.ssmParameterName,
         );
-        if (options.dynamodbTableName) {
-          await this.ensureDynamoDBPolicy(
-            iamClient,
-            roleName,
-            accountId,
-            options.dynamodbTableName,
-          );
-        } else {
-          await this.removeDynamoDBPolicy(iamClient, roleName);
-        }
+        await this.ensureDynamoDBPolicy(
+          iamClient,
+          roleName,
+          accountId,
+          options.dynamodbTableName,
+        );
         p.log.info(
           `Using existing IAM role: ${roleName} (${existingRole.Arn})`,
         );
@@ -259,15 +243,13 @@ export class IAMManager {
         );
         p.log.info(`Added resource-scoped policies to ${roleName}`);
 
-        if (options.dynamodbTableName) {
-          await this.ensureDynamoDBPolicy(
-            iamClient,
-            roleName,
-            accountId,
-            options.dynamodbTableName,
-          );
-          p.log.info(`Added DynamoDB read policy to ${roleName}`);
-        }
+        await this.ensureDynamoDBPolicy(
+          iamClient,
+          roleName,
+          accountId,
+          options.dynamodbTableName,
+        );
+        p.log.info(`Added DynamoDB read policy to ${roleName}`);
 
         return lambdaRoleArn;
       } catch (createError) {

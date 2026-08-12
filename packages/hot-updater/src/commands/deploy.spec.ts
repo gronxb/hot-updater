@@ -79,7 +79,8 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     ) =>
       storage.put({
         key: [key, filePath.split("/").at(-1)!].filter(Boolean).join("/"),
-        body: new TextEncoder().encode("file"),
+        body: new Response("file").body!,
+        contentLength: 4,
         contentType: "application/octet-stream",
       }),
   };
@@ -206,7 +207,10 @@ vi.mock("./console", () => ({
 import fs from "fs";
 
 import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
-import { DatabaseAtomicCommitUnsupportedError } from "@hot-updater/plugin-core";
+import {
+  createStorageUri,
+  DatabaseAtomicCommitUnsupportedError,
+} from "@hot-updater/plugin-core";
 
 import { writeBundleManifest } from "@/utils/bundleManifest";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
@@ -324,9 +328,9 @@ describe("deploy rollout wiring", () => {
       bundleId: "bundle-123",
       stdout: null,
     });
-    mockStoragePlugin.put.mockResolvedValue({
-      storageUri: "s3://bundles/bundle-123/bundle.tar.br",
-    });
+    mockStoragePlugin.put.mockImplementation(async ({ key }) => ({
+      storageUri: `s3://bundles/${key}`,
+    }));
     mockStoragePlugin.exists.mockResolvedValue({ exists: false });
     mockServer.createBundleDiff.mockResolvedValue({
       id: "bundle-123",
@@ -520,6 +524,13 @@ describe("deploy rollout wiring", () => {
     expect(
       (await databaseHarness.bundles()).map(({ id }) => id).sort(),
     ).toEqual(["bundle-android", "bundle-ios"]);
+    expect(await databasePlugin.models.channels.list({})).toEqual({
+      channels: [
+        expect.objectContaining({
+          name: "production",
+        }),
+      ],
+    });
     expect(databaseHarness.commit).toHaveBeenCalledTimes(1);
   });
 
@@ -527,7 +538,7 @@ describe("deploy rollout wiring", () => {
     const transactionlessDatabasePlugin: DatabasePlugin = {
       ...databasePlugin,
       commit: async (input) => {
-        if (input.mutations.length > 1) {
+        if (input.changes.length > 1) {
           throw new DatabaseAtomicCommitUnsupportedError(databasePlugin.name);
         }
         return databasePlugin.commit(input);
@@ -767,6 +778,36 @@ describe("deploy rollout wiring", () => {
       metadata: expect.objectContaining({
         app_version: "1.0",
       }),
+    });
+  });
+
+  it("preserves canonical special-character base segments in derived asset URIs", async () => {
+    mockStoragePlugin.put.mockImplementation(async ({ key }) => ({
+      storageUri: createStorageUri({
+        protocol: "s3",
+        bucket: "bundles",
+        key: `release root#100%/${key}`,
+      }),
+    }));
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect((await databaseHarness.bundles())[0]).toMatchObject({
+      assetBaseStorageUri: "s3://bundles/release%20root%23100%25/assets",
+      manifestStorageUri:
+        "s3://bundles/release%20root%23100%25/bundle-123/manifest.json",
+      storageUri:
+        "s3://bundles/release%20root%23100%25/bundle-123/bundle.tar.br",
+    });
+    expect(mockStoragePlugin.exists).toHaveBeenCalledWith({
+      storageUri:
+        "s3://bundles/release%20root%23100%25/assets/sha256/fi/file-hash.bundle",
     });
   });
 

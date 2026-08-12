@@ -18,6 +18,7 @@ npm install @hot-updater/server @hot-updater/standalone --save-dev
 Self-hosted mode lets you control the database layer while using existing cloud storage plugins.
 
 **How it works:**
+
 - **CLI**: Uses `standaloneRepository` in hot-updater.config.ts to send requests to your server
 - **Server**: Handles database operations with `@hot-updater/server`
 - **Storage**: Uses existing plugins (AWS S3, Supabase, Cloudflare R2, Firebase)
@@ -57,6 +58,11 @@ The `storage` field accepts an array of flat storage objects. `get` returns a We
 `Response`, while `getDownloadUrl` returns the URL sent to update clients. How a
 provider produces or handles that URL remains inside its implementation.
 
+Stored locations use the hierarchical
+`protocol://bucket/encoded/slash/key` form. Providers use the shared
+`createStorageUri` and `parseStorageUri` helpers so special characters
+round-trip without flattening the key hierarchy.
+
 1. When you run `npx hot-updater deploy` from your `hot-updater.config.ts`, the bundle is uploaded and a `storageUri` is saved to the database
 2. When the API returns bundle information, the matching storage plugin turns the stored URI into an HTTP(S) URL
 3. When diffing data is available, the server reads it directly from storage so the client can reuse unchanged files
@@ -71,18 +77,26 @@ subpath with the same public plugin name.
 `storage` is an array, allowing you to configure multiple storage providers simultaneously. Each plugin handles its specific storage URI protocol.
 
 **Use cases:**
+
 - Bundles stored across different storage providers
 - Migrating between storage providers (old and new bundles coexist)
 - Multi-region deployments with different storage backends
 
 **Example with multiple plugins:**
+
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
   storage: [
-    s3Storage({ /* AWS S3 config with download URL support */ }),
-    supabaseStorage({ /* Supabase config */ }),
-    myCustomStorage({ /* My Custom Storage */})
+    s3Storage({
+      /* AWS S3 config with download URL support */
+    }),
+    supabaseStorage({
+      /* Supabase config */
+    }),
+    myCustomStorage({
+      /* My Custom Storage */
+    }),
   ],
   basePath: "/hot-updater",
   features: {
@@ -92,25 +106,77 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
+The server automatically uses the correct plugin to decode each `storageUri`
+based on its protocol.
+
+Configure at most one storage plugin per URI scheme. A matching registered
+plugin owns reads, URL generation, and exact deletion even for `http` or
+`https`. Only when no plugin owns an HTTP(S) URI does Hot Updater use the direct
+URL; an unowned non-HTTP scheme is unsupported.
+
+## Features
+
+`createHotUpdater` exposes runtime route groups and optional behavior through
+one `features` object:
+
+- `updateCheck`: update-check endpoints used by React Native clients
+- `bundles`: bundle and Channel management endpoints used by the CLI and
+  Console
+- `analytics`: event ingestion and query routes backed by
+  `database.models.analytics`
+- `clientAccessKeys`: authentication for update checks and Analytics ingestion
+  backed by `database.models.clientAccessKeys`
+
+`updateCheck` is mounted by default. `bundles` is disabled by default and must
+be enabled explicitly when the CLI needs bundle-management APIs. When
+`bundles: true`, protect `/api/bundles*` and `/api/channels*` with framework
+middleware. The `/version` endpoint is always mounted for diagnostics.
+
+```typescript title="src/hotUpdater.ts"
+export const hotUpdater = createHotUpdater({
+  database: kyselyAdapter({ db, provider: "sqlite" }),
+  storage: [
+    s3Storage({
+      /* storage config */
+    }),
+  ],
+  basePath: "/hot-updater",
+  features: {
+    updateCheck: true,
+    bundles: true,
+    analytics: true,
+    clientAccessKeys: true,
+  },
+});
+```
+
+Use `analytics: { queryAccess: "public" }` only when Analytics query routes
+are intentionally public, such as a local fixture. `analytics: true` keeps
+queries protected. `false` or an omitted feature disables it.
+
 <Callout type="warn">
 **Recommendation: Match Your CLI Configuration**
 
 For most use cases, use only the storage plugin that matches your CLI's `hot-updater.config.ts`.
 
 **CLI (hot-updater.config.ts):**
+
 ```typescript
 storage: s3Storage({ ... })
 ```
 
 **Server (src/hotUpdater.ts):**
+
 ```typescript
 storage: [s3Storage({ ... })]
 ```
 
 This ensures consistency and simplifies configuration. Only use multiple plugins when you need to support bundles from different storage providers.
+
 </Callout>
 
 **Available official plugins:**
+
 - [s3Storage](../storage-plugins/aws) - AWS S3 and Cloudflare R2
 - [supabaseStorage](../storage-plugins/supabase) - Supabase Storage
 - [firebaseStorage](../storage-plugins/firebase) - Firebase Cloud Storage

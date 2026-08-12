@@ -79,12 +79,48 @@ describe("supabaseStorage", () => {
     await expect(
       createStorage().put({
         key: "bundles/bundle.zip",
-        body: new TextEncoder().encode("bundle"),
+        body: new Response("bundle").body!,
+        contentLength: 6,
         contentType: "application/zip",
       }),
     ).resolves.toEqual({
       storageUri: "supabase-storage://updates/bundles/bundle.zip",
     });
+    expect(bucket.upload).toHaveBeenCalledWith(
+      "bundles/bundle.zip",
+      expect.any(ReadableStream),
+      {
+        cacheControl: "max-age=31536000",
+        contentType: "application/zip",
+        duplex: "half",
+        headers: { "content-length": "6" },
+      },
+    );
+  });
+
+  it("round-trips reserved characters through exact Supabase object keys", async () => {
+    const key = "릴리스 folder/#100%/bundle.zip";
+    bucket.upload.mockResolvedValue({
+      data: { fullPath: `updates/${key}` },
+      error: null,
+    });
+    bucket.remove.mockResolvedValue({ data: [], error: null });
+
+    const uploaded = await createStorage().put({
+      key,
+      body: new Response("bundle").body!,
+      contentLength: 6,
+      contentType: "application/zip",
+    });
+    expect(uploaded.storageUri).not.toContain("#100%");
+    await createStorage().delete({ storageUri: uploaded.storageUri });
+
+    expect(bucket.upload).toHaveBeenCalledWith(
+      key,
+      expect.any(ReadableStream),
+      expect.any(Object),
+    );
+    expect(bucket.remove).toHaveBeenCalledWith([key]);
   });
 
   it("deletes exactly the referenced object", async () => {
@@ -95,10 +131,27 @@ describe("supabaseStorage", () => {
         storageUri: "supabase-storage://updates/releases/bundle.zip",
       }),
     ).resolves.toEqual({
-      storageUri: "supabase-storage://updates/releases/bundle.zip",
+      deleted: true,
     });
 
     expect(bucket.remove).toHaveBeenCalledWith(["releases/bundle.zip"]);
+  });
+
+  it("treats an already missing object as an idempotent delete", async () => {
+    bucket.remove.mockResolvedValue({
+      data: null,
+      error: { message: "Object not found" },
+    });
+    const input = {
+      storageUri: "supabase-storage://updates/releases/missing.zip",
+    };
+
+    await expect(createStorage().delete(input)).resolves.toEqual({
+      deleted: true,
+    });
+    await expect(createStorage().delete(input)).resolves.toEqual({
+      deleted: true,
+    });
   });
 
   it("returns a Supabase signed download URL", async () => {

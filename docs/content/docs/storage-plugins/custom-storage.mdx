@@ -18,20 +18,36 @@ bindings, credentials, or request context. A provider captures those details
 when it creates the plugin.
 
 ```typescript
-import { createStoragePlugin } from "@hot-updater/plugin-core";
+import {
+  createStoragePlugin,
+  createStorageUri,
+  parseStorageUri,
+} from "@hot-updater/plugin-core";
 
 export const customStorage = createStoragePlugin({
   name: "customStorage",
   protocol: "custom",
 
-  async put({ key, body, contentType }) {
-    const objectKey = key;
-    await client.put(objectKey, body, { contentType });
-    return { storageUri: `custom://bucket/${objectKey}` };
+  async put({ key, body, contentLength, contentType }) {
+    await client.put({
+      bucket: "bundle-bucket",
+      key,
+      body,
+      contentLength,
+      contentType,
+    });
+    return {
+      storageUri: createStorageUri({
+        protocol: "custom",
+        bucket: "bundle-bucket",
+        key,
+      }),
+    };
   },
 
   async get({ storageUri }) {
-    const object = await client.get(parseStorageUri(storageUri));
+    const { bucket, key } = parseStorageUri(storageUri, "custom");
+    const object = await client.get({ bucket, key });
     return {
       response:
         object === null
@@ -47,12 +63,14 @@ export const customStorage = createStoragePlugin({
   },
 
   async exists({ storageUri }) {
-    return { exists: await client.exists(parseStorageUri(storageUri)) };
+    const { bucket, key } = parseStorageUri(storageUri, "custom");
+    return { exists: await client.exists({ bucket, key }) };
   },
 
   async delete({ storageUri }) {
-    await client.delete(parseStorageUri(storageUri));
-    return { storageUri };
+    const { bucket, key } = parseStorageUri(storageUri, "custom");
+    await client.delete({ bucket, key });
+    return { deleted: true };
   },
 });
 ```
@@ -66,7 +84,8 @@ interface StoragePlugin {
 
   readonly put?: (input: {
     readonly key: string;
-    readonly body: Uint8Array;
+    readonly body: ReadableStream<Uint8Array>;
+    readonly contentLength?: number;
     readonly contentType: string;
   }) => Promise<{ readonly storageUri: string }>;
 
@@ -84,9 +103,39 @@ interface StoragePlugin {
 
   readonly delete?: (input: {
     readonly storageUri: string;
-  }) => Promise<{ readonly storageUri: string }>;
+  }) => Promise<{ readonly deleted: true }>;
 }
 ```
+
+## Storage URI format
+
+Persisted storage locations are canonical hierarchical identities:
+
+```text
+protocol://bucket/encoded/slash/key
+```
+
+The bucket is the URI host. The key is a slash-delimited hierarchy; each key
+segment is encoded independently so `/` remains a path separator while spaces,
+Unicode, `#`, `?`, and percent characters round-trip safely. Do not concatenate
+a URI by hand. Providers should create and parse it with the shared helpers:
+
+```typescript
+const storageUri = createStorageUri({
+  protocol: "custom",
+  bucket: "bundle-bucket",
+  key: "releases/1.0.0/bundle ios#1.zip",
+});
+// custom://bundle-bucket/releases/1.0.0/bundle%20ios%231.zip
+
+const parsed = parseStorageUri(storageUri, "custom");
+// { protocol: "custom", bucket: "bundle-bucket",
+//   key: "releases/1.0.0/bundle ios#1.zip" }
+```
+
+Empty key segments, `.` and `..` segments, query strings, and fragments are not
+valid storage locations. The helpers reject them instead of normalizing to a
+different object key.
 
 Operations are optional because a runtime-specific implementation may support
 only the capabilities its consumer needs. Hot Updater validates required
@@ -95,16 +144,36 @@ Every operation receives one input object and returns one result object so new
 fields can be added without introducing positional parameters or changing the
 result shape.
 
-| Consumer | Required operations |
-| --- | --- |
-| `hot-updater deploy` | `put`, `get`, `exists`, `delete` |
-| `hot-updater patch` and promote-copy | `get`, `put`, `delete` |
-| Console server mutations | `get`, `put`, `delete` |
-| `createHotUpdater({ storage })` update responses | `getDownloadUrl` |
-| `createHotUpdater({ storage })` download handling | `get` |
+| Consumer                                          | Required operations              |
+| ------------------------------------------------- | -------------------------------- |
+| `hot-updater deploy`                              | `put`, `get`, `exists`, `delete` |
+| `hot-updater patch` and promote-copy              | `get`, `put`, `delete`           |
+| Console server mutations                          | `get`, `put`, `delete`           |
+| `createHotUpdater({ storage })` update responses  | `getDownloadUrl`                 |
+| `createHotUpdater({ storage })` download handling | `get`                            |
 
-`delete` always deletes exactly one object. Prefix or bucket cleanup is an
-administrative provider operation and is intentionally outside this contract.
+`delete` always targets exactly one object and returns `{ deleted: true }` once
+that object is absent. Deleting an already-missing object has the same result,
+which makes retrying cleanup safe. Prefix or bucket cleanup is an administrative
+provider operation and is intentionally outside this contract.
+
+`put.body` is a one-shot Web stream. A provider must consume or cancel it before
+the returned promise settles. `contentLength` is supplied when the consumer
+knows it, but remains optional for runtime streams without a known length.
+`get.response` is also stream-capable: consumers can pipe `response.body`
+without buffering the whole object. A `null` response means the object does not
+exist.
+
+At runtime, Hot Updater resolves a URI in this order:
+
+1. Use the registered storage plugin whose `protocol` matches the URI scheme.
+2. If no plugin owns the scheme and it is `http` or `https`, use the direct URL.
+3. Otherwise report the scheme as unsupported.
+
+Plugin ownership also takes precedence for `http` and `https`. This lets a
+provider apply authorization or private reads without the consumer bypassing it
+with a direct fetch or redirect. Register at most one plugin for each scheme;
+duplicate owners are rejected because routing would be ambiguous.
 
 ## Configuration and runtime implementations
 
@@ -157,7 +226,8 @@ signed handler-relative URL.
 
 ## File-system consumers
 
-The core contract carries bytes and Web responses, not paths. CLI code is
-responsible for reading a local file before `put` and materializing a `Response`
-returned by `get`. Provider plugins should not add file-system operations back
-to the public contract.
+The core contract carries Web streams and responses, not paths. CLI code opens
+a local file stream, supplies its known size as `contentLength`, and passes the
+stream to `put` without reading the complete file into memory. A file-system
+consumer can likewise pipe the body returned by `get` to a local file. Provider
+plugins should not add file-system operations back to the public contract.

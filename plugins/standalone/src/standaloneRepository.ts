@@ -1,12 +1,13 @@
 import type {
   BundlePatchRow,
   BundleRepository,
+  BundleRepositoryCommit,
   BundleRow,
   DatabaseBundleQueryWhere,
-  DatabaseCommit,
   DatabaseCommitResult,
-  DatabaseWhere,
 } from "@hot-updater/plugin-core";
+import { DatabaseAtomicCommitUnsupportedError } from "@hot-updater/plugin-core";
+import type { DatabaseWhere } from "@hot-updater/plugin-core/internal";
 
 import { createStandaloneBundleRemote } from "./standaloneBundleRemote";
 import { createLegacyCompatibilityImplementation } from "./standaloneLegacyImplementation";
@@ -83,63 +84,97 @@ const toBundleWhere = (
 
 const applyCommit = async (
   remote: ReturnType<typeof createStandaloneBundleRemote>,
-  input: DatabaseCommit,
-): Promise<DatabaseCommitResult> =>
-  runLegacyAggregateTransaction(remote, async (database) => {
-    for (const mutation of input.mutations) {
-      if (mutation.operation !== "update") continue;
+  input: BundleRepositoryCommit,
+): Promise<DatabaseCommitResult> => {
+  const channelChanges = input.changes.filter(
+    (change) => change.model === "channels",
+  );
+  if (channelChanges.length > 0) {
+    if (input.changes.length > 1) {
+      throw new DatabaseAtomicCommitUnsupportedError("standalone-repository");
+    }
+    const [change] = channelChanges;
+    if (change !== undefined) {
+      if (change.operation === "insert") {
+        await remote.insertChannel({
+          row: change.row,
+          onConflict: "returnExisting",
+        });
+      } else {
+        const result = await remote.deleteChannel({ id: change.where.id });
+        if (!result.deleted && result.reason === "not_empty") {
+          return {
+            committed: false,
+            conflict: { changeIndex: 0, reason: "referenced" },
+          };
+        }
+      }
+    }
+    return { committed: true };
+  }
+
+  return runLegacyAggregateTransaction(remote, async (database) => {
+    for (const [changeIndex, change] of input.changes.entries()) {
+      if (change.model !== "bundles" || change.operation !== "update") {
+        continue;
+      }
       const row = await database.findOne({
         model: "bundles",
-        where: [{ field: "id", value: mutation.bundleId }],
+        where: [{ field: "id", value: change.where.id }],
         select: ["id"],
       });
       if (row === null) {
-        return { applied: false, missingBundleId: mutation.bundleId };
+        return {
+          committed: false,
+          conflict: { changeIndex, reason: "not_found" },
+        } as const;
       }
     }
 
-    for (const mutation of input.mutations) {
-      for (const change of mutation.changes) {
-        if (change.table === "bundles") {
-          switch (change.operation) {
-            case "insert":
-              await database.create({ model: "bundles", data: change.row });
-              break;
-            case "update":
-              await database.update({
-                model: "bundles",
-                where: [{ field: "id", value: change.id }],
-                update: change.update,
-              });
-              break;
-            case "delete":
-              await database.delete({
-                model: "bundles",
-                where: [{ field: "id", value: change.id }],
-              });
-              break;
-          }
-          continue;
-        }
-
+    for (const change of input.changes) {
+      if (change.model === "bundles") {
         switch (change.operation) {
           case "insert":
-            await database.create({
-              model: "bundle_patches",
-              data: change.row,
+            await database.create({ model: "bundles", data: change.row });
+            break;
+          case "update":
+            await database.update({
+              model: "bundles",
+              where: [{ field: "id", value: change.where.id }],
+              update: change.update,
             });
             break;
           case "delete":
             await database.delete({
-              model: "bundle_patches",
-              where: [{ field: "bundle_id", value: change.bundleId }],
+              model: "bundles",
+              where: [{ field: "id", value: change.where.id }],
             });
             break;
         }
+        continue;
+      }
+      if (change.model !== "bundlePatches") {
+        throw new DatabaseAtomicCommitUnsupportedError("standalone-repository");
+      }
+
+      switch (change.operation) {
+        case "insert":
+          await database.create({
+            model: "bundle_patches",
+            data: change.row,
+          });
+          break;
+        case "delete":
+          await database.delete({
+            model: "bundle_patches",
+            where: [{ field: "bundle_id", value: change.where.bundleId }],
+          });
+          break;
       }
     }
-    return { applied: true };
+    return { committed: true };
   });
+};
 
 /**
  * Bundle-only HTTP repository used by the CLI for a self-hosted server.
@@ -155,39 +190,48 @@ export const standaloneRepository = (
 
   const repository: BundleRepository = {
     name: "standalone-repository",
-    bundles: {
-      async findById(id): Promise<BundleRow | null> {
-        return (await database.findOne({
-          model: "bundles",
-          where: [{ field: "id", value: id }],
-        })) as BundleRow | null;
+    models: {
+      bundles: {
+        async findById(id): Promise<BundleRow | null> {
+          return (await database.findOne({
+            model: "bundles",
+            where: [{ field: "id", value: id }],
+          })) as BundleRow | null;
+        },
+        async findMany(query): Promise<readonly BundleRow[]> {
+          return (await database.findMany({
+            model: "bundles",
+            where: toBundleWhere(query.where),
+            limit: query.limit,
+            offset: query.offset,
+            orderBy: [query.orderBy],
+          })) as readonly BundleRow[];
+        },
+        count: (where) =>
+          database.count({ model: "bundles", where: toBundleWhere(where) }),
       },
-      async findMany(query): Promise<readonly BundleRow[]> {
-        return (await database.findMany({
-          model: "bundles",
-          where: toBundleWhere(query.where),
-          limit: query.limit,
-          offset: query.offset,
-          orderBy: [query.orderBy],
-        })) as readonly BundleRow[];
+      bundlePatches: {
+        async findByBundleIds(bundleIds): Promise<readonly BundlePatchRow[]> {
+          if (bundleIds.length === 0) return [];
+          return (await database.findMany({
+            model: "bundle_patches",
+            where: [{ field: "bundle_id", operator: "in", value: bundleIds }],
+            orderBy: [{ field: "id", direction: "asc" }],
+            limit: Number.MAX_SAFE_INTEGER,
+            offset: 0,
+          })) as readonly BundlePatchRow[];
+        },
       },
-      count: (where) =>
-        database.count({ model: "bundles", where: toBundleWhere(where) }),
+      channels: {
+        insert: (input) => remote.insertChannel(input),
+        delete: (input) => remote.deleteChannel(input),
+        async list() {
+          return { channels: await remote.loadChannels() };
+        },
+      },
     },
-    bundlePatches: {
-      async findByBundleIds(bundleIds): Promise<readonly BundlePatchRow[]> {
-        if (bundleIds.length === 0) return [];
-        return (await database.findMany({
-          model: "bundle_patches",
-          where: [{ field: "bundle_id", operator: "in", value: bundleIds }],
-          orderBy: [{ field: "id", direction: "asc" }],
-          limit: Number.MAX_SAFE_INTEGER,
-          offset: 0,
-        })) as readonly BundlePatchRow[];
-      },
-    },
+    queries: {},
     commit: (input) => applyCommit(remote, input),
-    getChannels: () => remote.loadChannels(),
   };
   return Object.freeze(repository);
 };

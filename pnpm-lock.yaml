@@ -1946,9 +1946,6 @@ importers:
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@hot-updater/js':
-        specifier: workspace:*
-        version: link:../js
       '@hot-updater/mock':
         specifier: workspace:*
         version: link:../mock

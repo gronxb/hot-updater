@@ -1,6 +1,8 @@
 import {
   DatabasePluginInputError,
   type Bundle,
+  type ChannelDeleteInput,
+  type ChannelInsertInput,
   type DatabaseBundleQueryOptions,
 } from "@hot-updater/plugin-core";
 import { createServerFn } from "@tanstack/react-start";
@@ -74,6 +76,34 @@ export const getChannels = createServerFn().handler(async () => {
     throw error;
   }
 });
+
+// POST /api/channels
+export const createChannel = createServerFn({ method: "POST" })
+  .inputValidator((input: ChannelInsertInput) => input)
+  .handler(async ({ data }) => {
+    try {
+      const { prepareConfig } = await import("./server/config.server");
+      const { databaseClient } = await prepareConfig();
+      return { data: await databaseClient.insertChannel(data) };
+    } catch (error) {
+      console.error("Error during channel creation:", error);
+      throw error;
+    }
+  });
+
+// DELETE /api/channels/:id
+export const deleteChannel = createServerFn({ method: "POST" })
+  .inputValidator((input: ChannelDeleteInput) => input)
+  .handler(async ({ data }) => {
+    try {
+      const { prepareConfig } = await import("./server/config.server");
+      const { databaseClient } = await prepareConfig();
+      return { data: await databaseClient.deleteChannel(data) };
+    } catch (error) {
+      console.error("Error during channel deletion:", error);
+      throw error;
+    }
+  });
 
 // GET /api/config-loaded
 export const getConfigLoaded = createServerFn().handler(async () => {

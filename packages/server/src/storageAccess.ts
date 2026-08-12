@@ -81,9 +81,9 @@ export const createStorageAccess = (
     if (!storageUri) return null;
 
     const protocol = getStorageProtocol(storageUri);
-    if (isRemoteUrlProtocol(protocol)) return storageUri;
     const storage = findStorage(protocol);
     if (!storage) {
+      if (isRemoteUrlProtocol(protocol)) return storageUri;
       throw new Error(`No storage plugin for protocol: ${protocol}`);
     }
     if (!storage.getDownloadUrl) {

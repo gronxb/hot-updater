@@ -5,6 +5,11 @@ const mocks = vi.hoisted(() => ({
   createTable: vi.fn(),
   describeContinuousBackups: vi.fn(),
   describeTable: vi.fn(),
+  getItem: vi.fn(),
+  putItem: vi.fn(),
+  query: vi.fn(),
+  transactWriteItems: vi.fn(),
+  updateItem: vi.fn(),
   updateContinuousBackups: vi.fn(),
   waitUntilTableExists: vi.fn(),
 }));
@@ -15,6 +20,11 @@ vi.mock("@aws-sdk/client-dynamodb", () => ({
       createTable: mocks.createTable,
       describeContinuousBackups: mocks.describeContinuousBackups,
       describeTable: mocks.describeTable,
+      getItem: mocks.getItem,
+      putItem: mocks.putItem,
+      query: mocks.query,
+      transactWriteItems: mocks.transactWriteItems,
+      updateItem: mocks.updateItem,
       updateContinuousBackups: mocks.updateContinuousBackups,
     };
   }),
@@ -67,6 +77,11 @@ describe("DynamoDBManager", () => {
       },
     });
     mocks.updateContinuousBackups.mockResolvedValue({});
+    mocks.getItem.mockResolvedValue({});
+    mocks.putItem.mockResolvedValue({});
+    mocks.query.mockResolvedValue({ Items: [] });
+    mocks.transactWriteItems.mockResolvedValue({});
+    mocks.updateItem.mockResolvedValue({});
   });
 
   it("creates an on-demand metadata table with the update index", async () => {
@@ -214,4 +229,219 @@ describe("DynamoDBManager", () => {
       tableName: "existing-table",
     });
   });
+
+  it("backfills one claimed channel and channel_id for legacy bundles", async () => {
+    // Given
+    mocks.describeTable.mockResolvedValue({ Table: compatibleTable });
+    mocks.query
+      .mockResolvedValueOnce({ Items: [] })
+      .mockResolvedValueOnce({
+        Items: [legacyBundleItem("bundle-1", "Production")],
+        LastEvaluatedKey: {
+          pk: { S: "bundles" },
+          sk: { S: "bundle-1" },
+        },
+      })
+      .mockResolvedValueOnce({
+        Items: [legacyBundleItem("bundle-2", "Production")],
+      });
+    const manager = new DynamoDBManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    // When
+    await manager.ensureTable("hot-updater-metadata");
+
+    // Then
+    expect(mocks.transactWriteItems).toHaveBeenCalledOnce();
+    expect(mocks.query).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        ExclusiveStartKey: {
+          pk: { S: "bundles" },
+          sk: { S: "bundle-1" },
+        },
+      }),
+    );
+    const transaction = mocks.transactWriteItems.mock.calls[0]?.[0];
+    const claimId = transaction?.TransactItems?.[0]?.Put?.Item?.channel_id?.S;
+    expect(claimId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+    );
+    expect(transaction?.TransactItems).toEqual([
+      expect.objectContaining({
+        Put: expect.objectContaining({
+          Item: {
+            pk: { S: "_hot-updater#channel-names" },
+            sk: { S: "Production" },
+            channel_id: { S: claimId },
+          },
+        }),
+      }),
+      expect.objectContaining({
+        Put: expect.objectContaining({
+          Item: {
+            pk: { S: "channels" },
+            sk: { S: claimId },
+            version: { N: "1" },
+            reference_count: { N: "0" },
+            row: {
+              M: { id: { S: claimId }, name: { S: "Production" } },
+            },
+          },
+        }),
+      }),
+    ]);
+    expect(mocks.updateItem).toHaveBeenCalledTimes(3);
+    expect(mocks.updateItem).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        Key: { pk: { S: "bundles" }, sk: { S: "bundle-1" } },
+        ExpressionAttributeValues: expect.objectContaining({
+          ":channel": { S: "Production" },
+          ":channelId": { S: claimId },
+        }),
+      }),
+    );
+    expect(mocks.updateItem).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        Key: { pk: { S: "bundles" }, sk: { S: "bundle-2" } },
+        ExpressionAttributeValues: expect.objectContaining({
+          ":channelId": { S: claimId },
+        }),
+      }),
+    );
+    expect(mocks.updateItem).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        Key: { pk: { S: "channels" }, sk: { S: claimId } },
+        ExpressionAttributeValues: expect.objectContaining({
+          ":referenceCount": { N: "2" },
+        }),
+      }),
+    );
+  });
+
+  it("reuses a canonical claim without rewriting migrated bundles", async () => {
+    // Given
+    const channel = channelItem("channel-production", "production");
+    mocks.describeTable.mockResolvedValue({ Table: compatibleTable });
+    mocks.query
+      .mockResolvedValueOnce({ Items: [channel] })
+      .mockResolvedValueOnce({
+        Items: [
+          legacyBundleItem("bundle-1", "production", "channel-production"),
+        ],
+      });
+    mocks.getItem
+      .mockResolvedValueOnce({
+        Item: {
+          pk: { S: "_hot-updater#channel-names" },
+          sk: { S: "production" },
+          channel_id: { S: "channel-production" },
+        },
+      })
+      .mockResolvedValueOnce({ Item: channel });
+    const manager = new DynamoDBManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    // When
+    await manager.ensureTable("hot-updater-metadata");
+
+    // Then
+    expect(mocks.transactWriteItems).not.toHaveBeenCalled();
+    expect(mocks.putItem).not.toHaveBeenCalled();
+    expect(mocks.updateItem).not.toHaveBeenCalled();
+  });
+
+  it("registers an unreferenced channel so empty channels remain reusable", async () => {
+    // Given
+    const channel = channelItem("channel-preview", "preview");
+    mocks.describeTable.mockResolvedValue({ Table: compatibleTable });
+    mocks.query
+      .mockResolvedValueOnce({ Items: [channel] })
+      .mockResolvedValueOnce({ Items: [] });
+    const manager = new DynamoDBManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    // When
+    await manager.ensureTable("hot-updater-metadata");
+
+    // Then
+    expect(mocks.putItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        Item: {
+          pk: { S: "_hot-updater#channel-names" },
+          sk: { S: "preview" },
+          channel_id: { S: "channel-preview" },
+        },
+      }),
+    );
+    expect(mocks.transactWriteItems).not.toHaveBeenCalled();
+    expect(mocks.updateItem).not.toHaveBeenCalled();
+  });
+
+  it("rejects a migrated bundle whose channel_id names another channel", async () => {
+    // Given
+    const channel = channelItem("channel-production", "production");
+    mocks.describeTable.mockResolvedValue({ Table: compatibleTable });
+    mocks.query
+      .mockResolvedValueOnce({ Items: [channel] })
+      .mockResolvedValueOnce({
+        Items: [legacyBundleItem("bundle-1", "production", "channel-staging")],
+      });
+    mocks.getItem
+      .mockResolvedValueOnce({
+        Item: {
+          pk: { S: "_hot-updater#channel-names" },
+          sk: { S: "production" },
+          channel_id: { S: "channel-production" },
+        },
+      })
+      .mockResolvedValueOnce({ Item: channel });
+    const manager = new DynamoDBManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    // When
+    const migration = manager.ensureTable("hot-updater-metadata");
+
+    // Then
+    await expect(migration).rejects.toMatchObject({
+      name: "DynamoDBChannelMigrationError",
+      message: expect.stringContaining("mismatched channel_id"),
+    });
+  });
+});
+
+const channelItem = (
+  id: string,
+  name: string,
+  referenceCount = name === "production" ? 1 : 0,
+) => ({
+  pk: { S: "channels" },
+  sk: { S: id },
+  version: { N: "1" },
+  reference_count: { N: String(referenceCount) },
+  row: { M: { id: { S: id }, name: { S: name } } },
+});
+
+const legacyBundleItem = (id: string, channel: string, channelId?: string) => ({
+  pk: { S: "bundles" },
+  sk: { S: id },
+  version: { N: "1" },
+  row: {
+    M: {
+      id: { S: id },
+      channel: { S: channel },
+      ...(channelId ? { channel_id: { S: channelId } } : {}),
+    },
+  },
 });

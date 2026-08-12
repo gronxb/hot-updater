@@ -1,6 +1,7 @@
 import {
   createStorageKeyBuilder,
   createStoragePlugin,
+  createStorageUri,
   parseStorageUri,
   type StoragePluginWith,
 } from "@hot-updater/plugin-core";
@@ -46,19 +47,35 @@ export const firebaseStorage = (
     protocol: "gs",
     async put({ key, body, contentType }) {
       const storageKey = getStorageKey(key);
-      await bucket.file(storageKey).save(body, {
+      const bytes = new Uint8Array(await new Response(body).arrayBuffer());
+      await bucket.file(storageKey).save(bytes, {
         metadata: {
           contentType,
           cacheControl: "public, max-age=31536000, immutable",
         },
       });
-      return { storageUri: `gs://${config.storageBucket}/${storageKey}` };
+      return {
+        storageUri: createStorageUri({
+          bucket: config.storageBucket,
+          key: storageKey,
+          protocol: "gs",
+        }),
+      };
     },
     async get({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       try {
-        const [body] = await bucket.file(key).download();
-        return { response: new Response(body) };
+        const file = bucket.file(key);
+        const [[body], [metadata]] = await Promise.all([
+          file.download(),
+          file.getMetadata(),
+        ]);
+        const headers = new Headers();
+        if (metadata.contentType) {
+          headers.set("content-type", metadata.contentType);
+        }
+        headers.set("content-length", String(metadata.size ?? body.byteLength));
+        return { response: new Response(body, { headers }) };
       } catch (error) {
         if (
           typeof error === "object" &&
@@ -74,8 +91,13 @@ export const firebaseStorage = (
     async getDownloadUrl({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       if (config.cdnUrl) {
+        const storageUrl = new URL(storageUri);
+        const downloadUrl = new URL(config.cdnUrl);
+        downloadUrl.pathname = `${downloadUrl.pathname.replace(/\/+$/, "")}${storageUrl.pathname}`;
+        downloadUrl.search = "";
+        downloadUrl.hash = "";
         return {
-          url: `${config.cdnUrl.replace(/\/+$/, "")}/${key}`,
+          url: downloadUrl.toString(),
         };
       }
       const [url] = await bucket.file(key).getSignedUrl({
@@ -93,7 +115,7 @@ export const firebaseStorage = (
     async delete({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       await bucket.file(key).delete({ ignoreNotFound: true });
-      return { storageUri };
+      return { deleted: true };
     },
   });
 };

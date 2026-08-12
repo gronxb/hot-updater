@@ -10,9 +10,7 @@ export type {
 } from "@hot-updater/core";
 
 export * from "./utils";
-export * from "./database";
-export * from "./databaseFields";
-export * from "./databasePlugin";
+export * from "./public";
 
 export interface BasePluginArgs {
   cwd: string;
@@ -330,7 +328,8 @@ export interface NativeBuildArgs {
 export interface StoragePutInput {
   /** Complete object key below the provider's configured base path. */
   readonly key: string;
-  readonly body: Uint8Array;
+  readonly body: ReadableStream<Uint8Array>;
+  readonly contentLength?: number;
   readonly contentType: string;
 }
 
@@ -359,7 +358,7 @@ export interface StorageDeleteInput {
 }
 
 export interface StorageDeleteResult {
-  readonly storageUri: string;
+  readonly deleted: true;
 }
 
 export interface StorageGetDownloadUrlInput {
@@ -372,6 +371,9 @@ export interface StorageGetDownloadUrlResult {
 
 /**
  * Runtime-independent object storage contract.
+ *
+ * `storageUri` values are hierarchical identifiers in the form
+ * `protocol://bucket/slash-separated-encoded-key`.
  *
  * SDK clients, platform bindings, credentials, and local file I/O belong to
  * provider implementations and consumers, never to this interface.

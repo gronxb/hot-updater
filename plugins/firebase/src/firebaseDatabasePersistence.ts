@@ -2,6 +2,7 @@ import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
+  ChannelRow,
   ClientAccessKeyRow,
 } from "@hot-updater/plugin-core";
 import {
@@ -19,6 +20,8 @@ import {
   parseFirebaseBundleRow,
   parseFirebaseBundleEventRow,
   parseFirebaseClientAccessKeyRow,
+  parseFirebaseChannelRow,
+  parseFirebaseLegacyBundleRow,
   parseFirebaseLegacyPatchRows,
   parseFirebasePatchRow,
 } from "./firebaseDatabaseParser";
@@ -29,6 +32,7 @@ export interface FirebaseDatabaseCollections {
   readonly bundles: CollectionReference<DocumentData>;
   readonly bundlePatches: CollectionReference<DocumentData>;
   readonly bundleEvents: CollectionReference<DocumentData>;
+  readonly channels: CollectionReference<DocumentData>;
   readonly clientAccessKeys: CollectionReference<DocumentData>;
   readonly settings: CollectionReference<DocumentData>;
 }
@@ -47,6 +51,7 @@ export const createFirebaseDatabaseCollections = (
   bundles: db.collection("bundles"),
   bundlePatches: db.collection("bundle_patches"),
   bundleEvents: db.collection("bundle_events"),
+  channels: db.collection("channels"),
   clientAccessKeys: db.collection("client_access_keys"),
   settings: db.collection("private_hot_updater_settings"),
 });
@@ -55,12 +60,20 @@ type FixedRow =
   | BundleEventRow
   | BundlePatchRow
   | BundleRow
+  | ChannelRow
   | ClientAccessKeyRow;
 type FixedModel =
   | "bundle_events"
   | "bundle_patches"
   | "bundles"
+  | "channels"
   | "client_access_keys";
+
+export const firebaseChannelDocumentId = (name: string): string =>
+  `name_${Buffer.from(name, "utf8").toString("base64url")}`;
+
+export const firebaseChannelIdDocumentId = (id: string): string =>
+  `channel_id_${Buffer.from(id, "utf8").toString("base64url")}`;
 
 type ParsedDocumentRow<TRow extends FixedRow> = {
   readonly document: { readonly id: string };
@@ -157,6 +170,37 @@ const eventMap = (
     })),
   );
 
+const channelMap = (
+  snapshot: QuerySnapshot<DocumentData>,
+): Map<string, ChannelRow> => {
+  const rows = new Map<string, ChannelRow>();
+  const names = new Set<string>();
+  for (const document of snapshot.docs) {
+    const row = parseFirebaseChannelRow(
+      document.data(),
+      `channels/${document.id}`,
+    );
+    if (document.id !== firebaseChannelDocumentId(row.name)) {
+      throw new FirebaseDatabaseConstraintError("channels.name.document-key");
+    }
+    if (rows.has(row.id)) {
+      throw new FirebaseDatabaseConstraintError("channels.id.unique");
+    }
+    if (names.has(row.name)) {
+      throw new FirebaseDatabaseConstraintError("channels.name.unique");
+    }
+    rows.set(row.id, row);
+    names.add(row.name);
+  }
+  return rows;
+};
+
+export const loadFirebaseChannels = async (
+  collections: FirebaseDatabaseCollections,
+): Promise<readonly ChannelRow[]> => [
+  ...channelMap(await collections.channels.get()).values(),
+];
+
 const clientAccessKeyMap = (
   snapshot: QuerySnapshot<DocumentData>,
 ): Map<string, ClientAccessKeyRow> =>
@@ -176,40 +220,60 @@ type CoreSnapshotDocuments = readonly [
   QuerySnapshot<DocumentData>,
   QuerySnapshot<DocumentData>,
   QuerySnapshot<DocumentData>,
+  QuerySnapshot<DocumentData>,
 ];
 
 const toSnapshot = (
   documents: CoreSnapshotDocuments,
-): FirebaseDatabaseSnapshot => ({
-  bundles: bundleMap(documents[0]),
-  bundlePatches: patchMap(documents[1]),
-  bundleEvents: eventMap(documents[2]),
-  clientAccessKeys: clientAccessKeyMap(documents[3]),
-});
+): FirebaseDatabaseSnapshot => {
+  const snapshot: FirebaseDatabaseSnapshot = {
+    bundles: bundleMap(documents[0]),
+    bundlePatches: patchMap(documents[1]),
+    bundleEvents: eventMap(documents[2]),
+    channels: channelMap(documents[3]),
+    clientAccessKeys: clientAccessKeyMap(documents[4]),
+  };
+  for (const bundle of snapshot.bundles.values()) {
+    const channel = snapshot.channels.get(bundle.channel_id);
+    if (channel === undefined) {
+      throw new FirebaseDatabaseConstraintError(
+        "bundles.channel_id.foreign-key",
+      );
+    }
+    if (channel.name !== bundle.channel) {
+      throw new FirebaseDatabaseConstraintError("bundles.channel.dual-write");
+    }
+  }
+  return snapshot;
+};
 
 export const loadFirebaseDatabaseSnapshot = async (
   collections: FirebaseDatabaseCollections,
 ): Promise<FirebaseDatabaseSnapshot> => {
-  const [bundles, patches, events, clientAccessKeys] = await Promise.all([
-    collections.bundles.get(),
-    collections.bundlePatches.get(),
-    collections.bundleEvents.get(),
-    collections.clientAccessKeys.get(),
-  ]);
-  return toSnapshot([bundles, patches, events, clientAccessKeys]);
+  const [bundles, patches, events, channels, clientAccessKeys] =
+    await Promise.all([
+      collections.bundles.get(),
+      collections.bundlePatches.get(),
+      collections.bundleEvents.get(),
+      collections.channels.get(),
+      collections.clientAccessKeys.get(),
+    ]);
+  return toSnapshot([bundles, patches, events, channels, clientAccessKeys]);
 };
 
 export const loadFirebaseTransactionSnapshot = async (
   transaction: Transaction,
   collections: FirebaseDatabaseCollections,
 ): Promise<FirebaseDatabaseSnapshot> => {
-  const [bundles, patches, events, clientAccessKeys] = await Promise.all([
-    transaction.get(collections.bundles),
-    transaction.get(collections.bundlePatches),
-    transaction.get(collections.bundleEvents),
-    transaction.get(collections.clientAccessKeys),
-  ]);
-  return toSnapshot([bundles, patches, events, clientAccessKeys]);
+  const [bundles, patches, events, channels, clientAccessKeys] =
+    await Promise.all([
+      transaction.get(collections.bundles),
+      transaction.get(collections.bundlePatches),
+      transaction.get(collections.bundleEvents),
+      transaction.get(collections.channels),
+      transaction.get(collections.clientAccessKeys),
+    ]);
+  return toSnapshot([bundles, patches, events, channels, clientAccessKeys]);
 };
 
 type PersistCollectionInput<TRow extends FixedRow> = {
@@ -217,6 +281,7 @@ type PersistCollectionInput<TRow extends FixedRow> = {
   readonly collection: CollectionReference<DocumentData>;
   readonly before: ReadonlyMap<string, TRow>;
   readonly after: ReadonlyMap<string, TRow>;
+  readonly documentId?: (row: TRow) => string;
 };
 
 const persistCollection = <TRow extends FixedRow>({
@@ -224,13 +289,14 @@ const persistCollection = <TRow extends FixedRow>({
   collection,
   before,
   after,
+  documentId = (row) => row.id,
 }: PersistCollectionInput<TRow>): void => {
-  for (const id of before.keys()) {
-    if (!after.has(id)) transaction.delete(collection.doc(id));
+  for (const [id, row] of before) {
+    if (!after.has(id)) transaction.delete(collection.doc(documentId(row)));
   }
   for (const [id, row] of after) {
     if (JSON.stringify(before.get(id)) !== JSON.stringify(row)) {
-      transaction.set(collection.doc(id), row, { merge: true });
+      transaction.set(collection.doc(documentId(row)), row, { merge: true });
     }
   }
 };
@@ -268,10 +334,51 @@ export const persistFirebaseDatabaseSnapshot = ({
   });
   persistCollection({
     transaction,
+    collection: collections.channels,
+    before: before.channels,
+    after: after.channels,
+    documentId: (row) => firebaseChannelDocumentId(row.name),
+  });
+  for (const [id] of before.channels) {
+    if (!after.channels.has(id)) {
+      transaction.delete(
+        collections.settings.doc(firebaseChannelIdDocumentId(id)),
+      );
+    }
+  }
+  for (const [id, row] of after.channels) {
+    if (JSON.stringify(before.channels.get(id)) !== JSON.stringify(row)) {
+      transaction.set(
+        collections.settings.doc(firebaseChannelIdDocumentId(id)),
+        row,
+      );
+    }
+  }
+  persistCollection({
+    transaction,
     collection: collections.clientAccessKeys,
     before: before.clientAccessKeys,
     after: after.clientAccessKeys,
   });
+};
+
+const applyFirebaseMigrationWrites = async (
+  db: Firestore,
+  writes: readonly FirebaseMigrationWrite[],
+): Promise<void> => {
+  for (let offset = 0; offset < writes.length; offset += 400) {
+    const batch = db.batch();
+    for (const write of writes.slice(offset, offset + 400)) {
+      if (write.kind === "create") {
+        batch.create(write.reference, write.value);
+      } else {
+        batch.update(write.reference, write.value, {
+          lastUpdateTime: write.updateTime,
+        });
+      }
+    }
+    await batch.commit();
+  }
 };
 
 const migrateFirebaseDatabaseAttempt = async (
@@ -281,19 +388,36 @@ const migrateFirebaseDatabaseAttempt = async (
   const versionDocument = collections.settings.doc("database_adapter_version");
   const version = await versionDocument.get();
   const adapterVersion = version.data()?.version;
-  if (adapterVersion === 2) return;
-  if (version.exists && adapterVersion !== 1) {
+  if (adapterVersion === 3) return;
+  if (version.exists && adapterVersion !== 1 && adapterVersion !== 2) {
     throw new FirebaseDatabaseAdapterVersionError(adapterVersion);
   }
 
-  const [bundles, patches] = await Promise.all([
+  const [bundles, patches, channels] = await Promise.all([
     collections.bundles.get(),
     collections.bundlePatches.get(),
+    collections.channels.get(),
   ]);
   const parsedBundles = bundles.docs.map((document) => ({
     document,
-    row: parseFirebaseBundleRow(document.data(), `bundles/${document.id}`),
+    row: parseFirebaseLegacyBundleRow(
+      document.data(),
+      `bundles/${document.id}`,
+    ),
   }));
+  const bundleIds = new Set<string>();
+  for (const { row } of parsedBundles) {
+    if (bundleIds.has(row.id)) {
+      throw new FirebaseDatabaseConstraintError("bundles.id.unique");
+    }
+    bundleIds.add(row.id);
+  }
+  for (const { document, row } of parsedBundles) {
+    if (document.id !== row.id) {
+      throw new FirebaseDatabaseConstraintError("bundles.id.document-key");
+    }
+  }
+
   const parsedPatches = patches.docs.map((document) => ({
     document,
     row: parseFirebasePatchRow(
@@ -301,11 +425,7 @@ const migrateFirebaseDatabaseAttempt = async (
       `bundle_patches/${document.id}`,
     ),
   }));
-  const bundleIds = new Set(documentMap("bundles", parsedBundles).keys());
   const existingPatches = documentMap("bundle_patches", parsedPatches);
-  const patchWrites: FirebaseMigrationWrite[] = [];
-  const bundleWrites: FirebaseMigrationWrite[] = [];
-
   for (const { row: patch } of parsedPatches) {
     if (!bundleIds.has(patch.bundle_id)) {
       throw new FirebaseDatabaseConstraintError(
@@ -319,13 +439,74 @@ const migrateFirebaseDatabaseAttempt = async (
     }
   }
 
-  for (const { document, row: bundle } of parsedBundles) {
-    const value: unknown = document.data();
-    const legacyPatches = parseFirebaseLegacyPatchRows(
-      value,
-      bundle.id,
-      `bundles/${document.id}`,
+  const existingChannels = channelMap(channels);
+  const channelsByName = new Map(
+    [...existingChannels.values()].map((row) => [row.name, row]),
+  );
+  const channelWrites: FirebaseMigrationWrite[] = [];
+  for (const name of new Set(parsedBundles.map(({ row }) => row.channel))) {
+    if (channelsByName.has(name)) continue;
+    const row: ChannelRow = { id: collections.channels.doc().id, name };
+    channelWrites.push({
+      kind: "create",
+      reference: collections.channels.doc(firebaseChannelDocumentId(name)),
+      value: { ...row },
+    });
+    channelsByName.set(name, row);
+  }
+  await applyFirebaseMigrationWrites(db, channelWrites);
+
+  const canonicalChannels = channelMap(await collections.channels.get());
+  const canonicalChannelsByName = new Map(
+    [...canonicalChannels.values()].map((row) => [row.name, row]),
+  );
+  const patchWrites: FirebaseMigrationWrite[] = [];
+  const bundleWrites: FirebaseMigrationWrite[] = [];
+  const channelIdWrites: FirebaseMigrationWrite[] = [];
+  const migratesLegacyPatches = adapterVersion !== 2;
+
+  const settings = await collections.settings.get();
+  const settingIds = new Set(settings.docs.map(({ id }) => id));
+  for (const document of settings.docs) {
+    if (!document.id.startsWith("channel_id_")) continue;
+    const row = parseFirebaseChannelRow(
+      document.data(),
+      `private_hot_updater_settings/${document.id}`,
     );
+    const canonical = canonicalChannels.get(row.id);
+    if (
+      document.id !== firebaseChannelIdDocumentId(row.id) ||
+      canonical?.name !== row.name
+    ) {
+      throw new FirebaseDatabaseConstraintError("channels.id.registry");
+    }
+  }
+  for (const channel of canonicalChannels.values()) {
+    const documentId = firebaseChannelIdDocumentId(channel.id);
+    if (!settingIds.has(documentId)) {
+      channelIdWrites.push({
+        kind: "create",
+        reference: collections.settings.doc(documentId),
+        value: { ...channel },
+      });
+    }
+  }
+  await applyFirebaseMigrationWrites(db, channelIdWrites);
+
+  for (const { document, row: bundle } of parsedBundles) {
+    const channel = canonicalChannelsByName.get(bundle.channel);
+    if (channel === undefined) {
+      throw new FirebaseDatabaseConstraintError(
+        "bundles.channel_id.foreign-key",
+      );
+    }
+    const legacyPatches = migratesLegacyPatches
+      ? parseFirebaseLegacyPatchRows(
+          document.data(),
+          bundle.id,
+          `bundles/${document.id}`,
+        )
+      : [];
     for (const patch of legacyPatches) {
       if (!bundleIds.has(patch.base_bundle_id)) {
         throw new FirebaseDatabaseConstraintError(
@@ -360,6 +541,7 @@ const migrateFirebaseDatabaseAttempt = async (
       updateTime: requireUpdateTime(document, `bundles/${document.id}`),
       value: {
         ...bundle,
+        channel_id: channel.id,
         patches: FieldValue.delete(),
         patch_base_bundle_id: FieldValue.delete(),
         patch_base_file_hash: FieldValue.delete(),
@@ -369,7 +551,7 @@ const migrateFirebaseDatabaseAttempt = async (
     });
   }
 
-  const writes: FirebaseMigrationWrite[] = [
+  await applyFirebaseMigrationWrites(db, [
     ...patchWrites,
     ...bundleWrites,
     version.exists
@@ -377,27 +559,14 @@ const migrateFirebaseDatabaseAttempt = async (
           kind: "update",
           reference: versionDocument,
           updateTime: requireUpdateTime(version, versionDocument.path),
-          value: { version: 2 },
+          value: { version: 3 },
         }
       : {
           kind: "create",
           reference: versionDocument,
-          value: { version: 2 },
+          value: { version: 3 },
         },
-  ];
-  for (let offset = 0; offset < writes.length; offset += 400) {
-    const batch = db.batch();
-    for (const write of writes.slice(offset, offset + 400)) {
-      if (write.kind === "create") {
-        batch.create(write.reference, write.value);
-      } else {
-        batch.update(write.reference, write.value, {
-          lastUpdateTime: write.updateTime,
-        });
-      }
-    }
-    await batch.commit();
-  }
+  ]);
 };
 
 const isFirebaseMigrationConflict = (error: unknown): boolean => {
@@ -420,7 +589,7 @@ export const migrateFirebaseDatabase = async (
       const version = await collections.settings
         .doc("database_adapter_version")
         .get();
-      if (version.data()?.version === 2) return;
+      if (version.data()?.version === 3) return;
       if (attempt === 2) throw error;
     }
   }

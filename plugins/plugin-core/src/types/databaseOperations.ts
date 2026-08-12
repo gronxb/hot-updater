@@ -42,6 +42,14 @@ export type DatabaseModelCapabilities = {
     readonly findOne: true;
     readonly findMany: true;
   };
+  readonly channels: {
+    readonly create: true;
+    readonly update: false;
+    readonly delete: true;
+    readonly count: false;
+    readonly findOne: true;
+    readonly findMany: true;
+  };
   readonly bundle_events: {
     readonly create: true;
     readonly update: false;
@@ -77,7 +85,7 @@ export type FindManyDatabaseModel = DatabaseModelsWithCapability<"findMany">;
 export type DatabaseDeleteModel = DeleteDatabaseModel;
 export type DatabaseFindOneModel = FindOneDatabaseModel;
 
-export type CreateDatabaseInput<
+type CreateDatabaseInputBase<
   TModel extends CreateDatabaseModel,
   TSelect extends DatabaseSelect<TModel> | undefined = undefined,
 > = {
@@ -86,7 +94,29 @@ export type CreateDatabaseInput<
   readonly select?: TSelect;
 };
 
-export type BundleRowUpdate = Partial<Omit<BundleRow, "id">>;
+export type CreateDatabaseInput<
+  TModel extends CreateDatabaseModel,
+  TSelect extends DatabaseSelect<TModel> | undefined = undefined,
+> = CreateDatabaseInputBase<TModel, TSelect> &
+  (TModel extends "channels" | "client_access_keys"
+    ? { readonly onConflict?: "ignore" }
+    : { readonly onConflict?: never });
+
+type BundleRowUpdateFields = Partial<
+  Omit<BundleRow, "id" | "channel" | "channel_id">
+>;
+
+export type BundleRowUpdate = BundleRowUpdateFields &
+  (
+    | {
+        readonly channel: string;
+        readonly channel_id: string;
+      }
+    | {
+        readonly channel?: never;
+        readonly channel_id?: never;
+      }
+  );
 export type ClientAccessKeyRowUpdate = Pick<
   ClientAccessKeyRow,
   "revoked_at_ms"
@@ -262,7 +292,12 @@ export interface DatabasePluginImplementation {
   findMany(
     input: FindManyDatabaseImplementationInput,
   ): Promise<readonly DatabaseImplementationResult[]>;
-  getChannels?: () => Promise<string[]>;
+  insertChannel(
+    input: import("./databasePlugin").ChannelInsertInput,
+  ): Promise<import("./databasePlugin").ChannelInsertResult>;
+  deleteChannel(
+    input: import("./databasePlugin").ChannelDeleteInput,
+  ): Promise<import("./databasePlugin").ChannelDeleteResult>;
   getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;
   transaction?: <TResult>(
     callback: (

@@ -2,6 +2,7 @@ import {
   createStorageKeyBuilder,
   createStorageDownloadUrl,
   createStoragePlugin,
+  createStorageUri,
   parseStorageUri,
   type StoragePluginWith,
 } from "@hot-updater/plugin-core";
@@ -34,15 +35,37 @@ export const r2WorkerStorage = (
   return createStoragePlugin({
     name: "r2Storage",
     protocol: "r2",
-    async put({ key, body, contentType }) {
+    async put({ key, body, contentLength, contentType }) {
       const storageKey = getStorageKey(key);
-      await config.bucket.put(storageKey, body, {
+      const uploadOptions = {
         httpMetadata: {
           contentType,
           cacheControl: "max-age=31536000",
         },
-      });
-      return { storageUri: `r2://${config.bucketName}/${storageKey}` };
+      };
+      if (contentLength === undefined) {
+        const bufferedBody = new Uint8Array(
+          await new Response(body).arrayBuffer(),
+        );
+        await config.bucket.put(storageKey, bufferedBody, uploadOptions);
+      } else {
+        const fixedLengthBody = new FixedLengthStream(contentLength);
+        await Promise.all([
+          body.pipeTo(fixedLengthBody.writable),
+          config.bucket.put(
+            storageKey,
+            fixedLengthBody.readable,
+            uploadOptions,
+          ),
+        ]);
+      }
+      return {
+        storageUri: createStorageUri({
+          protocol: "r2",
+          bucket: config.bucketName,
+          key: storageKey,
+        }),
+      };
     },
     async get({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
@@ -65,7 +88,7 @@ export const r2WorkerStorage = (
     async delete({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       await config.bucket.delete(key);
-      return { storageUri };
+      return { deleted: true };
     },
   });
 };

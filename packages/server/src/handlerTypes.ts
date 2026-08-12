@@ -4,7 +4,14 @@ import type {
   Bundle,
   FingerprintGetBundlesArgs,
 } from "@hot-updater/core";
-import type { DatabaseBundleQueryOptions } from "@hot-updater/plugin-core";
+import type {
+  ChannelDeleteInput,
+  ChannelDeleteResult,
+  ChannelInsertInput,
+  ChannelInsertResult,
+  ChannelRow,
+  DatabaseBundleQueryOptions,
+} from "@hot-updater/plugin-core";
 
 import type { PaginatedResult } from "./types";
 
@@ -21,21 +28,19 @@ export interface HandlerAPI {
     bundle: Partial<Bundle>,
   ) => Promise<void>;
   deleteBundleById: (bundleId: string) => Promise<void>;
-  getChannels: () => Promise<string[]>;
+  getChannels: () => Promise<readonly ChannelRow[]>;
+  insertChannel: (input: ChannelInsertInput) => Promise<ChannelInsertResult>;
+  deleteChannel: (input: ChannelDeleteInput) => Promise<ChannelDeleteResult>;
 }
 
 export interface HandlerOptions {
   /** Base path for all routes. @default "/api" */
   readonly basePath?: string;
-  /**
-   * Route groups to mount. `GET /version` and the storage delivery route are
-   * mounted independently when configured. All paths are relative to
-   * `basePath`.
-   */
-  readonly routes?: HandlerRoutes;
+  /** Runtime features to mount. `GET /version` is always available. */
+  readonly features?: HandlerFeatures;
 }
 
-export interface HandlerRoutes {
+export interface HandlerFeatures {
   /**
    * Mounts the React Native update-check endpoints:
    *
@@ -49,11 +54,13 @@ export interface HandlerRoutes {
    * This only controls the core route group. Optional authentication for
    * these routes is configured through `features.clientAccessKeys`.
    */
-  readonly updateCheck: boolean;
+  readonly updateCheck?: boolean;
   /**
    * Mounts the bundle management endpoints used by `standaloneRepository`:
    *
-   * - `GET /api/bundles/channels`
+   * - `GET /api/channels`
+   * - `POST /api/channels`
+   * - `DELETE /api/channels/:id`
    * - `GET /api/bundles/:id`
    * - `GET /api/bundles`
    * - `POST /api/bundles`
@@ -65,7 +72,7 @@ export interface HandlerRoutes {
    * Analytics and client access-key behavior are not route groups. Configure
    * them through `features.analytics` and `features.clientAccessKeys`.
    */
-  readonly bundles: boolean;
+  readonly bundles?: boolean;
 }
 
 export type RouteHandler = (

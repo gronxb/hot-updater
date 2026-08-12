@@ -5,7 +5,14 @@ import type {
   FingerprintGetBundlesArgs,
   UpdateInfo,
 } from "@hot-updater/core";
-import type { DatabasePlugin as DatabasePluginContract } from "@hot-updater/plugin-core";
+import type {
+  ChannelDeleteInput,
+  ChannelDeleteResult,
+  ChannelInsertInput,
+  ChannelInsertResult,
+  ChannelRow,
+  DatabasePlugin as DatabasePluginContract,
+} from "@hot-updater/plugin-core";
 
 import type { PaginatedResult } from "../types";
 
@@ -88,40 +95,61 @@ export function isDatabasePlugin(plugin: unknown): plugin is DatabasePlugin {
     plugin !== null &&
     "name" in plugin &&
     typeof plugin.name === "string" &&
-    "bundles" in plugin &&
-    typeof plugin.bundles === "object" &&
-    plugin.bundles !== null &&
-    "findById" in plugin.bundles &&
-    typeof plugin.bundles.findById === "function" &&
-    "findMany" in plugin.bundles &&
-    typeof plugin.bundles.findMany === "function" &&
-    "count" in plugin.bundles &&
-    typeof plugin.bundles.count === "function" &&
-    "bundlePatches" in plugin &&
-    typeof plugin.bundlePatches === "object" &&
-    plugin.bundlePatches !== null &&
-    "findByBundleIds" in plugin.bundlePatches &&
-    typeof plugin.bundlePatches.findByBundleIds === "function" &&
-    "analytics" in plugin &&
-    typeof plugin.analytics === "object" &&
-    plugin.analytics !== null &&
-    "append" in plugin.analytics &&
-    typeof plugin.analytics.append === "function" &&
-    "scan" in plugin.analytics &&
-    typeof plugin.analytics.scan === "function" &&
-    "clientAccessKeys" in plugin &&
-    typeof plugin.clientAccessKeys === "object" &&
-    plugin.clientAccessKeys !== null &&
-    "create" in plugin.clientAccessKeys &&
-    typeof plugin.clientAccessKeys.create === "function" &&
-    "findByHash" in plugin.clientAccessKeys &&
-    typeof plugin.clientAccessKeys.findByHash === "function" &&
-    "list" in plugin.clientAccessKeys &&
-    typeof plugin.clientAccessKeys.list === "function" &&
-    "revoke" in plugin.clientAccessKeys &&
-    typeof plugin.clientAccessKeys.revoke === "function" &&
+    "models" in plugin &&
+    typeof plugin.models === "object" &&
+    plugin.models !== null &&
+    "bundles" in plugin.models &&
+    typeof plugin.models.bundles === "object" &&
+    plugin.models.bundles !== null &&
+    "findById" in plugin.models.bundles &&
+    typeof plugin.models.bundles.findById === "function" &&
+    "findMany" in plugin.models.bundles &&
+    typeof plugin.models.bundles.findMany === "function" &&
+    "count" in plugin.models.bundles &&
+    typeof plugin.models.bundles.count === "function" &&
+    "bundlePatches" in plugin.models &&
+    typeof plugin.models.bundlePatches === "object" &&
+    plugin.models.bundlePatches !== null &&
+    "findByBundleIds" in plugin.models.bundlePatches &&
+    typeof plugin.models.bundlePatches.findByBundleIds === "function" &&
+    "channels" in plugin.models &&
+    typeof plugin.models.channels === "object" &&
+    plugin.models.channels !== null &&
+    "insert" in plugin.models.channels &&
+    typeof plugin.models.channels.insert === "function" &&
+    "list" in plugin.models.channels &&
+    typeof plugin.models.channels.list === "function" &&
+    "delete" in plugin.models.channels &&
+    typeof plugin.models.channels.delete === "function" &&
+    "analytics" in plugin.models &&
+    typeof plugin.models.analytics === "object" &&
+    plugin.models.analytics !== null &&
+    "append" in plugin.models.analytics &&
+    typeof plugin.models.analytics.append === "function" &&
+    "scan" in plugin.models.analytics &&
+    typeof plugin.models.analytics.scan === "function" &&
+    "clientAccessKeys" in plugin.models &&
+    typeof plugin.models.clientAccessKeys === "object" &&
+    plugin.models.clientAccessKeys !== null &&
+    "create" in plugin.models.clientAccessKeys &&
+    typeof plugin.models.clientAccessKeys.create === "function" &&
+    "findByHash" in plugin.models.clientAccessKeys &&
+    typeof plugin.models.clientAccessKeys.findByHash === "function" &&
+    "list" in plugin.models.clientAccessKeys &&
+    typeof plugin.models.clientAccessKeys.list === "function" &&
+    "revoke" in plugin.models.clientAccessKeys &&
+    typeof plugin.models.clientAccessKeys.revoke === "function" &&
+    "queries" in plugin &&
+    typeof plugin.queries === "object" &&
+    plugin.queries !== null &&
+    (!("getUpdateInfo" in plugin.queries) ||
+      plugin.queries.getUpdateInfo === undefined ||
+      typeof plugin.queries.getUpdateInfo === "function") &&
     "commit" in plugin &&
-    typeof plugin.commit === "function"
+    typeof plugin.commit === "function" &&
+    (!("dispose" in plugin) ||
+      plugin.dispose === undefined ||
+      typeof plugin.dispose === "function")
   );
 }
 
@@ -145,7 +173,9 @@ export interface DatabaseAPI {
   getUpdateInfo(
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
   ): Promise<UpdateInfo | null>;
-  getChannels(): Promise<string[]>;
+  getChannels(): Promise<readonly ChannelRow[]>;
+  insertChannel(input: ChannelInsertInput): Promise<ChannelInsertResult>;
+  deleteChannel(input: ChannelDeleteInput): Promise<ChannelDeleteResult>;
   getBundles(
     options: import("@hot-updater/plugin-core").DatabaseBundleQueryOptions,
   ): Promise<PaginatedResult>;

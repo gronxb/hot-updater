@@ -21,25 +21,26 @@ export const downloadBundle = async (
   }
 
   const protocol = new URL(storageUri).protocol.replace(":", "");
-  if (protocol === "http" || protocol === "https") {
-    return Response.redirect(storageUri, 302);
+  if (storagePlugin?.protocol === protocol) {
+    const { response } = await storagePlugin.get({ storageUri });
+    if (!response)
+      return new Response("Storage object not found", { status: 404 });
+
+    const headers = new Headers(response.headers);
+    headers.set("cache-control", "private, no-store");
+    headers.set("content-disposition", "attachment");
+    return new Response(response.body, {
+      headers,
+      status: response.status,
+      statusText: response.statusText,
+    });
   }
-  if (!storagePlugin || storagePlugin.protocol !== protocol) {
+
+  if (protocol !== "http" && protocol !== "https") {
     return new Response(`No storage plugin for protocol: ${protocol}`, {
       status: 503,
     });
   }
 
-  const { response } = await storagePlugin.get({ storageUri });
-  if (!response)
-    return new Response("Storage object not found", { status: 404 });
-
-  const headers = new Headers(response.headers);
-  headers.set("cache-control", "private, no-store");
-  headers.set("content-disposition", "attachment");
-  return new Response(response.body, {
-    headers,
-    status: response.status,
-    statusText: response.statusText,
-  });
+  return Response.redirect(storageUri, 302);
 };

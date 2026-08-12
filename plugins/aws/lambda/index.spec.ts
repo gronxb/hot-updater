@@ -142,7 +142,7 @@ describe("aws lambda entrypoint", () => {
         features: {
           updateCheck: true,
           bundles: false,
-          analytics: true,
+          analytics: {},
           clientAccessKeys: true,
         },
       }),

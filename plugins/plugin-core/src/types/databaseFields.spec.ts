@@ -9,6 +9,7 @@ describe("database model fields", () => {
     expect(models).toEqual([
       "bundles",
       "bundle_patches",
+      "channels",
       "bundle_events",
       "client_access_keys",
     ]);

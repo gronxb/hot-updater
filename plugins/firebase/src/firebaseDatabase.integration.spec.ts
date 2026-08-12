@@ -11,12 +11,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
 import { firebaseDatabase } from "./firebaseDatabase";
+import { firebaseChannelDocumentId } from "./firebaseDatabasePersistence";
 
 const PROJECT_ID = "firebase-database-test";
 
 const {
   bundlePatchesCollection,
   bundlesCollection,
+  channelsCollection,
   clearCollections,
   firestore,
   settingsCollection,
@@ -29,7 +31,7 @@ const createPlugin = (): DatabasePlugin =>
   });
 
 const findAllBundles = (plugin: DatabasePlugin) =>
-  plugin.bundles.findMany({
+  plugin.models.bundles.findMany({
     limit: 100,
     offset: 0,
     orderBy: { field: "id", direction: "asc" },
@@ -60,7 +62,7 @@ setupGetUpdateInfoTestSuite({
     for (const bundle of bundles) {
       await client.insertBundle(bundle);
     }
-    return plugin.getUpdateInfo?.(args) ?? null;
+    return plugin.queries.getUpdateInfo?.(args) ?? null;
   },
 });
 
@@ -126,14 +128,14 @@ describe("firebase v1 data migration", () => {
   beforeEach(clearCollections);
 
   it("rejects a future adapter version before reading database collections", async () => {
-    const marker = { version: 3, future_option: "preserve-me" };
+    const marker = { version: 4, future_option: "preserve-me" };
     await settingsCollection.doc("database_adapter_version").set(marker);
     const bundlesRead = vi.spyOn(bundlesCollection, "get");
     const patchesRead = vi.spyOn(bundlePatchesCollection, "get");
     const plugin = createPlugin();
 
     await expect(findAllBundles(plugin)).rejects.toThrow(
-      "Unsupported Firebase database adapter version: 3",
+      "Unsupported Firebase database adapter version: 4",
     );
     expect(bundlesRead).not.toHaveBeenCalled();
     expect(patchesRead).not.toHaveBeenCalled();
@@ -166,7 +168,9 @@ describe("firebase v1 data migration", () => {
     });
 
     const plugin = createPlugin();
-    const patches = await plugin.bundlePatches.findByBundleIds([target.id]);
+    const patches = await plugin.models.bundlePatches.findByBundleIds([
+      target.id,
+    ]);
 
     expect(patches).toEqual([
       {
@@ -185,6 +189,7 @@ describe("firebase v1 data migration", () => {
     const migratedTarget = await bundlesCollection.doc(target.id).get();
     expect(migratedTarget.data()).toMatchObject({
       channel: "production",
+      channel_id: expect.any(String),
     });
     expect(migratedTarget.data()).not.toHaveProperty("patches");
   });
@@ -204,7 +209,7 @@ describe("firebase v1 data migration", () => {
       patch_storage_uri: "gs://bucket/scalar-patch.bin",
     });
 
-    const patches = await createPlugin().bundlePatches.findByBundleIds([
+    const patches = await createPlugin().models.bundlePatches.findByBundleIds([
       target.id,
     ]);
 
@@ -232,7 +237,7 @@ describe("firebase v1 data migration", () => {
     const version = await settingsCollection
       .doc("database_adapter_version")
       .get();
-    expect(version.data()).toEqual({ version: 2 });
+    expect(version.data()).toEqual({ version: 3 });
   });
 
   it.each(["inline", "scalar"] as const)(
@@ -323,7 +328,7 @@ describe("firebase v1 data migration", () => {
     await bundlePatchesCollection.doc(patch.id).set(patch);
 
     await expect(
-      createPlugin().bundlePatches.findByBundleIds([target.id]),
+      createPlugin().models.bundlePatches.findByBundleIds([target.id]),
     ).resolves.toContainEqual(patch);
 
     const [storedTarget, storedVersion] = await Promise.all([
@@ -331,7 +336,7 @@ describe("firebase v1 data migration", () => {
       settingsCollection.doc("database_adapter_version").get(),
     ]);
     expect(storedTarget.data()).not.toHaveProperty("patches");
-    expect(storedVersion.data()).toEqual({ version: 2 });
+    expect(storedVersion.data()).toEqual({ version: 3 });
   });
 
   it("rejects a patch whose document key differs from its row id", async () => {
@@ -403,11 +408,11 @@ describe("firebase v1 data migration", () => {
 
     await expect(
       createPlugin().commit({
-        mutations: [
+        changes: [
           {
+            model: "bundles",
             operation: "delete",
-            bundleId: bundle.id,
-            changes: [{ table: "bundles", operation: "delete", id: bundle.id }],
+            where: { id: bundle.id },
           },
         ],
       }),
@@ -446,17 +451,11 @@ describe("firebase v1 data migration", () => {
 
     await expect(
       createPlugin().commit({
-        mutations: [
+        changes: [
           {
-            operation: "update",
-            bundleId: target.id,
-            changes: [
-              {
-                table: "bundle_patches",
-                operation: "delete",
-                bundleId: target.id,
-              },
-            ],
+            model: "bundlePatches",
+            operation: "delete",
+            where: { bundleId: target.id },
           },
         ],
       }),
@@ -515,7 +514,7 @@ describe("firebase v1 data migration", () => {
     const plugin = createPlugin();
 
     await expect(
-      plugin.bundlePatches.findByBundleIds(["missing-owner"]),
+      plugin.models.bundlePatches.findByBundleIds(["missing-owner"]),
     ).rejects.toThrow("bundle_patches.bundle_id.foreign-key");
   });
 });
@@ -540,7 +539,7 @@ describe("firebase bounded reads", () => {
     });
 
     await expect(
-      plugin.getUpdateInfo?.({
+      plugin.queries.getUpdateInfo?.({
         _updateStrategy: "fingerprint",
         platform: "ios",
         bundleId: "00000000-0000-0000-0000-000000000000",
@@ -560,7 +559,7 @@ describe("firebase bounded reads", () => {
     });
 
     await expect(
-      createPlugin().bundles.findById(value.id),
+      createPlugin().models.bundles.findById(value.id),
     ).resolves.toMatchObject({ id: value.id, channel: "production" });
   });
 
@@ -573,9 +572,9 @@ describe("firebase bounded reads", () => {
       .doc(documentKey)
       .set(legacyRow("different-embedded-id"));
 
-    await expect(createPlugin().bundles.findById(documentKey)).rejects.toThrow(
-      "bundles.id.document-key",
-    );
+    await expect(
+      createPlugin().models.bundles.findById(documentKey),
+    ).rejects.toThrow("bundles.id.document-key");
   });
 
   it("rejects a matching update-check row whose key differs from its id", async () => {
@@ -587,7 +586,7 @@ describe("firebase bounded reads", () => {
       .set(legacyRow("00000000-0000-0000-0000-000000000994"));
 
     await expect(
-      createPlugin().getUpdateInfo?.({
+      createPlugin().queries.getUpdateInfo?.({
         _updateStrategy: "appVersion",
         platform: "ios",
         bundleId: "00000000-0000-0000-0000-000000000000",
@@ -606,7 +605,7 @@ describe("firebase bounded reads", () => {
 
     try {
       await expect(
-        plugin.getUpdateInfo?.({
+        plugin.queries.getUpdateInfo?.({
           _updateStrategy: "appVersion",
           platform: "ios",
           bundleId: "00000000-0000-0000-0000-000000000000",
@@ -620,5 +619,88 @@ describe("firebase bounded reads", () => {
     } finally {
       runTransaction.mockRestore();
     }
+  });
+});
+
+describe("firebase channel storage", () => {
+  beforeEach(clearCollections);
+
+  it("backfills one canonical channel row and channel_id per legacy channel", async () => {
+    await settingsCollection.doc("database_adapter_version").set({
+      version: 2,
+    });
+    const productionA = legacyRow("channel-production-a", "production");
+    const productionB = legacyRow("channel-production-b", "production");
+    const staging = legacyRow("channel-staging", "staging");
+    await Promise.all(
+      [productionA, productionB, staging].map((row) =>
+        bundlesCollection.doc(row.id).set(row),
+      ),
+    );
+
+    const result = await createPlugin().models.channels.list({});
+
+    expect(result.channels.map(({ name }) => name)).toEqual([
+      "production",
+      "staging",
+    ]);
+    const production = result.channels[0];
+    const stagingChannel = result.channels[1];
+    const [storedProductionA, storedProductionB, storedStaging, version] =
+      await Promise.all([
+        bundlesCollection.doc(productionA.id).get(),
+        bundlesCollection.doc(productionB.id).get(),
+        bundlesCollection.doc(staging.id).get(),
+        settingsCollection.doc("database_adapter_version").get(),
+      ]);
+    expect(storedProductionA.get("channel_id")).toBe(production?.id);
+    expect(storedProductionB.get("channel_id")).toBe(production?.id);
+    expect(storedStaging.get("channel_id")).toBe(stagingChannel?.id);
+    expect(version.data()).toEqual({ version: 3 });
+  });
+
+  it("returns the canonical stored row under concurrent name conflicts", async () => {
+    const first = createPlugin();
+    await first.models.channels.list({});
+    const second = createPlugin();
+
+    const results = await Promise.all([
+      first.models.channels.insert({
+        row: { id: "channel-concurrent-a", name: "concurrent" },
+        onConflict: "returnExisting",
+      }),
+      second.models.channels.insert({
+        row: { id: "channel-concurrent-b", name: "concurrent" },
+        onConflict: "returnExisting",
+      }),
+    ]);
+
+    expect(results.filter(({ inserted }) => inserted)).toHaveLength(1);
+    expect(results[0]?.row).toEqual(results[1]?.row);
+    await expect(first.models.channels.list({})).resolves.toEqual({
+      channels: [results[0]?.row],
+    });
+  });
+
+  it("lists the channels collection without reading bundles", async () => {
+    const plugin = createPlugin();
+    await plugin.models.channels.insert({
+      row: { id: "channel-direct-list", name: "direct-list" },
+      onConflict: "returnExisting",
+    });
+    const bundlesRead = vi.spyOn(bundlesCollection, "get");
+
+    await expect(plugin.models.channels.list({})).resolves.toEqual({
+      channels: [{ id: "channel-direct-list", name: "direct-list" }],
+    });
+    expect(bundlesRead).not.toHaveBeenCalled();
+    const stored = await channelsCollection
+      .doc(firebaseChannelDocumentId("direct-list"))
+      .get();
+    expect(stored.data()).toEqual({
+      id: "channel-direct-list",
+      name: "direct-list",
+    });
+    bundlesRead.mockRestore();
   });
 });

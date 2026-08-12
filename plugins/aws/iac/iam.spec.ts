@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   attachRolePolicy: vi.fn(),
-  deleteRolePolicy: vi.fn(),
   getCallerIdentity: vi.fn(),
   getRole: vi.fn(),
   listAttachedRolePolicies: vi.fn(),
@@ -13,7 +12,6 @@ vi.mock("@aws-sdk/client-iam", () => ({
   IAM: vi.fn(function IAM() {
     return {
       attachRolePolicy: mocks.attachRolePolicy,
-      deleteRolePolicy: mocks.deleteRolePolicy,
       getRole: mocks.getRole,
       listAttachedRolePolicies: mocks.listAttachedRolePolicies,
       putRolePolicy: mocks.putRolePolicy,
@@ -46,10 +44,9 @@ describe("IAMManager DynamoDB access", () => {
       ],
     });
     mocks.putRolePolicy.mockResolvedValue({});
-    mocks.deleteRolePolicy.mockResolvedValue({});
   });
 
-  it("grants only update reads and built-in runtime domain access", async () => {
+  it("grants update reads and atomic CRUD for every official domain", async () => {
     // Given
     const manager = new IAMManager("ap-northeast-2", {
       accessKeyId: "test-access-key",
@@ -83,27 +80,27 @@ describe("IAMManager DynamoDB access", () => {
         ],
       },
       {
-        Action: ["dynamodb:BatchGetItem", "dynamodb:GetItem"],
+        Action: [
+          "dynamodb:BatchGetItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:Query",
+          "dynamodb:TransactWriteItems",
+          "dynamodb:UpdateItem",
+        ],
         Condition: {
           "ForAllValues:StringEquals": {
             "dynamodb:LeadingKeys": [
+              "_hot-updater",
               "bundles",
               "bundle_patches",
+              "channels",
+              "_hot-updater#channel-names",
+              "bundle_events",
               "client_access_keys",
               "_hot-updater#client-access-key-hashes",
             ],
-          },
-        },
-        Effect: "Allow",
-        Resource: [
-          "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata",
-        ],
-      },
-      {
-        Action: ["dynamodb:PutItem", "dynamodb:Query"],
-        Condition: {
-          "ForAllValues:StringEquals": {
-            "dynamodb:LeadingKeys": ["bundle_events"],
           },
         },
         Effect: "Allow",
@@ -160,26 +157,5 @@ describe("IAMManager DynamoDB access", () => {
     // Then
     const roleNames = mocks.getRole.mock.calls.map(([input]) => input.RoleName);
     expect(new Set(roleNames).size).toBe(2);
-  });
-
-  it("removes stale DynamoDB access when an installation selects S3", async () => {
-    // Given
-    const manager = new IAMManager("ap-northeast-2", {
-      accessKeyId: "test-access-key",
-      secretAccessKey: "test-secret-key",
-    });
-
-    // When
-    await manager.createOrSelectRole({
-      bucketName: "hot-updater-storage",
-      lambdaName: "hot-updater-edge",
-      ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
-    });
-
-    // Then
-    expect(mocks.deleteRolePolicy).toHaveBeenCalledWith({
-      PolicyName: "HotUpdaterDynamoDBReadAccess",
-      RoleName: expect.stringMatching(/^hot-updater-edge-[a-f0-9]{16}$/),
-    });
   });
 });

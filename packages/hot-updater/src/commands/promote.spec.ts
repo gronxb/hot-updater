@@ -152,6 +152,31 @@ describe("handlePromote", () => {
     );
   });
 
+  it("requires copy storage capabilities before reading the bundle", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      database: databaseHarness.plugin,
+      storage: {
+        name: "read-only-storage",
+        protocol: "s3",
+        get: mockStoragePlugin.get,
+      },
+    });
+
+    const { handlePromote } = await import("./promote");
+    await expect(
+      handlePromote("src-1", {
+        target: "beta",
+        action: "copy",
+        yes: true,
+      }),
+    ).rejects.toThrow(
+      'Storage plugin "read-only-storage" does not implement put.',
+    );
+
+    expect(databaseHarness.read).not.toHaveBeenCalled();
+    expect(mockPromoteBundle).not.toHaveBeenCalled();
+  });
+
   it("defaults --action to copy when omitted", async () => {
     const bundle = buildBundle({ id: "src-1" });
     databaseHarness.setBundles([bundle]);

@@ -1,13 +1,10 @@
 import { NIL_UUID } from "@hot-updater/core";
-import type {
-  BundlePatchRow,
-  BundleRow,
-  DatabasePluginImplementation,
-} from "@hot-updater/plugin-core";
+import type { BundlePatchRow, BundleRow } from "@hot-updater/plugin-core";
 import {
   filterCompatibleAppVersions,
   resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
+import type { DatabasePluginImplementation } from "@hot-updater/plugin-core/internal";
 
 import { rowToBundle } from "../db/bundleRows";
 import {

@@ -27,6 +27,8 @@ function createDatabaseClient(bundles: Bundle[]) {
 
   return {
     getChannels: vi.fn(),
+    insertChannel: vi.fn(),
+    deleteChannel: vi.fn(),
     getBundleById: vi.fn(
       async (bundleId: string) => bundleMap.get(bundleId) ?? null,
     ),

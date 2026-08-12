@@ -1,17 +1,25 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { r2WorkerStorage } from "./r2WorkerStorage";
 
-const createBucket = (get: ReturnType<typeof vi.fn>) =>
+const createBucket = (
+  get: ReturnType<typeof vi.fn>,
+  overrides: Partial<R2Bucket> = {},
+) =>
   ({
     get,
     head: vi.fn(),
     put: vi.fn(),
     delete: vi.fn(),
     list: vi.fn(),
+    ...overrides,
   }) as unknown as R2Bucket;
 
 describe("r2WorkerStorage", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("reads bytes from the R2 binding captured by the implementation", async () => {
     const get = vi.fn(async (key: string) => ({
       body: new Response(`text:${key}`).body,
@@ -50,7 +58,14 @@ describe("r2WorkerStorage", () => {
   });
 
   it("writes and deletes the exact object key through the R2 binding", async () => {
-    const bucket = createBucket(vi.fn());
+    let uploaded = "";
+    const put = vi.fn(async (_key: string, body: Uint8Array) => {
+      uploaded = new TextDecoder().decode(body);
+      return null;
+    });
+    const bucket = createBucket(vi.fn(), {
+      put: put as unknown as R2Bucket["put"],
+    });
     const storage = r2WorkerStorage({
       bucket,
       bucketName: "bundles",
@@ -59,7 +74,7 @@ describe("r2WorkerStorage", () => {
 
     await storage.put({
       key: "releases/bundle.zip",
-      body: new TextEncoder().encode("bundle"),
+      body: new Response("bundle").body!,
       contentType: "application/zip",
     });
     await expect(
@@ -67,7 +82,7 @@ describe("r2WorkerStorage", () => {
         storageUri: "r2://bundles/releases/bundle.zip",
       }),
     ).resolves.toEqual({
-      storageUri: "r2://bundles/releases/bundle.zip",
+      deleted: true,
     });
 
     expect(bucket.put).toHaveBeenCalledWith(
@@ -80,7 +95,72 @@ describe("r2WorkerStorage", () => {
         },
       },
     );
+    expect(uploaded).toBe("bundle");
     expect(bucket.delete).toHaveBeenCalledWith("releases/bundle.zip");
+  });
+
+  it("round-trips reserved characters without changing the R2 binding key", async () => {
+    const bucket = createBucket(vi.fn());
+    const storage = r2WorkerStorage({
+      bucket,
+      bucketName: "bundles",
+      downloadUrlSigningKey: "test-signing-key",
+    });
+    const key = "릴리스 folder/#100%/bundle.zip";
+
+    const uploaded = await storage.put({
+      key,
+      body: new Response("bundle").body!,
+      contentType: "application/zip",
+    });
+    await storage.delete({ storageUri: uploaded.storageUri });
+    await storage.delete({ storageUri: uploaded.storageUri });
+
+    expect(bucket.put).toHaveBeenCalledWith(
+      key,
+      expect.any(Uint8Array),
+      expect.any(Object),
+    );
+    expect(bucket.delete).toHaveBeenNthCalledWith(1, key);
+    expect(bucket.delete).toHaveBeenNthCalledWith(2, key);
+  });
+
+  it("uses a fixed-length stream when the upload length is known", async () => {
+    const expectedLengths: number[] = [];
+    class TestFixedLengthStream extends TransformStream<
+      Uint8Array,
+      Uint8Array
+    > {
+      constructor(expectedLength: number) {
+        super();
+        expectedLengths.push(expectedLength);
+      }
+    }
+    vi.stubGlobal("FixedLengthStream", TestFixedLengthStream);
+    let uploaded = "";
+    const put = vi.fn(
+      async (_key: string, body: ReadableStream<Uint8Array>) => {
+        uploaded = await new Response(body).text();
+        return null;
+      },
+    );
+    const storage = r2WorkerStorage({
+      bucket: createBucket(vi.fn(), {
+        put: put as unknown as R2Bucket["put"],
+      }),
+      bucketName: "bundles",
+      downloadUrlSigningKey: "test-signing-key",
+    });
+
+    await storage.put({
+      key: "releases/bundle.zip",
+      body: new Response("bundle").body!,
+      contentLength: 6,
+      contentType: "application/zip",
+    });
+
+    expect(expectedLengths).toEqual([6]);
+    expect(uploaded).toBe("bundle");
   });
 
   it("returns a stable signed download path for private R2 objects", async () => {

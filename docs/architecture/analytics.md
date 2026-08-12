@@ -1,24 +1,28 @@
 # Built-in Analytics
 
 Analytics is a first-party server domain backed by the official
-`database.analytics` port. It is not a server plugin and does not declare its
+`database.models.analytics` port. It is not a server plugin and does not declare its
 own provider, schema lifecycle, or universal component adapter.
 
 ```ts
 createHotUpdater({
   database,
   features: {
-    analytics: true,
+    analytics: {
+      queryAccess: "protected",
+    },
   },
 });
 ```
 
-When `features.analytics` is enabled, `createHotUpdater` mounts the public
-event ingestion route and the Analytics query routes. Queries are protected by
-default and fail closed. `features.analytics: { queryAccess: "public" }` is
-intended only for explicitly public deployments and local test fixtures.
+When `features.analytics` is enabled, `createHotUpdater` mounts the public event
+ingestion route and the Analytics query routes. `queryAccess` defaults to
+`"protected"`; protected queries fail closed until client access-key
+authentication is configured. `"public"` is intended for explicitly public
+deployments and local test fixtures.
 
-`features.updateCheck` and `features.bundles` control the two core route groups;
+`features.updateCheck`, `features.bundles`, `features.analytics`, and
+`features.clientAccessKeys` are configured through the same feature boundary.
 Analytics owns its event and query routes and is enabled only by
 `features.analytics`.
 
@@ -28,9 +32,11 @@ search, and HTTP responses. Every database provider therefore exposes the same
 logical persistence contract:
 
 ```ts
-analytics: {
-  append(row): Promise<void>;
-  scan({ beforeReceivedAtMs, after, limit }): Promise<readonly BundleEventRow[]>;
+models: {
+  analytics: {
+    append(row): Promise<void>;
+    scan({ beforeReceivedAtMs, after, limit }): Promise<readonly BundleEventRow[]>;
+  },
 }
 ```
 

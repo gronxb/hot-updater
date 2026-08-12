@@ -10,12 +10,12 @@ import { authenticateClientAccessKey } from "./clientAccessKeys";
 import { createDatabasePluginCore } from "./db/databasePluginCore";
 import { createSchemaReadinessChecker } from "./db/schemaReadiness";
 import {
-  type DatabasePlugin,
   type DatabaseAdapterCapabilities,
   type DatabaseAPI,
+  type DatabasePlugin,
   isDatabasePlugin,
 } from "./db/types";
-import { createHotUpdaterHandler } from "./handler";
+import { createHotUpdaterHandler, type HandlerFeatures } from "./handler";
 import { normalizeBasePath } from "./route";
 import { createStorageAccess } from "./storageAccess";
 
@@ -28,11 +28,7 @@ export type RuntimeHotUpdaterAPI = DatabaseAPI & {
 
 export type HotUpdaterAPI = RuntimeHotUpdaterAPI;
 
-export interface CreateHotUpdaterFeatures {
-  /** Mount the React Native update-check routes. @default true */
-  readonly updateCheck?: boolean;
-  /** Mount the bundle-management routes. @default false */
-  readonly bundles?: boolean;
+export interface CreateHotUpdaterFeatures extends HandlerFeatures {
   /**
    * Mount Analytics ingestion and query routes backed by
    * `database.analytics`. Protected queries are the default.
@@ -43,10 +39,7 @@ export interface CreateHotUpdaterFeatures {
         /** Query routes deny access by default; client access keys never grant query access. */
         readonly queryAccess?: AnalyticsQueryAccess;
       };
-  /**
-   * Protect update-check and Analytics ingestion routes with `x-api-key`,
-   * using `database.clientAccessKeys` for authentication.
-   */
+  /** Protect update-check and Analytics ingestion routes with `x-api-key`. */
   readonly clientAccessKeys?: boolean;
 }
 
@@ -65,9 +58,7 @@ const normalizeAnalyticsQueryAccess = (
   if (analytics === undefined || analytics === false) return undefined;
   if (analytics === true) return "protected";
   if (typeof analytics !== "object" || analytics === null) {
-    throw new TypeError(
-      "The Analytics feature must be a boolean or an options object.",
-    );
+    throw new TypeError("Analytics options must be an object.");
   }
   const queryAccess = analytics.queryAccess ?? "protected";
   if (queryAccess !== "protected" && queryAccess !== "public") {
@@ -81,7 +72,7 @@ const normalizeClientAccessKeys = (
 ): boolean => {
   if (clientAccessKeys === undefined) return false;
   if (typeof clientAccessKeys !== "boolean") {
-    throw new TypeError("Client access-keys option must be a boolean.");
+    throw new TypeError("Client access-keys feature must be a boolean.");
   }
   return clientAccessKeys;
 };
@@ -146,10 +137,7 @@ export function createHotUpdaterCore(
   const database = options.database;
   const basePath = normalizeBasePath(options.basePath ?? "/api");
   const storagePlugins = (options.storage ?? []).map((storage) => {
-    assertStorageOperations(storage, ["get"]);
-    if (storage.protocol !== "http" && storage.protocol !== "https") {
-      assertStorageOperations(storage, ["getDownloadUrl"]);
-    }
+    assertStorageOperations(storage, ["get", "getDownloadUrl"]);
     return storage;
   });
   const { downloadStorageObject, readStorageText, resolveFileUrl } =
@@ -193,11 +181,11 @@ export function createHotUpdaterCore(
       : createAnalyticsProvider({
           async append(row) {
             await assertSchemaReady();
-            return plugin.analytics.append(row);
+            return plugin.models.analytics.append(row);
           },
           async scan(input) {
             await assertSchemaReady();
-            return plugin.analytics.scan(input);
+            return plugin.models.analytics.scan(input);
           },
         });
 
@@ -205,7 +193,7 @@ export function createHotUpdaterCore(
     core.api,
     {
       basePath,
-      routes: {
+      features: {
         updateCheck: updateCheckEnabled,
         bundles: bundlesEnabled,
       },
@@ -221,7 +209,7 @@ export function createHotUpdaterCore(
           authenticate: (request) =>
             authenticateClientAccessKey({
               beforeLookup: assertSchemaReady,
-              clientAccessKeys: plugin.clientAccessKeys,
+              clientAccessKeys: plugin.models.clientAccessKeys,
               request,
             }),
         }

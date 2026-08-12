@@ -6,7 +6,7 @@ import type {
   FindManyDatabaseImplementationInput,
   FindOneDatabaseImplementationInput,
   UpdateDatabaseImplementationInput,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 
 import type { StandaloneBundleRemote } from "./standaloneBundleRemote";
 import { createLegacyReads } from "./standaloneLegacyReads";
@@ -33,7 +33,6 @@ export interface StandaloneLegacyImplementation {
   findMany(
     input: Extract<FindManyDatabaseImplementationInput, { model: BundleModel }>,
   ): Promise<readonly DatabaseImplementationResult[]>;
-  getChannels(): Promise<string[]>;
 }
 
 export const createLegacyCompatibilityImplementation = (
@@ -42,6 +41,5 @@ export const createLegacyCompatibilityImplementation = (
   return {
     ...createLegacyWrites(remote),
     ...createLegacyReads(remote),
-    getChannels: () => remote.loadChannels(),
   };
 };

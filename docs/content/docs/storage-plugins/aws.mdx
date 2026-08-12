@@ -26,18 +26,16 @@ For manual configuration, use the settings below.
 
 ```typescript
 interface S3StorageConfig {
-  region: string;           // AWS region or 'auto' for R2
-  bucketName: string;       // S3 bucket name
-  basePath?: string;        // Optional base path within bucket
-  endpoint?: string;        // Custom endpoint for S3-compatible services
+  region: string; // AWS region or 'auto' for R2
+  bucketName: string; // S3 bucket name
+  basePath?: string; // Optional base path within bucket
+  endpoint?: string; // Custom endpoint for S3-compatible services
   credentials?: {
     accessKeyId: string;
     secretAccessKey: string;
   };
   downloadUrlSigningKey?: string;
-  getDownloadUrl?: (input: {
-    storageUri: string;
-  }) => Promise<{ url: string }>;
+  getDownloadUrl?: (input: { storageUri: string }) => Promise<{ url: string }>;
 }
 ```
 
@@ -50,17 +48,17 @@ other standard AWS credential sources.
 ### AWS S3
 
 ```typescript
-import { s3Storage } from '@hot-updater/aws';
-import { defineConfig } from 'hot-updater';
+import { s3Storage } from "@hot-updater/aws";
+import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   storage: s3Storage({
-    region: 'us-east-1',
+    region: "us-east-1",
     credentials: {
       accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
     },
-    bucketName: 'my-hot-updater-bucket'
+    bucketName: "my-hot-updater-bucket",
   }),
   // ... other config
 });
@@ -71,13 +69,13 @@ export default defineConfig({
 ```typescript
 export default defineConfig({
   storage: s3Storage({
-    region: 'auto',
+    region: "auto",
     endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
     },
-    bucketName: 'my-r2-bucket'
+    bucketName: "my-r2-bucket",
   }),
   // ... other config
 });
@@ -85,13 +83,14 @@ export default defineConfig({
 
 ## Protocol
 
-`s3://`
+`s3://bucket/encoded/key`
 
-This prefix is stored in the `storageUri` field in the database.
+For example, `s3://my-bucket/releases/1.0.0/bundle%20ios.zip` is stored in the
+`storageUri` field. Keys retain their slash hierarchy and encode each segment.
 
 ## Capabilities
 
-`s3Storage` implements byte upload, streaming Web-response reads, URL
+`s3Storage` implements streaming upload, streaming Web-response reads, URL
 generation, existence checks, and exact deletion. Pass
 `cloudFrontDownloadUrl(...)` as `getDownloadUrl` for the managed
 Lambda@Edge/CDN path. For a self-hosted server, set `downloadUrlSigningKey` so
@@ -114,8 +113,7 @@ const hotUpdater = createHotUpdater({
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
       },
       bucketName: process.env.AWS_S3_BUNDLES_BUCKET!,
-      downloadUrlSigningKey:
-        process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
+      downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
     }),
   ],
   // ... other options

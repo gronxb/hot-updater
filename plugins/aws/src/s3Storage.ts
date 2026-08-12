@@ -7,9 +7,10 @@ import {
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import {
-  createStorageKeyBuilder,
   createStorageDownloadUrl,
+  createStorageKeyBuilder,
   createStoragePlugin,
+  createStorageUri,
   parseStorageUri,
   type StoragePlugin,
   type StoragePluginWith,
@@ -25,13 +26,27 @@ export interface S3StorageConfig extends S3ClientConfig {
   getDownloadUrl?: StoragePlugin["getDownloadUrl"];
 }
 
+export type S3StorageConfigWithDownloadUrl = S3StorageConfig &
+  (
+    | { downloadUrlSigningKey: string }
+    | { getDownloadUrl: NonNullable<StoragePlugin["getDownloadUrl"]> }
+  );
+
+type S3StorageOperations = "put" | "get" | "exists" | "delete";
+
 const isObjectNotFoundError = (error: unknown) =>
   error instanceof Error &&
   (error.name === "NotFound" || error.name === "NoSuchKey");
 
-export const s3Storage = (
+export function s3Storage(
+  config: S3StorageConfigWithDownloadUrl,
+): StoragePluginWith<S3StorageOperations | "getDownloadUrl">;
+export function s3Storage(
   config: S3StorageConfig,
-): StoragePluginWith<"put" | "get" | "exists" | "delete"> => {
+): StoragePluginWith<S3StorageOperations>;
+export function s3Storage(
+  config: S3StorageConfig,
+): StoragePluginWith<S3StorageOperations> {
   const {
     bucketName,
     basePath,
@@ -60,7 +75,7 @@ export const s3Storage = (
   return createStoragePlugin({
     name: "s3Storage",
     protocol: "s3",
-    async put({ key, body, contentType }) {
+    async put({ key, body, contentLength, contentType }) {
       const storageKey = getStorageKey(key);
       const upload = new Upload({
         client,
@@ -68,6 +83,9 @@ export const s3Storage = (
           Body: body,
           Bucket: bucketName,
           CacheControl: "max-age=31536000",
+          ...(contentLength === undefined
+            ? {}
+            : { ContentLength: contentLength }),
           ContentType: contentType,
           Key: storageKey,
         },
@@ -76,7 +94,13 @@ export const s3Storage = (
       if (!response.Bucket || !response.Key) {
         throw new Error("Upload failed");
       }
-      return { storageUri: `s3://${bucketName}/${storageKey}` };
+      return {
+        storageUri: createStorageUri({
+          bucket: bucketName,
+          key: storageKey,
+          protocol: "s3",
+        }),
+      };
     },
     async get({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
@@ -126,7 +150,7 @@ export const s3Storage = (
       await client.send(
         new DeleteObjectCommand({ Bucket: bucketName, Key: key }),
       );
-      return { storageUri };
+      return { deleted: true };
     },
   });
-};
+}

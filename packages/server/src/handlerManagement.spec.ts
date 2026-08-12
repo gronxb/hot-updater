@@ -7,6 +7,175 @@ import {
 } from "./handler.testFixtures";
 
 describe("createHandler management routes", () => {
+  it("keeps all Channel routes behind the bundles feature", async () => {
+    const api = createApi();
+    const handler = createManagementHandler(api, { bundles: false });
+    const responses = await Promise.all([
+      handler(new Request("http://localhost/hot-updater/api/channels")),
+      handler(
+        new Request("http://localhost/hot-updater/api/channels", {
+          method: "POST",
+          body: JSON.stringify({
+            row: { id: "channel-preview", name: "preview" },
+            onConflict: "returnExisting",
+          }),
+        }),
+      ),
+      handler(
+        new Request(
+          "http://localhost/hot-updater/api/channels/channel-preview",
+          { method: "DELETE" },
+        ),
+      ),
+    ]);
+
+    expect(responses.map(({ status }) => status)).toEqual([404, 404, 404]);
+    expect(api.getChannels).not.toHaveBeenCalled();
+    expect(api.insertChannel).not.toHaveBeenCalled();
+    expect(api.deleteChannel).not.toHaveBeenCalled();
+  });
+
+  it("exposes the canonical Channel-row route and removes the legacy path", async () => {
+    const api = createApi();
+    const handler = createManagementHandler(api);
+
+    const response = await handler(
+      new Request("http://localhost/hot-updater/api/channels"),
+    );
+    const legacyResponse = await handler(
+      new Request("http://localhost/hot-updater/api/bundles/channels"),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        channels: [{ id: "channel-production", name: "production" }],
+      },
+    });
+    expect(legacyResponse.status).toBe(404);
+  });
+
+  it("returns 201 when the canonical route inserts a Channel", async () => {
+    const api = createApi();
+    api.insertChannel.mockResolvedValueOnce({
+      row: { id: "candidate-id", name: "preview" },
+      inserted: true,
+    });
+    const handler = createManagementHandler(api);
+
+    const response = await handler(
+      new Request("http://localhost/hot-updater/api/channels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          row: { id: "candidate-id", name: "preview" },
+          onConflict: "returnExisting",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        row: { id: "candidate-id", name: "preview" },
+        inserted: true,
+      },
+    });
+  });
+
+  it("returns the canonical row when a Channel already exists", async () => {
+    const api = createApi();
+    api.insertChannel.mockResolvedValueOnce({
+      row: { id: "canonical-id", name: "preview" },
+      inserted: false,
+    });
+    const handler = createManagementHandler(api);
+
+    const response = await handler(
+      new Request("http://localhost/hot-updater/api/channels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          row: { id: "candidate-id", name: "preview" },
+          onConflict: "returnExisting",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        row: { id: "canonical-id", name: "preview" },
+        inserted: false,
+      },
+    });
+    expect(api.insertChannel).toHaveBeenCalledWith({
+      row: { id: "candidate-id", name: "preview" },
+      onConflict: "returnExisting",
+    });
+  });
+
+  it.each([
+    { row: { name: "preview" } },
+    { row: { id: "", name: "preview" }, onConflict: "returnExisting" },
+    { row: { id: "channel-preview", name: "" }, onConflict: "returnExisting" },
+    {
+      row: { id: "channel-preview", name: "x".repeat(256) },
+      onConflict: "returnExisting",
+    },
+  ])(
+    "rejects malformed Channel insert input before persistence",
+    async (body) => {
+      const api = createApi();
+      const handler = createManagementHandler(api);
+
+      const response = await handler(
+        new Request("http://localhost/hot-updater/api/channels", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      );
+
+      expect(response.status).toBe(400);
+      expect(api.insertChannel).not.toHaveBeenCalled();
+    },
+  );
+
+  it("returns no content after deleting an empty Channel", async () => {
+    const api = createApi();
+    api.deleteChannel.mockResolvedValueOnce({ deleted: true });
+    const handler = createManagementHandler(api);
+
+    const response = await handler(
+      new Request("http://localhost/hot-updater/api/channels/channel-preview", {
+        method: "DELETE",
+      }),
+    );
+
+    expect(response.status).toBe(204);
+    await expect(response.text()).resolves.toBe("");
+  });
+
+  it.each([
+    [{ deleted: false, reason: "not_found" } as const, 404],
+    [{ deleted: false, reason: "not_empty" } as const, 409],
+  ])("maps Channel deletion result %j to HTTP %i", async (result, status) => {
+    const api = createApi();
+    api.deleteChannel.mockResolvedValueOnce(result);
+    const handler = createManagementHandler(api);
+
+    const response = await handler(
+      new Request("http://localhost/hot-updater/api/channels/channel-preview", {
+        method: "DELETE",
+      }),
+    );
+
+    expect(response.status).toBe(status);
+    await expect(response.json()).resolves.toEqual({ data: result });
+    expect(api.deleteChannel).toHaveBeenCalledWith({ id: "channel-preview" });
+  });
+
   it("mounts bundle routes when explicitly enabled", async () => {
     const api = createApi();
     api.getBundles.mockResolvedValueOnce({

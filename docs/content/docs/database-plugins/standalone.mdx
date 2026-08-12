@@ -29,16 +29,63 @@ Configure your CLI to connect to your self-hosted server:
 
 ```typescript title="hot-updater.config.ts"
 import { defineConfig } from "@hot-updater/core";
-import { standaloneRepository } from "@hot-updater/standalone";
+import {
+  standaloneRepository,
+  standaloneStorage,
+} from "@hot-updater/standalone";
 
 export default defineConfig({
   build: /* your build plugin */,
-  storage: /* your storage plugin */,
+  storage: standaloneStorage({
+    baseUrl: "https://storage.example.com/hot-updater",
+    protocol: "s3",
+  }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
   }),
 });
 ```
+
+## Remote Storage Adapter
+
+`standaloneStorage` is a CLI-side adapter for sending storage operations to a
+remote HTTP service. `baseUrl` selects that HTTP transport, while `protocol`
+selects the persisted Storage URI scheme owned by the adapter. They are
+independent: an HTTPS service can, for example, own `s3://...` URIs.
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "@hot-updater/core";
+import {
+  standaloneRepository,
+  standaloneStorage,
+} from "@hot-updater/standalone";
+
+export default defineConfig({
+  build: /* your build plugin */,
+  database: standaloneRepository({
+    baseUrl: "https://api.example.com/hot-updater",
+  }),
+  storage: standaloneStorage({
+    baseUrl: "https://storage.example.com/hot-updater",
+    protocol: "s3",
+  }),
+});
+```
+
+The remote storage service must implement these separate routes:
+
+| Method   | Default route | Request                             | Success response                         |
+| -------- | ------------- | ----------------------------------- | ---------------------------------------- |
+| `POST`   | `/upload`     | multipart `file` and `key` fields   | JSON `{ "storageUri": "s3://..." }`      |
+| `POST`   | `/get`        | JSON `{ "storageUri": "s3://..." }` | Object bytes, or `404` when missing      |
+| `POST`   | `/exists`     | JSON `{ "storageUri": "s3://..." }` | JSON `{ "exists": true }`                |
+| `DELETE` | `/delete`     | JSON `{ "storageUri": "s3://..." }` | Any `2xx`, or `404` for an absent object |
+
+`standaloneStorage` intentionally has no `getDownloadUrl` capability. It is
+for CLI-to-service storage transport, not the runtime storage passed to
+`createHotUpdater`. The built-in bundle routes mounted by `createHotUpdater`
+do not implement `/upload`, `/get`, `/exists`, or `/delete`; your remote
+storage service must provide them separately.
 
 ## Configuration
 
@@ -64,7 +111,6 @@ interface Routes {
   create?: () => RouteConfig;
   update?: (bundleId: string) => RouteConfig;
   list?: () => RouteConfig;
-  channels?: () => RouteConfig;
   retrieve?: (bundleId: string) => RouteConfig;
   delete?: (bundleId: string) => RouteConfig;
 }
@@ -106,9 +152,6 @@ database: standaloneRepository({
     list: () => ({
       path: "/v1/hot-updater/api/bundles",
     }),
-    channels: () => ({
-      path: "/v1/hot-updater/api/bundles/channels",
-    }),
     retrieve: (bundleId) => ({
       path: `/v1/hot-updater/api/bundles/${bundleId}`,
     }),
@@ -127,7 +170,8 @@ backend, your server must implement the bundle-management contract below.
 <Callout type="info">
   If you use `@hot-updater/server`, you do **not** need to implement these
   endpoints manually. `createHotUpdater()` provides this contract when bundle
-  routes are explicitly enabled, including `GET /api/bundles/channels`.
+  routes are explicitly enabled, including the canonical `GET /api/channels`
+  route.
 </Callout>
 
 ### Contract Types
@@ -152,22 +196,30 @@ interface Paginated<TData> extends DataResponse<TData> {
 }
 
 type PaginatedResult = Paginated<Bundle[]>;
-type ChannelsResponse = DataResponse<{ channels: string[] }>;
+interface ChannelRow {
+  id: string;
+  name: string;
+}
+type ChannelsResponse = DataResponse<{ channels: ChannelRow[] }>;
 ```
 
 ### Default Routes
 
-These are the default routes used by `standaloneRepository`. You can remap
-them with the `routes` option shown above.
+These are the default routes used by `standaloneRepository`. Bundle routes can
+be remapped with the `routes` option shown above. The normalized Channel route
+is always `/api/channels` so it cannot be derived from or coupled to a custom
+bundle list path.
 
-| Method | Default route           | Request body      | Success response      |
-| ------ | ----------------------- | ----------------- | --------------------- |
-| POST   | `/api/bundles`          | `Bundle[]`        | `{ "success": true }` |
-| PATCH  | `/api/bundles/:id`      | `Partial<Bundle>` | `{ "success": true }` |
-| GET    | `/api/bundles`          | none              | `Paginated<Bundle[]>` |
-| GET    | `/api/bundles/:id`      | none              | `Bundle`              |
-| DELETE | `/api/bundles/:id`      | none              | `{ "success": true }` |
-| GET    | `/api/bundles/channels` | none              | `ChannelsResponse`    |
+| Method | Default route       | Request body         | Success response        |
+| ------ | ------------------- | -------------------- | ----------------------- |
+| POST   | `/api/bundles`      | `Bundle[]`           | `{ "success": true }`   |
+| PATCH  | `/api/bundles/:id`  | `Partial<Bundle>`    | `{ "success": true }`   |
+| GET    | `/api/bundles`      | none                 | `Paginated<Bundle[]>`   |
+| GET    | `/api/bundles/:id`  | none                 | `Bundle`                |
+| DELETE | `/api/bundles/:id`  | none                 | `{ "success": true }`   |
+| GET    | `/api/channels`     | none                 | `ChannelsResponse`      |
+| POST   | `/api/channels`     | `ChannelInsertInput` | `ChannelInsertResponse` |
+| DELETE | `/api/channels/:id` | none                 | `ChannelDeleteResponse` |
 
 ### Bundle Shape
 
@@ -247,15 +299,36 @@ by deterministic read-counter regression tests.
 
 - `GET /api/bundles/:id` should return `200` with a `Bundle` body or `404` if
   the bundle does not exist.
-- `GET /api/bundles/channels` must return:
+- `GET /api/channels` must return normalized Channel rows:
 
 ```json
 {
   "data": {
-    "channels": ["production", "staging"]
+    "channels": [
+      { "id": "channel-production", "name": "production" },
+      { "id": "channel-staging", "name": "staging" }
+    ]
   }
 }
 ```
+
+- `POST /api/channels` must accept a concurrency-safe insert:
+
+```json
+{
+  "row": { "id": "candidate-id", "name": "production" },
+  "onConflict": "returnExisting"
+}
+```
+
+It returns `{ "data": { "row": ChannelRow, "inserted": boolean } }`. When
+the name already exists, `row` is the canonical stored row rather than the
+caller's losing candidate.
+
+- `DELETE /api/channels/:id` deletes an empty Channel and returns
+  `204 No Content`. It returns `404` with reason `not_found` for a missing ID
+  and `409` with reason `not_empty` when a bundle still references the Channel.
+  The reference check and deletion are atomic.
 
 ### Minimal `@hot-updater/server` Example
 
@@ -279,21 +352,24 @@ const hotUpdater = createHotUpdater({
 ```
 
 This mounts the bundle routes consumed by `standaloneRepository` under
-`/hot-updater/api/bundles*`. `features.bundles: true` is the explicit opt-in for
-those management APIs; protect them at the framework or reverse proxy layer,
-and configure matching `commonHeaders` in `standaloneRepository`.
+`/hot-updater/api/bundles*` and the Channel listing route at
+`/hot-updater/api/channels` (GET, POST, and DELETE). `features.bundles: true` is
+the explicit opt-in for those management APIs; protect them at the framework
+or reverse proxy layer, and configure matching `commonHeaders` in
+`standaloneRepository`.
 
 `standaloneRepository` remains a bundle-management HTTP client and is used only
 in `hot-updater.config.ts`. It does not own Analytics events or client access
 keys. The server-side `database` passed to `createHotUpdater` owns those
-official domains, and `features` decides which route groups and database-backed
-capabilities the self-host runtime exposes.
+official domains, and `features` decides whether the self-host runtime exposes
+Analytics, enforces client access keys, and mounts the update-check and
+bundle-management route groups.
 
 <Callout type="warn">
   The Console cannot read Analytics or manage client access keys through
   `standaloneRepository`; its HTTP contract is deliberately bundle-only. Run
-  Console or another protected management surface with direct access to the
-  same server-side database domains. Do not pass `standaloneRepository` to
+  Console or another protected management surface with direct access to the same
+  server-side database domains. Do not pass `standaloneRepository` to
   `createHotUpdater`.
 </Callout>
 

@@ -70,11 +70,9 @@ export const handlePromote = async (
   const databasePlugin = config.database;
   const databaseClient = createDatabaseClient(databasePlugin);
   let storagePlugin: StoragePluginWith<"get" | "put" | "delete"> | null = null;
-  try {
+  if (action === "copy") {
+    assertStorageOperations(config.storage, ["get", "put", "delete"]);
     storagePlugin = config.storage;
-    assertStorageOperations(storagePlugin, ["get", "put", "delete"]);
-  } catch {
-    storagePlugin = null;
   }
 
   try {

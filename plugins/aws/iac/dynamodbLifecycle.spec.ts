@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   createTable: vi.fn(),
   describeContinuousBackups: vi.fn(),
   describeTable: vi.fn(),
+  query: vi.fn(),
   updateContinuousBackups: vi.fn(),
   waitUntilTableExists: vi.fn(),
 }));
@@ -14,6 +15,7 @@ vi.mock("@aws-sdk/client-dynamodb", () => ({
       createTable: mocks.createTable,
       describeContinuousBackups: mocks.describeContinuousBackups,
       describeTable: mocks.describeTable,
+      query: mocks.query,
       updateContinuousBackups: mocks.updateContinuousBackups,
     };
   }),
@@ -73,6 +75,7 @@ describe("DynamoDB lifecycle reconciliation", () => {
       },
     });
     mocks.updateContinuousBackups.mockResolvedValue({});
+    mocks.query.mockResolvedValue({ Items: [] });
   });
 
   it("does not rewrite enabled point-in-time recovery", async () => {

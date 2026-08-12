@@ -42,7 +42,7 @@ export class BundleRowHydrationError extends Error {
   }
 }
 
-export const bundleToRow = (bundle: Bundle): BundleRow => {
+export const bundleToRow = (bundle: Bundle, channelId: string): BundleRow => {
   const metadata = bundleMetadataToRow(bundle.metadata);
   return {
     id: bundle.id,
@@ -53,6 +53,7 @@ export const bundleToRow = (bundle: Bundle): BundleRow => {
     git_commit_hash: bundle.gitCommitHash,
     message: bundle.message,
     channel: bundle.channel,
+    channel_id: channelId,
     storage_uri: bundle.storageUri,
     target_app_version: bundle.targetAppVersion,
     fingerprint_hash: bundle.fingerprintHash,

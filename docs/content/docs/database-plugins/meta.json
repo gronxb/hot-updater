@@ -8,6 +8,7 @@
     "firestore",
     "aws",
     "standalone",
+    "v2-contract-spec",
     "custom-database"
   ]
 }
