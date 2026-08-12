@@ -11,8 +11,9 @@ there is no Analytics plugin, provider override, universal component schema, or
 separate `@hot-updater/analytics` package.
 
 Database providers own the physical `bundle_events` table through the shared
-database contract and schema version. `createHotUpdater({ analytics: { queryAccess
-} })` opts into the routes, with queries failing closed by default.
+database contract and schema version.
+`createHotUpdater({ features: { analytics: { queryAccess } } })` opts into the
+routes, with queries failing closed by default.
 
 React Native clients can enable automatic OTA transition reporting with
 `HotUpdater.init({ analytics: true })`. App-ready transitions retain stable

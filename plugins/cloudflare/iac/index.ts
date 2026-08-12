@@ -97,7 +97,6 @@ const deployWorker = async (
     d1DatabaseId,
     d1DatabaseName,
     nonInteractive,
-    publicBaseUrl,
     r2BucketName,
     workerName,
   }: {
@@ -105,7 +104,6 @@ const deployWorker = async (
     d1DatabaseId: string;
     d1DatabaseName: string;
     nonInteractive: boolean;
-    publicBaseUrl: string;
     r2BucketName: string;
     workerName: string;
   },
@@ -143,7 +141,6 @@ const deployWorker = async (
 
     wranglerConfig.vars = {
       BUCKET_NAME: r2BucketName,
-      PUBLIC_BASE_URL: publicBaseUrl,
     };
 
     await fs.writeFile(
@@ -187,7 +184,7 @@ const deployWorker = async (
     const secretCommand = secretWrangler(
       "secret",
       "put",
-      "STORAGE_DELIVERY_SIGNING_KEY",
+      "STORAGE_DOWNLOAD_URL_SIGNING_KEY",
       "--name",
       workerName,
     );
@@ -680,7 +677,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
     nonInteractive,
-    publicBaseUrl: `https://${workerName}.${subdomains.subdomain}.workers.dev`,
     r2BucketName: selectedBucketName,
     workerName,
   });

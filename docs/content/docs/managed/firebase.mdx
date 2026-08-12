@@ -177,7 +177,7 @@ export default HotUpdater.wrap({
 <Callout type="info">
 The managed Firebase runtime exposes public update checks, Analytics event
 ingestion, and `/version`. Internally, it enables
-`features.analytics` with `routes: { updateCheck: true, bundles: false }`.
+`features: { updateCheck: true, bundles: false, analytics: true }`.
 Analytics query routes stay protected, and bundle management routes are not
 mounted on the public function URL.
 </Callout>

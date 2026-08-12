@@ -9,6 +9,7 @@ describe("createStoragePlugin", () => {
   it("exposes the configured one-depth runtime-independent contract", () => {
     const put = vi.fn();
     const get = vi.fn();
+    const getDownloadUrl = vi.fn();
     const exists = vi.fn();
     const deleteObject = vi.fn();
 
@@ -17,6 +18,7 @@ describe("createStoragePlugin", () => {
       protocol: "test",
       put,
       get,
+      getDownloadUrl,
       exists,
       delete: deleteObject,
     });
@@ -25,6 +27,7 @@ describe("createStoragePlugin", () => {
       "delete",
       "exists",
       "get",
+      "getDownloadUrl",
       "name",
       "protocol",
       "put",
@@ -57,13 +60,16 @@ describe("createStoragePlugin", () => {
     const storage = createStoragePlugin({
       name: "streamingStorage",
       protocol: "test",
-      get: async (_storageUri: string) =>
-        new Response(new TextEncoder().encode("bundle"), {
+      get: async (_input: { storageUri: string }) => ({
+        response: new Response(new TextEncoder().encode("bundle"), {
           headers: { "content-type": "application/zip" },
         }),
+      }),
     });
 
-    const response = await storage.get("test://bucket/bundle.zip");
+    const { response } = await storage.get({
+      storageUri: "test://bucket/bundle.zip",
+    });
     expect(response).toBeInstanceOf(Response);
     expect(response?.headers.get("content-type")).toBe("application/zip");
     await expect(response?.text()).resolves.toBe("bundle");

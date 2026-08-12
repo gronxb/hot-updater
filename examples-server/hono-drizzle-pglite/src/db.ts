@@ -12,7 +12,7 @@ export const hotUpdater = createHotUpdater({
     provider: "postgresql",
     schema,
   }),
-  storages: [
+  storage: [
     mockStorage({}),
     s3Storage({
       region: "auto",
@@ -22,18 +22,13 @@ export const hotUpdater = createHotUpdater({
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
       },
       bucketName: process.env.R2_BUCKET_NAME!,
+      downloadUrlSigningKey:
+        process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY ??
+        "development-storage-download-url-key",
     }),
   ],
-  storageDelivery: {
-    publicBaseUrl:
-      process.env.HOT_UPDATER_PUBLIC_BASE_URL ??
-      `http://localhost:${process.env.PORT ?? 3003}`,
-    signingKey:
-      process.env.HOT_UPDATER_STORAGE_DELIVERY_KEY ??
-      "development-storage-delivery-key",
-  },
   basePath: "/hot-updater",
-  routes: {
+  features: {
     updateCheck: true,
     bundles: true,
   },

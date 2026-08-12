@@ -4,6 +4,7 @@ import { supabaseStorage } from "./supabaseStorage";
 
 const { bucket, createClient } = vi.hoisted(() => {
   const bucket = {
+    createSignedUrl: vi.fn(),
     download: vi.fn(),
     exists: vi.fn(),
     remove: vi.fn(),
@@ -35,10 +36,10 @@ describe("supabaseStorage", () => {
     bucket.exists.mockResolvedValue({ data: true, error: null });
 
     await expect(
-      createStorage().exists(
-        "supabase-storage://updates/assets/sha256/fi/file-hash.png",
-      ),
-    ).resolves.toBe(true);
+      createStorage().exists({
+        storageUri: "supabase-storage://updates/assets/sha256/fi/file-hash.png",
+      }),
+    ).resolves.toEqual({ exists: true });
     expect(bucket.exists).toHaveBeenCalledWith(
       "assets/sha256/fi/file-hash.png",
     );
@@ -49,7 +50,9 @@ describe("supabaseStorage", () => {
     bucket.exists.mockResolvedValue({ data: false, error });
 
     await expect(
-      createStorage().exists("supabase-storage://updates/bundle.zip"),
+      createStorage().exists({
+        storageUri: "supabase-storage://updates/bundle.zip",
+      }),
     ).rejects.toBe(error);
   });
 
@@ -59,9 +62,9 @@ describe("supabaseStorage", () => {
       error: null,
     });
 
-    const response = await createStorage().get(
-      "supabase-storage://updates/bundles/manifest.json",
-    );
+    const { response } = await createStorage().get({
+      storageUri: "supabase-storage://updates/bundles/manifest.json",
+    });
 
     expect(response).toBeInstanceOf(Response);
     await expect(response?.text()).resolves.toBe("manifest");
@@ -87,10 +90,31 @@ describe("supabaseStorage", () => {
   it("deletes exactly the referenced object", async () => {
     bucket.remove.mockResolvedValue({ error: null });
 
-    await createStorage().delete(
-      "supabase-storage://updates/releases/bundle.zip",
-    );
+    await expect(
+      createStorage().delete({
+        storageUri: "supabase-storage://updates/releases/bundle.zip",
+      }),
+    ).resolves.toEqual({
+      storageUri: "supabase-storage://updates/releases/bundle.zip",
+    });
 
     expect(bucket.remove).toHaveBeenCalledWith(["releases/bundle.zip"]);
+  });
+
+  it("returns a Supabase signed download URL", async () => {
+    bucket.createSignedUrl.mockResolvedValue({
+      data: { signedUrl: "https://example.supabase.co/signed" },
+      error: null,
+    });
+
+    await expect(
+      createStorage().getDownloadUrl({
+        storageUri: "supabase-storage://updates/assets/file-hash.png",
+      }),
+    ).resolves.toEqual({ url: "https://example.supabase.co/signed" });
+    expect(bucket.createSignedUrl).toHaveBeenCalledWith(
+      "assets/file-hash.png",
+      3600,
+    );
   });
 });

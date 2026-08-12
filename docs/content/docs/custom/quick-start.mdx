@@ -42,7 +42,7 @@ import { db } from "./kysely";
 
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
-  storages: [
+  storage: [
     s3Storage({
       region: "auto",
       endpoint: process.env.R2_ENDPOINT,
@@ -51,19 +51,15 @@ export const hotUpdater = createHotUpdater({
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
       },
       bucketName: process.env.R2_BUCKET_NAME!,
+      downloadUrlSigningKey:
+        process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
     }),
   ],
-  storageDelivery: {
-    publicBaseUrl: process.env.HOT_UPDATER_PUBLIC_BASE_URL!,
-    signingKey: process.env.HOT_UPDATER_STORAGE_DELIVERY_KEY!,
-  },
   basePath: "/hot-updater",
   features: {
-    analytics: true,
-  },
-  routes: {
     updateCheck: true,
     bundles: true,
+    analytics: true,
   },
 });
 ```
@@ -73,9 +69,8 @@ Bundle management routes used by the CLI `standaloneRepository` must be
 enabled explicitly and protected by framework middleware before mounting the
 handler.
 
-`routes` controls the core update-check and bundle-management endpoints.
-`features` independently enables optional behavior backed by the same server
-database. The example enables Analytics with protected query routes; add
+`features` controls the core routes and optional database-backed behavior. The
+example enables bundle-management routes and Analytics; add
 `clientAccessKeys: true` only after creating and distributing a client key.
 
 ## Server Setup
@@ -114,7 +109,7 @@ deployment choice:
 - `/hot-updater/fingerprint/*`
 
 The bundle management routes under `/hot-updater/api/*` are used by the CLI.
-They are mounted only when `routes.bundles: true`, and your framework
+They are mounted only when `features.bundles: true`, and your framework
 middleware must protect each management request before mounting the handler.
 The server example above uses Bearer authentication for `/hot-updater/api/*`.
 Set your auth token in environment variables:
@@ -172,8 +167,8 @@ export default defineConfig({
 ```
 
 <Callout type="warn">
-  The `storage` plugin here must match the `storages` in your server's
-  `createHotUpdater` configuration. Both use `s3Storage` in this example.
+  The CLI `storage` plugin must match one entry in the server's
+  `createHotUpdater({ storage })` array. Both use `s3Storage` here.
 </Callout>
 
 ## React Native Setup

@@ -1,10 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createHotUpdater } from "@hot-updater/server";
-import {
-  supabaseDatabase,
-  supabaseStorage,
-  supabaseStorageDelivery,
-} from "@hot-updater/supabase/edge";
+import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase/edge";
 import { Hono } from "npm:hono";
 
 declare global {
@@ -26,24 +22,19 @@ const hotUpdater = createHotUpdater({
     supabaseUrl,
     supabaseServiceRoleKey,
   }),
-  features: { analytics: true },
-  storages: [
+  features: {
+    updateCheck: true,
+    bundles: false,
+    analytics: true,
+  },
+  storage: [
     supabaseStorage({
       supabaseUrl,
       supabaseServiceRoleKey,
       bucketName,
     }),
   ],
-  storageDelivery: supabaseStorageDelivery({
-    supabaseUrl,
-    supabaseServiceRoleKey,
-    bucketName,
-  }),
   basePath: hotUpdaterBasePath,
-  routes: {
-    updateCheck: true,
-    bundles: false,
-  },
 });
 
 const app = new Hono().basePath(functionBasePath);

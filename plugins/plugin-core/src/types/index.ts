@@ -338,6 +338,38 @@ export interface StoragePutResult {
   readonly storageUri: string;
 }
 
+export interface StorageGetInput {
+  readonly storageUri: string;
+}
+
+export interface StorageGetResult {
+  readonly response: Response | null;
+}
+
+export interface StorageExistsInput {
+  readonly storageUri: string;
+}
+
+export interface StorageExistsResult {
+  readonly exists: boolean;
+}
+
+export interface StorageDeleteInput {
+  readonly storageUri: string;
+}
+
+export interface StorageDeleteResult {
+  readonly storageUri: string;
+}
+
+export interface StorageGetDownloadUrlInput {
+  readonly storageUri: string;
+}
+
+export interface StorageGetDownloadUrlResult {
+  readonly url: string;
+}
+
 /**
  * Runtime-independent object storage contract.
  *
@@ -352,14 +384,18 @@ export interface StoragePlugin {
    */
   readonly protocol: string;
   readonly put?: (input: StoragePutInput) => Promise<StoragePutResult>;
-  readonly get?: (storageUri: string) => Promise<Response | null>;
+  readonly get?: (input: StorageGetInput) => Promise<StorageGetResult>;
+  /** Resolves the URL an update client uses to download the object. */
+  readonly getDownloadUrl?: (
+    input: StorageGetDownloadUrlInput,
+  ) => Promise<StorageGetDownloadUrlResult>;
   /**
    * Returns true when an object can be safely reused by deploy. Providers may
    * validate more than physical existence when download readiness is required.
    */
-  readonly exists?: (storageUri: string) => Promise<boolean>;
+  readonly exists?: (input: StorageExistsInput) => Promise<StorageExistsResult>;
   /** Deletes exactly the object referenced by `storageUri`. */
-  readonly delete?: (storageUri: string) => Promise<void>;
+  readonly delete?: (input: StorageDeleteInput) => Promise<StorageDeleteResult>;
 }
 
 /**

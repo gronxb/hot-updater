@@ -327,7 +327,7 @@ describe("deploy rollout wiring", () => {
     mockStoragePlugin.put.mockResolvedValue({
       storageUri: "s3://bundles/bundle-123/bundle.tar.br",
     });
-    mockStoragePlugin.exists.mockResolvedValue(false);
+    mockStoragePlugin.exists.mockResolvedValue({ exists: false });
     mockServer.createBundleDiff.mockResolvedValue({
       id: "bundle-123",
     });
@@ -845,9 +845,9 @@ describe("deploy rollout wiring", () => {
     });
 
     expect(mockStoragePlugin.exists).toHaveBeenCalledTimes(1);
-    expect(mockStoragePlugin.exists).toHaveBeenCalledWith(
-      "s3://bundles/assets/sha256/fi/file-hash.png",
-    );
+    expect(mockStoragePlugin.exists).toHaveBeenCalledWith({
+      storageUri: "s3://bundles/assets/sha256/fi/file-hash.png",
+    });
     expect(mockStoragePlugin.put).toHaveBeenCalledTimes(3);
     expect(mockStoragePlugin.put).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -857,10 +857,9 @@ describe("deploy rollout wiring", () => {
   });
 
   it("skips content-addressed asset uploads that already exist", async () => {
-    mockStoragePlugin.exists.mockImplementation(
-      async (storageUri) =>
-        storageUri === "s3://bundles/assets/sha256/fi/file-hash.png",
-    );
+    mockStoragePlugin.exists.mockImplementation(async ({ storageUri }) => ({
+      exists: storageUri === "s3://bundles/assets/sha256/fi/file-hash.png",
+    }));
     vi.mocked(getBundleZipTargets).mockResolvedValue([
       {
         name: "assets/src/logo.png",
@@ -876,9 +875,9 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.exists).toHaveBeenCalledWith(
-      "s3://bundles/assets/sha256/fi/file-hash.png",
-    );
+    expect(mockStoragePlugin.exists).toHaveBeenCalledWith({
+      storageUri: "s3://bundles/assets/sha256/fi/file-hash.png",
+    });
     expect(mockStoragePlugin.put).toHaveBeenCalledTimes(2);
     expect(mockStoragePlugin.put).not.toHaveBeenCalledWith(
       expect.objectContaining({
@@ -917,9 +916,9 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.exists).toHaveBeenCalledWith(
-      "s3://bundles/assets/sha256/fi/file-hash.png",
-    );
+    expect(mockStoragePlugin.exists).toHaveBeenCalledWith({
+      storageUri: "s3://bundles/assets/sha256/fi/file-hash.png",
+    });
     expect(fs.promises.readFile).not.toHaveBeenCalledWith(
       expect.stringContaining("deploy-upload-cache.json"),
       expect.anything(),

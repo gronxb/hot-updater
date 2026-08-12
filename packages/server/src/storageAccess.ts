@@ -1,20 +1,12 @@
-import type { StoragePluginWith } from "@hot-updater/plugin-core";
-
-export interface StorageDeliveryOptions {
-  /** Public URL of the server that mounts `createHotUpdater().handler`. */
-  readonly publicBaseUrl?: string;
-  /** HMAC key used to prevent callers from forging storage delivery URLs. */
-  readonly signingKey?: string;
-  /** Optional provider/CDN URL resolver. Return null to use server delivery. */
-  readonly resolveUrl?: (
-    storageUri: string,
-  ) => string | null | Promise<string | null>;
-}
+import {
+  parseStorageDownloadPath,
+  type StoragePluginWith,
+} from "@hot-updater/plugin-core";
 
 const assertRemoteUrl = (value: string) => {
   const protocol = new URL(value).protocol;
   if (protocol !== "http:" && protocol !== "https:") {
-    throw new Error("Storage delivery must resolve to an HTTP(S) URL.");
+    throw new Error("Storage getDownloadUrl must resolve to an HTTP(S) URL.");
   }
   return value;
 };
@@ -25,106 +17,38 @@ const getStorageProtocol = (storageUri: string) =>
 const isRemoteUrlProtocol = (protocol: string) =>
   protocol === "http" || protocol === "https";
 
-const encodeStorageUri = (storageUri: string) => {
-  let binary = "";
-  for (const byte of new TextEncoder().encode(storageUri)) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary)
-    .replaceAll("+", "-")
-    .replaceAll("/", "_")
-    .replace(/=+$/, "");
-};
-
-const decodeStorageUri = (token: string) => {
-  try {
-    const base64 = token.replaceAll("-", "+").replaceAll("_", "/");
-    const binary = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
-    return new TextDecoder(undefined, { fatal: true }).decode(
-      Uint8Array.from(binary, (character) => character.charCodeAt(0)),
+const resolveDownloadPath = (value: string, storageUri: string) => {
+  const parsed = parseStorageDownloadPath(value);
+  if (!parsed || parsed.storageUri !== storageUri) {
+    throw new Error(
+      "Storage getDownloadUrl must return an HTTP(S) URL or a valid storage download path.",
     );
-  } catch {
-    return null;
   }
+  return value;
 };
 
-const encodeBase64Url = (bytes: Uint8Array) => {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary)
-    .replaceAll("+", "-")
-    .replaceAll("/", "_")
-    .replace(/=+$/, "");
-};
-
-const decodeBase64Url = (value: string) => {
-  try {
-    const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
-    const binary = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
-    return Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  } catch {
-    return null;
-  }
-};
-
-const importSigningKey = (signingKey: string) =>
-  crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(signingKey),
-    { hash: "SHA-256", name: "HMAC" },
-    false,
-    ["sign", "verify"],
-  );
-
-const signToken = async (token: string, signingKey: string) =>
-  encodeBase64Url(
-    new Uint8Array(
-      await crypto.subtle.sign(
-        "HMAC",
-        await importSigningKey(signingKey),
-        new TextEncoder().encode(token),
-      ),
-    ),
-  );
-
-const verifyToken = async (
-  token: string,
-  signature: string,
-  signingKey: string,
-) => {
-  const signatureBytes = decodeBase64Url(signature);
-  if (!signatureBytes) return false;
-  return crypto.subtle.verify(
-    "HMAC",
-    await importSigningKey(signingKey),
-    signatureBytes,
-    new TextEncoder().encode(token),
-  );
-};
-
-const createDeliveryUrl = async (
-  publicBaseUrl: string,
-  basePath: string,
-  storageUri: string,
-  signingKey: string,
-) => {
-  const token = encodeStorageUri(storageUri);
-  const signature = await signToken(token, signingKey);
-  const url = new URL(publicBaseUrl);
-  const publicPath = url.pathname.replace(/\/+$/, "");
+const withBasePath = (basePath: string, downloadPath: string) => {
   const handlerPath = basePath === "/" ? "" : basePath;
-  url.pathname = `${publicPath}${handlerPath}/storage/${token}/${signature}`;
-  url.search = "";
-  url.hash = "";
-  return url.toString();
+  return `${handlerPath}${downloadPath}`;
+};
+
+const tokensEqual = (left: string, right: string) => {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  let difference = leftBytes.length ^ rightBytes.length;
+  const length = Math.max(leftBytes.length, rightBytes.length);
+  for (let index = 0; index < length; index += 1) {
+    difference |= (leftBytes[index] ?? 0) ^ (rightBytes[index] ?? 0);
+  }
+  return difference === 0;
 };
 
 export const createStorageAccess = (
-  storages: StoragePluginWith<"get">[],
-  options: StorageDeliveryOptions & { readonly basePath: string },
+  storagePlugins: StoragePluginWith<"get">[],
+  options: { readonly basePath: string },
 ) => {
   const protocols = new Set<string>();
-  for (const storage of storages) {
+  for (const storage of storagePlugins) {
     if (protocols.has(storage.protocol)) {
       throw new Error(
         `Multiple storage plugins handle protocol: ${storage.protocol}`,
@@ -134,14 +58,14 @@ export const createStorageAccess = (
   }
 
   const findStorage = (protocol: string) =>
-    storages.find((item) => item.protocol === protocol);
+    storagePlugins.find((item) => item.protocol === protocol);
 
   const readStorageResponse = async (
     storageUri: string,
   ): Promise<Response | null> => {
     const protocol = getStorageProtocol(storageUri);
     const storage = findStorage(protocol);
-    if (storage) return storage.get(storageUri);
+    if (storage) return (await storage.get({ storageUri })).response;
 
     if (isRemoteUrlProtocol(protocol)) {
       const response = await fetch(storageUri);
@@ -158,22 +82,24 @@ export const createStorageAccess = (
 
     const protocol = getStorageProtocol(storageUri);
     if (isRemoteUrlProtocol(protocol)) return storageUri;
-    if (!findStorage(protocol)) {
+    const storage = findStorage(protocol);
+    if (!storage) {
       throw new Error(`No storage plugin for protocol: ${protocol}`);
     }
-
-    const resolved = await options.resolveUrl?.(storageUri);
-    if (resolved) return assertRemoteUrl(resolved);
-    if (!options.publicBaseUrl || !options.signingKey) {
+    if (!storage.getDownloadUrl) {
       throw new Error(
-        "Storage delivery requires publicBaseUrl with signingKey, or resolveUrl in createHotUpdater().",
+        `Storage plugin "${storage.name}" does not implement getDownloadUrl.`,
       );
     }
-    return createDeliveryUrl(
-      options.publicBaseUrl,
+    const { url: downloadUrl } = await storage.getDownloadUrl({ storageUri });
+    try {
+      return assertRemoteUrl(downloadUrl);
+    } catch (error) {
+      if (/^[a-z][a-z\d+.-]*:/i.test(downloadUrl)) throw error;
+    }
+    return withBasePath(
       options.basePath,
-      storageUri,
-      options.signingKey,
+      resolveDownloadPath(downloadUrl, storageUri),
     );
   };
 
@@ -184,18 +110,37 @@ export const createStorageAccess = (
     return response?.text() ?? null;
   };
 
-  const publicBaseUrl = options.publicBaseUrl;
-  const signingKey = options.signingKey;
-  const downloadStorageObject =
-    publicBaseUrl && signingKey
-      ? async (token: string, signature: string): Promise<Response | null> => {
-          if (!(await verifyToken(token, signature, signingKey))) {
-            return null;
-          }
-          const storageUri = decodeStorageUri(token);
-          return storageUri === null ? null : readStorageResponse(storageUri);
+  const downloadStorageObject = storagePlugins.some(
+    (storage) => storage.getDownloadUrl !== undefined,
+  )
+    ? async (
+        storageUriToken: string,
+        encodedSignature: string,
+      ): Promise<Response | null> => {
+        const requestedPath = `/storage/${storageUriToken}/${encodedSignature}`;
+        const requested = parseStorageDownloadPath(requestedPath);
+        if (!requested) return null;
+        let storage: StoragePluginWith<"get"> | undefined;
+        try {
+          storage = findStorage(getStorageProtocol(requested.storageUri));
+        } catch {
+          return null;
         }
-      : undefined;
+        if (!storage?.getDownloadUrl) return null;
+        const { url: downloadUrl } = await storage.getDownloadUrl({
+          storageUri: requested.storageUri,
+        });
+        try {
+          new URL(downloadUrl);
+          return null;
+        } catch {
+          if (/^[a-z][a-z\d+.-]*:/i.test(downloadUrl)) return null;
+        }
+        if (!tokensEqual(downloadUrl, requestedPath)) return null;
+        return (await storage.get({ storageUri: requested.storageUri }))
+          .response;
+      }
+    : undefined;
 
   return {
     downloadStorageObject,

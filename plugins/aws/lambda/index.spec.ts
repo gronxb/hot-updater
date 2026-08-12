@@ -25,8 +25,8 @@ vi.mock("../src/s3Storage", () => ({
   s3Storage: vi.fn(() => ({ name: "mockStorage", protocol: "s3" })),
 }));
 
-vi.mock("../src/cloudFrontStorageDelivery", () => ({
-  cloudFrontStorageDelivery: vi.fn(() => ({ resolveUrl: vi.fn() })),
+vi.mock("../src/cloudFrontDownloadUrl", () => ({
+  cloudFrontDownloadUrl: vi.fn(() => vi.fn()),
 }));
 
 vi.mock("@hot-updater/server", async () => {
@@ -139,7 +139,12 @@ describe("aws lambda entrypoint", () => {
     });
     expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
       expect.objectContaining({
-        features: { analytics: true, clientAccessKeys: true },
+        features: {
+          updateCheck: true,
+          bundles: false,
+          analytics: true,
+          clientAccessKeys: true,
+        },
       }),
     );
   });

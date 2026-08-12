@@ -30,6 +30,7 @@ interface SupabaseStorageConfig {
   supabaseServiceRoleKey: string;  // Your Supabase service role or secret key
   bucketName: string;              // Storage bucket name
   basePath?: string;               // Optional base path within bucket
+  signedUrlExpiresIn?: number;     // Default: 3600 seconds
 }
 ```
 
@@ -58,9 +59,8 @@ This prefix is stored in the `storageUri` field in the database.
 
 ## Capabilities
 
-`supabaseStorage` implements byte upload, Web-response reads, existence checks,
-and exact deletion. Signed URLs are provided by the separate
-`supabaseStorageDelivery`. For Supabase Edge Functions, import
-the same `supabaseStorage` name from `@hot-updater/supabase/edge`; that
-implementation captures the edge-compatible client configuration without
-changing the core contract.
+`supabaseStorage` implements byte upload, Web-response reads, signed download
+URL generation, existence checks, and exact deletion. For Supabase Edge
+Functions, import the same `supabaseStorage` name from
+`@hot-updater/supabase/edge`; that implementation captures the edge-compatible
+client configuration without changing the core contract.

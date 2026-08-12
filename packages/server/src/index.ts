@@ -17,6 +17,5 @@ export type {
   HotUpdaterAPI,
   RuntimeHotUpdaterAPI,
 } from "./createHotUpdaterCore";
-export type { StorageDeliveryOptions } from "./storageAccess";
 export * from "./types";
 export { HOT_UPDATER_SERVER_VERSION } from "./version";

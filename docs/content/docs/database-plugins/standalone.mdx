@@ -267,34 +267,27 @@ import { createHotUpdater } from "@hot-updater/server";
 
 const hotUpdater = createHotUpdater({
   database,
-  storages: [storage],
-  storageDelivery: {
-    publicBaseUrl: process.env.HOT_UPDATER_PUBLIC_BASE_URL!,
-    signingKey: process.env.HOT_UPDATER_STORAGE_DELIVERY_KEY!,
-  },
+  storage: [storage],
   basePath: "/hot-updater",
   features: {
-    analytics: true,
-    clientAccessKeys: true,
-  },
-  routes: {
     updateCheck: true,
     bundles: true,
+    analytics: true,
+    clientAccessKeys: true,
   },
 });
 ```
 
 This mounts the bundle routes consumed by `standaloneRepository` under
-`/hot-updater/api/bundles*`. `routes.bundles: true` is the explicit opt-in for
+`/hot-updater/api/bundles*`. `features.bundles: true` is the explicit opt-in for
 those management APIs; protect them at the framework or reverse proxy layer,
 and configure matching `commonHeaders` in `standaloneRepository`.
 
 `standaloneRepository` remains a bundle-management HTTP client and is used only
 in `hot-updater.config.ts`. It does not own Analytics events or client access
 keys. The server-side `database` passed to `createHotUpdater` owns those
-official domains, and `features` decides whether the self-host runtime exposes
-Analytics and enforces client access keys. `routes` controls only the core
-update-check and bundle-management route groups.
+official domains, and `features` decides which route groups and database-backed
+capabilities the self-host runtime exposes.
 
 <Callout type="warn">
   The Console cannot read Analytics or manage client access keys through

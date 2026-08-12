@@ -7,9 +7,10 @@ export interface SupabaseEdgeFunctionStorageConfig {
   supabaseServiceRoleKey: string;
   bucketName: string;
   basePath?: string;
+  signedUrlExpiresIn?: number;
 }
 
 export const supabaseEdgeFunctionStorage = (
   config: SupabaseEdgeFunctionStorageConfig,
-): StoragePluginWith<"put" | "get" | "exists" | "delete"> =>
+): StoragePluginWith<"put" | "get" | "getDownloadUrl" | "exists" | "delete"> =>
   supabaseStorage(config);

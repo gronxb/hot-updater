@@ -46,18 +46,22 @@ function createStoragePlugin(
 ): StoragePluginWith<"get" | "delete"> {
   const get =
     overrides?.get ??
-    vi.fn(async (storageUri: string) => {
+    vi.fn(async ({ storageUri }: { storageUri: string }) => {
       const storageUrl = new URL(storageUri);
       const response = await fetch(
         `https://assets.example.com${storageUrl.pathname}`,
       );
-      return response.ok ? response : null;
+      return { response: response.ok ? response : null };
     });
   return createCoreStoragePlugin({
     name: "mockStorage",
     protocol,
     get,
-    delete: overrides?.delete ?? vi.fn(),
+    delete:
+      overrides?.delete ??
+      vi.fn(async ({ storageUri }: { storageUri: string }) => ({
+        storageUri,
+      })),
   });
 }
 
@@ -80,7 +84,9 @@ describe("deleteBundle", () => {
 
     expect(databaseClient.getBundleById).toHaveBeenCalledWith(baseBundle.id);
     expect(databaseClient.deleteBundleById).toHaveBeenCalledWith(baseBundle.id);
-    expect(deleteFromStorage).toHaveBeenCalledWith(baseBundle.storageUri);
+    expect(deleteFromStorage).toHaveBeenCalledWith({
+      storageUri: baseBundle.storageUri,
+    });
 
     expect(
       databaseClient.deleteBundleById.mock.invocationCallOrder[0],
@@ -144,7 +150,9 @@ describe("deleteBundle", () => {
     ).resolves.toBeUndefined();
 
     expect(databaseClient.deleteBundleById).toHaveBeenCalledOnce();
-    expect(deleteFromStorage).toHaveBeenCalledWith(baseBundle.storageUri);
+    expect(deleteFromStorage).toHaveBeenCalledWith({
+      storageUri: baseBundle.storageUri,
+    });
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "Failed to delete bundle from storage:",
       expect.any(Error),
@@ -153,7 +161,9 @@ describe("deleteBundle", () => {
 
   it("can return without waiting for storage cleanup", async () => {
     const databaseClient = createDatabaseClient();
-    const deleteFromStorage = vi.fn(() => new Promise<void>(() => undefined));
+    const deleteFromStorage = vi.fn(
+      () => new Promise<{ storageUri: string }>(() => undefined),
+    );
     const storagePlugin = createStoragePlugin("s3", {
       delete: deleteFromStorage,
     });
@@ -166,7 +176,9 @@ describe("deleteBundle", () => {
     ).resolves.toBeUndefined();
 
     expect(databaseClient.deleteBundleById).toHaveBeenCalledOnce();
-    expect(deleteFromStorage).toHaveBeenCalledWith(baseBundle.storageUri);
+    expect(deleteFromStorage).toHaveBeenCalledWith({
+      storageUri: baseBundle.storageUri,
+    });
   });
 
   it("deletes manifest artifacts individually when metadata is available", async () => {
@@ -202,18 +214,18 @@ describe("deleteBundle", () => {
     );
 
     expect(deleteFromStorage).toHaveBeenCalledTimes(4);
-    expect(deleteFromStorage).toHaveBeenCalledWith(
-      bundleWithManifest.storageUri,
-    );
-    expect(deleteFromStorage).toHaveBeenCalledWith(
-      bundleWithManifest.manifestStorageUri,
-    );
-    expect(deleteFromStorage).toHaveBeenCalledWith(
-      "s3://bucket/bundles/bundle-copy-id/files/assets/logo.png",
-    );
-    expect(deleteFromStorage).toHaveBeenCalledWith(
-      "s3://bucket/bundles/bundle-copy-id/files/index.ios.bundle",
-    );
+    expect(deleteFromStorage).toHaveBeenCalledWith({
+      storageUri: bundleWithManifest.storageUri,
+    });
+    expect(deleteFromStorage).toHaveBeenCalledWith({
+      storageUri: bundleWithManifest.manifestStorageUri,
+    });
+    expect(deleteFromStorage).toHaveBeenCalledWith({
+      storageUri: "s3://bucket/bundles/bundle-copy-id/files/assets/logo.png",
+    });
+    expect(deleteFromStorage).toHaveBeenCalledWith({
+      storageUri: "s3://bucket/bundles/bundle-copy-id/files/index.ios.bundle",
+    });
   });
 
   it("leaves content-addressed assets in place when deleting a bundle", async () => {
@@ -240,21 +252,21 @@ describe("deleteBundle", () => {
     expect(databaseClient.getBundles).not.toHaveBeenCalled();
     expect(fetchManifest).not.toHaveBeenCalled();
     expect(deleteFromStorage).toHaveBeenCalledTimes(2);
-    expect(deleteFromStorage).toHaveBeenCalledWith(
-      bundleWithManifest.storageUri,
-    );
-    expect(deleteFromStorage).toHaveBeenCalledWith(
-      bundleWithManifest.manifestStorageUri,
-    );
-    expect(deleteFromStorage).not.toHaveBeenCalledWith(
-      bundleWithManifest.assetBaseStorageUri,
-    );
-    expect(deleteFromStorage).not.toHaveBeenCalledWith(
-      "s3://bucket/assets/sha256/lo/logo-hash.png",
-    );
-    expect(deleteFromStorage).not.toHaveBeenCalledWith(
-      "s3://bucket/assets/sha256/bu/bundle-hash.br",
-    );
+    expect(deleteFromStorage).toHaveBeenCalledWith({
+      storageUri: bundleWithManifest.storageUri,
+    });
+    expect(deleteFromStorage).toHaveBeenCalledWith({
+      storageUri: bundleWithManifest.manifestStorageUri,
+    });
+    expect(deleteFromStorage).not.toHaveBeenCalledWith({
+      storageUri: bundleWithManifest.assetBaseStorageUri,
+    });
+    expect(deleteFromStorage).not.toHaveBeenCalledWith({
+      storageUri: "s3://bucket/assets/sha256/lo/logo-hash.png",
+    });
+    expect(deleteFromStorage).not.toHaveBeenCalledWith({
+      storageUri: "s3://bucket/assets/sha256/bu/bundle-hash.br",
+    });
   });
 
   it("does not treat a legacy asset base URI as an exact object when the manifest is unavailable", async () => {
@@ -288,18 +300,15 @@ describe("deleteBundle", () => {
       { databaseClient, storagePlugin },
     );
 
-    expect(deleteFromStorage).toHaveBeenCalledWith(
-      bundleWithManifest.storageUri,
-    );
-    expect(deleteFromStorage).toHaveBeenCalledWith(
-      bundleWithManifest.manifestStorageUri,
-    );
-    expect(deleteFromStorage).not.toHaveBeenCalledWith(
-      bundleWithManifest.assetBaseStorageUri,
-    );
-    expect(deleteFromStorage).not.toHaveBeenCalledWith(
-      bundleWithManifest.assetBaseStorageUri,
-    );
+    expect(deleteFromStorage).toHaveBeenCalledWith({
+      storageUri: bundleWithManifest.storageUri,
+    });
+    expect(deleteFromStorage).toHaveBeenCalledWith({
+      storageUri: bundleWithManifest.manifestStorageUri,
+    });
+    expect(deleteFromStorage).not.toHaveBeenCalledWith({
+      storageUri: bundleWithManifest.assetBaseStorageUri,
+    });
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "Failed to load bundle manifest for storage cleanup:",
       expect.any(Error),

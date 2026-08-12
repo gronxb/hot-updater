@@ -20,7 +20,6 @@
     }
   ],
   "vars": {
-    "BUCKET_NAME": "user-buckets",
-    "PUBLIC_BASE_URL": "https://hot-updater.example.workers.dev"
+    "BUCKET_NAME": "user-buckets"
   }
 }

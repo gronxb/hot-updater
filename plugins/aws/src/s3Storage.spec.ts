@@ -74,7 +74,9 @@ describe("s3Storage", () => {
     });
     const storage = s3Storage({ bucketName: "updates", region: "us-east-1" });
 
-    const response = await storage.get("s3://updates/bundles/bundle.zip");
+    const { response } = await storage.get({
+      storageUri: "s3://updates/bundles/bundle.zip",
+    });
 
     expect(response?.headers.get("content-type")).toBe("application/zip");
     await expect(response?.text()).resolves.toBe("bundle");
@@ -86,7 +88,13 @@ describe("s3Storage", () => {
       .mockResolvedValue({} as never);
     const storage = s3Storage({ bucketName: "updates", region: "us-east-1" });
 
-    await storage.delete("s3://updates/releases/bundle.zip");
+    await expect(
+      storage.delete({
+        storageUri: "s3://updates/releases/bundle.zip",
+      }),
+    ).resolves.toEqual({
+      storageUri: "s3://updates/releases/bundle.zip",
+    });
 
     expect(send).toHaveBeenCalledOnce();
     expect(send).toHaveBeenCalledWith(
@@ -95,5 +103,21 @@ describe("s3Storage", () => {
       }),
     );
     expect(send.mock.calls[0]?.[0]).toBeInstanceOf(DeleteObjectCommand);
+  });
+
+  it("returns a signed server download URL when configured", async () => {
+    const storage = s3Storage({
+      bucketName: "updates",
+      region: "us-east-1",
+      downloadUrlSigningKey: "test-signing-key",
+    });
+
+    await expect(
+      storage.getDownloadUrl?.({
+        storageUri: "s3://updates/releases/bundle.zip",
+      }),
+    ).resolves.toEqual({
+      url: expect.stringMatching(/^\/storage\//),
+    });
   });
 });

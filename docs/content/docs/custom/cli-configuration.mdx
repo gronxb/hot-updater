@@ -39,11 +39,12 @@ export default defineConfig({
 <Callout type="warn">
 **Critical: Storage Plugin Must Match**
 
-The `storage` plugin in your CLI config must match the `storages` in your server's `createHotUpdater` configuration.
+The CLI `storage` plugin must match one entry in the server's
+`createHotUpdater({ storage })` array.
 
 **CLI uses `s3Storage` → Server must use `s3Storage`**
 
-Both sides need the same plugin type and configuration to encode/decode storage URIs correctly.
+Both sides need the same plugin type and URI configuration.
 </Callout>
 
 ## Standalone Repository Configuration

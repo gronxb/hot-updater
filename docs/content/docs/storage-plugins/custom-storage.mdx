@@ -30,23 +30,30 @@ export const customStorage = createStoragePlugin({
     return { storageUri: `custom://bucket/${objectKey}` };
   },
 
-  async get(storageUri) {
+  async get({ storageUri }) {
     const object = await client.get(parseStorageUri(storageUri));
-    return object === null
-      ? null
-      : new Response(object.body, {
-          headers: { "content-type": object.contentType },
-        });
+    return {
+      response:
+        object === null
+          ? null
+          : new Response(object.body, {
+              headers: { "content-type": object.contentType },
+            }),
+    };
   },
 
-  async exists(storageUri) {
-    return client.exists(parseStorageUri(storageUri));
+  async getDownloadUrl({ storageUri }) {
+    return { url: await client.createDownloadUrl(storageUri) };
   },
 
-  async delete(storageUri) {
+  async exists({ storageUri }) {
+    return { exists: await client.exists(parseStorageUri(storageUri)) };
+  },
+
+  async delete({ storageUri }) {
     await client.delete(parseStorageUri(storageUri));
+    return { storageUri };
   },
-
 });
 ```
 
@@ -63,22 +70,38 @@ interface StoragePlugin {
     readonly contentType: string;
   }) => Promise<{ readonly storageUri: string }>;
 
-  readonly get?: (storageUri: string) => Promise<Response | null>;
-  readonly exists?: (storageUri: string) => Promise<boolean>;
-  readonly delete?: (storageUri: string) => Promise<void>;
+  readonly get?: (input: {
+    readonly storageUri: string;
+  }) => Promise<{ readonly response: Response | null }>;
+
+  readonly getDownloadUrl?: (input: {
+    readonly storageUri: string;
+  }) => Promise<{ readonly url: string }>;
+
+  readonly exists?: (input: {
+    readonly storageUri: string;
+  }) => Promise<{ readonly exists: boolean }>;
+
+  readonly delete?: (input: {
+    readonly storageUri: string;
+  }) => Promise<{ readonly storageUri: string }>;
 }
 ```
 
 Operations are optional because a runtime-specific implementation may support
 only the capabilities its consumer needs. Hot Updater validates required
 operations at each boundary and reports the missing operation by name.
+Every operation receives one input object and returns one result object so new
+fields can be added without introducing positional parameters or changing the
+result shape.
 
 | Consumer | Required operations |
 | --- | --- |
 | `hot-updater deploy` | `put`, `get`, `exists`, `delete` |
 | `hot-updater patch` and promote-copy | `get`, `put`, `delete` |
 | Console server mutations | `get`, `put`, `delete` |
-| `createHotUpdater({ storages })` | `get` |
+| `createHotUpdater({ storage })` update responses | `getDownloadUrl` |
+| `createHotUpdater({ storage })` download handling | `get` |
 
 `delete` always deletes exactly one object. Prefix or bucket cleanup is an
 administrative provider operation and is intentionally outside this contract.
@@ -115,51 +138,22 @@ import { env } from "cloudflare:workers";
 
 const hotUpdater = createHotUpdater({
   database: d1Database(env.DB),
-  storages: [
+  storage: [
     r2Storage({
       bucket: env.BUCKET,
       bucketName: env.BUCKET_NAME,
+      downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
     }),
   ],
-  storageDelivery: {
-    publicBaseUrl: env.PUBLIC_BASE_URL,
-    signingKey: env.STORAGE_DELIVERY_SIGNING_KEY,
-  },
 });
 ```
 
-This keeps `@hot-updater/plugin-core` portable. Runtime dependencies live only
-in the provider implementation selected by the import subpath.
-
-## Storage URI rules
-
-- `protocol` must match the scheme returned by `put`.
-- Persist a stable URI containing everything needed to locate the object.
-- Validate the protocol, bucket, and key before acting on a URI.
-- Keep existing URI formats compatible when migrating an implementation.
-- `get` returns a Web `Response`, preserving streaming and content headers.
-- `get` returns `null` only when the object does not exist.
-
-## HTTP delivery
-
-Storage owns objects; it does not own their public HTTP URL. `createHotUpdater`
-can stream stored responses through its built-in delivery route:
-
-```typescript
-createHotUpdater({
-  database,
-  storages: [customStorage],
-  storageDelivery: {
-    publicBaseUrl: "https://updates.example.com",
-    signingKey: process.env.HOT_UPDATER_STORAGE_DELIVERY_KEY!,
-  },
-});
-```
-
-Providers with a CDN can resolve URLs without proxying bytes through the
-runtime. For example, AWS exports `cloudFrontStorageDelivery(...)`; pass its
-result as `storageDelivery`. This separation lets R2 bindings, S3, local HTTP
-repositories, and other runtimes use the same storage contract.
+`getDownloadUrl` is the storage plugin's public URL boundary. A provider can
+return its CDN URL, a provider-signed URL, or a signed URL handled by the same
+server. The contract exposes only the resulting URL; the delivery mechanism is
+an implementation detail. For example, AWS passes
+`cloudFrontDownloadUrl(...)` to `s3Storage`, while a private R2 Worker returns a
+signed handler-relative URL.
 
 ## File-system consumers
 

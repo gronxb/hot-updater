@@ -12,17 +12,9 @@ const createTestHotUpdater = () =>
     database: mockDatabase({
       latency: { min: 0, max: 0 },
     }),
-    features: { analytics: true },
-    storages: [mockStorage({})],
-    storageDelivery: {
-      publicBaseUrl: "https://example.com",
-      signingKey: "test-storage-delivery-signing-key",
-    },
+    features: { updateCheck: true, bundles: false, analytics: true },
+    storage: [mockStorage({})],
     basePath: HOT_UPDATER_BASE_PATH,
-    routes: {
-      updateCheck: true,
-      bundles: false,
-    },
   });
 
 const seedBundles = async (

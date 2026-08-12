@@ -23,7 +23,7 @@ export const writeStorageFile = async (
   storageUri: string,
   filePath: string,
 ): Promise<void> => {
-  const response = await storage.get(storageUri);
+  const { response } = await storage.get({ storageUri });
   if (response === null) {
     throw new Error(`Storage object not found: ${storageUri}`);
   }

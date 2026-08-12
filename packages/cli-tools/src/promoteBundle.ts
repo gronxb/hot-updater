@@ -461,7 +461,7 @@ async function deleteUploadedCopy(
 
   for (const storageUri of new Set(storageUris)) {
     try {
-      await storagePlugin.delete(storageUri);
+      await storagePlugin.delete({ storageUri });
     } catch (error) {
       console.error("Failed to delete uploaded bundle copy:", error);
     }

@@ -158,9 +158,23 @@ function createTestStoragePlugin(
   return createStoragePlugin({
     name: `${protocol}TestStorage`,
     protocol,
-    async get(storageUri) {
+    async get({ storageUri }) {
       const text = await readText(storageUri);
-      return text === null ? null : new Response(text);
+      return { response: text === null ? null : new Response(text) };
+    },
+    async getDownloadUrl({ storageUri }) {
+      const prefixes: Record<string, string> = {
+        gs: "https://firebase.example.com/",
+        r2: "https://r2.example.com/",
+        s3: "https://s3.example.com/",
+        "supabase-storage":
+          "https://supabase.example.com/storage/v1/object/sign/",
+      };
+      return {
+        url: storageUri
+          .replace(`${protocol}://`, prefixes[protocol] ?? "")
+          .replace(/([^:]\/)\/+/g, "$1"),
+      };
     },
   });
 }
@@ -247,27 +261,12 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       db: kysely,
       provider: "postgresql",
     }),
-    storages: [
+    storage: [
       createTestStoragePlugin("s3", readStoredText),
       createTestStoragePlugin("r2", readStoredText),
       createTestStoragePlugin("supabase-storage", readStoredText),
       createTestStoragePlugin("gs", readStoredText),
     ],
-    storageDelivery: {
-      resolveUrl(storageUri) {
-        const prefixes: Record<string, string> = {
-          gs: "https://firebase.example.com/",
-          r2: "https://r2.example.com/",
-          s3: "https://s3.example.com/",
-          "supabase-storage":
-            "https://supabase.example.com/storage/v1/object/sign/",
-        };
-        const protocol = new URL(storageUri).protocol.replace(":", "");
-        return storageUri
-          .replace(`${protocol}://`, prefixes[protocol] ?? "")
-          .replace(/([^:]\/)\/+/g, "$1");
-      },
-    },
   });
   const prismaSchemaHotUpdater = createHotUpdater({
     database: createSchemaOnlyAdapter({

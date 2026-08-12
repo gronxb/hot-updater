@@ -26,12 +26,11 @@ describe("downloadBundle", () => {
   });
 
   it("streams a custom storage Response through the Console route", async () => {
-    const get = vi.fn(
-      async () =>
-        new Response("bundle", {
-          headers: { "content-type": "application/zip" },
-        }),
-    );
+    const get = vi.fn(async () => ({
+      response: new Response("bundle", {
+        headers: { "content-type": "application/zip" },
+      }),
+    }));
     const storagePlugin = createStoragePlugin({
       name: "r2Storage",
       protocol: "r2",
@@ -43,7 +42,9 @@ describe("downloadBundle", () => {
       storagePlugin,
     });
 
-    expect(get).toHaveBeenCalledWith("r2://updates/bundle.zip");
+    expect(get).toHaveBeenCalledWith({
+      storageUri: "r2://updates/bundle.zip",
+    });
     expect(response.headers.get("content-type")).toBe("application/zip");
     expect(response.headers.get("content-disposition")).toBe("attachment");
     await expect(response.text()).resolves.toBe("bundle");

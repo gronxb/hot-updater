@@ -3,5 +3,5 @@ export {
   dynamoDB,
   type DynamoDBConfig,
 } from "./dynamoDB";
-export * from "./cloudFrontStorageDelivery";
+export * from "./cloudFrontDownloadUrl";
 export * from "./s3Storage";

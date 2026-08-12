@@ -5,7 +5,6 @@ import { Hono } from "hono";
 
 import { firebaseDatabase } from "../../src/firebaseDatabase";
 import { firebaseStorage } from "../../src/firebaseStorage";
-import { firebaseStorageDelivery } from "../../src/firebaseStorageDelivery";
 
 declare global {
   var HotUpdater: {
@@ -28,23 +27,19 @@ if (!storageBucket) {
 
 const hotUpdater = createHotUpdater({
   database: firebaseDatabase(adminOptions),
-  features: { analytics: true },
-  storages: [
+  features: {
+    updateCheck: true,
+    bundles: false,
+    analytics: true,
+  },
+  storage: [
     firebaseStorage({
       ...adminOptions,
       storageBucket,
+      cdnUrl,
     }),
   ],
-  storageDelivery: firebaseStorageDelivery({
-    ...adminOptions,
-    storageBucket,
-    cdnUrl,
-  }),
   basePath: HOT_UPDATER_BASE_PATH,
-  routes: {
-    updateCheck: true,
-    bundles: false,
-  },
 });
 
 const app = new Hono();

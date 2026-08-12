@@ -114,7 +114,7 @@ async function downloadStorageBytes(
     throw new Error(`No storage plugin for protocol: ${protocol}`);
   }
 
-  const response = await storagePlugin.get(storageUri);
+  const { response } = await storagePlugin.get({ storageUri });
   if (response === null) {
     throw new Error(`Storage object not found: ${storageUri}`);
   }
@@ -346,9 +346,11 @@ export async function createBundleDiff(
     previousPatch?.patchStorageUri &&
     previousPatch.patchStorageUri !== patchUpload.storageUri
   ) {
-    await deps.storagePlugin.delete(previousPatch.patchStorageUri).catch(() => {
-      return;
-    });
+    await deps.storagePlugin
+      .delete({ storageUri: previousPatch.patchStorageUri })
+      .catch(() => {
+        return;
+      });
   }
 
   return updatedBundle;

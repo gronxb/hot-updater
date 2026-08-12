@@ -18,9 +18,9 @@ event ingestion route and the Analytics query routes. Queries are protected by
 default and fail closed. `features.analytics: { queryAccess: "public" }` is
 intended only for explicitly public deployments and local test fixtures.
 
-`routes` and `features` are independent. `routes.updateCheck` and
-`routes.bundles` control the two core route groups; Analytics owns its event and
-query routes and is enabled only by `features.analytics`.
+`features.updateCheck` and `features.bundles` control the two core route groups;
+Analytics owns its event and query routes and is enabled only by
+`features.analytics`.
 
 The database plugin owns physical storage and migration for `bundle_events`.
 The server owns event input validation, bounded scans, aggregation, installation

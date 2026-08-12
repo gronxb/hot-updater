@@ -11,30 +11,26 @@ export type CloudflareWorkerEnv = {
   };
   BUCKET: R2Bucket;
   BUCKET_NAME: string;
-  PUBLIC_BASE_URL: string;
-  STORAGE_DELIVERY_SIGNING_KEY: string;
+  STORAGE_DOWNLOAD_URL_SIGNING_KEY: string;
 };
 
 export const HOT_UPDATER_BASE_PATH = "/api/check-update";
 
 const hotUpdater = createHotUpdater({
   database: d1Database(env.DB),
-  features: { analytics: true },
-  storages: [
+  features: {
+    updateCheck: true,
+    bundles: false,
+    analytics: true,
+  },
+  storage: [
     r2Storage({
       bucket: env.BUCKET,
       bucketName: env.BUCKET_NAME,
+      downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
     }),
   ],
-  storageDelivery: {
-    publicBaseUrl: env.PUBLIC_BASE_URL,
-    signingKey: env.STORAGE_DELIVERY_SIGNING_KEY,
-  },
   basePath: HOT_UPDATER_BASE_PATH,
-  routes: {
-    updateCheck: true,
-    bundles: false,
-  },
 });
 
 const app = new Hono<{ Bindings: CloudflareWorkerEnv }>();

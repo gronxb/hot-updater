@@ -15,12 +15,9 @@ import {
   type DatabaseAPI,
   isDatabasePlugin,
 } from "./db/types";
-import { createHotUpdaterHandler, type HandlerRoutes } from "./handler";
+import { createHotUpdaterHandler } from "./handler";
 import { normalizeBasePath } from "./route";
-import {
-  createStorageAccess,
-  type StorageDeliveryOptions,
-} from "./storageAccess";
+import { createStorageAccess } from "./storageAccess";
 
 export type RuntimeHotUpdaterAPI = DatabaseAPI & {
   readonly basePath: string;
@@ -32,6 +29,10 @@ export type RuntimeHotUpdaterAPI = DatabaseAPI & {
 export type HotUpdaterAPI = RuntimeHotUpdaterAPI;
 
 export interface CreateHotUpdaterFeatures {
+  /** Mount the React Native update-check routes. @default true */
+  readonly updateCheck?: boolean;
+  /** Mount the bundle-management routes. @default false */
+  readonly bundles?: boolean;
   /**
    * Mount Analytics ingestion and query routes backed by
    * `database.analytics`. Protected queries are the default.
@@ -51,17 +52,11 @@ export interface CreateHotUpdaterFeatures {
 
 export interface CreateHotUpdaterOptions {
   readonly database: DatabasePlugin;
-  /**
-   * Optional server features. These are independent from `routes`, which only
-   * controls the core update-check and bundle-management route groups.
-   */
+  /** Optional route and domain features. */
   readonly features?: CreateHotUpdaterFeatures;
-  readonly storages?: readonly StoragePlugin[];
-  /** HTTP delivery for non-HTTP storage URIs returned to update clients. */
-  readonly storageDelivery?: StorageDeliveryOptions;
+  /** Storage implementations used to read provider-specific storage URIs. */
+  readonly storage?: readonly StoragePlugin[];
   readonly basePath?: string;
-  readonly cwd?: string;
-  readonly routes?: HandlerRoutes;
 }
 
 const normalizeAnalyticsQueryAccess = (
@@ -89,6 +84,18 @@ const normalizeClientAccessKeys = (
     throw new TypeError("Client access-keys option must be a boolean.");
   }
   return clientAccessKeys;
+};
+
+const normalizeBooleanFeature = (
+  value: boolean | undefined,
+  name: string,
+  defaultValue: boolean,
+): boolean => {
+  if (value === undefined) return defaultValue;
+  if (typeof value !== "boolean") {
+    throw new TypeError(`${name} feature must be a boolean.`);
+  }
+  return value;
 };
 
 const normalizeFeatures = (
@@ -138,15 +145,15 @@ export function createHotUpdaterCore(
 ): HotUpdaterCore {
   const database = options.database;
   const basePath = normalizeBasePath(options.basePath ?? "/api");
-  const storages = (options.storages ?? []).map((storage) => {
+  const storagePlugins = (options.storage ?? []).map((storage) => {
     assertStorageOperations(storage, ["get"]);
+    if (storage.protocol !== "http" && storage.protocol !== "https") {
+      assertStorageOperations(storage, ["getDownloadUrl"]);
+    }
     return storage;
   });
   const { downloadStorageObject, readStorageText, resolveFileUrl } =
-    createStorageAccess(storages, {
-      basePath,
-      ...options.storageDelivery,
-    });
+    createStorageAccess(storagePlugins, { basePath });
   const adapterCapabilities: DatabaseAdapterCapabilities = database;
 
   if (!isDatabasePlugin(database)) {
@@ -164,6 +171,16 @@ export function createHotUpdaterCore(
     readStorageText,
   });
   const features = normalizeFeatures(options.features);
+  const updateCheckEnabled = normalizeBooleanFeature(
+    features.updateCheck,
+    "Update-check",
+    true,
+  );
+  const bundlesEnabled = normalizeBooleanFeature(
+    features.bundles,
+    "Bundles",
+    false,
+  );
   const analyticsQueryAccess = normalizeAnalyticsQueryAccess(
     features.analytics,
   );
@@ -188,7 +205,10 @@ export function createHotUpdaterCore(
     core.api,
     {
       basePath,
-      routes: options.routes,
+      routes: {
+        updateCheck: updateCheckEnabled,
+        bundles: bundlesEnabled,
+      },
     },
     analytics === undefined
       ? undefined

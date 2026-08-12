@@ -37,6 +37,7 @@ interface R2StorageConfig {
   };
   cloudflareApiToken?: string; // Legacy Wrangler fallback
   basePath?: string; // Optional base path within bucket
+  downloadUrlSigningKey?: string; // Server-side download URL signing
 }
 ```
 
@@ -63,8 +64,8 @@ export default defineConfig({
 
 The root `r2Storage` implementation uses the R2 S3-compatible API when
 `credentials` are provided. Configs without `credentials` fall back to Wrangler
-for backward compatibility. HTTP delivery is separate from storage in both
-cases.
+for backward compatibility. Add `downloadUrlSigningKey` when the root plugin is
+also used by a self-hosted `createHotUpdater` server.
 
 Cloudflare Workers should use the Worker runtime export instead:
 
@@ -74,24 +75,22 @@ import { createHotUpdater } from "@hot-updater/server";
 import { env } from "cloudflare:workers";
 
 export const hotUpdater = createHotUpdater({
-  storages: [
+  storage: [
     r2Storage({
       bucket: env.BUCKET,
       bucketName: env.BUCKET_NAME,
+      downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
     }),
   ],
-  storageDelivery: {
-    publicBaseUrl: env.PUBLIC_BASE_URL,
-    signingKey: env.STORAGE_DELIVERY_SIGNING_KEY,
-  },
   // ... other options
 });
 ```
 
 The Worker subpath exports the same `r2Storage` name with an R2-binding
 implementation. It captures its binding at construction and returns streaming
-Web responses. `createHotUpdater` owns the public delivery route, so Worker
-types and URL policy do not leak into `@hot-updater/plugin-core`.
+Web responses. Its `getDownloadUrl` operation returns a signed URL handled by
+`createHotUpdater`, without exposing Worker types or delivery policy in
+`@hot-updater/plugin-core`.
 
 ## Limitations
 

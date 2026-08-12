@@ -53,17 +53,13 @@ import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "postgres" }),
-  storages: [
-    // Configure your storage plugin - examples:
+  storage: [
+    // Configure a plugin with getDownloadUrl support - examples:
     // s3Storage({ /* S3 or R2 config */ }),
     // supabaseStorage({ /* Supabase config */ }),
     // firebaseStorage({ /* Firebase config */ }),
     // myCustomStorage({ /* custom config */ }),
   ],
-  storageDelivery: {
-    publicBaseUrl: process.env.HOT_UPDATER_PUBLIC_BASE_URL!,
-    signingKey: process.env.HOT_UPDATER_STORAGE_DELIVERY_KEY!,
-  },
   basePath: "/hot-updater",
 });
 ```
@@ -87,7 +83,7 @@ export default app;
 With Hono `mount()`, update-check routes such as `/hot-updater/app-version/*`
 and `/hot-updater/fingerprint/*` are usually exposed for React Native clients,
 but that is a deployment choice. `/hot-updater/version` is always mounted for
-diagnostics. Always protect `/hot-updater/api/*` when `routes.bundles: true`.
+diagnostics. Always protect `/hot-updater/api/*` when `features.bundles: true`.
 </Callout>
 
 ## Schema Generation
@@ -140,5 +136,6 @@ export default defineConfig({
 ```
 
 <Callout type="warn">
-The `storage` plugin must match the `storages` in your server's `createHotUpdater`.
+The CLI `storage` plugin must match one entry in the server's
+`createHotUpdater({ storage })` array.
 </Callout>

@@ -34,8 +34,7 @@ declare module "cloudflare:test" {
     DB: D1Database;
     BUCKET: R2Bucket;
     BUCKET_NAME: string;
-    PUBLIC_BASE_URL: string;
-    STORAGE_DELIVERY_SIGNING_KEY: string;
+    STORAGE_DOWNLOAD_URL_SIGNING_KEY: string;
   }
 }
 

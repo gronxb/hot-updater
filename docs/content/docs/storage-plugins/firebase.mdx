@@ -32,6 +32,8 @@ interface FirebaseStorageConfig {
   storageBucket: string;           // Storage bucket name
   credential: Credential;          // Firebase credential
   basePath?: string;               // Optional base path within bucket
+  cdnUrl?: string;                 // Optional CDN URL
+  signedUrlExpiresIn?: number;     // Default: 3600 seconds
 }
 ```
 
@@ -80,6 +82,6 @@ This prefix is stored in the `storageUri` field in the database.
 
 ## Capabilities
 
-`firebaseStorage` implements byte upload, Web-response reads, existence checks,
-and exact deletion. `firebaseStorageDelivery` owns CDN or signed URL generation;
-the core storage contract has no Functions, URL, or request-context dependency.
+`firebaseStorage` implements byte upload, Web-response reads, download URL
+generation, existence checks, and exact deletion. `getDownloadUrl` returns a CDN
+URL when `cdnUrl` is configured and a Firebase signed URL otherwise.

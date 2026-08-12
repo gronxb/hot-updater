@@ -62,7 +62,7 @@ export const createR2WranglerStorage = (
     }
   };
 
-  const get = async (storageUri: string): Promise<Response | null> => {
+  const getResponse = async (storageUri: string): Promise<Response | null> => {
     const { key } = parseAndValidate(storageUri);
     return withTempFile(async (filePath) => {
       try {
@@ -106,11 +106,13 @@ export const createR2WranglerStorage = (
       });
       return { storageUri: `r2://${bucketName}/${storageKey}` };
     },
-    get,
-    async exists(storageUri) {
-      return (await get(storageUri)) !== null;
+    async get({ storageUri }) {
+      return { response: await getResponse(storageUri) };
     },
-    async delete(storageUri) {
+    async exists({ storageUri }) {
+      return { exists: (await getResponse(storageUri)) !== null };
+    },
+    async delete({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       await wrangler(
         "r2",
@@ -119,6 +121,7 @@ export const createR2WranglerStorage = (
         `${bucketName}/${key}`,
         "--remote",
       );
+      return { storageUri };
     },
   });
 };

@@ -1005,7 +1005,7 @@ const deployPlatform = async ({
                   uploadFilename: path.posix.basename(storagePath),
                 });
 
-                if (await storagePlugin.exists(storageUri)) {
+                if ((await storagePlugin.exists({ storageUri })).exists) {
                   skippedUploadCount += 1;
                 } else {
                   await putStorageFile(

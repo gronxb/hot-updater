@@ -19,11 +19,18 @@ export type SupabaseStorageConfig = SupabaseServiceRoleConfig & {
   bucketName: string;
   /** Base path where bundles will be stored in the bucket. */
   basePath?: string;
+  /** Signed download URL lifetime in seconds. @default 3600 */
+  signedUrlExpiresIn?: number;
 };
+
+const getErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
 
 export const supabaseStorage = (
   config: SupabaseStorageConfig,
-): StoragePluginWith<"put" | "get" | "exists" | "delete"> => {
+): StoragePluginWith<
+  "put" | "get" | "getDownloadUrl" | "exists" | "delete"
+> => {
   const supabase = createClient<Database>(
     config.supabaseUrl,
     resolveSupabaseServiceRoleKey(config),
@@ -55,27 +62,45 @@ export const supabaseStorage = (
         storageUri: `supabase-storage://${data.fullPath}`,
       };
     },
-    async get(storageUri) {
+    async get({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       const { data, error } = await bucket.download(key);
       if (error) {
-        if (isNotFoundError(error)) return null;
+        if (isNotFoundError(error)) return { response: null };
         throw new Error(`Failed to download storage object: ${error.message}`);
       }
-      return data ? new Response(data) : null;
+      return { response: data ? new Response(data) : null };
     },
-    async exists(storageUri) {
+    async getDownloadUrl({ storageUri }) {
+      const { key } = parseAndValidate(storageUri);
+      try {
+        const { data, error } = await bucket.createSignedUrl(
+          key,
+          config.signedUrlExpiresIn ?? 3600,
+        );
+        if (error || !data?.signedUrl) {
+          throw error ?? new Error("missing signed URL");
+        }
+        return { url: data.signedUrl };
+      } catch (error) {
+        throw new Error(
+          `Failed to generate download URL for "${key}": ${getErrorMessage(error)}`,
+        );
+      }
+    },
+    async exists({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       const { data, error } = await bucket.exists(key);
       if (error) throw error;
-      return data;
+      return { exists: data };
     },
-    async delete(storageUri) {
+    async delete({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       const { error } = await bucket.remove([key]);
       if (error && !isNotFoundError(error)) {
         throw new Error(`Failed to delete storage object: ${error.message}`);
       }
+      return { storageUri };
     },
   });
 };

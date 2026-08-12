@@ -89,7 +89,7 @@ describe("packed provider entrypoints", () => {
     {
       directory: "aws",
       packageName: "@hot-updater/aws",
-      exports: ["cloudFrontStorageDelivery", "s3Storage"],
+      exports: ["cloudFrontDownloadUrl", "s3Storage"],
       handler: "@hot-updater/aws/lambda",
     },
     {
@@ -100,11 +100,8 @@ describe("packed provider entrypoints", () => {
     {
       directory: "firebase",
       packageName: "@hot-updater/firebase",
-      exports: [
-        "firebaseDatabase",
-        "firebaseStorage",
-        "firebaseStorageDelivery",
-      ],
+      exports: ["firebaseDatabase", "firebaseStorage"],
+      absentExports: ["firebaseStorageDelivery"],
       handler: "@hot-updater/firebase/functions",
     },
     {
@@ -115,27 +112,21 @@ describe("packed provider entrypoints", () => {
     {
       directory: "supabase",
       packageName: "@hot-updater/supabase",
-      exports: [
-        "supabaseDatabase",
-        "supabaseStorage",
-        "supabaseStorageDelivery",
-      ],
+      exports: ["supabaseDatabase", "supabaseStorage"],
       absentExports: [
         "supabaseEdgeFunctionDatabase",
         "supabaseEdgeFunctionStorage",
+        "supabaseStorageDelivery",
       ],
     },
     {
       directory: "supabase",
       packageName: "@hot-updater/supabase/edge",
-      exports: [
-        "supabaseDatabase",
-        "supabaseStorage",
-        "supabaseStorageDelivery",
-      ],
+      exports: ["supabaseDatabase", "supabaseStorage"],
       absentExports: [
         "supabaseEdgeFunctionDatabase",
         "supabaseEdgeFunctionStorage",
+        "supabaseStorageDelivery",
       ],
     },
   ])(
@@ -205,12 +196,12 @@ if ("d1WorkerDatabase" in runtime) throw new Error("unexpected d1WorkerDatabase"
 const storage = runtime.r2Storage({
   bucket: {},
   bucketName: "updates",
+  downloadUrlSigningKey: "test-signing-key",
 });
 if (storage.name !== "r2Storage") throw new Error("invalid r2Storage name");
-for (const operation of ["put", "get", "exists", "delete"]) {
+for (const operation of ["put", "get", "getDownloadUrl", "exists", "delete"]) {
   if (typeof storage[operation] !== "function") throw new Error("missing storage " + operation);
 }
-if ("getDownloadUrl" in storage) throw new Error("unexpected storage delivery method");
 `;
     await runNode(
       packageDirectory,

@@ -1,5 +1,8 @@
 import {
   createStoragePlugin,
+  type StorageDeleteInput,
+  type StorageExistsInput,
+  type StorageGetInput,
   type StoragePutInput,
 } from "@hot-updater/plugin-core";
 
@@ -7,9 +10,9 @@ import type { RouteConfig } from "./standaloneRepository";
 
 export interface StorageRoutes {
   put: (input: Pick<StoragePutInput, "key" | "contentType">) => RouteConfig;
-  get: (storageUri: string) => RouteConfig;
-  exists: (storageUri: string) => RouteConfig;
-  delete: (storageUri: string) => RouteConfig;
+  get: (input: StorageGetInput) => RouteConfig;
+  exists: (input: StorageExistsInput) => RouteConfig;
+  delete: (input: StorageDeleteInput) => RouteConfig;
 }
 
 const defaultRoutes: StorageRoutes = {
@@ -59,7 +62,9 @@ export const standaloneStorage = (config: StandaloneStorageConfig) => {
     routeName: "get" | "exists" | "delete",
     storageUri: string,
   ) => {
-    const { path, headers } = resolveRoute(routeName, [storageUri] as const);
+    const { path, headers } = resolveRoute(routeName, [
+      { storageUri },
+    ] as const);
     const response = await fetch(`${config.baseUrl}${path}`, {
       method: routeName === "delete" ? "DELETE" : "POST",
       headers: {
@@ -103,18 +108,20 @@ export const standaloneStorage = (config: StandaloneStorageConfig) => {
       }
       return { storageUri: result.storageUri };
     },
-    async get(storageUri) {
+    async get({ storageUri }) {
       const response = await requestStorageUri("get", storageUri);
-      if (response.status === 404) return null;
-      return response;
+      return { response: response.status === 404 ? null : response };
     },
-    async exists(storageUri) {
+    async exists({ storageUri }) {
       const response = await requestStorageUri("exists", storageUri);
-      if (response.status === 404) return false;
-      return ((await response.json()) as { exists: boolean }).exists;
+      if (response.status === 404) return { exists: false };
+      return {
+        exists: ((await response.json()) as { exists: boolean }).exists,
+      };
     },
-    async delete(storageUri) {
+    async delete({ storageUri }) {
       await requestStorageUri("delete", storageUri);
+      return { storageUri };
     },
   });
 };

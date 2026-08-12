@@ -1,6 +1,7 @@
 import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
+  createStorageDownloadPath,
   createStoragePlugin,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
@@ -10,6 +11,7 @@ import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryData
 import packageJson from "../package.json" with { type: "json" };
 import { createHotUpdater } from "./index";
 import type {
+  CreateHotUpdaterFeatures,
   CreateHotUpdaterOptions,
   HandlerAPI,
   HandlerOptions,
@@ -44,13 +46,10 @@ describe("runtime createHotUpdater", () => {
     expectTypeOf<HandlerOptions>().toHaveProperty("routes");
     expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<"basePath" | "routes">();
     expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
-      | "database"
-      | "features"
-      | "storages"
-      | "storageDelivery"
-      | "basePath"
-      | "cwd"
-      | "routes"
+      "database" | "features" | "storage" | "basePath"
+    >();
+    expectTypeOf<keyof CreateHotUpdaterFeatures>().toEqualTypeOf<
+      "updateCheck" | "bundles" | "analytics" | "clientAccessKeys"
     >();
     expectTypeOf<HandlerRoutes>().toEqualTypeOf<{
       readonly updateCheck: boolean;
@@ -66,10 +65,16 @@ describe("runtime createHotUpdater", () => {
     const storage = createStoragePlugin({
       name: "contextlessTestStorage",
       protocol: "s3",
-      get: async () => null,
+      get: async () => ({ response: null }),
+      getDownloadUrl: async () => ({
+        url: "https://assets.example.com/bundle.zip",
+      }),
     });
 
-    const hotUpdater = createHotUpdater({ database, storages: [storage] });
+    const hotUpdater = createHotUpdater({
+      database,
+      storage: [storage],
+    });
 
     expect(hotUpdater.basePath).toBe("/api");
     expect(hotUpdater.adapterName).toBe("contextlessTestDatabase");
@@ -90,6 +95,23 @@ describe("runtime createHotUpdater", () => {
 
     await expect(result).rejects.toThrow(
       "Hot Updater database schema is not initialized for kysely.",
+    );
+  });
+
+  it("rejects non-HTTP server storage without getDownloadUrl", () => {
+    const storage = createStoragePlugin({
+      name: "deployOnlyStorage",
+      protocol: "s3",
+      get: async () => ({ response: null }),
+    });
+
+    expect(() =>
+      createHotUpdater({
+        database: createRuntimeDatabase(),
+        storage: [storage],
+      }),
+    ).toThrow(
+      'Storage plugin "deployOnlyStorage" does not implement getDownloadUrl.',
     );
   });
 
@@ -119,7 +141,7 @@ describe("runtime createHotUpdater", () => {
     expect(createMigrator).toHaveBeenCalledOnce();
   });
 
-  it("keeps download URL resolution outside the storage implementation", async () => {
+  it("uses the matching storage plugin to resolve download URLs", async () => {
     const request = new Request(updateUrl);
     const getUpdateInfo = vi.fn<NonNullable<DatabasePlugin["getUpdateInfo"]>>(
       async () => ({
@@ -136,15 +158,14 @@ describe("runtime createHotUpdater", () => {
       getUpdateInfo,
     };
     const assetHost = "https://assets.example.com";
-    const resolveUrl = vi.fn(async () =>
-      new URL("/bundle.zip", assetHost).toString(),
-    );
+    const resolveUrl = vi.fn(async () => ({
+      url: new URL("/bundle.zip", assetHost).toString(),
+    }));
     const hotUpdater = createHotUpdater({
       database,
-      storages: [createRuntimeStorage()],
-      storageDelivery: { resolveUrl },
+      storage: [createRuntimeStorage(undefined, resolveUrl)],
       basePath: "/api/check-update",
-      routes: { updateCheck: true, bundles: false },
+      features: { updateCheck: true, bundles: false },
     });
     const response = await hotUpdater.handler(request);
 
@@ -155,7 +176,9 @@ describe("runtime createHotUpdater", () => {
       status: "UPDATE",
     });
     expect(getUpdateInfo).toHaveBeenCalledWith(expect.any(Object));
-    expect(resolveUrl).toHaveBeenCalledWith(runtimeBundle.storageUri);
+    expect(resolveUrl).toHaveBeenCalledWith({
+      storageUri: runtimeBundle.storageUri,
+    });
   });
 
   it("streams storage responses through the built-in delivery route", async () => {
@@ -172,17 +195,19 @@ describe("runtime createHotUpdater", () => {
     };
     const get = vi.fn(
       async () =>
-        new Response("bundle bytes", {
-          headers: { "content-type": "application/zip" },
-        }),
+        ({
+          response: new Response("bundle bytes", {
+            headers: { "content-type": "application/zip" },
+          }),
+        }) as const,
     );
     const hotUpdater = createHotUpdater({
       database,
-      storages: [createRuntimeStorage(get)],
-      storageDelivery: {
-        publicBaseUrl: "https://updates.example.com",
-        signingKey: "test-signing-key",
-      },
+      storage: [
+        createRuntimeStorage(get, async ({ storageUri }) => ({
+          url: createStorageDownloadPath(storageUri, "test-signature"),
+        })),
+      ],
       basePath: "/api/check-update",
     });
 
@@ -196,7 +221,9 @@ describe("runtime createHotUpdater", () => {
     expect(bundleResponse.headers.get("content-type")).toBe("application/zip");
     expect(bundleResponse.headers.get("cache-control")).toContain("immutable");
     await expect(bundleResponse.text()).resolves.toBe("bundle bytes");
-    expect(get).toHaveBeenCalledWith(runtimeBundle.storageUri);
+    expect(get).toHaveBeenCalledWith({
+      storageUri: runtimeBundle.storageUri,
+    });
   });
 
   it("does not pass handler context to generic database queries", async () => {
@@ -208,12 +235,13 @@ describe("runtime createHotUpdater", () => {
     const findMany = vi.spyOn(database.bundles, "findMany");
     const hotUpdater = createHotUpdater({
       database,
-      storages: [createRuntimeStorage()],
-      storageDelivery: {
-        resolveUrl: async () => "https://assets.example.com/bundle.zip",
-      },
+      storage: [
+        createRuntimeStorage(undefined, async () => ({
+          url: "https://assets.example.com/bundle.zip",
+        })),
+      ],
       basePath: "/api/check-update",
-      routes: { updateCheck: true, bundles: false },
+      features: { updateCheck: true, bundles: false },
     });
     const response = await hotUpdater.handler(request);
 
@@ -236,12 +264,13 @@ describe("runtime createHotUpdater", () => {
     };
     const hotUpdater = createHotUpdater({
       database,
-      storages: [createRuntimeStorage()],
-      storageDelivery: {
-        resolveUrl: async () => "https://assets.example.com/bundle.zip",
-      },
+      storage: [
+        createRuntimeStorage(undefined, async () => ({
+          url: "https://assets.example.com/bundle.zip",
+        })),
+      ],
       basePath: "/api/check-update",
-      routes: { updateCheck: true, bundles: false },
+      features: { updateCheck: true, bundles: false },
     });
     const request = new Request(updateUrl.replace("/api/check-update", ""));
 
@@ -264,7 +293,7 @@ describe("runtime createHotUpdater", () => {
       const hotUpdater = createHotUpdater({
         database: createRuntimeDatabase(),
         basePath: "/api/check-update",
-        routes,
+        features: routes,
       });
 
       const response = await hotUpdater.handler(
@@ -277,4 +306,16 @@ describe("runtime createHotUpdater", () => {
       });
     },
   );
+
+  it.each([
+    ["updateCheck", "Update-check"],
+    ["bundles", "Bundles"],
+  ] as const)("rejects a non-boolean %s feature", (feature, label) => {
+    expect(() =>
+      createHotUpdater({
+        database: createRuntimeDatabase(),
+        features: { [feature]: "enabled" } as never,
+      }),
+    ).toThrow(`${label} feature must be a boolean.`);
+  });
 });

@@ -27,7 +27,42 @@ const serializeUpdateInfo = (
   request: Request,
 ): string => {
   if (updateInfo) {
-    return JSON.stringify(updateInfo satisfies AppUpdateInfo);
+    const resolveUrl = (url: string) => new URL(url, request.url).toString();
+    const changedAssets = updateInfo.changedAssets
+      ? Object.fromEntries(
+          Object.entries(updateInfo.changedAssets).map(([path, asset]) => [
+            path,
+            {
+              ...asset,
+              ...(asset.file
+                ? { file: { ...asset.file, url: resolveUrl(asset.file.url) } }
+                : {}),
+              ...(asset.patch
+                ? {
+                    patch: {
+                      ...asset.patch,
+                      patchUrl: resolveUrl(asset.patch.patchUrl),
+                    },
+                  }
+                : {}),
+            },
+          ]),
+        )
+      : updateInfo.changedAssets;
+    return JSON.stringify({
+      ...updateInfo,
+      fileUrl:
+        updateInfo.fileUrl === null ? null : resolveUrl(updateInfo.fileUrl),
+      ...(updateInfo.manifestUrl === undefined
+        ? {}
+        : {
+            manifestUrl:
+              updateInfo.manifestUrl === null
+                ? null
+                : resolveUrl(updateInfo.manifestUrl),
+          }),
+      ...(changedAssets === undefined ? {} : { changedAssets }),
+    } satisfies AppUpdateInfo);
   }
   if (supportsExplicitNoUpdateResponse(request)) {
     return JSON.stringify({ status: "UP_TO_DATE" } satisfies AppUpdateInfo);

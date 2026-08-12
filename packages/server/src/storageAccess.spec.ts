@@ -1,4 +1,7 @@
-import { createStoragePlugin } from "@hot-updater/plugin-core";
+import {
+  createStorageDownloadPath,
+  createStoragePlugin,
+} from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createStorageAccess } from "./storageAccess";
@@ -9,11 +12,13 @@ describe("createStorageAccess", () => {
   });
 
   it("reads text through a matching storage implementation", async () => {
-    const get = vi.fn(async () => new Response("manifest text"));
+    const get = vi.fn(
+      async (_storageUri: string) => new Response("manifest text"),
+    );
     const storage = createStoragePlugin({
       name: "r2Storage",
       protocol: "r2",
-      get,
+      get: async (input) => ({ response: await get(input.storageUri) }),
     });
     const { readStorageText } = createStorageAccess([storage], {
       basePath: "/api",
@@ -43,22 +48,23 @@ describe("createStorageAccess", () => {
       protocol: "r2",
       get: vi.fn(
         async () =>
-          new Response("bundle", {
-            headers: { "content-type": "application/zip" },
-          }),
+          ({
+            response: new Response("bundle", {
+              headers: { "content-type": "application/zip" },
+            }),
+          }) as const,
       ),
+      getDownloadUrl: async ({ storageUri }) => ({
+        url: createStorageDownloadPath(storageUri, "test-signature"),
+      }),
     });
     const access = createStorageAccess([storage], {
       basePath: "/api/check-update",
-      publicBaseUrl: "https://updates.example.com/runtime",
-      signingKey: "test-signing-key",
     });
 
     const fileUrl = await access.resolveFileUrl("r2://bucket/bundle.zip");
-    expect(fileUrl).toMatch(
-      /^https:\/\/updates\.example\.com\/runtime\/api\/check-update\/storage\//,
-    );
-    const segments = new URL(fileUrl!).pathname.split("/");
+    expect(fileUrl).toMatch(/^\/api\/check-update\/storage\//);
+    const segments = fileUrl!.split("/");
     const token = segments.at(-2)!;
     const signature = segments.at(-1)!;
     const response = await access.downloadStorageObject!(token, signature);
@@ -69,33 +75,35 @@ describe("createStorageAccess", () => {
   });
 
   it("lets a CDN resolver bypass built-in server delivery", async () => {
+    const resolveUrl = vi.fn(async () => ({
+      url: "https://cdn.example.com/bundle.zip",
+    }));
     const storage = createStoragePlugin({
       name: "s3Storage",
       protocol: "s3",
-      get: async () => null,
+      get: async () => ({ response: null }),
+      getDownloadUrl: resolveUrl,
     });
-    const resolveUrl = vi.fn(async () => "https://cdn.example.com/bundle.zip");
     const access = createStorageAccess([storage], {
       basePath: "/api",
-      resolveUrl,
     });
 
     await expect(access.resolveFileUrl("s3://bucket/bundle.zip")).resolves.toBe(
       "https://cdn.example.com/bundle.zip",
     );
-    expect(access.downloadStorageObject).toBeUndefined();
+    expect(access.downloadStorageObject).toEqual(expect.any(Function));
   });
 
   it("rejects ambiguous storage protocol ownership", () => {
     const first = createStoragePlugin({
       name: "firstR2Storage",
       protocol: "r2",
-      get: async () => null,
+      get: async () => ({ response: null }),
     });
     const second = createStoragePlugin({
       name: "secondR2Storage",
       protocol: "r2",
-      get: async () => null,
+      get: async () => ({ response: null }),
     });
 
     expect(() =>

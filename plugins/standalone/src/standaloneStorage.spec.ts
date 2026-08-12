@@ -44,9 +44,9 @@ describe("standaloneStorage", () => {
     vi.stubGlobal("fetch", fetch);
     const storage = standaloneStorage({ baseUrl: "http://localhost" });
 
-    await expect(storage.exists("http://localhost/bundle.zip")).resolves.toBe(
-      true,
-    );
+    await expect(
+      storage.exists({ storageUri: "http://localhost/bundle.zip" }),
+    ).resolves.toEqual({ exists: true });
   });
 
   it("returns the remote object response directly", async () => {
@@ -61,7 +61,9 @@ describe("standaloneStorage", () => {
     );
     const storage = standaloneStorage({ baseUrl: "http://localhost" });
 
-    const response = await storage.get("http://localhost/bundle.zip");
+    const { response } = await storage.get({
+      storageUri: "http://localhost/bundle.zip",
+    });
 
     expect(response?.headers.get("content-type")).toBe("application/zip");
     await expect(response?.text()).resolves.toBe("bundle");
@@ -79,7 +81,13 @@ describe("standaloneStorage", () => {
     vi.stubGlobal("fetch", fetch);
     const storage = standaloneStorage({ baseUrl: "http://localhost" });
 
-    await storage.delete("https://cdn.example.com/bundle.zip");
+    await expect(
+      storage.delete({
+        storageUri: "https://cdn.example.com/bundle.zip",
+      }),
+    ).resolves.toEqual({
+      storageUri: "https://cdn.example.com/bundle.zip",
+    });
 
     expect(fetch).toHaveBeenCalledOnce();
   });

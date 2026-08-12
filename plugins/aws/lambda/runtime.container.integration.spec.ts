@@ -40,7 +40,7 @@ import {
   spawnRuntime,
   stopRuntime,
 } from "../../../packages/test-utils/src/runtimeProcess";
-import { cloudFrontStorageDelivery } from "../src/cloudFrontStorageDelivery";
+import { cloudFrontDownloadUrl } from "../src/cloudFrontDownloadUrl";
 import { DYNAMODB_UPDATE_INDEX_NAME, dynamoDB } from "../src/dynamoDB";
 import { s3Storage } from "../src/s3Storage";
 
@@ -323,8 +323,13 @@ describe.sequential("aws lambda runtime acceptance", () => {
     });
     seedHotUpdater = createHotUpdater({
       database,
-      features: { analytics: true, clientAccessKeys: true },
-      storages: [
+      features: {
+        updateCheck: true,
+        bundles: false,
+        analytics: true,
+        clientAccessKeys: true,
+      },
+      storage: [
         s3Storage({
           bucketName: S3_BUCKET_NAME,
           region: REGION,
@@ -334,19 +339,15 @@ describe.sequential("aws lambda runtime acceptance", () => {
             accessKeyId: ACCESS_KEY_ID,
             secretAccessKey: SECRET_ACCESS_KEY,
           },
+          getDownloadUrl: cloudFrontDownloadUrl({
+            keyPairId: CLOUDFRONT_KEY_PAIR_ID,
+            ssmRegion: REGION,
+            ssmParameterName: SSM_PARAMETER_NAME,
+            publicBaseUrl: PUBLIC_BASE_URL,
+          }),
         }),
       ],
-      storageDelivery: cloudFrontStorageDelivery({
-        keyPairId: CLOUDFRONT_KEY_PAIR_ID,
-        ssmRegion: REGION,
-        ssmParameterName: SSM_PARAMETER_NAME,
-        publicBaseUrl: PUBLIC_BASE_URL,
-      }),
       basePath: HOT_UPDATER_BASE_PATH,
-      routes: {
-        updateCheck: true,
-        bundles: false,
-      },
     });
 
     runtimeDir = await mkdtemp(

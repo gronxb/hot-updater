@@ -8,8 +8,10 @@ import {
 import { Upload } from "@aws-sdk/lib-storage";
 import {
   createStorageKeyBuilder,
+  createStorageDownloadUrl,
   createStoragePlugin,
   parseStorageUri,
+  type StoragePlugin,
   type StoragePluginWith,
 } from "@hot-updater/plugin-core";
 
@@ -19,6 +21,8 @@ export interface S3StorageConfig extends S3ClientConfig {
   bucketName: string;
   /** Base path where bundles will be stored in the bucket. */
   basePath?: string;
+  downloadUrlSigningKey?: string;
+  getDownloadUrl?: StoragePlugin["getDownloadUrl"];
 }
 
 const isObjectNotFoundError = (error: unknown) =>
@@ -28,7 +32,18 @@ const isObjectNotFoundError = (error: unknown) =>
 export const s3Storage = (
   config: S3StorageConfig,
 ): StoragePluginWith<"put" | "get" | "exists" | "delete"> => {
-  const { bucketName, basePath, ...s3Config } = config;
+  const {
+    bucketName,
+    basePath,
+    downloadUrlSigningKey,
+    getDownloadUrl: configuredGetDownloadUrl,
+    ...s3Config
+  } = config;
+  const getDownloadUrl =
+    configuredGetDownloadUrl ??
+    (downloadUrlSigningKey
+      ? createStorageDownloadUrl(downloadUrlSigningKey)
+      : undefined);
   const client = new S3Client(applyS3RuntimeAwsConfig(s3Config));
   const getStorageKey = createStorageKeyBuilder(basePath);
 
@@ -63,42 +78,55 @@ export const s3Storage = (
       }
       return { storageUri: `s3://${bucketName}/${storageKey}` };
     },
-    async get(storageUri) {
+    async get({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       try {
         const response = await client.send(
           new GetObjectCommand({ Bucket: bucketName, Key: key }),
         );
-        if (!response.Body) return null;
+        if (!response.Body) return { response: null };
         const headers = new Headers();
         if (response.ContentType)
           headers.set("content-type", response.ContentType);
         if (response.ContentLength !== undefined) {
           headers.set("content-length", String(response.ContentLength));
         }
-        return new Response(response.Body.transformToWebStream(), { headers });
+        return {
+          response: new Response(response.Body.transformToWebStream(), {
+            headers,
+          }),
+        };
       } catch (error) {
-        if (isObjectNotFoundError(error)) return null;
+        if (isObjectNotFoundError(error)) return { response: null };
         throw error;
       }
     },
-    async exists(storageUri) {
+    ...(getDownloadUrl
+      ? {
+          async getDownloadUrl(input: { storageUri: string }) {
+            parseAndValidate(input.storageUri);
+            return getDownloadUrl(input);
+          },
+        }
+      : {}),
+    async exists({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       try {
         await client.send(
           new HeadObjectCommand({ Bucket: bucketName, Key: key }),
         );
-        return true;
+        return { exists: true };
       } catch (error) {
-        if (isObjectNotFoundError(error)) return false;
+        if (isObjectNotFoundError(error)) return { exists: false };
         throw error;
       }
     },
-    async delete(storageUri) {
+    async delete({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       await client.send(
         new DeleteObjectCommand({ Bucket: bucketName, Key: key }),
       );
+      return { storageUri };
     },
   });
 };

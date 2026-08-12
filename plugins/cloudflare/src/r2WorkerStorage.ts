@@ -1,5 +1,6 @@
 import {
   createStorageKeyBuilder,
+  createStorageDownloadUrl,
   createStoragePlugin,
   parseStorageUri,
   type StoragePluginWith,
@@ -9,12 +10,16 @@ export interface CloudflareWorkerStorageConfig {
   readonly bucket: R2Bucket;
   readonly bucketName: string;
   readonly basePath?: string;
+  readonly downloadUrlSigningKey: string;
 }
 
 export const r2WorkerStorage = (
   config: CloudflareWorkerStorageConfig,
-): StoragePluginWith<"put" | "get" | "exists" | "delete"> => {
+): StoragePluginWith<
+  "put" | "get" | "getDownloadUrl" | "exists" | "delete"
+> => {
   const getStorageKey = createStorageKeyBuilder(config.basePath);
+  const getDownloadUrl = createStorageDownloadUrl(config.downloadUrlSigningKey);
 
   const parseAndValidate = (storageUri: string) => {
     const parsed = parseStorageUri(storageUri, "r2");
@@ -39,23 +44,28 @@ export const r2WorkerStorage = (
       });
       return { storageUri: `r2://${config.bucketName}/${storageKey}` };
     },
-    async get(storageUri) {
+    async get({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       const object = await config.bucket.get(key);
-      if (!object) return null;
+      if (!object) return { response: null };
       const headers = new Headers();
       object.writeHttpMetadata(headers);
       headers.set("etag", object.httpEtag);
       headers.set("content-length", String(object.size));
-      return new Response(object.body, { headers });
+      return { response: new Response(object.body, { headers }) };
     },
-    async exists(storageUri) {
+    async getDownloadUrl({ storageUri }) {
+      parseAndValidate(storageUri);
+      return getDownloadUrl({ storageUri });
+    },
+    async exists({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
-      return (await config.bucket.head(key)) !== null;
+      return { exists: (await config.bucket.head(key)) !== null };
     },
-    async delete(storageUri) {
+    async delete({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       await config.bucket.delete(key);
+      return { storageUri };
     },
   });
 };

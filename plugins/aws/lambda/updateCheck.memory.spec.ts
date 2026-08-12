@@ -137,24 +137,22 @@ const createMemoryHotUpdater = () => {
 
   return createHotUpdater({
     database,
-    storages: [
+    storage: [
       {
         name: "lambdaMemoryStorage",
         protocol: "s3",
         async get() {
-          return null;
+          return { response: null };
+        },
+        async getDownloadUrl({ storageUri }) {
+          const url = new URL("https://assets.example.com");
+          url.pathname = new URL(storageUri).pathname;
+          return { url: url.toString() };
         },
       },
     ],
-    storageDelivery: {
-      resolveUrl(storageUri) {
-        const url = new URL("https://assets.example.com");
-        url.pathname = new URL(storageUri).pathname;
-        return url.toString();
-      },
-    },
     basePath: BASE_PATH,
-    routes: {
+    features: {
       updateCheck: true,
       bundles: false,
     },

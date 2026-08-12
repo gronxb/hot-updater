@@ -1,6 +1,7 @@
 import type { Bundle } from "@hot-updater/core";
 import type {
   DatabasePlugin,
+  StoragePlugin,
   StoragePluginWith,
 } from "@hot-updater/plugin-core";
 import { createStoragePlugin } from "@hot-updater/plugin-core";
@@ -23,12 +24,14 @@ export const runtimeBundle: Bundle = {
 };
 
 export const createRuntimeStorage = (
-  get: (storageUri: string) => Promise<Response | null> = async () => null,
+  get: NonNullable<StoragePlugin["get"]> = async () => ({ response: null }),
+  getDownloadUrl?: StoragePlugin["getDownloadUrl"],
 ): StoragePluginWith<"get"> =>
   createStoragePlugin({
     name: "testStorage",
     protocol: "s3",
     get,
+    ...(getDownloadUrl ? { getDownloadUrl } : {}),
   });
 
 const createMigrator = (version: string | undefined): Migrator => ({

@@ -1,4 +1,7 @@
-import { createStoragePlugin } from "@hot-updater/plugin-core";
+import {
+  createStorageDownloadPath,
+  createStoragePlugin,
+} from "@hot-updater/plugin-core";
 
 export const mockStorage = (_: unknown) =>
   createStoragePlugin({
@@ -8,10 +11,17 @@ export const mockStorage = (_: unknown) =>
       return { storageUri: `storage://my-app/${key}` };
     },
     async get() {
-      return null;
+      return { response: null };
+    },
+    async getDownloadUrl({ storageUri }) {
+      return {
+        url: createStorageDownloadPath(storageUri, "mock-download"),
+      };
     },
     async exists() {
-      return false;
+      return { exists: false };
     },
-    async delete() {},
+    async delete({ storageUri }) {
+      return { storageUri };
+    },
   });

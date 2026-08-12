@@ -16,11 +16,17 @@ export interface FirebaseStorageConfig extends AppOptions {
   storageBucket: string;
   /** Base path where bundles will be stored in the bucket. */
   basePath?: string;
+  /** Optional CDN base URL. Firebase signed URLs are used when omitted. */
+  cdnUrl?: string;
+  /** Firebase signed URL lifetime in seconds. @default 3600 */
+  signedUrlExpiresIn?: number;
 }
 
 export const firebaseStorage = (
   config: FirebaseStorageConfig,
-): StoragePluginWith<"put" | "get" | "exists" | "delete"> => {
+): StoragePluginWith<
+  "put" | "get" | "getDownloadUrl" | "exists" | "delete"
+> => {
   const app = getApps().length ? getApp() : initializeApp(config);
   const bucket = getStorage(app).bucket(config.storageBucket);
   const getStorageKey = createStorageKeyBuilder(config.basePath);
@@ -48,11 +54,11 @@ export const firebaseStorage = (
       });
       return { storageUri: `gs://${config.storageBucket}/${storageKey}` };
     },
-    async get(storageUri) {
+    async get({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       try {
         const [body] = await bucket.file(key).download();
-        return new Response(body);
+        return { response: new Response(body) };
       } catch (error) {
         if (
           typeof error === "object" &&
@@ -60,19 +66,34 @@ export const firebaseStorage = (
           "code" in error &&
           error.code === 404
         ) {
-          return null;
+          return { response: null };
         }
         throw error;
       }
     },
-    async exists(storageUri) {
+    async getDownloadUrl({ storageUri }) {
+      const { key } = parseAndValidate(storageUri);
+      if (config.cdnUrl) {
+        return {
+          url: `${config.cdnUrl.replace(/\/+$/, "")}/${key}`,
+        };
+      }
+      const [url] = await bucket.file(key).getSignedUrl({
+        action: "read",
+        expires: Date.now() + (config.signedUrlExpiresIn ?? 3600) * 1000,
+      });
+      if (!url) throw new Error("Failed to generate Firebase download URL");
+      return { url };
+    },
+    async exists({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       const [exists] = await bucket.file(key).exists();
-      return exists;
+      return { exists };
     },
-    async delete(storageUri) {
+    async delete({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       await bucket.file(key).delete({ ignoreNotFound: true });
+      return { storageUri };
     },
   });
 };

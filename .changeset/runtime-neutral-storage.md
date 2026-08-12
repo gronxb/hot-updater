@@ -14,20 +14,24 @@
 ---
 
 Replace runtime-profiled storage plugins with the flat, runtime-independent
-`createStoragePlugin({ name, protocol, put, get, exists, delete })` contract.
-`put` accepts a complete object key and bytes, `get` returns a Web `Response`,
-and `delete` always removes exactly one object. Remove file paths, factory
-thunks, runtime contexts, prefix deletion, lifecycle hooks, and URL generation
-from the core storage boundary.
+`createStoragePlugin({ name, protocol, put, get, getDownloadUrl, exists, delete
+})` contract. Every operation uses an object input and object result. `put`
+accepts a complete object key and bytes, `get` returns a Web `Response`,
+`getDownloadUrl` returns the URL sent to update clients, and `delete` always
+removes exactly one object. Remove file paths, factory thunks, runtime contexts,
+prefix deletion, and lifecycle hooks from the core storage boundary.
 
-Move public HTTP delivery to `createHotUpdater({ storageDelivery })`. The
-server can expose signed streaming delivery routes for any custom storage URI,
-while providers may supply separate CDN resolvers such as CloudFront, Firebase,
-or Supabase delivery helpers. Cloudflare Worker storage now uses the same
-`r2Storage` export name from the `/worker` subpath and streams R2 bindings
-without requiring a provider URL API.
+Pass server storage implementations directly through
+`createHotUpdater({ storage: [...] })`. URL policy belongs to each storage
+implementation: AWS S3 can use its CloudFront resolver or a server-signed URL,
+Firebase and Supabase generate provider URLs, and private Cloudflare R2 returns
+a signed handler-relative URL. Remove `storageDelivery`, public base-URL and
+top-level signing-key configuration, and the separate provider delivery
+helpers. Cloudflare Worker storage uses the same `r2Storage` export name from
+the `/worker` subpath and captures its native R2 binding at construction.
 
 Update every built-in storage provider, CLI and Console consumer, managed
 runtime, package entrypoint, and custom-hosting guide to the new contract.
 Remove the storage-only JWT URL helpers and obsolete runtime-specific storage
-creators.
+creators. Route-group flags now live beside Analytics and client access keys in
+the single `createHotUpdater({ features })` object.

@@ -17,7 +17,7 @@ interface CloudFrontPrivateKeyFromSsm {
   ssmRegion: string;
 }
 
-export type CloudFrontStorageDeliveryOptions = (
+export type CloudFrontDownloadUrlOptions = (
   | CloudFrontPrivateKeyFromGetter
   | CloudFrontPrivateKeyFromSsm
 ) & {
@@ -44,7 +44,7 @@ const getPrivateKeyFromSsm = async (region: string, parameterName: string) => {
   return privateKey;
 };
 
-const resolvePrivateKey = (config: CloudFrontStorageDeliveryOptions) => {
+const resolvePrivateKey = (config: CloudFrontDownloadUrlOptions) => {
   if (config.getPrivateKey) return config.getPrivateKey();
 
   const cacheKey = `${config.ssmRegion}:${config.ssmParameterName}`;
@@ -62,23 +62,25 @@ const resolvePrivateKey = (config: CloudFrontStorageDeliveryOptions) => {
   return pending;
 };
 
-export const cloudFrontStorageDelivery = (
-  config: CloudFrontStorageDeliveryOptions,
-) => ({
-  async resolveUrl(storageUri: string): Promise<string | null> {
+export const cloudFrontDownloadUrl =
+  (config: CloudFrontDownloadUrlOptions) =>
+  async ({ storageUri }: { storageUri: string }) => {
     const storageUrl = new URL(storageUri);
-    if (storageUrl.protocol !== "s3:") return null;
+    if (storageUrl.protocol !== "s3:") {
+      throw new Error("CloudFront download URLs require an s3 storage URI.");
+    }
 
     const url = new URL(config.publicBaseUrl);
     url.pathname = storageUrl.pathname;
     url.search = "";
-    return getSignedUrl({
-      url: url.toString(),
-      keyPairId: config.keyPairId,
-      privateKey: await resolvePrivateKey(config),
-      dateLessThan: new Date(
-        Date.now() + (config.expiresSeconds ?? ONE_YEAR_IN_SECONDS) * 1000,
-      ).toISOString(),
-    });
-  },
-});
+    return {
+      url: getSignedUrl({
+        url: url.toString(),
+        keyPairId: config.keyPairId,
+        privateKey: await resolvePrivateKey(config),
+        dateLessThan: new Date(
+          Date.now() + (config.expiresSeconds ?? ONE_YEAR_IN_SECONDS) * 1000,
+        ).toISOString(),
+      }),
+    };
+  };

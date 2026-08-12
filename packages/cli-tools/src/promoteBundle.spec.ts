@@ -268,8 +268,8 @@ describe("createCopiedBundleArchive", () => {
       const storagePlugin = createStoragePlugin({
         name: "mockStorage",
         protocol: "s3",
-        delete: vi.fn(),
-        get: vi.fn(async () => null),
+        delete: vi.fn(async ({ storageUri }) => ({ storageUri })),
+        get: vi.fn(async () => ({ response: null })),
         put: vi.fn(async ({ key, body }) => {
           const finalPath = path.join(
             path.dirname(archivePath),
@@ -365,8 +365,8 @@ describe("createCopiedBundleArchive", () => {
     const storagePlugin = createStoragePlugin({
       name: "mockStorage",
       protocol: "s3",
-      delete: vi.fn(),
-      get: vi.fn(async () => null),
+      delete: vi.fn(async ({ storageUri }) => ({ storageUri })),
+      get: vi.fn(async () => ({ response: null })),
       put: vi.fn(async () => ({ storageUri: "s3://bucket/unreachable" })),
     });
 
@@ -412,8 +412,8 @@ describe("createCopiedBundleArchive", () => {
     const storagePlugin = createStoragePlugin({
       name: "mockStorage",
       protocol: "s3",
-      delete: vi.fn(),
-      get: vi.fn(async () => null),
+      delete: vi.fn(async ({ storageUri }) => ({ storageUri })),
+      get: vi.fn(async () => ({ response: null })),
       put: vi.fn(async ({ key, body }) => {
         const finalPath = path.join(path.dirname(archivePath), "uploads", key);
         await fs.mkdir(path.dirname(finalPath), { recursive: true });
@@ -487,12 +487,14 @@ describe("createCopiedBundleArchive", () => {
         },
       }),
     });
-    const deleteFromStorage = vi.fn();
+    const deleteFromStorage = vi.fn(async ({ storageUri }) => ({
+      storageUri,
+    }));
     const storagePlugin = createStoragePlugin({
       name: "mockStorage",
       protocol: "s3",
       delete: deleteFromStorage,
-      get: vi.fn(async () => null),
+      get: vi.fn(async () => ({ response: null })),
       put: vi.fn(async ({ key }) => {
         return {
           storageUri: `s3://bucket/${key.replaceAll("//", "/")}`,
@@ -536,18 +538,18 @@ describe("createCopiedBundleArchive", () => {
         ),
       ).rejects.toThrow("insert failed");
 
-      expect(deleteFromStorage).toHaveBeenCalledWith(
-        "s3://bucket/bundle-copy-id/bundle.zip",
-      );
-      expect(deleteFromStorage).toHaveBeenCalledWith(
-        "s3://bucket/bundle-copy-id/manifest.json",
-      );
-      expect(deleteFromStorage).toHaveBeenCalledWith(
-        "s3://bucket/bundle-copy-id/files/assets/logo.png",
-      );
-      expect(deleteFromStorage).toHaveBeenCalledWith(
-        "s3://bucket/bundle-copy-id/files/index.js",
-      );
+      expect(deleteFromStorage).toHaveBeenCalledWith({
+        storageUri: "s3://bucket/bundle-copy-id/bundle.zip",
+      });
+      expect(deleteFromStorage).toHaveBeenCalledWith({
+        storageUri: "s3://bucket/bundle-copy-id/manifest.json",
+      });
+      expect(deleteFromStorage).toHaveBeenCalledWith({
+        storageUri: "s3://bucket/bundle-copy-id/files/assets/logo.png",
+      });
+      expect(deleteFromStorage).toHaveBeenCalledWith({
+        storageUri: "s3://bucket/bundle-copy-id/files/index.js",
+      });
     } finally {
       await cleanup();
     }

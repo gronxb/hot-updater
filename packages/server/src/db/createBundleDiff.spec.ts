@@ -53,13 +53,15 @@ const createStoragePlugin = (
   createCoreStoragePlugin({
     name: "mockStorage",
     protocol: "s3",
-    async delete() {},
-    async get(storageUri) {
+    async delete({ storageUri }) {
+      return { storageUri };
+    },
+    async get({ storageUri }) {
       const storageUrl = new URL(storageUri);
       const response = await fetch(
         `https://assets.example.com${storageUrl.pathname}`,
       );
-      return response.ok ? response : null;
+      return { response: response.ok ? response : null };
     },
     put,
   });

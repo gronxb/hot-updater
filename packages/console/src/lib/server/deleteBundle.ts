@@ -64,7 +64,7 @@ async function downloadStorageBytes(
     throw new Error(`No storage plugin for protocol: ${protocol}`);
   }
 
-  const response = await storagePlugin.get(storageUri);
+  const { response } = await storagePlugin.get({ storageUri });
   if (response === null) {
     throw new Error(`Storage object not found: ${storageUri}`);
   }
@@ -171,7 +171,7 @@ export async function deleteBundle(
 
     for (const storageUri of cleanupUris) {
       try {
-        await storagePlugin.delete(storageUri);
+        await storagePlugin.delete({ storageUri });
       } catch (error) {
         console.error("Failed to delete bundle from storage:", error);
       }

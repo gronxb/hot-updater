@@ -53,7 +53,7 @@ management with your application or framework authentication.
 Missing, malformed, unknown, and revoked keys return `401`. A database failure
 during credential lookup returns `503` and does not fall back to public access.
 
-`routes` controls only the update-check and bundle-management route groups.
+`features.updateCheck` and `features.bundles` control the core route groups.
 `features.analytics` mounts Analytics routes, while
 `features.clientAccessKeys` applies authentication to update checks and
 Analytics ingestion. Neither feature makes bundle management or Analytics

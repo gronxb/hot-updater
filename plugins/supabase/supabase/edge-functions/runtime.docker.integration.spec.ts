@@ -282,7 +282,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
         supabaseUrl: gatewayBaseUrl,
         supabaseAnonKey: SERVICE_ROLE_KEY,
       }),
-      storages: [
+      storage: [
         supabaseStorage({
           supabaseUrl: gatewayBaseUrl,
           supabaseAnonKey: SERVICE_ROLE_KEY,
@@ -290,7 +290,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
         }),
       ],
       basePath: HOT_UPDATER_BASE_PATH,
-      routes: {
+      features: {
         updateCheck: true,
         bundles: false,
       },
@@ -1256,7 +1256,6 @@ const writeSupabaseRuntimeFiles = async ({
     `
 export { supabaseDatabase } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseDatabase.ts")).href)};
 export { supabaseEdgeFunctionStorage as supabaseStorage } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseEdgeFunctionStorage.ts")).href)};
-export { supabaseStorageDelivery } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseStorageDelivery.ts")).href)};
 `.trim(),
   );
   await writeFile(

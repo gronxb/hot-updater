@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { supabaseEdgeFunctionStorage } from "./supabaseEdgeFunctionStorage";
 
 const { bucket, createClient } = vi.hoisted(() => {
-  const bucket = { download: vi.fn() };
+  const bucket = { createSignedUrl: vi.fn(), download: vi.fn() };
   return {
     bucket,
     createClient: vi.fn(() => ({
@@ -26,9 +26,9 @@ describe("supabaseEdgeFunctionStorage", () => {
       supabaseUrl: "https://example.supabase.co",
     });
 
-    const response = await storage.get(
-      "supabase-storage://updates/manifest.json",
-    );
+    const { response } = await storage.get({
+      storageUri: "supabase-storage://updates/manifest.json",
+    });
 
     await expect(response?.text()).resolves.toBe("manifest");
     expect(createClient).toHaveBeenCalledWith(

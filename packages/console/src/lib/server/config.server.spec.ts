@@ -41,8 +41,8 @@ function createTestStoragePlugin() {
     name: "storage",
     protocol: "s3",
     put: vi.fn(),
-    get: vi.fn(async () => null),
-    delete: vi.fn(),
+    get: vi.fn(async () => ({ response: null })),
+    delete: vi.fn(async ({ storageUri }) => ({ storageUri })),
   });
 }
 
@@ -112,7 +112,7 @@ describe("config.server", () => {
     const storage = createStoragePlugin({
       name: "runtimeOnlyStorage",
       protocol: "s3",
-      get: vi.fn(async () => null),
+      get: vi.fn(async () => ({ response: null })),
     });
     const consoleErrorSpy = vi
       .spyOn(console, "error")

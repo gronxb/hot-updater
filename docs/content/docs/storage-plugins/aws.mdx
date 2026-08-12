@@ -34,6 +34,10 @@ interface S3StorageConfig {
     accessKeyId: string;
     secretAccessKey: string;
   };
+  downloadUrlSigningKey?: string;
+  getDownloadUrl?: (input: {
+    storageUri: string;
+  }) => Promise<{ url: string }>;
 }
 ```
 
@@ -87,10 +91,11 @@ This prefix is stored in the `storageUri` field in the database.
 
 ## Capabilities
 
-`s3Storage` implements byte upload, streaming Web-response reads, existence
-checks, and exact deletion. HTTP URL generation is deliberately separate. Use
-`cloudFrontStorageDelivery` for the managed Lambda@Edge/CDN path, or the
-built-in `createHotUpdater` delivery route in a self-hosted server.
+`s3Storage` implements byte upload, streaming Web-response reads, URL
+generation, existence checks, and exact deletion. Pass
+`cloudFrontDownloadUrl(...)` as `getDownloadUrl` for the managed
+Lambda@Edge/CDN path. For a self-hosted server, set `downloadUrlSigningKey` so
+the plugin returns a signed URL handled by the same server.
 
 ## Custom Server Usage
 
@@ -101,7 +106,7 @@ import { s3Storage } from "@hot-updater/aws";
 import { createHotUpdater } from "@hot-updater/server";
 
 const hotUpdater = createHotUpdater({
-  storages: [
+  storage: [
     s3Storage({
       region: process.env.AWS_REGION!,
       credentials: {
@@ -109,12 +114,10 @@ const hotUpdater = createHotUpdater({
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
       },
       bucketName: process.env.AWS_S3_BUNDLES_BUCKET!,
+      downloadUrlSigningKey:
+        process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
     }),
   ],
-  storageDelivery: {
-    publicBaseUrl: process.env.HOT_UPDATER_PUBLIC_BASE_URL!,
-    signingKey: process.env.HOT_UPDATER_STORAGE_DELIVERY_KEY!,
-  },
   // ... other options
 });
 ```

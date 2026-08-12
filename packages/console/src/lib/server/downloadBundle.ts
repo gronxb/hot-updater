@@ -30,7 +30,7 @@ export const downloadBundle = async (
     });
   }
 
-  const response = await storagePlugin.get(storageUri);
+  const { response } = await storagePlugin.get({ storageUri });
   if (!response)
     return new Response("Storage object not found", { status: 404 });
 
