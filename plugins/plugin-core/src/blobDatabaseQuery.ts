@@ -4,7 +4,7 @@ import type {
   DatabaseOrderBy,
   DatabaseRow,
   DatabaseWhere,
-} from "./types";
+} from "./types/internal";
 
 const compare = (left: unknown, right: unknown): number => {
   if (typeof left === "number" && typeof right === "number") {

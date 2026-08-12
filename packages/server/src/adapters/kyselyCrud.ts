@@ -3,13 +3,21 @@ import {
   type BundleEventRow,
   type BundlePatchRow,
   type BundleRow,
+  type ChannelRow,
   type ClientAccessKeyRow,
-  type DatabaseWhere,
-  type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
+import type {
+  DatabasePluginImplementation,
+  DatabaseWhere,
+  TransactionDatabasePluginImplementation,
+} from "@hot-updater/plugin-core/internal";
 import { sql, type QueryExecutorProvider, type RawBuilder } from "kysely";
 
 import type { ORMSQLProvider, RelationMode } from "../db/types";
+import {
+  isChannelDeleteReferencedError,
+  translateChannelDeleteError,
+} from "./databaseConstraintErrors";
 import {
   fromStoredBundleRow,
   type StoredBundleRow,
@@ -78,13 +86,29 @@ const insertRow = async (
   executor: QueryExecutorProvider,
   table: string,
   row: object,
-): Promise<void> => {
+  provider: Exclude<ORMSQLProvider, "mssql">,
+  onConflict: "ignore" | undefined = undefined,
+): Promise<boolean> => {
   const entries = Object.entries(row);
-  await sql`insert into ${sql.table(table)} (${sql.join(
-    entries.map(([field]) => sql.ref(field)),
-  )}) values (${sql.join(entries.map(([, value]) => value))})`.execute(
-    executor,
-  );
+  const columns = sql.join(entries.map(([field]) => sql.ref(field)));
+  const values = sql.join(entries.map(([, value]) => value));
+  const result =
+    onConflict === undefined
+      ? await sql`insert into ${sql.table(table)} (${columns}) values (${values})`.execute(
+          executor,
+        )
+      : provider === "mysql"
+        ? await sql`insert ignore into ${sql.table(table)} (${columns}) values (${values})`.execute(
+            executor,
+          )
+        : provider === "sqlite"
+          ? await sql`insert or ignore into ${sql.table(table)} (${columns}) values (${values})`.execute(
+              executor,
+            )
+          : await sql`insert into ${sql.table(table)} (${columns}) values (${values}) on conflict do nothing`.execute(
+              executor,
+            );
+  return Number(result.numAffectedRows ?? 0) > 0;
 };
 
 const updateBundle = async (
@@ -165,6 +189,27 @@ const assertBundleReferences = async (
   }
 };
 
+const assertBundleChannel = async (
+  executor: QueryExecutorProvider,
+  provider: Exclude<ORMSQLProvider, "mssql">,
+  relationMode: RelationMode,
+  bundle: Pick<BundleRow, "channel" | "channel_id">,
+): Promise<void> => {
+  const result = await sql<ChannelRow>`select ${sql.ref("id")}, ${sql.ref(
+    "name",
+  )} from ${sql.table("channels")} where ${sql.ref("id")} = ${
+    bundle.channel_id
+  } and ${sql.ref("name")} = ${bundle.channel} limit 1${lockClause(
+    provider,
+    relationMode,
+  )}`.execute(executor);
+  if (result.rows[0] === undefined) {
+    throw new KyselyAdapterInvariantError(
+      "bundles.channel-and-channel_id.foreign-key",
+    );
+  }
+};
+
 export const findKyselyBundles = async (
   executor: QueryExecutorProvider,
   provider: Exclude<ORMSQLProvider, "mssql">,
@@ -176,17 +221,6 @@ export const findKyselyBundles = async (
     "id",
   )} desc`.execute(executor);
   return [...result.rows];
-};
-
-export const findKyselyChannels = async (
-  executor: QueryExecutorProvider,
-): Promise<string[]> => {
-  const result = await sql<{
-    readonly channel: string;
-  }>`select distinct ${sql.ref("channel")} from ${sql.table(
-    "bundles",
-  )} order by ${sql.ref("channel")} asc`.execute(executor);
-  return result.rows.map(({ channel }) => channel);
 };
 
 export const findKyselyPatches = async (
@@ -221,14 +255,63 @@ export const createKyselyCrud = (
   executor: QueryExecutorProvider,
   provider: Exclude<ORMSQLProvider, "mssql">,
   relationMode: RelationMode = "foreign-keys",
-): TransactionDatabasePluginImplementation => ({
+): TransactionDatabasePluginImplementation &
+  Pick<DatabasePluginImplementation, "deleteChannel" | "insertChannel"> => ({
+  async deleteChannel({ id }) {
+    const existing = await sql<ChannelRow>`select ${sql.ref("id")}, ${sql.ref(
+      "name",
+    )} from ${sql.table("channels")} where ${sql.ref(
+      "id",
+    )} = ${id} limit 1${lockClause(provider, relationMode)}`.execute(executor);
+    if (existing.rows[0] === undefined) {
+      return { deleted: false, reason: "not_found" };
+    }
+    const referenced = await countRows(
+      executor,
+      "bundles",
+      sql<boolean>`${sql.ref("channel_id")} = ${id}`,
+    );
+    if (referenced > 0) return { deleted: false, reason: "not_empty" };
+    try {
+      await sql`delete from ${sql.table("channels")} where ${sql.ref(
+        "id",
+      )} = ${id}`.execute(executor);
+    } catch (error) {
+      if (isChannelDeleteReferencedError(error)) {
+        return { deleted: false, reason: "not_empty" };
+      }
+      throw error;
+    }
+    return { deleted: true };
+  },
+  async insertChannel(input) {
+    const inserted = await insertRow(
+      executor,
+      "channels",
+      input.row,
+      provider,
+      "ignore",
+    );
+    const result = await sql<ChannelRow>`select ${sql.ref("id")}, ${sql.ref(
+      "name",
+    )} from ${sql.table("channels")} where ${sql.ref("name")} = ${
+      input.row.name
+    } limit 1`.execute(executor);
+    const row = result.rows[0];
+    if (row === undefined) {
+      throw new KyselyAdapterInvariantError("channels.insert.return-existing");
+    }
+    return { row, inserted };
+  },
   async create(input) {
     switch (input.model) {
       case "bundles":
+        await assertBundleChannel(executor, provider, relationMode, input.data);
         await insertRow(
           executor,
           "bundles",
           toStoredBundleRow(input.data, provider),
+          provider,
         );
         return input.data;
       case "bundle_patches":
@@ -239,13 +322,28 @@ export const createKyselyCrud = (
           input.data.bundle_id,
           input.data.base_bundle_id,
         );
-        await insertRow(executor, "bundle_patches", input.data);
+        await insertRow(executor, "bundle_patches", input.data, provider);
         return input.data;
       case "bundle_events":
-        await insertRow(executor, "bundle_events", input.data);
+        await insertRow(executor, "bundle_events", input.data, provider);
         return input.data;
       case "client_access_keys":
-        await insertRow(executor, "client_access_keys", input.data);
+        await insertRow(
+          executor,
+          "client_access_keys",
+          input.data,
+          provider,
+          input.onConflict,
+        );
+        return input.data;
+      case "channels":
+        await insertRow(
+          executor,
+          "channels",
+          input.data,
+          provider,
+          input.onConflict,
+        );
         return input.data;
     }
   },
@@ -264,6 +362,23 @@ export const createKyselyCrud = (
         "client_access_keys",
       )} where ${sql.ref("id")} = ${selector.value} limit 1`.execute(executor);
       return result.rows[0] ?? null;
+    }
+    if (
+      input.update.channel !== undefined ||
+      input.update.channel_id !== undefined
+    ) {
+      const currentResult =
+        await sql<StoredBundleRow>`select * from ${sql.table(
+          "bundles",
+        )} where ${sql.ref("id")} = ${selector.value} limit 1`.execute(
+          executor,
+        );
+      const current = currentResult.rows[0];
+      if (current === undefined) return null;
+      await assertBundleChannel(executor, provider, relationMode, {
+        ...fromStoredBundleRow(current),
+        ...input.update,
+      });
     }
     await updateBundle(
       executor,
@@ -325,6 +440,20 @@ export const createKyselyCrud = (
         );
         return;
       }
+      case "channels": {
+        const where = buildKyselyWhere(provider, input.where);
+        if (where === undefined) {
+          throw new KyselyAdapterInvariantError("channels.delete.where");
+        }
+        try {
+          await sql`delete from ${sql.table(
+            "channels",
+          )} where ${where}`.execute(executor);
+        } catch (error) {
+          translateChannelDeleteError(error);
+        }
+        return;
+      }
     }
   },
   async count(input) {
@@ -370,6 +499,13 @@ export const createKyselyCrud = (
         )}${where} limit 1`.execute(executor);
         return result.rows[0] ?? null;
       }
+      case "channels": {
+        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const result = await sql<ChannelRow>`select * from ${sql.table(
+          "channels",
+        )}${where} limit 1`.execute(executor);
+        return result.rows[0] ?? null;
+      }
     }
   },
   async findMany(input) {
@@ -407,6 +543,14 @@ export const createKyselyCrud = (
         const order = orderClause(input);
         const result = await sql<ClientAccessKeyRow>`select * from ${sql.table(
           "client_access_keys",
+        )}${where}${order}${pagination}`.execute(executor);
+        return [...result.rows];
+      }
+      case "channels": {
+        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const order = orderClause(input);
+        const result = await sql<ChannelRow>`select * from ${sql.table(
+          "channels",
         )}${where}${order}${pagination}`.execute(executor);
         return [...result.rows];
       }

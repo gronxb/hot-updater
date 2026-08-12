@@ -60,7 +60,9 @@ export function createHandler<TContext = unknown>(
   }
 
   if (routeOptions.bundles) {
-    addRoute(router, "GET", "/api/bundles/channels", "getChannels");
+    addRoute(router, "GET", "/api/channels", "getChannels");
+    addRoute(router, "POST", "/api/channels", "createChannel");
+    addRoute(router, "DELETE", "/api/channels/:id", "deleteChannel");
     addRoute(router, "GET", "/api/bundles/:id", "getBundle");
     addRoute(router, "GET", "/api/bundles", "getBundles");
     addRoute(router, "POST", "/api/bundles", "createBundles");

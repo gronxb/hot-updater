@@ -1,4 +1,5 @@
 import { BlobDatabaseSnapshotError } from "./blobDatabaseErrors";
+import { blobDatabaseBackfillChannelId } from "./blobDatabaseSnapshotRows";
 import {
   blobArray,
   blobBoolean,
@@ -126,6 +127,7 @@ export const parseLegacyBundle = (
     ),
     message: blobNullableString(blobProperty(input, "message"), source),
     channel: channelName,
+    channel_id: blobDatabaseBackfillChannelId(channelName),
     storage_uri: blobString(blobProperty(input, "storageUri"), source),
     target_app_version: blobNullableString(
       blobProperty(input, "targetAppVersion"),

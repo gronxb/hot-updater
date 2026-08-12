@@ -1,6 +1,7 @@
 import type {
   BundleEventRow,
   BundlePatchRow,
+  ChannelRow,
   ClientAccessKeyRow,
 } from "@hot-updater/plugin-core";
 
@@ -11,6 +12,15 @@ export type DrizzleTable = Record<string, unknown>;
 
 type DrizzleMutation = {
   readonly execute: () => Promise<unknown>;
+};
+
+export type DrizzleInsertMutation = DrizzleMutation & {
+  readonly onConflictDoNothing?: () => DrizzleMutation;
+};
+
+type DrizzleInsertBuilder = {
+  readonly ignore?: () => Pick<DrizzleInsertBuilder, "values">;
+  readonly values: (value: unknown) => DrizzleInsertMutation;
 };
 
 type DrizzleQuery<TRow> = {
@@ -24,11 +34,10 @@ export type DrizzleDB = {
   readonly delete: (table: DrizzleTable) => {
     where: (condition: unknown) => DrizzleMutation;
   };
-  readonly insert: (table: DrizzleTable) => {
-    values: (value: unknown) => DrizzleMutation;
-  };
+  readonly insert: (table: DrizzleTable) => DrizzleInsertBuilder;
   readonly query: {
     readonly bundles: DrizzleQuery<StoredBundleRow>;
+    readonly channels: DrizzleQuery<ChannelRow>;
     readonly bundle_patches: DrizzleQuery<BundlePatchRow>;
     readonly bundle_events: DrizzleQuery<BundleEventRow>;
     readonly client_access_keys: DrizzleQuery<ClientAccessKeyRow>;
@@ -72,6 +81,7 @@ const isDrizzleDB = (value: unknown): value is DrizzleDB => {
     !isDrizzleQuery(query["bundle_events"]) ||
     !isDrizzleQuery(query["bundle_patches"]) ||
     !isDrizzleQuery(query["bundles"]) ||
+    !isDrizzleQuery(query["channels"]) ||
     !isDrizzleQuery(query["client_access_keys"])
   ) {
     return false;
@@ -142,9 +152,33 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
       }),
     }),
     insert: (table) => ({
+      ignore: () => ({
+        values: (value) => ({
+          execute: async () => {
+            const insert = (await getDB()).insert(table).ignore;
+            if (insert === undefined) {
+              throw new InvalidDrizzleDatabaseError(
+                "The resolved Drizzle database does not support insert ignore.",
+              );
+            }
+            return insert().values(value).execute();
+          },
+        }),
+      }),
       values: (value) => ({
         execute: async () =>
           (await getDB()).insert(table).values(value).execute(),
+        onConflictDoNothing: () => ({
+          execute: async () => {
+            const insert = (await getDB()).insert(table).values(value);
+            if (insert.onConflictDoNothing === undefined) {
+              throw new InvalidDrizzleDatabaseError(
+                "The resolved Drizzle database does not support conflict-ignore inserts.",
+              );
+            }
+            return insert.onConflictDoNothing().execute();
+          },
+        }),
       }),
     }),
     query: {
@@ -164,6 +198,11 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
         findFirst: async (args) =>
           (await getDB()).query.bundles.findFirst(args),
         findMany: async (args) => (await getDB()).query.bundles.findMany(args),
+      },
+      channels: {
+        findFirst: async (args) =>
+          (await getDB()).query.channels.findFirst(args),
+        findMany: async (args) => (await getDB()).query.channels.findMany(args),
       },
       client_access_keys: {
         findFirst: async (args) =>

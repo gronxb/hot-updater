@@ -19,10 +19,7 @@ setupDatabaseClientTestSuite({
   createPlugin: () => ({
     ...sequentialHarness.plugin,
     commit: (input) => {
-      if (
-        input.mutations.length > 1 ||
-        input.mutations.some(({ changes }) => changes.length > 1)
-      ) {
+      if (input.changes.length > 1) {
         throw new DatabaseAtomicCommitUnsupportedError(
           sequentialHarness.plugin.name,
         );

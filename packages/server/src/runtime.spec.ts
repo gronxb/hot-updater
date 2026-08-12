@@ -122,19 +122,19 @@ describe("runtime createHotUpdater", () => {
 
   it("passes handler context to storage but not the database plugin", async () => {
     const request = new Request(updateUrl);
-    const getUpdateInfo = vi.fn<NonNullable<DatabasePlugin["getUpdateInfo"]>>(
-      async () => ({
-        fileHash: runtimeBundle.fileHash,
-        id: runtimeBundle.id,
-        message: runtimeBundle.message,
-        shouldForceUpdate: false,
-        status: "UPDATE",
-        storageUri: runtimeBundle.storageUri,
-      }),
-    );
+    const getUpdateInfo = vi.fn<
+      NonNullable<DatabasePlugin["queries"]["getUpdateInfo"]>
+    >(async () => ({
+      fileHash: runtimeBundle.fileHash,
+      id: runtimeBundle.id,
+      message: runtimeBundle.message,
+      shouldForceUpdate: false,
+      status: "UPDATE",
+      storageUri: runtimeBundle.storageUri,
+    }));
     const database: DatabasePlugin = {
       ...createRuntimeDatabase(),
-      getUpdateInfo,
+      queries: { getUpdateInfo },
     };
     const getDownloadUrl = vi.fn<
       RuntimeStorageProfile<TestContext>["getDownloadUrl"]
@@ -172,11 +172,10 @@ describe("runtime createHotUpdater", () => {
 
   it("does not pass handler context to generic database queries", async () => {
     const request = new Request(updateUrl);
-    const { getUpdateInfo: ignoredGetUpdateInfo, ...database } =
-      createRuntimeDatabase();
-    void ignoredGetUpdateInfo;
+    const baseDatabase = createRuntimeDatabase();
+    const database: DatabasePlugin = { ...baseDatabase, queries: {} };
     await createDatabaseClient(database).insertBundle(runtimeBundle);
-    const findMany = vi.spyOn(database.bundles, "findMany");
+    const findMany = vi.spyOn(database.models.bundles, "findMany");
     const hotUpdater = createHotUpdater({
       database,
       storages: [
@@ -208,7 +207,7 @@ describe("runtime createHotUpdater", () => {
     }));
     const database: DatabasePlugin = {
       ...createRuntimeDatabase(),
-      getUpdateInfo,
+      queries: { getUpdateInfo },
     };
     const hotUpdater = createHotUpdater({
       database,

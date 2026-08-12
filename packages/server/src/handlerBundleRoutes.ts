@@ -1,4 +1,5 @@
 import type { Bundle } from "@hot-updater/core";
+import type { ChannelInsertInput } from "@hot-updater/plugin-core";
 
 import { HandlerBadRequestError } from "./handlerErrors";
 import {
@@ -13,6 +14,40 @@ import type { RouteHandler } from "./handlerTypes";
 import type { ChannelsResponse } from "./types";
 
 const BUNDLE_LIST_BOUNDS = { defaultValue: 50, maxValue: 100 } as const;
+
+const isChannelText = (value: unknown): value is string => {
+  if (typeof value !== "string" || value.length === 0) return false;
+  let codePoints = 0;
+  for (const _codePoint of value) {
+    codePoints += 1;
+    if (codePoints > 255) return false;
+  }
+  return true;
+};
+
+const requireChannelInsertInput = (value: unknown): ChannelInsertInput => {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    !("row" in value) ||
+    !value.row ||
+    typeof value.row !== "object" ||
+    Array.isArray(value.row) ||
+    !("id" in value.row) ||
+    !isChannelText(value.row.id) ||
+    !("name" in value.row) ||
+    !isChannelText(value.row.name) ||
+    !("onConflict" in value) ||
+    value.onConflict !== "returnExisting"
+  ) {
+    throw new HandlerBadRequestError("Invalid Channel insert payload");
+  }
+  return {
+    row: { id: value.row.id, name: value.row.name },
+    onConflict: value.onConflict,
+  };
+};
 
 type BundlePatchPayload = Partial<Bundle> & { readonly id?: string };
 
@@ -231,6 +266,32 @@ export const createBundleRouteHandlers = <TContext>(): Record<
     };
     return new Response(JSON.stringify(response), {
       status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  },
+
+  createChannel: async (_params, request, api, context) => {
+    const result = await api.insertChannel(
+      requireChannelInsertInput(await request.json()),
+      context,
+    );
+    return new Response(JSON.stringify({ data: result }), {
+      status: result.inserted ? 201 : 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  },
+
+  deleteChannel: async (params, _request, api, context) => {
+    const result = await api.deleteChannel(
+      { id: requireRouteParam(params, "id") },
+      context,
+    );
+    if (result.deleted) {
+      return new Response(null, { status: 204 });
+    }
+    const status = result.reason === "not_found" ? 404 : 409;
+    return new Response(JSON.stringify({ data: result }), {
+      status,
       headers: { "Content-Type": "application/json" },
     });
   },

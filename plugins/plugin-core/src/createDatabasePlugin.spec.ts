@@ -6,9 +6,10 @@ import {
   DatabaseAtomicCommitUnsupportedError,
 } from "./createDatabasePlugin";
 import type {
-  DatabaseBundleMutation,
+  DatabaseChange,
   DatabasePluginImplementation,
-} from "./types";
+  TransactionDatabasePluginImplementation,
+} from "./types/internal";
 
 class UnimplementedPluginMethodError extends Error {}
 
@@ -23,7 +24,19 @@ const createMethods = (): DatabasePluginImplementation => ({
   count: unimplemented,
   findOne: unimplemented,
   findMany: unimplemented,
+  insertChannel: unimplemented,
+  deleteChannel: unimplemented,
 });
+
+const createTransactionMethods =
+  (): TransactionDatabasePluginImplementation => ({
+    create: unimplemented,
+    update: unimplemented,
+    delete: unimplemented,
+    count: unimplemented,
+    findOne: unimplemented,
+    findMany: unimplemented,
+  });
 
 const createTestPlugin = (
   name: string,
@@ -34,6 +47,8 @@ const createTestPlugin = (
     ...createDatabasePluginAdapter(name, implementation),
   });
 
+const channelRow = { id: "channel-1", name: "production" } as const;
+
 const bundleRow = {
   id: "bundle-1",
   platform: "ios" as const,
@@ -42,7 +57,8 @@ const bundleRow = {
   file_hash: "hash-1",
   git_commit_hash: null,
   message: null,
-  channel: "production",
+  channel: channelRow.name,
+  channel_id: channelRow.id,
   storage_uri: "storage://bundle-1.zip",
   target_app_version: "1.0.0",
   fingerprint_hash: null,
@@ -54,49 +70,36 @@ const bundleRow = {
   asset_base_storage_uri: null,
 };
 
-const insertWithPatch = {
-  operation: "insert",
-  bundleId: bundleRow.id,
-  changes: [
-    { table: "bundles", operation: "insert", row: bundleRow },
-    {
-      table: "bundle_patches",
-      operation: "insert",
-      row: {
-        id: "patch-1",
-        bundle_id: bundleRow.id,
-        base_bundle_id: "base-1",
-        base_file_hash: "base-hash",
-        patch_file_hash: "patch-hash",
-        patch_storage_uri: "storage://patch-1",
-        order_index: 0,
-      },
-    },
-  ],
-} satisfies DatabaseBundleMutation;
-
-const insertCommit = { mutations: [insertWithPatch] } as const;
+const patchRow = {
+  id: "patch-1",
+  bundle_id: bundleRow.id,
+  base_bundle_id: "base-1",
+  base_file_hash: "base-hash",
+  patch_file_hash: "patch-hash",
+  patch_storage_uri: "storage://patch-1",
+  order_index: 0,
+} as const;
 
 describe("createDatabasePlugin", () => {
-  it("exposes only the fixed one-depth database contract", () => {
+  it("exposes only models, queries, commit, and lifecycle", () => {
     const plugin = createTestPlugin("memory", createMethods());
 
     expect(plugin.name).toBe("memory");
-    expect(plugin.bundles.findById).toBeTypeOf("function");
-    expect(plugin.bundlePatches.findByBundleIds).toBeTypeOf("function");
-    expect(plugin.analytics.append).toBeTypeOf("function");
-    expect(plugin.clientAccessKeys.findByHash).toBeTypeOf("function");
+    expect(plugin.models.bundles.findById).toBeTypeOf("function");
+    expect(plugin.models.bundlePatches.findByBundleIds).toBeTypeOf("function");
+    expect(plugin.models.channels.insert).toBeTypeOf("function");
+    expect(plugin.models.channels.delete).toBeTypeOf("function");
+    expect(plugin.models.analytics.append).toBeTypeOf("function");
+    expect(plugin.models.clientAccessKeys.findByHash).toBeTypeOf("function");
     expect(plugin.commit).toBeTypeOf("function");
     expect(Object.keys(plugin).sort()).toEqual([
-      "analytics",
-      "bundlePatches",
-      "bundles",
-      "clientAccessKeys",
       "commit",
+      "models",
       "name",
+      "queries",
     ]);
-    expect(Reflect.has(plugin, "findMany")).toBe(false);
-    expect(Reflect.has(plugin, "plugin")).toBe(false);
+    expect(Reflect.has(plugin, "bundles")).toBe(false);
+    expect(Reflect.has(plugin, "getChannels")).toBe(false);
     expect(Reflect.has(plugin, "transaction")).toBe(false);
   });
 
@@ -108,7 +111,7 @@ describe("createDatabasePlugin", () => {
     });
 
     await expect(
-      plugin.bundles.findMany({
+      plugin.models.bundles.findMany({
         where: { channel: "production", enabled: true, id: { gte: "a" } },
         limit: 20,
         offset: 40,
@@ -128,88 +131,346 @@ describe("createDatabasePlugin", () => {
     });
   });
 
-  it("loads patch rows only through their owner ids", async () => {
-    const findMany = vi.fn(async () => []);
+  it("lists channels only from channel storage in name order", async () => {
+    const findMany = vi.fn(async (input) =>
+      input.model === "channels"
+        ? [
+            { id: "channel-1", name: "production" },
+            { id: "channel-2", name: "preview" },
+          ]
+        : [],
+    );
     const plugin = createTestPlugin("memory", {
       ...createMethods(),
       findMany,
     });
 
-    await plugin.bundlePatches.findByBundleIds(["owner-1", "owner-2"]);
-
-    expect(findMany).toHaveBeenCalledWith({
-      model: "bundle_patches",
-      where: [
-        {
-          field: "bundle_id",
-          operator: "in",
-          value: ["owner-1", "owner-2"],
-        },
+    await expect(plugin.models.channels.list({})).resolves.toEqual({
+      channels: [
+        { id: "channel-2", name: "preview" },
+        { id: "channel-1", name: "production" },
       ],
+    });
+    expect(findMany).toHaveBeenCalledOnce();
+    expect(findMany).toHaveBeenCalledWith({
+      model: "channels",
       limit: 100,
       offset: 0,
-      orderBy: [{ field: "id", direction: "asc" }],
+      orderBy: [{ field: "name", direction: "asc" }],
     });
   });
 
-  it("commits bundle and patch table changes in one adapter transaction", async () => {
+  it("returns the canonical channel selected by the provider", async () => {
+    const canonical = { id: "canonical", name: "production" } as const;
+    const insertChannel = vi.fn(async () => ({
+      row: canonical,
+      inserted: false,
+    }));
+    const plugin = createTestPlugin("memory", {
+      ...createMethods(),
+      insertChannel,
+    });
+    const input = {
+      row: { id: "losing-candidate", name: "production" },
+      onConflict: "returnExisting" as const,
+    };
+
+    await expect(plugin.models.channels.insert(input)).resolves.toEqual({
+      row: canonical,
+      inserted: false,
+    });
+    expect(insertChannel).toHaveBeenCalledWith(input);
+  });
+
+  it.each(["id", "name"] as const)(
+    "accepts a Channel %s containing exactly 255 Unicode code points",
+    async (field) => {
+      const value = "😀".repeat(255);
+      const row = { ...channelRow, [field]: value };
+      const insertChannel = vi.fn(async () => ({
+        row,
+        inserted: true,
+      }));
+      const plugin = createTestPlugin("memory", {
+        ...createMethods(),
+        insertChannel,
+      });
+
+      await expect(
+        plugin.models.channels.insert({
+          row,
+          onConflict: "returnExisting",
+        }),
+      ).resolves.toEqual({ row, inserted: true });
+      expect(insertChannel).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(["id", "name"] as const)(
+    "rejects a Channel %s containing 256 Unicode code points",
+    async (field) => {
+      const row = { ...channelRow, [field]: "😀".repeat(256) };
+      const insertChannel = vi.fn(async () => ({
+        row,
+        inserted: true,
+      }));
+      const plugin = createTestPlugin("memory", {
+        ...createMethods(),
+        insertChannel,
+      });
+
+      await expect(
+        plugin.models.channels.insert({
+          row,
+          onConflict: "returnExisting",
+        }),
+      ).rejects.toMatchObject({ code: "invalid-data" });
+      expect(insertChannel).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["id", "name"] as const)(
+    "rejects an empty Channel %s",
+    async (field) => {
+      const row = { ...channelRow, [field]: "" };
+      const insertChannel = vi.fn(async () => ({
+        row,
+        inserted: true,
+      }));
+      const plugin = createTestPlugin("memory", {
+        ...createMethods(),
+        insertChannel,
+      });
+
+      await expect(
+        plugin.models.channels.insert({
+          row,
+          onConflict: "returnExisting",
+        }),
+      ).rejects.toMatchObject({ code: "invalid-data" });
+      expect(insertChannel).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["id", "name"] as const)(
+    "enforces the 255-code-point Channel %s limit in generic commits",
+    async (field) => {
+      const acceptedRow = {
+        ...channelRow,
+        [field]: "😀".repeat(255),
+      };
+      const rejectedRow = {
+        ...channelRow,
+        [field]: "😀".repeat(256),
+      };
+      const create = vi.fn(async (input) => input.data);
+      const plugin = createTestPlugin("memory", {
+        ...createMethods(),
+        create,
+      });
+
+      await expect(
+        plugin.commit({
+          changes: [
+            {
+              model: "channels",
+              operation: "insert",
+              row: acceptedRow,
+              onConflict: "ignore",
+            },
+          ],
+        }),
+      ).resolves.toEqual({ committed: true });
+      expect(create).toHaveBeenCalledOnce();
+
+      create.mockClear();
+      await expect(
+        plugin.commit({
+          changes: [
+            {
+              model: "channels",
+              operation: "insert",
+              row: rejectedRow,
+              onConflict: "ignore",
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({ code: "invalid-data" });
+      expect(create).not.toHaveBeenCalled();
+    },
+  );
+
+  it("delegates atomic referenced-channel deletion to the provider", async () => {
+    const deleteChannel = vi.fn(async () => ({
+      deleted: false as const,
+      reason: "not_empty" as const,
+    }));
+    const plugin = createTestPlugin("memory", {
+      ...createMethods(),
+      deleteChannel,
+    });
+
+    await expect(
+      plugin.models.channels.delete({ id: channelRow.id }),
+    ).resolves.toEqual({ deleted: false, reason: "not_empty" });
+    expect(deleteChannel).toHaveBeenCalledWith({ id: channelRow.id });
+  });
+
+  it("commits model changes in one adapter transaction", async () => {
     const create = vi.fn(async (input) => input.data);
+    const findOne = vi.fn(async (input) =>
+      input.model === "channels" ? channelRow : null,
+    );
     const transaction = vi.fn(async (callback) =>
-      callback({ ...createMethods(), create }),
+      callback({ ...createTransactionMethods(), create, findOne }),
     );
     const plugin = createTestPlugin("transactional", {
       ...createMethods(),
       transaction,
     });
+    const changes = [
+      {
+        model: "channels",
+        operation: "insert",
+        row: channelRow,
+        onConflict: "ignore",
+      },
+      { model: "bundles", operation: "insert", row: bundleRow },
+      { model: "bundlePatches", operation: "insert", row: patchRow },
+    ] as const satisfies readonly DatabaseChange[];
 
-    await expect(plugin.commit(insertCommit)).resolves.toEqual({
-      applied: true,
+    await expect(plugin.commit({ changes })).resolves.toEqual({
+      committed: true,
     });
     expect(transaction).toHaveBeenCalledOnce();
     expect(create.mock.calls.map(([input]) => input.model)).toEqual([
+      "channels",
       "bundles",
       "bundle_patches",
     ]);
   });
 
-  it("rejects a cross-table commit before a non-atomic adapter mutates", async () => {
+  it("returns an indexed conflict and aborts the transaction", async () => {
+    const rollback = vi.fn();
+    const transaction = vi.fn(async (callback) => {
+      try {
+        return await callback({
+          ...createTransactionMethods(),
+          update: async () => null,
+        });
+      } catch (error) {
+        rollback();
+        throw error;
+      }
+    });
+    const plugin = createTestPlugin("transactional", {
+      ...createMethods(),
+      transaction,
+    });
+
+    await expect(
+      plugin.commit({
+        changes: [
+          {
+            model: "bundles",
+            operation: "update",
+            where: { id: bundleRow.id },
+            update: { enabled: false },
+          },
+        ],
+      }),
+    ).resolves.toEqual({
+      committed: false,
+      conflict: { changeIndex: 0, reason: "not_found" },
+    });
+    expect(rollback).toHaveBeenCalledOnce();
+  });
+
+  it("rolls back a commit that deletes a referenced channel", async () => {
+    const deleteRows = vi.fn(async () => undefined);
+    const rollback = vi.fn();
+    const transaction = vi.fn(async (callback) => {
+      try {
+        return await callback({
+          ...createTransactionMethods(),
+          count: async (input: { readonly model: string }) =>
+            input.model === "bundles" ? 1 : 0,
+          delete: deleteRows,
+        });
+      } catch (error) {
+        rollback();
+        throw error;
+      }
+    });
+    const plugin = createTestPlugin("transactional", {
+      ...createMethods(),
+      transaction,
+    });
+
+    await expect(
+      plugin.commit({
+        changes: [
+          {
+            model: "channels",
+            operation: "delete",
+            where: { id: channelRow.id },
+          },
+        ],
+      }),
+    ).resolves.toEqual({
+      committed: false,
+      conflict: { changeIndex: 0, reason: "referenced" },
+    });
+    expect(rollback).toHaveBeenCalledOnce();
+    expect(deleteRows).not.toHaveBeenCalled();
+  });
+
+  it("rejects a multi-change commit before a non-atomic adapter mutates", async () => {
     const create = vi.fn(async (input) => input.data);
     const plugin = createTestPlugin("non-atomic", {
       ...createMethods(),
       create,
     });
 
-    await expect(plugin.commit(insertCommit)).rejects.toEqual(
-      new DatabaseAtomicCommitUnsupportedError("non-atomic"),
-    );
+    await expect(
+      plugin.commit({
+        changes: [
+          {
+            model: "channels",
+            operation: "insert",
+            row: channelRow,
+            onConflict: "ignore",
+          },
+          { model: "bundles", operation: "insert", row: bundleRow },
+        ],
+      }),
+    ).rejects.toEqual(new DatabaseAtomicCommitUnsupportedError("non-atomic"));
     expect(create).not.toHaveBeenCalled();
   });
 
-  it("uses an explicit provider-native commit without hidden capabilities", async () => {
-    const commit = vi.fn(async () => ({ applied: true }));
+  it("uses an explicit provider-native commit", async () => {
+    const commit = vi.fn(async () => ({ committed: true as const }));
     const plugin = createTestPlugin("native", {
       ...createMethods(),
       commit,
     });
+    const input = { changes: [] } as const;
 
-    await plugin.commit(insertCommit);
+    await plugin.commit(input);
 
-    expect(commit).toHaveBeenCalledWith(insertCommit);
+    expect(commit).toHaveBeenCalledWith(input);
   });
 
-  it("composes optional lifecycle and fast-path methods", async () => {
-    const getChannels = vi.fn(async () => ["preview", "production"]);
+  it("composes optional lifecycle and cross-model query methods", async () => {
+    const getUpdateInfo = vi.fn(async () => null);
     const dispose = vi.fn(async () => undefined);
     const plugin = createTestPlugin("memory", {
       ...createMethods(),
-      getChannels,
+      getUpdateInfo,
       dispose,
     });
 
-    await expect(plugin.getChannels?.()).resolves.toEqual([
-      "preview",
-      "production",
-    ]);
+    expect(plugin.queries.getUpdateInfo).toBe(getUpdateInfo);
     await expect(plugin.dispose?.()).resolves.toBeUndefined();
     expect(dispose).toHaveBeenCalledOnce();
   });

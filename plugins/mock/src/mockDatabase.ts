@@ -1,10 +1,12 @@
 import {
   createDatabasePlugin,
-  type DatabasePluginImplementation,
   resolveUpdateInfoFromBundles,
   rowsToBundles,
 } from "@hot-updater/plugin-core";
-import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
+import {
+  createDatabasePluginAdapter,
+  type DatabasePluginImplementation,
+} from "@hot-updater/plugin-core/internal";
 
 import {
   cloneMockDatabaseData,
@@ -57,14 +59,26 @@ export const mockDatabase = (config: MockDatabaseConfig) => {
       count: (input) => read(() => state.count(input)),
       findOne: (input) => read(() => state.findOne(input)),
       findMany: (input) => read(() => state.findMany(input)),
-      getChannels: () =>
-        read(async () =>
-          [
-            ...new Set(
-              [...data.bundles.values()].map(({ channel }) => channel),
-            ),
-          ].sort(),
-        ),
+      insertChannel: (input) =>
+        mutate(async () => {
+          const existing = [...data.channels.values()].find(
+            ({ name }) => name === input.row.name,
+          );
+          if (existing) return { row: existing, inserted: false };
+          await state.create({ model: "channels", data: input.row });
+          return { row: input.row, inserted: true };
+        }),
+      deleteChannel: ({ id }) =>
+        mutate(async () => {
+          if (!data.channels.has(id)) {
+            return { deleted: false, reason: "not_found" };
+          }
+          if ([...data.bundles.values()].some((row) => row.channel_id === id)) {
+            return { deleted: false, reason: "not_empty" };
+          }
+          data.channels.delete(id);
+          return { deleted: true };
+        }),
       getUpdateInfo: (args) =>
         read(() =>
           resolveUpdateInfoFromBundles({
@@ -90,12 +104,8 @@ export const mockDatabase = (config: MockDatabaseConfig) => {
   const adapter = createDatabasePluginAdapter("mockDatabase", implementation);
   return createDatabasePlugin({
     name: "mockDatabase",
-    bundles: adapter.bundles,
-    bundlePatches: adapter.bundlePatches,
-    analytics: adapter.analytics,
-    clientAccessKeys: adapter.clientAccessKeys,
+    models: adapter.models,
+    queries: adapter.queries,
     commit: adapter.commit,
-    getChannels: adapter.getChannels,
-    getUpdateInfo: adapter.getUpdateInfo,
   });
 };

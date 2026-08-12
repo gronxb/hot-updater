@@ -3,6 +3,7 @@ import {
   type BundlePatchRow,
   type BundleRow,
   type BundleEventRow,
+  type ChannelRow,
   type ClientAccessKeyRow,
 } from "@hot-updater/plugin-core";
 
@@ -31,11 +32,16 @@ const metadata = (value: unknown, source: string) => {
   return normalized;
 };
 
-export const parseFirebaseBundleRow = (
+type FirebaseLegacyBundleRow = Omit<BundleRow, "channel_id"> & {
+  readonly channel_id?: string;
+};
+
+export const parseFirebaseLegacyBundleRow = (
   value: unknown,
   source: string,
-): BundleRow => {
+): FirebaseLegacyBundleRow => {
   const input = record(value, source);
+  const channelId = property(input, "channel_id");
   return {
     id: string(property(input, "id"), source),
     platform: platform(property(input, "platform"), source),
@@ -48,6 +54,9 @@ export const parseFirebaseBundleRow = (
     git_commit_hash: nullableString(property(input, "git_commit_hash"), source),
     message: nullableString(property(input, "message"), source),
     channel: string(property(input, "channel"), source),
+    ...(channelId === undefined
+      ? {}
+      : { channel_id: string(channelId, source) }),
     storage_uri: string(property(input, "storage_uri"), source),
     target_app_version: nullableString(
       property(input, "target_app_version"),
@@ -75,6 +84,28 @@ export const parseFirebaseBundleRow = (
       property(input, "asset_base_storage_uri"),
       source,
     ),
+  };
+};
+
+export const parseFirebaseBundleRow = (
+  value: unknown,
+  source: string,
+): BundleRow => {
+  const row = parseFirebaseLegacyBundleRow(value, source);
+  if (row.channel_id === undefined) {
+    throw new FirebaseDatabaseDataError(source);
+  }
+  return row as BundleRow;
+};
+
+export const parseFirebaseChannelRow = (
+  value: unknown,
+  source: string,
+): ChannelRow => {
+  const input = record(value, source);
+  return {
+    id: string(property(input, "id"), source),
+    name: string(property(input, "name"), source),
   };
 };
 

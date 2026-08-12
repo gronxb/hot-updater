@@ -1,4 +1,4 @@
-import type { MongoClient } from "mongodb";
+import { ObjectId, type MongoClient } from "mongodb";
 
 import {
   HOT_UPDATER_CORE_SCHEMA_KEY,
@@ -42,6 +42,26 @@ const ignoreExistingCollection = (error: unknown): undefined => {
     return undefined;
   }
   throw error;
+};
+
+const isMongoDuplicateKeyError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false;
+  return (error as { code?: unknown }).code === 11000;
+};
+
+type MongoChannelRow = {
+  readonly id: string;
+  readonly name: string;
+};
+
+type MongoBundleChannelRow = {
+  readonly channel: string;
+  readonly channel_id?: string | null;
+};
+
+const isValidChannelIdentifier = (value: string): boolean => {
+  const length = [...value].length;
+  return length >= 1 && length <= 255;
 };
 
 const createSettingsKeyIndexOperation = (): MigrationOperation => ({
@@ -140,6 +160,10 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
       };
     }
     assertSupportedSchemaVersion(coreVersion ?? legacyCoreVersion);
+    const currentVersion = coreVersion ?? legacyCoreVersion;
+    const normalizeChannels =
+      currentVersion !== undefined &&
+      currentVersion !== HOT_UPDATER_SCHEMA_VERSION;
     const settingsOperation =
       options.updateSettings === false
         ? undefined
@@ -151,7 +175,9 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
     return {
       operations: [
         createSettingsKeyIndexOperation(),
-        ...createMongoMigrationOperations(settingsOperation),
+        ...createMongoMigrationOperations(settingsOperation, {
+          normalizeChannels,
+        }),
       ],
       execute: async () => {
         const db = client.db();
@@ -166,6 +192,103 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
                   .catch(ignoreExistingCollection);
               }
             },
+            ...(normalizeChannels
+              ? {
+                  backfillData: async () => {
+                    const bundles =
+                      db.collection<MongoBundleChannelRow>("bundles");
+                    const channels = db.collection<MongoChannelRow>("channels");
+                    const channelNames = await bundles.distinct("channel");
+                    for (const name of channelNames) {
+                      if (
+                        typeof name !== "string" ||
+                        !isValidChannelIdentifier(name)
+                      ) {
+                        throw new Error(
+                          "MongoDB legacy bundle channel must contain 1 to 255 Unicode code points for 0.38.0 migration.",
+                        );
+                      }
+                      const existing = await channels
+                        .find({ name })
+                        .limit(2)
+                        .toArray();
+                      if (existing.length > 1) {
+                        throw new Error(
+                          `Duplicate MongoDB Channel name before 0.38.0 constraints: ${name}`,
+                        );
+                      }
+                      let canonical: MongoChannelRow | undefined = existing[0];
+                      if (
+                        canonical &&
+                        (typeof canonical.id !== "string" ||
+                          canonical.name !== name)
+                      ) {
+                        throw new Error(
+                          `Invalid MongoDB Channel row before 0.38.0 backfill: ${name}`,
+                        );
+                      }
+                      if (!canonical) {
+                        const candidate = {
+                          id: new ObjectId().toHexString(),
+                          name,
+                        } satisfies MongoChannelRow;
+                        try {
+                          await channels.insertOne(candidate);
+                          canonical = candidate;
+                        } catch (error) {
+                          if (!isMongoDuplicateKeyError(error)) throw error;
+                          const raced = await channels.findOne({ name });
+                          if (!raced) throw error;
+                          canonical = raced;
+                        }
+                      }
+                      await bundles.updateMany(
+                        { channel: name },
+                        { $set: { channel_id: canonical.id } },
+                      );
+                    }
+                  },
+                  validateData: async () => {
+                    const channels = await db
+                      .collection<MongoChannelRow>("channels")
+                      .find({})
+                      .toArray();
+                    const channelsById = new Map<string, MongoChannelRow>();
+                    const channelNames = new Set<string>();
+                    for (const channel of channels) {
+                      if (
+                        typeof channel.id !== "string" ||
+                        typeof channel.name !== "string" ||
+                        !isValidChannelIdentifier(channel.id) ||
+                        !isValidChannelIdentifier(channel.name) ||
+                        channelsById.has(channel.id) ||
+                        channelNames.has(channel.name)
+                      ) {
+                        throw new Error(
+                          "Invalid or duplicate MongoDB Channel row before 0.38.0 constraints.",
+                        );
+                      }
+                      channelsById.set(channel.id, channel);
+                      channelNames.add(channel.name);
+                    }
+                    const bundles = await db
+                      .collection<MongoBundleChannelRow>("bundles")
+                      .find({})
+                      .toArray();
+                    for (const bundle of bundles) {
+                      const channel =
+                        typeof bundle.channel_id === "string"
+                          ? channelsById.get(bundle.channel_id)
+                          : undefined;
+                      if (!channel || channel.name !== bundle.channel) {
+                        throw new Error(
+                          "MongoDB Channel backfill is incomplete; bundle channel and channel_id do not match.",
+                        );
+                      }
+                    }
+                  },
+                }
+              : {}),
             ensureIndexes: async () => {
               await ensureSettingsKeyIndex();
               for (const table of hotUpdaterSchema.tables) {
@@ -196,6 +319,31 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
                   );
                 }
               }
+            },
+            enforceSchema: async () => {
+              await db.command({
+                collMod: "bundles",
+                validationAction: "error",
+                validationLevel: "strict",
+                validator: {
+                  $jsonSchema: {
+                    bsonType: "object",
+                    properties: {
+                      channel: {
+                        bsonType: "string",
+                        maxLength: 255,
+                        minLength: 1,
+                      },
+                      channel_id: {
+                        bsonType: "string",
+                        maxLength: 255,
+                        minLength: 1,
+                      },
+                    },
+                    required: ["channel", "channel_id"],
+                  },
+                },
+              });
             },
             updateVersion: async () => {
               await settings.updateOne(

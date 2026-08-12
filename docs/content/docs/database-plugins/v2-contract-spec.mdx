@@ -119,6 +119,13 @@ interface ChannelModel {
   list(input: {}): Promise<{
     readonly channels: readonly ChannelRow[];
   }>;
+  delete(input: { readonly id: string }): Promise<
+    | { readonly deleted: true }
+    | {
+        readonly deleted: false;
+        readonly reason: "not_found" | "not_empty";
+      }
+  >;
 }
 
 interface AnalyticsModel {
@@ -152,9 +159,16 @@ from the current bundle set.
   ID with the bundle change.
 - Removing the last bundle from a channel does not remove the channel.
 - Empty channels are valid and remain visible from `ChannelModel.list`.
-- Channel deletion is not part of the initial 1.0 contract. It can be added
-  later with explicit reference checks and product-level authorization.
-- `channels` stores an opaque `id` and a unique `name`.
+- A Channel can be deleted explicitly only while no bundle references it.
+  Deletion and the reference check are one provider-native atomic operation;
+  channels are never removed automatically.
+- `channels` stores an opaque `id` and a unique `name`. Both are non-empty
+  strings of at most 255 Unicode code points. Providers reject legacy or new
+  values outside this portable limit; they never truncate or hash them into a
+  different public value.
+- Channel identity is exact and case-sensitive. For example, `production` and
+  `Production` are distinct names even when a provider's default collation is
+  case-insensitive.
 - Bundle rows keep the existing `channel` string for backward compatibility
   and add `channel_id`. New writes and channel moves always write both.
 - `bundles.channel_id` references `channels.id`. The referenced row's `name`
@@ -212,6 +226,11 @@ type DatabaseChange =
       readonly onConflict: "ignore";
     }
   | {
+      readonly model: "channels";
+      readonly operation: "delete";
+      readonly where: { readonly id: string };
+    }
+  | {
       readonly model: "analytics";
       readonly operation: "insert";
       readonly row: BundleEventRow;
@@ -240,7 +259,7 @@ type DatabaseCommitResult =
       readonly committed: false;
       readonly conflict: {
         readonly changeIndex: number;
-        readonly reason: "not_found";
+        readonly reason: "not_found" | "referenced";
       };
     };
 ```
@@ -258,6 +277,12 @@ access-key revoke returns a `not_found` conflict. Constraint violations,
 invalid input, unavailable storage, and provider failures reject the promise.
 Deleting a missing row is idempotent and succeeds. Insert uniqueness errors
 reject unless that change explicitly carries `onConflict: "ignore"`.
+
+`ChannelModel.delete` is the management operation that distinguishes
+`not_found` from `not_empty`. Its reference check and deletion are atomic.
+The generic commit delete remains idempotent for a missing Channel, while a
+Channel referenced by any bundle returns an indexed `referenced` conflict and
+rolls back the complete commit.
 
 `insert`, `update`, and `delete` are the commit primitives. Domain method
 names such as `AnalyticsModel.append` do not leak into the commit algebra.
@@ -319,8 +344,8 @@ The canonical SQL schema adds:
 
 ```sql
 CREATE TABLE channels (
-  id text PRIMARY KEY NOT NULL,
-  name text NOT NULL UNIQUE
+  id varchar(255) PRIMARY KEY NOT NULL,
+  name varchar(255) NOT NULL UNIQUE
 );
 
 ALTER TABLE bundles ADD COLUMN channel_id text;
@@ -358,7 +383,7 @@ data with OTA update policy. If omitted, Hot Updater computes the same result
 through model reads.
 
 Channel listing is no longer a cross-model query, so `getChannels` is removed
-from `queries`. The canonical server route becomes:
+from `queries`. The canonical server list route becomes:
 
 ```text
 GET /api/channels
@@ -379,11 +404,41 @@ It returns:
 }
 ```
 
+Remote management repositories, including Standalone, resolve a canonical
+Channel through:
+
+```text
+POST /api/channels
+```
+
+```json
+{
+  "row": {
+    "id": "0198f3a2-7b18-7000-8000-000000000001",
+    "name": "production"
+  },
+  "onConflict": "returnExisting"
+}
+```
+
+The response carries the same `{ row, inserted }` result as
+`ChannelModel.insert`. An empty Channel is deleted through:
+
+```text
+DELETE /api/channels/:id
+```
+
+A successful deletion returns `204` with no response body. A missing Channel
+returns `404`, and a Channel referenced by a bundle returns `409`; the failure
+body is the typed `{ data: { deleted: false, reason } }` result from
+`ChannelModel.delete`. The reference check is repeated during deletion, so a
+bundle created after the UI loaded cannot make deletion unsafe. All three
+Channel routes follow the bundle-management feature gate.
+
 The old `/api/bundles/channels` route and standalone route override are
 removed. CLI and Console consumers read `models.channels.list({})` through
-the canonical server boundary. Route availability follows the existing
-bundle-management feature because channels are used by that management
-surface; it does not add a new `createHotUpdater` feature flag.
+the canonical server boundary. Channels do not add a new `createHotUpdater`
+feature flag.
 
 ## Runtime and provider boundaries
 
@@ -397,6 +452,9 @@ builds the same D1 models from `cloudflare:env` bindings inside
 Standalone remains a CLI-side remote management repository, not a complete
 `DatabasePlugin`: it exposes remote bundle, patch, and Channel operations but
 does not pretend to own server Analytics or client access-key persistence.
+Its commit input is correspondingly limited to those three models, so an
+unsupported official domain cannot cross the repository boundary and fail only
+at runtime.
 The self-hosted server created with `createHotUpdater` owns the complete real
 database implementation, schema, features, and routes.
 
@@ -431,11 +489,15 @@ The stack is complete only when all of the following are proven:
   existing `channel` readers remain compatible;
 - channel listing reads only channel rows and remains stable after the last
   bundle in a channel is deleted;
+- Console can create Channels and delete only empty Channels; a concurrent
+  reference prevents deletion and is surfaced without losing data;
 - a multi-model commit is atomic, including conflict rollback;
 - non-atomic providers reject before the first write;
 - root and runtime package subpaths return the same logical contract;
-- Standalone and self-hosted `createHotUpdater` use `GET /api/channels` with
-  the new response shape;
+- Standalone and self-hosted `createHotUpdater` use canonical
+  `GET /api/channels` listing, `POST /api/channels` insert/resolve, and
+  `DELETE /api/channels/:id` empty-only deletion routes with the new Channel
+  row shapes;
 - schema migrations backfill existing channels without losing bundles;
 - focused conformance tests and the full lint, type, unit, build, and
   integration suites pass on every affected stack branch;

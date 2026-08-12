@@ -111,7 +111,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       hotUpdater.deleteBundleById(bundleId),
   });
 
-  it("preserves bundle channels while migrating from v0.31", async () => {
+  it("normalizes bundle channels while migrating from v0.31", async () => {
     const database = `hot_updater_retry_${process.pid}`;
     const admin = createPool({
       host: process.env.MYSQL_HOST || "localhost",
@@ -177,20 +177,30 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       });
       await migration.execute();
 
-      expect(await migrator.getVersion()).toBe("0.37.0");
-      const migrated = await sql<{ readonly channel: string }>`
-        select channel from bundles
+      expect(await migrator.getVersion()).toBe("0.38.0");
+      const migrated = await sql<{
+        readonly channel: string;
+        readonly channel_id: string;
+      }>`
+        select channel, channel_id from bundles
       `.execute(db);
-      expect(migrated.rows).toEqual([{ channel: "production" }]);
+      expect(migrated.rows).toEqual([
+        { channel: "production", channel_id: expect.any(String) },
+      ]);
+      const channels = await sql<{
+        readonly id: string;
+        readonly name: string;
+      }>`select id, name from channels`.execute(db);
+      expect(channels.rows).toEqual([
+        { id: migrated.rows[0]?.channel_id, name: "production" },
+      ]);
       const finalColumns = await sql<{ readonly name: string }>`
         select column_name as name
         from information_schema.columns
         where table_schema = ${database} and table_name = 'bundles'
       `.execute(db);
       expect(finalColumns.rows.map(({ name }) => name)).toContain("channel");
-      expect(finalColumns.rows.map(({ name }) => name)).not.toContain(
-        "channel_id",
-      );
+      expect(finalColumns.rows.map(({ name }) => name)).toContain("channel_id");
     } finally {
       await db.destroy();
       await admin.query(`drop database if exists \`${database}\``);
@@ -439,17 +449,26 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
       const ownerId = "fumadb-owner";
       const baseId = "fumadb-base";
+      const createdChannel = await adapter.models.channels.insert({
+        row: { id: "channel-production", name: "production" },
+        onConflict: "returnExisting",
+      });
+      expect(createdChannel.inserted).toBe(true);
+      const resolvedChannel = await adapter.models.channels.insert({
+        row: { id: "channel-production-duplicate", name: "production" },
+        onConflict: "returnExisting",
+      });
+      expect(resolvedChannel).toEqual({
+        row: createdChannel.row,
+        inserted: false,
+      });
       for (const id of [baseId, ownerId]) {
-        const row = createAdapterBundleRow(id);
-        await adapter.commit({
-          mutations: [
-            {
-              operation: "insert",
-              bundleId: id,
-              changes: [{ table: "bundles", operation: "insert", row }],
-            },
-          ],
-        });
+        const row = createAdapterBundleRow(id, resolvedChannel.row);
+        await expect(
+          adapter.commit({
+            changes: [{ model: "bundles", operation: "insert", row }],
+          }),
+        ).resolves.toEqual({ committed: true });
       }
       await sql`select get_lock(${gate}, 5)`.execute(control);
       await admin.query(
@@ -457,25 +476,19 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       );
 
       const patchCreate = adapter.commit({
-        mutations: [
+        changes: [
           {
-            operation: "update",
-            bundleId: ownerId,
-            changes: [
-              {
-                table: "bundle_patches",
-                operation: "insert",
-                row: {
-                  id: "fumadb-patch",
-                  bundle_id: ownerId,
-                  base_bundle_id: baseId,
-                  base_file_hash: "base-hash",
-                  patch_file_hash: "patch-hash",
-                  patch_storage_uri: "storage://fumadb-patch",
-                  order_index: 0,
-                },
-              },
-            ],
+            model: "bundlePatches",
+            operation: "insert",
+            row: {
+              id: "fumadb-patch",
+              bundle_id: ownerId,
+              base_bundle_id: baseId,
+              base_file_hash: "base-hash",
+              patch_file_hash: "patch-hash",
+              patch_storage_uri: "storage://fumadb-patch",
+              order_index: 0,
+            },
           },
         ],
       });
@@ -489,11 +502,11 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       let deleteSettled = false;
       const bundleDelete = deleteAdapter
         .commit({
-          mutations: [
+          changes: [
             {
+              model: "bundles",
               operation: "delete",
-              bundleId: ownerId,
-              changes: [{ table: "bundles", operation: "delete", id: ownerId }],
+              where: { id: ownerId },
             },
           ],
         })
@@ -506,9 +519,11 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       await sql`select release_lock(${gate})`.execute(control);
       await Promise.all([patchCreate, bundleDelete]);
 
-      await expect(deleteAdapter.bundles.findById(ownerId)).resolves.toBeNull();
       await expect(
-        deleteAdapter.bundlePatches.findByBundleIds([ownerId]),
+        deleteAdapter.models.bundles.findById(ownerId),
+      ).resolves.toBeNull();
+      await expect(
+        deleteAdapter.models.bundlePatches.findByBundleIds([ownerId]),
       ).resolves.toEqual([]);
     } finally {
       await Promise.all([
@@ -529,7 +544,10 @@ interface SettingsDatabase {
   };
 }
 
-const createAdapterBundleRow = (id: string) => ({
+const createAdapterBundleRow = (
+  id: string,
+  channel: { readonly id: string; readonly name: string },
+) => ({
   id,
   platform: "ios" as const,
   should_force_update: false,
@@ -537,7 +555,8 @@ const createAdapterBundleRow = (id: string) => ({
   file_hash: `${id}-hash`,
   git_commit_hash: null,
   message: null,
-  channel: "production",
+  channel: channel.name,
+  channel_id: channel.id,
   storage_uri: `storage://${id}`,
   target_app_version: "1.0.0",
   fingerprint_hash: null,

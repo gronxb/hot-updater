@@ -211,6 +211,7 @@ const transactionBundle: Bundle = {
   targetAppVersion: "1.0.0",
   fingerprintHash: null,
 };
+const transactionChannelId = "00000000-0000-0000-0000-000000000700";
 
 const appVersionFastPathBundle: Bundle = {
   ...transactionBundle,
@@ -360,6 +361,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     storageTexts.clear();
     await db.exec("DELETE FROM bundle_patches");
     await db.exec("DELETE FROM bundles");
+    await db.exec("DELETE FROM channels");
   });
 
   afterAll(async () => {
@@ -396,7 +398,15 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
       expect(code).toContain('channel String @default("production")');
       expect(code).toContain('metadata Json @default("{}")');
-      expect(code).toContain('value String @default("0.37.0")');
+      expect(code).toContain('value String @default("0.38.0")');
+      expect(code).toContain("model channels {");
+      expect(code).toContain("id String @db.VarChar(255) @id");
+      expect(code).toContain("name String @db.VarChar(255)");
+      expect(code).toContain('@@unique([name], map: "channels_name_key")');
+      expect(code).toContain("channel_id String @db.VarChar(255)");
+      expect(code).toContain(
+        'channelRecord channels @relation("bundles_channels", fields: [channel_id], references: [id], onUpdate: Restrict, onDelete: Restrict)',
+      );
       expect(code).toContain(
         'patches bundle_patches[] @relation("bundle_patches_bundles_patches")',
       );
@@ -470,7 +480,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         'id: varchar("id", { length: 255 }).primaryKey().notNull()',
       );
       expect(generatedCode).toContain(
-        'version: varchar("version", { length: 255 }).notNull().default("0.37.0")',
+        'version: varchar("version", { length: 255 }).notNull().default("0.38.0")',
+      );
+      expect(generatedCode).toContain(
+        'uniqueIndex("channels_name_key").on(table.name)',
+      );
+      expect(generatedCode).toContain('name: "bundles_channel_id_fk"');
+      expect(generatedCode).toContain(
+        'index("bundles_channel_id_idx").on(table.channel_id)',
       );
       expect(generatedCode).not.toContain('key: varchar("key"');
       expect(generatedCode).not.toContain('value: text("value"');
@@ -485,6 +502,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         "0.31.0",
         "0.36.0",
         "0.37.0",
+        "0.38.0",
       ]);
 
       const v029Sql = createSchemaMigrationSql(
@@ -640,13 +658,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           value: string;
         }>("select key, value from private_hot_updater_settings order by key");
         expect(versions.rows).toEqual([
-          { key: "schema.core", value: "0.37.0" },
+          { key: "schema.core", value: "0.38.0" },
           { key: "version", value: "0.21.0" },
         ]);
         await migrationDb.query(
           "select rollout_cohort_count, target_cohorts, manifest_storage_uri from bundles limit 0",
         );
         await migrationDb.query("select * from bundle_patches limit 0");
+        await migrationDb.query("select id, name from channels limit 0");
       } finally {
         await migrationKysely.destroy();
         await migrationDb.close();
@@ -911,6 +930,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         findFirst: vi.fn(),
         findMany: vi.fn(async () => []),
         update: vi.fn(),
+        upsert: vi.fn(),
       };
       const patches = {
         count: vi.fn(),
@@ -919,13 +939,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         findFirst: vi.fn(),
         findMany: vi.fn(async () => []),
         update: vi.fn(),
+        upsert: vi.fn(),
       };
       const adapter = prismaAdapter({
         prisma: { bundles, bundle_patches: patches },
         provider: "postgresql",
       });
 
-      await adapter.bundles.findMany({
+      await adapter.models.bundles.findMany({
         limit: 10,
         offset: 0,
         orderBy: { field: "id", direction: "asc" },
@@ -968,7 +989,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       } as unknown as MongoClient;
       const adapter = mongoAdapter({ client });
 
-      await adapter.bundles.findMany({
+      await adapter.models.bundles.findMany({
         limit: 10,
         offset: 0,
         orderBy: { field: "id", direction: "asc" },
@@ -1004,8 +1025,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     });
 
     it("uses Prisma update-check queries without generic list pagination", async () => {
-      const appVersionRow = bundleToRow(appVersionFastPathBundle);
-      const fingerprintRow = bundleToRow(fingerprintFastPathBundle);
+      const appVersionRow = bundleToRow(
+        appVersionFastPathBundle,
+        transactionChannelId,
+      );
+      const fingerprintRow = bundleToRow(
+        fingerprintFastPathBundle,
+        transactionChannelId,
+      );
       const bundles = {
         count: vi.fn(async () => {
           throw new Error("unexpected generic Prisma count");
@@ -1019,6 +1046,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           .mockResolvedValueOnce([appVersionRow])
           .mockResolvedValueOnce([fingerprintRow]),
         update: vi.fn(),
+        upsert: vi.fn(),
       };
       const patches = {
         count: vi.fn(),
@@ -1027,6 +1055,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         findFirst: vi.fn(),
         findMany: vi.fn(async () => []),
         update: vi.fn(),
+        upsert: vi.fn(),
       };
       const adapter = prismaAdapter({
         prisma: { bundles, bundle_patches: patches },
@@ -1034,7 +1063,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       });
 
       await expect(
-        adapter.getUpdateInfo?.({
+        adapter.queries.getUpdateInfo?.({
           _updateStrategy: "appVersion",
           appVersion: "1.0.0",
           bundleId: NIL_UUID,
@@ -1045,7 +1074,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         status: "UPDATE",
       });
       await expect(
-        adapter.getUpdateInfo?.({
+        adapter.queries.getUpdateInfo?.({
           _updateStrategy: "fingerprint",
           bundleId: NIL_UUID,
           fingerprintHash: "fingerprint-fast-path",
@@ -1087,8 +1116,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     });
 
     it("uses Drizzle update-check queries without generic list pagination", async () => {
-      const appVersionRow = bundleToRow(appVersionFastPathBundle);
-      const fingerprintRow = bundleToRow(fingerprintFastPathBundle);
+      const appVersionRow = bundleToRow(
+        appVersionFastPathBundle,
+        transactionChannelId,
+      );
+      const fingerprintRow = bundleToRow(
+        fingerprintFastPathBundle,
+        transactionChannelId,
+      );
       const tables = {
         bundle_events: {
           id: sql.raw("event_id"),
@@ -1105,6 +1140,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           id: sql.raw("id"),
           platform: sql.raw("platform"),
           target_app_version: sql.raw("target_app_version"),
+        },
+        channels: {
+          id: sql.raw("channel_id"),
+          name: sql.raw("channel_name"),
         },
         client_access_keys: {
           id: sql.raw("access_key_id"),
@@ -1135,6 +1174,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
             findFirst: vi.fn(),
             findMany: bundleFindMany,
           },
+          channels: { findFirst: vi.fn(), findMany: vi.fn() },
           client_access_keys: { findFirst: vi.fn(), findMany: vi.fn() },
         },
         select: vi.fn(),
@@ -1146,7 +1186,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       });
 
       await expect(
-        adapter.getUpdateInfo?.({
+        adapter.queries.getUpdateInfo?.({
           _updateStrategy: "appVersion",
           appVersion: "1.0.0",
           bundleId: NIL_UUID,
@@ -1157,7 +1197,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         status: "UPDATE",
       });
       await expect(
-        adapter.getUpdateInfo?.({
+        adapter.queries.getUpdateInfo?.({
           _updateStrategy: "fingerprint",
           bundleId: NIL_UUID,
           fingerprintHash: "fingerprint-fast-path",
@@ -1189,8 +1229,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     });
 
     it("uses MongoDB update-check queries without generic list pagination", async () => {
-      const appVersionRow = bundleToRow(appVersionFastPathBundle);
-      const fingerprintRow = bundleToRow(fingerprintFastPathBundle);
+      const appVersionRow = bundleToRow(
+        appVersionFastPathBundle,
+        transactionChannelId,
+      );
+      const fingerprintRow = bundleToRow(
+        fingerprintFastPathBundle,
+        transactionChannelId,
+      );
       let bundleFindCount = 0;
       const bundles = {
         countDocuments: vi.fn(async () => {
@@ -1231,7 +1277,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const adapter = mongoAdapter({ client });
 
       await expect(
-        adapter.getUpdateInfo?.({
+        adapter.queries.getUpdateInfo?.({
           _updateStrategy: "appVersion",
           appVersion: "1.0.0",
           bundleId: NIL_UUID,
@@ -1242,7 +1288,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         status: "UPDATE",
       });
       await expect(
-        adapter.getUpdateInfo?.({
+        adapter.queries.getUpdateInfo?.({
           _updateStrategy: "fingerprint",
           bundleId: NIL_UUID,
           fingerprintHash: "fingerprint-fast-path",
@@ -1288,6 +1334,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         findFirst: vi.fn(),
         findMany: vi.fn(),
         update: vi.fn(),
+        upsert: vi.fn(),
       };
       const rootPatches = {
         count: vi.fn(),
@@ -1296,6 +1343,19 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         findFirst: vi.fn(),
         findMany: vi.fn(),
         update: vi.fn(),
+        upsert: vi.fn(),
+      };
+      const channels = {
+        count: vi.fn(),
+        create: vi.fn(),
+        deleteMany: vi.fn(),
+        findFirst: vi.fn(async () => ({
+          id: transactionChannelId,
+          name: transactionBundle.channel,
+        })),
+        findMany: vi.fn(),
+        update: vi.fn(),
+        upsert: vi.fn(),
       };
       const txBundles = {
         ...rootBundles,
@@ -1307,6 +1367,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           operation({
             bundle_patches: txPatches,
             bundles: txBundles,
+            channels,
           }),
       );
       const adapter = prismaAdapter({
@@ -1314,22 +1375,17 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           $transaction,
           bundle_patches: rootPatches,
           bundles: rootBundles,
+          channels,
         },
         provider: "postgresql",
       });
 
       await adapter.commit({
-        mutations: [
+        changes: [
           {
+            model: "bundles",
             operation: "insert",
-            bundleId: transactionBundle.id,
-            changes: [
-              {
-                table: "bundles",
-                operation: "insert",
-                row: bundleToRow(transactionBundle),
-              },
-            ],
+            row: bundleToRow(transactionBundle, transactionChannelId),
           },
         ],
       });
@@ -1351,6 +1407,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         },
         bundles: {
           id: "id",
+        },
+        channels: {
+          id: sql.raw("channel_id"),
+          name: sql.raw("channel_name"),
         },
         client_access_keys: {
           id: "access_key_id",
@@ -1382,6 +1442,13 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
             findFirst: vi.fn(async () => undefined),
             findMany: vi.fn(),
           },
+          channels: {
+            findFirst: vi.fn(async () => ({
+              id: transactionChannelId,
+              name: transactionBundle.channel,
+            })),
+            findMany: vi.fn(),
+          },
           client_access_keys: {
             findFirst: vi.fn(),
             findMany: vi.fn(),
@@ -1409,17 +1476,11 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       });
 
       await adapter.commit({
-        mutations: [
+        changes: [
           {
+            model: "bundles",
             operation: "insert",
-            bundleId: transactionBundle.id,
-            changes: [
-              {
-                table: "bundles",
-                operation: "insert",
-                row: bundleToRow(transactionBundle),
-              },
-            ],
+            row: bundleToRow(transactionBundle, transactionChannelId),
           },
         ],
       });
@@ -1467,7 +1528,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const insertOne = vi.fn(async () => undefined);
       Object.defineProperty(client, "db", {
         value: () => ({
-          collection: () => ({ insertOne }),
+          collection: () => ({
+            findOne: vi.fn(async () => ({
+              id: transactionChannelId,
+              name: transactionBundle.channel,
+            })),
+            insertOne,
+            updateOne: vi.fn(async () => ({ matchedCount: 1 })),
+          }),
         }),
       });
       const withSession = vi.fn(
@@ -1478,26 +1546,21 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const adapter = mongoAdapter({ client, transactions: true });
 
       await adapter.commit({
-        mutations: [
+        changes: [
           {
+            model: "bundles",
             operation: "insert",
-            bundleId: transactionBundle.id,
-            changes: [
-              {
-                table: "bundles",
-                operation: "insert",
-                row: bundleToRow(transactionBundle),
-              },
-            ],
+            row: bundleToRow(transactionBundle, transactionChannelId),
           },
         ],
       });
 
       expect(withSession).toHaveBeenCalledTimes(1);
       expect(withTransaction).toHaveBeenCalledTimes(1);
-      expect(insertOne).toHaveBeenCalledWith(bundleToRow(transactionBundle), {
-        session,
-      });
+      expect(insertOne).toHaveBeenCalledWith(
+        bundleToRow(transactionBundle, transactionChannelId),
+        { session },
+      );
     });
   });
 
@@ -1611,8 +1674,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const channels = await hotUpdater.getChannels();
 
       expect(channels).toHaveLength(2);
-      expect(channels).toContain("production");
-      expect(channels).toContain("staging");
+      expect(channels.map(({ name }) => name)).toEqual([
+        "production",
+        "staging",
+      ]);
     });
 
     it("should return empty array when no bundles exist", async () => {

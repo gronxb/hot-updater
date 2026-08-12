@@ -46,11 +46,9 @@ export const d1WorkerDatabase = (db: D1Like) => {
   );
   return createDatabasePlugin({
     name: "d1WorkerDatabase",
-    bundles: adapter.bundles,
-    bundlePatches: adapter.bundlePatches,
-    analytics: adapter.analytics,
-    clientAccessKeys: adapter.clientAccessKeys,
+    models: adapter.models,
+    queries: adapter.queries,
     commit: adapter.commit,
-    getChannels: adapter.getChannels,
+    ...(adapter.dispose ? { dispose: adapter.dispose } : {}),
   });
 };

@@ -1,20 +1,20 @@
+import {
+  createDatabasePlugin,
+  DatabasePluginInputError,
+} from "@hot-updater/plugin-core";
 import type {
   CountDatabaseImplementationInput,
   CreateDatabaseImplementationInput,
-  DatabaseBundleMutation,
-  DatabaseCommitResult,
   DatabasePluginImplementation,
   DeleteDatabaseImplementationInput,
   FindManyDatabaseImplementationInput,
   FindOneDatabaseImplementationInput,
   UpdateDatabaseImplementationInput,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/plugin-core/internal";
 import {
-  createDatabasePlugin,
-  DatabaseAtomicCommitUnsupportedError,
-  DatabasePluginInputError,
-} from "@hot-updater/plugin-core";
-import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
+  createDatabasePluginAdapter,
+  DatabaseRowReferencedError,
+} from "@hot-updater/plugin-core/internal";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import {
@@ -28,122 +28,10 @@ import type { Database } from "./types";
 
 export type SupabaseDatabaseConfig = SupabaseServiceRoleConfig;
 
-const applySupabaseCommit = async (
-  supabase: SupabaseClient<Database>,
-  implementation: DatabasePluginImplementation,
-  input: DatabaseBundleMutation,
-): Promise<DatabaseCommitResult> => {
-  const result = (applied: boolean): DatabaseCommitResult =>
-    applied
-      ? { applied: true }
-      : { applied: false, missingBundleId: input.bundleId };
-  const bundleInsert = input.changes.find(
-    (change) => change.table === "bundles" && change.operation === "insert",
-  );
-  const patchInserts = input.changes.filter(
-    (change) =>
-      change.table === "bundle_patches" && change.operation === "insert",
-  );
-  if (
-    input.operation === "insert" &&
-    bundleInsert?.table === "bundles" &&
-    bundleInsert.operation === "insert" &&
-    patchInserts.length > 0 &&
-    input.changes.length === patchInserts.length + 1
-  ) {
-    const { error } = await supabase.rpc(
-      "hot_updater_create_bundle_with_patches",
-      {
-        p_bundle: bundleInsert.row,
-        p_patches: patchInserts.map((change) => change.row),
-      },
-    );
-    throwSupabaseError("create bundle with patches", error);
-    return { applied: true };
-  }
-
-  const bundleUpdate = input.changes.find(
-    (change) => change.table === "bundles" && change.operation === "update",
-  );
-  const patchChanges = input.changes.filter(
-    (change) => change.table === "bundle_patches",
-  );
-  if (
-    input.operation === "update" &&
-    patchChanges.length > 0 &&
-    input.changes.every(
-      (change) =>
-        (change.table === "bundles" && change.operation === "update") ||
-        (change.table === "bundle_patches" &&
-          (change.operation === "delete" || change.operation === "insert")),
-    )
-  ) {
-    const { data, error } = await supabase.rpc(
-      "hot_updater_update_bundle_with_patches",
-      {
-        p_bundle_id: input.bundleId,
-        p_update:
-          bundleUpdate?.table === "bundles" &&
-          bundleUpdate.operation === "update"
-            ? bundleUpdate.update
-            : {},
-        p_patches: patchChanges.flatMap((change) =>
-          change.operation === "insert" ? [change.row] : [],
-        ),
-      },
-    );
-    throwSupabaseError("update bundle with patches", error);
-    if (data === null) {
-      throw new SupabaseMissingDataError("update bundle with patches");
-    }
-    return result(data);
-  }
-
-  if (input.changes.length === 0 && input.operation === "update") {
-    const row = await implementation.findOne({
-      model: "bundles",
-      where: [{ field: "id", value: input.bundleId }],
-    });
-    return result(row !== null);
-  }
-  if (input.changes.length !== 1) {
-    throw new DatabaseAtomicCommitUnsupportedError("supabaseDatabase");
-  }
-  const change = input.changes[0];
-  if (change.table === "bundles") {
-    switch (change.operation) {
-      case "insert":
-        await implementation.create({ model: "bundles", data: change.row });
-        return { applied: true };
-      case "update":
-        return result(
-          (await implementation.update({
-            model: "bundles",
-            where: [{ field: "id", value: change.id }],
-            update: change.update,
-          })) !== null,
-        );
-      case "delete":
-        await implementation.delete({
-          model: "bundles",
-          where: [{ field: "id", value: change.id }],
-        });
-        return { applied: true };
-    }
-  }
-  if (change.operation === "insert") {
-    await implementation.create({
-      model: "bundle_patches",
-      data: change.row,
-    });
-  } else {
-    await implementation.delete({
-      model: "bundle_patches",
-      where: [{ field: "bundle_id", value: change.bundleId }],
-    });
-  }
-  return { applied: true };
-};
+const isForeignKeyViolation = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  Reflect.get(error, "code") === "23503";
 
 const createSupabaseImplementation = (
   supabase: SupabaseClient<Database>,
@@ -174,6 +62,30 @@ const createSupabaseImplementation = (
           }
           return data;
         }
+        case "channels": {
+          if (input.onConflict === "ignore") {
+            const { data, error } = await supabase
+              .from("channels")
+              .upsert(input.data, {
+                onConflict: "name",
+                ignoreDuplicates: true,
+              })
+              .select("*")
+              .maybeSingle();
+            throwSupabaseError("create channels", error);
+            return data ?? input.data;
+          }
+          const { data, error } = await supabase
+            .from("channels")
+            .insert(input.data)
+            .select("*")
+            .single();
+          throwSupabaseError("create channels", error);
+          if (data === null) {
+            throw new SupabaseMissingDataError("create channels");
+          }
+          return data;
+        }
         case "bundle_events": {
           const { data, error } = await supabase
             .from("bundle_events")
@@ -187,16 +99,19 @@ const createSupabaseImplementation = (
           return data;
         }
         case "client_access_keys": {
-          const { data, error } = await supabase
-            .from("client_access_keys")
-            .insert(input.data)
-            .select("*")
-            .single();
+          const query =
+            input.onConflict === "ignore"
+              ? supabase.from("client_access_keys").upsert(input.data, {
+                  onConflict: "hash",
+                  ignoreDuplicates: true,
+                })
+              : supabase.from("client_access_keys").insert(input.data);
+          const { data, error } = await query.select("*").maybeSingle();
           throwSupabaseError("create client_access_keys", error);
-          if (data === null) {
+          if (data === null && input.onConflict !== "ignore") {
             throw new SupabaseMissingDataError("create client_access_keys");
           }
-          return data;
+          return data ?? input.data;
         }
       }
     },
@@ -230,6 +145,16 @@ const createSupabaseImplementation = (
           if (filter !== undefined) query = query.or(filter);
           const { error } = await query;
           throwSupabaseError("delete bundle_patches", error);
+          return;
+        }
+        case "channels": {
+          let query = supabase.from("channels").delete();
+          if (filter !== undefined) query = query.or(filter);
+          const { error } = await query;
+          if (isForeignKeyViolation(error)) {
+            throw new DatabaseRowReferencedError();
+          }
+          throwSupabaseError("delete channels", error);
         }
       }
     },
@@ -274,6 +199,13 @@ const createSupabaseImplementation = (
           if (filter !== undefined) query = query.or(filter);
           const { data, error } = await query.limit(1).maybeSingle();
           throwSupabaseError("findOne client_access_keys", error);
+          return data;
+        }
+        case "channels": {
+          let query = supabase.from("channels").select("*");
+          if (filter !== undefined) query = query.or(filter);
+          const { data, error } = await query.limit(1).maybeSingle();
+          throwSupabaseError("findOne channels", error);
           return data;
         }
         case "bundle_patches": {
@@ -346,30 +278,70 @@ const createSupabaseImplementation = (
           throwSupabaseError("findMany bundle_patches", error);
           return data ?? [];
         }
+        case "channels": {
+          let query = supabase.from("channels").select("*");
+          if (filter !== undefined) query = query.or(filter);
+          for (const clause of orderBy) {
+            query = query.order(clause.field, {
+              ascending: clause.direction === "asc",
+              ...(clause.nulls ? { nullsFirst: clause.nulls === "first" } : {}),
+            });
+          }
+          const { data, error } = await query.range(input.offset, rangeEnd);
+          throwSupabaseError("findMany channels", error);
+          return data ?? [];
+        }
       }
     },
-    async getChannels() {
-      const { data, error } = await supabase.rpc("get_channels");
-      throwSupabaseError("get channels", error);
-      return (data ?? []).map(({ channel }) => channel);
+    async insertChannel(input) {
+      const { data: inserted, error: insertError } = await supabase
+        .from("channels")
+        .upsert(input.row, { onConflict: "name", ignoreDuplicates: true })
+        .select("*")
+        .maybeSingle();
+      throwSupabaseError("insert channel", insertError);
+      if (inserted !== null) return { row: inserted, inserted: true };
+
+      const { data: existing, error: findError } = await supabase
+        .from("channels")
+        .select("*")
+        .eq("name", input.row.name)
+        .single();
+      throwSupabaseError("find canonical channel", findError);
+      if (existing === null) {
+        throw new SupabaseMissingDataError("find canonical channel");
+      }
+      return { row: existing, inserted: false };
+    },
+    async deleteChannel(input) {
+      const { data, error } = await supabase.rpc("hot_updater_delete_channel", {
+        p_id: input.id,
+      });
+      throwSupabaseError("delete channel", error);
+      if (
+        data === null ||
+        typeof data !== "object" ||
+        !("deleted" in data) ||
+        typeof data.deleted !== "boolean"
+      ) {
+        throw new SupabaseMissingDataError("delete channel");
+      }
+      return data;
     },
     getUpdateInfo: createSupabaseGetUpdateInfo(supabase),
   };
   implementation.commit = async (input) => {
-    if (input.mutations.length === 1) {
-      return applySupabaseCommit(supabase, implementation, input.mutations[0]!);
-    }
     const { data, error } = await supabase.rpc("hot_updater_commit", {
-      p_mutations: input.mutations,
+      p_commit: input,
     });
-    throwSupabaseError("commit bundle mutations", error);
+    throwSupabaseError("commit database changes", error);
     if (
       data === null ||
       typeof data !== "object" ||
-      !("applied" in data) ||
-      typeof data.applied !== "boolean"
+      !("committed" in data) ||
+      typeof data.committed !== "boolean"
     ) {
-      throw new SupabaseMissingDataError("commit bundle mutations");
+      throw new SupabaseMissingDataError("commit database changes");
     }
     return data;
   };
@@ -387,12 +359,8 @@ export const supabaseDatabase = (config: SupabaseDatabaseConfig) => {
   );
   return createDatabasePlugin({
     name: "supabaseDatabase",
-    bundles: adapter.bundles,
-    bundlePatches: adapter.bundlePatches,
-    analytics: adapter.analytics,
-    clientAccessKeys: adapter.clientAccessKeys,
+    models: adapter.models,
+    queries: adapter.queries,
     commit: adapter.commit,
-    getChannels: adapter.getChannels,
-    getUpdateInfo: adapter.getUpdateInfo,
   });
 };

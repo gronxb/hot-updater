@@ -23,6 +23,7 @@ const resetData = (): void => {
   data.bundles.clear();
   data.bundlePatches.clear();
   data.bundleEvents.clear();
+  data.channels.clear();
   data.clientAccessKeys.clear();
 };
 
@@ -60,11 +61,42 @@ setupGetUpdateInfoTestSuite({
     for (const bundle of bundles) {
       await client.insertBundle(bundle);
     }
-    return plugin.getUpdateInfo?.(args) ?? null;
+    return plugin.queries.getUpdateInfo?.(args) ?? null;
   },
 });
 
 describe("mock database provider", () => {
+  it("serializes concurrent channel inserts and returns the canonical row", async () => {
+    const plugin = createPlugin();
+
+    const results = await Promise.all([
+      plugin.models.channels.insert({
+        row: { id: "mock-channel-a", name: "production" },
+        onConflict: "returnExisting",
+      }),
+      plugin.models.channels.insert({
+        row: { id: "mock-channel-b", name: "production" },
+        onConflict: "returnExisting",
+      }),
+    ]);
+
+    expect(results).toEqual([
+      {
+        row: { id: "mock-channel-a", name: "production" },
+        inserted: true,
+      },
+      {
+        row: { id: "mock-channel-a", name: "production" },
+        inserted: false,
+      },
+    ]);
+    expect(data.channels).toEqual(
+      new Map([
+        ["mock-channel-a", { id: "mock-channel-a", name: "production" }],
+      ]),
+    );
+  });
+
   it("rolls back all table changes when an atomic batch rejects", async () => {
     const plugin = createPlugin();
     const row = {
@@ -76,6 +108,7 @@ describe("mock database provider", () => {
       git_commit_hash: null,
       message: null,
       channel: "rollback",
+      channel_id: "channel-rollback",
       storage_uri: "storage://bundle.zip",
       target_app_version: "1.0.0",
       fingerprint_hash: null,
@@ -88,35 +121,38 @@ describe("mock database provider", () => {
     };
     await expect(
       plugin.commit({
-        mutations: [
+        changes: [
           {
+            model: "channels",
             operation: "insert",
-            bundleId: row.id,
-            changes: [{ table: "bundles", operation: "insert", row }],
+            row: { id: row.channel_id, name: row.channel },
+            onConflict: "ignore",
           },
           {
+            model: "bundles",
             operation: "insert",
-            bundleId: "invalid-owner",
-            changes: [
-              {
-                table: "bundle_patches",
-                operation: "insert",
-                row: {
-                  id: "invalid-patch",
-                  bundle_id: "invalid-owner",
-                  base_bundle_id: row.id,
-                  base_file_hash: row.file_hash,
-                  patch_file_hash: "patch-hash",
-                  patch_storage_uri: "storage://patch",
-                  order_index: 0,
-                },
-              },
-            ],
+            row,
+          },
+          {
+            model: "bundlePatches",
+            operation: "insert",
+            row: {
+              id: "invalid-patch",
+              bundle_id: "invalid-owner",
+              base_bundle_id: row.id,
+              base_file_hash: row.file_hash,
+              patch_file_hash: "patch-hash",
+              patch_storage_uri: "storage://patch",
+              order_index: 0,
+            },
           },
         ],
       }),
     ).rejects.toThrow("foreign-key");
 
-    await expect(plugin.bundles.findById(row.id)).resolves.toBeNull();
+    await expect(plugin.models.bundles.findById(row.id)).resolves.toBeNull();
+    await expect(plugin.models.channels.list({})).resolves.toEqual({
+      channels: [],
+    });
   });
 });

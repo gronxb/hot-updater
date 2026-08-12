@@ -1,4 +1,5 @@
 import type { Bundle } from "@hot-updater/plugin-core";
+import { bundleToRow } from "@hot-updater/plugin-core";
 
 import type { StandaloneBundleRemote } from "./standaloneBundleRemote";
 import { StandaloneDatabaseError } from "./standaloneHttp";
@@ -19,31 +20,55 @@ const changedBundleIds = (
 
 const createStagedRemote = (
   bundles: Map<string, Bundle>,
-): StandaloneBundleRemote => ({
-  createBundle: async (bundle) => {
-    bundles.set(bundle.id, cloneBundle(bundle));
-  },
-  createBundles: async (createdBundles) => {
-    for (const bundle of createdBundles) {
+  loadChannels: StandaloneBundleRemote["loadChannels"],
+  insertChannel: StandaloneBundleRemote["insertChannel"],
+  deleteChannel: StandaloneBundleRemote["deleteChannel"],
+): StandaloneBundleRemote => {
+  const loadBundleRows = async () => {
+    const channelIds = new Map(
+      (await loadChannels()).map(({ id, name }) => [name, id]),
+    );
+    return [...bundles.values()].map((bundle) => {
+      const channelId = channelIds.get(bundle.channel);
+      if (!channelId) {
+        throw new StandaloneDatabaseError(
+          "invalid-response",
+          `Bundle ${bundle.id} references an unknown Channel ${bundle.channel}.`,
+          500,
+        );
+      }
+      return bundleToRow(bundle, channelId);
+    });
+  };
+  return {
+    createBundle: async (bundle) => {
       bundles.set(bundle.id, cloneBundle(bundle));
-    }
-  },
-  deleteBundle: async (bundleId) => {
-    bundles.delete(bundleId);
-  },
-  loadBundle: async (bundleId) => {
-    const bundle = bundles.get(bundleId);
-    return bundle ? cloneBundle(bundle) : null;
-  },
-  loadBundles: async () => [...bundles.values()].map(cloneBundle),
-  loadBundleWindow: async () => null,
-  loadChannels: async () => [
-    ...new Set([...bundles.values()].map(({ channel }) => channel)),
-  ],
-  updateBundle: async (bundle) => {
-    bundles.set(bundle.id, cloneBundle(bundle));
-  },
-});
+    },
+    createBundles: async (createdBundles) => {
+      for (const bundle of createdBundles) {
+        bundles.set(bundle.id, cloneBundle(bundle));
+      }
+    },
+    deleteBundle: async (bundleId) => {
+      bundles.delete(bundleId);
+    },
+    loadBundle: async (bundleId) => {
+      const bundle = bundles.get(bundleId);
+      return bundle ? cloneBundle(bundle) : null;
+    },
+    loadBundleRow: async (bundleId) =>
+      (await loadBundleRows()).find(({ id }) => id === bundleId) ?? null,
+    loadBundleRows,
+    loadBundles: async () => [...bundles.values()].map(cloneBundle),
+    loadBundleWindow: async () => null,
+    loadChannels,
+    insertChannel,
+    deleteChannel,
+    updateBundle: async (bundle) => {
+      bundles.set(bundle.id, cloneBundle(bundle));
+    },
+  };
+};
 
 const commitBundle = async (
   remote: StandaloneBundleRemote,
@@ -73,7 +98,14 @@ export const runLegacyAggregateTransaction = async <TResult>(
     [...initial].map(([id, bundle]) => [id, cloneBundle(bundle)]),
   );
   const result = await callback(
-    createLegacyCompatibilityImplementation(createStagedRemote(staged)),
+    createLegacyCompatibilityImplementation(
+      createStagedRemote(
+        staged,
+        remote.loadChannels,
+        remote.insertChannel,
+        remote.deleteChannel,
+      ),
+    ),
   );
   const changedIds = changedBundleIds(initial, staged);
   if (changedIds.length > 1) {

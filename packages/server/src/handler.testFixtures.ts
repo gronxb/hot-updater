@@ -44,7 +44,9 @@ export const createApi = () =>
     getBundles: vi.fn<HandlerAPI<TestContext>["getBundles"]>(),
     getChannels: vi
       .fn<HandlerAPI<TestContext>["getChannels"]>()
-      .mockResolvedValue(["production"]),
+      .mockResolvedValue([{ id: "channel-production", name: "production" }]),
+    insertChannel: vi.fn<HandlerAPI<TestContext>["insertChannel"]>(),
+    deleteChannel: vi.fn<HandlerAPI<TestContext>["deleteChannel"]>(),
     insertBundle: vi.fn<HandlerAPI<TestContext>["insertBundle"]>(),
     updateBundleById: vi.fn<HandlerAPI<TestContext>["updateBundleById"]>(),
     deleteBundleById: vi.fn<HandlerAPI<TestContext>["deleteBundleById"]>(),

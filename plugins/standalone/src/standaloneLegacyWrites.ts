@@ -1,8 +1,4 @@
-import {
-  bundleToPatchRows,
-  bundleToRow,
-  rowToBundle,
-} from "@hot-updater/plugin-core";
+import { bundleToPatchRows, rowToBundle } from "@hot-updater/plugin-core";
 
 import type { StandaloneBundleRemote } from "./standaloneBundleRemote";
 import {
@@ -53,8 +49,16 @@ export const createLegacyWrites = (
             409,
           );
         }
+        const ownerRow = await remote.loadBundleRow(owner.id);
+        if (!ownerRow) {
+          throw new StandaloneDatabaseError(
+            "request-failed",
+            `Bundle ${owner.id} was not found.`,
+            404,
+          );
+        }
         await remote.updateBundle(
-          rowToBundle(bundleToRow(owner), [...patches, input.data]),
+          rowToBundle(ownerRow, [...patches, input.data]),
         );
         return input.data;
       }
@@ -64,10 +68,9 @@ export const createLegacyWrites = (
     const bundleId = String(input.where[0]?.value ?? "");
     const current = await remote.loadBundle(bundleId);
     if (!current) return null;
-    const nextRow = {
-      ...bundleToRow(current),
-      ...input.update,
-    };
+    const currentRow = await remote.loadBundleRow(bundleId);
+    if (!currentRow) return null;
+    const nextRow = { ...currentRow, ...input.update };
     await remote.updateBundle(rowToBundle(nextRow, bundleToPatchRows(current)));
     return nextRow;
   },
@@ -86,7 +89,9 @@ export const createLegacyWrites = (
         (row) => !matchesStandaloneWhere(row, input.where),
       );
       if (remaining.length !== patches.length) {
-        await remote.updateBundle(rowToBundle(bundleToRow(bundle), remaining));
+        const row = await remote.loadBundleRow(bundle.id);
+        if (!row) continue;
+        await remote.updateBundle(rowToBundle(row, remaining));
       }
     }
   },

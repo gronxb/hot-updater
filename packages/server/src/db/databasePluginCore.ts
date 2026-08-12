@@ -8,6 +8,7 @@ import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
   createRequestBundleResolver,
+  type ChannelRow,
   type HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 
@@ -94,9 +95,19 @@ export function createDatabasePluginCore<TContext = unknown>(
 
     async getChannels(
       _context?: HotUpdaterContext<TContext>,
-    ): Promise<string[]> {
+    ): Promise<readonly ChannelRow[]> {
       await beforeOperation?.();
       return client.getChannels();
+    },
+
+    async insertChannel(input, _context) {
+      await beforeOperation?.();
+      return database.models.channels.insert(input);
+    },
+
+    async deleteChannel(input, _context) {
+      await beforeOperation?.();
+      return database.models.channels.delete(input);
     },
 
     async getBundles(options, _context?: HotUpdaterContext<TContext>) {

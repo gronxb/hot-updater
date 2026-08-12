@@ -4,8 +4,23 @@ import { hotUpdaterCreateTableOperations } from "./sql";
 
 export const createMongoMigrationOperations = (
   settingsOperation?: MigrationOperation,
+  options: { readonly normalizeChannels?: boolean } = {},
 ): MigrationOperation[] => [
   ...hotUpdaterCreateTableOperations,
+  ...(options.normalizeChannels
+    ? [
+        {
+          description:
+            "Backfill persistent MongoDB channels and bundles.channel_id",
+          type: "custom" as const,
+        },
+        {
+          description:
+            "Validate MongoDB bundle Channel references before constraints",
+          type: "custom" as const,
+        },
+      ]
+    : []),
   ...hotUpdaterSchema.tables
     .filter((table) => !table.internal)
     .map(
@@ -26,5 +41,9 @@ export const createMongoMigrationOperations = (
         }),
       ),
   ),
+  {
+    description: "Require channel and channel_id on MongoDB bundle documents",
+    type: "custom",
+  },
   ...(settingsOperation ? [settingsOperation] : []),
 ];

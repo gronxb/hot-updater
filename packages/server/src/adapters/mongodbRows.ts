@@ -2,6 +2,7 @@ import {
   isDatabaseMetadataObject,
   type BundlePatchRow,
   type BundleRow,
+  type ChannelRow,
 } from "@hot-updater/plugin-core";
 
 export class MongoAdapterDataError extends Error {
@@ -101,6 +102,7 @@ export const parseMongoBundleRow = (
     git_commit_hash: nullableString(input["git_commit_hash"], source),
     message: nullableString(input["message"], source),
     channel: string(input["channel"], source),
+    channel_id: string(input["channel_id"], source),
     storage_uri: string(input["storage_uri"], source),
     target_app_version: targetAppVersion,
     fingerprint_hash: fingerprintHash,
@@ -116,6 +118,17 @@ export const parseMongoBundleRow = (
       input["asset_base_storage_uri"],
       source,
     ),
+  };
+};
+
+export const parseMongoChannelRow = (
+  value: unknown,
+  source = "channels",
+): ChannelRow => {
+  const input = record(value, source);
+  return {
+    id: string(input["id"], source),
+    name: string(input["name"], source),
   };
 };
 

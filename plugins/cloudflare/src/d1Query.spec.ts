@@ -6,6 +6,7 @@ import { countD1Rows, D1QueryResultError } from "./d1Query";
 const countWithResult = (result: readonly unknown[]): Promise<number> => {
   const executor: D1Executor = {
     query: async () => result,
+    batch: async () => [],
   };
 
   return countD1Rows(executor, { model: "bundles" });

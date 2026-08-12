@@ -5,6 +5,11 @@ import type {
   FingerprintGetBundlesArgs,
 } from "@hot-updater/core";
 import type {
+  ChannelDeleteInput,
+  ChannelDeleteResult,
+  ChannelInsertInput,
+  ChannelInsertResult,
+  ChannelRow,
   DatabaseBundleQueryOptions,
   HotUpdaterContext,
 } from "@hot-updater/plugin-core";
@@ -41,7 +46,17 @@ export interface HandlerAPI<TContext = unknown> {
     bundleId: string,
     context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
-  getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
+  getChannels: (
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<readonly ChannelRow[]>;
+  insertChannel: (
+    input: ChannelInsertInput,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<ChannelInsertResult>;
+  deleteChannel: (
+    input: ChannelDeleteInput,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<ChannelDeleteResult>;
 }
 
 export interface HandlerOptions {
@@ -69,7 +84,9 @@ export interface HandlerRoutes {
   /**
    * Mounts the bundle management endpoints used by `standaloneRepository`:
    *
-   * - `GET /api/bundles/channels`
+   * - `GET /api/channels`
+   * - `POST /api/channels`
+   * - `DELETE /api/channels/:id`
    * - `GET /api/bundles/:id`
    * - `GET /api/bundles`
    * - `POST /api/bundles`

@@ -55,7 +55,7 @@ export const getSqlType = (
     if (type === "bool") return "bit";
     if (type === "integer") return "int";
     if (type === "float") return "float";
-    if (type.startsWith("varchar")) return type;
+    if (type.startsWith("varchar")) return type.replace("varchar", "nvarchar");
     return "nvarchar(max)";
   }
   if (type === "uuid") return "uuid";
@@ -114,12 +114,21 @@ export const sqlColumnDefinition = (
     column.primaryKey ? "primary key" : undefined,
     column.nullable ? undefined : "not null",
   ].filter(Boolean);
+  const collation = column.providerCollations?.[provider];
+  const collationClause = collation
+    ? provider === "mysql"
+      ? `character set utf8mb4 collate ${collation}`
+      : `collate ${collation}`
+    : undefined;
   return (
     [
       sqlColumnName(table, column, provider),
       getSqlType(column.type, provider),
+      collationClause,
       ...constraints,
-    ].join(" ") + sqlDefaultClause(column, provider)
+    ]
+      .filter(Boolean)
+      .join(" ") + sqlDefaultClause(column, provider)
   );
 };
 
@@ -150,14 +159,16 @@ export const createIndexSql = (
 export const createForeignKeySql = (
   table: HotUpdaterTableSchema,
   foreignKey: HotUpdaterForeignKeySchema,
+  provider?: ORMSQLProvider,
 ): string =>
-  `alter table ${table.ormName} add constraint ${foreignKey.name} foreign key (${foreignKey.columns.join(", ")}) references ${foreignKey.referencedTable}(${foreignKey.referencedColumns.join(", ")}) on update ${foreignKey.onUpdate} on delete ${foreignKey.onDelete}`;
+  `alter table ${table.ormName} add constraint ${foreignKey.name} foreign key (${foreignKey.columns.join(", ")}) references ${foreignKey.referencedTable}(${foreignKey.referencedColumns.join(", ")}) on update ${provider === "mssql" && foreignKey.onUpdate === "restrict" ? "no action" : foreignKey.onUpdate} on delete ${provider === "mssql" && foreignKey.onDelete === "restrict" ? "no action" : foreignKey.onDelete}`;
 
 export const createCheckSql = (
   table: HotUpdaterTableSchema,
   check: HotUpdaterCheckSchema,
+  provider?: ORMSQLProvider,
 ): string =>
-  `alter table ${table.ormName} add constraint ${check.name} check (${check.expression})`;
+  `alter table ${table.ormName} add constraint ${check.name} check (${(provider && check.providerExpressions?.[provider]) ?? check.expression})`;
 
 const inlineSqlChecks = (
   table: HotUpdaterTableSchema,
@@ -166,7 +177,10 @@ const inlineSqlChecks = (
   provider === "sqlite"
     ? (table.checks ?? [])
         .filter((check) => check.sqliteInline)
-        .map((check) => `constraint ${check.name} check (${check.expression})`)
+        .map(
+          (check) =>
+            `constraint ${check.name} check (${check.providerExpressions?.sqlite ?? check.expression})`,
+        )
     : [];
 
 export const createTableStatement = (
@@ -196,7 +210,7 @@ export const createForeignKeySqlStatements = (
   if (relationMode !== "foreign-keys" || provider === "sqlite") return [];
   return hotUpdaterSchema.tables.flatMap((table) =>
     (table.foreignKeys ?? []).map((foreignKey) =>
-      createForeignKeySql(table, foreignKey),
+      createForeignKeySql(table, foreignKey, provider),
     ),
   );
 };
@@ -216,7 +230,9 @@ export const createTableSql = (
   ...(provider === "sqlite"
     ? []
     : hotUpdaterSchema.tables.flatMap((table) =>
-        (table.checks ?? []).map((check) => createCheckSql(table, check)),
+        (table.checks ?? []).map((check) =>
+          createCheckSql(table, check, provider),
+        ),
       )),
   ...createForeignKeySqlStatements(provider, relationMode),
 ];

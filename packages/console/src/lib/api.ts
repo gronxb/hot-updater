@@ -1,4 +1,8 @@
-import type { Bundle } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  ChannelDeleteInput,
+  ChannelInsertInput,
+} from "@hot-updater/plugin-core";
 import {
   type QueryClient,
   type QueryKey,
@@ -8,7 +12,9 @@ import {
 } from "@tanstack/react-query";
 
 import {
+  createChannel as createChannelApi,
   createBundle as createBundleApi,
+  deleteChannel as deleteChannelApi,
   deleteBundle as deleteBundleApi,
   getBundle,
   getBundleChildCounts,
@@ -167,6 +173,30 @@ export function useBundleDownloadUrlMutation() {
   });
 }
 
+export function useCreateChannelMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: ChannelInsertInput) =>
+      createChannelApi({ data: input }).then((response) => response.data),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.channels });
+    },
+  });
+}
+
+export function useDeleteChannelMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: ChannelDeleteInput) =>
+      deleteChannelApi({ data: input }).then((response) => response.data),
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.channels });
+    },
+  });
+}
+
 export function useUpdateBundleMutation() {
   const queryClient = useQueryClient();
 
@@ -258,7 +288,6 @@ export function useDeleteBundleMutation() {
 
       invalidateInBackground(queryClient, queryKeys.bundles.all);
       invalidateInBackground(queryClient, queryKeys.bundleChildren.all);
-      invalidateInBackground(queryClient, queryKeys.channels);
     },
   });
 }

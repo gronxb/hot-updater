@@ -6,17 +6,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   queryKeys,
+  useCreateChannelMutation,
+  useDeleteChannelMutation,
   useDeleteBundleMutation,
   useUpdateBundleMutation,
 } from "./api";
 import {
+  createChannel as createChannelApi,
+  deleteChannel as deleteChannelApi,
   deleteBundle as deleteBundleApi,
   updateBundle as updateBundleApi,
 } from "./api-rpc";
 
 vi.mock("./api-rpc", () => ({
   createBundle: vi.fn(),
+  createChannel: vi.fn(),
   deleteBundle: vi.fn(),
+  deleteChannel: vi.fn(),
   getBundle: vi.fn(),
   getBundleChildCounts: vi.fn(),
   getBundleChildren: vi.fn(),
@@ -53,6 +59,83 @@ const timeout = (ms: number) =>
   new Promise((resolve) => {
     setTimeout(() => resolve("timeout"), ms);
   });
+
+describe("channel mutations", () => {
+  let queryClient: QueryClient;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    queryClient = new QueryClient({
+      defaultOptions: {
+        mutations: { retry: false },
+        queries: { retry: false },
+      },
+    });
+  });
+
+  afterEach(() => {
+    queryClient.clear();
+  });
+
+  const createWrapper = () =>
+    function Wrapper({ children }: PropsWithChildren) {
+      return (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      );
+    };
+
+  it("forwards the canonical channel insert and refreshes channel queries", async () => {
+    const input = {
+      row: { id: "channel-beta", name: "beta" },
+      onConflict: "returnExisting" as const,
+    };
+    vi.mocked(createChannelApi).mockResolvedValue({
+      data: { row: input.row, inserted: true },
+    });
+    const invalidateQueries = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const { result } = renderHook(() => useCreateChannelMutation(), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync(input);
+    });
+
+    expect(createChannelApi).toHaveBeenCalledWith({ data: input });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.channels,
+    });
+  });
+
+  it("preserves a not-empty delete result and refreshes channels", async () => {
+    vi.mocked(deleteChannelApi).mockResolvedValue({
+      data: { deleted: false, reason: "not_empty" },
+    });
+    const invalidateQueries = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const { result } = renderHook(() => useDeleteChannelMutation(), {
+      wrapper: createWrapper(),
+    });
+
+    let deleteResult: Awaited<ReturnType<typeof result.current.mutateAsync>>;
+    await act(async () => {
+      deleteResult = await result.current.mutateAsync({ id: "channel-beta" });
+    });
+
+    expect(deleteResult!).toEqual({ deleted: false, reason: "not_empty" });
+    expect(deleteChannelApi).toHaveBeenCalledWith({
+      data: { id: "channel-beta" },
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.channels,
+    });
+  });
+});
 
 describe("useUpdateBundleMutation", () => {
   let queryClient: QueryClient;
@@ -204,9 +287,6 @@ describe("useDeleteBundleMutation", () => {
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: queryKeys.bundleChildren.all,
     });
-    expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: queryKeys.channels,
-    });
   });
 
   it("does not wait for background invalidations after deleting cached bundle data", async () => {
@@ -260,6 +340,6 @@ describe("useDeleteBundleMutation", () => {
         totalPages: 1,
       },
     });
-    expect(invalidateQueries).toHaveBeenCalledTimes(3);
+    expect(invalidateQueries).toHaveBeenCalledTimes(2);
   });
 });
