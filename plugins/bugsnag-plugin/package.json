@@ -1,0 +1,58 @@
+{
+  "name": "@hot-updater/bugsnag-plugin",
+  "version": "0.35.12",
+  "type": "module",
+  "description": "React Native OTA solution for self-hosted",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "keywords": [
+    "react-native",
+    "react-native-code-push",
+    "code-push",
+    "bugsnag",
+    "eas",
+    "eas-update",
+    "expo",
+    "expo-update",
+    "self-hosted"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "tsdown",
+    "test:type": "tsc --noEmit"
+  },
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "bugs": {
+    "url": "https://github.com/gronxb/hot-updater/issues"
+  },
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
+    "execa": "catalog:tools"
+  },
+  "devDependencies": {
+    "@bugsnag/cli": "~3.10.4",
+    "@types/node": "catalog:"
+  },
+  "peerDependencies": {
+    "@bugsnag/cli": "*"
+  }
+}
