@@ -1,0 +1,443 @@
+---
+title: "Database Plugin v2 Contract Specification"
+description: The normative 1.0 contract for database models, queries, commits, and channels.
+icon: FileCheck
+---
+
+## Status
+
+This document is the normative design for the Hot Updater 1.0 database
+plugin contract. The implementation starts in stacked PR #1114 and is
+propagated through every dependent database, runtime, and storage PR.
+
+The contract intentionally permits breaking changes. Superseded shapes are
+removed instead of being kept as compatibility aliases.
+
+## Decision
+
+`createDatabasePlugin` exposes logical models, cross-model queries, one
+declarative atomic commit boundary, and optional cleanup:
+
+```ts
+createDatabasePlugin({
+  name,
+
+  models: {
+    bundles,
+    bundlePatches,
+    channels,
+    analytics,
+    clientAccessKeys,
+  },
+
+  queries: {
+    getUpdateInfo,
+  },
+
+  commit,
+  dispose,
+});
+```
+
+`models` names logical Hot Updater domains. It does not require a provider to
+use one physical table per model. DynamoDB may use a single-table layout,
+Firestore may use collections, and a relational provider may use normalized
+tables.
+
+`queries` contains optimized reads that combine models or apply Hot Updater
+policy. `commit` contains declarative writes that must become visible
+atomically. Provider-specific clients, bindings, transaction objects, and
+runtime contexts are not part of the public contract.
+
+The following public members are removed:
+
+- top-level `bundles`, `bundlePatches`, `analytics`, and `clientAccessKeys`;
+- top-level `getChannels` and `getUpdateInfo`;
+- bundle-specific `DatabaseBundleMutation` and `missingBundleId` commit
+  results;
+- public callback transactions, `commitBatch`, generic CRUD, factories,
+  runtime contexts, and capability registries.
+
+## Public interfaces
+
+All official models are required. `queries.getUpdateInfo` and `dispose` are
+optional optimizations or lifecycle hooks.
+
+```ts
+interface DatabasePlugin {
+  readonly name: string;
+  readonly models: DatabaseModels;
+  readonly queries: DatabaseQueries;
+  commit(input: DatabaseCommit): Promise<DatabaseCommitResult>;
+  readonly dispose?: () => Promise<void>;
+}
+
+interface DatabaseModels {
+  readonly bundles: BundleModel;
+  readonly bundlePatches: BundlePatchModel;
+  readonly channels: ChannelModel;
+  readonly analytics: AnalyticsModel;
+  readonly clientAccessKeys: ClientAccessKeyModel;
+}
+
+interface DatabaseQueries {
+  readonly getUpdateInfo?: (
+    input: GetBundlesArgs,
+  ) => Promise<UpdateInfo | null>;
+}
+```
+
+Model methods retain domain semantics. They do not expose a provider's raw
+query language.
+
+```ts
+interface BundleModel {
+  findById(id: string): Promise<BundleRow | null>;
+  findMany(input: BundleModelQuery): Promise<readonly BundleRow[]>;
+  count(where?: DatabaseBundleQueryWhere): Promise<number>;
+}
+
+interface BundlePatchModel {
+  findByBundleIds(
+    bundleIds: readonly string[],
+  ): Promise<readonly BundlePatchRow[]>;
+}
+
+interface ChannelRow {
+  readonly id: string;
+  readonly name: string;
+}
+
+interface ChannelModel {
+  insert(input: {
+    readonly row: ChannelRow;
+    readonly onConflict: "returnExisting";
+  }): Promise<{
+    readonly row: ChannelRow;
+    readonly inserted: boolean;
+  }>;
+  list(input: {}): Promise<{
+    readonly channels: readonly ChannelRow[];
+  }>;
+}
+
+interface AnalyticsModel {
+  append(row: BundleEventRow): Promise<void>;
+  scan(input: AnalyticsScanInput): Promise<readonly BundleEventRow[]>;
+}
+
+interface ClientAccessKeyModel {
+  create(row: ClientAccessKeyRow): Promise<"created" | "existing">;
+  findByHash(hash: string): Promise<ClientAccessKeyRow | null>;
+  list(): Promise<readonly ClientAccessKeyRow[]>;
+  revoke(input: {
+    readonly id: string;
+    readonly revokedAtMs: number;
+  }): Promise<ClientAccessKeyRow | null>;
+}
+```
+
+`ChannelModel.list` returns rows ordered by `name` ascending.
+`ChannelModel.insert` is concurrency-safe by the unique channel name. With
+`onConflict: "returnExisting"`, it returns the canonical stored row and
+`inserted: false` instead of the caller's losing candidate ID.
+
+## Channel semantics
+
+Channel is a first-class 1.0 domain, not a distinct projection calculated
+from the current bundle set.
+
+- Deploying or moving a bundle first calls `channels.insert` with
+  `onConflict: "returnExisting"`, then commits the returned canonical channel
+  ID with the bundle change.
+- Removing the last bundle from a channel does not remove the channel.
+- Empty channels are valid and remain visible from `ChannelModel.list`.
+- Channel deletion is not part of the initial 1.0 contract. It can be added
+  later with explicit reference checks and product-level authorization.
+- `channels` stores an opaque `id` and a unique `name`.
+- Bundle rows keep the existing `channel` string for backward compatibility
+  and add `channel_id`. New writes and channel moves always write both.
+- `bundles.channel_id` references `channels.id`. The referenced row's `name`
+  must equal `bundles.channel`; providers reject and roll back mismatched
+  dual writes.
+- Analytics event rows keep their channel value as historical event data and
+  do not require a live channel foreign key.
+
+This makes channel reads proportional to the number of channels rather than
+the number of bundles. It also gives every provider the same stable semantics
+without requiring `DISTINCT`, a bundle scan, or a provider-only materialized
+projection.
+
+## Declarative commit
+
+`commit` is not a bundle method. It is the runtime-neutral atomic write
+boundary for all official models.
+
+```ts
+interface DatabaseCommit {
+  readonly changes: readonly DatabaseChange[];
+}
+
+type DatabaseChange =
+  | {
+      readonly model: "bundles";
+      readonly operation: "insert";
+      readonly row: BundleRow;
+    }
+  | {
+      readonly model: "bundles";
+      readonly operation: "update";
+      readonly where: { readonly id: string };
+      readonly update: BundleRowUpdate;
+    }
+  | {
+      readonly model: "bundles";
+      readonly operation: "delete";
+      readonly where: { readonly id: string };
+    }
+  | {
+      readonly model: "bundlePatches";
+      readonly operation: "insert";
+      readonly row: BundlePatchRow;
+    }
+  | {
+      readonly model: "bundlePatches";
+      readonly operation: "delete";
+      readonly where: { readonly bundleId: string };
+    }
+  | {
+      readonly model: "channels";
+      readonly operation: "insert";
+      readonly row: ChannelRow;
+      readonly onConflict: "ignore";
+    }
+  | {
+      readonly model: "analytics";
+      readonly operation: "insert";
+      readonly row: BundleEventRow;
+    }
+  | {
+      readonly model: "clientAccessKeys";
+      readonly operation: "insert";
+      readonly row: ClientAccessKeyRow;
+      readonly onConflict: "ignore";
+    }
+  | {
+      readonly model: "clientAccessKeys";
+      readonly operation: "update";
+      readonly where: { readonly id: string };
+      readonly update: { readonly revokedAtMs: number };
+    };
+```
+
+The result distinguishes a successful commit from an expected precondition
+failure without naming a particular model:
+
+```ts
+type DatabaseCommitResult =
+  | { readonly committed: true }
+  | {
+      readonly committed: false;
+      readonly conflict: {
+        readonly changeIndex: number;
+        readonly reason: "not_found";
+      };
+    };
+```
+
+The failed change is identified by its index in `DatabaseCommit.changes`.
+Callers already own that change and can produce a domain-specific error such
+as `DatabaseBundleNotFoundError` without putting bundle concepts into the
+commit result. `committed: false` means no change in the envelope became
+visible. If a provider cannot identify the failed source index precisely, it
+rejects instead of returning an ambiguous conflict.
+
+An empty commit succeeds. Channel and access-key inserts carrying
+`onConflict: "ignore"` are idempotent. A missing bundle update or missing
+access-key revoke returns a `not_found` conflict. Constraint violations,
+invalid input, unavailable storage, and provider failures reject the promise.
+Deleting a missing row is idempotent and succeeds. Insert uniqueness errors
+reject unless that change explicitly carries `onConflict: "ignore"`.
+
+`insert`, `update`, and `delete` are the commit primitives. Domain method
+names such as `AnalyticsModel.append` do not leak into the commit algebra.
+`onConflict: "ignore"` is present only on insert variants whose model contract
+defines an idempotency key: `channels.name` and `clientAccessKeys.hash`.
+It never substitutes a losing Channel candidate ID with the existing ID and
+does not return the existing row. Callers that need a canonical Channel ID
+must use `models.channels.insert({ onConflict: "returnExisting" })` first.
+
+Every change in one commit must become visible together. A provider with a
+native transaction or batch maps the declaration directly. The internal
+authoring adapter may use a provider callback transaction, but that callback
+is never exposed by `DatabasePlugin`. A provider without an atomic primitive
+must reject a multi-change commit before applying its first write.
+
+Changes are evaluated in array order. A bundle insert or channel-changing
+bundle update must reference a Channel row that exists at the start of the
+commit or was inserted by an earlier change in the same commit. The bundle's
+`channel_id` and `channel` must match that row's `id` and `name`. Violations
+reject the complete commit before any change becomes visible.
+
+A Channel insert with `onConflict: "ignore"` may precede a bundle change only
+when the caller already knows that the candidate Channel ID is canonical. It
+must not be used to guess an ID from a unique channel name.
+
+The normal deployment path resolves the canonical ID before the bundle
+commit. Leaving an empty Channel behind when a later bundle commit fails is
+valid by the Channel lifecycle above and does not violate atomicity:
+
+```ts
+const { row: channel } = await database.models.channels.insert({
+  row: { id: uuidv7(), name: bundle.channel },
+  onConflict: "returnExisting",
+});
+
+await database.commit({
+  changes: [
+    {
+      model: "bundles",
+      operation: "insert",
+      row: {
+        ...bundle,
+        channel: channel.name,
+        channel_id: channel.id,
+      },
+    },
+    ...patches.map((row) => ({
+      model: "bundlePatches" as const,
+      operation: "insert" as const,
+      row,
+    })),
+  ],
+});
+```
+
+## Physical schema and migration
+
+The canonical SQL schema adds:
+
+```sql
+CREATE TABLE channels (
+  id text PRIMARY KEY NOT NULL,
+  name text NOT NULL UNIQUE
+);
+
+ALTER TABLE bundles ADD COLUMN channel_id text;
+```
+
+Core schema `0.38.0` creates one Channel row per distinct legacy
+`bundles.channel`, generating each opaque ID exactly once. It then backfills
+`bundles.channel_id`, verifies that every bundle has a matching Channel, makes
+`channel_id` non-null, and adds the foreign key to `channels.id`. The existing
+`bundles.channel` column remains non-null and is not renamed or removed.
+
+The backfill preserves channel names exactly. It runs before adding the
+bundle foreign key, is idempotent, and records schema version `0.38.0` only
+after the table, backfill, unique name constraint, non-null constraint, and
+foreign key are complete.
+
+Provider mappings:
+
+| Provider                                      | Channel storage                       | Concurrent insert                                  |
+| --------------------------------------------- | ------------------------------------- | -------------------------------------------------- |
+| PostgreSQL, Supabase, D1, server SQL adapters | normalized `channels` table           | unique-name insert/read inside the transaction     |
+| DynamoDB                                      | channel item in the Hot Updater table | transactional update/put with idempotent semantics |
+| Firestore                                     | document in the `channels` collection | transaction create-or-read                         |
+| MongoDB                                       | document in the `channels` collection | unique index plus upsert                           |
+| Standalone                                    | canonical server channel route        | server owns persistence and commit                 |
+
+AWS and Firebase initialization must create or migrate channel storage.
+Existing installations backfill channel rows from bundle data before serving
+the new route.
+
+## Query and route boundary
+
+`queries.getUpdateInfo` remains optional because it combines bundle and patch
+data with OTA update policy. If omitted, Hot Updater computes the same result
+through model reads.
+
+Channel listing is no longer a cross-model query, so `getChannels` is removed
+from `queries`. The canonical server route becomes:
+
+```text
+GET /api/channels
+```
+
+It returns:
+
+```json
+{
+  "data": {
+    "channels": [
+      {
+        "id": "0198f3a2-7b18-7000-8000-000000000001",
+        "name": "production"
+      }
+    ]
+  }
+}
+```
+
+The old `/api/bundles/channels` route and standalone route override are
+removed. CLI and Console consumers read `models.channels.list({})` through
+the canonical server boundary. Route availability follows the existing
+bundle-management feature because channels are used by that management
+surface; it does not add a new `createHotUpdater` feature flag.
+
+## Runtime and provider boundaries
+
+The contract contains no Node.js, Cloudflare Worker, filesystem, environment,
+or provider SDK type. Runtime-specific package subpaths construct the same
+logical contract with their own bindings. For example, the root Cloudflare
+entry remains usable from `hot-updater.config.ts`, while the worker subpath
+builds the same D1 models from `cloudflare:env` bindings inside
+`createHotUpdater`.
+
+Standalone remains a CLI-side remote management repository, not a complete
+`DatabasePlugin`: it exposes remote bundle, patch, and Channel operations but
+does not pretend to own server Analytics or client access-key persistence.
+The self-hosted server created with `createHotUpdater` owns the complete real
+database implementation, schema, features, and routes.
+
+## Stacked rollout
+
+The contract lands bottom-up so every PR remains reviewable:
+
+1. **#1114** — public types, core adapter/client, channels model, generic
+   commit, conformance tests, and contract documentation.
+2. **#1119** — Analytics model and server/Console integration.
+3. **#1120** — client access-key model and authentication integration.
+4. **#1132** — DynamoDB schema, channel items, and native generic commit.
+5. **#1139** — removal of blob/S3 metadata database paths under the final
+   model contract.
+6. **#1140** — runtime subpaths, Standalone, features, and canonical routes.
+7. **#1141** — storage v2 integration on top of the completed database
+   contract.
+
+No descendant keeps aliases for the previous flat members or bundle-specific
+commit envelope.
+
+## Acceptance criteria
+
+The stack is complete only when all of the following are proven:
+
+- the public type surface has exactly `name`, `models`, `queries`, `commit`,
+  and optional `dispose`;
+- every complete database provider exposes all five models and no superseded
+  flat members; Standalone remains an explicitly narrower remote repository;
+- every bundle insert or channel move inserts or resolves the target Channel;
+- every new bundle write keeps `channel` and `channel_id` consistent, while
+  existing `channel` readers remain compatible;
+- channel listing reads only channel rows and remains stable after the last
+  bundle in a channel is deleted;
+- a multi-model commit is atomic, including conflict rollback;
+- non-atomic providers reject before the first write;
+- root and runtime package subpaths return the same logical contract;
+- Standalone and self-hosted `createHotUpdater` use `GET /api/channels` with
+  the new response shape;
+- schema migrations backfill existing channels without losing bundles;
+- focused conformance tests and the full lint, type, unit, build, and
+  integration suites pass on every affected stack branch;
+- AWS initialization and full `hot-updater-agent` verification pass, and the
+  Console Analytics tab shows the verified events.
