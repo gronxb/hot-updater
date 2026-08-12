@@ -31,7 +31,7 @@ export type HotUpdaterAPI = RuntimeHotUpdaterAPI;
 export interface CreateHotUpdaterFeatures extends HandlerFeatures {
   /**
    * Mount Analytics ingestion and query routes backed by
-   * `database.analytics`. Protected queries are the default.
+   * `database.models.analytics`. Protected queries are the default.
    */
   readonly analytics?:
     | boolean
