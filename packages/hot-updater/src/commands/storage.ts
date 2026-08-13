@@ -28,17 +28,19 @@ import { printBanner } from "@/utils/printBanner";
 import { ui } from "../utils/cli-ui";
 
 const BUNDLE_PAGE_SIZE = 10_000;
+const STANDALONE_BUNDLE_PAGE_SIZE = 100;
+const STANDALONE_DATABASE_NAME = "standalone-repository";
 const MANIFEST_READ_CONCURRENCY = 4;
 const UUID_V7_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CONTENT_ADDRESSED_ASSET_KEY_RE =
   /^assets\/sha256\/[0-9a-f]{2}\/[0-9a-f]{64}(?:\.[^/]+)?$/i;
 
-export const DEFAULT_STORAGE_PRUNE_MIN_AGE_MS = 24 * 60 * 60 * 1000;
+export const DEFAULT_STORAGE_PRUNE_PROTECTION_MS = 24 * 60 * 60 * 1000;
 
 export interface StoragePruneOptions {
   dryRun?: boolean;
-  minAge?: number;
+  protectNewerThan?: number;
   yes?: boolean;
 }
 
@@ -56,7 +58,7 @@ interface PruneCandidate extends StorageObject {
   reason: "asset" | "bundle";
 }
 
-export function parseStoragePruneMinAge(value: string): number {
+export function parseStoragePruneProtection(value: string): number {
   const match = value.trim().match(/^(\d+)(m|h|d|w)$/i);
   if (!match) {
     throw new Error("must use a duration such as 30m, 24h, or 7d");
@@ -102,6 +104,32 @@ function formatDuration(value: number): string {
     return `${value / hour}h`;
   }
   return `${value / (60 * 1000)}m`;
+}
+
+type PruneCandidateColumn = "key" | "modified" | "size" | "type";
+
+const PRUNE_CANDIDATE_COLUMNS = [
+  { key: "type", label: "Type" },
+  { key: "size", label: "Size" },
+  { key: "modified", label: "Modified", format: ui.muted },
+  { key: "key", label: "Key", format: ui.path },
+] as const satisfies readonly {
+  key: PruneCandidateColumn;
+  label: string;
+  format?: (value: string) => string;
+}[];
+
+function formatPruneCandidateTable(candidates: readonly PruneCandidate[]) {
+  const rows: Record<PruneCandidateColumn, string>[] = candidates.map(
+    (candidate) => ({
+      key: candidate.key,
+      modified: candidate.lastModifiedAt?.toISOString() ?? "-",
+      size: formatBytes(candidate.size),
+      type: candidate.reason === "asset" ? "shared asset" : "bundle data",
+    }),
+  );
+
+  return ui.table(PRUNE_CANDIDATE_COLUMNS, rows);
 }
 
 function normalizeStorageUri(storageUri: string): string {
@@ -197,12 +225,16 @@ async function forEachWithConcurrency<T>(
 async function loadAllBundles(databasePlugin: DatabasePlugin) {
   const bundles: Bundle[] = [];
   const seenCursors = new Set<string>();
+  const pageSize =
+    databasePlugin.name === STANDALONE_DATABASE_NAME
+      ? STANDALONE_BUNDLE_PAGE_SIZE
+      : BUNDLE_PAGE_SIZE;
   let after: string | undefined;
 
   while (true) {
     const { data, pagination } = await databasePlugin.getBundles({
       cursor: after ? { after } : undefined,
-      limit: BUNDLE_PAGE_SIZE,
+      limit: pageSize,
       orderBy: { direction: "desc", field: "id" },
     });
     bundles.push(...data);
@@ -445,9 +477,12 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
     throw new Error("Storage prune --dry-run cannot be used with --yes.");
   }
 
-  const minAge = options.minAge ?? DEFAULT_STORAGE_PRUNE_MIN_AGE_MS;
-  if (!Number.isFinite(minAge) || minAge < 0) {
-    throw new Error("Storage prune min age must be a non-negative duration.");
+  const protectNewerThan =
+    options.protectNewerThan ?? DEFAULT_STORAGE_PRUNE_PROTECTION_MS;
+  if (!Number.isFinite(protectNewerThan) || protectNewerThan < 0) {
+    throw new Error(
+      "Storage prune protection must be a non-negative duration.",
+    );
   }
 
   const config = await loadConfig(null);
@@ -497,7 +532,7 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
       referencedAssetUris: referencedUris,
     });
 
-    const cutoff = Date.now() - minAge;
+    const cutoff = Date.now() - protectNewerThan;
     let candidates = unreferenced.filter((object) => {
       const modifiedAt = object.lastModifiedAt?.getTime();
       return modifiedAt !== undefined && modifiedAt <= cutoff;
@@ -538,7 +573,7 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
           ui.kv("Bundles", bundles.length),
           ui.kv("Manifests", manifestCount),
           ui.kv("Objects", objects.length),
-          ui.kv("Min age", formatDuration(minAge)),
+          ui.kv("Protect newer", formatDuration(protectNewerThan)),
           ui.kv("Bundle data", bundleObjects.length),
           ui.kv("Shared assets", assetObjects.length),
           ui.kv("Reclaimable", formatBytes(candidateBytes)),
@@ -555,8 +590,13 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
     }
 
     if (!options.yes) {
+      p.log.message(
+        ui.block("Eligible objects", [formatPruneCandidateTable(candidates)]),
+      );
       p.log.info(
-        `Dry run only. Delete with ${ui.command("hot-updater storage prune --yes")}.`,
+        `Dry run only. Delete with ${ui.command(
+          `hot-updater storage prune --protect-newer-than ${formatDuration(protectNewerThan)} --yes`,
+        )}.`,
       );
       return;
     }

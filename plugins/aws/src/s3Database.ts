@@ -153,14 +153,27 @@ function isLegacyBundleStorageDirectoryPrefix(prefix: string) {
   );
 }
 
-function validateS3Channel(channel: string) {
-  if (isLegacyBundleStorageDirectoryPrefix(channel)) {
-    throw new Error(`S3 database channel cannot use a UUIDv7 name: ${channel}`);
-  }
-}
-
 function isUpdateJsonKey(key: string) {
   return key.endsWith(`${S3_DIRECTORY_DELIMITER}update.json`);
+}
+
+function isUuidChannelUpdateJsonKey(
+  key: string,
+  rootPrefix: string,
+  uuidChannels: ReadonlySet<string>,
+) {
+  const [channel, platform, target, fileName, ...rest] =
+    getRelativeDirectoryPrefix(key, rootPrefix).split(S3_DIRECTORY_DELIMITER);
+
+  return (
+    channel !== undefined &&
+    uuidChannels.has(channel) &&
+    (platform === "ios" || platform === "android") &&
+    target !== undefined &&
+    target.length > 0 &&
+    fileName === "update.json" &&
+    rest.length === 0
+  );
 }
 
 async function mapWithConcurrency<T, TResult>(
@@ -246,7 +259,10 @@ async function listObjectsInS3(
 ) {
   const normalizedRootPrefix = normalizeDirectoryPrefix(rootPrefix);
 
-  const listPrefix = async (currentPrefix: string) => {
+  const listPrefix = async (
+    currentPrefix: string,
+    delimiter: string | null = S3_DIRECTORY_DELIMITER,
+  ) => {
     let continuationToken: string | undefined;
     const keys: string[] = [];
     const commonPrefixes = new Set<string>();
@@ -256,7 +272,7 @@ async function listObjectsInS3(
         new ListObjectsV2Command({
           Bucket: bucketName,
           Prefix: currentPrefix,
-          Delimiter: S3_DIRECTORY_DELIMITER,
+          Delimiter: delimiter ?? undefined,
           ContinuationToken: continuationToken,
         }),
       );
@@ -293,11 +309,15 @@ async function listObjectsInS3(
       ];
     }
 
+    const uuidPrefixes =
+      depth === 0
+        ? commonPrefixes.filter(isLegacyBundleStorageDirectoryPrefix)
+        : [];
+    const uuidPrefixSet = new Set(uuidPrefixes);
     const nextPrefixes =
       depth === 0
         ? commonPrefixes.filter(
-            (commonPrefix) =>
-              !isLegacyBundleStorageDirectoryPrefix(commonPrefix),
+            (commonPrefix) => !uuidPrefixSet.has(commonPrefix),
           )
         : depth === 1
           ? commonPrefixes.filter(isPlatformDirectoryPrefix)
@@ -307,7 +327,34 @@ async function listObjectsInS3(
       S3_LIST_OBJECTS_CONCURRENCY,
       (nextPrefix) => collectUpdateJsonKeys(nextPrefix),
     );
-    return nestedKeys.flat();
+    const uuidChannels = new Set(
+      uuidPrefixes
+        .map(getLastDirectorySegment)
+        .filter((segment): segment is string => !!segment),
+    );
+    // UUIDv7 channels collide with legacy bundle directory names. Scan only
+    // their leading key ranges so assets and the new bundles prefix stay out
+    // of the compatibility fallback, without traversing every UUID directory.
+    const uuidScanPrefixes = Array.from(
+      new Set(
+        Array.from(
+          uuidChannels,
+          (channel) => `${normalizedRootPrefix}${channel[0]}`,
+        ),
+      ),
+    );
+    const uuidChannelKeys = (
+      await mapWithConcurrency(
+        uuidScanPrefixes,
+        S3_LIST_OBJECTS_CONCURRENCY,
+        async (scanPrefix) => (await listPrefix(scanPrefix, null)).keys,
+      )
+    )
+      .flat()
+      .filter((key) =>
+        isUuidChannelUpdateJsonKey(key, normalizedRootPrefix, uuidChannels),
+      );
+    return [...nestedKeys.flat(), ...uuidChannelKeys];
   };
 
   const normalizedPrefix = normalizeDirectoryPrefix(prefix);
@@ -450,7 +497,6 @@ export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
         deleteObjectInS3(client, bucketName, toStorageKey(key)),
       shouldSkipLoadObjectError: (error) =>
         error instanceof Error && error.name === "S3ArchivedObjectError",
-      validateChannel: validateS3Channel,
       invalidatePaths: (pathsToInvalidate: string[]) => {
         if (
           cloudfrontClient &&

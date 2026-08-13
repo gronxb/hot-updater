@@ -583,6 +583,7 @@ describe("s3Database plugin", () => {
     );
 
     seedUpdateManifests([bundle]);
+    fakeStore["assets/sha256/aa/shared-asset.png"] = "asset";
     for (let index = 0; index < 100; index += 1) {
       const bundleId = `0198a408-8f13-7d9b-8df4-${String(index).padStart(12, "0")}`;
       fakeStore[`${bundleId}/bundle.zip`] = "zip";
@@ -598,12 +599,17 @@ describe("s3Database plugin", () => {
       data: [bundle],
     });
 
-    expect(listedObjectPrefixes).toEqual([
-      "",
-      "bundles/",
-      "production/",
-      "production/ios/",
-    ]);
+    expect(listedObjectRequests).toContainEqual({ delimiter: "/", prefix: "" });
+    expect(listedObjectRequests).toContainEqual({ prefix: "0" });
+    expect(listedObjectRequests).not.toContainEqual({ prefix: "" });
+    expect(listedObjectPrefixes).toContain("bundles/");
+    expect(listedObjectPrefixes).toContain("production/");
+    expect(listedObjectPrefixes).toContain("production/ios/");
+    expect(
+      listedObjectPrefixes.some((prefix) =>
+        prefix.startsWith("0198a408-8f13-7d9b-8df4-"),
+      ),
+    ).toBe(false);
   });
 
   it("preserves assets and bundles as channel names", async () => {
@@ -674,20 +680,37 @@ describe("s3Database plugin", () => {
     expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
   });
 
-  it("rejects new UUIDv7 channel names that collide with legacy bundle storage", async () => {
+  it("reads and writes UUIDv7 channels without traversing each UUID prefix", async () => {
+    const basePath = "environments/production";
+    const channel = "0198a408-8f13-7d9b-8df4-123456789abc";
     const bundle = createBundleJson(
-      "0198a408-8f13-7d9b-8df4-123456789abc",
+      channel,
       "ios",
       "1.0.0",
       "uuid-channel-bundle",
     );
 
+    plugin = createPlugin({ basePath });
     await plugin.appendBundle(bundle);
+    await expect(plugin.commitBundle()).resolves.toBeUndefined();
+    fakeStore[`${basePath}/${channel}/bundle.zip`] = "legacy artifact";
 
-    await expect(plugin.commitBundle()).rejects.toThrow(
-      "S3 database channel cannot use a UUIDv7 name",
+    plugin = createPlugin({ basePath });
+    listedObjectRequests = [];
+    loadedObjectKeys = [];
+
+    await expect(plugin.getChannels()).resolves.toEqual([channel]);
+    await expect(plugin.getBundles({ limit: 20 })).resolves.toMatchObject({
+      data: [bundle],
+    });
+    expect(listedObjectRequests).toContainEqual({ prefix: `${basePath}/0` });
+    expect(listedObjectRequests).not.toContainEqual({
+      delimiter: "/",
+      prefix: `${basePath}/${channel}/`,
+    });
+    expect(loadedObjectKeys).toContain(
+      `${basePath}/${channel}/ios/1.0.0/update.json`,
     );
-    expect(putObjectKeys).toEqual([]);
   });
 
   it("paginates more than 1000 legacy root prefixes without traversing them", async () => {
@@ -709,9 +732,16 @@ describe("s3Database plugin", () => {
     await expect(plugin.getBundles({ limit: 20 })).resolves.toMatchObject({
       data: [bundle],
     });
-    expect(listedObjectPrefixes.filter((prefix) => prefix === "")).toHaveLength(
-      2,
-    );
+    expect(
+      listedObjectRequests.filter(
+        (request) => request.prefix === "" && request.delimiter === "/",
+      ),
+    ).toHaveLength(2);
+    expect(
+      listedObjectRequests.filter(
+        (request) => request.prefix === "0" && request.delimiter === undefined,
+      ),
+    ).toHaveLength(2);
     expect(
       listedObjectPrefixes.some((prefix) =>
         prefix.startsWith("0198a408-8f13-7d9b-8df4-"),

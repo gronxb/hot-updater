@@ -106,15 +106,15 @@ const object = (
   storageUri: `s3://bucket/${key}`,
 });
 
-describe("parseStoragePruneMinAge", () => {
+describe("parseStoragePruneProtection", () => {
   it("parses minute, hour, day, and week durations", async () => {
-    const { parseStoragePruneMinAge } = await import("./storage");
+    const { parseStoragePruneProtection } = await import("./storage");
 
-    expect(parseStoragePruneMinAge("30m")).toBe(30 * 60 * 1000);
-    expect(parseStoragePruneMinAge("24h")).toBe(24 * 60 * 60 * 1000);
-    expect(parseStoragePruneMinAge("7d")).toBe(7 * 24 * 60 * 60 * 1000);
-    expect(parseStoragePruneMinAge("2w")).toBe(14 * 24 * 60 * 60 * 1000);
-    expect(() => parseStoragePruneMinAge("tomorrow")).toThrow(
+    expect(parseStoragePruneProtection("30m")).toBe(30 * 60 * 1000);
+    expect(parseStoragePruneProtection("24h")).toBe(24 * 60 * 60 * 1000);
+    expect(parseStoragePruneProtection("7d")).toBe(7 * 24 * 60 * 60 * 1000);
+    expect(parseStoragePruneProtection("2w")).toBe(14 * 24 * 60 * 60 * 1000);
+    expect(() => parseStoragePruneProtection("tomorrow")).toThrow(
       "must use a duration",
     );
   });
@@ -129,6 +129,7 @@ describe("handleStoragePrune", () => {
     vi.clearAllMocks();
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(now);
+    mockDatabasePlugin.name = "mock-database";
 
     mockCli.loadConfig.mockResolvedValue({
       database: vi.fn().mockResolvedValue(mockDatabasePlugin),
@@ -217,9 +218,53 @@ describe("handleStoragePrune", () => {
 
     await handleStoragePrune(options);
 
+    const output = mockCli.p.log.message.mock.calls
+      .map(([message]) => String(message))
+      .join("\n");
     expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
+    expect(output).toContain(
+      `assets/sha256/${ORPHAN_HASH.slice(0, 2)}/${ORPHAN_HASH}.png`,
+    );
+    expect(output).toContain(`${DEAD_BUNDLE_ID}/bundle.zip`);
+    expect(output).toContain(`${DEAD_BUNDLE_ID}/files/logo.png`);
+    expect(output).toContain(`bundles/${DEAD_BUNDLE_ID}/manifest.json`);
+    expect(output).toContain("shared asset");
+    expect(output).toContain("bundle data");
+    expect(output).toContain("30 B");
+    expect(output).toContain(old.toISOString());
+    expect(output).not.toContain(YOUNG_ORPHAN_HASH);
+    expect(output).not.toContain(`${LIVE_BUNDLE_ID}/bundle.zip`);
     expect(mockCli.p.log.info).toHaveBeenCalledWith(
       expect.stringContaining("Dry run only"),
+    );
+  });
+
+  it("protects unreferenced objects modified within the configured window", async () => {
+    const { handleStoragePrune } = await import("./storage");
+
+    await handleStoragePrune({
+      protectNewerThan: 3 * 24 * 60 * 60 * 1000,
+      yes: true,
+    });
+
+    expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
+    expect(mockCli.p.log.success).toHaveBeenCalledWith(
+      "No objects are eligible for pruning.",
+    );
+  });
+
+  it("preserves the protection window in the suggested delete command", async () => {
+    const { handleStoragePrune } = await import("./storage");
+
+    await handleStoragePrune({
+      dryRun: true,
+      protectNewerThan: 24 * 60 * 60 * 1000,
+    });
+
+    expect(mockCli.p.log.info).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "hot-updater storage prune --protect-newer-than 1d --yes",
+      ),
     );
   });
 
@@ -439,6 +484,46 @@ describe("handleStoragePrune", () => {
     expect(mockStorageNode.downloadFile).not.toHaveBeenCalled();
     expect(mockStorageNode.listObjects).not.toHaveBeenCalled();
     expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
+  });
+
+  it("loads standalone references in pages within the server limit", async () => {
+    mockDatabasePlugin.name = "standalone-repository";
+    mockDatabasePlugin.getBundles.mockImplementation(
+      async (options: { cursor?: { after: string }; limit: number }) => {
+        if (options.limit > 100) {
+          throw new Error("limit must be less than or equal to 100");
+        }
+        if (!options.cursor) {
+          return {
+            data: [liveBundle],
+            pagination: {
+              hasNextPage: true,
+              nextCursor: "page-2",
+            },
+          };
+        }
+        return {
+          data: [],
+          pagination: { hasNextPage: false, nextCursor: null },
+        };
+      },
+    );
+    const { handleStoragePrune } = await import("./storage");
+
+    await handleStoragePrune({ dryRun: true });
+
+    expect(mockDatabasePlugin.getBundles).toHaveBeenCalledTimes(2);
+    expect(mockDatabasePlugin.getBundles).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ cursor: undefined, limit: 100 }),
+    );
+    expect(mockDatabasePlugin.getBundles).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        cursor: { after: "page-2" },
+        limit: 100,
+      }),
+    );
   });
 
   it("protects exact and legacy-prefix URIs referenced by live bundles", async () => {
