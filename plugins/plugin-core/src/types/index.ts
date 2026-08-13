@@ -361,6 +361,14 @@ export type HotUpdaterContext<TContext = unknown> = TContext;
 export type StorageResolveContext<TContext = unknown> =
   HotUpdaterContext<TContext>;
 
+export interface StorageObject {
+  /** Object key relative to the storage plugin's configured base path. */
+  key: string;
+  storageUri: string;
+  size: number;
+  lastModifiedAt?: Date;
+}
+
 export interface NodeStorageProfile {
   upload: (
     key: string,
@@ -379,6 +387,13 @@ export interface NodeStorageProfile {
   delete: (storageUri: string) => Promise<void>;
 
   downloadFile: (storageUri: string, filePath: string) => Promise<void>;
+
+  /**
+   * Optional management capabilities used by storage garbage collection.
+   * `deleteObjects` must delete only the exact object URIs it receives.
+   */
+  listObjects?: (prefix?: string) => Promise<StorageObject[]>;
+  deleteObjects?: (storageUris: readonly string[]) => Promise<void>;
 }
 
 export interface RuntimeStorageProfile<TContext = unknown> {

@@ -562,6 +562,8 @@ describe("s3Database plugin", () => {
       const bundleId = `0198a408-8f13-7d9b-8df4-${String(index).padStart(12, "0")}`;
       fakeStore[`${bundleId}/bundle.zip`] = "zip";
       fakeStore[`${bundleId}/manifest.json`] = "{}";
+      fakeStore[`bundles/${bundleId}/bundle.zip`] = "zip";
+      fakeStore[`bundles/${bundleId}/manifest.json`] = "{}";
     }
 
     plugin = createPlugin();

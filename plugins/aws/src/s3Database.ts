@@ -12,7 +12,11 @@ import {
   S3Client,
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
-import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  BUNDLE_STORAGE_PREFIX,
+  CONTENT_ADDRESSED_ASSET_PREFIX,
+  createBlobDatabasePlugin,
+} from "@hot-updater/plugin-core";
 import mime from "mime";
 
 import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
@@ -146,10 +150,12 @@ function isPlatformDirectoryPrefix(prefix: string) {
 function isBundleStorageDirectoryPrefix(prefix: string) {
   const lastSegment = getLastDirectorySegment(prefix);
   return (
-    lastSegment !== undefined &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      lastSegment,
-    )
+    lastSegment === BUNDLE_STORAGE_PREFIX ||
+    lastSegment === CONTENT_ADDRESSED_ASSET_PREFIX ||
+    (lastSegment !== undefined &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        lastSegment,
+      ))
   );
 }
 

@@ -16,8 +16,12 @@ import type {
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
 import {
+  createBundleStorageKey,
+  createStorageRootUriWithPath,
   createUUIDv7,
   detectCompressionFormat,
+  getContentAddressedAssetStoragePath,
+  resolveManifestAssetStorageUri,
 } from "@hot-updater/plugin-core";
 import JSZip from "jszip";
 import * as tar from "tar";
@@ -126,16 +130,30 @@ async function prepareManifestAssetUploadFile({
   return uploadPath;
 }
 
-const replaceStorageUriLeaf = (storageUri: string, nextLeaf: string) => {
-  const storageUrl = new URL(storageUri);
-  const normalizedPath = storageUrl.pathname.replace(/\/+$/, "");
-  const lastSlashIndex = normalizedPath.lastIndexOf("/");
-  const parentPath =
-    lastSlashIndex >= 0 ? normalizedPath.slice(0, lastSlashIndex) : "";
+async function prepareContentAddressedUploadFile({
+  sourcePath,
+  storagePath,
+  workDir,
+}: {
+  sourcePath: string;
+  storagePath: string;
+  workDir: string;
+}) {
+  const filename = path.posix.basename(storagePath);
+  if (path.basename(sourcePath) === filename) {
+    return sourcePath;
+  }
 
-  storageUrl.pathname = `${parentPath}/${nextLeaf}`;
-  return storageUrl.toString();
-};
+  const uploadPath = path.join(
+    workDir,
+    "upload-artifacts",
+    "content-addressed",
+    filename,
+  );
+  await fs.mkdir(path.dirname(uploadPath), { recursive: true });
+  await fs.copyFile(sourcePath, uploadPath);
+  return uploadPath;
+}
 
 function resolveExtractedPath(rootDir: string, entryName: string) {
   const normalizedEntryName = entryName.replaceAll("\\", "/");
@@ -381,42 +399,64 @@ export async function createCopiedBundleArchive({
       : manifestHash;
 
     const archiveUpload = await storagePlugin.profiles.node.upload(
-      nextBundleId,
+      createBundleStorageKey(nextBundleId),
       outputArchivePath,
     );
     uploadedStorageUris.push(archiveUpload.storageUri);
     const manifestUpload = await storagePlugin.profiles.node.upload(
-      nextBundleId,
+      createBundleStorageKey(nextBundleId),
       manifestPath,
     );
     uploadedStorageUris.push(manifestUpload.storageUri);
+    const assetBaseStorageUri = createStorageRootUriWithPath(
+      manifestUpload.storageUri,
+      nextBundleId,
+      "assets",
+    );
 
     const assetPaths = Object.keys(manifest.assets ?? {}).sort((left, right) =>
       left.localeCompare(right),
     );
 
     for (const assetPath of assetPaths) {
-      const relativeDir = getRelativeStorageDir(assetPath);
-      const uploadKey = [nextBundleId, "files", relativeDir]
-        .filter(Boolean)
-        .join("/");
+      const asset = manifest.assets?.[assetPath];
+      if (!asset?.fileHash) {
+        throw new Error(`Manifest file hash not found for ${assetPath}`);
+      }
       const sourcePath = path.join(extractDir, assetPath);
       const uploadPath = await prepareManifestAssetUploadFile({
         assetPath,
         sourcePath,
         workDir,
       });
-      const assetUpload = await storagePlugin.profiles.node.upload(
-        uploadKey,
-        uploadPath,
-      );
-      uploadedStorageUris.push(assetUpload.storageUri);
-    }
+      const uploadName = isBundleAsset(assetPath)
+        ? `${assetPath}.br`
+        : assetPath;
+      const storagePath = getContentAddressedAssetStoragePath({
+        assetPath: uploadName,
+        fileHash: asset.fileHash,
+      });
+      const storageUri = resolveManifestAssetStorageUri({
+        assetBaseStorageUri,
+        assetPath: uploadName,
+        fileHash: asset.fileHash,
+      });
 
-    const assetBaseStorageUri = replaceStorageUriLeaf(
-      manifestUpload.storageUri,
-      "files",
-    );
+      if (!(await storagePlugin.profiles.node.exists(storageUri))) {
+        const contentAddressedUploadPath =
+          await prepareContentAddressedUploadFile({
+            sourcePath: uploadPath,
+            storagePath,
+            workDir,
+          });
+        await storagePlugin.profiles.node.upload(
+          getRelativeStorageDir(storagePath)
+            ? `assets/${getRelativeStorageDir(storagePath)}`
+            : "assets",
+          contentAddressedUploadPath,
+        );
+      }
+    }
 
     return {
       bundle: {

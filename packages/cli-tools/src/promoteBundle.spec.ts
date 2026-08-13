@@ -293,12 +293,13 @@ describe("createCopiedBundleArchive", () => {
         expect(copiedBundle.id).toBe("bundle-copy-id");
         expect(copiedBundle.channel).toBe("beta");
         expect(copiedBundle.storageUri).toBe(
-          `s3://bucket/bundle-copy-id/bundle.${format}`,
+          `s3://bucket/bundles/bundle-copy-id/bundle.${format}`,
         );
         expect(copiedBundle.fileHash).not.toBe(baseBundle.fileHash);
         expect(copiedBundle).toMatchObject({
-          assetBaseStorageUri: "s3://bucket/bundle-copy-id/files",
-          manifestStorageUri: "s3://bucket/bundle-copy-id/manifest.json",
+          assetBaseStorageUri: "s3://bucket/assets",
+          manifestStorageUri:
+            "s3://bucket/bundles/bundle-copy-id/manifest.json",
           patchBaseBundleId: null,
           patchStorageUri: null,
         });
@@ -308,22 +309,23 @@ describe("createCopiedBundleArchive", () => {
         );
         expect(uploadedStorageUris).toEqual(
           expect.arrayContaining([
-            `s3://bucket/bundle-copy-id/bundle.${format}`,
-            "s3://bucket/bundle-copy-id/manifest.json",
-            "s3://bucket/bundle-copy-id/files/assets/logo.png",
-            "s3://bucket/bundle-copy-id/files/index.js",
+            `s3://bucket/bundles/bundle-copy-id/bundle.${format}`,
+            "s3://bucket/bundles/bundle-copy-id/manifest.json",
           ]),
         );
+        expect(uploadedStorageUris).toHaveLength(2);
+        expect(uploadedFiles.has("assets/sha256/lo/logo-hash.png")).toBe(true);
+        expect(uploadedFiles.has("assets/sha256/as/asset-hash.js")).toBe(true);
 
         const uploadedArchivePath = uploadedFiles.get(
-          path.posix.join("bundle-copy-id", `bundle.${format}`),
+          path.posix.join("bundles", "bundle-copy-id", `bundle.${format}`),
         );
         expect(uploadedArchivePath).toBeDefined();
 
         const manifest = await readManifest(uploadedArchivePath as string);
         expect(manifest.bundleId).toBe("bundle-copy-id");
         const uploadedManifestPath = uploadedFiles.get(
-          "bundle-copy-id/manifest.json",
+          "bundles/bundle-copy-id/manifest.json",
         );
         expect(uploadedManifestPath).toBeDefined();
         expect(
@@ -450,16 +452,16 @@ describe("createCopiedBundleArchive", () => {
 
       expect(uploadedStorageUris).toEqual(
         expect.arrayContaining([
-          "s3://bucket/bundle-copy-id/files/assets/logo.png",
-          "s3://bucket/bundle-copy-id/files/main.ios.bundle.br",
+          "s3://bucket/bundles/bundle-copy-id/bundle.zip",
+          "s3://bucket/bundles/bundle-copy-id/manifest.json",
         ]),
       );
       expect(uploadedStorageUris).not.toContain(
-        "s3://bucket/bundle-copy-id/files/main.ios.bundle",
+        "s3://bucket/assets/sha256/bu/bundle-hash.br",
       );
 
       const uploadedBundlePath = uploadedFiles.get(
-        "bundle-copy-id/files/main.ios.bundle.br",
+        "assets/sha256/bu/bundle-hash.br",
       );
       expect(uploadedBundlePath).toBeDefined();
       expect(
@@ -547,17 +549,12 @@ describe("createCopiedBundleArchive", () => {
       ).rejects.toThrow("append failed");
 
       expect(deleteFromStorage).toHaveBeenCalledWith(
-        "s3://bucket/bundle-copy-id/bundle.zip",
+        "s3://bucket/bundles/bundle-copy-id/bundle.zip",
       );
       expect(deleteFromStorage).toHaveBeenCalledWith(
-        "s3://bucket/bundle-copy-id/manifest.json",
+        "s3://bucket/bundles/bundle-copy-id/manifest.json",
       );
-      expect(deleteFromStorage).toHaveBeenCalledWith(
-        "s3://bucket/bundle-copy-id/files/assets/logo.png",
-      );
-      expect(deleteFromStorage).toHaveBeenCalledWith(
-        "s3://bucket/bundle-copy-id/files/index.js",
-      );
+      expect(deleteFromStorage).toHaveBeenCalledTimes(2);
     } finally {
       await cleanup();
     }

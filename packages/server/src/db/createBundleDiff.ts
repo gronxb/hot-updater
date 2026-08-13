@@ -17,7 +17,10 @@ import type {
   DatabasePlugin,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
-import { resolveManifestAssetStorageUri } from "@hot-updater/plugin-core";
+import {
+  createBundleStorageKey,
+  resolveManifestAssetStorageUri,
+} from "@hot-updater/plugin-core";
 
 type BundleManifest = {
   bundleId: string;
@@ -321,14 +324,12 @@ export async function createBundleDiff(
   try {
     await fs.writeFile(patchPath, patchBytes);
 
-    const uploadKey = [
+    const uploadKey = createBundleStorageKey(
       targetBundle.id,
       "patches",
       baseBundle.id,
       getRelativeStorageDir(targetAssetPath),
-    ]
-      .filter(Boolean)
-      .join("/");
+    );
     const patchUpload = await deps.storagePlugin.profiles.node.upload(
       uploadKey,
       patchPath,
