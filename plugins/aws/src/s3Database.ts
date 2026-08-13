@@ -143,6 +143,22 @@ function isPlatformDirectoryPrefix(prefix: string) {
   return lastSegment === "ios" || lastSegment === "android";
 }
 
+function isLegacyBundleStorageDirectoryPrefix(prefix: string) {
+  const lastSegment = getLastDirectorySegment(prefix);
+  return (
+    lastSegment !== undefined &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      lastSegment,
+    )
+  );
+}
+
+function validateS3Channel(channel: string) {
+  if (isLegacyBundleStorageDirectoryPrefix(channel)) {
+    throw new Error(`S3 database channel cannot use a UUIDv7 name: ${channel}`);
+  }
+}
+
 function isUpdateJsonKey(key: string) {
   return key.endsWith(`${S3_DIRECTORY_DELIMITER}update.json`);
 }
@@ -278,9 +294,14 @@ async function listObjectsInS3(
     }
 
     const nextPrefixes =
-      depth === 1
-        ? commonPrefixes.filter(isPlatformDirectoryPrefix)
-        : commonPrefixes;
+      depth === 0
+        ? commonPrefixes.filter(
+            (commonPrefix) =>
+              !isLegacyBundleStorageDirectoryPrefix(commonPrefix),
+          )
+        : depth === 1
+          ? commonPrefixes.filter(isPlatformDirectoryPrefix)
+          : commonPrefixes;
     const nestedKeys = await mapWithConcurrency(
       nextPrefixes,
       S3_LIST_OBJECTS_CONCURRENCY,
@@ -429,6 +450,7 @@ export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
         deleteObjectInS3(client, bucketName, toStorageKey(key)),
       shouldSkipLoadObjectError: (error) =>
         error instanceof Error && error.name === "S3ArchivedObjectError",
+      validateChannel: validateS3Channel,
       invalidatePaths: (pathsToInvalidate: string[]) => {
         if (
           cloudfrontClient &&

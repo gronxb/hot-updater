@@ -54,6 +54,7 @@ export interface BundleListOptions {
   json?: boolean;
   platform?: Platform;
   limit?: number;
+  targetAppVersion?: string;
 }
 
 export interface BundleMutationOptions {
@@ -164,6 +165,7 @@ export const handleBundleList = async (options: BundleListOptions = {}) => {
       where: {
         channel: options.channel,
         platform: options.platform,
+        targetAppVersion: options.targetAppVersion,
       },
       limit,
     });
@@ -346,7 +348,7 @@ export const handleBundleDelete = async (
 ) => {
   printBanner();
 
-  const ids = bundleIds ?? [];
+  const ids = [...new Set(bundleIds ?? [])];
   if (ids.length === 0) {
     p.log.error("Provide at least one bundle id.");
     process.exit(1);
@@ -355,17 +357,22 @@ export const handleBundleDelete = async (
   const config = await loadConfig(null);
   const databasePlugin: DatabasePlugin = await config.database();
   try {
-    // Resolve the target set from the given ids.
-    const fetched = await Promise.all(
-      ids.map((id) => databasePlugin.getBundleById(id)),
+    // Resolve the complete target set from one management snapshot. Blob-backed
+    // databases otherwise rescan storage once for every missing ID.
+    const { data: matchedBundles } = await databasePlugin.getBundles({
+      where: { id: { in: ids } },
+      limit: ids.length,
+    });
+    const matchedById = new Map(
+      matchedBundles.map((bundle) => [bundle.id, bundle]),
     );
-    const targets: Bundle[] = [];
-    fetched.forEach((bundle, index) => {
-      if (bundle) {
-        targets.push(bundle);
-      } else {
-        p.log.info(`No bundle with id ${ids[index]}. Skipping.`);
+    const targets = ids.flatMap((id) => {
+      const bundle = matchedById.get(id);
+      if (!bundle) {
+        p.log.info(`No bundle with id ${id}. Skipping.`);
+        return [];
       }
+      return [bundle];
     });
     if (targets.length === 0) {
       p.log.info("No matching bundle records. No changes.");

@@ -581,6 +581,9 @@ describe("deploy rollout wiring", () => {
       bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
       stdout: null,
     }));
+    mockStoragePlugin.profiles.node.upload.mockImplementation(async (key) => ({
+      storageUri: `s3://bundles/${key}/bundle.tar.br`,
+    }));
 
     await deploy({
       channel: "production",
@@ -677,7 +680,7 @@ describe("deploy rollout wiring", () => {
       expect.objectContaining({
         assetBaseStorageUri: "s3://bundles/assets",
         manifestFileHash: "file-hash",
-        manifestStorageUri: "s3://bundles/bundle-123/manifest.json",
+        manifestStorageUri: "s3://bundles/bundles/bundle-123/manifest.json",
         metadata: expect.objectContaining({
           app_version: "1.0",
         }),

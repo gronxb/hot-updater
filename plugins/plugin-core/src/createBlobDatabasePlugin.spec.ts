@@ -1163,7 +1163,7 @@ describe("blobDatabase plugin", () => {
     await expect(plugin.getChannels()).resolves.toEqual(["production"]);
 
     expect(listObjectCalls).toEqual([""]);
-    expect(loadObjectCalls).toEqual(["production/ios/1.0.0/update.json"]);
+    expect(loadObjectCalls).toEqual([]);
   });
 
   it("serves console-style reads from canonical manifests after deleting bundles", async () => {
@@ -1209,7 +1209,7 @@ describe("blobDatabase plugin", () => {
     await expect(plugin.getChannels()).resolves.toEqual(["production"]);
 
     expect(listObjectCalls).toEqual([""]);
-    expect(loadObjectCalls).toEqual(["production/ios/1.0.0/update.json"]);
+    expect(loadObjectCalls).toEqual([]);
   });
 
   it("supports cursor pagination from canonical manifests", async () => {

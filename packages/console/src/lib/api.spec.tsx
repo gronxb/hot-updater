@@ -7,16 +7,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   queryKeys,
   useDeleteBundleMutation,
+  useDeleteBundlesMutation,
   useUpdateBundleMutation,
 } from "./api";
 import {
   deleteBundle as deleteBundleApi,
+  deleteBundles as deleteBundlesApi,
   updateBundle as updateBundleApi,
 } from "./api-rpc";
 
 vi.mock("./api-rpc", () => ({
   createBundle: vi.fn(),
   deleteBundle: vi.fn(),
+  deleteBundles: vi.fn(),
   getBundle: vi.fn(),
   getBundleChildCounts: vi.fn(),
   getBundleChildren: vi.fn(),
@@ -252,6 +255,62 @@ describe("useDeleteBundleMutation", () => {
     ).toBeUndefined();
     expect(queryClient.getQueryData(queryKeys.bundles.list({}))).toEqual({
       data: [otherBundle],
+      pagination: {
+        total: 2,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 1,
+      },
+    });
+    expect(invalidateQueries).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("useDeleteBundlesMutation", () => {
+  it("removes a batch from cached lists and invalidates once", async () => {
+    vi.mocked(deleteBundlesApi).mockResolvedValue({
+      success: true,
+      deletedBundleIds: [bundle.id, otherBundle.id],
+      missingBundleIds: [],
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        mutations: { retry: false },
+        queries: { retry: false },
+      },
+    });
+    const invalidateQueries = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+
+    const filters = { channel: "development", limit: "2000" };
+    queryClient.setQueryData(queryKeys.bundles.list(filters), {
+      data: [bundle, otherBundle],
+      pagination: {
+        total: 2,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 1,
+      },
+    });
+
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useDeleteBundlesMutation(), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        bundleIds: [bundle.id, otherBundle.id],
+      });
+    });
+
+    expect(queryClient.getQueryData(queryKeys.bundles.list(filters))).toEqual({
+      data: [],
       pagination: {
         total: 2,
         hasNextPage: false,

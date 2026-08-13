@@ -19,7 +19,12 @@ import type {
   Platform,
 } from "@hot-updater/plugin-core";
 import { assertNodeStoragePlugin } from "@hot-updater/plugin-core";
-import { getContentAddressedAssetStoragePath } from "@hot-updater/plugin-core";
+import {
+  createBundleStorageKey,
+  createStorageRootUriWithPath,
+  getContentAddressedAssetStoragePath,
+  getManifestAssetDownloadPath,
+} from "@hot-updater/plugin-core";
 import { createBundleDiff } from "@hot-updater/server/db";
 import isPortReachable from "is-port-reachable";
 import open from "open";
@@ -316,32 +321,6 @@ const getRelativeStorageDir = (relativePath: string) => {
   return dirname === "." ? "" : dirname;
 };
 
-const isBrotliManifestBundleAsset = (relativePath: string) =>
-  /(^|\/)index\.[^/]+\.bundle$/.test(relativePath.replace(/\\/g, "/"));
-
-const getManifestAssetUploadName = (relativePath: string) =>
-  isBrotliManifestBundleAsset(relativePath)
-    ? `${relativePath}.br`
-    : relativePath;
-
-const replaceBundleStorageUriPath = (
-  storageUri: string,
-  bundleId: string,
-  nextPath: string,
-) => {
-  const storageUrl = new URL(storageUri);
-  const segments = storageUrl.pathname.split("/").filter(Boolean);
-  const bundleIndex = segments.lastIndexOf(bundleId);
-  const parentSegments =
-    bundleIndex >= 0 ? segments.slice(0, bundleIndex) : segments.slice(0, -2);
-
-  storageUrl.pathname = `/${[...parentSegments, nextPath]
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment))
-    .join("/")}`;
-  return storageUrl.toString();
-};
-
 const createStorageUriWithRelativePath = (
   baseStorageUri: string,
   relativePath: string,
@@ -368,7 +347,7 @@ const ensureUploadSourcePath = async ({
   targetFile: { path: string; name: string };
   uploadFilename?: string;
 }) => {
-  const uploadName = getManifestAssetUploadName(targetFile.name);
+  const uploadName = getManifestAssetDownloadPath(targetFile.name);
   const expectedFilename = uploadFilename ?? path.posix.basename(uploadName);
   const actualFilename = path.basename(targetFile.path);
 
@@ -422,7 +401,7 @@ const getUniqueContentAddressedAssetUploadTargets = ({
     }
 
     const storagePath = getContentAddressedAssetStoragePath({
-      assetPath: getManifestAssetUploadName(targetFile.name),
+      assetPath: getManifestAssetDownloadPath(targetFile.name),
       fileHash: manifestAsset.fileHash,
     });
 
@@ -934,7 +913,7 @@ const deployPlatform = async ({
 
             updateUploadProgress();
             const { storageUri } = await storagePlugin.profiles.node.upload(
-              bundleId,
+              createBundleStorageKey(bundleId),
               bundlePath,
             );
             taskRef.storageUri = storageUri;
@@ -946,7 +925,7 @@ const deployPlatform = async ({
             // from manifest fileHash values. LEGACY: existing /files bundles
             // still resolve through the server fallback until that layout is
             // intentionally removed.
-            taskRef.assetBaseStorageUri = replaceBundleStorageUriPath(
+            taskRef.assetBaseStorageUri = createStorageRootUriWithPath(
               storageUri,
               bundleId,
               "assets",
@@ -985,7 +964,7 @@ const deployPlatform = async ({
             );
 
             const manifestUpload = await storagePlugin.profiles.node.upload(
-              bundleId,
+              createBundleStorageKey(bundleId),
               taskRef.manifestPath,
             );
             taskRef.manifestStorageUri = manifestUpload.storageUri;

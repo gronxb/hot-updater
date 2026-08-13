@@ -54,6 +54,11 @@ import { keysExportPublic, keysGenerate, keysRemove } from "./commands/keys";
 import { migrate } from "./commands/migrate";
 import { handlePromote } from "./commands/promote";
 import { handleRollback } from "./commands/rollback";
+import {
+  DEFAULT_STORAGE_PRUNE_MIN_AGE_MS,
+  handleStoragePrune,
+  parseStoragePruneMinAge,
+} from "./commands/storage";
 
 const DEFAULT_CHANNEL = "production";
 const parseBooleanOption = (value: string) => {
@@ -142,6 +147,10 @@ bundleCommand
   .command("list")
   .description("List bundles, most recent first")
   .option("-c, --channel <channel>", "filter by channel")
+  .option(
+    "--target-app-version <targetAppVersion>",
+    "filter by exact target app version",
+  )
   .option("--json", "output raw bundle data as JSON")
   .addOption(platformCommandOption)
   .option(
@@ -237,6 +246,47 @@ bundleCommand
         yes?: boolean;
       },
     ) => handlePromote(bundleId, options),
+  );
+
+const storageCommand = program
+  .command("storage")
+  .description("Manage stored bundle artifacts");
+
+storageCommand
+  .command("prune")
+  .description(
+    "Find and delete unreferenced objects (requires exclusive storage access)",
+  )
+  .addOption(
+    new Option(
+      "--min-age <duration>",
+      "only prune objects older than this duration (for example 24h or 7d)",
+    )
+      .argParser((value) => {
+        try {
+          return parseStoragePruneMinAge(value);
+        } catch (error) {
+          throw new InvalidArgumentError(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      })
+      .default(DEFAULT_STORAGE_PRUNE_MIN_AGE_MS, "24h"),
+  )
+  .addOption(
+    new Option(
+      "--dry-run",
+      "list eligible objects without deleting them (default)",
+    ).conflicts("yes"),
+  )
+  .addOption(
+    new Option(
+      "-y, --yes",
+      "delete eligible objects after reference validation",
+    ).conflicts("dryRun"),
+  )
+  .action((options: { dryRun?: boolean; minAge: number; yes?: boolean }) =>
+    handleStoragePrune(options),
   );
 
 const keysCommand = program
