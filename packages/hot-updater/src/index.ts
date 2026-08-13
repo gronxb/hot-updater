@@ -55,9 +55,9 @@ import { migrate } from "./commands/migrate";
 import { handlePromote } from "./commands/promote";
 import { handleRollback } from "./commands/rollback";
 import {
-  DEFAULT_STORAGE_PRUNE_MIN_AGE_MS,
+  DEFAULT_STORAGE_PRUNE_PROTECTION_MS,
   handleStoragePrune,
-  parseStoragePruneMinAge,
+  parseStoragePruneProtection,
 } from "./commands/storage";
 
 const DEFAULT_CHANNEL = "production";
@@ -259,19 +259,19 @@ storageCommand
   )
   .addOption(
     new Option(
-      "--min-age <duration>",
-      "only prune objects older than this duration (for example 24h or 7d)",
+      "--protect-newer-than <duration>",
+      "protect unreferenced objects modified within this duration",
     )
       .argParser((value) => {
         try {
-          return parseStoragePruneMinAge(value);
+          return parseStoragePruneProtection(value);
         } catch (error) {
           throw new InvalidArgumentError(
             error instanceof Error ? error.message : String(error),
           );
         }
       })
-      .default(DEFAULT_STORAGE_PRUNE_MIN_AGE_MS, "24h"),
+      .default(DEFAULT_STORAGE_PRUNE_PROTECTION_MS, "24h"),
   )
   .addOption(
     new Option(
@@ -285,8 +285,9 @@ storageCommand
       "delete eligible objects after reference validation",
     ).conflicts("dryRun"),
   )
-  .action((options: { dryRun?: boolean; minAge: number; yes?: boolean }) =>
-    handleStoragePrune(options),
+  .action(
+    (options: { dryRun?: boolean; protectNewerThan: number; yes?: boolean }) =>
+      handleStoragePrune(options),
   );
 
 const keysCommand = program
