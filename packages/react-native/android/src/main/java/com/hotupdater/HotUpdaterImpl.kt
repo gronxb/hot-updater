@@ -410,8 +410,7 @@ class HotUpdaterImpl {
             selectionContextHash,
         )
 
-    suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean =
-        bundleStorage.commitReleaseSelection(selection)
+    suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean = bundleStorage.commitReleaseSelection(selection)
 
     fun getInstallId(): String = bundleStorage.getInstallId()
 

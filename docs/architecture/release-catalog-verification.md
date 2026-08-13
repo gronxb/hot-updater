@@ -83,7 +83,7 @@ from headers or emulator behavior.
 ## Device/provider matrix
 
 The final ordered repository gate passed from
-`.codex/fix-ci/20260813-214233`:
+`.codex/fix-ci/20260813-223630`:
 
 ```text
 build             passed

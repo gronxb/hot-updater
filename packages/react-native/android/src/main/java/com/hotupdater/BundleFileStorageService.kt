@@ -1277,22 +1277,26 @@ class BundleFileStorageService(
                     if (selection.kind == "BUNDLE") {
                         when {
                             metadata.stagingSelection?.bundleId == selection.bundleId ||
-                                metadata.stagingBundleId == selection.bundleId ->
+                                metadata.stagingBundleId == selection.bundleId -> {
                                 metadata.copy(
                                     stagingBundleId = selection.bundleId,
                                     stagingSelection = selection,
                                     updatedAt = System.currentTimeMillis(),
                                 )
+                            }
 
                             metadata.stableSelection?.bundleId == selection.bundleId ||
-                                metadata.stableBundleId == selection.bundleId ->
+                                metadata.stableBundleId == selection.bundleId -> {
                                 metadata.copy(
                                     stableBundleId = selection.bundleId,
                                     stableSelection = selection,
                                     updatedAt = System.currentTimeMillis(),
                                 )
+                            }
 
-                            else -> return@synchronized false
+                            else -> {
+                                return@synchronized false
+                            }
                         }
                     } else {
                         setBundleURL(null)
@@ -1466,8 +1470,6 @@ class BundleFileStorageService(
             TAG,
             "updateBundle bundleId $bundleId fileUrl $fileUrl fileHash $fileHash manifestUrl $manifestUrl",
         )
-
-
         // If no URL is provided, reset to fallback and clean up all bundles
         if (fileUrl.isNullOrEmpty()) {
             Log.d(TAG, "fileUrl is null or empty, resetting to fallback bundle")

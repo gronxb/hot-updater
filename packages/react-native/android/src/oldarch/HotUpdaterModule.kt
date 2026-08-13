@@ -273,8 +273,7 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
-    override fun getActiveUpdateState(): String =
-        org.json.JSONObject(getInstance().getActiveUpdateState()).toString()
+    override fun getActiveUpdateState(): String = org.json.JSONObject(getInstance().getActiveUpdateState()).toString()
 
     @ReactMethod(isBlockingSynchronousMethod = true)
     override fun isReleaseSelectionCurrent(params: ReadableMap): Boolean {

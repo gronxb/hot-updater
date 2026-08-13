@@ -274,8 +274,7 @@ class HotUpdaterModule internal constructor(
         )
     }
 
-    override fun getActiveUpdateState(): WritableNativeMap =
-        getInstance().getActiveUpdateState().toWritableNativeMap()
+    override fun getActiveUpdateState(): WritableNativeMap = getInstance().getActiveUpdateState().toWritableNativeMap()
 
     override fun isReleaseSelectionCurrent(params: ReadableMap): Boolean {
         val authorityId = params.getString("authorityId") ?: return false

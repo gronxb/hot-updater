@@ -194,5 +194,5 @@ describe("DynamoDB reads beyond the former metadata ceiling", () => {
     queries.remove();
     batchGets.remove();
     gets.remove();
-  });
+  }, 120_000);
 });

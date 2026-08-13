@@ -129,7 +129,14 @@ data class BundleMetadata(
                     }
                 },
             )
-            put("currentSelectionContexts", JSONObject(currentSelectionContexts.toSortedMap()))
+            put(
+                "currentSelectionContexts",
+                JSONObject().apply {
+                    currentSelectionContexts.toSortedMap().forEach { (key, value) ->
+                        put(key, value)
+                    }
+                },
+            )
             put("updatedAt", updatedAt)
         }
 
@@ -137,16 +144,16 @@ data class BundleMetadata(
         AtomicFile(file).let { atomicFile ->
             var output: FileOutputStream? = null
             try {
-            file.parentFile?.mkdirs()
-            output = atomicFile.startWrite()
-            output.write(toJson().toString(2).toByteArray())
-            atomicFile.finishWrite(output)
-            Log.d(TAG, "Saved metadata to file: ${file.absolutePath}")
-            true
+                file.parentFile?.mkdirs()
+                output = atomicFile.startWrite()
+                output.write(toJson().toString(2).toByteArray())
+                atomicFile.finishWrite(output)
+                Log.d(TAG, "Saved metadata to file: ${file.absolutePath}")
+                true
             } catch (e: Exception) {
-            output?.let(atomicFile::failWrite)
-            Log.e(TAG, "Failed to save metadata to file", e)
-            false
+                output?.let(atomicFile::failWrite)
+                Log.e(TAG, "Failed to save metadata to file", e)
+                false
             }
         }
 }
