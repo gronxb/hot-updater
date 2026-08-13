@@ -621,8 +621,8 @@ describe("Detox scenario contract", () => {
     // When: the control server reports that focusedPackage matches targetAppId.
     // Then: the Detox driver reattaches through Detox APIs instead of forcing a
     // fresh Android app instance. A launch that explicitly permits disconnection
-    // waits for the old instrumented process to remain stopped before Detox
-    // establishes the replacement process once; the launcher may remain focused.
+    // waits for the old instrumentation to remain cleared before Detox
+    // establishes the replacement process once; the app may already be running.
     expect(prepareBody).toContain("alreadyFocused");
     expect(prepareBody).toContain("focusedPackage === fixtureSession.appId");
     expect(prepareBody).toContain("if (!alreadyFocused) {");
@@ -638,12 +638,10 @@ describe("Detox scenario contract", () => {
       "async function waitForAndroidRestart(signal?: AbortSignal)",
     );
     expect(controllerSource).toContain(
-      "E2E_ANDROID_STOPPED_STABLE_OBSERVATIONS",
+      "E2E_ANDROID_INSTRUMENTATION_CLEARED_STABLE_OBSERVATIONS",
     );
-    expect(controllerSource).toContain("if (!lastProcessId) {");
-    expect(controllerSource).toContain(
-      '"android instrumentation process stopped"',
-    );
+    expect(controllerSource).toContain("hasActiveInstrumentationForPackage(");
+    expect(controllerSource).toContain('"android instrumentation cleared"');
     expect(controlBody).toContain(
       "await this.reattachAfterExternalLaunch(pathName)",
     );

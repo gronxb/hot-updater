@@ -44,6 +44,7 @@ import {
   verifyConsoleAnalytics,
   type ObservedAnalyticsEvent,
 } from "../console-analytics-qa.ts";
+import { hasActiveInstrumentationForPackage } from "./android-instrumentation.ts";
 import {
   createCrashRecoveryArtifactNames,
   getLaunchReportState,
@@ -341,7 +342,7 @@ const E2E_ANDROID_FOREGROUND_POLL_MS = Number(
 const E2E_ANDROID_RESTART_WAIT_ATTEMPTS = Number(
   process.env.HOT_UPDATER_E2E_ANDROID_RESTART_WAIT_ATTEMPTS || 30,
 );
-const E2E_ANDROID_STOPPED_STABLE_OBSERVATIONS = 3;
+const E2E_ANDROID_INSTRUMENTATION_CLEARED_STABLE_OBSERVATIONS = 3;
 const E2E_ANDROID_ANR_DISMISS_ATTEMPTS = Number(
   process.env.HOT_UPDATER_E2E_ANDROID_ANR_DISMISS_ATTEMPTS || 6,
 );
@@ -4574,14 +4575,23 @@ function getAndroidProcessId() {
   );
 }
 
+function getAndroidActivityProcessesOutput() {
+  return captureCommand(
+    "adb",
+    ["-s", deviceId as string, "shell", "dumpsys", "activity", "processes"],
+    { allowFailure: true },
+  );
+}
+
 async function waitForAndroidRestart(signal?: AbortSignal) {
   if (fixtureSession.platform !== "android") {
     return {};
   }
 
   let lastFocusedPackage: string | null = null;
+  let lastInstrumentationActive = true;
   let lastProcessId = "";
-  let stoppedObservations = 0;
+  let clearedObservations = 0;
 
   for (
     let attempt = 1;
@@ -4591,30 +4601,41 @@ async function waitForAndroidRestart(signal?: AbortSignal) {
     throwIfAborted(signal);
     lastFocusedPackage = getAndroidFocusedPackage();
     lastProcessId = getAndroidProcessId();
+    const activityProcessesOutput = getAndroidActivityProcessesOutput();
+    lastInstrumentationActive = hasActiveInstrumentationForPackage(
+      activityProcessesOutput,
+      fixtureSession.appId,
+    );
 
-    // AndroidJUnitRunner force-stops the package after the native restart kills
-    // its instrumented process. Wait for that cleanup before Detox reattaches.
-    if (!lastProcessId) {
-      stoppedObservations += 1;
-      if (stoppedObservations >= E2E_ANDROID_STOPPED_STABLE_OBSERVATIONS) {
-        logDetoxFixture("android instrumentation process stopped", {
+    // Native restart can launch a replacement app process while
+    // AndroidJUnitRunner tears down the old instrumented process. Wait for the
+    // instrumentation itself to clear before Detox reattaches.
+    if (activityProcessesOutput && !lastInstrumentationActive) {
+      clearedObservations += 1;
+      if (
+        clearedObservations >=
+        E2E_ANDROID_INSTRUMENTATION_CLEARED_STABLE_OBSERVATIONS
+      ) {
+        logDetoxFixture("android instrumentation cleared", {
           attempt,
+          clearedObservations,
           focusedPackage: lastFocusedPackage,
-          stoppedObservations,
+          processId: lastProcessId || null,
         });
         return {
           focusedPackage: lastFocusedPackage,
+          processId: lastProcessId || null,
         };
       }
     } else {
-      stoppedObservations = 0;
+      clearedObservations = 0;
     }
 
     await abortableSleep(E2E_ANDROID_FOREGROUND_POLL_MS, signal);
   }
 
   throw new Error(
-    `Timed out waiting for Android instrumentation process to stop; focusedPackage=${String(lastFocusedPackage)}, processId=${lastProcessId || "none"}`,
+    `Timed out waiting for Android instrumentation to clear; active=${String(lastInstrumentationActive)}, focusedPackage=${String(lastFocusedPackage)}, processId=${lastProcessId || "none"}`,
   );
 }
 

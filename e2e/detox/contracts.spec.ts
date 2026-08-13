@@ -78,6 +78,8 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/analytics-http-client.ts",
       "e2e/detox/analytics-provider-client.spec.ts",
       "e2e/detox/analytics-provider-client.ts",
+      "e2e/detox/control-server/android-instrumentation.spec.ts",
+      "e2e/detox/control-server/android-instrumentation.ts",
       "e2e/detox/control-server/controller.ts",
       "e2e/detox/control-server/crash-recovery-wait.spec.ts",
       "e2e/detox/control-server/crash-recovery-wait.ts",
