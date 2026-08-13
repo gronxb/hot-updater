@@ -54,6 +54,7 @@ export const hotUpdater = createHotUpdater({
   features: {
     updateCheck: true,
     bundles: true,
+    analytics: { queryAccess: "public" },
   },
 });
 

@@ -83,13 +83,13 @@ from headers or emulator behavior.
 ## Device/provider matrix
 
 The final ordered repository gate passed from
-`.codex/fix-ci/20260813-194340`:
+`.codex/fix-ci/20260813-205845`:
 
 ```text
 build             passed
 test:type         passed (33 projects)
 lint              passed (0 warnings, 0 errors)
-test              passed (243 files, 2,409 tests)
+test              passed (243 files, 2,410 tests)
 test:integration  passed (25 files, 1,429 tests)
 ```
 

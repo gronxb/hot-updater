@@ -109,6 +109,12 @@ const defaultDetoxScenarioNames = [
   "metadata-v1-migration",
   "ten-crash-history-safe-bundle",
 ] as const;
+const standaloneDatabaseProfileSources = [
+  "examples-server/elysia-drizzle-libsql/src/db.ts",
+  "examples-server/express-prisma-sqlite/src/db.ts",
+  "examples-server/hono-kysely-pglite/src/db.ts",
+  "examples-server/hono-mongodb/src/db.ts",
+].map((sourcePath) => path.join(repoDir, sourcePath));
 
 const readDetoxScreenRoutesSource = async (): Promise<string> => {
   const fileNames = (await fs.readdir(detoxScreenRoutesDir)).filter(
@@ -249,6 +255,22 @@ async function controlStepDefinition(
 }
 
 describe("Detox scenario contract", () => {
+  it("keeps Console Analytics enabled for every standalone database profile", async () => {
+    // Given: Console Analytics is an acceptance checkpoint after each device
+    // scenario and every standalone adapter implements the analytics model.
+    const sources = await Promise.all(
+      standaloneDatabaseProfileSources.map((sourcePath) =>
+        fs.readFile(sourcePath, "utf8"),
+      ),
+    );
+
+    // When / Then: every profile server mounts public analytics routes so the
+    // provider-backed checkpoint can verify Release and Bundle identities.
+    for (const source of sources) {
+      expect(source).toContain('analytics: { queryAccess: "public" }');
+    }
+  });
+
   it("defines the default suite from Detox-owned catalog modules", () => {
     const detoxScenarios = resolveDetoxSuiteScenarioNames("default");
 
