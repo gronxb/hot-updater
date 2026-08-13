@@ -549,6 +549,35 @@ describe("s3Database plugin", () => {
     expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
   });
 
+  it("skips bundle artifact prefixes while discovering manifests", async () => {
+    const bundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "0198a408-8f13-7d9b-8df4-123456789abc",
+    );
+
+    seedUpdateManifests([bundle]);
+    for (let index = 0; index < 100; index += 1) {
+      const bundleId = `0198a408-8f13-7d9b-8df4-${String(index).padStart(12, "0")}`;
+      fakeStore[`${bundleId}/bundle.zip`] = "zip";
+      fakeStore[`${bundleId}/manifest.json`] = "{}";
+    }
+
+    plugin = createPlugin();
+    listedObjectPrefixes = [];
+
+    await expect(plugin.getBundles({ limit: 20 })).resolves.toMatchObject({
+      data: [bundle],
+    });
+
+    expect(listedObjectPrefixes).toEqual([
+      "",
+      "production/",
+      "production/ios/",
+    ]);
+  });
+
   it("limits recursive S3 manifest listing concurrency", async () => {
     const channelCount = 12;
     const bundles = Array.from({ length: channelCount }, (_, index) =>
@@ -708,14 +737,7 @@ describe("s3Database plugin", () => {
     ]);
 
     expect(listedObjectPrefixes).toContain("");
-    expect(loadedObjectKeys.slice().sort()).toEqual(
-      [
-        "production/ios/1.0.0/update.json",
-        "production/ios/1.0.1/update.json",
-        "staging/android/1.0.0/update.json",
-        "staging/android/1.0.1/update.json",
-      ].sort(),
-    );
+    expect(loadedObjectKeys).toEqual([]);
   });
 
   it("reads bundle detail from canonical manifests", async () => {
@@ -799,7 +821,7 @@ describe("s3Database plugin", () => {
     await expect(plugin.getChannels()).resolves.toEqual(["production"]);
 
     expect(listedObjectPrefixes).toContain("");
-    expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
+    expect(loadedObjectKeys).toEqual([]);
   });
 
   it("serves console-style reads from canonical manifests after deleting bundles", async () => {
@@ -845,7 +867,7 @@ describe("s3Database plugin", () => {
     await expect(plugin.getChannels()).resolves.toEqual(["production"]);
 
     expect(listedObjectPrefixes).toContain("");
-    expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
+    expect(loadedObjectKeys).toEqual([]);
 
     plugin = createPlugin();
 

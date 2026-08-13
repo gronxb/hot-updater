@@ -44,6 +44,10 @@ type DeleteBundleInput = {
   bundleId: string;
 };
 
+type DeleteBundlesInput = {
+  bundleIds: string[];
+};
+
 const assertRemoteDownloadUrl = (fileUrl: string) => {
   try {
     const protocol = new URL(fileUrl).protocol.replace(":", "");
@@ -326,6 +330,28 @@ export const deleteBundle = createServerFn({ method: "POST" })
       const { databasePlugin, storagePlugin } = await prepareConfig();
 
       await deleteBundleWithStorage(data, {
+        databasePlugin,
+        storagePlugin,
+        waitForStorageCleanup: false,
+      });
+
+      return { success: true };
+    } catch (error) {
+      console.error("Error during bundle deletion:", error);
+      throw error;
+    }
+  });
+
+export const deleteBundles = createServerFn({ method: "POST" })
+  .inputValidator((input: DeleteBundlesInput) => input)
+  .handler(async ({ data }) => {
+    try {
+      const { prepareConfig } = await import("./server/config.server");
+      const { deleteBundles: deleteBundlesWithStorage } =
+        await import("./server/deleteBundle");
+      const { databasePlugin, storagePlugin } = await prepareConfig();
+
+      await deleteBundlesWithStorage(data, {
         databasePlugin,
         storagePlugin,
         waitForStorageCleanup: false,

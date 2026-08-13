@@ -456,6 +456,34 @@ describe("handleBundleDelete", () => {
     );
   });
 
+  it("resolves multiple ids sequentially to avoid overlapping provider scans", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const b1 = buildBundle({ id: "B1" });
+    const b2 = buildBundle({ id: "B2" });
+    let resolveFirst: ((bundle: Bundle) => void) | undefined;
+    const firstLookup = new Promise<Bundle>((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    mockDatabasePlugin.getBundleById
+      .mockImplementationOnce(() => firstLookup)
+      .mockResolvedValueOnce(b2)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+
+    const { handleBundleDelete } = await import("./bundle");
+    const deletion = handleBundleDelete(["B1", "B2"], { yes: true });
+
+    await vi.waitFor(() => {
+      expect(mockDatabasePlugin.getBundleById).toHaveBeenCalledTimes(1);
+    });
+    resolveFirst?.(b1);
+    await deletion;
+
+    expect(mockDatabasePlugin.getBundleById).toHaveBeenNthCalledWith(1, "B1");
+    expect(mockDatabasePlugin.getBundleById).toHaveBeenNthCalledWith(2, "B2");
+  });
+
   it("exits 1 when no ids are provided", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     const { exitSpy } = expectExit(1);

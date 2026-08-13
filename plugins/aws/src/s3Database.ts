@@ -143,6 +143,16 @@ function isPlatformDirectoryPrefix(prefix: string) {
   return lastSegment === "ios" || lastSegment === "android";
 }
 
+function isBundleStorageDirectoryPrefix(prefix: string) {
+  const lastSegment = getLastDirectorySegment(prefix);
+  return (
+    lastSegment !== undefined &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      lastSegment,
+    )
+  );
+}
+
 function isUpdateJsonKey(key: string) {
   return key.endsWith(`${S3_DIRECTORY_DELIMITER}update.json`);
 }
@@ -278,9 +288,13 @@ async function listObjectsInS3(
     }
 
     const nextPrefixes =
-      depth === 1
-        ? commonPrefixes.filter(isPlatformDirectoryPrefix)
-        : commonPrefixes;
+      depth === 0
+        ? commonPrefixes.filter(
+            (commonPrefix) => !isBundleStorageDirectoryPrefix(commonPrefix),
+          )
+        : depth === 1
+          ? commonPrefixes.filter(isPlatformDirectoryPrefix)
+          : commonPrefixes;
     const nestedKeys = await mapWithConcurrency(
       nextPrefixes,
       S3_LIST_OBJECTS_CONCURRENCY,

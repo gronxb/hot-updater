@@ -356,17 +356,15 @@ export const handleBundleDelete = async (
   const databasePlugin: DatabasePlugin = await config.database();
   try {
     // Resolve the target set from the given ids.
-    const fetched = await Promise.all(
-      ids.map((id) => databasePlugin.getBundleById(id)),
-    );
     const targets: Bundle[] = [];
-    fetched.forEach((bundle, index) => {
+    for (const id of ids) {
+      const bundle = await databasePlugin.getBundleById(id);
       if (bundle) {
         targets.push(bundle);
       } else {
-        p.log.info(`No bundle with id ${ids[index]}. Skipping.`);
+        p.log.info(`No bundle with id ${id}. Skipping.`);
       }
-    });
+    }
     if (targets.length === 0) {
       p.log.info("No matching bundle records. No changes.");
       return;

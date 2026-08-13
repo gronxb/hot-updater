@@ -227,6 +227,12 @@ function getManagementListPrefixes(
   return [""];
 }
 
+function getChannelFromUpdateJsonKey(key: string): string | null {
+  return (
+    key.match(/^([^/]+)\/(?:ios|android)\/[^/]+\/update\.json$/)?.[1] ?? null
+  );
+}
+
 const DEFAULT_DESC_ORDER = { field: "id", direction: "desc" } as const;
 
 function sortManagedBundles(
@@ -585,13 +591,11 @@ export const createBlobDatabasePlugin = <TConfig>({
         },
 
         async getChannels() {
-          return [
-            ...new Set(
-              (await loadAllBundlesForManagementFallback()).map(
-                (bundle) => bundle.channel,
-              ),
-            ),
-          ].sort();
+          const channels = (await listObjects(""))
+            .map(getChannelFromUpdateJsonKey)
+            .filter((channel): channel is string => channel !== null);
+
+          return [...new Set(channels)].sort();
         },
 
         async commitBundle({ changedSets }) {

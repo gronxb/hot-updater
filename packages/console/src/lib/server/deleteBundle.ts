@@ -9,6 +9,7 @@ import {
   getPatchStorageUri,
 } from "@hot-updater/core";
 import type {
+  Bundle,
   DatabasePlugin,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
@@ -18,6 +19,10 @@ import { getLegacyBundleAssetCleanupUris } from "./legacyBundleAssetCleanup";
 
 interface DeleteBundleInput {
   bundleId: string;
+}
+
+interface DeleteBundlesInput {
+  bundleIds: readonly string[];
 }
 
 interface DeleteBundleDependencies {
@@ -98,105 +103,122 @@ async function loadBundleManifest(
   return JSON.parse(new TextDecoder().decode(manifestBytes)) as BundleManifest;
 }
 
-export async function deleteBundle(
-  { bundleId }: DeleteBundleInput,
+async function cleanupBundleStorage(
+  bundle: Bundle,
+  storagePlugin: NodeStoragePlugin,
+) {
+  const cleanupUris = new Set<string>();
+  const addCleanupUri = (storageUri: string | undefined) => {
+    if (!storageUri) {
+      return;
+    }
+
+    const resolvedStorageUri = resolveStorageUriForDeletion(
+      storageUri,
+      storagePlugin,
+    );
+    if (resolvedStorageUri) {
+      cleanupUris.add(resolvedStorageUri);
+    }
+  };
+
+  addCleanupUri(bundle.storageUri);
+  addCleanupUri(getManifestStorageUri(bundle) ?? undefined);
+  addCleanupUri(getPatchStorageUri(bundle) ?? undefined);
+  for (const patch of getBundlePatches(bundle)) {
+    addCleanupUri(patch.patchStorageUri);
+  }
+
+  const manifestStorageUri = getManifestStorageUri(bundle);
+  const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
+
+  if (assetBaseStorageUri) {
+    if (!manifestStorageUri) {
+      if (!isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
+        addCleanupUri(assetBaseStorageUri);
+      }
+    } else if (isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
+      // New deploys store manifest assets under a shared content-addressed
+      // /assets root. Deleting individual shared objects here would require
+      // either reference metadata or a storage/DB scan, so bundle deletion
+      // leaves them in place and only removes per-bundle archive/manifest data.
+    } else {
+      try {
+        const manifest = await loadBundleManifest(
+          manifestStorageUri,
+          storagePlugin,
+        );
+
+        for (const storageUri of getLegacyBundleAssetCleanupUris({
+          assetBaseStorageUri,
+          manifest,
+        })) {
+          addCleanupUri(storageUri);
+        }
+      } catch (error) {
+        console.error(
+          "Failed to load bundle manifest for storage cleanup:",
+          error,
+        );
+        if (!isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
+          addCleanupUri(assetBaseStorageUri);
+        }
+      }
+    }
+  }
+
+  if (cleanupUris.size === 0) {
+    return;
+  }
+
+  for (const storageUri of cleanupUris) {
+    try {
+      await storagePlugin.profiles.node.delete(storageUri);
+    } catch (error) {
+      console.error("Failed to delete bundle from storage:", error);
+    }
+  }
+}
+
+export async function deleteBundles(
+  { bundleIds }: DeleteBundlesInput,
   {
     databasePlugin,
     storagePlugin,
     waitForStorageCleanup = true,
   }: DeleteBundleDependencies,
 ) {
-  const bundle = await databasePlugin.getBundleById(bundleId);
-  if (!bundle) {
-    throw new Error("Bundle not found");
+  const bundles: Bundle[] = [];
+  for (const bundleId of bundleIds) {
+    const bundle = await databasePlugin.getBundleById(bundleId);
+    if (!bundle) {
+      throw new Error(`Bundle not found: ${bundleId}`);
+    }
+    bundles.push(bundle);
   }
 
-  const cleanupCandidates = [
-    bundle.storageUri,
-    getManifestStorageUri(bundle),
-    getAssetBaseStorageUri(bundle),
-    getPatchStorageUri(bundle),
-    ...getBundlePatches(bundle).map((patch) => patch.patchStorageUri),
-  ].filter((value): value is string => Boolean(value));
+  for (const bundle of bundles) {
+    const cleanupCandidates = [
+      bundle.storageUri,
+      getManifestStorageUri(bundle),
+      getAssetBaseStorageUri(bundle),
+      getPatchStorageUri(bundle),
+      ...getBundlePatches(bundle).map((patch) => patch.patchStorageUri),
+    ].filter((value): value is string => Boolean(value));
 
-  for (const candidate of cleanupCandidates) {
-    resolveStorageUriForDeletion(candidate, storagePlugin);
+    for (const candidate of cleanupCandidates) {
+      resolveStorageUriForDeletion(candidate, storagePlugin);
+    }
   }
 
-  await databasePlugin.deleteBundle(bundle);
+  for (const bundle of bundles) {
+    await databasePlugin.deleteBundle(bundle);
+  }
   await databasePlugin.commitBundle();
 
   const cleanupStorage = async () => {
-    const cleanupUris = new Set<string>();
-    const addCleanupUri = (storageUri: string | undefined) => {
-      if (!storageUri) {
-        return;
-      }
-
-      const resolvedStorageUri = resolveStorageUriForDeletion(
-        storageUri,
-        storagePlugin,
-      );
-      if (resolvedStorageUri) {
-        cleanupUris.add(resolvedStorageUri);
-      }
-    };
-
-    addCleanupUri(bundle.storageUri);
-    addCleanupUri(getManifestStorageUri(bundle) ?? undefined);
-    addCleanupUri(getPatchStorageUri(bundle) ?? undefined);
-    for (const patch of getBundlePatches(bundle)) {
-      addCleanupUri(patch.patchStorageUri);
-    }
-
-    const manifestStorageUri = getManifestStorageUri(bundle);
-    const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
-
-    if (assetBaseStorageUri) {
-      if (!manifestStorageUri) {
-        if (!isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
-          addCleanupUri(assetBaseStorageUri);
-        }
-      } else if (isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
-        // New deploys store manifest assets under a shared content-addressed
-        // /assets root. Deleting individual shared objects here would require
-        // either reference metadata or a storage/DB scan, so bundle deletion
-        // leaves them in place and only removes per-bundle archive/manifest data.
-      } else {
-        try {
-          const manifest = await loadBundleManifest(
-            manifestStorageUri,
-            storagePlugin,
-          );
-
-          for (const storageUri of getLegacyBundleAssetCleanupUris({
-            assetBaseStorageUri,
-            manifest,
-          })) {
-            addCleanupUri(storageUri);
-          }
-        } catch (error) {
-          console.error(
-            "Failed to load bundle manifest for storage cleanup:",
-            error,
-          );
-          if (!isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
-            addCleanupUri(assetBaseStorageUri);
-          }
-        }
-      }
-    }
-
-    if (cleanupUris.size === 0) {
-      return;
-    }
-
-    for (const storageUri of cleanupUris) {
-      try {
-        await storagePlugin.profiles.node.delete(storageUri);
-      } catch (error) {
-        console.error("Failed to delete bundle from storage:", error);
-      }
+    for (const bundle of bundles) {
+      await cleanupBundleStorage(bundle, storagePlugin);
     }
   };
 
@@ -208,4 +230,11 @@ export async function deleteBundle(
   void cleanupStorage().catch((error) => {
     console.error("Failed to clean up bundle storage:", error);
   });
+}
+
+export async function deleteBundle(
+  { bundleId }: DeleteBundleInput,
+  dependencies: DeleteBundleDependencies,
+) {
+  await deleteBundles({ bundleIds: [bundleId] }, dependencies);
 }
