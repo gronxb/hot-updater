@@ -19,6 +19,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import {
   createBundleStorageKey,
+  getManifestAssetDownloadPath,
   resolveManifestAssetStorageUri,
 } from "@hot-updater/plugin-core";
 
@@ -42,7 +43,6 @@ export interface CreateBundleDiffOptions {
 }
 
 const HBC_ASSET_PATH_RE = /\.bundle$/;
-const BR_COMPRESSED_ASSET_PATH_RE = /(^|\/)index\.[^/]+\.bundle$/;
 const HOT_UPDATER_DOWNLOAD_DIR_PREFIX = "downloads-";
 const decompressBrotli = promisify(brotliDecompress);
 
@@ -189,10 +189,11 @@ async function fetchAssetBytes(
     throw new Error(`Asset ${assetPath} is missing from manifest`);
   }
 
-  if (BR_COMPRESSED_ASSET_PATH_RE.test(assetPath)) {
+  const downloadPath = getManifestAssetDownloadPath(assetPath);
+  if (downloadPath !== assetPath) {
     const compressedAssetStorageUri = resolveManifestAssetStorageUri({
       assetBaseStorageUri,
-      assetPath: `${assetPath}.br`,
+      assetPath: downloadPath,
       fileHash: asset.fileHash,
     });
 

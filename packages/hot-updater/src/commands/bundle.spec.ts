@@ -95,7 +95,11 @@ describe("handleBundleList", () => {
     await handleBundleList({});
 
     expect(mockDatabasePlugin.getBundles).toHaveBeenCalledWith({
-      where: { channel: undefined, platform: undefined },
+      where: {
+        channel: undefined,
+        platform: undefined,
+        targetAppVersion: undefined,
+      },
       limit: 20,
     });
     const output = logSpy.mock.calls.map((c) => c[0]).join("\n");
@@ -142,9 +146,18 @@ describe("handleBundleList", () => {
       pagination: { total: 0 },
     });
     const { handleBundleList } = await import("./bundle");
-    await handleBundleList({ channel: "beta", platform: "android", limit: 5 });
+    await handleBundleList({
+      channel: "beta",
+      platform: "android",
+      limit: 5,
+      targetAppVersion: "1.2.3",
+    });
     expect(mockDatabasePlugin.getBundles).toHaveBeenCalledWith({
-      where: { channel: "beta", platform: "android" },
+      where: {
+        channel: "beta",
+        platform: "android",
+        targetAppVersion: "1.2.3",
+      },
       limit: 5,
     });
   });
@@ -394,9 +407,11 @@ describe("handleBundleDelete", () => {
   it("deletes an existing bundle record with -y and verifies it is gone", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     const bundle = buildBundle({ id: "B1" });
-    mockDatabasePlugin.getBundleById
-      .mockResolvedValueOnce(bundle)
-      .mockResolvedValueOnce(null);
+    mockDatabasePlugin.getBundles.mockResolvedValue({
+      data: [bundle],
+      pagination: { total: 1 },
+    });
+    mockDatabasePlugin.getBundleById.mockResolvedValueOnce(null);
 
     const { handleBundleDelete } = await import("./bundle");
     await handleBundleDelete(["B1"], { yes: true });
@@ -412,8 +427,11 @@ describe("handleBundleDelete", () => {
     vi.useFakeTimers();
     vi.spyOn(console, "log").mockImplementation(() => {});
     const bundle = buildBundle({ id: "B1" });
+    mockDatabasePlugin.getBundles.mockResolvedValue({
+      data: [bundle],
+      pagination: { total: 1 },
+    });
     mockDatabasePlugin.getBundleById
-      .mockResolvedValueOnce(bundle)
       .mockResolvedValueOnce(bundle)
       .mockResolvedValueOnce(null);
 
@@ -437,11 +455,13 @@ describe("handleBundleDelete", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     const b1 = buildBundle({ id: "B1" });
     const b2 = buildBundle({ id: "B2" });
+    mockDatabasePlugin.getBundles.mockResolvedValue({
+      data: [b1, b2],
+      pagination: { total: 2 },
+    });
     mockDatabasePlugin.getBundleById
-      .mockResolvedValueOnce(b1) // resolve B1
-      .mockResolvedValueOnce(b2) // resolve B2
-      .mockResolvedValueOnce(null) // verify B1 gone
-      .mockResolvedValueOnce(null); // verify B2 gone
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
 
     const { handleBundleDelete } = await import("./bundle");
     await handleBundleDelete(["B1", "B2"], { yes: true });
@@ -456,32 +476,31 @@ describe("handleBundleDelete", () => {
     );
   });
 
-  it("resolves multiple ids sequentially to avoid overlapping provider scans", async () => {
+  it("resolves multiple and missing ids from one management snapshot", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     const b1 = buildBundle({ id: "B1" });
     const b2 = buildBundle({ id: "B2" });
-    let resolveFirst: ((bundle: Bundle) => void) | undefined;
-    const firstLookup = new Promise<Bundle>((resolve) => {
-      resolveFirst = resolve;
+    mockDatabasePlugin.getBundles.mockResolvedValue({
+      data: [b1, b2],
+      pagination: { total: 2 },
     });
-
     mockDatabasePlugin.getBundleById
-      .mockImplementationOnce(() => firstLookup)
-      .mockResolvedValueOnce(b2)
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null);
 
     const { handleBundleDelete } = await import("./bundle");
-    const deletion = handleBundleDelete(["B1", "B2"], { yes: true });
+    await handleBundleDelete(["B1", "missing", "B2", "B1"], { yes: true });
 
-    await vi.waitFor(() => {
-      expect(mockDatabasePlugin.getBundleById).toHaveBeenCalledTimes(1);
+    expect(mockDatabasePlugin.getBundles).toHaveBeenCalledOnce();
+    expect(mockDatabasePlugin.getBundles).toHaveBeenCalledWith({
+      where: { id: { in: ["B1", "missing", "B2"] } },
+      limit: 3,
     });
-    resolveFirst?.(b1);
-    await deletion;
-
-    expect(mockDatabasePlugin.getBundleById).toHaveBeenNthCalledWith(1, "B1");
-    expect(mockDatabasePlugin.getBundleById).toHaveBeenNthCalledWith(2, "B2");
+    expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledTimes(2);
+    expect(mockDatabasePlugin.commitBundle).toHaveBeenCalledOnce();
+    expect(mockCli.p.log.info).toHaveBeenCalledWith(
+      "No bundle with id missing. Skipping.",
+    );
   });
 
   it("exits 1 when no ids are provided", async () => {

@@ -5,7 +5,9 @@ import path from "node:path";
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import {
   getAssetBaseStorageUri,
+  getBundlePatches,
   getManifestStorageUri,
+  getPatchStorageUri,
 } from "@hot-updater/core";
 import type {
   Bundle,
@@ -16,6 +18,7 @@ import type {
 import {
   assertNodeStoragePlugin,
   BUNDLE_STORAGE_PREFIX,
+  getManifestAssetDownloadPath,
   isContentAddressedAssetBaseStorageUri,
   resolveManifestAssetStorageUri,
 } from "@hot-updater/plugin-core";
@@ -30,7 +33,6 @@ const UUID_V7_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CONTENT_ADDRESSED_ASSET_KEY_RE =
   /^assets\/sha256\/[0-9a-f]{2}\/[0-9a-f]{64}(?:\.[^/]+)?$/i;
-const BROTLI_BUNDLE_ASSET_RE = /(^|\/)index\.[^/]+\.bundle$/;
 
 export const DEFAULT_STORAGE_PRUNE_MIN_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -40,7 +42,13 @@ export interface StoragePruneOptions {
 }
 
 interface BundleManifest {
+  bundleId: string;
   assets: Record<string, { fileHash: string }>;
+}
+
+interface BundleStorageReferences {
+  exactUris: ReadonlySet<string>;
+  prefixUris: readonly string[];
 }
 
 interface PruneCandidate extends StorageObject {
@@ -99,19 +107,47 @@ function normalizeStorageUri(storageUri: string): string {
   return new URL(storageUri).toString();
 }
 
-function getBundleIdFromStorageKey(key: string): string | null {
-  const segments = key.split("/");
-  const bundleId =
-    segments[0] === BUNDLE_STORAGE_PREFIX ? segments[1] : segments[0];
-  return bundleId && UUID_V7_RE.test(bundleId) ? bundleId.toLowerCase() : null;
+function isLegacyBundleArtifactPath(segments: readonly string[]) {
+  const [firstSegment] = segments;
+  return (
+    firstSegment === "manifest.json" ||
+    firstSegment === "files" ||
+    firstSegment === "patches" ||
+    (firstSegment !== undefined && /^bundle(?:\..+)?$/.test(firstSegment))
+  );
 }
 
-function isBundleManifest(value: unknown): value is BundleManifest {
+function getBundleIdFromStorageKey(key: string): string | null {
+  const segments = key.split("/").filter(Boolean);
+  if (segments[0] === BUNDLE_STORAGE_PREFIX) {
+    const bundleId = segments[1];
+    return bundleId && UUID_V7_RE.test(bundleId)
+      ? bundleId.toLowerCase()
+      : null;
+  }
+
+  const bundleId = segments[0];
+  return bundleId &&
+    UUID_V7_RE.test(bundleId) &&
+    isLegacyBundleArtifactPath(segments.slice(1))
+    ? bundleId.toLowerCase()
+    : null;
+}
+
+function isBundleManifest(
+  value: unknown,
+  bundleId: string,
+): value is BundleManifest {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return false;
   }
 
-  const assets = (value as { assets?: unknown }).assets;
+  const candidate = value as { assets?: unknown; bundleId?: unknown };
+  if (candidate.bundleId !== bundleId) {
+    return false;
+  }
+
+  const assets = candidate.assets;
   if (!assets || typeof assets !== "object" || Array.isArray(assets)) {
     return false;
   }
@@ -121,7 +157,8 @@ function isBundleManifest(value: unknown): value is BundleManifest {
       asset !== null &&
       typeof asset === "object" &&
       !Array.isArray(asset) &&
-      typeof (asset as { fileHash?: unknown }).fileHash === "string"
+      typeof (asset as { fileHash?: unknown }).fileHash === "string" &&
+      /^[0-9a-f]{64}$/i.test((asset as { fileHash: string }).fileHash)
     );
   });
 }
@@ -170,6 +207,11 @@ async function loadAllBundles(databasePlugin: DatabasePlugin) {
     bundles.push(...data);
 
     const nextCursor = pagination.nextCursor ?? undefined;
+    if (pagination.hasNextPage && !nextCursor) {
+      throw new Error(
+        "Database cannot provide safe cursor pagination for storage prune.",
+      );
+    }
     if (!nextCursor) {
       return bundles;
     }
@@ -235,7 +277,7 @@ async function readManifest(
     );
   }
 
-  if (!isBundleManifest(manifest)) {
+  if (!isBundleManifest(manifest, bundle.id)) {
     throw new Error(
       `Cannot prune shared assets: invalid manifest for bundle ${bundle.id}.`,
     );
@@ -250,10 +292,20 @@ async function collectReferencedAssetUris(
 ) {
   const bundlesWithSharedAssets = bundles.filter((bundle) => {
     const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
-    return (
-      assetBaseStorageUri !== null &&
-      isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)
-    );
+    if (
+      assetBaseStorageUri === null ||
+      !isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)
+    ) {
+      return false;
+    }
+
+    const protocol = new URL(assetBaseStorageUri).protocol.replace(":", "");
+    if (protocol !== storagePlugin.supportedProtocol) {
+      throw new Error(
+        `Cannot prune shared assets: bundle ${bundle.id} uses ${protocol} asset storage, but the configured storage plugin uses ${storagePlugin.supportedProtocol}.`,
+      );
+    }
+    return true;
   });
   const referencedUris = new Set<string>();
 
@@ -278,9 +330,7 @@ async function collectReferencedAssetUris(
         );
 
         for (const [assetPath, asset] of Object.entries(manifest.assets)) {
-          const downloadPath = BROTLI_BUNDLE_ASSET_RE.test(assetPath)
-            ? `${assetPath}.br`
-            : assetPath;
+          const downloadPath = getManifestAssetDownloadPath(assetPath);
           referencedUris.add(
             normalizeStorageUri(
               resolveManifestAssetStorageUri({
@@ -303,11 +353,46 @@ async function collectReferencedAssetUris(
   };
 }
 
+function collectBundleStorageReferences(
+  bundles: readonly Bundle[],
+): BundleStorageReferences {
+  const exactUris = new Set<string>();
+  const prefixUris = new Set<string>();
+  const addExactUri = (storageUri: string | null | undefined) => {
+    if (storageUri) {
+      exactUris.add(normalizeStorageUri(storageUri));
+    }
+  };
+
+  for (const bundle of bundles) {
+    addExactUri(bundle.storageUri);
+    addExactUri(getManifestStorageUri(bundle));
+    addExactUri(getPatchStorageUri(bundle));
+    for (const patch of getBundlePatches(bundle)) {
+      addExactUri(patch.patchStorageUri);
+    }
+
+    const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
+    if (
+      assetBaseStorageUri &&
+      !isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)
+    ) {
+      prefixUris.add(
+        `${normalizeStorageUri(assetBaseStorageUri).replace(/\/+$/, "")}/`,
+      );
+    }
+  }
+
+  return { exactUris, prefixUris: [...prefixUris] };
+}
+
 function getPruneCandidates({
+  bundleStorageReferences,
   objects,
   liveBundleIds,
   referencedAssetUris,
 }: {
+  bundleStorageReferences: BundleStorageReferences;
   objects: readonly StorageObject[];
   liveBundleIds: ReadonlySet<string>;
   referencedAssetUris: ReadonlySet<string>;
@@ -315,6 +400,16 @@ function getPruneCandidates({
   const candidates: PruneCandidate[] = [];
 
   for (const object of objects) {
+    const normalizedStorageUri = normalizeStorageUri(object.storageUri);
+    if (
+      bundleStorageReferences.exactUris.has(normalizedStorageUri) ||
+      bundleStorageReferences.prefixUris.some((prefix) =>
+        normalizedStorageUri.startsWith(prefix),
+      )
+    ) {
+      continue;
+    }
+
     const bundleId = getBundleIdFromStorageKey(object.key);
     if (bundleId && !liveBundleIds.has(bundleId)) {
       candidates.push({ ...object, reason: "bundle" });
@@ -323,7 +418,7 @@ function getPruneCandidates({
 
     if (
       CONTENT_ADDRESSED_ASSET_KEY_RE.test(object.key) &&
-      !referencedAssetUris.has(normalizeStorageUri(object.storageUri))
+      !referencedAssetUris.has(normalizedStorageUri)
     ) {
       candidates.push({ ...object, reason: "asset" });
     }
@@ -373,7 +468,10 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
     }
     if (options.yes) {
       p.log.warn(
-        "Do not deploy or promote bundles while storage prune is running.",
+        "Storage prune requires exclusive access. Stop deploy and promote operations first.",
+      );
+      p.log.warn(
+        "The current database must own every object under this storage prefix. Use a separate storage basePath for each database or environment.",
       );
     }
 
@@ -381,12 +479,14 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
     const liveBundleIds = new Set(
       bundles.map((bundle) => bundle.id.toLowerCase()),
     );
+    const bundleStorageReferences = collectBundleStorageReferences(bundles);
     const { manifestCount, referencedUris } = await collectReferencedAssetUris(
       bundles,
       storagePlugin,
     );
     const objects = await listObjects();
     const unreferenced = getPruneCandidates({
+      bundleStorageReferences,
       liveBundleIds,
       objects,
       referencedAssetUris: referencedUris,
@@ -402,9 +502,12 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
       const refreshedBundleIds = new Set(
         refreshedBundles.map((bundle) => bundle.id.toLowerCase()),
       );
+      const refreshedBundleStorageReferences =
+        collectBundleStorageReferences(refreshedBundles);
       const { referencedUris: refreshedReferencedUris } =
         await collectReferencedAssetUris(refreshedBundles, storagePlugin);
       candidates = getPruneCandidates({
+        bundleStorageReferences: refreshedBundleStorageReferences,
         liveBundleIds: refreshedBundleIds,
         objects: candidates,
         referencedAssetUris: refreshedReferencedUris,
@@ -453,7 +556,7 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
       return;
     }
 
-    await deleteObjects!(candidates.map((candidate) => candidate.storageUri));
+    await deleteObjects!(candidates.map((candidate) => candidate.key));
     p.log.success(
       `Pruned ${candidates.length} objects (${formatBytes(candidateBytes)}).`,
     );

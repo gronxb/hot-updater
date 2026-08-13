@@ -35,8 +35,8 @@ export const s3Storage = createUniversalStoragePlugin<S3StorageConfig>({
   factory: (config) => {
     const { bucketName, ...s3Config } = config;
     const client = new S3Client(applyS3RuntimeAwsConfig(s3Config));
-    const getStorageKey = createStorageKeyBuilder(config.basePath);
     const normalizedBasePath = config.basePath?.replace(/^\/+|\/+$/g, "") ?? "";
+    const getStorageKey = createStorageKeyBuilder(normalizedBasePath);
 
     const getListPrefix = (prefix = "") => {
       const normalizedPrefix = prefix.replace(/^\/+|\/+$/g, "");
@@ -88,16 +88,8 @@ export const s3Storage = createUniversalStoragePlugin<S3StorageConfig>({
 
           return objects;
         },
-        async deleteObjects(storageUris) {
-          const keys = storageUris.map((storageUri) => {
-            const { bucket, key } = parseStorageUri(storageUri, "s3");
-            if (bucket !== bucketName) {
-              throw new Error(
-                `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
-              );
-            }
-            return key;
-          });
+        async deleteObjects(relativeKeys) {
+          const keys = relativeKeys.map((key) => getStorageKey(key));
 
           for (let offset = 0; offset < keys.length; offset += 1000) {
             const batch = keys.slice(offset, offset + 1000);

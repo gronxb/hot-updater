@@ -21,6 +21,7 @@ import {
   createUUIDv7,
   detectCompressionFormat,
   getContentAddressedAssetStoragePath,
+  getManifestAssetDownloadPath,
   resolveManifestAssetStorageUri,
 } from "@hot-updater/plugin-core";
 import JSZip from "jszip";
@@ -84,9 +85,6 @@ const getRelativeStorageDir = (relativePath: string) => {
   return dirname === "." ? "" : dirname;
 };
 
-const isBundleAsset = (relativePath: string) =>
-  /(^|\/)[^/]+\.(ios|android)\.bundle$/.test(relativePath.replace(/\\/g, "/"));
-
 function resolvePreparedUploadPath(rootDir: string, assetPath: string) {
   const normalizedAssetPath = assetPath.replaceAll("\\", "/");
   const outputPath = path.resolve(
@@ -116,7 +114,7 @@ async function prepareManifestAssetUploadFile({
   sourcePath: string;
   workDir: string;
 }) {
-  if (!isBundleAsset(assetPath)) {
+  if (getManifestAssetDownloadPath(assetPath) === assetPath) {
     return sourcePath;
   }
 
@@ -429,9 +427,7 @@ export async function createCopiedBundleArchive({
         sourcePath,
         workDir,
       });
-      const uploadName = isBundleAsset(assetPath)
-        ? `${assetPath}.br`
-        : assetPath;
+      const uploadName = getManifestAssetDownloadPath(assetPath);
       const storagePath = getContentAddressedAssetStoragePath({
         assetPath: uploadName,
         fileHash: asset.fileHash,

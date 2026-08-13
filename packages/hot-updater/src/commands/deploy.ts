@@ -23,6 +23,7 @@ import {
   createBundleStorageKey,
   createStorageRootUriWithPath,
   getContentAddressedAssetStoragePath,
+  getManifestAssetDownloadPath,
 } from "@hot-updater/plugin-core";
 import { createBundleDiff } from "@hot-updater/server/db";
 import isPortReachable from "is-port-reachable";
@@ -320,14 +321,6 @@ const getRelativeStorageDir = (relativePath: string) => {
   return dirname === "." ? "" : dirname;
 };
 
-const isBrotliManifestBundleAsset = (relativePath: string) =>
-  /(^|\/)index\.[^/]+\.bundle$/.test(relativePath.replace(/\\/g, "/"));
-
-const getManifestAssetUploadName = (relativePath: string) =>
-  isBrotliManifestBundleAsset(relativePath)
-    ? `${relativePath}.br`
-    : relativePath;
-
 const createStorageUriWithRelativePath = (
   baseStorageUri: string,
   relativePath: string,
@@ -354,7 +347,7 @@ const ensureUploadSourcePath = async ({
   targetFile: { path: string; name: string };
   uploadFilename?: string;
 }) => {
-  const uploadName = getManifestAssetUploadName(targetFile.name);
+  const uploadName = getManifestAssetDownloadPath(targetFile.name);
   const expectedFilename = uploadFilename ?? path.posix.basename(uploadName);
   const actualFilename = path.basename(targetFile.path);
 
@@ -408,7 +401,7 @@ const getUniqueContentAddressedAssetUploadTargets = ({
     }
 
     const storagePath = getContentAddressedAssetStoragePath({
-      assetPath: getManifestAssetUploadName(targetFile.name),
+      assetPath: getManifestAssetDownloadPath(targetFile.name),
       fileHash: manifestAsset.fileHash,
     });
 

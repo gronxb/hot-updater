@@ -269,7 +269,11 @@ describe("useDeleteBundleMutation", () => {
 
 describe("useDeleteBundlesMutation", () => {
   it("removes a batch from cached lists and invalidates once", async () => {
-    vi.mocked(deleteBundlesApi).mockResolvedValue({ success: true });
+    vi.mocked(deleteBundlesApi).mockResolvedValue({
+      success: true,
+      deletedBundleIds: [bundle.id, otherBundle.id],
+      missingBundleIds: [],
+    });
     const queryClient = new QueryClient({
       defaultOptions: {
         mutations: { retry: false },
@@ -280,7 +284,8 @@ describe("useDeleteBundlesMutation", () => {
       .spyOn(queryClient, "invalidateQueries")
       .mockResolvedValue();
 
-    queryClient.setQueryData(queryKeys.bundles.list({}), {
+    const filters = { channel: "development", limit: "2000" };
+    queryClient.setQueryData(queryKeys.bundles.list(filters), {
       data: [bundle, otherBundle],
       pagination: {
         total: 2,
@@ -304,7 +309,7 @@ describe("useDeleteBundlesMutation", () => {
       });
     });
 
-    expect(queryClient.getQueryData(queryKeys.bundles.list({}))).toEqual({
+    expect(queryClient.getQueryData(queryKeys.bundles.list(filters))).toEqual({
       data: [],
       pagination: {
         total: 2,

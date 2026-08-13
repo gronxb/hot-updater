@@ -126,7 +126,10 @@ describe("SelectedBundlesDeleteDialog", () => {
   });
 
   it("deletes all selected bundles in one batch", async () => {
-    const deletion = createDeferred<void>();
+    const deletion = createDeferred<{
+      deletedBundleIds: string[];
+      missingBundleIds: string[];
+    }>();
     mockDeleteBundlesMutation.mutateAsync.mockReturnValue(deletion.promise);
 
     render(
@@ -155,7 +158,10 @@ describe("SelectedBundlesDeleteDialog", () => {
     expect(screen.queryByRole("img", { name: "Queued" })).toBeNull();
     expect(screen.getAllByLabelText("Deleting")).toHaveLength(2);
 
-    deletion.resolve(undefined);
+    deletion.resolve({
+      deletedBundleIds: [firstBundle.id, secondBundle.id],
+      missingBundleIds: [],
+    });
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
@@ -176,7 +182,10 @@ describe("SelectedBundlesDeleteDialog", () => {
   it("keeps a failed batch actionable and retries it", async () => {
     mockDeleteBundlesMutation.mutateAsync
       .mockRejectedValueOnce(new Error("storage timeout"))
-      .mockResolvedValueOnce(undefined);
+      .mockResolvedValueOnce({
+        deletedBundleIds: [firstBundle.id, secondBundle.id],
+        missingBundleIds: [],
+      });
 
     render(
       <SelectedBundlesDeleteDialog

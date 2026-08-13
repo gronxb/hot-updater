@@ -390,10 +390,11 @@ export interface NodeStorageProfile {
 
   /**
    * Optional management capabilities used by storage garbage collection.
-   * `deleteObjects` must delete only the exact object URIs it receives.
+   * Object keys are relative to the configured storage base path.
+   * `deleteObjects` must delete only the exact keys it receives.
    */
   listObjects?: (prefix?: string) => Promise<StorageObject[]>;
-  deleteObjects?: (storageUris: readonly string[]) => Promise<void>;
+  deleteObjects?: (keys: readonly string[]) => Promise<void>;
 }
 
 export interface RuntimeStorageProfile<TContext = unknown> {

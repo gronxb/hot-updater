@@ -581,6 +581,9 @@ describe("deploy rollout wiring", () => {
       bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
       stdout: null,
     }));
+    mockStoragePlugin.profiles.node.upload.mockImplementation(async (key) => ({
+      storageUri: `s3://bundles/${key}/bundle.tar.br`,
+    }));
 
     await deploy({
       channel: "production",

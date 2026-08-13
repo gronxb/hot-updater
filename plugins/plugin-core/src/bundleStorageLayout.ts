@@ -14,8 +14,10 @@ export const createStorageRootUriWithPath = (
   const storageUrl = new URL(storageUri);
   const segments = storageUrl.pathname.split("/").filter(Boolean);
   const bundleIndex = segments.lastIndexOf(bundleId);
-  const rootSegments =
-    bundleIndex >= 0 ? segments.slice(0, bundleIndex) : segments.slice(0, -2);
+  if (bundleIndex < 0) {
+    throw new Error(`Storage URI does not contain bundle id: ${bundleId}`);
+  }
+  const rootSegments = segments.slice(0, bundleIndex);
   if (rootSegments.at(-1) === BUNDLE_STORAGE_PREFIX) {
     rootSegments.pop();
   }

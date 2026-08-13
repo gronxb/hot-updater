@@ -216,6 +216,17 @@ function addTargetVersionRemoval(
 function getManagementListPrefixes(
   where: DatabaseBundleQueryWhere | undefined,
 ): string[] {
+  if (
+    where?.channel &&
+    where.platform &&
+    typeof where.targetAppVersion === "string"
+  ) {
+    const targetAppVersion = normalizeTargetAppVersion(where.targetAppVersion);
+    if (targetAppVersion) {
+      return [`${where.channel}/${where.platform}/${targetAppVersion}/`];
+    }
+  }
+
   if (where?.channel && where.platform) {
     return [`${where.channel}/${where.platform}/`];
   }
@@ -248,6 +259,7 @@ export interface BlobOperations {
   uploadObject: <T>(key: string, data: T) => Promise<void>;
   deleteObject: (key: string) => Promise<void>;
   shouldSkipLoadObjectError?: (error: unknown, key: string) => boolean;
+  validateChannel?: (channel: string) => void;
   invalidatePaths: (paths: string[]) => Promise<void>;
   apiBasePath: string;
 }
@@ -273,6 +285,7 @@ export const createBlobDatabasePlugin = <TConfig>({
       uploadObject,
       deleteObject,
       shouldSkipLoadObjectError,
+      validateChannel,
       invalidatePaths,
       apiBasePath,
     } = factory(config);
@@ -600,6 +613,15 @@ export const createBlobDatabasePlugin = <TConfig>({
 
         async commitBundle({ changedSets }) {
           if (changedSets.length === 0) return;
+
+          for (const { operation, data } of changedSets) {
+            if (
+              operation === "insert" ||
+              (operation === "update" && data.channel !== undefined)
+            ) {
+              validateChannel?.(data.channel);
+            }
+          }
 
           const changedBundlesByKey: Record<string, Bundle[]> = {};
           const removalsByKey: Record<string, string[]> = {};

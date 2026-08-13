@@ -12,11 +12,7 @@ import {
   S3Client,
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
-import {
-  BUNDLE_STORAGE_PREFIX,
-  CONTENT_ADDRESSED_ASSET_PREFIX,
-  createBlobDatabasePlugin,
-} from "@hot-updater/plugin-core";
+import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
 import mime from "mime";
 
 import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
@@ -147,16 +143,20 @@ function isPlatformDirectoryPrefix(prefix: string) {
   return lastSegment === "ios" || lastSegment === "android";
 }
 
-function isBundleStorageDirectoryPrefix(prefix: string) {
+function isLegacyBundleStorageDirectoryPrefix(prefix: string) {
   const lastSegment = getLastDirectorySegment(prefix);
   return (
-    lastSegment === BUNDLE_STORAGE_PREFIX ||
-    lastSegment === CONTENT_ADDRESSED_ASSET_PREFIX ||
-    (lastSegment !== undefined &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-        lastSegment,
-      ))
+    lastSegment !== undefined &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      lastSegment,
+    )
   );
+}
+
+function validateS3Channel(channel: string) {
+  if (isLegacyBundleStorageDirectoryPrefix(channel)) {
+    throw new Error(`S3 database channel cannot use a UUIDv7 name: ${channel}`);
+  }
 }
 
 function isUpdateJsonKey(key: string) {
@@ -296,7 +296,8 @@ async function listObjectsInS3(
     const nextPrefixes =
       depth === 0
         ? commonPrefixes.filter(
-            (commonPrefix) => !isBundleStorageDirectoryPrefix(commonPrefix),
+            (commonPrefix) =>
+              !isLegacyBundleStorageDirectoryPrefix(commonPrefix),
           )
         : depth === 1
           ? commonPrefixes.filter(isPlatformDirectoryPrefix)
@@ -449,6 +450,7 @@ export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
         deleteObjectInS3(client, bucketName, toStorageKey(key)),
       shouldSkipLoadObjectError: (error) =>
         error instanceof Error && error.name === "S3ArchivedObjectError",
+      validateChannel: validateS3Channel,
       invalidatePaths: (pathsToInvalidate: string[]) => {
         if (
           cloudfrontClient &&

@@ -188,14 +188,21 @@ export async function deleteBundles(
     waitForStorageCleanup = true,
   }: DeleteBundleDependencies,
 ) {
-  const bundles: Bundle[] = [];
-  for (const bundleId of bundleIds) {
-    const bundle = await databasePlugin.getBundleById(bundleId);
-    if (!bundle) {
-      throw new Error(`Bundle not found: ${bundleId}`);
-    }
-    bundles.push(bundle);
-  }
+  const uniqueBundleIds = [...new Set(bundleIds)];
+  const { data: matchedBundles } = await databasePlugin.getBundles({
+    where: { id: { in: uniqueBundleIds } },
+    limit: uniqueBundleIds.length,
+  });
+  const matchedById = new Map(
+    matchedBundles.map((bundle) => [bundle.id, bundle]),
+  );
+  const bundles = uniqueBundleIds.flatMap((bundleId) => {
+    const bundle = matchedById.get(bundleId);
+    return bundle ? [bundle] : [];
+  });
+  const missingBundleIds = uniqueBundleIds.filter(
+    (bundleId) => !matchedById.has(bundleId),
+  );
 
   for (const bundle of bundles) {
     const cleanupCandidates = [
@@ -211,10 +218,12 @@ export async function deleteBundles(
     }
   }
 
-  for (const bundle of bundles) {
-    await databasePlugin.deleteBundle(bundle);
+  if (bundles.length > 0) {
+    for (const bundle of bundles) {
+      await databasePlugin.deleteBundle(bundle);
+    }
+    await databasePlugin.commitBundle();
   }
-  await databasePlugin.commitBundle();
 
   const cleanupStorage = async () => {
     for (const bundle of bundles) {
@@ -224,17 +233,27 @@ export async function deleteBundles(
 
   if (waitForStorageCleanup) {
     await cleanupStorage();
-    return;
+    return {
+      deletedBundleIds: bundles.map((bundle) => bundle.id),
+      missingBundleIds,
+    };
   }
 
   void cleanupStorage().catch((error) => {
     console.error("Failed to clean up bundle storage:", error);
   });
+  return {
+    deletedBundleIds: bundles.map((bundle) => bundle.id),
+    missingBundleIds,
+  };
 }
 
 export async function deleteBundle(
   { bundleId }: DeleteBundleInput,
   dependencies: DeleteBundleDependencies,
 ) {
-  await deleteBundles({ bundleIds: [bundleId] }, dependencies);
+  const result = await deleteBundles({ bundleIds: [bundleId] }, dependencies);
+  if (result.missingBundleIds.length > 0) {
+    throw new Error(`Bundle not found: ${bundleId}`);
+  }
 }

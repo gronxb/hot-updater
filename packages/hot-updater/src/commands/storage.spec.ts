@@ -149,6 +149,7 @@ describe("handleStoragePrune", () => {
         await fs.writeFile(
           filePath,
           JSON.stringify({
+            bundleId: LIVE_BUNDLE_ID,
             assets: {
               "images/logo.png": { fileHash: IMAGE_HASH },
               "index.ios.bundle": { fileHash: BUNDLE_HASH },
@@ -181,6 +182,7 @@ describe("handleStoragePrune", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("deletes only old unreferenced assets and orphaned bundle storage", async () => {
@@ -190,13 +192,19 @@ describe("handleStoragePrune", () => {
 
     expect(mockStorageNode.deleteObjects).toHaveBeenCalledOnce();
     expect(mockStorageNode.deleteObjects).toHaveBeenCalledWith([
-      `s3://bucket/assets/sha256/${ORPHAN_HASH.slice(0, 2)}/${ORPHAN_HASH}.png`,
-      `s3://bucket/${DEAD_BUNDLE_ID}/bundle.zip`,
-      `s3://bucket/${DEAD_BUNDLE_ID}/files/logo.png`,
-      `s3://bucket/bundles/${DEAD_BUNDLE_ID}/manifest.json`,
+      `assets/sha256/${ORPHAN_HASH.slice(0, 2)}/${ORPHAN_HASH}.png`,
+      `${DEAD_BUNDLE_ID}/bundle.zip`,
+      `${DEAD_BUNDLE_ID}/files/logo.png`,
+      `bundles/${DEAD_BUNDLE_ID}/manifest.json`,
     ]);
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       "Pruned 4 objects (140 B).",
+    );
+    expect(mockCli.p.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining("requires exclusive access"),
+    );
+    expect(mockCli.p.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining("separate storage basePath"),
     );
     expect(mockDatabasePlugin.onUnmount).toHaveBeenCalledOnce();
   });
@@ -220,6 +228,7 @@ describe("handleStoragePrune", () => {
         await fs.writeFile(
           filePath,
           JSON.stringify({
+            bundleId: LIVE_BUNDLE_ID,
             assets: {
               "images/logo.png": { fileHash: IMAGE_HASH },
               "index.ios.bundle": { fileHash: BUNDLE_HASH },
@@ -236,10 +245,219 @@ describe("handleStoragePrune", () => {
     await handleStoragePrune({ yes: true });
 
     expect(mockStorageNode.deleteObjects).toHaveBeenCalledWith([
-      `s3://bucket/${DEAD_BUNDLE_ID}/bundle.zip`,
-      `s3://bucket/${DEAD_BUNDLE_ID}/files/logo.png`,
-      `s3://bucket/bundles/${DEAD_BUNDLE_ID}/manifest.json`,
+      `${DEAD_BUNDLE_ID}/bundle.zip`,
+      `${DEAD_BUNDLE_ID}/files/logo.png`,
+      `bundles/${DEAD_BUNDLE_ID}/manifest.json`,
     ]);
+  });
+
+  it("does not delete when the final reference scan fails", async () => {
+    let manifestReadCount = 0;
+    mockStorageNode.downloadFile.mockImplementation(
+      async (_storageUri: string, filePath: string) => {
+        manifestReadCount += 1;
+        if (manifestReadCount > 1) {
+          throw new Error("manifest unavailable");
+        }
+        await fs.writeFile(
+          filePath,
+          JSON.stringify({
+            bundleId: LIVE_BUNDLE_ID,
+            assets: {
+              "images/logo.png": { fileHash: IMAGE_HASH },
+              "index.ios.bundle": { fileHash: BUNDLE_HASH },
+            },
+          }),
+        );
+      },
+    );
+    const { handleStoragePrune } = await import("./storage");
+
+    await expect(handleStoragePrune({ yes: true })).rejects.toThrow(
+      `failed to read manifest for bundle ${LIVE_BUNDLE_ID}`,
+    );
+    expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
+  });
+
+  it("protects metadata stored below a UUID-shaped channel", async () => {
+    const uuidChannelMetadata = `${DEAD_BUNDLE_ID}/ios/1.0.0/update.json`;
+    mockStorageNode.listObjects.mockResolvedValue([
+      object(uuidChannelMetadata, old),
+      object(`${DEAD_BUNDLE_ID}/bundle.zip`, old),
+    ]);
+    const { handleStoragePrune } = await import("./storage");
+
+    await handleStoragePrune({ yes: true });
+
+    expect(mockStorageNode.deleteObjects).toHaveBeenCalledWith([
+      `${DEAD_BUNDLE_ID}/bundle.zip`,
+    ]);
+    expect(mockStorageNode.deleteObjects).not.toHaveBeenCalledWith(
+      expect.arrayContaining([uuidChannelMetadata]),
+    );
+  });
+
+  it("fails closed when the asset base uses another storage protocol", async () => {
+    mockDatabasePlugin.getBundles.mockResolvedValue({
+      data: [
+        {
+          ...liveBundle,
+          assetBaseStorageUri: "https://cdn.example.com/assets",
+        },
+      ],
+      pagination: {
+        currentPage: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        total: 1,
+        totalPages: 1,
+      },
+    });
+    const { handleStoragePrune } = await import("./storage");
+
+    await expect(handleStoragePrune({ yes: true })).rejects.toThrow(
+      "uses https asset storage",
+    );
+    expect(mockStorageNode.listObjects).not.toHaveBeenCalled();
+    expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
+  });
+
+  it("allows an HTTP manifest when shared assets use the configured storage", async () => {
+    mockDatabasePlugin.getBundles.mockResolvedValue({
+      data: [
+        {
+          ...liveBundle,
+          manifestStorageUri: "https://cdn.example.com/manifest.json",
+        },
+      ],
+      pagination: {
+        currentPage: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        total: 1,
+        totalPages: 1,
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            bundleId: LIVE_BUNDLE_ID,
+            assets: {
+              "images/logo.png": { fileHash: IMAGE_HASH },
+              "index.ios.bundle": { fileHash: BUNDLE_HASH },
+            },
+          }),
+      })),
+    );
+    const { handleStoragePrune } = await import("./storage");
+
+    await handleStoragePrune({ yes: true });
+
+    expect(fetch).toHaveBeenCalledWith("https://cdn.example.com/manifest.json");
+    expect(mockStorageNode.deleteObjects).toHaveBeenCalled();
+  });
+
+  it("fails closed when a manifest belongs to another bundle", async () => {
+    mockStorageNode.downloadFile.mockImplementation(
+      async (_storageUri: string, filePath: string) => {
+        await fs.writeFile(
+          filePath,
+          JSON.stringify({
+            bundleId: DEAD_BUNDLE_ID,
+            assets: {
+              "images/logo.png": { fileHash: IMAGE_HASH },
+            },
+          }),
+        );
+      },
+    );
+    const { handleStoragePrune } = await import("./storage");
+
+    await expect(handleStoragePrune({ yes: true })).rejects.toThrow(
+      `invalid manifest for bundle ${LIVE_BUNDLE_ID}`,
+    );
+    expect(mockStorageNode.listObjects).not.toHaveBeenCalled();
+    expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a manifest contains a malformed asset hash", async () => {
+    mockStorageNode.downloadFile.mockImplementation(
+      async (_storageUri: string, filePath: string) => {
+        await fs.writeFile(
+          filePath,
+          JSON.stringify({
+            bundleId: LIVE_BUNDLE_ID,
+            assets: {
+              "images/logo.png": { fileHash: "not-a-sha256" },
+            },
+          }),
+        );
+      },
+    );
+    const { handleStoragePrune } = await import("./storage");
+
+    await expect(handleStoragePrune({ yes: true })).rejects.toThrow(
+      `invalid manifest for bundle ${LIVE_BUNDLE_ID}`,
+    );
+    expect(mockStorageNode.listObjects).not.toHaveBeenCalled();
+    expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the database omits a required next cursor", async () => {
+    mockDatabasePlugin.getBundles.mockResolvedValue({
+      data: [liveBundle],
+      pagination: {
+        currentPage: 1,
+        hasNextPage: true,
+        hasPreviousPage: false,
+        nextCursor: null,
+        total: 10_001,
+        totalPages: 2,
+      },
+    });
+    const { handleStoragePrune } = await import("./storage");
+
+    await expect(handleStoragePrune({ yes: true })).rejects.toThrow(
+      "cannot provide safe cursor pagination",
+    );
+    expect(mockStorageNode.downloadFile).not.toHaveBeenCalled();
+    expect(mockStorageNode.listObjects).not.toHaveBeenCalled();
+    expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
+  });
+
+  it("protects exact and legacy-prefix URIs referenced by live bundles", async () => {
+    const referencedLegacyId = DEAD_BUNDLE_ID;
+    mockDatabasePlugin.getBundles.mockResolvedValue({
+      data: [
+        {
+          ...liveBundle,
+          assetBaseStorageUri: `s3://bucket/${referencedLegacyId}/files`,
+          manifestStorageUri: `s3://bucket/${referencedLegacyId}/manifest.json`,
+          storageUri: `s3://bucket/${referencedLegacyId}/bundle.zip`,
+        },
+      ],
+      pagination: {
+        currentPage: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        total: 1,
+        totalPages: 1,
+      },
+    });
+    mockStorageNode.listObjects.mockResolvedValue([
+      object(`${referencedLegacyId}/bundle.zip`, old),
+      object(`${referencedLegacyId}/manifest.json`, old),
+      object(`${referencedLegacyId}/files/logo.png`, old),
+    ]);
+    const { handleStoragePrune } = await import("./storage");
+
+    await handleStoragePrune({ yes: true });
+
+    expect(mockStorageNode.downloadFile).not.toHaveBeenCalled();
+    expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
   });
 
   it("aborts before listing or deletion when a live manifest cannot be read", async () => {

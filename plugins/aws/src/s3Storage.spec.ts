@@ -69,7 +69,7 @@ describe("s3Storage object management", () => {
     );
   });
 
-  it("deletes exact object URIs in S3 batches", async () => {
+  it("deletes exact relative object keys in S3 batches", async () => {
     const deletedBatches: string[][] = [];
     vi.spyOn(S3Client.prototype, "send").mockImplementation(
       async (command: unknown) => {
@@ -84,28 +84,13 @@ describe("s3Storage object management", () => {
       },
     );
     const storage = s3Storage({ bucketName: "bucket" })();
-    const storageUris = Array.from(
-      { length: 1001 },
-      (_, index) => `s3://bucket/assets/${index}`,
-    );
+    const keys = Array.from({ length: 1001 }, (_, index) => `assets/${index}`);
 
-    await storage.profiles.node.deleteObjects?.(storageUris);
+    await storage.profiles.node.deleteObjects?.(keys);
 
     expect(deletedBatches).toHaveLength(2);
     expect(deletedBatches[0]).toHaveLength(1000);
     expect(deletedBatches[1]).toEqual(["assets/1000"]);
-  });
-
-  it("rejects exact deletion outside the configured bucket", async () => {
-    const send = vi.spyOn(S3Client.prototype, "send");
-    const storage = s3Storage({ bucketName: "bucket" })();
-
-    await expect(
-      storage.profiles.node.deleteObjects?.([
-        "s3://another-bucket/assets/orphan.png",
-      ]),
-    ).rejects.toThrow("Bucket name mismatch");
-    expect(send).not.toHaveBeenCalled();
   });
 
   it("reports partial S3 batch deletion failures", async () => {
@@ -115,7 +100,36 @@ describe("s3Storage object management", () => {
     const storage = s3Storage({ bucketName: "bucket" })();
 
     await expect(
-      storage.profiles.node.deleteObjects?.(["s3://bucket/assets/orphan.png"]),
+      storage.profiles.node.deleteObjects?.(["assets/orphan.png"]),
     ).rejects.toThrow("Failed to delete 1 S3 object");
+  });
+
+  it("preserves special characters in exact deletion keys", async () => {
+    const deletedKeys: string[] = [];
+    vi.spyOn(S3Client.prototype, "send").mockImplementation(
+      async (command: unknown) => {
+        if (!(command instanceof DeleteObjectsCommand)) {
+          throw new Error("Unexpected command");
+        }
+        deletedKeys.push(
+          ...(command.input.Delete?.Objects?.map(({ Key }) => Key ?? "") ?? []),
+        );
+        return {};
+      },
+    );
+    const storage = s3Storage({
+      basePath: "/releases/",
+      bucketName: "bucket",
+    })();
+
+    await storage.profiles.node.deleteObjects?.([
+      "legacy/files/logo#dark?.png",
+      "legacy/files/한글 100%.png",
+    ]);
+
+    expect(deletedKeys).toEqual([
+      "releases/legacy/files/logo#dark?.png",
+      "releases/legacy/files/한글 100%.png",
+    ]);
   });
 });

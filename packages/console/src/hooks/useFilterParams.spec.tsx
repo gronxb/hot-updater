@@ -39,10 +39,12 @@ describe("useFilterParams", () => {
       search: {
         channel: undefined,
         platform: "ios",
+        targetAppVersion: undefined,
         page: undefined,
         after: undefined,
         before: undefined,
         bundleId: undefined,
+        expandedBundleId: undefined,
       },
     });
   });
@@ -67,10 +69,12 @@ describe("useFilterParams", () => {
       search: {
         channel: "stable",
         platform: "android",
+        targetAppVersion: undefined,
         page: 4,
         after: undefined,
         before: undefined,
         bundleId: undefined,
+        expandedBundleId: undefined,
       },
     });
   });
@@ -96,6 +100,7 @@ describe("useFilterParams", () => {
       search: {
         channel: "beta",
         platform: "ios",
+        targetAppVersion: undefined,
         page: undefined,
         after: undefined,
         before: undefined,
@@ -131,10 +136,43 @@ describe("useFilterParams", () => {
       search: {
         channel: "stable",
         platform: "ios",
+        targetAppVersion: undefined,
         page: undefined,
         after: undefined,
         before: "bundle-020",
         bundleId: undefined,
+        expandedBundleId: undefined,
+      },
+    });
+  });
+
+  it("sets the target app version and resets pagination", () => {
+    mockUseSearch.mockReturnValue({
+      channel: "stable",
+      platform: "ios",
+      targetAppVersion: undefined,
+      page: 3,
+      after: "bundle-020",
+      before: undefined,
+    });
+
+    const { result } = renderHook(() => useFilterParams());
+
+    act(() => {
+      result.current.setFilters({ targetAppVersion: "1.2.3" });
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/",
+      search: {
+        channel: "stable",
+        platform: "ios",
+        targetAppVersion: "1.2.3",
+        page: undefined,
+        after: undefined,
+        before: undefined,
+        bundleId: undefined,
+        expandedBundleId: undefined,
       },
     });
   });

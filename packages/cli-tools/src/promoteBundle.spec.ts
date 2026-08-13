@@ -383,14 +383,14 @@ describe("createCopiedBundleArchive", () => {
   it("uploads copied Hermes bundle assets with the brotli artifact name", async () => {
     const { archivePath, cleanup } = await createSourceArchive("zip", {
       "assets/logo.png": "logo",
-      "main.ios.bundle": "hermes bytecode",
+      "index.ios.bundle": "hermes bytecode",
       "manifest.json": JSON.stringify({
         bundleId: baseBundle.id,
         assets: {
           "assets/logo.png": {
             fileHash: "logo-hash",
           },
-          "main.ios.bundle": {
+          "index.ios.bundle": {
             fileHash: "bundle-hash",
           },
         },

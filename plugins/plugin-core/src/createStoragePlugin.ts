@@ -176,7 +176,7 @@ const createProfiledStoragePlugin = <TContext>(
         get: () => {
           const deleteObjects = requireNodeProfile().deleteObjects;
           return deleteObjects
-            ? (storageUris: readonly string[]) => deleteObjects(storageUris)
+            ? (keys: readonly string[]) => deleteObjects(keys)
             : undefined;
         },
       },

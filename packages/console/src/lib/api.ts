@@ -26,6 +26,7 @@ import {
 type BundleFilters = {
   channel?: string;
   platform?: "ios" | "android";
+  targetAppVersion?: string;
   page?: number;
   limit?: string;
   after?: string;

@@ -133,7 +133,7 @@ export function SelectedBundlesDeleteDialog({
     phase === "confirming" ? "Delete selected bundles?" : "Deleting bundles";
   const description =
     phase === "confirming"
-      ? `This action cannot be undone. This will permanently delete ${bundles.length} bundles and remove them from storage.`
+      ? `This action cannot be undone. This deletes ${bundles.length} bundle records and schedules artifact cleanup; shared assets are reclaimed by storage prune.`
       : phase === "deleting"
         ? `Deleting ${totalCount} bundles in one batch.`
         : `${activeCount} of ${totalCount} delete requests finished.`;
@@ -175,7 +175,9 @@ export function SelectedBundlesDeleteDialog({
     );
 
     try {
-      await deleteBundlesMutation.mutateAsync({ bundleIds: [...bundleIds] });
+      const result = await deleteBundlesMutation.mutateAsync({
+        bundleIds: [...bundleIds],
+      });
       setItems((currentItems) =>
         currentItems.map((item) =>
           bundleIdSet.has(item.bundle.id)
@@ -185,7 +187,11 @@ export function SelectedBundlesDeleteDialog({
       );
       setPhase("complete");
       onComplete({ deletedBundleIds: bundleIds, failedBundleIds: [] });
-      toast.success(`${bundleIds.length} bundles deleted successfully`);
+      toast.success(
+        result.missingBundleIds.length > 0
+          ? `${result.deletedBundleIds.length} deleted, ${result.missingBundleIds.length} already absent`
+          : `${bundleIds.length} bundles deleted successfully`,
+      );
     } catch (error) {
       setItems((currentItems) =>
         currentItems.map((item) =>

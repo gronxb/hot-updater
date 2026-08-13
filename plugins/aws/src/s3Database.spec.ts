@@ -200,6 +200,10 @@ beforeEach(() => {
         const keys = Object.keys(fakeStore).filter((key) =>
           key.startsWith(prefix),
         );
+        const pageOffset = command.input.ContinuationToken
+          ? Number(command.input.ContinuationToken)
+          : 0;
+        const pageSize = 1000;
 
         if (typeof delimiter === "string") {
           const directKeys: string[] = [];
@@ -220,12 +224,28 @@ beforeEach(() => {
               );
             }
 
-            return {
-              CommonPrefixes: Array.from(commonPrefixes).map((Prefix) => ({
-                Prefix,
+            const entries = [
+              ...directKeys.map((Key) => ({
+                type: "key" as const,
+                value: Key,
               })),
-              Contents: directKeys.map((Key) => ({ Key })),
-              NextContinuationToken: undefined,
+              ...Array.from(commonPrefixes).map((value) => ({
+                type: "prefix" as const,
+                value,
+              })),
+            ].sort((left, right) => left.value.localeCompare(right.value));
+            const page = entries.slice(pageOffset, pageOffset + pageSize);
+            const nextOffset = pageOffset + page.length;
+
+            return {
+              CommonPrefixes: page
+                .filter((entry) => entry.type === "prefix")
+                .map(({ value: Prefix }) => ({ Prefix })),
+              Contents: page
+                .filter((entry) => entry.type === "key")
+                .map(({ value: Key }) => ({ Key })),
+              NextContinuationToken:
+                nextOffset < entries.length ? String(nextOffset) : undefined,
             };
           } finally {
             activeListObjectRequests -= 1;
@@ -233,9 +253,14 @@ beforeEach(() => {
         }
 
         try {
+          const page = keys
+            .sort((left, right) => left.localeCompare(right))
+            .slice(pageOffset, pageOffset + pageSize);
+          const nextOffset = pageOffset + page.length;
           return {
-            Contents: keys.map((key) => ({ Key: key })),
-            NextContinuationToken: undefined,
+            Contents: page.map((key) => ({ Key: key })),
+            NextContinuationToken:
+              nextOffset < keys.length ? String(nextOffset) : undefined,
           };
         } finally {
           activeListObjectRequests -= 1;
@@ -575,12 +600,128 @@ describe("s3Database plugin", () => {
 
     expect(listedObjectPrefixes).toEqual([
       "",
+      "bundles/",
       "production/",
       "production/ios/",
     ]);
   });
 
-  it("limits recursive S3 manifest listing concurrency", async () => {
+  it("preserves assets and bundles as channel names", async () => {
+    const assetsChannelBundle = createBundleJson(
+      "assets",
+      "ios",
+      "1.0.0",
+      "assets-channel-bundle",
+    );
+    const bundlesChannelBundle = createBundleJson(
+      "bundles",
+      "android",
+      "1.0.0",
+      "bundles-channel-bundle",
+    );
+    seedUpdateManifests([assetsChannelBundle, bundlesChannelBundle]);
+    fakeStore["assets/sha256/aa/asset.png"] = "asset";
+    fakeStore["bundles/0198a408-8f13-7d9b-8df4-123456789abc/bundle.zip"] =
+      "zip";
+
+    plugin = createPlugin();
+    listedObjectPrefixes = [];
+
+    await expect(plugin.getChannels()).resolves.toEqual(["assets", "bundles"]);
+    expect(listedObjectPrefixes).toEqual([
+      "",
+      "assets/",
+      "bundles/",
+      "assets/ios/",
+      "bundles/android/",
+    ]);
+    expect(listedObjectPrefixes).not.toContain("assets/sha256/");
+    expect(
+      listedObjectPrefixes.some((prefix) =>
+        prefix.startsWith("bundles/0198a408-"),
+      ),
+    ).toBe(false);
+  });
+
+  it("reads only the requested target app version when scope is exact", async () => {
+    const requestedBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "requested-version-bundle",
+    );
+    const otherBundle = createBundleJson(
+      "production",
+      "ios",
+      "2.0.0",
+      "other-version-bundle",
+    );
+    seedUpdateManifests([requestedBundle, otherBundle]);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(
+      plugin.getBundles({
+        where: {
+          channel: "production",
+          platform: "ios",
+          targetAppVersion: "1.0.0",
+        },
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({ data: [requestedBundle] });
+    expect(listedObjectPrefixes).toEqual(["production/ios/1.0.0/"]);
+    expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
+  });
+
+  it("rejects new UUIDv7 channel names that collide with legacy bundle storage", async () => {
+    const bundle = createBundleJson(
+      "0198a408-8f13-7d9b-8df4-123456789abc",
+      "ios",
+      "1.0.0",
+      "uuid-channel-bundle",
+    );
+
+    await plugin.appendBundle(bundle);
+
+    await expect(plugin.commitBundle()).rejects.toThrow(
+      "S3 database channel cannot use a UUIDv7 name",
+    );
+    expect(putObjectKeys).toEqual([]);
+  });
+
+  it("paginates more than 1000 legacy root prefixes without traversing them", async () => {
+    const bundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "pagination-bundle",
+    );
+    seedUpdateManifests([bundle]);
+    for (let index = 0; index < 1680; index += 1) {
+      const bundleId = `0198a408-8f13-7d9b-8df4-${String(index).padStart(12, "0")}`;
+      fakeStore[`${bundleId}/bundle.zip`] = "zip";
+    }
+
+    plugin = createPlugin();
+    listedObjectPrefixes = [];
+
+    await expect(plugin.getBundles({ limit: 20 })).resolves.toMatchObject({
+      data: [bundle],
+    });
+    expect(listedObjectPrefixes.filter((prefix) => prefix === "")).toHaveLength(
+      2,
+    );
+    expect(
+      listedObjectPrefixes.some((prefix) =>
+        prefix.startsWith("0198a408-8f13-7d9b-8df4-"),
+      ),
+    ).toBe(false);
+    expect(listedObjectPrefixes).toContain("production/");
+    expect(listedObjectPrefixes).toContain("production/ios/");
+  });
+
+  it("limits one recursive channel-listing batch to four requests", async () => {
     const channelCount = 12;
     const bundles = Array.from({ length: channelCount }, (_, index) =>
       createBundleJson(

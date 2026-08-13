@@ -6,6 +6,7 @@ import { DEFAULT_PAGE_LIMIT } from "./constants";
 type GetBundlesInput = {
   channel?: string;
   platform?: "ios" | "android";
+  targetAppVersion?: string;
   page?: number;
   limit?: string;
   after?: string;
@@ -109,6 +110,7 @@ export const getBundles = createServerFn({ method: "GET" })
       const query = {
         channel: data?.channel ?? undefined,
         platform: data?.platform ?? undefined,
+        targetAppVersion: data?.targetAppVersion ?? undefined,
         page:
           typeof data?.page === "number" &&
           Number.isInteger(data.page) &&
@@ -125,6 +127,7 @@ export const getBundles = createServerFn({ method: "GET" })
         where: {
           channel: query.channel,
           platform: query.platform,
+          targetAppVersion: query.targetAppVersion,
         },
         limit: query.limit,
         page: query.page,
@@ -351,13 +354,13 @@ export const deleteBundles = createServerFn({ method: "POST" })
         await import("./server/deleteBundle");
       const { databasePlugin, storagePlugin } = await prepareConfig();
 
-      await deleteBundlesWithStorage(data, {
+      const result = await deleteBundlesWithStorage(data, {
         databasePlugin,
         storagePlugin,
         waitForStorageCleanup: false,
       });
 
-      return { success: true };
+      return { success: true, ...result };
     } catch (error) {
       console.error("Error during bundle deletion:", error);
       throw error;

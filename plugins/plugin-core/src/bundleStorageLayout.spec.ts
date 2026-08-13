@@ -30,6 +30,16 @@ describe("bundle storage layout", () => {
     ).toBe("s3://bucket/releases/assets");
   });
 
+  it("rejects storage URIs that do not contain the bundle id", () => {
+    expect(() =>
+      createStorageRootUriWithPath(
+        "https://uploads.example.com/object",
+        "bundle-id",
+        "assets",
+      ),
+    ).toThrow("Storage URI does not contain bundle id: bundle-id");
+  });
+
   it("preserves encoded storage root segments", () => {
     expect(
       createStorageRootUriWithPath(

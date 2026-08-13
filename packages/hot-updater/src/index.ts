@@ -147,6 +147,10 @@ bundleCommand
   .command("list")
   .description("List bundles, most recent first")
   .option("-c, --channel <channel>", "filter by channel")
+  .option(
+    "--target-app-version <targetAppVersion>",
+    "filter by exact target app version",
+  )
   .option("--json", "output raw bundle data as JSON")
   .addOption(platformCommandOption)
   .option(
@@ -250,7 +254,9 @@ const storageCommand = program
 
 storageCommand
   .command("prune")
-  .description("Find and delete unreferenced storage objects")
+  .description(
+    "Find and delete unreferenced objects (requires exclusive storage access)",
+  )
   .addOption(
     new Option(
       "--min-age <duration>",
