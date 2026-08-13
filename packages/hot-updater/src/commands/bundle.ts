@@ -74,6 +74,8 @@ export type BundleDeleteOptions = BundleMutationOptions;
 const DEFAULT_LIMIT = 20;
 const DELETE_VERIFY_ATTEMPTS = 12;
 const DELETE_VERIFY_DELAY_MS = 1000;
+const STANDALONE_DATABASE_NAME = "standalone-repository";
+const STANDALONE_DELETE_LOOKUP_LIMIT = 100;
 
 const formatRow = (bundle: Bundle): Record<ListField, string> => {
   const out = {} as Record<ListField, string>;
@@ -357,12 +359,30 @@ export const handleBundleDelete = async (
   const config = await loadConfig(null);
   const databasePlugin: DatabasePlugin = await config.database();
   try {
-    // Resolve the complete target set from one management snapshot. Blob-backed
-    // databases otherwise rescan storage once for every missing ID.
-    const { data: matchedBundles } = await databasePlugin.getBundles({
-      where: { id: { in: ids } },
-      limit: ids.length,
-    });
+    // Resolve local/blob targets from one management snapshot. The standard
+    // standalone API caps list requests at 100 IDs, so only that remote plugin
+    // uses bounded lookups.
+    const lookupBatches =
+      databasePlugin.name === STANDALONE_DATABASE_NAME
+        ? Array.from(
+            {
+              length: Math.ceil(ids.length / STANDALONE_DELETE_LOOKUP_LIMIT),
+            },
+            (_, index) =>
+              ids.slice(
+                index * STANDALONE_DELETE_LOOKUP_LIMIT,
+                (index + 1) * STANDALONE_DELETE_LOOKUP_LIMIT,
+              ),
+          )
+        : [ids];
+    const matchedBundles: Bundle[] = [];
+    for (const batch of lookupBatches) {
+      const { data } = await databasePlugin.getBundles({
+        where: { id: { in: batch } },
+        limit: batch.length,
+      });
+      matchedBundles.push(...data);
+    }
     const matchedById = new Map(
       matchedBundles.map((bundle) => [bundle.id, bundle]),
     );

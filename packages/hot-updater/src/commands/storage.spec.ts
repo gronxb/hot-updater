@@ -129,6 +129,7 @@ describe("handleStoragePrune", () => {
     vi.clearAllMocks();
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(now);
+    mockDatabasePlugin.name = "mock-database";
 
     mockCli.loadConfig.mockResolvedValue({
       database: vi.fn().mockResolvedValue(mockDatabasePlugin),
@@ -483,6 +484,46 @@ describe("handleStoragePrune", () => {
     expect(mockStorageNode.downloadFile).not.toHaveBeenCalled();
     expect(mockStorageNode.listObjects).not.toHaveBeenCalled();
     expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
+  });
+
+  it("loads standalone references in pages within the server limit", async () => {
+    mockDatabasePlugin.name = "standalone-repository";
+    mockDatabasePlugin.getBundles.mockImplementation(
+      async (options: { cursor?: { after: string }; limit: number }) => {
+        if (options.limit > 100) {
+          throw new Error("limit must be less than or equal to 100");
+        }
+        if (!options.cursor) {
+          return {
+            data: [liveBundle],
+            pagination: {
+              hasNextPage: true,
+              nextCursor: "page-2",
+            },
+          };
+        }
+        return {
+          data: [],
+          pagination: { hasNextPage: false, nextCursor: null },
+        };
+      },
+    );
+    const { handleStoragePrune } = await import("./storage");
+
+    await handleStoragePrune({ dryRun: true });
+
+    expect(mockDatabasePlugin.getBundles).toHaveBeenCalledTimes(2);
+    expect(mockDatabasePlugin.getBundles).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ cursor: undefined, limit: 100 }),
+    );
+    expect(mockDatabasePlugin.getBundles).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        cursor: { after: "page-2" },
+        limit: 100,
+      }),
+    );
   });
 
   it("protects exact and legacy-prefix URIs referenced by live bundles", async () => {

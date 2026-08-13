@@ -28,6 +28,8 @@ import { printBanner } from "@/utils/printBanner";
 import { ui } from "../utils/cli-ui";
 
 const BUNDLE_PAGE_SIZE = 10_000;
+const STANDALONE_BUNDLE_PAGE_SIZE = 100;
+const STANDALONE_DATABASE_NAME = "standalone-repository";
 const MANIFEST_READ_CONCURRENCY = 4;
 const UUID_V7_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -223,12 +225,16 @@ async function forEachWithConcurrency<T>(
 async function loadAllBundles(databasePlugin: DatabasePlugin) {
   const bundles: Bundle[] = [];
   const seenCursors = new Set<string>();
+  const pageSize =
+    databasePlugin.name === STANDALONE_DATABASE_NAME
+      ? STANDALONE_BUNDLE_PAGE_SIZE
+      : BUNDLE_PAGE_SIZE;
   let after: string | undefined;
 
   while (true) {
     const { data, pagination } = await databasePlugin.getBundles({
       cursor: after ? { after } : undefined,
-      limit: BUNDLE_PAGE_SIZE,
+      limit: pageSize,
       orderBy: { direction: "desc", field: "id" },
     });
     bundles.push(...data);

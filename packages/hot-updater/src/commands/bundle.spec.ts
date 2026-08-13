@@ -398,6 +398,7 @@ describe("handleBundleUpdate", () => {
 describe("handleBundleDelete", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDatabasePlugin.name = "mock-database";
     stubLoadedConfig();
   });
   afterEach(() => {
@@ -501,6 +502,39 @@ describe("handleBundleDelete", () => {
     expect(mockCli.p.log.info).toHaveBeenCalledWith(
       "No bundle with id missing. Skipping.",
     );
+  });
+
+  it("chunks standalone lookups at the server limit and commits once", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    mockDatabasePlugin.name = "standalone-repository";
+    const ids = Array.from({ length: 101 }, (_, index) => `B${index + 1}`);
+    mockDatabasePlugin.getBundles.mockImplementation(
+      async (options: { limit: number; where: { id: { in: string[] } } }) => {
+        if (options.limit > 100) {
+          throw new Error("limit must be less than or equal to 100");
+        }
+        return {
+          data: options.where.id.in.map((id) => buildBundle({ id })),
+          pagination: { total: options.where.id.in.length },
+        };
+      },
+    );
+    mockDatabasePlugin.getBundleById.mockResolvedValue(null);
+
+    const { handleBundleDelete } = await import("./bundle");
+    await handleBundleDelete(ids, { yes: true });
+
+    expect(mockDatabasePlugin.getBundles).toHaveBeenCalledTimes(2);
+    expect(mockDatabasePlugin.getBundles).toHaveBeenNthCalledWith(1, {
+      where: { id: { in: ids.slice(0, 100) } },
+      limit: 100,
+    });
+    expect(mockDatabasePlugin.getBundles).toHaveBeenNthCalledWith(2, {
+      where: { id: { in: ids.slice(100) } },
+      limit: 1,
+    });
+    expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledTimes(101);
+    expect(mockDatabasePlugin.commitBundle).toHaveBeenCalledOnce();
   });
 
   it("exits 1 when no ids are provided", async () => {

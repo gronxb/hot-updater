@@ -254,9 +254,7 @@ const storageCommand = program
 
 storageCommand
   .command("prune")
-  .description(
-    "Find and delete unreferenced objects (requires exclusive storage access)",
-  )
+  .description("Find or delete unreferenced bundle objects and shared assets")
   .addOption(
     new Option(
       "--protect-newer-than <duration>",
@@ -284,6 +282,18 @@ storageCommand
       "-y, --yes",
       "delete eligible objects after reference validation",
     ).conflicts("dryRun"),
+  )
+  .addHelpText(
+    "after",
+    `
+Examples:
+  $ hot-updater storage prune --dry-run
+  $ hot-updater storage prune --protect-newer-than 24h --yes
+
+Only unreferenced bundle objects and shared assets are eligible.
+Protection uses object modification time, not time since bundle deletion.
+Deletion requires exclusive storage access; stop deploy and promote first.
+`,
   )
   .action(
     (options: { dryRun?: boolean; protectNewerThan: number; yes?: boolean }) =>
