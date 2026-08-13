@@ -44,6 +44,9 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "runtimeBundleId",
+        saveResultFieldsAs: {
+          releaseId: "runtimeReleaseId",
+        },
       },
     );
     await app.launch("launch runtime channel app");

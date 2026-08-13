@@ -1,7 +1,7 @@
 import type {
   AppUpdateAvailableInfo,
   AppUpdateInfo,
-  Bundle,
+  LegacyBundle as Bundle,
   GetBundlesArgs,
   UpdateInfo,
 } from "@hot-updater/core";
@@ -503,7 +503,7 @@ export const setupGetUpdateInfoTestSuite = ({
       });
     });
 
-    it("forces a rollback if no matching bundle exists for the provided bundleId", async () => {
+    it("does not authorize rollback without a complete catalog scope", async () => {
       const bundles: Bundle[] = [];
 
       const update = await getUpdateInfo(bundles, {
@@ -512,7 +512,7 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toMatchObject(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
+      expect(update).toBeNull();
     });
 
     it("returns null if the user is already up-to-date with an available bundle", async () => {
@@ -1472,7 +1472,7 @@ export const setupGetUpdateInfoTestSuite = ({
       });
     });
 
-    it("forces a rollback if no matching bundle exists for the provided bundleId", async () => {
+    it("does not authorize rollback without a complete catalog scope", async () => {
       const bundles: Bundle[] = [];
 
       const update = await getUpdateInfo(bundles, {
@@ -1481,7 +1481,7 @@ export const setupGetUpdateInfoTestSuite = ({
         platform: "ios",
         _updateStrategy: "appVersion",
       });
-      expect(update).toMatchObject(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
+      expect(update).toBeNull();
     });
 
     it("returns null if the user is already up-to-date with an available bundle", async () => {

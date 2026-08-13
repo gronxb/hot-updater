@@ -113,15 +113,33 @@ export default defineConfig({
 
 ### Upgrade and rollback
 
-Database Plugin V2 continues to use the existing `bundles` and
-`bundle_patches` D1 schema. Managed Cloudflare deployments track applied
-changes through Wrangler's D1 migration history; they do not write or consume
-the generic server migrator's `schema.core` setting. Keep existing migration
-files immutable, and back up D1 before applying any pending provider migration.
+Schema `1.0.0` adds Release and Release-catalog rows, backfills legacy Bundle
+policy, and removes desired-state decisions from D1 GET paths. Managed
+Cloudflare deployments track applied changes through Wrangler's D1 migration
+history; they do not write or consume the generic server migrator's
+`schema.core` setting. Keep existing migration files immutable, and back up D1
+before applying any pending provider migration.
 
 Roll back to an older Hot Updater package set only when it is documented as
 compatible with the upgraded schema. Otherwise, stop writers and restore the
 pre-migration backup.
+
+### Release catalog cache
+
+The generated Worker configuration uses Wrangler `4.69.0` or newer, a current
+compatibility date, and:
+
+```json
+{
+  "cache": { "enabled": true }
+}
+```
+
+This is Cloudflare's cache in front of Worker execution, not
+`caches.default` inside the Worker. Successful catalog responses use a
+five-second shared TTL and vary by `x-api-key` and content encoding. Confirm
+`CF-Cache-Status: HIT` when validating a warm request; response headers alone
+do not prove that Worker and D1 execution were skipped.
 
 ## Step 4: Add HotUpdater to Your Project
 

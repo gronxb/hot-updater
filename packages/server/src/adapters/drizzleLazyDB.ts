@@ -3,9 +3,10 @@ import type {
   BundlePatchRow,
   ChannelRow,
   ClientAccessKeyRow,
+  ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
 
-import type { StoredBundleRow } from "./databasePluginUtils";
+import type { StoredBundleRow, StoredReleaseRow } from "./databasePluginUtils";
 import type { DrizzleConfig } from "./drizzle";
 
 export type DrizzleTable = Record<string, unknown>;
@@ -41,6 +42,8 @@ export type DrizzleDB = {
     readonly bundle_patches: DrizzleQuery<BundlePatchRow>;
     readonly bundle_events: DrizzleQuery<BundleEventRow>;
     readonly client_access_keys: DrizzleQuery<ClientAccessKeyRow>;
+    readonly releases: DrizzleQuery<StoredReleaseRow>;
+    readonly release_catalogs: DrizzleQuery<ReleaseCatalogRow>;
   };
   readonly update: (table: DrizzleTable) => {
     set: (values: unknown) => {
@@ -82,7 +85,9 @@ const isDrizzleDB = (value: unknown): value is DrizzleDB => {
     !isDrizzleQuery(query["bundle_patches"]) ||
     !isDrizzleQuery(query["bundles"]) ||
     !isDrizzleQuery(query["channels"]) ||
-    !isDrizzleQuery(query["client_access_keys"])
+    !isDrizzleQuery(query["client_access_keys"]) ||
+    !isDrizzleQuery(query["releases"]) ||
+    !isDrizzleQuery(query["release_catalogs"])
   ) {
     return false;
   }
@@ -209,6 +214,17 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
           (await getDB()).query.client_access_keys.findFirst(args),
         findMany: async (args) =>
           (await getDB()).query.client_access_keys.findMany(args),
+      },
+      releases: {
+        findFirst: async (args) =>
+          (await getDB()).query.releases.findFirst(args),
+        findMany: async (args) => (await getDB()).query.releases.findMany(args),
+      },
+      release_catalogs: {
+        findFirst: async (args) =>
+          (await getDB()).query.release_catalogs.findFirst(args),
+        findMany: async (args) =>
+          (await getDB()).query.release_catalogs.findMany(args),
       },
     },
     update: (table) => ({

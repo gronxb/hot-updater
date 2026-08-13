@@ -21,7 +21,6 @@ import {
 } from "kysely";
 import pg, { type PoolConfig } from "pg";
 
-import { getUpdateInfo } from "./getUpdateInfo";
 import { countPostgresRows, findManyPostgresRows } from "./postgresQuery";
 import type { Database } from "./types";
 
@@ -161,6 +160,18 @@ const createPostgresImplementation = (
           .values(input.data)
           .returningAll()
           .executeTakeFirstOrThrow();
+      case "releases":
+        return db
+          .insertInto("releases")
+          .values(input.data)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+      case "release_catalogs":
+        return db
+          .insertInto("release_catalogs")
+          .values(input.data)
+          .returningAll()
+          .executeTakeFirstOrThrow();
       case "channels": {
         const query = db.insertInto("channels").values(input.data);
         const row = await (
@@ -209,6 +220,16 @@ const createPostgresImplementation = (
       if (where !== undefined) query = query.where(where);
       return (await query.returningAll().executeTakeFirst()) ?? null;
     }
+    if (input.model === "releases") {
+      let query = db.updateTable("releases").set(input.update);
+      if (where !== undefined) query = query.where(where);
+      return (await query.returningAll().executeTakeFirst()) ?? null;
+    }
+    if (input.model === "release_catalogs") {
+      let query = db.updateTable("release_catalogs").set(input.update);
+      if (where !== undefined) query = query.where(where);
+      return (await query.returningAll().executeTakeFirst()) ?? null;
+    }
     let query = db.updateTable("bundles").set(input.update);
     if (where !== undefined) {
       query = query.where(where);
@@ -242,6 +263,11 @@ const createPostgresImplementation = (
           throw error;
         }
       }
+      case "releases": {
+        let query = db.deleteFrom("releases");
+        if (where !== undefined) query = query.where(where);
+        await query.execute();
+      }
     }
   },
   count: (input) => countPostgresRows(db, input, buildWhere(input.where)),
@@ -265,6 +291,16 @@ const createPostgresImplementation = (
       }
       case "channels": {
         let query = db.selectFrom("channels").selectAll();
+        if (where !== undefined) query = query.where(where);
+        return (await query.executeTakeFirst()) ?? null;
+      }
+      case "releases": {
+        let query = db.selectFrom("releases").selectAll();
+        if (where !== undefined) query = query.where(where);
+        return (await query.executeTakeFirst()) ?? null;
+      }
+      case "release_catalogs": {
+        let query = db.selectFrom("release_catalogs").selectAll();
         if (where !== undefined) query = query.where(where);
         return (await query.executeTakeFirst()) ?? null;
       }
@@ -319,19 +355,14 @@ export const postgres = (config: PostgresConfig) => {
       ? createPostgresImplementation(new Kysely<Database>({ dialect }))
       : (() => {
           const pool = new Pool(poolConfig);
-          return {
-            ...createPostgresImplementation(
-              new Kysely<Database>({ dialect: new PostgresDialect({ pool }) }),
-            ),
-            getUpdateInfo: (args: Parameters<typeof getUpdateInfo>[1]) =>
-              getUpdateInfo(pool, args),
-          };
+          return createPostgresImplementation(
+            new Kysely<Database>({ dialect: new PostgresDialect({ pool }) }),
+          );
         })();
   const adapter = createDatabasePluginAdapter("postgres", implementation);
   return createDatabasePlugin({
     name: "postgres",
     models: adapter.models,
-    queries: adapter.queries,
     commit: adapter.commit,
     dispose: adapter.dispose,
   });

@@ -1,11 +1,15 @@
-import { NIL_UUID, type Bundle } from "@hot-updater/core";
-import type { HotUpdaterAPI } from "@hot-updater/server";
+import fs from "fs/promises";
+import path from "path";
+import { fileURLToPath } from "url";
+
+import { NIL_UUID } from "@hot-updater/core";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
 import {
   cleanupServer,
+  createBundleMethodsFromServer,
   createGetUpdateInfo,
   createTestDbPath,
   killPort,
@@ -14,9 +18,6 @@ import {
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
-import fs from "fs/promises";
-import path from "path";
-import { fileURLToPath } from "url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Get the directory of this test file
@@ -28,7 +29,8 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
   let testDbPath: string;
-  let hotUpdater: HotUpdaterAPI;
+  let bundleMethods: ReturnType<typeof createBundleMethodsFromServer>;
+  let resetDecisionFixtures: () => Promise<void>;
   const port = 13582;
 
   beforeAll(async () => {
@@ -74,8 +76,15 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
 
     await waitForServer(baseUrl, 180); // 180 attempts * 200ms = 36 seconds
 
-    const db = await import("./db.js");
-    hotUpdater = db.hotUpdater;
+    bundleMethods = createBundleMethodsFromServer({
+      baseUrl: `${baseUrl}/hot-updater`,
+    });
+    resetDecisionFixtures = async () => {
+      const response = await fetch(`${baseUrl}/reset-decision-fixtures`, {
+        method: "POST",
+      });
+      if (!response.ok) throw new Error("Failed to reset decision fixtures.");
+    };
   }, 120000);
 
   afterAll(async () => {
@@ -88,6 +97,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
   ) => {
     return createGetUpdateInfo({
       baseUrl: `${baseUrl}/hot-updater`,
+      resetDecisionFixtures,
     })(bundles, options);
   };
 
@@ -96,14 +106,13 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
   });
 
   setupBundleMethodsTestSuite({
-    getBundleById: (id: string) => hotUpdater.getBundleById(id),
-    getChannels: () => hotUpdater.getChannels(),
-    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
-    getBundles: (options) => hotUpdater.getBundles(options),
-    updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
-      hotUpdater.updateBundleById(bundleId, newBundle),
-    deleteBundleById: (bundleId: string) =>
-      hotUpdater.deleteBundleById(bundleId),
+    getBundleById: (id) => bundleMethods.getBundleById(id),
+    getChannels: () => bundleMethods.getChannels(),
+    insertBundle: (bundle) => bundleMethods.insertBundle(bundle),
+    getBundles: (options) => bundleMethods.getBundles(options),
+    updateBundleById: (bundleId, newBundle) =>
+      bundleMethods.updateBundleById(bundleId, newBundle),
+    deleteBundleById: (bundleId) => bundleMethods.deleteBundleById(bundleId),
   });
 
   it("protects bundle management routes without hiding public update routes", async () => {

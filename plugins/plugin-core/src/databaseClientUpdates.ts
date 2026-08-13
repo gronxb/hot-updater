@@ -1,8 +1,5 @@
 import type { Bundle } from "@hot-updater/core";
-import {
-  DEFAULT_ROLLOUT_COHORT_COUNT,
-  getBundlePatches,
-} from "@hot-updater/core";
+import { getBundlePatches } from "@hot-updater/core";
 
 import { bundleMetadataToRow } from "./databaseMetadata";
 import type { BundlePatchRow, BundleRowUpdate } from "./types";
@@ -22,39 +19,19 @@ export class DatabasePatchUpdateUnsupportedError extends Error {
 
 export const bundleUpdateToRow = (
   update: Partial<Bundle>,
-  channelId?: string,
+  _channelId?: string,
 ): BundleRowUpdate => {
   const fields = {
     ...(update.platform !== undefined ? { platform: update.platform } : {}),
-    ...(update.shouldForceUpdate !== undefined
-      ? { should_force_update: update.shouldForceUpdate }
-      : {}),
-    ...(update.enabled !== undefined ? { enabled: update.enabled } : {}),
     ...(update.fileHash !== undefined ? { file_hash: update.fileHash } : {}),
     ...(update.gitCommitHash !== undefined
       ? { git_commit_hash: update.gitCommitHash }
       : {}),
-    ...(update.message !== undefined ? { message: update.message } : {}),
     ...(update.storageUri !== undefined
       ? { storage_uri: update.storageUri }
       : {}),
-    ...(update.targetAppVersion !== undefined
-      ? { target_app_version: update.targetAppVersion }
-      : {}),
-    ...(update.fingerprintHash !== undefined
-      ? { fingerprint_hash: update.fingerprintHash }
-      : {}),
     ...(update.metadata !== undefined
       ? { metadata: bundleMetadataToRow(update.metadata) }
-      : {}),
-    ...(update.rolloutCohortCount !== undefined
-      ? {
-          rollout_cohort_count:
-            update.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
-        }
-      : {}),
-    ...(update.targetCohorts !== undefined
-      ? { target_cohorts: update.targetCohorts }
       : {}),
     ...(update.manifestStorageUri !== undefined
       ? { manifest_storage_uri: update.manifestStorageUri }
@@ -66,9 +43,7 @@ export const bundleUpdateToRow = (
       ? { asset_base_storage_uri: update.assetBaseStorageUri }
       : {}),
   };
-  return update.channel === undefined
-    ? fields
-    : { ...fields, channel: update.channel, channel_id: channelId! };
+  return fields;
 };
 
 export const bundleUpdateToPatchRows = (

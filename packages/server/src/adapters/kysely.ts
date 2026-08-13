@@ -11,13 +11,7 @@ import type {
   ORMSQLProvider,
   RelationMode,
 } from "../db/types";
-import { getDatabasePluginUpdateInfo } from "./databasePluginUpdateInfo";
-import { fromStoredBundleRow } from "./databasePluginUtils";
-import {
-  createKyselyCrud,
-  findKyselyBundles,
-  findKyselyPatches,
-} from "./kyselyCrud";
+import { createKyselyCrud } from "./kyselyCrud";
 
 type KyselySQLProvider = Exclude<ORMSQLProvider, "mssql">;
 
@@ -71,17 +65,6 @@ const createImplementation = <TDatabase extends object>(
             input,
           ),
         ),
-    getUpdateInfo: (args) =>
-      getDatabasePluginUpdateInfo(
-        {
-          findBundles: async (where) =>
-            (await findKyselyBundles(db, config.provider, where)).map(
-              fromStoredBundleRow,
-            ),
-          findPatches: (bundleIds) => findKyselyPatches(db, bundleIds),
-        },
-        args,
-      ),
     transaction: (callback) =>
       db
         .transaction()
@@ -103,7 +86,6 @@ export const kyselyAdapter = <TDatabase extends object>(
   const plugin = createDatabasePlugin({
     name: "kysely",
     models: adapter.models,
-    queries: adapter.queries,
     commit: adapter.commit,
   });
   return Object.assign(plugin, {

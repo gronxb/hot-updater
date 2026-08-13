@@ -5,46 +5,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BundleEditorSheet } from "./BundleEditorSheet";
 
-const mockBundleEditorForm = vi.fn();
-
-vi.mock("./BundleEditorForm", () => ({
-  BundleEditorForm: (props: {
-    onBusyChange?: (busy: boolean) => void;
-    onClose: () => void;
-  }) => {
-    mockBundleEditorForm(props);
-
-    return (
-      <div>
-        <button onClick={() => props.onBusyChange?.(true)}>Mark busy</button>
-        <button onClick={() => props.onBusyChange?.(false)}>Mark idle</button>
-        <button onClick={props.onClose}>Finish save</button>
-      </div>
-    );
-  },
-}));
-
 vi.mock("./BundleAnalyticsSummary", () => ({
   BundleAnalyticsSummary: () => <div>Bundle analytics summary</div>,
 }));
-
 vi.mock("./BundleBasicInfo", () => ({
   BundleBasicInfo: () => <div>Bundle basic info</div>,
 }));
-
 vi.mock("./BundleMetadata", () => ({
   BundleMetadata: () => <div>Bundle metadata</div>,
 }));
-
+vi.mock("./DeleteBundleDialog", () => ({
+  DeleteBundleDialog: ({ open }: { open: boolean }) =>
+    open ? <div>Reference-safe delete confirmation</div> : null,
+}));
 vi.mock("@/components/ui/sheet", () => ({
   Sheet: ({
-    open,
-    onOpenChange,
     children,
+    onOpenChange,
+    open,
   }: {
-    open: boolean;
-    onOpenChange?: (open: boolean) => void;
     children: ReactNode;
+    onOpenChange?: (open: boolean) => void;
+    open: boolean;
   }) =>
     open ? (
       <div>
@@ -52,85 +34,55 @@ vi.mock("@/components/ui/sheet", () => ({
         {children}
       </div>
     ) : null,
-  SheetContent: ({
-    children,
-    showCloseButton = true,
-  }: {
-    children: ReactNode;
-    showCloseButton?: boolean;
-  }) => (
-    <div>
-      {showCloseButton ? <button>Sheet close</button> : null}
-      {children}
-    </div>
-  ),
-  SheetDescription: ({ children }: { children: ReactNode }) => (
+  SheetContent: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
   SheetHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   SheetTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
-vi.mock("@/components/ui/skeleton", () => ({
-  Skeleton: () => <div>Skeleton</div>,
-}));
-
 const bundle: Bundle = {
-  id: "0195a408-8f13-7d9b-8df4-123456789abc",
-  channel: "production",
-  platform: "ios",
-  enabled: true,
-  shouldForceUpdate: false,
   fileHash: "abc123",
-  storageUri: "s3://bucket/bundle.zip",
   gitCommitHash: "deadbeef",
-  message: "Initial message",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
-  rolloutCohortCount: 1000,
-  targetCohorts: [],
+  id: "0195a408-8f13-7d9b-8df4-123456789abc",
+  platform: "ios",
+  storageUri: "s3://bucket/bundle.zip",
 };
 
 describe("BundleEditorSheet", () => {
-  const mockOnOpenChange = vi.fn();
+  const onOpenChange = vi.fn();
 
   beforeEach(() => {
-    mockOnOpenChange.mockReset();
-    mockBundleEditorForm.mockReset();
+    onOpenChange.mockReset();
   });
 
   afterEach(() => {
     cleanup();
   });
 
-  it("ignores dismiss requests while the editor is saving", () => {
+  it("keeps Bundle details artifact-only and exposes safe storage actions", () => {
     render(
-      <BundleEditorSheet
-        bundle={bundle}
-        open
-        onOpenChange={mockOnOpenChange}
-      />,
+      <BundleEditorSheet bundle={bundle} onOpenChange={onOpenChange} open />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Mark busy" }));
-    fireEvent.click(screen.getByRole("button", { name: "Dismiss sheet" }));
+    expect(screen.getByText("Immutable artifact")).not.toBeNull();
+    expect(
+      screen.getByText(/Delivery targeting, rollout, force, and enabled state/),
+    ).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /save/i })).toBeNull();
 
-    expect(mockOnOpenChange).not.toHaveBeenCalled();
-    expect(screen.queryByRole("button", { name: "Sheet close" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Delete Bundle" }));
+    expect(
+      screen.getByText("Reference-safe delete confirmation"),
+    ).not.toBeNull();
   });
 
-  it("allows successful saves to close the sheet even after entering a busy state", () => {
+  it("allows the read-only sheet to close", () => {
     render(
-      <BundleEditorSheet
-        bundle={bundle}
-        open
-        onOpenChange={mockOnOpenChange}
-      />,
+      <BundleEditorSheet bundle={bundle} onOpenChange={onOpenChange} open />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Mark busy" }));
-    fireEvent.click(screen.getByRole("button", { name: "Finish save" }));
-
-    expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss sheet" }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

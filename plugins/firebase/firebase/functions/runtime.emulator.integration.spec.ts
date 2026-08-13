@@ -14,7 +14,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { transformEnv } from "@hot-updater/cli-tools";
-import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
+import {
+  type GetBundlesArgs,
+  type LegacyBundle as Bundle,
+  NIL_UUID,
+} from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
@@ -225,6 +229,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
           "plugins/firebase/dist/firebase/functions/index.cjs",
         ),
         {
+          AUTHORITY_ID: projectId,
           REGION,
         },
       ),
@@ -239,7 +244,8 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     };
 
     seedHotUpdater = createHotUpdater({
-      database: firebaseDatabase(adminOptions),
+      authorityId: projectId,
+      database: firebaseDatabase({ ...adminOptions, authorityId: projectId }),
       storage: [
         firebaseStorage({
           ...adminOptions,
@@ -293,7 +299,13 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     cdnObjects.clear();
     await clearStorageBucket(storageBucket);
     await clearFirestoreCollection("bundle_patches");
+    await clearFirestoreCollection("release_catalogs");
+    await clearFirestoreCollection("releases");
     await clearFirestoreCollection("bundles");
+    await clearFirestoreCollection("channels");
+    await clearFirestoreCollection("private_hot_updater_settings", (id) =>
+      id.startsWith("channel_id_"),
+    );
   });
 
   afterAll(async () => {
@@ -512,7 +524,10 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
   });
 });
 
-const clearFirestoreCollection = async (collectionName: string) => {
+const clearFirestoreCollection = async (
+  collectionName: string,
+  matches: (id: string) => boolean = () => true,
+) => {
   const firestore = getFirestore();
   const snapshot = await firestore.collection(collectionName).get();
 
@@ -522,7 +537,7 @@ const clearFirestoreCollection = async (collectionName: string) => {
 
   const batch = firestore.batch();
   for (const doc of snapshot.docs) {
-    batch.delete(doc.ref);
+    if (matches(doc.id)) batch.delete(doc.ref);
   }
   await batch.commit();
 };

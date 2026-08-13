@@ -137,7 +137,8 @@ describe("E2E navigation contract", () => {
     expect(e2eAppScreenFiles).toContain("runtime-marker-screen.tsx");
     expect(e2eAppScreenFiles).toContain("runtime-large-asset-screen.tsx");
     expect(e2eAppScreenFiles).toContain("launch-status-screen.tsx");
-    expect(e2eAppScreenFiles).toContain("launch-crashed-bundle-screen.tsx");
+    expect(e2eAppScreenFiles).toContain("launch-transition-screen.tsx");
+    expect(e2eAppScreenFiles).toContain("runtime-release-state-screen.tsx");
     expect(e2eAppScreenFiles).toContain(
       "install-current-channel-update-action-screen.tsx",
     );
@@ -245,7 +246,7 @@ describe("E2E navigation contract", () => {
       "hotupdaterexample://e2e/launch-status",
     );
     expect(detoxScreenRoutesSource).toContain(
-      "hotupdaterexample://e2e/launch-crashed-bundle",
+      "hotupdaterexample://e2e/launch-transition",
     );
     expect(detoxScreenRoutesSource).toContain(
       "hotupdaterexample://e2e/crash-history",

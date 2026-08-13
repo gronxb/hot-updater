@@ -4,6 +4,8 @@ import type {
   BundleEventRow,
   ClientAccessKeyRow,
   ChannelRow,
+  ReleaseCatalogRow,
+  ReleaseRow,
 } from "@hot-updater/plugin-core";
 import type {
   DatabaseModel,
@@ -174,6 +176,24 @@ export function createMongoChannelWhere(
 ): Filter<ChannelRow>;
 export function createMongoChannelWhere(
   where: readonly DatabaseWhere<"channels">[] | undefined,
+): Document {
+  return createMongoWhereDocument(where);
+}
+
+export function createMongoReleaseWhere(
+  where: readonly DatabaseWhere<"releases">[] | undefined,
+): Filter<ReleaseRow>;
+export function createMongoReleaseWhere(
+  where: readonly DatabaseWhere<"releases">[] | undefined,
+): Document {
+  return createMongoWhereDocument(where);
+}
+
+export function createMongoReleaseCatalogWhere(
+  where: readonly DatabaseWhere<"release_catalogs">[] | undefined,
+): Filter<ReleaseCatalogRow>;
+export function createMongoReleaseCatalogWhere(
+  where: readonly DatabaseWhere<"release_catalogs">[] | undefined,
 ): Document {
   return createMongoWhereDocument(where);
 }

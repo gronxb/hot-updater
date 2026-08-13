@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/core";
+import type { LegacyBundle } from "@hot-updater/core";
 import type {
   DatabasePlugin,
   StoragePlugin,
@@ -9,7 +9,7 @@ import { createStoragePlugin } from "@hot-updater/plugin-core";
 import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
 import type { DatabaseAdapterCapabilities, Migrator } from "./db/types";
 
-export const runtimeBundle: Bundle = {
+export const runtimeBundle: LegacyBundle = {
   id: "00000000-0000-0000-0000-000000000001",
   platform: "ios",
   shouldForceUpdate: false,

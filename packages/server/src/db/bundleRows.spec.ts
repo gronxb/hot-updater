@@ -13,19 +13,12 @@ import {
 const createBundle = (id: string): Bundle => ({
   id,
   platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
   fileHash: `hash-${id}`,
   gitCommitHash: null,
-  message: null,
-  channel: "production",
   storageUri: `s3://bucket/${id}.zip`,
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
 });
 
-const toRow = (bundle: Bundle): BundleRow =>
-  bundleToRow(bundle, "channel-production");
+const toRow = (bundle: Bundle): BundleRow => bundleToRow(bundle);
 
 const createPatchRow = (
   id: string,
@@ -51,8 +44,6 @@ describe("bundle row conversion", () => {
       manifestStorageUri: "s3://bucket/manifest.json",
       manifestFileHash: "manifest-hash",
       assetBaseStorageUri: "s3://bucket/assets",
-      rolloutCohortCount: 250,
-      targetCohorts: ["beta"],
       patches: [
         {
           baseBundleId: baseBundle.id,
@@ -71,9 +62,8 @@ describe("bundle row conversion", () => {
 
     expect(row).not.toHaveProperty("patches");
     expect(row).not.toHaveProperty("patch_file_hash");
-    expect(row).toMatchObject({
-      channel: bundle.channel,
-    });
+    expect(row).not.toHaveProperty("channel");
+    expect(row).not.toHaveProperty("enabled");
     expect(hydratedBundles).toHaveLength(1);
     expect(hydratedBundles[0]).toEqual({
       ...bundle,
@@ -134,8 +124,6 @@ describe("bundle row conversion", () => {
 
     expect(hydrated).toMatchObject({
       metadata: { release: { flags: [true, null, 3] } },
-      rolloutCohortCount: 1000,
-      targetCohorts: null,
     });
   });
 

@@ -11,12 +11,17 @@ export const E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH =
   "assets/src/test/_fixture-archive-300mb-random.bmp";
 
 export const notify = proxy<{
-  crashedBundleId?: string;
+  fromBundleId?: string | null;
+  fromReleaseId?: string | null;
   status?: string;
+  toBundleId?: string | null;
+  toReleaseId?: string | null;
 }>({});
 
 export type RuntimeSnapshot = {
+  readonly activeReleaseId: string | null;
   readonly appVersion: string | null;
+  readonly authorityId: string | null;
   readonly baseURL: string;
   readonly bundleId: string;
   readonly channel: string;
@@ -24,9 +29,14 @@ export type RuntimeSnapshot = {
   readonly crashHistory: readonly string[];
   readonly defaultChannel: string;
   readonly fingerprintHash: string | null;
+  readonly generation: number | null;
+  readonly highWater: string;
   readonly isChannelSwitched: boolean;
   readonly manifest: ReturnType<typeof HotUpdater.getManifest>;
   readonly minBundleId: string;
+  readonly scopeKey: string | null;
+  readonly selectionContextHash: string | null;
+  readonly selectionKind: string | null;
 };
 
 type UpdateProgressDetails = {
@@ -52,8 +62,10 @@ HotUpdater.init({
   requestTimeout: 15000,
   onNotifyAppReady: (result) => {
     notify.status = result.status;
-    notify.crashedBundleId =
-      result.status === "RECOVERED" ? result.fromBundleId : undefined;
+    notify.fromBundleId = result.fromBundleId;
+    notify.fromReleaseId = result.fromReleaseId;
+    notify.toBundleId = result.toBundleId;
+    notify.toReleaseId = result.toReleaseId;
   },
   onError: (error) => {
     console.error(error);
@@ -61,7 +73,9 @@ HotUpdater.init({
 });
 
 export const readRuntimeSnapshot = (): RuntimeSnapshot => ({
+  activeReleaseId: null,
   appVersion: HotUpdater.getAppVersion(),
+  authorityId: null,
   baseURL: fallbackHotUpdaterBaseURL,
   bundleId: HotUpdater.getBundleId(),
   channel: HotUpdater.getChannel(),
@@ -69,14 +83,33 @@ export const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   crashHistory: HotUpdater.getCrashHistory(),
   defaultChannel: HotUpdater.getDefaultChannel(),
   fingerprintHash: HotUpdater.getFingerprintHash(),
+  generation: null,
+  highWater: "{}",
   isChannelSwitched: HotUpdater.isChannelSwitched(),
   manifest: HotUpdater.getManifest(),
   minBundleId: HotUpdater.getMinBundleId(),
+  scopeKey: null,
+  selectionContextHash: null,
+  selectionKind: null,
 });
 
 export const refreshRuntimeSnapshot = async (): Promise<RuntimeSnapshot> => {
-  const baseURL = await resolveHotUpdaterBaseURL();
-  return { ...readRuntimeSnapshot(), baseURL };
+  const [baseURL, updateState] = await Promise.all([
+    resolveHotUpdaterBaseURL(),
+    HotUpdater.getActiveUpdateState(),
+  ]);
+  const active = updateState.activeSelection;
+  return {
+    ...readRuntimeSnapshot(),
+    activeReleaseId: active?.releaseId ?? null,
+    authorityId: active?.authorityId ?? null,
+    baseURL,
+    generation: active?.generation ?? null,
+    highWater: JSON.stringify(updateState.highestSeenCatalogs),
+    scopeKey: active?.scopeKey ?? null,
+    selectionContextHash: active?.selectionContextHash ?? null,
+    selectionKind: active?.kind ?? null,
+  };
 };
 
 export const extractFormatDateFromUUIDv7 = (uuid: string): string => {

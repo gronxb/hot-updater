@@ -548,6 +548,31 @@ describe("doctor", () => {
     });
   });
 
+  it("rejects a direct Supabase Edge URL as a stress-safe catalog endpoint", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: { dependencies: { "hot-updater": "0.30.0" } },
+      path: "/mock/cwd/package.json",
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      Response.json({ version: "0.30.0" }),
+    );
+
+    const result = await doctor({
+      fetch: fetchImpl,
+      serverBaseUrl: "https://project.supabase.co/functions/v1/update-server",
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      details: {
+        infrastructure: {
+          catalogCacheError: expect.stringContaining("external CDN endpoint"),
+          needsUpdate: false,
+        },
+      },
+    });
+  });
+
   it("should pass when server version is newer than the required infrastructure target", async () => {
     mockReadPackageUp.mockResolvedValue({
       packageJson: {

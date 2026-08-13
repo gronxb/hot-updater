@@ -57,47 +57,11 @@ export function bundleMatchesQueryWhere(
     return true;
   }
 
-  if (where.channel !== undefined && bundle.channel !== where.channel) {
-    return false;
-  }
-
   if (where.platform !== undefined && bundle.platform !== where.platform) {
     return false;
   }
 
-  if (where.enabled !== undefined && bundle.enabled !== where.enabled) {
-    return false;
-  }
-
   if (!bundleIdMatchesFilter(bundle.id, where.id)) {
-    return false;
-  }
-
-  if (
-    where.targetAppVersionNotNull === true &&
-    bundle.targetAppVersion === null
-  ) {
-    return false;
-  }
-
-  if (
-    where.targetAppVersion !== undefined &&
-    bundle.targetAppVersion !== where.targetAppVersion
-  ) {
-    return false;
-  }
-
-  if (
-    where.targetAppVersionIn &&
-    !where.targetAppVersionIn.includes(bundle.targetAppVersion ?? "")
-  ) {
-    return false;
-  }
-
-  if (
-    where.fingerprintHash !== undefined &&
-    bundle.fingerprintHash !== where.fingerprintHash
-  ) {
     return false;
   }
 

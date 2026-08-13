@@ -30,6 +30,9 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
         },
         {
           saveResultAs: "currentBundleId",
+          saveResultFieldsAs: {
+            releaseId: "currentReleaseId",
+          },
         },
       );
       await app.launch("launch current bundle app");
@@ -40,7 +43,7 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
       await app.assertText(
         "assert current bundle action result",
         "update-action-result",
-        "current-channel -> installed $currentBundleId",
+        "current-channel -> installed Release $currentReleaseId / Bundle $currentBundleId",
         { exactText: true },
       );
       await app.control(
@@ -80,9 +83,9 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
           bundleId: "$currentBundleId",
         },
       );
-      await app.control("disable current bundle", "/e2e/jobs/patch-bundle", {
-        bundleId: "$currentBundleId",
+      await app.control("disable current bundle", "/e2e/jobs/patch-release", {
         enabled: false,
+        releaseId: "$currentReleaseId",
       });
       await app.tap(
         "install rollback to built-in",
@@ -91,7 +94,7 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
       await app.assertText(
         "assert rollback to built-in action result",
         "update-action-result",
-        "current-channel -> installed 00000000-0000-0000-0000-000000000000",
+        "current-channel -> selected BUILTIN",
         { exactText: true },
       );
       await app.control(
@@ -116,11 +119,6 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
           "Current Launch Status: UNCHANGED",
           "Current Launch Status: UPDATE_APPLIED",
         ],
-      );
-      await app.assertText(
-        "assert no crashed bundle",
-        "launch-crashed-bundle-result",
-        "Current Crashed Bundle ID: null",
       );
       await app.assertText(
         "assert rollback crash history empty",

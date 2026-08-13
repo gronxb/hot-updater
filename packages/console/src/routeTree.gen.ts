@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as InstallationsRouteImport } from './routes/installations'
+import { Route as ArtifactsRouteImport } from './routes/artifacts'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as AccessKeysRouteImport } from './routes/access-keys'
 import { Route as IndexRouteImport } from './routes/index'
@@ -18,6 +19,11 @@ import { Route as ApiBundlesBundleIdDownloadRouteImport } from './routes/api/bun
 const InstallationsRoute = InstallationsRouteImport.update({
   id: '/installations',
   path: '/installations',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ArtifactsRoute = ArtifactsRouteImport.update({
+  id: '/artifacts',
+  path: '/artifacts',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AnalyticsRoute = AnalyticsRouteImport.update({
@@ -46,6 +52,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/access-keys': typeof AccessKeysRoute
   '/analytics': typeof AnalyticsRoute
+  '/artifacts': typeof ArtifactsRoute
   '/installations': typeof InstallationsRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
 }
@@ -53,6 +60,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/access-keys': typeof AccessKeysRoute
   '/analytics': typeof AnalyticsRoute
+  '/artifacts': typeof ArtifactsRoute
   '/installations': typeof InstallationsRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
 }
@@ -61,6 +69,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/access-keys': typeof AccessKeysRoute
   '/analytics': typeof AnalyticsRoute
+  '/artifacts': typeof ArtifactsRoute
   '/installations': typeof InstallationsRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
 }
@@ -70,6 +79,7 @@ export interface FileRouteTypes {
     | '/'
     | '/access-keys'
     | '/analytics'
+    | '/artifacts'
     | '/installations'
     | '/api/bundles/$bundleId/download'
   fileRoutesByTo: FileRoutesByTo
@@ -77,6 +87,7 @@ export interface FileRouteTypes {
     | '/'
     | '/access-keys'
     | '/analytics'
+    | '/artifacts'
     | '/installations'
     | '/api/bundles/$bundleId/download'
   id:
@@ -84,6 +95,7 @@ export interface FileRouteTypes {
     | '/'
     | '/access-keys'
     | '/analytics'
+    | '/artifacts'
     | '/installations'
     | '/api/bundles/$bundleId/download'
   fileRoutesById: FileRoutesById
@@ -92,6 +104,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AccessKeysRoute: typeof AccessKeysRoute
   AnalyticsRoute: typeof AnalyticsRoute
+  ArtifactsRoute: typeof ArtifactsRoute
   InstallationsRoute: typeof InstallationsRoute
   ApiBundlesBundleIdDownloadRoute: typeof ApiBundlesBundleIdDownloadRoute
 }
@@ -103,6 +116,13 @@ declare module '@tanstack/react-router' {
       path: '/installations'
       fullPath: '/installations'
       preLoaderRoute: typeof InstallationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/artifacts': {
+      id: '/artifacts'
+      path: '/artifacts'
+      fullPath: '/artifacts'
+      preLoaderRoute: typeof ArtifactsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/analytics': {
@@ -140,6 +160,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccessKeysRoute: AccessKeysRoute,
   AnalyticsRoute: AnalyticsRoute,
+  ArtifactsRoute: ArtifactsRoute,
   InstallationsRoute: InstallationsRoute,
   ApiBundlesBundleIdDownloadRoute: ApiBundlesBundleIdDownloadRoute,
 }

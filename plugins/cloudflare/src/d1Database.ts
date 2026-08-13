@@ -44,7 +44,6 @@ export const d1Database = (config: D1DatabaseConfig) => {
   return createDatabasePlugin({
     name: "d1Database",
     models: adapter.models,
-    queries: adapter.queries,
     commit: adapter.commit,
     ...(adapter.dispose ? { dispose: adapter.dispose } : {}),
   });

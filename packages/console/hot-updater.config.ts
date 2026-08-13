@@ -10,9 +10,11 @@ import {
   bundleToRow,
   type Bundle,
   type BundleEventRow,
+  type LegacyBundle,
 } from "@hot-updater/plugin-core";
+import { compileLegacyReleaseCatalogBackfill } from "@hot-updater/server";
 
-type BundleSeed = Omit<Bundle, "storageUri"> &
+type BundleSeed = Omit<LegacyBundle, "storageUri"> &
   Partial<
     Pick<
       Bundle,
@@ -73,7 +75,7 @@ const normalizePatchArtifact = (
   patchFileHash: toSeedHash("patch", patch.patchFileHash),
 });
 
-const createBundle = (bundle: BundleSeed): Bundle => {
+const createBundle = (bundle: BundleSeed): LegacyBundle => {
   const fileHash = toSeedHash("file", bundle.fileHash);
   const patches = bundle.patches?.map(normalizePatchArtifact) ?? null;
   const primaryPatch = patches?.[0] ?? null;
@@ -620,7 +622,7 @@ const iosCanaryPatchA = createBundle({
 
 // Seed lineages so filters, pagination, detail sheets, and patch tables all
 // have enough variety to be useful during local development.
-const bundles: Bundle[] = [
+const bundles: LegacyBundle[] = [
   iosCanaryPatchA,
   androidBetaPatchA,
   androidDevPatchA,
@@ -660,6 +662,36 @@ for (const bundle of bundles) {
   for (const patch of bundleToPatchRows(bundle)) {
     databaseData.bundlePatches.set(patch.id, patch);
   }
+}
+
+const backfill = await compileLegacyReleaseCatalogBackfill({
+  authorityId: "console-demo",
+  rows: bundles.map((bundle) => ({
+    id: bundle.id,
+    platform: bundle.platform,
+    channel: bundle.channel,
+    enabled: bundle.enabled,
+    should_force_update: bundle.shouldForceUpdate,
+    message: bundle.message,
+    target_app_version: bundle.targetAppVersion,
+    fingerprint_hash: bundle.fingerprintHash,
+    rollout_cohort_count: bundle.rolloutCohortCount,
+    target_cohorts: bundle.targetCohorts,
+  })),
+});
+for (const release of backfill.releases) {
+  const channelId = `channel-${release.channelName}`;
+  databaseData.releases.set(release.row.id, {
+    ...release.row,
+    channel_id: channelId,
+  });
+}
+for (const catalog of backfill.catalogs) {
+  const channelId = `channel-${catalog.channelName}`;
+  databaseData.releaseCatalogs.set(catalog.row.scope_key, {
+    ...catalog.row,
+    channel_id: channelId,
+  });
 }
 
 const bundleEvents: readonly BundleEventRow[] = [
@@ -907,6 +939,7 @@ const database = mockDatabase({
 
 export default {
   projectPath: __dirname,
+  authorityId: "console-demo",
   updateStrategy: "fingerprint" as const,
   build: async () => null,
   storage: mockStorage({}),

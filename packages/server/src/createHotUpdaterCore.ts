@@ -20,6 +20,7 @@ import { normalizeBasePath } from "./route";
 import { createStorageAccess } from "./storageAccess";
 
 export type RuntimeHotUpdaterAPI = DatabaseAPI & {
+  readonly authorityId: string;
   readonly basePath: string;
   readonly handler: (request: Request) => Promise<Response>;
   readonly adapterName: string;
@@ -44,6 +45,8 @@ export interface CreateHotUpdaterFeatures extends HandlerFeatures {
 }
 
 export interface CreateHotUpdaterOptions {
+  /** Stable project/server identity used to isolate Release catalog history. */
+  readonly authorityId?: string;
   readonly database: DatabasePlugin;
   /** Optional route and domain features. */
   readonly features?: CreateHotUpdaterFeatures;
@@ -135,6 +138,7 @@ export function createHotUpdaterCore(
   options: CreateHotUpdaterOptions,
 ): HotUpdaterCore {
   const database = options.database;
+  const authorityId = options.authorityId ?? "default";
   const basePath = normalizeBasePath(options.basePath ?? "/api");
   const storagePlugins = (options.storage ?? []).map((storage) => {
     assertStorageOperations(storage, ["get", "getDownloadUrl"]);
@@ -155,6 +159,7 @@ export function createHotUpdaterCore(
     adapterCapabilities.createMigrator,
   );
   const core = createDatabasePluginCore(plugin, resolveFileUrl, {
+    authorityId,
     beforeOperation: assertSchemaReady,
     readStorageText,
   });
@@ -192,6 +197,7 @@ export function createHotUpdaterCore(
   const internalHandler = createHotUpdaterHandler(
     core.api,
     {
+      authorityId,
       basePath,
       features: {
         updateCheck: updateCheckEnabled,
@@ -222,6 +228,7 @@ export function createHotUpdaterCore(
 
   const api: RuntimeHotUpdaterAPI = Object.assign(
     {
+      authorityId,
       basePath,
       adapterName: adapterCapabilities.adapterName ?? core.adapterName,
       ...(analytics === undefined ? {} : { analytics }),

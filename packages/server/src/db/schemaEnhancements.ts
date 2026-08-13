@@ -2,7 +2,7 @@ import {
   DEFAULT_ROLLOUT_COHORT_COUNT,
   INVALID_COHORT_ERROR_MESSAGE,
   isValidCohort,
-  type Bundle,
+  type LegacyBundle,
 } from "@hot-updater/core";
 
 const normalizeNullableString = (value: string | null | undefined) => {
@@ -16,7 +16,7 @@ const normalizeNullableString = (value: string | null | undefined) => {
 
 export const assertBundlePersistenceConstraints = (
   bundle: Pick<
-    Bundle,
+    LegacyBundle,
     | "fingerprintHash"
     | "rolloutCohortCount"
     | "targetAppVersion"

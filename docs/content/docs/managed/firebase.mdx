@@ -123,16 +123,27 @@ export default defineConfig({
 
 ### Upgrade and rollback
 
-Back up Firestore before the database v2 migration. The migration moves legacy
-inline or scalar patch fields into `bundle_patches`, removes those legacy
-fields, and records `database_adapter_version` as `2`. Managed Firebase does
-not write or consume the generic server migrator's `schema.core` setting. The
-migration is forward-only, so a v1 code rollback is not assumed to be
-compatible with the migrated documents.
+Back up Firestore before the schema `1.0.0` migration. It creates Release and
+Release-catalog collections, backfills one Release for each legacy Bundle,
+compiles every scope, and removes policy from final Bundle documents. Managed
+Firebase records its provider migration state separately from the generic SQL
+server migrator. The migration is forward-only.
 
 Roll back only to a complete Hot Updater package set documented as compatible
-with Core schema `0.36.0`. Otherwise, stop writers and restore the pre-migration
+with schema `1.0.0`. Otherwise, stop writers and restore the pre-migration
 backup.
+
+### Release catalog cache
+
+Init deploys a Firebase Hosting rewrite for
+`/api/check-update{,/**}` in front of the `hot-updater` Function. Use the
+Hosting domain so successful catalog responses can be served by Firebase's
+global CDN without invoking the Function or reading Firestore. The response's
+five-second `s-maxage` and `Vary: Accept-Encoding, x-api-key` define freshness
+and authentication partitioning. Errors are `private, no-store`.
+
+Do not use the direct Cloud Functions URL when validating the shared-cache
+profile; it proves Function correctness but bypasses Firebase Hosting.
 
 ## Step 4: Add HotUpdater to Your Project
 
@@ -150,7 +161,7 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  baseURL: "https://<your-firebase-function-url>/api/check-update", // [!code ++]
+  baseURL: "https://<project-id>.web.app/api/check-update", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
     // if you want to use the request headers, you can add them here
@@ -186,7 +197,7 @@ The managed Firebase runtime exposes public update checks, Analytics event
 ingestion, and `/version`. Internally, it enables
 `features: { updateCheck: true, bundles: false, analytics: true }`.
 Analytics query routes stay protected, and bundle management routes are not
-mounted on the public function URL.
+mounted on the public Hosting URL.
 </Callout>
 
 ## Step 5: If You Use Expo, Add the Config Plugin

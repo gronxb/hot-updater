@@ -16,6 +16,9 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "firstBundleId",
+        saveResultFieldsAs: {
+          releaseId: "firstReleaseId",
+        },
       },
     );
     await app.launch("launch first multi-asset app");
@@ -65,6 +68,9 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "secondBundleId",
+        saveResultFieldsAs: {
+          releaseId: "secondReleaseId",
+        },
       },
     );
     await app.launch("launch second multi-asset app");

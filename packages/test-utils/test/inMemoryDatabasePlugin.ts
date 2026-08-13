@@ -1,8 +1,6 @@
 import {
   createDatabasePlugin,
   type DatabasePlugin,
-  resolveUpdateInfoFromBundles,
-  rowsToBundles,
 } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
@@ -34,22 +32,12 @@ class MemoryConstraintError extends Error {
 const createTables = (): Tables => ({
   bundles: { rows: [] },
   bundle_patches: { rows: [] },
+  releases: { rows: [] },
+  release_catalogs: { rows: [] },
   channels: { rows: [] },
   bundle_events: { rows: [] },
   client_access_keys: { rows: [] },
 });
-
-const assertBundleChannel = (
-  tables: Tables,
-  bundle: DatabaseModelMap["bundles"],
-): void => {
-  const channel = tables.channels.rows.find(
-    ({ id }) => id === bundle.channel_id,
-  );
-  if (channel?.name !== bundle.channel) {
-    throw new MemoryConstraintError("Bundle channel reference does not match");
-  }
-};
 
 const assertReferences = (
   tables: Tables,
@@ -57,7 +45,25 @@ const assertReferences = (
 ): void => {
   switch (input.model) {
     case "bundles":
-      assertBundleChannel(tables, input.data);
+      return;
+    case "releases":
+      if (
+        !tables.channels.rows.some(({ id }) => id === input.data.channel_id) ||
+        (input.data.bundle_id !== null &&
+          !tables.bundles.rows.some(
+            ({ id, platform }) =>
+              id === input.data.bundle_id && platform === input.data.platform,
+          ))
+      ) {
+        throw new MemoryConstraintError("Release reference does not exist");
+      }
+      return;
+    case "release_catalogs":
+      if (
+        !tables.channels.rows.some(({ id }) => id === input.data.channel_id)
+      ) {
+        throw new MemoryConstraintError("Catalog channel does not exist");
+      }
       return;
     case "channels":
     case "bundle_events":
@@ -120,6 +126,20 @@ const createCrudImplementation = (
           break;
         tables.bundle_events.rows.push(structuredClone(input.data));
         return input.data;
+      case "releases":
+        if (tables.releases.rows.some(({ id }) => id === input.data.id)) break;
+        tables.releases.rows.push(structuredClone(input.data));
+        return input.data;
+      case "release_catalogs":
+        if (
+          tables.release_catalogs.rows.some(
+            ({ scope_key }) => scope_key === input.data.scope_key,
+          )
+        ) {
+          break;
+        }
+        tables.release_catalogs.rows.push(structuredClone(input.data));
+        return input.data;
       case "client_access_keys":
         {
           const existing = tables.client_access_keys.rows.find(
@@ -146,13 +166,32 @@ const createCrudImplementation = (
       tables.client_access_keys.rows[index] = updated;
       return structuredClone(updated);
     }
+    if (input.model === "releases") {
+      const index = tables.releases.rows.findIndex((row) =>
+        matchesAll(row, input.where),
+      );
+      const current = tables.releases.rows[index];
+      if (current === undefined) return null;
+      const updated = { ...current, ...input.update };
+      tables.releases.rows[index] = updated;
+      return structuredClone(updated);
+    }
+    if (input.model === "release_catalogs") {
+      const index = tables.release_catalogs.rows.findIndex((row) =>
+        matchesAll(row, input.where),
+      );
+      const current = tables.release_catalogs.rows[index];
+      if (current === undefined) return null;
+      const updated = { ...current, ...input.update };
+      tables.release_catalogs.rows[index] = updated;
+      return structuredClone(updated);
+    }
     const index = tables.bundles.rows.findIndex((row) =>
       matchesAll(row, input.where),
     );
     const current = tables.bundles.rows[index];
     if (current === undefined) return null;
     const updated = { ...current, ...input.update };
-    assertBundleChannel(tables, updated);
     tables.bundles.rows[index] = updated;
     return structuredClone(updated);
   },
@@ -164,6 +203,13 @@ const createCrudImplementation = (
             .filter((row) => matchesAll(row, input.where))
             .map(({ id }) => id),
         );
+        if (
+          tables.releases.rows.some(
+            ({ bundle_id }) => bundle_id !== null && removedIds.has(bundle_id),
+          )
+        ) {
+          throw new DatabaseRowReferencedError();
+        }
         tables.bundles.rows = tables.bundles.rows.filter(
           ({ id }) => !removedIds.has(id),
         );
@@ -179,6 +225,11 @@ const createCrudImplementation = (
           (row) => !matchesAll(row, input.where),
         );
         return;
+      case "releases":
+        tables.releases.rows = tables.releases.rows.filter(
+          (row) => !matchesAll(row, input.where),
+        );
+        return;
       case "channels": {
         const selectedIds = new Set(
           tables.channels.rows
@@ -186,7 +237,7 @@ const createCrudImplementation = (
             .map(({ id }) => id),
         );
         if (
-          tables.bundles.rows.some(({ channel_id }) =>
+          tables.releases.rows.some(({ channel_id }) =>
             selectedIds.has(channel_id),
           )
         ) {
@@ -219,6 +270,15 @@ const createCrudImplementation = (
           input.distinct as readonly string[] | undefined,
         );
       }
+      case "releases": {
+        const rows = tables.releases.rows.filter((row) =>
+          matchesAll(row, input.where),
+        );
+        return distinctCount(
+          rows,
+          input.distinct as readonly string[] | undefined,
+        );
+      }
     }
   },
   findOne: async (input) => {
@@ -244,6 +304,17 @@ const createCrudImplementation = (
         return (
           tables.channels.rows.find((row) => matchesAll(row, input.where)) ??
           null
+        );
+      case "releases":
+        return (
+          tables.releases.rows.find((row) => matchesAll(row, input.where)) ??
+          null
+        );
+      case "release_catalogs":
+        return (
+          tables.release_catalogs.rows.find((row) =>
+            matchesAll(row, input.where),
+          ) ?? null
         );
     }
   },
@@ -294,6 +365,24 @@ const createCrudImplementation = (
           input.offset,
           input.limit,
         );
+      case "releases":
+        return queryRows(
+          tables.releases.rows,
+          input.where,
+          input.orderBy,
+          input.distinctOn,
+          input.offset,
+          input.limit,
+        );
+      case "release_catalogs":
+        return queryRows(
+          tables.release_catalogs.rows,
+          input.where,
+          input.orderBy,
+          input.distinctOn,
+          input.offset,
+          input.limit,
+        );
     }
   },
 });
@@ -333,20 +422,11 @@ const createImplementation = (tables: Tables): DatabasePluginImplementation => {
         if (index === -1) {
           return { deleted: false, reason: "not_found" as const };
         }
-        if (tables.bundles.rows.some(({ channel_id }) => channel_id === id)) {
+        if (tables.releases.rows.some(({ channel_id }) => channel_id === id)) {
           return { deleted: false, reason: "not_empty" as const };
         }
         tables.channels.rows.splice(index, 1);
         return { deleted: true as const };
-      }),
-    getUpdateInfo: async (args) =>
-      resolveUpdateInfoFromBundles({
-        args,
-        bundles: rowsToBundles(
-          tables.bundles.rows,
-          tables.bundle_patches.rows,
-          tables.bundles.rows,
-        ),
       }),
     transaction: (callback) =>
       withMutationLock(async () => {
@@ -356,6 +436,8 @@ const createImplementation = (tables: Tables): DatabasePluginImplementation => {
         );
         tables.bundles.rows = transactionTables.bundles.rows;
         tables.bundle_patches.rows = transactionTables.bundle_patches.rows;
+        tables.releases.rows = transactionTables.releases.rows;
+        tables.release_catalogs.rows = transactionTables.release_catalogs.rows;
         tables.channels.rows = transactionTables.channels.rows;
         tables.bundle_events.rows = transactionTables.bundle_events.rows;
         tables.client_access_keys.rows =
@@ -375,7 +457,6 @@ export const createInMemoryDatabasePlugin = (
   return createDatabasePlugin({
     name: "in-memory-v2",
     models: adapter.models,
-    queries: adapter.queries,
     commit: adapter.commit,
   });
 };
@@ -387,6 +468,8 @@ export const createInMemoryDatabaseHarness = () => {
     reset: (): void => {
       tables.bundles.rows = [];
       tables.bundle_patches.rows = [];
+      tables.releases.rows = [];
+      tables.release_catalogs.rows = [];
       tables.channels.rows = [];
       tables.bundle_events.rows = [];
       tables.client_access_keys.rows = [];

@@ -20,17 +20,74 @@ public struct PendingBundleTransition: Codable {
     }
 }
 
+public struct CatalogHighWater: Codable, Equatable {
+    let generation: Int64
+    let catalogHash: String
+}
+
+public struct PersistedSelection: Codable {
+    let kind: String
+    let releaseId: String?
+    let bundleId: String
+    let authorityId: String?
+    let scopeKey: String?
+    let generation: Int64?
+    let catalogHash: String?
+    let channel: String
+    let selectionContextHash: String?
+
+    static func legacyBundle(_ bundleId: String) -> PersistedSelection {
+        PersistedSelection(
+            kind: "BUNDLE",
+            releaseId: nil,
+            bundleId: bundleId,
+            authorityId: nil,
+            scopeKey: nil,
+            generation: nil,
+            catalogHash: nil,
+            channel: "",
+            selectionContextHash: nil
+        )
+    }
+
+    var dictionary: [String: Any] {
+        [
+            "kind": kind,
+            "releaseId": releaseId ?? NSNull(),
+            "bundleId": bundleId,
+            "authorityId": authorityId ?? NSNull(),
+            "scopeKey": scopeKey ?? NSNull(),
+            "generation": generation.map(NSNumber.init(value:)) ?? NSNull(),
+            "catalogHash": catalogHash ?? NSNull(),
+            "channel": channel,
+            "selectionContextHash": selectionContextHash ?? NSNull()
+        ]
+    }
+}
+
+public struct PendingSelectionTransition: Codable {
+    let fromReleaseId: String?
+    let fromBundleId: String
+    let toReleaseId: String?
+    let toBundleId: String
+}
+
 /// Bundle metadata for managing stable/staging bundles and verification state
 public struct BundleMetadata: Codable {
-    static let schemaVersion = "metadata-v1"
+    static let schemaVersion = "metadata-v2"
     static let metadataFilename = "metadata.json"
 
     let schema: String
     var isolationKey: String?
     var stableBundleId: String?
     var stagingBundleId: String?
+    var stableSelection: PersistedSelection?
+    var stagingSelection: PersistedSelection?
     var verificationPending: Bool
     var pendingTransition: PendingBundleTransition?
+    var pendingSelectionTransition: PendingSelectionTransition?
+    var highestSeenCatalogs: [String: CatalogHighWater]
+    var currentSelectionContexts: [String: String]
     var updatedAt: Double
 
     enum CodingKeys: String, CodingKey {
@@ -38,8 +95,13 @@ public struct BundleMetadata: Codable {
         case isolationKey = "isolation_key"
         case stableBundleId = "stable_bundle_id"
         case stagingBundleId = "staging_bundle_id"
+        case stableSelection = "stable_selection"
+        case stagingSelection = "staging_selection"
         case verificationPending = "verification_pending"
         case pendingTransition = "pending_transition"
+        case pendingSelectionTransition = "pending_selection_transition"
+        case highestSeenCatalogs = "highest_seen_catalogs"
+        case currentSelectionContexts = "current_selection_contexts"
         case updatedAt = "updated_at"
     }
 
@@ -48,17 +110,45 @@ public struct BundleMetadata: Codable {
         isolationKey: String? = nil,
         stableBundleId: String? = nil,
         stagingBundleId: String? = nil,
+        stableSelection: PersistedSelection? = nil,
+        stagingSelection: PersistedSelection? = nil,
         verificationPending: Bool = false,
         pendingTransition: PendingBundleTransition? = nil,
+        pendingSelectionTransition: PendingSelectionTransition? = nil,
+        highestSeenCatalogs: [String: CatalogHighWater] = [:],
+        currentSelectionContexts: [String: String] = [:],
         updatedAt: Double = Date().timeIntervalSince1970 * 1000
     ) {
         self.schema = schema
         self.isolationKey = isolationKey
         self.stableBundleId = stableBundleId
         self.stagingBundleId = stagingBundleId
+        self.stableSelection = stableSelection
+        self.stagingSelection = stagingSelection
         self.verificationPending = verificationPending
         self.pendingTransition = pendingTransition
+        self.pendingSelectionTransition = pendingSelectionTransition
+        self.highestSeenCatalogs = highestSeenCatalogs
+        self.currentSelectionContexts = currentSelectionContexts
         self.updatedAt = updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        schema = BundleMetadata.schemaVersion
+        isolationKey = try values.decodeIfPresent(String.self, forKey: .isolationKey)
+        stableBundleId = try values.decodeIfPresent(String.self, forKey: .stableBundleId)
+        stagingBundleId = try values.decodeIfPresent(String.self, forKey: .stagingBundleId)
+        stableSelection = try values.decodeIfPresent(PersistedSelection.self, forKey: .stableSelection)
+            ?? stableBundleId.map(PersistedSelection.legacyBundle)
+        stagingSelection = try values.decodeIfPresent(PersistedSelection.self, forKey: .stagingSelection)
+            ?? stagingBundleId.map(PersistedSelection.legacyBundle)
+        verificationPending = try values.decodeIfPresent(Bool.self, forKey: .verificationPending) ?? false
+        pendingTransition = try values.decodeIfPresent(PendingBundleTransition.self, forKey: .pendingTransition)
+        pendingSelectionTransition = try values.decodeIfPresent(PendingSelectionTransition.self, forKey: .pendingSelectionTransition)
+        highestSeenCatalogs = try values.decodeIfPresent([String: CatalogHighWater].self, forKey: .highestSeenCatalogs) ?? [:]
+        currentSelectionContexts = try values.decodeIfPresent([String: String].self, forKey: .currentSelectionContexts) ?? [:]
+        updatedAt = try values.decodeIfPresent(Double.self, forKey: .updatedAt) ?? Date().timeIntervalSince1970 * 1000
     }
 
     static func load(from file: URL, expectedIsolationKey: String) -> BundleMetadata? {
@@ -102,7 +192,7 @@ public struct BundleMetadata: Codable {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             }
 
-            try data.write(to: file)
+            try data.write(to: file, options: .atomic)
             print("[BundleMetadata] Saved metadata to file: \(file.path)")
             return true
         } catch {
@@ -234,18 +324,24 @@ public struct LaunchReport: Codable {
     static let launchReportFilename = "launch-report.json"
 
     let status: LaunchReportStatus
+    let fromReleaseId: String?
     let fromBundleId: String?
+    let toReleaseId: String?
     let toBundleId: String?
     let updateStrategy: UpdateStrategy?
 
     init(
         status: LaunchReportStatus = .unchanged,
+        fromReleaseId: String? = nil,
         fromBundleId: String? = nil,
+        toReleaseId: String? = nil,
         toBundleId: String? = nil,
         updateStrategy: UpdateStrategy? = nil
     ) {
         self.status = status
+        self.fromReleaseId = fromReleaseId
         self.fromBundleId = fromBundleId
+        self.toReleaseId = toReleaseId
         self.toBundleId = toBundleId
         self.updateStrategy = updateStrategy
     }

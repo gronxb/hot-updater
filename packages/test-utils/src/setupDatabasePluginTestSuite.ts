@@ -5,6 +5,7 @@ import { registerDatabasePluginCapabilityTests } from "./databasePluginCapabilit
 import { registerDatabasePluginOfficialDomainTests } from "./databasePluginOfficialDomainTests";
 import { registerDatabasePluginQueryTests } from "./databasePluginQueryTests";
 import { registerDatabasePluginRelationTests } from "./databasePluginRelationTests";
+import { registerDatabasePluginReleaseCatalogTests } from "./databasePluginReleaseCatalogTests";
 import type { DatabasePluginTestLifecycle } from "./databasePluginTestRunner";
 import { setupDatabasePluginTestRunner } from "./databasePluginTestRunner";
 
@@ -18,6 +19,7 @@ export const setupDatabasePluginTestSuite = (
     registerDatabasePluginBundleTests(state);
     registerDatabasePluginRelationTests(state);
     registerDatabasePluginQueryTests(state);
+    registerDatabasePluginReleaseCatalogTests(state);
     registerDatabasePluginCapabilityTests(state);
     registerDatabasePluginOfficialDomainTests(state);
   });

@@ -2,10 +2,7 @@ import type { DatabaseChange, DatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import type { DatabasePluginTestState } from "./databasePluginTestRunner";
-import {
-  createBundleRowFixture,
-  createChannelRowFixture,
-} from "./databaseTestFixtures";
+import { createBundleRowFixture } from "./databaseTestFixtures";
 
 type BundleTestState = DatabasePluginTestState<DatabasePlugin>;
 
@@ -14,19 +11,9 @@ const commit = (plugin: DatabasePlugin, ...changes: DatabaseChange[]) =>
 
 const insertBundle = (plugin: DatabasePlugin, suffix: string) => {
   const row = createBundleRowFixture(suffix);
-  const channel = createChannelRowFixture(row.channel);
   return {
     row,
-    result: commit(
-      plugin,
-      {
-        model: "channels",
-        operation: "insert",
-        row: channel,
-        onConflict: "ignore",
-      },
-      { model: "bundles", operation: "insert", row },
-    ),
+    result: commit(plugin, { model: "bundles", operation: "insert", row }),
   };
 };
 
@@ -44,7 +31,7 @@ export const registerDatabasePluginBundleTests = (
       );
     });
 
-    it("updates explicit false, null, and empty-array values", async () => {
+    it("updates nullable and structured artifact fields", async () => {
       const plugin = state.getPlugin();
       const { row, result } = insertBundle(plugin, "2");
       await result;
@@ -54,16 +41,20 @@ export const registerDatabasePluginBundleTests = (
           model: "bundles",
           operation: "update",
           where: { id: row.id },
-          update: { enabled: false, message: null, target_cohorts: [] },
+          update: {
+            git_commit_hash: null,
+            manifest_storage_uri: "storage://manifests/2.json",
+            metadata: { flags: [] },
+          },
         }),
       ).resolves.toEqual({ committed: true });
       await expect(
         plugin.models.bundles.findById(row.id),
       ).resolves.toMatchObject({
         id: row.id,
-        enabled: false,
-        message: null,
-        target_cohorts: [],
+        git_commit_hash: null,
+        manifest_storage_uri: "storage://manifests/2.json",
+        metadata: { flags: [] },
         file_hash: row.file_hash,
       });
     });
@@ -71,15 +62,11 @@ export const registerDatabasePluginBundleTests = (
     it("filters, orders, offsets, limits, and counts bundle rows", async () => {
       const plugin = state.getPlugin();
       const rows = [
-        { ...createBundleRowFixture("11"), enabled: false },
-        createBundleRowFixture("12", "staging"),
+        { ...createBundleRowFixture("11"), platform: "android" as const },
+        createBundleRowFixture("12"),
         createBundleRowFixture("13"),
       ];
       for (const row of rows) {
-        await plugin.models.channels.insert({
-          row: createChannelRowFixture(row.channel),
-          onConflict: "returnExisting",
-        });
         await commit(plugin, {
           model: "bundles",
           operation: "insert",
@@ -89,14 +76,14 @@ export const registerDatabasePluginBundleTests = (
 
       await expect(
         plugin.models.bundles.findMany({
-          where: { enabled: true },
+          where: { platform: "ios" },
           limit: 1,
           offset: 1,
           orderBy: { field: "id", direction: "asc" },
         }),
       ).resolves.toEqual([rows[2]]);
       await expect(
-        plugin.models.bundles.count({ enabled: true }),
+        plugin.models.bundles.count({ platform: "ios" }),
       ).resolves.toBe(2);
     });
 
@@ -106,7 +93,7 @@ export const registerDatabasePluginBundleTests = (
           model: "bundles",
           operation: "update",
           where: { id: "ffffffff-ffff-ffff-ffff-ffffffffffff" },
-          update: { enabled: false },
+          update: { storage_uri: "storage://missing.zip" },
         }),
       ).resolves.toEqual({
         committed: false,

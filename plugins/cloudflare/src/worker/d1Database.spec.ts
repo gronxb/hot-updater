@@ -24,6 +24,8 @@ it("uses the D1 binding supplied at the Worker composition boundary", async () =
     "bundles",
     "channels",
     "clientAccessKeys",
+    "releaseCatalogs",
+    "releases",
   ]);
   await expect(plugin.models.channels.list({})).resolves.toEqual({
     channels: [{ id: "channel-production", name: "production" }],

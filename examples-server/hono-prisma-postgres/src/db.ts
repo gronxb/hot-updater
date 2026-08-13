@@ -37,3 +37,15 @@ export const hotUpdater = createHotUpdater({
 export async function closeDatabase() {
   await prisma.$disconnect();
 }
+
+export async function resetDecisionFixtures() {
+  await prisma.$executeRawUnsafe(`
+    TRUNCATE TABLE
+      bundle_patches,
+      release_catalogs,
+      releases,
+      bundles,
+      channels
+    CASCADE
+  `);
+}

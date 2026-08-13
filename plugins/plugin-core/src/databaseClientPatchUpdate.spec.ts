@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/core";
+import type { Bundle, LegacyBundle } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -17,7 +17,7 @@ import type { DatabasePluginImplementation } from "./types/internal";
 
 const channelRow = { id: "channel-production", name: "production" } as const;
 
-const createBundle = (id: string): Bundle => ({
+const createBundle = (id: string): LegacyBundle => ({
   id,
   platform: "ios",
   shouldForceUpdate: false,
@@ -136,7 +136,7 @@ describe("database client patch updates", () => {
     });
 
     const result = createDatabaseClient(plugin).updateBundleById("owner", {
-      enabled: false,
+      gitCommitHash: "next",
       patches: [],
     });
 
@@ -223,7 +223,7 @@ describe("database client patch updates", () => {
     await createDatabaseClient(plugin).mutate(async (database) => {
       await database.insertBundle(owner);
       await database.updateBundleById(owner.id, {
-        enabled: false,
+        gitCommitHash: "next",
         patches: [],
       });
     });
@@ -244,7 +244,7 @@ describe("database client patch updates", () => {
           operation: "update",
           model: "bundles",
           where: { id: "owner" },
-          update: { enabled: false },
+          update: { git_commit_hash: "next" },
         }),
         expect.objectContaining({
           model: "bundlePatches",
@@ -262,7 +262,7 @@ describe("database client patch updates", () => {
     }));
 
     const result = createDatabaseClient(plugin).updateBundleById("missing", {
-      enabled: false,
+      gitCommitHash: "next",
       patches: [],
     });
 
@@ -299,10 +299,10 @@ describe("database client patch updates", () => {
   it("leaves patch rows untouched when patches are omitted", async () => {
     const { client, owner } = await createMemoryFixture();
 
-    await client.updateBundleById(owner.id, { message: "new" });
+    await client.updateBundleById(owner.id, { gitCommitHash: "new" });
 
     await expect(client.getBundleById(owner.id)).resolves.toMatchObject({
-      message: "new",
+      gitCommitHash: "new",
       patches: owner.patches,
     });
   });

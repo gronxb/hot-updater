@@ -123,15 +123,17 @@ describe("Detox recovery foreground handling", () => {
       calls.find((call) => call.stage === "assert recovery launch report"),
     ).toMatchObject({
       body: {
-        crashedBundleId: "$crashBundleId",
-        stableBundleId: "$stableBundleId",
+        fromBundleId: "$crashBundleId",
+        fromReleaseId: "$crashReleaseId",
         status: "RECOVERED",
+        toBundleId: "$stableBundleId",
+        toReleaseId: "$stableReleaseId",
       },
       kind: "control",
     });
   });
 
-  it("uses crash history instead of transient crashed-bundle UI text", async () => {
+  it("uses the native report and crash history instead of transient recovery UI", async () => {
     // Given: the recovered UI can clear the transient crashed bundle text.
     const calls = await recordRecoveryCalls();
     const stages = calls.map((call) => call.stage);
@@ -139,15 +141,13 @@ describe("Detox recovery foreground handling", () => {
     const metadataIndex = stages.indexOf("assert recovered metadata active");
 
     // When: recovery evidence is asserted after the native launch report.
-    // Then: durable crash history owns the crashedBundleId assertion.
+    // Then: directional launch state comes from the exact native report and
+    // durable crash history is checked after the restored receipt.
     expect(stages).not.toContain("assert crashed bundle result");
+    expect(stages).not.toContain("assert recovered directional transition");
     expect(
-      calls.some(
-        (call) =>
-          call.kind === "assertText" &&
-          call.testID === "launch-crashed-bundle-result",
-      ),
-    ).toBe(false);
+      calls.find((call) => call.stage === "assert recovery launch report"),
+    ).toMatchObject({ kind: "control" });
     expect(crashHistoryIndex).toBeGreaterThan(metadataIndex);
   });
 });

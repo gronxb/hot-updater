@@ -1,6 +1,5 @@
-import type { Bundle, BundlePatchArtifact } from "@hot-updater/core";
+import type { Bundle, BundlePatchArtifact, Release } from "@hot-updater/core";
 import {
-  DEFAULT_ROLLOUT_COHORT_COUNT,
   getAssetBaseStorageUri,
   getBundlePatches,
   getManifestFileHash,
@@ -9,7 +8,53 @@ import {
 } from "@hot-updater/core";
 
 import { bundleMetadataToRow } from "./databaseMetadata";
-import type { BundlePatchRow, BundleRow } from "./types";
+import type { BundlePatchRow, BundleRow, ReleaseRow } from "./types";
+
+export const releaseToRow = (
+  release: Release,
+  scopeKey: string,
+): ReleaseRow => ({
+  id: release.id,
+  revision: release.revision,
+  scope_key: scopeKey,
+  channel_id: release.channelId,
+  platform: release.platform,
+  kind: release.kind,
+  bundle_id: release.bundleId,
+  strategy: release.strategy,
+  target_app_version: release.targetAppVersion,
+  fingerprint_hash: release.fingerprintHash,
+  enabled: release.enabled,
+  should_force_update: release.shouldForceUpdate,
+  message: release.message,
+  rollout_cohort_count: release.rolloutCohortCount,
+  target_cohorts: release.targetCohorts,
+  operation: release.operation,
+  source_release_id: release.sourceReleaseId,
+  created_at_ms: release.createdAtMs,
+  updated_at_ms: release.updatedAtMs,
+});
+
+export const releaseRowToRelease = (row: ReleaseRow): Release => ({
+  id: row.id,
+  revision: row.revision,
+  channelId: row.channel_id,
+  platform: row.platform,
+  kind: row.kind,
+  bundleId: row.bundle_id,
+  strategy: row.strategy,
+  targetAppVersion: row.target_app_version,
+  fingerprintHash: row.fingerprint_hash,
+  enabled: row.enabled,
+  shouldForceUpdate: row.should_force_update,
+  message: row.message,
+  rolloutCohortCount: row.rollout_cohort_count,
+  targetCohorts: row.target_cohorts,
+  operation: row.operation,
+  sourceReleaseId: row.source_release_id,
+  createdAtMs: row.created_at_ms,
+  updatedAtMs: row.updated_at_ms,
+});
 
 export const BundleRowHydrationErrorReason = {
   duplicatePatchId: "duplicate_patch_id",
@@ -42,25 +87,15 @@ export class BundleRowHydrationError extends Error {
   }
 }
 
-export const bundleToRow = (bundle: Bundle, channelId: string): BundleRow => {
+export const bundleToRow = (bundle: Bundle, _channelId?: string): BundleRow => {
   const metadata = bundleMetadataToRow(bundle.metadata);
   return {
     id: bundle.id,
     platform: bundle.platform,
-    should_force_update: bundle.shouldForceUpdate,
-    enabled: bundle.enabled,
     file_hash: bundle.fileHash,
     git_commit_hash: bundle.gitCommitHash,
-    message: bundle.message,
-    channel: bundle.channel,
-    channel_id: channelId,
     storage_uri: bundle.storageUri,
-    target_app_version: bundle.targetAppVersion,
-    fingerprint_hash: bundle.fingerprintHash,
     metadata,
-    rollout_cohort_count:
-      bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
-    target_cohorts: bundle.targetCohorts ?? null,
     manifest_storage_uri: getManifestStorageUri(bundle),
     manifest_file_hash: getManifestFileHash(bundle),
     asset_base_storage_uri: getAssetBaseStorageUri(bundle),
@@ -100,18 +135,10 @@ export const rowToBundle = (
   return {
     id: row.id,
     platform: row.platform,
-    shouldForceUpdate: row.should_force_update,
-    enabled: row.enabled,
     fileHash: row.file_hash,
     gitCommitHash: row.git_commit_hash,
-    message: row.message,
-    channel: row.channel,
     storageUri: row.storage_uri,
-    targetAppVersion: row.target_app_version,
-    fingerprintHash: row.fingerprint_hash,
     metadata: stripBundleArtifactMetadata(row.metadata),
-    rolloutCohortCount: row.rollout_cohort_count,
-    targetCohorts: row.target_cohorts === null ? null : [...row.target_cohorts],
     manifestStorageUri: row.manifest_storage_uri,
     manifestFileHash: row.manifest_file_hash,
     assetBaseStorageUri: row.asset_base_storage_uri,

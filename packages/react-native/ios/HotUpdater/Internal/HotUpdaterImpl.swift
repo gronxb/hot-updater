@@ -150,6 +150,11 @@ private func hotUpdaterGetMinBundleId() -> String {
      * @return The channel name or nil if not set
      */
     public func getChannel() -> String {
+        if let activeSelection = bundleStorage.getActiveUpdateState()["activeSelection"] as? [String: Any],
+           let channel = activeSelection["channel"] as? String,
+           !channel.isEmpty {
+            return channel
+        }
         if let override = HotUpdaterConfig.shared.channel, !override.isEmpty {
             return override
         }
@@ -296,6 +301,16 @@ private func hotUpdaterGetMinBundleId() -> String {
                     patch: patch
                 )
             }
+            let selection = (data["selection"] as? [String: Any]).flatMap(Self.parseSelection)
+            if let selection, !bundleStorage.stageReleaseSelection(selection) {
+                let error = NSError(
+                    domain: "HotUpdater",
+                    code: 0,
+                    userInfo: [NSLocalizedDescriptionKey: "Release catalog selection is stale"]
+                )
+                reject("UNKNOWN_ERROR", error.localizedDescription, error)
+                return
+            }
 
             // Extract progress callback if provided
             let progressCallback = data["progressCallback"] as? RCTResponseSenderBlock
@@ -357,6 +372,87 @@ private func hotUpdaterGetMinBundleId() -> String {
 
             reject("UNKNOWN_ERROR", nsError.localizedDescription, nsError)
         }
+    }
+
+    private static func parseSelection(_ data: [String: Any]) -> PersistedSelection? {
+        guard let kind = data["kind"] as? String,
+              let bundleId = data["bundleId"] as? String,
+              let channel = data["channel"] as? String else {
+            return nil
+        }
+        return PersistedSelection(
+            kind: kind,
+            releaseId: data["releaseId"] as? String,
+            bundleId: bundleId,
+            authorityId: data["authorityId"] as? String,
+            scopeKey: data["scopeKey"] as? String,
+            generation: (data["generation"] as? NSNumber)?.int64Value,
+            catalogHash: data["catalogHash"] as? String,
+            channel: channel,
+            selectionContextHash: data["selectionContextHash"] as? String
+        )
+    }
+
+    public func acceptReleaseCatalog(_ params: NSDictionary?) -> Bool {
+        guard let data = params as? [String: Any],
+              let authorityId = data["authorityId"] as? String,
+              let scopeKey = data["scopeKey"] as? String,
+              let generation = data["generation"] as? NSNumber,
+              let catalogHash = data["catalogHash"] as? String,
+              let channel = data["channel"] as? String,
+              let selectionContextHash = data["selectionContextHash"] as? String else {
+            return false
+        }
+        return bundleStorage.acceptReleaseCatalog(
+            authorityId: authorityId,
+            scopeKey: scopeKey,
+            generation: generation.int64Value,
+            catalogHash: catalogHash,
+            channel: channel,
+            selectionContextHash: selectionContextHash
+        )
+    }
+
+    public func getActiveUpdateState() -> [String: Any] {
+        bundleStorage.getActiveUpdateState()
+    }
+
+    public func isReleaseSelectionCurrent(_ params: NSDictionary?) -> Bool {
+        guard let data = params as? [String: Any],
+              let authorityId = data["authorityId"] as? String,
+              let scopeKey = data["scopeKey"] as? String,
+              let generation = data["generation"] as? NSNumber,
+              let catalogHash = data["catalogHash"] as? String,
+              let channel = data["channel"] as? String,
+              let selectionContextHash = data["selectionContextHash"] as? String else {
+            return false
+        }
+        return bundleStorage.isReleaseSelectionCurrent(
+            authorityId: authorityId,
+            scopeKey: scopeKey,
+            generation: generation.int64Value,
+            catalogHash: catalogHash,
+            channel: channel,
+            selectionContextHash: selectionContextHash
+        )
+    }
+
+    public func commitReleaseSelection(
+        _ params: NSDictionary?,
+        resolver resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        guard let data = params?["selection"] as? [String: Any],
+              let selection = Self.parseSelection(data) else {
+            let error = NSError(
+                domain: "HotUpdater",
+                code: 0,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid Release selection"]
+            )
+            reject("INVALID_SELECTION", error.localizedDescription, error)
+            return
+        }
+        resolve(bundleStorage.commitReleaseSelection(selection))
     }
 
     /**

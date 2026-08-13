@@ -78,10 +78,12 @@ const buildNotifyAppReadyAnalyticsParams = (
     channel: getChannel(),
     cohort: getCohort(),
     fingerprintHash: getFingerprintHash(),
+    fromReleaseId: analyticsEvent?.fromReleaseId ?? null,
     installId,
     platform,
     requestHeaders: options.requestHeaders,
     requestTimeout: options.requestTimeout,
+    toReleaseId: analyticsEvent?.toReleaseId ?? null,
     ...(userId != null ? { userId } : {}),
     ...(username != null ? { username } : {}),
   };

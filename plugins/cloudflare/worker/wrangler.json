@@ -2,8 +2,11 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "hot-updater",
   "main": "./dist/index.js",
-  "compatibility_date": "2025-01-24",
+  "compatibility_date": "2026-08-13",
   "compatibility_flags": ["nodejs_compat"],
+  "cache": {
+    "enabled": true
+  },
   "observability": {
     "enabled": true
   },
@@ -20,6 +23,7 @@
     }
   ],
   "vars": {
+    "AUTHORITY_ID": "00000000-0000-0000-0000-000000000000",
     "BUCKET_NAME": "user-buckets"
   }
 }

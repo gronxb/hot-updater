@@ -1,14 +1,10 @@
-import { DEFAULT_ROLLOUT_COHORT_COUNT } from "@hot-updater/core";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createColumnHelper } from "@tanstack/react-table";
-import { ChevronDown, ChevronRight, Fingerprint, Package } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
-import { ChannelBadge } from "@/components/ChannelBadge";
-import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
 import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { PlatformIcon } from "@/components/PlatformIcon";
-import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -96,10 +92,6 @@ export const createBundleColumns = ({
       />
     ),
   }),
-  columnHelper.accessor("channel", {
-    header: "Channel",
-    cell: (info) => <ChannelBadge channel={info.getValue()} />,
-  }),
   columnHelper.accessor("platform", {
     header: "Platform",
     cell: (info) => (
@@ -130,60 +122,19 @@ export const createBundleColumns = ({
       );
     },
   }),
-  columnHelper.display({
-    id: "target",
-    header: "Target",
-    cell: (info) => {
-      const row = info.row.original;
-
-      if (row.fingerprintHash) {
-        return (
-          <div className="flex min-w-[220px] items-start gap-2">
-            <Fingerprint className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-            <HashValueDisplay value={row.fingerprintHash} maxLength={12} />
-          </div>
-        );
-      }
-
-      if (row.targetAppVersion) {
-        return (
-          <div className="flex items-center gap-2">
-            <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span translate="no" className="text-sm">
-              {row.targetAppVersion}
-            </span>
-          </div>
-        );
-      }
-
-      return <span className="text-sm text-muted-foreground">-</span>;
-    },
+  columnHelper.accessor("fileHash", {
+    header: "File Hash",
+    cell: (info) => <HashValueDisplay value={info.getValue()} maxLength={12} />,
   }),
-  columnHelper.accessor("enabled", {
-    header: "Enabled",
-    cell: (info) => <EnabledStatusIcon enabled={info.getValue()} />,
-  }),
-  columnHelper.accessor("shouldForceUpdate", {
-    header: "Force Update",
+  columnHelper.accessor("storageUri", {
+    header: "Storage",
     cell: (info) => (
-      <EnabledStatusIcon enabled={info.getValue()} falseIcon="minus" />
-    ),
-  }),
-  columnHelper.accessor("rolloutCohortCount", {
-    header: "Rollout",
-    cell: (info) => {
-      const rolloutCohortCount =
-        info.getValue() ?? DEFAULT_ROLLOUT_COHORT_COUNT;
-      const percentage = rolloutCohortCount / 10;
-
-      return <RolloutPercentageBadge percentage={percentage} />;
-    },
-  }),
-  columnHelper.accessor("message", {
-    header: "Message",
-    cell: (info) => (
-      <span className="text-sm text-muted-foreground">
-        {info.getValue() || "-"}
+      <span
+        translate="no"
+        className="block max-w-[260px] truncate font-mono text-xs text-muted-foreground"
+        title={info.getValue()}
+      >
+        {info.getValue()}
       </span>
     ),
   }),

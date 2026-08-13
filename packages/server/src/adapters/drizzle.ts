@@ -4,7 +4,6 @@ import {
   type DatabasePluginImplementation,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
-import { asc, desc, inArray } from "drizzle-orm";
 
 import {
   getHotUpdaterSchemaVersion,
@@ -16,15 +15,8 @@ import type {
   ORMProvider,
   SchemaGenerator,
 } from "../db/types";
-import { getDatabasePluginUpdateInfo } from "./databasePluginUpdateInfo";
-import { fromStoredBundleRow } from "./databasePluginUtils";
-import {
-  createDrizzleCrud,
-  getDrizzleColumn,
-  getDrizzleTable,
-} from "./drizzleCrud";
+import { createDrizzleCrud } from "./drizzleCrud";
 import { createLazyDB } from "./drizzleLazyDB";
-import { buildDrizzleWhere } from "./drizzleQuery";
 
 export type DrizzleProvider = Exclude<
   ORMProvider,
@@ -43,8 +35,6 @@ const createImplementation = (
 ): DatabasePluginImplementation => {
   const db = createLazyDB(config);
   const crud = createDrizzleCrud(db, config.provider);
-  const bundles = getDrizzleTable(db, "bundles");
-  const patches = getDrizzleTable(db, "bundle_patches");
   const transaction = db.transaction?.bind(db);
   return {
     ...crud,
@@ -70,29 +60,6 @@ const createImplementation = (
             ),
         }
       : {}),
-    getUpdateInfo: (args) =>
-      getDatabasePluginUpdateInfo(
-        {
-          findBundles: async (where) => {
-            const rows = await db.query.bundles.findMany({
-              where: buildDrizzleWhere(config.provider, bundles, where),
-              orderBy: [desc(getDrizzleColumn(bundles, "id"))],
-            });
-            return rows.map(fromStoredBundleRow);
-          },
-          findPatches: (bundleIds) =>
-            bundleIds.length === 0
-              ? Promise.resolve([])
-              : db.query.bundle_patches.findMany({
-                  where: inArray(
-                    getDrizzleColumn(patches, "bundle_id"),
-                    bundleIds,
-                  ),
-                  orderBy: [asc(getDrizzleColumn(patches, "order_index"))],
-                }),
-        },
-        args,
-      ),
     ...(transaction
       ? {
           transaction: async <TResult>(
@@ -131,6 +98,18 @@ export const drizzleAdapter = (
         findByBundleIds: (bundleIds) =>
           getAdapter().models.bundlePatches.findByBundleIds(bundleIds),
       },
+      releases: {
+        findById: (id) => getAdapter().models.releases.findById(id),
+        findMany: (input) => getAdapter().models.releases.findMany(input),
+        findManyByScope: (input) =>
+          getAdapter().models.releases.findManyByScope(input),
+      },
+      releaseCatalogs: {
+        findByScopeKey: (scopeKey) =>
+          getAdapter().models.releaseCatalogs.findByScopeKey(scopeKey),
+        findMany: (input) =>
+          getAdapter().models.releaseCatalogs.findMany(input),
+      },
       channels: {
         insert: (input) => getAdapter().models.channels.insert(input),
         list: (input) => getAdapter().models.channels.list(input),
@@ -147,9 +126,6 @@ export const drizzleAdapter = (
         list: () => getAdapter().models.clientAccessKeys.list(),
         revoke: (input) => getAdapter().models.clientAccessKeys.revoke(input),
       },
-    },
-    queries: {
-      getUpdateInfo: (args) => getAdapter().queries.getUpdateInfo!(args),
     },
     commit: (input) => getAdapter().commit(input),
   });

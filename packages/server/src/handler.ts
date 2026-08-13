@@ -5,6 +5,8 @@ import {
 } from "./analytics/routes";
 import { createBundleRouteHandlers } from "./handlerBundleRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
+import { createReleaseCatalogRouteHandlers } from "./handlerReleaseCatalogRoutes";
+import { createReleaseManagementRouteHandlers } from "./handlerReleaseManagementRoutes";
 import type {
   HandlerAPI,
   HandlerFeatures,
@@ -40,6 +42,7 @@ export function createHotUpdaterHandler(
   ) => Promise<Response | null>,
 ): (request: Request) => Promise<Response> {
   const basePath = options.basePath ?? "/api";
+  const authorityId = options.authorityId ?? "default";
   const features = {
     updateCheck: options.features?.updateCheck ?? true,
     bundles: options.features?.bundles ?? false,
@@ -47,6 +50,8 @@ export function createHotUpdaterHandler(
   const router = createRouter<string>();
   const routeHandlers: Record<string, RouteHandler> = {
     ...createUpdateRouteHandlers(),
+    ...createReleaseCatalogRouteHandlers(authorityId),
+    ...createReleaseManagementRouteHandlers(),
     ...createBundleRouteHandlers(),
     ...(analytics === undefined ? {} : createAnalyticsRouteHandlers(analytics)),
     ...(downloadStorageObject === undefined
@@ -91,6 +96,24 @@ export function createHotUpdaterHandler(
     addRoute(
       router,
       "GET",
+      "/v2/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion",
+      "appVersionReleaseCatalog",
+    );
+    addRoute(
+      router,
+      "GET",
+      "/v2/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash",
+      "fingerprintReleaseCatalog",
+    );
+    addRoute(
+      router,
+      "GET",
+      "/v2/artifacts/:targetBundleId/from/:currentBundleId",
+      "artifact",
+    );
+    addRoute(
+      router,
+      "GET",
       "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
       "fingerprintUpdateWithCohort",
     );
@@ -115,6 +138,25 @@ export function createHotUpdaterHandler(
   }
 
   if (features.bundles) {
+    addRoute(router, "GET", "/api/releases/:id", "getRelease");
+    addRoute(router, "GET", "/api/releases", "getReleases");
+    addRoute(router, "PATCH", "/api/releases/:id", "updateRelease");
+    addRoute(router, "POST", "/api/releases/:id/preflight", "preflightRelease");
+    addRoute(router, "DELETE", "/api/releases/:id", "deleteRelease");
+    addRoute(
+      router,
+      "GET",
+      "/api/release-catalogs/:scopeKey",
+      "getReleaseCatalogRow",
+    );
+    addRoute(router, "GET", "/api/release-catalogs", "getReleaseCatalogs");
+    addRoute(
+      router,
+      "POST",
+      "/api/release-catalogs/:scopeKey/rebuild",
+      "rebuildReleaseCatalog",
+    );
+    addRoute(router, "POST", "/api/database/commit", "commitDatabase");
     addRoute(router, "GET", "/api/channels", "getChannels");
     addRoute(router, "POST", "/api/channels", "createChannel");
     addRoute(router, "DELETE", "/api/channels/:id", "deleteChannel");
@@ -145,13 +187,19 @@ export function createHotUpdaterHandler(
       if (!match) {
         return new Response(JSON.stringify({ error: "Not found" }), {
           status: 404,
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "cache-control": "private, no-store",
+            "Content-Type": "application/json",
+          },
         });
       }
       if (
         clientAccessKeys !== undefined &&
         (match.data === "fingerprintUpdateWithCohort" ||
           match.data === "appVersionUpdateWithCohort" ||
+          match.data === "appVersionReleaseCatalog" ||
+          match.data === "fingerprintReleaseCatalog" ||
+          match.data === "artifact" ||
           match.data === "appendBundleEvent")
       ) {
         let authenticated: boolean;
@@ -188,7 +236,10 @@ export function createHotUpdaterHandler(
       if (error instanceof HandlerBadRequestError) {
         return new Response(JSON.stringify({ error: error.message }), {
           status: 400,
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "cache-control": "private, no-store",
+            "Content-Type": "application/json",
+          },
         });
       }
       console.error("Hot Updater handler error:", error);
@@ -199,7 +250,10 @@ export function createHotUpdaterHandler(
         }),
         {
           status: 500,
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "cache-control": "private, no-store",
+            "Content-Type": "application/json",
+          },
         },
       );
     }

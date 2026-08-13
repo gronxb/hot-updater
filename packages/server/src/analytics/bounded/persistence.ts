@@ -11,6 +11,8 @@ export function createBundleEventRow(
     install_id: input.installId,
     user_id: input.userId ?? null,
     username: input.username ?? null,
+    from_release_id: input.fromReleaseId ?? null,
+    to_release_id: input.toReleaseId ?? null,
     to_bundle_id: input.toBundleId,
     platform: input.platform,
     app_version: input.appVersion,
@@ -23,6 +25,7 @@ export function createBundleEventRow(
   switch (input.type) {
     case "UPDATE_APPLIED":
     case "RECOVERED":
+    case "RELEASE_ADOPTED":
       return {
         ...base,
         type: input.type,

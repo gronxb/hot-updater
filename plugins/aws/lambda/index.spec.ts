@@ -114,6 +114,7 @@ describe("aws lambda entrypoint", () => {
     vi.resetModules();
     vi.clearAllMocks();
     globalThis.HotUpdater = {
+      AUTHORITY_ID: "aws.test-authority",
       CLOUDFRONT_KEY_PAIR_ID: "KTEST",
       DYNAMODB_REGION: "us-east-1",
       DYNAMODB_TABLE_NAME: "hot-updater-metadata",
@@ -139,6 +140,7 @@ describe("aws lambda entrypoint", () => {
     });
     expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
       expect.objectContaining({
+        authorityId: "aws.test-authority",
         features: {
           updateCheck: true,
           bundles: false,

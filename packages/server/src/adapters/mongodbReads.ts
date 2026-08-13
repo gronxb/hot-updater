@@ -20,9 +20,10 @@ import {
   createMongoClientAccessKeyWhere,
   createMongoEventWhere,
   createMongoPatchWhere,
+  createMongoReleaseCatalogWhere,
+  createMongoReleaseWhere,
   createMongoSort,
 } from "./mongodbQuery";
-import { createMongoGetUpdateInfo } from "./mongodbUpdateInfo";
 
 const findMongoRows = async (
   collections: MongoCollections,
@@ -168,12 +169,64 @@ const findMongoRows = async (
         ? cursor.toArray()
         : cursor.sort(sort).toArray();
     }
+    case "releases": {
+      const cursor = collections.releases
+        .find(createMongoReleaseWhere(input.where), {
+          projection: WITHOUT_MONGO_ID,
+          ...mongoSessionOptions(session),
+        })
+        .skip(input.offset)
+        .limit(input.limit);
+      if (rawOrderBy === undefined) return cursor.toArray();
+      if (needsInMemoryOrder) {
+        const rows = await collections.releases
+          .find(createMongoReleaseWhere(input.where), {
+            projection: WITHOUT_MONGO_ID,
+            ...mongoSessionOptions(session),
+          })
+          .toArray();
+        return sortRowsByOrder(rows, rawOrderBy).slice(
+          input.offset,
+          input.offset + input.limit,
+        );
+      }
+      const sort = createMongoSort(input);
+      return sort === undefined
+        ? cursor.toArray()
+        : cursor.sort(sort).toArray();
+    }
+    case "release_catalogs": {
+      const cursor = collections.releaseCatalogs
+        .find(createMongoReleaseCatalogWhere(input.where), {
+          projection: WITHOUT_MONGO_ID,
+          ...mongoSessionOptions(session),
+        })
+        .skip(input.offset)
+        .limit(input.limit);
+      if (rawOrderBy === undefined) return cursor.toArray();
+      if (needsInMemoryOrder) {
+        const rows = await collections.releaseCatalogs
+          .find(createMongoReleaseCatalogWhere(input.where), {
+            projection: WITHOUT_MONGO_ID,
+            ...mongoSessionOptions(session),
+          })
+          .toArray();
+        return sortRowsByOrder(rows, rawOrderBy).slice(
+          input.offset,
+          input.offset + input.limit,
+        );
+      }
+      const sort = createMongoSort(input);
+      return sort === undefined
+        ? cursor.toArray()
+        : cursor.sort(sort).toArray();
+    }
   }
 };
 
 type MongoReadImplementation = Pick<
   DatabasePluginImplementation,
-  "count" | "findMany" | "findOne" | "getUpdateInfo"
+  "count" | "findMany" | "findOne"
 >;
 
 export const createMongoReads = (
@@ -193,6 +246,11 @@ export const createMongoReads = (
       case "bundle_patches":
         return collections.bundlePatches.countDocuments(
           createMongoPatchWhere(input.where),
+          mongoSessionOptions(session),
+        );
+      case "releases":
+        return collections.releases.countDocuments(
+          createMongoReleaseWhere(input.where),
           mongoSessionOptions(session),
         );
     }
@@ -231,6 +289,22 @@ export const createMongoReads = (
             ...mongoSessionOptions(session),
           },
         );
+      case "releases":
+        return collections.releases.findOne(
+          createMongoReleaseWhere(input.where),
+          {
+            projection: WITHOUT_MONGO_ID,
+            ...mongoSessionOptions(session),
+          },
+        );
+      case "release_catalogs":
+        return collections.releaseCatalogs.findOne(
+          createMongoReleaseCatalogWhere(input.where),
+          {
+            projection: WITHOUT_MONGO_ID,
+            ...mongoSessionOptions(session),
+          },
+        );
     }
   },
   findMany: (input) => {
@@ -239,5 +313,4 @@ export const createMongoReads = (
     }
     return findMongoRows(collections, input, session);
   },
-  getUpdateInfo: createMongoGetUpdateInfo(collections),
 });

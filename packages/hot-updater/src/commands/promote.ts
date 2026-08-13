@@ -1,13 +1,6 @@
-import { loadConfig, p, promoteBundle } from "@hot-updater/cli-tools";
-import type {
-  Bundle,
-  BundleRepository,
-  StoragePluginWith,
-} from "@hot-updater/plugin-core";
-import {
-  assertStorageOperations,
-  createDatabaseClient,
-} from "@hot-updater/plugin-core";
+import { loadConfig, p } from "@hot-updater/cli-tools";
+import type { BundleRepository, ReleaseRow } from "@hot-updater/plugin-core";
+import { promoteRelease } from "@hot-updater/plugin-core";
 
 import { printBanner } from "@/utils/printBanner";
 
@@ -16,116 +9,95 @@ import { ui } from "../utils/cli-ui";
 export type PromoteAction = "copy" | "move";
 
 export interface PromoteOptions {
-  target: string;
-  action?: PromoteAction;
-  yes?: boolean;
+  readonly action?: PromoteAction;
+  readonly target: string;
+  readonly yes?: boolean;
 }
 
-const safeDispose = async (databasePlugin: BundleRepository): Promise<void> => {
+const safeDispose = async (database: BundleRepository): Promise<void> => {
   try {
-    await databasePlugin.dispose?.();
-  } catch (err) {
+    await database.dispose?.();
+  } catch (error) {
     p.log.warn(
-      `Database plugin dispose failed (cleanup-only, original error preserved): ${
-        (err as Error)?.message ?? String(err)
-      }`,
+      `Database cleanup failed: ${(error as Error)?.message ?? String(error)}`,
     );
   }
 };
 
-const summarizePlan = (params: {
-  target: string;
-  action: PromoteAction;
-  bundle: Bundle;
-}): string =>
-  ui.block(
-    `Promote (${params.action})`,
-    [
-      ui.kv("Bundle", ui.id(params.bundle.id)),
-      ui.kv("Platform", ui.platform(params.bundle.platform)),
-      ui.kv("From", ui.channel(params.bundle.channel)),
-      ui.kv("To", ui.channel(params.target)),
-      params.bundle.targetAppVersion
-        ? ui.kv("Version", ui.version(params.bundle.targetAppVersion))
-        : ui.kv("Version", ui.muted("-")),
-      params.bundle.message ? ui.kv("Message", params.bundle.message) : null,
-    ].filter((line): line is string => line !== null),
-  );
+const summarizePlan = (
+  source: ReleaseRow,
+  sourceChannel: string,
+  targetChannel: string,
+  action: PromoteAction,
+) =>
+  ui.block(`Promote Release (${action})`, [
+    ui.kv("Source Release", ui.id(source.id)),
+    ui.kv("Bundle", ui.id(source.bundle_id ?? "Embedded")),
+    ui.kv("Platform", ui.platform(source.platform)),
+    ui.kv("From", ui.channel(sourceChannel)),
+    ui.kv("To", ui.channel(targetChannel)),
+    ui.kv("Storage", ui.muted("reused; no upload or copy")),
+  ]);
 
 export const handlePromote = async (
-  bundleId: string,
+  sourceReleaseId: string,
   options: PromoteOptions,
 ) => {
   printBanner();
-
-  const action: PromoteAction = options.action ?? "copy";
-  const target = options.target.trim();
-
-  if (!target) {
+  const targetChannel = options.target.trim();
+  if (targetChannel.length === 0) {
     p.log.error("--target is required.");
     process.exit(1);
   }
-
+  const action = options.action ?? "copy";
   const config = await loadConfig(null);
-  const databasePlugin = config.database;
-  const databaseClient = createDatabaseClient(databasePlugin);
-  let storagePlugin: StoragePluginWith<"get" | "put" | "delete"> | null = null;
-  if (action === "copy") {
-    assertStorageOperations(config.storage, ["get", "put", "delete"]);
-    storagePlugin = config.storage;
-  }
-
+  const database = config.database;
   try {
-    const bundle = await databaseClient.getBundleById(bundleId);
-    if (!bundle) {
-      p.log.error(`No bundle with id ${bundleId}.`);
+    const [source, channels] = await Promise.all([
+      database.models.releases.findById(sourceReleaseId),
+      database.models.channels.list({}),
+    ]);
+    if (source === null) {
+      p.log.error(`No Release with id ${sourceReleaseId}.`);
       process.exit(1);
     }
-    if (bundle.channel === target) {
-      p.log.error(`Bundle ${bundleId} is already on channel "${target}".`);
-      process.exit(1);
-    }
-
-    p.log.message(summarizePlan({ target, action, bundle }));
-
+    const sourceChannel =
+      channels.channels.find(({ id }) => id === source.channel_id)?.name ??
+      source.channel_id;
+    p.log.message(summarizePlan(source, sourceChannel, targetChannel, action));
     if (!options.yes) {
       if (!process.stdin.isTTY) {
         p.log.error(
-          "Cannot prompt for confirmation in a non-interactive shell. Re-run with -y, or use a TTY.",
+          "Cannot prompt in a non-interactive shell. Re-run with -y.",
         );
         process.exit(1);
       }
       const confirmed = await p.confirm({
-        message: `${action === "copy" ? "Copy" : "Move"} ${bundle.id} from ${bundle.channel} to ${target}?`,
         initialValue: false,
+        message: `${action === "copy" ? "Promote" : "Move"} this Release to ${targetChannel}?`,
       });
       if (p.isCancel(confirmed) || !confirmed) {
         p.log.info("Aborted.");
         process.exit(2);
       }
     }
-
-    const promoted = await promoteBundle(
-      {
-        action,
-        bundleId: bundle.id,
-        targetChannel: target,
-      },
-      {
-        config,
-        databaseClient,
-        storagePlugin,
-      },
+    const result = await promoteRelease({
+      action,
+      database,
+      releaseId: source.id,
+      targetChannel,
+    });
+    const promoted = result.target.release;
+    if (promoted === null)
+      throw new Error("Promoted Release was not persisted.");
+    p.log.success(
+      action === "copy"
+        ? `Promoted Release to ${targetChannel}.`
+        : `Moved delivery policy to ${targetChannel}.`,
     );
-
-    if (action === "copy") {
-      p.log.success(`Copied bundle to ${target}.`);
-      p.log.info(`  ${ui.id(promoted.id)} (new bundle id)`);
-    } else {
-      p.log.success(`Moved bundle to ${target}.`);
-      p.log.info(`  ${ui.id(promoted.id)}`);
-    }
+    p.log.info(`  Release ${ui.id(promoted.id)}`);
+    p.log.info(`  Bundle ${ui.id(promoted.bundle_id ?? "Embedded")} (reused)`);
   } finally {
-    await safeDispose(databasePlugin);
+    await safeDispose(database);
   }
 };

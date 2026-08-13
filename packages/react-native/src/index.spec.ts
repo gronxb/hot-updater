@@ -17,6 +17,12 @@ const mocks = vi.hoisted(() => {
     clearCrashHistory: vi.fn(() => true),
     createDefaultResolver: vi.fn(),
     getAppVersion: vi.fn(() => "1.0.0"),
+    getActiveUpdateState: vi.fn(() => ({
+      activeSelection: null,
+      highestSeenCatalogs: {},
+      stableSelection: null,
+      verificationPending: false,
+    })),
     getBaseURL: vi.fn(() => null),
     getBundleId: vi.fn(() => "bundle-id"),
     getChannel: vi.fn(() => "production"),
@@ -27,6 +33,8 @@ const mocks = vi.hoisted(() => {
     getInstallId: vi.fn(() => "install-id"),
     getManifest: vi.fn(() => null),
     getMinBundleId: vi.fn(() => "min-bundle-id"),
+    getMinimumReleaseId: vi.fn(() => "min-bundle-id"),
+    getReleaseId: vi.fn(async () => null),
     init: vi.fn(),
     isChannelSwitched: vi.fn(() => false),
     notifyAppReady: vi.fn<() => NotifyAppReadyResult>(() => ({
@@ -53,6 +61,7 @@ vi.mock("./checkForUpdate", () => ({
 vi.mock("./native", () => ({
   addListener: mocks.addListener,
   clearCrashHistory: mocks.clearCrashHistory,
+  getActiveUpdateState: mocks.getActiveUpdateState,
   getAppVersion: mocks.getAppVersion,
   getBaseURL: mocks.getBaseURL,
   getBundleId: mocks.getBundleId,
@@ -64,6 +73,8 @@ vi.mock("./native", () => ({
   getInstallId: mocks.getInstallId,
   getManifest: mocks.getManifest,
   getMinBundleId: mocks.getMinBundleId,
+  getMinimumReleaseId: mocks.getMinimumReleaseId,
+  getReleaseId: mocks.getReleaseId,
   isChannelSwitched: mocks.isChannelSwitched,
   notifyAppReady: mocks.notifyAppReady,
   reload: mocks.reload,

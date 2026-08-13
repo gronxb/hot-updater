@@ -37,6 +37,16 @@ export const isSupabaseFunctionName = (
 ): value is string =>
   value !== undefined && /^[A-Za-z][A-Za-z0-9_-]*$/.test(value);
 
+export const isSupabaseCdnUrl = (value: string | undefined): boolean => {
+  if (value === undefined) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.search === "" && url.hash === "";
+  } catch {
+    return false;
+  }
+};
+
 export const initProvider = {
   label: "Supabase",
   inputs: {
@@ -105,6 +115,12 @@ export const initProvider = {
         type: "text",
       },
       validate: isSupabaseFunctionName,
+    },
+    catalogCdnUrl: {
+      envKey: "HOT_UPDATER_SUPABASE_CATALOG_CDN_URL",
+      help: "External CDN base URL that proxies the Supabase Edge Function",
+      optional: true,
+      validate: isSupabaseCdnUrl,
     },
     databasePassword: {
       envKey: "HOT_UPDATER_SUPABASE_DB_PASSWORD",

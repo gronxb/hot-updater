@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
     d1: {
       database: {
         list: vi.fn(),
+        query: vi.fn(),
       },
     },
     r2: {
@@ -157,6 +158,11 @@ describe("Cloudflare init discovery", () => {
     mocks.api.workers.subdomains.get.mockResolvedValue({
       subdomain: "example",
     });
+    mocks.api.d1.database.query.mockResolvedValue({
+      async *iterPages() {
+        yield { result: [{ results: [] }] };
+      },
+    });
     mocks.inputSecrets.mockResolvedValue({
       accessKeyId: "access-key-id",
       apiToken: "api-token",
@@ -214,6 +220,11 @@ describe("Cloudflare init discovery", () => {
     });
     mocks.api.d1.database.list.mockResolvedValue({
       result: [{ name: "ota", uuid: "database-id" }],
+    });
+    mocks.api.d1.database.query.mockResolvedValue({
+      async *iterPages() {
+        yield { result: [{ results: [] }] };
+      },
     });
     mocks.inputSecrets.mockRejectedValue(new Error("stop after login"));
 

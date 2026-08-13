@@ -37,3 +37,13 @@ export const hotUpdater = createHotUpdater({
 export async function closeDatabase() {
   await prisma.$disconnect();
 }
+
+export async function resetDecisionFixtures() {
+  await prisma.$transaction([
+    prisma.bundle_patches.deleteMany(),
+    prisma.release_catalogs.deleteMany(),
+    prisma.releases.deleteMany(),
+    prisma.bundles.deleteMany(),
+    prisma.channels.deleteMany(),
+  ]);
+}

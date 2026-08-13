@@ -87,6 +87,7 @@ describe("LambdaEdgeDeployer", () => {
       "arn:aws:iam::123456789012:role/hot-updater-edge",
       "hot-updater-edge",
       {
+        authorityId: "aws.test-authority",
         bucketName: "hot-updater-storage",
         dynamodbRegion: "ap-northeast-2",
         dynamodbTableName: "hot-updater-metadata",
@@ -104,9 +105,7 @@ describe("LambdaEdgeDeployer", () => {
     });
     expect(transformEnvMock).toHaveBeenCalledWith(
       "/tmp/hot-updater-lambda/index.cjs",
-      expect.not.objectContaining({
-        MANAGEMENT_BEARER_TOKEN: expect.anything(),
-      }),
+      expect.objectContaining({ AUTHORITY_ID: "aws.test-authority" }),
     );
     expect(lambdaMocks.updateFunctionConfiguration).toHaveBeenCalledWith({
       FunctionName: "hot-updater-edge",
@@ -147,6 +146,7 @@ describe("LambdaEdgeDeployer", () => {
       "arn:aws:iam::123456789012:role/hot-updater-edge",
       "hot-updater-edge",
       {
+        authorityId: "aws.test-authority",
         bucketName: "hot-updater-storage",
         dynamodbRegion: "ap-northeast-2",
         dynamodbTableName: "hot-updater-metadata",

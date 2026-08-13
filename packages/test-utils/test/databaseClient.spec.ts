@@ -1,26 +1,19 @@
 import type { Bundle } from "@hot-updater/core";
-import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
   DatabaseAtomicCommitUnsupportedError,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { createInMemoryDatabasePlugin } from "./inMemoryDatabasePlugin";
 
 const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
   id,
   platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
   fileHash: `hash-${id}`,
   gitCommitHash: null,
-  message: id,
-  channel: "production",
   storageUri: `storage://${id}`,
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
   ...overrides,
 });
 
@@ -61,23 +54,22 @@ describe("database client", () => {
     });
   });
 
-  it("paginates filtered bundle aggregates and lists persistent channels", async () => {
+  it("paginates filtered bundle aggregates without inferring channels", async () => {
     const client = createDatabaseClient(plugin);
     await client.insertBundle(createBundle("101"));
-    await client.insertBundle(createBundle("102", { channel: "staging" }));
+    await client.insertBundle(createBundle("102", { platform: "android" }));
     await client.insertBundle(createBundle("103"));
 
     const page = await client.getBundles({
       limit: 1,
-      where: { channel: "production" },
+      where: { platform: "ios" },
       orderBy: { field: "id", direction: "desc" },
     });
     await client.deleteBundleById("102");
 
     expect(page.data.map(({ id }) => id)).toEqual(["103"]);
     expect(page.pagination).toMatchObject({ total: 2, hasNextPage: true });
-    const channels = await client.getChannels();
-    expect(channels.map(({ name }) => name)).toEqual(["production", "staging"]);
+    await expect(client.getChannels()).resolves.toEqual([]);
   });
 
   it("replaces patches and removes both incoming and outgoing patch rows", async () => {
@@ -99,7 +91,6 @@ describe("database client", () => {
     await client.insertBundle(target);
 
     await client.updateBundleById(target.id, {
-      channel: "beta",
       patches: [
         {
           baseBundleId: secondBase.id,
@@ -112,7 +103,6 @@ describe("database client", () => {
     await client.deleteBundleById(secondBase.id);
 
     await expect(client.getBundleById(target.id)).resolves.toMatchObject({
-      channel: "beta",
       patches: [],
     });
   });
@@ -191,29 +181,6 @@ describe("database client", () => {
       bundleId: invalid.id,
     });
     await expect(client.getBundleById(invalid.id)).resolves.toBeNull();
-  });
-
-  it("delegates the update-info fast path and matches the generic path", async () => {
-    const bundle = createBundle("401");
-    const genericClient = createDatabaseClient(plugin);
-    await genericClient.insertBundle(bundle);
-    const args = {
-      _updateStrategy: "appVersion",
-      appVersion: "1.0.0",
-      bundleId: NIL_UUID,
-      platform: "ios",
-    } as const;
-    const expected = await genericClient.getUpdateInfo(args);
-    const fastPath = vi.fn(async () => expected);
-    const fastClient = createDatabaseClient({
-      ...plugin,
-      queries: { getUpdateInfo: fastPath },
-    });
-
-    const actual = await fastClient.getUpdateInfo(args);
-
-    expect(actual).toEqual(expected);
-    expect(fastPath).toHaveBeenCalledWith(args);
   });
 
   it("runs high-level mutations in one plugin transaction", async () => {

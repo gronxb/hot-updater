@@ -1,160 +1,226 @@
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import type {
-  Bundle,
   BundleRepository,
   Platform,
+  ReleaseRow,
 } from "@hot-updater/plugin-core";
-import { createDatabaseClient } from "@hot-updater/plugin-core";
+import { rollbackReleases } from "@hot-updater/plugin-core";
 
 import { printBanner } from "@/utils/printBanner";
 
 import { PLATFORMS } from "../commandOptions";
 import { ui } from "../utils/cli-ui";
 
+const RELEASE_PAGE_SIZE = 1_000;
+
 export interface RollbackOptions {
-  platform?: Platform;
-  yes?: boolean;
-  target?: string;
+  readonly embedded?: boolean;
+  readonly platform?: Platform;
+  readonly toBundle?: string;
+  readonly toRelease?: string;
+  readonly yes?: boolean;
 }
 
 interface RollbackTarget {
-  platform: Platform;
-  bundle: Bundle;
-  fallbackId: string | null;
+  readonly source: ReleaseRow;
+  readonly target: ReleaseRow | null;
+  readonly toBundleId?: string | null;
 }
 
-const summarizeTarget = (target: RollbackTarget): string =>
-  ui.block(`${target.platform}`, [
-    ui.kv("Disable", ui.id(target.bundle.id)),
-    target.fallbackId
-      ? ui.kv("Fallback", ui.id(target.fallbackId))
-      : ui.kv("Fallback", ui.warning("binary-shipped JS")),
-  ]);
-
-const formatRetryHint = (channel: string, target: RollbackTarget): string =>
-  `Re-run with: hot-updater rollback ${channel} -p ${target.platform} --target ${target.bundle.id}`;
-
-const safeDispose = async (databasePlugin: BundleRepository): Promise<void> => {
+const safeDispose = async (database: BundleRepository): Promise<void> => {
   try {
-    await databasePlugin.dispose?.();
-  } catch (err) {
-    // Cleanup errors must never mask the originating mutation error.
+    await database.dispose?.();
+  } catch (error) {
     p.log.warn(
-      `Database plugin dispose failed (cleanup-only, original error preserved): ${
-        (err as Error)?.message ?? String(err)
-      }`,
+      `Database cleanup failed: ${(error as Error)?.message ?? String(error)}`,
     );
   }
 };
 
+const readChannelReleases = async (
+  database: BundleRepository,
+  channelId: string,
+  platform: Platform,
+): Promise<readonly ReleaseRow[]> => {
+  const releases: ReleaseRow[] = [];
+  let beforeReleaseId: string | undefined;
+  for (;;) {
+    const page = await database.models.releases.findMany({
+      ...(beforeReleaseId === undefined ? {} : { beforeReleaseId }),
+      channelId,
+      limit: RELEASE_PAGE_SIZE,
+      platform,
+    });
+    releases.push(...page);
+    if (page.length < RELEASE_PAGE_SIZE) {
+      return releases.sort((left, right) => right.id.localeCompare(left.id));
+    }
+    const nextCursor = page.at(-1)?.id;
+    if (nextCursor === undefined || nextCursor === beforeReleaseId) {
+      throw new Error("Release pagination did not advance.");
+    }
+    beforeReleaseId = nextCursor;
+  }
+};
+
+const summarizeTarget = (target: RollbackTarget): string =>
+  ui.block(ui.platform(target.source.platform), [
+    ui.kv("Current Release", ui.id(target.source.id)),
+    ui.kv(
+      "Target Release",
+      target.target === null
+        ? ui.muted("advanced target")
+        : ui.id(target.target.id),
+    ),
+    ui.kv(
+      "Bundle",
+      target.target?.bundle_id ?? target.toBundleId ?? ui.warning("Embedded"),
+    ),
+    ui.kv("Force update", "yes"),
+    ui.kv("Rollout", "100%"),
+  ]);
+
+const selectDefaultTarget = (
+  releases: readonly ReleaseRow[],
+  source: ReleaseRow,
+): ReleaseRow | null => {
+  const anchorId =
+    source.operation === "ROLLBACK" && source.source_release_id !== null
+      ? source.source_release_id
+      : source.id;
+  return (
+    releases.find(
+      (release) =>
+        release.scope_key === source.scope_key && release.id < anchorId,
+    ) ?? null
+  );
+};
+
 export const handleRollback = async (
-  channel: string,
+  channelName: string,
   options: RollbackOptions = {},
 ) => {
   printBanner();
-
-  if (!channel) {
+  if (channelName.trim().length === 0) {
     p.log.error("rollback requires a channel argument: `rollback <channel>`");
+    process.exit(1);
+  }
+  const explicitTargets = [
+    options.toRelease !== undefined,
+    options.toBundle !== undefined,
+    options.embedded === true,
+  ].filter(Boolean).length;
+  if (explicitTargets > 1) {
+    p.log.error("Choose only one of --to-release, --to-bundle, or --embedded.");
     process.exit(1);
   }
 
   const config = await loadConfig(null);
-
-  const platforms = options.platform ? [options.platform] : PLATFORMS;
-
-  const databasePlugin = config.database;
-  const database = createDatabaseClient(databasePlugin);
+  const database = config.database;
   try {
-    const targets: RollbackTarget[] = [];
-    const skippedPlatforms: Platform[] = [];
-
-    if (options.target) {
-      // Scoped retry path: roll back exactly the named bundle.
-      const targetBundle = await database.getBundleById(options.target);
-      if (!targetBundle) {
-        p.log.error(`No bundle with id ${options.target}.`);
-        process.exit(1);
-      }
-      if (targetBundle.channel !== channel) {
-        p.log.error(
-          `Bundle ${options.target} is on channel "${targetBundle.channel}", not "${channel}".`,
-        );
-        process.exit(1);
-      }
-      if (options.platform && targetBundle.platform !== options.platform) {
-        p.log.error(
-          `Bundle ${options.target} is on platform "${targetBundle.platform}", not "${options.platform}".`,
-        );
-        process.exit(1);
-      }
-      if (!targetBundle.enabled) {
-        p.log.info(`Bundle ${options.target} is already disabled. No changes.`);
-        return;
-      }
-      const fallbackResult = await database.getBundles({
-        where: {
-          channel,
-          platform: targetBundle.platform,
-          enabled: true,
-        },
-        limit: 2,
-      });
-      const fallback = fallbackResult.data.find(
-        (b) => b.id !== targetBundle.id,
-      );
-      targets.push({
-        platform: targetBundle.platform,
-        bundle: targetBundle,
-        fallbackId: fallback?.id ?? null,
-      });
-    } else {
-      for (const platform of platforms) {
-        const result = await database.getBundles({
-          where: { channel, platform, enabled: true },
-          limit: 2,
-        });
-        const [target, fallback] = result.data;
-        if (!target) {
-          p.log.info(`No enabled bundle on ${channel}/${platform}; skipping.`);
-          skippedPlatforms.push(platform);
-          continue;
-        }
-        targets.push({
-          platform,
-          bundle: target,
-          fallbackId: fallback?.id ?? null,
-        });
-      }
-    }
-
-    if (targets.length === 0) {
-      p.log.error(
-        `Nothing to roll back: no enabled bundles for ${channel} on ${platforms.join(", ")}.`,
-      );
+    const channel = (await database.models.channels.list({})).channels.find(
+      ({ name }) => name === channelName,
+    );
+    if (channel === undefined) {
+      p.log.error(`No channel named ${channelName}.`);
       process.exit(1);
     }
 
-    p.log.message(ui.title(`Rollback ${channel}`));
-    for (const t of targets) {
-      p.log.message(summarizeTarget(t));
-    }
-
-    if (skippedPlatforms.length > 0 && !options.yes) {
-      p.log.warn(
-        `Some requested platforms had no enabled bundle on ${channel}; only the platforms above will be touched.`,
+    let explicitRelease: ReleaseRow | null = null;
+    if (options.toRelease !== undefined) {
+      explicitRelease = await database.models.releases.findById(
+        options.toRelease,
       );
+      if (
+        explicitRelease === null ||
+        explicitRelease.channel_id !== channel.id
+      ) {
+        p.log.error(
+          `Target Release ${options.toRelease} does not belong to ${channelName}.`,
+        );
+        process.exit(1);
+      }
     }
 
+    let explicitBundlePlatform: Platform | null = null;
+    if (options.toBundle !== undefined) {
+      const bundle = await database.models.bundles.findById(options.toBundle);
+      if (bundle === null) {
+        p.log.error(`No Bundle with id ${options.toBundle}.`);
+        process.exit(1);
+      }
+      explicitBundlePlatform = bundle.platform;
+    }
+
+    const platforms = explicitRelease
+      ? [explicitRelease.platform]
+      : explicitBundlePlatform
+        ? [explicitBundlePlatform]
+        : options.platform
+          ? [options.platform]
+          : PLATFORMS;
+    if (
+      options.platform !== undefined &&
+      platforms.some((platform) => platform !== options.platform)
+    ) {
+      p.log.error("The explicit rollback target does not match --platform.");
+      process.exit(1);
+    }
+
+    const targets: RollbackTarget[] = [];
+    for (const platform of platforms) {
+      const releases = await readChannelReleases(
+        database,
+        channel.id,
+        platform,
+      );
+      const scopedReleases = explicitRelease
+        ? releases.filter(
+            ({ scope_key }) => scope_key === explicitRelease.scope_key,
+          )
+        : releases;
+      const source = scopedReleases.find(({ enabled }) => enabled);
+      if (source === undefined) {
+        p.log.info(
+          `No enabled Release on ${channelName}/${platform}; skipping.`,
+        );
+        continue;
+      }
+      const target =
+        options.embedded || options.toBundle !== undefined
+          ? null
+          : (explicitRelease ?? selectDefaultTarget(releases, source));
+      if (explicitRelease !== null && explicitRelease.id >= source.id) {
+        p.log.error("--to-release must identify an earlier Release.");
+        process.exit(1);
+      }
+      targets.push({
+        source,
+        target,
+        ...(options.toBundle !== undefined
+          ? { toBundleId: options.toBundle }
+          : options.embedded || target === null
+            ? { toBundleId: null }
+            : {}),
+      });
+    }
+    if (targets.length === 0) {
+      p.log.error(`Nothing to roll back on ${channelName}.`);
+      process.exit(1);
+    }
+
+    p.log.message(ui.title(`Rollback ${channelName}`));
+    for (const target of targets) p.log.message(summarizeTarget(target));
     if (!options.yes) {
       if (!process.stdin.isTTY) {
         p.log.error(
-          "Cannot prompt for confirmation in a non-interactive shell. Re-run with -y, or use a TTY.",
+          "Cannot prompt in a non-interactive shell. Re-run with -y.",
         );
         process.exit(1);
       }
       const confirmed = await p.confirm({
-        message: `Apply this rollback plan to ${channel}?`,
         initialValue: false,
+        message: `Create ${targets.length} forward rollback Release(s)?`,
       });
       if (p.isCancel(confirmed) || !confirmed) {
         p.log.info("Aborted.");
@@ -162,49 +228,25 @@ export const handleRollback = async (
       }
     }
 
-    let commitError: unknown = null;
-    try {
-      await database.mutate(async (transaction) => {
-        for (const target of targets) {
-          await transaction.updateBundleById(target.bundle.id, {
-            enabled: false,
-          });
-        }
-      });
-    } catch (err) {
-      commitError = err;
-      const message = err instanceof Error ? err.message : String(err);
-      p.log.error(`Database mutation threw: ${message}`);
-      p.log.info("Running verify phase to surface per-platform state...");
-    }
-
-    // Verify phase: re-read each target. Distinguish three states —
-    // disabled (success), still-enabled (failure), and gone (success: a
-    // deleted bundle satisfies the rollback intent).
-    const failures: RollbackTarget[] = [];
-    for (const t of targets) {
-      const refetched = await database.getBundleById(t.bundle.id);
-      if (!refetched) {
-        p.log.warn(
-          `${t.platform} ${t.bundle.id} was deleted between commit and verify; treating as rolled back.`,
-        );
-      } else if (refetched.enabled) {
-        failures.push(t);
-        p.log.error(
-          `FAILED: ${t.platform} ${t.bundle.id} is still enabled after rollback. ${formatRetryHint(channel, t)}`,
-        );
-      } else {
-        p.log.success(`rolled back ${t.platform} ${t.bundle.id}`);
-      }
-    }
-
-    if (commitError || failures.length > 0) {
-      p.log.error(
-        `Rollback completed with ${failures.length} failed platform(s) out of ${targets.length}.`,
+    const results = await rollbackReleases({
+      database,
+      rollbacks: targets.map(({ source, target, toBundleId }) => ({
+        releaseId: source.id,
+        ...(target === null ? { toBundleId } : { toReleaseId: target.id }),
+      })),
+    });
+    for (const result of results) {
+      const release = result.release;
+      if (release === null)
+        throw new Error("Rollback Release was not persisted.");
+      p.log.success(
+        `Created ${ui.id(release.id)} for ${ui.platform(release.platform)}.`,
       );
-      process.exit(1);
+      p.log.info(
+        `  Bundle ${release.bundle_id === null ? "Embedded" : ui.id(release.bundle_id)}`,
+      );
     }
   } finally {
-    await safeDispose(databasePlugin);
+    await safeDispose(database);
   }
 };

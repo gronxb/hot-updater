@@ -3,20 +3,23 @@ import type { RuntimeSnapshot } from "./runtime";
 export type InstallUpdateInput = {
   readonly actionLabel: string;
   readonly channel?: string;
+  readonly strategy?: "appVersion" | "fingerprint";
 };
 
 export type E2eRuntimeModel = {
   readonly applyCohortInput: () => Promise<void>;
   readonly channelActionResult: string;
   readonly clearCrashHistory: () => Promise<void>;
+  readonly captureCurrentChannelUpdate: () => Promise<void>;
   readonly cohortActionResult: string;
   readonly cohortInput: string;
-  readonly crashedBundleText: string;
   readonly initialCohort: string;
   readonly installRuntimeChannelUpdate: () => Promise<void>;
+  readonly applyCapturedUpdate: () => Promise<void>;
   readonly installUpdate: (input: InstallUpdateInput) => Promise<void>;
   readonly isUpdateDownloaded: boolean;
   readonly launchStatusText: string;
+  readonly launchTransitionText: string;
   readonly reloadApp: () => Promise<void>;
   readonly resetRuntimeChannel: () => Promise<void>;
   readonly restoreInitialCohort: () => Promise<void>;

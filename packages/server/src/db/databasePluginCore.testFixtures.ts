@@ -1,10 +1,10 @@
-import type { Bundle, GetBundlesArgs } from "@hot-updater/core";
+import type { GetBundlesArgs, LegacyBundle } from "@hot-updater/core";
 import {
   createDatabaseClient,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 
-export const currentBundle: Bundle = {
+export const currentBundle: LegacyBundle = {
   id: "00000000-0000-0000-0000-000000000001",
   channel: "production",
   enabled: true,
@@ -21,7 +21,7 @@ export const currentBundle: Bundle = {
   assetBaseStorageUri: "r2://bucket/current/files",
 };
 
-export const targetBundle: Bundle = {
+export const targetBundle: LegacyBundle = {
   ...currentBundle,
   id: "00000000-0000-0000-0000-000000000002",
   fileHash: "target-archive-hash",

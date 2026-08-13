@@ -7,7 +7,8 @@ import type {
   ClientAccessKeyRow,
   DatabaseCommit,
   DatabaseCommitResult,
-  Platform,
+  ReleaseCatalogRow,
+  ReleaseRow,
 } from "@hot-updater/plugin-core";
 
 export type SupabaseBundleRow = {
@@ -19,7 +20,11 @@ export type SupabaseBundlePatchRow = {
 };
 
 export type SupabaseBundleEventRow = BundleEventRowBase & {
-  readonly type: "UPDATE_APPLIED" | "RECOVERED" | "UNCHANGED";
+  readonly type:
+    | "UPDATE_APPLIED"
+    | "RECOVERED"
+    | "RELEASE_ADOPTED"
+    | "UNCHANGED";
   readonly from_bundle_id: string | null;
   readonly update_strategy: "fingerprint" | "appVersion" | null;
 };
@@ -32,20 +37,19 @@ export type SupabaseChannelRow = {
   [TField in keyof ChannelRow]: ChannelRow[TField];
 };
 
+export type SupabaseReleaseRow = {
+  [TField in keyof ReleaseRow]: ReleaseRow[TField];
+};
+
+export type SupabaseReleaseCatalogRow = {
+  [TField in keyof ReleaseCatalogRow]: ReleaseCatalogRow[TField];
+};
+
 type Table<TRow> = {
   Row: TRow;
   Insert: TRow;
   Update: Partial<TRow>;
   Relationships: [];
-};
-
-type UpdateInfoRow = {
-  readonly id: string;
-  readonly should_force_update: boolean;
-  readonly message: string | null;
-  readonly status: "UPDATE" | "ROLLBACK";
-  readonly storage_uri: string | null;
-  readonly file_hash: string | null;
 };
 
 export type Database = {
@@ -56,6 +60,8 @@ export type Database = {
       channels: Table<SupabaseChannelRow>;
       bundle_events: Table<SupabaseBundleEventRow>;
       client_access_keys: Table<SupabaseClientAccessKeyRow>;
+      release_catalogs: Table<SupabaseReleaseCatalogRow>;
+      releases: Table<SupabaseReleaseRow>;
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -70,38 +76,6 @@ export type Database = {
           p_id: string;
         };
         Returns: ChannelDeleteResult;
-      };
-      get_target_app_version_list: {
-        Args: {
-          app_platform: Platform;
-          min_bundle_id: string;
-        };
-        Returns: {
-          target_app_version: string | null;
-        }[];
-      };
-      get_update_info_by_app_version: {
-        Args: {
-          app_platform: Platform;
-          app_version: string;
-          bundle_id: string;
-          min_bundle_id: string;
-          target_channel: string;
-          target_app_version_list: string[];
-          cohort: string | null;
-        };
-        Returns: UpdateInfoRow[];
-      };
-      get_update_info_by_fingerprint_hash: {
-        Args: {
-          app_platform: Platform;
-          bundle_id: string;
-          min_bundle_id: string;
-          target_channel: string;
-          target_fingerprint_hash: string;
-          cohort: string | null;
-        };
-        Returns: UpdateInfoRow[];
       };
     };
   };

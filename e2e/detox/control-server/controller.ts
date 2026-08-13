@@ -15,6 +15,11 @@ import {
   getPatchFileHash,
   getPatchStorageUri,
 } from "../../../packages/core/src/bundleArtifacts.ts";
+import {
+  createReleaseCatalogScopeKey,
+  decodeChannelKey,
+  encodeChannelKey,
+} from "../../../packages/core/src/releaseCatalogScope.ts";
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
 import type { Bundle } from "../../../packages/core/src/types.ts";
 import { createAnalyticsProvider } from "../../../packages/server/dist/index.mjs";
@@ -22,7 +27,14 @@ import {
   type AnalyticsModel,
   type BundleRepository,
   createDatabaseClient,
+  createUUIDv7After,
+  deleteRelease,
   type DatabaseClient,
+  type BundleRow,
+  type ReleaseCatalogRow,
+  type ReleaseRow,
+  rollbackRelease,
+  updateReleasePolicy,
 } from "../../../plugins/plugin-core/dist/index.mjs";
 import { createConsoleAnalyticsHttpClient } from "../analytics-http-client.ts";
 import { createConsoleAnalyticsProviderClient } from "../analytics-provider-client.ts";
@@ -42,11 +54,11 @@ import {
   acquireFairFileLock,
   resolveDeployLockCapacity,
 } from "./fair-file-lock.ts";
+import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
 import {
   readE2eScreenStateSnapshot,
   resetE2eScreenState,
 } from "./screen-state.ts";
-import { resolveUpdateCheckRequestBundleId } from "./update-check-request-bundle-id.ts";
 import { shouldProbeUpdateCheckVisibility } from "./update-check-visibility.ts";
 
 type Platform = "ios" | "android";
@@ -77,7 +89,9 @@ type DeployedBundleRecord = {
   marker: string;
   mode: DeployMode;
   patchBaseBundleIds: string[];
+  releaseId: string;
   rolloutCohortCount: number | null;
+  scopeKey: string;
   shouldForceUpdate: boolean;
   targetCohorts: string[] | null;
 };
@@ -117,12 +131,13 @@ type DeployBundleRequest = {
   patchMaxBaseBundles?: number;
   rollout?: number;
   safeBundleIds: string[];
+  strategy?: "appVersion" | "fingerprint";
   targetAppVersion: string;
   targetCohorts?: string[];
 };
 
-type PatchBundleRequest = {
-  bundleId: string;
+type PatchReleaseRequest = {
+  releaseId: string;
   enabled?: boolean;
   rolloutCohortCount?: number | null;
   shouldForceUpdate?: boolean;
@@ -130,13 +145,8 @@ type PatchBundleRequest = {
 };
 
 type BundleListEntry = {
-  channel?: string;
-  enabled?: boolean;
   id: string;
   platform?: Platform;
-  rolloutCohortCount?: number | null;
-  shouldForceUpdate?: boolean;
-  targetCohorts?: string[] | null;
 };
 
 type BundleListPage = {
@@ -148,47 +158,13 @@ type BundleListPage = {
   };
 };
 
-const REMOTE_RESET_DATABASE_CONCURRENCY = 8;
-
-async function mapWithConcurrency<T, TResult>(
-  items: readonly T[],
-  concurrency: number,
-  mapper: (item: T, index: number) => Promise<TResult>,
-): Promise<TResult[]> {
-  const results: TResult[] = [];
-  const iterator = items.entries();
-  const workerCount = Math.min(concurrency, items.length);
-
-  await Promise.all(
-    Array.from({ length: workerCount }, async () => {
-      while (true) {
-        const next = iterator.next();
-        if (next.done) {
-          break;
-        }
-
-        const [index, item] = next.value;
-        results[index] = await mapper(item, index);
-      }
-    }),
-  );
-
-  return results;
-}
-
-async function forEachWithConcurrency<T>(
-  items: readonly T[],
-  concurrency: number,
-  mapper: (item: T, index: number) => Promise<void>,
-): Promise<void> {
-  await mapWithConcurrency(items, concurrency, mapper);
-}
-
 type LaunchReportAssertion = {
-  crashedBundleId?: string;
+  fromBundleId?: string;
+  fromReleaseId?: string;
   optional: boolean;
-  stableBundleId?: string;
   status: string;
+  toBundleId?: string;
+  toReleaseId?: string;
 };
 
 type JsonSnapshot = {
@@ -255,6 +231,8 @@ const BARE_BUILD_INLINE_PATTERN =
   /(build:\s*bare\(\{\s*)([^}\n]*?)(\s*\}\s*\))/;
 const STANDALONE_REPOSITORY_BASE_URL_PATTERN =
   /(standaloneRepository\(\{\s*baseUrl:\s*)["'][^"']+["']/;
+const UPDATE_STRATEGY_CONFIG_PATTERN =
+  /updateStrategy:\s*["'](?:appVersion|fingerprint)["']/;
 const MARKER_PATTERN =
   /export\s+const\s+E2E_SCENARIO_MARKER\s*(?::\s*string)?\s*=\s*["'][^"']*["'];/;
 const BUILT_IN_APP_MARKER = "targeted-qa-detox";
@@ -360,6 +338,10 @@ const E2E_ANDROID_LAUNCH_SETTLE_MS = Number(
 const E2E_ANDROID_FOREGROUND_POLL_MS = Number(
   process.env.HOT_UPDATER_E2E_ANDROID_FOREGROUND_POLL_MS || 500,
 );
+const E2E_ANDROID_RESTART_WAIT_ATTEMPTS = Number(
+  process.env.HOT_UPDATER_E2E_ANDROID_RESTART_WAIT_ATTEMPTS || 30,
+);
+const E2E_ANDROID_STOPPED_STABLE_OBSERVATIONS = 3;
 const E2E_ANDROID_ANR_DISMISS_ATTEMPTS = Number(
   process.env.HOT_UPDATER_E2E_ANDROID_ANR_DISMISS_ATTEMPTS || 6,
 );
@@ -505,6 +487,27 @@ function getFixtureResetChannels() {
 const jobs = new Map<string, JobState>();
 const jobAbortControllers = new Map<string, AbortController>();
 const remoteAssetProxyTargets = new Map<string, string>();
+type CapturedProxyResponse = {
+  readonly body: string;
+  readonly headers: readonly [string, string][];
+  readonly status: number;
+  readonly statusText: string;
+};
+const proxyRequestCounts = {
+  artifact: 0,
+  catalog: 0,
+  legacy: 0,
+};
+let artifactFailuresRemaining = 0;
+const proxyPathCounts = new Map<string, number>();
+const capturedCatalogResponses = new Map<
+  string,
+  Map<number, CapturedProxyResponse>
+>();
+let catalogProxyMode: "freeze" | "live" | "replay" = "live";
+let replayCatalogGeneration: number | null = null;
+let catalogResponseDelayMs = 0;
+let artifactResponseDelayMs = 0;
 let bootstrapJobId: string | null = null;
 
 function getAbortSignalReason(signal: AbortSignal) {
@@ -1117,9 +1120,11 @@ async function applyAppScenario({
 async function applyDeployConfig({
   patchEnabled,
   patchMaxBaseBundles,
+  strategy,
 }: {
   patchEnabled: boolean;
   patchMaxBaseBundles?: number;
+  strategy: "appVersion" | "fingerprint";
 }) {
   const source = await fsPromises.readFile(
     fixtureSession.configSourceFile,
@@ -1130,6 +1135,9 @@ async function applyDeployConfig({
     throw new Error(
       "Failed to locate E2E auto patch config markers in hot-updater.config.ts",
     );
+  }
+  if (!UPDATE_STRATEGY_CONFIG_PATTERN.test(source)) {
+    throw new Error("Failed to locate updateStrategy in hot-updater.config.ts");
   }
 
   const autoPatchSource = patchEnabled
@@ -1145,7 +1153,11 @@ async function applyDeployConfig({
       ].join("\n")
     : `${AUTO_PATCH_CONFIG_GUARD_START}\n  ${AUTO_PATCH_CONFIG_GUARD_END}`;
 
-  const sourceWithWarmMetroCache = source.replace(
+  const sourceWithUpdateStrategy = source.replace(
+    UPDATE_STRATEGY_CONFIG_PATTERN,
+    `updateStrategy: ${JSON.stringify(strategy)}`,
+  );
+  const sourceWithWarmMetroCache = sourceWithUpdateStrategy.replace(
     BARE_BUILD_INLINE_PATTERN,
     (match, prefix: string, options: string, suffix: string) => {
       if (/\bresetCache\s*:/.test(options)) {
@@ -1175,6 +1187,7 @@ async function applyDeployConfig({
     patchMaxBaseBundles: patchMaxBaseBundles ?? null,
     resetMetroCache: false,
     sourceFile: path.relative(REPO_DIR, fixtureSession.configSourceFile),
+    strategy,
   });
 }
 
@@ -1208,29 +1221,11 @@ function normalizeBundleListEntries(value: unknown): BundleListEntry[] {
 
     return [
       {
-        channel:
-          typeof bundle.channel === "string" ? bundle.channel : undefined,
-        enabled:
-          typeof bundle.enabled === "boolean" ? bundle.enabled : undefined,
         id: bundle.id,
         platform:
           bundle.platform === "ios" || bundle.platform === "android"
             ? bundle.platform
             : undefined,
-        rolloutCohortCount:
-          typeof bundle.rolloutCohortCount === "number" ||
-          bundle.rolloutCohortCount === null
-            ? bundle.rolloutCohortCount
-            : undefined,
-        shouldForceUpdate:
-          typeof bundle.shouldForceUpdate === "boolean"
-            ? bundle.shouldForceUpdate
-            : undefined,
-        targetCohorts: Array.isArray(bundle.targetCohorts)
-          ? bundle.targetCohorts.filter(
-              (value): value is string => typeof value === "string",
-            )
-          : undefined,
       },
     ];
   });
@@ -1332,11 +1327,14 @@ async function runHotUpdaterCliLogged(args: string[], logName: string) {
 }
 
 async function withConfiguredDatabase<T>(
-  callback: (database: BundleRepository) => Promise<T>,
+  callback: (database: BundleRepository, authorityId: string) => Promise<T>,
 ): Promise<T> {
   const { loadConfig } =
     (await import("../../../packages/cli-tools/dist/index.mjs")) as {
-      loadConfig: (options: null) => Promise<{ database: BundleRepository }>;
+      loadConfig: (options: null) => Promise<{
+        authorityId: string;
+        database: BundleRepository;
+      }>;
     };
   const originalCwd = process.cwd();
 
@@ -1345,7 +1343,7 @@ async function withConfiguredDatabase<T>(
     return await withHotUpdaterControlEnv(async () => {
       const config = await loadConfig(null);
       try {
-        return await callback(config.database);
+        return await callback(config.database, config.authorityId);
       } finally {
         await config.database.dispose?.();
       }
@@ -1412,7 +1410,6 @@ async function verifyConfiguredConsoleAnalytics(args: {
 }
 
 async function fetchProviderBundlesPage(args: {
-  channel?: string;
   limit: number;
   offset: number;
 }) {
@@ -1429,10 +1426,6 @@ async function fetchProviderBundlesPage(args: {
     "--limit",
     String(args.limit),
   ];
-  if (args.channel) {
-    cliArgs.push("-c", args.channel);
-  }
-
   const response = parseHotUpdaterCliJson<BundleListPage>(
     "bundle list",
     runHotUpdaterCliCapture(cliArgs),
@@ -1440,7 +1433,6 @@ async function fetchProviderBundlesPage(args: {
 
   const bundles = normalizeBundleListResponse(response);
   logDetoxFixture("hot-updater cli bundle list", {
-    channel: args.channel ?? null,
     count: bundles.data.length,
     limit: args.limit,
     platform: fixtureSession.platform,
@@ -1470,71 +1462,94 @@ async function fetchProviderBundleById(bundleId: string) {
 
   logDetoxFixture("hot-updater cli bundle show", {
     bundleId: bundle.id,
-    channel: bundle.channel,
-    enabled: bundle.enabled,
-    shouldForceUpdate: bundle.shouldForceUpdate ?? false,
+    fileHash: bundle.fileHash,
+    platform: bundle.platform,
+    storageUri: bundle.storageUri,
   });
 
   return bundle;
 }
 
-async function fetchEnabledBundlesForRemoteReset(
-  limit: number,
-  channels: readonly string[] | null = null,
-) {
-  let bundles: BundleListEntry[];
-  try {
-    const channelList = channels ?? [undefined];
-    const pages: BundleListPage[] = [];
-    for (const channel of channelList) {
-      pages.push(
-        await fetchProviderBundlesPage({
-          channel,
-          limit,
-          offset: 0,
-        }),
-      );
-    }
-    bundles = pages.flatMap((page) => page.data);
-  } catch (error) {
-    throw new Error(
-      "Failed to list enabled remote bundles for reset readiness",
-      {
-        cause: error,
+type DeployedRelease = {
+  readonly authorityId: string;
+  readonly catalog: ReleaseCatalogRow;
+  readonly release: ReleaseRow;
+};
+
+async function resolveDeployedRelease(
+  bundleId: string,
+  channel: string,
+): Promise<DeployedRelease> {
+  let lastObserved: readonly ReleaseRow[] = [];
+  for (let attempt = 1; attempt <= 30; attempt += 1) {
+    const result = await withConfiguredDatabase(
+      async (database, authorityId): Promise<DeployedRelease | null> => {
+        const channels = await database.models.channels.list({});
+        const channelId = channels.channels.find(
+          (candidate) => candidate.name === channel,
+        )?.id;
+        if (channelId === undefined) return null;
+        const releases = await database.models.releases.findMany({
+          bundleId,
+          channelId,
+          limit: 100,
+          platform: fixtureSession.platform,
+        });
+        lastObserved = releases;
+        const release = releases[0];
+        if (release === undefined) return null;
+        const catalog = await database.models.releaseCatalogs.findByScopeKey(
+          release.scope_key,
+        );
+        return catalog === null ? null : { authorityId, catalog, release };
       },
     );
+    if (result !== null) return result;
+    await sleep(1_000);
   }
 
-  const enabledBundles = bundles.filter((bundle) => bundle.enabled);
-  logDetoxFixture("provider enabled bundle list", {
-    channels,
-    count: enabledBundles.length,
-    limit,
-    platform: fixtureSession.platform,
-  });
-
-  return enabledBundles;
+  throw createEndpointError(
+    `Failed to resolve Release for deployed Bundle ${bundleId}`,
+    { bundleId, channel, lastObserved },
+  );
 }
 
-async function patchProviderBundle(bundleId: string, patch: Partial<Bundle>) {
-  const definedPatch = Object.fromEntries(
-    Object.entries(patch).filter(([, value]) => value !== undefined),
-  ) as Partial<Bundle>;
-  if (Object.keys(definedPatch).length > 0) {
-    await withDatabaseClient(async (databaseClient) => {
-      const bundle = await databaseClient.getBundleById(bundleId);
-      if (!bundle) {
-        throw new Error(`No bundle with id ${bundleId}.`);
-      }
-
-      await databaseClient.updateBundleById(bundleId, definedPatch);
-    });
+async function fetchProviderReleaseById(releaseId: string) {
+  const release = await withConfiguredDatabase((database) =>
+    database.models.releases.findById(releaseId),
+  );
+  if (release === null) {
+    throw new Error(`No Release with id ${releaseId}.`);
   }
+  return release;
+}
 
-  logDetoxFixture("hot-updater direct bundle patch", {
-    bundleId,
-    patch: definedPatch,
+async function patchProviderRelease(
+  releaseId: string,
+  patch: Omit<PatchReleaseRequest, "releaseId">,
+) {
+  const result = await withConfiguredDatabase((database) =>
+    updateReleasePolicy({
+      database,
+      patch: {
+        enabled: patch.enabled,
+        rolloutCohortCount: patch.rolloutCohortCount ?? undefined,
+        shouldForceUpdate: patch.shouldForceUpdate,
+        targetCohorts: patch.targetCohorts ?? undefined,
+      },
+      releaseId,
+    }),
+  );
+  if (result.release === null) {
+    throw new Error(`Release ${releaseId} disappeared during its policy edit.`);
+  }
+  logDetoxFixture("hot-updater Release policy patch", {
+    generation: result.catalog.generation,
+    patch,
+    releaseId,
+    revision: result.release.revision,
   });
+  return result;
 }
 
 function readLegacyPatchAssetPath(bundle: Bundle | null | undefined) {
@@ -1734,79 +1749,65 @@ async function deleteProviderBundle(bundleId: string) {
   throw lastError;
 }
 
-async function fetchRemainingRemoteBundle(
-  mode: "delete" | "disable",
-  resetChannels: readonly string[] | null,
-) {
-  if (mode === "delete") {
-    return (
-      await Promise.all(
-        (resetChannels ?? [undefined]).map((channel) =>
-          fetchProviderBundlesPage({
-            channel,
-            limit: 1,
-            offset: 0,
-          }),
-        ),
+async function clearProviderReleases() {
+  const resetChannels = getFixtureResetChannels();
+  const clearedReleaseIds: string[] = [];
+  await withConfiguredDatabase(async (database) => {
+    const channels = await database.models.channels.list({});
+    const channelIds = channels.channels
+      .filter(
+        (channel) =>
+          resetChannels === null || resetChannels.includes(channel.name),
       )
-    ).flatMap((page) => page.data)[0];
-  }
-
-  return (await fetchEnabledBundlesForRemoteReset(1, resetChannels))[0];
+      .map((channel) => channel.id);
+    for (const channelId of channelIds) {
+      for (;;) {
+        const releases = await database.models.releases.findMany({
+          channelId,
+          limit: 1_000,
+          platform: fixtureSession.platform,
+        });
+        for (const release of releases) {
+          if (release.enabled) {
+            await updateReleasePolicy({
+              database,
+              patch: { enabled: false },
+              releaseId: release.id,
+            });
+          }
+          await deleteRelease({ database, releaseId: release.id });
+          clearedReleaseIds.push(release.id);
+        }
+        if (releases.length < 1_000) break;
+      }
+    }
+  });
+  logDetoxFixture("remote Releases reset", {
+    channels: resetChannels,
+    clearedCount: clearedReleaseIds.length,
+    clearedReleaseIds,
+    platform: fixtureSession.platform,
+  });
 }
 
-async function clearProviderBundles({
-  mode = "delete",
-}: { mode?: "delete" | "disable" } = {}) {
+async function clearProviderBundles() {
+  await clearProviderReleases();
   const clearedBundleIds: string[] = [];
   const clearedIds = new Set<string>();
-  const resetChannels = getFixtureResetChannels();
 
   while (true) {
-    const nextBatch =
-      mode === "disable"
-        ? (await fetchEnabledBundlesForRemoteReset(100, resetChannels)).filter(
-            (bundle) => !clearedIds.has(bundle.id),
-          )
-        : (
-            await Promise.all(
-              (resetChannels ?? [undefined]).map((channel) =>
-                fetchProviderBundlesPage({
-                  channel,
-                  limit: 100,
-                  offset: 0,
-                }),
-              ),
-            )
-          )
-            .flatMap((page) => page.data)
-            .filter((bundle) => !clearedIds.has(bundle.id));
+    const nextBatch = (
+      await fetchProviderBundlesPage({ limit: 100, offset: 0 })
+    ).data.filter((bundle) => !clearedIds.has(bundle.id));
 
     if (nextBatch.length === 0) {
       break;
     }
 
-    if (mode === "disable") {
-      await withDatabaseClient(async (databaseClient) => {
-        await databaseClient.mutate(async (transaction) => {
-          await forEachWithConcurrency(
-            nextBatch,
-            REMOTE_RESET_DATABASE_CONCURRENCY,
-            (bundle) =>
-              transaction.updateBundleById(bundle.id, { enabled: false }),
-          );
-        });
-      });
-      for (const bundle of nextBatch) {
-        clearedIds.add(bundle.id);
-        clearedBundleIds.push(bundle.id);
-      }
-    } else {
-      for (const bundle of nextBatch) {
-        await deleteProviderBundle(bundle.id);
-        clearedIds.add(bundle.id);
-        clearedBundleIds.push(bundle.id);
-      }
+    for (const bundle of nextBatch) {
+      await deleteProviderBundle(bundle.id);
+      clearedIds.add(bundle.id);
+      clearedBundleIds.push(bundle.id);
     }
   }
 
@@ -1816,10 +1817,9 @@ async function clearProviderBundles({
     attempt <= REMOTE_BUNDLE_CLEAR_VERIFY_ATTEMPTS;
     attempt += 1
   ) {
-    remainingActiveBundle = await fetchRemainingRemoteBundle(
-      mode,
-      resetChannels,
-    );
+    remainingActiveBundle = (
+      await fetchProviderBundlesPage({ limit: 1, offset: 0 })
+    ).data[0];
     if (!remainingActiveBundle) {
       break;
     }
@@ -1831,37 +1831,29 @@ async function clearProviderBundles({
     logDetoxFixture("remote-bundles reset verification pending", {
       attempt,
       bundleId: remainingActiveBundle.id,
-      channels: resetChannels,
-      mode,
       platform: fixtureSession.platform,
       retryDelayMs: REMOTE_BUNDLE_CLEAR_VERIFY_DELAY_MS,
     });
 
-    if (mode === "disable") {
-      await patchProviderBundle(remainingActiveBundle.id, { enabled: false });
-    } else {
-      await deleteProviderBundle(remainingActiveBundle.id);
-    }
+    await deleteProviderBundle(remainingActiveBundle.id);
     await sleep(REMOTE_BUNDLE_CLEAR_VERIFY_DELAY_MS);
   }
 
   if (remainingActiveBundle) {
     throw new Error(
-      `Failed to clear remote bundles for platform ${fixtureSession.platform}; bundle ${remainingActiveBundle.id} is still ${mode === "delete" ? "visible" : "enabled"} after reset`,
+      `Failed to clear remote Bundle artifacts for platform ${fixtureSession.platform}; Bundle ${remainingActiveBundle.id} is still visible after reset`,
     );
   }
 
   logDetoxFixture("remote-bundles reset", {
-    channels: resetChannels,
     clearedBundleIds,
     clearedCount: clearedBundleIds.length,
-    mode,
     platform: fixtureSession.platform,
   });
 }
 
-function updateTrackedBundleRecord(
-  bundleId: string,
+function updateTrackedReleaseRecord(
+  releaseId: string,
   patch: {
     enabled?: boolean;
     rolloutCohortCount?: number | null;
@@ -1870,7 +1862,7 @@ function updateTrackedBundleRecord(
   },
 ) {
   const record = fixtureSession.deployedBundles.find(
-    (entry) => entry.bundleId === bundleId,
+    (entry) => entry.releaseId === releaseId,
   );
 
   if (!record) {
@@ -2148,9 +2140,128 @@ function readJson(filePath: string) {
   >;
 }
 
+function terminateFixtureApp() {
+  if (fixtureSession.platform === "ios") {
+    captureCommand(
+      "xcrun",
+      ["simctl", "terminate", deviceId as string, fixtureSession.appId],
+      { allowFailure: true },
+    );
+    return;
+  }
+  captureCommand(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "am",
+      "force-stop",
+      fixtureSession.appId,
+    ],
+    { allowFailure: true },
+  );
+}
+
+function readDeviceStoreJson(fileName: string) {
+  const storePath = ensureStorePath();
+  if (fixtureSession.platform === "ios") {
+    const filePath = path.join(storePath, fileName);
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Device store file does not exist: ${filePath}`);
+    }
+    return readJson(filePath);
+  }
+
+  const result = readAndroidFileBuffer(`${storePath}/${fileName}`);
+  if (result.fileBuffer === null) {
+    throw new Error(
+      `Failed to read Android device store file ${fileName}: ${result.readError}`,
+    );
+  }
+  return JSON.parse(result.fileBuffer.toString("utf8")) as Record<
+    string,
+    unknown
+  >;
+}
+
+function writeDeviceStoreJson(
+  fileName: "crashed-history.json" | "metadata.json",
+  value: Record<string, unknown>,
+) {
+  const serialized = `${JSON.stringify(value, null, 2)}\n`;
+  const storePath = ensureStorePath();
+  if (fixtureSession.platform === "ios") {
+    fs.mkdirSync(storePath, { recursive: true });
+    fs.writeFileSync(path.join(storePath, fileName), serialized);
+    return;
+  }
+
+  const result = spawnSync(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      fixtureSession.appId,
+      "sh",
+      "-c",
+      `mkdir -p files/bundle-store && cat > files/bundle-store/${fileName}`,
+    ],
+    { input: serialized, stdio: ["pipe", "pipe", "pipe"] },
+  );
+  if (result.status !== 0) {
+    throw new Error(
+      `Failed to write Android device store file ${fileName}: ${result.stderr.toString()}`,
+    );
+  }
+}
+
+function seedDeviceCrashHistory(bundleIds: readonly string[]) {
+  terminateFixtureApp();
+  const clamped = bundleIds.slice(-10);
+  writeDeviceStoreJson("crashed-history.json", {
+    bundles: clamped.map((bundleId, index) => ({
+      bundleId,
+      crashCount: 1,
+      crashedAt: Date.now() + index,
+    })),
+    maxHistorySize: 10,
+  });
+  return { bundleIds: clamped, count: clamped.length };
+}
+
+function seedLegacyDeviceMetadata() {
+  terminateFixtureApp();
+  const metadata = readDeviceStoreJson("metadata.json");
+  metadata.schema = "metadata-v1";
+  if (fixtureSession.platform === "ios") {
+    delete metadata.stable_selection;
+    delete metadata.staging_selection;
+    delete metadata.pending_selection_transition;
+    delete metadata.highest_seen_catalogs;
+    delete metadata.current_selection_contexts;
+  } else {
+    delete metadata.stableSelection;
+    delete metadata.stagingSelection;
+    delete metadata.pendingTransition;
+    delete metadata.highestSeenCatalogs;
+    delete metadata.currentSelectionContexts;
+  }
+  writeDeviceStoreJson("metadata.json", metadata);
+  const state = getMetadataState(metadata);
+  return {
+    schema: state.schema,
+    stableBundleId: state.stableBundleId,
+    stagingBundleId: state.stagingBundleId,
+  };
+}
+
 function assertMetadataState(
   metadata: Record<string, unknown>,
   bundleId: string,
+  releaseId?: string,
 ) {
   const metadataState = getMetadataState(metadata);
   const verificationPending = metadataState.verificationPending;
@@ -2165,6 +2276,44 @@ function assertMetadataState(
     throw new Error(
       `Expected verificationPending false but received ${String(verificationPending)}`,
     );
+  }
+
+  const selection =
+    metadataState.stagingSelection?.bundleId === bundleId
+      ? metadataState.stagingSelection
+      : metadataState.stableSelection?.bundleId === bundleId
+        ? metadataState.stableSelection
+        : null;
+  if (selection === null || selection.kind !== "BUNDLE") {
+    throw new Error(`Expected a BUNDLE receipt for active Bundle ${bundleId}`);
+  }
+  if (releaseId !== undefined && selection.releaseId !== releaseId) {
+    throw new Error(
+      `Expected active Release ${releaseId} but received ${String(selection.releaseId)}`,
+    );
+  }
+  if (
+    selection.releaseId === null ||
+    selection.authorityId === null ||
+    selection.scopeKey === null ||
+    selection.generation === null ||
+    selection.catalogHash === null ||
+    selection.channel === null ||
+    selection.selectionContextHash === null
+  ) {
+    throw new Error("Active Release receipt is incomplete");
+  }
+  const highWater =
+    metadataState.highestSeenCatalogs[
+      `${selection.authorityId}|${selection.scopeKey}`
+    ];
+  if (
+    highWater === undefined ||
+    highWater.generation < selection.generation ||
+    (highWater.generation === selection.generation &&
+      highWater.catalogHash !== selection.catalogHash)
+  ) {
+    throw new Error("Active Release receipt exceeds catalog high-water");
   }
 }
 
@@ -2184,32 +2333,51 @@ function assertMetadataReset(metadata: Record<string, unknown>) {
       `Expected verificationPending false or null but received ${String(verificationPending)}`,
     );
   }
+  const selection = metadataState.stagingSelection;
+  if (
+    selection?.kind !== "BUILTIN" ||
+    selection.releaseId !== null ||
+    selection.authorityId === null ||
+    selection.scopeKey === null ||
+    selection.generation === null ||
+    selection.catalogHash === null ||
+    selection.channel === null ||
+    selection.selectionContextHash === null
+  ) {
+    throw new Error("Expected a complete persisted BUILTIN receipt");
+  }
 }
 
 function assertLaunchReport(
   filePath: string,
-  expectedStatus: string,
-  expectedFromBundleId = "",
-  expectedToBundleId = "",
+  expected: {
+    fromBundleId?: string;
+    fromReleaseId?: string;
+    status: string;
+    toBundleId?: string;
+    toReleaseId?: string;
+  },
 ) {
   const report = readJson(filePath);
 
-  if (report.status !== expectedStatus) {
+  if (report.status !== expected.status) {
     throw new Error(
-      `Expected launch status ${expectedStatus} but received ${String(report.status)}`,
+      `Expected launch status ${expected.status} but received ${String(report.status)}`,
     );
   }
 
-  if (expectedFromBundleId && report.fromBundleId !== expectedFromBundleId) {
-    throw new Error(
-      `Expected fromBundleId ${expectedFromBundleId} but received ${String(report.fromBundleId)}`,
-    );
-  }
-
-  if (expectedToBundleId && report.toBundleId !== expectedToBundleId) {
-    throw new Error(
-      `Expected toBundleId ${expectedToBundleId} but received ${String(report.toBundleId)}`,
-    );
+  for (const field of [
+    "fromBundleId",
+    "fromReleaseId",
+    "toBundleId",
+    "toReleaseId",
+  ] as const) {
+    const expectedValue = expected[field];
+    if (expectedValue !== undefined && report[field] !== expectedValue) {
+      throw new Error(
+        `Expected ${field} ${expectedValue} but received ${String(report[field])}`,
+      );
+    }
   }
 }
 
@@ -2311,15 +2479,88 @@ function normalizeMetadataBoolean(value: unknown) {
   return null;
 }
 
+type MetadataSelection = {
+  authorityId: string | null;
+  bundleId: string | null;
+  catalogHash: string | null;
+  channel: string | null;
+  generation: number | null;
+  kind: string | null;
+  releaseId: string | null;
+  scopeKey: string | null;
+  selectionContextHash: string | null;
+};
+
+function normalizeMetadataNumber(value: unknown) {
+  return typeof value === "number" && Number.isSafeInteger(value)
+    ? value
+    : null;
+}
+
+function normalizeMetadataSelection(value: unknown): MetadataSelection | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const selection = value as Record<string, unknown>;
+  return {
+    authorityId: normalizeMetadataString(selection.authorityId),
+    bundleId: normalizeMetadataString(selection.bundleId),
+    catalogHash: normalizeMetadataString(selection.catalogHash),
+    channel: normalizeMetadataString(selection.channel),
+    generation: normalizeMetadataNumber(selection.generation),
+    kind: normalizeMetadataString(selection.kind),
+    releaseId: normalizeMetadataString(selection.releaseId),
+    scopeKey: normalizeMetadataString(selection.scopeKey),
+    selectionContextHash: normalizeMetadataString(
+      selection.selectionContextHash,
+    ),
+  };
+}
+
+function normalizeCatalogHighWaters(value: unknown) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, raw]) => {
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        return [];
+      }
+      const highWater = raw as Record<string, unknown>;
+      const generation = normalizeMetadataNumber(highWater.generation);
+      const catalogHash = normalizeMetadataString(highWater.catalogHash);
+      return generation === null || catalogHash === null
+        ? []
+        : [[key, { catalogHash, generation }]];
+    }),
+  ) as Record<string, { catalogHash: string; generation: number }>;
+}
+
 function getMetadataState(metadata: Record<string, unknown> | null) {
   return {
+    highestSeenCatalogs: normalizeCatalogHighWaters(
+      firstMetadataValue(
+        metadata?.highestSeenCatalogs,
+        metadata?.highest_seen_catalogs,
+      ),
+    ),
+    schema: normalizeMetadataString(metadata?.schema),
     stableBundleId: normalizeMetadataString(
       firstMetadataValue(metadata?.stableBundleId, metadata?.stable_bundle_id),
+    ),
+    stableSelection: normalizeMetadataSelection(
+      firstMetadataValue(metadata?.stableSelection, metadata?.stable_selection),
     ),
     stagingBundleId: normalizeMetadataString(
       firstMetadataValue(
         metadata?.stagingBundleId,
         metadata?.staging_bundle_id,
+      ),
+    ),
+    stagingSelection: normalizeMetadataSelection(
+      firstMetadataValue(
+        metadata?.stagingSelection,
+        metadata?.staging_selection,
       ),
     ),
     verificationPending: normalizeMetadataBoolean(
@@ -2349,11 +2590,20 @@ function isExpectedMetadataStateReached(
     stableBundleId: string | null;
     stagingBundleId: string | null;
     verificationPending: boolean | null;
+    stagingSelection: MetadataSelection | null;
   },
   bundleId: string,
   verificationPending: boolean,
+  releaseId?: string,
 ) {
   if (metadataState.stagingBundleId !== bundleId) {
+    return false;
+  }
+
+  if (
+    releaseId !== undefined &&
+    metadataState.stagingSelection?.releaseId !== releaseId
+  ) {
     return false;
   }
 
@@ -3172,6 +3422,19 @@ function rewriteProxiedUpdatePath(pathname: string) {
   ) {
     segments[3] = getRemoteChannelPathSegment(segments[3]);
   }
+  if (
+    segments[0] === "v2" &&
+    segments[1] === "release-catalogs" &&
+    (segments[2] === "app-version" || segments[2] === "fingerprint") &&
+    segments[5]
+  ) {
+    const channel = decodeChannelKey(decodeURIComponent(segments[5]));
+    segments[5] = encodeChannelKey(
+      !channelNamespace || channel.startsWith(`${channelNamespace}-`)
+        ? channel
+        : getFixtureChannel(channel),
+    );
+  }
 
   return `${targetBasePath}/${segments.join("/")}`;
 }
@@ -3228,6 +3491,7 @@ function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
 
         const assetInfo = asset as {
           file?: { url?: unknown };
+          patch?: { patchUrl?: unknown };
         };
         const file =
           assetInfo.file && typeof assetInfo.file === "object"
@@ -3236,13 +3500,61 @@ function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
                 url: rewriteRemoteAssetUrl(assetInfo.file.url),
               }
             : assetInfo.file;
+        const patch =
+          assetInfo.patch && typeof assetInfo.patch === "object"
+            ? {
+                ...assetInfo.patch,
+                patchUrl: rewriteRemoteAssetUrl(assetInfo.patch.patchUrl),
+              }
+            : assetInfo.patch;
 
-        return [assetPath, { ...assetInfo, file }];
+        return [assetPath, { ...assetInfo, file, patch }];
       }),
     );
   }
 
   return rewritten;
+}
+
+function rewriteReleaseCatalogScope(
+  payload: unknown,
+  requestPathname: string,
+): unknown {
+  if (!payload || typeof payload !== "object") return payload;
+
+  const segments = requestPathname.split("/").filter(Boolean);
+  if (
+    segments[0] !== "hot-updater" ||
+    segments[1] !== "v2" ||
+    segments[2] !== "release-catalogs" ||
+    (segments[3] !== "app-version" && segments[3] !== "fingerprint") ||
+    !segments[4] ||
+    (segments[5] !== "ios" && segments[5] !== "android") ||
+    !segments[6]
+  ) {
+    return payload;
+  }
+
+  const authorityId = decodeURIComponent(segments[4]);
+  const channelKey = decodeURIComponent(segments[6]);
+  const scopeKey = createReleaseCatalogScopeKey(
+    segments[3] === "app-version"
+      ? {
+          authorityId,
+          channelKey,
+          platform: segments[5],
+          strategy: "APP_VERSION",
+        }
+      : {
+          authorityId,
+          channelKey,
+          fingerprintHash: decodeURIComponent(segments[7] ?? ""),
+          platform: segments[5],
+          strategy: "FINGERPRINT",
+        },
+  );
+
+  return { ...payload, scopeKey };
 }
 
 function summarizeUpdateInfoPayload(payload: unknown) {
@@ -3297,8 +3609,182 @@ function summarizeUpdateInfoPayload(payload: unknown) {
   };
 }
 
+function classifyProxiedUpdatePath(pathname: string) {
+  if (pathname.includes("/v2/release-catalogs/")) return "catalog" as const;
+  if (pathname.includes("/v2/artifacts/")) return "artifact" as const;
+  return "legacy" as const;
+}
+
+function recordProxyRequest(
+  kind: keyof typeof proxyRequestCounts,
+  path: string,
+) {
+  proxyRequestCounts[kind] += 1;
+  proxyPathCounts.set(path, (proxyPathCounts.get(path) ?? 0) + 1);
+}
+
+function capturedResponse(response: CapturedProxyResponse) {
+  return new Response(response.body, {
+    headers: response.headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+}
+
+function selectCapturedCatalog(pathname: string) {
+  const generations = capturedCatalogResponses.get(pathname);
+  if (generations === undefined || generations.size === 0) return null;
+  if (catalogProxyMode === "replay") {
+    return replayCatalogGeneration === null
+      ? null
+      : (generations.get(replayCatalogGeneration) ?? null);
+  }
+  if (catalogProxyMode === "freeze") {
+    return (
+      [...generations.entries()].toSorted(
+        ([left], [right]) => right - left,
+      )[0]?.[1] ?? null
+    );
+  }
+  return null;
+}
+
+function captureCatalogResponse(
+  pathname: string,
+  response: Response,
+  body: string,
+) {
+  let generation: unknown;
+  try {
+    generation = (JSON.parse(body) as { generation?: unknown }).generation;
+  } catch {
+    return;
+  }
+  if (typeof generation !== "number" || !Number.isSafeInteger(generation)) {
+    return;
+  }
+  const generations =
+    capturedCatalogResponses.get(pathname) ??
+    new Map<number, CapturedProxyResponse>();
+  generations.set(generation, {
+    body,
+    headers: [...response.headers.entries()],
+    status: response.status,
+    statusText: response.statusText,
+  });
+  capturedCatalogResponses.set(pathname, generations);
+}
+
+export function handleProxyState() {
+  return {
+    artifactFailuresRemaining,
+    capturedCatalogGenerations: Object.fromEntries(
+      [...capturedCatalogResponses].map(([pathname, generations]) => [
+        pathname,
+        [...generations.keys()].toSorted((left, right) => left - right),
+      ]),
+    ),
+    catalogProxyMode,
+    delays: {
+      artifactMs: artifactResponseDelayMs,
+      catalogMs: catalogResponseDelayMs,
+    },
+    pathCardinality: proxyPathCounts.size,
+    pathCounts: Object.fromEntries(proxyPathCounts),
+    requestCounts: { ...proxyRequestCounts },
+    replayCatalogGeneration,
+  };
+}
+
+export function handleConfigureProxy(input: {
+  artifactDelayMs?: number;
+  artifactFailures?: number;
+  catalogDelayMs?: number;
+  catalogMode?: "freeze" | "live" | "replay";
+  replayGeneration?: number | null;
+  reset?: boolean;
+}) {
+  if (input.reset) {
+    proxyRequestCounts.artifact = 0;
+    proxyRequestCounts.catalog = 0;
+    proxyRequestCounts.legacy = 0;
+    proxyPathCounts.clear();
+    capturedCatalogResponses.clear();
+    artifactFailuresRemaining = 0;
+  }
+  if (input.catalogMode !== undefined) catalogProxyMode = input.catalogMode;
+  if (input.replayGeneration !== undefined) {
+    replayCatalogGeneration = input.replayGeneration;
+  }
+  if (input.catalogDelayMs !== undefined) {
+    catalogResponseDelayMs = input.catalogDelayMs;
+  }
+  if (input.artifactDelayMs !== undefined) {
+    artifactResponseDelayMs = input.artifactDelayMs;
+  }
+  if (input.artifactFailures !== undefined) {
+    artifactFailuresRemaining = input.artifactFailures;
+  }
+  return handleProxyState();
+}
+
+export function handleAssertProxy(input: {
+  artifactFailuresRemaining?: number;
+  artifactRequests?: number;
+  catalogRequests?: number;
+  maxPathCardinality?: number;
+}) {
+  const observed = handleProxyState();
+  if (
+    input.artifactFailuresRemaining !== undefined &&
+    artifactFailuresRemaining !== input.artifactFailuresRemaining
+  ) {
+    throw createEndpointError("Unexpected remaining artifact failures", {
+      expected: input.artifactFailuresRemaining,
+      observed,
+    });
+  }
+  if (
+    input.artifactRequests !== undefined &&
+    proxyRequestCounts.artifact !== input.artifactRequests
+  ) {
+    throw createEndpointError("Unexpected artifact request count", {
+      expected: input.artifactRequests,
+      observed,
+    });
+  }
+  if (
+    input.catalogRequests !== undefined &&
+    proxyRequestCounts.catalog !== input.catalogRequests
+  ) {
+    throw createEndpointError("Unexpected catalog request count", {
+      expected: input.catalogRequests,
+      observed,
+    });
+  }
+  if (
+    input.maxPathCardinality !== undefined &&
+    proxyPathCounts.size > input.maxPathCardinality
+  ) {
+    throw createEndpointError("Proxy path cardinality exceeded", {
+      expectedMaximum: input.maxPathCardinality,
+      observed,
+    });
+  }
+  return observed;
+}
+
 export async function handleProxyUpdateRequest(request: Request) {
   const requestUrl = new URL(request.url);
+  const requestKind = classifyProxiedUpdatePath(requestUrl.pathname);
+  recordProxyRequest(requestKind, requestUrl.pathname);
+  if (requestKind === "catalog") {
+    const replay = selectCapturedCatalog(requestUrl.pathname);
+    if (replay !== null) {
+      if (catalogResponseDelayMs > 0) await sleep(catalogResponseDelayMs);
+      return capturedResponse(replay);
+    }
+  }
   const targetUrl = new URL(getControllerReachableAppBaseUrl());
   targetUrl.pathname = rewriteProxiedUpdatePath(requestUrl.pathname);
   targetUrl.search = requestUrl.search;
@@ -3324,6 +3810,10 @@ export async function handleProxyUpdateRequest(request: Request) {
     method: request.method,
   });
 
+  if (requestKind === "artifact" && artifactResponseDelayMs > 0) {
+    await sleep(artifactResponseDelayMs);
+  }
+
   if (requestUrl.pathname.endsWith("/events") && response.ok && requestBody) {
     try {
       const event = readObservedAnalyticsEvent(
@@ -3346,12 +3836,38 @@ export async function handleProxyUpdateRequest(request: Request) {
   });
 
   const headersToApp = new Headers(response.headers);
+  if (
+    request.method === "HEAD" ||
+    response.status === 204 ||
+    response.status === 205 ||
+    response.status === 304
+  ) {
+    return new Response(null, {
+      headers: headersToApp,
+      status: response.status,
+      statusText: response.statusText,
+    });
+  }
   const contentType = response.headers.get("content-type") ?? "";
-  if (contentType.includes("application/json")) {
+  if (
+    contentType.includes("application/json") ||
+    contentType.includes("+json")
+  ) {
     const body = await response.text();
     try {
       const payload = JSON.parse(body);
-      const rewrittenPayload = rewriteUpdateInfoAssetUrls(payload);
+      const rewrittenPayload =
+        requestKind === "catalog"
+          ? rewriteReleaseCatalogScope(
+              rewriteUpdateInfoAssetUrls(payload),
+              requestUrl.pathname,
+            )
+          : rewriteUpdateInfoAssetUrls(payload);
+      const rewrittenBody = JSON.stringify(rewrittenPayload);
+      if (requestKind === "catalog" && response.ok) {
+        captureCatalogResponse(requestUrl.pathname, response, rewrittenBody);
+        if (catalogResponseDelayMs > 0) await sleep(catalogResponseDelayMs);
+      }
       logDetoxFixture("proxied update response", {
         original: summarizeUpdateInfoPayload(payload),
         rewritten: summarizeUpdateInfoPayload(rewrittenPayload),
@@ -3359,7 +3875,7 @@ export async function handleProxyUpdateRequest(request: Request) {
       });
       headersToApp.delete("content-encoding");
       headersToApp.delete("content-length");
-      return new Response(JSON.stringify(rewrittenPayload), {
+      return new Response(rewrittenBody, {
         headers: headersToApp,
         status: response.status,
         statusText: response.statusText,
@@ -3387,6 +3903,12 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
   if (!target) {
     return new Response("Missing url", { status: 400 });
   }
+  if (artifactFailuresRemaining > 0) {
+    artifactFailuresRemaining -= 1;
+    return new Response("Injected E2E artifact download failure", {
+      status: 503,
+    });
+  }
 
   const targetUrl = new URL(target);
   if (targetUrl.protocol !== "https:" && targetUrl.protocol !== "http:") {
@@ -3404,6 +3926,8 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
     headers,
     method: request.method,
   });
+
+  if (artifactResponseDelayMs > 0) await sleep(artifactResponseDelayMs);
 
   logDetoxFixture("proxied remote asset request", {
     method: request.method,
@@ -3435,32 +3959,17 @@ function getRemoteAssetProxyTarget(requestUrl: URL) {
   return requestUrl.searchParams.get("url");
 }
 
-function buildAppVersionUpdateCheckUrl(args: {
-  bundleId: string;
+function buildAppVersionCatalogUrl(args: {
+  authorityId: string;
   channel: string;
-  cohort?: string;
-  minBundleId: string;
 }) {
-  const encode = (value: string) => encodeURIComponent(value);
-  const segments = [
-    getControllerReachableAppBaseUrl(),
-    "app-version",
-    encode(fixtureSession.platform),
-    encode(E2E_APP_VERSION),
-    encode(args.channel),
-    encode(args.minBundleId),
-    encode(args.bundleId),
-  ];
-  if (args.cohort) {
-    segments.push(encode(args.cohort));
-  }
-  return segments.join("/");
-}
-
-function getCurrentUpdateCheckBundleId() {
-  const diagnostics = readWaitForMetadataDiagnostics();
-  const metadataState = getMetadataState(diagnostics.metadata.value);
-  return resolveUpdateCheckRequestBundleId(metadataState);
+  return buildReleaseCatalogUrl({
+    appVersion: E2E_APP_VERSION,
+    authorityId: args.authorityId,
+    baseUrl: getControllerReachableAppBaseUrl(),
+    channel: args.channel,
+    platform: fixtureSession.platform,
+  });
 }
 
 function shouldWaitForUpdateCheckVisibility(request: DeployBundleRequest) {
@@ -3472,50 +3981,24 @@ function shouldWaitForUpdateCheckVisibility(request: DeployBundleRequest) {
   });
 }
 
-async function waitForUpdateCheckVisibility(args: {
-  bundleId: string;
+async function waitForReleaseCatalogVisibility(args: {
+  authorityId: string;
+  bundleId: string | null;
   channel: string;
-  requestBundleId: string;
+  releaseId: string;
   signal?: AbortSignal;
 }) {
-  const minBundleId = E2E_MIN_BUNDLE_ID;
-  const url = buildAppVersionUpdateCheckUrl({
-    bundleId: args.requestBundleId,
+  const url = buildAppVersionCatalogUrl({
+    authorityId: args.authorityId,
     channel: args.channel,
-    minBundleId,
   });
-  await waitForUpdateCheckVisibilityUrl({
-    bundleId: args.bundleId,
-    channel: args.channel,
-    minBundleId,
-    requestBundleId: args.requestBundleId,
-    signal: args.signal,
-    url,
-  });
-  await warmCohortUpdateCheckVisibility({
-    bundleId: args.bundleId,
-    channel: args.channel,
-    minBundleId,
-    requestBundleId: args.requestBundleId,
-    signal: args.signal,
-  });
-}
-
-async function waitForUpdateCheckVisibilityUrl(args: {
-  bundleId: string;
-  channel: string;
-  minBundleId: string;
-  requestBundleId: string;
-  signal?: AbortSignal;
-  url: string;
-}) {
   let lastObserved: unknown = null;
   let lastError: string | null = null;
 
   for (let index = 0; index < UPDATE_CHECK_VISIBILITY_ATTEMPTS; index += 1) {
     throwIfAborted(args.signal);
     try {
-      const response = await fetch(args.url, {
+      const response = await fetch(url, {
         headers: getHotUpdaterClientRequestHeaders(),
         signal: fetchSignal(UPDATE_CHECK_HTTP_TIMEOUT_MS, args.signal),
       });
@@ -3523,19 +4006,34 @@ async function waitForUpdateCheckVisibilityUrl(args: {
       lastObserved = body;
 
       if (response.ok) {
-        const payload = JSON.parse(body) as { id?: unknown; status?: unknown };
+        const payload = JSON.parse(body) as {
+          generation?: unknown;
+          releases?: readonly { bundleId?: unknown; releaseId?: unknown }[];
+        };
         lastObserved = {
-          id: payload.id,
-          status: payload.status,
+          generation: payload.generation,
+          releases: payload.releases,
         };
 
-        if (payload.id === args.bundleId) {
-          logDetoxFixture("update check visibility ready", {
+        if (
+          payload.releases?.some(
+            (release) =>
+              release.releaseId === args.releaseId &&
+              release.bundleId === args.bundleId,
+          )
+        ) {
+          logDetoxFixture("Release catalog visibility ready", {
             bundleId: args.bundleId,
             channel: args.channel,
-            requestBundleId: args.requestBundleId,
-            url: args.url,
+            releaseId: args.releaseId,
+            url,
           });
+          if (args.bundleId !== null) {
+            await waitForArtifactResolution({
+              bundleId: args.bundleId,
+              signal: args.signal,
+            });
+          }
           return;
         }
       } else {
@@ -3553,54 +4051,71 @@ async function waitForUpdateCheckVisibilityUrl(args: {
         attempt,
         attempts: UPDATE_CHECK_VISIBILITY_ATTEMPTS,
         expectedBundleId: args.bundleId,
+        expectedReleaseId: args.releaseId,
         lastError,
         lastObserved,
         platform: fixtureSession.platform,
-        request: {
-          bundleId: args.requestBundleId,
-          channel: args.channel,
-          minBundleId: args.minBundleId,
-        },
-        url: args.url,
+        url,
       });
     }
 
     await abortableSleep(E2E_POLL_INTERVAL_MS, args.signal);
   }
 
-  logDetoxFixture("update check visibility timeout", {
+  logDetoxFixture("Release catalog visibility timeout", {
     expectedBundleId: args.bundleId,
+    expectedReleaseId: args.releaseId,
     lastError,
     lastObserved,
     platform: fixtureSession.platform,
-    request: {
-      bundleId: args.requestBundleId,
-      channel: args.channel,
-      minBundleId: args.minBundleId,
-    },
-    url: args.url,
+    url,
   });
 
   throw createEndpointError(
     [
-      "Timed out waiting for update check visibility.",
-      `Expected update check to return bundleId=${args.bundleId}.`,
-      `URL: ${args.url}`,
+      "Timed out waiting for Release catalog visibility.",
+      `Expected releaseId=${args.releaseId} and bundleId=${args.bundleId}.`,
+      `URL: ${url}`,
     ].join("\n"),
     {
       expected: {
         bundleId: args.bundleId,
+        releaseId: args.releaseId,
       },
       lastError,
       lastObserved,
       platform: fixtureSession.platform,
-      request: {
-        bundleId: args.requestBundleId,
-        channel: args.channel,
-        minBundleId: args.minBundleId,
-      },
+      url,
     },
   );
+}
+
+async function waitForArtifactResolution(args: {
+  bundleId: string;
+  signal?: AbortSignal;
+}) {
+  const url = `${getControllerReachableAppBaseUrl()}/v2/artifacts/${encodeURIComponent(
+    args.bundleId,
+  )}/from/${NIL_UUID}`;
+  const response = await fetch(url, {
+    headers: getHotUpdaterClientRequestHeaders(),
+    signal: fetchSignal(UPDATE_CHECK_HTTP_TIMEOUT_MS, args.signal),
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    throw createEndpointError(
+      `Artifact resolution failed with HTTP ${response.status}`,
+      { body: truncateForLog(body), bundleId: args.bundleId, url },
+    );
+  }
+  const payload = JSON.parse(body) as { id?: unknown };
+  if (payload.id !== args.bundleId) {
+    throw createEndpointError("Artifact resolution returned another Bundle", {
+      bundleId: args.bundleId,
+      payload,
+      url,
+    });
+  }
 }
 
 function normalizeE2ECohort(value: string) {
@@ -3760,41 +4275,15 @@ async function seedMissingE2ECohort() {
   return cohort;
 }
 
-async function warmCohortUpdateCheckVisibility(args: {
-  bundleId: string;
+async function waitForReleaseCatalogExcludesRelease(args: {
+  authorityId: string;
   channel: string;
-  minBundleId: string;
-  requestBundleId: string;
+  releaseId: string;
   signal?: AbortSignal;
 }) {
-  const cohortValue = await seedMissingE2ECohort();
-
-  const url = buildAppVersionUpdateCheckUrl({
-    bundleId: args.requestBundleId,
+  const url = buildAppVersionCatalogUrl({
+    authorityId: args.authorityId,
     channel: args.channel,
-    cohort: cohortValue,
-    minBundleId: args.minBundleId,
-  });
-  await waitForUpdateCheckVisibilityUrl({
-    bundleId: args.bundleId,
-    channel: args.channel,
-    minBundleId: args.minBundleId,
-    requestBundleId: args.requestBundleId,
-    signal: args.signal,
-    url,
-  });
-}
-
-async function waitForUpdateCheckExcludesBundle(args: {
-  bundleId: string;
-  channel: string;
-  signal?: AbortSignal;
-}) {
-  const minBundleId = NIL_UUID;
-  const url = buildAppVersionUpdateCheckUrl({
-    bundleId: args.bundleId,
-    channel: args.channel,
-    minBundleId,
   });
   let lastObserved: unknown = null;
   let lastError: string | null = null;
@@ -3811,21 +4300,20 @@ async function waitForUpdateCheckExcludesBundle(args: {
 
       if (response.ok) {
         const payload = JSON.parse(body) as {
-          id?: unknown;
-          status?: unknown;
-        } | null;
-        lastObserved = payload
-          ? {
-              id: payload.id,
-              status: payload.status,
-            }
-          : null;
+          generation?: unknown;
+          releases?: readonly { releaseId?: unknown }[];
+        };
+        lastObserved = payload;
 
-        if (!payload || payload.id !== args.bundleId) {
-          logDetoxFixture("update check exclusion ready", {
-            bundleId: args.bundleId,
+        if (
+          !payload.releases?.some(
+            (release) => release.releaseId === args.releaseId,
+          )
+        ) {
+          logDetoxFixture("Release catalog exclusion ready", {
             channel: args.channel,
             observed: lastObserved,
+            releaseId: args.releaseId,
             url,
           });
           return;
@@ -3841,18 +4329,13 @@ async function waitForUpdateCheckExcludesBundle(args: {
     if (
       shouldLogUpdateCheckProgress(attempt, UPDATE_CHECK_EXCLUSION_ATTEMPTS)
     ) {
-      logDetoxFixture("update check exclusion pending", {
+      logDetoxFixture("Release catalog exclusion pending", {
         attempt,
         attempts: UPDATE_CHECK_EXCLUSION_ATTEMPTS,
-        excludedBundleId: args.bundleId,
+        excludedReleaseId: args.releaseId,
         lastError,
         lastObserved,
         platform: fixtureSession.platform,
-        request: {
-          bundleId: args.bundleId,
-          channel: args.channel,
-          minBundleId,
-        },
         url,
       });
     }
@@ -3860,37 +4343,28 @@ async function waitForUpdateCheckExcludesBundle(args: {
     await abortableSleep(E2E_POLL_INTERVAL_MS, args.signal);
   }
 
-  logDetoxFixture("update check exclusion timeout", {
-    excludedBundleId: args.bundleId,
+  logDetoxFixture("Release catalog exclusion timeout", {
+    excludedReleaseId: args.releaseId,
     lastError,
     lastObserved,
     platform: fixtureSession.platform,
-    request: {
-      bundleId: args.bundleId,
-      channel: args.channel,
-      minBundleId,
-    },
     url,
   });
 
   throw createEndpointError(
     [
-      "Timed out waiting for update check exclusion.",
-      `Expected update check not to return bundleId=${args.bundleId}.`,
+      "Timed out waiting for Release catalog exclusion.",
+      `Expected catalog not to return releaseId=${args.releaseId}.`,
       `URL: ${url}`,
     ].join("\n"),
     {
       expected: {
-        excludedBundleId: args.bundleId,
+        excludedReleaseId: args.releaseId,
       },
       lastError,
       lastObserved,
       platform: fixtureSession.platform,
-      request: {
-        bundleId: args.bundleId,
-        channel: args.channel,
-        minBundleId,
-      },
+      url,
     },
   );
 }
@@ -4092,6 +4566,58 @@ function getAndroidFocusedPackage() {
   return parseAndroidFocusedPackage(activityOutput);
 }
 
+function getAndroidProcessId() {
+  return captureCommand(
+    "adb",
+    ["-s", deviceId as string, "shell", "pidof", fixtureSession.appId],
+    { allowFailure: true },
+  );
+}
+
+async function waitForAndroidRestart(signal?: AbortSignal) {
+  if (fixtureSession.platform !== "android") {
+    return {};
+  }
+
+  let lastFocusedPackage: string | null = null;
+  let lastProcessId = "";
+  let stoppedObservations = 0;
+
+  for (
+    let attempt = 1;
+    attempt <= E2E_ANDROID_RESTART_WAIT_ATTEMPTS;
+    attempt += 1
+  ) {
+    throwIfAborted(signal);
+    lastFocusedPackage = getAndroidFocusedPackage();
+    lastProcessId = getAndroidProcessId();
+
+    // AndroidJUnitRunner force-stops the package after the native restart kills
+    // its instrumented process. Wait for that cleanup before Detox reattaches.
+    if (!lastProcessId) {
+      stoppedObservations += 1;
+      if (stoppedObservations >= E2E_ANDROID_STOPPED_STABLE_OBSERVATIONS) {
+        logDetoxFixture("android instrumentation process stopped", {
+          attempt,
+          focusedPackage: lastFocusedPackage,
+          stoppedObservations,
+        });
+        return {
+          focusedPackage: lastFocusedPackage,
+        };
+      }
+    } else {
+      stoppedObservations = 0;
+    }
+
+    await abortableSleep(E2E_ANDROID_FOREGROUND_POLL_MS, signal);
+  }
+
+  throw new Error(
+    `Timed out waiting for Android instrumentation process to stop; focusedPackage=${String(lastFocusedPackage)}, processId=${lastProcessId || "none"}`,
+  );
+}
+
 function getAndroidWindowOutput() {
   return captureCommand(
     "adb",
@@ -4164,6 +4690,7 @@ async function dismissAndroidAnrWindow(reason: string) {
 
 type WaitForMetadataOptions = {
   attempts?: number;
+  releaseId?: string;
   recoveredStableBundleId?: string;
   relaunchLimit?: number;
   signal?: AbortSignal;
@@ -4210,6 +4737,7 @@ async function waitForIosMetadataState(
             metadataState,
             bundleId,
             verificationPending,
+            options.releaseId,
           )
         ) {
           return;
@@ -4298,6 +4826,7 @@ async function waitForAndroidMetadataState(
             metadataState,
             bundleId,
             verificationPending,
+            options.releaseId,
           )
         ) {
           return;
@@ -4464,11 +4993,16 @@ async function bootstrap() {
   fixtureSession.deployedBundles = [];
   fixtureSession.observedAnalyticsEvents = [];
   fixtureSession.storePath = null;
+  handleConfigureProxy({
+    artifactDelayMs: 0,
+    catalogDelayMs: 0,
+    catalogMode: "live",
+    replayGeneration: null,
+    reset: true,
+  });
 
   await waitForLocalProviderReady();
-  await clearProviderBundles({
-    mode: "delete",
-  });
+  await clearProviderBundles();
   await restoreFile(
     fixtureSession.largeArchiveAssetBackupPath,
     fixtureSession.largeArchiveAssetPath,
@@ -4648,7 +5182,6 @@ async function deployFixtureBundle(
   const patchEnabled =
     request.diffBaseBundleId !== undefined ||
     request.patchMaxBaseBundles !== undefined;
-  const updateCheckRequestBundleId = getCurrentUpdateCheckBundleId();
 
   if (bundleProfile === "archive300mb") {
     throwIfAborted(signal);
@@ -4663,6 +5196,7 @@ async function deployFixtureBundle(
   await applyDeployConfig({
     patchEnabled,
     patchMaxBaseBundles: request.patchMaxBaseBundles,
+    strategy: request.strategy ?? "appVersion",
   });
   await applyAppScenario({
     bundleProfile,
@@ -4825,18 +5359,24 @@ async function deployFixtureBundle(
     }
   })();
 
+  let deployed = await resolveDeployedRelease(bundleId, remoteChannel);
   if (request.targetCohorts && request.targetCohorts.length > 0) {
-    await patchProviderBundle(bundleId, {
+    const updated = await patchProviderRelease(deployed.release.id, {
       targetCohorts: request.targetCohorts,
     });
+    deployed = {
+      ...deployed,
+      catalog: updated.catalog,
+      release: updated.release!,
+    };
   }
-
   let bundle = await fetchProviderBundleById(bundleId);
   if (shouldWaitForUpdateCheckVisibility(request)) {
-    await waitForUpdateCheckVisibility({
+    await waitForReleaseCatalogVisibility({
+      authorityId: deployed.authorityId,
       bundleId,
-      channel: bundle.channel,
-      requestBundleId: updateCheckRequestBundleId,
+      channel: remoteChannel,
+      releaseId: deployed.release.id,
       signal,
     });
   }
@@ -4852,26 +5392,30 @@ async function deployFixtureBundle(
     archiveSizeBytes: archiveDetails.sizeBytes,
     bundleId,
     bundleProfile,
-    channel: bundle.channel,
+    channel: remoteChannel,
     diffBaseBundleId: diff?.baseBundleId ?? null,
     diffPatchAssetPath: diff?.patchAssetPath ?? null,
-    enabled: bundle.enabled,
+    enabled: deployed.release.enabled,
     marker: request.marker,
     mode: request.mode,
     patchBaseBundleIds,
-    rolloutCohortCount: bundle.rolloutCohortCount ?? null,
-    shouldForceUpdate: bundle.shouldForceUpdate ?? false,
-    targetCohorts: bundle.targetCohorts ?? null,
+    releaseId: deployed.release.id,
+    rolloutCohortCount: deployed.release.rollout_cohort_count,
+    scopeKey: deployed.release.scope_key,
+    shouldForceUpdate: deployed.release.should_force_update,
+    targetCohorts: [...deployed.release.target_cohorts],
   });
 
   return {
     archiveSizeBytes: archiveDetails.sizeBytes,
+    authorityId: deployed.authorityId,
     bundleId,
     bundleProfile,
-    channel: bundle.channel,
+    channel: remoteChannel,
     diffBaseBundleId: diff?.baseBundleId,
     diffPatchAssetPath: diff?.patchAssetPath,
-    enabled: bundle.enabled,
+    enabled: deployed.release.enabled,
+    generation: deployed.catalog.generation,
     marker: request.marker,
     multiAssetPaths:
       bundleProfile === "multiAssetReplacement"
@@ -4883,60 +5427,189 @@ async function deployFixtureBundle(
         : undefined,
     patchBaseBundleIds,
     primaryBundleAssetPath: getPrimaryBundleAssetPath(),
-    rolloutCohortCount: bundle.rolloutCohortCount ?? null,
-    shouldForceUpdate: bundle.shouldForceUpdate ?? false,
-    targetCohorts: bundle.targetCohorts ?? null,
+    releaseId: deployed.release.id,
+    rolloutCohortCount: deployed.release.rollout_cohort_count,
+    scopeKey: deployed.release.scope_key,
+    shouldForceUpdate: deployed.release.should_force_update,
+    targetCohorts: deployed.release.target_cohorts,
   };
 }
 
-async function updateFixtureBundle(
-  request: PatchBundleRequest,
+async function updateFixtureRelease(
+  request: PatchReleaseRequest,
   context?: JobExecutionContext,
 ) {
   const signal = context?.signal;
   throwIfAborted(signal);
-  await patchProviderBundle(request.bundleId, {
+  const result = await patchProviderRelease(request.releaseId, {
     enabled: request.enabled,
     rolloutCohortCount: request.rolloutCohortCount,
     shouldForceUpdate: request.shouldForceUpdate,
     targetCohorts: request.targetCohorts,
   });
-
-  const bundle = await fetchProviderBundleById(request.bundleId);
-  if (request.enabled === false && bundle.enabled === false) {
-    await waitForUpdateCheckExcludesBundle({
-      bundleId: bundle.id,
-      channel: bundle.channel,
+  const release = result.release!;
+  const channel = await withConfiguredDatabase(async (database) =>
+    (await database.models.channels.list({})).channels.find(
+      (candidate) => candidate.id === release.channel_id,
+    ),
+  );
+  if (channel === undefined) {
+    throw new Error(`No Channel for Release ${request.releaseId}.`);
+  }
+  if (request.enabled === false && release.enabled === false) {
+    await waitForReleaseCatalogExcludesRelease({
+      authorityId: result.catalog.authority_id,
+      channel: channel.name,
+      releaseId: release.id,
       signal,
     });
   }
 
-  updateTrackedBundleRecord(request.bundleId, {
-    enabled: bundle.enabled,
-    rolloutCohortCount: bundle.rolloutCohortCount ?? null,
-    shouldForceUpdate: bundle.shouldForceUpdate ?? false,
-    targetCohorts: bundle.targetCohorts ?? null,
+  updateTrackedReleaseRecord(request.releaseId, {
+    enabled: release.enabled,
+    rolloutCohortCount: release.rollout_cohort_count,
+    shouldForceUpdate: release.should_force_update,
+    targetCohorts: release.target_cohorts,
   });
 
   return {
-    bundleId: bundle.id,
-    channel: bundle.channel,
-    enabled: bundle.enabled,
-    rolloutCohortCount: bundle.rolloutCohortCount ?? null,
-    shouldForceUpdate: bundle.shouldForceUpdate ?? false,
-    targetCohorts: bundle.targetCohorts ?? null,
+    bundleId: release.bundle_id,
+    channel: channel.name,
+    enabled: release.enabled,
+    generation: result.catalog.generation,
+    releaseId: release.id,
+    revision: release.revision,
+    rolloutCohortCount: release.rollout_cohort_count,
+    scopeKey: release.scope_key,
+    shouldForceUpdate: release.should_force_update,
+    targetCohorts: release.target_cohorts,
   };
 }
 
-async function computeRolloutSample(bundleId: string) {
-  const bundle = await fetchProviderBundleById(bundleId);
+async function createFixtureRollbackRelease(input: {
+  sourceReleaseId: string;
+  toBundleId: string | null;
+}) {
+  const created = await withConfiguredDatabase(
+    async (database, authorityId) => {
+      const source = await database.models.releases.findById(
+        input.sourceReleaseId,
+      );
+      if (source === null) {
+        throw new Error(`Release ${input.sourceReleaseId} was not found.`);
+      }
+      const catalog = await database.models.releaseCatalogs.findByScopeKey(
+        source.scope_key,
+      );
+      if (catalog === null) {
+        throw new Error(`Catalog ${source.scope_key} was not found.`);
+      }
+      const channel = (await database.models.channels.list({})).channels.find(
+        (candidate) => candidate.id === source.channel_id,
+      );
+      if (channel === undefined) {
+        throw new Error(`Channel ${source.channel_id} was not found.`);
+      }
+      const result = await rollbackRelease({
+        database,
+        releaseId: source.id,
+        toBundleId: input.toBundleId,
+      });
+      const release = result.release;
+      if (release === null) {
+        throw new Error("Rollback did not create a Release.");
+      }
+      return { authorityId, catalog: result.catalog, channel, release };
+    },
+  );
+
+  await waitForReleaseCatalogVisibility({
+    authorityId: created.authorityId,
+    bundleId: created.release.bundle_id,
+    channel: created.channel.name,
+    releaseId: created.release.id,
+  });
+
+  return {
+    bundleId: created.release.bundle_id,
+    generation: created.catalog.generation,
+    kind: created.release.kind,
+    releaseId: created.release.id,
+    scopeKey: created.release.scope_key,
+  };
+}
+
+async function seedCrashedBundleFrontier(input: {
+  count: number;
+  sourceReleaseId: string;
+}) {
+  return withConfiguredDatabase(async (database) => {
+    const sourceRelease = await database.models.releases.findById(
+      input.sourceReleaseId,
+    );
+    if (sourceRelease?.bundle_id === null || sourceRelease === null) {
+      throw new Error(
+        `Release ${input.sourceReleaseId} must reference a Bundle.`,
+      );
+    }
+    const sourceBundle = await database.models.bundles.findById(
+      sourceRelease.bundle_id,
+    );
+    if (sourceBundle === null) {
+      throw new Error(`Bundle ${sourceRelease.bundle_id} was not found.`);
+    }
+
+    const bundleIds: string[] = [];
+    const releaseIds: string[] = [];
+    let bundleIdFloor = sourceBundle.id;
+    let generation: number | null = null;
+    const baseTimeMs = Date.now();
+
+    for (let index = 0; index < input.count; index += 1) {
+      const bundleId = createUUIDv7After(bundleIdFloor, baseTimeMs + index);
+      const clone: BundleRow = { ...sourceBundle, id: bundleId };
+      const inserted = await database.commit({
+        changes: [{ model: "bundles", operation: "insert", row: clone }],
+      });
+      if (!inserted.committed) {
+        throw new Error(
+          `Failed to insert crash-frontier Bundle ${bundleId}: ${inserted.conflict.reason}`,
+        );
+      }
+      const rollback = await rollbackRelease({
+        database,
+        releaseId: sourceRelease.id,
+        toBundleId: bundleId,
+        updatedAtMs: baseTimeMs + index,
+      });
+      if (rollback.release === null) {
+        throw new Error("Crash-frontier rollback did not create a Release.");
+      }
+      bundleIds.push(bundleId);
+      releaseIds.push(rollback.release.id);
+      generation = rollback.catalog.generation;
+      bundleIdFloor = bundleId;
+    }
+
+    return {
+      bundleIds,
+      generation,
+      releaseIds,
+      safeBundleId: sourceBundle.id,
+      safeReleaseId: sourceRelease.id,
+    };
+  });
+}
+
+async function computeRolloutSample(releaseId: string) {
+  const release = await fetchProviderReleaseById(releaseId);
   const rolloutCohorts = getRolledOutNumericCohorts(
-    bundleId,
-    bundle.rolloutCohortCount ?? null,
+    releaseId,
+    release.rollout_cohort_count,
   );
 
   if (rolloutCohorts.length === 0) {
-    throw new Error(`Bundle ${bundleId} has no eligible numeric cohorts`);
+    throw new Error(`Release ${releaseId} has no eligible numeric cohorts`);
   }
 
   const rolloutSet = new Set(rolloutCohorts);
@@ -4946,14 +5619,14 @@ async function computeRolloutSample(bundleId: string) {
 
   if (!excludedCohort) {
     throw new Error(
-      `Bundle ${bundleId} is rolled out to all numeric cohorts; no excluded sample exists`,
+      `Release ${releaseId} is rolled out to all numeric cohorts; no excluded sample exists`,
     );
   }
 
   return {
     excludedCohort,
     includedCohort: String(rolloutCohorts[0]),
-    rolloutCohortCount: bundle.rolloutCohortCount ?? null,
+    rolloutCohortCount: release.rollout_cohort_count,
   };
 }
 
@@ -4962,11 +5635,25 @@ async function waitForMetadata(
   verificationPending: boolean,
   options: WaitForMetadataOptions = {},
 ) {
+  const releaseId =
+    options.releaseId ??
+    fixtureSession.deployedBundles.findLast(
+      (record) => record.bundleId === bundleId,
+    )?.releaseId;
+  const releaseAwareOptions = { ...options, releaseId };
   throwIfAborted(options.signal);
   if (fixtureSession.platform === "ios") {
-    await waitForIosMetadataState(bundleId, verificationPending, options);
+    await waitForIosMetadataState(
+      bundleId,
+      verificationPending,
+      releaseAwareOptions,
+    );
   } else {
-    await waitForAndroidMetadataState(bundleId, verificationPending, options);
+    await waitForAndroidMetadataState(
+      bundleId,
+      verificationPending,
+      releaseAwareOptions,
+    );
   }
 
   return {};
@@ -5125,8 +5812,9 @@ function readBsdiffPatchStoreEvidence(args: {
   const expectedHash = getManifestAssetFileHash(manifest, args.assetPath);
   const assetFile = readBundleAssetFileHash(record.bundleId, args.assetPath);
   const ok =
-    metadataState.stableBundleId === args.baseBundleId &&
+    metadataState.stableBundleId === null &&
     metadataState.stagingBundleId === record.bundleId &&
+    metadataState.stagingSelection?.bundleId === record.bundleId &&
     metadataState.verificationPending === false &&
     hasManifestBackedBundleEvidence({
       assetFile,
@@ -5217,8 +5905,9 @@ async function readManifestDiffState(args: {
       (entry) => entry.bundleId === args.bundleId,
     ) ?? null;
   const ok =
-    metadataState.stableBundleId === args.previousBundleId &&
+    metadataState.stableBundleId === null &&
     metadataState.stagingBundleId === args.bundleId &&
+    metadataState.stagingSelection?.bundleId === args.bundleId &&
     metadataState.verificationPending === false &&
     hasManifestBackedBundleEvidence({
       assetFile,
@@ -5310,15 +5999,17 @@ async function assertBsdiffPatchApplied(args: {
 
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const evidence = readBsdiffPatchStoreEvidence(args);
-    if (evidence.ok && "record" in evidence) {
-      const logs = readBsdiffPatchLogs();
+    const logs = readBsdiffPatchLogs();
+    if (
+      evidence.ok &&
+      "record" in evidence &&
+      includesAllFragments(logs, expectedFragments)
+    ) {
       logDetoxFixture("bsdiff patch applied", {
         assetPath: args.assetPath,
         baseBundleId: args.baseBundleId,
         bundleId: evidence.record.bundleId,
-        evidence: includesAllFragments(logs, expectedFragments)
-          ? "bundle-store-and-native-log"
-          : "bundle-store",
+        evidence: "bundle-store-and-native-log",
         platform: fixtureSession.platform,
       });
       return {};
@@ -5400,8 +6091,9 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
     const state = readFirstOtaArchiveState(args.bundleId);
     if (
       state.metadataState.stagingBundleId === args.bundleId &&
+      state.metadataState.stagingSelection?.bundleId === args.bundleId &&
       state.metadataState.verificationPending === true &&
-      state.metadataState.stableBundleId === null &&
+      state.metadataState.stableBundleId !== args.bundleId &&
       state.bundleFile.exists
     ) {
       logDetoxFixture("first OTA used archive install path", {
@@ -5453,7 +6145,7 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
         bundleFileExists: true,
         states: [
           {
-            stableBundleId: null,
+            stableBundleId: "different from the staging Bundle",
             stagingBundleId: args.bundleId,
             verificationPending: true,
           },
@@ -5537,9 +6229,14 @@ async function captureState(prefix: string) {
 
 async function resetRemoteBundles() {
   remoteAssetProxyTargets.clear();
-  await clearProviderBundles({
-    mode: "delete",
+  handleConfigureProxy({
+    artifactDelayMs: 0,
+    catalogDelayMs: 0,
+    catalogMode: "live",
+    replayGeneration: null,
+    reset: true,
   });
+  await clearProviderBundles();
 
   logDetoxFixture("remote bundles reset on demand", {
     platform: fixtureSession.platform,
@@ -5647,7 +6344,10 @@ async function assertMetadataActive(bundleId: string) {
           return readJson(probePath);
         })();
 
-  assertMetadataState(metadata, bundleId);
+  const releaseId = fixtureSession.deployedBundles.findLast(
+    (record) => record.bundleId === bundleId,
+  )?.releaseId;
+  assertMetadataState(metadata, bundleId, releaseId);
   return {};
 }
 
@@ -5689,10 +6389,12 @@ async function assertMetadataResetState() {
 }
 
 async function assertLaunchReportState({
-  crashedBundleId,
+  fromBundleId,
+  fromReleaseId,
   optional,
-  stableBundleId,
   status,
+  toBundleId,
+  toReleaseId,
 }: LaunchReportAssertion) {
   let launchReportPath =
     fixtureSession.platform === "ios"
@@ -5710,8 +6412,8 @@ async function assertLaunchReportState({
         return {};
       }
       const recoveryLaunchReportPath = androidRecoveryLaunchReportPath({
-        crashedBundleId,
-        stableBundleId,
+        crashedBundleId: fromBundleId,
+        stableBundleId: toBundleId,
       });
       if (!fs.existsSync(recoveryLaunchReportPath)) {
         throw new Error("launch-report.json is missing");
@@ -5725,12 +6427,13 @@ async function assertLaunchReportState({
     throw new Error("launch-report.json is missing");
   }
 
-  assertLaunchReport(
-    launchReportPath,
+  assertLaunchReport(launchReportPath, {
+    fromBundleId,
+    fromReleaseId,
     status,
-    crashedBundleId ?? "",
-    stableBundleId ?? "",
-  );
+    toBundleId,
+    toReleaseId,
+  });
   return {};
 }
 
@@ -5873,8 +6576,22 @@ export function startDeployBundleJob(request: DeployBundleRequest) {
   return createJob((context) => deployFixtureBundle(request, context));
 }
 
-export function startPatchBundleJob(request: PatchBundleRequest) {
-  return createJob((context) => updateFixtureBundle(request, context));
+export function startPatchReleaseJob(request: PatchReleaseRequest) {
+  return createJob((context) => updateFixtureRelease(request, context));
+}
+
+export function startCreateRollbackReleaseJob(input: {
+  sourceReleaseId: string;
+  toBundleId: string | null;
+}) {
+  return createJob(() => createFixtureRollbackRelease(input));
+}
+
+export function startSeedCrashedBundleFrontierJob(input: {
+  count: number;
+  sourceReleaseId: string;
+}) {
+  return createJob(() => seedCrashedBundleFrontier(input));
 }
 
 export function startResetRemoteBundlesJob() {
@@ -5892,6 +6609,10 @@ export function startWaitForMetadataJob(
       signal: context.signal,
     }),
   );
+}
+
+export function startWaitForAndroidRestartJob() {
+  return createJob((context) => waitForAndroidRestart(context.signal));
 }
 
 export function getJob(jobId: string) {
@@ -5918,8 +6639,8 @@ export async function handleCaptureBuiltInBundleId() {
   return captureBuiltInBundleId();
 }
 
-export async function handleComputeRolloutSample(bundleId: string) {
-  return computeRolloutSample(bundleId);
+export async function handleComputeRolloutSample(releaseId: string) {
+  return computeRolloutSample(releaseId);
 }
 
 export async function handleWaitForMetadata(
@@ -5999,6 +6720,14 @@ export async function handleAssertLaunchReport(
 
 export async function handleAssertCrashHistory(bundleId: string) {
   return assertCrashHistory(bundleId);
+}
+
+export function handleSeedCrashHistory(bundleIds: readonly string[]) {
+  return seedDeviceCrashHistory(bundleIds);
+}
+
+export function handleSeedLegacyMetadata() {
+  return seedLegacyDeviceMetadata();
 }
 
 export async function handleWaitForCrashRecovery(

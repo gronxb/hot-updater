@@ -65,8 +65,8 @@ export function DeleteBundleDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Are you sure?</AlertDialogTitle>
           <AlertDialogDescription>
-            This action cannot be undone. This will permanently delete the
-            bundle and remove it from storage.
+            This permanently deletes the artifact and its stored files. An
+            artifact referenced by a release cannot be deleted.
           </AlertDialogDescription>
         </AlertDialogHeader>
 
@@ -75,8 +75,8 @@ export function DeleteBundleDialog({
           <p className="text-xs font-mono text-muted-foreground break-all">
             {bundle.id}
           </p>
-          <p className="text-sm font-medium mt-3 mb-1">Channel:</p>
-          <p className="text-xs text-muted-foreground">{bundle.channel}</p>
+          <p className="text-sm font-medium mt-3 mb-1">Platform:</p>
+          <p className="text-xs text-muted-foreground">{bundle.platform}</p>
         </div>
 
         <AlertDialogFooter>

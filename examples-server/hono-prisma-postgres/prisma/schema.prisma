@@ -17,36 +17,23 @@ datasource db {
 model channels {
   id String @db.VarChar(255) @id
   name String @db.VarChar(255)
-  bundles bundles[] @relation("bundles_channels")
+  releases releases[] @relation("releases_channels")
+  releaseCatalogs release_catalogs[] @relation("release_catalogs_channels")
   @@unique([name], map: "channels_name_key")
 }
 model bundles {
   id String @db.Uuid @id
   platform String
-  should_force_update Boolean
-  enabled Boolean
   file_hash String
   git_commit_hash String?
-  message String?
-  channel String @default("production")
-  channel_id String @db.VarChar(255)
   storage_uri String
-  target_app_version String?
-  fingerprint_hash String?
   metadata Json @default("{}")
-  rollout_cohort_count Int @default(1000)
-  target_cohorts Json?
   manifest_storage_uri String?
   manifest_file_hash String?
   asset_base_storage_uri String?
   patches bundle_patches[] @relation("bundle_patches_bundles_patches")
   baseForPatches bundle_patches[] @relation("bundle_patches_bundles_baseForPatches")
-  channelRecord channels @relation("bundles_channels", fields: [channel_id], references: [id], onUpdate: Restrict, onDelete: Restrict)
-  @@index([target_app_version], map: "bundles_target_app_version_idx")
-  @@index([fingerprint_hash], map: "bundles_fingerprint_hash_idx")
-  @@index([channel], map: "bundles_channel_idx")
-  @@index([channel_id], map: "bundles_channel_id_idx")
-  @@index([rollout_cohort_count], map: "bundles_rollout_idx")
+  releases releases[] @relation("releases_bundles")
 }
 model bundle_patches {
   id String @db.VarChar(255) @id
@@ -61,14 +48,64 @@ model bundle_patches {
   @@index([bundle_id], map: "bundle_patches_bundle_id_idx")
   @@index([base_bundle_id], map: "bundle_patches_base_bundle_id_idx")
 }
+model releases {
+  id String @db.Uuid @id
+  revision Int
+  scope_key String @db.VarChar(2048)
+  channel_id String @db.VarChar(255)
+  platform String
+  kind String
+  bundle_id String? @db.Uuid
+  strategy String
+  target_app_version String?
+  fingerprint_hash String?
+  enabled Boolean
+  should_force_update Boolean
+  message String?
+  rollout_cohort_count Int @default(1000)
+  target_cohorts Json @default("[]")
+  operation String
+  source_release_id String? @db.Uuid
+  created_at_ms Float
+  updated_at_ms Float
+  derivedReleases releases[] @relation("releases_source_release")
+  channelRecord channels @relation("releases_channels", fields: [channel_id], references: [id], onUpdate: Restrict, onDelete: Restrict)
+  bundle bundles? @relation("releases_bundles", fields: [bundle_id], references: [id], onUpdate: Restrict, onDelete: Restrict)
+  sourceRelease releases? @relation("releases_source_release", fields: [source_release_id], references: [id], onUpdate: Restrict, onDelete: SetNull)
+  @@index([scope_key, id], map: "releases_scope_order_idx")
+  @@index([channel_id, platform, id], map: "releases_channel_platform_order_idx")
+  @@index([bundle_id], map: "releases_bundle_id_idx")
+  @@index([fingerprint_hash], map: "releases_fingerprint_hash_idx")
+  @@index([enabled], map: "releases_enabled_idx")
+}
+model release_catalogs {
+  scope_key String @db.VarChar(2048) @id
+  authority_id String @db.VarChar(255)
+  strategy String
+  channel_id String @db.VarChar(255)
+  channel_key String @db.VarChar(1400)
+  platform String
+  fingerprint_hash String?
+  generation Float
+  payload String
+  catalog_hash String @db.VarChar(71)
+  byte_size Int
+  is_tombstone Boolean
+  updated_at_ms Float
+  channelRecord channels @relation("release_catalogs_channels", fields: [channel_id], references: [id], onUpdate: Restrict, onDelete: Restrict)
+  @@index([channel_id], map: "release_catalogs_channel_idx")
+  @@index([authority_id, strategy], map: "release_catalogs_authority_strategy_idx")
+}
 model bundle_events {
   id String @db.Uuid @id
   type String
   install_id String
   user_id String?
   username String?
+  from_release_id String? @db.Uuid
   from_bundle_id String? @db.Uuid
-  to_bundle_id String @db.Uuid
+  to_release_id String? @db.Uuid
+  to_bundle_id String? @db.Uuid
   platform String
   app_version String
   channel String
@@ -83,6 +120,8 @@ model bundle_events {
   @@index([username, received_at_ms, id], map: "bundle_events_username_idx")
   @@index([type, to_bundle_id, received_at_ms, id], map: "bundle_events_to_bundle_idx")
   @@index([type, from_bundle_id, received_at_ms, id], map: "bundle_events_from_bundle_idx")
+  @@index([type, to_release_id, received_at_ms, id], map: "bundle_events_to_release_idx")
+  @@index([type, from_release_id, received_at_ms, id], map: "bundle_events_from_release_idx")
 }
 model client_access_keys {
   id String @db.VarChar(255) @id
@@ -97,6 +136,6 @@ model client_access_keys {
 }
 model private_hot_updater_settings {
   key String @db.VarChar(255) @id
-  value String @default("0.38.0")
+  value String @default("1.0.0")
 }
 // --- END HOT-UPDATER MODELS ---

@@ -1,6 +1,28 @@
-import type { AppUpdateInfo } from "@hot-updater/core";
+import type {
+  AppUpdateAvailableInfo,
+  AppUpdateInfo,
+  ReleaseCatalog,
+} from "@hot-updater/core";
 
 export type HotUpdaterBaseURL = string | (() => string | Promise<string>);
+
+export interface ReleaseCatalogRequest {
+  readonly authorityId: string;
+  readonly platform: "ios" | "android";
+  readonly channel: string;
+  readonly updateStrategy: "fingerprint" | "appVersion";
+  readonly appVersion: string;
+  readonly fingerprintHash: string | null;
+  readonly requestHeaders?: Record<string, string>;
+  readonly requestTimeout?: number;
+}
+
+export interface ArtifactRequest {
+  readonly targetBundleId: string;
+  readonly currentBundleId: string;
+  readonly requestHeaders?: Record<string, string>;
+  readonly requestTimeout?: number;
+}
 
 /**
  * Parameters passed to resolver.checkUpdate method
@@ -99,6 +121,10 @@ interface ResolverNotifyAppReadyCommonParams {
    */
   readonly fingerprintHash: string | null;
 
+  /** Exact directional Release identities when known. */
+  readonly fromReleaseId?: string | null;
+  readonly toReleaseId?: string | null;
+
   /**
    * Request headers from global config (for optional use)
    */
@@ -142,6 +168,14 @@ type ResolverNotifyAppReadyRecoveredParams =
     readonly updateStrategy: "fingerprint" | "appVersion";
   };
 
+/** Parameters sent after a same-Bundle Release receipt adoption. */
+type ResolverNotifyReleaseAdoptedParams = ResolverNotifyAppReadyCommonParams & {
+  readonly type: "RELEASE_ADOPTED";
+  readonly fromBundleId: string;
+  readonly toBundleId: string;
+  readonly updateStrategy: "fingerprint" | "appVersion";
+};
+
 /** Parameters passed to resolver.notifyAppReady when the bundle is unchanged. */
 type ResolverNotifyAppReadyUnchangedParams =
   ResolverNotifyAppReadyCommonParams & {
@@ -168,14 +202,37 @@ type ResolverNotifyAppReadyUnchangedParams =
 export type ResolverNotifyAppReadyParams =
   | ResolverNotifyAppReadyUpdateAppliedParams
   | ResolverNotifyAppReadyRecoveredParams
+  | ResolverNotifyReleaseAdoptedParams
   | ResolverNotifyAppReadyUnchangedParams;
 
 /**
  * Resolver interface for custom network operations
  */
 export interface HotUpdaterResolver {
+  /** Stable project identity used to isolate catalog high-water state. */
+  readonly authorityId?: string;
+
   /**
-   * Custom implementation for checking updates.
+   * Stable shared-cache partition used by this resolver's catalog transport.
+   * Omit it when catalog responses are private/no-store.
+   */
+  readonly catalogCachePartition?: string;
+
+  /**
+   * Fetches shared Release policy without installation-state inputs.
+   * Implement this together with `resolveArtifact` to opt into protocol v2.
+   */
+  fetchReleaseCatalog?: (
+    params: ReleaseCatalogRequest,
+  ) => Promise<ReleaseCatalog>;
+
+  /** Resolves Bundle-keyed artifacts after local Release selection. */
+  resolveArtifact?: (
+    params: ArtifactRequest,
+  ) => Promise<AppUpdateAvailableInfo>;
+
+  /**
+   * Legacy custom implementation for checking updates.
    * When provided, this completely replaces the default fetchUpdateInfo flow.
    *
    * @param params - All parameters needed to check for updates
