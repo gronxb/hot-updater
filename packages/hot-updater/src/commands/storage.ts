@@ -37,6 +37,7 @@ const CONTENT_ADDRESSED_ASSET_KEY_RE =
 export const DEFAULT_STORAGE_PRUNE_MIN_AGE_MS = 24 * 60 * 60 * 1000;
 
 export interface StoragePruneOptions {
+  dryRun?: boolean;
   minAge?: number;
   yes?: boolean;
 }
@@ -439,6 +440,10 @@ async function safeOnUnmount(databasePlugin: DatabasePlugin) {
 
 export async function handleStoragePrune(options: StoragePruneOptions = {}) {
   printBanner();
+
+  if (options.dryRun && options.yes) {
+    throw new Error("Storage prune --dry-run cannot be used with --yes.");
+  }
 
   const minAge = options.minAge ?? DEFAULT_STORAGE_PRUNE_MIN_AGE_MS;
   if (!Number.isFinite(minAge) || minAge < 0) {

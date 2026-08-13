@@ -273,8 +273,19 @@ storageCommand
       })
       .default(DEFAULT_STORAGE_PRUNE_MIN_AGE_MS, "24h"),
   )
-  .option("-y, --yes", "delete candidates; otherwise run a dry run")
-  .action((options: { minAge: number; yes?: boolean }) =>
+  .addOption(
+    new Option(
+      "--dry-run",
+      "list eligible objects without deleting them (default)",
+    ).conflicts("yes"),
+  )
+  .addOption(
+    new Option(
+      "-y, --yes",
+      "delete eligible objects after reference validation",
+    ).conflicts("dryRun"),
+  )
+  .action((options: { dryRun?: boolean; minAge: number; yes?: boolean }) =>
     handleStoragePrune(options),
   );
 

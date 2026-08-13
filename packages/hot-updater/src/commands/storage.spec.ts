@@ -209,15 +209,28 @@ describe("handleStoragePrune", () => {
     expect(mockDatabasePlugin.onUnmount).toHaveBeenCalledOnce();
   });
 
-  it("reports candidates without deleting when --yes is omitted", async () => {
+  it.each([
+    { label: "by default", options: {} },
+    { label: "with --dry-run", options: { dryRun: true } },
+  ])("reports candidates without deleting $label", async ({ options }) => {
     const { handleStoragePrune } = await import("./storage");
 
-    await handleStoragePrune();
+    await handleStoragePrune(options);
 
     expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
     expect(mockCli.p.log.info).toHaveBeenCalledWith(
       expect.stringContaining("Dry run only"),
     );
+  });
+
+  it("rejects conflicting dry-run and deletion options before loading config", async () => {
+    const { handleStoragePrune } = await import("./storage");
+
+    await expect(
+      handleStoragePrune({ dryRun: true, yes: true }),
+    ).rejects.toThrow("--dry-run cannot be used with --yes");
+    expect(mockCli.loadConfig).not.toHaveBeenCalled();
+    expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
   });
 
   it("rechecks manifest references before deleting", async () => {
