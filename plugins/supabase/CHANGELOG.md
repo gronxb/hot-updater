@@ -1,5 +1,16 @@
 # @hot-updater/supabase
 
+## 0.36.0
+
+### Patch Changes
+
+- 600a15f: Batch concurrent Supabase signed URL generation to avoid per-asset Storage API and database fan-out during update checks.
+- Updated dependencies [9759e8a]
+  - @hot-updater/cli-tools@0.36.0
+  - @hot-updater/plugin-core@0.36.0
+  - @hot-updater/server@0.36.0
+  - @hot-updater/core@0.36.0
+
 ## 0.35.12
 
 ### Patch Changes
