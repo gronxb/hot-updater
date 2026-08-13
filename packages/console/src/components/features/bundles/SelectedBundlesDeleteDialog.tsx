@@ -133,7 +133,7 @@ export function SelectedBundlesDeleteDialog({
     phase === "confirming" ? "Delete selected bundles?" : "Deleting bundles";
   const description =
     phase === "confirming"
-      ? `This action cannot be undone. This will permanently delete ${bundles.length} bundles and remove them from storage.`
+      ? `This permanently deletes ${bundles.length} artifacts and their stored files. Artifacts referenced by a release will fail safely.`
       : `${activeCount} of ${totalCount} delete requests finished.`;
   const deleteButtonLabel = useMemo(() => {
     if (!isDeleting) {
@@ -283,7 +283,6 @@ export function SelectedBundlesDeleteDialog({
                             {item.bundle.id}
                           </div>
                           <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
-                            <span>{item.bundle.channel}</span>
                             <span>{item.bundle.platform}</span>
                             {item.message ? (
                               <span className="text-destructive">

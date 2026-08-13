@@ -5,8 +5,9 @@ import {
   applyDistributionConfigOverrides,
   buildDistributionConfig,
   buildDistributionConfigOverrides,
-  HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
   HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG,
+  HOT_UPDATER_RELEASE_CATALOG_CACHE_POLICY_CONFIG,
+  HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
 } from "./cloudfrontDistributionConfig";
 
 const baseOptions = {
@@ -16,6 +17,7 @@ const baseOptions = {
   keyGroupId: "key-group-id",
   oacId: "origin-access-control-id",
   originRequestPolicyId: "origin-request-policy-id",
+  releaseCatalogCachePolicyId: "release-catalog-cache-policy-id",
   sharedCachePolicyId: "shared-cache-policy-id",
 };
 
@@ -51,13 +53,31 @@ describe("buildDistributionConfigOverrides", () => {
     });
   });
 
+  it("isolates Release catalogs only by client key and content encoding", () => {
+    expect(HOT_UPDATER_RELEASE_CATALOG_CACHE_POLICY_CONFIG).toMatchObject({
+      DefaultTTL: 0,
+      MaxTTL: 5,
+      MinTTL: 0,
+      ParametersInCacheKeyAndForwardedToOrigin: {
+        EnableAcceptEncodingBrotli: true,
+        EnableAcceptEncodingGzip: true,
+        HeadersConfig: {
+          HeaderBehavior: "whitelist",
+          Headers: { Quantity: 1, Items: ["x-api-key"] },
+        },
+        CookiesConfig: { CookieBehavior: "none" },
+        QueryStringsConfig: { QueryStringBehavior: "none" },
+      },
+    });
+  });
+
   it("uses cache policies instead of legacy settings", () => {
     const overrides = buildDistributionConfigOverrides(baseOptions);
     const defaultBehavior = overrides.DefaultCacheBehavior;
     const behaviorItems = overrides.CacheBehaviors.Items ?? [];
-    const [cachedEndpointBehavior] = behaviorItems;
+    const [catalogBehavior, cachedEndpointBehavior] = behaviorItems;
 
-    if (!cachedEndpointBehavior) {
+    if (!catalogBehavior || !cachedEndpointBehavior) {
       throw new Error("Expected cache behaviors to be generated");
     }
 
@@ -77,9 +97,13 @@ describe("buildDistributionConfigOverrides", () => {
     expect("MaxTTL" in defaultBehavior).toBe(false);
 
     expect(behaviorItems.map(({ PathPattern }) => PathPattern)).toEqual([
+      "/api/check-update/v2/release-catalogs/*",
       "/api/check-update",
       "/api/check-update/*",
     ]);
+    expect(catalogBehavior.CachePolicyId).toBe(
+      baseOptions.releaseCatalogCachePolicyId,
+    );
     expect(cachedEndpointBehavior.CachePolicyId).toBe(
       baseOptions.sharedCachePolicyId,
     );
@@ -265,6 +289,9 @@ describe("buildDistributionConfigOverrides", () => {
       expect.arrayContaining([
         expect.objectContaining({ PathPattern: "/api/check-update" }),
         expect.objectContaining({ PathPattern: "/api/check-update/*" }),
+        expect.objectContaining({
+          PathPattern: "/api/check-update/v2/release-catalogs/*",
+        }),
         expect.objectContaining({ PathPattern: "/unrelated/*" }),
       ]),
     );
@@ -327,7 +354,12 @@ describe("buildDistributionConfigOverrides", () => {
       updatedConfig.CacheBehaviors?.Items?.map(
         ({ TargetOriginId }) => TargetOriginId,
       ),
-    ).toEqual([existingOriginId, existingOriginId, existingOriginId]);
+    ).toEqual([
+      existingOriginId,
+      existingOriginId,
+      existingOriginId,
+      existingOriginId,
+    ]);
   });
 
   it("places a new update API behavior before broader existing behaviors", () => {
@@ -366,7 +398,12 @@ describe("buildDistributionConfigOverrides", () => {
       updatedConfig.CacheBehaviors?.Items?.map(
         ({ PathPattern }) => PathPattern,
       ),
-    ).toEqual(["/api/check-update", "/api/check-update/*", "/api/*"]);
+    ).toEqual([
+      "/api/check-update/v2/release-catalogs/*",
+      "/api/check-update",
+      "/api/check-update/*",
+      "/api/*",
+    ]);
   });
 
   it("keeps narrower existing behaviors before the update API behavior", () => {
@@ -420,6 +457,7 @@ describe("buildDistributionConfigOverrides", () => {
       ),
     ).toEqual([
       "/api/check-update/private/*",
+      "/api/check-update/v2/release-catalogs/*",
       "/api/check-update",
       "/api/check-update/*",
       "/api/*",
@@ -491,6 +529,7 @@ describe("buildDistributionConfigOverrides", () => {
     ).toEqual([
       "/api/check-update/?.json",
       "/*.js",
+      "/api/check-update/v2/release-catalogs/*",
       "/api/check-update",
       "/api/check-update/*",
       "/api/*",

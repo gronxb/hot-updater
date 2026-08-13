@@ -57,9 +57,9 @@ export const prepareDynamoDBDeployment = async (input: {
   };
   readonly region: string;
   readonly tableName: string;
-}): Promise<void> => {
+}): Promise<string> => {
   const dynamodbManager = new DynamoDBManager(input.region, input.credentials);
-  await dynamodbManager.ensureTable(input.tableName);
+  return dynamodbManager.ensureTable(input.tableName);
 };
 
 export const prepareDynamoDBClientAccessKey = async (input: {
@@ -327,7 +327,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   p.log.info(`Selected S3 Bucket: ${bucketName} (${bucketRegion})`);
 
-  await prepareDynamoDBDeployment({
+  const authorityId = await prepareDynamoDBDeployment({
     credentials,
     region: bucketRegion,
     tableName: resolvedDynamoDBTableName,
@@ -377,6 +377,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     lambdaName,
     {
       bucketName,
+      authorityId,
       dynamodbRegion: bucketRegion,
       dynamodbTableName: resolvedDynamoDBTableName,
       publicKeyId: publicKeyId,
@@ -405,7 +406,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   // Create configuration file
   const configWriteResult = await writeHotUpdaterConfig(
-    getConfigScaffold(build, configAuthMode),
+    getConfigScaffold(build, configAuthMode, authorityId),
   );
 
   await makeEnv({

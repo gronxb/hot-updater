@@ -1,6 +1,10 @@
-import type { Bundle } from "@hot-updater/core";
+import path from "path";
+import { fileURLToPath } from "url";
+
+import type { Bundle, LegacyBundle } from "@hot-updater/core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
 import {
+  deleteLegacyBundle,
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
@@ -13,8 +17,6 @@ import {
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
-import path from "path";
-import { fileURLToPath } from "url";
 import { afterAll, beforeAll, describe } from "vitest";
 
 // Get the directory of this test file
@@ -25,93 +27,93 @@ assertDockerComposeAvailable(
   "Hono + MongoDB integration tests require Docker Compose and a running Docker daemon.",
 );
 
-describe(
-  "Hot Updater Handler Integration Tests (Hono + MongoDB)",
-  () => {
-    let serverProcess: ReturnType<typeof execa> | null = null;
-    let baseUrl: string;
-    let testDbName: string;
-    let hotUpdater: HotUpdaterAPI;
-    const port = 13585;
+describe("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
+  let serverProcess: ReturnType<typeof execa> | null = null;
+  let baseUrl: string;
+  let testDbName: string;
+  let hotUpdater: HotUpdaterAPI;
+  let resetDecisionFixtures: () => Promise<void>;
+  const port = 13585;
 
-    beforeAll(async () => {
-      // Kill any process using the port before starting
-      await killPort(port);
+  beforeAll(async () => {
+    // Kill any process using the port before starting
+    await killPort(port);
 
-      // Generate unique test database name
-      testDbName = `hot_updater_test_${Date.now()}`;
-      const testMongoUrl = `mongodb://localhost:27018/${testDbName}?replicaSet=rs0&directConnection=true`;
+    // Generate unique test database name
+    testDbName = `hot_updater_test_${Date.now()}`;
+    const testMongoUrl = `mongodb://localhost:27018/${testDbName}?replicaSet=rs0&directConnection=true`;
 
-      process.env.TEST_MONGODB_URL = testMongoUrl;
+    process.env.TEST_MONGODB_URL = testMongoUrl;
 
-      baseUrl = `http://localhost:${port}`;
+    baseUrl = `http://localhost:${port}`;
 
-      // Ensure Docker Compose is healthy before migration.
-      await execa("docker", ["compose", "up", "-d", "--wait"], {
+    // Ensure Docker Compose is healthy before migration.
+    await execa("docker", ["compose", "up", "-d", "--wait"], {
+      cwd: projectRoot,
+    });
+
+    // Run database migrations
+    const hotUpdaterPkgPath = require.resolve("hot-updater/package.json");
+    const hotUpdaterCli = path.join(
+      path.dirname(hotUpdaterPkgPath),
+      "dist/index.mjs",
+    );
+
+    await execa(
+      "node",
+      [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"],
+      {
         cwd: projectRoot,
-      });
-
-      // Run database migrations
-      const hotUpdaterPkgPath = require.resolve("hot-updater/package.json");
-      const hotUpdaterCli = path.join(
-        path.dirname(hotUpdaterPkgPath),
-        "dist/index.mjs",
-      );
-
-      await execa(
-        "node",
-        [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"],
-        {
-          cwd: projectRoot,
-          env: { TEST_MONGODB_URL: testMongoUrl },
-        },
-      );
-
-      serverProcess = spawnServerProcess({
-        serverCommand: ["npx", "tsx", "src/index.ts"],
-        port,
-        testDbPath: "",
-        projectRoot,
         env: { TEST_MONGODB_URL: testMongoUrl },
-      });
+      },
+    );
 
-      await waitForServer(baseUrl, 180); // 180 attempts * 200ms = 36 seconds
-
-      const db = await import("./db.js");
-      hotUpdater = db.hotUpdater;
-    }, 120000);
-
-    afterAll(async () => {
-      await cleanupServer(baseUrl, serverProcess, "");
-
-      // Stop and remove Docker containers
-      await execa("docker", ["compose", "down", "-v"], {
-        cwd: projectRoot,
-      });
-    }, 60000);
-
-    const getUpdateInfo: ReturnType<typeof createGetUpdateInfo> = (
-      bundles,
-      options,
-    ) => {
-      return createGetUpdateInfo({
-        baseUrl: `${baseUrl}/hot-updater`,
-      })(bundles, options);
-    };
-
-    setupGetUpdateInfoTestSuite({
-      getUpdateInfo,
+    serverProcess = spawnServerProcess({
+      serverCommand: ["npx", "tsx", "src/index.ts"],
+      port,
+      testDbPath: "",
+      projectRoot,
+      env: { TEST_MONGODB_URL: testMongoUrl },
     });
 
-    setupBundleMethodsTestSuite({
-      getBundleById: (id: string) => hotUpdater.getBundleById(id),
-      getChannels: () => hotUpdater.getChannels(),
-      insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
-      getBundles: (options) => hotUpdater.getBundles(options),
-      updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
-        hotUpdater.updateBundleById(bundleId, newBundle),
-      deleteBundleById: (bundleId: string) =>
-        hotUpdater.deleteBundleById(bundleId),
+    await waitForServer(baseUrl, 180); // 180 attempts * 200ms = 36 seconds
+
+    const db = await import("./db.js");
+    hotUpdater = db.hotUpdater;
+    resetDecisionFixtures = db.resetDecisionFixtures;
+  }, 120000);
+
+  afterAll(async () => {
+    await cleanupServer(baseUrl, serverProcess, "");
+
+    // Stop and remove Docker containers
+    await execa("docker", ["compose", "down", "-v"], {
+      cwd: projectRoot,
     });
-  },
-);
+  }, 60000);
+
+  const getUpdateInfo: ReturnType<typeof createGetUpdateInfo> = (
+    bundles,
+    options,
+  ) => {
+    return createGetUpdateInfo({
+      baseUrl: `${baseUrl}/hot-updater`,
+      resetDecisionFixtures,
+    })(bundles, options);
+  };
+
+  setupGetUpdateInfoTestSuite({
+    getUpdateInfo,
+  });
+
+  setupBundleMethodsTestSuite({
+    getBundleById: (id: string) => hotUpdater.getBundleById(id),
+    getChannels: () => hotUpdater.getChannels(),
+    insertBundle: (bundle: LegacyBundle) => hotUpdater.insertBundle(bundle),
+    getBundles: (options) => hotUpdater.getBundles(options),
+    updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
+      hotUpdater.updateBundleById(bundleId, newBundle),
+    deleteBundleById: (bundleId: string) =>
+      deleteLegacyBundle(hotUpdater, bundleId),
+  });
+});

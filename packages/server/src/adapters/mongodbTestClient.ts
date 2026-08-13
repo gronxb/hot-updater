@@ -14,6 +14,8 @@ type Tables = {
   bundle_events: MongoTestRow[];
   channels: MongoTestRow[];
   client_access_keys: MongoTestRow[];
+  releases: MongoTestRow[];
+  release_catalogs: MongoTestRow[];
 };
 
 type FindOptions = { readonly projection?: unknown };
@@ -148,7 +150,12 @@ const createCollection = (
   insertOne: async (row: MongoTestRow): Promise<void> => {
     hooks.operationCount += 1;
     if (model === "bundle_patches") await hooks.beforeBundlePatchInsert?.();
-    if (tables[model].some(({ id }) => id === row.id)) {
+    const key = "id" in row ? row.id : row.scope_key;
+    if (
+      tables[model].some((candidate) =>
+        "id" in candidate ? candidate.id === key : candidate.scope_key === key,
+      )
+    ) {
       throw new MongoTestConstraintError("duplicate id");
     }
     if (
@@ -203,7 +210,15 @@ const createCollection = (
       return { matchedCount: 1, upsertedCount: 0 };
     }
     if (options?.upsert === true && "$setOnInsert" in update) {
-      if (tables[model].some((row) => row.id === update.$setOnInsert.id)) {
+      const key =
+        "id" in update.$setOnInsert
+          ? update.$setOnInsert.id
+          : update.$setOnInsert.scope_key;
+      if (
+        tables[model].some((row) =>
+          "id" in row ? row.id === key : row.scope_key === key,
+        )
+      ) {
         throw new MongoTestConstraintError("duplicate id");
       }
       tables[model].push(structuredClone(update.$setOnInsert));
@@ -226,6 +241,10 @@ const createDatabase = (tables: Tables, hooks: MongoTestHooks) => ({
         return createCollection(tables, "channels", hooks);
       case "client_access_keys":
         return createCollection(tables, "client_access_keys", hooks);
+      case "releases":
+        return createCollection(tables, "releases", hooks);
+      case "release_catalogs":
+        return createCollection(tables, "release_catalogs", hooks);
       default:
         throw new MongoTestConstraintError(`unknown collection: ${name}`);
     }
@@ -239,6 +258,8 @@ export const createMongoTestHarness = () => {
     bundle_events: [],
     channels: [],
     client_access_keys: [],
+    releases: [],
+    release_catalogs: [],
   };
   const hooks: MongoTestHooks = {
     failNextBundleTombstone: false,
@@ -271,6 +292,8 @@ export const createMongoTestHarness = () => {
             tables.bundle_events = staged.bundle_events;
             tables.channels = staged.channels;
             tables.client_access_keys = staged.client_access_keys;
+            tables.releases = staged.releases;
+            tables.release_catalogs = staged.release_catalogs;
             return result;
           } finally {
             activeTables = tables;
@@ -293,6 +316,8 @@ export const createMongoTestHarness = () => {
       tables.bundle_events = [];
       tables.channels = [];
       tables.client_access_keys = [];
+      tables.releases = [];
+      tables.release_catalogs = [];
     },
     getOperationCount: (): number => hooks.operationCount,
     setBeforeBundlePatchInsert: (
@@ -304,7 +329,9 @@ export const createMongoTestHarness = () => {
       hooks.failNextBundleTombstone = true;
     },
     setBundleField: (id: string, field: string, value: unknown): void => {
-      const row = tables.bundles.find((candidate) => candidate.id === id);
+      const row = tables.bundles.find(
+        (candidate) => "id" in candidate && candidate.id === id,
+      );
       if (row === undefined) throw new MongoTestConstraintError("missing row");
       Reflect.set(row, field, value);
     },

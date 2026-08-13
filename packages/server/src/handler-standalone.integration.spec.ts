@@ -1,7 +1,15 @@
 import { PGlite } from "@electric-sql/pglite";
-import type { Bundle } from "@hot-updater/core";
-import { NIL_UUID } from "@hot-updater/core";
-import { createDatabaseClient } from "@hot-updater/plugin-core";
+import type { LegacyBundle } from "@hot-updater/core";
+import {
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+  NIL_UUID,
+} from "@hot-updater/core";
+import {
+  bundleToRow,
+  commitReleaseCatalogMutation,
+  createDatabaseClient,
+} from "@hot-updater/plugin-core";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { HttpResponse, http } from "msw";
@@ -52,6 +60,8 @@ beforeAll(async () => {
 
 afterEach(async () => {
   await db.exec("DELETE FROM bundle_patches");
+  await db.exec("DELETE FROM release_catalogs");
+  await db.exec("DELETE FROM releases");
   await db.exec("DELETE FROM bundles");
   await db.exec("DELETE FROM channels");
 });
@@ -62,7 +72,7 @@ afterAll(async () => {
   await db.close();
 });
 
-const createTestBundle = (overrides?: Partial<Bundle>): Bundle => ({
+const createTestBundle = (overrides?: Partial<LegacyBundle>): LegacyBundle => ({
   id: NIL_UUID,
   platform: "ios",
   channel: "production",
@@ -118,6 +128,87 @@ describe("Handler <-> Standalone Repository Integration", () => {
     await expect(overview.json()).resolves.toEqual({
       bundles: [{ bundleId, installations: 1 }],
       trackedInstallations: 1,
+    });
+  });
+
+  it("atomically commits and reads Release catalogs through standalone management routes", async () => {
+    const repository = standaloneRepository({
+      baseUrl: `${baseUrl}/hot-updater`,
+    });
+    const channel = await repository.models.channels.insert({
+      onConflict: "returnExisting",
+      row: { id: uuidv7(), name: "production" },
+    });
+    const bundle = createTestBundle({ id: uuidv7() });
+    const scopeKey = createReleaseCatalogScopeKey({
+      authorityId: "default",
+      channelKey: encodeChannelKey("production"),
+      platform: "ios",
+      strategy: "APP_VERSION",
+    });
+    const releaseId = uuidv7();
+
+    const committed = await commitReleaseCatalogMutation({
+      companionChanges: [
+        {
+          model: "bundles",
+          operation: "insert",
+          row: bundleToRow(bundle, channel.row.id),
+        },
+      ],
+      database: repository,
+      mutation: {
+        operation: "insert",
+        row: {
+          bundle_id: bundle.id,
+          channel_id: channel.row.id,
+          created_at_ms: 1,
+          enabled: true,
+          fingerprint_hash: null,
+          id: releaseId,
+          kind: "BUNDLE",
+          message: null,
+          operation: "DEPLOY",
+          platform: "ios",
+          revision: 1,
+          rollout_cohort_count: 1000,
+          scope_key: scopeKey,
+          should_force_update: false,
+          source_release_id: null,
+          strategy: "APP_VERSION",
+          target_app_version: "*",
+          target_cohorts: [],
+          updated_at_ms: 1,
+        },
+      },
+      scope: {
+        authorityId: "default",
+        channelId: channel.row.id,
+        channelName: channel.row.name,
+        fingerprintHash: null,
+        platform: "ios",
+        scopeKey,
+        strategy: "APP_VERSION",
+      },
+    });
+
+    await expect(
+      repository.models.releases.findById(releaseId),
+    ).resolves.toMatchObject({
+      bundle_id: bundle.id,
+      revision: 1,
+    });
+    await expect(
+      repository.models.releaseCatalogs.findByScopeKey(scopeKey),
+    ).resolves.toMatchObject({ generation: committed.catalog.generation });
+    const response = await api.handler(
+      new Request(
+        `${baseUrl}/hot-updater/v2/release-catalogs/app-version/default/ios/${encodeChannelKey("production")}/1.0.0`,
+      ),
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      releases: [{ bundleId: bundle.id, releaseId }],
     });
   });
 
@@ -185,18 +276,22 @@ describe("Handler <-> Standalone Repository Integration", () => {
     expect(retrieved).toMatchObject({ id: bundleId, fileHash: "get-hash-1" });
   });
 
-  it("deletes a bundle through handler DELETE /bundles/:id", async () => {
+  it("refuses to delete an artifact referenced by a Release", async () => {
     const bundleId = uuidv7();
     const bundle = createTestBundle({ id: bundleId });
     await api.insertBundle(bundle);
     const client = createStandaloneClient();
 
-    await client.deleteBundleById(bundleId);
+    await expect(client.deleteBundleById(bundleId)).rejects.toThrow(
+      "still referenced",
+    );
 
-    await expect(api.getBundleById(bundleId)).resolves.toBeNull();
+    await expect(api.getBundleById(bundleId)).resolves.toMatchObject({
+      id: bundleId,
+    });
   });
 
-  it("lists and filters bundles through handler GET /bundles", async () => {
+  it("lists and filters artifacts through handler GET /bundles", async () => {
     await api.insertBundle(
       createTestBundle({ id: uuidv7(), channel: "production" }),
     );
@@ -209,14 +304,14 @@ describe("Handler <-> Standalone Repository Integration", () => {
     const client = createStandaloneClient();
 
     const all = await client.getBundles({ limit: 50 });
-    const production = await client.getBundles({
-      where: { channel: "production" },
+    const ios = await client.getBundles({
+      where: { platform: "ios" },
       limit: 50,
     });
 
     expect(all.data).toHaveLength(3);
     expect(all.pagination.total).toBe(3);
-    expect(production.data).toHaveLength(2);
+    expect(ios.data).toHaveLength(3);
   });
 
   it("lists Channel rows through handler GET /channels", async () => {
@@ -258,10 +353,10 @@ describe("Handler <-> Standalone Repository Integration", () => {
     });
   });
 
-  it("refuses to delete a Channel referenced by a bundle", async () => {
+  it("refuses to delete a Channel referenced by a Release", async () => {
     const client = createStandaloneClient();
     const bundleId = uuidv7();
-    await client.insertBundle(
+    await api.insertBundle(
       createTestBundle({ id: bundleId, channel: "preview" }),
     );
     const channel = (await client.getChannels()).find(
@@ -275,7 +370,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
       reason: "not_empty",
     });
     await expect(client.getBundleById(bundleId)).resolves.toMatchObject({
-      channel: "preview",
+      id: bundleId,
     });
   });
 
@@ -287,11 +382,11 @@ describe("Handler <-> Standalone Repository Integration", () => {
     );
 
     await expect(client.getBundleById(bundleId)).resolves.toMatchObject({
-      enabled: true,
+      fileHash: "e2e-hash",
     });
-    await client.updateBundleById(bundleId, { enabled: false });
+    await client.updateBundleById(bundleId, { storageUri: "test://updated" });
     await expect(client.getBundleById(bundleId)).resolves.toMatchObject({
-      enabled: false,
+      storageUri: "test://updated",
     });
     await client.deleteBundleById(bundleId);
     await expect(client.getBundleById(bundleId)).resolves.toBeNull();
@@ -386,17 +481,19 @@ describe("Handler <-> Standalone Repository Integration", () => {
       }),
     );
 
-    await client.updateBundleById(bundleId, { targetAppVersion: "1.0.2" });
+    await client.updateBundleById(bundleId, {
+      storageUri: "s3://test-bucket/updated.zip",
+    });
 
     await expect(client.getBundleById(bundleId)).resolves.toMatchObject({
       id: bundleId,
-      targetAppVersion: "1.0.2",
+      storageUri: "s3://test-bucket/updated.zip",
     });
     await expect(client.getBundles({ limit: 50 })).resolves.toMatchObject({
       data: [
         expect.objectContaining({
           id: bundleId,
-          targetAppVersion: "1.0.2",
+          storageUri: "s3://test-bucket/updated.zip",
         }),
       ],
       pagination: { total: 1 },

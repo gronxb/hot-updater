@@ -12,7 +12,9 @@ const supabaseMock = vi.hoisted(() => {
     | "bundle_patches"
     | "bundles"
     | "channels"
-    | "client_access_keys";
+    | "client_access_keys"
+    | "release_catalogs"
+    | "releases";
   type QueryError = { readonly message: string };
   type QueryResult = {
     readonly count: number | null;
@@ -26,6 +28,8 @@ const supabaseMock = vi.hoisted(() => {
     bundles: new Map(),
     channels: new Map(),
     client_access_keys: new Map(),
+    release_catalogs: new Map(),
+    releases: new Map(),
   };
   const tableReadCounts: Record<TableName, number> = {
     bundle_events: 0,
@@ -33,6 +37,8 @@ const supabaseMock = vi.hoisted(() => {
     bundles: 0,
     channels: 0,
     client_access_keys: 0,
+    release_catalogs: 0,
+    releases: 0,
   };
 
   const splitTopLevel = (value: string): readonly string[] => {
@@ -304,7 +310,9 @@ const supabaseMock = vi.hoisted(() => {
       }
       if (this.mode === "delete") {
         for (const row of selected) {
-          const id = String(row.id);
+          const id = String(
+            this.table === "release_catalogs" ? row.scope_key : row.id,
+          );
           rows[this.table].delete(id);
           if (this.table === "bundles") {
             for (const patch of rows.bundle_patches.values()) {
@@ -339,7 +347,9 @@ const supabaseMock = vi.hoisted(() => {
           error: { message: "missing payload" },
         };
       }
-      const id = String(payload.id);
+      const id = String(
+        this.table === "release_catalogs" ? payload.scope_key : payload.id,
+      );
       const conflictField = this.upsertOptions?.onConflict;
       const uniqueField =
         conflictField ??
@@ -375,6 +385,22 @@ const supabaseMock = vi.hoisted(() => {
       ) {
         return { count: null, data: null, error: { message: "foreign key" } };
       }
+      if (
+        this.table === "releases" &&
+        (!rows.channels.has(String(payload.channel_id)) ||
+          (payload.kind === "BUNDLE" &&
+            !rows.bundles.has(String(payload.bundle_id))) ||
+          (payload.source_release_id !== null &&
+            !rows.releases.has(String(payload.source_release_id))))
+      ) {
+        return { count: null, data: null, error: { message: "foreign key" } };
+      }
+      if (
+        this.table === "release_catalogs" &&
+        !rows.channels.has(String(payload.channel_id))
+      ) {
+        return { count: null, data: null, error: { message: "foreign key" } };
+      }
       rows[this.table].set(id, payload);
       return { count: 1, data: payload, error: null };
     }
@@ -395,7 +421,14 @@ const supabaseMock = vi.hoisted(() => {
               error: null,
             };
           }
-          if (bundles.some((bundle) => bundle.channel_id === id)) {
+          if (
+            [...rows.releases.values()].some(
+              (release) => release.channel_id === id,
+            ) ||
+            [...rows.release_catalogs.values()].some(
+              (catalog) => catalog.channel_id === id,
+            )
+          ) {
             return {
               data: { deleted: false, reason: "not_empty" },
               error: null,
@@ -411,8 +444,40 @@ const supabaseMock = vi.hoisted(() => {
             bundles: new Map(rows.bundles),
             channels: new Map(rows.channels),
             client_access_keys: new Map(rows.client_access_keys),
+            release_catalogs: new Map(rows.release_catalogs),
+            releases: new Map(rows.releases),
           };
           const commit = (args?.p_commit ?? {}) as Row;
+          const expectations = (commit.expectations ?? []) as readonly Row[];
+          for (const expectation of expectations) {
+            const model = String(expectation.model);
+            const isRelease = model === "releases";
+            const key = String(
+              isRelease ? expectation.id : expectation.scopeKey,
+            );
+            const expectedVersion = isRelease
+              ? expectation.revision
+              : expectation.generation;
+            const actualVersion = isRelease
+              ? (staged.releases.get(key)?.revision ?? null)
+              : (staged.release_catalogs.get(key)?.generation ?? null);
+            if (actualVersion !== expectedVersion) {
+              return {
+                data: {
+                  committed: false,
+                  conflict: {
+                    actualVersion,
+                    changeIndex: -1,
+                    expectedVersion,
+                    key,
+                    model,
+                    reason: "version_conflict",
+                  },
+                },
+                error: null,
+              };
+            }
+          }
           const changes = (commit.changes ?? []) as readonly Row[];
           for (const [changeIndex, change] of changes.entries()) {
             const operation = String(change.operation);
@@ -430,8 +495,11 @@ const supabaseMock = vi.hoisted(() => {
                 const where = change.where as Row;
                 const id = String(where.id);
                 if (
-                  [...staged.bundles.values()].some(
-                    (bundle) => bundle.channel_id === id,
+                  [...staged.releases.values()].some(
+                    (release) => release.channel_id === id,
+                  ) ||
+                  [...staged.release_catalogs.values()].some(
+                    (catalog) => catalog.channel_id === id,
                   )
                 ) {
                   return {
@@ -451,11 +519,7 @@ const supabaseMock = vi.hoisted(() => {
               const bundle = change.row as Row | undefined;
               const id = String(where?.id ?? bundle?.id);
               if (operation === "insert" && bundle !== undefined) {
-                const channel = staged.channels.get(String(bundle.channel_id));
-                if (
-                  staged.bundles.has(id) ||
-                  channel?.name !== bundle.channel
-                ) {
+                if (staged.bundles.has(id)) {
                   return { data: null, error: { message: "constraint" } };
                 }
                 staged.bundles.set(id, bundle);
@@ -471,19 +535,93 @@ const supabaseMock = vi.hoisted(() => {
                   };
                 }
                 const updated = { ...current, ...(change.update as Row) };
-                const channel = staged.channels.get(String(updated.channel_id));
-                if (channel?.name !== updated.channel) {
-                  return { data: null, error: { message: "constraint" } };
-                }
                 staged.bundles.set(id, updated);
               } else if (operation === "delete") {
-                staged.bundles.delete(id);
+                if (
+                  [...staged.releases.values()].some(
+                    (release) => release.bundle_id === id,
+                  )
+                ) {
+                  return {
+                    data: {
+                      committed: false,
+                      conflict: { changeIndex, reason: "referenced" },
+                    },
+                    error: null,
+                  };
+                }
+                if (!staged.bundles.delete(id)) {
+                  return {
+                    data: {
+                      committed: false,
+                      conflict: { changeIndex, reason: "not_found" },
+                    },
+                    error: null,
+                  };
+                }
                 for (const [patchId, patch] of staged.bundle_patches) {
                   if (patch.bundle_id === id || patch.base_bundle_id === id) {
                     staged.bundle_patches.delete(patchId);
                   }
                 }
               }
+              continue;
+            }
+            if (model === "releases") {
+              const where = change.where as Row | undefined;
+              const release = change.row as Row | undefined;
+              const id = String(where?.id ?? release?.id);
+              if (operation === "insert" && release !== undefined) {
+                if (
+                  staged.releases.has(id) ||
+                  !staged.channels.has(String(release.channel_id)) ||
+                  (release.kind === "BUNDLE" &&
+                    !staged.bundles.has(String(release.bundle_id))) ||
+                  (release.source_release_id !== null &&
+                    !staged.releases.has(String(release.source_release_id)))
+                ) {
+                  return { data: null, error: { message: "constraint" } };
+                }
+                staged.releases.set(id, release);
+              } else if (operation === "update") {
+                const current = staged.releases.get(id);
+                if (current === undefined) {
+                  return {
+                    data: {
+                      committed: false,
+                      conflict: { changeIndex, reason: "not_found" },
+                    },
+                    error: null,
+                  };
+                }
+                const updated = { ...current, ...(change.update as Row) };
+                if (
+                  !staged.channels.has(String(updated.channel_id)) ||
+                  (updated.kind === "BUNDLE" &&
+                    !staged.bundles.has(String(updated.bundle_id))) ||
+                  (updated.source_release_id !== null &&
+                    !staged.releases.has(String(updated.source_release_id)))
+                ) {
+                  return { data: null, error: { message: "constraint" } };
+                }
+                staged.releases.set(id, updated);
+              } else if (!staged.releases.delete(id)) {
+                return {
+                  data: {
+                    committed: false,
+                    conflict: { changeIndex, reason: "not_found" },
+                  },
+                  error: null,
+                };
+              }
+              continue;
+            }
+            if (model === "releaseCatalogs" && operation === "put") {
+              const catalog = change.row as Row;
+              if (!staged.channels.has(String(catalog.channel_id))) {
+                return { data: null, error: { message: "constraint" } };
+              }
+              staged.release_catalogs.set(String(catalog.scope_key), catalog);
               continue;
             }
             if (model === "bundlePatches") {
@@ -545,6 +683,8 @@ const supabaseMock = vi.hoisted(() => {
           rows.bundle_patches = staged.bundle_patches;
           rows.channels = staged.channels;
           rows.client_access_keys = staged.client_access_keys;
+          rows.release_catalogs = staged.release_catalogs;
+          rows.releases = staged.releases;
           return { data: { committed: true }, error: null };
         }
         if (name === "get_target_app_version_list") {
@@ -583,6 +723,8 @@ const supabaseMock = vi.hoisted(() => {
       rows.bundles.clear();
       rows.channels.clear();
       rows.client_access_keys.clear();
+      rows.release_catalogs.clear();
+      rows.releases.clear();
       for (const table of Object.keys(tableReadCounts) as TableName[]) {
         tableReadCounts[table] = 0;
       }
@@ -614,18 +756,15 @@ describe("supabase edge database", () => {
       supabaseServiceRoleKey: "test-service-role-key",
     });
 
-    expect(Object.keys(database).sort()).toEqual([
-      "commit",
-      "models",
-      "name",
-      "queries",
-    ]);
+    expect(Object.keys(database).sort()).toEqual(["commit", "models", "name"]);
     expect(Object.keys(database.models).sort()).toEqual([
       "analytics",
       "bundlePatches",
       "bundles",
       "channels",
       "clientAccessKeys",
+      "releaseCatalogs",
+      "releases",
     ]);
   });
 });

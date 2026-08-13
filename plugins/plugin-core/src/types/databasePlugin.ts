@@ -1,12 +1,12 @@
-import type { GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
-
-import type { BundleRowUpdate } from "./databaseOperations";
+import type { BundleRowUpdate, ReleaseRowUpdate } from "./databaseOperations";
 import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
   ClientAccessKeyRow,
+  ReleaseCatalogRow,
+  ReleaseRow,
 } from "./databaseRows";
 import type {
   DatabaseBundleQueryOrder,
@@ -30,6 +30,32 @@ export interface BundlePatchModel {
   findByBundleIds(
     bundleIds: readonly string[],
   ): Promise<readonly BundlePatchRow[]>;
+}
+
+export interface ReleaseModel {
+  findById(id: string): Promise<ReleaseRow | null>;
+  findMany(input: {
+    readonly beforeReleaseId?: string;
+    readonly bundleId?: string;
+    readonly channelId?: string;
+    readonly enabled?: boolean;
+    readonly platform?: "ios" | "android";
+    readonly limit: number;
+  }): Promise<readonly ReleaseRow[]>;
+  findManyByScope(input: {
+    readonly scopeKey: string;
+    readonly afterReleaseId?: string;
+    readonly limit: number;
+    readonly consistency: "strong";
+  }): Promise<readonly ReleaseRow[]>;
+}
+
+export interface ReleaseCatalogModel {
+  findByScopeKey(scopeKey: string): Promise<ReleaseCatalogRow | null>;
+  findMany(input: {
+    readonly afterScopeKey?: string;
+    readonly limit: number;
+  }): Promise<readonly ReleaseCatalogRow[]>;
 }
 
 export interface AnalyticsScanCursor {
@@ -113,6 +139,27 @@ export type DatabaseChange =
       readonly where: { readonly bundleId: string };
     }
   | {
+      readonly model: "releases";
+      readonly operation: "insert";
+      readonly row: ReleaseRow;
+    }
+  | {
+      readonly model: "releases";
+      readonly operation: "update";
+      readonly where: { readonly id: string };
+      readonly update: ReleaseRowUpdate;
+    }
+  | {
+      readonly model: "releases";
+      readonly operation: "delete";
+      readonly where: { readonly id: string };
+    }
+  | {
+      readonly model: "releaseCatalogs";
+      readonly operation: "put";
+      readonly row: ReleaseCatalogRow;
+    }
+  | {
       readonly model: "channels";
       readonly operation: "insert";
       readonly row: ChannelRow;
@@ -141,8 +188,21 @@ export type DatabaseChange =
       readonly update: { readonly revokedAtMs: number };
     };
 
+export type DatabaseCommitExpectation =
+  | {
+      readonly model: "releases";
+      readonly id: string;
+      readonly revision: number | null;
+    }
+  | {
+      readonly model: "releaseCatalogs";
+      readonly scopeKey: string;
+      readonly generation: number | null;
+    };
+
 export interface DatabaseCommit {
   readonly changes: readonly DatabaseChange[];
+  readonly expectations?: readonly DatabaseCommitExpectation[];
 }
 
 type BundleRepositoryBundleChange = Extract<
@@ -174,41 +234,44 @@ export type DatabaseCommitResult =
   | { readonly committed: true }
   | {
       readonly committed: false;
-      readonly conflict: {
-        readonly changeIndex: number;
-        readonly reason: "not_found" | "referenced";
-      };
+      readonly conflict:
+        | {
+            readonly changeIndex: number;
+            readonly reason: "not_found" | "referenced";
+          }
+        | {
+            readonly changeIndex: -1;
+            readonly reason: "version_conflict";
+            readonly model: "releases" | "releaseCatalogs";
+            readonly key: string;
+            readonly expectedVersion: number | null;
+            readonly actualVersion: number | null;
+          };
     };
 
 export interface DatabaseModels {
   readonly bundles: BundleModel;
   readonly bundlePatches: BundlePatchModel;
+  readonly releases: ReleaseModel;
+  readonly releaseCatalogs: ReleaseCatalogModel;
   readonly channels: ChannelModel;
   readonly analytics: AnalyticsModel;
   readonly clientAccessKeys: ClientAccessKeyModel;
-}
-
-export interface DatabaseQueries {
-  readonly getUpdateInfo?: (
-    input: GetBundlesArgs,
-  ) => Promise<UpdateInfo | null>;
 }
 
 export interface BundleRepository {
   readonly name: string;
   readonly models: Pick<
     DatabaseModels,
-    "bundles" | "bundlePatches" | "channels"
+    "bundles" | "bundlePatches" | "channels" | "releaseCatalogs" | "releases"
   >;
-  readonly queries: DatabaseQueries;
-  commit(input: BundleRepositoryCommit): Promise<DatabaseCommitResult>;
+  commit(input: DatabaseCommit): Promise<DatabaseCommitResult>;
   dispose?: () => Promise<void>;
 }
 
 export interface DatabasePlugin {
   readonly name: string;
   readonly models: DatabaseModels;
-  readonly queries: DatabaseQueries;
   commit(input: DatabaseCommit): Promise<DatabaseCommitResult>;
   dispose?: () => Promise<void>;
 }

@@ -4,6 +4,8 @@ import type {
   BundleRow,
   ChannelRow,
   ClientAccessKeyRow,
+  ReleaseCatalogRow,
+  ReleaseRow,
 } from "@hot-updater/plugin-core";
 
 export interface Database {
@@ -12,4 +14,6 @@ export interface Database {
   readonly bundle_events: BundleEventRow;
   readonly channels: ChannelRow;
   readonly client_access_keys: ClientAccessKeyRow;
+  readonly release_catalogs: ReleaseCatalogRow;
+  readonly releases: ReleaseRow;
 }

@@ -27,7 +27,7 @@ PODS:
   - hermes-engine (250829098.0.10):
     - hermes-engine/Pre-built (= 250829098.0.10)
   - hermes-engine/Pre-built (250829098.0.10)
-  - HotUpdater (0.32.0):
+  - HotUpdater (0.35.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -1411,7 +1411,7 @@ PODS:
     - ReactNativeDependencies
   - react-native-launch-arguments (4.1.1):
     - React
-  - react-native-safe-area-context (5.6.0):
+  - react-native-safe-area-context (5.8.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -1423,8 +1423,8 @@ PODS:
     - React-graphics
     - React-ImageManager
     - React-jsi
-    - react-native-safe-area-context/common (= 5.6.0)
-    - react-native-safe-area-context/fabric (= 5.6.0)
+    - react-native-safe-area-context/common (= 5.8.0)
+    - react-native-safe-area-context/fabric (= 5.8.0)
     - React-NativeModulesApple
     - React-RCTFabric
     - React-renderercss
@@ -1435,7 +1435,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - react-native-safe-area-context/common (5.6.0):
+  - react-native-safe-area-context/common (5.8.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -1457,7 +1457,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - react-native-safe-area-context/fabric (5.6.0):
+  - react-native-safe-area-context/fabric (5.8.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2190,8 +2190,8 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   callstack-repack: 2d0e744d37013ccc33451e4c797d5dd67eae6e56
   FBLazyVector: 26fd21c75314e101f280d401e97f27d54f3f7064
-  hermes-engine: c86b85ce966fbd9bf06b05dd6b46c42f47c5440b
-  HotUpdater: 959fce48595a53f978ff72f7ea54d409db15d0c0
+  hermes-engine: 850c54bafc2b3e36ec15b2e3e10ce414eb41c538
+  HotUpdater: ddc0704bcf7b69b557ab72f072af2364ab0df34d
   JWTDecode: 2eed97c2fa46ccaf3049a787004eedf0be474a87
   RCTDeprecation: c7a2768f905d76ca6d2cfefb26e4349eacbdfca3
   RCTRequired: 5e502c3553cfbed090a991c444448da452fb752e
@@ -2201,7 +2201,7 @@ SPEC CHECKSUMS:
   React: 13cf8451582adb1bb324306e1893b91d1cba28c6
   React-callinvoker: 91e6a605826b684ad2e623811253b4d0c4196bef
   React-Core: 46818de5f211b2a2759ac823b591af8a0a95c2c1
-  React-Core-prebuilt: a2a56a10d5eab46092e4e3c5c3e69825ab65433a
+  React-Core-prebuilt: 96e4b9581422d28d0d524f8e223326a40da23e78
   React-CoreModules: a6a37afee48d4a31ab398640b0795462647d5c67
   React-cxxreact: 2ec3e2f7a8ae9303460d4ba94cde183ea90d64cd
   React-debug: 0d21117b897ce0359c9d2c9dfe952f237476a14a
@@ -2230,7 +2230,7 @@ SPEC CHECKSUMS:
   React-Mapbuffer: 1fc10d873f00aa895836c316a9737ce7d43875ce
   React-microtasksnativemodule: 85ac7286ff84e8fc8e1956233748b8d4b2a6dcea
   react-native-launch-arguments: eab68037b01ea7c78a0b3b55da3a5e967e9aaf92
-  react-native-safe-area-context: e71a1d806f23fcb4568636ff20ea187d4909bbb1
+  react-native-safe-area-context: fb5c8ee9f6dd62ef710611b3d370c501f42a4ac0
   React-NativeModulesApple: 993744f42aab769eb02bf5d256b6767c546d0bb5
   React-networking: 251bfddc651caca5e3039d1afa1d2eca890d0c56
   React-oscompat: ed8fa636665935e962d4091180ba6f07dcad7ea9
@@ -2262,9 +2262,9 @@ SPEC CHECKSUMS:
   React-utils: 862e61256698fe3841aec1af476abf924a6737c3
   React-webperformancenativemodule: e745e43264767cb8f4334fc11bf3fbff880050d0
   ReactAppDependencyProvider: 22e2265d86a4e871e5e858f4e7ef1c8d01103680
-  ReactCodegen: 369f980d7bf3490600e695f9187f4b275fa46aa9
+  ReactCodegen: 9dffa3ec5e4d5d86bbfb62addaef6b486e6460b8
   ReactCommon: a804bb8d1dcf3ecdec3a77eb8bba19b7863bbbdb
-  ReactNativeDependencies: 9807d528532ae6e34ea215759a3f98f511a7a708
+  ReactNativeDependencies: ef8b9b2f00a9fb0772c2a45f85efec053ee806d0
   RNBootSplash: babee2ef72807044d765c75e651896f0ce15a996
   RNScreens: 991cc417cd396602a6cf59a42139e5a9d91462a9
   SwiftyRSA: 8c6dd1ea7db1b8dc4fb517a202f88bb1354bc2c6

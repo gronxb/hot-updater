@@ -23,7 +23,8 @@ export const assertSupportedSchemaVersion = (
     currentVersion !== "0.31.0" &&
     currentVersion !== "0.36.0" &&
     currentVersion !== "0.37.0" &&
-    currentVersion !== "0.38.0"
+    currentVersion !== "0.38.0" &&
+    currentVersion !== "1.0.0"
   ) {
     throw new Error(
       `Unsupported Hot Updater schema version: ${currentVersion}`,

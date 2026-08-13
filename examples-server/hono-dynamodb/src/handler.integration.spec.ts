@@ -2,9 +2,12 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import {
+  type AttributeValue,
+  BatchWriteItemCommand,
   CreateTableCommand,
   DynamoDBClient,
   ListTablesCommand,
+  ScanCommand,
   waitUntilTableExists,
 } from "@aws-sdk/client-dynamodb";
 import {
@@ -17,12 +20,14 @@ import {
   type AppUpdateInfo,
   type Bundle,
   type GetBundlesArgs,
+  type LegacyBundle,
   NIL_UUID,
 } from "@hot-updater/core";
-import { createDatabaseClient } from "@hot-updater/plugin-core";
+import { updateReleasePolicy } from "@hot-updater/plugin-core";
 import { createClientAccessKey, type HotUpdaterAPI } from "@hot-updater/server";
 import { standaloneRepository } from "@hot-updater/standalone";
 import {
+  deleteLegacyBundle,
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
@@ -136,6 +141,58 @@ async function createBucket() {
   throw new Error(`Could not create local S3 bucket ${bucketName}`);
 }
 
+async function resetDecisionFixtures() {
+  const client = new DynamoDBClient({
+    region,
+    endpoint: dynamodbEndpoint,
+    credentials,
+  });
+  const keys: { pk: { S: string }; sk: { S: string } }[] = [];
+  let exclusiveStartKey: Record<string, AttributeValue> | undefined;
+
+  do {
+    const page = await client.send(
+      new ScanCommand({
+        TableName: tableName,
+        ProjectionExpression: "#pk, #sk",
+        ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
+        ExclusiveStartKey: exclusiveStartKey,
+      }),
+    );
+    for (const item of page.Items ?? []) {
+      const pk = item.pk?.S;
+      const sk = item.sk?.S;
+      if (
+        pk &&
+        sk &&
+        (pk === "bundles" ||
+          pk === "bundle_patches" ||
+          pk === "channels" ||
+          pk === "release_catalogs" ||
+          pk === "_hot-updater#channel-names" ||
+          pk === "_hot-updater#release-scope-by-id" ||
+          pk.startsWith("release-scope#"))
+      ) {
+        keys.push({ pk: { S: pk }, sk: { S: sk } });
+      }
+    }
+    exclusiveStartKey = page.LastEvaluatedKey;
+  } while (exclusiveStartKey);
+
+  for (let index = 0; index < keys.length; index += 25) {
+    await client.send(
+      new BatchWriteItemCommand({
+        RequestItems: {
+          [tableName]: keys.slice(index, index + 25).map((key) => ({
+            DeleteRequest: { Key: key },
+          })),
+        },
+      }),
+    );
+  }
+  client.destroy();
+}
+
 describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
@@ -204,7 +261,7 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
   }, 60000);
 
   const getUpdateInfo = async (
-    bundles: Bundle[],
+    bundles: LegacyBundle[],
     options: GetBundlesArgs,
   ): Promise<AppUpdateInfo | null> => {
     for (const bundle of bundles) {
@@ -227,9 +284,7 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
       }
       return (await response.json()) as AppUpdateInfo | null;
     } finally {
-      for (const bundle of bundles) {
-        await hotUpdater.deleteBundleById(bundle.id);
-      }
+      await resetDecisionFixtures();
     }
   };
 
@@ -238,12 +293,12 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
   setupBundleMethodsTestSuite({
     getBundleById: (id: string) => hotUpdater.getBundleById(id),
     getChannels: () => hotUpdater.getChannels(),
-    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
+    insertBundle: (bundle: LegacyBundle) => hotUpdater.insertBundle(bundle),
     getBundles: (options) => hotUpdater.getBundles(options),
     updateBundleById: (bundleId: string, bundle: Partial<Bundle>) =>
       hotUpdater.updateBundleById(bundleId, bundle),
     deleteBundleById: (bundleId: string) =>
-      hotUpdater.deleteBundleById(bundleId),
+      deleteLegacyBundle(hotUpdater, bundleId),
   });
 
   it("accepts authenticated events without granting client query access", async () => {
@@ -302,17 +357,16 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     expect(authorized.status).toBe(200);
   });
 
-  it("updates metadata through the authenticated standalone repository", async () => {
+  it("updates Release policy through the authenticated standalone repository", async () => {
     const database = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
       commonHeaders: {
         Authorization: `Bearer ${TEST_MANAGEMENT_AUTH_TOKEN}`,
       },
     });
-    const client = createDatabaseClient(database);
     const bundleId = "hono-dynamodb-update-target-app-version";
 
-    await client.insertBundle({
+    await hotUpdater.insertBundle({
       id: bundleId,
       platform: "ios",
       shouldForceUpdate: false,
@@ -326,13 +380,20 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
       fingerprintHash: null,
       rolloutCohortCount: 1000,
     });
-    await client.updateBundleById(bundleId, {
-      targetAppVersion: "1.0.2",
+    const [release] = await database.models.releases.findMany({
+      bundleId,
+      limit: 1,
+    });
+    if (release === undefined) throw new Error("Expected the deployed Release");
+    await updateReleasePolicy({
+      database,
+      releaseId: release.id,
+      patch: { targetAppVersion: "1.0.2" },
     });
 
-    expect(await hotUpdater.getBundleById(bundleId)).toMatchObject({
-      id: bundleId,
-      targetAppVersion: "1.0.2",
+    expect(await database.models.releases.findById(release.id)).toMatchObject({
+      id: release.id,
+      target_app_version: "1.0.2",
     });
   });
 });

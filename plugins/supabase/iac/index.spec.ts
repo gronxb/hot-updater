@@ -272,6 +272,7 @@ describe("selectBucket", () => {
     // Given
     const api: SupabaseApi = {
       createBucket: vi.fn(),
+      listLegacyBundlePolicies: vi.fn().mockResolvedValue([]),
       listBuckets: vi.fn().mockResolvedValue([
         {
           createdAt: "2026-07-26",
@@ -305,6 +306,7 @@ describe("selectBucket", () => {
     // Given
     const api: SupabaseApi = {
       createBucket: vi.fn(),
+      listLegacyBundlePolicies: vi.fn().mockResolvedValue([]),
       listBuckets: vi.fn().mockResolvedValue([
         {
           createdAt: "2026-07-26",
@@ -332,6 +334,7 @@ describe("selectBucket", () => {
   it("plans a missing saved bucket before creating it", async () => {
     const api: SupabaseApi = {
       createBucket: vi.fn().mockResolvedValue({ name: "saved-bucket" }),
+      listLegacyBundlePolicies: vi.fn().mockResolvedValue([]),
       listBuckets: vi
         .fn()
         .mockResolvedValueOnce([])
@@ -854,6 +857,9 @@ describe("resolveEdgeFunctionDenoConfig", () => {
             searchFrom: path.resolve("plugins/supabase"),
           },
         )}`,
+        kysely: `npm:kysely@${resolvePackageVersion("kysely", {
+          searchFrom: path.resolve("packages/server"),
+        })}`,
         mime: `npm:mime@${resolvePackageVersion("mime", {
           searchFrom: path.resolve("plugins/plugin-core"),
         })}`,

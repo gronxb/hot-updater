@@ -4,7 +4,10 @@ const mocks = vi.hoisted(() => ({
   createTable: vi.fn(),
   describeContinuousBackups: vi.fn(),
   describeTable: vi.fn(),
+  getItem: vi.fn(),
+  putItem: vi.fn(),
   query: vi.fn(),
+  updateItem: vi.fn(),
   updateContinuousBackups: vi.fn(),
   waitUntilTableExists: vi.fn(),
 }));
@@ -15,7 +18,10 @@ vi.mock("@aws-sdk/client-dynamodb", () => ({
       createTable: mocks.createTable,
       describeContinuousBackups: mocks.describeContinuousBackups,
       describeTable: mocks.describeTable,
+      getItem: mocks.getItem,
+      putItem: mocks.putItem,
       query: mocks.query,
+      updateItem: mocks.updateItem,
       updateContinuousBackups: mocks.updateContinuousBackups,
     };
   }),
@@ -26,6 +32,8 @@ import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamoDB";
 import { DynamoDBManager } from "./dynamodb";
 
 const compatibleTable = {
+  TableArn:
+    "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata",
   AttributeDefinitions: [
     { AttributeName: "pk", AttributeType: "S" },
     { AttributeName: "sk", AttributeType: "S" },
@@ -75,7 +83,10 @@ describe("DynamoDB lifecycle reconciliation", () => {
       },
     });
     mocks.updateContinuousBackups.mockResolvedValue({});
+    mocks.getItem.mockResolvedValue({});
+    mocks.putItem.mockResolvedValue({});
     mocks.query.mockResolvedValue({ Items: [] });
+    mocks.updateItem.mockResolvedValue({});
   });
 
   it("does not rewrite enabled point-in-time recovery", async () => {
@@ -106,7 +117,7 @@ describe("DynamoDB lifecycle reconciliation", () => {
     );
     await expect(
       manager().ensureTable("hot-updater-metadata"),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatch(/^aws\./u);
 
     expect(mocks.createTable).toHaveBeenCalledTimes(1);
     expect(mocks.updateContinuousBackups).toHaveBeenCalledTimes(2);

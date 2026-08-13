@@ -38,9 +38,9 @@ describe("ConfigResponse", () => {
     expectTypeOf<ConfigResponse["database"]["dispose"]>().toEqualTypeOf<
       ConfigInput["database"]["dispose"]
     >();
-    expectTypeOf<
-      ConfigResponse["database"]["queries"]["getUpdateInfo"]
-    >().toEqualTypeOf<ConfigInput["database"]["queries"]["getUpdateInfo"]>();
+    expect(Reflect.has({} as ConfigResponse["database"], "queries")).toBe(
+      false,
+    );
   });
 });
 
@@ -73,6 +73,7 @@ describe("loadConfig", () => {
     const config = await loadConfig(null);
 
     expect(config.releaseChannel).toBe("production");
+    expect(config.authorityId).toBe("default");
     expect(config.cacheDir).toBe(path.join("node_modules", ".hot-updater"));
     expect(config.updateStrategy).toBe("appVersion");
     expect(config.compressStrategy).toBe("zip");
@@ -83,6 +84,19 @@ describe("loadConfig", () => {
     expect(config.platform.ios.infoPlistPaths).toEqual([]);
     expect(config.console.port).toBe(1422);
     expect(typeof config.database).toBe("object");
+  });
+
+  it("preserves an explicit Release catalog authority", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      "export default { authorityId: 'project-a' };\n",
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    const config = await loadConfig(null);
+
+    expect(config.authorityId).toBe("project-a");
   });
 
   it("allows disabling the local CLI cache", async () => {

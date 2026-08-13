@@ -1,11 +1,12 @@
 import { createMockDatabaseData, mockDatabase } from "@hot-updater/mock";
-import type { Bundle } from "@hot-updater/plugin-core";
+import type { Bundle, LegacyBundle } from "@hot-updater/plugin-core";
 import {
   bundleToPatchRows,
   bundleToRow,
   createDatabaseClient,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
+import { compileLegacyReleaseCatalogBackfill } from "@hot-updater/server";
 import { vi } from "vitest";
 
 export const createDatabasePluginHarness = () => {
@@ -37,6 +38,30 @@ export const createDatabasePluginHarness = () => {
           return basePlugin.models.bundlePatches.findByBundleIds(bundleIds);
         },
       },
+      releases: {
+        async findById(id) {
+          await read();
+          return basePlugin.models.releases.findById(id);
+        },
+        async findMany(input) {
+          await read();
+          return basePlugin.models.releases.findMany(input);
+        },
+        async findManyByScope(input) {
+          await read();
+          return basePlugin.models.releases.findManyByScope(input);
+        },
+      },
+      releaseCatalogs: {
+        async findByScopeKey(scopeKey) {
+          await read();
+          return basePlugin.models.releaseCatalogs.findByScopeKey(scopeKey);
+        },
+        async findMany(input) {
+          await read();
+          return basePlugin.models.releaseCatalogs.findMany(input);
+        },
+      },
       channels: {
         insert: (input) => basePlugin.models.channels.insert(input),
         async list(input) {
@@ -48,14 +73,27 @@ export const createDatabasePluginHarness = () => {
       analytics: basePlugin.models.analytics,
       clientAccessKeys: basePlugin.models.clientAccessKeys,
     },
-    queries: {
-      async getUpdateInfo(args) {
-        await read();
-        return basePlugin.queries.getUpdateInfo?.(args) ?? null;
-      },
-    },
     commit,
     dispose,
+  };
+
+  const setBundles = (bundles: readonly LegacyBundle[]): void => {
+    data.bundles.clear();
+    data.bundlePatches.clear();
+    data.channels.clear();
+    data.releaseCatalogs.clear();
+    data.releases.clear();
+    const channels = [...new Set(bundles.map(({ channel }) => channel))].map(
+      (name) => ({ id: `channel-${name}`, name }),
+    );
+    for (const channel of channels) data.channels.set(channel.id, channel);
+    for (const bundle of bundles) {
+      data.bundles.set(bundle.id, bundleToRow(bundle));
+      for (const patch of bundleToPatchRows(bundle)) {
+        data.bundlePatches.set(patch.id, patch);
+      }
+    }
+    return;
   };
 
   return {
@@ -69,34 +107,58 @@ export const createDatabasePluginHarness = () => {
           limit: 100,
         })
       ).data,
+    releases: () =>
+      plugin.models.releases.findMany({
+        limit: 100,
+      }),
     reset: (): void => {
       data.bundles.clear();
       data.bundlePatches.clear();
       data.bundleEvents.clear();
       data.channels.clear();
       data.clientAccessKeys.clear();
+      data.releaseCatalogs.clear();
+      data.releases.clear();
       read.mockReset().mockResolvedValue(undefined);
       commit
         .mockReset()
         .mockImplementation((input) => basePlugin.commit(input));
     },
-    setBundles: (bundles: readonly Bundle[]): void => {
-      data.bundles.clear();
-      data.bundlePatches.clear();
-      data.channels.clear();
-      const channels = [...new Set(bundles.map(({ channel }) => channel))].map(
-        (name) => ({ id: `channel-${name}`, name }),
+    setBundles,
+    seedLegacyBundles: async (
+      bundles: readonly LegacyBundle[],
+      authorityId = "default",
+    ): Promise<void> => {
+      setBundles(bundles);
+      const channelIds = new Map(
+        [...data.channels.values()].map(({ id, name }) => [name, id]),
       );
-      const channelIds = new Map(channels.map(({ id, name }) => [name, id]));
-      for (const channel of channels) data.channels.set(channel.id, channel);
-      for (const bundle of bundles) {
-        data.bundles.set(
-          bundle.id,
-          bundleToRow(bundle, channelIds.get(bundle.channel)!),
-        );
-        for (const patch of bundleToPatchRows(bundle)) {
-          data.bundlePatches.set(patch.id, patch);
-        }
+      const backfill = await compileLegacyReleaseCatalogBackfill({
+        authorityId,
+        rows: bundles.map((bundle) => ({
+          id: bundle.id,
+          platform: bundle.platform,
+          channel: bundle.channel,
+          enabled: bundle.enabled,
+          should_force_update: bundle.shouldForceUpdate,
+          message: bundle.message,
+          target_app_version: bundle.targetAppVersion,
+          fingerprint_hash: bundle.fingerprintHash,
+          rollout_cohort_count: bundle.rolloutCohortCount,
+          target_cohorts: bundle.targetCohorts,
+        })),
+      });
+      for (const release of backfill.releases) {
+        data.releases.set(release.row.id, {
+          ...release.row,
+          channel_id: channelIds.get(release.channelName)!,
+        });
+      }
+      for (const catalog of backfill.catalogs) {
+        data.releaseCatalogs.set(catalog.row.scope_key, {
+          ...catalog.row,
+          channel_id: channelIds.get(catalog.channelName)!,
+        });
       }
     },
   };

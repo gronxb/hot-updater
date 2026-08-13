@@ -369,6 +369,164 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
+    fun `catalog high water rejects replay and survives channel reset`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder("release-high-water")
+            val service = createService(rootDir)
+
+            assertTrue(
+                service.acceptReleaseCatalog(
+                    authorityId = "project-a",
+                    scopeKey = "scope-production",
+                    generation = 2,
+                    catalogHash = "hash-2",
+                    channel = "production",
+                    selectionContextHash = "context-2",
+                ),
+            )
+            assertFalse(
+                service.acceptReleaseCatalog(
+                    authorityId = "project-a",
+                    scopeKey = "scope-production",
+                    generation = 1,
+                    catalogHash = "hash-1",
+                    channel = "production",
+                    selectionContextHash = "context-1",
+                ),
+            )
+            assertFalse(
+                service.acceptReleaseCatalog(
+                    authorityId = "project-a",
+                    scopeKey = "scope-production",
+                    generation = 2,
+                    catalogHash = "different-hash",
+                    channel = "production",
+                    selectionContextHash = "context-2",
+                ),
+            )
+
+            assertTrue(service.resetChannel())
+            val metadata = loadMetadata(rootDir)
+            assertEquals(
+                CatalogHighWater(generation = 2, catalogHash = "hash-2"),
+                metadata?.highestSeenCatalogs?.get("project-a|scope-production"),
+            )
+        }
+
+    @Test
+    fun `same bundle adoption refreshes its receipt without changing bytes`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder("same-bundle-adoption")
+            val service = createService(rootDir)
+            val bundleDir = createBundleDir(rootDir, "bundle-one")
+            writeFile(bundleDir, "index.android.bundle")
+            writeManifest(bundleDir, listOf("index.android.bundle"))
+            val oldSelection =
+                releaseSelection(
+                    releaseId = "release-one",
+                    bundleId = bundleDir.name,
+                    generation = 1,
+                    catalogHash = "hash-1",
+                    selectionContextHash = "context-1",
+                )
+            writeMetadata(
+                rootDir,
+                BundleMetadata(
+                    isolationKey = TEST_ISOLATION_KEY,
+                    stagingBundleId = bundleDir.name,
+                    stagingSelection = oldSelection,
+                ),
+            )
+            assertTrue(
+                service.acceptReleaseCatalog(
+                    authorityId = "project-a",
+                    scopeKey = "scope-production",
+                    generation = 2,
+                    catalogHash = "hash-2",
+                    channel = "production",
+                    selectionContextHash = "context-2",
+                ),
+            )
+            val newSelection =
+                releaseSelection(
+                    releaseId = "release-two",
+                    bundleId = bundleDir.name,
+                    generation = 2,
+                    catalogHash = "hash-2",
+                    selectionContextHash = "context-2",
+                )
+
+            assertTrue(service.commitReleaseSelection(newSelection))
+
+            assertTrue(bundleDir.isDirectory)
+            assertEquals(newSelection, loadMetadata(rootDir)?.stagingSelection)
+            assertFalse(loadMetadata(rootDir)?.verificationPending ?: true)
+        }
+
+    @Test
+    fun `crash restores the complete stable receipt but retains newer high water`() {
+        val rootDir = temporaryFolder.newFolder("release-crash-ledger")
+        val service = createService(rootDir)
+        val stableDir = createBundleDir(rootDir, "bundle-one")
+        writeFile(stableDir, "index.android.bundle")
+        writeManifest(stableDir, listOf("index.android.bundle"))
+        val stagingDir = createBundleDir(rootDir, "bundle-two")
+        writeFile(stagingDir, "index.android.bundle")
+        writeManifest(stagingDir, listOf("index.android.bundle"))
+        val stableSelection =
+            releaseSelection("release-one", stableDir.name, 1, "hash-1", "context-1")
+        val stagingSelection =
+            releaseSelection("release-two", stagingDir.name, 2, "hash-2", "context-2")
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = stableDir.name,
+                stagingBundleId = stagingDir.name,
+                stableSelection = stableSelection,
+                stagingSelection = stagingSelection,
+                pendingUpdateStrategy = "appVersion",
+                pendingTransition =
+                    PendingSelectionTransition(
+                        fromReleaseId = stableSelection.releaseId,
+                        fromBundleId = stableSelection.bundleId,
+                        toReleaseId = stagingSelection.releaseId,
+                        toBundleId = stagingSelection.bundleId,
+                    ),
+                verificationPending = true,
+                highestSeenCatalogs =
+                    mapOf(
+                        "project-a|scope-production" to
+                            CatalogHighWater(generation = 2, catalogHash = "hash-2"),
+                    ),
+                currentSelectionContexts =
+                    mapOf("project-a|scope-production" to "production\ncontext-2"),
+            ),
+        )
+
+        val launch =
+            service.prepareLaunch(
+                PendingCrashRecovery(
+                    launchedBundleId = stagingDir.name,
+                    shouldRollback = true,
+                ),
+            )
+        val report = service.notifyAppReady()
+        val metadata = loadMetadata(rootDir)
+
+        assertEquals(stableDir.name, launch.launchedBundleId)
+        assertEquals("RECOVERED", report["status"])
+        assertEquals("release-two", report["fromReleaseId"])
+        assertEquals("release-one", report["toReleaseId"])
+        assertEquals(stableSelection, metadata?.stagingSelection)
+        assertEquals(
+            CatalogHighWater(generation = 2, catalogHash = "hash-2"),
+            metadata?.highestSeenCatalogs?.get("project-a|scope-production"),
+        )
+        assertTrue(service.getCrashHistory().contains(stagingDir.name))
+    }
+
+    @Test
     fun `manifest driven install moves blocking work off caller dispatcher`() {
         val rootDir = temporaryFolder.newFolder("manifest-install-dispatcher")
         val preferences = InMemoryPreferencesService()
@@ -442,6 +600,26 @@ class BundleFileStorageServiceTest {
             DecompressService(),
             preferences,
             TEST_ISOLATION_KEY,
+            { "production" },
+        )
+
+    private fun releaseSelection(
+        releaseId: String,
+        bundleId: String,
+        generation: Long,
+        catalogHash: String,
+        selectionContextHash: String,
+    ): PersistedSelection =
+        PersistedSelection(
+            kind = "BUNDLE",
+            releaseId = releaseId,
+            bundleId = bundleId,
+            authorityId = "project-a",
+            scopeKey = "scope-production",
+            generation = generation,
+            catalogHash = catalogHash,
+            channel = "production",
+            selectionContextHash = selectionContextHash,
         )
 
     private fun createBundleDir(

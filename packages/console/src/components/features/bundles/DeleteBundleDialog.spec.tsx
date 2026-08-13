@@ -124,18 +124,10 @@ vi.mock("@/components/ui/alert-dialog", async () => {
 
 const bundle: Bundle = {
   id: "0195a408-8f13-7d9b-8df4-123456789abc",
-  channel: "stable",
   platform: "ios",
-  enabled: true,
-  shouldForceUpdate: false,
   fileHash: "abc123",
   storageUri: "s3://bucket/bundle.zip",
   gitCommitHash: "deadbeef",
-  message: "Initial message",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
-  rolloutCohortCount: 1000,
-  targetCohorts: [],
 };
 
 describe("DeleteBundleDialog", () => {

@@ -16,6 +16,7 @@ import {
   persistScreenState,
   readPersistedScreenState,
 } from "./screen-state-persistence";
+import { useCapturedUpdateActions } from "./useCapturedUpdateActions";
 
 const DEFAULT_ACTION_RESULT = "idle";
 const DEFAULT_RUNTIME_CHANNEL_INPUT = "beta";
@@ -99,9 +100,29 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
     return () => clearTimeout(timeout);
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const updateInfo = await HotUpdater.checkForUpdate({
+          updateStrategy: "appVersion",
+        });
+        if (!active || !updateInfo?.shouldForceUpdate) return;
+        if (await updateInfo.updateBundle()) await HotUpdater.reload();
+      } catch (error) {
+        console.error(error);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const refresh = async () => {
     setRuntimeSnapshot(await refreshRuntimeSnapshot());
   };
+  const { applyCapturedUpdate, captureCurrentChannelUpdate } =
+    useCapturedUpdateActions({ refresh, setUpdateActionResult });
 
   const clearCrashHistory = async () => {
     HotUpdater.clearCrashHistory();
@@ -121,11 +142,12 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
   const installUpdate = async ({
     actionLabel,
     channel,
+    strategy = "appVersion",
   }: InstallUpdateInput) => {
     try {
       await setUpdateActionResult(`${actionLabel} -> checking`);
       const updateInfo = await HotUpdater.checkForUpdate({
-        updateStrategy: "appVersion",
+        updateStrategy: strategy,
         ...(channel ? { channel } : {}),
       });
 
@@ -136,10 +158,17 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
       }
 
       const installed = await updateInfo.updateBundle();
+      const releaseLabel = updateInfo.releaseId ?? "legacy";
+      const appliedResult =
+        updateInfo.transitionKind === "ADOPT_RELEASE"
+          ? `${actionLabel} -> adopted Release ${releaseLabel} / Bundle ${updateInfo.id}`
+          : updateInfo.transitionKind === "USE_EMBEDDED"
+            ? `${actionLabel} -> selected EMBEDDED Release ${releaseLabel}`
+            : updateInfo.transitionKind === "USE_BUILTIN"
+              ? `${actionLabel} -> selected BUILTIN`
+              : `${actionLabel} -> installed Release ${releaseLabel} / Bundle ${updateInfo.id}`;
       await setUpdateActionResult(
-        installed
-          ? `${actionLabel} -> installed ${updateInfo.id}`
-          : `${actionLabel} -> skipped`,
+        installed ? appliedResult : `${actionLabel} -> skipped`,
       );
       await refresh();
     } catch (error) {
@@ -213,19 +242,23 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
   };
 
   return {
+    applyCapturedUpdate,
     applyCohortInput,
+    captureCurrentChannelUpdate,
     channelActionResult,
     clearCrashHistory,
     cohortActionResult,
     cohortInput,
-    crashedBundleText: `Current Crashed Bundle ID: ${
-      notifyState.crashedBundleId ?? "null"
-    }`,
     initialCohort,
     installRuntimeChannelUpdate,
     installUpdate,
     isUpdateDownloaded: progressState.isUpdateDownloaded,
     launchStatusText: `Current Launch Status: ${notifyState.status ?? "null"}`,
+    launchTransitionText: `Current Launch Transition: fromReleaseId=${
+      notifyState.fromReleaseId ?? "null"
+    } fromBundleId=${notifyState.fromBundleId ?? "null"} toReleaseId=${
+      notifyState.toReleaseId ?? "null"
+    } toBundleId=${notifyState.toBundleId ?? "null"}`,
     reloadApp,
     resetRuntimeChannel,
     restoreInitialCohort,

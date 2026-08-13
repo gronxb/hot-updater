@@ -1,6 +1,6 @@
 import type { ORMProvider } from "../db/types";
 
-export const HOT_UPDATER_SCHEMA_VERSION = "0.38.0";
+export const HOT_UPDATER_SCHEMA_VERSION = "1.0.0";
 export const HOT_UPDATER_CORE_SCHEMA_KEY = "schema.core";
 export const HOT_UPDATER_SETTINGS_TABLE = "private_hot_updater_settings";
 
@@ -9,6 +9,7 @@ export type HotUpdaterColumnType =
   | "float"
   | "integer"
   | "json"
+  | "large-string"
   | "string"
   | "uuid"
   | `varchar(${number})`;
@@ -46,7 +47,7 @@ export interface HotUpdaterForeignKeySchema {
   readonly referencedTable: string;
   readonly referencedColumns: readonly string[];
   readonly onUpdate: "restrict";
-  readonly onDelete: "cascade" | "restrict";
+  readonly onDelete: "cascade" | "restrict" | "set null";
 }
 
 export interface HotUpdaterRelationSchema {
@@ -81,4 +82,5 @@ export type HotUpdaterSchemaVersion =
   | "0.31.0"
   | "0.36.0"
   | "0.37.0"
-  | "0.38.0";
+  | "0.38.0"
+  | "1.0.0";

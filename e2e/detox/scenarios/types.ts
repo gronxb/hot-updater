@@ -10,6 +10,10 @@ export type DetoxAssertTextOptions = {
   readonly ensureForeground?: boolean;
 };
 
+export type DetoxLaunchOptions = {
+  readonly allowDisconnect?: boolean;
+};
+
 export type DetoxAppDriver = {
   readonly assertText: (
     stage: string,
@@ -23,7 +27,10 @@ export type DetoxAppDriver = {
     body?: JsonObject,
     options?: DetoxControlOptions,
   ) => Promise<void>;
-  readonly launch: (stage: string) => Promise<void>;
+  readonly launch: (
+    stage: string,
+    options?: DetoxLaunchOptions,
+  ) => Promise<void>;
   readonly reload: (stage: string) => Promise<void>;
   readonly resetAppState: (stage: string) => Promise<void>;
   readonly tap: (stage: string, testID: string) => Promise<void>;

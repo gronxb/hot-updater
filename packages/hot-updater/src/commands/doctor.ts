@@ -701,6 +701,7 @@ export async function doctor(
 
       if (
         details.infrastructure.error !== undefined ||
+        details.infrastructure.catalogCacheError !== undefined ||
         details.infrastructure.needsUpdate === true
       ) {
         details.infrastructure.remediation = createInfrastructureRemediation();
@@ -719,6 +720,7 @@ export async function doctor(
     // Check if there are any issues
     const hasInfrastructureIssue =
       details.infrastructure?.error !== undefined ||
+      details.infrastructure?.catalogCacheError !== undefined ||
       details.infrastructure?.needsUpdate === true;
     const hasNativeIssue =
       details.native?.issues.some((issue) => issue.type === "error") === true;
@@ -860,6 +862,10 @@ export const handleDoctor = async ({
       p.log.error(`Infrastructure check failed: ${infrastructure.error}`);
     } else {
       p.log.success("Infrastructure is up to date.");
+    }
+
+    if (infrastructure.catalogCacheError) {
+      p.log.error(`Release catalog cache: ${infrastructure.catalogCacheError}`);
     }
 
     if (infrastructure.remediation) {

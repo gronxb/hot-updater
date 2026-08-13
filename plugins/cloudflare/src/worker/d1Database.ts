@@ -46,7 +46,6 @@ export const d1Database = (database: D1Like) => {
   return createDatabasePlugin({
     name: "d1Database",
     models: adapter.models,
-    queries: adapter.queries,
     commit: adapter.commit,
     ...(adapter.dispose ? { dispose: adapter.dispose } : {}),
   });

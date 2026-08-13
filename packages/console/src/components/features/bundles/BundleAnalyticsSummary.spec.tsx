@@ -39,18 +39,10 @@ vi.mock("recharts", () => ({
 
 const bundle: Bundle = {
   id: "01972020-1aa1-7445-8b8c-111111111111",
-  channel: "production",
   platform: "ios",
-  enabled: true,
-  shouldForceUpdate: false,
   fileHash: "abc123",
   storageUri: "s3://bucket/bundle.zip",
   gitCommitHash: null,
-  message: "OTA analytics",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
-  rolloutCohortCount: 1000,
-  targetCohorts: [],
 };
 
 const analytics = {

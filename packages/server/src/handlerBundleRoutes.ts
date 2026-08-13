@@ -1,8 +1,9 @@
-import type { Bundle } from "@hot-updater/core";
+import type { LegacyBundle } from "@hot-updater/core";
 import type { ChannelInsertInput } from "@hot-updater/plugin-core";
 
 import { HandlerBadRequestError } from "./handlerErrors";
 import {
+  decodeMaybe,
   isPlatform,
   parseBooleanSearchParam,
   parseNullableStringSearchParam,
@@ -49,12 +50,12 @@ const requireChannelInsertInput = (value: unknown): ChannelInsertInput => {
   };
 };
 
-type BundlePatchPayload = Partial<Bundle> & { readonly id?: string };
+type BundlePatchPayload = Partial<LegacyBundle> & { readonly id?: string };
 
 const requireBundlePatchPayload = (
   payload: unknown,
   bundleId: string,
-): Partial<Bundle> => {
+): Partial<LegacyBundle> => {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new HandlerBadRequestError("Invalid bundle payload");
   }
@@ -210,7 +211,7 @@ export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
     const body = await request.json();
     const bundles = Array.isArray(body) ? body : [body];
     if (api.insertBundles) {
-      await api.insertBundles(bundles as Bundle[]);
+      await api.insertBundles(bundles as LegacyBundle[]);
     } else {
       if (bundles.length > 1) {
         throw new HandlerBadRequestError(
@@ -219,7 +220,7 @@ export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
       }
       const bundle = bundles[0];
       if (bundle !== undefined) {
-        await api.insertBundle(bundle as Bundle);
+        await api.insertBundle(bundle as LegacyBundle);
       }
     }
     return new Response(JSON.stringify({ success: true }), {
@@ -272,7 +273,7 @@ export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
 
   deleteChannel: async (params, _request, api) => {
     const result = await api.deleteChannel({
-      id: requireRouteParam(params, "id"),
+      id: decodeMaybe(requireRouteParam(params, "id")) ?? "",
     });
     if (result.deleted) {
       return new Response(null, { status: 204 });

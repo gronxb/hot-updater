@@ -1,9 +1,11 @@
 import {
   type ChangedAsset,
+  type CatalogHighWater,
   INVALID_COHORT_ERROR_MESSAGE,
   isValidCohort,
   normalizeCohortValue,
   type UpdateStatus,
+  type PersistedSelectionReceipt,
 } from "@hot-updater/core";
 import { NativeEventEmitter, Platform } from "react-native";
 
@@ -319,6 +321,78 @@ export type UpdateParams = UpdateBundleParams & {
   shouldSkipCurrentBundleIdCheck?: boolean;
 };
 
+export interface ActiveUpdateState {
+  readonly activeSelection: PersistedSelectionReceipt | null;
+  readonly stableSelection: PersistedSelectionReceipt | null;
+  readonly verificationPending: boolean;
+  readonly highestSeenCatalogs: Readonly<Record<string, CatalogHighWater>>;
+}
+
+export interface ReleaseSelectionGuard {
+  readonly authorityId: string;
+  readonly scopeKey: string;
+  readonly generation: number;
+  readonly catalogHash: string;
+  readonly selectionContextHash: string;
+  readonly channel: string;
+}
+
+const requireReleaseCatalogNativeMethod = <T extends (...args: any[]) => any>(
+  name: string,
+): T => {
+  const method = (HotUpdaterNative as unknown as Record<string, unknown>)[name];
+  if (typeof method !== "function") {
+    throw new Error(
+      `[HotUpdater] Native module is missing '${name}()'. Rebuild the native app before using Release catalogs.`,
+    );
+  }
+  return method.bind(HotUpdaterNative) as T;
+};
+
+export const acceptReleaseCatalog = (input: {
+  readonly authorityId: string;
+  readonly scopeKey: string;
+  readonly generation: number;
+  readonly catalogHash: string;
+  readonly channel: string;
+  readonly selectionContextHash: string;
+}): boolean =>
+  requireReleaseCatalogNativeMethod<(params: object) => boolean>(
+    "acceptReleaseCatalog",
+  )(input);
+
+export const getActiveUpdateState = (): ActiveUpdateState => {
+  const value = requireReleaseCatalogNativeMethod<() => unknown>(
+    "getActiveUpdateState",
+  )();
+  if (typeof value === "string") {
+    return JSON.parse(value) as ActiveUpdateState;
+  }
+  return value as ActiveUpdateState;
+};
+
+export const isReleaseSelectionCurrent = (
+  input: ReleaseSelectionGuard,
+): boolean =>
+  requireReleaseCatalogNativeMethod<(params: object) => boolean>(
+    "isReleaseSelectionCurrent",
+  )(input);
+
+export const commitReleaseSelection = async (input: {
+  readonly selection: PersistedSelectionReceipt;
+  readonly guard: ReleaseSelectionGuard;
+}): Promise<boolean> => {
+  const ok = await requireReleaseCatalogNativeMethod<
+    (params: object) => Promise<boolean>
+  >("commitReleaseSelection")(input);
+  if (ok)
+    sessionState.markBundleInstalled(
+      input.selection.bundleId,
+      input.selection.channel,
+    );
+  return ok;
+};
+
 /**
  * Downloads files and applies them to the app.
  *
@@ -406,6 +480,10 @@ export async function updateBundle(
 
   const promise = (async () => {
     try {
+      const selection =
+        typeof paramsOrBundleId === "string"
+          ? undefined
+          : paramsOrBundleId.selection;
       const ok = await HotUpdaterNative.updateBundle({
         bundleId: updateBundleId,
         channel: targetChannel,
@@ -415,6 +493,7 @@ export async function updateBundle(
         fileHash: targetFileHash ?? null,
         manifestFileHash: targetManifestFileHash ?? null,
         manifestUrl: targetManifestUrl ?? null,
+        ...(selection === undefined ? {} : { selection }),
       });
       if (ok) {
         sessionState.markBundleInstalled(updateBundleId, targetChannel);
@@ -526,6 +605,12 @@ export const getMinBundleId = (): string => {
   const constants = HotUpdaterNative.getConstants();
   return constants.MIN_BUNDLE_ID;
 };
+
+/** Preferred Release-catalog name for the build-time UUIDv7 floor. */
+export const getMinimumReleaseId = getMinBundleId;
+
+export const getReleaseId = async (): Promise<string | null> =>
+  getActiveUpdateState().activeSelection?.releaseId ?? null;
 
 /**
  * Fetches the current bundle version id.
@@ -693,20 +778,36 @@ export function setUser(params: SetUserParams | null): void {
  */
 export type NotifyAppReadyResult =
   | { status: "UNCHANGED" }
-  | { status: "UPDATE_APPLIED"; fromBundleId: string; toBundleId: string }
-  | { status: "RECOVERED"; fromBundleId: string; toBundleId: string };
+  | {
+      status: "UPDATE_APPLIED";
+      fromBundleId: string;
+      toBundleId: string;
+      fromReleaseId?: string;
+      toReleaseId?: string;
+    }
+  | {
+      status: "RECOVERED";
+      fromBundleId: string;
+      toBundleId: string;
+      fromReleaseId?: string;
+      toReleaseId?: string;
+    };
 
 export type NotifyAppReadyAnalyticsEvent = {
   type: "UPDATE_APPLIED" | "RECOVERED";
   fromBundleId: string;
   toBundleId: string;
+  fromReleaseId?: string | null;
+  toReleaseId?: string | null;
   updateStrategy: PersistedUpdateStrategy;
 };
 
 type RawNotifyAppReadyResult = {
   status?: string;
   crashedBundleId?: string;
+  fromReleaseId?: string;
   fromBundleId?: string;
+  toReleaseId?: string;
   toBundleId?: string;
   updateStrategy?: PersistedUpdateStrategy;
 };
@@ -754,12 +855,20 @@ const readDirectionalBundleId = (bundleId: unknown): string | null => {
   return resolveBundleId(normalizedBundleId);
 };
 
+const readDirectionalReleaseId = (releaseId: unknown): string | null => {
+  if (typeof releaseId !== "string") return null;
+  const normalizedReleaseId = releaseId.trim();
+  return normalizedReleaseId.length === 0 ? null : normalizedReleaseId;
+};
+
 const getNotifyAppReadyTransition = (
   result: RawNotifyAppReadyResult,
 ): {
   status: "UPDATE_APPLIED" | "RECOVERED";
   fromBundleId: string;
   toBundleId: string;
+  fromReleaseId: string | null;
+  toReleaseId: string | null;
 } | null => {
   if (result.status === "UPDATE_APPLIED" || result.status === "PROMOTED") {
     const fromBundleId = readDirectionalBundleId(result.fromBundleId);
@@ -769,6 +878,8 @@ const getNotifyAppReadyTransition = (
         status: "UPDATE_APPLIED",
         fromBundleId,
         toBundleId,
+        fromReleaseId: readDirectionalReleaseId(result.fromReleaseId),
+        toReleaseId: readDirectionalReleaseId(result.toReleaseId),
       };
     }
   }
@@ -781,6 +892,8 @@ const getNotifyAppReadyTransition = (
         status: "RECOVERED",
         fromBundleId,
         toBundleId,
+        fromReleaseId: readDirectionalReleaseId(result.fromReleaseId),
+        toReleaseId: readDirectionalReleaseId(result.toReleaseId),
       };
     }
   }
@@ -801,6 +914,12 @@ const getNotifyAppReadyAnalyticsEvent = (
     type: transition.status,
     fromBundleId: transition.fromBundleId,
     toBundleId: transition.toBundleId,
+    ...(transition.fromReleaseId === null
+      ? {}
+      : { fromReleaseId: transition.fromReleaseId }),
+    ...(transition.toReleaseId === null
+      ? {}
+      : { toReleaseId: transition.toReleaseId }),
     updateStrategy: result.updateStrategy,
   };
 };
@@ -811,7 +930,17 @@ const normalizeNotifyAppReadyResult = (
   const transition = getNotifyAppReadyTransition(result);
 
   if (transition) {
-    return transition;
+    return {
+      status: transition.status,
+      fromBundleId: transition.fromBundleId,
+      toBundleId: transition.toBundleId,
+      ...(transition.fromReleaseId === null
+        ? {}
+        : { fromReleaseId: transition.fromReleaseId }),
+      ...(transition.toReleaseId === null
+        ? {}
+        : { toReleaseId: transition.toReleaseId }),
+    };
   }
 
   return { status: "UNCHANGED" };

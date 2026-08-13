@@ -33,11 +33,6 @@ const nullableString = (value: unknown, source: string): string | null => {
   return string(value, source);
 };
 
-const boolean = (value: unknown, source: string): boolean => {
-  if (typeof value !== "boolean") throw new MongoAdapterDataError(source);
-  return value;
-};
-
 const integer = (
   value: unknown,
   source: string,
@@ -61,20 +56,6 @@ const platform = (value: unknown, source: string): "android" | "ios" => {
   return value;
 };
 
-const targetCohorts = (
-  value: unknown,
-  source: string,
-): readonly string[] | null => {
-  if (value === null || value === undefined) return null;
-  if (
-    !Array.isArray(value) ||
-    !value.every((item) => typeof item === "string")
-  ) {
-    throw new MongoAdapterDataError(source);
-  }
-  return value;
-};
-
 const metadata = (value: unknown, source: string) => {
   const normalized = value === undefined ? {} : value;
   if (!isDatabaseMetadataObject(normalized)) {
@@ -88,30 +69,13 @@ export const parseMongoBundleRow = (
   source = "bundles",
 ): BundleRow => {
   const input = record(value, source);
-  const targetAppVersion = nullableString(input["target_app_version"], source);
-  const fingerprintHash = nullableString(input["fingerprint_hash"], source);
-  if (targetAppVersion === null && fingerprintHash === null) {
-    throw new MongoAdapterDataError(source);
-  }
   return {
     id: string(input["id"], source),
     platform: platform(input["platform"], source),
-    should_force_update: boolean(input["should_force_update"], source),
-    enabled: boolean(input["enabled"], source),
     file_hash: string(input["file_hash"], source),
     git_commit_hash: nullableString(input["git_commit_hash"], source),
-    message: nullableString(input["message"], source),
-    channel: string(input["channel"], source),
-    channel_id: string(input["channel_id"], source),
     storage_uri: string(input["storage_uri"], source),
-    target_app_version: targetAppVersion,
-    fingerprint_hash: fingerprintHash,
     metadata: metadata(input["metadata"], source),
-    rollout_cohort_count:
-      input["rollout_cohort_count"] === undefined
-        ? 1000
-        : integer(input["rollout_cohort_count"], source, 1000),
-    target_cohorts: targetCohorts(input["target_cohorts"], source),
     manifest_storage_uri: nullableString(input["manifest_storage_uri"], source),
     manifest_file_hash: nullableString(input["manifest_file_hash"], source),
     asset_base_storage_uri: nullableString(

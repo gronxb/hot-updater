@@ -99,6 +99,30 @@ interface BundleStorageService {
         progressCallback: (UpdateProgressPayload) -> Unit,
     )
 
+    fun stageReleaseSelection(selection: PersistedSelection): Boolean = false
+
+    fun acceptReleaseCatalog(
+        authorityId: String,
+        scopeKey: String,
+        generation: Long,
+        catalogHash: String,
+        channel: String,
+        selectionContextHash: String,
+    ): Boolean = false
+
+    fun getActiveUpdateState(): Map<String, Any?> = emptyMap()
+
+    fun isReleaseSelectionCurrent(
+        authorityId: String,
+        scopeKey: String,
+        generation: Long,
+        catalogHash: String,
+        channel: String,
+        selectionContextHash: String,
+    ): Boolean = false
+
+    suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean = false
+
     /**
      * Marks the current launch as successful after the first content appeared.
      */
@@ -192,10 +216,14 @@ class BundleFileStorageService(
     private val decompressService: DecompressService,
     private val preferences: PreferencesService,
     private val isolationKey: String,
+    private val defaultChannelProvider: () -> String = { HotUpdaterImpl.getChannel(context) },
 ) : BundleStorageService {
     companion object {
         private const val TAG = "BundleStorage"
     }
+
+    private val releaseStateLock = Any()
+    private val pendingInstallSelections = java.util.concurrent.ConcurrentHashMap<String, PersistedSelection>()
 
     private fun emitArchiveProgress(
         progressCallback: (UpdateProgressPayload) -> Unit,
@@ -995,11 +1023,34 @@ class BundleFileStorageService(
     ): BundleMetadata {
         val currentVerifiedBundleId =
             getCurrentVerifiedBundleId(metadata)?.takeIf { it != bundleId }
+        val incomingSelection = pendingInstallSelections.remove(bundleId)
+        if (incomingSelection != null && !isSelectionCurrent(incomingSelection)) {
+            throw IllegalStateException("Release catalog selection is stale")
+        }
+        val currentVerifiedSelection =
+            when {
+                metadata.stagingBundleId != null && !metadata.verificationPending -> metadata.stagingSelection
+                metadata.stableBundleId != null -> metadata.stableSelection
+                else -> null
+            }?.takeIf { it.bundleId != bundleId }
+        val stagingSelection = incomingSelection ?: PersistedSelection.legacyBundle(bundleId)
+        val fromSelection =
+            currentVerifiedSelection
+                ?: PersistedSelection.legacyBundle(HotUpdaterImpl.getMinBundleId())
 
         return metadata.copy(
             stableBundleId = currentVerifiedBundleId,
             stagingBundleId = bundleId,
+            stableSelection = currentVerifiedSelection,
+            stagingSelection = stagingSelection,
             pendingUpdateStrategy = resolveUpdateStrategy(),
+            pendingTransition =
+                PendingSelectionTransition(
+                    fromReleaseId = fromSelection.releaseId,
+                    fromBundleId = fromSelection.bundleId,
+                    toReleaseId = stagingSelection.releaseId,
+                    toBundleId = stagingSelection.bundleId,
+                ),
             verificationPending = true,
             updatedAt = System.currentTimeMillis(),
         )
@@ -1026,7 +1077,10 @@ class BundleFileStorageService(
             metadata.copy(
                 stableBundleId = null,
                 stagingBundleId = fallbackBundleId,
+                stableSelection = null,
+                stagingSelection = metadata.stableSelection,
                 pendingUpdateStrategy = null,
+                pendingTransition = null,
                 verificationPending = false,
                 updatedAt = System.currentTimeMillis(),
             )
@@ -1040,7 +1094,9 @@ class BundleFileStorageService(
         saveLaunchReport(
             LaunchReport(
                 status = "RECOVERED",
+                fromReleaseId = metadata.pendingTransition?.toReleaseId,
                 fromBundleId = stagingBundleId,
+                toReleaseId = metadata.stableSelection?.releaseId,
                 toBundleId = fallbackBundleId ?: HotUpdaterImpl.getMinBundleId(),
                 updateStrategy = metadata.pendingUpdateStrategy ?: resolveUpdateStrategy(),
             ),
@@ -1105,6 +1161,168 @@ class BundleFileStorageService(
         )
     }
 
+    private fun releaseScopeStateKey(
+        authorityId: String,
+        scopeKey: String,
+    ): String = "$authorityId|$scopeKey"
+
+    private fun selectionContextValue(
+        channel: String,
+        selectionContextHash: String,
+    ): String = "$channel\n$selectionContextHash"
+
+    override fun acceptReleaseCatalog(
+        authorityId: String,
+        scopeKey: String,
+        generation: Long,
+        catalogHash: String,
+        channel: String,
+        selectionContextHash: String,
+    ): Boolean =
+        synchronized(releaseStateLock) {
+            val metadata = loadMetadataOrNull() ?: createInitialMetadata()
+            val stateKey = releaseScopeStateKey(authorityId, scopeKey)
+            val highestSeen = metadata.highestSeenCatalogs[stateKey]
+            if (highestSeen != null && generation < highestSeen.generation) {
+                return@synchronized false
+            }
+            if (
+                highestSeen != null &&
+                generation == highestSeen.generation &&
+                catalogHash != highestSeen.catalogHash
+            ) {
+                return@synchronized false
+            }
+
+            val highWaters = metadata.highestSeenCatalogs.toMutableMap()
+            highWaters[stateKey] = CatalogHighWater(generation, catalogHash)
+            val contexts = metadata.currentSelectionContexts.toMutableMap()
+            contexts[stateKey] = selectionContextValue(channel, selectionContextHash)
+            saveMetadata(
+                metadata.copy(
+                    highestSeenCatalogs = highWaters,
+                    currentSelectionContexts = contexts,
+                    updatedAt = System.currentTimeMillis(),
+                ),
+            )
+        }
+
+    private fun activeSelection(metadata: BundleMetadata): PersistedSelection? =
+        metadata.stagingSelection
+            ?: metadata.stagingBundleId?.let(PersistedSelection::legacyBundle)
+            ?: metadata.stableSelection
+            ?: metadata.stableBundleId?.let(PersistedSelection::legacyBundle)
+
+    override fun getActiveUpdateState(): Map<String, Any?> =
+        synchronized(releaseStateLock) {
+            val metadata = loadMetadataOrNull()
+            mapOf(
+                "activeSelection" to metadata?.let(::activeSelection)?.toMap(),
+                "stableSelection" to metadata?.stableSelection?.toMap(),
+                "verificationPending" to (metadata?.verificationPending ?: false),
+                "highestSeenCatalogs" to
+                    (metadata?.highestSeenCatalogs ?: emptyMap()).mapValues { (_, value) ->
+                        mapOf(
+                            "generation" to value.generation.toDouble(),
+                            "catalogHash" to value.catalogHash,
+                        )
+                    },
+            )
+        }
+
+    override fun isReleaseSelectionCurrent(
+        authorityId: String,
+        scopeKey: String,
+        generation: Long,
+        catalogHash: String,
+        channel: String,
+        selectionContextHash: String,
+    ): Boolean =
+        synchronized(releaseStateLock) {
+            val metadata = loadMetadataOrNull() ?: return@synchronized false
+            val stateKey = releaseScopeStateKey(authorityId, scopeKey)
+            metadata.highestSeenCatalogs[stateKey] == CatalogHighWater(generation, catalogHash) &&
+                metadata.currentSelectionContexts[stateKey] ==
+                selectionContextValue(channel, selectionContextHash)
+        }
+
+    private fun isSelectionCurrent(selection: PersistedSelection): Boolean {
+        val authorityId = selection.authorityId ?: return false
+        val scopeKey = selection.scopeKey ?: return false
+        val generation = selection.generation ?: return false
+        val catalogHash = selection.catalogHash ?: return false
+        val selectionContextHash = selection.selectionContextHash ?: return false
+        return isReleaseSelectionCurrent(
+            authorityId = authorityId,
+            scopeKey = scopeKey,
+            generation = generation,
+            catalogHash = catalogHash,
+            channel = selection.channel,
+            selectionContextHash = selectionContextHash,
+        )
+    }
+
+    override fun stageReleaseSelection(selection: PersistedSelection): Boolean {
+        if (!isSelectionCurrent(selection)) return false
+        pendingInstallSelections[selection.bundleId] = selection
+        return true
+    }
+
+    override suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean =
+        withContext(Dispatchers.IO) {
+            synchronized(releaseStateLock) {
+                if (!isSelectionCurrent(selection)) return@synchronized false
+                val metadata = loadMetadataOrNull() ?: createInitialMetadata()
+                val nextMetadata =
+                    if (selection.kind == "BUNDLE") {
+                        when {
+                            metadata.stagingSelection?.bundleId == selection.bundleId ||
+                                metadata.stagingBundleId == selection.bundleId ->
+                                metadata.copy(
+                                    stagingBundleId = selection.bundleId,
+                                    stagingSelection = selection,
+                                    updatedAt = System.currentTimeMillis(),
+                                )
+
+                            metadata.stableSelection?.bundleId == selection.bundleId ||
+                                metadata.stableBundleId == selection.bundleId ->
+                                metadata.copy(
+                                    stableBundleId = selection.bundleId,
+                                    stableSelection = selection,
+                                    updatedAt = System.currentTimeMillis(),
+                                )
+
+                            else -> return@synchronized false
+                        }
+                    } else {
+                        setBundleURL(null)
+                        metadata.copy(
+                            stableBundleId = null,
+                            stableSelection = null,
+                            stagingBundleId = null,
+                            stagingSelection = selection,
+                            pendingUpdateStrategy = null,
+                            pendingTransition = null,
+                            verificationPending = false,
+                            updatedAt = System.currentTimeMillis(),
+                        )
+                    }
+                if (!saveMetadata(nextMetadata)) return@synchronized false
+
+                if (selection.channel == defaultChannelProvider()) {
+                    preferences.setItem("HotUpdaterChannel", null)
+                } else {
+                    preferences.setItem("HotUpdaterChannel", selection.channel)
+                }
+                if (selection.kind != "BUNDLE") {
+                    getBundleStoreDir().listFiles()?.forEach { file ->
+                        if (file.isDirectory) file.deleteRecursively()
+                    }
+                }
+                true
+            }
+        }
+
     // MARK: - Crashed History
 
     private fun loadCrashedHistory(): CrashedHistory = CrashedHistory.loadFromFile(getCrashedHistoryFile())
@@ -1129,10 +1347,14 @@ class BundleFileStorageService(
             return
         }
 
-        val fromBundleId = getKnownLaunchBundleId(metadata)
+        val transition = metadata.pendingTransition
+        val fromBundleId = transition?.fromBundleId ?: getKnownLaunchBundleId(metadata)
         saveMetadata(
             metadata.copy(
+                stableBundleId = null,
+                stableSelection = null,
                 pendingUpdateStrategy = null,
+                pendingTransition = null,
                 verificationPending = false,
                 updatedAt = System.currentTimeMillis(),
             ),
@@ -1140,7 +1362,9 @@ class BundleFileStorageService(
         saveLaunchReport(
             LaunchReport(
                 status = "UPDATE_APPLIED",
+                fromReleaseId = transition?.fromReleaseId,
                 fromBundleId = fromBundleId,
+                toReleaseId = transition?.toReleaseId,
                 toBundleId = stagingBundleId,
                 updateStrategy = metadata.pendingUpdateStrategy ?: resolveUpdateStrategy(),
             ),
@@ -1160,7 +1384,9 @@ class BundleFileStorageService(
         }
         return buildMap {
             put("status", report.status)
+            report.fromReleaseId?.let { put("fromReleaseId", it) }
             report.fromBundleId?.let { put("fromBundleId", it) }
+            report.toReleaseId?.let { put("toReleaseId", it) }
             report.toBundleId?.let { put("toBundleId", it) }
             report.updateStrategy?.let { put("updateStrategy", it) }
         }
@@ -1241,6 +1467,7 @@ class BundleFileStorageService(
             "updateBundle bundleId $bundleId fileUrl $fileUrl fileHash $fileHash manifestUrl $manifestUrl",
         )
 
+
         // If no URL is provided, reset to fallback and clean up all bundles
         if (fileUrl.isNullOrEmpty()) {
             Log.d(TAG, "fileUrl is null or empty, resetting to fallback bundle")
@@ -1253,7 +1480,12 @@ class BundleFileStorageService(
                 }
 
                 // 2. Reset metadata to initial state (clear all bundle references)
-                val metadata = createInitialMetadata()
+                val previousMetadata = loadMetadataOrNull()
+                val metadata =
+                    createInitialMetadata().copy(
+                        highestSeenCatalogs = previousMetadata?.highestSeenCatalogs ?: emptyMap(),
+                        currentSelectionContexts = previousMetadata?.currentSelectionContexts ?: emptyMap(),
+                    )
                 val saveResult = saveMetadata(metadata)
                 if (!saveResult) {
                     Log.w(TAG, "Failed to reset metadata")
@@ -2044,12 +2276,16 @@ class BundleFileStorageService(
             }
 
             val clearedMetadata =
-                BundleMetadata(
+                (loadMetadataOrNull() ?: BundleMetadata()).copy(
                     isolationKey = isolationKey,
                     stableBundleId = null,
                     stagingBundleId = null,
+                    stableSelection = null,
+                    stagingSelection = null,
                     pendingUpdateStrategy = null,
+                    pendingTransition = null,
                     verificationPending = false,
+                    updatedAt = System.currentTimeMillis(),
                 )
 
             if (!saveMetadata(clearedMetadata)) {

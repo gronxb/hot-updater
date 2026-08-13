@@ -115,7 +115,7 @@ describe("database plugin types", () => {
     }>().not.toMatchTypeOf<BundleRepositoryChange>();
   });
 
-  it("requires dual-write fields for channel-changing bundle updates", () => {
+  it("rejects policy fields on immutable Bundle updates", () => {
     expectTypeOf<{
       readonly model: "bundles";
       readonly operation: "update";
@@ -124,12 +124,6 @@ describe("database plugin types", () => {
         readonly channel: "preview";
         readonly channel_id: "channel-2";
       };
-    }>().toMatchTypeOf<DatabaseChange>();
-    expectTypeOf<{
-      readonly model: "bundles";
-      readonly operation: "update";
-      readonly where: { readonly id: "bundle-1" };
-      readonly update: { readonly channel: "preview" };
     }>().not.toMatchTypeOf<DatabaseChange>();
   });
 
@@ -138,10 +132,19 @@ describe("database plugin types", () => {
       | { readonly committed: true }
       | {
           readonly committed: false;
-          readonly conflict: {
-            readonly changeIndex: number;
-            readonly reason: "not_found" | "referenced";
-          };
+          readonly conflict:
+            | {
+                readonly changeIndex: number;
+                readonly reason: "not_found" | "referenced";
+              }
+            | {
+                readonly changeIndex: -1;
+                readonly reason: "version_conflict";
+                readonly model: "releases" | "releaseCatalogs";
+                readonly key: string;
+                readonly expectedVersion: number | null;
+                readonly actualVersion: number | null;
+              };
         }
     >().toEqualTypeOf<DatabaseCommitResult>();
   });

@@ -63,7 +63,6 @@ export const mongoAdapter = (
     createDatabasePlugin({
       name: "mongodb",
       models: adapter.models,
-      queries: adapter.queries,
       commit: adapter.commit,
     }),
     {

@@ -32,12 +32,20 @@ export type ScenarioBundleIds = {
   readonly stableBundleId?: string;
 };
 
+export type ScenarioReleaseIds = {
+  readonly crashedReleaseId?: string;
+  readonly previousReleaseId?: string;
+  readonly stableReleaseId?: string;
+};
+
 export type DetoxScenarioContext = {
+  readonly authorityId?: string;
   readonly artifactsDir: string;
   readonly bundleIds: ScenarioBundleIds;
   readonly channel: string;
   readonly failureArtifacts: readonly FailureArtifact[];
   readonly platform: DetoxPlatform;
+  readonly releaseIds: ScenarioReleaseIds;
   readonly scenarioName: string;
   readonly stageTimings: readonly StageTiming[];
   readonly targetAppVersion: string;
@@ -45,9 +53,11 @@ export type DetoxScenarioContext = {
 
 export type CreateScenarioContextInput = {
   readonly artifactsDir: string;
+  readonly authorityId?: string;
   readonly bundleIds?: ScenarioBundleIds;
   readonly channel: string;
   readonly platform: DetoxPlatform;
+  readonly releaseIds?: ScenarioReleaseIds;
   readonly scenarioName: string;
   readonly targetAppVersion: string;
 };
@@ -71,11 +81,13 @@ export function createScenarioContext(
   input: CreateScenarioContextInput,
 ): DetoxScenarioContext {
   return {
+    authorityId: input.authorityId,
     artifactsDir: input.artifactsDir,
     bundleIds: input.bundleIds ?? {},
     channel: input.channel,
     failureArtifacts: [],
     platform: input.platform,
+    releaseIds: input.releaseIds ?? {},
     scenarioName: input.scenarioName,
     stageTimings: [],
     targetAppVersion: input.targetAppVersion,

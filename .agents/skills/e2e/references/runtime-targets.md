@@ -1,84 +1,62 @@
 # Runtime Targets
 
-Use these fixed values for `examples/v0.85.0`.
+Use release binaries for `examples/v0.85.0`; never validate OTA through Metro.
 
-## Workspace
+## Workspace And Server
 
-- Repo root: `<repo-root>`
-- Example root: `<repo-root>/examples/v0.85.0`
-- E2E policy: use release binaries only. Do not validate OTA with debug builds or Metro-attached sessions.
-
-## OTA Server
-
+- Repo: `<repo-root>`
+- Example: `<repo-root>/examples/v0.85.0`
 - Standalone base URL: `http://localhost:3007/hot-updater`
-- Deploy from the example root with:
-  - iOS: `pnpm hot-updater deploy -p ios -t 1.0.x`
-  - Android: `pnpm hot-updater deploy -p android -t 1.0.x`
+- Readiness: `http://localhost:3007/hot-updater/version`
+- Deploy from the example root:
+  - `pnpm hot-updater deploy -p ios -t 1.0.x`
+  - `pnpm hot-updater deploy -p android -t 1.0.x`
 
 ## iOS
 
-- Preferred simulator: `iPhone 16`
-- Built app identifier used by `agent-device` and `simctl`: `org.reactjs.native.example.HotUpdaterExample`
-- Xcode workspace: `<repo-root>/examples/v0.85.0/ios/HotUpdaterExample.xcworkspace`
-- Scheme: `HotUpdaterExample`
-- Release derived data default for E2E: `/tmp/hotupdater-v085-ios-e2e`
-
-Important:
-
-- `hot-updater.config.ts` lists `com.hotupdaterexample` for native build config.
-- The actual simulator app identifier comes from the Xcode target and resolves to `org.reactjs.native.example.HotUpdaterExample`.
-- Use the actual installed identifier for `agent-device open`, `agent-device install`, and `xcrun simctl get_app_container`.
+- Simulator: `iPhone 16`
+- Installed identifier: `org.reactjs.native.example.HotUpdaterExample`
+- Workspace: `ios/HotUpdaterExample.xcworkspace`
+- Scheme/configuration: `HotUpdaterExample` / `Release`
+- Derived data: `/tmp/hotupdater-v085-ios-e2e`
 
 ## Android
 
-- Package name: `com.hotupdaterexample`
-- App module dir: `<repo-root>/examples/v0.85.0/android`
-- Release APK path: `<repo-root>/examples/v0.85.0/android/app/build/outputs/apk/release/app-release.apk`
+- Package: `com.hotupdaterexample`
+- Build: `android/gradlew :app:assembleRelease --rerun-tasks`
+- APK: `android/app/build/outputs/apk/release/app-release.apk`
 
-## UI Assertions
+## Route-Based Evidence
 
-The example app exposes these useful texts in snapshots:
+The app exposes focused deep links, not one scroll page:
 
-- `Runtime Snapshot`
-- `Bundle ID`
-- `Manifest Bundle ID`
-- `Launch Status`
-- pretty-printed status JSON
-- `Crash History`
-- crash history entries, or `No crashed bundles recorded.`
-- `OTA Asset Preview`
-- `Manifest Assets`
-- `Runtime Details`
-- `Actions`
-- `Refresh Runtime Snapshot`
-- `Reload App`
-- `Clear Crash History`
+- `hotupdaterexample://e2e/runtime-bundle`
+- `hotupdaterexample://e2e/runtime-release-state`
+- `hotupdaterexample://e2e/runtime-marker`
+- `hotupdaterexample://e2e/runtime-large-asset`
+- `hotupdaterexample://e2e/launch-status`
+- `hotupdaterexample://e2e/launch-transition`
+- `hotupdaterexample://e2e/crash-history-count`
+- `hotupdaterexample://e2e/action/install-current-channel-update`
+- `hotupdaterexample://e2e/update-action-result`
 
-Notes:
+Take a fresh `agent-device snapshot -i` after opening each target.
 
-- The example UI is intentionally scrollable. Start with a top-of-screen
-  snapshot, then use `agent-device scrollintoview "<section title>"` and
-  re-snapshot as each target section becomes visible.
-- For OTA verdicts, the usual snapshot order is: `Runtime Snapshot` ->
-  `Launch Status` -> `Crash History` -> optional deeper sections such as
-  `Manifest Assets`, `Runtime Details`, and `Actions`.
+## Native State
 
-## Local State Files
-
-### iOS
-
-Under the simulator data container:
+iOS container:
 
 - `Documents/bundle-store/metadata.json`
 - `Documents/bundle-store/launch-report.json`
 - `Documents/bundle-store/crashed-history.json`
 - `Documents/bundle-store/<bundle-id>/...`
 
-### Android
-
-Under the app external files directory:
+Android app files:
 
 - `bundle-store/metadata.json`
 - `bundle-store/launch-report.json`
 - `bundle-store/crashed-history.json`
 - `bundle-store/<bundle-id>/...`
+
+Metadata-v2 contains stable/staging selection receipts plus authority/scope
+catalog high-water. Launch reports contain directional Release and Bundle IDs.

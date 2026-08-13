@@ -28,19 +28,10 @@ const createValidatedCrud = (options: {
 const bundleRow = {
   id: "bundle-1",
   platform: "ios" as const,
-  should_force_update: false,
-  enabled: true,
   file_hash: "hash-1",
   git_commit_hash: null,
-  message: null,
-  channel: "production",
-  channel_id: "channel-production",
   storage_uri: "storage://bundle-1.zip",
-  target_app_version: "1.0.0",
-  fingerprint_hash: null,
   metadata: {},
-  rollout_cohort_count: 1000,
-  target_cohorts: null,
   manifest_storage_uri: null,
   manifest_file_hash: null,
   asset_base_storage_uri: null,
@@ -74,7 +65,7 @@ describe("database plugin CRUD runtime contract", () => {
     const result = invoke(plugin, "update", {
       model: "bundles",
       where: [where],
-      update: { enabled: false },
+      update: { git_commit_hash: "next" },
     });
 
     await expect(result).rejects.toMatchObject({
@@ -84,24 +75,44 @@ describe("database plugin CRUD runtime contract", () => {
   });
 
   it.each([
-    { field: "platform", operator: "in", value: ["windows"] },
-    { field: "rollout_cohort_count", operator: "in", value: [-1] },
-    { field: "rollout_cohort_count", operator: "in", value: [1.5] },
-  ])("validates every in member against its field: $field", async (where) => {
-    const findMany = vi.fn(async () => []);
-    const plugin = createValidatedCrud({
-      name: "where-value-contract",
-      plugin: () => ({ ...createMethods(), findMany }),
-    });
-
-    const result = invoke(plugin, "findMany", {
+    {
       model: "bundles",
-      where: [where],
-    });
+      where: { field: "platform", operator: "in", value: ["windows"] },
+    },
+    {
+      model: "releases",
+      where: {
+        field: "rollout_cohort_count",
+        operator: "in",
+        value: [-1],
+      },
+    },
+    {
+      model: "releases",
+      where: {
+        field: "rollout_cohort_count",
+        operator: "in",
+        value: [1.5],
+      },
+    },
+  ])(
+    "validates every in member against its field: $where.field",
+    async ({ model, where }) => {
+      const findMany = vi.fn(async () => []);
+      const plugin = createValidatedCrud({
+        name: "where-value-contract",
+        plugin: () => ({ ...createMethods(), findMany }),
+      });
 
-    await expect(result).rejects.toMatchObject({ code: "invalid-query" });
-    expect(findMany).not.toHaveBeenCalled();
-  });
+      const result = invoke(plugin, "findMany", {
+        model,
+        where: [where],
+      });
+
+      await expect(result).rejects.toMatchObject({ code: "invalid-query" });
+      expect(findMany).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     { field: "id", value: "bundle-1", connector: "and" },
@@ -118,7 +129,7 @@ describe("database plugin CRUD runtime contract", () => {
     });
 
     const result = invoke(plugin, "findMany", {
-      model: "bundles",
+      model: where.field === "rollout_cohort_count" ? "releases" : "bundles",
       where: [where],
     });
 
@@ -168,7 +179,7 @@ describe("database plugin CRUD runtime contract", () => {
       plugin: () => ({ ...createMethods(), findMany }),
     });
     const orderBy = [
-      { field: "channel", direction: "asc" as const },
+      { field: "platform", direction: "asc" as const },
       { field: "id", direction: "desc" as const },
     ];
 
@@ -352,28 +363,4 @@ describe("database plugin CRUD runtime contract", () => {
       await expect(result).rejects.toMatchObject({ code: "invalid-result" });
     },
   );
-
-  it("validates the merged bundle target before update", async () => {
-    const update = vi.fn(async () => bundleRow);
-    const plugin = createValidatedCrud({
-      name: "target-contract",
-      plugin: () => ({
-        ...createMethods(),
-        findOne: async () => ({
-          target_app_version: null,
-          fingerprint_hash: "fingerprint-1",
-        }),
-        update,
-      }),
-    });
-
-    const result = plugin.update({
-      model: "bundles",
-      where: [{ field: "id", value: bundleRow.id }],
-      update: { fingerprint_hash: null },
-    });
-
-    await expect(result).rejects.toMatchObject({ code: "invalid-data" });
-    expect(update).not.toHaveBeenCalled();
-  });
 });

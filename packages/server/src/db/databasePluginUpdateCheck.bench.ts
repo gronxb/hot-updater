@@ -1,131 +1,108 @@
+import {
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+  RELEASE_CATALOG_FALLBACK_POLICY,
+  RELEASE_CATALOG_SCHEMA_VERSION,
+} from "@hot-updater/core";
+import {
+  createDatabasePlugin,
+  type CompiledReleaseCatalog,
+  type ReleaseCatalogRow,
+} from "@hot-updater/plugin-core";
+import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 import { bench, describe } from "vitest";
 
-import {
-  bundleToRow,
-  createDatabasePlugin,
-  type DatabasePlugin,
-} from "../../../../plugins/plugin-core/src";
-import { createDatabasePluginAdapter } from "../../../../plugins/plugin-core/src/internal";
-import type { AppVersionGetBundlesArgs, Bundle } from "../../../core/src";
-import { DEFAULT_ROLLOUT_COHORT_COUNT, NIL_UUID } from "../../../core/src";
-import {
-  matchesAll,
-  queryRows,
-} from "../../../test-utils/test/inMemoryDatabaseQuery";
-import { createDatabasePluginCore } from "./databasePluginCore";
+import { createHotUpdater } from "../index";
 
-const BUNDLE_COUNT = 20_000;
-const BENCH_APP_VERSION = "1.0.0";
-const BENCH_PLATFORM = "ios" as const;
-const BENCH_CHANNEL = "production";
+const AUTHORITY_ID = "bench";
+const CHANNEL_KEY = encodeChannelKey("production");
+const SCOPE_KEY = createReleaseCatalogScopeKey({
+  authorityId: AUTHORITY_ID,
+  channelKey: CHANNEL_KEY,
+  platform: "ios",
+  strategy: "APP_VERSION",
+});
+const PAYLOAD = JSON.stringify({
+  fallbackPolicy: RELEASE_CATALOG_FALLBACK_POLICY,
+  releaseDescriptors: [],
+  schemaVersion: RELEASE_CATALOG_SCHEMA_VERSION,
+  segments: [],
+  strategy: "APP_VERSION",
+} satisfies CompiledReleaseCatalog);
+const CATALOG: ReleaseCatalogRow = {
+  authority_id: AUTHORITY_ID,
+  byte_size: Buffer.byteLength(PAYLOAD),
+  catalog_hash: `sha256:${"0".repeat(64)}`,
+  channel_id: "channel-production",
+  channel_key: CHANNEL_KEY,
+  fingerprint_hash: null,
+  generation: 1,
+  is_tombstone: false,
+  payload: PAYLOAD,
+  platform: "ios",
+  scope_key: SCOPE_KEY,
+  strategy: "APP_VERSION",
+  updated_at_ms: 1,
+};
 
 class BenchmarkMutationError extends Error {
   readonly name = "BenchmarkMutationError";
 
   constructor() {
-    super("The update-check benchmark plugin is read-only.");
+    super("The Release Catalog benchmark plugin is read-only.");
   }
 }
 
-const createBundle = (index: number): Bundle => ({
-  id: `00000000-0000-0000-0000-${String(index).padStart(12, "0")}`,
-  platform: BENCH_PLATFORM,
-  shouldForceUpdate: false,
-  enabled: true,
-  fileHash: `hash-${index}`,
-  gitCommitHash: `commit-${index}`,
-  message: `bundle-${index}`,
-  channel: BENCH_CHANNEL,
-  storageUri: `s3://bench/bundles/${index}.zip`,
-  targetAppVersion: "*",
-  fingerprintHash: `fingerprint-${index % 10}`,
-  metadata: { app_version: String(index) },
-  rolloutCohortCount: DEFAULT_ROLLOUT_COHORT_COUNT,
-  targetCohorts: null,
+const name = "release-catalog-benchmark";
+const adapter = createDatabasePluginAdapter(name, {
+  async count() {
+    return 0;
+  },
+  async create() {
+    throw new BenchmarkMutationError();
+  },
+  async delete() {
+    throw new BenchmarkMutationError();
+  },
+  async deleteChannel() {
+    throw new BenchmarkMutationError();
+  },
+  async findMany() {
+    return [];
+  },
+  async findOne(input) {
+    return input.model === "release_catalogs" ? CATALOG : null;
+  },
+  async insertChannel() {
+    throw new BenchmarkMutationError();
+  },
+  async update() {
+    throw new BenchmarkMutationError();
+  },
 });
-
-const createBenchPlugin = (bundles: readonly Bundle[]): DatabasePlugin => {
-  const rows = bundles.map((bundle) => bundleToRow(bundle, "channel-bench"));
-  const name = "bench-v2-plugin";
-  return createDatabasePlugin({
-    name,
-    ...createDatabasePluginAdapter(name, {
-      async create() {
-        throw new BenchmarkMutationError();
-      },
-      async update() {
-        throw new BenchmarkMutationError();
-      },
-      async delete() {
-        throw new BenchmarkMutationError();
-      },
-      async insertChannel() {
-        throw new BenchmarkMutationError();
-      },
-      async deleteChannel() {
-        throw new BenchmarkMutationError();
-      },
-      async count(input) {
-        if (input.model !== "bundles") return 0;
-        return rows.filter((row) => matchesAll<"bundles">(row, input.where))
-          .length;
-      },
-      async findOne(input) {
-        switch (input.model) {
-          case "bundles":
-            return (
-              rows.find((row) => matchesAll<"bundles">(row, input.where)) ??
-              null
-            );
-          case "bundle_patches":
-          case "channels":
-          case "client_access_keys":
-            return null;
-        }
-      },
-      async findMany(input) {
-        switch (input.model) {
-          case "bundles":
-            return queryRows<"bundles">(
-              rows,
-              input.where,
-              input.orderBy ?? (input.sortBy ? [input.sortBy] : undefined),
-              input.distinctOn,
-              input.offset,
-              input.limit,
-            );
-          case "bundle_patches":
-          case "bundle_events":
-          case "channels":
-          case "client_access_keys":
-            return [];
-        }
-      },
-    }),
-  });
-};
+const database = createDatabasePlugin({
+  name,
+  commit: adapter.commit,
+  models: adapter.models,
+});
+const hotUpdater = createHotUpdater({
+  authorityId: AUTHORITY_ID,
+  database,
+});
+const url =
+  `https://updates.example.com/api/v2/release-catalogs/app-version/` +
+  `${AUTHORITY_ID}/ios/${CHANNEL_KEY}/1.0.0`;
 
 describe("database plugin update check benchmark", () => {
-  const bundles = Array.from({ length: BUNDLE_COUNT }, (_, index) =>
-    createBundle(index + 1),
-  );
-  const args: AppVersionGetBundlesArgs = {
-    _updateStrategy: "appVersion",
-    appVersion: BENCH_APP_VERSION,
-    bundleId: NIL_UUID,
-    platform: BENCH_PLATFORM,
-    channel: BENCH_CHANNEL,
-  };
-  const api = createDatabasePluginCore(
-    createBenchPlugin(bundles),
-    async () => null,
-  ).api;
-
   bench(
     "fixed-model plugin paged update check",
     async () => {
-      await api.getUpdateInfo(args);
+      const response = await hotUpdater.handler(new Request(url));
+      if (response.status !== 200) {
+        throw new Error(`Expected 200 response, received ${response.status}.`);
+      }
+      await response.text();
     },
-    { warmupIterations: 5, iterations: 20 },
+    { iterations: 20, warmupIterations: 5 },
   );
 });

@@ -4,6 +4,8 @@ import type {
   BundleRow,
   ChannelRow,
   ClientAccessKeyRow,
+  ReleaseCatalogRow,
+  ReleaseRow,
 } from "@hot-updater/plugin-core";
 import { isDatabaseMetadataObject } from "@hot-updater/plugin-core";
 import type { DatabaseModel } from "@hot-updater/plugin-core/internal";
@@ -48,6 +50,8 @@ const modelDelegates = {
   bundle_events: "bundle_events",
   channels: "channels",
   client_access_keys: "client_access_keys",
+  releases: "releases",
+  release_catalogs: "release_catalogs",
 } as const satisfies Record<DatabaseModel, string>;
 
 export const getPrismaDelegate = (
@@ -85,50 +89,29 @@ const readNullableString = (
   return value;
 };
 
+const readOptionalNullableString = (
+  row: Record<string, unknown>,
+  field: string,
+): string | null =>
+  row[field] === undefined ? null : readNullableString(row, field);
+
 export const parsePrismaBundleRow = (value: unknown): BundleRow => {
   if (!isRecord(value)) throw new PrismaAdapterError("invalid bundle row");
   const platform = value["platform"];
   if (platform !== "android" && platform !== "ios") {
     throw new PrismaAdapterError('expected platform "android" or "ios"');
   }
-  const shouldForceUpdate = value["should_force_update"];
-  const enabled = value["enabled"];
-  const rolloutCohortCount = value["rollout_cohort_count"];
-  if (
-    typeof shouldForceUpdate !== "boolean" ||
-    typeof enabled !== "boolean" ||
-    typeof rolloutCohortCount !== "number"
-  ) {
-    throw new PrismaAdapterError("invalid bundle scalar fields");
-  }
-  const targetCohorts = value["target_cohorts"];
   const metadata = value["metadata"];
-  if (
-    targetCohorts !== null &&
-    (!Array.isArray(targetCohorts) ||
-      !targetCohorts.every((item) => typeof item === "string"))
-  ) {
-    throw new PrismaAdapterError("invalid target_cohorts field");
-  }
   if (!isDatabaseMetadataObject(metadata)) {
     throw new PrismaAdapterError("invalid metadata field");
   }
   return {
     id: readString(value, "id"),
     platform,
-    should_force_update: shouldForceUpdate,
-    enabled,
     file_hash: readString(value, "file_hash"),
     git_commit_hash: readNullableString(value, "git_commit_hash"),
-    message: readNullableString(value, "message"),
-    channel: readString(value, "channel"),
-    channel_id: readString(value, "channel_id"),
     storage_uri: readString(value, "storage_uri"),
-    target_app_version: readNullableString(value, "target_app_version"),
-    fingerprint_hash: readNullableString(value, "fingerprint_hash"),
     metadata,
-    rollout_cohort_count: rolloutCohortCount,
-    target_cohorts: targetCohorts,
     manifest_storage_uri: readNullableString(value, "manifest_storage_uri"),
     manifest_file_hash: readNullableString(value, "manifest_file_hash"),
     asset_base_storage_uri: readNullableString(value, "asset_base_storage_uri"),
@@ -177,11 +160,12 @@ export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
   if (
     (platform !== "ios" && platform !== "android") ||
     !(
-      ((type === "UPDATE_APPLIED" || type === "RECOVERED") &&
-        fromBundleId !== null &&
+      ((type === "UPDATE_APPLIED" ||
+        type === "RECOVERED" ||
+        type === "RELEASE_ADOPTED") &&
         (updateStrategy === "fingerprint" ||
           updateStrategy === "appVersion")) ||
-      (type === "UNCHANGED" && fromBundleId === null && updateStrategy === null)
+      (type === "UNCHANGED" && updateStrategy === null)
     )
   ) {
     throw new PrismaAdapterError("invalid event shape");
@@ -192,8 +176,10 @@ export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
     install_id: readString(value, "install_id"),
     user_id: readNullableString(value, "user_id"),
     username: readNullableString(value, "username"),
+    from_release_id: readOptionalNullableString(value, "from_release_id"),
     from_bundle_id: fromBundleId,
-    to_bundle_id: readString(value, "to_bundle_id"),
+    to_release_id: readOptionalNullableString(value, "to_release_id"),
+    to_bundle_id: readNullableString(value, "to_bundle_id"),
     platform,
     app_version: readString(value, "app_version"),
     channel: readString(value, "channel"),
@@ -225,6 +211,84 @@ export const parsePrismaClientAccessKeyRow = (
     created_at_ms: readNumber(value, "created_at_ms"),
     revoked_at_ms:
       revokedAt === null ? null : readNumber(value, "revoked_at_ms"),
+  };
+};
+
+export const parsePrismaReleaseRow = (value: unknown): ReleaseRow => {
+  if (!isRecord(value)) throw new PrismaAdapterError("invalid Release row");
+  const platform = readString(value, "platform");
+  const kind = readString(value, "kind");
+  const strategy = readString(value, "strategy");
+  const operation = readString(value, "operation");
+  const targetCohorts = value["target_cohorts"];
+  if (
+    (platform !== "ios" && platform !== "android") ||
+    (kind !== "BUNDLE" && kind !== "EMBEDDED") ||
+    (strategy !== "APP_VERSION" && strategy !== "FINGERPRINT") ||
+    (operation !== "DEPLOY" &&
+      operation !== "PROMOTE" &&
+      operation !== "ROLLBACK") ||
+    !Array.isArray(targetCohorts) ||
+    !targetCohorts.every((cohort) => typeof cohort === "string")
+  ) {
+    throw new PrismaAdapterError("invalid Release fields");
+  }
+  const enabled = value["enabled"];
+  const shouldForceUpdate = value["should_force_update"];
+  if (typeof enabled !== "boolean" || typeof shouldForceUpdate !== "boolean") {
+    throw new PrismaAdapterError("invalid Release policy fields");
+  }
+  return {
+    bundle_id: readNullableString(value, "bundle_id"),
+    channel_id: readString(value, "channel_id"),
+    created_at_ms: readNumber(value, "created_at_ms"),
+    enabled,
+    fingerprint_hash: readNullableString(value, "fingerprint_hash"),
+    id: readString(value, "id"),
+    kind,
+    message: readNullableString(value, "message"),
+    operation,
+    platform,
+    revision: readNumber(value, "revision"),
+    rollout_cohort_count: readNumber(value, "rollout_cohort_count"),
+    scope_key: readString(value, "scope_key"),
+    should_force_update: shouldForceUpdate,
+    source_release_id: readNullableString(value, "source_release_id"),
+    strategy,
+    target_app_version: readNullableString(value, "target_app_version"),
+    target_cohorts: targetCohorts,
+    updated_at_ms: readNumber(value, "updated_at_ms"),
+  };
+};
+
+export const parsePrismaReleaseCatalogRow = (
+  value: unknown,
+): ReleaseCatalogRow => {
+  if (!isRecord(value)) throw new PrismaAdapterError("invalid catalog row");
+  const platform = readString(value, "platform");
+  const strategy = readString(value, "strategy");
+  const isTombstone = value["is_tombstone"];
+  if (
+    (platform !== "ios" && platform !== "android") ||
+    (strategy !== "APP_VERSION" && strategy !== "FINGERPRINT") ||
+    typeof isTombstone !== "boolean"
+  ) {
+    throw new PrismaAdapterError("invalid catalog fields");
+  }
+  return {
+    authority_id: readString(value, "authority_id"),
+    byte_size: readNumber(value, "byte_size"),
+    catalog_hash: readString(value, "catalog_hash"),
+    channel_id: readString(value, "channel_id"),
+    channel_key: readString(value, "channel_key"),
+    fingerprint_hash: readNullableString(value, "fingerprint_hash"),
+    generation: readNumber(value, "generation"),
+    is_tombstone: isTombstone,
+    payload: readString(value, "payload"),
+    platform,
+    scope_key: readString(value, "scope_key"),
+    strategy,
+    updated_at_ms: readNumber(value, "updated_at_ms"),
   };
 };
 

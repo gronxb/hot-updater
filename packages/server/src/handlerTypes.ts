@@ -2,7 +2,9 @@ import type {
   AppUpdateAvailableInfo,
   AppVersionGetBundlesArgs,
   Bundle,
+  LegacyBundle,
   FingerprintGetBundlesArgs,
+  ReleaseCatalog,
 } from "@hot-updater/core";
 import type {
   ChannelDeleteInput,
@@ -11,21 +13,76 @@ import type {
   ChannelInsertResult,
   ChannelRow,
   DatabaseBundleQueryOptions,
+  DatabaseCommit,
+  DatabaseCommitResult,
+  ReleaseCatalogRow,
+  ReleaseCatalogMutationPreflight,
+  ReleaseCatalogMutationResult,
+  ReleaseCatalogRebuildResult,
+  ReleasePolicyPatch,
+  ReleaseRow,
 } from "@hot-updater/plugin-core";
 
+import type { ReleaseCatalogRequest } from "./db/releaseCatalog";
 import type { PaginatedResult } from "./types";
 
 export interface HandlerAPI {
   getAppUpdateInfo: (
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
   ) => Promise<AppUpdateAvailableInfo | null>;
+  getReleaseCatalog?: (
+    input: ReleaseCatalogRequest,
+  ) => Promise<ReleaseCatalog | null>;
+  getArtifactInfo?: (
+    targetBundleId: string,
+    currentBundleId: string,
+  ) => Promise<AppUpdateAvailableInfo | null>;
+  getReleaseById?: (id: string) => Promise<ReleaseRow | null>;
+  getReleasesByScope?: (input: {
+    readonly scopeKey: string;
+    readonly afterReleaseId?: string;
+    readonly limit: number;
+  }) => Promise<readonly ReleaseRow[]>;
+  getReleases?: (input: {
+    readonly beforeReleaseId?: string;
+    readonly bundleId?: string;
+    readonly channelId?: string;
+    readonly enabled?: boolean;
+    readonly platform?: "ios" | "android";
+    readonly limit: number;
+  }) => Promise<readonly ReleaseRow[]>;
+  getReleaseCatalogByScopeKey?: (
+    scopeKey: string,
+  ) => Promise<ReleaseCatalogRow | null>;
+  getReleaseCatalogs?: (input: {
+    readonly afterScopeKey?: string;
+    readonly limit: number;
+  }) => Promise<readonly ReleaseCatalogRow[]>;
+  updateReleasePolicy?: (input: {
+    readonly expectedRevision?: number;
+    readonly patch: ReleasePolicyPatch;
+    readonly releaseId: string;
+  }) => Promise<ReleaseCatalogMutationResult>;
+  preflightReleasePolicy?: (input: {
+    readonly expectedRevision?: number;
+    readonly patch: ReleasePolicyPatch;
+    readonly releaseId: string;
+  }) => Promise<ReleaseCatalogMutationPreflight>;
+  deleteRelease?: (input: {
+    readonly expectedRevision?: number;
+    readonly releaseId: string;
+  }) => Promise<ReleaseCatalogMutationResult>;
+  rebuildReleaseCatalog?: (
+    scopeKey: string,
+  ) => Promise<ReleaseCatalogRebuildResult>;
+  commitDatabase?: (input: DatabaseCommit) => Promise<DatabaseCommitResult>;
   getBundleById: (id: string) => Promise<Bundle | null>;
   getBundles: (options: DatabaseBundleQueryOptions) => Promise<PaginatedResult>;
-  insertBundle: (bundle: Bundle) => Promise<void>;
-  insertBundles?: (bundles: readonly Bundle[]) => Promise<void>;
+  insertBundle: (bundle: LegacyBundle) => Promise<void>;
+  insertBundles?: (bundles: readonly LegacyBundle[]) => Promise<void>;
   updateBundleById: (
     bundleId: string,
-    bundle: Partial<Bundle>,
+    bundle: Partial<LegacyBundle>,
   ) => Promise<void>;
   deleteBundleById: (bundleId: string) => Promise<void>;
   getChannels: () => Promise<readonly ChannelRow[]>;
@@ -34,6 +91,8 @@ export interface HandlerAPI {
 }
 
 export interface HandlerOptions {
+  /** Authority accepted by v2 Release catalog paths. */
+  readonly authorityId?: string;
   /** Base path for all routes. @default "/api" */
   readonly basePath?: string;
   /** Runtime features to mount. `GET /version` is always available. */

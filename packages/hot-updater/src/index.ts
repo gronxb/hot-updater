@@ -39,10 +39,12 @@ import { printBanner } from "@/utils/printBanner";
 import {
   handleBundleDelete,
   handleBundleList,
-  handleBundleSetEnabled,
   handleBundleShow,
-  handleBundleUpdate,
 } from "./commands/bundle";
+import {
+  handleCatalogPreflight,
+  handleCatalogRebuild,
+} from "./commands/catalog";
 import { handleChannel, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
@@ -53,6 +55,14 @@ import { generate } from "./commands/generate";
 import { keysExportPublic, keysGenerate, keysRemove } from "./commands/keys";
 import { migrate } from "./commands/migrate";
 import { handlePromote } from "./commands/promote";
+import {
+  handleReleaseDelete,
+  handleReleaseEnablement,
+  handleReleaseList,
+  handleReleasePreflight,
+  handleReleaseShow,
+  handleReleaseUpdate,
+} from "./commands/release";
 import { handleRollback } from "./commands/rollback";
 
 const DEFAULT_CHANNEL = "production";
@@ -140,8 +150,7 @@ const bundleCommand = program.command("bundle").description("Manage bundles");
 
 bundleCommand
   .command("list")
-  .description("List bundles, most recent first")
-  .option("-c, --channel <channel>", "filter by channel")
+  .description("List immutable Bundle artifacts, most recent first")
   .option("--json", "output raw bundle data as JSON")
   .addOption(platformCommandOption)
   .option(
@@ -168,44 +177,6 @@ bundleCommand
   );
 
 bundleCommand
-  .command("disable")
-  .description("Disable a bundle by id")
-  .argument("<bundle-id>", "the id of the bundle to disable")
-  .option("-y, --yes", "skip confirmation prompt")
-  .action((bundleId: string, options: { yes?: boolean }) =>
-    handleBundleSetEnabled(bundleId, false, options),
-  );
-
-bundleCommand
-  .command("enable")
-  .description("Re-enable a previously disabled bundle by id")
-  .argument("<bundle-id>", "the id of the bundle to enable")
-  .option("-y, --yes", "skip confirmation prompt")
-  .action((bundleId: string, options: { yes?: boolean }) =>
-    handleBundleSetEnabled(bundleId, true, options),
-  );
-
-bundleCommand
-  .command("update")
-  .description("Update bundle rollout and targeting metadata")
-  .argument("<bundle-id>", "the bundle id to update")
-  .option(
-    "--rollout-cohort-count <count>",
-    "rollout cohort count from 0 to 1000",
-    parseRolloutCohortCount,
-  )
-  .option(
-    "--force-update <value>",
-    "set force update flag (true or false)",
-    parseBooleanOption,
-  )
-  .option("--target-cohorts <cohorts>", "comma-separated target cohorts")
-  .option("--clear-target-cohorts", "clear target cohorts")
-  .option("--json", "output the updated bundle as JSON")
-  .option("-y, --yes", "skip confirmation prompt")
-  .action(handleBundleUpdate);
-
-bundleCommand
   .command("delete")
   .description("Delete one or more bundle records by id")
   .argument("<bundle-ids...>", "the bundle id(s) to delete")
@@ -214,15 +185,148 @@ bundleCommand
     handleBundleDelete(bundleIds, options),
   );
 
-bundleCommand
+const releaseCommand = program
+  .command("release")
+  .description("Manage Release delivery policy");
+
+releaseCommand
+  .command("list")
+  .description("List Releases, most recent first")
+  .option("-c, --channel <channel>", "filter by channel")
+  .option("--json", "output raw Release rows as JSON")
+  .addOption(platformCommandOption)
+  .option(
+    "--limit <n>",
+    "limit the number of results",
+    (value) => {
+      const count = Number.parseInt(value, 10);
+      if (!Number.isInteger(count) || count <= 0 || count > 1000) {
+        throw new InvalidArgumentError("must be an integer from 1 to 1000");
+      }
+      return count;
+    },
+    20,
+  )
+  .action(handleReleaseList);
+
+releaseCommand
+  .command("show")
+  .description("Show one Release")
+  .argument("<release-id>", "the Release id")
+  .option("--json", "output the raw Release row as JSON")
+  .action(handleReleaseShow);
+
+const addReleasePolicyOptions = <
+  TArgs extends unknown[],
+  TOptions extends Record<string, unknown>,
+  TGlobalOptions extends Record<string, unknown>,
+>(
+  command: Command<TArgs, TOptions, TGlobalOptions>,
+) =>
+  command
+    .option("--message <message>", "set the public Release message")
+    .option("--clear-message", "clear the Release message")
+    .option(
+      "--target-app-version <range>",
+      "set the app-version compatibility range",
+    )
+    .option(
+      "--rollout-cohort-count <count>",
+      "rollout cohort count from 0 to 1000",
+      parseRolloutCohortCount,
+    )
+    .option(
+      "--force-update <value>",
+      "set the force-update flag",
+      parseBooleanOption,
+    )
+    .option(
+      "--target-cohorts <cohorts>",
+      "comma-separated public target cohort names",
+    )
+    .option("--clear-target-cohorts", "clear public target cohort names")
+    .option(
+      "--expected-revision <revision>",
+      "fail if the Release revision changed",
+      (value) => {
+        const revision = Number.parseInt(value, 10);
+        if (!Number.isSafeInteger(revision) || revision < 1) {
+          throw new InvalidArgumentError("must be a positive integer");
+        }
+        return revision;
+      },
+    )
+    .option("--json", "output JSON");
+
+addReleasePolicyOptions(
+  releaseCommand
+    .command("update")
+    .description("Update mutable Release delivery policy")
+    .argument("<release-id>", "the Release id")
+    .option("-y, --yes", "skip confirmation prompt"),
+).action(handleReleaseUpdate);
+
+addReleasePolicyOptions(
+  releaseCommand
+    .command("preflight")
+    .description("Compile and size-check a Release mutation without saving")
+    .argument("<release-id>", "the Release id"),
+).action(handleReleasePreflight);
+
+for (const [name, enabled] of [
+  ["enable", true],
+  ["disable", false],
+] as const) {
+  releaseCommand
+    .command(name)
+    .description(`${enabled ? "Enable" : "Disable"} a Release`)
+    .argument("<release-id>", "the Release id")
+    .option(
+      "--expected-revision <revision>",
+      "expected Release revision",
+      (value) => {
+        const revision = Number.parseInt(value, 10);
+        if (!Number.isSafeInteger(revision) || revision < 1) {
+          throw new InvalidArgumentError("must be a positive integer");
+        }
+        return revision;
+      },
+    )
+    .option("--json", "output JSON")
+    .option("-y, --yes", "skip confirmation prompt")
+    .action((releaseId, options) =>
+      handleReleaseEnablement(releaseId, enabled, options),
+    );
+}
+
+releaseCommand
+  .command("delete")
+  .description("Hard-delete a disabled Release")
+  .argument("<release-id>", "the Release id")
+  .option(
+    "--expected-revision <revision>",
+    "expected Release revision",
+    (value) => {
+      const revision = Number.parseInt(value, 10);
+      if (!Number.isSafeInteger(revision) || revision < 1) {
+        throw new InvalidArgumentError("must be a positive integer");
+      }
+      return revision;
+    },
+  )
+  .option("--json", "output JSON")
+  .option("-y, --yes", "skip confirmation prompt")
+  .action(handleReleaseDelete);
+
+releaseCommand
   .command("promote")
-  .description("Move or copy a bundle to a different channel")
-  .argument("<bundle-id>", "the id of the bundle to promote")
-  .requiredOption("-t, --target <channel>", "channel to promote the bundle to")
+  .description("Create a target-channel Release reusing the same Bundle")
+  .argument("<source-release-id>", "the source Release id")
+  .requiredOption("-t, --target <channel>", "target channel")
   .addOption(
     new Option(
       "-a, --action <action>",
-      "promote action (copy creates a new bundle id; move keeps the id)",
+      "copy creates a target Release; move also disables the source Release",
     )
       .choices(["copy", "move"])
       .default("copy"),
@@ -230,13 +334,13 @@ bundleCommand
   .option("-y, --yes", "skip confirmation prompt")
   .action(
     (
-      bundleId: string,
+      sourceReleaseId: string,
       options: {
         target: string;
         action: "copy" | "move";
         yes?: boolean;
       },
-    ) => handlePromote(bundleId, options),
+    ) => handlePromote(sourceReleaseId, options),
   );
 
 const keysCommand = program
@@ -366,21 +470,22 @@ program
 
 program
   .command("rollback")
-  .description("Disable the most recent enabled bundle on a channel")
+  .description("Create a newer Release that selects an earlier artifact")
   .argument("<channel>", "the channel to roll back")
   .addOption(platformCommandOption)
   .option("-y, --yes", "skip confirmation prompt")
-  .option(
-    "--target <bundle-id>",
-    "scope rollback to exactly this bundle id (use to retry a failed rollback)",
-  )
+  .option("--to-release <release-id>", "unambiguous earlier Release target")
+  .option("--to-bundle <bundle-id>", "advanced direct Bundle target")
+  .option("--embedded", "select the native embedded bytes")
   .action(
     (
       channel: string,
       options: {
         platform?: "ios" | "android";
         yes?: boolean;
-        target?: string;
+        embedded?: boolean;
+        toBundle?: string;
+        toRelease?: string;
       },
     ) => handleRollback(channel, options),
   );
@@ -450,6 +555,25 @@ dbCommand
       process.exit(0);
     },
   );
+
+const catalogCommand = dbCommand
+  .command("catalog")
+  .description("Verify and rebuild compiled Release catalogs");
+
+catalogCommand
+  .command("preflight")
+  .description("Verify catalog projections without writing")
+  .argument("[scope-keys...]", "specific scope keys; defaults to all catalogs")
+  .option("--json", "output JSON")
+  .action(handleCatalogPreflight);
+
+catalogCommand
+  .command("rebuild")
+  .description("Deterministically rebuild drifted catalog projections")
+  .argument("[scope-keys...]", "specific scope keys; defaults to all catalogs")
+  .option("--json", "output JSON")
+  .option("-y, --yes", "skip confirmation prompt")
+  .action(handleCatalogRebuild);
 
 program
   .command("build:android")

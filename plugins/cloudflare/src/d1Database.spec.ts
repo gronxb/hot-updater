@@ -15,19 +15,10 @@ const state = vi.hoisted<{
 const bundleD1Row = {
   id: "bundle-1",
   platform: "ios",
-  should_force_update: 0,
-  enabled: 1,
   file_hash: "hash",
   git_commit_hash: null,
-  message: "Alpha Release",
-  channel: "production",
-  channel_id: "channel-production",
   storage_uri: "storage://bundle",
-  target_app_version: "1.0.0",
-  fingerprint_hash: null,
   metadata: '{"version":1}',
-  rollout_cohort_count: 1000,
-  target_cohorts: '["stable"]',
   manifest_storage_uri: null,
   manifest_file_hash: null,
   asset_base_storage_uri: null,
@@ -70,7 +61,7 @@ it("queries bundles through domain filters", async () => {
   });
 
   const rows = await plugin.models.bundles.findMany({
-    where: { channel: "production", id: { gte: "bundle-1" } },
+    where: { platform: "ios", id: { gte: "bundle-1" } },
     orderBy: { field: "id", direction: "desc" },
     limit: 10,
     offset: 0,
@@ -79,13 +70,10 @@ it("queries bundles through domain filters", async () => {
   expect(rows).toEqual([
     {
       ...bundleD1Row,
-      enabled: true,
       metadata: { version: 1 },
-      should_force_update: false,
-      target_cohorts: ["stable"],
     },
   ]);
-  expect(state.queries[0]?.sql).toContain("channel = json_extract(?, '$')");
+  expect(state.queries[0]?.sql).toContain("platform = json_extract(?, '$')");
   expect(state.queries[0]?.sql).toContain("id >= json_extract(?, '$')");
   expect(state.queries[0]?.sql).toContain("ORDER BY id DESC");
 });
@@ -119,12 +107,10 @@ it("counts domain-filtered bundle rows in SQL", async () => {
 
   await plugin.models.bundles.count({
     platform: "ios",
-    channel: "production",
   });
 
   expect(state.queries[0]?.sql).toContain(
     "SELECT COUNT(*) AS count FROM bundles",
   );
   expect(state.queries[0]?.sql).toContain("platform = json_extract(?, '$')");
-  expect(state.queries[0]?.sql).toContain("channel = json_extract(?, '$')");
 });

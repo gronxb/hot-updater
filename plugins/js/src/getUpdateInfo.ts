@@ -1,6 +1,6 @@
 import {
   type AppVersionGetBundlesArgs,
-  type Bundle,
+  type LegacyBundle,
   type FingerprintGetBundlesArgs,
   type GetBundlesArgs,
   isCohortEligibleForUpdate,
@@ -20,7 +20,7 @@ const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
   fileHash: null,
 };
 
-const makeResponse = (bundle: Bundle, status: UpdateStatus) => ({
+const makeResponse = (bundle: LegacyBundle, status: UpdateStatus) => ({
   id: bundle.id,
   message: bundle.message,
   shouldForceUpdate: status === "ROLLBACK" ? true : bundle.shouldForceUpdate,
@@ -30,7 +30,7 @@ const makeResponse = (bundle: Bundle, status: UpdateStatus) => ({
 });
 
 const isEligibleUpdateCandidate = (
-  bundle: Bundle,
+  bundle: LegacyBundle,
   cohort: string | undefined,
 ): boolean => {
   return isCohortEligibleForUpdate(
@@ -42,11 +42,11 @@ const isEligibleUpdateCandidate = (
 };
 
 const findLatestEligibleUpdateCandidate = (
-  bundles: Bundle[],
+  bundles: LegacyBundle[],
   bundleId: string,
   cohort: string | undefined,
-): Bundle | null => {
-  let updateCandidate: Bundle | null = null;
+): LegacyBundle | null => {
+  let updateCandidate: LegacyBundle | null = null;
 
   for (const bundle of bundles) {
     if (
@@ -62,9 +62,10 @@ const findLatestEligibleUpdateCandidate = (
 };
 
 export const getUpdateInfo = async (
-  bundles: Bundle[],
+  bundles: LegacyBundle[],
   args: GetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
+  if (bundles.length === 0) return null;
   switch (args._updateStrategy) {
     case "appVersion":
       return appVersionStrategy(bundles, args);
@@ -76,7 +77,7 @@ export const getUpdateInfo = async (
 };
 
 const appVersionStrategy = async (
-  bundles: Bundle[],
+  bundles: LegacyBundle[],
   {
     channel = "production",
     minBundleId = NIL_UUID,
@@ -87,7 +88,7 @@ const appVersionStrategy = async (
   }: AppVersionGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   // Initial filtering: apply platform, channel, semver conditions, enabled status, and minBundleId condition
-  const candidateBundles: Bundle[] = [];
+  const candidateBundles: LegacyBundle[] = [];
 
   for (const b of bundles) {
     if (
@@ -114,8 +115,8 @@ const appVersionStrategy = async (
   }
 
   // Determine the latest bundle, update candidate, rollback candidate, and current bundle in a single iteration
-  let rollbackCandidate: Bundle | null = null;
-  let currentBundle: Bundle | undefined;
+  let rollbackCandidate: LegacyBundle | null = null;
+  let currentBundle: LegacyBundle | undefined;
 
   for (const b of candidateBundles) {
     // Check if current bundle exists
@@ -166,7 +167,7 @@ const appVersionStrategy = async (
 };
 
 const fingerprintStrategy = async (
-  bundles: Bundle[],
+  bundles: LegacyBundle[],
   {
     channel = "production",
     minBundleId = NIL_UUID,
@@ -176,7 +177,7 @@ const fingerprintStrategy = async (
     cohort,
   }: FingerprintGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
-  const candidateBundles: Bundle[] = [];
+  const candidateBundles: LegacyBundle[] = [];
 
   for (const b of bundles) {
     if (
@@ -203,8 +204,8 @@ const fingerprintStrategy = async (
   }
 
   // Determine the latest bundle, update candidate, rollback candidate, and current bundle in a single iteration
-  let rollbackCandidate: Bundle | null = null;
-  let currentBundle: Bundle | undefined;
+  let rollbackCandidate: LegacyBundle | null = null;
+  let currentBundle: LegacyBundle | undefined;
 
   for (const b of candidateBundles) {
     // Check if current bundle exists

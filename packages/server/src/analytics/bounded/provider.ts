@@ -20,10 +20,9 @@ import {
   materializeRowsForWindow,
 } from "./scan";
 
-type TransitionEventRow = Exclude<
-  BundleEventPersistenceRow,
-  { readonly type: "UNCHANGED" }
->;
+type TransitionEventRow = BundleEventPersistenceRow & {
+  readonly type: "UPDATE_APPLIED" | "RECOVERED";
+};
 
 const isTransitionEventRow = (
   row: BundleEventPersistenceRow,
@@ -138,6 +137,7 @@ export const createAnalyticsProvider = (
       }
       const counts = new Map<string, number>();
       for (const row of latestByInstall.values()) {
+        if (row.to_bundle_id === null) continue;
         counts.set(row.to_bundle_id, (counts.get(row.to_bundle_id) ?? 0) + 1);
       }
       return {

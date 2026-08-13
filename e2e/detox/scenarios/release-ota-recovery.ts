@@ -24,6 +24,9 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "stableBundleId",
+        saveResultFieldsAs: {
+          releaseId: "stableReleaseId",
+        },
       },
     );
     await app.launch("launch stable update app");
@@ -65,6 +68,9 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "crashBundleId",
+        saveResultFieldsAs: {
+          releaseId: "crashReleaseId",
+        },
       },
     );
     await app.launch("launch crash update app");
@@ -90,15 +96,22 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
       "assert recovery launch report",
       "/e2e/assert-launch-report",
       {
-        crashedBundleId: "$crashBundleId",
-        stableBundleId: "$stableBundleId",
+        fromBundleId: "$crashBundleId",
+        fromReleaseId: "$crashReleaseId",
         status: "RECOVERED",
+        toBundleId: "$stableBundleId",
+        toReleaseId: "$stableReleaseId",
       },
     );
     await app.assertText(
       "assert recovered bundle id",
       "runtime-bundle-id",
       "$stableBundleId",
+    );
+    await app.assertText(
+      "assert recovered Release id",
+      "runtime-release-state",
+      "$stableReleaseId",
     );
     await app.assertText(
       "assert recovered marker",
@@ -115,5 +128,25 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
     await app.control("assert crash history", "/e2e/assert-crash-history", {
       bundleId: "$crashBundleId",
     });
+    await app.control(
+      "guard post-crash reselection artifact",
+      "/e2e/proxy-control",
+      { artifactFailures: 1 },
+    );
+    await app.tap(
+      "refresh same-generation crash context",
+      "action-install-current-channel-update",
+    );
+    await app.assertText(
+      "assert same-generation safe reselection",
+      "update-action-result",
+      "current-channel -> adopted Release $stableReleaseId / Bundle $stableBundleId",
+      { exactText: true },
+    );
+    await app.control(
+      "assert crash-context reselection skipped artifact",
+      "/e2e/assert-proxy",
+      { artifactFailuresRemaining: 1 },
+    );
   },
 };

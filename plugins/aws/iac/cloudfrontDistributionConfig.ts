@@ -35,6 +35,29 @@ export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
   },
 };
 
+export const HOT_UPDATER_RELEASE_CATALOG_CACHE_POLICY_CONFIG: CachePolicyConfig =
+  {
+    Name: "HotUpdaterReleaseCatalogV1",
+    Comment:
+      "Cache Release catalogs by canonical path, client key, and encoding",
+    DefaultTTL: 0,
+    MaxTTL: 5,
+    MinTTL: 0,
+    ParametersInCacheKeyAndForwardedToOrigin: {
+      EnableAcceptEncodingBrotli: true,
+      EnableAcceptEncodingGzip: true,
+      HeadersConfig: {
+        HeaderBehavior: "whitelist",
+        Headers: {
+          Quantity: 1,
+          Items: ["x-api-key"],
+        },
+      },
+      CookiesConfig: { CookieBehavior: "none" },
+      QueryStringsConfig: { QueryStringBehavior: "none" },
+    },
+  };
+
 export const HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG: OriginRequestPolicyConfig =
   {
     Name: "HotUpdaterManagedApiOriginRequestV2",
@@ -96,6 +119,10 @@ const HOT_UPDATER_BEHAVIOR_BASE = {
 export const HOT_UPDATER_CACHE_BEHAVIOR_PATHS = [
   "/api/check-update",
   "/api/check-update/*",
+] as const;
+
+export const HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS = [
+  "/api/check-update/v2/release-catalogs/*",
 ] as const;
 
 const omitLegacyCacheFields = <
@@ -321,6 +348,7 @@ export const buildDistributionConfigOverrides = (options: {
   keyGroupId: string;
   oacId: string;
   originRequestPolicyId: string;
+  releaseCatalogCachePolicyId: string;
   sharedCachePolicyId: string;
 }): DistributionConfigOverrides => ({
   Origins: {
@@ -339,16 +367,29 @@ export const buildDistributionConfigOverrides = (options: {
     sharedCachePolicyId: options.sharedCachePolicyId,
   }),
   CacheBehaviors: {
-    Quantity: HOT_UPDATER_CACHE_BEHAVIOR_PATHS.length,
-    Items: HOT_UPDATER_CACHE_BEHAVIOR_PATHS.map((pathPattern) =>
-      buildCacheBehavior({
-        bucketName: options.bucketName,
-        functionArn: options.functionArn,
-        originRequestPolicyId: options.originRequestPolicyId,
-        pathPattern,
-        sharedCachePolicyId: options.sharedCachePolicyId,
-      }),
-    ),
+    Quantity:
+      HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS.length +
+      HOT_UPDATER_CACHE_BEHAVIOR_PATHS.length,
+    Items: [
+      ...HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS.map((pathPattern) =>
+        buildCacheBehavior({
+          bucketName: options.bucketName,
+          functionArn: options.functionArn,
+          originRequestPolicyId: options.originRequestPolicyId,
+          pathPattern,
+          sharedCachePolicyId: options.releaseCatalogCachePolicyId,
+        }),
+      ),
+      ...HOT_UPDATER_CACHE_BEHAVIOR_PATHS.map((pathPattern) =>
+        buildCacheBehavior({
+          bucketName: options.bucketName,
+          functionArn: options.functionArn,
+          originRequestPolicyId: options.originRequestPolicyId,
+          pathPattern,
+          sharedCachePolicyId: options.sharedCachePolicyId,
+        }),
+      ),
+    ],
   },
 });
 
@@ -406,6 +447,7 @@ export const buildDistributionConfig = (options: {
   keyGroupId: string;
   oacId: string;
   originRequestPolicyId: string;
+  releaseCatalogCachePolicyId: string;
   sharedCachePolicyId: string;
 }): DistributionConfig =>
   sanitizeDistributionConfig({

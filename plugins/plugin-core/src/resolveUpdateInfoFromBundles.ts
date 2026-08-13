@@ -1,11 +1,11 @@
 import type { GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { getUpdateInfo as getManifestUpdateInfo } from "@hot-updater/js";
 
-import type { Bundle } from "./types";
+import type { LegacyBundle } from "./types";
 
 export interface ResolveUpdateInfoFromBundlesOptions {
   readonly args: GetBundlesArgs;
-  readonly bundles: Bundle[];
+  readonly bundles: LegacyBundle[];
 }
 
 export const resolveUpdateInfoFromBundles = async ({

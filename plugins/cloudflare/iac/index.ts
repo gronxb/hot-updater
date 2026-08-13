@@ -44,10 +44,15 @@ import {
   shouldUpdateR2ManagedDomain,
 } from "./cloudflareInitInputs";
 import { inputCloudflareInitSecrets } from "./cloudflareInitSecrets";
+import {
+  type D1ReleaseCatalogMigrationState,
+  materializeCloudflareReleaseCatalogMigration,
+} from "./cloudflareReleaseCatalogMigration";
 import { initProvider as CLOUDFLARE_INIT_PROVIDER } from "./init/index";
 
 const getConfigScaffold = (
   build: RunInitOptions["build"],
+  authorityId: string,
 ): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
@@ -74,6 +79,7 @@ const getConfigScaffold = (
       .setBuildType(build)
       .setStorage(storageConfig)
       .setDatabase(databaseConfig),
+    { authorityIdInitializer: JSON.stringify(authorityId) },
   );
 };
 
@@ -99,6 +105,7 @@ const deployWorker = async (
     nonInteractive,
     r2BucketName,
     workerName,
+    migrationState,
   }: {
     credentialSource: CloudflareCredentialSource;
     d1DatabaseId: string;
@@ -106,6 +113,7 @@ const deployWorker = async (
     nonInteractive: boolean;
     r2BucketName: string;
     workerName: string;
+    migrationState: D1ReleaseCatalogMigrationState;
   },
 ) => {
   const cwd = getCwd();
@@ -140,6 +148,7 @@ const deployWorker = async (
     ];
 
     wranglerConfig.vars = {
+      AUTHORITY_ID: d1DatabaseId,
       BUCKET_NAME: r2BucketName,
     };
 
@@ -161,7 +170,14 @@ const deployWorker = async (
     for (const file of migrationFiles) {
       if (file.endsWith(".sql")) {
         const filePath = path.join(migrationPath, file);
-        const content = await fs.readFile(filePath, "utf-8");
+        let content = await fs.readFile(filePath, "utf-8");
+        if (file.includes("1.0.0")) {
+          content = await materializeCloudflareReleaseCatalogMigration({
+            authorityId: d1DatabaseId,
+            migrationSql: content,
+            state: migrationState,
+          });
+        }
         await fs.writeFile(
           filePath,
           transformTemplate(content, {
@@ -659,6 +675,43 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseName.envKey]: d1DatabaseName,
   });
 
+  const queryD1 = async (sql: string): Promise<readonly unknown[]> => {
+    const page = await cf.d1.database.query(selectedD1DatabaseId, {
+      account_id: accountId,
+      sql,
+    });
+    const rows: unknown[] = [];
+    for await (const resultPage of page.iterPages()) {
+      for (const result of resultPage.result) {
+        rows.push(...(result.results ?? []));
+      }
+    }
+    return rows;
+  };
+  const bundleSchema = (await queryD1(`
+    SELECT type, name, sql
+    FROM sqlite_schema
+    WHERE tbl_name = 'bundles'
+      AND type IN ('table', 'index', 'trigger')
+    ORDER BY type, name
+  `)) as D1ReleaseCatalogMigrationState["bundleSchema"];
+  const legacyBundles: unknown[] = [];
+  if (bundleSchema.some(({ type }) => type === "table")) {
+    const pageSize = 1000;
+    for (let offset = 0; ; offset += pageSize) {
+      const page = await queryD1(`
+        SELECT id, platform, channel, enabled, should_force_update, message,
+          target_app_version, fingerprint_hash, rollout_cohort_count,
+          target_cohorts
+        FROM bundles
+        ORDER BY id
+        LIMIT ${pageSize} OFFSET ${offset}
+      `);
+      legacyBundles.push(...page);
+      if (page.length < pageSize) break;
+    }
+  }
+
   const subdomains = await runCloudflareApiRequest({
     request: () =>
       cf.workers.subdomains.get({
@@ -679,10 +732,15 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     nonInteractive,
     r2BucketName: selectedBucketName,
     workerName,
+    migrationState: {
+      bundleSchema,
+      legacyBundles:
+        legacyBundles as D1ReleaseCatalogMigrationState["legacyBundles"],
+    },
   });
 
   const configWriteResult = await writeHotUpdaterConfig(
-    getConfigScaffold(build),
+    getConfigScaffold(build, selectedD1DatabaseId),
   );
 
   p.log.success("Generated '.env.hotupdater' file with Cloudflare settings.");

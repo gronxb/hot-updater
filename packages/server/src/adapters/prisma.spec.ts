@@ -18,19 +18,10 @@ setupDatabasePluginTestSuite({
 const bundleRow = (id: string) => ({
   id,
   platform: "ios" as const,
-  should_force_update: false,
-  enabled: true,
   file_hash: "hash",
   git_commit_hash: null,
-  message: null,
-  channel: "production",
-  channel_id: "channel-production",
   storage_uri: "storage://bundle",
-  target_app_version: "1.0.0",
-  fingerprint_hash: null,
   metadata: {},
-  rollout_cohort_count: 1000,
-  target_cohorts: null,
   manifest_storage_uri: null,
   manifest_file_hash: null,
   asset_base_storage_uri: null,
@@ -84,45 +75,6 @@ describe("prismaAdapter capabilities", () => {
     ).toThrow('relation mode "prisma" requires callback transactions');
   });
 
-  it("guards target fields against a concurrent clear", async () => {
-    harness.reset();
-    const plugin = prismaAdapter({
-      prisma: harness.client,
-      provider: "postgresql",
-    });
-    const row = {
-      ...bundleRow("bundle-race"),
-      fingerprint_hash: "fingerprint",
-    };
-    await plugin.models.channels.insert({
-      row: productionChannel,
-      onConflict: "returnExisting",
-    });
-    await plugin.commit({
-      changes: [{ model: "bundles", operation: "insert", row }],
-    });
-    harness.clearTargetBeforeNextBundleUpdate(row.id, "fingerprint_hash");
-
-    await expect(
-      plugin.commit({
-        changes: [
-          {
-            model: "bundles",
-            operation: "update",
-            where: { id: row.id },
-            update: { target_app_version: null },
-          },
-        ],
-      }),
-    ).rejects.toThrow("bundle target update was not applied");
-    await expect(plugin.models.bundles.findById(row.id)).resolves.toMatchObject(
-      {
-        target_app_version: "1.0.0",
-        fingerprint_hash: null,
-      },
-    );
-  });
-
   it("uses serializable transactions for emulated relation commits", async () => {
     harness.reset();
     const plugin = prismaAdapter({
@@ -169,6 +121,24 @@ describe("prismaAdapter capabilities", () => {
     expect(harness.getTransactionOptions()).toEqual(
       Array.from({ length: 3 }, () => ({ isolationLevel: "Serializable" })),
     );
+  });
+
+  it("uses serializable transactions for atomic CAS commits", async () => {
+    harness.reset();
+    const plugin = prismaAdapter({
+      prisma: harness.client,
+      provider: "postgresql",
+    });
+
+    await plugin.commit({
+      changes: [
+        { model: "bundles", operation: "insert", row: bundleRow("bundle") },
+      ],
+    });
+
+    expect(harness.getTransactionOptions()).toEqual([
+      { isolationLevel: "Serializable" },
+    ]);
   });
 
   it("does not delete patches before a bundle delete fails", async () => {

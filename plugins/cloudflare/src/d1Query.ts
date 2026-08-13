@@ -15,6 +15,8 @@ export const d1TableNames = {
   channels: "channels",
   bundle_events: "bundle_events",
   client_access_keys: "client_access_keys",
+  release_catalogs: "release_catalogs",
+  releases: "releases",
 } as const satisfies Record<DatabaseModel, string>;
 
 export class D1QueryResultError extends Error {
@@ -79,5 +81,9 @@ export const findManyD1Rows = async (
       return rows.map((row) => parseD1Row("bundle_events", row));
     case "client_access_keys":
       return rows.map((row) => parseD1Row("client_access_keys", row));
+    case "releases":
+      return rows.map((row) => parseD1Row("releases", row));
+    case "release_catalogs":
+      return rows.map((row) => parseD1Row("release_catalogs", row));
   }
 };

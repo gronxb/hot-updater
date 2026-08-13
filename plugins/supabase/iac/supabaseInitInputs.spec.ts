@@ -67,6 +67,17 @@ describe("resolveSupabaseInitInputs", () => {
     expect(inputs.databasePassword).toBe("injected-password");
   });
 
+  it("resolves an explicit external Release catalog CDN endpoint", () => {
+    const inputs = resolveSupabaseInitInputs({
+      HOT_UPDATER_SUPABASE_CATALOG_CDN_URL:
+        "https://updates.example.com/hot-updater",
+    });
+
+    expect(inputs.catalogCdnUrl).toBe(
+      "https://updates.example.com/hot-updater",
+    );
+  });
+
   it("accepts a database password from an overlaid init env", () => {
     // Given
     const managedEnv = {

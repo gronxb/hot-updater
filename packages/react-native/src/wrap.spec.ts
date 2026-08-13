@@ -221,6 +221,7 @@ describe("HotUpdater wrap initialization", () => {
       cohort: "123",
       fingerprintHash: "fingerprint-hash",
       fromBundleId: "bundle-a",
+      fromReleaseId: null,
       installId: "install-id",
       platform: "ios",
       requestHeaders: {
@@ -228,6 +229,7 @@ describe("HotUpdater wrap initialization", () => {
       },
       requestTimeout: 1000,
       toBundleId: "bundle-b",
+      toReleaseId: null,
       type: "UPDATE_APPLIED",
       updateStrategy: "fingerprint",
       userId: "user-123",

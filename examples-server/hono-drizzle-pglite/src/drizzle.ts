@@ -39,4 +39,17 @@ export const closeClient = async () => {
   dbPromise = undefined;
 };
 
+export const resetDecisionFixtures = async () => {
+  const activeClient = client ?? (await getDB(), client);
+  await activeClient!.exec(`
+    TRUNCATE TABLE
+      bundle_patches,
+      release_catalogs,
+      releases,
+      bundles,
+      channels
+    CASCADE
+  `);
+};
+
 export { schema };

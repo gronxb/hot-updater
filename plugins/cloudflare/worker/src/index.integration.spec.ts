@@ -1,11 +1,11 @@
 import {
   type AppUpdateInfo,
-  getBundlePatches,
-  type Bundle,
   type GetBundlesArgs,
+  type LegacyBundle as Bundle,
   NIL_UUID,
   type UpdateInfo,
 } from "@hot-updater/core";
+import { createHotUpdater } from "@hot-updater/server";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -21,6 +21,7 @@ import {
   vi,
 } from "vitest";
 
+import { d1Database } from "../../src/worker";
 import worker, { HOT_UPDATER_BASE_PATH } from "./index";
 
 declare module "vitest" {
@@ -32,6 +33,7 @@ declare module "vitest" {
 declare module "cloudflare:test" {
   interface ProvidedEnv {
     DB: D1Database;
+    AUTHORITY_ID: string;
     BUCKET: R2Bucket;
     BUCKET_NAME: string;
     STORAGE_DOWNLOAD_URL_SIGNING_KEY: string;
@@ -39,92 +41,6 @@ declare module "cloudflare:test" {
 }
 
 const PUBLIC_BASE_URL = "https://updates.example.com";
-
-const sqlString = (value: string) => `'${value.replaceAll("'", "''")}'`;
-
-const createInsertBundleQuery = (bundle: Bundle, channelId: string) => {
-  const rolloutCohortCount = bundle.rolloutCohortCount ?? 1000;
-  const targetCohorts = bundle.targetCohorts
-    ? sqlString(JSON.stringify(bundle.targetCohorts))
-    : "null";
-  const metadata = sqlString(JSON.stringify(bundle.metadata ?? {}));
-
-  return `
-    INSERT INTO bundles (
-      id, file_hash, platform, target_app_version,
-      should_force_update, enabled, git_commit_hash, message, channel,
-      channel_id,
-      storage_uri, fingerprint_hash, metadata, manifest_storage_uri,
-      manifest_file_hash, asset_base_storage_uri, rollout_cohort_count,
-      target_cohorts
-    ) VALUES (
-      ${sqlString(bundle.id)},
-      ${sqlString(bundle.fileHash)},
-      ${sqlString(bundle.platform)},
-      ${bundle.targetAppVersion ? sqlString(bundle.targetAppVersion) : "null"},
-      ${bundle.shouldForceUpdate},
-      ${bundle.enabled},
-      ${bundle.gitCommitHash ? sqlString(bundle.gitCommitHash) : "null"},
-      ${bundle.message ? sqlString(bundle.message) : "null"},
-      ${sqlString(bundle.channel)},
-      ${sqlString(channelId)},
-      ${bundle.storageUri ? sqlString(bundle.storageUri) : "null"},
-      ${bundle.fingerprintHash ? sqlString(bundle.fingerprintHash) : "null"},
-      ${metadata},
-      ${bundle.manifestStorageUri ? sqlString(bundle.manifestStorageUri) : "null"},
-      ${bundle.manifestFileHash ? sqlString(bundle.manifestFileHash) : "null"},
-      ${bundle.assetBaseStorageUri ? sqlString(bundle.assetBaseStorageUri) : "null"},
-      ${rolloutCohortCount},
-      ${targetCohorts}
-    ) ON CONFLICT(id) DO UPDATE SET
-      file_hash = excluded.file_hash,
-      platform = excluded.platform,
-      target_app_version = excluded.target_app_version,
-      should_force_update = excluded.should_force_update,
-      enabled = excluded.enabled,
-      git_commit_hash = excluded.git_commit_hash,
-      message = excluded.message,
-      channel = excluded.channel,
-      channel_id = excluded.channel_id,
-      storage_uri = excluded.storage_uri,
-      fingerprint_hash = excluded.fingerprint_hash,
-      metadata = excluded.metadata,
-      manifest_storage_uri = excluded.manifest_storage_uri,
-      manifest_file_hash = excluded.manifest_file_hash,
-      asset_base_storage_uri = excluded.asset_base_storage_uri,
-      rollout_cohort_count = excluded.rollout_cohort_count,
-      target_cohorts = excluded.target_cohorts;
-  `;
-};
-
-const createInsertBundlePatchQueries = (bundle: Bundle) =>
-  getBundlePatches(bundle).map(
-    (patch, index) => `
-    INSERT INTO bundle_patches (
-      id,
-      bundle_id,
-      base_bundle_id,
-      base_file_hash,
-      patch_file_hash,
-      patch_storage_uri,
-      order_index
-    ) VALUES (
-      ${sqlString(`${bundle.id}:${patch.baseBundleId}`)},
-      ${sqlString(bundle.id)},
-      ${sqlString(patch.baseBundleId)},
-      ${sqlString(patch.baseFileHash)},
-      ${sqlString(patch.patchFileHash)},
-      ${sqlString(patch.patchStorageUri)},
-      ${index}
-    ) ON CONFLICT(id) DO UPDATE SET
-      bundle_id = excluded.bundle_id,
-      base_bundle_id = excluded.base_bundle_id,
-      base_file_hash = excluded.base_file_hash,
-      patch_file_hash = excluded.patch_file_hash,
-      patch_storage_uri = excluded.patch_storage_uri,
-      order_index = excluded.order_index;
-  `,
-  );
 
 const toRuntimeBundle = (bundle: Bundle): Bundle => {
   return {
@@ -134,26 +50,16 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
 };
 
 const seedBundles = async (bundles: Bundle[]) => {
+  const seedHotUpdater = createHotUpdater({
+    authorityId: env.AUTHORITY_ID,
+    database: d1Database(env.DB),
+  });
   for (const bundle of bundles.map(toRuntimeBundle)) {
-    const candidateChannelId = `test-channel:${bundle.channel}`;
-    await env.DB.prepare(`
-      INSERT INTO channels (id, name)
-      VALUES (?, ?)
-      ON CONFLICT(name) DO NOTHING
-    `)
-      .bind(candidateChannelId, bundle.channel)
-      .run();
-    const channelId = await env.DB.prepare(
-      "SELECT id FROM channels WHERE name = ?",
-    )
-      .bind(bundle.channel)
-      .first<string>("id");
-    if (channelId === null) {
-      throw new Error(`Failed to seed Channel ${bundle.channel}.`);
-    }
-    await env.DB.prepare(createInsertBundleQuery(bundle, channelId)).run();
-    for (const patchSql of createInsertBundlePatchQueries(bundle)) {
-      await env.DB.prepare(patchSql).run();
+    const existing = await seedHotUpdater.getBundleById(bundle.id);
+    if (existing === null) {
+      await seedHotUpdater.insertBundle(bundle);
+    } else {
+      await seedHotUpdater.updateBundleById(bundle.id, bundle);
     }
   }
 };
@@ -187,6 +93,8 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
 
   beforeEach(async () => {
     await env.DB.prepare("DELETE FROM bundle_patches").run();
+    await env.DB.prepare("DELETE FROM release_catalogs").run();
+    await env.DB.prepare("DELETE FROM releases").run();
     await env.DB.prepare("DELETE FROM bundles").run();
     await env.DB.prepare("DELETE FROM channels").run();
   });

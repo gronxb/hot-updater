@@ -1,391 +1,118 @@
-import type { Bundle } from "@hot-updater/plugin-core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const { mockCli, mockPrintBanner } = vi.hoisted(() => {
-  const mockCli = {
-    loadConfig: vi.fn(),
-    p: {
-      confirm: vi.fn(),
-      isCancel: vi.fn(() => false),
-      log: {
-        error: vi.fn(),
-        info: vi.fn(),
-        message: vi.fn(),
-        success: vi.fn(),
-        warn: vi.fn(),
-      },
-    },
-  };
-  const mockPrintBanner = vi.fn();
-  return { mockCli, mockPrintBanner };
-});
-
-vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@hot-updater/cli-tools")>();
-  return {
-    ...actual,
-    loadConfig: mockCli.loadConfig,
-    p: mockCli.p,
-  };
-});
-
-vi.mock("@/utils/printBanner", () => ({
-  printBanner: mockPrintBanner,
-}));
+import type { LegacyBundle } from "@hot-updater/plugin-core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
 
+const { loadConfig, log } = vi.hoisted(() => ({
+  loadConfig: vi.fn(),
+  log: {
+    error: vi.fn(),
+    info: vi.fn(),
+    message: vi.fn(),
+    success: vi.fn(),
+    warn: vi.fn(),
+  },
+}));
+
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
+  loadConfig,
+  p: {
+    confirm: vi.fn(),
+    isCancel: vi.fn(() => false),
+    log,
+  },
+}));
+
+vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
+
 const databaseHarness = createDatabasePluginHarness();
 
-const buildBundle = (overrides: Partial<Bundle> = {}): Bundle => ({
-  id: "0195a408-8f13-7d9b-8df4-123456789abc",
-  channel: "dev",
-  platform: "ios",
+const artifact = (
+  id: string,
+  platform: LegacyBundle["platform"] = "ios",
+): LegacyBundle => ({
+  id,
+  platform,
+  fileHash: `hash-${id}`,
+  storageUri: `storage://artifacts/${id}.zip`,
+  gitCommitHash: "1234567890abcdef",
+  channel: "production",
   enabled: true,
-  shouldForceUpdate: false,
-  fileHash: "abc123",
-  storageUri: "s3://bucket/bundle.zip",
-  gitCommitHash: "deadbeefcafe",
-  message: "Initial bundle",
-  targetAppVersion: "1.0.0",
   fingerprintHash: null,
-  rolloutCohortCount: 1000,
+  message: null,
+  shouldForceUpdate: false,
+  targetAppVersion: "1.0.x",
+  rolloutCohortCount: 1_000,
   targetCohorts: [],
-  ...overrides,
 });
 
-const stubLoadedConfig = () => {
-  mockCli.loadConfig.mockResolvedValue({ database: databaseHarness.plugin });
-};
-
-const expectExit = (code: number) => {
-  const exitSpy = vi.spyOn(process, "exit").mockImplementation((c) => {
-    throw new Error(`process.exit(${c})`);
-  });
-  return { exitSpy, code };
-};
-
-describe("handleBundleList", () => {
+describe("Bundle artifact commands", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     databaseHarness.reset();
-    stubLoadedConfig();
-  });
-  afterEach(() => {
-    vi.restoreAllMocks();
+    loadConfig.mockResolvedValue({ database: databaseHarness.plugin });
   });
 
-  it("prints a tabulated row per bundle from getBundles result data", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  it("lists immutable artifact fields with a platform-only query", async () => {
     databaseHarness.setBundles([
-      buildBundle({ id: "B1" }),
-      buildBundle({ id: "B2" }),
+      artifact("B2", "android"),
+      artifact("B1", "ios"),
     ]);
-
+    const output = vi.spyOn(console, "log").mockImplementation(() => {});
     const { handleBundleList } = await import("./bundle");
-    await handleBundleList({});
 
-    const output = logSpy.mock.calls.map((c) => c[0]).join("\n");
-    expect(output).toContain("B1");
-    expect(output).toContain("B2");
-    expect(output).toContain("┌");
-    expect(output).toContain("│ ID");
-    expect(output).toContain("Channel");
-    expect(output).toContain("Platform");
-  });
+    await handleBundleList({ json: true, limit: 5, platform: "ios" });
 
-  it("prints empty-state marker when no bundles exist", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const { handleBundleList } = await import("./bundle");
-    await handleBundleList({});
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining("(no bundles)"),
-    );
-  });
-
-  it("prints raw paginated JSON and skips the banner when --json is passed", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    databaseHarness.setBundles([buildBundle({ id: "B1" })]);
-
-    const { handleBundleList } = await import("./bundle");
-    await handleBundleList({ json: true });
-
-    expect(mockPrintBanner).not.toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"id": "B1"'));
-  });
-
-  it("forwards channel/platform/limit options to getBundles", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    databaseHarness.setBundles([
-      buildBundle({ id: "B1", channel: "beta", platform: "android" }),
-      buildBundle({ id: "B2", channel: "other", platform: "android" }),
+    const payload = JSON.parse(String(output.mock.calls[0]?.[0]));
+    expect(payload.data).toEqual([
+      expect.objectContaining({
+        id: "B1",
+        platform: "ios",
+        fileHash: "hash-B1",
+        storageUri: "storage://artifacts/B1.zip",
+      }),
     ]);
-    const { handleBundleList } = await import("./bundle");
-    await handleBundleList({ channel: "beta", platform: "android", limit: 5 });
-    const output = logSpy.mock.calls.map((call) => call[0]).join("\n");
-    expect(output).toContain("B1");
-    expect(output).not.toContain("B2");
+    expect(payload.data[0]).not.toHaveProperty("channel");
+    expect(payload.data[0]).not.toHaveProperty("enabled");
   });
 
-  it("calls dispose even when getBundles throws", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    databaseHarness.read.mockRejectedValueOnce(new Error("DB down"));
-    const { handleBundleList } = await import("./bundle");
-    await expect(handleBundleList({})).rejects.toThrow("DB down");
-    expect(databaseHarness.dispose).toHaveBeenCalled();
-  });
-});
-
-describe("handleBundleSetEnabled", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    databaseHarness.reset();
-    stubLoadedConfig();
-  });
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("disables an enabled bundle when -y is passed and verifies the result", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    databaseHarness.setBundles([buildBundle({ id: "B1", enabled: true })]);
-
-    const { handleBundleSetEnabled } = await import("./bundle");
-    await handleBundleSetEnabled("B1", false, { yes: true });
-
-    expect((await databaseHarness.bundles())[0]?.enabled).toBe(false);
-    expect(mockCli.p.log.message).toHaveBeenCalledWith(
-      expect.stringContaining("Status:"),
-    );
-    expect(mockCli.p.log.success).toHaveBeenCalledWith("Disabled bundle.");
-    expect(mockCli.p.log.info).toHaveBeenCalledWith(
-      expect.stringContaining("B1"),
-    );
-  });
-
-  it("enables a disabled bundle when -y is passed", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    databaseHarness.setBundles([buildBundle({ id: "B1", enabled: false })]);
-    const { handleBundleSetEnabled } = await import("./bundle");
-    await handleBundleSetEnabled("B1", true, { yes: true });
-    expect((await databaseHarness.bundles())[0]?.enabled).toBe(true);
-    expect(mockCli.p.log.success).toHaveBeenCalledWith("Enabled bundle.");
-  });
-
-  it("short-circuits with info log when bundle is already in target state", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    databaseHarness.setBundles([buildBundle({ id: "B1", enabled: false })]);
-    const { handleBundleSetEnabled } = await import("./bundle");
-    await handleBundleSetEnabled("B1", false, { yes: true });
-    expect(databaseHarness.commit).not.toHaveBeenCalled();
-    expect(mockCli.p.log.info).toHaveBeenCalledWith(
-      expect.stringContaining("already disable"),
-    );
-  });
-
-  it("exits 1 when bundle id does not exist", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    const { exitSpy } = expectExit(1);
-    const { handleBundleSetEnabled } = await import("./bundle");
-    await expect(
-      handleBundleSetEnabled("missing", true, { yes: true }),
-    ).rejects.toThrow("process.exit(1)");
-    expect(exitSpy).toHaveBeenCalledWith(1);
-  });
-
-  it("refuses to mutate without -y in a non-TTY shell", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    const isTtyDescriptor = Object.getOwnPropertyDescriptor(
-      process.stdin,
-      "isTTY",
-    );
-    Object.defineProperty(process.stdin, "isTTY", {
-      configurable: true,
-      value: false,
-    });
-
-    databaseHarness.setBundles([buildBundle({ id: "B1", enabled: true })]);
-    const { exitSpy } = expectExit(1);
-    const { handleBundleSetEnabled } = await import("./bundle");
-    await expect(handleBundleSetEnabled("B1", false, {})).rejects.toThrow(
-      "process.exit(1)",
-    );
-    expect(exitSpy).toHaveBeenCalledWith(1);
-
-    if (isTtyDescriptor) {
-      Object.defineProperty(process.stdin, "isTTY", isTtyDescriptor);
-    }
-  });
-
-  it("aborts with exit code 2 when interactive confirmation declines", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    const isTtyDescriptor = Object.getOwnPropertyDescriptor(
-      process.stdin,
-      "isTTY",
-    );
-    Object.defineProperty(process.stdin, "isTTY", {
-      configurable: true,
-      value: true,
-    });
-
-    databaseHarness.setBundles([buildBundle({ id: "B1", enabled: true })]);
-    mockCli.p.confirm.mockResolvedValueOnce(false);
-
-    const { exitSpy } = expectExit(2);
-    const { handleBundleSetEnabled } = await import("./bundle");
-    await expect(handleBundleSetEnabled("B1", false, {})).rejects.toThrow(
-      "process.exit(2)",
-    );
-    expect(exitSpy).toHaveBeenCalledWith(2);
-    expect(databaseHarness.commit).not.toHaveBeenCalled();
-
-    if (isTtyDescriptor) {
-      Object.defineProperty(process.stdin, "isTTY", isTtyDescriptor);
-    }
-  });
-
-  it("exits 1 when verification reads a state mismatch after commit", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    databaseHarness.setBundles([buildBundle({ id: "B1", enabled: true })]);
-    databaseHarness.commit.mockResolvedValue({ committed: true });
-
-    const { exitSpy } = expectExit(1);
-    const { handleBundleSetEnabled } = await import("./bundle");
-    await expect(
-      handleBundleSetEnabled("B1", false, { yes: true }),
-    ).rejects.toThrow("process.exit(1)");
-    expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(mockCli.p.log.error).toHaveBeenCalledWith(
-      expect.stringContaining("Verification failed"),
-    );
-  });
-
-  it("calls dispose even when getBundleById throws", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    databaseHarness.read.mockRejectedValueOnce(new Error("DB error"));
-    const { handleBundleSetEnabled } = await import("./bundle");
-    await expect(
-      handleBundleSetEnabled("B1", false, { yes: true }),
-    ).rejects.toThrow("DB error");
-    expect(databaseHarness.dispose).toHaveBeenCalled();
-  });
-});
-
-describe("handleBundleShow", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    databaseHarness.reset();
-    stubLoadedConfig();
-  });
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("prints raw bundle JSON and skips the banner when --json is passed", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const bundle = buildBundle({ id: "B1" });
-    databaseHarness.setBundles([bundle]);
-
+  it("shows artifact hashes, storage, and patch count without policy", async () => {
+    databaseHarness.setBundles([artifact("B1")]);
     const { handleBundleShow } = await import("./bundle");
-    await handleBundleShow("B1", { json: true });
 
-    expect(mockPrintBanner).not.toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"id": "B1"'));
-  });
-});
+    await handleBundleShow("B1");
 
-describe("handleBundleUpdate", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    databaseHarness.reset();
-    stubLoadedConfig();
-  });
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("updates rollout and target cohorts with -y and prints updated JSON", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    databaseHarness.setBundles([buildBundle({ id: "B1" })]);
-
-    const { handleBundleUpdate } = await import("./bundle");
-    await handleBundleUpdate("B1", {
-      json: true,
-      rolloutCohortCount: 500,
-      targetCohorts: "qa",
-      yes: true,
-    });
-
-    expect((await databaseHarness.bundles())[0]).toMatchObject({
-      id: "B1",
-      rolloutCohortCount: 500,
-      targetCohorts: ["qa"],
-    });
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('"rolloutCohortCount": 500'),
+    expect(log.message).toHaveBeenCalledWith(expect.stringContaining("B1"));
+    expect(log.message).toHaveBeenCalledWith(
+      expect.stringContaining("storage://artifacts/B1.zip"),
+    );
+    expect(log.message).not.toHaveBeenCalledWith(
+      expect.stringContaining("Channel"),
     );
   });
 
-  it("exits 1 when no update fields are provided", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    const { exitSpy } = expectExit(1);
-    const { handleBundleUpdate } = await import("./bundle");
-
-    await expect(handleBundleUpdate("B1", { yes: true })).rejects.toThrow(
-      "process.exit(1)",
-    );
-    expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(databaseHarness.commit).not.toHaveBeenCalled();
-  });
-});
-
-describe("handleBundleDelete", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    databaseHarness.reset();
-    stubLoadedConfig();
-  });
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("deletes an existing bundle record with -y and verifies it is gone", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    const bundle = buildBundle({ id: "B1" });
-    databaseHarness.setBundles([bundle]);
-
+  it("deletes an unreferenced artifact", async () => {
+    databaseHarness.setBundles([artifact("B1")]);
     const { handleBundleDelete } = await import("./bundle");
+
     await handleBundleDelete(["B1"], { yes: true });
 
-    expect(await databaseHarness.bundles()).toEqual([]);
-    expect(mockCli.p.log.success).toHaveBeenCalledWith(
-      "Deleted bundle record.",
-    );
+    await expect(
+      databaseHarness.plugin.models.bundles.findById("B1"),
+    ).resolves.toBeNull();
+    expect(log.success).toHaveBeenCalledWith("Deleted bundle record.");
   });
 
-  it("deletes multiple ids with a single commit", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    const b1 = buildBundle({ id: "B1" });
-    const b2 = buildBundle({ id: "B2" });
-    databaseHarness.setBundles([b1, b2]);
-
+  it("preserves an artifact referenced by a Release", async () => {
+    await databaseHarness.seedLegacyBundles([artifact("B1")]);
     const { handleBundleDelete } = await import("./bundle");
-    await handleBundleDelete(["B1", "B2"], { yes: true });
 
-    expect(await databaseHarness.bundles()).toEqual([]);
-    expect(databaseHarness.commit).toHaveBeenCalledTimes(1);
-    expect(mockCli.p.log.success).toHaveBeenCalledWith(
-      "Deleted 2 bundle records.",
+    await expect(handleBundleDelete(["B1"], { yes: true })).rejects.toThrow(
+      /referenced/i,
     );
-  });
-
-  it("exits 1 when no ids are provided", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    const { exitSpy } = expectExit(1);
-    const { handleBundleDelete } = await import("./bundle");
-    await expect(handleBundleDelete([], {})).rejects.toThrow("process.exit(1)");
-    expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(mockCli.loadConfig).not.toHaveBeenCalled();
+    await expect(
+      databaseHarness.plugin.models.bundles.findById("B1"),
+    ).resolves.not.toBeNull();
   });
 });

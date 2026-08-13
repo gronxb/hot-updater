@@ -13,6 +13,7 @@ import {
 
 export interface HotUpdaterInstance {
   adapterName: string;
+  authorityId: string;
 }
 
 export interface LoadHotUpdaterResult {

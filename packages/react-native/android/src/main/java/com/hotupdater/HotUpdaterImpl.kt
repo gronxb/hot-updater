@@ -240,6 +240,11 @@ class HotUpdaterImpl {
      * @return The channel name or null if not set
      */
     fun getChannel(): String {
+        val activeSelection = bundleStorage.getActiveUpdateState()["activeSelection"] as? Map<*, *>
+        val receiptChannel = activeSelection?.get("channel") as? String
+        if (!receiptChannel.isNullOrEmpty()) {
+            return receiptChannel
+        }
         val overriddenChannel = preferences.getItem(CHANNEL_STORAGE_KEY)
         if (!overriddenChannel.isNullOrEmpty()) {
             return overriddenChannel
@@ -276,8 +281,12 @@ class HotUpdaterImpl {
         manifestFileHash: String?,
         changedAssets: Map<String, ChangedAssetDescriptor>?,
         channel: String?,
+        selection: PersistedSelection? = null,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ) {
+        if (selection != null && !bundleStorage.stageReleaseSelection(selection)) {
+            throw IllegalStateException("Release catalog selection is stale")
+        }
         bundleStorage.updateBundle(
             bundleId,
             fileUrl,
@@ -364,6 +373,45 @@ class HotUpdaterImpl {
     }
 
     fun notifyAppReady(): Map<String, Any?> = bundleStorage.notifyAppReady()
+
+    fun acceptReleaseCatalog(
+        authorityId: String,
+        scopeKey: String,
+        generation: Long,
+        catalogHash: String,
+        channel: String,
+        selectionContextHash: String,
+    ): Boolean =
+        bundleStorage.acceptReleaseCatalog(
+            authorityId,
+            scopeKey,
+            generation,
+            catalogHash,
+            channel,
+            selectionContextHash,
+        )
+
+    fun getActiveUpdateState(): Map<String, Any?> = bundleStorage.getActiveUpdateState()
+
+    fun isReleaseSelectionCurrent(
+        authorityId: String,
+        scopeKey: String,
+        generation: Long,
+        catalogHash: String,
+        channel: String,
+        selectionContextHash: String,
+    ): Boolean =
+        bundleStorage.isReleaseSelectionCurrent(
+            authorityId,
+            scopeKey,
+            generation,
+            catalogHash,
+            channel,
+            selectionContextHash,
+        )
+
+    suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean =
+        bundleStorage.commitReleaseSelection(selection)
 
     fun getInstallId(): String = bundleStorage.getInstallId()
 

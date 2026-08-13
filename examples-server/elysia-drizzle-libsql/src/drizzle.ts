@@ -1,8 +1,10 @@
+import path from "path";
+import { fileURLToPath } from "url";
+
 import { createClient } from "@libsql/client";
 import { config } from "dotenv";
 import { drizzle } from "drizzle-orm/libsql";
-import path from "path";
-import { fileURLToPath } from "url";
+
 import * as schema from "../hot-updater-schema";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -16,7 +18,7 @@ const dbPath =
   process.env.TEST_DB_PATH ||
   path.join(process.cwd(), "data", "hot-updater.db");
 
-const client = createClient({
+export const client = createClient({
   url: `file:${dbPath}`,
 });
 

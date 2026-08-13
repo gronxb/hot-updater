@@ -56,6 +56,7 @@ describe("CloudFrontManager", () => {
     keyGroupId: "existing-key-group-id",
     oacId: "existing-oac-id",
     originRequestPolicyId: "existing-origin-request-policy-id",
+    releaseCatalogCachePolicyId: "existing-release-catalog-cache-policy-id",
     sharedCachePolicyId: "existing-shared-cache-policy-id",
   });
 
@@ -95,6 +96,9 @@ describe("CloudFrontManager", () => {
     mockCloudFront.getCachePolicy.mockResolvedValue({
       ETag: "cache-policy-etag",
     });
+    mockCloudFront.createCachePolicy.mockResolvedValue({
+      CachePolicy: { Id: "release-catalog-cache-policy-id" },
+    });
     mockCloudFront.updateCachePolicy.mockResolvedValue({});
     mockCloudFront.listOriginRequestPolicies.mockResolvedValue({
       OriginRequestPolicyList: {
@@ -121,6 +125,20 @@ describe("CloudFrontManager", () => {
               Id: "shared-cache-policy-id",
               CachePolicyConfig: {
                 Name: "HotUpdaterOriginCacheControlV2",
+              },
+            },
+          },
+        ],
+      },
+    });
+    mockCloudFront.listCachePolicies.mockResolvedValueOnce({
+      CachePolicyList: {
+        Items: [
+          {
+            CachePolicy: {
+              Id: "release-catalog-cache-policy-id",
+              CachePolicyConfig: {
+                Name: "HotUpdaterReleaseCatalogV1",
               },
             },
           },
@@ -195,6 +213,11 @@ describe("CloudFrontManager", () => {
                     }),
                   ]),
                 }),
+              }),
+              expect.objectContaining({
+                PathPattern: "/api/check-update/v2/release-catalogs/*",
+                CachePolicyId: "release-catalog-cache-policy-id",
+                OriginRequestPolicyId: "origin-request-policy-id",
               }),
             ]),
           }),

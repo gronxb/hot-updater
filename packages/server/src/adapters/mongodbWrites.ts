@@ -1,8 +1,4 @@
-import type {
-  BundlePatchRow,
-  BundleRow,
-  BundleRowUpdate,
-} from "@hot-updater/plugin-core";
+import type { BundlePatchRow } from "@hot-updater/plugin-core";
 import { createUUIDv7 } from "@hot-updater/plugin-core";
 import type { DatabasePluginImplementation } from "@hot-updater/plugin-core/internal";
 import type { ClientSession, Collection } from "mongodb";
@@ -21,6 +17,8 @@ import {
   createMongoChannelWhere,
   createMongoClientAccessKeyWhere,
   createMongoPatchWhere,
+  createMongoReleaseCatalogWhere,
+  createMongoReleaseWhere,
 } from "./mongodbQuery";
 
 const assertPatchReferences = async (
@@ -38,52 +36,6 @@ const assertPatchReferences = async (
       `patch "${patch.id}" references a missing bundle`,
     );
   }
-};
-
-const assertBundleChannel = async (
-  collections: MongoCollections,
-  bundle: Pick<BundleRow, "channel" | "channel_id">,
-  session?: ClientSession,
-): Promise<void> => {
-  const result = await collections.channels.updateOne(
-    createMongoChannelWhere([
-      { field: "id", value: bundle.channel_id },
-      { field: "name", value: bundle.channel },
-    ]),
-    { $set: { name: bundle.channel } },
-    mongoSessionOptions(session),
-  );
-  if (result.matchedCount !== 1) {
-    throw new MongoAdapterConstraintError(
-      "bundles.channel-and-channel_id.foreign-key",
-    );
-  }
-};
-
-const assertBundleTarget = (
-  bundle: Pick<BundleRow, "fingerprint_hash" | "target_app_version">,
-): void => {
-  if (bundle.target_app_version === null && bundle.fingerprint_hash === null) {
-    throw new MongoAdapterConstraintError(
-      "bundles.version-or-fingerprint.check",
-    );
-  }
-};
-
-const targetConstraintFilter = (update: BundleRowUpdate): object => {
-  if (
-    update.target_app_version === null &&
-    update.fingerprint_hash === undefined
-  ) {
-    return { fingerprint_hash: { $ne: null } };
-  }
-  if (
-    update.fingerprint_hash === null &&
-    update.target_app_version === undefined
-  ) {
-    return { target_app_version: { $ne: null } };
-  }
-  return {};
 };
 
 type MongoWriteImplementation = Pick<
@@ -109,11 +61,13 @@ export const createMongoWrites = (
     if (locked.matchedCount !== 1) {
       return { deleted: false, reason: "not_found" };
     }
-    const referenced = await collections.bundles.countDocuments(
-      activeBundleFilter({ channel_id: id }),
+    const referencedReleases = await collections.releases.countDocuments(
+      { channel_id: id },
       mongoSessionOptions(session),
     );
-    if (referenced > 0) return { deleted: false, reason: "not_empty" };
+    if (referencedReleases > 0) {
+      return { deleted: false, reason: "not_empty" };
+    }
     await collections.channels.deleteMany({ id }, mongoSessionOptions(session));
     return { deleted: true };
   },
@@ -135,8 +89,6 @@ export const createMongoWrites = (
   create: async (input) => {
     switch (input.model) {
       case "bundles":
-        assertBundleTarget(input.data);
-        await assertBundleChannel(collections, input.data, session);
         await collections.bundles.insertOne(
           input.data,
           mongoSessionOptions(session),
@@ -160,6 +112,18 @@ export const createMongoWrites = (
         return input.data;
       case "bundle_events":
         await collections.bundleEvents.insertOne(
+          input.data,
+          mongoSessionOptions(session),
+        );
+        return input.data;
+      case "releases":
+        await collections.releases.insertOne(
+          input.data,
+          mongoSessionOptions(session),
+        );
+        return input.data;
+      case "release_catalogs":
+        await collections.releaseCatalogs.insertOne(
           input.data,
           mongoSessionOptions(session),
         );
@@ -206,34 +170,30 @@ export const createMongoWrites = (
         },
       );
     }
-    if (
-      input.update.target_app_version === null &&
-      input.update.fingerprint_hash === null
-    ) {
-      throw new MongoAdapterConstraintError(
-        "bundles.version-or-fingerprint.check",
+    if (input.model === "releases") {
+      return collections.releases.findOneAndUpdate(
+        createMongoReleaseWhere(input.where),
+        { $set: input.update },
+        {
+          projection: WITHOUT_INTERNAL_FIELDS,
+          returnDocument: "after",
+          ...mongoSessionOptions(session),
+        },
       );
     }
-    const current = await collections.bundles.findOne(
-      activeBundleFilter(createMongoBundleWhere(input.where)),
-      {
-        projection: WITHOUT_INTERNAL_FIELDS,
-        ...mongoSessionOptions(session),
-      },
-    );
-    if (current === null) return null;
-    await assertBundleChannel(
-      collections,
-      { ...current, ...input.update },
-      session,
-    );
+    if (input.model === "release_catalogs") {
+      return collections.releaseCatalogs.findOneAndUpdate(
+        createMongoReleaseCatalogWhere(input.where),
+        { $set: input.update },
+        {
+          projection: WITHOUT_INTERNAL_FIELDS,
+          returnDocument: "after",
+          ...mongoSessionOptions(session),
+        },
+      );
+    }
     return collections.bundles.findOneAndUpdate(
-      activeBundleFilter({
-        $and: [
-          createMongoBundleWhere(input.where),
-          targetConstraintFilter(input.update),
-        ],
-      }),
+      activeBundleFilter(createMongoBundleWhere(input.where)),
       { $set: input.update },
       {
         projection: WITHOUT_INTERNAL_FIELDS,
@@ -283,6 +243,12 @@ export const createMongoWrites = (
         );
         return;
       }
+      case "releases":
+        await collections.releases.deleteMany(
+          createMongoReleaseWhere(input.where),
+          mongoSessionOptions(session),
+        );
+        return;
       case "channels":
         await collections.channels.deleteMany(
           createMongoChannelWhere(input.where),

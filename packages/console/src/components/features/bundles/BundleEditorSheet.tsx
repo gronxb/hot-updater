@@ -1,6 +1,9 @@
 import type { Bundle } from "@hot-updater/plugin-core";
+import { Download } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -19,8 +22,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 
 import { BundleAnalyticsSummary } from "./BundleAnalyticsSummary";
 import { BundleBasicInfo } from "./BundleBasicInfo";
-import { BundleEditorForm } from "./BundleEditorForm";
 import { BundleMetadata } from "./BundleMetadata";
+import { DeleteBundleDialog } from "./DeleteBundleDialog";
 
 interface BundleEditorSheetProps {
   bundleId?: string;
@@ -37,14 +40,8 @@ export function BundleEditorSheet({
   open,
   onOpenChange,
 }: BundleEditorSheetProps) {
-  const [isSaving, setIsSaving] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const isMobile = useIsMobile();
-
-  useEffect(() => {
-    if (!open) {
-      setIsSaving(false);
-    }
-  }, [open]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -61,20 +58,9 @@ export function BundleEditorSheet({
     return () => window.clearTimeout(timeoutId);
   }, [open]);
 
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen && isSaving) {
-      return;
-    }
-
-    if (!nextOpen) {
-      setIsSaving(false);
-    }
-
-    onOpenChange(nextOpen);
-  };
+  const handleOpenChange = (nextOpen: boolean) => onOpenChange(nextOpen);
 
   const closeSheet = () => {
-    setIsSaving(false);
     onOpenChange(false);
   };
 
@@ -99,13 +85,41 @@ export function BundleEditorSheet({
   const bodyContent = bundle ? (
     <div className="flex flex-col gap-6 px-4 pb-4 sm:px-6 sm:pb-6">
       <BundleAnalyticsSummary bundle={bundle} />
-      <BundleEditorForm
-        key={bundle.id}
-        bundle={bundle}
-        onClose={closeSheet}
-        onBusyChange={setIsSaving}
-      />
       <BundleMetadata bundle={bundle} />
+      <div className="rounded-lg border bg-muted/20 p-4 text-sm">
+        <p className="font-medium">Immutable artifact</p>
+        <p className="mt-1 text-muted-foreground">
+          Delivery targeting, rollout, force, and enabled state are owned by
+          Releases. This view only exposes storage actions.
+        </p>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <Button
+            onClick={() => {
+              window.open(
+                `/api/bundles/${encodeURIComponent(bundle.id)}/download`,
+                "_blank",
+                "noopener,noreferrer",
+              );
+              toast.success("Bundle download started");
+            }}
+            variant="outline"
+          >
+            <Download className="size-4" /> Download Bundle
+          </Button>
+          <Button
+            onClick={() => setShowDeleteDialog(true)}
+            variant="destructive"
+          >
+            Delete Bundle
+          </Button>
+        </div>
+      </div>
+      <DeleteBundleDialog
+        bundle={bundle}
+        onOpenChange={setShowDeleteDialog}
+        onSuccess={closeSheet}
+        open={showDeleteDialog}
+      />
     </div>
   ) : loading ? (
     <div className="flex flex-col gap-4 px-4 pb-4 sm:px-6 sm:pb-6">
@@ -126,17 +140,7 @@ export function BundleEditorSheet({
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent
           className="top-0 left-0 h-dvh max-w-none translate-x-0 translate-y-0 rounded-none border-0 p-0"
-          showCloseButton={!isSaving}
-          onEscapeKeyDown={(event) => {
-            if (isSaving) {
-              event.preventDefault();
-            }
-          }}
-          onInteractOutside={(event) => {
-            if (isSaving) {
-              event.preventDefault();
-            }
-          }}
+          showCloseButton
         >
           <div className="flex h-full flex-col overflow-hidden">
             <DialogHeader className="shrink-0 border-b border-border/70 px-4 py-4 sm:px-6">
@@ -158,17 +162,7 @@ export function BundleEditorSheet({
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent
         className="w-[600px] overflow-y-auto sm:max-w-[600px]"
-        showCloseButton={!isSaving}
-        onEscapeKeyDown={(event) => {
-          if (isSaving) {
-            event.preventDefault();
-          }
-        }}
-        onInteractOutside={(event) => {
-          if (isSaving) {
-            event.preventDefault();
-          }
-        }}
+        showCloseButton
       >
         <SheetHeader>
           <SheetTitle>{bundle ? "Bundle Detail" : "Bundle Details"}</SheetTitle>

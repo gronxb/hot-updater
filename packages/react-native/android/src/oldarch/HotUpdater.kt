@@ -59,7 +59,7 @@ class HotUpdater {
                 manifestFileHash,
                 changedAssets,
                 channel,
-                progressCallback,
+                progressCallback = progressCallback,
             )
         }
 

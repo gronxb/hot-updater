@@ -348,6 +348,180 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func catalogHighWaterRejectsReplayAndSurvivesChannelReset() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+
+        #expect(service.acceptReleaseCatalog(
+            authorityId: "project-a",
+            scopeKey: "scope-production",
+            generation: 2,
+            catalogHash: "hash-2",
+            channel: "production",
+            selectionContextHash: "context-2"
+        ))
+        #expect(service.acceptReleaseCatalog(
+            authorityId: "project-a",
+            scopeKey: "scope-production",
+            generation: 1,
+            catalogHash: "hash-1",
+            channel: "production",
+            selectionContextHash: "context-1"
+        ) == false)
+        #expect(service.acceptReleaseCatalog(
+            authorityId: "project-a",
+            scopeKey: "scope-production",
+            generation: 2,
+            catalogHash: "different-hash",
+            channel: "production",
+            selectionContextHash: "context-2"
+        ) == false)
+
+        #expect(try service.resetChannel().get())
+        let metadata = try #require(loadMetadata(documentsDirectory: workingDirectory))
+        #expect(
+            metadata.highestSeenCatalogs["project-a|scope-production"]
+                == CatalogHighWater(generation: 2, catalogHash: "hash-2")
+        )
+    }
+
+    @Test
+    func sameBundleAdoptionRefreshesReceiptWithoutChangingBytes() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+        let bundleDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "bundle-one"
+        )
+        try writeBundle(in: bundleDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: bundleDirectory, bundleId: "bundle-one")
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stagingBundleId: "bundle-one",
+                stagingSelection: releaseSelection(
+                    releaseId: "release-one",
+                    bundleId: "bundle-one",
+                    generation: 1,
+                    catalogHash: "hash-1",
+                    selectionContextHash: "context-1"
+                )
+            )
+        )
+        #expect(service.acceptReleaseCatalog(
+            authorityId: "project-a",
+            scopeKey: "scope-production",
+            generation: 2,
+            catalogHash: "hash-2",
+            channel: "production",
+            selectionContextHash: "context-2"
+        ))
+        let nextSelection = releaseSelection(
+            releaseId: "release-two",
+            bundleId: "bundle-one",
+            generation: 2,
+            catalogHash: "hash-2",
+            selectionContextHash: "context-2"
+        )
+
+        #expect(service.commitReleaseSelection(nextSelection))
+
+        let metadata = try #require(loadMetadata(documentsDirectory: workingDirectory))
+        #expect(FileManager.default.fileExists(atPath: bundleDirectory.path))
+        #expect(metadata.stagingSelection?.releaseId == "release-two")
+        #expect(metadata.stagingSelection?.generation == 2)
+        #expect(metadata.verificationPending == false)
+    }
+
+    @Test
+    func crashRestoresCompleteStableReceiptButRetainsNewerHighWater() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+        let stableDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "bundle-one"
+        )
+        try writeBundle(in: stableDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stableDirectory, bundleId: "bundle-one")
+        let stagingDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "bundle-two"
+        )
+        try writeBundle(in: stagingDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stagingDirectory, bundleId: "bundle-two")
+        let stableSelection = releaseSelection(
+            releaseId: "release-one",
+            bundleId: "bundle-one",
+            generation: 1,
+            catalogHash: "hash-1",
+            selectionContextHash: "context-1"
+        )
+        let stagingSelection = releaseSelection(
+            releaseId: "release-two",
+            bundleId: "bundle-two",
+            generation: 2,
+            catalogHash: "hash-2",
+            selectionContextHash: "context-2"
+        )
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stableBundleId: "bundle-one",
+                stagingBundleId: "bundle-two",
+                stableSelection: stableSelection,
+                stagingSelection: stagingSelection,
+                verificationPending: true,
+                pendingTransition: PendingBundleTransition(
+                    fromBundleId: "bundle-one",
+                    toBundleId: "bundle-two",
+                    updateStrategy: .appVersion
+                ),
+                pendingSelectionTransition: PendingSelectionTransition(
+                    fromReleaseId: "release-one",
+                    fromBundleId: "bundle-one",
+                    toReleaseId: "release-two",
+                    toBundleId: "bundle-two"
+                ),
+                highestSeenCatalogs: [
+                    "project-a|scope-production": CatalogHighWater(
+                        generation: 2,
+                        catalogHash: "hash-2"
+                    ),
+                ],
+                currentSelectionContexts: [
+                    "project-a|scope-production": "production\ncontext-2",
+                ]
+            )
+        )
+
+        let launch = service.prepareLaunch(
+            bundle: .main,
+            pendingRecovery: PendingCrashRecovery(
+                launchedBundleId: "bundle-two",
+                shouldRollback: true
+            )
+        )
+        let report = service.notifyAppReady()
+        let metadata = try #require(loadMetadata(documentsDirectory: workingDirectory))
+
+        #expect(launch.launchedBundleId == "bundle-one")
+        #expect(report["status"] as? String == "RECOVERED")
+        #expect(report["fromReleaseId"] as? String == "release-two")
+        #expect(report["toReleaseId"] as? String == "release-one")
+        #expect(metadata.stagingSelection?.releaseId == "release-one")
+        #expect(
+            metadata.highestSeenCatalogs["project-a|scope-production"]
+                == CatalogHighWater(generation: 2, catalogHash: "hash-2")
+        )
+        #expect(service.getCrashHistory().contains("bundle-two"))
+    }
+
+    @Test
     func appliesBsdiffPatchThroughSwiftPackageBridge() throws {
         let workingDirectory = try makeWorkingDirectory()
         defer {
@@ -484,6 +658,36 @@ private func writeMetadata(
         .appendingPathComponent("bundle-store", isDirectory: true)
         .appendingPathComponent(BundleMetadata.metadataFilename)
     #expect(metadata.save(to: metadataURL))
+}
+
+private func loadMetadata(documentsDirectory: URL) -> BundleMetadata? {
+    let metadataURL = documentsDirectory
+        .appendingPathComponent("bundle-store", isDirectory: true)
+        .appendingPathComponent(BundleMetadata.metadataFilename)
+    return BundleMetadata.load(
+        from: metadataURL,
+        expectedIsolationKey: testIsolationKey
+    )
+}
+
+private func releaseSelection(
+    releaseId: String,
+    bundleId: String,
+    generation: Int64,
+    catalogHash: String,
+    selectionContextHash: String
+) -> PersistedSelection {
+    PersistedSelection(
+        kind: "BUNDLE",
+        releaseId: releaseId,
+        bundleId: bundleId,
+        authorityId: "project-a",
+        scopeKey: "scope-production",
+        generation: generation,
+        catalogHash: catalogHash,
+        channel: "production",
+        selectionContextHash: selectionContextHash
+    )
 }
 
 private final class TestFileSystemService: FileSystemService {

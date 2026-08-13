@@ -5,7 +5,6 @@ import {
 import {
   setupDatabasePluginTestSuite,
   setupDatabaseClientTestSuite,
-  setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,11 +20,14 @@ const {
   channelsCollection,
   clearCollections,
   firestore,
+  releaseCatalogsCollection,
+  releasesCollection,
   settingsCollection,
 } = createFirestoreMock(PROJECT_ID);
 
 const createPlugin = (): DatabasePlugin =>
   firebaseDatabase({
+    authorityId: "test",
     projectId: PROJECT_ID,
     storageBucket: `${PROJECT_ID}.appspot.com`,
   });
@@ -54,18 +56,6 @@ setupDatabaseClientTestSuite({
   dispose: () => undefined,
 });
 
-setupGetUpdateInfoTestSuite({
-  getUpdateInfo: async (bundles, args) => {
-    await clearCollections();
-    const plugin = createPlugin();
-    const client = createDatabaseClient(plugin);
-    for (const bundle of bundles) {
-      await client.insertBundle(bundle);
-    }
-    return plugin.queries.getUpdateInfo?.(args) ?? null;
-  },
-});
-
 const legacyRow = (id: string, channel = "production") => ({
   id,
   platform: "ios",
@@ -89,22 +79,16 @@ const legacyRow = (id: string, channel = "production") => ({
 const bundleFixture = (suffix: string) => ({
   id: `00000000-0000-0000-0000-${suffix.padStart(12, "0")}`,
   platform: "ios" as const,
-  shouldForceUpdate: false,
-  enabled: true,
   fileHash: `hash-${suffix}`,
   gitCommitHash: null,
-  message: `bundle-${suffix}`,
-  channel: "production",
   storageUri: `storage://bundles/${suffix}.zip`,
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
   metadata: { app_version: suffix },
 });
 
 describe("firebase fixed-model document updates", () => {
   beforeEach(clearCollections);
 
-  it("preserves an extension field when updating a bundle message", async () => {
+  it("preserves an extension field when updating artifact metadata", async () => {
     const bundle = bundleFixture("extension-field");
     const client = createDatabaseClient(createPlugin());
     await client.insertBundle(bundle);
@@ -113,13 +97,13 @@ describe("firebase fixed-model document updates", () => {
     });
 
     await client.updateBundleById(bundle.id, {
-      message: "updated-message",
+      metadata: { app_version: "updated" },
     });
 
     const stored = await bundlesCollection.doc(bundle.id).get();
     expect(stored.data()).toMatchObject({
       extension_field: { version: "future" },
-      message: "updated-message",
+      metadata: { app_version: "updated" },
     });
   });
 });
@@ -128,14 +112,14 @@ describe("firebase v1 data migration", () => {
   beforeEach(clearCollections);
 
   it("rejects a future adapter version before reading database collections", async () => {
-    const marker = { version: 4, future_option: "preserve-me" };
+    const marker = { version: 5, future_option: "preserve-me" };
     await settingsCollection.doc("database_adapter_version").set(marker);
     const bundlesRead = vi.spyOn(bundlesCollection, "get");
     const patchesRead = vi.spyOn(bundlePatchesCollection, "get");
     const plugin = createPlugin();
 
     await expect(findAllBundles(plugin)).rejects.toThrow(
-      "Unsupported Firebase database adapter version: 4",
+      "Unsupported Firebase database adapter version: 5",
     );
     expect(bundlesRead).not.toHaveBeenCalled();
     expect(patchesRead).not.toHaveBeenCalled();
@@ -187,9 +171,15 @@ describe("firebase v1 data migration", () => {
       bundlePatchesCollection.doc(`${target.id}:${base.id}`).get(),
     ).resolves.toMatchObject({ exists: true });
     const migratedTarget = await bundlesCollection.doc(target.id).get();
-    expect(migratedTarget.data()).toMatchObject({
-      channel: "production",
+    expect(migratedTarget.data()).not.toHaveProperty("channel");
+    const migratedRelease = await releasesCollection.doc(target.id).get();
+    expect(migratedRelease.data()).toMatchObject({
+      bundle_id: target.id,
       channel_id: expect.any(String),
+      revision: 1,
+    });
+    await expect(releaseCatalogsCollection.get()).resolves.toMatchObject({
+      size: 1,
     });
     expect(migratedTarget.data()).not.toHaveProperty("patches");
   });
@@ -237,7 +227,7 @@ describe("firebase v1 data migration", () => {
     const version = await settingsCollection
       .doc("database_adapter_version")
       .get();
-    expect(version.data()).toEqual({ version: 3 });
+    expect(version.data()).toEqual({ version: 4 });
   });
 
   it.each(["inline", "scalar"] as const)(
@@ -336,7 +326,7 @@ describe("firebase v1 data migration", () => {
       settingsCollection.doc("database_adapter_version").get(),
     ]);
     expect(storedTarget.data()).not.toHaveProperty("patches");
-    expect(storedVersion.data()).toEqual({ version: 3 });
+    expect(storedVersion.data()).toEqual({ version: 4 });
   });
 
   it("rejects a patch whose document key differs from its row id", async () => {
@@ -495,9 +485,47 @@ describe("firebase v1 data migration", () => {
     ]);
 
     const migrated = await bundlesCollection.doc(bundle.id).get();
-    expect(migrated.data()).toMatchObject({
-      channel: "production",
+    expect(migrated.data()).toEqual({
+      asset_base_storage_uri: null,
+      file_hash: bundle.file_hash,
+      git_commit_hash: null,
+      id: bundle.id,
+      manifest_file_hash: null,
+      manifest_storage_uri: null,
+      metadata: {},
+      platform: "ios",
+      storage_uri: bundle.storage_uri,
     });
+    await expect(
+      releasesCollection.doc(bundle.id).get(),
+    ).resolves.toMatchObject({ exists: true });
+  });
+
+  it("adopts identical projections when resuming before legacy cleanup", async () => {
+    const bundle = legacyRow("legacy-resume");
+    await bundlesCollection.doc(bundle.id).set(bundle);
+    await findAllBundles(createPlugin());
+
+    const channel = (await channelsCollection.get()).docs[0]?.data();
+    await bundlesCollection.doc(bundle.id).update({
+      ...bundle,
+      channel_id: channel?.id,
+    });
+    await settingsCollection.doc("database_adapter_version").set({
+      version: 3,
+    });
+
+    await expect(findAllBundles(createPlugin())).resolves.toHaveLength(1);
+    const [storedBundle, releases, catalogs, version] = await Promise.all([
+      bundlesCollection.doc(bundle.id).get(),
+      releasesCollection.get(),
+      releaseCatalogsCollection.get(),
+      settingsCollection.doc("database_adapter_version").get(),
+    ]);
+    expect(storedBundle.data()).not.toHaveProperty("channel");
+    expect(releases.size).toBe(1);
+    expect(catalogs.size).toBe(1);
+    expect(version.data()).toEqual({ version: 4 });
   });
 
   it("rejects an existing patch whose owner or base bundle is missing", async () => {
@@ -522,33 +550,6 @@ describe("firebase v1 data migration", () => {
 describe("firebase bounded reads", () => {
   beforeEach(clearCollections);
 
-  it("ignores unrelated malformed documents during an update check", async () => {
-    const plugin = createPlugin();
-    const client = createDatabaseClient(plugin);
-    const value = {
-      ...bundleFixture("991"),
-      fingerprintHash: "fingerprint-991",
-      targetAppVersion: null,
-    };
-    await client.insertBundle(value);
-    await bundlesCollection.doc("unrelated-malformed").set({
-      channel: "other",
-      platform: "android",
-      enabled: true,
-      fingerprint_hash: "other-fingerprint",
-    });
-
-    await expect(
-      plugin.queries.getUpdateInfo?.({
-        _updateStrategy: "fingerprint",
-        platform: "ios",
-        bundleId: "00000000-0000-0000-0000-000000000000",
-        channel: "production",
-        fingerprintHash: "fingerprint-991",
-      }),
-    ).resolves.toMatchObject({ id: value.id, status: "UPDATE" });
-  });
-
   it("uses an exact document read without parsing unrelated bundles", async () => {
     const plugin = createPlugin();
     const client = createDatabaseClient(plugin);
@@ -560,7 +561,7 @@ describe("firebase bounded reads", () => {
 
     await expect(
       createPlugin().models.bundles.findById(value.id),
-    ).resolves.toMatchObject({ id: value.id, channel: "production" });
+    ).resolves.toMatchObject({ id: value.id });
   });
 
   it("rejects a requested document whose key differs from its row id", async () => {
@@ -575,50 +576,6 @@ describe("firebase bounded reads", () => {
     await expect(
       createPlugin().models.bundles.findById(documentKey),
     ).rejects.toThrow("bundles.id.document-key");
-  });
-
-  it("rejects a matching update-check row whose key differs from its id", async () => {
-    await settingsCollection.doc("database_adapter_version").set({
-      version: 2,
-    });
-    await bundlesCollection
-      .doc("wrong-update-document-key")
-      .set(legacyRow("00000000-0000-0000-0000-000000000994"));
-
-    await expect(
-      createPlugin().queries.getUpdateInfo?.({
-        _updateStrategy: "appVersion",
-        platform: "ios",
-        bundleId: "00000000-0000-0000-0000-000000000000",
-        channel: "production",
-        appVersion: "1.0.0",
-      }),
-    ).rejects.toThrow("bundles.id.document-key");
-  });
-
-  it("loads update-check relations from one read-only snapshot", async () => {
-    const plugin = createPlugin();
-    const client = createDatabaseClient(plugin);
-    const value = bundleFixture("993");
-    await client.insertBundle(value);
-    const runTransaction = vi.spyOn(firestore, "runTransaction");
-
-    try {
-      await expect(
-        plugin.queries.getUpdateInfo?.({
-          _updateStrategy: "appVersion",
-          platform: "ios",
-          bundleId: "00000000-0000-0000-0000-000000000000",
-          channel: "production",
-          appVersion: "1.0.0",
-        }),
-      ).resolves.toMatchObject({ id: value.id, status: "UPDATE" });
-      expect(runTransaction).toHaveBeenCalledWith(expect.any(Function), {
-        readOnly: true,
-      });
-    } finally {
-      runTransaction.mockRestore();
-    }
   });
 });
 
@@ -648,15 +605,15 @@ describe("firebase channel storage", () => {
     const stagingChannel = result.channels[1];
     const [storedProductionA, storedProductionB, storedStaging, version] =
       await Promise.all([
-        bundlesCollection.doc(productionA.id).get(),
-        bundlesCollection.doc(productionB.id).get(),
-        bundlesCollection.doc(staging.id).get(),
+        releasesCollection.doc(productionA.id).get(),
+        releasesCollection.doc(productionB.id).get(),
+        releasesCollection.doc(staging.id).get(),
         settingsCollection.doc("database_adapter_version").get(),
       ]);
     expect(storedProductionA.get("channel_id")).toBe(production?.id);
     expect(storedProductionB.get("channel_id")).toBe(production?.id);
     expect(storedStaging.get("channel_id")).toBe(stagingChannel?.id);
-    expect(version.data()).toEqual({ version: 3 });
+    expect(version.data()).toEqual({ version: 4 });
   });
 
   it("returns the canonical stored row under concurrent name conflicts", async () => {

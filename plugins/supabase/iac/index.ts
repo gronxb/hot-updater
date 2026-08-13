@@ -52,6 +52,7 @@ import {
   type SupabaseManagementApi,
   type SupabaseProject,
 } from "./supabaseManagementApi";
+import { materializeReleaseCatalogMigration } from "./supabaseReleaseCatalogMigration";
 
 const require = createRequire(import.meta.url);
 const EDGE_VENDOR_DIR = "_hot-updater";
@@ -65,7 +66,10 @@ const STATIC_IMPORT_SPECIFIER_PATTERN =
 const DYNAMIC_IMPORT_SPECIFIER_PATTERN =
   /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
 
-const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
+const getConfigScaffold = (
+  build: BuildType,
+  authorityId: string,
+): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
     configString: `supabaseStorage({
@@ -87,6 +91,7 @@ const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
       .setBuildType(build)
       .setStorage(storageConfig)
       .setDatabase(databaseConfig),
+    { authorityIdInitializer: JSON.stringify(authorityId) },
   );
 };
 
@@ -645,6 +650,7 @@ const deployEdgeFunction = async (
   const edgeFunctionsLibPath = path.join(workdir, "supabase", "edge-functions");
   const edgeFunctionsCodePath = path.join(edgeFunctionsLibPath, "index.ts");
   const edgeFunctionsCode = transformEnv(edgeFunctionsCodePath, {
+    AUTHORITY_ID: projectId,
     BUCKET_NAME: bucketName,
     FUNCTION_NAME: functionName,
   });
@@ -985,10 +991,18 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   const migrationPath = await path.join(tmpDir, "supabase", "migrations");
   const migrationFiles = await fs.readdir(migrationPath);
+  const legacyBundles = await projectAccess.api.listLegacyBundlePolicies();
   for (const file of migrationFiles) {
     if (file.endsWith(".sql")) {
       const filePath = path.join(migrationPath, file);
-      const content = await fs.readFile(filePath, "utf-8");
+      let content = await fs.readFile(filePath, "utf-8");
+      if (file.includes("1.0.0")) {
+        content = await materializeReleaseCatalogMigration({
+          authorityId: project.id,
+          legacyBundles,
+          migrationSql: content,
+        });
+      }
       await fs.writeFile(
         filePath,
         transformTemplate(content, {
@@ -1016,7 +1030,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   await removeTmpDir();
 
   const configWriteResult = await writeHotUpdaterConfig(
-    getConfigScaffold(build),
+    getConfigScaffold(build, project.id),
   );
   await assertSkippedConfigDoesNotUseLegacySupabaseKey(configWriteResult);
 
@@ -1037,9 +1051,19 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   p.note(
     transformTemplate(SOURCE_TEMPLATE, {
-      source: `https://${project.id}.supabase.co/functions/v1/${functionName}`,
+      source:
+        resolvedInputs.catalogCdnUrl?.replace(/\/+$/, "") ??
+        `https://${project.id}.supabase.co/functions/v1/${functionName}`,
     }),
   );
+
+  if (resolvedInputs.catalogCdnUrl === undefined) {
+    p.log.warn(
+      "Supabase is using the direct Edge Function URL. Release catalogs are " +
+        "correct but do not have the shared-CDN cost guarantee. Configure " +
+        "HOT_UPDATER_SUPABASE_CATALOG_CDN_URL to enable that profile.",
+    );
+  }
 
   p.log.message(
     `Next step: ${link(

@@ -1,9 +1,11 @@
 import {
   DatabasePluginInputError,
   selectRow,
-  validateBundleTargetUpdate,
   validateBundleUpdateData,
   validateClientAccessKeyUpdateData,
+  validateReleaseCatalogUpdateData,
+  validateReleaseTargetUpdate,
+  validateReleaseUpdateData,
   validateCreateData,
   validateDistinctFields,
   validateDistinctOn,
@@ -64,9 +66,13 @@ export const createDatabasePluginCrud = (
     validateModel(input.model);
     validateWhere(input.model, input.where);
     validateMutationWhere(input.where);
-    validateUpdateWhere(input.where);
+    validateUpdateWhere(input.model, input.where);
     if (input.model === "bundles") {
       validateBundleUpdateData(input.update);
+    } else if (input.model === "releases") {
+      validateReleaseUpdateData(input.update);
+    } else if (input.model === "release_catalogs") {
+      validateReleaseCatalogUpdateData(input.update);
     } else if (input.model === "client_access_keys") {
       validateClientAccessKeyUpdateData(input.update);
     } else {
@@ -74,7 +80,8 @@ export const createDatabasePluginCrud = (
     }
     validateSelect(input.model, input.select);
     if (input.model === "bundles") {
-      await validateBundleTargetUpdate(implementation, input);
+    } else if (input.model === "releases") {
+      await validateReleaseTargetUpdate(implementation, input);
     }
     const row = await implementation.update(input);
     if (row === null) return null;
@@ -89,6 +96,7 @@ export const createDatabasePluginCrud = (
     if (
       input.model !== "bundles" &&
       input.model !== "bundle_patches" &&
+      input.model !== "releases" &&
       input.model !== "channels"
     ) {
       throw new DatabasePluginInputError("invalid-operation");
