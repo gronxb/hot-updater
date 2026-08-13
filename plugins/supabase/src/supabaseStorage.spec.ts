@@ -9,6 +9,7 @@ import { supabaseStorage } from "./supabaseStorage";
 const { bucket, createClient } = vi.hoisted(() => {
   const bucket = {
     createSignedUrl: vi.fn(),
+    createSignedUrls: vi.fn(),
     exists: vi.fn(),
     upload: vi.fn(),
   };
@@ -30,6 +31,7 @@ vi.mock("@supabase/supabase-js", () => ({
 describe("supabaseStorage", () => {
   beforeEach(() => {
     bucket.createSignedUrl.mockReset();
+    bucket.createSignedUrls.mockReset();
     bucket.exists.mockReset();
     bucket.upload.mockReset();
     createClient.mockClear();
@@ -142,7 +144,7 @@ describe("supabaseStorage", () => {
   });
 
   it("surfaces signed URL generation errors", async () => {
-    bucket.createSignedUrl.mockResolvedValueOnce({
+    bucket.createSignedUrls.mockResolvedValueOnce({
       data: null,
       error: new Error("Object not found"),
     });
@@ -162,11 +164,52 @@ describe("supabaseStorage", () => {
       'Failed to generate download URL for "assets/sha256/fi/file-hash.png": Object not found',
     );
 
-    expect(bucket.createSignedUrl).toHaveBeenCalledTimes(1);
-    expect(bucket.createSignedUrl).toHaveBeenCalledWith(
-      "assets/sha256/fi/file-hash.png",
+    expect(bucket.createSignedUrls).toHaveBeenCalledTimes(1);
+    expect(bucket.createSignedUrls).toHaveBeenCalledWith(
+      ["assets/sha256/fi/file-hash.png"],
       3600,
     );
+  });
+
+  it("batches concurrent runtime signed URL requests", async () => {
+    bucket.createSignedUrls.mockImplementation(
+      async (paths: string[], expiresIn: number) => ({
+        data: paths.map((path) => ({
+          error: null,
+          path,
+          signedUrl: `https://example.supabase.co/${expiresIn}/${path}`,
+        })),
+        error: null,
+      }),
+    );
+
+    const storage = supabaseStorage({
+      bucketName: "updates",
+      supabaseAnonKey: "anon-key",
+      supabaseUrl: "https://example.supabase.co",
+    })();
+    const paths = Array.from(
+      { length: 20 },
+      (_, index) => `assets/sha256/file-${index}.png`,
+    );
+
+    await expect(
+      Promise.all(
+        paths.map((path) =>
+          storage.profiles.runtime.getDownloadUrl(
+            `supabase-storage://updates/${path}`,
+          ),
+        ),
+      ),
+    ).resolves.toEqual(
+      paths.map((path) => ({
+        fileUrl: `https://example.supabase.co/3600/${path}`,
+      })),
+    );
+
+    expect(bucket.createSignedUrls).toHaveBeenCalledTimes(1);
+    expect(bucket.createSignedUrls).toHaveBeenCalledWith(paths, 3600);
+    expect(bucket.createSignedUrl).not.toHaveBeenCalled();
   });
 
   it("verifies uploaded objects are signable before returning", async () => {
@@ -212,7 +255,7 @@ describe("supabaseStorage", () => {
   });
 
   it("surfaces thrown signed URL generation errors", async () => {
-    bucket.createSignedUrl.mockRejectedValueOnce(
+    bucket.createSignedUrls.mockRejectedValueOnce(
       new Error("Failed to generate download URL: Object not found"),
     );
 
@@ -231,11 +274,11 @@ describe("supabaseStorage", () => {
       'Failed to generate download URL for "assets/sha256/fi/file-hash.png": Failed to generate download URL: Object not found',
     );
 
-    expect(bucket.createSignedUrl).toHaveBeenCalledTimes(1);
+    expect(bucket.createSignedUrls).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces non-missing signed URL errors after one attempt", async () => {
-    bucket.createSignedUrl.mockResolvedValueOnce({
+    bucket.createSignedUrls.mockResolvedValueOnce({
       data: null,
       error: new Error("Storage API failed"),
     });
@@ -255,6 +298,6 @@ describe("supabaseStorage", () => {
       'Failed to generate download URL for "assets/sha256/fi/file-hash.png": Storage API failed',
     );
 
-    expect(bucket.createSignedUrl).toHaveBeenCalledTimes(1);
+    expect(bucket.createSignedUrls).toHaveBeenCalledTimes(1);
   });
 });
