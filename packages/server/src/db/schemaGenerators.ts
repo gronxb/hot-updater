@@ -17,6 +17,9 @@ import { getSQLProvider } from "./types";
 
 const literal = (value: string): string => JSON.stringify(value);
 
+const varcharLength = (type: HotUpdaterColumnType): number =>
+  Number(type.slice("varchar(".length, -1));
+
 const toPascalCase = (value: string): string =>
   value
     .split("_")
@@ -27,11 +30,16 @@ const toPascalCase = (value: string): string =>
 const prismaDb = (type: HotUpdaterColumnType, provider: ORMProvider) => {
   if (provider === "postgresql") {
     if (type === "uuid") return " @db.Uuid";
-    if (type.startsWith("varchar")) return " @db.VarChar(255)";
+    if (type.startsWith("varchar")) {
+      return ` @db.VarChar(${varcharLength(type)})`;
+    }
   }
   if (provider === "mysql") {
     if (type === "uuid") return " @db.Char(36)";
-    if (type.startsWith("varchar")) return " @db.VarChar(255)";
+    if (type === "large-string") return " @db.MediumText";
+    if (type.startsWith("varchar")) {
+      return ` @db.VarChar(${varcharLength(type)})`;
+    }
   }
   return "";
 };
@@ -114,8 +122,18 @@ const prismaRelationFields = (
         `Missing foreign key metadata for relation ${table.ormName}.${relation.name}`,
       );
     }
+    const optional = relation.columns.some(
+      (columnName) =>
+        table.columns.find(({ ormName }) => ormName === columnName)?.nullable,
+    );
+    const onDelete =
+      foreignKey.onDelete === "cascade"
+        ? "Cascade"
+        : foreignKey.onDelete === "set null"
+          ? "SetNull"
+          : "Restrict";
     lines.push(
-      `${relation.targetFieldName} ${targetType === "Bundles" ? "bundles" : relation.referencedTable} @relation(${literal(relation.relationName)}, fields: [${relation.columns.join(", ")}], references: [${relation.referencedColumns.join(", ")}], onUpdate: Restrict, onDelete: ${foreignKey.onDelete === "cascade" ? "Cascade" : "Restrict"})`,
+      `${relation.targetFieldName} ${targetType === "Bundles" ? "bundles" : relation.referencedTable}${optional ? "?" : ""} @relation(${literal(relation.relationName)}, fields: [${relation.columns.join(", ")}], references: [${relation.referencedColumns.join(", ")}], onUpdate: Restrict, onDelete: ${onDelete})`,
     );
   }
 
@@ -195,7 +213,7 @@ const drizzleColumnFn = (
     }
     if (column.type.startsWith("varchar")) {
       return {
-        code: `text(${literal(column.ormName)}, { length: 255 })`,
+        code: `text(${literal(column.ormName)}, { length: ${varcharLength(column.type)} })`,
         imports: ["text"],
       };
     }
@@ -227,9 +245,15 @@ const drizzleColumnFn = (
     if (column.type === "json") {
       return { code: `json(${literal(column.ormName)})`, imports: ["json"] };
     }
+    if (column.type === "large-string") {
+      return {
+        code: `mediumtext(${literal(column.ormName)})`,
+        imports: ["mediumtext"],
+      };
+    }
     if (column.type.startsWith("varchar")) {
       return {
-        code: `varchar(${literal(column.ormName)}, { length: 255 })`,
+        code: `varchar(${literal(column.ormName)}, { length: ${varcharLength(column.type)} })`,
         imports: ["varchar"],
       };
     }
@@ -262,7 +286,7 @@ const drizzleColumnFn = (
   }
   if (column.type.startsWith("varchar")) {
     return {
-      code: `varchar(${literal(column.ormName)}, { length: 255 })`,
+      code: `varchar(${literal(column.ormName)}, { length: ${varcharLength(column.type)} })`,
       imports: ["varchar"],
     };
   }
@@ -271,7 +295,9 @@ const drizzleColumnFn = (
 
 const drizzleDefault = (value: HotUpdaterDefault | undefined): string => {
   if (!value) return "";
-  if (value.type === "json") return ".default({})";
+  if (value.type === "json") {
+    return `.default(${JSON.stringify(value.value)})`;
+  }
   return `.default(${JSON.stringify(value.value)})`;
 };
 
@@ -310,10 +336,14 @@ const drizzleTable = (
   const callbacks: string[] = [];
   for (const foreignKey of table.foreignKeys ?? []) {
     imports.add("foreignKey");
+    const referencedTable =
+      foreignKey.referencedTable === table.ormName
+        ? "table"
+        : foreignKey.referencedTable;
     callbacks.push(`foreignKey({
     columns: [table.${foreignKey.columns.join(", table.")}],
-    foreignColumns: [${foreignKey.referencedTable}.${foreignKey.referencedColumns.join(
-      `, ${foreignKey.referencedTable}.`,
+    foreignColumns: [${referencedTable}.${foreignKey.referencedColumns.join(
+      `, ${referencedTable}.`,
     )}],
     name: ${literal(foreignKey.name)}
   }).onUpdate(${literal(foreignKey.onUpdate)}).onDelete(${literal(

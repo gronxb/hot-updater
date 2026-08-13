@@ -16,23 +16,14 @@ import { toDynamoDBBundleItem, toDynamoDBPatchItem } from "./dynamoDB";
 const dynamodb = mockClient(DynamoDBDocumentClient);
 const bundleId = "00000000-0000-0000-0000-000000000001";
 const baseBundleId = "00000000-0000-0000-0000-000000000002";
-const bundleRow = bundleToRow(
-  {
-    id: bundleId,
-    platform: "ios",
-    shouldForceUpdate: false,
-    enabled: true,
-    fileHash: "hash",
-    gitCommitHash: null,
-    message: null,
-    channel: "production",
-    storageUri: "storage://bundle.zip",
-    targetAppVersion: "1.x",
-    fingerprintHash: null,
-    metadata: {},
-  },
-  "00000000-0000-0000-0000-000000000100",
-);
+const bundleRow = bundleToRow({
+  id: bundleId,
+  platform: "ios",
+  fileHash: "hash",
+  gitCommitHash: null,
+  storageUri: "storage://bundle.zip",
+  metadata: {},
+});
 const patchRow = {
   id: `${bundleId}:${baseBundleId}`,
   bundle_id: bundleId,
@@ -156,9 +147,9 @@ describe("DynamoDB CRUD access patterns", () => {
         { field: "id", operator: "gt", value: "bundle-z" },
         {
           connector: "OR",
-          field: "channel",
+          field: "platform",
           operator: "eq",
-          value: "production",
+          value: "ios",
         },
       ],
       limit: 100,

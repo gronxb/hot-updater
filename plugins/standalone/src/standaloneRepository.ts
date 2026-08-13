@@ -1,17 +1,14 @@
 import type {
   BundlePatchRow,
   BundleRepository,
-  BundleRepositoryCommit,
   BundleRow,
   DatabaseBundleQueryWhere,
-  DatabaseCommitResult,
 } from "@hot-updater/plugin-core";
-import { DatabaseAtomicCommitUnsupportedError } from "@hot-updater/plugin-core";
 import type { DatabaseWhere } from "@hot-updater/plugin-core/internal";
 
 import { createStandaloneBundleRemote } from "./standaloneBundleRemote";
 import { createLegacyCompatibilityImplementation } from "./standaloneLegacyImplementation";
-import { runLegacyAggregateTransaction } from "./standaloneLegacyTransaction";
+import { createStandaloneReleaseRemote } from "./standaloneReleaseRemote";
 import type { StandaloneRepositoryConfig } from "./standaloneRoutes";
 
 export { StandaloneDatabaseError } from "./standaloneHttp";
@@ -26,14 +23,8 @@ const toBundleWhere = (
 ): readonly DatabaseWhere<"bundles">[] => {
   if (!where) return [];
   const filters: DatabaseWhere<"bundles">[] = [];
-  if (where.channel !== undefined) {
-    filters.push({ field: "channel", value: where.channel });
-  }
   if (where.platform !== undefined) {
     filters.push({ field: "platform", value: where.platform });
-  }
-  if (where.enabled !== undefined) {
-    filters.push({ field: "enabled", value: where.enabled });
   }
   if (where.id?.eq !== undefined) {
     filters.push({ field: "id", value: where.id.eq });
@@ -53,127 +44,7 @@ const toBundleWhere = (
   if (where.id?.in !== undefined) {
     filters.push({ field: "id", operator: "in", value: where.id.in });
   }
-  if (where.targetAppVersion !== undefined) {
-    filters.push({
-      field: "target_app_version",
-      value: where.targetAppVersion,
-    });
-  }
-  if (where.targetAppVersionNotNull) {
-    filters.push({
-      field: "target_app_version",
-      operator: "ne",
-      value: null,
-    });
-  }
-  if (where.targetAppVersionIn !== undefined) {
-    filters.push({
-      field: "target_app_version",
-      operator: "in",
-      value: where.targetAppVersionIn,
-    });
-  }
-  if (where.fingerprintHash !== undefined) {
-    filters.push({
-      field: "fingerprint_hash",
-      value: where.fingerprintHash,
-    });
-  }
   return filters;
-};
-
-const applyCommit = async (
-  remote: ReturnType<typeof createStandaloneBundleRemote>,
-  input: BundleRepositoryCommit,
-): Promise<DatabaseCommitResult> => {
-  const channelChanges = input.changes.filter(
-    (change) => change.model === "channels",
-  );
-  if (channelChanges.length > 0) {
-    if (input.changes.length > 1) {
-      throw new DatabaseAtomicCommitUnsupportedError("standalone-repository");
-    }
-    const [change] = channelChanges;
-    if (change !== undefined) {
-      if (change.operation === "insert") {
-        await remote.insertChannel({
-          row: change.row,
-          onConflict: "returnExisting",
-        });
-      } else {
-        const result = await remote.deleteChannel({ id: change.where.id });
-        if (!result.deleted && result.reason === "not_empty") {
-          return {
-            committed: false,
-            conflict: { changeIndex: 0, reason: "referenced" },
-          };
-        }
-      }
-    }
-    return { committed: true };
-  }
-
-  return runLegacyAggregateTransaction(remote, async (database) => {
-    for (const [changeIndex, change] of input.changes.entries()) {
-      if (change.model !== "bundles" || change.operation !== "update") {
-        continue;
-      }
-      const row = await database.findOne({
-        model: "bundles",
-        where: [{ field: "id", value: change.where.id }],
-        select: ["id"],
-      });
-      if (row === null) {
-        return {
-          committed: false,
-          conflict: { changeIndex, reason: "not_found" },
-        } as const;
-      }
-    }
-
-    for (const change of input.changes) {
-      if (change.model === "bundles") {
-        switch (change.operation) {
-          case "insert":
-            await database.create({ model: "bundles", data: change.row });
-            break;
-          case "update":
-            await database.update({
-              model: "bundles",
-              where: [{ field: "id", value: change.where.id }],
-              update: change.update,
-            });
-            break;
-          case "delete":
-            await database.delete({
-              model: "bundles",
-              where: [{ field: "id", value: change.where.id }],
-            });
-            break;
-        }
-        continue;
-      }
-      if (change.model !== "bundlePatches") {
-        throw new DatabaseAtomicCommitUnsupportedError("standalone-repository");
-      }
-
-      switch (change.operation) {
-        case "insert":
-          await database.create({
-            model: "bundle_patches",
-            data: change.row,
-          });
-          break;
-        case "delete":
-          await database.delete({
-            model: "bundle_patches",
-            where: [{ field: "bundle_id", value: change.where.bundleId }],
-          });
-          break;
-      }
-    }
-    return { committed: true };
-  });
 };
 
 /**
@@ -186,6 +57,7 @@ export const standaloneRepository = (
   config: StandaloneRepositoryConfig,
 ): BundleRepository => {
   const remote = createStandaloneBundleRemote(config);
+  const releaseRemote = createStandaloneReleaseRemote(config);
   const database = createLegacyCompatibilityImplementation(remote);
 
   const repository: BundleRepository = {
@@ -222,6 +94,16 @@ export const standaloneRepository = (
           })) as readonly BundlePatchRow[];
         },
       },
+      releases: {
+        findById: (id) => releaseRemote.findReleaseById(id),
+        findMany: (input) => releaseRemote.findReleases(input),
+        findManyByScope: (input) => releaseRemote.findReleasesByScope(input),
+      },
+      releaseCatalogs: {
+        findByScopeKey: (scopeKey) =>
+          releaseRemote.findCatalogByScopeKey(scopeKey),
+        findMany: (input) => releaseRemote.findCatalogs(input),
+      },
       channels: {
         insert: (input) => remote.insertChannel(input),
         delete: (input) => remote.deleteChannel(input),
@@ -230,8 +112,7 @@ export const standaloneRepository = (
         },
       },
     },
-    queries: {},
-    commit: (input) => applyCommit(remote, input),
+    commit: (input) => releaseRemote.commit(input),
   };
   return Object.freeze(repository);
 };

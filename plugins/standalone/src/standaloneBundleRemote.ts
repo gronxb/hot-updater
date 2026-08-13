@@ -108,22 +108,7 @@ export const createStandaloneBundleRemote = (
 
   const bundlesToRows = async (
     bundles: readonly Bundle[],
-  ): Promise<BundleRow[]> => {
-    const channelIds = new Map(
-      (await loadChannels()).map(({ id, name }) => [name, id]),
-    );
-    return bundles.map((bundle) => {
-      const channelId = channelIds.get(bundle.channel);
-      if (channelId === undefined) {
-        throw new StandaloneDatabaseError(
-          "invalid-response",
-          `Bundle ${bundle.id} references an unknown Channel ${bundle.channel}.`,
-          500,
-        );
-      }
-      return bundleToRow(bundle, channelId);
-    });
-  };
+  ): Promise<BundleRow[]> => bundles.map((bundle) => bundleToRow(bundle));
 
   const loadBundleWindow = async (input: BundleWindowInput) => {
     if (input.limit === 0) return { rows: [] as BundleRow[], total: 0 };

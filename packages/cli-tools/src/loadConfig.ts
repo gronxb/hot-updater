@@ -39,6 +39,25 @@ const missingDatabase = createDatabasePlugin({
         throw new Error("database plugin is required");
       },
     },
+    releases: {
+      findById: async () => {
+        throw new Error("database plugin is required");
+      },
+      findMany: async () => {
+        throw new Error("database plugin is required");
+      },
+      findManyByScope: async () => {
+        throw new Error("database plugin is required");
+      },
+    },
+    releaseCatalogs: {
+      findByScopeKey: async () => {
+        throw new Error("database plugin is required");
+      },
+      findMany: async () => {
+        throw new Error("database plugin is required");
+      },
+    },
     channels: {
       insert: async () => {
         throw new Error("database plugin is required");
@@ -73,7 +92,6 @@ const missingDatabase = createDatabasePlugin({
       },
     },
   },
-  queries: {},
   commit: async () => {
     throw new Error("database plugin is required");
   },
@@ -169,6 +187,7 @@ const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
 
 const getDefaultConfig = (): ConfigInput => {
   return {
+    authorityId: "default",
     cacheDir: path.join("node_modules", ".hot-updater"),
     releaseChannel: "production",
     updateStrategy: "appVersion",

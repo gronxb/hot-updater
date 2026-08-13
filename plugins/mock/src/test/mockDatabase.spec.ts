@@ -7,7 +7,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   setupDatabasePluginTestSuite,
   setupDatabaseClientTestSuite,
-  setupGetUpdateInfoTestSuite,
 } from "../../../../packages/test-utils/src/index";
 import {
   createMockDatabaseData,
@@ -25,6 +24,8 @@ const resetData = (): void => {
   data.bundleEvents.clear();
   data.channels.clear();
   data.clientAccessKeys.clear();
+  data.releaseCatalogs.clear();
+  data.releases.clear();
 };
 
 const createPlugin = (): DatabasePlugin =>
@@ -51,18 +52,6 @@ setupDatabaseClientTestSuite({
   migrate: () => undefined,
   reset: resetData,
   dispose: () => undefined,
-});
-
-setupGetUpdateInfoTestSuite({
-  getUpdateInfo: async (bundles, args) => {
-    resetData();
-    const plugin = createPlugin();
-    const client = createDatabaseClient(plugin);
-    for (const bundle of bundles) {
-      await client.insertBundle(bundle);
-    }
-    return plugin.queries.getUpdateInfo?.(args) ?? null;
-  },
 });
 
 describe("mock database provider", () => {
@@ -102,19 +91,10 @@ describe("mock database provider", () => {
     const row = {
       id: "bundle-rollback",
       platform: "ios" as const,
-      should_force_update: false,
-      enabled: true,
       file_hash: "hash",
       git_commit_hash: null,
-      message: null,
-      channel: "rollback",
-      channel_id: "channel-rollback",
       storage_uri: "storage://bundle.zip",
-      target_app_version: "1.0.0",
-      fingerprint_hash: null,
       metadata: {},
-      rollout_cohort_count: 1000,
-      target_cohorts: null,
       manifest_storage_uri: null,
       manifest_file_hash: null,
       asset_base_storage_uri: null,
@@ -125,7 +105,7 @@ describe("mock database provider", () => {
           {
             model: "channels",
             operation: "insert",
-            row: { id: row.channel_id, name: row.channel },
+            row: { id: "channel-rollback", name: "rollback" },
             onConflict: "ignore",
           },
           {

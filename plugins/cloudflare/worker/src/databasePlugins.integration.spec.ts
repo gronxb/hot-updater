@@ -1,4 +1,8 @@
-import type { BundleRow, ChannelRow } from "@hot-updater/plugin-core";
+import type {
+  BundleRow,
+  ChannelRow,
+  ReleaseRow,
+} from "@hot-updater/plugin-core";
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import {
@@ -67,7 +71,7 @@ vi.mock("cloudflare", () => ({
 const reset = async (): Promise<void> => {
   await getDb()
     .prepare(
-      "DELETE FROM bundle_events; DELETE FROM client_access_keys; DELETE FROM bundle_patches; DELETE FROM bundles; DELETE FROM channels;",
+      "DELETE FROM bundle_events; DELETE FROM client_access_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
     )
     .run();
 };
@@ -77,25 +81,41 @@ const createChannelRow = (name: string): ChannelRow => ({
   name,
 });
 
-const createBundleRow = (channel: ChannelRow): BundleRow => ({
+const createBundleRow = (): BundleRow => ({
   id: "00000000-0000-0000-0000-000000000902",
   platform: "ios",
-  should_force_update: false,
-  enabled: true,
   file_hash: "hash",
   git_commit_hash: null,
-  message: null,
-  channel: channel.name,
-  channel_id: channel.id,
   storage_uri: "storage://bundle",
-  target_app_version: "1.0.0",
-  fingerprint_hash: null,
   metadata: {},
-  rollout_cohort_count: 1000,
-  target_cohorts: null,
   manifest_storage_uri: null,
   manifest_file_hash: null,
   asset_base_storage_uri: null,
+});
+
+const createReleaseRow = (
+  channel: ChannelRow,
+  bundle: BundleRow,
+): ReleaseRow => ({
+  id: "00000000-0000-0000-0000-000000000903",
+  revision: 1,
+  scope_key: `v1:test:${channel.name}:ios:app-version`,
+  channel_id: channel.id,
+  platform: bundle.platform,
+  kind: "BUNDLE",
+  bundle_id: bundle.id,
+  strategy: "APP_VERSION",
+  target_app_version: "1.0.0",
+  fingerprint_hash: null,
+  enabled: true,
+  should_force_update: false,
+  message: null,
+  rollout_cohort_count: 1000,
+  target_cohorts: [],
+  operation: "DEPLOY",
+  source_release_id: null,
+  created_at_ms: 100,
+  updated_at_ms: 100,
 });
 
 setupDatabasePluginTestSuite({
@@ -167,16 +187,20 @@ describe.each([
     ).resolves.toEqual({ deleted: false, reason: "not_found" });
   });
 
-  it("rejects direct and committed deletion while a bundle references the channel", async () => {
+  it("rejects direct and committed deletion while a Release references the channel", async () => {
     const plugin = createPlugin();
     const channel = createChannelRow("active");
-    const bundle = createBundleRow(channel);
+    const bundle = createBundleRow();
+    const release = createReleaseRow(channel, bundle);
     await plugin.models.channels.insert({
       row: channel,
       onConflict: "returnExisting",
     });
     await plugin.commit({
-      changes: [{ model: "bundles", operation: "insert", row: bundle }],
+      changes: [
+        { model: "bundles", operation: "insert", row: bundle },
+        { model: "releases", operation: "insert", row: release },
+      ],
     });
 
     await expect(
@@ -201,25 +225,29 @@ describe.each([
     );
   });
 
-  it("atomically deletes a bundle before deleting its newly empty channel", async () => {
+  it("atomically deletes a Release before deleting its newly empty channel", async () => {
     const plugin = createPlugin();
     const channel = createChannelRow("retired");
-    const bundle = createBundleRow(channel);
+    const bundle = createBundleRow();
+    const release = createReleaseRow(channel, bundle);
     await plugin.models.channels.insert({
       row: channel,
       onConflict: "returnExisting",
     });
     await plugin.commit({
-      changes: [{ model: "bundles", operation: "insert", row: bundle }],
+      changes: [
+        { model: "bundles", operation: "insert", row: bundle },
+        { model: "releases", operation: "insert", row: release },
+      ],
     });
 
     await expect(
       plugin.commit({
         changes: [
           {
-            model: "bundles",
+            model: "releases",
             operation: "delete",
-            where: { id: bundle.id },
+            where: { id: release.id },
           },
           {
             model: "channels",
@@ -229,7 +257,12 @@ describe.each([
         ],
       }),
     ).resolves.toEqual({ committed: true });
-    await expect(plugin.models.bundles.findById(bundle.id)).resolves.toBeNull();
+    await expect(
+      plugin.models.releases.findById(release.id),
+    ).resolves.toBeNull();
+    await expect(plugin.models.bundles.findById(bundle.id)).resolves.toEqual(
+      bundle,
+    );
     await expect(plugin.models.channels.list({})).resolves.toEqual({
       channels: [],
     });

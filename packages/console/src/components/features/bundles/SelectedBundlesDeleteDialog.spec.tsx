@@ -91,25 +91,17 @@ function createDeferred<T>() {
   };
 }
 
-const createBundle = (id: string, channel: string): Bundle => ({
+const createBundle = (id: string): Bundle => ({
   id,
-  channel,
   platform: id.endsWith("ios") ? "ios" : "android",
-  enabled: true,
-  shouldForceUpdate: false,
   fileHash: "abc123",
   storageUri: "s3://bucket/bundle.zip",
   gitCommitHash: "deadbeef",
-  message: "Initial message",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
-  rolloutCohortCount: 1000,
-  targetCohorts: [],
 });
 
 describe("SelectedBundlesDeleteDialog", () => {
-  const firstBundle = createBundle("bundle-001-ios", "stable");
-  const secondBundle = createBundle("bundle-002-android", "beta");
+  const firstBundle = createBundle("bundle-001-ios");
+  const secondBundle = createBundle("bundle-002-android");
   const mockOnOpenChange = vi.fn();
   const mockOnComplete = vi.fn();
 

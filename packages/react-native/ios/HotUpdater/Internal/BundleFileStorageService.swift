@@ -1,4 +1,10 @@
 import Foundation
+import OSLog
+
+private let bundleStorageLog = OSLog(
+    subsystem: "com.hotupdater",
+    category: "BundleStorage"
+)
 
 @_silgen_name("HotUpdaterApplyBsdiffPatch")
 private func hotUpdaterApplyBsdiffPatchSymbol(
@@ -275,6 +281,11 @@ public protocol BundleStorageService {
 
     // Bundle update
     func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, manifestUrl: URL?, manifestFileHash: String?, changedAssets: [String: ChangedAssetDescriptor]?, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
+    func stageReleaseSelection(_ selection: PersistedSelection) -> Bool
+    func acceptReleaseCatalog(authorityId: String, scopeKey: String, generation: Int64, catalogHash: String, channel: String, selectionContextHash: String) -> Bool
+    func getActiveUpdateState() -> [String: Any]
+    func isReleaseSelectionCurrent(authorityId: String, scopeKey: String, generation: Int64, catalogHash: String, channel: String, selectionContextHash: String) -> Bool
+    func commitReleaseSelection(_ selection: PersistedSelection) -> Bool
 
     // Rollback support
     func markLaunchCompleted(bundleId: String?)
@@ -310,6 +321,14 @@ public protocol BundleStorageService {
      * Restores the original bundle and clears downloaded bundle state.
      */
     func resetChannel() -> Result<Bool, Error>
+}
+
+public extension BundleStorageService {
+    func stageReleaseSelection(_: PersistedSelection) -> Bool { false }
+    func acceptReleaseCatalog(authorityId _: String, scopeKey _: String, generation _: Int64, catalogHash _: String, channel _: String, selectionContextHash _: String) -> Bool { false }
+    func getActiveUpdateState() -> [String: Any] { [:] }
+    func isReleaseSelectionCurrent(authorityId _: String, scopeKey _: String, generation _: Int64, catalogHash _: String, channel _: String, selectionContextHash _: String) -> Bool { false }
+    func commitReleaseSelection(_: PersistedSelection) -> Bool { false }
 }
 
 class BundleFileStorageService: BundleStorageService {
@@ -358,6 +377,8 @@ class BundleFileStorageService: BundleStorageService {
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot?
     private let builtInBundleIdProvider: () -> String
     private let updateStrategyProvider: () -> UpdateStrategy
+    private let releaseStateLock = NSRecursiveLock()
+    private var pendingInstallSelections: [String: PersistedSelection] = [:]
 
     private var currentInstallIdentity: InstallIdentity?
     private var currentUserIdentity: UserIdentity?
@@ -679,7 +700,13 @@ class BundleFileStorageService: BundleStorageService {
                 return false
             }
 
-            NSLog("[BundleStorage] HotUpdaterBsdiffPatchApplied asset=\(assetPath) baseBundleId=\(patch.baseBundleId)")
+            os_log(
+                "HotUpdaterBsdiffPatchApplied asset=%{public}@ baseBundleId=%{public}@",
+                log: bundleStorageLog,
+                type: .default,
+                assetPath,
+                patch.baseBundleId
+            )
             return true
         case .failure:
             resetDiffProgressFile(
@@ -1237,8 +1264,28 @@ class BundleFileStorageService: BundleStorageService {
         return metadata.verificationPending && metadata.stagingBundleId != nil
     }
 
-    private func prepareMetadataForNewStagingBundle(_ metadata: BundleMetadata, bundleId: String) -> BundleMetadata {
+    private func prepareMetadataForNewStagingBundle(_ metadata: BundleMetadata, bundleId: String) -> BundleMetadata? {
         let currentVerifiedBundleId = getCurrentVerifiedBundleId(metadata).flatMap { $0 == bundleId ? nil : $0 }
+        releaseStateLock.lock()
+        let incomingSelection = pendingInstallSelections.removeValue(forKey: bundleId)
+        releaseStateLock.unlock()
+        if let incomingSelection, !isSelectionCurrent(incomingSelection) {
+            return nil
+        }
+        let currentVerifiedSelection: PersistedSelection? = {
+            if metadata.stagingBundleId != nil, !metadata.verificationPending {
+                return metadata.stagingSelection
+            }
+            return metadata.stableSelection
+        }()?.bundleId == bundleId ? nil : ({
+            if metadata.stagingBundleId != nil, !metadata.verificationPending {
+                return metadata.stagingSelection
+            }
+            return metadata.stableSelection
+        }())
+        let stagingSelection = incomingSelection ?? PersistedSelection.legacyBundle(bundleId)
+        let fromSelection = currentVerifiedSelection
+            ?? PersistedSelection.legacyBundle(resolveBuiltInBundleId() ?? bundleId)
         let pendingTransition = currentVerifiedBundleId.map {
             createPendingTransition(fromBundleId: $0, toBundleId: bundleId)
         }
@@ -1246,8 +1293,18 @@ class BundleFileStorageService: BundleStorageService {
             isolationKey: isolationKey,
             stableBundleId: currentVerifiedBundleId,
             stagingBundleId: bundleId,
+            stableSelection: currentVerifiedSelection,
+            stagingSelection: stagingSelection,
             verificationPending: true,
             pendingTransition: pendingTransition,
+            pendingSelectionTransition: PendingSelectionTransition(
+                fromReleaseId: fromSelection.releaseId,
+                fromBundleId: fromSelection.bundleId,
+                toReleaseId: stagingSelection.releaseId,
+                toBundleId: stagingSelection.bundleId
+            ),
+            highestSeenCatalogs: metadata.highestSeenCatalogs,
+            currentSelectionContexts: metadata.currentSelectionContexts,
             updatedAt: Date().timeIntervalSince1970 * 1000
         )
     }
@@ -1259,6 +1316,8 @@ class BundleFileStorageService: BundleStorageService {
         }
 
         let pendingTransition = metadata.pendingTransition
+        let pendingSelectionTransition = metadata.pendingSelectionTransition
+        let stableSelection = metadata.stableSelection
 
         var crashedHistory = loadCrashedHistory()
         crashedHistory.addEntry(stagingId)
@@ -1278,8 +1337,13 @@ class BundleFileStorageService: BundleStorageService {
             isolationKey: isolationKey,
             stableBundleId: nil,
             stagingBundleId: fallbackBundleId,
+            stableSelection: nil,
+            stagingSelection: stableSelection,
             verificationPending: false,
             pendingTransition: nil,
+            pendingSelectionTransition: nil,
+            highestSeenCatalogs: metadata.highestSeenCatalogs,
+            currentSelectionContexts: metadata.currentSelectionContexts,
             updatedAt: Date().timeIntervalSince1970 * 1000
         )
 
@@ -1305,7 +1369,9 @@ class BundleFileStorageService: BundleStorageService {
         saveLaunchReport(
             LaunchReport(
                 status: .recovered,
+                fromReleaseId: pendingSelectionTransition?.toReleaseId,
                 fromBundleId: stagingId,
+                toReleaseId: stableSelection?.releaseId,
                 toBundleId: fallbackBundleId
                     ?? pendingTransition?.fromBundleId
                     ?? resolveBuiltInBundleId(),
@@ -1325,6 +1391,170 @@ class BundleFileStorageService: BundleStorageService {
         }
 
         _ = rollbackPendingBundle(stagingBundleId)
+    }
+
+    private func releaseScopeStateKey(authorityId: String, scopeKey: String) -> String {
+        "\(authorityId)|\(scopeKey)"
+    }
+
+    private func selectionContextValue(channel: String, selectionContextHash: String) -> String {
+        "\(channel)\n\(selectionContextHash)"
+    }
+
+    func acceptReleaseCatalog(
+        authorityId: String,
+        scopeKey: String,
+        generation: Int64,
+        catalogHash: String,
+        channel: String,
+        selectionContextHash: String
+    ) -> Bool {
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
+        var metadata = loadMetadataOrNull() ?? createInitialMetadata()
+        let stateKey = releaseScopeStateKey(authorityId: authorityId, scopeKey: scopeKey)
+        if let highestSeen = metadata.highestSeenCatalogs[stateKey] {
+            if generation < highestSeen.generation { return false }
+            if generation == highestSeen.generation, catalogHash != highestSeen.catalogHash {
+                return false
+            }
+        }
+        metadata.highestSeenCatalogs[stateKey] = CatalogHighWater(
+            generation: generation,
+            catalogHash: catalogHash
+        )
+        metadata.currentSelectionContexts[stateKey] = selectionContextValue(
+            channel: channel,
+            selectionContextHash: selectionContextHash
+        )
+        metadata.updatedAt = Date().timeIntervalSince1970 * 1000
+        return saveMetadata(metadata)
+    }
+
+    private func activeSelection(_ metadata: BundleMetadata) -> PersistedSelection? {
+        metadata.stagingSelection
+            ?? metadata.stagingBundleId.map(PersistedSelection.legacyBundle)
+            ?? metadata.stableSelection
+            ?? metadata.stableBundleId.map(PersistedSelection.legacyBundle)
+    }
+
+    func getActiveUpdateState() -> [String: Any] {
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
+        guard let metadata = loadMetadataOrNull() else {
+            return [
+                "activeSelection": NSNull(),
+                "stableSelection": NSNull(),
+                "verificationPending": false,
+                "highestSeenCatalogs": [:]
+            ]
+        }
+        let highWaters = metadata.highestSeenCatalogs.mapValues { highWater in
+            [
+                "generation": NSNumber(value: highWater.generation),
+                "catalogHash": highWater.catalogHash
+            ] as [String: Any]
+        }
+        return [
+            "activeSelection": activeSelection(metadata)?.dictionary ?? NSNull(),
+            "stableSelection": metadata.stableSelection?.dictionary ?? NSNull(),
+            "verificationPending": metadata.verificationPending,
+            "highestSeenCatalogs": highWaters
+        ]
+    }
+
+    func isReleaseSelectionCurrent(
+        authorityId: String,
+        scopeKey: String,
+        generation: Int64,
+        catalogHash: String,
+        channel: String,
+        selectionContextHash: String
+    ) -> Bool {
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
+        guard let metadata = loadMetadataOrNull() else { return false }
+        let stateKey = releaseScopeStateKey(authorityId: authorityId, scopeKey: scopeKey)
+        return metadata.highestSeenCatalogs[stateKey] == CatalogHighWater(
+            generation: generation,
+            catalogHash: catalogHash
+        ) && metadata.currentSelectionContexts[stateKey] == selectionContextValue(
+            channel: channel,
+            selectionContextHash: selectionContextHash
+        )
+    }
+
+    private func isSelectionCurrent(_ selection: PersistedSelection) -> Bool {
+        guard let authorityId = selection.authorityId,
+              let scopeKey = selection.scopeKey,
+              let generation = selection.generation,
+              let catalogHash = selection.catalogHash,
+              let selectionContextHash = selection.selectionContextHash else {
+            return false
+        }
+        return isReleaseSelectionCurrent(
+            authorityId: authorityId,
+            scopeKey: scopeKey,
+            generation: generation,
+            catalogHash: catalogHash,
+            channel: selection.channel,
+            selectionContextHash: selectionContextHash
+        )
+    }
+
+    func stageReleaseSelection(_ selection: PersistedSelection) -> Bool {
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
+        guard isSelectionCurrent(selection) else { return false }
+        pendingInstallSelections[selection.bundleId] = selection
+        return true
+    }
+
+    func commitReleaseSelection(_ selection: PersistedSelection) -> Bool {
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
+        guard isSelectionCurrent(selection) else { return false }
+        var metadata = loadMetadataOrNull() ?? createInitialMetadata()
+        if selection.kind == "BUNDLE" {
+            if metadata.stagingSelection?.bundleId == selection.bundleId
+                || metadata.stagingBundleId == selection.bundleId {
+                metadata.stagingBundleId = selection.bundleId
+                metadata.stagingSelection = selection
+            } else if metadata.stableSelection?.bundleId == selection.bundleId
+                || metadata.stableBundleId == selection.bundleId {
+                metadata.stableBundleId = selection.bundleId
+                metadata.stableSelection = selection
+            } else {
+                return false
+            }
+        } else {
+            guard case .success = setBundleURL(localPath: nil) else { return false }
+            metadata.stableBundleId = nil
+            metadata.stableSelection = nil
+            metadata.stagingBundleId = nil
+            metadata.stagingSelection = selection
+            metadata.verificationPending = false
+            metadata.pendingTransition = nil
+            metadata.pendingSelectionTransition = nil
+        }
+        metadata.updatedAt = Date().timeIntervalSince1970 * 1000
+        guard saveMetadata(metadata) else { return false }
+        do {
+            try preferences.setItem(
+                selection.channel,
+                forKey: "HotUpdaterChannel"
+            )
+        } catch {
+            return false
+        }
+        if selection.kind != "BUNDLE", case .success(let storeDir) = bundleStoreDir() {
+            for item in (try? fileSystem.contentsOfDirectory(atPath: storeDir)) ?? [] {
+                guard !protectedBundleStoreEntries.contains(item) else { continue }
+                let path = (storeDir as NSString).appendingPathComponent(item)
+                try? fileSystem.removeItem(atPath: path)
+            }
+        }
+        return true
     }
     
     // MARK: - Directory Management
@@ -1661,7 +1891,11 @@ class BundleFileStorageService: BundleStorageService {
                 let setResult = self.setBundleURL(localPath: nil)
                 switch setResult {
                 case .success:
-                    let _ = self.saveMetadata(self.createInitialMetadata())
+                    let previousMetadata = self.loadMetadataOrNull()
+                    var resetMetadata = self.createInitialMetadata()
+                    resetMetadata.highestSeenCatalogs = previousMetadata?.highestSeenCatalogs ?? [:]
+                    resetMetadata.currentSelectionContexts = previousMetadata?.currentSelectionContexts ?? [:]
+                    let _ = self.saveMetadata(resetMetadata)
                     self.saveLaunchReport(nil)
                     let cleanupResult = self.cleanupOldBundles(currentBundleId: currentBundleId, bundleId: bundleId)
                     switch cleanupResult {
@@ -1696,11 +1930,18 @@ class BundleFileStorageService: BundleStorageService {
                 case .success(let existingBundlePath):
                     if let bundlePath = existingBundlePath {
                         NSLog("[BundleStorage] Using cached bundle at path: \(bundlePath)")
+                        let currentMetadata = self.loadMetadataOrNull() ?? self.createInitialMetadata()
+                        guard let updatedMetadata = self.prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId) else {
+                            completion(.failure(BundleStorageError.unknown(
+                                NSError(domain: "HotUpdater", code: 0, userInfo: [
+                                    NSLocalizedDescriptionKey: "Release catalog selection is stale"
+                                ])
+                            )))
+                            return
+                        }
                         let setResult = self.setBundleURL(localPath: bundlePath)
                         switch setResult {
                         case .success:
-                            let currentMetadata = self.loadMetadataOrNull() ?? self.createInitialMetadata()
-                            let updatedMetadata = self.prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId)
                             let _ = self.saveMetadata(updatedMetadata)
                             NSLog("[BundleStorage] Set staging bundle (cached): \(bundleId), verificationPending: true")
 
@@ -2127,10 +2368,18 @@ class BundleFileStorageService: BundleStorageService {
                 let finalBundlePath = (realDir as NSString).appendingPathComponent(
                     (bundlePathInTmp as NSString).lastPathComponent
                 )
+                let currentMetadata = self.loadMetadataOrNull() ?? self.createInitialMetadata()
+                guard let updatedMetadata = self.prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId) else {
+                    self.cleanupTemporaryFiles([tempDirectory])
+                    completion(.failure(BundleStorageError.unknown(
+                        NSError(domain: "HotUpdater", code: 0, userInfo: [
+                            NSLocalizedDescriptionKey: "Release catalog selection is stale"
+                        ])
+                    )))
+                    return
+                }
                 switch self.setBundleURL(localPath: finalBundlePath) {
                 case .success:
-                    let currentMetadata = self.loadMetadataOrNull() ?? self.createInitialMetadata()
-                    let updatedMetadata = self.prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId)
                     let _ = self.saveMetadata(updatedMetadata)
                     self.cleanupTemporaryFiles([tempDirectory])
                     self.scheduleCleanupOldBundles(
@@ -2457,14 +2706,22 @@ class BundleFileStorageService: BundleStorageService {
                     let finalBundlePath = (realDir as NSString).appendingPathComponent((bundlePathInTmp as NSString).lastPathComponent)
 
                     // 12) Set the bundle URL in preferences (for backwards compatibility)
+                    let currentMetadata = self.loadMetadataOrNull() ?? self.createInitialMetadata()
+                    guard let updatedMetadata = self.prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId) else {
+                        self.cleanupTemporaryFiles([tempDirectory])
+                        completion(.failure(BundleStorageError.unknown(
+                            NSError(domain: "HotUpdater", code: 0, userInfo: [
+                                NSLocalizedDescriptionKey: "Release catalog selection is stale"
+                            ])
+                        )))
+                        return
+                    }
                     let setResult = self.setBundleURL(localPath: finalBundlePath)
                     switch setResult {
                     case .success:
                         NSLog("[BundleStorage] Successfully set bundle URL: \(finalBundlePath)")
 
                         // 13) Set staging metadata for rollback support
-                        let currentMetadata = self.loadMetadataOrNull() ?? self.createInitialMetadata()
-                        let updatedMetadata = self.prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId)
                         let _ = self.saveMetadata(updatedMetadata)
                         NSLog("[BundleStorage] Set staging bundle: \(bundleId), verificationPending: true")
 
@@ -2545,11 +2802,24 @@ class BundleFileStorageService: BundleStorageService {
         }
 
         let pendingTransition = metadata.pendingTransition
+        let pendingSelectionTransition = metadata.pendingSelectionTransition
+        metadata.stableBundleId = nil
+        metadata.stableSelection = nil
         metadata.verificationPending = false
         metadata.pendingTransition = nil
+        metadata.pendingSelectionTransition = nil
         metadata.updatedAt = Date().timeIntervalSince1970 * 1000
         let _ = saveMetadata(metadata)
-        saveLaunchReport(launchReport(for: .updateApplied, transition: pendingTransition))
+        saveLaunchReport(
+            LaunchReport(
+                status: .updateApplied,
+                fromReleaseId: pendingSelectionTransition?.fromReleaseId,
+                fromBundleId: pendingSelectionTransition?.fromBundleId ?? pendingTransition?.fromBundleId,
+                toReleaseId: pendingSelectionTransition?.toReleaseId,
+                toBundleId: pendingSelectionTransition?.toBundleId ?? pendingTransition?.toBundleId,
+                updateStrategy: pendingTransition?.updateStrategy
+            )
+        )
     }
 
     func notifyAppReady() -> [String: Any] {
@@ -2563,11 +2833,17 @@ class BundleFileStorageService: BundleStorageService {
         }
 
         var result: [String: Any] = ["status": report.status.rawValue]
+        if let fromReleaseId = report.fromReleaseId {
+            result["fromReleaseId"] = fromReleaseId
+        }
         if let fromBundleId = report.fromBundleId {
             result["fromBundleId"] = fromBundleId
         }
         if let toBundleId = report.toBundleId {
             result["toBundleId"] = toBundleId
+        }
+        if let toReleaseId = report.toReleaseId {
+            result["toReleaseId"] = toReleaseId
         }
         if let updateStrategy = report.updateStrategy {
             result["updateStrategy"] = updateStrategy.rawValue
@@ -2673,12 +2949,15 @@ class BundleFileStorageService: BundleStorageService {
             return .failure(BundleStorageError.unknown(nil))
         }
 
-        let clearedMetadata = BundleMetadata(
-            isolationKey: isolationKey,
-            stableBundleId: nil,
-            stagingBundleId: nil,
-            verificationPending: false
-        )
+        var clearedMetadata = loadMetadataOrNull() ?? BundleMetadata(isolationKey: isolationKey)
+        clearedMetadata.stableBundleId = nil
+        clearedMetadata.stagingBundleId = nil
+        clearedMetadata.stableSelection = nil
+        clearedMetadata.stagingSelection = nil
+        clearedMetadata.verificationPending = false
+        clearedMetadata.pendingTransition = nil
+        clearedMetadata.pendingSelectionTransition = nil
+        clearedMetadata.updatedAt = Date().timeIntervalSince1970 * 1000
 
         guard saveMetadata(clearedMetadata) else {
             return .failure(BundleStorageError.unknown(nil))

@@ -178,19 +178,16 @@ export function getRolledOutNumericCohorts(
     return [];
   }
 
-  return Array.from(
-    { length: NUMERIC_COHORT_SIZE },
-    (_, index) => index + 1,
-  ).filter((cohortValue) => {
-    if (normalizedRolloutCount >= NUMERIC_COHORT_SIZE) {
-      return true;
-    }
+  if (normalizedRolloutCount >= NUMERIC_COHORT_SIZE) {
+    return Array.from({ length: NUMERIC_COHORT_SIZE }, (_, index) => index + 1);
+  }
 
-    return (
-      getNumericCohortRolloutPosition(bundleId, cohortValue) <
-      normalizedRolloutCount
-    );
-  });
+  const { multiplier, offset } = getRolloutShuffleParameters(bundleId);
+  return Array.from({ length: normalizedRolloutCount }, (_, position) =>
+    positiveMod(multiplier * position + offset, NUMERIC_COHORT_SIZE),
+  )
+    .map((zeroBasedCohort) => zeroBasedCohort + 1)
+    .sort((left, right) => left - right);
 }
 
 export function isCohortEligibleForUpdate(

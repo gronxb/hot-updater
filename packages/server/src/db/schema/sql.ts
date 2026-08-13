@@ -47,6 +47,7 @@ export const getSqlType = (
     if (type === "integer") return "integer";
     if (type === "float") return "double";
     if (type === "json") return "json";
+    if (type === "large-string") return "mediumtext";
     if (type.startsWith("varchar")) return type;
     return "text";
   }
@@ -78,7 +79,9 @@ const sqlDefaultClause = (
   if (!value) return "";
   if (
     provider === "mysql" &&
-    (column.type === "json" || column.type === "string")
+    (column.type === "json" ||
+      column.type === "large-string" ||
+      column.type === "string")
   ) {
     return "";
   }
@@ -117,7 +120,7 @@ export const sqlColumnDefinition = (
   const collation = column.providerCollations?.[provider];
   const collationClause = collation
     ? provider === "mysql"
-      ? `character set utf8mb4 collate ${collation}`
+      ? `character set ${collation === "ascii_bin" ? "ascii" : "utf8mb4"} collate ${collation}`
       : `collate ${collation}`
     : undefined;
   return (

@@ -138,8 +138,12 @@ please refer to the article below for more details:
 ## Cost and capacity
 
 Managed AWS init uses DynamoDB on-demand capacity, so an idle installation has
-no provisioned read/write capacity charge. Each authenticated update check cache
-miss reads the update index. Each authenticated Analytics event invokes
+no provisioned read/write capacity charge. Release-catalog requests use a
+dedicated CloudFront behavior whose cache key contains the canonical path,
+`x-api-key`, and supported content encoding. It excludes SDK version,
+Authorization, cookies, query strings, and installation state. A cold origin
+fill performs one exact DynamoDB catalog read; a warm CloudFront hit skips both
+Lambda@Edge and DynamoDB. Each authenticated Analytics event invokes
 Lambda@Edge and appends one event row; server-side Analytics queries read event
 pages from DynamoDB.
 Review the [DynamoDB pricing model](https://aws.amazon.com/dynamodb/pricing/) and
@@ -172,8 +176,14 @@ table, then enables point-in-time recovery on both new and compatible reused
 tables. Point-in-time recovery is a billed DynamoDB feature. Init does not
 change deletion protection on an operator-owned reused table.
 
-New distributions use `PriceClass_All` to preserve worldwide OTA latency. If
-regional reach matters less than transfer price, change the distribution price
+New distributions use `PriceClass_All` to preserve worldwide OTA latency. The
+Release-catalog behavior honors the server's five-second shared TTL. Catalog
+authentication failures, missing rows, and server errors are private and are
+not cached. Legacy update-check behaviors retain their existing compatibility
+cache partition, while `/api/check-update/v2/release-catalogs/*` uses the
+smaller Release-catalog policy.
+
+If regional reach matters less than transfer price, change the distribution price
 class in AWS after init; later init runs preserve that setting. Init invalidates
 only `/api/check-update/*`, leaving immutable bundle caches warm. CloudFront
 provides the first 1,000 invalidation paths per account each month at no extra

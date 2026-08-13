@@ -3,6 +3,7 @@ import type {
   AppVersionGetBundlesArgs,
   Bundle,
   FingerprintGetBundlesArgs,
+  LegacyBundle,
   UpdateInfo,
 } from "@hot-updater/core";
 import type {
@@ -11,7 +12,15 @@ import type {
   ChannelInsertInput,
   ChannelInsertResult,
   ChannelRow,
+  DatabaseCommit,
+  DatabaseCommitResult,
   DatabasePlugin as DatabasePluginContract,
+  ReleaseCatalogMutationPreflight,
+  ReleaseCatalogMutationResult,
+  ReleaseCatalogRebuildResult,
+  ReleaseCatalogRow,
+  ReleasePolicyPatch,
+  ReleaseRow,
 } from "@hot-updater/plugin-core";
 
 import type { PaginatedResult } from "../types";
@@ -32,6 +41,7 @@ export type ORMSQLProvider = (typeof sqlProviders)[number];
 export type RelationMode = "foreign-keys" | "fumadb";
 
 export interface MigrateOptions {
+  authorityId?: string;
   mode?: "from-schema" | "from-database";
   updateSettings?: boolean;
   unsafe?: boolean;
@@ -139,12 +149,6 @@ export function isDatabasePlugin(plugin: unknown): plugin is DatabasePlugin {
     typeof plugin.models.clientAccessKeys.list === "function" &&
     "revoke" in plugin.models.clientAccessKeys &&
     typeof plugin.models.clientAccessKeys.revoke === "function" &&
-    "queries" in plugin &&
-    typeof plugin.queries === "object" &&
-    plugin.queries !== null &&
-    (!("getUpdateInfo" in plugin.queries) ||
-      plugin.queries.getUpdateInfo === undefined ||
-      typeof plugin.queries.getUpdateInfo === "function") &&
     "commit" in plugin &&
     typeof plugin.commit === "function" &&
     (!("dispose" in plugin) ||
@@ -170,6 +174,50 @@ export interface DatabaseAPI {
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
   ) => Promise<AppUpdateAvailableInfo | null>;
   getBundleById(id: string): Promise<Bundle | null>;
+  getReleaseCatalog(
+    input: import("./releaseCatalog").ReleaseCatalogRequest,
+  ): Promise<import("@hot-updater/core").ReleaseCatalog | null>;
+  getArtifactInfo(
+    targetBundleId: string,
+    currentBundleId: string,
+  ): Promise<AppUpdateAvailableInfo | null>;
+  getReleaseById(id: string): Promise<ReleaseRow | null>;
+  getReleasesByScope(input: {
+    readonly scopeKey: string;
+    readonly afterReleaseId?: string;
+    readonly limit: number;
+  }): Promise<readonly ReleaseRow[]>;
+  getReleases(input: {
+    readonly beforeReleaseId?: string;
+    readonly bundleId?: string;
+    readonly channelId?: string;
+    readonly enabled?: boolean;
+    readonly platform?: "ios" | "android";
+    readonly limit: number;
+  }): Promise<readonly ReleaseRow[]>;
+  getReleaseCatalogByScopeKey(
+    scopeKey: string,
+  ): Promise<ReleaseCatalogRow | null>;
+  getReleaseCatalogs(input: {
+    readonly afterScopeKey?: string;
+    readonly limit: number;
+  }): Promise<readonly ReleaseCatalogRow[]>;
+  updateReleasePolicy(input: {
+    readonly expectedRevision?: number;
+    readonly patch: ReleasePolicyPatch;
+    readonly releaseId: string;
+  }): Promise<ReleaseCatalogMutationResult>;
+  preflightReleasePolicy(input: {
+    readonly expectedRevision?: number;
+    readonly patch: ReleasePolicyPatch;
+    readonly releaseId: string;
+  }): Promise<ReleaseCatalogMutationPreflight>;
+  deleteRelease(input: {
+    readonly expectedRevision?: number;
+    readonly releaseId: string;
+  }): Promise<ReleaseCatalogMutationResult>;
+  rebuildReleaseCatalog(scopeKey: string): Promise<ReleaseCatalogRebuildResult>;
+  commitDatabase(input: DatabaseCommit): Promise<DatabaseCommitResult>;
   getUpdateInfo(
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
   ): Promise<UpdateInfo | null>;
@@ -179,8 +227,11 @@ export interface DatabaseAPI {
   getBundles(
     options: import("@hot-updater/plugin-core").DatabaseBundleQueryOptions,
   ): Promise<PaginatedResult>;
-  insertBundle(bundle: Bundle): Promise<void>;
-  insertBundles(bundles: readonly Bundle[]): Promise<void>;
-  updateBundleById(bundleId: string, newBundle: Partial<Bundle>): Promise<void>;
+  insertBundle(bundle: LegacyBundle): Promise<void>;
+  insertBundles(bundles: readonly LegacyBundle[]): Promise<void>;
+  updateBundleById(
+    bundleId: string,
+    newBundle: Partial<LegacyBundle>,
+  ): Promise<void>;
   deleteBundleById(bundleId: string): Promise<void>;
 }

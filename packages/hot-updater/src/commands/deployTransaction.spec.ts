@@ -1,13 +1,18 @@
-import type {
-  Bundle,
-  DatabaseClient,
-  DatabaseMutationClient,
-} from "@hot-updater/plugin-core";
-import { describe, expect, it, vi } from "vitest";
+import {
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+} from "@hot-updater/core";
+import type { LegacyBundle } from "@hot-updater/plugin-core";
+import { beforeEach, describe, expect, it } from "vitest";
 
-import { prepareAndCommitBundles } from "./deployTransaction";
+import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
+import { commitDeployment, prepareAndCommitBundles } from "./deployTransaction";
 
-const createBundle = (id: string, platform: Bundle["platform"]): Bundle => ({
+const authorityId = "project-a";
+const createBundle = (
+  id: string,
+  platform: LegacyBundle["platform"],
+): LegacyBundle => ({
   channel: "production",
   enabled: true,
   fileHash: `${id}-hash`,
@@ -16,74 +21,159 @@ const createBundle = (id: string, platform: Bundle["platform"]): Bundle => ({
   id,
   message: null,
   platform,
+  rolloutCohortCount: 1_000,
   shouldForceUpdate: false,
   storageUri: `storage://bundle/${id}`,
   targetAppVersion: "1.0.x",
 });
 
-const createTransactionlessClient = () => {
-  const insertBundle = vi.fn(async (_bundle: Bundle): Promise<void> => {});
-  const mutationClient: DatabaseMutationClient = {
-    deleteBundleById: async (_bundleId) => {},
-    getBundleById: async (_bundleId) => null,
-    getBundles: async () => ({
-      data: [],
-      pagination: {
-        currentPage: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        total: 0,
-        totalPages: 0,
-      },
-    }),
-    getChannels: async () => [],
-    insertChannel: async ({ row }) => ({ row, inserted: true }),
-    getUpdateInfo: async (_args) => null,
-    insertBundle,
-    updateBundleById: async (_bundleId, _update) => {},
-  };
-  const database: DatabaseClient = {
-    ...mutationClient,
-    deleteChannel: async () => ({ deleted: true }),
-    mutate: (operation) => operation(mutationClient),
-  };
+const iosBundle = () =>
+  createBundle("01900000-0000-7000-8000-000000000001", "ios");
 
-  return { database, insertBundle };
-};
-
-describe("prepareAndCommitBundles", () => {
-  it("commits multiple bundles through one mutation boundary", async () => {
-    const { database, insertBundle } = createTransactionlessClient();
-    const bundles = [
-      createBundle("bundle-ios", "ios"),
-      createBundle("bundle-android", "android"),
-    ];
-
-    const deployment = prepareAndCommitBundles({
-      database,
-      prepare: async (persistBundle) => {
-        for (const bundle of bundles) await persistBundle(bundle);
-        return bundles.map(({ id }) => id);
-      },
-    });
-
-    await expect(deployment).resolves.toEqual(["bundle-ios", "bundle-android"]);
-    expect(insertBundle).toHaveBeenCalledTimes(2);
+const scopeKey = (platform: LegacyBundle["platform"]) =>
+  createReleaseCatalogScopeKey({
+    authorityId,
+    channelKey: encodeChannelKey("production"),
+    platform,
+    strategy: "APP_VERSION",
   });
 
-  it("commits one bundle without requiring a multi-bundle transaction", async () => {
-    const { database, insertBundle } = createTransactionlessClient();
-    const bundle = createBundle("bundle-ios", "ios");
+describe("Release deployment transaction", () => {
+  const harness = createDatabasePluginHarness();
+
+  beforeEach(() => harness.reset());
+
+  it("atomically commits Bundle bytes, Release policy, and the compiled catalog", async () => {
+    const bundle = iosBundle();
+
+    const result = await commitDeployment({
+      authorityId,
+      bundle,
+      database: harness.plugin,
+    });
+
+    await expect(
+      harness.plugin.models.bundles.findById(bundle.id),
+    ).resolves.toMatchObject({
+      id: bundle.id,
+      file_hash: bundle.fileHash,
+    });
+    await expect(
+      harness.plugin.models.releases.findById(result.release!.id),
+    ).resolves.toMatchObject({
+      bundle_id: bundle.id,
+      operation: "DEPLOY",
+      revision: 1,
+    });
+    await expect(
+      harness.plugin.models.releaseCatalogs.findByScopeKey(scopeKey("ios")),
+    ).resolves.toMatchObject({ generation: 1, is_tombstone: false });
+
+    expect(harness.commit).toHaveBeenCalledOnce();
+    expect(
+      harness.commit.mock.calls[0]?.[0].changes.map(
+        ({ model }: { readonly model: string }) => model,
+      ),
+    ).toEqual(["bundles", "releases", "releaseCatalogs"]);
+    await expect(harness.plugin.models.channels.list({})).resolves.toEqual({
+      channels: [
+        {
+          id: `channel:${encodeChannelKey("production")}`,
+          name: "production",
+        },
+      ],
+    });
+  });
+
+  it("uses the canonical channel returned by a concurrent creator", async () => {
+    const bundle = iosBundle();
+    const winner = { id: "channel-created-concurrently", name: "production" };
+    let listed = false;
+    const database = {
+      ...harness.plugin,
+      models: {
+        ...harness.plugin.models,
+        channels: {
+          ...harness.plugin.models.channels,
+          async insert(
+            input: Parameters<typeof harness.plugin.models.channels.insert>[0],
+          ) {
+            await harness.plugin.models.channels.insert({
+              row: winner,
+              onConflict: "returnExisting",
+            });
+            return harness.plugin.models.channels.insert(input);
+          },
+          async list(input: {}) {
+            if (!listed) {
+              listed = true;
+              return { channels: [] };
+            }
+            return harness.plugin.models.channels.list(input);
+          },
+        },
+      },
+    };
+
+    const result = await commitDeployment({ authorityId, bundle, database });
+
+    await expect(
+      database.models.releases.findById(result.release!.id),
+    ).resolves.toMatchObject({ channel_id: winner.id });
+    await expect(
+      database.models.releaseCatalogs.findByScopeKey(scopeKey("ios")),
+    ).resolves.toMatchObject({ channel_id: winner.id });
+  });
+
+  it("prepares both platforms before committing their independent scopes", async () => {
+    const bundles = [
+      iosBundle(),
+      createBundle("01900000-0000-7000-8000-000000000002", "android"),
+    ];
+    const prepared: string[] = [];
 
     const result = await prepareAndCommitBundles({
-      database,
-      prepare: async (persistBundle) => {
-        await persistBundle(bundle);
-        return [bundle.id];
+      database: harness.plugin,
+      prepare: async (persistDeployment) => {
+        for (const bundle of bundles) {
+          prepared.push(bundle.id);
+          await persistDeployment({ authorityId, bundle });
+        }
+        expect(harness.commit).not.toHaveBeenCalled();
+        return prepared;
       },
     });
 
-    expect(result).toEqual([bundle.id]);
-    expect(insertBundle).toHaveBeenCalledOnce();
+    expect(result).toEqual(bundles.map(({ id }) => id));
+    expect(harness.commit).toHaveBeenCalledOnce();
+    await expect(
+      harness.plugin.models.releaseCatalogs.findByScopeKey(scopeKey("ios")),
+    ).resolves.not.toBeNull();
+    await expect(
+      harness.plugin.models.releaseCatalogs.findByScopeKey(scopeKey("android")),
+    ).resolves.not.toBeNull();
+  });
+
+  it("leaves Bundle and Release state unchanged when catalog compilation fails", async () => {
+    const bundle = { ...iosBundle(), targetAppVersion: "not-semver" };
+
+    await expect(
+      commitDeployment({ authorityId, bundle, database: harness.plugin }),
+    ).rejects.toThrow();
+
+    await expect(
+      harness.plugin.models.bundles.findById(bundle.id),
+    ).resolves.toBeNull();
+    await expect(
+      harness.plugin.models.releases.findManyByScope({
+        consistency: "strong",
+        limit: 10,
+        scopeKey: scopeKey("ios"),
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      harness.plugin.models.releaseCatalogs.findByScopeKey(scopeKey("ios")),
+    ).resolves.toBeNull();
+    expect(harness.commit).not.toHaveBeenCalled();
   });
 });

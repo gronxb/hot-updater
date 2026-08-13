@@ -43,10 +43,6 @@ describe("isDatabasePlugin", () => {
         },
       },
     };
-    const malformedQueries = {
-      ...plugin,
-      queries: { getUpdateInfo: null },
-    };
     const malformedDispose = { ...plugin, dispose: null };
 
     expect(isDatabasePlugin(factory)).toBe(false);
@@ -54,7 +50,6 @@ describe("isDatabasePlugin", () => {
     expect(isDatabasePlugin(missingAnalytics)).toBe(false);
     expect(isDatabasePlugin(malformedChannels)).toBe(false);
     expect(isDatabasePlugin(malformedClientAccessKeys)).toBe(false);
-    expect(isDatabasePlugin(malformedQueries)).toBe(false);
     expect(isDatabasePlugin(malformedDispose)).toBe(false);
   });
 });

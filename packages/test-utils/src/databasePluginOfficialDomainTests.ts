@@ -7,6 +7,7 @@ import {
   createBundleRowFixture,
   createChannelRowFixture,
   createClientAccessKeyRowFixture,
+  createReleaseRowFixture,
 } from "./databaseTestFixtures";
 
 type OfficialDomainTestState = DatabasePluginTestState<DatabasePlugin>;
@@ -76,7 +77,7 @@ export const registerDatabasePluginOfficialDomainTests = (
       });
     });
 
-    it("refuses to delete a referenced channel and keeps both rows", async () => {
+    it("refuses to delete a Release-referenced channel and keeps both rows", async () => {
       const plugin = state.getPlugin();
       const channel = createChannelRowFixture("referenced");
       const bundle = createBundleRowFixture("600", channel.name);
@@ -85,7 +86,14 @@ export const registerDatabasePluginOfficialDomainTests = (
         onConflict: "returnExisting",
       });
       await plugin.commit({
-        changes: [{ model: "bundles", operation: "insert", row: bundle }],
+        changes: [
+          { model: "bundles", operation: "insert", row: bundle },
+          {
+            model: "releases",
+            operation: "insert",
+            row: createReleaseRowFixture("600", bundle, channel),
+          },
+        ],
       });
 
       await expect(
@@ -99,7 +107,7 @@ export const registerDatabasePluginOfficialDomainTests = (
       );
     });
 
-    it("serializes channel deletion against a concurrent bundle insert", async () => {
+    it("serializes channel deletion against a concurrent Release insert", async () => {
       const plugin = state.getPlugin();
       const channel = createChannelRowFixture("race");
       const bundle = createBundleRowFixture("602", channel.name);
@@ -107,16 +115,20 @@ export const registerDatabasePluginOfficialDomainTests = (
         row: channel,
         onConflict: "returnExisting",
       });
+      await plugin.commit({
+        changes: [{ model: "bundles", operation: "insert", row: bundle }],
+      });
+      const release = createReleaseRowFixture("602", bundle, channel);
 
       const [deletion, insertion] = await Promise.allSettled([
         plugin.models.channels.delete({ id: channel.id }),
         plugin.commit({
-          changes: [{ model: "bundles", operation: "insert", row: bundle }],
+          changes: [{ model: "releases", operation: "insert", row: release }],
         }),
       ]);
       expect(deletion.status).toBe("fulfilled");
 
-      const storedBundle = await plugin.models.bundles.findById(bundle.id);
+      const storedRelease = await plugin.models.releases.findById(release.id);
       const storedChannels = (await plugin.models.channels.list({})).channels;
       if (insertion.status === "fulfilled") {
         expect(insertion.value).toEqual({ committed: true });
@@ -124,19 +136,19 @@ export const registerDatabasePluginOfficialDomainTests = (
           status: "fulfilled",
           value: { deleted: false, reason: "not_empty" },
         });
-        expect(storedBundle).toEqual(bundle);
+        expect(storedRelease).toEqual(release);
         expect(storedChannels).toEqual([channel]);
       } else {
         expect(deletion).toEqual({
           status: "fulfilled",
           value: { deleted: true },
         });
-        expect(storedBundle).toBeNull();
+        expect(storedRelease).toBeNull();
         expect(storedChannels).toEqual([]);
       }
     });
 
-    it("keeps an empty channel after its last bundle is deleted", async () => {
+    it("keeps an empty channel after its last Release is deleted", async () => {
       const plugin = state.getPlugin();
       const channel = createChannelRowFixture("staging");
       const bundle = createBundleRowFixture("601", channel.name);
@@ -145,15 +157,22 @@ export const registerDatabasePluginOfficialDomainTests = (
         onConflict: "returnExisting",
       });
       await plugin.commit({
-        changes: [{ model: "bundles", operation: "insert", row: bundle }],
+        changes: [
+          { model: "bundles", operation: "insert", row: bundle },
+          {
+            model: "releases",
+            operation: "insert",
+            row: createReleaseRowFixture("601", bundle, channel),
+          },
+        ],
       });
 
       await plugin.commit({
         changes: [
           {
-            model: "bundles",
+            model: "releases",
             operation: "delete",
-            where: { id: bundle.id },
+            where: { id: createReleaseRowFixture("601", bundle, channel).id },
           },
         ],
       });

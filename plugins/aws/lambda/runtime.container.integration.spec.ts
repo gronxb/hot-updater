@@ -24,7 +24,11 @@ import {
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { transformEnv } from "@hot-updater/cli-tools";
-import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
+import {
+  type GetBundlesArgs,
+  type LegacyBundle as Bundle,
+  NIL_UUID,
+} from "@hot-updater/core";
 import { createClientAccessKey, createHotUpdater } from "@hot-updater/server";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
@@ -57,6 +61,7 @@ const S3_BUCKET_NAME = `hot-updater-aws-${process.pid}-${Date.now()}`
 const SSM_PARAMETER_NAME = `/hot-updater/aws/${process.pid}/${Date.now()}`;
 const DYNAMODB_TABLE_NAME = `hot-updater-aws-${process.pid}-${Date.now()}`;
 const CLOUDFRONT_KEY_PAIR_ID = "KTEST";
+const AUTHORITY_ID = "aws.runtime-acceptance";
 const LOCALSTACK_IMAGE = "localstack/localstack:3";
 const LAMBDA_IMAGE = "public.ecr.aws/lambda/nodejs:22";
 const HOT_UPDATER_BASE_PATH = "/api/check-update";
@@ -322,6 +327,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       },
     });
     seedHotUpdater = createHotUpdater({
+      authorityId: AUTHORITY_ID,
       database,
       features: {
         updateCheck: true,
@@ -357,6 +363,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     await cp(lambdaDistDir, runtimeDir, { recursive: true });
 
     const transformedCode = transformEnv(path.join(runtimeDir, "index.cjs"), {
+      AUTHORITY_ID,
       CLOUDFRONT_KEY_PAIR_ID,
       DYNAMODB_REGION: REGION,
       DYNAMODB_TABLE_NAME,

@@ -4,6 +4,10 @@ import {
   type ChannelDeleteInput,
   type ChannelInsertInput,
   type DatabaseBundleQueryOptions,
+  deleteRelease as deleteReleaseMutation,
+  preflightReleasePolicy,
+  type ReleasePolicyPatch,
+  updateReleasePolicy,
 } from "@hot-updater/plugin-core";
 import { createServerFn } from "@tanstack/react-start";
 
@@ -16,7 +20,6 @@ import {
 import { DEFAULT_PAGE_LIMIT } from "./constants";
 
 type GetBundlesInput = {
-  channel?: string;
   platform?: "ios" | "android";
   page?: number;
   limit?: string;
@@ -36,21 +39,82 @@ type GetBundleChildCountsInput = {
   bundleIds: string[];
 };
 
-type UpdateBundleInput = {
-  bundleId: string;
-  bundle: Partial<Bundle>;
-};
-
-type PromoteBundleInput = {
-  action: "copy" | "move";
-  bundleId: string;
-  nextBundleId?: string;
-  targetChannel: string;
-};
-
 type DeleteBundleInput = {
   bundleId: string;
 };
+
+type GetReleasesInput = {
+  beforeReleaseId?: string;
+  channelId?: string;
+  platform?: "ios" | "android";
+  limit?: number;
+};
+
+type ReleaseMutationInput = {
+  expectedRevision?: number;
+  patch: ReleasePolicyPatch;
+  releaseId: string;
+};
+
+type DeleteReleaseInput = {
+  expectedRevision?: number;
+  releaseId: string;
+};
+
+export const getReleases = createServerFn({ method: "GET" })
+  .inputValidator((input: GetReleasesInput | undefined) => input)
+  .handler(async ({ data }) => {
+    const { prepareConfig } = await import("./server/config.server");
+    const { config } = await prepareConfig();
+    return config.database.models.releases.findMany({
+      ...(data?.beforeReleaseId === undefined
+        ? {}
+        : { beforeReleaseId: data.beforeReleaseId }),
+      ...(data?.channelId === undefined ? {} : { channelId: data.channelId }),
+      ...(data?.platform === undefined ? {} : { platform: data.platform }),
+      limit: data?.limit ?? DEFAULT_PAGE_LIMIT,
+    });
+  });
+
+export const getRelease = createServerFn({ method: "GET" })
+  .inputValidator((input: { releaseId: string }) => input)
+  .handler(async ({ data }) => {
+    const { prepareConfig } = await import("./server/config.server");
+    const { config } = await prepareConfig();
+    return config.database.models.releases.findById(data.releaseId);
+  });
+
+export const updateRelease = createServerFn({ method: "POST" })
+  .inputValidator((input: ReleaseMutationInput) => input)
+  .handler(async ({ data }) => {
+    const { prepareConfig } = await import("./server/config.server");
+    const { config } = await prepareConfig();
+    return updateReleasePolicy({ database: config.database, ...data });
+  });
+
+export const preflightRelease = createServerFn({ method: "POST" })
+  .inputValidator((input: ReleaseMutationInput) => input)
+  .handler(async ({ data }) => {
+    const { prepareConfig } = await import("./server/config.server");
+    const { config } = await prepareConfig();
+    return preflightReleasePolicy({ database: config.database, ...data });
+  });
+
+export const deleteRelease = createServerFn({ method: "POST" })
+  .inputValidator((input: DeleteReleaseInput) => input)
+  .handler(async ({ data }) => {
+    const { prepareConfig } = await import("./server/config.server");
+    const { config } = await prepareConfig();
+    return deleteReleaseMutation({ database: config.database, ...data });
+  });
+
+export const getReleaseCatalogDiagnostics = createServerFn({ method: "GET" })
+  .inputValidator((input: { scopeKey: string }) => input)
+  .handler(async ({ data }) => {
+    const { prepareConfig } = await import("./server/config.server");
+    const { config } = await prepareConfig();
+    return config.database.models.releaseCatalogs.findByScopeKey(data.scopeKey);
+  });
 
 // GET /api/config
 export const getConfig = createServerFn().handler(async () => {
@@ -124,7 +188,6 @@ export const getBundles = createServerFn({ method: "GET" })
     try {
       const { prepareConfig } = await import("./server/config.server");
       const query = {
-        channel: data?.channel ?? undefined,
         platform: data?.platform ?? undefined,
         page:
           typeof data?.page === "number" &&
@@ -155,7 +218,6 @@ export const getBundles = createServerFn({ method: "GET" })
       const { databaseClient } = await prepareConfig();
       const bundleQueryOptions: DatabaseBundleQueryOptions = {
         where: {
-          channel: query.channel,
           platform: query.platform,
         },
         limit: query.limit,
@@ -292,48 +354,6 @@ export const getBundleChildCounts = createServerFn({ method: "GET" })
       });
     } catch (error) {
       console.error("Error during bundle child count retrieval:", error);
-      throw error;
-    }
-  });
-
-// PATCH /api/bundles/:bundleId
-export const updateBundle = createServerFn({ method: "POST" })
-  .inputValidator((input: UpdateBundleInput) => input)
-  .handler(async ({ data }) => {
-    try {
-      const { prepareConfig } = await import("./server/config.server");
-      const { databaseClient } = await prepareConfig();
-      await databaseClient.updateBundleById(data.bundleId, data.bundle);
-      const updatedBundle = await databaseClient.getBundleById(data.bundleId);
-
-      if (!updatedBundle) {
-        throw new Error("Updated bundle not found");
-      }
-
-      return { success: true, bundle: updatedBundle };
-    } catch (error) {
-      console.error("Error during bundle update:", error);
-      throw error;
-    }
-  });
-
-export const promoteBundle = createServerFn({ method: "POST" })
-  .inputValidator((input: PromoteBundleInput) => input)
-  .handler(async ({ data }) => {
-    try {
-      const { prepareConfig } = await import("./server/config.server");
-      const { promoteBundle: promoteBundleWithConfig } =
-        await import("@hot-updater/cli-tools");
-      const { config, databaseClient, storagePlugin } = await prepareConfig();
-      const bundle = await promoteBundleWithConfig(data, {
-        config,
-        databaseClient,
-        storagePlugin,
-      });
-
-      return { success: true, bundle };
-    } catch (error) {
-      console.error("Error during bundle promotion:", error);
       throw error;
     }
   });

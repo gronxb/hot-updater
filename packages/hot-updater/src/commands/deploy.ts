@@ -55,7 +55,11 @@ import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 import { PLATFORMS } from "../commandOptions";
 import { getConsolePort, openConsole } from "./console";
-import { prepareAndCommitBundles } from "./deployTransaction";
+import {
+  commitDeployment,
+  type DeploymentWrite,
+  prepareAndCommitBundles,
+} from "./deployTransaction";
 
 type DeployStoragePlugin = StoragePluginWith<
   "put" | "get" | "exists" | "delete"
@@ -181,6 +185,7 @@ const getPatchBaseBundles = async ({
   bundleId,
   channel,
   database,
+  databasePlugin,
   maxBaseBundles,
   platform,
   target,
@@ -188,6 +193,7 @@ const getPatchBaseBundles = async ({
   bundleId: string;
   channel: string;
   database: DatabaseMutationClient;
+  databasePlugin: BundleRepository;
   maxBaseBundles: number;
   platform: Platform;
   target: {
@@ -195,75 +201,57 @@ const getPatchBaseBundles = async ({
     fingerprintHash: string | null;
   };
 }): Promise<Bundle[]> => {
-  const baseWhere = {
-    channel,
-    enabled: true,
-    id: { lt: bundleId },
-    platform,
-  } satisfies Parameters<DatabaseMutationClient["getBundles"]>[0]["where"];
-
-  if (target.fingerprintHash) {
-    const { data } = await database.getBundles({
-      limit: maxBaseBundles,
-      orderBy: {
-        direction: "desc",
-        field: "id",
-      },
-      where: {
-        ...baseWhere,
-        fingerprintHash: target.fingerprintHash,
-      },
-    });
-
-    return data
-      .filter((bundle) => bundle.id !== bundleId)
-      .slice(0, maxBaseBundles);
-  }
-
-  if (!target.appVersion) {
-    return [];
-  }
-
+  const channelRow = (
+    await databasePlugin.models.channels.list({})
+  ).channels.find(({ name }) => name === channel);
+  if (channelRow === undefined) return [];
   const pageSize = Math.max(maxBaseBundles * 3, 10);
   const compatibleBundles: Bundle[] = [];
-  let cursorAfter: string | undefined;
+  const seenBundleIds = new Set<string>();
+  let beforeReleaseId: string | undefined;
 
   while (compatibleBundles.length < maxBaseBundles) {
-    const { data, pagination } = await database.getBundles({
-      ...(cursorAfter ? { cursor: { after: cursorAfter } } : {}),
+    const releases = await databasePlugin.models.releases.findMany({
+      ...(beforeReleaseId === undefined ? {} : { beforeReleaseId }),
+      channelId: channelRow.id,
+      enabled: true,
       limit: pageSize,
-      orderBy: {
-        direction: "desc",
-        field: "id",
-      },
-      where: {
-        ...baseWhere,
-        targetAppVersionNotNull: true,
-      },
+      platform,
     });
 
-    for (const bundle of data) {
+    for (const release of releases) {
+      const releaseIsCompatible = target.fingerprintHash
+        ? release.strategy === "FINGERPRINT" &&
+          release.fingerprint_hash === target.fingerprintHash
+        : target.appVersion !== null &&
+          release.strategy === "APP_VERSION" &&
+          release.target_app_version !== null &&
+          areTargetAppVersionsPatchCompatible(
+            target.appVersion,
+            release.target_app_version,
+          );
       if (
-        bundle.id !== bundleId &&
-        bundle.targetAppVersion &&
-        areTargetAppVersionsPatchCompatible(
-          target.appVersion,
-          bundle.targetAppVersion,
-        )
+        !releaseIsCompatible ||
+        release.kind !== "BUNDLE" ||
+        release.bundle_id === null ||
+        release.bundle_id >= bundleId ||
+        seenBundleIds.has(release.bundle_id)
       ) {
-        compatibleBundles.push(bundle);
+        continue;
       }
+      seenBundleIds.add(release.bundle_id);
+      const bundle = await database.getBundleById(release.bundle_id);
+      if (bundle !== null) compatibleBundles.push(bundle);
 
       if (compatibleBundles.length >= maxBaseBundles) {
         break;
       }
     }
 
-    if (!pagination.hasNextPage || !pagination.nextCursor) {
-      break;
-    }
-
-    cursorAfter = pagination.nextCursor;
+    if (releases.length < pageSize) break;
+    const nextCursor = releases.at(-1)?.id;
+    if (nextCursor === undefined || nextCursor === beforeReleaseId) break;
+    beforeReleaseId = nextCursor;
   }
 
   return compatibleBundles;
@@ -295,6 +283,7 @@ const createAutoPatches = async ({
     bundleId,
     channel,
     database,
+    databasePlugin,
     maxBaseBundles,
     platform,
     target,
@@ -521,7 +510,7 @@ const deployPlatform = async ({
   deferAutoPatches,
   deferredDatabase,
   options,
-  persistBundle,
+  persistDeployment,
   platform,
   platformIndex,
   platformCount,
@@ -531,7 +520,7 @@ const deployPlatform = async ({
   deferAutoPatches: boolean;
   deferredDatabase: DatabaseMutationClient;
   options: DeployOptions;
-  persistBundle: DatabaseMutationClient["insertBundle"];
+  persistDeployment: (input: DeploymentWrite) => Promise<void>;
   platform: Platform;
   platformIndex: number;
   platformCount: number;
@@ -1018,23 +1007,26 @@ const deployPlatform = async ({
           const appVersion = await getNativeAppVersion(platform);
 
           try {
-            await persistBundle({
-              shouldForceUpdate: options.forceUpdate,
-              platform,
-              fileHash,
-              gitCommitHash,
-              message: options?.message ?? gitMessage,
-              id: bundleId,
-              enabled: !options.disabled,
-              channel,
-              targetAppVersion: target.appVersion,
-              fingerprintHash: target.fingerprintHash,
-              storageUri: taskRef.storageUri,
-              metadata: appVersion ? { app_version: appVersion } : {},
-              assetBaseStorageUri: taskRef.assetBaseStorageUri,
-              manifestFileHash,
-              manifestStorageUri: taskRef.manifestStorageUri,
-              rolloutCohortCount,
+            await persistDeployment({
+              authorityId: config.authorityId ?? "default",
+              bundle: {
+                shouldForceUpdate: options.forceUpdate,
+                platform,
+                fileHash,
+                gitCommitHash,
+                message: options?.message ?? gitMessage,
+                id: bundleId,
+                enabled: !options.disabled,
+                channel,
+                targetAppVersion: target.appVersion,
+                fingerprintHash: target.fingerprintHash,
+                storageUri: taskRef.storageUri,
+                metadata: appVersion ? { app_version: appVersion } : {},
+                assetBaseStorageUri: taskRef.assetBaseStorageUri,
+                manifestFileHash,
+                manifestStorageUri: taskRef.manifestStorageUri,
+                rolloutCohortCount,
+              },
             });
           } catch (e) {
             if (e instanceof Error) {
@@ -1183,7 +1175,7 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   const database = createDatabaseClient(databasePlugin);
 
   const deployPlatforms = async (
-    persistBundle: DatabaseMutationClient["insertBundle"],
+    persistDeployment: (input: DeploymentWrite) => Promise<void>,
   ): Promise<DeployPlatformResult[]> => {
     const preparedResults: DeployPlatformResult[] = [];
     for (const [
@@ -1196,7 +1188,7 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
         deferAutoPatches: platforms.length > 1,
         deferredDatabase: database,
         options,
-        persistBundle,
+        persistDeployment,
         platform,
         platformCount: platforms.length,
         platformIndex,
@@ -1231,8 +1223,13 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
 
     const results =
       platforms.length > 1
-        ? await prepareAndCommitBundles({ database, prepare: deployPlatforms })
-        : await deployPlatforms(database.insertBundle);
+        ? await prepareAndCommitBundles({
+            database: databasePlugin,
+            prepare: deployPlatforms,
+          })
+        : await deployPlatforms(async (input) => {
+            await commitDeployment({ database: databasePlugin, ...input });
+          });
 
     for (const result of results) {
       await result.runDeferredPatches?.();

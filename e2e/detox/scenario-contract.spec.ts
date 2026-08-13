@@ -95,6 +95,19 @@ const defaultDetoxScenarioNames = [
   "force-update-auto-reload",
   "disabled-bundle-rollback-to-builtin",
   "disabled-bundle-rollback-to-previous-ota",
+  "fingerprint-initial-install",
+  "catalog-only-no-update",
+  "same-bundle-release-adoption",
+  "stale-catalog-after-newer-generation",
+  "slow-old-artifact-after-newer-install",
+  "failed-download-same-generation-retry",
+  "forward-release-rollback-old-bundle",
+  "explicit-embedded-receipt",
+  "republished-crashed-bundle-skipped",
+  "crash-then-next-safe-update",
+  "runtime-channel-crash-restore",
+  "metadata-v1-migration",
+  "ten-crash-history-safe-bundle",
 ] as const;
 
 const readDetoxScreenRoutesSource = async (): Promise<string> => {
@@ -126,7 +139,6 @@ type RecordedScenarioCall =
     }
   | {
       readonly kind:
-        | "launch"
         | "reload"
         | "resetAppState"
         | "tap"
@@ -134,6 +146,11 @@ type RecordedScenarioCall =
         | "typeText";
       readonly stage: string;
       readonly testID?: string;
+    }
+  | {
+      readonly kind: "launch";
+      readonly options?: { readonly allowDisconnect?: boolean };
+      readonly stage: string;
     };
 
 async function recordScenarioCalls(
@@ -149,8 +166,8 @@ async function recordScenarioCalls(
       calls.push({ body, kind: "control", options, pathName, stage });
       return Promise.resolve();
     },
-    launch: (stage) => {
-      calls.push({ kind: "launch", stage });
+    launch: (stage, options) => {
+      calls.push({ kind: "launch", options, stage });
       return Promise.resolve();
     },
     reload: (stage) => {
@@ -237,7 +254,7 @@ describe("Detox scenario contract", () => {
 
     expect(detoxScenarios).toEqual(defaultDetoxScenarioNames);
     expect(listDetoxScenarioNames()).toEqual(defaultDetoxScenarioNames);
-    expect(new Set(listDetoxScenarioNames()).size).toBe(14);
+    expect(new Set(listDetoxScenarioNames()).size).toBe(27);
   });
 
   it("uses Detox-owned scenario lookup in the runner", async () => {
@@ -265,7 +282,7 @@ describe("Detox scenario contract", () => {
     expect(joinedSources).toContain("action-install-current-channel-update");
     expect(joinedSources).toContain("cohort-input");
     expect(joinedSources).not.toMatch(/\bstages\s*:/);
-    expect(joinedSources).not.toMatch(/\bsleep\b|\bsetTimeout\b|\bretry\b/i);
+    expect(joinedSources).not.toMatch(/\bsleep\b|\bsetTimeout\b|\bretry\s*\(/i);
   });
 
   it("executes every Detox scenario through Detox-owned scenario functions", async () => {
@@ -455,9 +472,17 @@ describe("Detox scenario contract", () => {
             nextIndex < installIndex &&
             (nextCall.kind === "launch" || nextCall.kind === "reload"),
         );
-        expect(refreshIndex, `${scenarioName}: ${call.stage}`).toBeGreaterThan(
-          index,
-        );
+        if (
+          scenarioName === "slow-old-artifact-after-newer-install" &&
+          call.stage === "deploy newer artifact Release"
+        ) {
+          expect(refreshIndex).toBe(-1);
+        } else {
+          expect(
+            refreshIndex,
+            `${scenarioName}: ${call.stage}`,
+          ).toBeGreaterThan(index);
+        }
       }
     }
   });
@@ -545,7 +570,7 @@ describe("Detox scenario contract", () => {
     );
   });
 
-  it("reattaches instead of cold-launching Android when the target app is already focused", async () => {
+  it("reattaches focused and restarted Android apps through Detox", async () => {
     // Given: Android provider jobs can enter a launch stage while the target app
     // is already foregrounded and Detox-connected.
     const detoxRuntimeSource = await readDetoxRuntimeSource();
@@ -554,8 +579,17 @@ describe("Detox scenario contract", () => {
       "utf8",
     );
     const launchBody = detoxRuntimeSource.slice(
-      detoxRuntimeSource.indexOf("async launch(stage)"),
+      detoxRuntimeSource.indexOf("async launch(stage, options = {})"),
       detoxRuntimeSource.indexOf("async reload(stage)"),
+    );
+    const launchCatchBody = launchBody.slice(launchBody.indexOf("} catch"));
+    const controlBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async control(stage"),
+      detoxRuntimeSource.indexOf("async launch(stage"),
+    );
+    const externalReattachBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async reattachAfterExternalLaunch"),
+      detoxRuntimeSource.indexOf("async reattachAfterAppReloadTap"),
     );
     const prepareBody = controllerSource.slice(
       controllerSource.indexOf("async function prepareAppLaunch()"),
@@ -563,9 +597,9 @@ describe("Detox scenario contract", () => {
     );
 
     // When: the control server reports that focusedPackage matches targetAppId.
-    // Then: the Detox driver must reattach through Detox APIs instead of forcing
-    // a fresh Android app instance, and the control server must not force-stop an
-    // already-focused target app before Detox reconnects.
+    // Then: the Detox driver reattaches through Detox APIs instead of forcing a
+    // fresh Android app instance. A launch that explicitly permits disconnection
+    // waits for a stable foreground replacement process before reconnecting once.
     expect(prepareBody).toContain("alreadyFocused");
     expect(prepareBody).toContain("focusedPackage === fixtureSession.appId");
     expect(prepareBody).toContain("if (!alreadyFocused) {");
@@ -574,6 +608,25 @@ describe("Detox scenario contract", () => {
     expect(launchBody).toContain("isAndroidRun()");
     expect(launchBody).toContain("newInstance: false");
     expect(launchBody).toContain("newInstance: true");
+    expect(launchBody).toContain("options.allowDisconnect !== true");
+    expect(launchCatchBody).toContain('"/e2e/jobs/wait-for-android-restart"');
+    expect(launchCatchBody).toContain("newInstance: false");
+    expect(controllerSource).toContain(
+      "async function waitForAndroidRestart(signal?: AbortSignal)",
+    );
+    expect(controllerSource).toContain(
+      "E2E_ANDROID_RESTART_STABLE_OBSERVATIONS",
+    );
+    expect(controllerSource).toContain(
+      "lastFocusedPackage === fixtureSession.appId && lastProcessId",
+    );
+    expect(controlBody).toContain(
+      "await this.reattachAfterExternalLaunch(pathName)",
+    );
+    expect(externalReattachBody).not.toContain('"/e2e/jobs/wait-for-metadata"');
+    expect(externalReattachBody).toContain(
+      "await launchApp({ newInstance: false });",
+    );
     expect(launchBody).not.toMatch(/\bretry\b/i);
     expect(launchBody).not.toMatch(/\bsetTimeout\b/i);
   });
@@ -696,7 +749,6 @@ describe("Detox scenario contract", () => {
 
   it("waits for install action results before metadata/reset control probes", async () => {
     const metadataFirstInstallStages = new Set([
-      "force-update-auto-reload: install force update",
       "multi-asset-replacement: install first multi-asset update",
       "multi-asset-replacement: install second multi-asset update",
       "release-ota-recovery: install stable update",
@@ -715,6 +767,22 @@ describe("Detox scenario contract", () => {
       "bspatch-manifest-diff-fallback: install manifest fallback update",
       "targeted-cohort-switchback: install qa cohort update",
       "targeted-cohort-switchback: install numeric cohort rollback",
+      "same-bundle-release-adoption: install adoption bundle",
+      "stale-catalog-after-newer-generation: install stale-catalog baseline",
+      "stale-catalog-after-newer-generation: install newer catalog generation",
+      "slow-old-artifact-after-newer-install: install newer artifact Release",
+      "forward-release-rollback-old-bundle: install rollback base",
+      "forward-release-rollback-old-bundle: install rollback source",
+      "explicit-embedded-receipt: install embedded source",
+      "republished-crashed-bundle-skipped: install republish stable",
+      "republished-crashed-bundle-skipped: install republish crash",
+      "crash-then-next-safe-update: install next-safe stable",
+      "crash-then-next-safe-update: install next-safe crash",
+      "crash-then-next-safe-update: install next safe update",
+      "runtime-channel-crash-restore: install beta stable",
+      "runtime-channel-crash-restore: install beta crash",
+      "metadata-v1-migration: install migration stable",
+      "metadata-v1-migration: install migration staging",
     ]);
 
     for (const scenarioName of defaultDetoxScenarioNames) {
@@ -738,6 +806,20 @@ describe("Detox scenario contract", () => {
               entry.pathName === "/e2e/assert-metadata-reset"),
         );
 
+        if (nextControlIndex === -1) {
+          expect(
+            calls
+              .slice(index + 1)
+              .some(
+                (entry) =>
+                  entry.kind === "assertText" &&
+                  entry.testID === "update-action-result" &&
+                  entry.options?.exactText === true,
+              ),
+            stageLabel,
+          ).toBe(true);
+          continue;
+        }
         expect(nextControlIndex, stageLabel).toBeGreaterThan(index);
         const exactActionResultAssertBeforeControl = calls
           .slice(index + 1, nextControlIndex)
@@ -1286,7 +1368,7 @@ describe("Detox scenario contract", () => {
   });
 
   it("keeps launch status assertions on dedicated screens", async () => {
-    // Given: launch status and crashed-bundle status live on short screens.
+    // Given: launch status and directional transition live on short screens.
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
     const detoxScreenRoutesSource = await readDetoxScreenRoutesSource();
 
@@ -1295,7 +1377,7 @@ describe("Detox scenario contract", () => {
       '"launch-status-result": "launchStatus"',
     );
     expect(detoxScreenRoutesSource).toContain(
-      '"launch-crashed-bundle-result": "launchCrashedBundle"',
+      '"launch-transition-result": "launchTransition"',
     );
     expect(detoxPageSource).not.toContain('testID.endsWith("-result")');
   });
@@ -1476,7 +1558,7 @@ describe("Detox scenario contract", () => {
     expect(tapBody).not.toMatch(/\bretry\b/i);
   });
 
-  it("treats rollback metadata reset as no stable active OTA", async () => {
+  it("treats rollback metadata reset as a complete active BUILTIN receipt", async () => {
     const controllerSource = await fs.readFile(
       detoxControlServerControllerPath,
       "utf8",
@@ -1493,6 +1575,7 @@ describe("Detox scenario contract", () => {
     );
 
     expect(resetAssertionBody).toContain("stableBundleId !== null");
+    expect(resetAssertionBody).toContain('selection?.kind !== "BUILTIN"');
     expect(resetAssertionBody).not.toContain("stagingBundleId !== null");
     expect(resetAssertionBody).toContain("verificationPending === true");
     expect(resetTimeoutBody).toContain("Expected stableBundleId=null");
@@ -1545,36 +1628,35 @@ describe("Detox scenario contract", () => {
     ).toBe(0);
   });
 
-  it("models force-update-auto-reload pending verification before stable launch", async () => {
+  it("models force-update-auto-reload without a manual install or reload", async () => {
     const stages = await scenarioStages("force-update-auto-reload");
+    const calls = await recordScenarioCalls("force-update-auto-reload");
 
     // When: the Detox scenario is inspected.
-    // Then: it waits pending first, reloads, then verifies the stable launch.
+    // Then: launch owns the configured automatic install and reload.
     expect(stages).toEqual([
       "deploy force update bundle",
       "launch force update app",
-      "install force update",
-      "wait force update metadata pending",
-      "reload force update",
-      "wait force update metadata stable",
+      "wait force update automatic reload",
+      "assert force update Bundle",
+      "assert force update Release",
+      "assert force update marker",
       "assert force update launch",
     ]);
     expect(
       (
         await controlStepBody(
           "force-update-auto-reload",
-          "wait force update metadata pending",
-        )
-      ).verificationPending,
-    ).toBe(true);
-    expect(
-      (
-        await controlStepBody(
-          "force-update-auto-reload",
-          "wait force update metadata stable",
+          "wait force update automatic reload",
         )
       ).verificationPending,
     ).toBe(false);
+    expect(
+      calls.find(
+        (call) =>
+          call.kind === "launch" && call.stage === "launch force update app",
+      ),
+    ).toMatchObject({ options: { allowDisconnect: true } });
   });
 
   it("models archive-to-diff OTA install and metadata verification sequence", async () => {
@@ -1852,6 +1934,12 @@ describe("Detox scenario contract", () => {
     );
     expect(controllerSource).toContain("isRecoverableAndroidAssetReadError");
     expect(manifestStateBody).toContain("hasManifestBackedBundleEvidence({");
+    expect(manifestStateBody).toContain(
+      "metadataState.stableBundleId === null",
+    );
+    expect(manifestStateBody).toContain(
+      "metadataState.stagingSelection?.bundleId === args.bundleId",
+    );
     expect(controllerSource).toContain("assetFile.readError");
     expect(controllerSource).toContain("bundleFile.exists");
     expect(controllerSource).toContain("expectedHash !== null");
@@ -1859,6 +1947,7 @@ describe("Detox scenario contract", () => {
 
   it("models release recovery without relaunching over recovered state", async () => {
     const stages = await scenarioStages("release-ota-recovery");
+    const calls = await recordScenarioCalls("release-ota-recovery");
 
     expect(stages).toEqual([
       "capture built-in bundle id",
@@ -1877,10 +1966,45 @@ describe("Detox scenario contract", () => {
       "wait crash recovery",
       "assert recovery launch report",
       "assert recovered bundle id",
+      "assert recovered Release id",
       "assert recovered marker",
       "assert recovered metadata active",
       "assert crash history",
+      "guard post-crash reselection artifact",
+      "refresh same-generation crash context",
+      "assert same-generation safe reselection",
+      "assert crash-context reselection skipped artifact",
     ]);
+    expect(
+      calls.find(
+        (call) =>
+          call.kind === "assertText" &&
+          call.stage === "assert same-generation safe reselection",
+      ),
+    ).toMatchObject({
+      contains:
+        "current-channel -> adopted Release $stableReleaseId / Bundle $stableBundleId",
+      options: { exactText: true },
+      testID: "update-action-result",
+    });
+
+    const controllerSource = await fs.readFile(
+      detoxControlServerControllerPath,
+      "utf8",
+    );
+    const activeAssertionBody = controllerSource.slice(
+      controllerSource.indexOf("function assertMetadataState("),
+      controllerSource.indexOf("function assertMetadataReset("),
+    );
+    expect(activeAssertionBody).toContain(
+      "highWater.generation < selection.generation",
+    );
+    expect(activeAssertionBody).toContain(
+      "highWater.generation === selection.generation",
+    );
+    expect(activeAssertionBody).not.toContain(
+      "highWater.generation !== selection.generation",
+    );
   });
 
   it("reattaches Android Detox after control-server crash recovery", async () => {
@@ -1921,7 +2045,7 @@ describe("Detox scenario contract", () => {
       "apply excluded cohort",
       "assert excluded cohort applied",
       "install excluded cohort update",
-      "assert excluded cohort no update",
+      "assert excluded cohort built-in selection",
       "assert excluded metadata reset",
       "reload excluded cohort state",
       "assert excluded cohort built-in bundle",
@@ -1953,6 +2077,17 @@ describe("Detox scenario contract", () => {
       "assert qa cohort active",
     ]);
     expect(
+      (await recordScenarioCalls("target-cohorts-rollout-interaction")).find(
+        (call) =>
+          call.kind === "assertText" &&
+          call.stage === "assert excluded cohort built-in selection",
+      ),
+    ).toMatchObject({
+      contains: "current-channel -> selected BUILTIN",
+      options: { exactText: true },
+      testID: "update-action-result",
+    });
+    expect(
       (
         await controlStepBody(
           "target-cohorts-rollout-interaction",
@@ -1976,11 +2111,31 @@ describe("Detox scenario contract", () => {
             "assert restored excluded cohort rollback action result",
       ),
     ).toMatchObject({
-      contains:
-        "current-channel -> installed 00000000-0000-0000-0000-000000000000",
+      contains: "current-channel -> selected BUILTIN",
       options: { exactText: true },
       testID: "update-action-result",
     });
+  });
+
+  it("accepts a native built-in identity while a first OTA is pending", async () => {
+    const controllerSource = await fs.readFile(
+      detoxControlServerControllerPath,
+      "utf8",
+    );
+    const archiveAssertionBody = controllerSource.slice(
+      controllerSource.indexOf("async function assertFirstOtaUsesArchive"),
+      controllerSource.indexOf("async function assertCrashHistory"),
+    );
+
+    expect(archiveAssertionBody).toContain(
+      "state.metadataState.stagingSelection?.bundleId === args.bundleId",
+    );
+    expect(archiveAssertionBody).toContain(
+      "state.metadataState.stableBundleId !== args.bundleId",
+    );
+    expect(archiveAssertionBody).not.toContain(
+      "state.metadataState.stableBundleId === null",
+    );
   });
 
   it("models runtime channel switching as an OTA state transition", async () => {
@@ -2131,8 +2286,7 @@ describe("Detox scenario contract", () => {
           call.stage === "assert excluded cohort rollback action result",
       ),
     ).toMatchObject({
-      contains:
-        "current-channel -> installed 00000000-0000-0000-0000-000000000000",
+      contains: "current-channel -> selected BUILTIN",
       options: { exactText: true },
       testID: "update-action-result",
     });
@@ -2221,7 +2375,6 @@ describe("Detox scenario contract", () => {
       "assert rollback built-in bundle",
       "assert rollback built-in marker",
       "assert rollback launch status",
-      "assert no crashed bundle",
       "assert rollback crash history empty",
       "capture rollback built-in state",
       "assert rollback metadata reset again",
@@ -2239,8 +2392,7 @@ describe("Detox scenario contract", () => {
           call.stage === "assert rollback to built-in action result",
       ),
     ).toMatchObject({
-      contains:
-        "current-channel -> installed 00000000-0000-0000-0000-000000000000",
+      contains: "current-channel -> selected BUILTIN",
       options: { exactText: true },
       testID: "update-action-result",
     });
@@ -2276,7 +2428,6 @@ describe("Detox scenario contract", () => {
       "wait previous rollback metadata stable",
       "assert previous ota rollback marker",
       "assert previous ota rollback launch status",
-      "assert previous ota rollback crashed bundle",
       "assert previous ota rollback crash history empty",
       "capture previous ota rollback state",
       "assert previous ota active",
@@ -2361,7 +2512,6 @@ describe("Detox scenario contract", () => {
       "assert chain bundle B rollback marker",
       "assert chain bundle B rollback launch",
       "assert chain bundle B rollback launch status",
-      "assert chain bundle B rollback crashed bundle",
       "assert chain bundle B rollback active",
       "disable chain bundle B",
       "install rollback to chain bundle A",
@@ -2372,7 +2522,6 @@ describe("Detox scenario contract", () => {
       "assert chain bundle A rollback marker",
       "assert chain bundle A rollback launch",
       "assert chain bundle A rollback launch status",
-      "assert chain bundle A rollback crashed bundle",
       "assert chain bundle A rollback active",
       "disable chain bundle A",
       "install rollback to built-in chain",
@@ -2382,7 +2531,6 @@ describe("Detox scenario contract", () => {
       "assert chain built-in bundle",
       "assert chain built-in marker after rollback",
       "assert chain built-in launch status",
-      "assert chain built-in crashed bundle",
       "assert chain built-in crash history empty",
       "capture chain built-in rollback state",
       "assert chain built-in metadata reset again",
@@ -2401,7 +2549,8 @@ describe("Detox scenario contract", () => {
           call.stage === "assert chain bundle B rollback action result",
       ),
     ).toMatchObject({
-      contains: "current-channel -> installed $bundleB",
+      contains:
+        "current-channel -> installed Release $releaseB / Bundle $bundleB",
       options: { exactText: true },
       testID: "update-action-result",
     });
@@ -2421,7 +2570,8 @@ describe("Detox scenario contract", () => {
           call.stage === "assert chain bundle A rollback action result",
       ),
     ).toMatchObject({
-      contains: "current-channel -> installed $bundleA",
+      contains:
+        "current-channel -> installed Release $releaseA / Bundle $bundleA",
       options: { exactText: true },
       testID: "update-action-result",
     });
@@ -2441,14 +2591,13 @@ describe("Detox scenario contract", () => {
           call.stage === "assert chain built-in rollback action result",
       ),
     ).toMatchObject({
-      contains:
-        "current-channel -> installed 00000000-0000-0000-0000-000000000000",
+      contains: "current-channel -> selected BUILTIN",
       options: { exactText: true },
       testID: "update-action-result",
     });
   });
 
-  it("accepts Android bsdiff patch evidence through manifest-backed store state", async () => {
+  it("requires native bsdiff evidence with the verified Release store state", async () => {
     const controllerSource = await fs.readFile(
       detoxControlServerControllerPath,
       "utf8",
@@ -2466,5 +2615,22 @@ describe("Detox scenario contract", () => {
     expect(bsdiffEvidenceBody).toContain("assetFile,");
     expect(bsdiffEvidenceBody).toContain("expectedHash,");
     expect(bsdiffEvidenceBody).toContain("manifest,");
+    expect(bsdiffEvidenceBody).toContain(
+      "metadataState.stableBundleId === null",
+    );
+    expect(bsdiffEvidenceBody).toContain(
+      "metadataState.stagingSelection?.bundleId === record.bundleId",
+    );
+
+    const bsdiffAssertionBody = controllerSource.slice(
+      controllerSource.indexOf("async function assertBsdiffPatchApplied"),
+      controllerSource.indexOf("async function assertManifestDiffApplied"),
+    );
+    expect(bsdiffAssertionBody).toContain(
+      "includesAllFragments(logs, expectedFragments)",
+    );
+    expect(bsdiffAssertionBody).toContain(
+      'evidence: "bundle-store-and-native-log"',
+    );
   });
 });

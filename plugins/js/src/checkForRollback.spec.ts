@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/core";
+import type { LegacyBundle } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
 import { checkForRollback } from "./checkForRollback";
@@ -18,7 +18,7 @@ const DEFAULT_BUNDLE_FINGERPRINT_STRATEGY = {
 
 describe("checkForRollback", () => {
   it("should return availableOldVersion if enabled is null or undefined", () => {
-    const bundles: Bundle[] = [
+    const bundles: LegacyBundle[] = [
       {
         id: "00000000-0000-0000-0000-000000000001",
         enabled: true,
@@ -43,7 +43,7 @@ describe("checkForRollback", () => {
   });
 
   it("should return undefined if no matching bundle is found", () => {
-    const bundles: Bundle[] = [
+    const bundles: LegacyBundle[] = [
       {
         id: "00000000-0000-0000-0000-000000000001",
         enabled: true,

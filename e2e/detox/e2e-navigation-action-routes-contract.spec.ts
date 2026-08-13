@@ -108,6 +108,9 @@ describe("E2E navigation action route contract", () => {
     });
 
     for (const path of [
+      "e2e/action/apply-captured-update",
+      "e2e/action/capture-current-channel-update",
+      "e2e/action/install-fingerprint-update",
       "e2e/action/refresh-runtime-snapshot",
       "e2e/action/reload-app",
       "e2e/action/clear-crash-history",

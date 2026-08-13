@@ -15,6 +15,9 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "archiveBundleId",
+        saveResultFieldsAs: {
+          releaseId: "archiveReleaseId",
+        },
       },
     );
     await app.launch("launch archive base app");
@@ -78,6 +81,9 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "diffBundleId",
+        saveResultFieldsAs: {
+          releaseId: "diffReleaseId",
+        },
       },
     );
     await app.control(

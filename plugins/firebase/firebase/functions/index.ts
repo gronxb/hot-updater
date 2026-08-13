@@ -8,6 +8,7 @@ import { firebaseStorage } from "../../src/firebaseStorage";
 
 declare global {
   var HotUpdater: {
+    AUTHORITY_ID: string;
     REGION: string;
   };
 }
@@ -26,7 +27,11 @@ if (!storageBucket) {
 }
 
 const hotUpdater = createHotUpdater({
-  database: firebaseDatabase(adminOptions),
+  authorityId: HotUpdater.AUTHORITY_ID,
+  database: firebaseDatabase({
+    ...adminOptions,
+    authorityId: HotUpdater.AUTHORITY_ID,
+  }),
   features: {
     updateCheck: true,
     bundles: false,

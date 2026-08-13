@@ -1,13 +1,25 @@
 import fs from "fs/promises";
 import path from "path";
 
-import type { AppUpdateInfo, Bundle, GetBundlesArgs } from "@hot-updater/core";
+import type {
+  AppUpdateInfo,
+  Bundle,
+  GetBundlesArgs,
+  LegacyBundle,
+  Platform,
+} from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
+import type {
+  ChannelRow,
+  ReleaseCatalogMutationResult,
+  ReleaseRow,
+} from "@hot-updater/plugin-core";
 import { execa } from "execa";
 
 export interface TestApiConfig {
   baseUrl: string;
   authToken?: string;
+  resetDecisionFixtures?: () => Promise<void>;
 }
 
 export const TEST_MANAGEMENT_AUTH_TOKEN = "hot-updater-test-token";
@@ -15,6 +27,84 @@ export const TEST_MANAGEMENT_AUTH_TOKEN = "hot-updater-test-token";
 const createManagementHeaders = (config: TestApiConfig) => ({
   Authorization: `Bearer ${config.authToken ?? TEST_MANAGEMENT_AUTH_TOKEN}`,
 });
+
+const requireOk = async (response: Response, operation: string) => {
+  if (!response.ok) {
+    throw new Error(`${operation}: ${response.statusText}`);
+  }
+  return response;
+};
+
+const readData = async <T>(response: Response): Promise<T> => {
+  const value = (await response.json()) as { data?: T };
+  if (!("data" in value)) throw new Error("Missing response data.");
+  return value.data as T;
+};
+
+export async function deleteLegacyBundleFromServer(
+  config: TestApiConfig,
+  bundleId: string,
+): Promise<void> {
+  const buildUrl = (path: string) => `${config.baseUrl}${path}`;
+  const headers = createManagementHeaders(config);
+
+  for (;;) {
+    const releasesUrl = new URL(buildUrl("/api/releases"));
+    releasesUrl.searchParams.set("bundleId", bundleId);
+    releasesUrl.searchParams.set("limit", "1000");
+    const releases = await readData<readonly ReleaseRow[]>(
+      await requireOk(
+        await fetchWithRetry(releasesUrl, { headers }),
+        "Failed to list Releases",
+      ),
+    );
+    if (releases.length === 0) break;
+
+    for (const release of releases) {
+      let revision = release.revision;
+      if (release.enabled) {
+        const result = await readData<ReleaseCatalogMutationResult>(
+          await requireOk(
+            await fetchWithRetry(
+              buildUrl(`/api/releases/${encodeURIComponent(release.id)}`),
+              {
+                body: JSON.stringify({
+                  expectedRevision: revision,
+                  patch: { enabled: false },
+                }),
+                headers: { ...headers, "Content-Type": "application/json" },
+                method: "PATCH",
+              },
+            ),
+            "Failed to disable Release",
+          ),
+        );
+        if (result.release === null) {
+          throw new Error(`Release "${release.id}" was not updated.`);
+        }
+        revision = result.release.revision;
+      }
+
+      const deleteUrl = new URL(
+        buildUrl(`/api/releases/${encodeURIComponent(release.id)}`),
+      );
+      deleteUrl.searchParams.set("confirm", release.id);
+      deleteUrl.searchParams.set("expectedRevision", String(revision));
+      await requireOk(
+        await fetchWithRetry(deleteUrl, { headers, method: "DELETE" }),
+        "Failed to delete Release",
+      );
+    }
+  }
+
+  await requireOk(
+    await fetchWithRetry(
+      buildUrl(`/api/bundles/${encodeURIComponent(bundleId)}`),
+      { headers, method: "DELETE" },
+    ),
+    "Failed to delete Bundle",
+  );
+}
 
 async function fetchWithRetry(
   input: Parameters<typeof fetch>[0],
@@ -107,19 +197,119 @@ export function createGetUpdateInfo(
 
       const data = (await response.json()) as AppUpdateInfo | null;
 
-      // Step 5: Clean up via DELETE
-      for (const bundle of bundles) {
-        await fetchWithRetry(buildUrl(`/api/bundles/${bundle.id}`), {
-          method: "DELETE",
-          headers: managementHeaders,
-        });
-      }
-
       return data;
     } catch (error) {
       console.error("getUpdateInfo error:", error);
       throw error;
+    } finally {
+      if (config.resetDecisionFixtures) {
+        await config.resetDecisionFixtures();
+      } else {
+        for (const bundle of bundles) {
+          await deleteLegacyBundleFromServer(config, bundle.id);
+        }
+      }
     }
+  };
+}
+
+export function createBundleMethodsFromServer(config: TestApiConfig) {
+  const buildUrl = (path: string) => `${config.baseUrl}${path}`;
+  const headers = createManagementHeaders(config);
+
+  return {
+    getBundleById: async (id: string): Promise<Bundle | null> => {
+      const response = await fetchWithRetry(
+        buildUrl(`/api/bundles/${encodeURIComponent(id)}`),
+        { headers },
+      );
+      if (response.status === 404) return null;
+      const okResponse = await requireOk(response, "Failed to get Bundle");
+      return (await okResponse.json()) as Bundle;
+    },
+    getChannels: async (): Promise<readonly ChannelRow[]> => {
+      const response = await requireOk(
+        await fetchWithRetry(buildUrl("/api/channels"), { headers }),
+        "Failed to get Channels",
+      );
+      const body = (await response.json()) as {
+        data: { channels: readonly ChannelRow[] };
+      };
+      return body.data.channels;
+    },
+    insertBundle: async (bundle: LegacyBundle): Promise<void> => {
+      await requireOk(
+        await fetchWithRetry(buildUrl("/api/bundles"), {
+          body: JSON.stringify(bundle),
+          headers: { ...headers, "Content-Type": "application/json" },
+          method: "POST",
+        }),
+        "Failed to insert Bundle",
+      );
+    },
+    getBundles: async (options: {
+      readonly where?: {
+        readonly platform?: Platform;
+        readonly id?: { readonly eq?: string; readonly in?: string[] };
+      };
+      readonly limit: number;
+      readonly cursor?: { readonly after: string };
+      readonly orderBy?: {
+        readonly field: "id";
+        readonly direction: "asc" | "desc";
+      };
+    }) => {
+      const url = new URL(buildUrl("/api/bundles"));
+      url.searchParams.set("limit", String(Math.min(options.limit, 100)));
+      if (options.where?.platform) {
+        url.searchParams.set("platform", options.where.platform);
+      }
+      if (options.where?.id?.eq) {
+        url.searchParams.set("idEq", options.where.id.eq);
+      }
+      for (const id of options.where?.id?.in ?? []) {
+        url.searchParams.append("idIn", id);
+      }
+      if (options.cursor?.after) {
+        url.searchParams.set("after", options.cursor.after);
+      }
+      if (options.orderBy) {
+        url.searchParams.set("orderDirection", options.orderBy.direction);
+      }
+      const response = await requireOk(
+        await fetchWithRetry(url, { headers }),
+        "Failed to get Bundles",
+      );
+      return (await response.json()) as {
+        readonly data: Bundle[];
+        readonly pagination: {
+          readonly total: number;
+          readonly hasNextPage: boolean;
+          readonly hasPreviousPage: boolean;
+          readonly currentPage: number;
+          readonly totalPages: number;
+          readonly nextCursor?: string | null;
+        };
+      };
+    },
+    updateBundleById: async (
+      bundleId: string,
+      patch: Partial<Bundle>,
+    ): Promise<void> => {
+      await requireOk(
+        await fetchWithRetry(
+          buildUrl(`/api/bundles/${encodeURIComponent(bundleId)}`),
+          {
+            body: JSON.stringify(patch),
+            headers: { ...headers, "Content-Type": "application/json" },
+            method: "PATCH",
+          },
+        ),
+        "Failed to update Bundle",
+      );
+    },
+    deleteBundleById: (bundleId: string) =>
+      deleteLegacyBundleFromServer(config, bundleId),
   };
 }
 

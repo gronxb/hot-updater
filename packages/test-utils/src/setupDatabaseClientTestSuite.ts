@@ -111,17 +111,6 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
         expect(result.pagination.total).toBe(3);
       });
 
-      it("keeps an empty channel after its last bundle is deleted", async () => {
-        const bundle = createBundleFixture("301", "staging");
-        await getClient().insertBundle(bundle);
-
-        await getClient().deleteBundleById(bundle.id);
-
-        await expect(getClient().getChannels()).resolves.toContainEqual(
-          expect.objectContaining({ name: "staging" }),
-        );
-      });
-
       it("replaces patches only with atomic aggregate update support", async () => {
         const plugin = getPlugin();
         const client = options.createClient(plugin);
@@ -133,7 +122,6 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
         }
         try {
           await client.updateBundleById(bundle.id, {
-            message: "replacement-message",
             patches: [
               {
                 baseBundleId: secondBase.id,
@@ -149,7 +137,6 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
             bundleId: bundle.id,
           });
           await expect(client.getBundleById(bundle.id)).resolves.toMatchObject({
-            message: bundle.message,
             patches: [],
           });
           return;
@@ -157,7 +144,6 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
 
         const updated = await client.getBundleById(bundle.id);
 
-        expect(updated?.message).toBe("replacement-message");
         expect(updated?.patches).toEqual([
           {
             baseBundleId: secondBase.id,

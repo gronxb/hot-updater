@@ -1,11 +1,9 @@
-import { NIL_UUID } from "@hot-updater/core";
 import { createDatabaseClient } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import {
   createBundlePatchRowFixture,
   createBundleRowFixture,
-  createChannelRowFixture,
 } from "../../../test-utils/src/databaseTestFixtures";
 import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import { mongoAdapter } from "./mongodb";
@@ -87,33 +85,9 @@ describe("mongoAdapter capabilities", () => {
     await expect(client.insertBundle(bundle)).resolves.toBeUndefined();
     await expect(client.getBundleById(bundle.id)).resolves.toMatchObject({
       id: bundle.id,
-      channel: "production",
+      fileHash: bundle.fileHash,
+      storageUri: bundle.storageUri,
     });
-  });
-
-  it("rejects malformed stored rows in the update-info fast path", async () => {
-    harness.reset();
-    const plugin = mongoAdapter({ client: harness.client });
-    const row = createBundleRowFixture("972");
-    await plugin.models.channels.insert({
-      row: createChannelRowFixture(),
-      onConflict: "returnExisting",
-    });
-    await plugin.commit({
-      changes: [{ model: "bundles", operation: "insert", row }],
-    });
-    harness.setBundleField(row.id, "should_force_update", "false");
-    const getUpdateInfo = plugin.queries.getUpdateInfo;
-    if (getUpdateInfo === undefined) throw new Error("fast path unavailable");
-
-    await expect(
-      getUpdateInfo({
-        appVersion: "1.0.0",
-        bundleId: NIL_UUID,
-        platform: "ios",
-        _updateStrategy: "appVersion",
-      }),
-    ).rejects.toThrow("Invalid MongoDB plugin data");
   });
 });
 
@@ -123,7 +97,7 @@ describe("MongoDB low-level predicate translation", () => {
       createMongoBundleWhere([
         { field: "id", value: "first" },
         { field: "id", value: "second", connector: "OR" },
-        { field: "enabled", value: true, connector: "AND" },
+        { field: "platform", value: "ios", connector: "AND" },
       ]),
     ).toEqual({
       $and: [
@@ -133,7 +107,7 @@ describe("MongoDB low-level predicate translation", () => {
             { $expr: { $eq: ["$id", { $literal: "second" }] } },
           ],
         },
-        { $expr: { $eq: ["$enabled", { $literal: true }] } },
+        { $expr: { $eq: ["$platform", { $literal: "ios" }] } },
       ],
     });
   });
@@ -142,7 +116,7 @@ describe("MongoDB low-level predicate translation", () => {
     expect(
       createMongoBundleWhere([
         {
-          field: "message",
+          field: "storage_uri",
           operator: "contains",
           value: "release.*",
           mode: "insensitive",
@@ -151,7 +125,7 @@ describe("MongoDB low-level predicate translation", () => {
     ).toEqual({
       $expr: {
         $regexMatch: {
-          input: { $ifNull: ["$message", ""] },
+          input: { $ifNull: ["$storage_uri", ""] },
           regex: { $literal: "release\\.\\*" },
           options: "i",
         },

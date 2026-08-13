@@ -8,6 +8,7 @@ import type {
   ChannelDeleteResult,
   DatabaseChange,
   DatabaseCommit,
+  DatabaseCommitExpectation,
   DatabaseCommitResult,
 } from "@hot-updater/plugin-core";
 import type {
@@ -39,22 +40,94 @@ type D1Guard = {
   readonly params: readonly string[];
 };
 
+const EXPECTATION_CONFLICT_MARKER = "HOT_UPDATER_COMMIT_EXPECTATION_CONFLICT";
+
+const expectationGuard = (
+  expectations: readonly DatabaseCommitExpectation[],
+): D1Guard => {
+  const clauses: string[] = [];
+  const params: string[] = [];
+  for (const expectation of expectations) {
+    const isRelease = expectation.model === "releases";
+    const table = isRelease ? "releases" : "release_catalogs";
+    const keyField = isRelease ? "id" : "scope_key";
+    const versionField = isRelease ? "revision" : "generation";
+    const key = isRelease ? expectation.id : expectation.scopeKey;
+    const version = isRelease ? expectation.revision : expectation.generation;
+    if (version === null) {
+      clauses.push(
+        `NOT EXISTS (SELECT 1 FROM ${table} WHERE ${keyField} = json_extract(?, '$'))`,
+      );
+      params.push(...encodeD1Values([key]));
+    } else {
+      clauses.push(
+        `EXISTS (SELECT 1 FROM ${table} WHERE ${keyField} = json_extract(?, '$') AND ${versionField} = json_extract(?, '$'))`,
+      );
+      params.push(...encodeD1Values([key, version]));
+    }
+  }
+  return { sql: clauses.join(" AND ") || "1", params };
+};
+
+const readVersion = (
+  row: unknown,
+  field: "generation" | "revision",
+): number | null => {
+  if (typeof row !== "object" || row === null) return null;
+  const value = Reflect.get(row, field);
+  return typeof value === "number" ? value : null;
+};
+
+const expectationConflict = async (
+  executor: D1Executor,
+  expectations: readonly DatabaseCommitExpectation[],
+): Promise<DatabaseCommitResult | null> => {
+  for (const expectation of expectations) {
+    const isRelease = expectation.model === "releases";
+    const table = isRelease ? "releases" : "release_catalogs";
+    const keyField = isRelease ? "id" : "scope_key";
+    const versionField = isRelease ? "revision" : "generation";
+    const key = isRelease ? expectation.id : expectation.scopeKey;
+    const expectedVersion = isRelease
+      ? expectation.revision
+      : expectation.generation;
+    const rows = await executor.query(
+      `SELECT ${versionField} FROM ${table} WHERE ${keyField} = json_extract(?, '$') LIMIT 1`,
+      encodeD1Values([key]),
+    );
+    const actualVersion = readVersion(rows[0], versionField);
+    if (actualVersion !== expectedVersion) {
+      return {
+        committed: false,
+        conflict: {
+          actualVersion,
+          changeIndex: -1,
+          expectedVersion,
+          key,
+          model: expectation.model,
+          reason: "version_conflict",
+        },
+      };
+    }
+  }
+  return null;
+};
+
+const isExpectationConflictError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes(EXPECTATION_CONFLICT_MARKER) ||
+    message.toLowerCase().includes("malformed json")
+  );
+};
+
 const bundleValues = (row: BundleRow): readonly unknown[] => [
   row.id,
   row.platform,
-  row.should_force_update,
-  row.enabled,
   row.file_hash,
   row.git_commit_hash,
-  row.message,
-  row.channel,
-  row.channel_id,
   row.storage_uri,
-  row.target_app_version,
-  row.fingerprint_hash,
   row.metadata,
-  row.rollout_cohort_count,
-  row.target_cohorts,
   row.manifest_storage_uri,
   row.manifest_file_hash,
   row.asset_base_storage_uri,
@@ -87,19 +160,10 @@ const insertQuery = (
       columns = [
         "id",
         "platform",
-        "should_force_update",
-        "enabled",
         "file_hash",
         "git_commit_hash",
-        "message",
-        "channel",
-        "channel_id",
         "storage_uri",
-        "target_app_version",
-        "fingerprint_hash",
         "metadata",
-        "rollout_cohort_count",
-        "target_cohorts",
         "manifest_storage_uri",
         "manifest_file_hash",
         "asset_base_storage_uri",
@@ -124,6 +188,8 @@ const insertQuery = (
       break;
     case "bundle_events":
     case "client_access_keys":
+    case "release_catalogs":
+    case "releases":
       columns = Object.keys(input.data);
       values = Object.values(input.data);
       break;
@@ -193,7 +259,7 @@ const deleteQuery = (
 };
 
 type D1RequiredRow = {
-  readonly model: "bundles" | "client_access_keys";
+  readonly model: "bundles" | "client_access_keys" | "releases";
   readonly id: string;
   readonly changeIndex: number;
 };
@@ -215,6 +281,9 @@ const insertedKey = (change: DatabaseChange): string | undefined => {
   if (change.model === "bundles") return `bundles:${change.row.id}`;
   if (change.model === "clientAccessKeys") {
     return `client_access_keys:${change.row.id}`;
+  }
+  if (change.model === "releases") {
+    return `releases:${change.row.id}`;
   }
   return undefined;
 };
@@ -238,13 +307,20 @@ const requiredRow = (
       changeIndex,
     };
   }
+  if (change.model === "releases") {
+    return {
+      model: "releases",
+      id: change.where.id,
+      changeIndex,
+    };
+  }
   return undefined;
 };
 
 type D1ChannelDeletePrecondition = {
   readonly id: string;
-  readonly excludedBundleIds: readonly string[];
-  readonly addedReferenceBundleIds: readonly string[];
+  readonly excludedReleaseIds: readonly string[];
+  readonly addedReferenceReleaseIds: readonly string[];
 };
 
 const channelDeletePrecondition = (
@@ -252,29 +328,26 @@ const channelDeletePrecondition = (
   changeIndex: number,
   channelId: string,
 ): D1ChannelDeletePrecondition => {
-  const bundleEffects = new Map<string, string | null>();
+  const releaseEffects = new Map<string, string | null>();
   for (const change of changes.slice(0, changeIndex)) {
-    if (change.model !== "bundles") continue;
+    if (change.model !== "releases") continue;
     switch (change.operation) {
       case "insert":
-        bundleEffects.set(change.row.id, change.row.channel_id);
+        releaseEffects.set(change.row.id, change.row.channel_id);
         break;
       case "update":
-        if (change.update.channel_id !== undefined) {
-          bundleEffects.set(change.where.id, change.update.channel_id);
-        }
         break;
       case "delete":
-        bundleEffects.set(change.where.id, null);
+        releaseEffects.set(change.where.id, null);
         break;
     }
   }
   return {
     id: channelId,
-    excludedBundleIds: [...bundleEffects.keys()],
-    addedReferenceBundleIds: [...bundleEffects]
+    excludedReleaseIds: [...releaseEffects.keys()],
+    addedReferenceReleaseIds: [...releaseEffects]
       .filter(([, finalChannelId]) => finalChannelId === channelId)
-      .map(([bundleId]) => bundleId),
+      .map(([releaseId]) => releaseId),
   };
 };
 
@@ -312,6 +385,38 @@ const changeQuery = (change: DatabaseChange, guard: D1Guard): D1Statement => {
             },
             guard,
           );
+    case "releases":
+      switch (change.operation) {
+        case "insert":
+          return insertQuery({ model: "releases", data: change.row }, guard);
+        case "update":
+          return updateQuery(
+            {
+              model: "releases",
+              where: [{ field: "id", value: change.where.id }],
+              update: change.update,
+            },
+            guard,
+          );
+        case "delete":
+          return deleteQuery(
+            {
+              model: "releases",
+              where: [{ field: "id", value: change.where.id }],
+            },
+            guard,
+          );
+      }
+    case "releaseCatalogs":
+      return {
+        sql: `INSERT INTO release_catalogs (${Object.keys(change.row).join(", ")}) SELECT ${d1Placeholders(Object.keys(change.row).length)} WHERE ${guard.sql} ON CONFLICT(scope_key) DO UPDATE SET ${Object.keys(
+          change.row,
+        )
+          .filter((field) => field !== "scope_key")
+          .map((field) => `${field} = excluded.${field}`)
+          .join(", ")} RETURNING *`,
+        params: [...encodeD1Values(Object.values(change.row)), ...guard.params],
+      };
     case "channels":
       return change.operation === "insert"
         ? insertQuery(
@@ -324,7 +429,7 @@ const changeQuery = (change: DatabaseChange, guard: D1Guard): D1Statement => {
             "ignore",
           )
         : {
-            sql: `DELETE FROM channels WHERE id = json_extract(?, '$') AND NOT EXISTS (SELECT 1 FROM bundles WHERE channel_id = json_extract(?, '$')) AND ${guard.sql}`,
+            sql: `DELETE FROM channels WHERE id = json_extract(?, '$') AND NOT EXISTS (SELECT 1 FROM releases WHERE channel_id = json_extract(?, '$')) AND ${guard.sql}`,
             params: [
               ...encodeD1Values([change.where.id, change.where.id]),
               ...guard.params,
@@ -357,6 +462,14 @@ const changeQuery = (change: DatabaseChange, guard: D1Guard): D1Statement => {
 const createCommitPlan = (input: DatabaseCommit): D1CommitPlan => {
   const checks: D1Check[] = [];
   const statements: D1Statement[] = [];
+  const expectations = input.expectations ?? [];
+  if (expectations.length > 0) {
+    const guard = expectationGuard(expectations);
+    statements.push({
+      sql: `SELECT CASE WHEN ${guard.sql} THEN 1 ELSE json_extract('${EXPECTATION_CONFLICT_MARKER}', '$') END AS expectation_guard`,
+      params: guard.params,
+    });
+  }
   const requiredRows: D1RequiredRow[] = [];
   const channelDeletes: D1ChannelDeletePrecondition[] = [];
   const inserted = new Set<string>();
@@ -391,11 +504,11 @@ const createCommitPlan = (input: DatabaseCommit): D1CommitPlan => {
         reason: "referenced",
       });
       statements.push({
-        sql: "SELECT id FROM bundles WHERE channel_id = json_extract(?, '$') AND id NOT IN (SELECT value FROM json_each(?)) UNION ALL SELECT value AS id FROM json_each(?) LIMIT 1",
+        sql: "SELECT id FROM releases WHERE channel_id = json_extract(?, '$') AND id NOT IN (SELECT value FROM json_each(?)) UNION ALL SELECT value AS id FROM json_each(?) LIMIT 1",
         params: encodeD1Values([
           precondition.id,
-          precondition.excludedBundleIds,
-          precondition.addedReferenceBundleIds,
+          precondition.excludedReleaseIds,
+          precondition.addedReferenceReleaseIds,
         ]),
       });
     }
@@ -418,20 +531,24 @@ const createCommitPlan = (input: DatabaseCommit): D1CommitPlan => {
         SELECT 1 FROM channels
         WHERE json_extract(required.value, '$.model') = 'channels'
           AND channels.id = json_extract(required.value, '$.id')
+        UNION ALL
+        SELECT 1 FROM releases
+        WHERE json_extract(required.value, '$.model') = 'releases'
+          AND releases.id = json_extract(required.value, '$.id')
       )
     ) AND NOT EXISTS (
       SELECT 1 FROM json_each(?) AS channel_delete
       WHERE EXISTS (
-        SELECT 1 FROM bundles
-        WHERE bundles.channel_id = json_extract(channel_delete.value, '$.id')
-          AND bundles.id NOT IN (
+        SELECT 1 FROM releases
+        WHERE releases.channel_id = json_extract(channel_delete.value, '$.id')
+          AND releases.id NOT IN (
             SELECT value FROM json_each(
-              json_extract(channel_delete.value, '$.excludedBundleIds')
+              json_extract(channel_delete.value, '$.excludedReleaseIds')
             )
           )
         UNION ALL
         SELECT value FROM json_each(
-          json_extract(channel_delete.value, '$.addedReferenceBundleIds')
+          json_extract(channel_delete.value, '$.addedReferenceReleaseIds')
         )
       )
     )`,
@@ -499,11 +616,11 @@ const deleteChannel = async (
         params: encodeD1Values([input.id]),
       },
       {
-        sql: "SELECT id FROM bundles WHERE channel_id = json_extract(?, '$') LIMIT 1",
+        sql: "SELECT id FROM releases WHERE channel_id = json_extract(?, '$') LIMIT 1",
         params: encodeD1Values([input.id]),
       },
       {
-        sql: "DELETE FROM channels WHERE id = json_extract(?, '$') AND NOT EXISTS (SELECT 1 FROM bundles WHERE channel_id = json_extract(?, '$')) RETURNING id",
+        sql: "DELETE FROM channels WHERE id = json_extract(?, '$') AND NOT EXISTS (SELECT 1 FROM releases WHERE channel_id = json_extract(?, '$')) RETURNING id",
         params: encodeD1Values([input.id, input.id]),
       },
     ]);
@@ -531,15 +648,26 @@ export const createD1Implementation = (
         return parseD1Row("bundle_events", rows[0]);
       case "client_access_keys":
         return parseD1Row("client_access_keys", rows[0]);
+      case "releases":
+        return parseD1Row("releases", rows[0]);
+      case "release_catalogs":
+        return parseD1Row("release_catalogs", rows[0]);
     }
   },
   async update(input) {
     const query = updateQuery(input);
     const rows = await executor.query(query.sql, query.params);
     if (rows[0] === undefined) return null;
-    return input.model === "bundles"
-      ? parseD1Row("bundles", rows[0])
-      : parseD1Row("client_access_keys", rows[0]);
+    switch (input.model) {
+      case "bundles":
+        return parseD1Row("bundles", rows[0]);
+      case "client_access_keys":
+        return parseD1Row("client_access_keys", rows[0]);
+      case "releases":
+        return parseD1Row("releases", rows[0]);
+      case "release_catalogs":
+        return parseD1Row("release_catalogs", rows[0]);
+    }
   },
   async delete(input) {
     const query = deleteQuery(input);
@@ -562,6 +690,10 @@ export const createD1Implementation = (
         return parseD1Row("channels", rows[0]);
       case "client_access_keys":
         return parseD1Row("client_access_keys", rows[0]);
+      case "releases":
+        return parseD1Row("releases", rows[0]);
+      case "release_catalogs":
+        return parseD1Row("release_catalogs", rows[0]);
     }
   },
   findMany: (input) => findManyD1Rows(executor, input),
@@ -569,7 +701,38 @@ export const createD1Implementation = (
   deleteChannel: (input) => deleteChannel(executor, input),
   async commit(input) {
     if (input.changes.length === 0) return { committed: true };
+    const expectations = input.expectations ?? [];
+    const conflict = await expectationConflict(executor, expectations);
+    if (conflict !== null) return conflict;
     const plan = createCommitPlan(input);
-    return resultForPlan(plan, await executor.batch(plan.statements));
+    try {
+      return resultForPlan(plan, await executor.batch(plan.statements));
+    } catch (error) {
+      if (expectations.length === 0 || !isExpectationConflictError(error)) {
+        throw error;
+      }
+      return (
+        (await expectationConflict(executor, expectations)) ?? {
+          committed: false,
+          conflict: {
+            actualVersion:
+              expectations[0].model === "releases"
+                ? expectations[0].revision
+                : expectations[0].generation,
+            changeIndex: -1,
+            expectedVersion:
+              expectations[0].model === "releases"
+                ? expectations[0].revision
+                : expectations[0].generation,
+            key:
+              expectations[0].model === "releases"
+                ? expectations[0].id
+                : expectations[0].scopeKey,
+            model: expectations[0].model,
+            reason: "version_conflict",
+          },
+        }
+      );
+    }
   },
 });

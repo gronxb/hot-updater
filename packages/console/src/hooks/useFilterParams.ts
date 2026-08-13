@@ -1,7 +1,6 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
 
 export interface BundleFilters {
-  channel?: string;
   platform?: "ios" | "android";
   page?: number;
   after?: string;
@@ -9,7 +8,6 @@ export interface BundleFilters {
 }
 
 interface BundleSearchParams {
-  channel: string | undefined;
   platform: "ios" | "android" | undefined;
   page: number | undefined;
   after: string | undefined;
@@ -19,11 +17,10 @@ interface BundleSearchParams {
 }
 
 export function useFilterParams() {
-  const search = useSearch({ from: "/" });
+  const search = useSearch({ from: "/artifacts" });
   const navigate = useNavigate();
 
   const filters: BundleFilters = {
-    channel: search.channel as string | undefined,
     platform: search.platform as "ios" | "android" | undefined,
     page: search.page as number | undefined,
     after: search.after as string | undefined,
@@ -37,26 +34,24 @@ export function useFilterParams() {
     options?: { resetScroll?: boolean },
   ) => {
     void navigate({
-      to: "/",
+      to: "/artifacts",
       search: nextSearch,
       resetScroll: options?.resetScroll,
     });
   };
 
   const getNextFilters = (newFilters: Partial<BundleFilters>) => {
-    const hasChannel = Object.hasOwn(newFilters, "channel");
     const hasPlatform = Object.hasOwn(newFilters, "platform");
     const hasPage = Object.hasOwn(newFilters, "page");
     const hasAfter = Object.hasOwn(newFilters, "after");
     const hasBefore = Object.hasOwn(newFilters, "before");
-    const shouldResetPagination = hasChannel || hasPlatform;
+    const shouldResetPagination = hasPlatform;
     const nextPage =
       hasPage && newFilters.page !== undefined && newFilters.page > 1
         ? newFilters.page
         : undefined;
 
     return {
-      channel: hasChannel ? newFilters.channel : filters.channel,
       platform: hasPlatform ? newFilters.platform : filters.platform,
       page: shouldResetPagination
         ? undefined
@@ -118,7 +113,6 @@ export function useFilterParams() {
 
   const resetFilters = () => {
     navigateWithSearch({
-      channel: undefined,
       platform: undefined,
       page: undefined,
       after: undefined,

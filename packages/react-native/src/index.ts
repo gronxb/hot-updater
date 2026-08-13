@@ -6,6 +6,7 @@ import {
 import { createDefaultResolver } from "./DefaultResolver";
 import {
   addListener,
+  getActiveUpdateState,
   clearCrashHistory,
   getAppVersion,
   getBaseURL,
@@ -18,6 +19,8 @@ import {
   getInstallId,
   getManifest,
   getMinBundleId,
+  getMinimumReleaseId,
+  getReleaseId,
   isChannelSwitched,
   notifyAppReady,
   reload,
@@ -49,6 +52,7 @@ export type {
   Manifest,
   ManifestAsset,
   NotifyAppReadyResult,
+  ActiveUpdateState,
   ReloadBehavior,
   ReloadBehaviorSetting,
   SetUserParams,
@@ -117,6 +121,14 @@ const isManualWrapOptions = (
 ): options is ManualUpdateOptions =>
   "updateMode" in options && options.updateMode === "manual";
 
+const createConfiguredDefaultResolver = (
+  baseURL: Parameters<typeof createDefaultResolver>[0],
+  authorityId: string | undefined,
+) =>
+  authorityId === undefined
+    ? createDefaultResolver(baseURL)
+    : createDefaultResolver(baseURL, { authorityId });
+
 /**
  * Creates a HotUpdater client instance with all update management methods.
  * This function is called once on module initialization to create a singleton instance.
@@ -164,10 +176,10 @@ function createHotUpdaterClient() {
   ): InternalWrapOptions => {
     if (isManualWrapOptions(options)) {
       if ("baseURL" in options && options.baseURL) {
-        const { baseURL, ...rest } = options;
+        const { authorityId, baseURL, ...rest } = options;
         return {
           ...rest,
-          resolver: createDefaultResolver(baseURL),
+          resolver: createConfiguredDefaultResolver(baseURL, authorityId),
           updateMode: "manual",
         };
       }
@@ -183,10 +195,10 @@ function createHotUpdaterClient() {
     const autoOptions = options as AutoUpdateOptions;
 
     if ("baseURL" in autoOptions && autoOptions.baseURL) {
-      const { baseURL, ...rest } = autoOptions;
+      const { authorityId, baseURL, ...rest } = autoOptions;
       return {
         ...rest,
-        resolver: createDefaultResolver(baseURL),
+        resolver: createConfiguredDefaultResolver(baseURL, authorityId),
         updateMode: "auto",
       };
     }
@@ -210,10 +222,10 @@ function createHotUpdaterClient() {
       };
 
     if ("baseURL" in rest && rest.baseURL) {
-      const { baseURL, ...baseURLRest } = rest;
+      const { authorityId, baseURL, ...baseURLRest } = rest;
       return {
         ...baseURLRest,
-        resolver: createDefaultResolver(baseURL),
+        resolver: createConfiguredDefaultResolver(baseURL, authorityId),
       };
     }
 
@@ -350,6 +362,9 @@ function createHotUpdaterClient() {
      */
     getAppVersion,
 
+    /** Reads the active Release/Bundle receipt and accepted catalog state. */
+    getActiveUpdateState: async () => getActiveUpdateState(),
+
     /**
      * Fetches the current bundle ID of the app.
      */
@@ -359,6 +374,12 @@ function createHotUpdaterClient() {
      * Retrieves the initial bundle ID based on the build time of the native app.
      */
     getMinBundleId,
+
+    /** Preferred Release-catalog name for the build-time UUIDv7 floor. */
+    getMinimumReleaseId,
+
+    /** Returns the active Release identity, or null for BUILTIN/legacy state. */
+    getReleaseId,
 
     /**
      * Fetches the current manifest for the active bundle.

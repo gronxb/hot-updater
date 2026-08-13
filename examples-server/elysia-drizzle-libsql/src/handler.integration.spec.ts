@@ -1,6 +1,11 @@
-import type { Bundle } from "@hot-updater/core";
+import fs from "fs/promises";
+import path from "path";
+import { fileURLToPath } from "url";
+
+import type { Bundle, LegacyBundle } from "@hot-updater/core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
 import {
+  deleteLegacyBundle,
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
@@ -13,9 +18,6 @@ import {
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
-import fs from "fs/promises";
-import path from "path";
-import { fileURLToPath } from "url";
 import { afterAll, beforeAll, describe } from "vitest";
 
 // Get the directory of this test file
@@ -28,6 +30,7 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
   let baseUrl: string;
   let testDbPath: string;
   let hotUpdater: HotUpdaterAPI;
+  let resetDecisionFixtures: () => Promise<void>;
   const port = 13580;
 
   beforeAll(async () => {
@@ -75,6 +78,7 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
 
     const db = await import("./db.js");
     hotUpdater = db.hotUpdater;
+    resetDecisionFixtures = db.resetDecisionFixtures;
   }, 60000);
 
   afterAll(async () => {
@@ -87,6 +91,7 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
   ) => {
     return createGetUpdateInfo({
       baseUrl: `${baseUrl}/hot-updater`,
+      resetDecisionFixtures,
     })(bundles, options);
   };
 
@@ -95,11 +100,11 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
   setupBundleMethodsTestSuite({
     getBundleById: (id: string) => hotUpdater.getBundleById(id),
     getChannels: () => hotUpdater.getChannels(),
-    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
+    insertBundle: (bundle: LegacyBundle) => hotUpdater.insertBundle(bundle),
     getBundles: (options) => hotUpdater.getBundles(options),
     updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
       hotUpdater.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId: string) =>
-      hotUpdater.deleteBundleById(bundleId),
+      deleteLegacyBundle(hotUpdater, bundleId),
   });
 });

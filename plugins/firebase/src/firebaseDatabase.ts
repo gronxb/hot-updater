@@ -1,7 +1,4 @@
-import {
-  createDatabasePlugin,
-  resolveUpdateInfoFromBundles,
-} from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
   type DatabasePluginImplementation,
@@ -38,7 +35,6 @@ import {
   createFirebaseDatabaseState,
   FirebaseDatabaseConstraintError,
 } from "./firebaseDatabaseState";
-import { loadFirebaseUpdateBundles } from "./firebaseDatabaseUpdateInfo";
 
 type FirebaseMutation<TResult> = (
   database: TransactionDatabasePluginImplementation,
@@ -56,18 +52,26 @@ const exactId = (
     : undefined;
 };
 
-export const firebaseDatabase = (config: AppOptions) => {
+export type FirebaseDatabaseConfig = AppOptions & {
+  /** Stable project identity used in Release catalog scope keys. */
+  readonly authorityId?: string;
+};
+
+export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
   const implementation: DatabasePluginImplementation = (() => {
-    const app = getApps().length ? getApp() : initializeApp(config);
+    const { authorityId, ...appOptions } = config;
+    const app = getApps().length ? getApp() : initializeApp(appOptions);
     const db = getFirestore(app);
     const collections = createFirebaseDatabaseCollections(db);
     let migration: Promise<void> | undefined;
 
     const ensureMigrated = (): Promise<void> => {
-      migration ??= migrateFirebaseDatabase(db, collections).catch((error) => {
-        migration = undefined;
-        throw error;
-      });
+      migration ??= migrateFirebaseDatabase(db, collections, authorityId).catch(
+        (error) => {
+          migration = undefined;
+          throw error;
+        },
+      );
       return migration;
     };
 
@@ -152,7 +156,7 @@ export const firebaseDatabase = (config: AppOptions) => {
                 )
               : null;
           }
-          case "channels":
+          default:
             return read((database) => database.findOne(input));
         }
       },
@@ -232,22 +236,15 @@ export const firebaseDatabase = (config: AppOptions) => {
           if (!document.exists || row.id !== id) {
             throw new FirebaseDatabaseConstraintError("channels.id.registry");
           }
-          const referencedBundles = await transaction.get(
-            collections.bundles.where("channel_id", "==", id).limit(1),
+          const referencedReleases = await transaction.get(
+            collections.releases.where("channel_id", "==", id).limit(1),
           );
-          if (!referencedBundles.empty) {
+          if (!referencedReleases.empty) {
             return { deleted: false, reason: "not_empty" };
           }
           transaction.delete(reference);
           transaction.delete(idReference);
           return { deleted: true };
-        });
-      },
-      getUpdateInfo: async (args) => {
-        await ensureMigrated();
-        return resolveUpdateInfoFromBundles({
-          args,
-          bundles: await loadFirebaseUpdateBundles(collections, args),
         });
       },
       transaction: (callback) => mutate(callback),
@@ -260,7 +257,6 @@ export const firebaseDatabase = (config: AppOptions) => {
   return createDatabasePlugin({
     name: "firebaseDatabase",
     models: adapter.models,
-    queries: adapter.queries,
     commit: adapter.commit,
   });
 };

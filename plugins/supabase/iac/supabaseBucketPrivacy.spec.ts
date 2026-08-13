@@ -26,6 +26,7 @@ import {
 
 const createApi = (): SupabaseApi => ({
   createBucket: vi.fn(),
+  listLegacyBundlePolicies: vi.fn().mockResolvedValue([]),
   listBuckets: vi.fn(),
   updateBucket: vi.fn(),
 });

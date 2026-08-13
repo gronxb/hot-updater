@@ -22,6 +22,7 @@ export {
 export type SupabaseInitInputs = {
   readonly accessToken?: string;
   readonly bucketName?: string;
+  readonly catalogCdnUrl?: string;
   readonly databasePassword?: string;
   readonly functionName?: string;
   readonly organizationSlug?: string;
@@ -64,6 +65,7 @@ export const resolveSupabaseInitInputs = (
   return {
     accessToken: resolveInitProviderInput(existingEnv, inputs.accessToken),
     bucketName: resolveInitProviderInput(existingEnv, inputs.bucketName),
+    catalogCdnUrl: resolveInitProviderInput(existingEnv, inputs.catalogCdnUrl),
     databasePassword,
     functionName: resolveInitProviderInput(existingEnv, inputs.functionName),
     organizationSlug: resolveInitProviderInput(

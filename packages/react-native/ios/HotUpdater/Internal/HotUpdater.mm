@@ -612,9 +612,30 @@ RCT_EXPORT_MODULE();
     if (params.channel()) {
         paramDict[@"channel"] = params.channel();
     }
+    if (params.selection()) {
+        paramDict[@"selection"] = params.selection();
+    }
 
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     [impl updateBundle:paramDict resolver:resolve rejecter:reject];
+}
+
+- (NSNumber *)acceptReleaseCatalog:(NSDictionary *)params {
+    return @([[HotUpdater sharedImpl] acceptReleaseCatalog:params]);
+}
+
+- (NSDictionary *)getActiveUpdateState {
+    return [[HotUpdater sharedImpl] getActiveUpdateState];
+}
+
+- (NSNumber *)isReleaseSelectionCurrent:(NSDictionary *)params {
+    return @([[HotUpdater sharedImpl] isReleaseSelectionCurrent:params]);
+}
+
+- (void)commitReleaseSelection:(NSDictionary *)params
+                       resolve:(RCTPromiseResolveBlock)resolve
+                        reject:(RCTPromiseRejectBlock)reject {
+    [[HotUpdater sharedImpl] commitReleaseSelection:params resolver:resolve rejecter:reject];
 }
 
 - (NSDictionary *)notifyAppReady {
@@ -748,6 +769,24 @@ RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)params
     NSLog(@"[HotUpdater.mm] updateBundle called. params: %@", params);
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     [impl updateBundle:params resolver:resolve rejecter:reject];
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(acceptReleaseCatalog:(NSDictionary *)params) {
+    return @([[HotUpdater sharedImpl] acceptReleaseCatalog:params]);
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getActiveUpdateState) {
+    return [[HotUpdater sharedImpl] getActiveUpdateState];
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(isReleaseSelectionCurrent:(NSDictionary *)params) {
+    return @([[HotUpdater sharedImpl] isReleaseSelectionCurrent:params]);
+}
+
+RCT_EXPORT_METHOD(commitReleaseSelection:(NSDictionary *)params
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    [[HotUpdater sharedImpl] commitReleaseSelection:params resolver:resolve rejecter:reject];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(notifyAppReady) {

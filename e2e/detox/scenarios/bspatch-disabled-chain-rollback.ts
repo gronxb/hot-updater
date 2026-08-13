@@ -33,6 +33,9 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "bundleA",
+        saveResultFieldsAs: {
+          releaseId: "releaseA",
+        },
       },
     );
     await app.launch("launch chain bundle A app");
@@ -95,6 +98,9 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "bundleB",
+        saveResultFieldsAs: {
+          releaseId: "releaseB",
+        },
       },
     );
     await app.launch("launch chain bundle B app");
@@ -152,6 +158,9 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "bundleC",
+        saveResultFieldsAs: {
+          releaseId: "releaseC",
+        },
       },
     );
     await app.control(
@@ -227,9 +236,9 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       },
     );
 
-    await app.control("disable chain bundle C", "/e2e/jobs/patch-bundle", {
-      bundleId: "$bundleC",
+    await app.control("disable chain bundle C", "/e2e/jobs/patch-release", {
       enabled: false,
+      releaseId: "$releaseC",
     });
     await app.tap(
       "install rollback to chain bundle B",
@@ -238,7 +247,7 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert chain bundle B rollback action result",
       "update-action-result",
-      "current-channel -> installed $bundleB",
+      "current-channel -> installed Release $releaseB / Bundle $bundleB",
       { exactText: true },
     );
     await app.control(
@@ -276,11 +285,6 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
         "Current Launch Status: UPDATE_APPLIED",
       ],
     );
-    await app.assertText(
-      "assert chain bundle B rollback crashed bundle",
-      "launch-crashed-bundle-result",
-      "Current Crashed Bundle ID: null",
-    );
     await app.control(
       "assert chain bundle B rollback active",
       "/e2e/assert-metadata-active",
@@ -289,9 +293,9 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       },
     );
 
-    await app.control("disable chain bundle B", "/e2e/jobs/patch-bundle", {
-      bundleId: "$bundleB",
+    await app.control("disable chain bundle B", "/e2e/jobs/patch-release", {
       enabled: false,
+      releaseId: "$releaseB",
     });
     await app.tap(
       "install rollback to chain bundle A",
@@ -300,7 +304,7 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert chain bundle A rollback action result",
       "update-action-result",
-      "current-channel -> installed $bundleA",
+      "current-channel -> installed Release $releaseA / Bundle $bundleA",
       { exactText: true },
     );
     await app.control(
@@ -338,11 +342,6 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
         "Current Launch Status: UPDATE_APPLIED",
       ],
     );
-    await app.assertText(
-      "assert chain bundle A rollback crashed bundle",
-      "launch-crashed-bundle-result",
-      "Current Crashed Bundle ID: null",
-    );
     await app.control(
       "assert chain bundle A rollback active",
       "/e2e/assert-metadata-active",
@@ -351,9 +350,9 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       },
     );
 
-    await app.control("disable chain bundle A", "/e2e/jobs/patch-bundle", {
-      bundleId: "$bundleA",
+    await app.control("disable chain bundle A", "/e2e/jobs/patch-release", {
       enabled: false,
+      releaseId: "$releaseA",
     });
     await app.tap(
       "install rollback to built-in chain",
@@ -362,7 +361,7 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert chain built-in rollback action result",
       "update-action-result",
-      "current-channel -> installed 00000000-0000-0000-0000-000000000000",
+      "current-channel -> selected BUILTIN",
       { exactText: true },
     );
     await app.control(
@@ -387,11 +386,6 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
         "Current Launch Status: UNCHANGED",
         "Current Launch Status: UPDATE_APPLIED",
       ],
-    );
-    await app.assertText(
-      "assert chain built-in crashed bundle",
-      "launch-crashed-bundle-result",
-      "Current Crashed Bundle ID: null",
     );
     await app.assertText(
       "assert chain built-in crash history empty",

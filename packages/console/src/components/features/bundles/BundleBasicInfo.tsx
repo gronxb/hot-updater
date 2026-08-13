@@ -27,13 +27,6 @@ export function BundleBasicInfo({ bundle }: BundleBasicInfoProps) {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium text-muted-foreground">Channel</span>
-        <span className="text-xs text-foreground" translate="no">
-          {bundle.channel}
-        </span>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-muted-foreground">Platform</span>
         <span className="text-xs text-foreground">
           {bundle.platform === "ios" ? "iOS" : "Android"}

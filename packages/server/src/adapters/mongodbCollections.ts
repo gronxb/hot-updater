@@ -4,6 +4,8 @@ import type {
   BundleRow,
   ChannelRow,
   ClientAccessKeyRow,
+  ReleaseCatalogRow,
+  ReleaseRow,
 } from "@hot-updater/plugin-core";
 import type { ClientSession, Collection, MongoClient } from "mongodb";
 
@@ -37,6 +39,8 @@ export type MongoCollections = {
   readonly bundleEvents: Collection<BundleEventRow>;
   readonly channels: Collection<ChannelRow>;
   readonly clientAccessKeys: Collection<ClientAccessKeyRow>;
+  readonly releases: Collection<ReleaseRow>;
+  readonly releaseCatalogs: Collection<ReleaseCatalogRow>;
 };
 
 export const createMongoCollections = (
@@ -50,6 +54,8 @@ export const createMongoCollections = (
     channels: database.collection<ChannelRow>("channels"),
     clientAccessKeys:
       database.collection<ClientAccessKeyRow>("client_access_keys"),
+    releases: database.collection<ReleaseRow>("releases"),
+    releaseCatalogs: database.collection<ReleaseCatalogRow>("release_catalogs"),
   };
 };
 

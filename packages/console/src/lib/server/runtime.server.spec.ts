@@ -36,10 +36,11 @@ describe("client access-key runtime", () => {
             bundles: database.models.bundles,
             bundlePatches: database.models.bundlePatches,
             channels: database.models.channels,
+            releaseCatalogs: database.models.releaseCatalogs,
+            releases: database.models.releases,
           },
           commit: database.commit,
           name: database.name,
-          queries: database.queries,
         },
       }),
     ).toBeNull();

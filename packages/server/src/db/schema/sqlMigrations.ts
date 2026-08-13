@@ -22,6 +22,10 @@ const CHANNEL_BACKFILL_CHECK_TABLE =
   "private_hot_updater_channel_backfill_check";
 export const SQLITE_RESTORE_BUNDLES_SCHEMA_MARKER =
   "-- hot-updater:restore-bundles-user-schema";
+export const SQLITE_RESTORE_V100_BUNDLES_SCHEMA_MARKER =
+  "-- hot-updater:restore-v100-bundles-user-schema";
+export const V100_RELEASE_CATALOG_BACKFILL_MARKER =
+  "-- hot-updater:backfill-release-catalog";
 
 const getRequiredTable = (
   schema: (typeof hotUpdaterSchemaVersions)[number],
@@ -225,6 +229,254 @@ const createV038MigrationSql = (
     ? createSqliteV038MigrationSql(previous, next, relationMode)
     : createRelationalV038MigrationSql(previous, next, provider, relationMode);
 
+const createSqliteV100BundleEventsMigrationSql = (
+  previous: (typeof hotUpdaterSchemaVersions)[number],
+  next: (typeof hotUpdaterSchemaVersions)[number],
+  relationMode: RelationMode,
+): readonly string[] => {
+  const previousEvents = getRequiredTable(previous, "bundle_events");
+  const events = getRequiredTable(next, "bundle_events");
+  const temporaryEvents = { ...events, ormName: "bundle_events_v100" };
+  const previousColumns = new Set(
+    previousEvents.columns.map(({ ormName }) => ormName),
+  );
+  const columnNames = events.columns.map(({ ormName }) => ormName);
+  const selectValues = columnNames.map((columnName) =>
+    previousColumns.has(columnName) ? `bundle_events.${columnName}` : "null",
+  );
+
+  return [
+    "pragma foreign_keys = off",
+    "drop table if exists bundle_events_v100",
+    createTableStatement(temporaryEvents, "sqlite", relationMode),
+    `insert into bundle_events_v100 (${columnNames.join(", ")}) select ${selectValues.join(", ")} from bundle_events`,
+    "drop table bundle_events",
+    "alter table bundle_events_v100 rename to bundle_events",
+    ...(events.indexes ?? [])
+      .filter((schemaIndex) =>
+        schemaIndexAppliesToProvider(schemaIndex, "sqlite"),
+      )
+      .map((schemaIndex) => createIndexSql(events, schemaIndex, "sqlite")),
+    "pragma foreign_key_check",
+    "pragma foreign_keys = on",
+  ];
+};
+
+const dropCheckSql = (
+  tableName: string,
+  checkName: string,
+  provider: Exclude<ORMSQLProvider, "sqlite">,
+): string =>
+  provider === "mysql"
+    ? `alter table ${tableName} drop check ${checkName}`
+    : provider === "postgresql"
+      ? `alter table ${tableName} drop constraint if exists ${checkName}`
+      : `alter table ${tableName} drop constraint ${checkName}`;
+
+const dropNotNullSql = (
+  table: HotUpdaterTableSchema,
+  columnName: string,
+  provider: Exclude<ORMSQLProvider, "sqlite">,
+): string => {
+  const column = table.columns.find(({ ormName }) => ormName === columnName);
+  if (!column) {
+    throw new Error(
+      `Hot Updater schema is missing ${table.ormName}.${columnName}.`,
+    );
+  }
+  const definition = sqlColumnDefinition(table, column, provider);
+  if (provider === "mysql") {
+    return `alter table ${table.ormName} modify column ${definition}`;
+  }
+  if (provider === "mssql") {
+    return `alter table ${table.ormName} alter column ${definition}`;
+  }
+  return `alter table ${table.ormName} alter column ${columnName} drop not null`;
+};
+
+const createRelationalV100BundleEventsMigrationSql = (
+  previous: (typeof hotUpdaterSchemaVersions)[number],
+  next: (typeof hotUpdaterSchemaVersions)[number],
+  provider: Exclude<ORMSQLProvider, "sqlite">,
+): readonly string[] => {
+  const previousEvents = getRequiredTable(previous, "bundle_events");
+  const events = getRequiredTable(next, "bundle_events");
+  const previousColumns = new Set(
+    previousEvents.columns.map(({ ormName }) => ormName),
+  );
+  const previousIndexes = new Set(
+    (previousEvents.indexes ?? []).map(({ name }) => name),
+  );
+  const changedCheckNames = [
+    "bundle_events_type_check",
+    "bundle_events_shape_check",
+  ];
+
+  return [
+    ...changedCheckNames.map((checkName) =>
+      dropCheckSql(events.ormName, checkName, provider),
+    ),
+    ...events.columns
+      .filter(({ ormName }) => !previousColumns.has(ormName))
+      .map(
+        (eventColumn) =>
+          `alter table ${events.ormName} add column ${sqlColumnDefinition(events, eventColumn, provider)}`,
+      ),
+    ...events.columns
+      .filter(
+        (column) =>
+          column.nullable === true &&
+          previousEvents.columns.some(
+            (previousColumn) =>
+              previousColumn.ormName === column.ormName &&
+              previousColumn.nullable !== true,
+          ),
+      )
+      .map((column) => dropNotNullSql(events, column.ormName, provider)),
+    ...(events.indexes ?? [])
+      .filter((schemaIndex) =>
+        schemaIndexAppliesToProvider(schemaIndex, provider),
+      )
+      .filter(({ name }) => !previousIndexes.has(name))
+      .map((schemaIndex) => createIndexSql(events, schemaIndex, provider)),
+    ...changedCheckNames.map((checkName) => {
+      const eventCheck = events.checks?.find(({ name }) => name === checkName);
+      if (!eventCheck) {
+        throw new Error(`Hot Updater schema 1.0.0 is missing ${checkName}.`);
+      }
+      return createCheckSql(events, eventCheck, provider);
+    }),
+  ];
+};
+
+const createV100MigrationSql = (
+  previous: (typeof hotUpdaterSchemaVersions)[number],
+  next: (typeof hotUpdaterSchemaVersions)[number],
+  provider: ORMSQLProvider,
+  relationMode: RelationMode,
+): readonly string[] => {
+  const previousTables = new Map(
+    previous.tables.map((tableSchema) => [tableSchema.ormName, tableSchema]),
+  );
+  const statements: string[] = [];
+  const previousBundles = getRequiredTable(previous, "bundles");
+  const nextBundles = getRequiredTable(next, "bundles");
+  for (const tableSchema of next.tables) {
+    if (tableSchema.internal) continue;
+    if (tableSchema.ormName === "bundles") continue;
+    const previousTable = previousTables.get(tableSchema.ormName);
+    if (!previousTable) {
+      statements.push(
+        ...createAddedTableSql(tableSchema, provider, relationMode),
+      );
+      continue;
+    }
+    if (tableSchema.ormName === "bundle_events") {
+      statements.push(
+        ...(provider === "sqlite"
+          ? createSqliteV100BundleEventsMigrationSql(
+              previous,
+              next,
+              relationMode,
+            )
+          : createRelationalV100BundleEventsMigrationSql(
+              previous,
+              next,
+              provider,
+            )),
+      );
+      continue;
+    }
+    statements.push(
+      ...createChangedTableSql(
+        previousTable,
+        tableSchema,
+        provider,
+        relationMode,
+      ),
+    );
+  }
+  return [
+    ...statements,
+    V100_RELEASE_CATALOG_BACKFILL_MARKER,
+    ...createV100BundleMigrationSql(
+      previousBundles,
+      nextBundles,
+      provider,
+      relationMode,
+    ),
+  ];
+};
+
+const v100DroppedBundleColumns = [
+  "should_force_update",
+  "enabled",
+  "message",
+  "channel",
+  "channel_id",
+  "target_app_version",
+  "fingerprint_hash",
+  "rollout_cohort_count",
+  "target_cohorts",
+] as const;
+
+const createV100BundleMigrationSql = (
+  previous: HotUpdaterTableSchema,
+  next: HotUpdaterTableSchema,
+  provider: ORMSQLProvider,
+  relationMode: RelationMode,
+): readonly string[] => {
+  const retainedColumns = next.columns.map(({ ormName }) => ormName);
+  const droppedIndexes = (previous.indexes ?? []).filter((index) =>
+    schemaIndexAppliesToProvider(index, provider),
+  );
+
+  if (provider === "sqlite") {
+    const temporary = { ...next, ormName: "bundles_v100" };
+    return [
+      "pragma foreign_keys = off",
+      "drop table if exists bundles_v100",
+      createTableStatement(temporary, provider, relationMode),
+      `insert into bundles_v100 (${retainedColumns.join(", ")}) select ${retainedColumns.join(", ")} from bundles`,
+      "drop table bundles",
+      "alter table bundles_v100 rename to bundles",
+      ...(next.indexes ?? [])
+        .filter((index) => schemaIndexAppliesToProvider(index, provider))
+        .map((index) => createIndexSql(next, index, provider)),
+      SQLITE_RESTORE_V100_BUNDLES_SCHEMA_MARKER,
+      "pragma foreign_key_check",
+      "pragma foreign_keys = on",
+    ];
+  }
+
+  const dropIndex = (name: string): string => {
+    if (provider === "mysql") return `alter table bundles drop index ${name}`;
+    if (provider === "mssql") return `drop index ${name} on bundles`;
+    return `drop index if exists ${name}`;
+  };
+  const dropConstraint = (name: string, foreignKey: boolean): string => {
+    if (provider === "mysql") {
+      return `alter table bundles drop ${foreignKey ? "foreign key" : "check"} ${name}`;
+    }
+    return `alter table bundles drop constraint if exists ${name}`;
+  };
+
+  return [
+    ...(relationMode === "foreign-keys"
+      ? (previous.foreignKeys ?? []).map((foreignKey) =>
+          dropConstraint(foreignKey.name, true),
+        )
+      : []),
+    ...(previous.checks ?? []).map((check) =>
+      dropConstraint(check.name, false),
+    ),
+    ...droppedIndexes.map(({ name }) => dropIndex(name)),
+    ...v100DroppedBundleColumns.map(
+      (columnName) => `alter table bundles drop column ${columnName}`,
+    ),
+  ];
+};
+
 const createAddedTableSql = (
   table: (typeof hotUpdaterSchemaVersions)[number]["tables"][number],
   provider: ORMSQLProvider,
@@ -321,6 +573,12 @@ export const createSchemaMigrationSql = (
       assertV038MigrationSchemaDriftIsAllowlisted(previous, next, provider);
       statements.push(
         ...createV038MigrationSql(previous, next, provider, relationMode),
+      );
+      continue;
+    }
+    if (previous.version === "0.38.0" && next.version === "1.0.0") {
+      statements.push(
+        ...createV100MigrationSql(previous, next, provider, relationMode),
       );
       continue;
     }

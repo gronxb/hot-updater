@@ -1,4 +1,4 @@
-import { type Bundle, NIL_UUID } from "@hot-updater/core";
+import { type LegacyBundle as Bundle, NIL_UUID } from "@hot-updater/core";
 import { createMockDatabaseData, mockDatabase } from "@hot-updater/mock";
 import { bundleToRow } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";

@@ -10,6 +10,7 @@ import {
   buildDistributionConfigOverrides,
   HOT_UPDATER_CACHE_BEHAVIOR_PATHS,
   HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG,
+  HOT_UPDATER_RELEASE_CATALOG_CACHE_POLICY_CONFIG,
   HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
 } from "./cloudfrontDistributionConfig";
 import {
@@ -43,8 +44,9 @@ export class CloudFrontManager {
     this.credentials = credentials;
   }
 
-  private async getOrCreateSharedCachePolicy(
+  private async getOrCreateCachePolicy(
     cloudfrontClient: CloudFront,
+    config: typeof HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
   ): Promise<string> {
     const existingPolicy = await findInPaginatedCloudFrontList({
       listPage: async (marker) => {
@@ -59,8 +61,7 @@ export class CloudFrontManager {
         };
       },
       matches: (policy) =>
-        policy.CachePolicy?.CachePolicyConfig?.Name ===
-        HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG.Name,
+        policy.CachePolicy?.CachePolicyConfig?.Name === config.Name,
     });
     const existingPolicyId = existingPolicy?.CachePolicy?.Id;
 
@@ -72,7 +73,7 @@ export class CloudFrontManager {
         throw new Error("Failed to read shared cache policy ETag");
       }
       await cloudfrontClient.updateCachePolicy({
-        CachePolicyConfig: HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
+        CachePolicyConfig: config,
         Id: existingPolicyId,
         IfMatch: currentPolicy.ETag,
       });
@@ -80,7 +81,7 @@ export class CloudFrontManager {
     }
 
     const createPolicyResponse = await cloudfrontClient.createCachePolicy({
-      CachePolicyConfig: HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
+      CachePolicyConfig: config,
     });
     const cachePolicyId = createPolicyResponse.CachePolicy?.Id;
     if (!cachePolicyId) {
@@ -233,11 +234,23 @@ export class CloudFrontManager {
     if (!oacId) throw new Error("Failed to get Origin Access Control ID");
 
     const bucketDomain = `${options.bucketName}.s3.${this.region}.amazonaws.com`;
+    let releaseCatalogCachePolicyId: string;
     let sharedCachePolicyId: string;
     let originRequestPolicyId: string;
     try {
-      [sharedCachePolicyId, originRequestPolicyId] = await Promise.all([
-        this.getOrCreateSharedCachePolicy(cloudfrontClient),
+      [
+        sharedCachePolicyId,
+        releaseCatalogCachePolicyId,
+        originRequestPolicyId,
+      ] = await Promise.all([
+        this.getOrCreateCachePolicy(
+          cloudfrontClient,
+          HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
+        ),
+        this.getOrCreateCachePolicy(
+          cloudfrontClient,
+          HOT_UPDATER_RELEASE_CATALOG_CACHE_POLICY_CONFIG,
+        ),
         this.getOrCreateOriginRequestPolicy(cloudfrontClient),
       ]);
     } catch (error) {
@@ -255,6 +268,7 @@ export class CloudFrontManager {
       keyGroupId: options.keyGroupId,
       oacId,
       originRequestPolicyId,
+      releaseCatalogCachePolicyId,
       sharedCachePolicyId,
     });
 
@@ -316,6 +330,7 @@ export class CloudFrontManager {
       keyGroupId: options.keyGroupId,
       oacId,
       originRequestPolicyId,
+      releaseCatalogCachePolicyId,
       sharedCachePolicyId,
     });
 

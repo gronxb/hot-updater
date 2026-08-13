@@ -194,9 +194,17 @@ export function InstallationHistoryCard({
                       <TableCell className="whitespace-normal align-top">
                         <div className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 gap-y-3">
                           <span className="text-muted-foreground">From</span>
-                          <BundleIdDisplay bundleId={event.fromBundleId} />
+                          {event.fromBundleId ? (
+                            <BundleIdDisplay bundleId={event.fromBundleId} />
+                          ) : (
+                            "—"
+                          )}
                           <span className="text-muted-foreground">To</span>
-                          <BundleIdDisplay bundleId={event.toBundleId} />
+                          {event.toBundleId ? (
+                            <BundleIdDisplay bundleId={event.toBundleId} />
+                          ) : (
+                            "—"
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

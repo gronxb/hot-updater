@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/core";
+import type { Bundle, LegacyBundle } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -10,7 +10,7 @@ import {
   rowsToBundles,
 } from "./databaseRows";
 
-const createBundle = (id: string): Bundle => ({
+const createBundle = (id: string): LegacyBundle => ({
   id,
   platform: "ios",
   shouldForceUpdate: false,
@@ -82,7 +82,7 @@ describe("database rows", () => {
     expect(hydrated?.patches).toEqual(bundle.patches);
     expect(hydrated?.patchBaseBundleId).toBe(firstBase.id);
     expect(hydrated?.patchFileHash).toBe("patch-a");
-    expect(hydrated?.targetCohorts).toEqual(["qa"]);
+    expect(toRow(bundle)).not.toHaveProperty("target_cohorts");
   });
 
   it("rejects duplicate patch ids", () => {

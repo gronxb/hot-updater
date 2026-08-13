@@ -1,7 +1,7 @@
 import type {
   AppUpdateAvailableInfo,
   AppUpdateInfo,
-  Bundle,
+  LegacyBundle as Bundle,
   GetBundlesArgs,
 } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";

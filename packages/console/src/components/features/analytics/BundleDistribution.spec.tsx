@@ -30,6 +30,7 @@ describe("BundleDistribution", () => {
       latestReportedBundles: [],
       configuredRollouts: [
         {
+          releaseId: "release-a",
           bundleId: "01972030-1aa1-7445-8b8c-121212121212",
           configuredPercentage: 100,
           trackedInstallations: 3,

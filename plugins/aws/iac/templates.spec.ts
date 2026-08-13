@@ -19,10 +19,14 @@ afterEach(async () => {
 
 describe("AWS managed config scaffold", () => {
   it("renders DynamoDB as the managed metadata database", () => {
-    const scaffold = getConfigScaffold("bare", {
-      mode: "local",
-      profile: null,
-    });
+    const scaffold = getConfigScaffold(
+      "bare",
+      {
+        mode: "local",
+        profile: null,
+      },
+      "aws.test-authority",
+    );
 
     expect(scaffold.text).toContain(
       'import { dynamoDB, s3Storage } from "@hot-updater/aws";',
@@ -30,6 +34,7 @@ describe("AWS managed config scaffold", () => {
     expect(scaffold.text).toContain(
       "tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!",
     );
+    expect(scaffold.text).toContain('authorityId: "aws.test-authority"');
     expect(scaffold.text).not.toContain("storageOptions");
   });
 

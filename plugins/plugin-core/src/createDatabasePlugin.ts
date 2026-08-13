@@ -4,6 +4,7 @@ import { isChannelText, isRecord } from "./databasePluginCrudValidationFields";
 import {
   validateBundleUpdateData,
   validateClientAccessKeyUpdateData,
+  validateReleaseUpdateData,
 } from "./databasePluginCrudValidationMutations";
 import {
   validateCreateData,
@@ -21,11 +22,14 @@ import type {
   DatabaseBundleQueryWhere,
   DatabaseChange,
   DatabaseCommit,
+  DatabaseCommitExpectation,
   DatabaseCommitResult,
   DatabasePlugin,
   DatabasePluginCrud,
   DatabasePluginImplementation,
   DatabaseWhere,
+  ReleaseCatalogRow,
+  ReleaseRow,
 } from "./types/internal";
 
 export {
@@ -80,12 +84,8 @@ const toBundleWhere = (
 ): readonly DatabaseWhere<"bundles">[] => {
   if (!where) return [];
   const filters: DatabaseWhere<"bundles">[] = [];
-  if (where.channel !== undefined)
-    filters.push({ field: "channel", value: where.channel });
   if (where.platform !== undefined)
     filters.push({ field: "platform", value: where.platform });
-  if (where.enabled !== undefined)
-    filters.push({ field: "enabled", value: where.enabled });
   if (where.id?.eq !== undefined)
     filters.push({ field: "id", value: where.id.eq });
   if (where.id?.gt !== undefined)
@@ -98,41 +98,28 @@ const toBundleWhere = (
     filters.push({ field: "id", operator: "lte", value: where.id.lte });
   if (where.id?.in !== undefined)
     filters.push({ field: "id", operator: "in", value: where.id.in });
-  if (where.targetAppVersion !== undefined)
-    filters.push({
-      field: "target_app_version",
-      value: where.targetAppVersion,
-    });
-  if (where.targetAppVersionNotNull)
-    filters.push({
-      field: "target_app_version",
-      operator: "ne",
-      value: null,
-    });
-  if (where.targetAppVersionIn !== undefined)
-    filters.push({
-      field: "target_app_version",
-      operator: "in",
-      value: where.targetAppVersionIn,
-    });
-  if (where.fingerprintHash !== undefined)
-    filters.push({
-      field: "fingerprint_hash",
-      value: where.fingerprintHash,
-    });
   return filters;
 };
 
-const assertBundleChannel = async (
+const assertReleaseReferences = async (
   database: DatabasePluginCrud,
-  row: Pick<BundleRow, "channel" | "channel_id">,
+  row: ReleaseRow,
 ): Promise<void> => {
   const channel = await database.findOne({
     model: "channels",
     where: [{ field: "id", value: row.channel_id }],
   });
-  if (channel === null || channel.name !== row.channel) {
+  if (channel === null) {
     throw new DatabasePluginInputError("invalid-data");
+  }
+  if (row.bundle_id !== null) {
+    const bundle = await database.findOne({
+      model: "bundles",
+      where: [{ field: "id", value: row.bundle_id }],
+    });
+    if (bundle === null || bundle.platform !== row.platform) {
+      throw new DatabasePluginInputError("invalid-data");
+    }
   }
 };
 
@@ -145,16 +132,9 @@ const applyChange = async (
     case "bundles":
       switch (change.operation) {
         case "insert":
-          await assertBundleChannel(database, change.row);
           await database.create({ model: "bundles", data: change.row });
           return;
         case "update": {
-          if (change.update.channel !== undefined) {
-            await assertBundleChannel(database, {
-              channel: change.update.channel,
-              channel_id: change.update.channel_id,
-            });
-          }
           const row = await database.update({
             model: "bundles",
             where: [{ field: "id", value: change.where.id }],
@@ -169,12 +149,70 @@ const applyChange = async (
           return;
         }
         case "delete":
+          if (
+            (await database.count({
+              model: "releases",
+              where: [{ field: "bundle_id", value: change.where.id }],
+            })) > 0
+          ) {
+            throw new DatabaseCommitConflictError({
+              committed: false,
+              conflict: { changeIndex, reason: "referenced" },
+            });
+          }
           await database.delete({
             model: "bundles",
             where: [{ field: "id", value: change.where.id }],
           });
           return;
       }
+    case "releases":
+      switch (change.operation) {
+        case "insert":
+          await assertReleaseReferences(database, change.row);
+          await database.create({ model: "releases", data: change.row });
+          return;
+        case "update": {
+          const row = await database.update({
+            model: "releases",
+            where: [{ field: "id", value: change.where.id }],
+            update: change.update,
+          });
+          if (row === null) {
+            throw new DatabaseCommitConflictError({
+              committed: false,
+              conflict: { changeIndex, reason: "not_found" },
+            });
+          }
+          return;
+        }
+        case "delete":
+          await database.delete({
+            model: "releases",
+            where: [{ field: "id", value: change.where.id }],
+          });
+          return;
+      }
+    case "releaseCatalogs": {
+      const current = await database.findOne({
+        model: "release_catalogs",
+        where: [{ field: "scope_key", value: change.row.scope_key }],
+      });
+      if (current === null) {
+        await database.create({
+          model: "release_catalogs",
+          data: change.row,
+        });
+      } else {
+        const { scope_key: _scopeKey, ...update } = change.row;
+        await database.update({
+          model: "release_catalogs",
+          where: [{ field: "scope_key", value: change.row.scope_key }],
+          update,
+        });
+      }
+      return;
+    }
     case "bundlePatches":
       switch (change.operation) {
         case "insert":
@@ -200,11 +238,11 @@ const applyChange = async (
           });
           return;
         case "delete": {
-          const referencedBundles = await database.count({
-            model: "bundles",
+          const referencedReleases = await database.count({
+            model: "releases",
             where: [{ field: "channel_id", value: change.where.id }],
           });
-          if (referencedBundles > 0) {
+          if (referencedReleases > 0) {
             throw new DatabaseCommitConflictError({
               committed: false,
               conflict: { changeIndex, reason: "referenced" },
@@ -257,10 +295,60 @@ const applyChange = async (
   }
 };
 
+const expectationVersion = async (
+  database: DatabasePluginCrud,
+  expectation: DatabaseCommitExpectation,
+): Promise<number | null> => {
+  if (expectation.model === "releases") {
+    const row = await database.findOne({
+      model: "releases",
+      where: [{ field: "id", value: expectation.id }],
+      select: ["revision"],
+    });
+    return row?.revision ?? null;
+  }
+  const row = await database.findOne({
+    model: "release_catalogs",
+    where: [{ field: "scope_key", value: expectation.scopeKey }],
+    select: ["generation"],
+  });
+  return row?.generation ?? null;
+};
+
+const applyExpectations = async (
+  database: DatabasePluginCrud,
+  expectations: readonly DatabaseCommitExpectation[],
+): Promise<void> => {
+  for (const expectation of expectations) {
+    const expectedVersion =
+      expectation.model === "releases"
+        ? expectation.revision
+        : expectation.generation;
+    const actualVersion = await expectationVersion(database, expectation);
+    if (actualVersion !== expectedVersion) {
+      throw new DatabaseCommitConflictError({
+        committed: false,
+        conflict: {
+          actualVersion,
+          changeIndex: -1,
+          expectedVersion,
+          key:
+            expectation.model === "releases"
+              ? expectation.id
+              : expectation.scopeKey,
+          model: expectation.model,
+          reason: "version_conflict",
+        },
+      });
+    }
+  }
+};
+
 const applyChanges = async (
   database: DatabasePluginCrud,
   input: DatabaseCommit,
 ): Promise<DatabaseCommitResult> => {
+  await applyExpectations(database, input.expectations ?? []);
   for (const [changeIndex, change] of input.changes.entries()) {
     await applyChange(database, change, changeIndex);
   }
@@ -339,6 +427,39 @@ const validateDatabaseChange = (change: unknown): void => {
         default:
           throw new DatabasePluginInputError("invalid-operation");
       }
+    case "releases":
+      switch (change.operation) {
+        case "insert":
+          if (!hasOnlyKeys(change, ["model", "operation", "row"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateCreateData("releases", change.row);
+          return;
+        case "update":
+          if (!hasOnlyKeys(change, ["model", "operation", "where", "update"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateWhere(change.where, "id");
+          validateReleaseUpdateData(change.update);
+          return;
+        case "delete":
+          if (!hasOnlyKeys(change, ["model", "operation", "where"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateWhere(change.where, "id");
+          return;
+        default:
+          throw new DatabasePluginInputError("invalid-operation");
+      }
+    case "releaseCatalogs":
+      if (
+        change.operation !== "put" ||
+        !hasOnlyKeys(change, ["model", "operation", "row"])
+      ) {
+        throw new DatabasePluginInputError("invalid-operation");
+      }
+      validateCreateData("release_catalogs", change.row);
+      return;
     case "channels":
       switch (change.operation) {
         case "insert":
@@ -402,17 +523,60 @@ const validateDatabaseChange = (change: unknown): void => {
   }
 };
 
+const validateDatabaseCommitExpectation = (expectation: unknown): void => {
+  if (!isRecord(expectation)) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+  if (expectation.model === "releases") {
+    if (
+      !hasOnlyKeys(expectation, ["model", "id", "revision"]) ||
+      typeof expectation.id !== "string" ||
+      !(
+        expectation.revision === null ||
+        (typeof expectation.revision === "number" &&
+          Number.isSafeInteger(expectation.revision) &&
+          expectation.revision >= 1)
+      )
+    ) {
+      throw new DatabasePluginInputError("invalid-data");
+    }
+    return;
+  }
+  if (expectation.model === "releaseCatalogs") {
+    if (
+      !hasOnlyKeys(expectation, ["model", "scopeKey", "generation"]) ||
+      typeof expectation.scopeKey !== "string" ||
+      !(
+        expectation.generation === null ||
+        (typeof expectation.generation === "number" &&
+          Number.isSafeInteger(expectation.generation) &&
+          expectation.generation >= 1)
+      )
+    ) {
+      throw new DatabasePluginInputError("invalid-data");
+    }
+    return;
+  }
+  throw new DatabasePluginInputError("invalid-model");
+};
+
 function validateDatabaseCommit(
   input: unknown,
 ): asserts input is DatabaseCommit {
   if (
     !isRecord(input) ||
-    !hasOnlyKeys(input, ["changes"]) ||
-    !Array.isArray(input.changes)
+    !Array.isArray(input.changes) ||
+    (Object.hasOwn(input, "expectations")
+      ? !hasOnlyKeys(input, ["changes", "expectations"]) ||
+        !Array.isArray(input.expectations)
+      : !hasOnlyKeys(input, ["changes"]))
   ) {
     throw new DatabasePluginInputError("invalid-data");
   }
   input.changes.forEach(validateDatabaseChange);
+  if (Array.isArray(input.expectations)) {
+    input.expectations.forEach(validateDatabaseCommitExpectation);
+  }
 }
 
 const validateChannelInsertResult = (
@@ -460,6 +624,7 @@ export const createDatabasePluginAdapter = (
           }
         }
         if (
+          (input.expectations?.length ?? 0) > 0 ||
           input.changes.length > 1 ||
           input.changes.some(
             (change) =>
@@ -525,6 +690,102 @@ export const createDatabasePluginAdapter = (
             rows.push(...page);
             if (page.length < PAGE_SIZE) return rows;
           }
+        },
+      },
+      releases: {
+        findById: (id): Promise<ReleaseRow | null> =>
+          crud.findOne({
+            model: "releases",
+            where: [{ field: "id", value: id }],
+          }),
+        findMany(input): Promise<readonly ReleaseRow[]> {
+          if (!Number.isSafeInteger(input.limit) || input.limit <= 0) {
+            throw new DatabasePluginInputError("invalid-query");
+          }
+          return crud.findMany({
+            model: "releases",
+            where: [
+              ...(input.beforeReleaseId === undefined
+                ? []
+                : [
+                    {
+                      field: "id" as const,
+                      operator: "lt" as const,
+                      value: input.beforeReleaseId,
+                    },
+                  ]),
+              ...(input.bundleId === undefined
+                ? []
+                : [{ field: "bundle_id" as const, value: input.bundleId }]),
+              ...(input.channelId === undefined
+                ? []
+                : [{ field: "channel_id" as const, value: input.channelId }]),
+              ...(input.enabled === undefined
+                ? []
+                : [{ field: "enabled" as const, value: input.enabled }]),
+              ...(input.platform === undefined
+                ? []
+                : [{ field: "platform" as const, value: input.platform }]),
+            ],
+            limit: input.limit,
+            offset: 0,
+            orderBy: [{ field: "id", direction: "desc" }],
+          });
+        },
+        findManyByScope(input): Promise<readonly ReleaseRow[]> {
+          if (
+            input.consistency !== "strong" ||
+            !Number.isSafeInteger(input.limit) ||
+            input.limit <= 0
+          ) {
+            throw new DatabasePluginInputError("invalid-query");
+          }
+          return crud.findMany({
+            model: "releases",
+            where: [
+              { field: "scope_key", value: input.scopeKey },
+              ...(input.afterReleaseId === undefined
+                ? []
+                : [
+                    {
+                      field: "id" as const,
+                      operator: "gt" as const,
+                      value: input.afterReleaseId,
+                    },
+                  ]),
+            ],
+            limit: input.limit,
+            offset: 0,
+            orderBy: [{ field: "id", direction: "asc" }],
+          });
+        },
+      },
+      releaseCatalogs: {
+        findByScopeKey: (scopeKey): Promise<ReleaseCatalogRow | null> =>
+          crud.findOne({
+            model: "release_catalogs",
+            where: [{ field: "scope_key", value: scopeKey }],
+          }),
+        findMany(input): Promise<readonly ReleaseCatalogRow[]> {
+          if (!Number.isSafeInteger(input.limit) || input.limit <= 0) {
+            throw new DatabasePluginInputError("invalid-query");
+          }
+          return crud.findMany({
+            model: "release_catalogs",
+            where:
+              input.afterScopeKey === undefined
+                ? []
+                : [
+                    {
+                      field: "scope_key",
+                      operator: "gt",
+                      value: input.afterScopeKey,
+                    },
+                  ],
+            limit: input.limit,
+            offset: 0,
+            orderBy: [{ field: "scope_key", direction: "asc" }],
+          });
         },
       },
       channels: {
@@ -636,9 +897,6 @@ export const createDatabasePluginAdapter = (
         },
       },
     },
-    queries: implementation.getUpdateInfo
-      ? { getUpdateInfo: implementation.getUpdateInfo }
-      : {},
     commit,
     ...(implementation.dispose ? { dispose: implementation.dispose } : {}),
   };

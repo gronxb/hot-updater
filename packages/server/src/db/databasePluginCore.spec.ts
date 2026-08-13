@@ -1,7 +1,4 @@
-import {
-  createDatabaseClient,
-  type DatabasePlugin,
-} from "@hot-updater/plugin-core";
+import { type DatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
@@ -42,9 +39,10 @@ describe("createDatabasePluginCore", () => {
 
   it("rejects invalid updates before invoking low update", async () => {
     const plugin: DatabasePlugin = createInMemoryDatabasePlugin();
-    await createDatabaseClient(plugin).insertBundle(currentBundle);
     const commit = vi.spyOn(plugin, "commit");
     const core = createDatabasePluginCore(plugin, resolveFileUrl);
+    await core.api.insertBundle(currentBundle);
+    commit.mockClear();
     const result = core.api.updateBundleById(currentBundle.id, {
       id: "00000000-0000-0000-0000-000000000099",
       targetAppVersion: null,

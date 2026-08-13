@@ -1,4 +1,3 @@
-import type { BundleRow } from "@hot-updater/plugin-core";
 import {
   createDatabasePlugin,
   DatabasePluginInputError,
@@ -35,10 +34,11 @@ import {
   parsePrismaChannelRow,
   parsePrismaClientAccessKeyRow,
   parsePrismaPatchRow,
+  parsePrismaReleaseCatalogRow,
+  parsePrismaReleaseRow,
   parsePrismaRows,
   PrismaAdapterError,
 } from "./prismaRows";
-import { createPrismaGetUpdateInfo } from "./prismaUpdateInfo";
 
 type PrismaRelationMode = "prisma" | "foreign-keys";
 
@@ -69,10 +69,31 @@ const runPrismaTransaction = <TResult>(
   client: PrismaTransactionClient,
   isolationLevel: "default" | "serializable",
   callback: (client: object) => Promise<TResult>,
-): Promise<TResult> =>
-  isolationLevel === "serializable"
-    ? client.$transaction(callback, { isolationLevel: "Serializable" })
-    : client.$transaction(callback);
+): Promise<TResult> => {
+  const execute = () =>
+    isolationLevel === "serializable"
+      ? client.$transaction(callback, { isolationLevel: "Serializable" })
+      : client.$transaction(callback);
+  if (isolationLevel === "default") return execute();
+
+  return (async () => {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await execute();
+      } catch (error) {
+        if (
+          attempt >= 2 ||
+          typeof error !== "object" ||
+          error === null ||
+          !("code" in error) ||
+          error.code !== "P2034"
+        ) {
+          throw error;
+        }
+      }
+    }
+  })();
+};
 
 const assertPrismaProvider = (provider: ORMProvider): void => {
   if (provider === "mongodb") {
@@ -123,20 +144,10 @@ const findMany = async (
       return parsePrismaRows(rows, parsePrismaChannelRow);
     case "client_access_keys":
       return parsePrismaRows(rows, parsePrismaClientAccessKeyRow);
-  }
-};
-
-const assertBundleChannel = async (
-  client: object,
-  bundle: Pick<BundleRow, "channel" | "channel_id">,
-): Promise<void> => {
-  const channel = await getPrismaDelegate(client, "channels").findFirst({
-    where: { id: bundle.channel_id, name: bundle.channel },
-  });
-  if (channel === null) {
-    throw new PrismaAdapterError(
-      "bundle references a missing or mismatched channel",
-    );
+    case "releases":
+      return parsePrismaRows(rows, parsePrismaReleaseRow);
+    case "release_catalogs":
+      return parsePrismaRows(rows, parsePrismaReleaseCatalogRow);
   }
 };
 
@@ -154,40 +165,6 @@ const assertPatchReferences = async (
   }
 };
 
-const assertBundleTarget = (
-  bundle: Pick<BundleRow, "fingerprint_hash" | "target_app_version">,
-): void => {
-  if (bundle.target_app_version === null && bundle.fingerprint_hash === null) {
-    throw new PrismaAdapterError(
-      "bundle requires a target app version or fingerprint hash",
-    );
-  }
-};
-
-const createBundleTargetUpdateWhere = (
-  id: string,
-  update: Readonly<Partial<BundleRow>>,
-): Readonly<Record<string, unknown>> => {
-  if (update.target_app_version === null && update.fingerprint_hash === null) {
-    throw new PrismaAdapterError(
-      "bundle requires a target app version or fingerprint hash",
-    );
-  }
-  if (
-    update.target_app_version === null &&
-    update.fingerprint_hash === undefined
-  ) {
-    return { id, fingerprint_hash: { not: null } };
-  }
-  if (
-    update.fingerprint_hash === null &&
-    update.target_app_version === undefined
-  ) {
-    return { id, target_app_version: { not: null } };
-  }
-  return { id };
-};
-
 const createCrudImplementation = (
   client: object,
   provider: ORMSQLProvider,
@@ -198,10 +175,13 @@ const createCrudImplementation = (
     const channels = getPrismaDelegate(client, "channels");
     const existing = await channels.findFirst({ where: { id } });
     if (existing === null) return { deleted: false, reason: "not_found" };
-    const referenced = await getPrismaDelegate(client, "bundles").count({
-      where: { channel_id: id },
-    });
-    if (referenced > 0) return { deleted: false, reason: "not_empty" };
+    const referencedReleases = await getPrismaDelegate(
+      client,
+      "releases",
+    ).count({ where: { channel_id: id } });
+    if (referencedReleases > 0) {
+      return { deleted: false, reason: "not_empty" };
+    }
     try {
       await channels.deleteMany({ where: { id } });
     } catch (error) {
@@ -230,10 +210,6 @@ const createCrudImplementation = (
     return { row, inserted: row.id === input.row.id };
   },
   create: async (input) => {
-    if (input.model === "bundles") {
-      assertBundleTarget(input.data);
-      await assertBundleChannel(client, input.data);
-    }
     if (input.model === "bundle_patches") {
       await assertPatchReferences(
         client,
@@ -267,6 +243,10 @@ const createCrudImplementation = (
         return parsePrismaChannelRow(row);
       case "client_access_keys":
         return parsePrismaClientAccessKeyRow(row);
+      case "releases":
+        return parsePrismaReleaseRow(row);
+      case "release_catalogs":
+        return parsePrismaReleaseCatalogRow(row);
     }
   },
   update: async (input) => {
@@ -284,6 +264,22 @@ const createCrudImplementation = (
       const stored = await delegate.findFirst({ where: { id } });
       return stored === null ? null : parsePrismaClientAccessKeyRow(stored);
     }
+    if (input.model === "releases") {
+      const delegate = getPrismaDelegate(client, "releases");
+      const current = await delegate.findFirst({ where: { id } });
+      if (current === null) return null;
+      await delegate.update({ where: { id }, data: input.update });
+      const stored = await delegate.findFirst({ where: { id } });
+      return stored === null ? null : parsePrismaReleaseRow(stored);
+    }
+    if (input.model === "release_catalogs") {
+      const delegate = getPrismaDelegate(client, "release_catalogs");
+      const current = await delegate.findFirst({ where: { scope_key: id } });
+      if (current === null) return null;
+      await delegate.update({ where: { scope_key: id }, data: input.update });
+      const stored = await delegate.findFirst({ where: { scope_key: id } });
+      return stored === null ? null : parsePrismaReleaseCatalogRow(stored);
+    }
     const delegate = getPrismaDelegate(client, "bundles");
     if (delegate.updateMany === undefined) {
       throw new PrismaAdapterError(
@@ -292,24 +288,13 @@ const createCrudImplementation = (
     }
     const current = await delegate.findFirst({ where: { id } });
     if (current === null) return null;
-    const currentBundle = parsePrismaBundleRow(current);
-    await assertBundleChannel(client, { ...currentBundle, ...input.update });
     await delegate.updateMany({
-      where: createBundleTargetUpdateWhere(id, input.update),
+      where: { id },
       data: input.update,
     });
     const stored = await delegate.findFirst({ where: { id } });
     if (stored === null) return null;
-    const updated = parsePrismaBundleRow(stored);
-    if (
-      (input.update.target_app_version !== undefined &&
-        updated.target_app_version !== input.update.target_app_version) ||
-      (input.update.fingerprint_hash !== undefined &&
-        updated.fingerprint_hash !== input.update.fingerprint_hash)
-    ) {
-      throw new PrismaAdapterError("bundle target update was not applied");
-    }
-    return updated;
+    return parsePrismaBundleRow(stored);
   },
   delete: async (input) => {
     if (input.model === "bundles" && relationMode === "prisma") {
@@ -359,6 +344,10 @@ const createCrudImplementation = (
         return parsePrismaChannelRow(row);
       case "client_access_keys":
         return parsePrismaClientAccessKeyRow(row);
+      case "releases":
+        return parsePrismaReleaseRow(row);
+      case "release_catalogs":
+        return parsePrismaReleaseCatalogRow(row);
     }
   },
   findMany: (input) => findMany(client, input, provider),
@@ -403,7 +392,6 @@ const createPrismaImplementation = (
         ).delete(input),
       );
     },
-    getUpdateInfo: createPrismaGetUpdateInfo(client),
   };
   if (relationMode === "prisma" && !hasCallbackTransaction(client)) {
     throw new PrismaAdapterError(
@@ -424,13 +412,7 @@ const createPrismaImplementation = (
   implementation.update = (input) =>
     runPrismaTransaction(
       client,
-      relationMode === "prisma" ||
-        (input.model === "bundles" &&
-          provider === "postgresql" &&
-          (input.update.target_app_version !== undefined ||
-            input.update.fingerprint_hash !== undefined))
-        ? "serializable"
-        : "default",
+      relationMode === "prisma" ? "serializable" : "default",
       (transactionClient) =>
         createCrudImplementation(
           transactionClient,
@@ -443,7 +425,7 @@ const createPrismaImplementation = (
     transaction: (callback) =>
       runPrismaTransaction(
         client,
-        relationMode === "prisma" ? "serializable" : "default",
+        "serializable",
         async (transactionClient) => {
           return callback(
             createCrudImplementation(transactionClient, provider, relationMode),
@@ -469,7 +451,6 @@ export const prismaAdapter = (
     createDatabasePlugin({
       name: "prisma",
       models: adapter.models,
-      queries: adapter.queries,
       commit: adapter.commit,
     }),
     {

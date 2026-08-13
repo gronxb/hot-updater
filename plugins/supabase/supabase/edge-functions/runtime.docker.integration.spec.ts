@@ -48,6 +48,7 @@ const FUNCTION_NAME = "hot-updater-function";
 const FUNCTION_BASE_PATH = `/${FUNCTION_NAME}`;
 const HOT_UPDATER_BASE_PATH = "/";
 const LEGACY_HOT_UPDATER_BASE_PATH = "/api/check-update";
+const AUTHORITY_ID = "supabase.runtime-acceptance";
 const BUCKET_NAME = "hot-updater-bundles";
 const DENO_DOCKER_IMAGE = "denoland/deno:alpine";
 const DENO_CACHE_VOLUME = "hot-updater-supabase-deno-cache";
@@ -278,6 +279,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
     );
 
     seedHotUpdater = createHotUpdater({
+      authorityId: AUTHORITY_ID,
       database: supabaseDatabase({
         supabaseUrl: gatewayBaseUrl,
         supabaseAnonKey: SERVICE_ROLE_KEY,
@@ -350,13 +352,18 @@ describe.sequential("supabase edge runtime acceptance", () => {
       throw new Error("Supabase admin client was not initialized.");
     }
 
-    const { error } = await supabaseAdmin
-      .from("bundles")
-      .delete()
-      .neq("id", NIL_UUID);
-
-    if (error) {
-      throw error;
+    for (const [table, key] of [
+      ["release_catalogs", "scope_key"],
+      ["releases", "id"],
+      ["bundle_patches", "id"],
+      ["bundles", "id"],
+      ["channels", "id"],
+    ] as const) {
+      const { error } = await supabaseAdmin
+        .from(table)
+        .delete()
+        .neq(key, NIL_UUID);
+      if (error) throw error;
     }
   });
 
@@ -622,7 +629,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
       [
         "ALTER TABLE public.bundles",
         "ADD COLUMN tenant_tag text NOT NULL DEFAULT 'default-tenant',",
-        "ADD COLUMN channel_upper text GENERATED ALWAYS AS (upper(channel)) STORED",
+        "ADD COLUMN file_hash_upper text GENERATED ALWAYS AS (upper(file_hash)) STORED",
       ].join(" "),
     );
 
@@ -647,17 +654,17 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
       const result = await supabaseAdmin
         .from("bundles")
-        .select("tenant_tag, channel_upper")
+        .select("tenant_tag, file_hash_upper")
         .eq("id", owner.id)
         .single();
       if (result.error) throw result.error;
       expect(result.data).toEqual({
         tenant_tag: "default-tenant",
-        channel_upper: "PRODUCTION",
+        file_hash_upper: "HASH-OWNER",
       });
     } finally {
       runDatabaseSql(
-        "ALTER TABLE public.bundles DROP COLUMN tenant_tag, DROP COLUMN channel_upper",
+        "ALTER TABLE public.bundles DROP COLUMN tenant_tag, DROP COLUMN file_hash_upper",
       );
     }
   });
@@ -709,7 +716,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
       ...base,
       id: "00000000-0000-0000-0000-000000000202",
       fileHash: "hash-owner",
-      message: "before",
+      gitCommitHash: "before",
       patches: [
         {
           baseBundleId: base.id,
@@ -725,8 +732,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
     await expect(
       databaseClient.mutate((database) =>
         database.updateBundleById(owner.id, {
-          enabled: false,
-          message: "after",
+          gitCommitHash: "after",
           patches: [
             {
               baseBundleId: "00000000-0000-0000-0000-000000000299",
@@ -741,20 +747,19 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
     await expect(databaseClient.getBundleById(owner.id)).resolves.toMatchObject(
       {
-        enabled: true,
-        message: "before",
+        gitCommitHash: "before",
         patches: owner.patches,
       },
     );
   });
 
-  it("atomically applies explicit nulls, false, and an empty patch list", async () => {
+  it("atomically applies explicit nulls and an empty patch list", async () => {
     const base = runtimeBundle("00000000-0000-0000-0000-000000000301");
     const owner = {
       ...base,
       id: "00000000-0000-0000-0000-000000000302",
       fileHash: "hash-owner",
-      message: "before",
+      gitCommitHash: "before",
       patches: [
         {
           baseBundleId: base.id,
@@ -769,16 +774,14 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
     await databaseClient.mutate((database) =>
       database.updateBundleById(owner.id, {
-        enabled: false,
-        message: null,
+        gitCommitHash: null,
         patches: [],
       }),
     );
 
     await expect(databaseClient.getBundleById(owner.id)).resolves.toMatchObject(
       {
-        enabled: false,
-        message: null,
+        gitCommitHash: null,
         patches: [],
       },
     );
@@ -1256,6 +1259,7 @@ const writeSupabaseRuntimeFiles = async ({
       "plugins/supabase/supabase/edge-functions/index.ts",
     ),
     {
+      AUTHORITY_ID,
       BUCKET_NAME,
       FUNCTION_NAME,
     },

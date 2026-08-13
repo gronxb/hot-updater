@@ -24,13 +24,16 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "bundleId",
+        saveResultFieldsAs: {
+          releaseId: "releaseId",
+        },
       },
     );
     await app.control(
       "compute rollout sample",
       "/e2e/compute-rollout-sample",
       {
-        bundleId: "$bundleId",
+        releaseId: "$releaseId",
       },
       {
         saveResultFieldsAs: {
@@ -58,7 +61,7 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert rollout action result",
       "update-action-result",
-      "current-channel -> installed $bundleId",
+      "current-channel -> installed Release $releaseId / Bundle $bundleId",
       { exactText: true },
     );
     await app.control(
@@ -101,7 +104,7 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert excluded cohort rollback action result",
       "update-action-result",
-      "current-channel -> installed 00000000-0000-0000-0000-000000000000",
+      "current-channel -> selected BUILTIN",
       { exactText: true },
     );
     await app.control(

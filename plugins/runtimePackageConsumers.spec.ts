@@ -3,6 +3,7 @@ import {
   access,
   mkdir,
   mkdtemp,
+  readFile,
   readdir,
   rm,
   symlink,
@@ -116,6 +117,23 @@ afterAll(async () => {
 });
 
 describe("packed provider entrypoints", () => {
+  it("inlines plugin-core's semver runtime for native app bundlers", async () => {
+    const { packageDirectory } = await packProvider("plugin-core");
+
+    for (const file of [
+      "releaseCatalogCompiler.cjs",
+      "releaseCatalogCompiler.mjs",
+      "semverSatisfies.cjs",
+      "semverSatisfies.mjs",
+    ]) {
+      const source = await readFile(
+        path.join(packageDirectory, "dist", file),
+        "utf8",
+      );
+      expect(source).not.toMatch(/(?:from\s+|require\()(["'])verkit\1/);
+    }
+  });
+
   it.each([
     {
       directory: "aws",
@@ -265,7 +283,7 @@ for (const operation of ["put", "get", "getDownloadUrl", "exists", "delete"]) {
       rootSpecifier,
     )};\nimport { d1Database, r2Storage } from ${JSON.stringify(
       moduleSpecifier,
-    )};\ndeclare const binding: Parameters<typeof d1Database>[0];\ndeclare const rootStorageConfig: Parameters<typeof rootStorage>[0];\ndeclare const storageConfig: Parameters<typeof r2Storage>[0];\nconst database = d1Database(binding);\nconst nodeStorage = rootStorage(rootStorageConfig);\nconst workerStorage = r2Storage(storageConfig);\nvoid database.models.bundles;\nvoid database.models.bundlePatches;\nvoid database.models.channels;\nvoid database.models.analytics;\nvoid database.models.clientAccessKeys;\nvoid database.queries.getUpdateInfo;\nvoid database.commit;\nvoid nodeStorage.put;\nvoid nodeStorage.get;\nvoid nodeStorage.exists;\nvoid nodeStorage.delete;\nvoid workerStorage.put;\nvoid workerStorage.get;\nvoid workerStorage.getDownloadUrl;\nvoid workerStorage.exists;\nvoid workerStorage.delete;\n`;
+    )};\ndeclare const binding: Parameters<typeof d1Database>[0];\ndeclare const rootStorageConfig: Parameters<typeof rootStorage>[0];\ndeclare const storageConfig: Parameters<typeof r2Storage>[0];\nconst database = d1Database(binding);\nconst nodeStorage = rootStorage(rootStorageConfig);\nconst workerStorage = r2Storage(storageConfig);\nvoid database.models.bundles;\nvoid database.models.bundlePatches;\nvoid database.models.channels;\nvoid database.models.releaseCatalogs;\nvoid database.models.releases;\nvoid database.models.analytics;\nvoid database.models.clientAccessKeys;\nvoid database.commit;\nvoid nodeStorage.put;\nvoid nodeStorage.get;\nvoid nodeStorage.exists;\nvoid nodeStorage.delete;\nvoid workerStorage.put;\nvoid workerStorage.get;\nvoid workerStorage.getDownloadUrl;\nvoid workerStorage.exists;\nvoid workerStorage.delete;\n`;
     await writeFile(moduleConsumer, consumerSource);
     await writeFile(commonJsConsumer, consumerSource);
 

@@ -6,7 +6,7 @@ import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { config } from "dotenv";
-import { Kysely, MysqlDialect } from "kysely";
+import { Kysely, MysqlDialect, sql } from "kysely";
 import { createPool } from "mysql2";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -77,4 +77,18 @@ export async function closeDatabase() {
   })();
 
   await closeDatabasePromise;
+}
+
+export async function resetDecisionFixtures() {
+  await kysely.transaction().execute(async (transaction) => {
+    for (const table of [
+      "bundle_patches",
+      "release_catalogs",
+      "releases",
+      "bundles",
+      "channels",
+    ] as const) {
+      await sql`DELETE FROM ${sql.table(table)}`.execute(transaction);
+    }
+  });
 }

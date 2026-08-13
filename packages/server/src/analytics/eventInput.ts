@@ -23,6 +23,8 @@ const eventKeys = new Set([
   "cohort",
   "fingerprintHash",
   "fromBundleId",
+  "fromReleaseId",
+  "toReleaseId",
   "updateStrategy",
 ]);
 
@@ -122,11 +124,20 @@ function requireEvent(
     cohort: requireStringField(payload, "cohort"),
     fingerprintHash: requireNullableStringField(payload, "fingerprintHash"),
     sdkVersion,
+    fromReleaseId:
+      payload.fromReleaseId === undefined
+        ? null
+        : requireNullableStringField(payload, "fromReleaseId"),
+    toReleaseId:
+      payload.toReleaseId === undefined
+        ? null
+        : requireNullableStringField(payload, "toReleaseId"),
   };
   const type = requireStringField(payload, "type");
   switch (type) {
     case "UPDATE_APPLIED":
-    case "RECOVERED": {
+    case "RECOVERED":
+    case "RELEASE_ADOPTED": {
       const updateStrategy = requireStringField(payload, "updateStrategy");
       if (updateStrategy !== "fingerprint" && updateStrategy !== "appVersion") {
         throw new AnalyticsBadRequestError(

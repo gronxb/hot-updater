@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/plugin-core";
+import type { Bundle, ChannelRow, ReleaseRow } from "@hot-updater/plugin-core";
 import { createServerFn } from "@tanstack/react-start";
 
 import { parseActiveInstallationInput } from "./analytics-input";
@@ -34,6 +34,11 @@ type AnalyticsOverviewDependencies = {
     readonly limit: number;
     readonly page: number;
   }) => Promise<BundlePage>;
+  readonly getReleases: (options: {
+    readonly beforeReleaseId?: string;
+    readonly limit: number;
+  }) => Promise<readonly ReleaseRow[]>;
+  readonly getChannels: () => Promise<readonly ChannelRow[]>;
   readonly pageSize?: number;
 };
 
@@ -126,9 +131,34 @@ const collectBundles = async (
   }
 };
 
+const collectReleases = async (
+  getReleases: AnalyticsOverviewDependencies["getReleases"],
+  pageSize: number,
+): Promise<readonly ReleaseRow[]> => {
+  const releases: ReleaseRow[] = [];
+  const cursors = new Set<string>();
+  let beforeReleaseId: string | undefined;
+  while (true) {
+    const page = await getReleases({ beforeReleaseId, limit: pageSize });
+    releases.push(...page);
+    if (page.length < pageSize) return releases;
+    const nextCursor = page.at(-1)?.id;
+    if (!nextCursor || cursors.has(nextCursor)) {
+      throw new AnalyticsBundlePaginationError(
+        releases.length,
+        "release cursor did not advance",
+      );
+    }
+    cursors.add(nextCursor);
+    beforeReleaseId = nextCursor;
+  }
+};
+
 export const collectAnalyticsOverview = async ({
   runtime,
   getBundles,
+  getReleases,
+  getChannels,
   pageSize = DEFAULT_ANALYTICS_PAGE_SIZE,
 }: AnalyticsOverviewDependencies): Promise<AnalyticsOverview> => {
   const { capabilities } = await getAnalyticsCapabilities(runtime);
@@ -136,12 +166,18 @@ export const collectAnalyticsOverview = async ({
     throw new AnalyticsNotSupportedError();
   }
 
-  const bundles = await collectBundles(getBundles, pageSize);
+  const [bundles, releases, channels] = await Promise.all([
+    collectBundles(getBundles, pageSize),
+    collectReleases(getReleases, pageSize),
+    getChannels(),
+  ]);
   const overview = await (
     runtime as import("@hot-updater/server").AnalyticsProvider
   ).getBundleEventOverview();
   return createAnalyticsOverviewFromCounts(
     bundles,
+    releases,
+    channels,
     overview.trackedInstallations,
     overview.bundles,
   );
@@ -159,10 +195,13 @@ export const getAnalyticsOverviewRpc = createServerFn({
   method: "GET",
 }).handler(async () => {
   const { prepareConfig } = await import("./server/config.server");
-  const { databaseClient, hotUpdater } = await prepareConfig();
+  const { config, databaseClient, hotUpdater } = await prepareConfig();
   return collectAnalyticsOverview({
     runtime: hotUpdater,
     getBundles: (options) => databaseClient.getBundles(options),
+    getReleases: (options) => config.database.models.releases.findMany(options),
+    getChannels: () =>
+      config.database.models.channels.list({}).then(({ channels }) => channels),
   });
 });
 

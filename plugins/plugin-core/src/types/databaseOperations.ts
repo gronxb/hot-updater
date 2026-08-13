@@ -1,5 +1,3 @@
-import type { GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
-
 import type { DatabaseCommit, DatabaseCommitResult } from "./databasePlugin";
 import type {
   DatabaseDistinctFields,
@@ -15,6 +13,8 @@ import type {
   ClientAccessKeyRow,
   DatabaseModel,
   DatabaseRow,
+  ReleaseCatalogRow,
+  ReleaseRow,
 } from "./databaseRows";
 
 export type DatabaseCapability =
@@ -39,6 +39,22 @@ export type DatabaseModelCapabilities = {
     readonly update: false;
     readonly delete: true;
     readonly count: true;
+    readonly findOne: true;
+    readonly findMany: true;
+  };
+  readonly releases: {
+    readonly create: true;
+    readonly update: true;
+    readonly delete: true;
+    readonly count: true;
+    readonly findOne: true;
+    readonly findMany: true;
+  };
+  readonly release_catalogs: {
+    readonly create: true;
+    readonly update: true;
+    readonly delete: false;
+    readonly count: false;
     readonly findOne: true;
     readonly findMany: true;
   };
@@ -102,21 +118,27 @@ export type CreateDatabaseInput<
     ? { readonly onConflict?: "ignore" }
     : { readonly onConflict?: never });
 
-type BundleRowUpdateFields = Partial<
-  Omit<BundleRow, "id" | "channel" | "channel_id">
+type BundleRowUpdateFields = Partial<Omit<BundleRow, "id">>;
+
+export type ReleaseRowUpdate = Partial<
+  Pick<
+    ReleaseRow,
+    | "revision"
+    | "scope_key"
+    | "target_app_version"
+    | "fingerprint_hash"
+    | "enabled"
+    | "should_force_update"
+    | "message"
+    | "rollout_cohort_count"
+    | "target_cohorts"
+    | "updated_at_ms"
+  >
 >;
 
-export type BundleRowUpdate = BundleRowUpdateFields &
-  (
-    | {
-        readonly channel: string;
-        readonly channel_id: string;
-      }
-    | {
-        readonly channel?: never;
-        readonly channel_id?: never;
-      }
-  );
+export type ReleaseCatalogRowUpdate = Omit<ReleaseCatalogRow, "scope_key">;
+
+export type BundleRowUpdate = BundleRowUpdateFields;
 export type ClientAccessKeyRowUpdate = Pick<
   ClientAccessKeyRow,
   "revoked_at_ms"
@@ -124,6 +146,8 @@ export type ClientAccessKeyRowUpdate = Pick<
 
 export type DatabaseRowUpdate<TModel extends UpdateDatabaseModel> = {
   readonly bundles: BundleRowUpdate;
+  readonly releases: ReleaseRowUpdate;
+  readonly release_catalogs: ReleaseCatalogRowUpdate;
   readonly client_access_keys: ClientAccessKeyRowUpdate;
 }[TModel];
 
@@ -298,7 +322,6 @@ export interface DatabasePluginImplementation {
   deleteChannel(
     input: import("./databasePlugin").ChannelDeleteInput,
   ): Promise<import("./databasePlugin").ChannelDeleteResult>;
-  getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;
   transaction?: <TResult>(
     callback: (
       transaction: TransactionDatabasePluginImplementation,

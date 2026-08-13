@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/core";
+import type { LegacyBundle } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,7 +9,7 @@ import { createDatabaseClient } from "./databaseClient";
 import { bundleToRow } from "./databaseRows";
 import type { BundleRow, BundleRowUpdate } from "./types";
 
-const createBundle = (): Bundle => ({
+const createBundle = (): LegacyBundle => ({
   id: "bundle-1",
   platform: "ios",
   shouldForceUpdate: false,
@@ -78,23 +78,23 @@ describe("database client partial updates", () => {
     const fixture = createFixture(2);
 
     await Promise.all([
-      fixture.client.updateBundleById("bundle-1", { enabled: false }),
-      fixture.client.updateBundleById("bundle-1", { message: "new" }),
+      fixture.client.updateBundleById("bundle-1", { fileHash: "new-hash" }),
+      fixture.client.updateBundleById("bundle-1", { gitCommitHash: "new" }),
     ]);
 
     expect(fixture.getRow()).toMatchObject({
-      enabled: false,
-      message: "new",
+      file_hash: "new-hash",
+      git_commit_hash: "new",
     });
   });
 
   it("forwards explicit null without touching omitted scalars or patches", async () => {
     const fixture = createFixture(1);
 
-    await fixture.client.updateBundleById("bundle-1", { message: null });
+    await fixture.client.updateBundleById("bundle-1", { gitCommitHash: null });
 
-    expect(fixture.updateInputs).toEqual([{ message: null }]);
-    expect(fixture.getRow().enabled).toBe(true);
+    expect(fixture.updateInputs).toEqual([{ git_commit_hash: null }]);
+    expect(fixture.getRow().file_hash).toBe("hash-1");
     expect(fixture.getPatchDeleteCount()).toBe(0);
     expect(fixture.getPatchCreateCount()).toBe(0);
   });

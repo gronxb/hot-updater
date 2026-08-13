@@ -3,6 +3,7 @@ import type { Bundle, Platform } from "@hot-updater/core";
 export type {
   AppVersionGetBundlesArgs,
   Bundle,
+  LegacyBundle,
   FingerprintGetBundlesArgs,
   GetBundlesArgs,
   Platform,
@@ -43,14 +44,8 @@ export interface DatabaseBundleIdFilter {
 }
 
 export interface DatabaseBundleQueryWhere {
-  channel?: string;
   platform?: Platform;
-  enabled?: boolean;
   id?: DatabaseBundleIdFilter;
-  targetAppVersion?: string | null;
-  targetAppVersionIn?: string[];
-  targetAppVersionNotNull?: boolean;
-  fingerprintHash?: string | null;
 }
 
 export interface DatabaseBundleQueryOrder {
@@ -452,6 +447,13 @@ export type FingerprintExtraSources =
     };
 
 export type ConfigInput = {
+  /**
+   * Stable project/server identity used to isolate Release catalog receipts.
+   * Every endpoint serving the same catalog must use the same value.
+   *
+   * @default "default"
+   */
+  authorityId?: string;
   /**
    * @hidden
    * Local cache directory used by Hot Updater CLI. Set to `null` to disable.

@@ -15,6 +15,9 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "bundleA",
+        saveResultFieldsAs: {
+          releaseId: "releaseA",
+        },
       },
     );
     await app.launch("launch diff bundle A app");
@@ -64,6 +67,9 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "bundleB",
+        saveResultFieldsAs: {
+          releaseId: "releaseB",
+        },
       },
     );
     await app.launch("launch diff bundle B app");
@@ -108,6 +114,9 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "bundleC",
+        saveResultFieldsAs: {
+          releaseId: "releaseC",
+        },
       },
     );
     await app.control(
@@ -169,6 +178,9 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "bundleD",
+        saveResultFieldsAs: {
+          releaseId: "releaseD",
+        },
       },
     );
     await app.control(

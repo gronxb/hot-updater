@@ -35,6 +35,8 @@ import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamoDB";
 import { DynamoDBManager } from "./dynamodb";
 
 const compatibleTable = {
+  TableArn:
+    "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata",
   BillingModeSummary: { BillingMode: "PAY_PER_REQUEST" },
   OnDemandThroughput: {
     MaxReadRequestUnits: 4_000,
@@ -66,6 +68,17 @@ const compatibleTable = {
   ],
 } as const;
 
+const authorityId = "aws.a7fojPd82orCxuT1JRxrJel6qQzW3ICOporCQ4j1uXA";
+
+const completeMigrationMarker = {
+  Item: {
+    pk: { S: "_hot-updater" },
+    sk: { S: "migration.release-catalog-v1" },
+    authority_id: { S: authorityId },
+    phase: { S: "complete" },
+  },
+};
+
 describe("DynamoDBManager", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -77,7 +90,11 @@ describe("DynamoDBManager", () => {
       },
     });
     mocks.updateContinuousBackups.mockResolvedValue({});
-    mocks.getItem.mockResolvedValue({});
+    mocks.getItem.mockImplementation(async (input) =>
+      input.Key?.sk?.S === "migration.release-catalog-v1"
+        ? completeMigrationMarker
+        : {},
+    );
     mocks.putItem.mockResolvedValue({});
     mocks.query.mockResolvedValue({ Items: [] });
     mocks.transactWriteItems.mockResolvedValue({});
@@ -89,7 +106,9 @@ describe("DynamoDBManager", () => {
     mocks.describeTable.mockRejectedValue({
       name: "ResourceNotFoundException",
     });
-    mocks.createTable.mockResolvedValue({});
+    mocks.createTable.mockResolvedValue({
+      TableDescription: compatibleTable,
+    });
     mocks.waitUntilTableExists.mockResolvedValue({ state: "SUCCESS" });
     const manager = new DynamoDBManager("ap-northeast-2", {
       accessKeyId: "test-access-key",
@@ -419,6 +438,146 @@ describe("DynamoDBManager", () => {
       message: expect.stringContaining("mismatched channel_id"),
     });
   });
+
+  it("backfills Release projections before removing legacy Bundle policy", async () => {
+    // Given
+    const channel = channelItem("channel-production", "production");
+    const bundle = legacyBundleItem(
+      "00000000-0000-0000-0000-000000000001",
+      "production",
+      "channel-production",
+    );
+    mocks.describeTable.mockResolvedValue({ Table: compatibleTable });
+    mocks.query
+      .mockResolvedValueOnce({ Items: [channel] })
+      .mockResolvedValueOnce({ Items: [bundle] });
+    mocks.getItem.mockImplementation(async (input) => {
+      const partition = input.Key?.pk?.S;
+      if (partition === "_hot-updater#channel-names") {
+        return {
+          Item: {
+            pk: { S: partition },
+            sk: { S: "production" },
+            channel_id: { S: "channel-production" },
+          },
+        };
+      }
+      if (partition === "channels") return { Item: channel };
+      return {};
+    });
+    const manager = new DynamoDBManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    // When
+    await manager.ensureTable("hot-updater-metadata");
+
+    // Then
+    const putItems = mocks.putItem.mock.calls.map(([input]) => input.Item);
+    expect(putItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          pk: { S: expect.stringMatching(/^release-scope#/u) },
+          sk: { S: "00000000-0000-0000-0000-000000000001" },
+          row: {
+            M: expect.objectContaining({
+              bundle_id: {
+                S: "00000000-0000-0000-0000-000000000001",
+              },
+              channel_id: { S: "channel-production" },
+              revision: { N: "1" },
+            }),
+          },
+        }),
+        expect.objectContaining({
+          pk: { S: "_hot-updater#release-scope-by-id" },
+          sk: { S: "00000000-0000-0000-0000-000000000001" },
+        }),
+        expect.objectContaining({
+          pk: { S: "release_catalogs" },
+          row: {
+            M: expect.objectContaining({
+              authority_id: { S: authorityId },
+              channel_id: { S: "channel-production" },
+              generation: { N: "1" },
+            }),
+          },
+        }),
+      ]),
+    );
+    const cleanup = mocks.updateItem.mock.calls.find(
+      ([input]) => input.Key?.pk?.S === "bundles",
+    )?.[0];
+    expect(cleanup).toMatchObject({
+      ExpressionAttributeValues: expect.objectContaining({
+        ":gsi1pk": { S: "bundle#ios" },
+        ":one": { N: "1" },
+      }),
+      UpdateExpression: expect.stringContaining("REMOVE #row.#policy0"),
+    });
+    expect(
+      mocks.updateItem.mock.calls.map(
+        ([input]) => input.ExpressionAttributeValues?.[":toPhase"]?.S,
+      ),
+    ).toEqual(expect.arrayContaining(["cleanup_pending", "complete"]));
+  });
+
+  it("resumes cleanup without recompiling projections", async () => {
+    // Given
+    const channel = channelItem("channel-production", "production");
+    const bundle = legacyBundleItem(
+      "00000000-0000-0000-0000-000000000001",
+      "production",
+      "channel-production",
+    );
+    mocks.describeTable.mockResolvedValue({ Table: compatibleTable });
+    mocks.query
+      .mockResolvedValueOnce({ Items: [channel] })
+      .mockResolvedValueOnce({ Items: [bundle] });
+    mocks.getItem.mockImplementation(async (input) => {
+      const partition = input.Key?.pk?.S;
+      if (partition === "_hot-updater#channel-names") {
+        return {
+          Item: {
+            pk: { S: partition },
+            sk: { S: "production" },
+            channel_id: { S: "channel-production" },
+          },
+        };
+      }
+      if (partition === "channels") return { Item: channel };
+      if (input.Key?.sk?.S === "migration.release-catalog-v1") {
+        return {
+          Item: {
+            ...completeMigrationMarker.Item,
+            phase: { S: "cleanup_pending" },
+          },
+        };
+      }
+      return {};
+    });
+    const manager = new DynamoDBManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    // When
+    await manager.ensureTable("hot-updater-metadata");
+
+    // Then
+    expect(mocks.putItem).not.toHaveBeenCalled();
+    expect(
+      mocks.updateItem.mock.calls.filter(
+        ([input]) => input.Key?.pk?.S === "bundles",
+      ),
+    ).toHaveLength(1);
+    expect(
+      mocks.updateItem.mock.calls.map(
+        ([input]) => input.ExpressionAttributeValues?.[":toPhase"]?.S,
+      ),
+    ).toContain("complete");
+  });
 });
 
 const channelItem = (
@@ -437,11 +596,30 @@ const legacyBundleItem = (id: string, channel: string, channelId?: string) => ({
   pk: { S: "bundles" },
   sk: { S: id },
   version: { N: "1" },
+  relation_count: { N: "0" },
+  owned_patch_count: { N: "0" },
+  gsi1pk: { S: `bundle#ios#${channel}#enabled` },
+  gsi1sk: { S: id },
   row: {
     M: {
       id: { S: id },
+      platform: { S: "ios" },
+      file_hash: { S: "file-hash" },
+      git_commit_hash: { NULL: true },
+      storage_uri: { S: `s3://bucket/${id}.zip` },
+      metadata: { M: {} },
+      manifest_storage_uri: { NULL: true },
+      manifest_file_hash: { NULL: true },
+      asset_base_storage_uri: { NULL: true },
       channel: { S: channel },
       ...(channelId ? { channel_id: { S: channelId } } : {}),
+      enabled: { BOOL: true },
+      should_force_update: { BOOL: false },
+      message: { NULL: true },
+      target_app_version: { S: ">=1.0.0" },
+      fingerprint_hash: { NULL: true },
+      rollout_cohort_count: { N: "1000" },
+      target_cohorts: { L: [] },
     },
   },
 });

@@ -152,9 +152,9 @@ export const buildDrizzleWhere = <TModel extends DatabaseModel>(
   const items = Array.isArray(where) ? where : [];
   const [first, ...rest] = items;
   if (first === undefined) return undefined;
-  let expression = predicate(provider, table, first);
+  let expression = predicate<TModel>(provider, table, first);
   for (const condition of rest) {
-    const next = predicate(provider, table, condition);
+    const next = predicate<TModel>(provider, table, condition);
     expression =
       condition.connector === "OR"
         ? sql`(${expression} or ${next})`

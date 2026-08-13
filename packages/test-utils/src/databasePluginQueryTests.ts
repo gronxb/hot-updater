@@ -2,10 +2,7 @@ import type { DatabaseChange, DatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import type { DatabasePluginTestState } from "./databasePluginTestRunner";
-import {
-  createBundleRowFixture,
-  createChannelRowFixture,
-} from "./databaseTestFixtures";
+import { createBundleRowFixture } from "./databaseTestFixtures";
 
 type QueryTestState = DatabasePluginTestState<DatabasePlugin>;
 
@@ -14,23 +11,14 @@ const commit = (plugin: DatabasePlugin, ...changes: DatabaseChange[]) =>
 
 const seedRows = async (plugin: DatabasePlugin) => {
   const rows = [
-    {
-      ...createBundleRowFixture("501"),
-      target_app_version: null,
-      fingerprint_hash: "fingerprint-501",
-    },
-    createBundleRowFixture("502", "preview"),
+    createBundleRowFixture("501"),
+    createBundleRowFixture("502"),
     {
       ...createBundleRowFixture("503"),
       platform: "android" as const,
-      target_app_version: "2.0.0",
     },
   ];
   for (const row of rows) {
-    await plugin.models.channels.insert({
-      row: createChannelRowFixture(row.channel),
-      onConflict: "returnExisting",
-    });
     await commit(plugin, {
       model: "bundles",
       operation: "insert",
@@ -58,31 +46,20 @@ export const registerDatabasePluginQueryTests = (
       expect(result.map(({ id }) => id)).toEqual([rows[1]!.id]);
     });
 
-    it("supports exact domain filters without arbitrary field predicates", async () => {
+    it("supports the artifact platform filter", async () => {
       const plugin = state.getPlugin();
       const rows = await seedRows(plugin);
 
       await expect(
         plugin.models.bundles.findMany({
           where: {
-            channel: "production",
             platform: "ios",
-            enabled: true,
-            fingerprintHash: "fingerprint-501",
           },
           limit: 100,
           offset: 0,
           orderBy: { field: "id", direction: "asc" },
         }),
-      ).resolves.toEqual([rows[0]]);
-      await expect(
-        plugin.models.bundles.findMany({
-          where: { targetAppVersionNotNull: true },
-          limit: 100,
-          offset: 0,
-          orderBy: { field: "id", direction: "asc" },
-        }),
-      ).resolves.toEqual([rows[1], rows[2]]);
+      ).resolves.toEqual([rows[0], rows[1]]);
     });
 
     it("supports id sets for patch hydration", async () => {

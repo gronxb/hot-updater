@@ -107,6 +107,27 @@ class HotUpdaterModule internal constructor(
         return parsedAssets
     }
 
+    private fun parseSelection(params: ReadableMap): PersistedSelection? {
+        if (!params.hasKey("selection") || params.isNull("selection")) return null
+        val selection = params.getMap("selection") ?: return null
+        return PersistedSelection(
+            kind = selection.getString("kind") ?: return null,
+            releaseId = selection.getString("releaseId"),
+            bundleId = selection.getString("bundleId") ?: return null,
+            authorityId = selection.getString("authorityId"),
+            scopeKey = selection.getString("scopeKey"),
+            generation =
+                if (selection.hasKey("generation") && !selection.isNull("generation")) {
+                    selection.getDouble("generation").toLong()
+                } else {
+                    null
+                },
+            catalogHash = selection.getString("catalogHash"),
+            channel = selection.getString("channel") ?: "",
+            selectionContextHash = selection.getString("selectionContextHash"),
+        )
+    }
+
     override fun reload(promise: Promise) {
         moduleScope.launch {
             try {
@@ -162,6 +183,7 @@ class HotUpdaterModule internal constructor(
                 val manifestFileHash = params.getString("manifestFileHash")
                 val changedAssets = parseChangedAssets(params)
                 val channel = params.getString("channel")
+                val selection = parseSelection(params)
 
                 val impl = getInstance()
 
@@ -173,6 +195,7 @@ class HotUpdaterModule internal constructor(
                     manifestFileHash,
                     changedAssets,
                     channel,
+                    selection,
                 ) { progress ->
                     // Post to Main thread for React Native event emission
                     Handler(Looper.getMainLooper()).post {
@@ -231,6 +254,59 @@ class HotUpdaterModule internal constructor(
                 promise.reject(e.code, e.message)
             } catch (e: Exception) {
                 promise.reject("UNKNOWN_ERROR", e.message ?: "An unknown error occurred")
+            }
+        }
+    }
+
+    override fun acceptReleaseCatalog(params: ReadableMap): Boolean {
+        val authorityId = params.getString("authorityId") ?: return false
+        val scopeKey = params.getString("scopeKey") ?: return false
+        val catalogHash = params.getString("catalogHash") ?: return false
+        val channel = params.getString("channel") ?: return false
+        val selectionContextHash = params.getString("selectionContextHash") ?: return false
+        return getInstance().acceptReleaseCatalog(
+            authorityId = authorityId,
+            scopeKey = scopeKey,
+            generation = params.getDouble("generation").toLong(),
+            catalogHash = catalogHash,
+            channel = channel,
+            selectionContextHash = selectionContextHash,
+        )
+    }
+
+    override fun getActiveUpdateState(): WritableNativeMap =
+        getInstance().getActiveUpdateState().toWritableNativeMap()
+
+    override fun isReleaseSelectionCurrent(params: ReadableMap): Boolean {
+        val authorityId = params.getString("authorityId") ?: return false
+        val scopeKey = params.getString("scopeKey") ?: return false
+        val catalogHash = params.getString("catalogHash") ?: return false
+        val channel = params.getString("channel") ?: return false
+        val selectionContextHash = params.getString("selectionContextHash") ?: return false
+        return getInstance().isReleaseSelectionCurrent(
+            authorityId = authorityId,
+            scopeKey = scopeKey,
+            generation = params.getDouble("generation").toLong(),
+            catalogHash = catalogHash,
+            channel = channel,
+            selectionContextHash = selectionContextHash,
+        )
+    }
+
+    override fun commitReleaseSelection(
+        params: ReadableMap,
+        promise: Promise,
+    ) {
+        val selection = parseSelection(params)
+        if (selection == null) {
+            promise.reject("INVALID_SELECTION", "Invalid Release selection")
+            return
+        }
+        moduleScope.launch {
+            try {
+                promise.resolve(getInstance().commitReleaseSelection(selection))
+            } catch (error: Exception) {
+                promise.reject("UNKNOWN_ERROR", error.message, error)
             }
         }
     }

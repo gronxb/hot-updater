@@ -1,4 +1,8 @@
-import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
+import {
+  type GetBundlesArgs,
+  type LegacyBundle as Bundle,
+  NIL_UUID,
+} from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
 import { createHotUpdater } from "../../../packages/server/src/index";

@@ -1,8 +1,4 @@
-import {
-  createDatabasePlugin,
-  resolveUpdateInfoFromBundles,
-  rowsToBundles,
-} from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
   type DatabasePluginImplementation,
@@ -73,23 +69,14 @@ export const mockDatabase = (config: MockDatabaseConfig) => {
           if (!data.channels.has(id)) {
             return { deleted: false, reason: "not_found" };
           }
-          if ([...data.bundles.values()].some((row) => row.channel_id === id)) {
+          if (
+            [...data.releases.values()].some((row) => row.channel_id === id)
+          ) {
             return { deleted: false, reason: "not_empty" };
           }
           data.channels.delete(id);
           return { deleted: true };
         }),
-      getUpdateInfo: (args) =>
-        read(() =>
-          resolveUpdateInfoFromBundles({
-            args,
-            bundles: rowsToBundles(
-              [...data.bundles.values()],
-              [...data.bundlePatches.values()],
-              [...data.bundles.values()],
-            ),
-          }),
-        ),
       transaction: (callback) =>
         mutate(async () => {
           const transactionData = cloneMockDatabaseData(data);
@@ -105,7 +92,6 @@ export const mockDatabase = (config: MockDatabaseConfig) => {
   return createDatabasePlugin({
     name: "mockDatabase",
     models: adapter.models,
-    queries: adapter.queries,
     commit: adapter.commit,
   });
 };

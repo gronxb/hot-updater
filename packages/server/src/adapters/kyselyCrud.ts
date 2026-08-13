@@ -2,9 +2,9 @@ import {
   DatabasePluginInputError,
   type BundleEventRow,
   type BundlePatchRow,
-  type BundleRow,
   type ChannelRow,
   type ClientAccessKeyRow,
+  type ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
 import type {
   DatabasePluginImplementation,
@@ -20,9 +20,14 @@ import {
 } from "./databaseConstraintErrors";
 import {
   fromStoredBundleRow,
+  fromStoredReleaseCatalogRow,
+  fromStoredReleaseRow,
   type StoredBundleRow,
+  type StoredReleaseRow,
   toStoredBundleRow,
   toStoredBundleUpdate,
+  toStoredReleaseRow,
+  toStoredReleaseUpdate,
 } from "./databasePluginUtils";
 import { buildKyselyWhere } from "./kyselyQuery";
 
@@ -115,7 +120,6 @@ const updateBundle = async (
   executor: QueryExecutorProvider,
   id: string,
   update: object,
-  targetPredicate: RawBuilder<boolean> | undefined,
 ): Promise<void> => {
   const assignments = Object.entries(update)
     .filter(([, value]) => value !== undefined)
@@ -123,9 +127,7 @@ const updateBundle = async (
   if (assignments.length === 0) return;
   await sql`update ${sql.table("bundles")} set ${sql.join(
     assignments,
-  )} where ${sql.ref("id")} = ${id}${
-    targetPredicate === undefined ? empty : sql` and ${targetPredicate}`
-  }`.execute(executor);
+  )} where ${sql.ref("id")} = ${id}`.execute(executor);
 };
 
 const updateClientAccessKey = async (
@@ -138,25 +140,20 @@ const updateClientAccessKey = async (
   )} = ${revokedAtMs} where ${sql.ref("id")} = ${id}`.execute(executor);
 };
 
-const createBundleTargetPredicate = (
-  update: Partial<BundleRow>,
-): RawBuilder<boolean> | undefined => {
-  if (update.target_app_version === null && update.fingerprint_hash === null) {
-    throw new KyselyAdapterInvariantError("bundles.update.target");
-  }
-  if (
-    update.target_app_version === null &&
-    update.fingerprint_hash === undefined
-  ) {
-    return sql<boolean>`${sql.ref("fingerprint_hash")} is not null`;
-  }
-  if (
-    update.fingerprint_hash === null &&
-    update.target_app_version === undefined
-  ) {
-    return sql<boolean>`${sql.ref("target_app_version")} is not null`;
-  }
-  return undefined;
+const updateRow = async (
+  executor: QueryExecutorProvider,
+  table: string,
+  keyField: string,
+  key: string,
+  update: object,
+): Promise<void> => {
+  const assignments = Object.entries(update)
+    .filter(([, value]) => value !== undefined)
+    .map(([field, value]) => sql`${sql.ref(field)} = ${value}`);
+  if (assignments.length === 0) return;
+  await sql`update ${sql.table(table)} set ${sql.join(
+    assignments,
+  )} where ${sql.ref(keyField)} = ${key}`.execute(executor);
 };
 
 const assertBundleReferences = async (
@@ -185,27 +182,6 @@ const assertBundleReferences = async (
   if (!storedIds.has(baseBundleId)) {
     throw new KyselyAdapterInvariantError(
       "bundle_patches.base_bundle_id.foreign-key",
-    );
-  }
-};
-
-const assertBundleChannel = async (
-  executor: QueryExecutorProvider,
-  provider: Exclude<ORMSQLProvider, "mssql">,
-  relationMode: RelationMode,
-  bundle: Pick<BundleRow, "channel" | "channel_id">,
-): Promise<void> => {
-  const result = await sql<ChannelRow>`select ${sql.ref("id")}, ${sql.ref(
-    "name",
-  )} from ${sql.table("channels")} where ${sql.ref("id")} = ${
-    bundle.channel_id
-  } and ${sql.ref("name")} = ${bundle.channel} limit 1${lockClause(
-    provider,
-    relationMode,
-  )}`.execute(executor);
-  if (result.rows[0] === undefined) {
-    throw new KyselyAdapterInvariantError(
-      "bundles.channel-and-channel_id.foreign-key",
     );
   }
 };
@@ -266,12 +242,14 @@ export const createKyselyCrud = (
     if (existing.rows[0] === undefined) {
       return { deleted: false, reason: "not_found" };
     }
-    const referenced = await countRows(
+    const referencedReleases = await countRows(
       executor,
-      "bundles",
+      "releases",
       sql<boolean>`${sql.ref("channel_id")} = ${id}`,
     );
-    if (referenced > 0) return { deleted: false, reason: "not_empty" };
+    if (referencedReleases > 0) {
+      return { deleted: false, reason: "not_empty" };
+    }
     try {
       await sql`delete from ${sql.table("channels")} where ${sql.ref(
         "id",
@@ -306,7 +284,6 @@ export const createKyselyCrud = (
   async create(input) {
     switch (input.model) {
       case "bundles":
-        await assertBundleChannel(executor, provider, relationMode, input.data);
         await insertRow(
           executor,
           "bundles",
@@ -326,6 +303,17 @@ export const createKyselyCrud = (
         return input.data;
       case "bundle_events":
         await insertRow(executor, "bundle_events", input.data, provider);
+        return input.data;
+      case "releases":
+        await insertRow(
+          executor,
+          "releases",
+          toStoredReleaseRow(input.data, provider),
+          provider,
+        );
+        return input.data;
+      case "release_catalogs":
+        await insertRow(executor, "release_catalogs", input.data, provider);
         return input.data;
       case "client_access_keys":
         await insertRow(
@@ -363,44 +351,47 @@ export const createKyselyCrud = (
       )} where ${sql.ref("id")} = ${selector.value} limit 1`.execute(executor);
       return result.rows[0] ?? null;
     }
-    if (
-      input.update.channel !== undefined ||
-      input.update.channel_id !== undefined
-    ) {
-      const currentResult =
-        await sql<StoredBundleRow>`select * from ${sql.table(
-          "bundles",
-        )} where ${sql.ref("id")} = ${selector.value} limit 1`.execute(
-          executor,
-        );
-      const current = currentResult.rows[0];
-      if (current === undefined) return null;
-      await assertBundleChannel(executor, provider, relationMode, {
-        ...fromStoredBundleRow(current),
-        ...input.update,
-      });
+    if (input.model === "releases") {
+      await updateRow(
+        executor,
+        "releases",
+        "id",
+        selector.value,
+        toStoredReleaseUpdate(input.update, provider),
+      );
+      const result = await sql<StoredReleaseRow>`select * from ${sql.table(
+        "releases",
+      )} where ${sql.ref("id")} = ${selector.value} limit 1`.execute(executor);
+      const row = result.rows[0];
+      return row === undefined ? null : fromStoredReleaseRow(row);
+    }
+    if (input.model === "release_catalogs") {
+      await updateRow(
+        executor,
+        "release_catalogs",
+        "scope_key",
+        selector.value,
+        input.update,
+      );
+      const result = await sql<ReleaseCatalogRow>`select * from ${sql.table(
+        "release_catalogs",
+      )} where ${sql.ref("scope_key")} = ${selector.value} limit 1`.execute(
+        executor,
+      );
+      const row = result.rows[0];
+      return row === undefined ? null : fromStoredReleaseCatalogRow(row);
     }
     await updateBundle(
       executor,
       selector.value,
       toStoredBundleUpdate(input.update, provider),
-      createBundleTargetPredicate(input.update),
     );
     const result = await sql<StoredBundleRow>`select * from ${sql.table(
       "bundles",
     )} where ${sql.ref("id")} = ${selector.value} limit 1`.execute(executor);
     const stored = result.rows[0];
     if (stored === undefined) return null;
-    const updated = fromStoredBundleRow(stored);
-    if (
-      (input.update.target_app_version !== undefined &&
-        updated.target_app_version !== input.update.target_app_version) ||
-      (input.update.fingerprint_hash !== undefined &&
-        updated.fingerprint_hash !== input.update.fingerprint_hash)
-    ) {
-      throw new KyselyAdapterInvariantError("bundles.update.target");
-    }
-    return updated;
+    return fromStoredBundleRow(stored);
   },
   async delete(input) {
     switch (input.model) {
@@ -440,6 +431,16 @@ export const createKyselyCrud = (
         );
         return;
       }
+      case "releases": {
+        const where = buildKyselyWhere(provider, input.where);
+        if (where === undefined) {
+          throw new KyselyAdapterInvariantError("releases.delete.where");
+        }
+        await sql`delete from ${sql.table("releases")} where ${where}`.execute(
+          executor,
+        );
+        return;
+      }
       case "channels": {
         const where = buildKyselyWhere(provider, input.where);
         if (where === undefined) {
@@ -471,6 +472,12 @@ export const createKyselyCrud = (
         return countRows(
           executor,
           "bundle_patches",
+          buildKyselyWhere(provider, input.where),
+        );
+      case "releases":
+        return countRows(
+          executor,
+          "releases",
           buildKyselyWhere(provider, input.where),
         );
     }
@@ -505,6 +512,22 @@ export const createKyselyCrud = (
           "channels",
         )}${where} limit 1`.execute(executor);
         return result.rows[0] ?? null;
+      }
+      case "releases": {
+        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const result = await sql<StoredReleaseRow>`select * from ${sql.table(
+          "releases",
+        )}${where} limit 1`.execute(executor);
+        const row = result.rows[0];
+        return row === undefined ? null : fromStoredReleaseRow(row);
+      }
+      case "release_catalogs": {
+        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const result = await sql<ReleaseCatalogRow>`select * from ${sql.table(
+          "release_catalogs",
+        )}${where} limit 1`.execute(executor);
+        const row = result.rows[0];
+        return row === undefined ? null : fromStoredReleaseCatalogRow(row);
       }
     }
   },
@@ -553,6 +576,22 @@ export const createKyselyCrud = (
           "channels",
         )}${where}${order}${pagination}`.execute(executor);
         return [...result.rows];
+      }
+      case "releases": {
+        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const order = orderClause(input);
+        const result = await sql<StoredReleaseRow>`select * from ${sql.table(
+          "releases",
+        )}${where}${order}${pagination}`.execute(executor);
+        return result.rows.map(fromStoredReleaseRow);
+      }
+      case "release_catalogs": {
+        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const order = orderClause(input);
+        const result = await sql<ReleaseCatalogRow>`select * from ${sql.table(
+          "release_catalogs",
+        )}${where}${order}${pagination}`.execute(executor);
+        return result.rows.map(fromStoredReleaseCatalogRow);
       }
     }
   },

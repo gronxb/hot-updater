@@ -127,7 +127,7 @@ describe("E2E navigation compact surface contract", () => {
       'CrashHistoryCount: "e2e/crash-history-count"',
     );
     expect(e2eAppScreenPathsSource).toContain(
-      'LaunchCrashedBundle: "e2e/launch-crashed-bundle"',
+      'LaunchTransition: "e2e/launch-transition"',
     );
     expect(e2eAppScreenPathsSource).toContain(
       'ChannelActionResult: "e2e/channel-action-result"',
@@ -280,12 +280,13 @@ describe("E2E navigation compact surface contract", () => {
       "runtime-initial-cohort-screen.tsx",
       "runtime-large-asset-screen.tsx",
       "runtime-marker-screen.tsx",
+      "runtime-release-state-screen.tsx",
     ]);
 
     for (const fileName of [
       ...runtimeScreenFiles,
       "crash-history-count-screen.tsx",
-      "launch-crashed-bundle-screen.tsx",
+      "launch-transition-screen.tsx",
       "launch-status-screen.tsx",
       "update-store-downloaded-screen.tsx",
       "update-store-download-paths-screen.tsx",

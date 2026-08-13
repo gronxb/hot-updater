@@ -7,4 +7,5 @@ export const runtimeScreenPaths = {
   RuntimeInitialCohort: "e2e/runtime-initial-cohort",
   RuntimeLargeAsset: "e2e/runtime-large-asset",
   RuntimeMarker: "e2e/runtime-marker",
+  RuntimeReleaseState: "e2e/runtime-release-state",
 } as const;

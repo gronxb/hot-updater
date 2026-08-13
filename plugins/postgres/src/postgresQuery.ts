@@ -56,6 +56,12 @@ export const countPostgresRows = async (
               .select(({ fn }) => fn.countAll<string>().as("count"));
       return Number((await query.executeTakeFirstOrThrow()).count);
     }
+    case "releases": {
+      let rows = db.selectFrom("releases");
+      if (where !== undefined) rows = rows.where(where);
+      const query = rows.select(({ fn }) => fn.countAll<string>().as("count"));
+      return Number((await query.executeTakeFirstOrThrow()).count);
+    }
   }
 };
 
@@ -71,6 +77,17 @@ export const findManyPostgresRows = async (
       if (input.distinctOn !== undefined) {
         query = query.distinctOn(input.distinctOn.fields);
       }
+      for (const clause of input.orderBy ??
+        (input.sortBy ? [input.sortBy] : [])) {
+        query = query.orderBy(clause.field, (order) =>
+          applyOrder(order, clause),
+        );
+      }
+      return query.limit(input.limit).offset(input.offset).execute();
+    }
+    case "release_catalogs": {
+      let query = db.selectFrom("release_catalogs").selectAll();
+      if (where !== undefined) query = query.where(where);
       for (const clause of input.orderBy ??
         (input.sortBy ? [input.sortBy] : [])) {
         query = query.orderBy(clause.field, (order) =>
@@ -124,6 +141,17 @@ export const findManyPostgresRows = async (
       if (input.distinctOn !== undefined) {
         query = query.distinctOn(input.distinctOn.fields);
       }
+      for (const clause of input.orderBy ??
+        (input.sortBy ? [input.sortBy] : [])) {
+        query = query.orderBy(clause.field, (order) =>
+          applyOrder(order, clause),
+        );
+      }
+      return query.limit(input.limit).offset(input.offset).execute();
+    }
+    case "releases": {
+      let query = db.selectFrom("releases").selectAll();
+      if (where !== undefined) query = query.where(where);
       for (const clause of input.orderBy ??
         (input.sortBy ? [input.sortBy] : [])) {
         query = query.orderBy(clause.field, (order) =>

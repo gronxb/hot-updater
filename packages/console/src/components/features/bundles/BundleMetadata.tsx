@@ -31,10 +31,12 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
   const hbcPatchFileHash = getPatchFileHash(bundle);
   const hbcPatchBaseFileHash = getPatchBaseFileHash(bundle);
   const hasMetadata =
-    bundle.targetAppVersion ||
-    bundle.fingerprintHash ||
     bundle.gitCommitHash ||
     bundle.fileHash ||
+    bundle.storageUri ||
+    bundle.manifestStorageUri ||
+    bundle.manifestFileHash ||
+    bundle.assetBaseStorageUri ||
     patchBaseBundleId ||
     hbcPatchBaseFileHash ||
     hbcPatchFileHash;
@@ -53,26 +55,6 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
         <CardTitle className="text-sm font-medium">Metadata</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 text-sm">
-        {bundle.targetAppVersion ? (
-          <Row
-            label="App Version"
-            value={
-              <span translate="no" className="font-mono">
-                {bundle.targetAppVersion}
-              </span>
-            }
-          />
-        ) : null}
-
-        {bundle.fingerprintHash ? (
-          <Row
-            label="Fingerprint"
-            value={
-              <HashValueDisplay value={bundle.fingerprintHash} maxLength={16} />
-            }
-          />
-        ) : null}
-
         {bundle.gitCommitHash ? (
           <Row
             label="Git Commit"
@@ -103,6 +85,49 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
           <Row
             label="Bundle Hash"
             value={<HashValueDisplay value={bundle.fileHash} maxLength={16} />}
+          />
+        ) : null}
+
+        <Row
+          label="Storage"
+          value={
+            <span translate="no" className="break-all font-mono text-xs">
+              {bundle.storageUri}
+            </span>
+          }
+        />
+
+        {bundle.manifestStorageUri ? (
+          <Row
+            label="Manifest"
+            value={
+              <span translate="no" className="break-all font-mono text-xs">
+                {bundle.manifestStorageUri}
+              </span>
+            }
+          />
+        ) : null}
+
+        {bundle.manifestFileHash ? (
+          <Row
+            label="Manifest Hash"
+            value={
+              <HashValueDisplay
+                value={bundle.manifestFileHash}
+                maxLength={16}
+              />
+            }
+          />
+        ) : null}
+
+        {bundle.assetBaseStorageUri ? (
+          <Row
+            label="Asset Storage"
+            value={
+              <span translate="no" className="break-all font-mono text-xs">
+                {bundle.assetBaseStorageUri}
+              </span>
+            }
           />
         ) : null}
 

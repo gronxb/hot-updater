@@ -5,6 +5,8 @@ import {
   type BundleEventRow,
   type ChannelRow,
   type ClientAccessKeyRow,
+  type ReleaseCatalogRow,
+  type ReleaseRow,
 } from "@hot-updater/plugin-core";
 
 import {
@@ -32,8 +34,16 @@ const metadata = (value: unknown, source: string) => {
   return normalized;
 };
 
-type FirebaseLegacyBundleRow = Omit<BundleRow, "channel_id"> & {
+export type FirebaseLegacyBundleRow = BundleRow & {
+  readonly should_force_update: boolean;
+  readonly enabled: boolean;
+  readonly message: string | null;
+  readonly channel: string;
   readonly channel_id?: string;
+  readonly target_app_version: string | null;
+  readonly fingerprint_hash: string | null;
+  readonly rollout_cohort_count: number;
+  readonly target_cohorts: readonly string[] | null;
 };
 
 export const parseFirebaseLegacyBundleRow = (
@@ -91,11 +101,27 @@ export const parseFirebaseBundleRow = (
   value: unknown,
   source: string,
 ): BundleRow => {
-  const row = parseFirebaseLegacyBundleRow(value, source);
-  if (row.channel_id === undefined) {
-    throw new FirebaseDatabaseDataError(source);
-  }
-  return row as BundleRow;
+  const input = record(value, source);
+  return {
+    id: string(property(input, "id"), source),
+    platform: platform(property(input, "platform"), source),
+    file_hash: string(property(input, "file_hash"), source),
+    git_commit_hash: nullableString(property(input, "git_commit_hash"), source),
+    storage_uri: string(property(input, "storage_uri"), source),
+    metadata: metadata(property(input, "metadata"), source),
+    manifest_storage_uri: nullableString(
+      property(input, "manifest_storage_uri"),
+      source,
+    ),
+    manifest_file_hash: nullableString(
+      property(input, "manifest_file_hash"),
+      source,
+    ),
+    asset_base_storage_uri: nullableString(
+      property(input, "asset_base_storage_uri"),
+      source,
+    ),
+  };
 };
 
 export const parseFirebaseChannelRow = (
@@ -141,11 +167,12 @@ export const parseFirebaseBundleEventRow = (
   );
   if (
     !(
-      ((type === "UPDATE_APPLIED" || type === "RECOVERED") &&
-        fromBundleId !== null &&
+      ((type === "UPDATE_APPLIED" ||
+        type === "RECOVERED" ||
+        type === "RELEASE_ADOPTED") &&
         (updateStrategy === "fingerprint" ||
           updateStrategy === "appVersion")) ||
-      (type === "UNCHANGED" && fromBundleId === null && updateStrategy === null)
+      (type === "UNCHANGED" && updateStrategy === null)
     )
   ) {
     throw new FirebaseDatabaseDataError(source);
@@ -156,8 +183,10 @@ export const parseFirebaseBundleEventRow = (
     install_id: string(property(input, "install_id"), source),
     user_id: nullableString(property(input, "user_id"), source),
     username: nullableString(property(input, "username"), source),
+    from_release_id: nullableString(property(input, "from_release_id"), source),
     from_bundle_id: fromBundleId,
-    to_bundle_id: string(property(input, "to_bundle_id"), source),
+    to_release_id: nullableString(property(input, "to_release_id"), source),
+    to_bundle_id: nullableString(property(input, "to_bundle_id"), source),
     platform: platform(property(input, "platform"), source),
     app_version: string(property(input, "app_version"), source),
     channel: string(property(input, "channel"), source),
@@ -188,6 +217,92 @@ export const parseFirebaseClientAccessKeyRow = (
     role,
     created_at_ms: number(property(input, "created_at_ms"), source),
     revoked_at_ms: revokedAt === null ? null : number(revokedAt, source),
+  };
+};
+
+export const parseFirebaseReleaseRow = (
+  value: unknown,
+  source: string,
+): ReleaseRow => {
+  const input = record(value, source);
+  const kind = string(property(input, "kind"), source);
+  const strategy = string(property(input, "strategy"), source);
+  const operation = string(property(input, "operation"), source);
+  const targetCohorts = stringArray(property(input, "target_cohorts"), source);
+  if (
+    (kind !== "BUNDLE" && kind !== "EMBEDDED") ||
+    (strategy !== "APP_VERSION" && strategy !== "FINGERPRINT") ||
+    (operation !== "DEPLOY" &&
+      operation !== "PROMOTE" &&
+      operation !== "ROLLBACK") ||
+    targetCohorts === null
+  ) {
+    throw new FirebaseDatabaseDataError(source);
+  }
+  return {
+    id: string(property(input, "id"), source),
+    revision: number(property(input, "revision"), source),
+    scope_key: string(property(input, "scope_key"), source),
+    channel_id: string(property(input, "channel_id"), source),
+    platform: platform(property(input, "platform"), source),
+    kind,
+    bundle_id: nullableString(property(input, "bundle_id"), source),
+    strategy,
+    target_app_version: nullableString(
+      property(input, "target_app_version"),
+      source,
+    ),
+    fingerprint_hash: nullableString(
+      property(input, "fingerprint_hash"),
+      source,
+    ),
+    enabled: boolean(property(input, "enabled"), source),
+    should_force_update: boolean(
+      property(input, "should_force_update"),
+      source,
+    ),
+    message: nullableString(property(input, "message"), source),
+    rollout_cohort_count: number(
+      property(input, "rollout_cohort_count"),
+      source,
+    ),
+    target_cohorts: targetCohorts,
+    operation,
+    source_release_id: nullableString(
+      property(input, "source_release_id"),
+      source,
+    ),
+    created_at_ms: number(property(input, "created_at_ms"), source),
+    updated_at_ms: number(property(input, "updated_at_ms"), source),
+  };
+};
+
+export const parseFirebaseReleaseCatalogRow = (
+  value: unknown,
+  source: string,
+): ReleaseCatalogRow => {
+  const input = record(value, source);
+  const strategy = string(property(input, "strategy"), source);
+  if (strategy !== "APP_VERSION" && strategy !== "FINGERPRINT") {
+    throw new FirebaseDatabaseDataError(source);
+  }
+  return {
+    scope_key: string(property(input, "scope_key"), source),
+    authority_id: string(property(input, "authority_id"), source),
+    strategy,
+    channel_id: string(property(input, "channel_id"), source),
+    channel_key: string(property(input, "channel_key"), source),
+    platform: platform(property(input, "platform"), source),
+    fingerprint_hash: nullableString(
+      property(input, "fingerprint_hash"),
+      source,
+    ),
+    generation: number(property(input, "generation"), source),
+    payload: string(property(input, "payload"), source),
+    catalog_hash: string(property(input, "catalog_hash"), source),
+    byte_size: number(property(input, "byte_size"), source),
+    is_tombstone: boolean(property(input, "is_tombstone"), source),
+    updated_at_ms: number(property(input, "updated_at_ms"), source),
   };
 };
 

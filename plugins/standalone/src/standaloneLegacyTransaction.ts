@@ -24,22 +24,8 @@ const createStagedRemote = (
   insertChannel: StandaloneBundleRemote["insertChannel"],
   deleteChannel: StandaloneBundleRemote["deleteChannel"],
 ): StandaloneBundleRemote => {
-  const loadBundleRows = async () => {
-    const channelIds = new Map(
-      (await loadChannels()).map(({ id, name }) => [name, id]),
-    );
-    return [...bundles.values()].map((bundle) => {
-      const channelId = channelIds.get(bundle.channel);
-      if (!channelId) {
-        throw new StandaloneDatabaseError(
-          "invalid-response",
-          `Bundle ${bundle.id} references an unknown Channel ${bundle.channel}.`,
-          500,
-        );
-      }
-      return bundleToRow(bundle, channelId);
-    });
-  };
+  const loadBundleRows = async () =>
+    [...bundles.values()].map((bundle) => bundleToRow(bundle));
   return {
     createBundle: async (bundle) => {
       bundles.set(bundle.id, cloneBundle(bundle));

@@ -5,7 +5,6 @@ import type { DatabasePluginTestState } from "./databasePluginTestRunner";
 import {
   createBundlePatchRowFixture,
   createBundleRowFixture,
-  createChannelRowFixture,
 } from "./databaseTestFixtures";
 
 type RelationTestState = DatabasePluginTestState<DatabasePlugin>;
@@ -15,16 +14,11 @@ const commit = (plugin: DatabasePlugin, ...changes: DatabaseChange[]) =>
 
 const insertRow = (plugin: DatabasePlugin, suffix: string) => {
   const row = createBundleRowFixture(suffix);
-  return commit(
-    plugin,
-    {
-      model: "channels",
-      operation: "insert",
-      row: createChannelRowFixture(row.channel),
-      onConflict: "ignore",
-    },
-    { model: "bundles", operation: "insert", row },
-  ).then(() => row);
+  return commit(plugin, {
+    model: "bundles",
+    operation: "insert",
+    row,
+  }).then(() => row);
 };
 
 export const registerDatabasePluginRelationTests = (

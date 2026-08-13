@@ -1,9 +1,9 @@
-import { type Bundle, NIL_UUID } from "@hot-updater/core";
+import { type LegacyBundle, NIL_UUID } from "@hot-updater/core";
 
 import { isNullable } from "./utils";
 
 export const checkForRollback = (
-  bundles: Bundle[],
+  bundles: LegacyBundle[],
   currentBundleId: string,
 ) => {
   if (currentBundleId === NIL_UUID) {

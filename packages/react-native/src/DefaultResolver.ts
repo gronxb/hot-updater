@@ -1,6 +1,12 @@
-import type { AppUpdateInfo } from "@hot-updater/core";
+import {
+  encodeChannelKey,
+  type AppUpdateAvailableInfo,
+  type AppUpdateInfo,
+  type ReleaseCatalog,
+} from "@hot-updater/core";
+import { canonicalizeAppVersion } from "@hot-updater/plugin-core";
 
-import { fetchUpdateInfo } from "./fetchUpdateInfo";
+import { fetchJSON, fetchUpdateInfo } from "./fetchUpdateInfo";
 import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
 import type {
   HotUpdaterBaseURL,
@@ -30,8 +36,58 @@ const resolveBaseURL = async (baseURL: HotUpdaterBaseURL): Promise<string> => {
  */
 export function createDefaultResolver(
   baseURL: HotUpdaterBaseURL,
+  options: { readonly authorityId?: string } = {},
 ): HotUpdaterResolver {
+  const authorityId = options.authorityId ?? "default";
   return {
+    authorityId,
+    catalogCachePartition: "x-api-key",
+    fetchReleaseCatalog: async (params): Promise<ReleaseCatalog> => {
+      const resolvedBaseURL = (await resolveBaseURL(baseURL)).replace(
+        /\/+$/,
+        "",
+      );
+      const channelKey = encodeChannelKey(params.channel);
+      let strategyValue: string;
+      if (params.updateStrategy === "fingerprint") {
+        if (!params.fingerprintHash) {
+          throw new Error("Fingerprint hash is required");
+        }
+        strategyValue = params.fingerprintHash;
+      } else {
+        const appVersion = canonicalizeAppVersion(params.appVersion);
+        if (appVersion === null) throw new Error("Invalid app version");
+        strategyValue = appVersion;
+      }
+      const strategyPath =
+        params.updateStrategy === "fingerprint" ? "fingerprint" : "app-version";
+      return fetchJSON<ReleaseCatalog>({
+        requestHeaders: {
+          ...params.requestHeaders,
+          "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
+        },
+        requestTimeout: params.requestTimeout,
+        url: `${resolvedBaseURL}/v2/release-catalogs/${strategyPath}/${encodeURIComponent(
+          authorityId,
+        )}/${params.platform}/${channelKey}/${encodeURIComponent(strategyValue)}`,
+      });
+    },
+    resolveArtifact: async (params): Promise<AppUpdateAvailableInfo> => {
+      const resolvedBaseURL = (await resolveBaseURL(baseURL)).replace(
+        /\/+$/,
+        "",
+      );
+      return fetchJSON<AppUpdateAvailableInfo>({
+        requestHeaders: {
+          ...params.requestHeaders,
+          "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
+        },
+        requestTimeout: params.requestTimeout,
+        url: `${resolvedBaseURL}/v2/artifacts/${encodeURIComponent(
+          params.targetBundleId,
+        )}/from/${encodeURIComponent(params.currentBundleId)}`,
+      });
+    },
     checkUpdate: async (
       params: ResolverCheckUpdateParams,
     ): Promise<AppUpdateInfo | null> => {
@@ -80,9 +136,15 @@ export function createDefaultResolver(
             cohort: params.cohort,
             fingerprintHash: params.fingerprintHash,
             fromBundleId: params.fromBundleId,
+            ...(params.fromReleaseId === undefined
+              ? {}
+              : { fromReleaseId: params.fromReleaseId }),
             installId: params.installId,
             platform: params.platform,
             toBundleId: params.toBundleId,
+            ...(params.toReleaseId === undefined
+              ? {}
+              : { toReleaseId: params.toReleaseId }),
             type: params.type,
             updateStrategy: params.updateStrategy,
             ...(params.userId != null ? { userId: params.userId } : {}),
