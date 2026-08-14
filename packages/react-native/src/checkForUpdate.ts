@@ -99,7 +99,7 @@ const isV2Resolver = (
   typeof resolver.fetchReleaseCatalog === "function" &&
   typeof resolver.resolveArtifact === "function";
 
-const sameReceipt = (
+const sameSelection = (
   first: PersistedSelectionReceipt | null,
   second: PersistedSelectionReceipt,
 ): boolean =>
@@ -109,10 +109,7 @@ const sameReceipt = (
   first.bundleId === second.bundleId &&
   first.authorityId === second.authorityId &&
   first.scopeKey === second.scopeKey &&
-  first.generation === second.generation &&
-  first.catalogHash === second.catalogHash &&
-  first.channel === second.channel &&
-  first.selectionContextHash === second.selectionContextHash;
+  first.channel === second.channel;
 
 const validateCatalog = (
   catalog: ReleaseCatalog,
@@ -283,7 +280,7 @@ async function checkForReleaseCatalogUpdate(input: {
     selectionContextHash,
   };
   const active = getActiveUpdateState().activeSelection;
-  if (sameReceipt(active, receipt)) return null;
+  if (sameSelection(active, receipt)) return null;
 
   const explicitScopeSwitch =
     input.explicitChannel !== undefined &&

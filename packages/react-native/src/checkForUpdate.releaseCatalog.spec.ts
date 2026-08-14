@@ -192,6 +192,37 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
   });
 
+  it("does not adopt the same Release merely to refresh catalog provenance", async () => {
+    const active: PersistedSelectionReceipt = {
+      authorityId: AUTHORITY_ID,
+      bundleId: TARGET_BUNDLE_ID,
+      catalogHash: `sha256:${"b".repeat(64)}`,
+      channel: CHANNEL,
+      generation: 1,
+      kind: "BUNDLE",
+      releaseId: RELEASE_ID,
+      scopeKey: SCOPE_KEY,
+      selectionContextHash: "old-context",
+    };
+    mocks.getBundleId.mockReturnValueOnce(TARGET_BUNDLE_ID);
+    mocks.getActiveUpdateState.mockReturnValueOnce({
+      activeSelection: active,
+      highestSeenCatalogs: {},
+      stableSelection: active,
+      verificationPending: false,
+    });
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { resolveArtifact, resolver } = createResolver();
+
+    await expect(
+      checkForUpdate({ resolver, updateStrategy: "appVersion" }),
+    ).resolves.toBeNull();
+
+    expect(resolveArtifact).not.toHaveBeenCalled();
+    expect(mocks.updateBundle).not.toHaveBeenCalled();
+    expect(mocks.commitReleaseSelection).not.toHaveBeenCalled();
+  });
+
   it("rejects a slow artifact completion after a newer catalog wins", async () => {
     mocks.isReleaseSelectionCurrent
       .mockReturnValueOnce(true)

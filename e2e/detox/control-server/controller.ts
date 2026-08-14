@@ -2208,7 +2208,9 @@ function writeDeviceStoreJson(
       fixtureSession.appId,
       "sh",
       "-c",
-      `mkdir -p files/bundle-store && cat > files/bundle-store/${fileName}`,
+      shellSingleQuote(
+        `mkdir -p files/bundle-store && cat > files/bundle-store/${fileName}`,
+      ),
     ],
     { input: serialized, stdio: ["pipe", "pipe", "pipe"] },
   );

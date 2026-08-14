@@ -78,6 +78,19 @@ const readDetoxScreenRoutesSource = async (): Promise<string> => {
 };
 
 describe("E2E navigation contract", () => {
+  it("forgets the cached screen before a replacement app can disconnect", async () => {
+    const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const launchBody = detoxPageSource.slice(
+      detoxPageSource.indexOf("async function launchApp"),
+      detoxPageSource.indexOf("function textFromAttributes"),
+    );
+    const resetIndex = launchBody.indexOf("activeScreenPath = undefined;");
+    const launchIndex = launchBody.indexOf("await device.launchApp");
+
+    expect(resetIndex).toBeGreaterThan(-1);
+    expect(resetIndex).toBeLessThan(launchIndex);
+  });
+
   it("uses React Navigation screens instead of one scroll-heavy E2E surface", async () => {
     const appSource = await fs.readFile(appPath, "utf8");
     const e2eAppIndexSource = await fs.readFile(e2eAppIndexPath, "utf8");

@@ -56,10 +56,12 @@ function runtimeLaunchArgs() {
 }
 
 async function launchApp(options = {}) {
+  if (options.newInstance !== false) {
+    activeScreenPath = undefined;
+  }
   await device.launchApp({ ...options, launchArgs: runtimeLaunchArgs() });
   synchronizationDisabledUntilLaunch = false;
   if (options.newInstance !== false) {
-    activeScreenPath = undefined;
     return;
   }
   if (typeof options.url === "string") activeScreenPath = undefined;

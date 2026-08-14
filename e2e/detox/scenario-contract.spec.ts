@@ -1844,6 +1844,24 @@ describe("Detox scenario contract", () => {
     expect(hashBody).not.toContain('"sha256sum"');
   });
 
+  it("preserves the complete Android device-store write as one shell command", async () => {
+    const controllerSource = await fs.readFile(
+      detoxControlServerControllerPath,
+      "utf8",
+    );
+    const writerBody = controllerSource.slice(
+      controllerSource.indexOf("function writeDeviceStoreJson"),
+      controllerSource.indexOf("function seedDeviceCrashHistory"),
+    );
+
+    expect(writerBody).toContain('"sh",');
+    expect(writerBody).toContain('"-c",');
+    expect(writerBody).toContain("shellSingleQuote(");
+    expect(writerBody).toContain(
+      "`mkdir -p files/bundle-store && cat > files/bundle-store/${fileName}`",
+    );
+  });
+
   it("rewrites the E2E scenario marker with a resilient declaration matcher", async () => {
     const controllerSource = await fs.readFile(
       detoxControlServerControllerPath,
