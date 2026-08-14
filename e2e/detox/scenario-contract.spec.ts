@@ -1,7 +1,9 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { Script } from "node:vm";
 
+import { transformFileSync } from "@babel/core";
 import { describe, expect, it } from "vitest";
 
 import type { JsonObject } from "./control-client.ts";
@@ -17,6 +19,7 @@ const detoxRunnerPath = path.join(repoDir, "e2e/detox/scripts/run.ts");
 const detoxPagePath = path.join(repoDir, "e2e/detox/detox-page.js");
 const detoxScreenRoutesDir = path.join(repoDir, "e2e/detox/screen-routes");
 const detoxJestSpecPath = path.join(repoDir, "e2e/detox/scenarios.spec.js");
+const detoxScenariosPath = path.join(repoDir, "e2e/detox/scenarios.ts");
 const detoxScenarioRuntimePath = path.join(
   repoDir,
   "e2e/detox/detox-app-driver.js",
@@ -320,6 +323,21 @@ describe("Detox scenario contract", () => {
     expect(detoxJestSpec).toContain("scenario.run(app)");
     expect(detoxJestSpec).not.toContain("step.kind");
     expect(detoxJestSpec).not.toContain(".todo");
+  });
+
+  it("keeps the scenario catalog parseable by the Detox CommonJS transformer", () => {
+    // Given: Detox Jest transforms TypeScript to CommonJS with Babel.
+    const transformed = transformFileSync(detoxScenariosPath, {
+      babelrc: false,
+      configFile: false,
+      plugins: ["@babel/plugin-transform-modules-commonjs"],
+      presets: ["@babel/preset-typescript"],
+    })?.code;
+
+    // When: the transformed catalog is parsed as the CommonJS script Jest runs.
+    // Then: ESM-only syntax such as import.meta cannot reach Detox collection.
+    expect(transformed).toBeDefined();
+    expect(() => new Script(transformed ?? "")).not.toThrow();
   });
 
   it("emits a Jest testNamePattern that matches Detox full test names", async () => {

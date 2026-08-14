@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import path from "node:path";
 
 import { bspatchArchiveToDiffOtaScenario } from "./scenarios/bspatch-archive-to-diff-ota.ts";
 import { bspatchConsecutiveDiffOtaScenario } from "./scenarios/bspatch-consecutive-diff-ota.ts";
@@ -73,7 +74,7 @@ if (scenarioByName.size !== registeredDetoxScenarios.length) {
 
 const defaultScenarioNames: unknown = JSON.parse(
   readFileSync(
-    new URL("./default-scenario-names.json", import.meta.url),
+    path.join(process.cwd(), "e2e/detox/default-scenario-names.json"),
     "utf8",
   ),
 );
