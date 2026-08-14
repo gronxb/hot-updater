@@ -4951,6 +4951,7 @@ async function waitForCrashRecovery(
     createTimeoutError: createWaitForRecoveryTimeoutError,
     getLaunchReportState,
     getMetadataState,
+    isAndroidAppRunning: () => getAndroidProcessId().length > 0,
     launchAndroidApp,
     platform: fixtureSession.platform,
     pollIntervalMs: E2E_POLL_INTERVAL_MS,
