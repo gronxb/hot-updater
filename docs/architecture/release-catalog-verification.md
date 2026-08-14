@@ -101,5 +101,9 @@ profile is excluded because #1141 removed `s3Database`; replacing its database
 with process-local mock state would test S3 artifact storage, not a standalone
 database provider.
 
-The required standalone profile job IDs are appended here after the runs
-complete.
+Each full-profile verification discovers the canonical default suite from
+`e2e/detox/default-scenario-names.json` at the exact PR head. The manifest
+currently contains 27 scenarios. Discovery is fail-closed: a missing, duplicate,
+or unregistered scenario aborts verification before a device job starts. The
+resulting job IDs are recorded on PR #1149 so the evidence remains attached to
+the exact tested commit without adding a docs-only commit afterward.
