@@ -200,13 +200,13 @@ describe("crash recovery wait", () => {
     expect(reads).toEqual(["read", "read"]);
   });
 
-  it("does not force-stop a live Android recovery process", async () => {
-    // Given: native recovery needs more than the initial launch settle window.
+  it("cold launches recovery once when the crashed Android process is still alive", async () => {
+    // Given: the JS crash disconnected Detox but left the crashed app PID alive.
     const reads: string[] = [];
     const sleeps: number[] = [];
     const launches: string[] = [];
 
-    // When: the app is alive on the second poll and completes on the third.
+    // When: the first cold launch starts recovery and that process completes later.
     await waitForCrashRecoveryState({
       androidLaunchSettleMs: 1000,
       attempts: 4,
@@ -214,7 +214,7 @@ describe("crash recovery wait", () => {
       createTimeoutError: () => new Error("timed out"),
       getLaunchReportState,
       getMetadataState: metadataState,
-      isAndroidAppRunning: () => reads.length > 1,
+      isAndroidAppRunning: () => true,
       launchAndroidApp: () => {
         launches.push("launch");
       },
@@ -234,7 +234,7 @@ describe("crash recovery wait", () => {
       stableBundleId: "stable-1",
     });
 
-    // Then: the waiter polls instead of killing the process and clearing its report.
+    // Then: the crashed process is replaced once, but the live recovery process is kept.
     expect(launches).toEqual(["launch"]);
     expect(sleeps).toEqual([1000, 250]);
     expect(reads).toEqual(["read", "read", "read"]);
