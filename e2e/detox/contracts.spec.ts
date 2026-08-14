@@ -221,7 +221,7 @@ describe("Detox E2E harness contract", () => {
     );
   });
 
-  it("allows serialized provider deploys to run for up to 30 minutes", () => {
+  it("allows serialized provider deploy scenarios to run for up to 60 minutes", () => {
     // Given: no profile-specific timeout override is exported to Jest.
     const result = spawnSync(
       process.execPath,
@@ -235,9 +235,9 @@ describe("Detox E2E harness contract", () => {
       },
     );
 
-    // Then: serialized invalidation waits do not hit the old 12-minute limit.
+    // Then: multiple fair-lock waits fit while each control job stays bounded.
     expect(result.status).toBe(0);
-    expect(result.stdout).toBe("1800000");
+    expect(result.stdout).toBe("3600000");
   });
 
   it("injects the fixed E2E min bundle id into Detox release builds", async () => {
