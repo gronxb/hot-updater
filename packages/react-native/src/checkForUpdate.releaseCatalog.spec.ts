@@ -192,7 +192,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
   });
 
-  it("does not adopt the same Release merely to refresh catalog provenance", async () => {
+  it("refreshes the same Release receipt when catalog provenance changes", async () => {
     const active: PersistedSelectionReceipt = {
       authorityId: AUTHORITY_ID,
       bundleId: TARGET_BUNDLE_ID,
@@ -214,13 +214,32 @@ describe("checkForUpdate Release catalog protocol", () => {
     const { checkForUpdate } = await import("./checkForUpdate");
     const { resolveArtifact, resolver } = createResolver();
 
-    await expect(
-      checkForUpdate({ resolver, updateStrategy: "appVersion" }),
-    ).resolves.toBeNull();
+    const result = await checkForUpdate({
+      resolver,
+      updateStrategy: "appVersion",
+    });
 
+    expect(result).toMatchObject({
+      id: TARGET_BUNDLE_ID,
+      releaseId: RELEASE_ID,
+      transitionKind: "ADOPT_RELEASE",
+    });
+    await expect(result?.updateBundle()).resolves.toBe(true);
     expect(resolveArtifact).not.toHaveBeenCalled();
     expect(mocks.updateBundle).not.toHaveBeenCalled();
-    expect(mocks.commitReleaseSelection).not.toHaveBeenCalled();
+    expect(mocks.commitReleaseSelection).toHaveBeenCalledWith({
+      guard: expect.objectContaining({
+        catalogHash: CATALOG_HASH,
+        generation: 2,
+        scopeKey: SCOPE_KEY,
+      }),
+      selection: expect.objectContaining({
+        bundleId: TARGET_BUNDLE_ID,
+        catalogHash: CATALOG_HASH,
+        generation: 2,
+        releaseId: RELEASE_ID,
+      }),
+    });
   });
 
   it("rejects a slow artifact completion after a newer catalog wins", async () => {

@@ -2065,6 +2065,32 @@ describe("Detox scenario contract", () => {
     );
   });
 
+  it("refreshes the stable receipt when a crashed Bundle is republished", async () => {
+    const calls = await recordScenarioCalls(
+      "republished-crashed-bundle-skipped",
+    );
+
+    expect(
+      calls.find(
+        (call) =>
+          call.kind === "assertText" &&
+          call.stage === "assert republished crash skipped",
+      ),
+    ).toMatchObject({
+      contains:
+        "current-channel -> adopted Release $republishStableReleaseId / Bundle $republishStableBundleId",
+      options: { exactText: true },
+      testID: "update-action-result",
+    });
+    expect(
+      calls.find(
+        (call) =>
+          call.kind === "control" &&
+          call.stage === "assert republished artifact skipped",
+      ),
+    ).toMatchObject({ body: { artifactFailuresRemaining: 1 } });
+  });
+
   it("reattaches Android Detox after control-server crash recovery", async () => {
     // Given: the control server relaunches Android outside Detox while waiting
     // for the native recovery marker.

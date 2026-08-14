@@ -86,6 +86,8 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/control-server/deploy-lock-contract.spec.ts",
       "e2e/detox/control-server/fair-file-lock.ts",
       "e2e/detox/control-server/index.ts",
+      "e2e/detox/control-server/provider-reset-retry.spec.ts",
+      "e2e/detox/control-server/provider-reset-retry.ts",
       "e2e/detox/control-server/routes.ts",
       "e2e/detox/control-server/screen-state.spec.ts",
       "e2e/detox/control-server/screen-state.ts",

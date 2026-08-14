@@ -56,6 +56,7 @@ import {
   resolveDeployLockCapacity,
 } from "./fair-file-lock.ts";
 import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
+import { resetProviderAfterReady } from "./provider-reset-retry.ts";
 import {
   readE2eScreenStateSnapshot,
   resetE2eScreenState,
@@ -1850,6 +1851,19 @@ async function clearProviderBundles() {
     clearedBundleIds,
     clearedCount: clearedBundleIds.length,
     platform: fixtureSession.platform,
+  });
+}
+
+async function clearProviderBundlesAfterReadiness() {
+  await resetProviderAfterReady(clearProviderBundles, {
+    onRetry: ({ attempt, error, retryDelayMs }) => {
+      logDetoxFixture("provider reset connection retry", {
+        attempt,
+        error: formatErrorMessage(error),
+        platform: fixtureSession.platform,
+        retryDelayMs,
+      });
+    },
   });
 }
 
@@ -5025,7 +5039,7 @@ async function bootstrap() {
   });
 
   await waitForLocalProviderReady();
-  await clearProviderBundles();
+  await clearProviderBundlesAfterReadiness();
   await restoreFile(
     fixtureSession.largeArchiveAssetBackupPath,
     fixtureSession.largeArchiveAssetPath,
@@ -6259,7 +6273,7 @@ async function resetRemoteBundles() {
     replayGeneration: null,
     reset: true,
   });
-  await clearProviderBundles();
+  await clearProviderBundlesAfterReadiness();
 
   logDetoxFixture("remote bundles reset on demand", {
     platform: fixtureSession.platform,
