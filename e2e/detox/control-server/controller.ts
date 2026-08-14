@@ -55,8 +55,8 @@ import {
   acquireFairFileLock,
   resolveDeployLockCapacity,
 } from "./fair-file-lock.ts";
-import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
 import { resetProviderAfterReady } from "./provider-reset-retry.ts";
+import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
 import {
   readE2eScreenStateSnapshot,
   resetE2eScreenState,
@@ -3976,16 +3976,35 @@ function getRemoteAssetProxyTarget(requestUrl: URL) {
   return requestUrl.searchParams.get("url");
 }
 
-function buildAppVersionCatalogUrl(args: {
-  authorityId: string;
+function buildCatalogUrl(args: {
+  catalog: Pick<
+    ReleaseCatalogRow,
+    "authority_id" | "fingerprint_hash" | "strategy"
+  >;
   channel: string;
 }) {
-  return buildReleaseCatalogUrl({
-    appVersion: E2E_APP_VERSION,
-    authorityId: args.authorityId,
+  const base = {
+    authorityId: args.catalog.authority_id,
     baseUrl: getControllerReachableAppBaseUrl(),
     channel: args.channel,
     platform: fixtureSession.platform,
+  } as const;
+
+  if (args.catalog.strategy === "FINGERPRINT") {
+    if (args.catalog.fingerprint_hash === null) {
+      throw new Error("Fingerprint Release catalog is missing its hash.");
+    }
+    return buildReleaseCatalogUrl({
+      ...base,
+      fingerprintHash: args.catalog.fingerprint_hash,
+      strategy: "fingerprint",
+    });
+  }
+
+  return buildReleaseCatalogUrl({
+    ...base,
+    appVersion: E2E_APP_VERSION,
+    strategy: "appVersion",
   });
 }
 
@@ -3999,14 +4018,14 @@ function shouldWaitForUpdateCheckVisibility(request: DeployBundleRequest) {
 }
 
 async function waitForReleaseCatalogVisibility(args: {
-  authorityId: string;
   bundleId: string | null;
+  catalog: ReleaseCatalogRow;
   channel: string;
   releaseId: string;
   signal?: AbortSignal;
 }) {
-  const url = buildAppVersionCatalogUrl({
-    authorityId: args.authorityId,
+  const url = buildCatalogUrl({
+    catalog: args.catalog,
     channel: args.channel,
   });
   let lastObserved: unknown = null;
@@ -4293,13 +4312,13 @@ async function seedMissingE2ECohort() {
 }
 
 async function waitForReleaseCatalogExcludesRelease(args: {
-  authorityId: string;
+  catalog: ReleaseCatalogRow;
   channel: string;
   releaseId: string;
   signal?: AbortSignal;
 }) {
-  const url = buildAppVersionCatalogUrl({
-    authorityId: args.authorityId,
+  const url = buildCatalogUrl({
+    catalog: args.catalog,
     channel: args.channel,
   });
   let lastObserved: unknown = null;
@@ -5410,8 +5429,8 @@ async function deployFixtureBundle(
   let bundle = await fetchProviderBundleById(bundleId);
   if (shouldWaitForUpdateCheckVisibility(request)) {
     await waitForReleaseCatalogVisibility({
-      authorityId: deployed.authorityId,
       bundleId,
+      catalog: deployed.catalog,
       channel: remoteChannel,
       releaseId: deployed.release.id,
       signal,
@@ -5495,7 +5514,7 @@ async function updateFixtureRelease(
   }
   if (request.enabled === false && release.enabled === false) {
     await waitForReleaseCatalogExcludesRelease({
-      authorityId: result.catalog.authority_id,
+      catalog: result.catalog,
       channel: channel.name,
       releaseId: release.id,
       signal,
@@ -5561,8 +5580,8 @@ async function createFixtureRollbackRelease(input: {
   );
 
   await waitForReleaseCatalogVisibility({
-    authorityId: created.authorityId,
     bundleId: created.release.bundle_id,
+    catalog: created.catalog,
     channel: created.channel.name,
     releaseId: created.release.id,
   });

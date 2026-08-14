@@ -13,6 +13,7 @@ describe("Release catalog request URL", () => {
       baseUrl: "https://updates.example.com/hot-updater/",
       channel: "production",
       platform: "ios",
+      strategy: "appVersion",
     });
     const deviceState = [
       "current-release",
@@ -40,8 +41,24 @@ describe("Release catalog request URL", () => {
         baseUrl: "https://updates.example.com/hot-updater",
         channel: "production",
         platform: "android",
+        strategy: "appVersion",
       }),
     ).toThrow("Invalid Release catalog app version: not-a-version");
+  });
+
+  it("builds the persisted fingerprint catalog selector", () => {
+    const url = buildReleaseCatalogUrl({
+      authorityId: "project-a",
+      baseUrl: "https://updates.example.com/hot-updater",
+      channel: "production",
+      fingerprintHash: "sha256-native-state",
+      platform: "android",
+      strategy: "fingerprint",
+    });
+
+    expect(url).toBe(
+      "https://updates.example.com/hot-updater/v2/release-catalogs/fingerprint/project-a/android/cHJvZHVjdGlvbg/sha256-native-state",
+    );
   });
 
   it("rejects a fixture URL that leaks any device decision input", () => {

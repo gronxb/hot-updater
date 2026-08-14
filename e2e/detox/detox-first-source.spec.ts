@@ -162,4 +162,21 @@ describe("Detox-first source shape", () => {
       /waitForReleaseCatalogExcludesRelease[\s\S]*index < 240/,
     );
   });
+
+  it("probes the selector stored by the deployed Release catalog", async () => {
+    const controlServerSource = await fs.readFile(controlServerPath, "utf8");
+
+    expect(controlServerSource).toMatch(
+      /args\.catalog\.strategy === "FINGERPRINT"[\s\S]{0,400}fingerprintHash: args\.catalog\.fingerprint_hash/,
+    );
+    expect(controlServerSource).toMatch(
+      /waitForReleaseCatalogVisibility\(\{[\s\S]{0,120}catalog: deployed\.catalog/,
+    );
+    expect(controlServerSource).toMatch(
+      /waitForReleaseCatalogExcludesRelease\(\{[\s\S]{0,120}catalog: result\.catalog/,
+    );
+    expect(controlServerSource).toMatch(
+      /waitForReleaseCatalogVisibility\(\{[\s\S]{0,120}catalog: created\.catalog/,
+    );
+  });
 });

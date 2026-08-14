@@ -1,27 +1,53 @@
 import { encodeChannelKey } from "../../../packages/core/src/releaseCatalogScope.ts";
 import { canonicalizeAppVersion } from "../../../plugins/plugin-core/src/releaseCatalogCompiler.ts";
 
-export type ReleaseCatalogUrlInput = {
-  readonly appVersion: string;
+type ReleaseCatalogUrlBaseInput = {
   readonly authorityId: string;
   readonly baseUrl: string;
   readonly channel: string;
   readonly platform: "android" | "ios";
 };
 
+export type ReleaseCatalogUrlInput = ReleaseCatalogUrlBaseInput &
+  (
+    | {
+        readonly appVersion: string;
+        readonly fingerprintHash?: never;
+        readonly strategy: "appVersion";
+      }
+    | {
+        readonly appVersion?: never;
+        readonly fingerprintHash: string;
+        readonly strategy: "fingerprint";
+      }
+  );
+
 export function buildReleaseCatalogUrl(input: ReleaseCatalogUrlInput): string {
-  const appVersion = canonicalizeAppVersion(input.appVersion);
-  if (appVersion === null) {
-    throw new Error(`Invalid Release catalog app version: ${input.appVersion}`);
+  let strategyValue: string;
+  if (input.strategy === "fingerprint") {
+    strategyValue = input.fingerprintHash;
+    if (strategyValue.length === 0) {
+      throw new Error("Invalid Release catalog fingerprint hash");
+    }
+  } else {
+    const appVersion = canonicalizeAppVersion(input.appVersion);
+    if (appVersion === null) {
+      throw new Error(
+        `Invalid Release catalog app version: ${input.appVersion}`,
+      );
+    }
+    strategyValue = appVersion;
   }
 
   return [
     input.baseUrl.replace(/\/+$/, ""),
-    "v2/release-catalogs/app-version",
+    `v2/release-catalogs/${
+      input.strategy === "fingerprint" ? "fingerprint" : "app-version"
+    }`,
     encodeURIComponent(input.authorityId),
     input.platform,
     encodeChannelKey(input.channel),
-    encodeURIComponent(appVersion),
+    encodeURIComponent(strategyValue),
   ].join("/");
 }
 
