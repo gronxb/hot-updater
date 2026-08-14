@@ -68,6 +68,10 @@ Address these v1 configuration changes before migration:
   `resolveArtifact`.
 - Supabase is supported in `origin-only` mode. A CDN is not a prerequisite for
   initialization or correctness.
+- Rename Supabase database configuration `supabaseAnonKey` to
+  `supabaseServiceRoleKey`. v1 keeps the old property as a temporary source
+  compatibility alias, but generated origin-only configuration uses the new
+  name.
 
 ### 3. Migrate the database
 
