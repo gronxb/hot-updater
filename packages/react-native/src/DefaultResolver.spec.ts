@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => {
 
   return {
     fetchJSON: vi.fn(),
+    fetchReleaseCatalogWithCache: vi.fn(),
     fetchUpdateInfo: vi.fn(),
   };
 });
@@ -24,6 +25,10 @@ const mocks = vi.hoisted(() => {
 vi.mock("./fetchUpdateInfo", () => ({
   fetchJSON: mocks.fetchJSON,
   fetchUpdateInfo: mocks.fetchUpdateInfo,
+}));
+
+vi.mock("./releaseCatalogCache", () => ({
+  fetchReleaseCatalogWithCache: mocks.fetchReleaseCatalogWithCache,
 }));
 
 const createParams = (
@@ -46,6 +51,8 @@ describe("createDefaultResolver", () => {
     mocks.fetchUpdateInfo.mockResolvedValue(null);
     mocks.fetchJSON.mockReset();
     mocks.fetchJSON.mockResolvedValue({});
+    mocks.fetchReleaseCatalogWithCache.mockReset();
+    mocks.fetchReleaseCatalogWithCache.mockResolvedValue({});
     vi.unstubAllGlobals();
     vi.stubGlobal(
       "fetch",
@@ -99,16 +106,23 @@ describe("createDefaultResolver", () => {
       updateStrategy: "appVersion",
     });
 
-    expect(mocks.fetchJSON).toHaveBeenCalledWith({
+    expect(mocks.fetchReleaseCatalogWithCache).toHaveBeenCalledWith({
+      authorityId: "project-a",
+      baseURL: "https://updates.example.com/hot-updater",
       requestHeaders: {
         authorization: "Bearer token",
         "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
       },
       requestTimeout: 1500,
+      scopeKey: "v1:app-version:project-a:ios:cHJvZHVjdGlvbg",
       url: "https://updates.example.com/hot-updater/v2/release-catalogs/app-version/project-a/ios/cHJvZHVjdGlvbg/1.2.0",
     });
-    expect(mocks.fetchJSON.mock.calls[0]?.[0].url).not.toContain("bundle-id");
-    expect(mocks.fetchJSON.mock.calls[0]?.[0].url).not.toContain("cohort");
+    expect(
+      mocks.fetchReleaseCatalogWithCache.mock.calls[0]?.[0].url,
+    ).not.toContain("bundle-id");
+    expect(
+      mocks.fetchReleaseCatalogWithCache.mock.calls[0]?.[0].url,
+    ).not.toContain("cohort");
   });
 
   it("resolves artifacts only from Bundle identities", async () => {

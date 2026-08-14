@@ -275,6 +275,37 @@ class HotUpdaterModule internal constructor(
     @ReactMethod(isBlockingSynchronousMethod = true)
     override fun getActiveUpdateState(): String = org.json.JSONObject(getInstance().getActiveUpdateState()).toString()
 
+    @ReactMethod
+    override fun getReleaseCatalogCache(
+        partition: String,
+        promise: Promise,
+    ) {
+        moduleScope.launch(Dispatchers.IO) {
+            promise.resolve(getInstance().getReleaseCatalogCache(partition))
+        }
+    }
+
+    @ReactMethod
+    override fun setReleaseCatalogCache(
+        partition: String,
+        payload: String,
+        promise: Promise,
+    ) {
+        moduleScope.launch(Dispatchers.IO) {
+            promise.resolve(getInstance().setReleaseCatalogCache(partition, payload))
+        }
+    }
+
+    @ReactMethod
+    override fun removeReleaseCatalogCache(
+        partition: String,
+        promise: Promise,
+    ) {
+        moduleScope.launch(Dispatchers.IO) {
+            promise.resolve(getInstance().removeReleaseCatalogCache(partition))
+        }
+    }
+
     @ReactMethod(isBlockingSynchronousMethod = true)
     override fun isReleaseSelectionCurrent(params: ReadableMap): Boolean {
         val authorityId = params.getString("authorityId") ?: return false

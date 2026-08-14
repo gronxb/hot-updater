@@ -276,6 +276,34 @@ class HotUpdaterModule internal constructor(
 
     override fun getActiveUpdateState(): WritableNativeMap = getInstance().getActiveUpdateState().toWritableNativeMap()
 
+    override fun getReleaseCatalogCache(
+        partition: String,
+        promise: Promise,
+    ) {
+        moduleScope.launch(Dispatchers.IO) {
+            promise.resolve(getInstance().getReleaseCatalogCache(partition))
+        }
+    }
+
+    override fun setReleaseCatalogCache(
+        partition: String,
+        payload: String,
+        promise: Promise,
+    ) {
+        moduleScope.launch(Dispatchers.IO) {
+            promise.resolve(getInstance().setReleaseCatalogCache(partition, payload))
+        }
+    }
+
+    override fun removeReleaseCatalogCache(
+        partition: String,
+        promise: Promise,
+    ) {
+        moduleScope.launch(Dispatchers.IO) {
+            promise.resolve(getInstance().removeReleaseCatalogCache(partition))
+        }
+    }
+
     override fun isReleaseSelectionCurrent(params: ReadableMap): Boolean {
         val authorityId = params.getString("authorityId") ?: return false
         val scopeKey = params.getString("scopeKey") ?: return false

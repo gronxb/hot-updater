@@ -11,6 +11,7 @@ let archiveSources = [
     "HashUtils.swift",
     "HotUpdaterConfig.swift",
     "NotificationExtension.swift",
+    "ReleaseCatalogCacheService.swift",
     "SignatureVerifier.swift",
     "StreamingTarArchiveExtractor.swift",
     "TarArchiveExtractor.swift",

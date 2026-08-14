@@ -7,6 +7,7 @@ import android.os.Process
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * Core implementation class for HotUpdater functionality
@@ -16,6 +17,7 @@ class HotUpdaterImpl {
     private val bundleStorage: BundleStorageService
     private val preferences: PreferencesService
     private val recoveryManager: HotUpdaterRecoveryManager
+    private val releaseCatalogCache: ReleaseCatalogCacheService
     private var currentLaunchSelection: LaunchSelection? = null
 
     /**
@@ -30,6 +32,10 @@ class HotUpdaterImpl {
         this.bundleStorage = bundleStorage
         this.preferences = preferences
         this.recoveryManager = HotUpdaterRecoveryManager(this.context)
+        this.releaseCatalogCache =
+            ReleaseCatalogCacheService(
+                File(this.context.noBackupFilesDir, "hot-updater-release-catalog-cache"),
+            )
     }
 
     /**
@@ -392,6 +398,15 @@ class HotUpdaterImpl {
         )
 
     fun getActiveUpdateState(): Map<String, Any?> = bundleStorage.getActiveUpdateState()
+
+    fun getReleaseCatalogCache(partition: String): String? = releaseCatalogCache.get(partition)
+
+    fun setReleaseCatalogCache(
+        partition: String,
+        payload: String,
+    ): Boolean = releaseCatalogCache.set(partition, payload)
+
+    fun removeReleaseCatalogCache(partition: String): Boolean = releaseCatalogCache.remove(partition)
 
     fun isReleaseSelectionCurrent(
         authorityId: String,

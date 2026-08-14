@@ -43,6 +43,7 @@ private func hotUpdaterGetMinBundleId() -> String {
     private let preferences: PreferencesService
     private let cohortService: CohortService
     private let recoveryManager: HotUpdaterRecoveryManager
+    private let releaseCatalogCache: ReleaseCatalogCacheService
     private var currentLaunchSelection: LaunchSelection?
 
     private static let DEFAULT_CHANNEL = "production"
@@ -70,7 +71,12 @@ private func hotUpdaterGetMinBundleId() -> String {
         )
         let recoveryManager = HotUpdaterRecoveryManager.shared
 
-        self.init(bundleStorage: bundleStorage, preferences: preferences, recoveryManager: recoveryManager)
+        self.init(
+            bundleStorage: bundleStorage,
+            preferences: preferences,
+            recoveryManager: recoveryManager,
+            releaseCatalogCache: ReleaseCatalogCacheService()
+        )
     }
 
     /**
@@ -78,11 +84,17 @@ private func hotUpdaterGetMinBundleId() -> String {
      * @param bundleStorage Service for bundle storage operations
      * @param preferences Service for preference storage
      */
-    internal init(bundleStorage: BundleStorageService, preferences: PreferencesService, recoveryManager: HotUpdaterRecoveryManager) {
+    internal init(
+        bundleStorage: BundleStorageService,
+        preferences: PreferencesService,
+        recoveryManager: HotUpdaterRecoveryManager,
+        releaseCatalogCache: ReleaseCatalogCacheService = ReleaseCatalogCacheService()
+    ) {
         self.bundleStorage = bundleStorage
         self.preferences = preferences
         self.cohortService = CohortService()
         self.recoveryManager = recoveryManager
+        self.releaseCatalogCache = releaseCatalogCache
         super.init()
 
         // Configure preferences with isolation key
@@ -415,6 +427,37 @@ private func hotUpdaterGetMinBundleId() -> String {
 
     public func getActiveUpdateState() -> [String: Any] {
         bundleStorage.getActiveUpdateState()
+    }
+
+    public func getReleaseCatalogCache(
+        _ partition: String,
+        resolver resolve: @escaping RCTPromiseResolveBlock,
+        rejecter _: @escaping RCTPromiseRejectBlock
+    ) {
+        DispatchQueue.global(qos: .utility).async {
+            resolve(self.releaseCatalogCache.get(partition: partition))
+        }
+    }
+
+    public func setReleaseCatalogCache(
+        _ partition: String,
+        payload: String,
+        resolver resolve: @escaping RCTPromiseResolveBlock,
+        rejecter _: @escaping RCTPromiseRejectBlock
+    ) {
+        DispatchQueue.global(qos: .utility).async {
+            resolve(self.releaseCatalogCache.set(partition: partition, value: payload))
+        }
+    }
+
+    public func removeReleaseCatalogCache(
+        _ partition: String,
+        resolver resolve: @escaping RCTPromiseResolveBlock,
+        rejecter _: @escaping RCTPromiseRejectBlock
+    ) {
+        DispatchQueue.global(qos: .utility).async {
+            resolve(self.releaseCatalogCache.remove(partition: partition))
+        }
     }
 
     public func isReleaseSelectionCurrent(_ params: NSDictionary?) -> Bool {

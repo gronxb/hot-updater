@@ -628,6 +628,25 @@ RCT_EXPORT_MODULE();
     return [[HotUpdater sharedImpl] getActiveUpdateState];
 }
 
+- (void)getReleaseCatalogCache:(NSString *)partition
+                        resolve:(RCTPromiseResolveBlock)resolve
+                         reject:(RCTPromiseRejectBlock)reject {
+    [[HotUpdater sharedImpl] getReleaseCatalogCache:partition resolver:resolve rejecter:reject];
+}
+
+- (void)setReleaseCatalogCache:(NSString *)partition
+                       payload:(NSString *)payload
+                       resolve:(RCTPromiseResolveBlock)resolve
+                        reject:(RCTPromiseRejectBlock)reject {
+    [[HotUpdater sharedImpl] setReleaseCatalogCache:partition payload:payload resolver:resolve rejecter:reject];
+}
+
+- (void)removeReleaseCatalogCache:(NSString *)partition
+                          resolve:(RCTPromiseResolveBlock)resolve
+                           reject:(RCTPromiseRejectBlock)reject {
+    [[HotUpdater sharedImpl] removeReleaseCatalogCache:partition resolver:resolve rejecter:reject];
+}
+
 - (NSNumber *)isReleaseSelectionCurrent:(NSDictionary *)params {
     return @([[HotUpdater sharedImpl] isReleaseSelectionCurrent:params]);
 }
@@ -777,6 +796,25 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(acceptReleaseCatalog:(NSDictionary *)para
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getActiveUpdateState) {
     return [[HotUpdater sharedImpl] getActiveUpdateState];
+}
+
+RCT_EXPORT_METHOD(getReleaseCatalogCache:(NSString *)partition
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    [[HotUpdater sharedImpl] getReleaseCatalogCache:partition resolver:resolve rejecter:reject];
+}
+
+RCT_EXPORT_METHOD(setReleaseCatalogCache:(NSString *)partition
+                  payload:(NSString *)payload
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    [[HotUpdater sharedImpl] setReleaseCatalogCache:partition payload:payload resolver:resolve rejecter:reject];
+}
+
+RCT_EXPORT_METHOD(removeReleaseCatalogCache:(NSString *)partition
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    [[HotUpdater sharedImpl] removeReleaseCatalogCache:partition resolver:resolve rejecter:reject];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(isReleaseSelectionCurrent:(NSDictionary *)params) {

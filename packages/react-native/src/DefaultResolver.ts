@@ -1,4 +1,5 @@
 import {
+  createReleaseCatalogScopeKey,
   encodeChannelKey,
   type AppUpdateAvailableInfo,
   type AppUpdateInfo,
@@ -7,6 +8,7 @@ import {
 import { canonicalizeAppVersion } from "@hot-updater/plugin-core";
 
 import { fetchJSON, fetchUpdateInfo } from "./fetchUpdateInfo";
+import { fetchReleaseCatalogWithCache } from "./releaseCatalogCache";
 import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
 import type {
   HotUpdaterBaseURL,
@@ -61,15 +63,36 @@ export function createDefaultResolver(
       }
       const strategyPath =
         params.updateStrategy === "fingerprint" ? "fingerprint" : "app-version";
-      return fetchJSON<ReleaseCatalog>({
-        requestHeaders: {
-          ...params.requestHeaders,
-          "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
-        },
+      const requestHeaders = {
+        ...params.requestHeaders,
+        "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
+      };
+      const url = `${resolvedBaseURL}/v2/release-catalogs/${strategyPath}/${encodeURIComponent(
+        authorityId,
+      )}/${params.platform}/${channelKey}/${encodeURIComponent(strategyValue)}`;
+      const scopeKey = createReleaseCatalogScopeKey(
+        params.updateStrategy === "fingerprint"
+          ? {
+              authorityId,
+              channelKey,
+              fingerprintHash: strategyValue,
+              platform: params.platform,
+              strategy: "FINGERPRINT",
+            }
+          : {
+              authorityId,
+              channelKey,
+              platform: params.platform,
+              strategy: "APP_VERSION",
+            },
+      );
+      return fetchReleaseCatalogWithCache({
+        authorityId,
+        baseURL: resolvedBaseURL,
+        requestHeaders,
         requestTimeout: params.requestTimeout,
-        url: `${resolvedBaseURL}/v2/release-catalogs/${strategyPath}/${encodeURIComponent(
-          authorityId,
-        )}/${params.platform}/${channelKey}/${encodeURIComponent(strategyValue)}`,
+        scopeKey,
+        url,
       });
     },
     resolveArtifact: async (params): Promise<AppUpdateAvailableInfo> => {

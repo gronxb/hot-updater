@@ -96,6 +96,15 @@ export interface Spec extends TurboModule {
   /** Reads active/stable selection receipts and catalog high-water state. */
   getActiveUpdateState(): UnsafeObject;
 
+  /** Reads a checksum-verified Release Catalog cache entry. */
+  getReleaseCatalogCache(partition: string): Promise<string | null>;
+
+  /** Atomically stores a bounded Release Catalog cache entry. */
+  setReleaseCatalogCache(partition: string, payload: string): Promise<boolean>;
+
+  /** Removes an incompatible Release Catalog cache entry. */
+  removeReleaseCatalogCache(partition: string): Promise<boolean>;
+
   /** Rechecks generation/context immediately before a v2 side effect. */
   isReleaseSelectionCurrent(params: UnsafeObject): boolean;
 
