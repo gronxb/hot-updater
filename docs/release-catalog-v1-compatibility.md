@@ -10,7 +10,8 @@ break atomic Release and catalog commits.
 | Boundary | Implementation | Why it remains | Removal gate |
 | --- | --- | --- | --- |
 | v0 mobile selector URLs | `packages/server/src/handler.ts`, `handlerUpdateRoutes.ts`, and `db/releaseCatalog.ts` | Installed v0 apps still call the app-version or fingerprint routes. The bridge selects from the compiled catalog and serializes the legacy update/rollback shape. Missing or pre-0.31 SDK headers still receive JSON `null` for no update. | The published v0 mobile support window has ended and field usage of both selector families is negligible. |
-| Legacy Bundle management shape | `packages/core/src/types.ts`, `packages/server/src/handlerBundleRoutes.ts`, and `db/databasePluginCore.ts` | Existing Console and Standalone bundle routes use Bundle-shaped requests. The adapter translates each accepted write into an atomic Bundle, Release, and catalog mutation and rejects scope moves it cannot represent. | All first-party management clients use Release-native routes and no supported external integration uses Bundle mutation routes. |
+| Legacy Bundle management shape | `packages/core/src/types.ts`, `packages/server/src/handlerBundleRoutes.ts`, `db/databasePluginCore.ts`, and Standalone `standaloneLegacy{Implementation,Reads,Writes}.ts` | Existing Console and Standalone bundle routes use Bundle-shaped requests. The adapter translates each accepted write into an atomic Bundle, Release, and catalog mutation and rejects scope moves it cannot represent. | All first-party management clients use Release-native routes and no supported external integration uses Bundle mutation routes. |
+| Legacy patch artifact scalars | `packages/core/src/types.ts` and `bundleArtifacts.ts` | Persisted v0 Bundles can contain `patchBaseBundleId`, `patchBaseFileHash`, `patchFileHash`, and `patchStorageUri` instead of `Bundle.patches`. Console display and artifact deletion still need to resolve that shape. New data prefers the first `patches` entry. | No retained Bundle or supported API response contains the scalar-only patch shape. |
 | Custom resolver `checkUpdate` | `packages/react-native/src/types.ts` and `checkForUpdate.ts` | v0 applications with custom update servers can upgrade the SDK without immediately implementing protocol v2. It intentionally stays in legacy selection mode and does not claim Release Catalog guarantees. | A major-version removal after the custom resolver migration path has had a documented support window. |
 | Persisted native metadata | Android and iOS `BundleMetadata` plus `BundleFileStorageService` | Existing installs have `stableBundleId`/`stagingBundleId` without Release receipts. v1 materializes a legacy `PersistedSelection`, preserves crash recovery, and later adopts a Release for the same Bundle. | No supported upgrade path can originate from metadata-v1 or Bundle-ID-only state. |
 | Legacy bundle identity files | Android/iOS `HotUpdaterImpl` and `BundleFileStorageService` | Bundles installed by v0 may have a `BUNDLE_ID` file or root bundle file but no v1 manifest. v1 must still launch, identify, and clean up those artifacts. | The v0 artifact retention window has ended and migration telemetry shows no legacy layout use. |
@@ -50,8 +51,9 @@ confuse it with the still-required Bundle management bridge.
 
 ## Governance
 
-Every compatibility layer needs a scenario or contract test that starts from
-the old state, not merely a unit test that calls the shim. Removal requires an
-explicit support-window decision and evidence for the relevant field state,
-artifact layout, schema marker, or API consumer. Age alone is not a removal
-condition.
+Every compatibility layer needs a test that starts from the old shape or state.
+Cross-process and persisted-state boundaries require a scenario or contract
+test; pure data normalization may use a focused unit test with the complete old
+shape. Removal requires an explicit support-window decision and evidence for
+the relevant field state, artifact layout, schema marker, or API consumer. Age
+alone is not a removal condition.
