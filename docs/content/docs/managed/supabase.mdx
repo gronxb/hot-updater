@@ -128,23 +128,19 @@ pre-migration backup.
 
 ### Release catalog cache
 
-Supabase's direct Edge Function URL is the correctness-only mode. It does not
-provide a documented reusable response cache in front of Function execution,
-so it must not be used as evidence for the shared-cache cost profile.
+Supabase officially uses the direct Edge Function URL in `origin-only` mode.
+`hot-updater init` generates that URL in the React Native configuration, and
+`hot-updater doctor --server-base-url <direct-edge-url>` reports the mode as a
+healthy informational status.
 
-For that profile, configure an HTTPS CDN that proxies the complete Edge
-Function base URL and set:
-
-```dotenv
-HOT_UPDATER_SUPABASE_CATALOG_CDN_URL=https://updates.example.com/hot-updater
-```
-
-The CDN cache key must include host, canonical path, `x-api-key`, and supported
-content encoding, and exclude installation state. It must honor the catalog's
-five-second shared TTL and must not cache private/no-store responses. Init uses
-this URL in the generated React Native configuration. Without it, init warns
-and `hot-updater doctor --server-base-url <direct-edge-url>` reports that the
-endpoint is not stress-safe.
+The request still benefits from the Release Catalog architecture: the Edge
+Function serves an already compiled catalog, coalesces concurrent cold reads,
+and performs one exact catalog-row read on an in-process cache miss instead of
+running per-install rollout decisions. However, Supabase does not document a
+reusable response cache in front of Function execution, so every device check
+still invokes the Edge Function. Supabase origin-only measurements must report
+Edge Function invocations and Postgres reads separately and must not be
+presented as shared-CDN hit metrics.
 
 ## Step 4: Add HotUpdater to Your Project
 

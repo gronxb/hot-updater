@@ -61,6 +61,8 @@ const SUPABASE_PROJECT_READY_STATUS = "ACTIVE_HEALTHY";
 const SUPABASE_PROJECT_PROVISIONING_STATUS = "COMING_UP";
 const SUPABASE_PROJECT_READINESS_MAX_ATTEMPTS = 60 * 5;
 const SUPABASE_PROJECT_READINESS_POLL_INTERVAL_MS = 1000;
+const LEGACY_SUPABASE_CATALOG_CDN_URL_ENV_KEY =
+  "HOT_UPDATER_SUPABASE_CATALOG_CDN_URL";
 const STATIC_IMPORT_SPECIFIER_PATTERN =
   /^\s*(?:import|export)\s+(?:type\s+)?(?:[^"'`]+?\s+from\s+)?["']([^"']+)["'];?/gm;
 const DYNAMIC_IMPORT_SPECIFIER_PATTERN =
@@ -152,6 +154,22 @@ export default HotUpdater.wrap({
   baseURL: "%%source%%",
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;
+
+export const getSupabaseReactNativeSource = ({
+  functionName,
+  projectId,
+}: {
+  readonly functionName: string;
+  readonly projectId: string;
+}): string =>
+  transformTemplate(SOURCE_TEMPLATE, {
+    source: `https://${projectId}.supabase.co/functions/v1/${functionName}`,
+  });
+
+export const reportSupabaseOriginCatalogReady = () => {
+  p.log.success("Release catalog endpoint is ready in origin-only mode.");
+  p.log.info("Catalog checks still invoke the Supabase Edge Function.");
+};
 
 const resolvePackageExportPath = async (
   packageName: string,
@@ -968,9 +986,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     providerEnv[SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY] = project.id;
   }
   await makeEnv(providerEnv, ".env.hotupdater", {
-    removeKeys: persistDatabasePassword
-      ? []
-      : [databasePasswordKey, SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY],
+    removeKeys: [
+      LEGACY_SUPABASE_CATALOG_CDN_URL_ENV_KEY,
+      ...(persistDatabasePassword
+        ? []
+        : [databasePasswordKey, SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY]),
+    ],
   });
 
   const bucket = await createSelectedBucket(projectAccess.api, bucketSelection);
@@ -1050,20 +1071,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
 
   p.note(
-    transformTemplate(SOURCE_TEMPLATE, {
-      source:
-        resolvedInputs.catalogCdnUrl?.replace(/\/+$/, "") ??
-        `https://${project.id}.supabase.co/functions/v1/${functionName}`,
+    getSupabaseReactNativeSource({
+      functionName,
+      projectId: project.id,
     }),
   );
-
-  if (resolvedInputs.catalogCdnUrl === undefined) {
-    p.log.warn(
-      "Supabase is using the direct Edge Function URL. Release catalogs are " +
-        "correct but do not have the shared-CDN cost guarantee. Configure " +
-        "HOT_UPDATER_SUPABASE_CATALOG_CDN_URL to enable that profile.",
-    );
-  }
+  reportSupabaseOriginCatalogReady();
 
   p.log.message(
     `Next step: ${link(

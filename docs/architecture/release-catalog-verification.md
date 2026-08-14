@@ -72,13 +72,14 @@ configuration rather than treating `Cache-Control` as proof:
   verifies the supported Wrangler version/date and pre-Worker cache switch.
 - Firebase: `plugins/firebase/iac/releaseCatalogHosting.spec.ts` verifies the
   Hosting rewrite and public endpoint.
-- Supabase: doctor and IAC tests require an explicit external catalog CDN for
-  the stress-safe profile and reject a direct Edge Function URL as such.
+- Supabase: init emits the direct Edge Function URL, and doctor reports it as a
+  healthy `origin-only` mode while noting that every check still invokes Edge.
 
 Live CloudFront/Lambda/DynamoDB, Cloudflare edge-shell/D1, Firebase
-Hosting/Function/Firestore, and Supabase external-CDN/Edge/Postgres counters
-remain deployment evidence: this repository does not infer those counters
-from headers or emulator behavior.
+Hosting/Function/Firestore, and Supabase origin-only Edge/Postgres counters
+remain deployment evidence. Supabase measurements do not claim shared-CDN hit
+behavior, and this repository does not infer counters from headers or emulator
+behavior.
 
 ## Device/provider matrix
 

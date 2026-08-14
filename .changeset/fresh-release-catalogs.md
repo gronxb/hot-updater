@@ -39,5 +39,6 @@ directional Release identity alongside Bundle identity.
 Migrate SQL, DynamoDB, D1, Firestore, Supabase, MongoDB, Drizzle, Kysely,
 Prisma, Standalone, mock, and in-memory implementations to schema `1.0.0`.
 Managed AWS, Cloudflare, and Firebase deployments place Release catalogs behind
-their supported pre-origin cache, while Supabase accepts an explicit external
-catalog CDN endpoint and reports direct Edge Function URLs as correctness-only.
+their supported pre-origin cache, while Supabase uses its direct Edge Function
+URL as a supported origin-only mode and reports Edge invocations separately
+from Postgres catalog reads.

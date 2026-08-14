@@ -32,8 +32,8 @@ cost location but not the scaling shape.
 The objective is:
 
 > Make routine update checks share one response per authority, platform,
-> channel, and app-version/fingerprint scope, so traffic grows at the CDN
-> boundary instead of on the database decision path.
+> channel, and app-version/fingerprint scope, so shared-cache providers grow at
+> the CDN boundary and origin-only providers avoid the database decision path.
 
 The architectural change is deliberately narrow:
 
@@ -61,7 +61,10 @@ The pull request is complete only when all of the following are true:
 - Measured warm hits perform zero database reads and zero decision-origin work.
   Edge-shell executions, if a provider cannot avoid them, are reported
   separately and are never mislabeled as zero runtime invocations.
-- Origin work is proportional to CDN fills per POP and TTL, not installations.
+- On shared-cache providers, origin work is proportional to CDN fills per POP
+  and TTL, not installations. Supabase origin-only Edge invocations remain
+  proportional to checks, but they serve compiled catalogs instead of running
+  per-install database decisions.
 - Release mutation and catalog projection commit atomically using Release
   revision and catalog-generation CAS.
 - Compiler failure, conflict, or oversize output leaves canonical Releases and
@@ -75,7 +78,9 @@ The pull request is complete only when all of the following are true:
 - All 14 existing Detox scenarios are migrated to Release semantics and remain
   meaningful on both iOS and Android.
 - The controlled RED-to-GREEN provider stress regression passes on AWS,
-  Cloudflare, Firebase, and the explicitly CDN-fronted Supabase profile.
+  Cloudflare, and Firebase. The supported Supabase origin-only profile reports
+  Edge Function invocations and Postgres reads separately without claiming
+  shared-CDN hits.
 
 ## Non-goals
 
@@ -1243,11 +1248,12 @@ query is forbidden.
 - The documented
   [Edge Function architecture](https://supabase.com/docs/guides/functions/architecture)
   routes a request through the gateway into an isolate; it does not document a
-  reusable response-cache guarantee. The optimized managed profile therefore
-  requires an explicit supported external CDN endpoint and cache-key contract.
-  `doctor` fails the stress-safe configuration when it is absent;
-  correctness-only no-CDN mode must not claim the GREEN cost result.
-- Evidence reports external cache, Edge Function, and Postgres counters.
+  reusable response-cache guarantee. The supported managed profile therefore
+  uses the direct Edge Function URL in `origin-only` mode. Init generates that
+  URL without an external CDN input, and `doctor` reports the mode as healthy
+  while noting that every check still invokes Edge.
+- Evidence reports Edge Function and Postgres counters. It does not label the
+  origin-only profile as shared-CDN traffic or claim zero runtime invocations.
 
 ### Custom/Standalone/in-memory
 
@@ -1377,8 +1383,8 @@ nullable.
 
 - Run unit/property, native, provider integration, Device E2E, Console, legacy,
   and controlled load suites.
-- Attach cache/origin/DB evidence for AWS, Cloudflare, Firebase, and configured
-  Supabase CDN.
+- Attach cache/origin/DB evidence for AWS, Cloudflare, and Firebase, plus
+  distinct origin-only Edge/Postgres evidence for Supabase.
 - Add changesets and compatibility documentation only after the gates pass.
 
 ## RED -> GREEN stress regression
@@ -1470,7 +1476,8 @@ and rebuild bytes equal active projection.
 - AWS: CloudFront result, Lambda count, DynamoDB reads.
 - Cloudflare: pre-Worker cache status, Worker/decision-origin count, D1 queries.
 - Firebase: Hosting result, Function count, Firestore reads.
-- Supabase: external CDN result, Edge Function count, Postgres reads.
+- Supabase origin-only: Edge Function count and Postgres reads; no shared-CDN
+  result is claimed.
 
 `Cache-Control` alone is not evidence.
 
@@ -1620,7 +1627,7 @@ Management write
   -> canonical Release rows in DB
   -> deterministic AoT compiler
   -> catalog row in the same conditional DB commit
-  -> short-lived authenticated CDN response
+  -> short-lived authenticated shared-cache or origin-only response
 
 Device check
   -> shared authority/scope catalog URL
@@ -1636,8 +1643,9 @@ Native recovery
   -> high-water never rolled back
 ```
 
-The database owns canonical policy and the rebuildable AoT projection. The CDN
-absorbs routine reads. The app owns install-dependent selection. Native owns
-durable selection receipts and crash recovery. Storage owns only immutable
-artifacts. No layer is asked to act as another layer's database or policy
-engine.
+The database owns canonical policy and the rebuildable AoT projection. A
+provider-supported shared cache absorbs routine reads where available;
+Supabase origin-only serves the same projection directly from Edge. The app
+owns install-dependent selection. Native owns durable selection receipts and
+crash recovery. Storage owns only immutable artifacts. No layer is asked to
+act as another layer's database or policy engine.

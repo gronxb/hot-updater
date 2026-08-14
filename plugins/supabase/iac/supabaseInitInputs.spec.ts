@@ -22,6 +22,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   };
 });
 
+import { initProvider } from "./init/index";
 import {
   inputSupabaseDatabasePassword,
   inputSupabaseDeploymentInputs,
@@ -67,15 +68,14 @@ describe("resolveSupabaseInitInputs", () => {
     expect(inputs.databasePassword).toBe("injected-password");
   });
 
-  it("resolves an explicit external Release catalog CDN endpoint", () => {
+  it("does not expose an external Release catalog CDN init input", () => {
     const inputs = resolveSupabaseInitInputs({
       HOT_UPDATER_SUPABASE_CATALOG_CDN_URL:
         "https://updates.example.com/hot-updater",
     });
 
-    expect(inputs.catalogCdnUrl).toBe(
-      "https://updates.example.com/hot-updater",
-    );
+    expect(initProvider.inputs).not.toHaveProperty("catalogCdnUrl");
+    expect(inputs).not.toHaveProperty("catalogCdnUrl");
   });
 
   it("accepts a database password from an overlaid init env", () => {

@@ -57,7 +57,9 @@ vi.mock("execa", async (importOriginal) => {
 import {
   createSelectedBucket,
   getSupabaseProjectAccess,
+  getSupabaseReactNativeSource,
   getLegacySupabaseConfigReference,
+  reportSupabaseOriginCatalogReady,
   resolveEdgeFunctionDenoConfig,
   selectBucket,
   selectProject,
@@ -101,6 +103,36 @@ const collectUserFacingErrorOutput = () => [
   ...mockCli.p.log.error.mock.calls.flat(),
   ...vi.mocked(console.error).mock.calls.flat(),
 ];
+
+describe("Supabase React Native init output", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("uses the direct Edge Function URL for origin-only catalogs", () => {
+    const source = getSupabaseReactNativeSource({
+      functionName: "update-server",
+      projectId: "project-ref",
+    });
+
+    expect(source).toContain(
+      'baseURL: "https://project-ref.supabase.co/functions/v1/update-server"',
+    );
+    expect(source).not.toContain("HOT_UPDATER_SUPABASE_CATALOG_CDN_URL");
+  });
+
+  it("reports origin-only readiness without CDN remediation warnings", () => {
+    reportSupabaseOriginCatalogReady();
+
+    expect(mockCli.p.log.success).toHaveBeenCalledWith(
+      "Release catalog endpoint is ready in origin-only mode.",
+    );
+    expect(mockCli.p.log.info).toHaveBeenCalledWith(
+      "Catalog checks still invoke the Supabase Edge Function.",
+    );
+    expect(mockCli.p.log.warn).not.toHaveBeenCalled();
+  });
+});
 
 describe("getLegacySupabaseConfigReference", () => {
   it("detects legacy Supabase env references", () => {

@@ -548,7 +548,7 @@ describe("doctor", () => {
     });
   });
 
-  it("rejects a direct Supabase Edge URL as a stress-safe catalog endpoint", async () => {
+  it("accepts a direct Supabase Edge URL as origin-only mode", async () => {
     mockReadPackageUp.mockResolvedValue({
       packageJson: { dependencies: { "hot-updater": "0.30.0" } },
       path: "/mock/cwd/package.json",
@@ -563,13 +563,19 @@ describe("doctor", () => {
     });
 
     expect(result).toMatchObject({
-      success: false,
+      success: true,
       details: {
         infrastructure: {
-          catalogCacheError: expect.stringContaining("external CDN endpoint"),
+          catalogMode: "origin-only",
+          catalogModeNote: expect.stringContaining(
+            "still invokes the Supabase Edge Function",
+          ),
           needsUpdate: false,
         },
       },
+    });
+    expect(result).not.toMatchObject({
+      details: { infrastructure: { remediation: expect.anything() } },
     });
   });
 
