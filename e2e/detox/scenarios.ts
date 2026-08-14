@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { bspatchArchiveToDiffOtaScenario } from "./scenarios/bspatch-archive-to-diff-ota.ts";
 import { bspatchConsecutiveDiffOtaScenario } from "./scenarios/bspatch-consecutive-diff-ota.ts";
 import { bspatchDisabledChainRollbackScenario } from "./scenarios/bspatch-disabled-chain-rollback.ts";
@@ -32,7 +34,7 @@ export type {
   DetoxAppDriver,
 } from "./scenarios/types.ts";
 
-const detoxScenarios: readonly DetoxScenarioDefinition[] = [
+const registeredDetoxScenarios: readonly DetoxScenarioDefinition[] = [
   releaseOtaRecoveryScenario,
   multiAssetReplacementScenario,
   bspatchArchiveToDiffOtaScenario,
@@ -61,6 +63,51 @@ const detoxScenarios: readonly DetoxScenarioDefinition[] = [
   metadataV1MigrationScenario,
   tenCrashHistorySafeBundleScenario,
 ];
+
+const scenarioByName = new Map(
+  registeredDetoxScenarios.map((scenario) => [scenario.name, scenario]),
+);
+if (scenarioByName.size !== registeredDetoxScenarios.length) {
+  throw new Error("Detox scenario registrations contain duplicate names");
+}
+
+const defaultScenarioNames: unknown = JSON.parse(
+  readFileSync(
+    new URL("./default-scenario-names.json", import.meta.url),
+    "utf8",
+  ),
+);
+if (
+  !Array.isArray(defaultScenarioNames) ||
+  defaultScenarioNames.length === 0 ||
+  !defaultScenarioNames.every(
+    (name) => typeof name === "string" && name.length > 0,
+  ) ||
+  new Set(defaultScenarioNames).size !== defaultScenarioNames.length
+) {
+  throw new Error(
+    "e2e/detox/default-scenario-names.json must contain unique scenario names",
+  );
+}
+
+const detoxScenarios: readonly DetoxScenarioDefinition[] =
+  defaultScenarioNames.map((name) => {
+    const scenario = scenarioByName.get(name);
+    if (!scenario) {
+      throw new Error(`Default Detox scenario is not registered: ${name}`);
+    }
+    return scenario;
+  });
+
+if (detoxScenarios.length !== registeredDetoxScenarios.length) {
+  const defaultScenarioSet = new Set(defaultScenarioNames);
+  const unlisted = registeredDetoxScenarios
+    .map((scenario) => scenario.name)
+    .filter((name) => !defaultScenarioSet.has(name));
+  throw new Error(
+    `Registered Detox scenarios are missing from the default suite: ${unlisted.join(", ")}`,
+  );
+}
 
 export function listDetoxSuiteNames(): readonly string[] {
   return ["default"];
