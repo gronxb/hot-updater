@@ -29,6 +29,14 @@ describe("Release Catalog native cache compatibility", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("normalizes an undefined iOS TurboModule cache miss to null", async () => {
+    nativeModule.getReleaseCatalogCache = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      readNativeReleaseCatalogCache("partition"),
+    ).resolves.toBeNull();
+  });
+
   it("treats native cache I/O failures as misses without hiding network work", async () => {
     nativeModule.getReleaseCatalogCache = vi
       .fn()

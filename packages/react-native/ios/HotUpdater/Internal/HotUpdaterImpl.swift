@@ -435,7 +435,11 @@ private func hotUpdaterGetMinBundleId() -> String {
         rejecter _: @escaping RCTPromiseRejectBlock
     ) {
         DispatchQueue.global(qos: .utility).async {
-            resolve(self.releaseCatalogCache.get(partition: partition))
+            guard let value = self.releaseCatalogCache.get(partition: partition) else {
+                resolve(NSNull())
+                return
+            }
+            resolve(value)
         }
     }
 

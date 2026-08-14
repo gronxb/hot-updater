@@ -19,7 +19,8 @@ export const readNativeReleaseCatalogCache = async (
   if (typeof method !== "function") return null;
 
   try {
-    return await method.call(HotUpdaterNative, partition);
+    const value = await method.call(HotUpdaterNative, partition);
+    return typeof value === "string" ? value : null;
   } catch {
     return null;
   }
