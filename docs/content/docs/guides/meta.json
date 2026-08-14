@@ -3,6 +3,7 @@
   "description": "Practical guides and tutorials",
   "icon": "BookOpenCheck",
   "pages": [
+    "upgrade-to-v1",
     "deploy",
     "custom-update",
     "bundle-diffing",
