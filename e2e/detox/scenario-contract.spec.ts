@@ -791,8 +791,6 @@ describe("Detox scenario contract", () => {
     const metadataFirstInstallStages = new Set([
       "multi-asset-replacement: install first multi-asset update",
       "multi-asset-replacement: install second multi-asset update",
-      "release-ota-recovery: install stable update",
-      "release-ota-recovery: install crash update",
       "runtime-channel-switch-reset: install runtime channel update",
       "bspatch-archive-to-diff-ota: install archive base update",
       "bspatch-archive-to-diff-ota: install archive diff update",
@@ -2012,6 +2010,7 @@ describe("Detox scenario contract", () => {
       "deploy stable bundle",
       "launch stable update app",
       "install stable update",
+      "assert stable update installed",
       "wait stable metadata pending",
       "reload stable bundle",
       "wait stable metadata active",
@@ -2019,6 +2018,7 @@ describe("Detox scenario contract", () => {
       "deploy crash bundle",
       "launch crash update app",
       "install crash update",
+      "assert crash update installed",
       "wait crash metadata pending",
       "launch crash bundle",
       "wait crash recovery",
@@ -2033,6 +2033,30 @@ describe("Detox scenario contract", () => {
       "assert same-generation safe reselection",
       "assert crash-context reselection skipped artifact",
     ]);
+    expect(
+      calls.find(
+        (call) =>
+          call.kind === "assertText" &&
+          call.stage === "assert stable update installed",
+      ),
+    ).toMatchObject({
+      contains:
+        "current-channel -> installed Release $stableReleaseId / Bundle $stableBundleId",
+      options: { exactText: true },
+      testID: "update-action-result",
+    });
+    expect(
+      calls.find(
+        (call) =>
+          call.kind === "assertText" &&
+          call.stage === "assert crash update installed",
+      ),
+    ).toMatchObject({
+      contains:
+        "current-channel -> installed Release $crashReleaseId / Bundle $crashBundleId",
+      options: { exactText: true },
+      testID: "update-action-result",
+    });
     expect(
       calls.find(
         (call) =>
