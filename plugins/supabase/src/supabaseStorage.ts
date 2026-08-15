@@ -13,6 +13,7 @@ import {
   resolveSupabaseServiceRoleKey,
   type SupabaseServiceRoleConfig,
 } from "./supabaseConfig";
+import { createSupabaseSignedUrlBatcher } from "./supabaseSignedUrlBatcher";
 import type { Database } from "./types";
 
 type SupabaseStorageBucket = {
@@ -102,6 +103,12 @@ export const supabaseStorage =
 
       const bucket = supabase.storage.from(config.bucketName);
       const getStorageKey = createStorageKeyBuilder(config.basePath);
+      const resolveSignedUrl = createSupabaseSignedUrlBatcher({
+        createSignedUrls: (_bucketName, keys, expiresIn) =>
+          bucket.createSignedUrls(keys, expiresIn),
+        expiresIn: 3600,
+        formatObjectPath: (_bucketName, key) => key,
+      });
 
       return {
         node: {
@@ -247,11 +254,7 @@ export const supabaseStorage =
               key = key.substring(`${config.bucketName}/`.length);
             }
 
-            const signedUrl = await createSignedUrlOrThrow({
-              bucket,
-              key,
-              expiresIn: 3600,
-            });
+            const signedUrl = await resolveSignedUrl(config.bucketName, key);
 
             return { fileUrl: signedUrl };
           },
