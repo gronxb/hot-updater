@@ -108,6 +108,7 @@ export const ensureAnalyticsRouteAccess = async (
       search: {
         channel: undefined,
         platform: undefined,
+        targetAppVersion: undefined,
         page: undefined,
         after: undefined,
         before: undefined,

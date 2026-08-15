@@ -11,6 +11,7 @@ import {
   resolveSupabaseServiceRoleKey,
   type SupabaseServiceRoleConfig,
 } from "./supabaseConfig";
+import { createSupabaseSignedUrlBatcher } from "./supabaseSignedUrlBatcher";
 import type { Database } from "./types";
 
 const isNotFoundError = (error: { message?: string } | null | undefined) =>
@@ -24,9 +25,6 @@ export type SupabaseStorageConfig = SupabaseServiceRoleConfig & {
   signedUrlExpiresIn?: number;
 };
 
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : String(error);
-
 export const supabaseStorage = (
   config: SupabaseStorageConfig,
 ): StoragePluginWith<
@@ -38,6 +36,12 @@ export const supabaseStorage = (
   );
   const bucket = supabase.storage.from(config.bucketName);
   const getStorageKey = createStorageKeyBuilder(config.basePath);
+  const resolveSignedUrl = createSupabaseSignedUrlBatcher({
+    createSignedUrls: (_bucketName, keys, expiresIn) =>
+      bucket.createSignedUrls(keys, expiresIn),
+    expiresIn: config.signedUrlExpiresIn ?? 3600,
+    formatObjectPath: (_bucketName, key) => key,
+  });
 
   const parseAndValidate = (storageUri: string) => {
     const parsed = parseStorageUri(storageUri, "supabase-storage");
@@ -82,20 +86,7 @@ export const supabaseStorage = (
     },
     async getDownloadUrl({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
-      try {
-        const { data, error } = await bucket.createSignedUrl(
-          key,
-          config.signedUrlExpiresIn ?? 3600,
-        );
-        if (error || !data?.signedUrl) {
-          throw error ?? new Error("missing signed URL");
-        }
-        return { url: data.signedUrl };
-      } catch (error) {
-        throw new Error(
-          `Failed to generate download URL for "${key}": ${getErrorMessage(error)}`,
-        );
-      }
+      return { url: await resolveSignedUrl(config.bucketName, key) };
     },
     async exists({ storageUri }) {
       const { key } = parseAndValidate(storageUri);

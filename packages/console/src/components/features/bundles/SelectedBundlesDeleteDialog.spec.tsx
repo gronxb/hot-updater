@@ -11,9 +11,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SelectedBundlesDeleteDialog } from "./SelectedBundlesDeleteDialog";
 
-const { mockDeleteBundleMutation, mockToastSuccess, mockToastError } =
+const { mockDeleteBundlesMutation, mockToastSuccess, mockToastError } =
   vi.hoisted(() => ({
-    mockDeleteBundleMutation: {
+    mockDeleteBundlesMutation: {
       mutateAsync: vi.fn(),
     },
     mockToastSuccess: vi.fn(),
@@ -28,7 +28,7 @@ vi.mock("sonner", () => ({
 }));
 
 vi.mock("@/lib/api", () => ({
-  useDeleteBundleMutation: () => mockDeleteBundleMutation,
+  useDeleteBundlesMutation: () => mockDeleteBundlesMutation,
 }));
 
 vi.mock("@/components/ui/dialog", () => ({
@@ -106,7 +106,7 @@ describe("SelectedBundlesDeleteDialog", () => {
   const mockOnComplete = vi.fn();
 
   beforeEach(() => {
-    mockDeleteBundleMutation.mutateAsync.mockReset();
+    mockDeleteBundlesMutation.mutateAsync.mockReset();
     mockToastSuccess.mockReset();
     mockToastError.mockReset();
     mockOnOpenChange.mockReset();
@@ -117,16 +117,12 @@ describe("SelectedBundlesDeleteDialog", () => {
     cleanup();
   });
 
-  it("shows each selected bundle moving from queued to deleted", async () => {
-    const firstDelete = createDeferred<void>();
-    const secondDelete = createDeferred<void>();
-
-    mockDeleteBundleMutation.mutateAsync.mockImplementation(
-      ({ bundleId }: { readonly bundleId: string }) =>
-        bundleId === firstBundle.id
-          ? firstDelete.promise
-          : secondDelete.promise,
-    );
+  it("deletes all selected bundles in one batch", async () => {
+    const deletion = createDeferred<{
+      deletedBundleIds: string[];
+      missingBundleIds: string[];
+    }>();
+    mockDeleteBundlesMutation.mutateAsync.mockReturnValue(deletion.promise);
 
     render(
       <SelectedBundlesDeleteDialog
@@ -142,29 +138,23 @@ describe("SelectedBundlesDeleteDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {
-      expect(mockDeleteBundleMutation.mutateAsync).toHaveBeenCalledWith({
-        bundleId: firstBundle.id,
+      expect(mockDeleteBundlesMutation.mutateAsync).toHaveBeenCalledWith({
+        bundleIds: [firstBundle.id, secondBundle.id],
       });
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Dismiss dialog" }));
     expect(mockOnOpenChange).not.toHaveBeenCalled();
 
-    firstDelete.resolve(undefined);
-
-    await waitFor(() => {
-      expect(mockDeleteBundleMutation.mutateAsync).toHaveBeenCalledWith({
-        bundleId: secondBundle.id,
-      });
-    });
-
     expect(screen.getByRole("columnheader", { name: "Status" })).toBeTruthy();
     expect(screen.queryByLabelText("Queued")).toBeNull();
-    expect(screen.getByText("1 of 2 delete requests finished.")).toBeTruthy();
-    expect(screen.getByLabelText("Deleted")).toBeTruthy();
-    expect(screen.getByLabelText("Deleting")).toBeTruthy();
+    expect(screen.getAllByLabelText("Deleting")).toHaveLength(2);
+    expect(screen.getByText("Deleting 2 bundles in one batch.")).toBeTruthy();
 
-    secondDelete.resolve(undefined);
+    deletion.resolve({
+      deletedBundleIds: [firstBundle.id, secondBundle.id],
+      missingBundleIds: [],
+    });
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
@@ -182,11 +172,13 @@ describe("SelectedBundlesDeleteDialog", () => {
     );
   });
 
-  it("keeps failed bundles actionable and retries only those ids", async () => {
-    mockDeleteBundleMutation.mutateAsync
+  it("keeps a failed batch actionable and retries it", async () => {
+    mockDeleteBundlesMutation.mutateAsync
       .mockRejectedValueOnce(new Error("storage timeout"))
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce(undefined);
+      .mockResolvedValueOnce({
+        deletedBundleIds: [firstBundle.id, secondBundle.id],
+        missingBundleIds: [],
+      });
 
     render(
       <SelectedBundlesDeleteDialog
@@ -203,24 +195,24 @@ describe("SelectedBundlesDeleteDialog", () => {
       expect(screen.getByRole("button", { name: "Retry failed" })).toBeTruthy();
     });
 
-    expect(screen.getByText("storage timeout")).toBeTruthy();
+    expect(screen.getAllByText("storage timeout")).toHaveLength(2);
     expect(mockOnComplete).toHaveBeenCalledWith({
-      deletedBundleIds: [secondBundle.id],
-      failedBundleIds: [firstBundle.id],
+      deletedBundleIds: [],
+      failedBundleIds: [firstBundle.id, secondBundle.id],
     });
-    expect(mockToastError).toHaveBeenCalledWith("1 deleted, 1 failed");
+    expect(mockToastError).toHaveBeenCalledWith("0 deleted, 2 failed");
 
     fireEvent.click(screen.getByRole("button", { name: "Retry failed" }));
 
     await waitFor(() => {
-      expect(mockDeleteBundleMutation.mutateAsync).toHaveBeenCalledTimes(3);
+      expect(mockDeleteBundlesMutation.mutateAsync).toHaveBeenCalledTimes(2);
     });
 
-    expect(mockDeleteBundleMutation.mutateAsync).toHaveBeenLastCalledWith({
-      bundleId: firstBundle.id,
+    expect(mockDeleteBundlesMutation.mutateAsync).toHaveBeenLastCalledWith({
+      bundleIds: [firstBundle.id, secondBundle.id],
     });
     expect(mockOnComplete).toHaveBeenLastCalledWith({
-      deletedBundleIds: [firstBundle.id],
+      deletedBundleIds: [firstBundle.id, secondBundle.id],
       failedBundleIds: [],
     });
   });

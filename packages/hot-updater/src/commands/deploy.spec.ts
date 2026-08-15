@@ -784,7 +784,7 @@ describe("deploy rollout wiring", () => {
     expect((await databaseHarness.bundles())[0]).toMatchObject({
       assetBaseStorageUri: "s3://bundles/assets",
       manifestFileHash: "file-hash",
-      manifestStorageUri: "s3://bundles/bundle-123/manifest.json",
+      manifestStorageUri: "s3://bundles/bundles/bundle-123/manifest.json",
       metadata: expect.objectContaining({
         app_version: "1.0",
       }),
@@ -811,9 +811,9 @@ describe("deploy rollout wiring", () => {
     expect((await databaseHarness.bundles())[0]).toMatchObject({
       assetBaseStorageUri: "s3://bundles/release%20root%23100%25/assets",
       manifestStorageUri:
-        "s3://bundles/release%20root%23100%25/bundle-123/manifest.json",
+        "s3://bundles/release%20root%23100%25/bundles/bundle-123/manifest.json",
       storageUri:
-        "s3://bundles/release%20root%23100%25/bundle-123/bundle.tar.br",
+        "s3://bundles/release%20root%23100%25/bundles/bundle-123/bundle.tar.br",
     });
     expect(mockStoragePlugin.exists).toHaveBeenCalledWith({
       storageUri:

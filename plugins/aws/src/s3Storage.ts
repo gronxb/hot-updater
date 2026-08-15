@@ -1,7 +1,9 @@
 import {
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   S3Client,
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
@@ -12,6 +14,7 @@ import {
   createStoragePlugin,
   createStorageUri,
   parseStorageUri,
+  type StorageObject,
   type StoragePlugin,
   type StoragePluginWith,
 } from "@hot-updater/plugin-core";
@@ -32,7 +35,13 @@ export type S3StorageConfigWithDownloadUrl = S3StorageConfig &
     | { getDownloadUrl: NonNullable<StoragePlugin["getDownloadUrl"]> }
   );
 
-type S3StorageOperations = "put" | "get" | "exists" | "delete";
+type S3StorageOperations =
+  | "put"
+  | "get"
+  | "exists"
+  | "delete"
+  | "listObjects"
+  | "deleteObjects";
 
 const isObjectNotFoundError = (error: unknown) =>
   error instanceof Error &&
@@ -60,7 +69,25 @@ export function s3Storage(
       ? createStorageDownloadUrl(downloadUrlSigningKey)
       : undefined);
   const client = new S3Client(applyS3RuntimeAwsConfig(s3Config));
-  const getStorageKey = createStorageKeyBuilder(basePath);
+  const normalizedBasePath = basePath?.replace(/^\/+|\/+$/g, "") ?? "";
+  const getStorageKey = createStorageKeyBuilder(normalizedBasePath);
+
+  const getListPrefix = (prefix = "") => {
+    const normalizedPrefix = prefix.replace(/^\/+|\/+$/g, "");
+    const value = [normalizedBasePath, normalizedPrefix]
+      .filter(Boolean)
+      .join("/");
+    return value ? `${value}/` : "";
+  };
+
+  const getRelativeKey = (key: string) => {
+    if (!normalizedBasePath) {
+      return key;
+    }
+
+    const basePrefix = `${normalizedBasePath}/`;
+    return key.startsWith(basePrefix) ? key.slice(basePrefix.length) : key;
+  };
 
   const parseAndValidate = (storageUri: string) => {
     const parsed = parseStorageUri(storageUri, "s3");
@@ -75,6 +102,62 @@ export function s3Storage(
   return createStoragePlugin({
     name: "s3Storage",
     protocol: "s3",
+    async listObjects(prefix) {
+      const objects: StorageObject[] = [];
+      let continuationToken: string | undefined;
+
+      do {
+        const response = await client.send(
+          new ListObjectsV2Command({
+            Bucket: bucketName,
+            ContinuationToken: continuationToken,
+            Prefix: getListPrefix(prefix),
+          }),
+        );
+
+        for (const object of response.Contents ?? []) {
+          if (!object.Key) {
+            continue;
+          }
+
+          objects.push({
+            key: getRelativeKey(object.Key),
+            lastModifiedAt: object.LastModified,
+            size: object.Size ?? 0,
+            storageUri: `s3://${bucketName}/${object.Key}`,
+          });
+        }
+
+        continuationToken = response.NextContinuationToken;
+      } while (continuationToken);
+
+      return objects;
+    },
+    async deleteObjects(relativeKeys) {
+      const keys = relativeKeys.map((key) => getStorageKey(key));
+
+      for (let offset = 0; offset < keys.length; offset += 1000) {
+        const batch = keys.slice(offset, offset + 1000);
+        if (batch.length === 0) {
+          continue;
+        }
+
+        const response = await client.send(
+          new DeleteObjectsCommand({
+            Bucket: bucketName,
+            Delete: {
+              Objects: batch.map((Key) => ({ Key })),
+              Quiet: true,
+            },
+          }),
+        );
+        if (response.Errors && response.Errors.length > 0) {
+          throw new Error(
+            `Failed to delete ${response.Errors.length} S3 object(s).`,
+          );
+        }
+      }
+    },
     async put({ key, body, contentLength, contentType }) {
       const storageKey = getStorageKey(key);
       const upload = new Upload({

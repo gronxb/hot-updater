@@ -49,6 +49,8 @@ export type BundleDeleteOptions = BundleMutationOptions;
 const DEFAULT_LIMIT = 20;
 const DELETE_VERIFY_ATTEMPTS = 12;
 const DELETE_VERIFY_DELAY_MS = 1000;
+const STANDALONE_DATABASE_NAME = "standalone-repository";
+const STANDALONE_DELETE_LOOKUP_LIMIT = 100;
 
 const formatRow = (bundle: Bundle): Record<ListField, string> => {
   const out = {} as Record<ListField, string>;
@@ -170,7 +172,7 @@ export const handleBundleDelete = async (
 ) => {
   printBanner();
 
-  const ids = bundleIds ?? [];
+  const ids = [...new Set(bundleIds ?? [])];
   if (ids.length === 0) {
     p.log.error("Provide at least one bundle id.");
     process.exit(1);
@@ -180,17 +182,40 @@ export const handleBundleDelete = async (
   const databasePlugin = config.database;
   const database = createDatabaseClient(databasePlugin);
   try {
-    // Resolve the target set from the given ids.
-    const fetched = await Promise.all(
-      ids.map((id) => database.getBundleById(id)),
+    // Resolve targets from management snapshots. The standard
+    // standalone API caps list requests at 100 IDs, so only that remote plugin
+    // uses bounded lookups.
+    const lookupBatches =
+      databasePlugin.name === STANDALONE_DATABASE_NAME
+        ? Array.from(
+            {
+              length: Math.ceil(ids.length / STANDALONE_DELETE_LOOKUP_LIMIT),
+            },
+            (_, index) =>
+              ids.slice(
+                index * STANDALONE_DELETE_LOOKUP_LIMIT,
+                (index + 1) * STANDALONE_DELETE_LOOKUP_LIMIT,
+              ),
+          )
+        : [ids];
+    const matchedBundles: Bundle[] = [];
+    for (const batch of lookupBatches) {
+      const { data } = await database.getBundles({
+        where: { id: { in: batch } },
+        limit: batch.length,
+      });
+      matchedBundles.push(...data);
+    }
+    const matchedById = new Map(
+      matchedBundles.map((bundle) => [bundle.id, bundle]),
     );
-    const targets: Bundle[] = [];
-    fetched.forEach((bundle, index) => {
-      if (bundle) {
-        targets.push(bundle);
-      } else {
-        p.log.info(`No bundle with id ${ids[index]}. Skipping.`);
+    const targets = ids.flatMap((id) => {
+      const bundle = matchedById.get(id);
+      if (!bundle) {
+        p.log.info(`No bundle with id ${id}. Skipping.`);
+        return [];
       }
+      return [bundle];
     });
     if (targets.length === 0) {
       p.log.info("No matching bundle records. No changes.");

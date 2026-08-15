@@ -64,6 +64,11 @@ import {
   handleReleaseUpdate,
 } from "./commands/release";
 import { handleRollback } from "./commands/rollback";
+import {
+  DEFAULT_STORAGE_PRUNE_PROTECTION_MS,
+  handleStoragePrune,
+  parseStoragePruneProtection,
+} from "./commands/storage";
 
 const DEFAULT_CHANNEL = "production";
 const parseBooleanOption = (value: string) => {
@@ -341,6 +346,58 @@ releaseCommand
         yes?: boolean;
       },
     ) => handlePromote(sourceReleaseId, options),
+  );
+
+const storageCommand = program
+  .command("storage")
+  .description("Manage stored bundle artifacts");
+
+storageCommand
+  .command("prune")
+  .description("Find or delete unreferenced bundle objects and shared assets")
+  .addOption(
+    new Option(
+      "--protect-newer-than <duration>",
+      "protect unreferenced objects modified within this duration",
+    )
+      .argParser((value) => {
+        try {
+          return parseStoragePruneProtection(value);
+        } catch (error) {
+          throw new InvalidArgumentError(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      })
+      .default(DEFAULT_STORAGE_PRUNE_PROTECTION_MS, "24h"),
+  )
+  .addOption(
+    new Option(
+      "--dry-run",
+      "list eligible objects without deleting them (default)",
+    ).conflicts("yes"),
+  )
+  .addOption(
+    new Option(
+      "-y, --yes",
+      "delete eligible objects after reference validation",
+    ).conflicts("dryRun"),
+  )
+  .addHelpText(
+    "after",
+    `
+Examples:
+  $ hot-updater storage prune --dry-run
+  $ hot-updater storage prune --protect-newer-than 24h --yes
+
+Only unreferenced bundle objects and shared assets are eligible.
+Protection uses object modification time, not time since bundle deletion.
+Deletion requires exclusive storage access; stop deploy and promote first.
+`,
+  )
+  .action(
+    (options: { dryRun?: boolean; protectNewerThan: number; yes?: boolean }) =>
+      handleStoragePrune(options),
   );
 
 const keysCommand = program

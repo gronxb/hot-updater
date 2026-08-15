@@ -16,6 +16,7 @@ import {
   createChannel as createChannelApi,
   deleteChannel as deleteChannelApi,
   deleteBundle as deleteBundleApi,
+  deleteBundles as deleteBundlesApi,
   deleteRelease as deleteReleaseApi,
   getBundle,
   getBundleChildCounts,
@@ -123,6 +124,21 @@ function removeBundleFromQueryData(
   return {
     ...data,
     data: data.data.filter((bundle) => bundle.id !== bundleId),
+  };
+}
+
+function removeBundlesFromQueryData(
+  data: BundlesQueryData | undefined,
+  bundleIds: readonly string[],
+) {
+  if (!data) {
+    return data;
+  }
+
+  const bundleIdSet = new Set(bundleIds);
+  return {
+    ...data,
+    data: data.data.filter((bundle) => !bundleIdSet.has(bundle.id)),
   };
 }
 
@@ -322,6 +338,28 @@ export function useDeleteBundleMutation() {
         { queryKey: queryKeys.bundles.all },
         (data: BundlesQueryData | undefined) =>
           removeBundleFromQueryData(data, vars.bundleId),
+      );
+
+      invalidateInBackground(queryClient, queryKeys.bundles.all);
+      invalidateInBackground(queryClient, queryKeys.bundleChildren.all);
+    },
+  });
+}
+
+export function useDeleteBundlesMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: { bundleIds: string[] }) =>
+      deleteBundlesApi({ data: params }),
+    onSuccess: (_, vars) => {
+      for (const bundleId of vars.bundleIds) {
+        queryClient.removeQueries({ queryKey: queryKeys.bundle(bundleId) });
+      }
+      queryClient.setQueriesData(
+        { queryKey: queryKeys.bundles.all },
+        (data: BundlesQueryData | undefined) =>
+          removeBundlesFromQueryData(data, vars.bundleIds),
       );
 
       invalidateInBackground(queryClient, queryKeys.bundles.all);

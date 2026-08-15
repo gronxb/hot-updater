@@ -16,7 +16,7 @@ let clientAccessKeyStore: ReturnType<
 > | null = null;
 let clientAccessKeyStoreResolved = false;
 let storagePluginPromise: Promise<
-  StoragePluginWith<"get" | "put" | "delete">
+  StoragePluginWith<"get" | "put" | "exists" | "delete">
 > | null = null;
 
 const loadCachedConfig = async () => {
@@ -34,7 +34,12 @@ const loadCachedStoragePlugin = async (config: ConfigResponse) => {
   if (!storagePluginPromise) {
     storagePluginPromise = Promise.resolve(config.storage)
       .then((storagePlugin) => {
-        assertStorageOperations(storagePlugin, ["get", "put", "delete"]);
+        assertStorageOperations(storagePlugin, [
+          "get",
+          "put",
+          "exists",
+          "delete",
+        ]);
         return storagePlugin;
       })
       .catch((error) => {

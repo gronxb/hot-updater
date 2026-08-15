@@ -11,11 +11,13 @@ import {
   useCreateChannelMutation,
   useDeleteChannelMutation,
   useDeleteBundleMutation,
+  useDeleteBundlesMutation,
 } from "./api";
 import {
   createChannel as createChannelApi,
   deleteChannel as deleteChannelApi,
   deleteBundle as deleteBundleApi,
+  deleteBundles as deleteBundlesApi,
   getBundleEventSummary as getBundleEventSummaryApi,
   getBundleEventAnalytics as getBundleEventAnalyticsApi,
 } from "./api-rpc";
@@ -24,6 +26,7 @@ vi.mock("./api-rpc", () => ({
   createBundle: vi.fn(),
   createChannel: vi.fn(),
   deleteBundle: vi.fn(),
+  deleteBundles: vi.fn(),
   deleteChannel: vi.fn(),
   deleteRelease: vi.fn(),
   getBundle: vi.fn(),
@@ -310,5 +313,77 @@ describe("useDeleteBundleMutation", () => {
       },
     });
     expect(invalidateQueries).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("useDeleteBundlesMutation", () => {
+  it("removes the whole batch from artifact caches and invalidates once", async () => {
+    vi.mocked(deleteBundlesApi).mockResolvedValue({
+      success: true,
+      deletedBundleIds: [bundle.id, otherBundle.id],
+      missingBundleIds: [],
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        mutations: { retry: false },
+        queries: { retry: false },
+      },
+    });
+    const invalidateQueries = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const filters = { platform: "ios" as const, limit: "2000" };
+
+    queryClient.setQueryData(queryKeys.bundle(bundle.id), bundle);
+    queryClient.setQueryData(queryKeys.bundle(otherBundle.id), otherBundle);
+    queryClient.setQueryData(queryKeys.bundles.list(filters), {
+      data: [bundle, otherBundle],
+      pagination: {
+        total: 2,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 1,
+      },
+    });
+
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useDeleteBundlesMutation(), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        bundleIds: [bundle.id, otherBundle.id],
+      });
+    });
+
+    expect(
+      queryClient.getQueryData(queryKeys.bundle(bundle.id)),
+    ).toBeUndefined();
+    expect(
+      queryClient.getQueryData(queryKeys.bundle(otherBundle.id)),
+    ).toBeUndefined();
+    expect(queryClient.getQueryData(queryKeys.bundles.list(filters))).toEqual({
+      data: [],
+      pagination: {
+        total: 2,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 1,
+      },
+    });
+    expect(invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.bundles.all,
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.bundleChildren.all,
+    });
+
+    queryClient.clear();
   });
 });

@@ -43,6 +43,10 @@ type DeleteBundleInput = {
   bundleId: string;
 };
 
+type DeleteBundlesInput = {
+  bundleIds: string[];
+};
+
 type GetReleasesInput = {
   beforeReleaseId?: string;
   channelId?: string;
@@ -390,6 +394,28 @@ export const deleteBundle = createServerFn({ method: "POST" })
       });
 
       return { success: true };
+    } catch (error) {
+      console.error("Error during bundle deletion:", error);
+      throw error;
+    }
+  });
+
+export const deleteBundles = createServerFn({ method: "POST" })
+  .inputValidator((input: DeleteBundlesInput) => input)
+  .handler(async ({ data }) => {
+    try {
+      const { prepareConfig } = await import("./server/config.server");
+      const { deleteBundles: deleteBundlesWithStorage } =
+        await import("./server/deleteBundle");
+      const { databaseClient, storagePlugin } = await prepareConfig();
+
+      const result = await deleteBundlesWithStorage(data, {
+        databaseClient,
+        storagePlugin,
+        waitForStorageCleanup: false,
+      });
+
+      return { success: true, ...result };
     } catch (error) {
       console.error("Error during bundle deletion:", error);
       throw error;

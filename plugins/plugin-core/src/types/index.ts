@@ -356,6 +356,14 @@ export interface StorageDeleteResult {
   readonly deleted: true;
 }
 
+export interface StorageObject {
+  /** Object key relative to the storage plugin's configured base path. */
+  readonly key: string;
+  readonly storageUri: string;
+  readonly size: number;
+  readonly lastModifiedAt?: Date;
+}
+
 export interface StorageGetDownloadUrlInput {
   readonly storageUri: string;
 }
@@ -393,6 +401,10 @@ export interface StoragePlugin {
   readonly exists?: (input: StorageExistsInput) => Promise<StorageExistsResult>;
   /** Deletes exactly the object referenced by `storageUri`. */
   readonly delete?: (input: StorageDeleteInput) => Promise<StorageDeleteResult>;
+  /** Lists objects below the optional base-path-relative prefix. */
+  readonly listObjects?: (prefix?: string) => Promise<StorageObject[]>;
+  /** Deletes only the exact base-path-relative keys supplied by the caller. */
+  readonly deleteObjects?: (keys: readonly string[]) => Promise<void>;
 }
 
 /**

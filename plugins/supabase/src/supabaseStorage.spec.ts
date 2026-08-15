@@ -4,7 +4,7 @@ import { supabaseStorage } from "./supabaseStorage";
 
 const { bucket, createClient } = vi.hoisted(() => {
   const bucket = {
-    createSignedUrl: vi.fn(),
+    createSignedUrls: vi.fn(),
     download: vi.fn(),
     exists: vi.fn(),
     remove: vi.fn(),
@@ -155,8 +155,14 @@ describe("supabaseStorage", () => {
   });
 
   it("returns a Supabase signed download URL", async () => {
-    bucket.createSignedUrl.mockResolvedValue({
-      data: { signedUrl: "https://example.supabase.co/signed" },
+    bucket.createSignedUrls.mockResolvedValue({
+      data: [
+        {
+          error: null,
+          path: "assets/file-hash.png",
+          signedUrl: "https://example.supabase.co/signed",
+        },
+      ],
       error: null,
     });
 
@@ -165,9 +171,82 @@ describe("supabaseStorage", () => {
         storageUri: "supabase-storage://updates/assets/file-hash.png",
       }),
     ).resolves.toEqual({ url: "https://example.supabase.co/signed" });
-    expect(bucket.createSignedUrl).toHaveBeenCalledWith(
-      "assets/file-hash.png",
+    expect(bucket.createSignedUrls).toHaveBeenCalledWith(
+      ["assets/file-hash.png"],
       3600,
     );
+  });
+
+  it("batches concurrent signed URL requests", async () => {
+    bucket.createSignedUrls.mockImplementation(
+      async (paths: string[], expiresIn: number) => ({
+        data: paths.map((path) => ({
+          error: null,
+          path,
+          signedUrl: `https://example.supabase.co/${expiresIn}/${path}`,
+        })),
+        error: null,
+      }),
+    );
+    const storage = createStorage();
+    const paths = Array.from(
+      { length: 20 },
+      (_, index) => `assets/sha256/file-${index}.png`,
+    );
+
+    await expect(
+      Promise.all(
+        paths.map((key) =>
+          storage.getDownloadUrl({
+            storageUri: `supabase-storage://updates/${key}`,
+          }),
+        ),
+      ),
+    ).resolves.toEqual(
+      paths.map((key) => ({
+        url: `https://example.supabase.co/3600/${key}`,
+      })),
+    );
+    expect(bucket.createSignedUrls).toHaveBeenCalledTimes(1);
+    expect(bucket.createSignedUrls).toHaveBeenCalledWith(paths, 3600);
+  });
+
+  it("maps a batch item error to the matching request", async () => {
+    bucket.createSignedUrls.mockResolvedValue({
+      data: [
+        {
+          error: null,
+          path: "assets/available.png",
+          signedUrl: "https://example.supabase.co/available.png",
+        },
+        {
+          error: "Object not found",
+          path: "assets/missing.png",
+          signedUrl: "",
+        },
+      ],
+      error: null,
+    });
+    const storage = createStorage();
+
+    const results = await Promise.allSettled([
+      storage.getDownloadUrl({
+        storageUri: "supabase-storage://updates/assets/available.png",
+      }),
+      storage.getDownloadUrl({
+        storageUri: "supabase-storage://updates/assets/missing.png",
+      }),
+    ]);
+
+    expect(results[0]).toEqual({
+      status: "fulfilled",
+      value: { url: "https://example.supabase.co/available.png" },
+    });
+    expect(results[1]).toEqual({
+      status: "rejected",
+      reason: new Error(
+        'Failed to generate download URL for "assets/missing.png": Object not found',
+      ),
+    });
   });
 });

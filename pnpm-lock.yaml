@@ -1990,6 +1990,25 @@ importers:
         specifier: catalog:tools
         version: 9.5.2
 
+  plugins/bugsnag-plugin:
+    dependencies:
+      '@hot-updater/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../plugin-core
+      execa:
+        specifier: catalog:tools
+        version: 9.5.2
+    devDependencies:
+      '@bugsnag/cli':
+        specifier: ~3.10.4
+        version: 3.10.4
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.43
+
   plugins/cloudflare:
     dependencies:
       '@aws-sdk/client-s3':
@@ -3491,6 +3510,11 @@ packages:
 
   '@bramus/specificity@2.4.2':
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
+    hasBin: true
+
+  '@bugsnag/cli@3.10.4':
+    resolution: {integrity: sha512-VDz+wHtZDFQxJQi013FXvMb8VjtRtITEJYh3HjnmELbiePt4spR7JUzHJ9sqMb4NGUlAaJMAI2GQCKZ49wK7FA==}
+    engines: {node: '>=18.0.0'}
     hasBin: true
 
   '@callstack/repack-dev-server@5.2.5':
@@ -22236,6 +22260,11 @@ snapshots:
   '@bramus/specificity@2.4.2':
     dependencies:
       css-tree: 3.2.1
+
+  '@bugsnag/cli@3.10.4':
+    dependencies:
+      undici: 6.26.0
+      yaml: 2.9.0
 
   '@callstack/repack-dev-server@5.2.5':
     dependencies:
