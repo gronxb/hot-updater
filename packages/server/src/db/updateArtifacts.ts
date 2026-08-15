@@ -9,6 +9,7 @@ import {
   type ChangedAsset,
 } from "@hot-updater/core";
 import {
+  getManifestAssetDownloadPath,
   resolveManifestAssetStorageUri,
   type HotUpdaterContext,
 } from "@hot-updater/plugin-core";
@@ -29,7 +30,6 @@ type ReadStorageText<TContext> = (
 ) => Promise<string | null>;
 
 const HBC_ASSET_PATH_RE = /\.bundle$/;
-const BR_COMPRESSED_ASSET_PATH_RE = /(^|\/)index\.[^/]+\.bundle$/;
 
 const resolveUniqueHbcAssetPath = (manifest: BundleManifest) => {
   const candidates = Object.keys(manifest.assets)
@@ -199,8 +199,8 @@ async function resolveChangedAssets<TContext>({
         return null;
       }
 
-      const usesBrotliAsset = BR_COMPRESSED_ASSET_PATH_RE.test(assetPath);
-      const downloadPath = usesBrotliAsset ? `${assetPath}.br` : assetPath;
+      const downloadPath = getManifestAssetDownloadPath(assetPath);
+      const usesBrotliAsset = downloadPath !== assetPath;
       const storageUri = resolveManifestAssetStorageUri({
         assetBaseStorageUri,
         assetPath: downloadPath,

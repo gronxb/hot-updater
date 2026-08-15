@@ -1,5 +1,25 @@
 # hot-updater
 
+## 0.36.0
+
+### Minor Changes
+
+- 9759e8a: Reduce S3 management query work by skipping legacy UUIDv7 artifact traversal, deriving channels from canonical manifest keys, and batching multi-bundle deletion scans and commits. Store new bundle artifacts below `bundles/<bundle-id>` while preserving legacy reads, and add exact target app version filters to the CLI and Console. Add an exclusive-maintenance `hot-updater storage prune` command for orphaned bundle objects and unreferenced shared assets, with an explicit `--dry-run` candidate table, a recent-object protection window, and fail-closed reference validation safeguards.
+
+### Patch Changes
+
+- da7de2d: Preserve UUIDv7 S3 channels while avoiding per-prefix legacy traversal, respect
+  standalone server pagination limits during storage pruning and batch deletion,
+  and document the safe storage cleanup workflow.
+- Updated dependencies [9759e8a]
+  - @hot-updater/cli-tools@0.36.0
+  - @hot-updater/plugin-core@0.36.0
+  - @hot-updater/console@0.36.0
+  - @hot-updater/server@0.36.0
+  - @hot-updater/android-helper@0.36.0
+  - @hot-updater/apple-helper@0.36.0
+  - @hot-updater/core@0.36.0
+
 ## 0.35.12
 
 ### Patch Changes
