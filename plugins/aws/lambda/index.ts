@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
 import { handle } from "hono/lambda-edge";
 
+import { dynamoDB } from "../src/dynamoDB";
 import { s3Database } from "../src/s3Database";
 import { s3Storage } from "../src/s3Storage";
 import { withCloudFrontSignedUrl } from "../src/withCloudFrontSignedUrl";
@@ -11,6 +12,9 @@ import { withCloudFrontSignedUrl } from "../src/withCloudFrontSignedUrl";
 declare global {
   var HotUpdater: {
     CLOUDFRONT_KEY_PAIR_ID: string;
+    DATABASE_TYPE: string;
+    DYNAMODB_REGION: string;
+    DYNAMODB_TABLE_NAME: string;
     SSM_PARAMETER_NAME: string;
     SSM_REGION: string;
     S3_BUCKET_NAME: string;
@@ -31,9 +35,37 @@ const isCanonicalUpdateRoute = (path: string) => {
 };
 
 const CLOUDFRONT_KEY_PAIR_ID = HotUpdater.CLOUDFRONT_KEY_PAIR_ID;
+const DATABASE_TYPE = HotUpdater.DATABASE_TYPE;
+const DYNAMODB_REGION = HotUpdater.DYNAMODB_REGION;
+const DYNAMODB_TABLE_NAME = HotUpdater.DYNAMODB_TABLE_NAME;
 const SSM_PARAMETER_NAME = HotUpdater.SSM_PARAMETER_NAME;
 const SSM_REGION = HotUpdater.SSM_REGION;
 const S3_BUCKET_NAME = HotUpdater.S3_BUCKET_NAME;
+
+class AwsLambdaDatabaseTypeError extends Error {
+  readonly name = "AwsLambdaDatabaseTypeError";
+
+  constructor(readonly databaseType: string) {
+    super(`Unsupported AWS metadata database "${databaseType}"`);
+  }
+}
+
+const createDatabase = () => {
+  switch (DATABASE_TYPE) {
+    case "dynamodb":
+      return dynamoDB({
+        region: DYNAMODB_REGION,
+        tableName: DYNAMODB_TABLE_NAME,
+      });
+    case "s3":
+      return s3Database({
+        bucketName: S3_BUCKET_NAME,
+        region: SSM_REGION,
+      });
+    default:
+      throw new AwsLambdaDatabaseTypeError(DATABASE_TYPE);
+  }
+};
 
 type Bindings = {
   callback: Callback;
@@ -62,11 +94,10 @@ const resolveRequestOrigin = (context?: SignedUrlContext) => {
   return new URL(context.request.url).origin;
 };
 
+const database = createDatabase();
+
 const hotUpdater = createHotUpdater<SignedUrlContext>({
-  database: s3Database({
-    bucketName: S3_BUCKET_NAME,
-    region: SSM_REGION,
-  }),
+  database,
   storages: [
     withCloudFrontSignedUrl(
       s3Storage({
@@ -85,6 +116,9 @@ const hotUpdater = createHotUpdater<SignedUrlContext>({
   features: {
     updateCheck: true,
     bundles: false,
+    ...(DATABASE_TYPE === "dynamodb"
+      ? { analytics: {}, clientAccessKeys: true }
+      : {}),
   },
 });
 

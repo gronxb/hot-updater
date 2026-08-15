@@ -126,4 +126,51 @@ describe("Detox remote asset proxy URLs", () => {
       await fs.rm(resultsDir, { force: true, recursive: true });
     }
   });
+
+  it("uses the client access key for direct and proxied update requests", async () => {
+    const resultsDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-client-key-proxy-"),
+    );
+    const observedKeys: Array<string | null> = [];
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        observedKeys.push(new Headers(init?.headers).get("x-api-key"));
+        return Response.json({ status: "NO_UPDATE" });
+      },
+    );
+
+    vi.resetModules();
+    vi.stubEnv("HOT_UPDATER_API_KEY", "client-access-key");
+    vi.stubEnv(
+      "HOT_UPDATER_E2E_APP_BASE_URL",
+      "https://provider.example.com/hot-updater",
+    );
+    vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.example");
+    vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "booted");
+    vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
+    vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", resultsDir);
+    vi.stubEnv("PORT", "3107");
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const controller = await import("./control-server/controller.ts");
+      const url =
+        "http://localhost:3107/hot-updater/app-version/ios/1.0/production/min/current";
+
+      expect(
+        controller.getHotUpdaterClientRequestHeaders().get("x-api-key"),
+      ).toBe("client-access-key");
+
+      await controller.handleProxyUpdateRequest(new Request(url));
+      await controller.handleProxyUpdateRequest(
+        new Request(url, { headers: { "x-api-key": "app-provided-key" } }),
+      );
+
+      expect(observedKeys).toEqual(["client-access-key", "app-provided-key"]);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await fs.rm(resultsDir, { force: true, recursive: true });
+    }
+  });
 });

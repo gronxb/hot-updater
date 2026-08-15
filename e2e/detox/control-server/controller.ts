@@ -38,7 +38,10 @@ import {
   waitForCrashRecoveryState,
 } from "./crash-recovery-wait.ts";
 import type { CrashRecoveryArtifactNames } from "./crash-recovery-wait.ts";
-import { acquireFairFileLock } from "./fair-file-lock.ts";
+import {
+  acquireFairFileLock,
+  resolveDeployLockCapacity,
+} from "./fair-file-lock.ts";
 import {
   readE2eScreenStateSnapshot,
   resetE2eScreenState,
@@ -2895,10 +2898,27 @@ function getHotUpdaterManagementHeaders() {
 }
 
 function readHotUpdaterAuthToken() {
-  const envToken = process.env.HOT_UPDATER_AUTH_TOKEN?.trim();
-  if (envToken) {
-    return envToken;
-  }
+  return readHotUpdaterEnvValue("HOT_UPDATER_AUTH_TOKEN");
+}
+
+function readHotUpdaterApiKey() {
+  return readHotUpdaterEnvValue("HOT_UPDATER_API_KEY");
+}
+
+export function getHotUpdaterClientRequestHeaders() {
+  const headers = new Headers({
+    "Hot-Updater-SDK-Version": "e2e",
+  });
+  const apiKey = readHotUpdaterApiKey();
+  if (apiKey) headers.set("x-api-key", apiKey);
+  return headers;
+}
+
+function readHotUpdaterEnvValue(
+  key: "HOT_UPDATER_API_KEY" | "HOT_UPDATER_AUTH_TOKEN",
+) {
+  const envValue = process.env[key]?.trim();
+  if (envValue) return envValue;
 
   if (!fs.existsSync(fixtureSession.envSourceFile)) {
     return null;
@@ -2911,11 +2931,9 @@ function readHotUpdaterAuthToken() {
       continue;
     }
 
-    const match = trimmed.match(/^HOT_UPDATER_AUTH_TOKEN\s*=\s*(.*)$/);
-    const token = match ? parseEnvTokenValue(match[1]).trim() : "";
-    if (token) {
-      return token;
-    }
+    const match = trimmed.match(new RegExp(`^${key}\\s*=\\s*(.*)$`));
+    const value = match ? parseEnvTokenValue(match[1]).trim() : "";
+    if (value) return value;
   }
 
   return null;
@@ -3288,6 +3306,12 @@ export async function handleProxyUpdateRequest(request: Request) {
 
   const headers = new Headers(request.headers);
   headers.delete("host");
+  const clientApiKey = readHotUpdaterApiKey();
+  let clientApiKeyInjected = false;
+  if (clientApiKey && !headers.has("x-api-key")) {
+    headers.set("x-api-key", clientApiKey);
+    clientApiKeyInjected = true;
+  }
 
   const requestBody =
     request.method === "GET" || request.method === "HEAD"
@@ -3315,6 +3339,7 @@ export async function handleProxyUpdateRequest(request: Request) {
   }
 
   logDetoxFixture("proxied update request", {
+    clientApiKeyInjected,
     method: request.method,
     source: requestUrl.pathname,
     target: targetUrl.toString(),
@@ -3491,9 +3516,7 @@ async function waitForUpdateCheckVisibilityUrl(args: {
     throwIfAborted(args.signal);
     try {
       const response = await fetch(args.url, {
-        headers: {
-          "Hot-Updater-SDK-Version": "e2e",
-        },
+        headers: getHotUpdaterClientRequestHeaders(),
         signal: fetchSignal(UPDATE_CHECK_HTTP_TIMEOUT_MS, args.signal),
       });
       const body = await response.text();
@@ -3780,9 +3803,7 @@ async function waitForUpdateCheckExcludesBundle(args: {
     throwIfAborted(args.signal);
     try {
       const response = await fetch(url, {
-        headers: {
-          "Hot-Updater-SDK-Version": "e2e",
-        },
+        headers: getHotUpdaterClientRequestHeaders(),
         signal: fetchSignal(UPDATE_CHECK_HTTP_TIMEOUT_MS, args.signal),
       });
       const body = await response.text();
@@ -4701,7 +4722,7 @@ async function deployFixtureBundle(
   });
   const cacheEnv = bareBuildCacheEnv({ bundleProfile, request });
   const deployProcessLock = await acquireFairFileLock({
-    capacity: 2,
+    capacity: resolveDeployLockCapacity(),
     lockRoot: deployProcessLockRoot(),
     onAbandoned: ({ ageMs, lockPath, owner, reason }) => {
       logDetoxFixture(

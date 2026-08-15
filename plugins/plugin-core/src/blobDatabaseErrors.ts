@@ -1,3 +1,7 @@
+/**
+ * @deprecated Blob-backed database plugins will be removed in a future major
+ * release. Use `createDatabasePlugin` with a row-oriented implementation.
+ */
 export class BlobDatabaseSnapshotError extends Error {
   readonly name = "BlobDatabaseSnapshotError";
 

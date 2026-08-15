@@ -49,4 +49,19 @@ describe("AWS non-interactive init inputs", () => {
     expect(inputs.migrationApproved).toBe("true");
     expect(() => assertAwsNonInteractiveInputs(inputs, true)).not.toThrow();
   });
+
+  it("resolves the selected database and DynamoDB table", () => {
+    // Given
+    const existingEnv = {
+      HOT_UPDATER_AWS_DATABASE: "dynamodb",
+      HOT_UPDATER_DYNAMODB_TABLE_NAME: "hot-updater-metadata",
+    };
+
+    // When
+    const inputs = resolveAwsInitInputs(existingEnv);
+
+    // Then
+    expect(inputs.database).toBe("dynamodb");
+    expect(inputs.dynamodbTableName).toBe("hot-updater-metadata");
+  });
 });

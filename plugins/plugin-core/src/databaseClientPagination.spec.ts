@@ -25,6 +25,33 @@ const createBundle = (id: string): Bundle => ({
 });
 
 describe("database client pagination", () => {
+  it("loads a finite bundle id set with one domain query", async () => {
+    const row = bundlesRow(createBundle("001"));
+    const findMany = vi.fn(async () => [row]);
+    const adapter = createDatabasePluginAdapter("finite-id-memory", {
+      create: async () => row,
+      update: async () => row,
+      delete: async () => {},
+      count: async () => 1,
+      findOne: async () => row,
+      findMany,
+      insertChannel: async (input) => ({ row: input.row, inserted: true }),
+      deleteChannel: async () => ({ deleted: false, reason: "not_found" }),
+    });
+    const plugin = createDatabasePlugin({
+      name: "finite-id-memory",
+      ...adapter,
+    });
+
+    await expect(
+      loadBundleRows(plugin, { id: { in: ["001", "002"] } }),
+    ).resolves.toEqual([row]);
+    expect(findMany).toHaveBeenCalledOnce();
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 2, offset: 0 }),
+    );
+  });
+
   it("hydrates only the selected bundle row", async () => {
     const store = new Map<string, unknown>();
     const plugin = createBlobDatabasePlugin({

@@ -1,6 +1,17 @@
+import { createHash } from "node:crypto";
+
 import { IAM } from "@aws-sdk/client-iam";
 import { STS } from "@aws-sdk/client-sts";
 import { p } from "@hot-updater/cli-tools";
+
+import {
+  DYNAMODB_ANALYTICS_PARTITION,
+  DYNAMODB_CHANNEL_NAME_PARTITION,
+  DYNAMODB_CHANNEL_PARTITION,
+  DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION,
+  DYNAMODB_CLIENT_ACCESS_KEY_PARTITION,
+  DYNAMODB_UPDATE_INDEX_NAME,
+} from "../src/dynamoDB";
 
 export class IAMManager {
   private region: string;
@@ -27,7 +38,6 @@ export class IAMManager {
 
     const requiredPolicyArns = [
       "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-      "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
     ];
 
     for (const policyArn of requiredPolicyArns) {
@@ -40,7 +50,127 @@ export class IAMManager {
     }
   }
 
-  async createOrSelectRole(): Promise<string> {
+  private async ensureDynamoDBPolicy(
+    iamClient: IAM,
+    roleName: string,
+    accountId: string,
+    tableName: string,
+  ): Promise<void> {
+    const tableArn = `arn:aws:dynamodb:${this.region}:${accountId}:table/${tableName}`;
+    await iamClient.putRolePolicy({
+      PolicyDocument: JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [
+          {
+            Action: ["dynamodb:Query"],
+            Effect: "Allow",
+            Resource: [`${tableArn}/index/${DYNAMODB_UPDATE_INDEX_NAME}`],
+          },
+          {
+            Action: [
+              "dynamodb:BatchGetItem",
+              "dynamodb:DeleteItem",
+              "dynamodb:GetItem",
+              "dynamodb:PutItem",
+              "dynamodb:Query",
+              "dynamodb:TransactWriteItems",
+              "dynamodb:UpdateItem",
+            ],
+            Condition: {
+              "ForAllValues:StringEquals": {
+                "dynamodb:LeadingKeys": [
+                  "_hot-updater",
+                  "bundles",
+                  "bundle_patches",
+                  DYNAMODB_CHANNEL_PARTITION,
+                  DYNAMODB_CHANNEL_NAME_PARTITION,
+                  DYNAMODB_ANALYTICS_PARTITION,
+                  DYNAMODB_CLIENT_ACCESS_KEY_PARTITION,
+                  DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION,
+                ],
+              },
+            },
+            Effect: "Allow",
+            Resource: [tableArn],
+          },
+        ],
+      }),
+      PolicyName: "HotUpdaterDynamoDBReadAccess",
+      RoleName: roleName,
+    });
+  }
+
+  private async removeDynamoDBPolicy(
+    iamClient: IAM,
+    roleName: string,
+  ): Promise<void> {
+    try {
+      await iamClient.deleteRolePolicy({
+        PolicyName: "HotUpdaterDynamoDBReadAccess",
+        RoleName: roleName,
+      });
+    } catch (error) {
+      if (!(error instanceof Error && error.name === "NoSuchEntityException")) {
+        throw error;
+      }
+    }
+  }
+
+  private async ensureS3Policy(
+    iamClient: IAM,
+    roleName: string,
+    bucketName: string,
+  ): Promise<void> {
+    await iamClient.putRolePolicy({
+      PolicyDocument: JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [
+          {
+            Action: ["s3:ListBucket"],
+            Effect: "Allow",
+            Resource: [`arn:aws:s3:::${bucketName}`],
+          },
+          {
+            Action: ["s3:GetObject"],
+            Effect: "Allow",
+            Resource: [`arn:aws:s3:::${bucketName}/*`],
+          },
+        ],
+      }),
+      PolicyName: "HotUpdaterS3ReadAccess",
+      RoleName: roleName,
+    });
+  }
+
+  private async ensureSsmPolicy(
+    iamClient: IAM,
+    roleName: string,
+    accountId: string,
+    parameterName: string,
+  ): Promise<void> {
+    const parameterPath = parameterName.replace(/^\/+/, "");
+    await iamClient.putRolePolicy({
+      PolicyDocument: JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [
+          {
+            Effect: "Allow",
+            Action: ["ssm:GetParameter"],
+            Resource: `arn:aws:ssm:${this.region}:${accountId}:parameter/${parameterPath}`,
+          },
+        ],
+      }),
+      PolicyName: "HotUpdaterSSMAccess",
+      RoleName: roleName,
+    });
+  }
+
+  async createOrSelectRole(options: {
+    readonly bucketName: string;
+    readonly dynamodbTableName?: string;
+    readonly lambdaName: string;
+    readonly ssmParameterName: string;
+  }): Promise<string> {
     const iamClient = new IAM({
       region: this.region,
       credentials: this.credentials,
@@ -69,19 +199,11 @@ export class IAMManager {
         },
       ],
     });
-    const roleName = "hot-updater-edge-role";
-
-    // SSM GetParameter inline policy
-    const ssmPolicyDocument = JSON.stringify({
-      Version: "2012-10-17",
-      Statement: [
-        {
-          Effect: "Allow",
-          Action: ["ssm:GetParameter"],
-          Resource: `arn:aws:ssm:*:${accountId}:parameter/hot-updater/*`,
-        },
-      ],
-    });
+    const installationId = createHash("sha256")
+      .update(options.lambdaName)
+      .digest("hex")
+      .slice(0, 16);
+    const roleName = `hot-updater-edge-${installationId}`;
 
     try {
       const { Role: existingRole } = await iamClient.getRole({
@@ -89,29 +211,38 @@ export class IAMManager {
       });
       if (existingRole?.Arn) {
         await this.ensureManagedPolicies(iamClient, roleName);
-        // Update inline policy for existing role
-        try {
-          await iamClient.putRolePolicy({
-            RoleName: roleName,
-            PolicyName: "HotUpdaterSSMAccess",
-            PolicyDocument: ssmPolicyDocument,
-          });
-          p.log.info("Updated SSM access policy for existing IAM role");
-        } catch {
-          p.log.warn("Failed to update SSM policy, continuing anyway");
+        await this.ensureS3Policy(iamClient, roleName, options.bucketName);
+        await this.ensureSsmPolicy(
+          iamClient,
+          roleName,
+          accountId,
+          options.ssmParameterName,
+        );
+        if (options.dynamodbTableName) {
+          await this.ensureDynamoDBPolicy(
+            iamClient,
+            roleName,
+            accountId,
+            options.dynamodbTableName,
+          );
+        } else {
+          await this.removeDynamoDBPolicy(iamClient, roleName);
         }
         p.log.info(
           `Using existing IAM role: ${roleName} (${existingRole.Arn})`,
         );
         return existingRole.Arn;
       }
-    } catch {
+    } catch (error) {
+      if (!(error instanceof Error && error.name === "NoSuchEntityException")) {
+        throw error;
+      }
       // Role does not exist so create it
       try {
         const createRoleResp = await iamClient.createRole({
           RoleName: roleName,
           AssumeRolePolicyDocument: assumeRolePolicyDocument,
-          Description: "Role for Lambda@Edge to access S3 and SSM",
+          Description: `Role for Hot Updater Lambda@Edge ${options.lambdaName}`,
         });
         if (!createRoleResp.Role?.Arn) {
           throw new Error("Failed to create IAM role: No ARN returned");
@@ -123,13 +254,24 @@ export class IAMManager {
         await this.ensureManagedPolicies(iamClient, roleName);
         p.log.info(`Attached managed policies to ${roleName}`);
 
-        // Add inline policy for SSM access
-        await iamClient.putRolePolicy({
-          RoleName: roleName,
-          PolicyName: "HotUpdaterSSMAccess",
-          PolicyDocument: ssmPolicyDocument,
-        });
-        p.log.info(`Added SSM access inline policy to ${roleName}`);
+        await this.ensureS3Policy(iamClient, roleName, options.bucketName);
+        await this.ensureSsmPolicy(
+          iamClient,
+          roleName,
+          accountId,
+          options.ssmParameterName,
+        );
+        p.log.info(`Added resource-scoped policies to ${roleName}`);
+
+        if (options.dynamodbTableName) {
+          await this.ensureDynamoDBPolicy(
+            iamClient,
+            roleName,
+            accountId,
+            options.dynamodbTableName,
+          );
+          p.log.info(`Added DynamoDB read policy to ${roleName}`);
+        }
 
         return lambdaRoleArn;
       } catch (createError) {

@@ -8,6 +8,8 @@ import {
   applyDistributionConfigOverrides,
   buildDistributionConfig,
   buildDistributionConfigOverrides,
+  HOT_UPDATER_CACHE_BEHAVIOR_PATHS,
+  HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG,
   HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
 } from "./cloudfrontDistributionConfig";
 import {
@@ -63,6 +65,17 @@ export class CloudFrontManager {
     const existingPolicyId = existingPolicy?.CachePolicy?.Id;
 
     if (existingPolicyId) {
+      const currentPolicy = await cloudfrontClient.getCachePolicy({
+        Id: existingPolicyId,
+      });
+      if (!currentPolicy.ETag) {
+        throw new Error("Failed to read shared cache policy ETag");
+      }
+      await cloudfrontClient.updateCachePolicy({
+        CachePolicyConfig: HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
+        Id: existingPolicyId,
+        IfMatch: currentPolicy.ETag,
+      });
       return existingPolicyId;
     }
 
@@ -74,6 +87,35 @@ export class CloudFrontManager {
       throw new Error("Failed to create shared cache policy");
     }
     return cachePolicyId;
+  }
+
+  private async getOrCreateOriginRequestPolicy(
+    cloudfrontClient: CloudFront,
+  ): Promise<string> {
+    const existingPolicy = await findInPaginatedCloudFrontList({
+      listPage: async (marker) => {
+        const response = await cloudfrontClient.listOriginRequestPolicies({
+          Type: "custom",
+          ...(marker ? { Marker: marker } : {}),
+        });
+        return {
+          items: response.OriginRequestPolicyList?.Items ?? [],
+          nextMarker: response.OriginRequestPolicyList?.NextMarker,
+        };
+      },
+      matches: (policy) =>
+        policy.OriginRequestPolicy?.OriginRequestPolicyConfig?.Name ===
+        HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG.Name,
+    });
+    const existingPolicyId = existingPolicy?.OriginRequestPolicy?.Id;
+    if (existingPolicyId) return existingPolicyId;
+
+    const response = await cloudfrontClient.createOriginRequestPolicy({
+      OriginRequestPolicyConfig: HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG,
+    });
+    const policyId = response.OriginRequestPolicy?.Id;
+    if (!policyId) throw new Error("Failed to create origin request policy");
+    return policyId;
   }
 
   async getOrCreateKeyGroup(publicKey: string): Promise<{
@@ -192,12 +234,15 @@ export class CloudFrontManager {
 
     const bucketDomain = `${options.bucketName}.s3.${this.region}.amazonaws.com`;
     let sharedCachePolicyId: string;
+    let originRequestPolicyId: string;
     try {
-      sharedCachePolicyId =
-        await this.getOrCreateSharedCachePolicy(cloudfrontClient);
+      [sharedCachePolicyId, originRequestPolicyId] = await Promise.all([
+        this.getOrCreateSharedCachePolicy(cloudfrontClient),
+        this.getOrCreateOriginRequestPolicy(cloudfrontClient),
+      ]);
     } catch (error) {
       throw new Error(
-        `Failed to get or create shared cache policy: ${
+        `Failed to get or create CloudFront request policies: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -209,6 +254,7 @@ export class CloudFrontManager {
       functionArn: options.functionArn,
       keyGroupId: options.keyGroupId,
       oacId,
+      originRequestPolicyId,
       sharedCachePolicyId,
     });
 
@@ -243,7 +289,10 @@ export class CloudFrontManager {
           DistributionId: selectedDistribution.Id,
           InvalidationBatch: {
             CallerReference: new Date().toISOString(),
-            Paths: { Quantity: 1, Items: ["/*"] },
+            Paths: {
+              Quantity: HOT_UPDATER_CACHE_BEHAVIOR_PATHS.length,
+              Items: [...HOT_UPDATER_CACHE_BEHAVIOR_PATHS],
+            },
           },
         });
         p.log.success("Cache invalidation request completed.");
@@ -266,6 +315,7 @@ export class CloudFrontManager {
       functionArn: options.functionArn,
       keyGroupId: options.keyGroupId,
       oacId,
+      originRequestPolicyId,
       sharedCachePolicyId,
     });
 

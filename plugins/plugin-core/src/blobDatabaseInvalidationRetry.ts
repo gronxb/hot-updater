@@ -6,6 +6,10 @@ const BLOB_DATABASE_INVALIDATION_MAX_ATTEMPTS = 3;
 const BLOB_DATABASE_INVALIDATION_RETRY_BASE_DELAY_MS = 10;
 const INVALIDATION_SUCCEEDED = Symbol("invalidation-succeeded");
 
+/**
+ * @deprecated Blob-backed database plugins will be removed in a future major
+ * release. Use `createDatabasePlugin` with a row-oriented implementation.
+ */
 export type BlobInvalidationFailure = {
   readonly attempts: number;
   readonly error: unknown;

@@ -6,7 +6,11 @@ const mockCloudFront = vi.hoisted(() => ({
   listOriginAccessControls: vi.fn(),
   createOriginAccessControl: vi.fn(),
   listCachePolicies: vi.fn(),
+  getCachePolicy: vi.fn(),
   createCachePolicy: vi.fn(),
+  updateCachePolicy: vi.fn(),
+  listOriginRequestPolicies: vi.fn(),
+  createOriginRequestPolicy: vi.fn(),
   listDistributions: vi.fn(),
   getDistributionConfig: vi.fn(),
   updateDistribution: vi.fn(),
@@ -51,6 +55,7 @@ describe("CloudFrontManager", () => {
     functionArn: "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:1",
     keyGroupId: "existing-key-group-id",
     oacId: "existing-oac-id",
+    originRequestPolicyId: "existing-origin-request-policy-id",
     sharedCachePolicyId: "existing-shared-cache-policy-id",
   });
 
@@ -87,9 +92,27 @@ describe("CloudFrontManager", () => {
     });
     mockCloudFront.updateDistribution.mockResolvedValue({});
     mockCloudFront.createInvalidation.mockResolvedValue({});
+    mockCloudFront.getCachePolicy.mockResolvedValue({
+      ETag: "cache-policy-etag",
+    });
+    mockCloudFront.updateCachePolicy.mockResolvedValue({});
+    mockCloudFront.listOriginRequestPolicies.mockResolvedValue({
+      OriginRequestPolicyList: {
+        Items: [
+          {
+            OriginRequestPolicy: {
+              Id: "origin-request-policy-id",
+              OriginRequestPolicyConfig: {
+                Name: "HotUpdaterManagedApiOriginRequestV2",
+              },
+            },
+          },
+        ],
+      },
+    });
   });
 
-  it("paginates cache policy lookups before attempting creation", async () => {
+  it("paginates and updates an existing cache policy before reuse", async () => {
     mockCloudFront.listCachePolicies.mockResolvedValueOnce({
       CachePolicyList: {
         Items: [
@@ -97,7 +120,7 @@ describe("CloudFrontManager", () => {
             CachePolicy: {
               Id: "shared-cache-policy-id",
               CachePolicyConfig: {
-                Name: "HotUpdaterOriginCacheControl",
+                Name: "HotUpdaterOriginCacheControlV2",
               },
             },
           },
@@ -121,6 +144,30 @@ describe("CloudFrontManager", () => {
       Type: "custom",
     });
     expect(mockCloudFront.createCachePolicy).not.toHaveBeenCalled();
+    expect(mockCloudFront.getCachePolicy).toHaveBeenCalledWith({
+      Id: "shared-cache-policy-id",
+    });
+    expect(mockCloudFront.updateCachePolicy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        Id: "shared-cache-policy-id",
+        IfMatch: "cache-policy-etag",
+        CachePolicyConfig: expect.objectContaining({
+          ParametersInCacheKeyAndForwardedToOrigin: expect.objectContaining({
+            HeadersConfig: {
+              HeaderBehavior: "whitelist",
+              Headers: {
+                Quantity: 3,
+                Items: [
+                  "authorization",
+                  "hot-updater-sdk-version",
+                  "x-api-key",
+                ],
+              },
+            },
+          }),
+        }),
+      }),
+    );
 
     expect(mockCloudFront.updateDistribution).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -133,8 +180,14 @@ describe("CloudFrontManager", () => {
           CacheBehaviors: expect.objectContaining({
             Items: expect.arrayContaining([
               expect.objectContaining({
+                PathPattern: "/api/check-update",
+                CachePolicyId: "shared-cache-policy-id",
+                OriginRequestPolicyId: "origin-request-policy-id",
+              }),
+              expect.objectContaining({
                 PathPattern: "/api/check-update/*",
                 CachePolicyId: "shared-cache-policy-id",
+                OriginRequestPolicyId: "origin-request-policy-id",
                 LambdaFunctionAssociations: expect.objectContaining({
                   Items: expect.arrayContaining([
                     expect.objectContaining({
@@ -148,6 +201,16 @@ describe("CloudFrontManager", () => {
         }),
       }),
     );
+    expect(mockCloudFront.createInvalidation).toHaveBeenCalledWith({
+      DistributionId: "dist-id",
+      InvalidationBatch: {
+        CallerReference: expect.any(String),
+        Paths: {
+          Quantity: 2,
+          Items: ["/api/check-update", "/api/check-update/*"],
+        },
+      },
+    });
   });
 
   it("persists a selected distribution before updating it", async () => {
@@ -158,7 +221,7 @@ describe("CloudFrontManager", () => {
             CachePolicy: {
               Id: "shared-cache-policy-id",
               CachePolicyConfig: {
-                Name: "HotUpdaterOriginCacheControl",
+                Name: "HotUpdaterOriginCacheControlV2",
               },
             },
           },
@@ -231,7 +294,7 @@ describe("CloudFrontManager", () => {
             CachePolicy: {
               Id: "shared-cache-policy-id",
               CachePolicyConfig: {
-                Name: "HotUpdaterOriginCacheControl",
+                Name: "HotUpdaterOriginCacheControlV2",
               },
             },
           },

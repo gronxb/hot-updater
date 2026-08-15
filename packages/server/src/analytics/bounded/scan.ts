@@ -15,10 +15,12 @@ import {
 export const ANALYTICS_SCAN_MAX_ROWS = 50_000;
 export const ANALYTICS_MATERIALIZATION_LIMIT = ANALYTICS_SCAN_MAX_ROWS + 1;
 export const ANALYTICS_SCAN_PAGE_SIZE = 1_000;
+const ANALYTICS_LOWER_BOUND_ID = "00000000-0000-0000-0000-000000000000";
 
 export type AnalyticsScanScope = {
   readonly persistence: AnalyticsPersistence;
   readonly cutoffMs: number;
+  readonly lowerBoundMs?: number;
 };
 
 type EventActivityRequest = {
@@ -52,7 +54,10 @@ export const materializeEventRows = async (
 ): Promise<readonly BundleEventPersistenceRow[]> => {
   const rows: BundleEventPersistenceRow[] = [];
   const seenIds = new Set<string>();
-  let after: { readonly receivedAtMs: number; readonly id: string } | undefined;
+  let after =
+    scope.lowerBoundMs === undefined
+      ? undefined
+      : { receivedAtMs: scope.lowerBoundMs, id: ANALYTICS_LOWER_BOUND_ID };
   while (rows.length < ANALYTICS_MATERIALIZATION_LIMIT) {
     const limit = Math.min(
       ANALYTICS_SCAN_PAGE_SIZE,
@@ -106,7 +111,12 @@ export const materializeActiveRows = async (
 ): Promise<readonly BundleEventPersistenceRow[]> => {
   const definition = getActiveWindowDefinition(window);
   const durationMs = definition.bucketCount * definition.bucketSizeMs;
-  return (await materializeEventRows(scope)).filter(
+  return (
+    await materializeEventRows({
+      ...scope,
+      lowerBoundMs: scope.cutoffMs - durationMs,
+    })
+  ).filter(
     (row) =>
       row.received_at_ms >= scope.cutoffMs - durationMs &&
       ACTIVE_BUNDLE_EVENT_TYPES.includes(row.type),
@@ -149,9 +159,12 @@ export const materializeRowsForWindow = async (
   scope: AnalyticsScanScope,
   window: BundleEventAnalyticsWindow,
 ): Promise<readonly BundleEventPersistenceRow[]> => {
-  const rows = await materializeEventRows(scope);
-  if (window === "all") return rows;
+  if (window === "all") return materializeEventRows(scope);
   const range = getWindowRange(window, scope.cutoffMs);
+  const rows = await materializeEventRows({
+    ...scope,
+    lowerBoundMs: range.rangeStart,
+  });
   return rows.filter(
     ({ received_at_ms }) => received_at_ms >= range.rangeStart,
   );

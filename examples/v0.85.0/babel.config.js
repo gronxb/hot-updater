@@ -8,6 +8,7 @@ module.exports = {
         moduleName: '@env',
         allowlist: [
           'HOT_UPDATER_APP_BASE_URL',
+          'HOT_UPDATER_API_KEY',
           'HOT_UPDATER_E2E_RUNTIME_CONFIG_URL',
           'HOT_UPDATER_SUPABASE_URL',
         ],

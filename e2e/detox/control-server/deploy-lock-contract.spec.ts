@@ -5,7 +5,10 @@ import { setTimeout as sleep } from "timers/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { acquireFairFileLock } from "./fair-file-lock.ts";
+import {
+  acquireFairFileLock,
+  resolveDeployLockCapacity,
+} from "./fair-file-lock.ts";
 
 const repoDir = path.resolve(__dirname, "../../..");
 const controllerPath = path.join(
@@ -14,19 +17,67 @@ const controllerPath = path.join(
 );
 
 describe("Detox control-server deploy lock", () => {
-  it("routes deploy mutations through the fair file lock", async () => {
+  it("routes deploy mutations through the provider-aware fair file lock", async () => {
     const controllerSource = await fs.readFile(controllerPath, "utf8");
 
-    expect(controllerSource).toContain(
-      'import { acquireFairFileLock } from "./fair-file-lock.ts";',
-    );
+    expect(controllerSource).toContain("acquireFairFileLock,");
+    expect(controllerSource).toContain('from "./fair-file-lock.ts";');
     expect(controllerSource).toContain(
       "const deployProcessLock = await acquireFairFileLock({",
     );
-    expect(controllerSource).toContain("capacity: 2,");
+    expect(controllerSource).toContain(
+      "capacity: resolveDeployLockCapacity(),",
+    );
     expect(controllerSource).not.toContain(
       "async function acquireDeployProcessLock",
     );
+  });
+
+  it("keeps legacy databases serialized and allows two DynamoDB deploys", () => {
+    expect(resolveDeployLockCapacity({})).toBe(1);
+    expect(
+      resolveDeployLockCapacity({ HOT_UPDATER_DYNAMODB_TABLE_NAME: "" }),
+    ).toBe(1);
+    expect(
+      resolveDeployLockCapacity({
+        HOT_UPDATER_DYNAMODB_TABLE_NAME: "hot-updater",
+      }),
+    ).toBe(2);
+  });
+
+  it("detects DynamoDB from the dashboard-injected env target", async () => {
+    const tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-deploy-lock-env-"),
+    );
+    const envTargetPath = path.join(tempDir, ".env.hotupdater");
+
+    try {
+      await fs.writeFile(
+        envTargetPath,
+        [
+          "HOT_UPDATER_S3_BUCKET_NAME=hot-updater-storage",
+          "export HOT_UPDATER_DYNAMODB_TABLE_NAME='hot-updater'",
+        ].join("\n"),
+      );
+
+      expect(
+        resolveDeployLockCapacity({
+          HOT_UPDATER_E2E_ENV_TARGET_PATH: envTargetPath,
+        }),
+      ).toBe(2);
+
+      await fs.writeFile(
+        envTargetPath,
+        "HOT_UPDATER_S3_BUCKET_NAME=hot-updater-storage\n",
+      );
+      expect(
+        resolveDeployLockCapacity({
+          HOT_UPDATER_E2E_ENV_TARGET_PATH: envTargetPath,
+        }),
+      ).toBe(1);
+    } finally {
+      await fs.rm(tempDir, { force: true, recursive: true });
+    }
   });
 
   it("allows two deploys while keeping the next waiter queued", async () => {
@@ -88,7 +139,7 @@ describe("Detox control-server deploy lock", () => {
     }
   });
 
-  it("grants a contended file lock in FIFO order", async () => {
+  it("grants a contended single-capacity file lock in FIFO order", async () => {
     const lockRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-fair-lock-"),
     );

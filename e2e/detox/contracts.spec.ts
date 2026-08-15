@@ -203,6 +203,25 @@ describe("Detox E2E harness contract", () => {
     );
   });
 
+  it("allows serialized provider deploys to run for up to 30 minutes", () => {
+    // Given: no profile-specific timeout override is exported to Jest.
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        "delete process.env.HOT_UPDATER_E2E_TEST_TIMEOUT_MS; process.stdout.write(String(require('./e2e/detox/jest.config.js').testTimeout))",
+      ],
+      {
+        cwd: repoDir,
+        encoding: "utf8",
+      },
+    );
+
+    // Then: serialized invalidation waits do not hit the old 12-minute limit.
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("1800000");
+  });
+
   it("injects the fixed E2E min bundle id into Detox release builds", async () => {
     // Given: provider scenarios compare the built-in bundle id after rollbacks.
     const detoxConfig = await fs.readFile(detoxConfigPath, "utf8");

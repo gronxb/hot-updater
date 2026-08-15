@@ -132,19 +132,76 @@ export class S3Manager {
       region: region,
       credentials: this.credentials,
     });
+    let existingPolicy: Record<string, unknown> = {};
+    try {
+      const { Policy } = await s3Client.getBucketPolicy({
+        Bucket: bucketName,
+      });
+      if (Policy) {
+        const parsed: unknown = JSON.parse(Policy);
+        if (typeof parsed !== "object" || parsed === null) {
+          throw new Error("Existing S3 bucket policy is not a JSON object");
+        }
+        existingPolicy = Object.fromEntries(Object.entries(parsed));
+      }
+    } catch (error) {
+      if (
+        typeof error !== "object" ||
+        error === null ||
+        Reflect.get(error, "name") !== "NoSuchBucketPolicy"
+      ) {
+        throw error;
+      }
+    }
+    const policyStatements = Array.isArray(existingPolicy.Statement)
+      ? existingPolicy.Statement
+      : typeof existingPolicy.Statement === "object" &&
+          existingPolicy.Statement !== null
+        ? [existingPolicy.Statement]
+        : [];
+    const sourceArn = `arn:aws:cloudfront::${accountId}:distribution/${distributionId}`;
+    const statementId = `AllowHotUpdaterCloudFrontRead${distributionId.replace(
+      /[^A-Za-z0-9]/g,
+      "",
+    )}`;
+    const existingStatements = policyStatements.filter((statement) => {
+      if (typeof statement !== "object" || statement === null) return true;
+      const sid = Reflect.get(statement, "Sid");
+      if (sid === statementId) return false;
+      if (
+        sid !== "AllowCloudFrontServicePrincipal" &&
+        sid !== "AllowHotUpdaterCloudFrontRead"
+      ) {
+        return true;
+      }
+      const condition = Reflect.get(statement, "Condition");
+      const stringEquals =
+        typeof condition === "object" && condition !== null
+          ? Reflect.get(condition, "StringEquals")
+          : undefined;
+      return !(
+        typeof stringEquals === "object" &&
+        stringEquals !== null &&
+        Reflect.get(stringEquals, "AWS:SourceArn") === sourceArn
+      );
+    });
     const bucketPolicy = {
-      Version: "2008-10-17",
-      Id: "PolicyForCloudFrontPrivateContent",
+      ...existingPolicy,
+      Version:
+        typeof existingPolicy.Version === "string"
+          ? existingPolicy.Version
+          : "2012-10-17",
       Statement: [
+        ...existingStatements,
         {
-          Sid: "AllowCloudFrontServicePrincipal",
+          Sid: statementId,
           Effect: "Allow",
           Principal: { Service: "cloudfront.amazonaws.com" },
           Action: "s3:GetObject",
           Resource: `arn:aws:s3:::${bucketName}/*`,
           Condition: {
             StringEquals: {
-              "AWS:SourceArn": `arn:aws:cloudfront::${accountId}:distribution/${distributionId}`,
+              "AWS:SourceArn": sourceArn,
             },
           },
         },

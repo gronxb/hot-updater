@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AnalyticsScanLimitExceededError } from "../errors";
 import type {
@@ -7,6 +7,7 @@ import type {
   BundleEventPersistenceRow,
 } from "../persistence";
 import { createAnalyticsProvider } from "./provider";
+import { getWindowRange } from "./scan";
 
 const eventRow = (
   id: string,
@@ -62,6 +63,30 @@ const inMemoryPersistence = (
 };
 
 describe("createAnalyticsProvider", () => {
+  it("starts windowed analytics scans at the storage lower boundary", async () => {
+    // Given
+    const now = Date.UTC(2026, 1, 2, 12);
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const scan = vi.fn<AnalyticsPersistence["scan"]>().mockResolvedValue([]);
+    const provider = createAnalyticsProvider({
+      async append() {},
+      scan,
+    });
+
+    // When
+    await provider.getBundleEventAnalytics("new", "24h", 20, 0);
+
+    // Then
+    expect(scan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        after: {
+          id: "00000000-0000-0000-0000-000000000000",
+          receivedAtMs: getWindowRange("24h", now).rangeStart,
+        },
+      }),
+    );
+    vi.restoreAllMocks();
+  });
   it("counts distinct installations across cursor pages", async () => {
     const rows = Array.from({ length: 1_001 }, (_, index) =>
       eventRow(index.toString().padStart(4, "0"), 1_000, `install-${index}`),

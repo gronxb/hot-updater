@@ -3,13 +3,14 @@ import type {
   CachePolicyConfig,
   DistributionConfig,
   Origin,
+  OriginRequestPolicyConfig,
 } from "@aws-sdk/client-cloudfront";
 
 // We intentionally avoid the AWS-managed UseOriginCacheControlHeaders policy here.
 // That managed policy forwards the viewer Host header and all cookies to the origin,
-// which breaks S3 origins for bundle downloads and bloats the cache key unnecessarily.
+// which breaks S3 origins and bloats the cache key beyond the SDK compatibility header.
 export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
-  Name: "HotUpdaterOriginCacheControl",
+  Name: "HotUpdaterOriginCacheControlV2",
   Comment:
     "Honor origin Cache-Control without forwarding viewer Host/cookies/query strings",
   DefaultTTL: 0,
@@ -19,7 +20,11 @@ export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
     EnableAcceptEncodingBrotli: true,
     EnableAcceptEncodingGzip: true,
     HeadersConfig: {
-      HeaderBehavior: "none",
+      HeaderBehavior: "whitelist",
+      Headers: {
+        Quantity: 3,
+        Items: ["authorization", "hot-updater-sdk-version", "x-api-key"],
+      },
     },
     CookiesConfig: {
       CookieBehavior: "none",
@@ -29,6 +34,21 @@ export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
     },
   },
 };
+
+export const HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG: OriginRequestPolicyConfig =
+  {
+    Name: "HotUpdaterManagedApiOriginRequestV2",
+    Comment: "Forward managed API bodies, query strings, and API-key headers",
+    HeadersConfig: {
+      HeaderBehavior: "whitelist",
+      Headers: {
+        Quantity: 3,
+        Items: ["content-type", "hot-updater-sdk-version", "x-api-key"],
+      },
+    },
+    CookiesConfig: { CookieBehavior: "none" },
+    QueryStringsConfig: { QueryStringBehavior: "all" },
+  };
 
 export type DistributionConfigOverrides = {
   Origins: NonNullable<DistributionConfig["Origins"]>;
@@ -50,6 +70,12 @@ const READ_ONLY_METHODS: AllowedMethods = {
   },
 };
 
+const API_METHODS: AllowedMethods = {
+  Quantity: 7,
+  Items: ["HEAD", "DELETE", "POST", "GET", "OPTIONS", "PUT", "PATCH"],
+  CachedMethods: READ_ONLY_METHODS.CachedMethods,
+};
+
 const EMPTY_FUNCTION_ASSOCIATIONS = {
   Quantity: 0,
 } as const;
@@ -67,7 +93,10 @@ const HOT_UPDATER_BEHAVIOR_BASE = {
   AllowedMethods: READ_ONLY_METHODS,
 } as const;
 
-const HOT_UPDATER_CACHE_BEHAVIOR_PATH = "/api/check-update/*";
+export const HOT_UPDATER_CACHE_BEHAVIOR_PATHS = [
+  "/api/check-update",
+  "/api/check-update/*",
+] as const;
 
 const omitLegacyCacheFields = <
   T extends {
@@ -75,7 +104,6 @@ const omitLegacyCacheFields = <
     MinTTL?: unknown;
     DefaultTTL?: unknown;
     MaxTTL?: unknown;
-    OriginRequestPolicyId?: unknown;
   },
 >(
   value: T,
@@ -85,7 +113,6 @@ const omitLegacyCacheFields = <
     MinTTL: _minTTL,
     DefaultTTL: _defaultTTL,
     MaxTTL: _maxTTL,
-    OriginRequestPolicyId: _originRequestPolicyId,
     ...rest
   } = value;
   return rest;
@@ -131,6 +158,7 @@ const buildOriginRequestLambdaAssociations = (functionArn: string) => ({
   Items: [
     {
       EventType: "origin-request" as const,
+      IncludeBody: true,
       LambdaFunctionARN: functionArn,
     },
   ],
@@ -173,11 +201,15 @@ const buildDefaultCacheBehavior = (options: {
 const buildCacheBehavior = (options: {
   bucketName: string;
   functionArn: string;
+  originRequestPolicyId: string;
+  pathPattern: string;
   sharedCachePolicyId: string;
 }): CacheBehavior => ({
   ...buildSharedBehavior(options.bucketName),
-  PathPattern: HOT_UPDATER_CACHE_BEHAVIOR_PATH,
+  AllowedMethods: API_METHODS,
+  PathPattern: options.pathPattern,
   CachePolicyId: options.sharedCachePolicyId,
+  OriginRequestPolicyId: options.originRequestPolicyId,
   LambdaFunctionAssociations: buildOriginRequestLambdaAssociations(
     options.functionArn,
   ),
@@ -189,6 +221,7 @@ const mergeOriginWithExisting = (
 ): Origin => ({
   ...existingOrigin,
   ...overrideOrigin,
+  Id: existingOrigin?.Id ?? overrideOrigin.Id,
   CustomHeaders: existingOrigin?.CustomHeaders ?? {
     Quantity: 0,
   },
@@ -210,12 +243,84 @@ const mergeBehaviorWithExisting = <T extends DefaultBehavior | CacheBehavior>(
     EMPTY_FUNCTION_ASSOCIATIONS,
 });
 
+const mergeOrigins = (
+  existing: readonly Origin[],
+  overrides: readonly Origin[],
+): Origin[] => [
+  ...existing.map((existingOrigin) => {
+    const override = overrides.find(
+      (candidate) =>
+        candidate.Id === existingOrigin.Id ||
+        candidate.DomainName === existingOrigin.DomainName,
+    );
+    return override
+      ? mergeOriginWithExisting(existingOrigin, override)
+      : existingOrigin;
+  }),
+  ...overrides.filter(
+    (override) =>
+      !existing.some(
+        (candidate) =>
+          candidate.Id === override.Id ||
+          candidate.DomainName === override.DomainName,
+      ),
+  ),
+];
+
+const mergeCacheBehaviors = (
+  existing: readonly CacheBehavior[],
+  overrides: readonly CacheBehavior[],
+): CacheBehavior[] => {
+  const additions = overrides.filter(
+    (override) =>
+      !existing.some(
+        (candidate) => candidate.PathPattern === override.PathPattern,
+      ),
+  );
+  const mergedExisting = existing.map((existingBehavior) => {
+    const override = overrides.find(
+      (candidate) => candidate.PathPattern === existingBehavior.PathPattern,
+    );
+    return override
+      ? mergeBehaviorWithExisting(existingBehavior, override)
+      : existingBehavior;
+  });
+  return additions.reduce<CacheBehavior[]>((behaviors, addition) => {
+    const additionPrefix =
+      (addition.PathPattern ?? "").split(/[?*]/, 1)[0] ?? "";
+    const broaderBehaviorIndex = behaviors.findIndex((behavior) => {
+      const behaviorPattern = behavior.PathPattern ?? "";
+      const wildcardIndex = behaviorPattern.indexOf("*");
+      if (
+        wildcardIndex !== behaviorPattern.length - 1 ||
+        behaviorPattern.includes("?")
+      ) {
+        return false;
+      }
+      const behaviorPrefix = behaviorPattern.slice(0, wildcardIndex);
+      return (
+        behaviorPrefix.length < additionPrefix.length &&
+        additionPrefix.startsWith(behaviorPrefix)
+      );
+    });
+    if (broaderBehaviorIndex === -1) {
+      return [...behaviors, addition];
+    }
+    return [
+      ...behaviors.slice(0, broaderBehaviorIndex),
+      addition,
+      ...behaviors.slice(broaderBehaviorIndex),
+    ];
+  }, mergedExisting);
+};
+
 export const buildDistributionConfigOverrides = (options: {
   bucketName: string;
   bucketDomain: string;
   functionArn: string;
   keyGroupId: string;
   oacId: string;
+  originRequestPolicyId: string;
   sharedCachePolicyId: string;
 }): DistributionConfigOverrides => ({
   Origins: {
@@ -234,14 +339,16 @@ export const buildDistributionConfigOverrides = (options: {
     sharedCachePolicyId: options.sharedCachePolicyId,
   }),
   CacheBehaviors: {
-    Quantity: 1,
-    Items: [
+    Quantity: HOT_UPDATER_CACHE_BEHAVIOR_PATHS.length,
+    Items: HOT_UPDATER_CACHE_BEHAVIOR_PATHS.map((pathPattern) =>
       buildCacheBehavior({
         bucketName: options.bucketName,
         functionArn: options.functionArn,
+        originRequestPolicyId: options.originRequestPolicyId,
+        pathPattern,
         sharedCachePolicyId: options.sharedCachePolicyId,
       }),
-    ],
+    ),
   },
 });
 
@@ -249,35 +356,45 @@ export const applyDistributionConfigOverrides = (
   distributionConfig: DistributionConfig,
   overrides: DistributionConfigOverrides,
 ): DistributionConfig => {
+  const managedOrigin = overrides.Origins.Items?.[0];
+  const existingManagedOrigin = managedOrigin
+    ? distributionConfig.Origins?.Items?.find(
+        (origin) =>
+          origin.Id === managedOrigin.Id ||
+          origin.DomainName === managedOrigin.DomainName,
+      )
+    : undefined;
+  const targetOriginId = existingManagedOrigin?.Id ?? managedOrigin?.Id;
+  const defaultCacheBehavior = targetOriginId
+    ? { ...overrides.DefaultCacheBehavior, TargetOriginId: targetOriginId }
+    : overrides.DefaultCacheBehavior;
+  const cacheBehaviorOverrides = (overrides.CacheBehaviors.Items ?? []).map(
+    (behavior) =>
+      targetOriginId
+        ? { ...behavior, TargetOriginId: targetOriginId }
+        : behavior,
+  );
+  const origins = mergeOrigins(
+    distributionConfig.Origins?.Items ?? [],
+    overrides.Origins.Items ?? [],
+  );
+  const cacheBehaviors = mergeCacheBehaviors(
+    distributionConfig.CacheBehaviors?.Items ?? [],
+    cacheBehaviorOverrides,
+  );
   return sanitizeDistributionConfig({
     ...distributionConfig,
     Origins: {
-      Quantity: overrides.Origins.Quantity,
-      Items: (overrides.Origins.Items ?? []).map((overrideOrigin) => {
-        const existingOrigin = (distributionConfig.Origins?.Items ?? []).find(
-          (origin) =>
-            origin.Id === overrideOrigin.Id ||
-            origin.DomainName === overrideOrigin.DomainName,
-        );
-
-        return mergeOriginWithExisting(existingOrigin, overrideOrigin);
-      }),
+      Quantity: origins.length,
+      Items: origins,
     },
     DefaultCacheBehavior: mergeBehaviorWithExisting(
       distributionConfig.DefaultCacheBehavior,
-      overrides.DefaultCacheBehavior,
+      defaultCacheBehavior,
     ),
     CacheBehaviors: {
-      Quantity: overrides.CacheBehaviors.Quantity,
-      Items: (overrides.CacheBehaviors.Items ?? []).map((overrideBehavior) => {
-        const existingBehavior = (
-          distributionConfig.CacheBehaviors?.Items ?? []
-        ).find(
-          (behavior) => behavior.PathPattern === overrideBehavior.PathPattern,
-        );
-
-        return mergeBehaviorWithExisting(existingBehavior, overrideBehavior);
-      }),
+      Quantity: cacheBehaviors.length,
+      Items: cacheBehaviors,
     },
   });
 };
@@ -288,6 +405,7 @@ export const buildDistributionConfig = (options: {
   functionArn: string;
   keyGroupId: string;
   oacId: string;
+  originRequestPolicyId: string;
   sharedCachePolicyId: string;
 }): DistributionConfig =>
   sanitizeDistributionConfig({

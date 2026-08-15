@@ -5,6 +5,10 @@ packages:
   - examples/*
   - examples-server/*
 
+overrides:
+  '@smithy/types': 4.16.1
+  recharts@3.8.0>es-toolkit: 1.46.0
+
 allowBuilds:
   '@bugsnag/cli': true
   '@firebase/util': true
@@ -51,9 +55,6 @@ catalogs:
     "@clack/prompts": 1.7.0
     "execa": 9.5.2
     tsdown: 0.21.6
-
-overrides:
-  recharts@3.8.0>es-toolkit: 1.46.0
 
 onlyBuiltDependencies:
   - "@bugsnag/cli"

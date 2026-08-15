@@ -1,6 +1,6 @@
 ---
-title: "AWS S3 Storage + Lambda@Edge Function"
-description: "This guide walks you through setting up `hot-updater` with AWS S3 Storage and Lambda@Edge Function in a React Native project. You'll configure the environment, install required packages, and initialize AWS for seamless updates."
+title: "AWS DynamoDB + S3 + Lambda@Edge"
+description: "Set up DynamoDB metadata, S3 bundle storage, CloudFront, and Lambda@Edge for Hot Updater."
 icon: aws
 ---
 
@@ -26,6 +26,7 @@ Hot Updater requires specific AWS IAM permissions for setup and ongoing usage:
 Used for `hot-updater init`:
 
 - `AmazonS3FullAccess`: Create and read S3 buckets.
+- `AmazonDynamoDBFullAccess_v2`: Create and configure the metadata table.
 - `AWSLambda_FullAccess`: Create and update Lambda functions.
 - `CloudFrontFullAccess`: Manage CloudFront distributions.
 - `IAMFullAccess`: Create IAM roles for Lambda@Edge.
@@ -35,7 +36,8 @@ Used for `hot-updater init`:
 
 Used for `hot-updater deploy` and `hot-updater console`:
 
-- `AmazonS3FullAccess`: Manage bundles and metadata in the S3 bucket.
+- `AmazonS3FullAccess`: Manage bundle artifacts in the S3 bucket.
+- DynamoDB table access for metadata queries and writes.
 - `cloudfront:CreateInvalidation`: Invalidate CloudFront cache after deployments.
 
 For ongoing usage, create a separate access token with limited permissions. Here's a minimal policy example for CloudFront invalidation:
@@ -76,26 +78,37 @@ npx hot-updater init
 1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Bare (React Native CLI) for React Native).
 2. **Select a Provider**: Select AWS + Lambda@Edge as the provider for handling updates.
    During the setup, you will be prompted to:
-3. **Choose AWS Login Method**: Select between current AWS CLI/default session, shared AWS profile, AWS Access Key, or SSO login
-4. **Enter AWS Credentials**: Provide your profile name or AWS credentials when the selected mode requires it
-5. **Select Region**: Choose an AWS region for your S3 bucket
-6. **Select S3 Bucket**: Choose an existing bucket or create a new one
-7. **Create IAM Role**: Create or select an IAM role for Lambda@Edge
-8. **Deploy Lambda Function**: Deploy the Lambda@Edge function to handle updates
-9. **Create/Update CloudFront Distribution**: Create or update a CloudFront distribution
+3. **Select a Database**: Choose DynamoDB (default) or S3 metadata.
+4. **Choose AWS Login Method**: Select between current AWS CLI/default session, shared AWS profile, AWS Access Key, or SSO login
+5. **Enter AWS Credentials**: Provide your profile name or AWS credentials when the selected mode requires it
+6. **Select Region**: Choose an AWS region for S3 and DynamoDB
+7. **Select S3 Bucket**: Choose an existing bucket or create a new one
+8. **Create DynamoDB Table**: Enter a table name; init creates it or validates its schema
+9. **Create IAM Role**: Create or reuse a resource-scoped role for this Lambda installation
+10. **Deploy Lambda Function**: Deploy the Lambda@Edge function to handle updates
+11. **Create/Update CloudFront Distribution**: Create or update a CloudFront distribution
 
   </Accordion>
 </Accordions>
 
-Once the setup is complete, `.env.hotupdater` will be generated with your bucket,
-region, CloudFront distribution ID, and any profile or key settings needed for the
-mode you selected.
+Once setup is complete, `.env.hotupdater` contains the selected database, table,
+bucket, region, and CloudFront distribution ID. Client access keys are an
+official database domain rather than init-time provider configuration. Start
+`hot-updater console`, open **Access Keys**, and create a key for protected OTA
+selectors and Analytics event ingestion. Copy the plaintext when it is shown;
+only its SHA-256 digest and metadata are stored in DynamoDB.
 
 ```
+HOT_UPDATER_AWS_DATABASE=dynamodb
+HOT_UPDATER_DYNAMODB_TABLE_NAME=hot-updater
 HOT_UPDATER_S3_BUCKET_NAME=your-s3-bucket-name
 HOT_UPDATER_S3_REGION=your-region
 HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID=your-distribution-id
 ```
+
+Add the copied value to the environment used to configure your app, for
+example `HOT_UPDATER_API_KEY=your-client-access-key`. Init does not generate or
+persist this value.
 
 If you choose a shared AWS profile, the generated env file will also include:
 
@@ -124,6 +137,56 @@ please refer to the article below for more details:
 
 </Callout>
 
+## Cost and capacity
+
+Managed AWS init uses DynamoDB on-demand capacity, so an idle installation has
+no provisioned read/write capacity charge. Each authenticated update check cache
+miss reads the update index. Each authenticated Analytics event invokes
+Lambda@Edge and appends one event row; server-side Analytics queries read event
+pages from DynamoDB.
+Review the [DynamoDB pricing model](https://aws.amazon.com/dynamodb/pricing/) and
+[Lambda@Edge pricing](https://aws.amazon.com/lambda/pricing/).
+
+Each client key authorizes OTA selectors and event ingestion, but not
+Analytics query or management routes. Managed tables cap on-demand throughput
+at 4,000 reads and 100 writes per second for both the table and update index.
+The cap is a cost guardrail and can throttle bursts; protect production
+distributions with AWS WAF rate-based rules and configure AWS Budgets for a
+monthly spending threshold. The AWS adapter does not impose an Analytics
+retention period. The bounded Analytics provider still rejects `all` reports
+above 50,000 events, while 24-hour, 7-day, and 30-day queries apply their query
+window independently of storage retention.
+
+Bundle metadata has no fixed bundle, patch, or patch-relationship count limit.
+Each serialized metadata item is limited to 8 KiB. The database maintains counters
+and relation counts in the same transactions as metadata writes. Cursor pages
+and exact/single-owner hydration use targeted key/index reads; owner-index keys
+are hydrated from strongly consistent base-table rows and unprocessed batch keys
+use bounded exponential backoff. Unfiltered totals use the transactionally
+maintained metadata counter. Broad filtered scans paginate through all matching
+metadata and may be throttled by the managed table's throughput cost guardrail.
+DynamoDB's 100-action transaction service limit applies to the complete
+`commit({ mutations })` envelope, including cascade deletions.
+
+New tables enable deletion protection. Init validates the billing mode,
+throughput caps, string key types, and index layout before reusing an existing
+table, then enables point-in-time recovery on both new and compatible reused
+tables. Point-in-time recovery is a billed DynamoDB feature. Init does not
+change deletion protection on an operator-owned reused table.
+
+New distributions use `PriceClass_All` to preserve worldwide OTA latency. If
+regional reach matters less than transfer price, change the distribution price
+class in AWS after init; later init runs preserve that setting. Init invalidates
+only `/api/check-update/*`, leaving immutable bundle caches warm. CloudFront
+provides the first 1,000 invalidation paths per account each month at no extra
+charge; see [invalidation pricing](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PayingForInvalidation.html).
+
+Rerunning init preserves unrelated CloudFront origins/cache behaviors and S3
+bucket-policy statements. Lambda roles are isolated by Lambda name and grant
+access only to the selected bucket, SSM parameter, DynamoDB table, and update
+index. Init provisions these resources through AWS APIs rather than a
+CloudFormation stack, so deletion and rollback remain operator-managed.
+
 ## Step 3: Generated Configurations
 
 During the initialization process, the following file is automatically generated:
@@ -136,23 +199,28 @@ AWS SDK default provider chain instead of embedding access keys:
 ```ts title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
 import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
-import { s3Storage, s3Database } from "@hot-updater/aws";
+import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
 import { config } from "dotenv";
 
 config({ path: ".env.hotupdater" });
 
-const commonOptions = {
-  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: fromNodeProviderChain(),
 };
 
+const storageOptions = {
+  ...awsOptions,
+  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+};
+
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  storage: s3Storage(commonOptions),
-  database: s3Database({
-    ...commonOptions,
+  storage: s3Storage(storageOptions),
+  database: dynamoDB({
+    ...awsOptions,
+    tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
     // prettier-ignore
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
@@ -173,7 +241,9 @@ you can keep using the generated credential-provider setup and skip this section
 
 The token may have excessive permissions due to infrastructure setup or expire if SSO was used.
 
-To avoid issues, update it with a permanent token with `S3FullAccess` and `CloudFrontFullAccess`.
+To avoid issues, replace it with a permanent least-privilege identity that can
+write bundle artifacts to S3, read and write the selected DynamoDB table, and
+invalidate the CloudFront distribution.
 
 ```bash title=".env.hotupdater"
 HOT_UPDATER_S3_ACCESS_KEY_ID=your-access-key-id
@@ -228,7 +298,12 @@ export default HotUpdater.wrap({
 ```
 
 <Callout type="info">
-The managed AWS runtime exposes the public update-check endpoints and `/version`. Internally, it is equivalent to `createHotUpdater({ features: { updateCheck: true, bundles: false } })`, so bundle management endpoints are not mounted on the public function URL.
+  The managed AWS runtime exposes `/version` publicly. OTA update checks and
+  Analytics ingestion require `x-api-key: $HOT_UPDATER_API_KEY`, using a key
+  created from the Console. Internally, it enables `updateCheck`, `analytics`,
+  and `clientAccessKeys`, while disabling `bundles`. Client access keys do not
+  authorize Analytics query routes, and bundle management endpoints are not
+  mounted on the public function URL.
 </Callout>
 
 ## Step 6: If You Use Expo, Add the Config Plugin
@@ -326,13 +401,13 @@ import com.hotupdater.HotUpdater // [!code ++]
 
 class MainApplication : Application(), ReactApplication {
 
-  override val reactNativeHost: ReactNativeHost =
-      object : DefaultReactNativeHost(this) {
-        override fun getPackages(): List<ReactPackage> =
-            PackageList(this).packages.apply {
-              // Packages that cannot be autolinked yet can be added manually here, for example:
-              // add(MyReactNativePackage())
-            }
+override val reactNativeHost: ReactNativeHost =
+object : DefaultReactNativeHost(this) {
+override fun getPackages(): List<ReactPackage> =
+PackageList(this).packages.apply {
+// Packages that cannot be autolinked yet can be added manually here, for example:
+// add(MyReactNativePackage())
+}
 
         override fun getJSMainModuleName(): String = "index"
 
@@ -346,20 +421,20 @@ class MainApplication : Application(), ReactApplication {
         }  // [!code ++]
       }
 
-  override val reactHost: ReactHost
-    get() = getDefaultReactHost(applicationContext, reactNativeHost)
+override val reactHost: ReactHost
+get() = getDefaultReactHost(applicationContext, reactNativeHost)
 
-  override fun onCreate() {
-    super.onCreate()
-    SoLoader.init(this, OpenSourceMergedSoMapping)
-    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-      // If you opted-in for the New Architecture, we load the native entry point for this app.
-      load()
-    }
-  }
+override fun onCreate() {
+super.onCreate()
+SoLoader.init(this, OpenSourceMergedSoMapping)
+if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+// If you opted-in for the New Architecture, we load the native entry point for this app.
+load()
+}
+}
 }
 
-```
+````
   </Tab>
   <Tab value="Java">
   ```java title="android/app/src/main/java/com/<your-app-name>/MainApplication.java"
@@ -433,7 +508,7 @@ public class MainApplication extends Application implements ReactApplication {
   }
 }
 
-```
+````
 
   </Tab>
 </Tabs>
@@ -451,32 +526,33 @@ import HotUpdater // [!code ++]
 
 @main
 class AppDelegate: RCTAppDelegate {
-  override func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-    self.moduleName = "HotUpdaterExample"
-    self.dependencyProvider = RCTAppDependencyProvider()
+override func application(\_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+self.moduleName = "HotUpdaterExample"
+self.dependencyProvider = RCTAppDependencyProvider()
 
     // You can add your custom initial props in the dictionary below.
     // They will be passed down to the ViewController used by React Native.
     self.initialProps = [:]
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
 
-  override func sourceURL(for bridge: RCTBridge) -> URL? {
-    self.bundleURL()
-  }
-
-  override func bundleURL() -> URL? {
-#if DEBUG
-    RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
-#else
-    Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
-    HotUpdater.bundleURL() // [!code ++]
-#endif
-  }
 }
 
-```
+override func sourceURL(for bridge: RCTBridge) -> URL? {
+self.bundleURL()
+}
+
+override func bundleURL() -> URL? {
+#if DEBUG
+RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
+#else
+Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
+HotUpdater.bundleURL() // [!code ++]
+#endif
+}
+}
+
+````
 </Tab>
 <Tab value="Objective-C">
 ```objc title="ios/<your-app-name>/AppDelegate.mm"
@@ -512,7 +588,7 @@ class AppDelegate: RCTAppDelegate {
 }
 
 @end
-```
+````
 
 </Tab>
 </Tabs>

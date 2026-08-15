@@ -13,6 +13,10 @@ import {
   uploadJsonToS3,
 } from "./s3DatabaseObjects";
 
+/**
+ * @deprecated S3-backed metadata databases will be removed in a future major
+ * release. Use `DynamoDBConfig` with `dynamoDB` instead.
+ */
 export interface S3DatabaseConfig extends S3ClientConfig {
   readonly bucketName: string;
   readonly basePath?: string;
@@ -38,6 +42,11 @@ const createKeyBuilder = (basePath: string | undefined) => {
   };
 };
 
+/**
+ * @deprecated S3-backed metadata databases will be removed in a future major
+ * release. Use `dynamoDB` for bundle and patch metadata. S3 remains the
+ * recommended storage for bundle artifacts.
+ */
 export const s3Database = (config: S3DatabaseConfig) =>
   createBlobDatabasePlugin({
     name: "s3Database",

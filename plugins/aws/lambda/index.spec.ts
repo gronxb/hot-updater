@@ -4,6 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const DISTRIBUTION_HOST = "d111111abcdef8.cloudfront.net";
 const ORIGIN_HOST = "hot-updater-test.s3.us-east-1.amazonaws.com";
 
+const databaseMocks = vi.hoisted(() => ({
+  dynamoDB: vi.fn(() => ({ name: "dynamoDB" })),
+  s3Database: vi.fn(() => ({ name: "s3Database" })),
+}));
+const serverMocks = vi.hoisted(() => ({ createHotUpdater: vi.fn() }));
+
 const fakeHotUpdaterHandler = vi.fn(
   async () =>
     new Response(JSON.stringify({ ok: true }), {
@@ -13,7 +19,11 @@ const fakeHotUpdaterHandler = vi.fn(
 );
 
 vi.mock("../src/s3Database", () => ({
-  s3Database: vi.fn(() => ({ name: "mockDatabase" })),
+  s3Database: databaseMocks.s3Database,
+}));
+
+vi.mock("../src/dynamoDB", () => ({
+  dynamoDB: databaseMocks.dynamoDB,
 }));
 
 vi.mock("../src/s3Storage", () => ({
@@ -33,10 +43,10 @@ vi.mock("@hot-updater/server", async () => {
 
   return {
     ...actual,
-    createHotUpdater: vi.fn(() => ({
+    createHotUpdater: serverMocks.createHotUpdater.mockReturnValue({
       basePath: "/api/check-update",
       handler: fakeHotUpdaterHandler,
-    })),
+    }),
   };
 });
 
@@ -112,10 +122,52 @@ describe("aws lambda entrypoint", () => {
     vi.clearAllMocks();
     globalThis.HotUpdater = {
       CLOUDFRONT_KEY_PAIR_ID: "KTEST",
+      DATABASE_TYPE: "s3",
+      DYNAMODB_REGION: "us-east-1",
+      DYNAMODB_TABLE_NAME: "hot-updater-metadata",
       SSM_PARAMETER_NAME: "/hot-updater/test",
       SSM_REGION: "us-east-1",
       S3_BUCKET_NAME: "hot-updater-test",
     };
+  });
+
+  it("uses DynamoDB metadata with built-in Analytics and client keys", async () => {
+    // Given
+    globalThis.HotUpdater.DATABASE_TYPE = "dynamodb";
+
+    // When
+    await import("./index");
+
+    // Then
+    expect(databaseMocks.dynamoDB).toHaveBeenCalledWith({
+      region: "us-east-1",
+      tableName: "hot-updater-metadata",
+    });
+    expect(databaseMocks.s3Database).not.toHaveBeenCalled();
+    expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
+      expect.objectContaining({
+        features: {
+          analytics: {},
+          bundles: false,
+          clientAccessKeys: true,
+          updateCheck: true,
+        },
+      }),
+    );
+  });
+
+  it("keeps the deprecated S3 runtime free of built-in optional routes", async () => {
+    await import("./index");
+
+    const options = serverMocks.createHotUpdater.mock.calls[0]?.[0];
+    expect(options).toMatchObject({
+      features: {
+        bundles: false,
+        updateCheck: true,
+      },
+    });
+    expect(options?.features).not.toHaveProperty("analytics");
+    expect(options?.features).not.toHaveProperty("clientAccessKeys");
   });
 
   it("serves canonical app-version routes without a cohort segment for origin-request events", async () => {

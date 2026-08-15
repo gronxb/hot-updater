@@ -6,6 +6,9 @@ let SHARED_EDGE_CACHE_CONTROL = "";
 beforeAll(async () => {
   globalThis.HotUpdater = {
     CLOUDFRONT_KEY_PAIR_ID: "KTEST",
+    DATABASE_TYPE: "s3",
+    DYNAMODB_REGION: "us-east-1",
+    DYNAMODB_TABLE_NAME: "hot-updater-metadata",
     SSM_PARAMETER_NAME: "/hot-updater/test",
     SSM_REGION: "us-east-1",
     S3_BUCKET_NAME: "hot-updater-test",

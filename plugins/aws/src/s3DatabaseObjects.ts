@@ -159,7 +159,7 @@ export const loadJsonFromS3 = async (
   client: S3Client,
   bucket: string,
   key: string,
-): Promise<unknown | null> =>
+): Promise<unknown> =>
   (await loadVersionedJsonFromS3(client, bucket, key))?.data ?? null;
 
 const isConditionalWriteConflict = (error: unknown): boolean => {
@@ -178,7 +178,7 @@ export const compareAndSwapJsonInS3 = async (
   client: S3Client,
   bucket: string,
   key: string,
-  expected: unknown | null,
+  expected: unknown,
   data: unknown,
 ): Promise<boolean> => {
   const cacheControl = key.endsWith("_hot-updater/database/v2.json")

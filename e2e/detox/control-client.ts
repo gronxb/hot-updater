@@ -47,7 +47,7 @@ type ScreenStateWaitOptions = {
 
 const defaultHttpTimeoutMs = 120 * 1000;
 const defaultJobTimeoutMs = Number(
-  process.env.HOT_UPDATER_E2E_CONTROL_JOB_TIMEOUT_MS || 10 * 60 * 1000,
+  process.env.HOT_UPDATER_E2E_CONTROL_JOB_TIMEOUT_MS || 25 * 60 * 1000,
 );
 const defaultScreenStateTimeoutMs = 60 * 1000;
 const defaultPollIntervalMs = 1000;
