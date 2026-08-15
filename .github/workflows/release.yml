@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - next
 
 permissions:
   id-token: write
@@ -20,10 +21,48 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
+      - name: Select release lane
+        id: release-lane
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${GITHUB_REF_NAME}" in
+            main)
+              echo "enabled=true" >> "${GITHUB_OUTPUT}"
+              echo "publish=pnpm publish:all" >> "${GITHUB_OUTPUT}"
+              echo "title=chore: update versions" >> "${GITHUB_OUTPUT}"
+              ;;
+            next)
+              if [[ ! -f .changeset/pre.json ]]; then
+                echo "enabled=false" >> "${GITHUB_OUTPUT}"
+                echo "Skipping next release before prerelease mode is entered."
+                exit 0
+              fi
+
+              prerelease_mode="$(jq -r '.mode' .changeset/pre.json)"
+              if [[ "${prerelease_mode}" != "pre" ]]; then
+                echo "enabled=false" >> "${GITHUB_OUTPUT}"
+                echo "Skipping next release in Changesets mode: ${prerelease_mode}"
+                exit 0
+              fi
+
+              echo "enabled=true" >> "${GITHUB_OUTPUT}"
+              echo "publish=pnpm publish:rc" >> "${GITHUB_OUTPUT}"
+              echo "title=chore: update 1.0 RC versions" >> "${GITHUB_OUTPUT}"
+              ;;
+            *)
+              echo "Unsupported release branch: ${GITHUB_REF_NAME}" >&2
+              exit 1
+              ;;
+          esac
+
       - name: Setup pnpm
+        if: steps.release-lane.outputs.enabled == 'true'
         uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
 
       - name: Setup Node.js
+        if: steps.release-lane.outputs.enabled == 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 24
@@ -31,20 +70,23 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Install dependencies
+        if: steps.release-lane.outputs.enabled == 'true'
         run: pnpm install
 
       - name: Run release with Nx
+        if: steps.release-lane.outputs.enabled == 'true'
         run: |
           pnpm clear
           pnpm build
 
       - name: Create and publish versions
+        if: steps.release-lane.outputs.enabled == 'true'
         # Pinned from changesets/action@v1 to avoid mutable release action
         # code running with repository write access.
         uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d
         with:
-          commit: "chore: update versions"
-          title: "chore: update versions"
-          publish: pnpm publish:all
+          commit: ${{ steps.release-lane.outputs.title }}
+          title: ${{ steps.release-lane.outputs.title }}
+          publish: ${{ steps.release-lane.outputs.publish }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
