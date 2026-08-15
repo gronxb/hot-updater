@@ -8,6 +8,7 @@
     "bundle-diffing",
     "rollout-cohorts",
     "console",
+    "storage-cleanup",
     "ai-agents",
     "simulator-test",
     "channel-management",

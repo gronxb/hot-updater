@@ -1,8 +1,9 @@
 import { Filter, Settings2, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ChannelManagementDialog } from "@/components/features/bundles/ChannelManagementDialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -19,8 +20,20 @@ export function FilterToolbar() {
   const [isChannelManagementOpen, setIsChannelManagementOpen] = useState(false);
   const { filters, setFilters, resetFilters } = useFilterParams();
   const { data: channels = [] } = useChannelsQuery();
+  const [targetAppVersion, setTargetAppVersion] = useState(
+    filters.targetAppVersion ?? "",
+  );
 
-  const hasActiveFilters = filters.channel || filters.platform;
+  useEffect(() => {
+    setTargetAppVersion(filters.targetAppVersion ?? "");
+  }, [filters.targetAppVersion]);
+
+  const hasActiveFilters =
+    filters.channel || filters.platform || filters.targetAppVersion;
+  const applyTargetAppVersion = () => {
+    const value = targetAppVersion.trim();
+    setFilters({ targetAppVersion: value || undefined });
+  };
 
   return (
     <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-2 border-b bg-background px-3 py-3 sm:h-12 sm:flex-nowrap sm:bg-card/70 sm:px-4 sm:py-0 sm:backdrop-blur-sm">
@@ -51,6 +64,20 @@ export function FilterToolbar() {
           </SelectGroup>
         </SelectContent>
       </Select>
+
+      <Input
+        aria-label="Target app version"
+        className="h-8 w-full min-w-[132px] text-xs sm:w-[160px]"
+        placeholder="Target version"
+        value={targetAppVersion}
+        onBlur={applyTargetAppVersion}
+        onChange={(event) => setTargetAppVersion(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            applyTargetAppVersion();
+          }
+        }}
+      />
 
       <Select
         value={filters.channel || "all"}
