@@ -7,6 +7,7 @@ import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
 import {
   ArchivedS3DatabaseObjectError,
   compareAndSwapJsonInS3,
+  listS3LegacyUpdateManifests,
   listS3DatabaseObjects,
   loadJsonFromS3,
   uploadJsonToS3,
@@ -66,6 +67,10 @@ export const s3Database = (config: S3DatabaseConfig) =>
               bucketName,
               keys.toStorageKey(prefix),
             )
+          ).map(keys.fromStorageKey),
+        listLegacyUpdateManifests: async () =>
+          (
+            await listS3LegacyUpdateManifests(client, bucketName, keys.root)
           ).map(keys.fromStorageKey),
         loadObject: (key) =>
           loadJsonFromS3(client, bucketName, keys.toStorageKey(key)),

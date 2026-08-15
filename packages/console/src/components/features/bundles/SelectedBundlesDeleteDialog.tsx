@@ -7,7 +7,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useDeleteBundleMutation } from "@/lib/api";
+import { useDeleteBundlesMutation } from "@/lib/api";
 
 interface SelectedBundlesDeleteDialogProps {
   readonly bundles: readonly Bundle[];
@@ -115,7 +115,7 @@ export function SelectedBundlesDeleteDialog({
   onOpenChange,
   onComplete,
 }: SelectedBundlesDeleteDialogProps) {
-  const deleteBundleMutation = useDeleteBundleMutation();
+  const deleteBundlesMutation = useDeleteBundlesMutation();
   const [phase, setPhase] = useState<DeletePhase>("confirming");
   const [items, setItems] = useState<DeleteItem[]>(() =>
     createDeleteItems(bundles),
@@ -133,17 +133,11 @@ export function SelectedBundlesDeleteDialog({
     phase === "confirming" ? "Delete selected bundles?" : "Deleting bundles";
   const description =
     phase === "confirming"
-      ? `This action cannot be undone. This will permanently delete ${bundles.length} bundles and remove them from storage.`
-      : `${activeCount} of ${totalCount} delete requests finished.`;
-  const deleteButtonLabel = useMemo(() => {
-    if (!isDeleting) {
-      return "Delete";
-    }
-
-    const progressIndex = Math.min(activeCount + 1, totalCount);
-
-    return `Deleting ${progressIndex}/${totalCount}`;
-  }, [activeCount, isDeleting, totalCount]);
+      ? `This action cannot be undone. This deletes ${bundles.length} bundle records and schedules artifact cleanup; shared assets are reclaimed by storage prune.`
+      : phase === "deleting"
+        ? `Deleting ${totalCount} bundles in one batch.`
+        : `${activeCount} of ${totalCount} delete requests finished.`;
+  const deleteButtonLabel = isDeleting ? "Deleting..." : "Delete";
 
   useEffect(() => {
     if (open && phase === "confirming") {
@@ -170,64 +164,50 @@ export function SelectedBundlesDeleteDialog({
     }
 
     const bundleIdSet = new Set(bundleIds);
-    const deletedBundleIds: string[] = [];
-    const nextFailedBundleIds: string[] = [];
 
     setPhase("deleting");
     setItems((currentItems) =>
       currentItems.map((item) =>
         bundleIdSet.has(item.bundle.id)
-          ? { bundle: item.bundle, status: "queued" }
+          ? { bundle: item.bundle, status: "deleting" }
           : item,
       ),
     );
 
-    for (const bundleId of bundleIds) {
+    try {
+      const result = await deleteBundlesMutation.mutateAsync({
+        bundleIds: [...bundleIds],
+      });
       setItems((currentItems) =>
         currentItems.map((item) =>
-          item.bundle.id === bundleId
-            ? { bundle: item.bundle, status: "deleting" }
+          bundleIdSet.has(item.bundle.id)
+            ? { bundle: item.bundle, status: "deleted" }
             : item,
         ),
       );
-
-      try {
-        await deleteBundleMutation.mutateAsync({ bundleId });
-        deletedBundleIds.push(bundleId);
-        setItems((currentItems) =>
-          currentItems.map((item) =>
-            item.bundle.id === bundleId
-              ? { bundle: item.bundle, status: "deleted" }
-              : item,
-          ),
-        );
-      } catch (error) {
-        nextFailedBundleIds.push(bundleId);
-        setItems((currentItems) =>
-          currentItems.map((item) =>
-            item.bundle.id === bundleId
-              ? {
-                  bundle: item.bundle,
-                  message: getDeleteErrorMessage(error),
-                  status: "failed",
-                }
-              : item,
-          ),
-        );
-      }
-    }
-
-    setPhase("complete");
-    onComplete({ deletedBundleIds, failedBundleIds: nextFailedBundleIds });
-
-    if (nextFailedBundleIds.length > 0) {
-      toast.error(
-        `${deletedBundleIds.length} deleted, ${nextFailedBundleIds.length} failed`,
+      setPhase("complete");
+      onComplete({ deletedBundleIds: bundleIds, failedBundleIds: [] });
+      toast.success(
+        result.missingBundleIds.length > 0
+          ? `${result.deletedBundleIds.length} deleted, ${result.missingBundleIds.length} already absent`
+          : `${bundleIds.length} bundles deleted successfully`,
       );
-      return;
+    } catch (error) {
+      setItems((currentItems) =>
+        currentItems.map((item) =>
+          bundleIdSet.has(item.bundle.id)
+            ? {
+                bundle: item.bundle,
+                message: getDeleteErrorMessage(error),
+                status: "failed",
+              }
+            : item,
+        ),
+      );
+      setPhase("complete");
+      onComplete({ deletedBundleIds: [], failedBundleIds: bundleIds });
+      toast.error(`0 deleted, ${bundleIds.length} failed`);
     }
-
-    toast.success(`${deletedBundleIds.length} bundles deleted successfully`);
   };
 
   const handleDelete = () => {

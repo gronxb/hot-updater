@@ -1,3 +1,5 @@
+export const CONTENT_ADDRESSED_ASSET_PREFIX = "assets";
+
 export const getContentAddressedAssetStoragePath = ({
   assetPath,
   fileHash,

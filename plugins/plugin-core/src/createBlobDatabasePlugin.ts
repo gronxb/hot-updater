@@ -53,6 +53,7 @@ export type { BlobInvalidationFailure } from "./blobDatabaseInvalidationRetry";
 export interface BlobDatabaseOperations {
   readonly apiBasePath: string;
   readonly listObjects: (prefix: string) => Promise<readonly string[]>;
+  readonly listLegacyUpdateManifests?: () => Promise<readonly string[]>;
   readonly loadObject: (key: string) => Promise<unknown | null>;
   readonly uploadObject: (key: string, data: unknown) => Promise<void>;
   readonly compareAndSwapObject: (
@@ -199,7 +200,10 @@ const loadOptionalObject = async (
 const loadLegacySnapshot = async (
   operations: BlobDatabaseOperations,
 ): Promise<BlobDatabaseSnapshot> => {
-  const keys = (await operations.listObjects(""))
+  const listedObjects = operations.listLegacyUpdateManifests
+    ? await operations.listLegacyUpdateManifests()
+    : await operations.listObjects("");
+  const keys = listedObjects
     .filter(isLegacyUpdateManifestKey)
     .sort((left, right) => left.localeCompare(right));
   const bundles = new Map<string, BlobDatabaseSnapshot["bundles"][number]>();

@@ -11,7 +11,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { deleteBundle } from "./deleteBundle";
+import { deleteBundle, deleteBundles } from "./deleteBundle";
 
 const baseBundle: Bundle = {
   id: "0195a408-8f13-7d9b-8df4-123456789abc",
@@ -30,18 +30,32 @@ const baseBundle: Bundle = {
 };
 
 function createDatabaseClient(bundle: Bundle | null = baseBundle) {
-  return {
+  const bundles = bundle ? [bundle] : [];
+  const databaseClient = {
     getChannels: vi.fn(),
     insertChannel: vi.fn(),
     deleteChannel: vi.fn(),
     getBundleById: vi.fn(async () => bundle),
-    getBundles: vi.fn(),
+    getBundles: vi.fn(async () => ({
+      data: bundles,
+      pagination: {
+        currentPage: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        total: bundles.length,
+        totalPages: 1,
+      },
+    })),
     getUpdateInfo: vi.fn(),
     updateBundleById: vi.fn(),
     insertBundle: vi.fn(),
     deleteBundleById: vi.fn(),
     mutate: vi.fn(),
   } satisfies DatabaseClient;
+  databaseClient.mutate.mockImplementation(async (operation) =>
+    operation(databaseClient),
+  );
+  return databaseClient;
 }
 
 function createStoragePlugin(
@@ -102,13 +116,87 @@ describe("deleteBundle", () => {
       { databaseClient, storagePlugin },
     );
 
-    expect(databaseClient.getBundleById).toHaveBeenCalledWith(baseBundle.id);
+    expect(databaseClient.getBundles).toHaveBeenCalledWith({
+      where: { id: { in: [baseBundle.id] } },
+      limit: 1,
+    });
+    expect(databaseClient.mutate).toHaveBeenCalledOnce();
     expect(databaseClient.deleteBundleById).toHaveBeenCalledWith(baseBundle.id);
     expect(deleteFromStorage).toHaveBeenCalledWith(baseBundle.storageUri);
 
     expect(
       databaseClient.deleteBundleById.mock.invocationCallOrder[0],
     ).toBeLessThan(deleteFromStorage.mock.invocationCallOrder[0]);
+  });
+
+  it("deletes multiple bundles with one database commit", async () => {
+    const secondBundle = {
+      ...baseBundle,
+      id: "0195a408-8f13-7d9b-8df4-123456789abd",
+      storageUri: "s3://bucket/second-bundle.zip",
+    };
+    const databaseClient = createDatabaseClient();
+    databaseClient.getBundles.mockResolvedValue({
+      data: [baseBundle, secondBundle],
+      pagination: {
+        currentPage: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        total: 2,
+        totalPages: 1,
+      },
+    });
+    const deleteFromStorage = vi.fn();
+    const storagePlugin = createStoragePlugin("s3", {
+      delete: deleteFromStorage,
+    });
+
+    await deleteBundles(
+      { bundleIds: [baseBundle.id, secondBundle.id] },
+      { databaseClient, storagePlugin },
+    );
+
+    expect(databaseClient.getBundles).toHaveBeenCalledOnce();
+    expect(databaseClient.mutate).toHaveBeenCalledOnce();
+    expect(databaseClient.deleteBundleById).toHaveBeenCalledTimes(2);
+    expect(deleteFromStorage).toHaveBeenCalledWith(baseBundle.storageUri);
+    expect(deleteFromStorage).toHaveBeenCalledWith(secondBundle.storageUri);
+  });
+
+  it("deletes found bundles and reports stale ids in the same batch", async () => {
+    const databaseClient = createDatabaseClient();
+    const storagePlugin = createStoragePlugin();
+
+    await expect(
+      deleteBundles(
+        { bundleIds: [baseBundle.id, "missing-bundle"] },
+        { databaseClient, storagePlugin },
+      ),
+    ).resolves.toEqual({
+      deletedBundleIds: [baseBundle.id],
+      missingBundleIds: ["missing-bundle"],
+    });
+
+    expect(databaseClient.mutate).toHaveBeenCalledOnce();
+    expect(databaseClient.deleteBundleById).toHaveBeenCalledWith(baseBundle.id);
+    expect(storagePlugin.profiles.node.delete).toHaveBeenCalledWith(
+      baseBundle.storageUri,
+    );
+  });
+
+  it("deduplicates ids before database and storage deletion", async () => {
+    const databaseClient = createDatabaseClient();
+    const storagePlugin = createStoragePlugin();
+
+    await deleteBundles(
+      { bundleIds: [baseBundle.id, baseBundle.id] },
+      { databaseClient, storagePlugin },
+    );
+
+    expect(databaseClient.getBundles).toHaveBeenCalledOnce();
+    expect(databaseClient.mutate).toHaveBeenCalledOnce();
+    expect(databaseClient.deleteBundleById).toHaveBeenCalledOnce();
+    expect(storagePlugin.profiles.node.delete).toHaveBeenCalledOnce();
   });
 
   it("skips storage deletion for http urls", async () => {
@@ -267,7 +355,7 @@ describe("deleteBundle", () => {
       { databaseClient, storagePlugin },
     );
 
-    expect(databaseClient.getBundles).not.toHaveBeenCalled();
+    expect(databaseClient.getBundles).toHaveBeenCalledOnce();
     expect(fetchManifest).not.toHaveBeenCalled();
     expect(deleteFromStorage).toHaveBeenCalledTimes(2);
     expect(deleteFromStorage).toHaveBeenCalledWith(

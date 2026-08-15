@@ -155,7 +155,7 @@ const createProfiledStoragePlugin = <TContext>(
   const profiles = {} as StoragePluginProfiles<TContext>;
 
   if (profileShape?.node) {
-    profiles.node = {
+    const nodeProfile: NodeStorageProfile = {
       async delete(storageUri) {
         return requireNodeProfile().delete(storageUri);
       },
@@ -169,6 +169,29 @@ const createProfiledStoragePlugin = <TContext>(
         return requireNodeProfile().upload(key, filePath);
       },
     };
+
+    Object.defineProperties(nodeProfile, {
+      deleteObjects: {
+        enumerable: true,
+        get: () => {
+          const deleteObjects = requireNodeProfile().deleteObjects;
+          return deleteObjects
+            ? (keys: readonly string[]) => deleteObjects(keys)
+            : undefined;
+        },
+      },
+      listObjects: {
+        enumerable: true,
+        get: () => {
+          const listObjects = requireNodeProfile().listObjects;
+          return listObjects
+            ? (prefix?: string) => listObjects(prefix)
+            : undefined;
+        },
+      },
+    });
+
+    profiles.node = nodeProfile;
   } else if (profileShape?.node !== false) {
     Object.defineProperty(profiles, "node", {
       enumerable: true,
