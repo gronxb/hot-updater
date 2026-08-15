@@ -65,6 +65,7 @@
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
     "@hot-updater/firebase": "workspace:*",
+    "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",

@@ -51,8 +51,8 @@ const createAwsScaffold = (
     configString: "s3Storage(commonOptions)",
   };
   const database: ProviderConfig = {
-    imports: [{ pkg: "@hot-updater/aws", named: ["s3Database"] }],
-    configString: `s3Database({
+    imports: [{ pkg: "@hot-updater/aws", named: ["dynamoDB"] }],
+    configString: `dynamoDB({
     ...commonOptions,
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   })`,
@@ -194,7 +194,7 @@ export default defineConfig({
 
     await fs.writeFile(
       configPath,
-      `import { s3Database, s3Storage } from "@hot-updater/aws";
+      `import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
@@ -220,7 +220,7 @@ export default defineConfig({
   },
   build: bare({ enableHermes: true }),
   storage: s3Storage(commonOptions),
-  database: s3Database({
+  database: dynamoDB({
     ...commonOptions,
   }),
   signing: {
@@ -242,7 +242,7 @@ export default defineConfig({
     expect(updatedConfig).toContain("supabaseStorage({");
     expect(updatedConfig).toContain("supabaseDatabase({");
     expect(updatedConfig).not.toContain("s3Storage(");
-    expect(updatedConfig).not.toContain("s3Database(");
+    expect(updatedConfig).not.toContain("dynamoDB(");
     expect(updatedConfig).not.toContain("commonOptions");
     expect(updatedConfig).toContain('packageName: "com.example.app"');
     expect(updatedConfig).toContain('privateKeyPath: "./keys/private-key.pem"');
@@ -306,7 +306,7 @@ export default defineConfig({
 
     await fs.writeFile(
       configPath,
-      `import { s3Database, s3Storage } from "@hot-updater/aws";
+      `import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
@@ -325,7 +325,7 @@ const commonOptions = {
 export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: s3Storage(commonOptions),
-  database: s3Database({
+  database: dynamoDB({
     ...commonOptions,
   }),
 });

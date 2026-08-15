@@ -130,14 +130,13 @@ export default defineConfig({
 * [AWS S3 + Lambda@Edge](https://hot-updater.dev/docs/managed/aws)
 ```tsx
 import { bare } from "@hot-updater/bare";
-import { s3Storage, s3Database } from "@hot-updater/aws";
+import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
 config({ path: ".env.hotupdater" });
 
-const options = {
-  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: {
     accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
@@ -147,8 +146,14 @@ const options = {
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  storage: s3Storage(options),
-  database: s3Database(options),
+  storage: s3Storage({
+    ...awsOptions,
+    bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  }),
+  database: dynamoDB({
+    ...awsOptions,
+    tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
+  }),
 });
 ```
 

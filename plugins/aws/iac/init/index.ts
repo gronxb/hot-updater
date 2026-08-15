@@ -1,12 +1,5 @@
 import type { InitProviderDefinition } from "@hot-updater/cli-tools";
 
-import {
-  AWS_DATABASE_TYPES,
-  isAwsDatabaseType,
-} from "../../src/awsDatabaseType";
-
-export { AWS_DATABASE_TYPES, isAwsDatabaseType };
-
 export const AWS_AUTH_MODES = [
   "local-session",
   "shared-profile",
@@ -72,21 +65,9 @@ export const isAwsRegionValue = (
 export const initProvider = {
   label: "AWS + Lambda@Edge",
   inputs: {
-    database: {
-      envKey: "HOT_UPDATER_AWS_DATABASE",
-      help: "Metadata database: dynamodb or s3 (deprecated)",
-      optional: true,
-      prompt: {
-        message: "Select the AWS metadata database",
-        type: "select",
-      },
-      validate: isAwsDatabaseType,
-    },
     dynamodbTableName: {
       envKey: "HOT_UPDATER_DYNAMODB_TABLE_NAME",
       help: "DynamoDB metadata table name",
-      requiredWhen: (inputs) => inputs.database === "dynamodb",
-      requirementHint: "required when DynamoDB is selected",
       prompt: {
         defaultValue: "hot-updater",
         message: "Enter the DynamoDB table name",
@@ -172,17 +153,6 @@ export const initProvider = {
       envKey: "HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID",
       help: "Existing CloudFront distribution ID",
       optional: true,
-    },
-    migrationApproved: {
-      envKey: "HOT_UPDATER_AWS_MIGRATION_APPROVED",
-      help: "Allow pending Hot Updater S3 migrations (true)",
-      optional: true,
-      prompt: {
-        message:
-          "Apply pending Hot Updater S3 migrations during init and future infrastructure updates?",
-        type: "confirm",
-      },
-      validate: (value) => value === "true",
     },
   },
 } as const satisfies InitProviderDefinition;

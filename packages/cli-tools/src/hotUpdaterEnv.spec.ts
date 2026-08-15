@@ -199,23 +199,23 @@ describe("getHotUpdaterInitInputEnv", () => {
 
 describe("getHotUpdaterEnvValue", () => {
   it("does not let a lower-priority file override an explicit false value", () => {
-    vi.stubEnv("HOT_UPDATER_AWS_MIGRATION_APPROVED", "false");
+    vi.stubEnv("HOT_UPDATER_TEST_BOOLEAN", "false");
 
     expect(
       getHotUpdaterEnvValue(
-        { HOT_UPDATER_AWS_MIGRATION_APPROVED: "true" },
-        "HOT_UPDATER_AWS_MIGRATION_APPROVED",
+        { HOT_UPDATER_TEST_BOOLEAN: "true" },
+        "HOT_UPDATER_TEST_BOOLEAN",
       ),
     ).toBe("false");
   });
 
   it("does not fall back when the process environment explicitly clears a value", () => {
-    vi.stubEnv("HOT_UPDATER_AWS_MIGRATION_APPROVED", "");
+    vi.stubEnv("HOT_UPDATER_TEST_BOOLEAN", "");
 
     expect(
       getHotUpdaterEnvValue(
-        { HOT_UPDATER_AWS_MIGRATION_APPROVED: "true" },
-        "HOT_UPDATER_AWS_MIGRATION_APPROVED",
+        { HOT_UPDATER_TEST_BOOLEAN: "true" },
+        "HOT_UPDATER_TEST_BOOLEAN",
       ),
     ).toBeUndefined();
   });

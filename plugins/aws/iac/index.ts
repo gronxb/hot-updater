@@ -7,7 +7,6 @@ import {
   getInitProviderTextPromptValues,
   link,
   makeEnv,
-  MissingInitInputsError,
   p,
   readHotUpdaterInitEnv,
   type RunInitOptions,
@@ -21,10 +20,6 @@ import {
 } from "@hot-updater/server";
 import { execa } from "execa";
 
-import {
-  AWS_DATABASE_TYPES,
-  type AwsDatabaseType,
-} from "../src/awsDatabaseType";
 import { dynamoDB } from "../src/dynamoDB";
 import { resolveAwsAuth } from "./awsAuth";
 import {
@@ -36,8 +31,6 @@ import { DynamoDBManager } from "./dynamodb";
 import { IAMManager } from "./iam";
 import { initProvider as AWS_INIT_PROVIDER } from "./init/index";
 import { LambdaEdgeDeployer } from "./lambdaEdge";
-import { Migration0001HotUpdater0_13_0 } from "./migrations/Migration0001HotUpdater0_13_0";
-import { Migration0001HotUpdater0_18_0 } from "./migrations/Migration0001HotUpdater0_18_0";
 import { type AwsRegion, regionLocationMap } from "./regionLocationMap";
 import { S3Manager } from "./s3";
 import { SSMKeyPairManager } from "./ssm";
@@ -103,34 +96,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     process.exit(1);
   }
 
-  const database = await (async (): Promise<AwsDatabaseType> => {
-    if (nonInteractive) {
-      if (savedInputs.database) return savedInputs.database;
-      p.log.warn(
-        "This saved AWS init environment predates database selection. Continuing with deprecated s3Database to preserve existing metadata.",
-      );
-      return "s3";
-    }
-    const selected = await p.select<AwsDatabaseType>({
-      initialValue: savedInputs.database ?? "dynamodb",
-      message: AWS_INIT_PROVIDER.inputs.database.prompt.message,
-      options: AWS_DATABASE_TYPES.map((type) => ({
-        label:
-          type === "dynamodb"
-            ? "DynamoDB (Recommended)"
-            : "S3 metadata (Deprecated)",
-        value: type,
-      })),
-    });
-    if (p.isCancel(selected)) process.exit(1);
-    return selected;
-  })();
-  if (database === "s3") {
-    p.log.warn(
-      "s3Database is deprecated. Existing metadata remains supported, but new installations should use DynamoDB.",
-    );
-  }
-
   p.log.message(colors.blue("The following permissions are required:"));
   p.log.message(
     `${colors.blue("AmazonS3FullAccess")}: Create and read S3 buckets`,
@@ -147,11 +112,9 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   p.log.message(
     `${colors.blue("AmazonSSMFullAccess")}: Access to SSM Parameters for storing CloudFront key pairs`,
   );
-  if (database === "dynamodb") {
-    p.log.message(
-      `${colors.blue("AmazonDynamoDBFullAccess_v2")}: Create and configure the metadata table`,
-    );
-  }
+  p.log.message(
+    `${colors.blue("AmazonDynamoDBFullAccess_v2")}: Create and configure the metadata table`,
+  );
 
   const { awsProfile, configAuthMode, credentials, mode } =
     await resolveAwsAuth(providerEnv, nonInteractive);
@@ -195,9 +158,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     savedBucketName !== undefined &&
     isAwsRegion(savedBucketRegion) &&
     !existingBucket;
-  if (createSavedBucket && savedInputs.migrationApproved !== "true") {
-    throw new MissingInitInputsError(["HOT_UPDATER_AWS_MIGRATION_APPROVED"]);
-  }
   if (savedBucketName && !existingBucket && !createSavedBucket) {
     p.log.warn("Saved S3 bucket was not found. Select a bucket again.");
   }
@@ -266,20 +226,18 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
               )?.region,
             ),
       dynamodbTableName: () =>
-        database === "s3"
-          ? Promise.resolve(undefined)
-          : nonInteractive && savedDynamoDBTableName
-            ? Promise.resolve(savedDynamoDBTableName)
-            : p.text({
-                ...getInitProviderTextPromptValues(
-                  AWS_INIT_PROVIDER.inputs.dynamodbTableName.prompt,
-                  savedDynamoDBTableName,
-                ),
-                message:
-                  AWS_INIT_PROVIDER.inputs.dynamodbTableName.prompt.message,
-                validate: (value) =>
-                  value ? undefined : "DynamoDB table name is required",
-              }),
+        nonInteractive && savedDynamoDBTableName
+          ? Promise.resolve(savedDynamoDBTableName)
+          : p.text({
+              ...getInitProviderTextPromptValues(
+                AWS_INIT_PROVIDER.inputs.dynamodbTableName.prompt,
+                savedDynamoDBTableName,
+              ),
+              message:
+                AWS_INIT_PROVIDER.inputs.dynamodbTableName.prompt.message,
+              validate: (value) =>
+                value ? undefined : "DynamoDB table name is required",
+            }),
       lambdaName: () =>
         nonInteractive && savedLambdaName
           ? Promise.resolve(savedLambdaName)
@@ -310,7 +268,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
   const resolvedDynamoDBTableName =
     typeof dynamodbTableName === "string" ? dynamodbTableName : undefined;
-  if (database === "dynamodb" && !resolvedDynamoDBTableName) {
+  if (!resolvedDynamoDBTableName) {
     p.log.error("AWS DynamoDB table name is required.");
     process.exit(1);
   }
@@ -324,11 +282,9 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     ...resolvedAuthInputs,
     bucketName,
     bucketRegion,
-    database,
     distributionId: selectedDistribution?.Id,
     dynamodbTableName: resolvedDynamoDBTableName,
     lambdaName,
-    migrationApproved: savedInputs.migrationApproved,
   };
   const persistCredentialInputs = await confirmInitInputPersistence({
     existingEnv: managedEnv,
@@ -371,55 +327,35 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   p.log.info(`Selected S3 Bucket: ${bucketName} (${bucketRegion})`);
 
-  // Run S3 migrations
-  const migrationsApplied = await s3Manager.runMigrations({
-    approved: savedInputs.migrationApproved === "true",
-    bucketName,
-    nonInteractive,
+  await prepareDynamoDBDeployment({
+    credentials,
     region: bucketRegion,
-    migrations: [
-      new Migration0001HotUpdater0_13_0(),
-      new Migration0001HotUpdater0_18_0(),
-    ],
+    tableName: resolvedDynamoDBTableName,
   });
-  if (migrationsApplied && savedInputs.migrationApproved !== "true") {
-    await makeEnv({
-      [AWS_INIT_PROVIDER.inputs.migrationApproved.envKey]: "true",
+  const databasePlugin = dynamoDB({
+    credentials,
+    region: bucketRegion,
+    tableName: resolvedDynamoDBTableName,
+  });
+  try {
+    const apiKey = await prepareDynamoDBClientAccessKey({
+      clientAccessKeys: databasePlugin.models.clientAccessKeys,
+      existingApiKey: providerEnv.HOT_UPDATER_API_KEY,
     });
+    await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
+  } finally {
+    await databasePlugin.dispose?.();
   }
-
-  if (database === "dynamodb" && resolvedDynamoDBTableName) {
-    await prepareDynamoDBDeployment({
-      credentials,
-      region: bucketRegion,
-      tableName: resolvedDynamoDBTableName,
-    });
-    const databasePlugin = dynamoDB({
-      credentials,
-      region: bucketRegion,
-      tableName: resolvedDynamoDBTableName,
-    });
-    try {
-      const apiKey = await prepareDynamoDBClientAccessKey({
-        clientAccessKeys: databasePlugin.models.clientAccessKeys,
-        existingApiKey: providerEnv.HOT_UPDATER_API_KEY,
-      });
-      await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
-    } finally {
-      await databasePlugin.dispose?.();
-    }
-    p.log.info(
-      `Using DynamoDB table: ${resolvedDynamoDBTableName} (${bucketRegion})`,
-    );
-  }
+  p.log.info(
+    `Using DynamoDB table: ${resolvedDynamoDBTableName} (${bucketRegion})`,
+  );
 
   // Create IAM role: Using IAMManager
   const iamManager = new IAMManager(bucketRegion, credentials);
   const ssmParameterName = `/hot-updater/${bucketName}/keypair`;
   const lambdaRoleArn = await iamManager.createOrSelectRole({
     bucketName,
-    dynamodbTableName:
-      database === "dynamodb" ? resolvedDynamoDBTableName : undefined,
+    dynamodbTableName: resolvedDynamoDBTableName,
     lambdaName,
     ssmParameterName,
   });
@@ -441,9 +377,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     lambdaName,
     {
       bucketName,
-      databaseType: database,
       dynamodbRegion: bucketRegion,
-      dynamodbTableName: resolvedDynamoDBTableName ?? "",
+      dynamodbTableName: resolvedDynamoDBTableName,
       publicKeyId: publicKeyId,
       ssmParameterName: ssmParameterName,
       ssmRegion: bucketRegion,
@@ -470,7 +405,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   // Create configuration file
   const configWriteResult = await writeHotUpdaterConfig(
-    getConfigScaffold(build, configAuthMode, database),
+    getConfigScaffold(build, configAuthMode),
   );
 
   await makeEnv({

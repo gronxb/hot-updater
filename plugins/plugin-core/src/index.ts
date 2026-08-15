@@ -3,7 +3,6 @@ export * from "./bundleStorageLayout";
 export * from "./compressionFormat";
 export * from "./assetStorageLayout";
 export * from "./contentAddressedAssets";
-export * from "./createBlobDatabasePlugin";
 export {
   createDatabasePlugin,
   DatabaseAtomicCommitUnsupportedError,

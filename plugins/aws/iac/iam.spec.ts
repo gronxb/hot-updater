@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   attachRolePolicy: vi.fn(),
-  deleteRolePolicy: vi.fn(),
   getCallerIdentity: vi.fn(),
   getRole: vi.fn(),
   listAttachedRolePolicies: vi.fn(),
@@ -13,7 +12,6 @@ vi.mock("@aws-sdk/client-iam", () => ({
   IAM: vi.fn(function IAM() {
     return {
       attachRolePolicy: mocks.attachRolePolicy,
-      deleteRolePolicy: mocks.deleteRolePolicy,
       getRole: mocks.getRole,
       listAttachedRolePolicies: mocks.listAttachedRolePolicies,
       putRolePolicy: mocks.putRolePolicy,
@@ -46,7 +44,6 @@ describe("IAMManager DynamoDB access", () => {
       ],
     });
     mocks.putRolePolicy.mockResolvedValue({});
-    mocks.deleteRolePolicy.mockResolvedValue({});
   });
 
   it("grants update reads and atomic CRUD for every official domain", async () => {
@@ -160,26 +157,5 @@ describe("IAMManager DynamoDB access", () => {
     // Then
     const roleNames = mocks.getRole.mock.calls.map(([input]) => input.RoleName);
     expect(new Set(roleNames).size).toBe(2);
-  });
-
-  it("removes stale DynamoDB access when an installation selects S3", async () => {
-    // Given
-    const manager = new IAMManager("ap-northeast-2", {
-      accessKeyId: "test-access-key",
-      secretAccessKey: "test-secret-key",
-    });
-
-    // When
-    await manager.createOrSelectRole({
-      bucketName: "hot-updater-storage",
-      lambdaName: "hot-updater-edge",
-      ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
-    });
-
-    // Then
-    expect(mocks.deleteRolePolicy).toHaveBeenCalledWith({
-      PolicyName: "HotUpdaterDynamoDBReadAccess",
-      RoleName: expect.stringMatching(/^hot-updater-edge-[a-f0-9]{16}$/),
-    });
   });
 });

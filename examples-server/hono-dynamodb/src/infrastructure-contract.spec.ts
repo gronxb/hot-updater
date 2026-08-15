@@ -38,6 +38,5 @@ describe("standalone-dynamodb local infrastructure contract", () => {
     expect(dbSource).toContain(
       'endpoint: process.env.AWS_S3_ENDPOINT ?? "http://localhost:9000"',
     );
-    expect(dbSource).not.toContain("s3Database(");
   });
 });

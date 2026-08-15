@@ -43,7 +43,6 @@ import {
   stopRuntime,
 } from "../../../packages/test-utils/src/runtimeProcess";
 import { DYNAMODB_UPDATE_INDEX_NAME, dynamoDB } from "../src/dynamoDB";
-import { s3Database } from "../src/s3Database";
 import { s3LambdaEdgeStorage } from "../src/s3LambdaEdgeStorage";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -358,7 +357,6 @@ describe.sequential("aws lambda runtime acceptance", () => {
 
     const transformedCode = transformEnv(path.join(runtimeDir, "index.cjs"), {
       CLOUDFRONT_KEY_PAIR_ID,
-      DATABASE_TYPE: "dynamodb",
       DYNAMODB_REGION: REGION,
       DYNAMODB_TABLE_NAME,
       SSM_PARAMETER_NAME,
@@ -760,104 +758,6 @@ describe.sequential("aws lambda runtime acceptance", () => {
         type: "UNCHANGED",
       }),
     ]);
-  });
-
-  it("keeps the deprecated S3 metadata runtime usable", async () => {
-    const s3SeedHotUpdater = createHotUpdater({
-      database: s3Database({
-        bucketName: S3_BUCKET_NAME,
-        region: REGION,
-        endpoint: localstackEndpoint,
-        forcePathStyle: true,
-        credentials: {
-          accessKeyId: ACCESS_KEY_ID,
-          secretAccessKey: SECRET_ACCESS_KEY,
-        },
-      }),
-      storages: [
-        s3LambdaEdgeStorage({
-          bucketName: S3_BUCKET_NAME,
-          region: REGION,
-          endpoint: localstackEndpoint,
-          forcePathStyle: true,
-          credentials: {
-            accessKeyId: ACCESS_KEY_ID,
-            secretAccessKey: SECRET_ACCESS_KEY,
-          },
-          keyPairId: CLOUDFRONT_KEY_PAIR_ID,
-          ssmRegion: REGION,
-          ssmParameterName: SSM_PARAMETER_NAME,
-          publicBaseUrl: PUBLIC_BASE_URL,
-        }),
-      ],
-      basePath: HOT_UPDATER_BASE_PATH,
-      features: { updateCheck: true, bundles: false },
-    });
-    const bundle = toRuntimeBundle({
-      id: "00000000-0000-0000-0000-000000000401",
-      platform: "ios",
-      targetAppVersion: "1.0",
-      shouldForceUpdate: false,
-      enabled: true,
-      fileHash: "s3-runtime-hash",
-      gitCommitHash: null,
-      message: "deprecated S3 runtime",
-      channel: "production",
-      storageUri: "storage://unused",
-      fingerprintHash: null,
-    });
-    await s3SeedHotUpdater.insertBundle(bundle);
-
-    const s3RuntimeDir = await mkdtemp(
-      path.join(WORKSPACE_ROOT, "plugins/aws/runtime-acceptance-s3-"),
-    );
-    const lambdaDistDir = path.join(WORKSPACE_ROOT, "plugins/aws/dist/lambda");
-    await cp(lambdaDistDir, s3RuntimeDir, { recursive: true });
-    const transformedCode = transformEnv(path.join(s3RuntimeDir, "index.cjs"), {
-      CLOUDFRONT_KEY_PAIR_ID,
-      DATABASE_TYPE: "s3",
-      DYNAMODB_REGION: REGION,
-      DYNAMODB_TABLE_NAME: "",
-      SSM_PARAMETER_NAME,
-      SSM_REGION: REGION,
-      S3_BUCKET_NAME,
-    });
-    await writeFile(path.join(s3RuntimeDir, "index.cjs"), transformedCode);
-
-    const s3LambdaPort = await findOpenPort();
-    const s3LambdaRuntime = spawnLambdaRuntime({
-      dockerNetworkName,
-      lambdaPort: s3LambdaPort,
-      runtimeDir: s3RuntimeDir,
-    });
-    try {
-      await waitForLambdaReady({
-        port: s3LambdaPort,
-        child: s3LambdaRuntime.child,
-        logs: s3LambdaRuntime.logs,
-      });
-      const response = await invokeLambda(
-        s3LambdaPort,
-        createCloudFrontEvent({
-          path: createCanonicalPath({
-            appVersion: "1.0",
-            bundleId: NIL_UUID,
-            platform: "ios",
-            _updateStrategy: "appVersion",
-          }),
-          headers: new Headers(),
-        }),
-      );
-      const payload = (await response.json()) as { body?: string };
-
-      await expect(readLambdaJson(payload)).resolves.toMatchObject({
-        id: bundle.id,
-        status: "UPDATE",
-      });
-    } finally {
-      await stopRuntime(s3LambdaRuntime.child);
-      await rm(s3RuntimeDir, { recursive: true, force: true });
-    }
   });
 });
 

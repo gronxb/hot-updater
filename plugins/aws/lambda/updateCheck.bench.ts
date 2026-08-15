@@ -1,5 +1,6 @@
 import { type Bundle, NIL_UUID } from "@hot-updater/core";
-import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
+import { createMockDatabaseData, mockDatabase } from "@hot-updater/mock";
+import { bundleToRow } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import { bench, describe } from "vitest";
 
@@ -45,14 +46,12 @@ const createBundle = ({
   targetAppVersion,
 });
 
-const createDatasetStore = () => {
-  const store: Record<string, string> = {};
+const createDataset = () => {
+  const dataset: Bundle[] = [];
   let bundleCounter = 0;
 
   for (const channel of CHANNELS) {
     for (const platform of PLATFORMS) {
-      const targetAppVersions: string[] = [];
-
       for (
         let bucketIndex = 0;
         bucketIndex < APP_VERSION_BUCKETS_PER_ROUTE;
@@ -65,8 +64,6 @@ const createDatasetStore = () => {
             ? APP_VERSION
             : `${platform === "ios" ? 2 : 3}.${bucketIndex}.0`;
         const bundles: Bundle[] = [];
-
-        targetAppVersions.push(targetAppVersion);
 
         for (
           let bundleIndex = 0;
@@ -85,13 +82,8 @@ const createDatasetStore = () => {
           );
         }
 
-        bundles.sort((left, right) => right.id.localeCompare(left.id));
-        store[`${channel}/${platform}/${targetAppVersion}/update.json`] =
-          JSON.stringify(bundles);
+        dataset.push(...bundles);
       }
-
-      store[`${channel}/${platform}/target-app-versions.json`] =
-        JSON.stringify(targetAppVersions);
 
       for (
         let bucketIndex = 0;
@@ -123,37 +115,28 @@ const createDatasetStore = () => {
           );
         }
 
-        bundles.sort((left, right) => right.id.localeCompare(left.id));
-        store[`${channel}/${platform}/${fingerprintHash}/update.json`] =
-          JSON.stringify(bundles);
+        dataset.push(...bundles);
       }
     }
   }
 
-  return store;
+  return dataset;
 };
 
 const createBenchHotUpdater = () => {
-  const store = createDatasetStore();
-  const keys = Object.keys(store);
-
-  const database = createBlobDatabasePlugin({
-    name: "lambdaBenchDatabase",
-    plugin: () => ({
-      apiBasePath: BASE_PATH,
-      listObjects: async (prefix: string) =>
-        keys.filter((key) => key.startsWith(prefix)),
-      loadObject: async (key: string): Promise<unknown> => {
-        const value = store[key];
-        if (!value) return null;
-        const parsed: unknown = JSON.parse(value);
-        return parsed;
-      },
-      uploadObject: async () => {},
-      compareAndSwapObject: async () => true,
-      invalidatePaths: async () => {},
-    }),
-  });
+  const data = createMockDatabaseData();
+  const channelIds = new Map<string, string>();
+  for (const [index, name] of CHANNELS.entries()) {
+    const id = createBundleId(10_000 + index);
+    data.channels.set(id, { id, name });
+    channelIds.set(name, id);
+  }
+  for (const bundle of createDataset()) {
+    const channelId = channelIds.get(bundle.channel);
+    if (!channelId) throw new Error(`Unknown channel: ${bundle.channel}`);
+    data.bundles.set(bundle.id, bundleToRow(bundle, channelId));
+  }
+  const database = mockDatabase({ data, latency: { min: 0, max: 0 } });
 
   return createHotUpdater({
     database,

@@ -78,7 +78,8 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
 
-app.use( // [!code ++]
+app.use(
+  // [!code ++]
   "/hot-updater/api/*", // [!code ++]
   bearerAuth({ token: process.env.HOT_UPDATER_AUTH_TOKEN ?? "" }), // [!code ++]
 ); // [!code ++]
@@ -186,5 +187,5 @@ export default HotUpdater.wrap({
 ## Next Steps
 
 - Configure your CLI to use this server (see [Overview](./overview#cli-configuration))
-- Explore other [Database Adapters](./database/drizzle) (Drizzle, Prisma, MongoDB, S3)
+- Explore other [Database Adapters](./database/drizzle) (Drizzle, Prisma, MongoDB)
 - Try different [Server Frameworks](./frameworks/hono) (Express, Elysia)

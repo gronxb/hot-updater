@@ -1,11 +1,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
-import {
-  BLOB_DATABASE_SNAPSHOT_KEY,
-  createBlobDatabasePlugin,
-  createDatabaseClient,
-} from "@hot-updater/plugin-core";
+import { createDatabaseClient } from "@hot-updater/plugin-core";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { HttpResponse, http } from "msw";
@@ -14,6 +10,7 @@ import { uuidv7 } from "uuidv7";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { standaloneRepository } from "../../../plugins/standalone/src";
+import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
 import { kyselyAdapter } from "./adapters/kysely";
 import { createMigrator } from "./db";
 import { createHotUpdater } from "./index";
@@ -78,32 +75,6 @@ const createTestBundle = (overrides?: Partial<Bundle>): Bundle => ({
 
 const createStandaloneClient = (base = `${baseUrl}/hot-updater`) =>
   createDatabaseClient(standaloneRepository({ baseUrl: base }));
-
-const parseStoredJson = (value: string): unknown => JSON.parse(value);
-
-const createInMemoryBlobDatabase = (store: Record<string, string>) =>
-  createBlobDatabasePlugin({
-    name: "blob-test",
-    plugin: () => ({
-      apiBasePath: "/api/check-update",
-      listObjects: async (prefix: string) =>
-        Object.keys(store).filter((key) => key.startsWith(prefix)),
-      loadObject: async (key: string) => {
-        const value = store[key];
-        return value ? parseStoredJson(value) : null;
-      },
-      uploadObject: async (key: string, data: unknown) => {
-        store[key] = JSON.stringify(data);
-      },
-      compareAndSwapObject: async (key, expected, data) => {
-        const current = store[key] ? parseStoredJson(store[key]) : null;
-        if (JSON.stringify(current) !== JSON.stringify(expected)) return false;
-        store[key] = JSON.stringify(data);
-        return true;
-      },
-      invalidatePaths: async () => {},
-    }),
-  });
 
 describe("Handler <-> Standalone Repository Integration", () => {
   it("creates a bundle through handler POST /bundles", async () => {
@@ -311,23 +282,22 @@ describe("Handler <-> Standalone Repository Integration", () => {
     ).resolves.toBeNull();
   });
 
-  it("updates a blob-backed bundle without creating a duplicate row", async () => {
-    const store: Record<string, string> = {};
-    const blobApi = createHotUpdater({
-      database: createInMemoryBlobDatabase(store),
-      basePath: "/blob-hot-updater",
+  it("updates a bundle without creating a duplicate row", async () => {
+    const memoryApi = createHotUpdater({
+      database: createInMemoryDatabasePlugin(),
+      basePath: "/memory-hot-updater",
       features: { updateCheck: true, bundles: true },
     });
     server.use(
-      http.all(`${baseUrl}/blob-hot-updater/*`, async ({ request }) => {
-        const response = await blobApi.handler(request);
+      http.all(`${baseUrl}/memory-hot-updater/*`, async ({ request }) => {
+        const response = await memoryApi.handler(request);
         return new HttpResponse(await response.text(), {
           status: response.status,
           headers: response.headers,
         });
       }),
     );
-    const client = createStandaloneClient(`${baseUrl}/blob-hot-updater`);
+    const client = createStandaloneClient(`${baseUrl}/memory-hot-updater`);
     const bundleId = uuidv7();
     await client.insertBundle(
       createTestBundle({
@@ -343,18 +313,14 @@ describe("Handler <-> Standalone Repository Integration", () => {
       id: bundleId,
       targetAppVersion: "1.0.2",
     });
-    const pointer = JSON.parse(store[BLOB_DATABASE_SNAPSHOT_KEY] ?? "{}") as {
-      active_revision?: string;
-    };
-    const snapshotKey = `_hot-updater/database/revisions/${pointer.active_revision}/snapshot.json`;
-    const snapshot = JSON.parse(store[snapshotKey] ?? "{}") as {
-      bundles?: Array<{ id: string; target_app_version: string }>;
-    };
-    expect(snapshot.bundles).toEqual([
-      expect.objectContaining({
-        id: bundleId,
-        target_app_version: "1.0.2",
-      }),
-    ]);
+    await expect(client.getBundles({ limit: 50 })).resolves.toMatchObject({
+      data: [
+        expect.objectContaining({
+          id: bundleId,
+          targetAppVersion: "1.0.2",
+        }),
+      ],
+      pagination: { total: 1 },
+    });
   });
 });

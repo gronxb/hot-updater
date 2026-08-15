@@ -235,7 +235,7 @@ describe("handleRollback", () => {
       message: "Apply this rollback plan to dev?",
       initialValue: false,
     });
-    expect(databaseHarness.uploadObject).not.toHaveBeenCalled();
+    expect(databaseHarness.commit).not.toHaveBeenCalled();
     if (isTtyDescriptor) {
       Object.defineProperty(process.stdin, "isTTY", isTtyDescriptor);
     }
@@ -264,7 +264,7 @@ describe("handleRollback", () => {
     const { handleRollback } = await import("./rollback");
     await expect(handleRollback("dev", {})).rejects.toThrow("process.exit(1)");
     expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(databaseHarness.uploadObject).not.toHaveBeenCalled();
+    expect(databaseHarness.commit).not.toHaveBeenCalled();
     if (isTtyDescriptor) {
       Object.defineProperty(process.stdin, "isTTY", isTtyDescriptor);
     }
@@ -281,7 +281,7 @@ describe("handleRollback", () => {
         buildBundle({ id: "and-1", platform: "android" }),
       ],
     });
-    databaseHarness.compareAndSwapObject.mockResolvedValue(true);
+    databaseHarness.commit.mockResolvedValue({ committed: true });
     const { exitSpy } = expectExit(1);
     const { handleRollback } = await import("./rollback");
     await expect(handleRollback("dev", { yes: true })).rejects.toThrow(
@@ -294,7 +294,7 @@ describe("handleRollback", () => {
   });
 
   it("calls dispose even when getBundles throws", async () => {
-    databaseHarness.loadObject.mockRejectedValueOnce(new Error("DB down"));
+    databaseHarness.read.mockRejectedValueOnce(new Error("DB down"));
     const { handleRollback } = await import("./rollback");
     await expect(handleRollback("dev", { yes: true })).rejects.toThrow(
       "DB down",

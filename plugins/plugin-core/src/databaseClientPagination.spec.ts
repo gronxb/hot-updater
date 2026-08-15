@@ -1,13 +1,13 @@
 import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
 
-import { createBlobDatabasePlugin } from "./createBlobDatabasePlugin";
 import {
   createDatabasePlugin,
   createDatabasePluginAdapter,
 } from "./createDatabasePlugin";
 import { createDatabaseClient } from "./databaseClient";
 import { loadBundleRows } from "./databaseClientReads";
+import { createMemoryDatabasePlugin } from "./databasePluginMemory.testFixtures";
 import type { BundleRow } from "./types";
 
 const createBundle = (id: string): Bundle => ({
@@ -53,27 +53,7 @@ describe("database client pagination", () => {
   });
 
   it("hydrates only the selected bundle row", async () => {
-    const store = new Map<string, unknown>();
-    const plugin = createBlobDatabasePlugin({
-      name: "pagination-memory",
-      plugin: () => ({
-        apiBasePath: "/api/check-update",
-        listObjects: async (prefix) =>
-          [...store.keys()].filter((key) => key.startsWith(prefix)),
-        loadObject: async (key) => store.get(key) ?? null,
-        uploadObject: async (key, value) => void store.set(key, value),
-        compareAndSwapObject: async (key, expected, value) => {
-          if (
-            JSON.stringify(store.get(key) ?? null) !== JSON.stringify(expected)
-          ) {
-            return false;
-          }
-          store.set(key, value);
-          return true;
-        },
-        invalidatePaths: async () => undefined,
-      }),
-    });
+    const plugin = createMemoryDatabasePlugin();
     const client = createDatabaseClient(plugin);
     for (const id of ["001", "002", "003"]) {
       await client.insertBundle(createBundle(id));

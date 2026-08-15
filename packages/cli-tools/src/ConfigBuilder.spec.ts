@@ -19,8 +19,8 @@ const getAwsConfigTemplate = (
     configString: "s3Storage(commonOptions)",
   };
   const databaseConfig: ProviderConfig = {
-    imports: [{ pkg: "@hot-updater/aws", named: ["s3Database"] }],
-    configString: `s3Database({
+    imports: [{ pkg: "@hot-updater/aws", named: ["dynamoDB"] }],
+    configString: `dynamoDB({
     ...commonOptions,
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   })`,
@@ -151,7 +151,7 @@ describe("ConfigBuilder", () => {
       sessionToken: true,
     });
 
-    const expectedConfig = `import { s3Database, s3Storage } from "@hot-updater/aws";
+    const expectedConfig = `import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
@@ -172,7 +172,7 @@ const commonOptions = {
 export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: s3Storage(commonOptions),
-  database: s3Database({
+  database: dynamoDB({
     ...commonOptions,
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
@@ -187,7 +187,7 @@ export default defineConfig({
       sessionToken: false,
     });
 
-    const expectedConfig = `import { s3Database, s3Storage } from "@hot-updater/aws";
+    const expectedConfig = `import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
@@ -206,7 +206,7 @@ const commonOptions = {
 export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: s3Storage(commonOptions),
-  database: s3Database({
+  database: dynamoDB({
     ...commonOptions,
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),

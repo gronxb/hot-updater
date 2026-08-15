@@ -100,22 +100,6 @@ export class IAMManager {
     });
   }
 
-  private async removeDynamoDBPolicy(
-    iamClient: IAM,
-    roleName: string,
-  ): Promise<void> {
-    try {
-      await iamClient.deleteRolePolicy({
-        PolicyName: "HotUpdaterDynamoDBReadAccess",
-        RoleName: roleName,
-      });
-    } catch (error) {
-      if (!(error instanceof Error && error.name === "NoSuchEntityException")) {
-        throw error;
-      }
-    }
-  }
-
   private async ensureS3Policy(
     iamClient: IAM,
     roleName: string,
@@ -167,7 +151,7 @@ export class IAMManager {
 
   async createOrSelectRole(options: {
     readonly bucketName: string;
-    readonly dynamodbTableName?: string;
+    readonly dynamodbTableName: string;
     readonly lambdaName: string;
     readonly ssmParameterName: string;
   }): Promise<string> {
@@ -218,16 +202,12 @@ export class IAMManager {
           accountId,
           options.ssmParameterName,
         );
-        if (options.dynamodbTableName) {
-          await this.ensureDynamoDBPolicy(
-            iamClient,
-            roleName,
-            accountId,
-            options.dynamodbTableName,
-          );
-        } else {
-          await this.removeDynamoDBPolicy(iamClient, roleName);
-        }
+        await this.ensureDynamoDBPolicy(
+          iamClient,
+          roleName,
+          accountId,
+          options.dynamodbTableName,
+        );
         p.log.info(
           `Using existing IAM role: ${roleName} (${existingRole.Arn})`,
         );
@@ -263,15 +243,13 @@ export class IAMManager {
         );
         p.log.info(`Added resource-scoped policies to ${roleName}`);
 
-        if (options.dynamodbTableName) {
-          await this.ensureDynamoDBPolicy(
-            iamClient,
-            roleName,
-            accountId,
-            options.dynamodbTableName,
-          );
-          p.log.info(`Added DynamoDB read policy to ${roleName}`);
-        }
+        await this.ensureDynamoDBPolicy(
+          iamClient,
+          roleName,
+          accountId,
+          options.dynamodbTableName,
+        );
+        p.log.info(`Added DynamoDB read policy to ${roleName}`);
 
         return lambdaRoleArn;
       } catch (createError) {

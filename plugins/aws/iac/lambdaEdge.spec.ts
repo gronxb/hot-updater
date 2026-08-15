@@ -88,7 +88,6 @@ describe("LambdaEdgeDeployer", () => {
       "hot-updater-edge",
       {
         bucketName: "hot-updater-storage",
-        databaseType: "dynamodb",
         dynamodbRegion: "ap-northeast-2",
         dynamodbTableName: "hot-updater-metadata",
         publicKeyId: "public-key-id",
@@ -149,7 +148,6 @@ describe("LambdaEdgeDeployer", () => {
       "hot-updater-edge",
       {
         bucketName: "hot-updater-storage",
-        databaseType: "dynamodb",
         dynamodbRegion: "ap-northeast-2",
         dynamodbTableName: "hot-updater-metadata",
         publicKeyId: "public-key-id",

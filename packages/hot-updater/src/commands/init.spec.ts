@@ -156,6 +156,7 @@ describe("init choices", () => {
       [
         "Init is missing required inputs:",
         "- HOT_UPDATER_INIT_BUILD",
+        "- HOT_UPDATER_DYNAMODB_TABLE_NAME",
         "- HOT_UPDATER_AWS_AUTH_MODE",
         "- HOT_UPDATER_S3_BUCKET_NAME",
         "- HOT_UPDATER_S3_REGION",
@@ -215,7 +216,7 @@ describe("init choices", () => {
         HOT_UPDATER_INIT_PROVIDER: "aws",
         HOT_UPDATER_AWS_AUTH_MODE: "local-session",
         HOT_UPDATER_AWS_LAMBDA_NAME: "hot-updater-edge",
-        HOT_UPDATER_AWS_MIGRATION_APPROVED: "true",
+        HOT_UPDATER_DYNAMODB_TABLE_NAME: "hot-updater",
         HOT_UPDATER_S3_BUCKET_NAME: "hot-updater-storage",
         HOT_UPDATER_S3_REGION: "us-east-1",
       },

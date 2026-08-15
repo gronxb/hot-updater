@@ -205,7 +205,7 @@ describe("handlePromote", () => {
       handlePromote("src-1", { target: "  ", yes: true }),
     ).rejects.toThrow("process.exit(1)");
     expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(databaseHarness.loadObject).not.toHaveBeenCalled();
+    expect(databaseHarness.read).not.toHaveBeenCalled();
     expect(mockPromoteBundle).not.toHaveBeenCalled();
   });
 

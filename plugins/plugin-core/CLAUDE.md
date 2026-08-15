@@ -46,7 +46,6 @@ pnpm test # Uses @cloudflare/vitest-pool-workers
 ### Database Plugin Creation
 
 - `createDatabasePlugin()`: Factory for fixed-model database plugins
-- `createBlobDatabasePlugin()`: Factory for blob-backed fixed-model plugins (edge-compatible)
 - `createDatabaseClient()`: Shared bundle aggregate client over a database plugin
 
 ### Utility Functions

@@ -7,8 +7,6 @@ import {
   type ProviderConfig,
 } from "@hot-updater/cli-tools";
 
-import type { AwsDatabaseType } from "../src/awsDatabaseType";
-
 export type AwsConfigScaffoldAuthMode =
   | { mode: "account" }
   | { mode: "local"; profile: string | null }
@@ -17,35 +15,22 @@ export type AwsConfigScaffoldAuthMode =
 export const getConfigScaffold = (
   build: BuildType,
   authMode: AwsConfigScaffoldAuthMode,
-  databaseType: AwsDatabaseType = "dynamodb",
 ): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/aws", named: ["s3Storage"] }],
-    configString:
-      databaseType === "dynamodb"
-        ? `s3Storage({
+    configString: `s3Storage({
     ...awsOptions,
     bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
-  })`
-        : "s3Storage(storageOptions)",
+  })`,
   };
-  const databaseConfig: ProviderConfig =
-    databaseType === "dynamodb"
-      ? {
-          imports: [{ pkg: "@hot-updater/aws", named: ["dynamoDB"] }],
-          configString: `dynamoDB({
+  const databaseConfig: ProviderConfig = {
+    imports: [{ pkg: "@hot-updater/aws", named: ["dynamoDB"] }],
+    configString: `dynamoDB({
     ...awsOptions,
     tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   })`,
-        }
-      : {
-          imports: [{ pkg: "@hot-updater/aws", named: ["s3Database"] }],
-          configString: `s3Database({
-    ...storageOptions,
-    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
-  })`,
-        };
+  };
 
   let helperStatements: ManagedHelperStatement[];
 
@@ -100,18 +85,6 @@ const awsOptions = {
       break;
   }
 
-  if (databaseType === "s3") {
-    helperStatements.push({
-      name: "storageOptions",
-      strategy: "merge-object",
-      code: `
-const storageOptions = {
-  ...awsOptions,
-  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
-};`.trim(),
-    });
-  }
-
   const builder = new ConfigBuilder()
     .setBuildType(build)
     .setStorage(storageConfig)
@@ -145,8 +118,7 @@ const storageOptions = {
 export const getConfigTemplate = (
   build: BuildType,
   authMode: AwsConfigScaffoldAuthMode,
-  databaseType: AwsDatabaseType = "dynamodb",
-) => getConfigScaffold(build, authMode, databaseType).text;
+) => getConfigScaffold(build, authMode).text;
 
 export const SOURCE_TEMPLATE = `// Add this to your App.tsx
 import { HotUpdater } from "@hot-updater/react-native";

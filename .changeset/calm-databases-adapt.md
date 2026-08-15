@@ -53,8 +53,8 @@ Core schema `0.38.0` creates Channel storage, backfills one Channel for each
 legacy bundle channel, fills `bundles.channel_id`, validates the dual values,
 and applies the non-null, uniqueness, and reference constraints before recording
 the new version. Kysely, Drizzle, Prisma, MongoDB, Cloudflare D1, PostgreSQL,
-Supabase, Firebase, Mock, and the temporary blob database compatibility path all
-implement the same logical contract and migration semantics.
+Supabase, Firebase, and Mock implement the same logical contract and migration
+semantics.
 
 Add canonical Channel management routes: `GET /api/channels`,
 `POST /api/channels`, and empty-only `DELETE /api/channels/:id`. Remove the
