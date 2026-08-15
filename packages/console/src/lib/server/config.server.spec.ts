@@ -50,6 +50,7 @@ function createTestStoragePlugin() {
     protocol: "s3",
     put: vi.fn(),
     get: vi.fn(async () => ({ response: null })),
+    exists: vi.fn(async () => ({ exists: false })),
     delete: vi.fn(async () => ({ deleted: true as const })),
   });
 }

@@ -22,11 +22,13 @@ import type {
 } from "@hot-updater/plugin-core";
 import {
   assertStorageOperations,
-  createStorageUriWithRelativePath,
+  createBundleStorageKey,
   createDatabaseClient,
-  replaceStorageUriKeySuffix,
+  createStorageRootUriWithPath,
+  createStorageUriWithRelativePath,
+  getContentAddressedAssetStoragePath,
+  getManifestAssetDownloadPath,
 } from "@hot-updater/plugin-core";
-import { getContentAddressedAssetStoragePath } from "@hot-updater/plugin-core";
 import { createBundleDiff } from "@hot-updater/server/db";
 import isPortReachable from "is-port-reachable";
 import open from "open";
@@ -352,14 +354,6 @@ const getRelativeStorageDir = (relativePath: string) => {
   return dirname === "." ? "" : dirname;
 };
 
-const isBrotliManifestBundleAsset = (relativePath: string) =>
-  /(^|\/)index\.[^/]+\.bundle$/.test(relativePath.replace(/\\/g, "/"));
-
-const getManifestAssetUploadName = (relativePath: string) =>
-  isBrotliManifestBundleAsset(relativePath)
-    ? `${relativePath}.br`
-    : relativePath;
-
 const ensureUploadSourcePath = async ({
   outputPath,
   targetFile,
@@ -369,7 +363,7 @@ const ensureUploadSourcePath = async ({
   targetFile: { path: string; name: string };
   uploadFilename?: string;
 }) => {
-  const uploadName = getManifestAssetUploadName(targetFile.name);
+  const uploadName = getManifestAssetDownloadPath(targetFile.name);
   const expectedFilename = uploadFilename ?? path.posix.basename(uploadName);
   const actualFilename = path.basename(targetFile.path);
 
@@ -423,7 +417,7 @@ const getUniqueContentAddressedAssetUploadTargets = ({
     }
 
     const storagePath = getContentAddressedAssetStoragePath({
-      assetPath: getManifestAssetUploadName(targetFile.name),
+      assetPath: getManifestAssetDownloadPath(targetFile.name),
       fileHash: manifestAsset.fileHash,
     });
 
@@ -935,7 +929,7 @@ const deployPlatform = async ({
             updateUploadProgress();
             const { storageUri } = await putStorageFile(
               storagePlugin,
-              bundleId,
+              createBundleStorageKey(bundleId),
               bundlePath,
             );
             taskRef.storageUri = storageUri;
@@ -947,11 +941,11 @@ const deployPlatform = async ({
             // from manifest fileHash values. LEGACY: existing /files bundles
             // still resolve through the server fallback until that layout is
             // intentionally removed.
-            taskRef.assetBaseStorageUri = replaceStorageUriKeySuffix({
+            taskRef.assetBaseStorageUri = createStorageRootUriWithPath(
               storageUri,
-              keySuffix: path.posix.join(bundleId, path.basename(bundlePath)),
-              replacement: "assets",
-            });
+              bundleId,
+              "assets",
+            );
             await runWithConcurrency(
               assetUploadTargets,
               MANIFEST_ASSET_UPLOAD_CONCURRENCY,
@@ -988,7 +982,7 @@ const deployPlatform = async ({
 
             const manifestUpload = await putStorageFile(
               storagePlugin,
-              bundleId,
+              createBundleStorageKey(bundleId),
               taskRef.manifestPath,
             );
             taskRef.manifestStorageUri = manifestUpload.storageUri;

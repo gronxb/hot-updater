@@ -168,7 +168,7 @@ describe("createBundleDiff", () => {
       });
       expect(updatedBundle.patchFileHash).toMatch(/[a-f0-9]{64}/);
       expect(updatedBundle.patchStorageUri).toContain(
-        `${targetBundle.id}/patches/${baseBundle.id}`,
+        `bundles/${targetBundle.id}/patches/${baseBundle.id}`,
       );
       expect(updatedBundle.patches).toEqual([
         {
@@ -447,7 +447,7 @@ describe("createBundleDiff", () => {
           baseFileHash: "hash-secondary-old",
           patchFileHash: expect.any(String),
           patchStorageUri: expect.stringContaining(
-            `${targetBundle.id}/patches/${secondaryBaseBundle.id}`,
+            `bundles/${targetBundle.id}/patches/${secondaryBaseBundle.id}`,
           ),
         },
       ]);

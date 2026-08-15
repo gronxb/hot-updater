@@ -5,6 +5,12 @@ import { createStorageUri, parseStorageUri } from "./parseStorageUri";
 
 export type AssetStorageLayout = "content-addressed" | "legacy-files";
 
+export const isBrotliManifestAssetPath = (assetPath: string) =>
+  /(^|\/)index\.[^/]+\.bundle$/.test(assetPath.replace(/\\/g, "/"));
+
+export const getManifestAssetDownloadPath = (assetPath: string) =>
+  isBrotliManifestAssetPath(assetPath) ? `${assetPath}.br` : assetPath;
+
 export const createStorageUriWithRelativePath = ({
   baseStorageUri,
   relativePath,

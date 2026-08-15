@@ -7,6 +7,15 @@
 - Add a bundle analytics summary, runtime-backed installation search/history,
   and a dedicated Console installations route for last-known bundle evidence.
 
+## 0.36.0
+
+### Patch Changes
+
+- 9759e8a: Reduce S3 management query work by skipping legacy UUIDv7 artifact traversal, deriving channels from canonical manifest keys, and batching multi-bundle deletion scans and commits. Store new bundle artifacts below `bundles/<bundle-id>` while preserving legacy reads, and add exact target app version filters to the CLI and Console. Add an exclusive-maintenance `hot-updater storage prune` command for orphaned bundle objects and unreferenced shared assets, with an explicit `--dry-run` candidate table, a recent-object protection window, and fail-closed reference validation safeguards.
+- Updated dependencies [9759e8a]
+  - @hot-updater/server@0.36.0
+  - @hot-updater/bsdiff@0.36.0
+
 ## 0.35.12
 
 ### Patch Changes

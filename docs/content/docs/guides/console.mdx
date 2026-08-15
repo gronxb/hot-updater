@@ -62,6 +62,10 @@ npx hot-updater bundle update <bundle-id> --target-cohorts qa,dogfood -y
 Add `--json` to `bundle list`, `bundle show`, or `bundle update` when another
 tool needs to read the raw bundle data.
 
+After deleting bundle records, use the [Storage Cleanup](/docs/guides/storage-cleanup)
+workflow to preview and reclaim bundle objects and shared assets that are no
+longer referenced.
+
 ## Rollback
 
 When you set a bundle's `enabled` status to `false` in the console, users who have that bundle will immediately force update to the **previous bundle**.

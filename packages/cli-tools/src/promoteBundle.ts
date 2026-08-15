@@ -16,10 +16,14 @@ import type {
   StoragePluginWith,
 } from "@hot-updater/plugin-core";
 import {
+  createBundleStorageKey,
+  createStorageRootUriWithPath,
   createUUIDv7,
   detectCompressionFormat,
+  getContentAddressedAssetStoragePath,
+  getManifestAssetDownloadPath,
   parseStorageUri,
-  replaceStorageUriKeySuffix,
+  resolveManifestAssetStorageUri,
 } from "@hot-updater/plugin-core";
 import JSZip from "jszip";
 import * as tar from "tar";
@@ -34,7 +38,9 @@ import {
   writeStorageResponseFile,
 } from "./storageFiles";
 
-type PromoteStoragePlugin = StoragePluginWith<"get" | "put" | "delete">;
+type PromoteStoragePlugin = StoragePluginWith<
+  "get" | "put" | "exists" | "delete"
+>;
 
 const LEGACY_BUNDLE_ERROR =
   "This OTA bundle was created by a version that does not support manifest.json. Copy bundle is not available.";
@@ -90,9 +96,6 @@ const getRelativeStorageDir = (relativePath: string) => {
   return dirname === "." ? "" : dirname;
 };
 
-const isBundleAsset = (relativePath: string) =>
-  /(^|\/)[^/]+\.(ios|android)\.bundle$/.test(relativePath.replace(/\\/g, "/"));
-
 function resolvePreparedUploadPath(rootDir: string, assetPath: string) {
   const normalizedAssetPath = assetPath.replaceAll("\\", "/");
   const outputPath = path.resolve(
@@ -122,7 +125,7 @@ async function prepareManifestAssetUploadFile({
   sourcePath: string;
   workDir: string;
 }) {
-  if (!isBundleAsset(assetPath)) {
+  if (getManifestAssetDownloadPath(assetPath) === assetPath) {
     return sourcePath;
   }
 
@@ -133,6 +136,31 @@ async function prepareManifestAssetUploadFile({
     createBrotliCompress(),
     createWriteStream(uploadPath),
   );
+  return uploadPath;
+}
+
+async function prepareContentAddressedUploadFile({
+  sourcePath,
+  storagePath,
+  workDir,
+}: {
+  sourcePath: string;
+  storagePath: string;
+  workDir: string;
+}) {
+  const filename = path.posix.basename(storagePath);
+  if (path.basename(sourcePath) === filename) {
+    return sourcePath;
+  }
+
+  const uploadPath = path.join(
+    workDir,
+    "upload-artifacts",
+    "content-addressed",
+    filename,
+  );
+  await fs.mkdir(path.dirname(uploadPath), { recursive: true });
+  await fs.copyFile(sourcePath, uploadPath);
   return uploadPath;
 }
 
@@ -368,45 +396,65 @@ export async function createCopiedBundleArchive({
 
     const archiveUpload = await putStorageFile(
       storagePlugin,
-      nextBundleId,
+      createBundleStorageKey(nextBundleId),
       outputArchivePath,
     );
     uploadedStorageUris.push(archiveUpload.storageUri);
     const manifestUpload = await putStorageFile(
       storagePlugin,
-      nextBundleId,
+      createBundleStorageKey(nextBundleId),
       manifestPath,
     );
     uploadedStorageUris.push(manifestUpload.storageUri);
+    const assetBaseStorageUri = createStorageRootUriWithPath(
+      manifestUpload.storageUri,
+      nextBundleId,
+      "assets",
+    );
 
     const assetPaths = Object.keys(manifest.assets ?? {}).sort((left, right) =>
       left.localeCompare(right),
     );
 
     for (const assetPath of assetPaths) {
-      const relativeDir = getRelativeStorageDir(assetPath);
-      const uploadKey = [nextBundleId, "files", relativeDir]
-        .filter(Boolean)
-        .join("/");
+      const asset = manifest.assets?.[assetPath];
+      if (!asset?.fileHash) {
+        throw new Error(`Manifest file hash not found for ${assetPath}`);
+      }
       const sourcePath = path.join(extractDir, assetPath);
       const uploadPath = await prepareManifestAssetUploadFile({
         assetPath,
         sourcePath,
         workDir,
       });
-      const assetUpload = await putStorageFile(
-        storagePlugin,
-        uploadKey,
-        uploadPath,
-      );
-      uploadedStorageUris.push(assetUpload.storageUri);
-    }
+      const uploadName = getManifestAssetDownloadPath(assetPath);
+      const storagePath = getContentAddressedAssetStoragePath({
+        assetPath: uploadName,
+        fileHash: asset.fileHash,
+      });
+      const storageUri = resolveManifestAssetStorageUri({
+        assetBaseStorageUri,
+        assetPath: uploadName,
+        fileHash: asset.fileHash,
+      });
 
-    const assetBaseStorageUri = replaceStorageUriKeySuffix({
-      storageUri: manifestUpload.storageUri,
-      keySuffix: path.basename(manifestPath),
-      replacement: "files",
-    });
+      const { exists } = await storagePlugin.exists({ storageUri });
+      if (!exists) {
+        const contentAddressedUploadPath =
+          await prepareContentAddressedUploadFile({
+            sourcePath: uploadPath,
+            storagePath,
+            workDir,
+          });
+        await putStorageFile(
+          storagePlugin,
+          getRelativeStorageDir(storagePath)
+            ? `assets/${getRelativeStorageDir(storagePath)}`
+            : "assets",
+          contentAddressedUploadPath,
+        );
+      }
+    }
 
     return {
       bundle: {
