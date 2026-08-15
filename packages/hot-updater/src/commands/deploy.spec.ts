@@ -319,9 +319,9 @@ describe("deploy rollout wiring", () => {
       bundleId: "bundle-123",
       stdout: null,
     });
-    mockStoragePlugin.profiles.node.upload.mockResolvedValue({
-      storageUri: "s3://bundles/bundle-123/bundle.tar.br",
-    });
+    mockStoragePlugin.profiles.node.upload.mockImplementation(async (key) => ({
+      storageUri: `s3://bundles/${key}/bundle.tar.br`,
+    }));
     mockStoragePlugin.profiles.node.exists.mockResolvedValue(false);
     mockServer.createBundleDiff.mockResolvedValue({
       id: "bundle-123",
@@ -464,6 +464,9 @@ describe("deploy rollout wiring", () => {
       buildPath: "/mock/build",
       bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
       stdout: null,
+    }));
+    mockStoragePlugin.profiles.node.upload.mockImplementation(async (key) => ({
+      storageUri: `s3://bundles/${key}/bundle.tar.br`,
     }));
 
     await deploy({
@@ -774,7 +777,7 @@ describe("deploy rollout wiring", () => {
     expect((await databaseHarness.bundles())[0]).toMatchObject({
       assetBaseStorageUri: "s3://bundles/assets",
       manifestFileHash: "file-hash",
-      manifestStorageUri: "s3://bundles/bundle-123/manifest.json",
+      manifestStorageUri: "s3://bundles/bundles/bundle-123/manifest.json",
       metadata: expect.objectContaining({
         app_version: "1.0",
       }),

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createStorageUriWithRelativePath,
   getAssetStorageLayout,
+  getManifestAssetDownloadPath,
   getManifestAssetStoragePath,
   resolveManifestAssetStorageUri,
 } from "./assetStorageLayout";
@@ -60,5 +61,17 @@ describe("assetStorageLayout", () => {
         fileHash: "abcdef",
       }),
     ).toBe("s3://bucket/assets/sha256/ab/abcdef.png");
+  });
+
+  it("uses one physical download-name rule for bundle assets", () => {
+    expect(getManifestAssetDownloadPath("index.ios.bundle")).toBe(
+      "index.ios.bundle.br",
+    );
+    expect(getManifestAssetDownloadPath("nested/index.android.bundle")).toBe(
+      "nested/index.android.bundle.br",
+    );
+    expect(getManifestAssetDownloadPath("main.ios.bundle")).toBe(
+      "main.ios.bundle",
+    );
   });
 });

@@ -96,6 +96,16 @@ This prefix is stored in the `storageUri` field in the database.
 This means the same `s3Storage` configuration can be used in both
 `hot-updater.config.ts` and `createHotUpdater`.
 
+## Maintenance
+
+`s3Storage` provides the object listing and exact deletion capabilities used by
+`hot-updater storage prune`. Follow the [Storage Cleanup](/docs/guides/storage-cleanup)
+guide to remove unreferenced bundle objects and shared assets safely.
+
+Use a separate `basePath` for every database or environment that shares a
+bucket. Pruning assumes that the configured database owns every object below
+its storage prefix.
+
 ## Custom Server Usage
 
 Use `s3Storage` with `createHotUpdater` for self-hosted servers:

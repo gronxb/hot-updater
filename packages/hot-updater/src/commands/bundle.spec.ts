@@ -118,11 +118,26 @@ describe("handleBundleList", () => {
   it("forwards channel/platform/limit options to getBundles", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     databaseHarness.setBundles([
-      buildBundle({ id: "B1", channel: "beta", platform: "android" }),
-      buildBundle({ id: "B2", channel: "other", platform: "android" }),
+      buildBundle({
+        id: "B1",
+        channel: "beta",
+        platform: "android",
+        targetAppVersion: "1.2.3",
+      }),
+      buildBundle({
+        id: "B2",
+        channel: "beta",
+        platform: "android",
+        targetAppVersion: "2.0.0",
+      }),
     ]);
     const { handleBundleList } = await import("./bundle");
-    await handleBundleList({ channel: "beta", platform: "android", limit: 5 });
+    await handleBundleList({
+      channel: "beta",
+      platform: "android",
+      limit: 5,
+      targetAppVersion: "1.2.3",
+    });
     const output = logSpy.mock.calls.map((call) => call[0]).join("\n");
     expect(output).toContain("B1");
     expect(output).not.toContain("B2");
@@ -344,6 +359,7 @@ describe("handleBundleDelete", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     databaseHarness.reset();
+    Reflect.set(databaseHarness.plugin, "name", "test-database-v2");
     stubLoadedConfig();
   });
   afterEach(() => {
@@ -378,6 +394,65 @@ describe("handleBundleDelete", () => {
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       "Deleted 2 bundle records.",
     );
+  });
+
+  it("resolves multiple and missing ids from one management snapshot", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const b1 = buildBundle({ id: "B1" });
+    const b2 = buildBundle({ id: "B2" });
+    databaseHarness.setBundles([b1, b2]);
+    const findMany = vi.spyOn(
+      databaseHarness.plugin.models.bundles,
+      "findMany",
+    );
+
+    const { handleBundleDelete } = await import("./bundle");
+    await handleBundleDelete(["B1", "missing", "B2", "B1"], { yes: true });
+
+    expect(findMany).toHaveBeenCalledOnce();
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        limit: 3,
+        where: { id: { in: ["B1", "missing", "B2"] } },
+      }),
+    );
+    expect(await databaseHarness.bundles()).toEqual([]);
+    expect(databaseHarness.commit).toHaveBeenCalledOnce();
+    expect(mockCli.p.log.info).toHaveBeenCalledWith(
+      "No bundle with id missing. Skipping.",
+    );
+  });
+
+  it("chunks standalone lookups at the server limit and commits once", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    Reflect.set(databaseHarness.plugin, "name", "standalone-repository");
+    const ids = Array.from({ length: 101 }, (_, index) => `B${index + 1}`);
+    databaseHarness.setBundles(ids.map((id) => buildBundle({ id })));
+    const findMany = vi.spyOn(
+      databaseHarness.plugin.models.bundles,
+      "findMany",
+    );
+
+    const { handleBundleDelete } = await import("./bundle");
+    await handleBundleDelete(ids, { yes: true });
+
+    expect(findMany).toHaveBeenCalledTimes(2);
+    expect(findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        limit: 100,
+        where: { id: { in: ids.slice(0, 100) } },
+      }),
+    );
+    expect(findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        limit: 1,
+        where: { id: { in: ids.slice(100) } },
+      }),
+    );
+    expect(await databaseHarness.bundles()).toEqual([]);
+    expect(databaseHarness.commit).toHaveBeenCalledOnce();
   });
 
   it("exits 1 when no ids are provided", async () => {
