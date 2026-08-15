@@ -282,6 +282,97 @@ describe("Detox scenario contract", () => {
     expect(new Set(listDetoxScenarioNames()).size).toBe(27);
   });
 
+  it("establishes a BUILTIN receipt before proving catalog-only no-update", async () => {
+    // Given: a complete catalog excludes its only Release but explicitly
+    // authorizes the local BUILTIN fallback.
+    const calls = await recordScenarioCalls("catalog-only-no-update");
+
+    // When: the first check commits that authenticated receipt and the second
+    // check evaluates the unchanged catalog.
+    // Then: only the second check is a no-update and neither check resolves an
+    // artifact.
+    expect(calls.map((call) => call.stage)).toEqual([
+      "deploy excluded catalog Release",
+      "launch catalog-only app",
+      "establish excluded catalog receipt",
+      "assert excluded catalog built-in selection",
+      "reset catalog-only proxy",
+      "check excluded catalog Release",
+      "assert catalog-only no update",
+      "assert catalog-only transport",
+    ]);
+    expect(
+      calls.find(
+        (call) =>
+          call.kind === "assertText" &&
+          call.stage === "assert excluded catalog built-in selection",
+      ),
+    ).toMatchObject({
+      contains: "current-channel -> selected BUILTIN",
+      options: { exactText: true },
+      testID: "update-action-result",
+    });
+    expect(
+      calls.find(
+        (call) =>
+          call.kind === "assertText" &&
+          call.stage === "assert catalog-only no update",
+      ),
+    ).toMatchObject({
+      contains: "current-channel -> no-update",
+      options: { exactText: true },
+      testID: "update-action-result",
+    });
+    expect(
+      await controlStepBody(
+        "catalog-only-no-update",
+        "assert catalog-only transport",
+      ),
+    ).toEqual({
+      artifactFailuresRemaining: 1,
+      artifactRequests: 0,
+      catalogRequests: 1,
+    });
+  });
+
+  it("reports a stale captured artifact as a fail-closed CAS error", async () => {
+    // Given: an old selection is captured before a newer Release is installed.
+    const calls = await recordScenarioCalls(
+      "slow-old-artifact-after-newer-install",
+    );
+
+    // When / Then: applying the old selection exposes the architectural stale
+    // action error while leaving the newer staging receipt untouched.
+    expect(
+      calls.find(
+        (call) =>
+          call.kind === "assertText" &&
+          call.stage === "assert old artifact CAS rejected",
+      ),
+    ).toMatchObject({
+      contains:
+        "captured-update -> error Release catalog selection became stale before it was committed",
+      options: { exactText: true },
+      testID: "update-action-result",
+    });
+    expect(
+      await controlStepBody(
+        "slow-old-artifact-after-newer-install",
+        "assert newer artifact still pending",
+      ),
+    ).toEqual({
+      bundleId: "$newArtifactBundleId",
+      releaseId: "$newArtifactReleaseId",
+      verificationPending: true,
+    });
+    expect(
+      await controlStepBody(
+        "slow-old-artifact-after-newer-install",
+        "assert artifact race transport",
+      ),
+    ).toEqual({ artifactRequests: 1, catalogRequests: 1 });
+  });
+
   it("uses Detox-owned scenario lookup in the runner", async () => {
     // Given: the CLI must run the Detox suite.
     const runnerSource = await fs.readFile(detoxRunnerPath, "utf8");

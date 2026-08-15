@@ -71,7 +71,7 @@ export const slowOldArtifactAfterNewerInstallScenario: DetoxScenarioDefinition =
       await app.assertText(
         "assert old artifact CAS rejected",
         "update-action-result",
-        "captured-update -> skipped",
+        "captured-update -> error Release catalog selection became stale before it was committed",
         { exactText: true },
       );
       await app.control(
