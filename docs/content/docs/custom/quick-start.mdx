@@ -42,7 +42,7 @@ import { db } from "./kysely";
 
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
-  storages: [
+  storage: [
     s3Storage({
       region: "auto",
       endpoint: process.env.R2_ENDPOINT,
@@ -51,13 +51,14 @@ export const hotUpdater = createHotUpdater({
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
       },
       bucketName: process.env.R2_BUCKET_NAME!,
+      downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
     }),
   ],
   basePath: "/hot-updater",
   features: {
-    analytics: true,
     updateCheck: true,
     bundles: true,
+    analytics: true,
   },
 });
 ```
@@ -167,8 +168,8 @@ export default defineConfig({
 ```
 
 <Callout type="warn">
-  The `storage` plugin here must match the `storages` in your server's
-  `createHotUpdater` configuration. Both use `s3Storage` in this example.
+  The CLI `storage` plugin must match one entry in the server's
+  `createHotUpdater({storage})` array. Both use `s3Storage` here.
 </Callout>
 
 ## React Native Setup

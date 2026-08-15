@@ -1,6 +1,5 @@
 import {
   DatabasePluginInputError,
-  isRuntimeStoragePlugin,
   type Bundle,
   type ChannelDeleteInput,
   type ChannelInsertInput,
@@ -38,10 +37,6 @@ type GetBundleChildCountsInput = {
   bundleIds: string[];
 };
 
-type GetBundleDownloadUrlInput = {
-  bundleId: string;
-};
-
 type UpdateBundleInput = {
   bundleId: string;
   bundle: Partial<Bundle>;
@@ -60,21 +55,6 @@ type DeleteBundleInput = {
 
 type DeleteBundlesInput = {
   bundleIds: string[];
-};
-
-const assertRemoteDownloadUrl = (fileUrl: string) => {
-  try {
-    const protocol = new URL(fileUrl).protocol.replace(":", "");
-    if (protocol === "http" || protocol === "https") {
-      return fileUrl;
-    }
-  } catch {
-    // Fall through to the browser-facing error below.
-  }
-
-  throw new Error(
-    "Storage plugin returned a local file path; browser downloads require an HTTP(S) download URL.",
-  );
 };
 
 // GET /api/config
@@ -319,59 +299,6 @@ export const getBundleChildCounts = createServerFn({ method: "GET" })
       });
     } catch (error) {
       console.error("Error during bundle child count retrieval:", error);
-      throw error;
-    }
-  });
-
-export const getBundleDownloadUrl = createServerFn({ method: "GET" })
-  .inputValidator((input: GetBundleDownloadUrlInput) => input)
-  .handler(async ({ data }) => {
-    try {
-      const { prepareConfig } = await import("./server/config.server");
-      const { databaseClient, storagePlugin } = await prepareConfig();
-      const bundle = await databaseClient.getBundleById(data.bundleId);
-
-      if (!bundle) {
-        throw new Error("Bundle not found");
-      }
-
-      const { storageUri } = bundle;
-      if (!storageUri) {
-        throw new Error("Bundle has no storage URI");
-      }
-
-      const url = new URL(storageUri);
-      const protocol = url.protocol.replace(":", "");
-
-      if (protocol === "http" || protocol === "https") {
-        return { fileUrl: storageUri };
-      }
-
-      if (!storagePlugin) {
-        throw new Error("Storage plugin is not configured");
-      }
-
-      if (storagePlugin.supportedProtocol !== protocol) {
-        throw new Error(`No storage plugin for protocol: ${protocol}`);
-      }
-
-      if (!isRuntimeStoragePlugin(storagePlugin)) {
-        throw new Error(
-          `${storagePlugin.name} does not support runtime download URL resolution.`,
-        );
-      }
-
-      const downloadTarget =
-        await storagePlugin.profiles.runtime.getDownloadUrl(storageUri);
-      const { fileUrl } = downloadTarget;
-
-      if (!fileUrl) {
-        throw new Error("Storage plugin returned empty fileUrl");
-      }
-
-      return { fileUrl: assertRemoteDownloadUrl(fileUrl) };
-    } catch (error) {
-      console.error("Error during bundle download URL retrieval:", error);
       throw error;
     }
   });

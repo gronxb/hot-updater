@@ -21,7 +21,6 @@ import {
   getBundle,
   getBundleChildCounts,
   getBundleChildren,
-  getBundleDownloadUrl,
   getBundleEventAnalytics as getBundleEventAnalyticsApi,
   getBundleEventSummary as getBundleEventSummaryApi,
   getBundles,
@@ -282,13 +281,6 @@ export function useBundleChildCountsQuery(bundleIds: string[]) {
 }
 
 // Mutation Hooks
-export function useBundleDownloadUrlMutation() {
-  return useMutation({
-    mutationFn: (params: { bundleId: string }) =>
-      getBundleDownloadUrl({ data: params }),
-  });
-}
-
 export function useCreateChannelMutation() {
   const queryClient = useQueryClient();
 

@@ -1,5 +1,8 @@
 import { loadConfig, p } from "@hot-updater/cli-tools";
-import type { Platform } from "@hot-updater/plugin-core";
+import {
+  assertStorageOperations,
+  type Platform,
+} from "@hot-updater/plugin-core";
 import { createBundleDiff } from "@hot-updater/server/db";
 
 import { getPlatform } from "@/prompts/getPlatform";
@@ -35,7 +38,8 @@ export const createPatch = async (options: PatchOptions) => {
 
   const config = await loadConfig({ channel: options.channel, platform });
   const databasePlugin = config.database;
-  const storagePlugin = await config.storage();
+  const storagePlugin = config.storage;
+  assertStorageOperations(storagePlugin, ["get", "put", "delete"]);
 
   try {
     p.note(

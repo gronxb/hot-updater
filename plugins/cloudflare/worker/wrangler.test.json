@@ -8,7 +8,8 @@
     "enabled": true
   },
   "vars": {
-    "JWT_SECRET": "test-secret"
+    "BUCKET_NAME": "hot-updater-test",
+    "STORAGE_DOWNLOAD_URL_SIGNING_KEY": "test-storage-download-url-signing-key"
   },
   "d1_databases": [
     {

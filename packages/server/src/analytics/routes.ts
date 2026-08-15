@@ -72,9 +72,9 @@ const query = (
   return run(async () => json(await operation(), 200));
 };
 
-export const createAnalyticsRouteHandlers = <TContext>(
+export const createAnalyticsRouteHandlers = (
   options: AnalyticsHandlerOptions,
-): Record<string, RouteHandler<TContext>> => ({
+): Record<string, RouteHandler> => ({
   appendBundleEvent: async (_params, request) =>
     run(async () => {
       await options.provider.appendBundleEvent(

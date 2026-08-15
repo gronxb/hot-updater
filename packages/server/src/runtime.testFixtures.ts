@@ -1,10 +1,10 @@
 import type { Bundle } from "@hot-updater/core";
 import type {
   DatabasePlugin,
-  RequestEnvContext,
-  RuntimeStoragePlugin,
-  RuntimeStorageProfile,
+  StoragePlugin,
+  StoragePluginWith,
 } from "@hot-updater/plugin-core";
+import { createStoragePlugin } from "@hot-updater/plugin-core";
 
 import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
 import type { DatabaseAdapterCapabilities, Migrator } from "./db/types";
@@ -23,16 +23,16 @@ export const runtimeBundle: Bundle = {
   fingerprintHash: null,
 };
 
-export type TestContext = RequestEnvContext<{ assetHost: string }>;
-
 export const createRuntimeStorage = (
-  getDownloadUrl: RuntimeStorageProfile<TestContext>["getDownloadUrl"],
-  readText: RuntimeStorageProfile<TestContext>["readText"] = async () => null,
-): RuntimeStoragePlugin<TestContext> => ({
-  name: "testStorage",
-  supportedProtocol: "s3",
-  profiles: { runtime: { getDownloadUrl, readText } },
-});
+  get: NonNullable<StoragePlugin["get"]> = async () => ({ response: null }),
+  getDownloadUrl?: StoragePlugin["getDownloadUrl"],
+): StoragePluginWith<"get"> =>
+  createStoragePlugin({
+    name: "testStorage",
+    protocol: "s3",
+    get,
+    ...(getDownloadUrl ? { getDownloadUrl } : {}),
+  });
 
 const createMigrator = (version: string | undefined): Migrator => ({
   async getVersion() {

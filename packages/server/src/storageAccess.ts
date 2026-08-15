@@ -1,21 +1,14 @@
-import type {
-  HotUpdaterContext,
-  RuntimeStoragePlugin,
+import {
+  parseStorageDownloadPath,
+  type StoragePluginWith,
 } from "@hot-updater/plugin-core";
 
-const assertRemoteDownloadUrl = (fileUrl: string) => {
-  try {
-    const protocol = new URL(fileUrl).protocol.replace(":", "");
-    if (protocol === "http" || protocol === "https") {
-      return fileUrl;
-    }
-  } catch {
-    // Fall through to the runtime-specific error below.
+const assertRemoteUrl = (value: string) => {
+  const protocol = new URL(value).protocol;
+  if (protocol !== "http:" && protocol !== "https:") {
+    throw new Error("Storage getDownloadUrl must resolve to an HTTP(S) URL.");
   }
-
-  throw new Error(
-    "Storage plugin returned a local file path; runtime update checks require an HTTP(S) download URL.",
-  );
+  return value;
 };
 
 const getStorageProtocol = (storageUri: string) =>
@@ -24,66 +17,133 @@ const getStorageProtocol = (storageUri: string) =>
 const isRemoteUrlProtocol = (protocol: string) =>
   protocol === "http" || protocol === "https";
 
-export const createStorageAccess = <TContext>(
-  storagePlugins: RuntimeStoragePlugin<TContext>[],
+const resolveDownloadPath = (value: string, storageUri: string) => {
+  const parsed = parseStorageDownloadPath(value);
+  if (!parsed || parsed.storageUri !== storageUri) {
+    throw new Error(
+      "Storage getDownloadUrl must return an HTTP(S) URL or a valid storage download path.",
+    );
+  }
+  return value;
+};
+
+const withBasePath = (basePath: string, downloadPath: string) => {
+  const handlerPath = basePath === "/" ? "" : basePath;
+  return `${handlerPath}${downloadPath}`;
+};
+
+const tokensEqual = (left: string, right: string) => {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  let difference = leftBytes.length ^ rightBytes.length;
+  const length = Math.max(leftBytes.length, rightBytes.length);
+  for (let index = 0; index < length; index += 1) {
+    difference |= (leftBytes[index] ?? 0) ^ (rightBytes[index] ?? 0);
+  }
+  return difference === 0;
+};
+
+export const createStorageAccess = (
+  storagePlugins: StoragePluginWith<"get">[],
+  options: { readonly basePath: string },
 ) => {
-  const findStoragePlugin = (protocol: string) => {
-    return storagePlugins.find((item) => item.supportedProtocol === protocol);
+  const protocols = new Set<string>();
+  for (const storage of storagePlugins) {
+    if (protocols.has(storage.protocol)) {
+      throw new Error(
+        `Multiple storage plugins handle protocol: ${storage.protocol}`,
+      );
+    }
+    protocols.add(storage.protocol);
+  }
+
+  const findStorage = (protocol: string) =>
+    storagePlugins.find((item) => item.protocol === protocol);
+
+  const readStorageResponse = async (
+    storageUri: string,
+  ): Promise<Response | null> => {
+    const protocol = getStorageProtocol(storageUri);
+    const storage = findStorage(protocol);
+    if (storage) return (await storage.get({ storageUri })).response;
+
+    if (isRemoteUrlProtocol(protocol)) {
+      const response = await fetch(storageUri);
+      return response.ok ? response : null;
+    }
+
+    throw new Error(`No storage plugin for protocol: ${protocol}`);
   };
 
   const resolveFileUrl = async (
     storageUri: string | null,
-    context?: HotUpdaterContext<TContext>,
   ): Promise<string | null> => {
-    if (!storageUri) {
-      return null;
-    }
+    if (!storageUri) return null;
 
     const protocol = getStorageProtocol(storageUri);
-    const plugin = findStoragePlugin(protocol);
-    if (plugin) {
-      const downloadTarget = await plugin.profiles.runtime.getDownloadUrl(
-        storageUri,
-        context,
+    const storage = findStorage(protocol);
+    if (!storage) {
+      if (isRemoteUrlProtocol(protocol)) return storageUri;
+      throw new Error(`No storage plugin for protocol: ${protocol}`);
+    }
+    if (!storage.getDownloadUrl) {
+      throw new Error(
+        `Storage plugin "${storage.name}" does not implement getDownloadUrl.`,
       );
-      const { fileUrl } = downloadTarget;
-      if (!fileUrl) {
-        throw new Error("Storage plugin returned empty fileUrl");
-      }
-
-      return assertRemoteDownloadUrl(fileUrl);
     }
-
-    if (isRemoteUrlProtocol(protocol)) {
-      return storageUri;
+    const { url: downloadUrl } = await storage.getDownloadUrl({ storageUri });
+    try {
+      return assertRemoteUrl(downloadUrl);
+    } catch (error) {
+      if (/^[a-z][a-z\d+.-]*:/i.test(downloadUrl)) throw error;
     }
-
-    throw new Error(`No storage plugin for protocol: ${protocol}`);
+    return withBasePath(
+      options.basePath,
+      resolveDownloadPath(downloadUrl, storageUri),
+    );
   };
 
   const readStorageText = async (
     storageUri: string,
-    context?: HotUpdaterContext<TContext>,
   ): Promise<string | null> => {
-    const protocol = getStorageProtocol(storageUri);
-    const plugin = findStoragePlugin(protocol);
-    if (plugin) {
-      return plugin.profiles.runtime.readText(storageUri, context);
-    }
-
-    if (isRemoteUrlProtocol(protocol)) {
-      const response = await fetch(storageUri);
-      if (!response.ok) {
-        return null;
-      }
-
-      return response.text();
-    }
-
-    throw new Error(`No storage plugin for protocol: ${protocol}`);
+    const response = await readStorageResponse(storageUri);
+    return response?.text() ?? null;
   };
 
+  const downloadStorageObject = storagePlugins.some(
+    (storage) => storage.getDownloadUrl !== undefined,
+  )
+    ? async (
+        storageUriToken: string,
+        encodedSignature: string,
+      ): Promise<Response | null> => {
+        const requestedPath = `/storage/${storageUriToken}/${encodedSignature}`;
+        const requested = parseStorageDownloadPath(requestedPath);
+        if (!requested) return null;
+        let storage: StoragePluginWith<"get"> | undefined;
+        try {
+          storage = findStorage(getStorageProtocol(requested.storageUri));
+        } catch {
+          return null;
+        }
+        if (!storage?.getDownloadUrl) return null;
+        const { url: downloadUrl } = await storage.getDownloadUrl({
+          storageUri: requested.storageUri,
+        });
+        try {
+          new URL(downloadUrl);
+          return null;
+        } catch {
+          if (/^[a-z][a-z\d+.-]*:/i.test(downloadUrl)) return null;
+        }
+        if (!tokensEqual(downloadUrl, requestedPath)) return null;
+        return (await storage.get({ storageUri: requested.storageUri }))
+          .response;
+      }
+    : undefined;
+
   return {
+    downloadStorageObject,
     readStorageText,
     resolveFileUrl,
   };

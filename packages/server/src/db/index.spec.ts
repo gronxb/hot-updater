@@ -1,10 +1,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
-import type {
-  RuntimeStoragePlugin,
-  StorageResolveContext,
-} from "@hot-updater/plugin-core";
+import { createStoragePlugin } from "@hot-updater/plugin-core";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -156,24 +153,30 @@ export const bundle_patchesRelations = relations(bundle_patches, ({ one, many })
 
 function createTestStoragePlugin(
   protocol: string,
-  resolveFileUrl: (
-    storageUri: string,
-    context?: StorageResolveContext,
-  ) => string,
   readText: (storageUri: string) => Promise<string | null> = async () => null,
-): RuntimeStoragePlugin {
-  return {
+) {
+  return createStoragePlugin({
     name: `${protocol}TestStorage`,
-    supportedProtocol: protocol,
-    profiles: {
-      runtime: {
-        readText,
-        async getDownloadUrl(storageUri, context) {
-          return { fileUrl: resolveFileUrl(storageUri, context) };
-        },
-      },
+    protocol,
+    async get({ storageUri }) {
+      const text = await readText(storageUri);
+      return { response: text === null ? null : new Response(text) };
     },
-  };
+    async getDownloadUrl({ storageUri }) {
+      const prefixes: Record<string, string> = {
+        gs: "https://firebase.example.com/",
+        r2: "https://r2.example.com/",
+        s3: "https://s3.example.com/",
+        "supabase-storage":
+          "https://supabase.example.com/storage/v1/object/sign/",
+      };
+      return {
+        url: storageUri
+          .replace(`${protocol}://`, prefixes[protocol] ?? "")
+          .replace(/([^:]\/)\/+/g, "$1"),
+      };
+    },
+  });
 }
 
 function createSchemaOnlyAdapter({
@@ -254,47 +257,16 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     return text ?? null;
   };
 
-  const hotUpdater = createHotUpdater<unknown>({
+  const hotUpdater = createHotUpdater({
     database: kyselyAdapter({
       db: kysely,
       provider: "postgresql",
     }),
-    storages: [
-      createTestStoragePlugin(
-        "s3",
-        (storageUri) =>
-          storageUri
-            .replace("s3://", "https://s3.example.com/")
-            .replace(/([^:]\/)\/+/g, "$1"),
-        readStoredText,
-      ),
-      createTestStoragePlugin(
-        "r2",
-        (storageUri) =>
-          storageUri
-            .replace("r2://", "https://r2.example.com/")
-            .replace(/([^:]\/)\/+/g, "$1"),
-        readStoredText,
-      ),
-      createTestStoragePlugin(
-        "supabase-storage",
-        (storageUri) =>
-          storageUri
-            .replace(
-              "supabase-storage://",
-              "https://supabase.example.com/storage/v1/object/sign/",
-            )
-            .replace(/([^:]\/)\/+/g, "$1"),
-        readStoredText,
-      ),
-      createTestStoragePlugin(
-        "gs",
-        (storageUri) =>
-          storageUri
-            .replace("gs://", "https://firebase.example.com/")
-            .replace(/([^:]\/)\/+/g, "$1"),
-        readStoredText,
-      ),
+    storage: [
+      createTestStoragePlugin("s3", readStoredText),
+      createTestStoragePlugin("r2", readStoredText),
+      createTestStoragePlugin("supabase-storage", readStoredText),
+      createTestStoragePlugin("gs", readStoredText),
     ],
   });
   const prismaSchemaHotUpdater = createHotUpdater({

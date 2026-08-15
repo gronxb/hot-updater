@@ -23,7 +23,13 @@ export const database = dynamoDB({
 
 export const hotUpdater = createHotUpdater({
   database,
-  storages: [
+  features: {
+    updateCheck: true,
+    bundles: true,
+    analytics: { queryAccess: "public" },
+    clientAccessKeys: true,
+  },
+  storage: [
     mockStorage({}),
     s3Storage({
       region,
@@ -32,13 +38,10 @@ export const hotUpdater = createHotUpdater({
       bucketName: process.env.AWS_S3_BUCKET_NAME ?? "hot-updater-bundles",
       basePath: providerNamespace,
       forcePathStyle: true,
+      downloadUrlSigningKey:
+        process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY ??
+        "development-storage-download-url-key",
     }),
   ],
   basePath: "/hot-updater",
-  features: {
-    analytics: { queryAccess: "public" },
-    updateCheck: true,
-    bundles: true,
-    clientAccessKeys: true,
-  },
 });

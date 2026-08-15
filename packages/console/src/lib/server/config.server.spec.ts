@@ -1,7 +1,9 @@
 // @vitest-environment node
 
-import type { NodeStoragePlugin } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  createDatabasePlugin,
+  createStoragePlugin,
+} from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { loadConfigMock } = vi.hoisted(() => ({ loadConfigMock: vi.fn() }));
@@ -42,19 +44,15 @@ const createTestDatabasePlugin = (name: string) =>
     commit: vi.fn(async () => ({ committed: true as const })),
   });
 
-function createStoragePlugin(): NodeStoragePlugin {
-  return {
+function createTestStoragePlugin() {
+  return createStoragePlugin({
     name: "storage",
-    supportedProtocol: "s3",
-    profiles: {
-      node: {
-        upload: vi.fn(),
-        exists: vi.fn(async () => false),
-        delete: vi.fn(),
-        downloadFile: vi.fn(),
-      },
-    },
-  };
+    protocol: "s3",
+    put: vi.fn(),
+    get: vi.fn(async () => ({ response: null })),
+    exists: vi.fn(async () => ({ exists: false })),
+    delete: vi.fn(async () => ({ deleted: true as const })),
+  });
 }
 
 afterEach(() => {
@@ -66,13 +64,12 @@ afterEach(() => {
 describe("config.server", () => {
   it("caches the loaded config and reuses its database and runtime clients", async () => {
     const database = createTestDatabasePlugin("db");
-    const storagePlugin = createStoragePlugin();
-    const storage = vi.fn().mockResolvedValue(storagePlugin);
+    const storagePlugin = createTestStoragePlugin();
 
     loadConfigMock.mockResolvedValue({
       console: { port: 1422 },
       database,
-      storage,
+      storage: storagePlugin,
     });
 
     const { isConfigLoaded, prepareConfig } = await import("./config.server");
@@ -83,7 +80,6 @@ describe("config.server", () => {
     const second = await prepareConfig();
 
     expect(loadConfigMock).toHaveBeenCalledTimes(1);
-    expect(storage).toHaveBeenCalledTimes(1);
     expect(first.databaseClient).toBe(second.databaseClient);
     expect(first.config.database).toBe(database);
     expect(first.clientAccessKeyStore).toBe(database.models.clientAccessKeys);
@@ -95,8 +91,7 @@ describe("config.server", () => {
 
   it("resets the cached config promise after an initialization failure", async () => {
     const database = createTestDatabasePlugin("db");
-    const storagePlugin = createStoragePlugin();
-    const storage = vi.fn().mockResolvedValue(storagePlugin);
+    const storagePlugin = createTestStoragePlugin();
     const consoleErrorSpy = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
@@ -106,7 +101,7 @@ describe("config.server", () => {
       .mockResolvedValueOnce({
         console: { port: 1422 },
         database,
-        storage,
+        storage: storagePlugin,
       });
 
     const { prepareConfig } = await import("./config.server");
@@ -121,17 +116,12 @@ describe("config.server", () => {
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("requires the configured storage plugin to implement the node profile", async () => {
+  it("reports a missing console storage capability", async () => {
     const database = createTestDatabasePlugin("db");
-    const storage = vi.fn().mockResolvedValue({
+    const storage = createStoragePlugin({
       name: "runtimeOnlyStorage",
-      supportedProtocol: "s3",
-      profiles: {
-        runtime: {
-          getDownloadUrl: vi.fn(),
-          readText: vi.fn(),
-        },
-      },
+      protocol: "s3",
+      get: vi.fn(async () => ({ response: null })),
     });
     const consoleErrorSpy = vi
       .spyOn(console, "error")
@@ -146,7 +136,7 @@ describe("config.server", () => {
     const { prepareConfig } = await import("./config.server");
 
     await expect(prepareConfig()).rejects.toThrow(
-      'runtimeOnlyStorage does not implement the node storage profile for protocol "s3".',
+      'Storage plugin "runtimeOnlyStorage" does not implement put.',
     );
     expect(consoleErrorSpy).toHaveBeenCalledOnce();
   });

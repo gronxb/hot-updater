@@ -282,7 +282,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
         supabaseUrl: gatewayBaseUrl,
         supabaseAnonKey: SERVICE_ROLE_KEY,
       }),
-      storages: [
+      storage: [
         supabaseStorage({
           supabaseUrl: gatewayBaseUrl,
           supabaseAnonKey: SERVICE_ROLE_KEY,
@@ -1256,6 +1256,7 @@ const writeSupabaseRuntimeFiles = async ({
       "plugins/supabase/supabase/edge-functions/index.ts",
     ),
     {
+      BUCKET_NAME,
       FUNCTION_NAME,
     },
   );

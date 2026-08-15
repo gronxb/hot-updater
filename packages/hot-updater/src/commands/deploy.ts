@@ -11,19 +11,21 @@ import {
   HotUpdateDirUtil,
   loadConfig,
   p,
+  putStorageFile,
 } from "@hot-updater/cli-tools";
 import type {
   Bundle,
   DatabaseMutationClient,
   BundleRepository,
-  NodeStoragePlugin,
   Platform,
+  StoragePluginWith,
 } from "@hot-updater/plugin-core";
 import {
-  assertNodeStoragePlugin,
+  assertStorageOperations,
   createBundleStorageKey,
   createDatabaseClient,
   createStorageRootUriWithPath,
+  createStorageUriWithRelativePath,
   getContentAddressedAssetStoragePath,
   getManifestAssetDownloadPath,
 } from "@hot-updater/plugin-core";
@@ -56,6 +58,10 @@ import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import { PLATFORMS } from "../commandOptions";
 import { getConsolePort, openConsole } from "./console";
 import { prepareAndCommitBundles } from "./deployTransaction";
+
+type DeployStoragePlugin = StoragePluginWith<
+  "put" | "get" | "exists" | "delete"
+>;
 
 const MANIFEST_ASSET_UPLOAD_CONCURRENCY = 8;
 
@@ -281,7 +287,7 @@ const createAutoPatches = async ({
   databasePlugin: BundleRepository;
   maxBaseBundles: number;
   platform: Platform;
-  storagePlugin: NodeStoragePlugin;
+  storagePlugin: DeployStoragePlugin;
   target: {
     appVersion: string | null;
     fingerprintHash: string | null;
@@ -346,23 +352,6 @@ const getRelativeStorageDir = (relativePath: string) => {
   const normalized = relativePath.replace(/\\/g, "/");
   const dirname = path.posix.dirname(normalized);
   return dirname === "." ? "" : dirname;
-};
-
-const createStorageUriWithRelativePath = (
-  baseStorageUri: string,
-  relativePath: string,
-) => {
-  const storageUrl = new URL(baseStorageUri);
-  const normalizedBasePath = storageUrl.pathname.replace(/\/+$/, "");
-  const normalizedRelativePath = relativePath
-    .replace(/\\/g, "/")
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment))
-    .join("/");
-
-  storageUrl.pathname = `${normalizedBasePath}/${normalizedRelativePath}`;
-  return storageUrl.toString();
 };
 
 const ensureUploadSourcePath = async ({
@@ -737,9 +726,9 @@ const deployPlatform = async ({
     config.build({
       cwd,
     }),
-    config.storage(),
+    config.storage,
   ]);
-  assertNodeStoragePlugin(storagePlugin);
+  assertStorageOperations(storagePlugin, ["put", "get", "exists", "delete"]);
 
   try {
     const taskRef: {
@@ -938,7 +927,8 @@ const deployPlatform = async ({
             };
 
             updateUploadProgress();
-            const { storageUri } = await storagePlugin.profiles.node.upload(
+            const { storageUri } = await putStorageFile(
+              storagePlugin,
               createBundleStorageKey(bundleId),
               bundlePath,
             );
@@ -960,10 +950,10 @@ const deployPlatform = async ({
               assetUploadTargets,
               MANIFEST_ASSET_UPLOAD_CONCURRENCY,
               async ({ storagePath, targetFile }) => {
-                const storageUri = createStorageUriWithRelativePath(
-                  taskRef.assetBaseStorageUri!,
-                  storagePath,
-                );
+                const storageUri = createStorageUriWithRelativePath({
+                  baseStorageUri: taskRef.assetBaseStorageUri!,
+                  relativePath: storagePath,
+                });
 
                 const relativeDir = getRelativeStorageDir(storagePath);
                 const uploadKey = ["assets", relativeDir]
@@ -976,10 +966,11 @@ const deployPlatform = async ({
                   uploadFilename: path.posix.basename(storagePath),
                 });
 
-                if (await storagePlugin.profiles.node.exists(storageUri)) {
+                if ((await storagePlugin.exists({ storageUri })).exists) {
                   skippedUploadCount += 1;
                 } else {
-                  await storagePlugin.profiles.node.upload(
+                  await putStorageFile(
+                    storagePlugin,
                     uploadKey,
                     uploadSourcePath,
                   );
@@ -989,7 +980,8 @@ const deployPlatform = async ({
               },
             );
 
-            const manifestUpload = await storagePlugin.profiles.node.upload(
+            const manifestUpload = await putStorageFile(
+              storagePlugin,
               createBundleStorageKey(bundleId),
               taskRef.manifestPath,
             );

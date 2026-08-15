@@ -11,52 +11,26 @@ import type {
   ChannelInsertResult,
   ChannelRow,
   DatabaseBundleQueryOptions,
-  HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 
 import type { PaginatedResult } from "./types";
 
-export interface HandlerAPI<TContext = unknown> {
+export interface HandlerAPI {
   getAppUpdateInfo: (
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
-    context?: HotUpdaterContext<TContext>,
   ) => Promise<AppUpdateAvailableInfo | null>;
-  getBundleById: (
-    id: string,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<Bundle | null>;
-  getBundles: (
-    options: DatabaseBundleQueryOptions,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<PaginatedResult>;
-  insertBundle: (
-    bundle: Bundle,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<void>;
-  insertBundles?: (
-    bundles: readonly Bundle[],
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<void>;
+  getBundleById: (id: string) => Promise<Bundle | null>;
+  getBundles: (options: DatabaseBundleQueryOptions) => Promise<PaginatedResult>;
+  insertBundle: (bundle: Bundle) => Promise<void>;
+  insertBundles?: (bundles: readonly Bundle[]) => Promise<void>;
   updateBundleById: (
     bundleId: string,
     bundle: Partial<Bundle>,
-    context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
-  deleteBundleById: (
-    bundleId: string,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<void>;
-  getChannels: (
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<readonly ChannelRow[]>;
-  insertChannel: (
-    input: ChannelInsertInput,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<ChannelInsertResult>;
-  deleteChannel: (
-    input: ChannelDeleteInput,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<ChannelDeleteResult>;
+  deleteBundleById: (bundleId: string) => Promise<void>;
+  getChannels: () => Promise<readonly ChannelRow[]>;
+  insertChannel: (input: ChannelInsertInput) => Promise<ChannelInsertResult>;
+  deleteChannel: (input: ChannelDeleteInput) => Promise<ChannelDeleteResult>;
 }
 
 export interface HandlerOptions {
@@ -101,9 +75,8 @@ export interface HandlerFeatures {
   readonly bundles?: boolean;
 }
 
-export type RouteHandler<TContext = unknown> = (
+export type RouteHandler = (
   params: Record<string, string>,
   request: Request,
-  api: HandlerAPI<TContext>,
-  context?: HotUpdaterContext<TContext>,
+  api: HandlerAPI,
 ) => Promise<Response>;

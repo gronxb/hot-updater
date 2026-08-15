@@ -20,6 +20,6 @@
     }
   ],
   "vars": {
-    "JWT_SECRET": "USER_JWT_SECRET"
+    "BUCKET_NAME": "user-buckets"
   }
 }

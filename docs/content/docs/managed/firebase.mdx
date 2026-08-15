@@ -4,14 +4,21 @@ description: "This guide walks you through setting up `hot-updater` with Firebas
 icon: firebase
 ---
 
-import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
-import { Accordion, Accordions } from 'fumadocs-ui/components/accordion';
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
-<video src={"/docs/get-started/init-firebase.mov"} controls autoPlay loop muted />
+<video
+  src={"/docs/get-started/init-firebase.mov"}
+  controls
+  autoPlay
+  loop
+  muted
+/>
 
 ## Prerequisites
 
 Before you begin, make sure the following are ready:
+
 - **Node.js**: Version 20 or later is recommended.
 - **Firebase Project**: Create a new project at [Firebase](https://firebase.google.com) if you don’t have one.
 - **Firebase Storage**: Create a new storage bucket at [Firebase](https://firebase.google.com) if you don’t have one.
@@ -40,6 +47,7 @@ npx hot-updater init
 2. **Select a Provider**: Select Firebase as the provider for handling updates.
 
 During the setup, you will be prompted to:
+
 1. **Create or Select a Firebase Project**: Choose an existing project or create a new one.
 2. **Configure Storage**: Select an existing storage bucket or create a new public bucket to store updates.
 3. **Deploy Firestore Indexes**: create a new one to store updates.
@@ -58,24 +66,24 @@ HOT_UPDATER_FIREBASE_STORAGE_BUCKET=your-bucket-name
 GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json
 ```
 
-
 <Callout type="warn">
 
 If you're **not** using the `react-native-dotenv` solution, the tokens from your `.env` file will not be included in your app bundle and are therefore not exposed to risks. However, if you're still concerned,
 
 please refer to the article below for more details:
 [Security](/docs/policy/security#plugin-token-protection)
+
 </Callout>
 
-
 ## Step 3: Generated Configurations
+
 During the initialization process, the following file is automatically generated:
 
 - `hot-updater.config.ts`: This file contains the configuration settings for integrating Firebase with your project.
 - `.env`: **IMPORTANT**:
-Make sure to set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the path of your downloaded Firebase credentials JSON file.
-This is critical for Firebase authentication to work properly.
-For more details, see: https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
+  Make sure to set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the path of your downloaded Firebase credentials JSON file.
+  This is critical for Firebase authentication to work properly.
+  For more details, see: https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
 
 ```bash title=".env.hotupdater"
 HOT_UPDATER_FIREBASE_PROJECT_ID=your-project-id
@@ -85,11 +93,11 @@ GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json
 ```
 
 ```ts title="hot-updater.config.ts"
-import { bare } from '@hot-updater/bare';
-import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
-import { applicationDefault } from 'firebase-admin/app';
-import { defineConfig } from 'hot-updater';
-import 'dotenv/config';
+import { bare } from "@hot-updater/bare";
+import { firebaseStorage, firebaseDatabase } from "@hot-updater/firebase";
+import { applicationDefault } from "firebase-admin/app";
+import { defineConfig } from "hot-updater";
+import "dotenv/config";
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
 // Check your .env file and add the credentials
@@ -171,13 +179,12 @@ export default HotUpdater.wrap({
     </View>
   ),
 })(App);
-
 ```
 
 <Callout type="info">
 The managed Firebase runtime exposes public update checks, Analytics event
 ingestion, and `/version`. Internally, it enables
-`features: { analytics: true, updateCheck: true, bundles: false }`.
+`features: { updateCheck: true, bundles: false, analytics: true }`.
 Analytics query routes stay protected, and bundle management routes are not
 mounted on the public function URL.
 </Callout>
@@ -206,12 +213,14 @@ npx expo prebuild
 ```
 
 <Callout>
-This process automatically generates the code that needs to be added in Step 6.
-Skip this step if you are using bare or Rock.
+  This process automatically generates the code that needs to be added in Step
+  6. Skip this step if you are using bare or Rock.
 </Callout>
 
 <Callout type="info">
-If you use Expo DOM components (`use dom`), see the [Expo DOM Components (`use dom`)](/docs/build-plugins/expo#expo-dom-components-use-dom) section for the additional Babel plugin setup.
+  If you use Expo DOM components (`use dom`), see the [Expo DOM Components (`use
+  dom`)](/docs/build-plugins/expo#expo-dom-components-use-dom) section for the
+  additional Babel plugin setup.
 </Callout>
 
 ## Step 6: Add Native Code
@@ -275,13 +284,13 @@ import com.hotupdater.HotUpdater // [!code ++]
 
 class MainApplication : Application(), ReactApplication {
 
-  override val reactNativeHost: ReactNativeHost =
-      object : DefaultReactNativeHost(this) {
-        override fun getPackages(): List<ReactPackage> =
-            PackageList(this).packages.apply {
-              // Packages that cannot be autolinked yet can be added manually here, for example:
-              // add(MyReactNativePackage())
-            }
+override val reactNativeHost: ReactNativeHost =
+object : DefaultReactNativeHost(this) {
+override fun getPackages(): List<ReactPackage> =
+PackageList(this).packages.apply {
+// Packages that cannot be autolinked yet can be added manually here, for example:
+// add(MyReactNativePackage())
+}
 
         override fun getJSMainModuleName(): String = "index"
 
@@ -295,19 +304,20 @@ class MainApplication : Application(), ReactApplication {
         }  // [!code ++]
       }
 
-  override val reactHost: ReactHost
-    get() = getDefaultReactHost(applicationContext, reactNativeHost)
+override val reactHost: ReactHost
+get() = getDefaultReactHost(applicationContext, reactNativeHost)
 
-  override fun onCreate() {
-    super.onCreate()
-    SoLoader.init(this, OpenSourceMergedSoMapping)
-    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-      // If you opted-in for the New Architecture, we load the native entry point for this app.
-      load()
-    }
-  }
+override fun onCreate() {
+super.onCreate()
+SoLoader.init(this, OpenSourceMergedSoMapping)
+if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+// If you opted-in for the New Architecture, we load the native entry point for this app.
+load()
 }
-```
+}
+}
+
+````
   </Tab>
   <Tab value="Java">
   ```java title="android/app/src/main/java/com/<your-app-name>/MainApplication.java"
@@ -381,7 +391,7 @@ public class MainApplication extends Application implements ReactApplication {
   }
 }
 
-```
+````
 
   </Tab>
 </Tabs>
@@ -399,32 +409,33 @@ import HotUpdater // [!code ++]
 
 @main
 class AppDelegate: RCTAppDelegate {
-  override func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-    self.moduleName = "HotUpdaterExample"
-    self.dependencyProvider = RCTAppDependencyProvider()
+override func application(\_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+self.moduleName = "HotUpdaterExample"
+self.dependencyProvider = RCTAppDependencyProvider()
 
     // You can add your custom initial props in the dictionary below.
     // They will be passed down to the ViewController used by React Native.
     self.initialProps = [:]
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
 
-  override func sourceURL(for bridge: RCTBridge) -> URL? {
-    self.bundleURL()
-  }
-
-  override func bundleURL() -> URL? {
-#if DEBUG
-    RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
-#else
-    Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
-    HotUpdater.bundleURL() // [!code ++]
-#endif
-  }
 }
 
-```
+override func sourceURL(for bridge: RCTBridge) -> URL? {
+self.bundleURL()
+}
+
+override func bundleURL() -> URL? {
+#if DEBUG
+RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
+#else
+Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
+HotUpdater.bundleURL() // [!code ++]
+#endif
+}
+}
+
+````
 </Tab>
 <Tab value="Objective-C">
 ```objc title="ios/<your-app-name>/AppDelegate.mm"
@@ -460,18 +471,22 @@ class AppDelegate: RCTAppDelegate {
 }
 
 @end
-```
+````
+
 </Tab>
 </Tabs>
 
 <Callout type="info">
-For brownfield apps where the JS bundle is embedded in an XCFramework, you can pass a custom `Bundle` instance to lookup the JavaScript bundle resource: `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
+  For brownfield apps where the JS bundle is embedded in an XCFramework, you can
+  pass a custom `Bundle` instance to lookup the JavaScript bundle resource:
+  `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater
+  bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
 </Callout>
 
 ## Verifying the Setup
+
 1. Check your Firebase dashboard for the newly created firebase function.
 2. Test the HotUpdater integration in your React Native app.
-
 
 You’re all set! 🎉 Start using hot-updater with Firebase for seamless updates in your React Native app.
 

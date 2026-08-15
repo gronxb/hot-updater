@@ -139,10 +139,8 @@ const deployWorker = async (
       },
     ];
 
-    const jwtSecret = crypto.randomBytes(32).toString("hex");
-
     wranglerConfig.vars = {
-      JWT_SECRET: jwtSecret,
+      BUCKET_NAME: r2BucketName,
     };
 
     await fs.writeFile(
@@ -176,6 +174,25 @@ const deployWorker = async (
     await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
 
     await wrangler("deploy", "--name", workerName);
+    const secretWrangler = createWrangler({
+      stdio: "pipe",
+      cloudflareApiToken: apiToken,
+      cwd: workerRoot,
+      accountId,
+      nonInteractive,
+    });
+    const secretCommand = secretWrangler(
+      "secret",
+      "put",
+      "STORAGE_DOWNLOAD_URL_SIGNING_KEY",
+      "--name",
+      workerName,
+    );
+    if (!secretCommand.stdin) {
+      throw new Error("Failed to open Wrangler secret input.");
+    }
+    secretCommand.stdin.end(crypto.randomBytes(32).toString("hex"));
+    await secretCommand;
     return workerName;
   } catch (error) {
     if (error instanceof Error) {
@@ -649,6 +666,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       }),
     source: infrastructureCredentialSource,
   });
+  if (!subdomains.subdomain) {
+    throw new Error(
+      "Cloudflare Workers subdomain is required to configure the storage download URL.",
+    );
+  }
 
   await deployWorker(infrastructureApiToken, accountId, {
     credentialSource: infrastructureCredentialSource,

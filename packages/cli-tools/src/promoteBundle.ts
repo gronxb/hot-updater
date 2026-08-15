@@ -13,7 +13,7 @@ import {
 import type {
   Bundle,
   DatabaseClient,
-  NodeStoragePlugin,
+  StoragePluginWith,
 } from "@hot-updater/plugin-core";
 import {
   createBundleStorageKey,
@@ -22,6 +22,7 @@ import {
   detectCompressionFormat,
   getContentAddressedAssetStoragePath,
   getManifestAssetDownloadPath,
+  parseStorageUri,
   resolveManifestAssetStorageUri,
 } from "@hot-updater/plugin-core";
 import JSZip from "jszip";
@@ -31,6 +32,15 @@ import { createTarBrTargetFiles } from "./createTarBr";
 import { createTarGzTargetFiles } from "./createTarGz";
 import { createZipTargetFiles } from "./createZip";
 import type { ConfigResponse } from "./loadConfig";
+import {
+  putStorageFile,
+  writeStorageFile,
+  writeStorageResponseFile,
+} from "./storageFiles";
+
+type PromoteStoragePlugin = StoragePluginWith<
+  "get" | "put" | "exists" | "delete"
+>;
 
 const LEGACY_BUNDLE_ERROR =
   "This OTA bundle was created by a version that does not support manifest.json. Copy bundle is not available.";
@@ -51,7 +61,7 @@ export interface PromoteBundleInput {
 export interface PromoteBundleDependencies {
   config: ConfigResponse;
   databaseClient: DatabaseClient;
-  storagePlugin: NodeStoragePlugin | null;
+  storagePlugin: PromoteStoragePlugin | null;
 }
 
 function isSignedFileHash(fileHash: string) {
@@ -74,8 +84,9 @@ async function signFileHash(fileHash: string, privateKeyPath: string) {
 }
 
 function getArchiveFilename(storageUri: string) {
-  const { pathname } = new URL(storageUri);
-  const filename = path.basename(pathname);
+  const protocol = new URL(storageUri).protocol.replace(":", "");
+  const { key } = parseStorageUri(storageUri, protocol);
+  const filename = path.posix.basename(key);
   return filename || "bundle.zip";
 }
 
@@ -171,21 +182,25 @@ function resolveExtractedPath(rootDir: string, entryName: string) {
 
 async function downloadArchive(
   storageUri: string,
-  storagePlugin: NodeStoragePlugin | null,
+  storagePlugin: PromoteStoragePlugin | null,
   archivePath: string,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
-  if (protocol === "http" || protocol === "https") {
-    const archiveBuffer = await downloadFromUrl(storageUri);
-    await fs.writeFile(archivePath, archiveBuffer);
+  if (storagePlugin?.protocol === protocol) {
+    await writeStorageFile(storagePlugin, storageUri, archivePath);
     return;
   }
 
-  await downloadFromStorage(storageUri, storagePlugin, archivePath);
+  if (protocol === "http" || protocol === "https") {
+    await downloadFromUrl(storageUri, archivePath);
+    return;
+  }
+
+  throw new Error(`No storage plugin for protocol: ${protocol}`);
 }
 
-async function downloadFromUrl(fileUrl: string) {
+async function downloadFromUrl(fileUrl: string, filePath: string) {
   const response = await fetch(fileUrl);
   if (!response.ok) {
     throw new Error(
@@ -193,24 +208,7 @@ async function downloadFromUrl(fileUrl: string) {
     );
   }
 
-  return new Uint8Array(await response.arrayBuffer());
-}
-
-async function downloadFromStorage(
-  storageUri: string,
-  storagePlugin: NodeStoragePlugin | null,
-  filePath: string,
-) {
-  if (!storagePlugin) {
-    throw new Error("Storage plugin is not configured");
-  }
-
-  const protocol = new URL(storageUri).protocol.replace(":", "");
-  if (storagePlugin.supportedProtocol !== protocol) {
-    throw new Error(`No storage plugin for protocol: ${protocol}`);
-  }
-
-  await storagePlugin.profiles.node.downloadFile(storageUri, filePath);
+  await writeStorageResponseFile(response, filePath);
 }
 
 async function extractZipArchive(archivePath: string, extractDir: string) {
@@ -347,7 +345,7 @@ export async function createCopiedBundleArchive({
   bundle: Bundle;
   config: ConfigResponse;
   nextBundleId: string;
-  storagePlugin: NodeStoragePlugin;
+  storagePlugin: PromoteStoragePlugin;
   targetChannel: string;
 }) {
   // Re-upload follows deploy.ts after build: repackage, hash/sign, upload.
@@ -396,12 +394,14 @@ export async function createCopiedBundleArchive({
       ? await signFileHash(manifestHash, signingKeyPath)
       : manifestHash;
 
-    const archiveUpload = await storagePlugin.profiles.node.upload(
+    const archiveUpload = await putStorageFile(
+      storagePlugin,
       createBundleStorageKey(nextBundleId),
       outputArchivePath,
     );
     uploadedStorageUris.push(archiveUpload.storageUri);
-    const manifestUpload = await storagePlugin.profiles.node.upload(
+    const manifestUpload = await putStorageFile(
+      storagePlugin,
       createBundleStorageKey(nextBundleId),
       manifestPath,
     );
@@ -438,14 +438,16 @@ export async function createCopiedBundleArchive({
         fileHash: asset.fileHash,
       });
 
-      if (!(await storagePlugin.profiles.node.exists(storageUri))) {
+      const { exists } = await storagePlugin.exists({ storageUri });
+      if (!exists) {
         const contentAddressedUploadPath =
           await prepareContentAddressedUploadFile({
             sourcePath: uploadPath,
             storagePath,
             workDir,
           });
-        await storagePlugin.profiles.node.upload(
+        await putStorageFile(
+          storagePlugin,
           getRelativeStorageDir(storagePath)
             ? `assets/${getRelativeStorageDir(storagePath)}`
             : "assets",
@@ -482,7 +484,7 @@ export async function createCopiedBundleArchive({
 }
 
 async function deleteUploadedCopy(
-  storagePlugin: NodeStoragePlugin,
+  storagePlugin: PromoteStoragePlugin,
   storageUris: string[],
 ) {
   if (storageUris.length === 0) {
@@ -491,7 +493,12 @@ async function deleteUploadedCopy(
 
   for (const storageUri of new Set(storageUris)) {
     try {
-      await storagePlugin.profiles.node.delete(storageUri);
+      const protocol = new URL(storageUri).protocol.replace(":", "");
+      if (storagePlugin.protocol === protocol) {
+        await storagePlugin.delete({ storageUri });
+      } else if (protocol !== "http" && protocol !== "https") {
+        throw new Error(`No storage plugin for protocol: ${protocol}`);
+      }
     } catch (error) {
       console.error("Failed to delete uploaded bundle copy:", error);
     }

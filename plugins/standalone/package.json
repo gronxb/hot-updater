@@ -53,8 +53,5 @@
     "msw": "^2.7.0",
     "verkit": "0.3.2",
     "vitest": "catalog:"
-  },
-  "inlinedDependencies": {
-    "mime": "2.6.0"
   }
 }

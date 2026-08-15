@@ -5,11 +5,13 @@ import { Hono } from "npm:hono";
 
 declare global {
   var HotUpdater: {
+    BUCKET_NAME: string;
     FUNCTION_NAME: string;
   };
 }
 
 const functionName = HotUpdater.FUNCTION_NAME;
+const bucketName = HotUpdater.BUCKET_NAME;
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const functionBasePath = `/${functionName}`;
@@ -20,18 +22,19 @@ const hotUpdater = createHotUpdater({
     supabaseUrl,
     supabaseServiceRoleKey,
   }),
-  storages: [
+  features: {
+    updateCheck: true,
+    bundles: false,
+    analytics: true,
+  },
+  storage: [
     supabaseStorage({
       supabaseUrl,
       supabaseServiceRoleKey,
+      bucketName,
     }),
   ],
   basePath: hotUpdaterBasePath,
-  features: {
-    analytics: true,
-    updateCheck: true,
-    bundles: false,
-  },
 });
 
 const app = new Hono().basePath(functionBasePath);

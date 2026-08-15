@@ -4,62 +4,37 @@ import path from "node:path";
 
 import {
   createStorageKeyBuilder,
-  getContentType,
-  type NodeStorageProfile,
+  createStoragePlugin,
+  createStorageUri,
   parseStorageUri,
-  type RuntimeStorageProfile,
+  type StoragePluginWith,
 } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 
 import { createWrangler } from "./utils/createWrangler";
 
 /**
- * @deprecated `cloudflareApiToken` uses the Wrangler CLI for R2 operations,
- * which is slower than direct S3-compatible API access. Create R2
- * S3-compatible credentials in the Cloudflare dashboard and pass them with
- * `r2Storage({ credentials })` instead.
+ * @deprecated Use R2 S3-compatible credentials instead of the Wrangler CLI.
  */
 export interface R2WranglerStorageConfig {
   accountId: string;
   bucketName: string;
-  /**
-   * @deprecated This token keeps R2 access on the slower Wrangler CLI path.
-   * Create R2 S3-compatible credentials in the Cloudflare dashboard and use
-   * `credentials` instead.
-   */
   cloudflareApiToken: string;
-  /**
-   * Base path where bundles will be stored in the bucket
-   */
   basePath?: string;
   credentials?: never;
 }
 
-const ensureExpectedR2Bucket = (bucket: string, bucketName: string) => {
-  if (bucket !== bucketName) {
-    throw new Error(
-      `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
-    );
-  }
-};
-
-const isR2ObjectNotFoundError = (error: ExecaError) => {
-  const output = [error.stderr, error.stdout, error.shortMessage, error.message]
+const isObjectNotFoundError = (error: ExecaError) =>
+  [error.stderr, error.stdout, error.shortMessage, error.message]
     .filter(Boolean)
     .join("\n")
-    .toLowerCase();
+    .toLowerCase()
+    .match(/not found|no such object|does not exist/) !== null;
 
-  return (
-    output.includes("not found") ||
-    output.includes("no such object") ||
-    output.includes("does not exist")
-  );
-};
-
-export const createWranglerStorageProfile = (
+export const createR2WranglerStorage = (
   config: R2WranglerStorageConfig,
-): NodeStorageProfile => {
-  const { bucketName, cloudflareApiToken, accountId } = config;
+): StoragePluginWith<"put" | "get" | "exists" | "delete"> => {
+  const { accountId, bucketName, cloudflareApiToken } = config;
   const wrangler = createWrangler({
     accountId,
     cloudflareApiToken,
@@ -67,127 +42,100 @@ export const createWranglerStorageProfile = (
   });
   const getStorageKey = createStorageKeyBuilder(config.basePath);
 
-  return {
-    async delete(storageUri) {
-      const { bucket, key } = parseStorageUri(storageUri, "r2");
-      ensureExpectedR2Bucket(bucket, bucketName);
+  const parseAndValidate = (storageUri: string) => {
+    const parsed = parseStorageUri(storageUri, "r2");
+    if (parsed.bucket !== bucketName) {
+      throw new Error(
+        `Bucket name mismatch: expected "${bucketName}", but found "${parsed.bucket}".`,
+      );
+    }
+    return parsed;
+  };
 
+  const withTempFile = async <T>(
+    callback: (filePath: string) => Promise<T>,
+  ): Promise<T> => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-r2-"));
+    try {
+      return await callback(path.join(tempDir, "object"));
+    } finally {
+      await fs.rm(tempDir, { force: true, recursive: true });
+    }
+  };
+
+  const getResponse = async (storageUri: string): Promise<Response | null> => {
+    const { key } = parseAndValidate(storageUri);
+    return withTempFile(async (filePath) => {
       try {
         await wrangler(
           "r2",
           "object",
-          "delete",
-          [bucketName, key].join("/"),
+          "get",
+          `${bucketName}/${key}`,
+          "--file",
+          filePath,
           "--remote",
         );
-      } catch {
-        throw new Error("Can not delete bundle");
+        return new Response(await fs.readFile(filePath));
+      } catch (error) {
+        if (error instanceof ExecaError && isObjectNotFoundError(error)) {
+          return null;
+        }
+        throw error;
       }
-    },
-    async upload(key, filePath) {
-      const contentType = getContentType(filePath);
+    });
+  };
 
-      const filename = path.basename(filePath);
-
-      const Key = getStorageKey(key, filename);
-      try {
-        const { stderr, exitCode } = await wrangler(
+  return createStoragePlugin({
+    name: "r2Storage",
+    protocol: "r2",
+    async put({ key, body, contentType }) {
+      const storageKey = getStorageKey(key);
+      await withTempFile(async (filePath) => {
+        const bytes = new Uint8Array(await new Response(body).arrayBuffer());
+        await fs.writeFile(filePath, bytes);
+        await wrangler(
           "r2",
           "object",
           "put",
-          [bucketName, Key].join("/"),
+          `${bucketName}/${storageKey}`,
           "--file",
           filePath,
           "--content-type",
           contentType,
           "--remote",
         );
-        if (exitCode !== 0 && stderr) {
-          throw new Error(stderr);
-        }
-      } catch (error) {
-        if (error instanceof ExecaError) {
-          throw new Error(error.stderr || error.stdout);
-        }
-
-        throw error;
-      }
-
+      });
       return {
-        storageUri: `r2://${bucketName}/${Key}`,
+        storageUri: createStorageUri({
+          protocol: "r2",
+          bucket: bucketName,
+          key: storageKey,
+        }),
       };
     },
-    async exists(storageUri: string) {
-      const { bucket, key } = parseStorageUri(storageUri, "r2");
-      ensureExpectedR2Bucket(bucket, bucketName);
-
-      const tempDir = await fs.mkdtemp(
-        path.join(os.tmpdir(), "hot-updater-r2-exists-"),
-      );
-      const tempFilePath = path.join(tempDir, "object");
-
+    async get({ storageUri }) {
+      return { response: await getResponse(storageUri) };
+    },
+    async exists({ storageUri }) {
+      return { exists: (await getResponse(storageUri)) !== null };
+    },
+    async delete({ storageUri }) {
+      const { key } = parseAndValidate(storageUri);
       try {
         await wrangler(
           "r2",
           "object",
-          "get",
-          [bucketName, key].join("/"),
-          "--file",
-          tempFilePath,
+          "delete",
+          `${bucketName}/${key}`,
           "--remote",
         );
-        return true;
       } catch (error) {
-        if (error instanceof ExecaError && isR2ObjectNotFoundError(error)) {
-          return false;
+        if (!(error instanceof ExecaError) || !isObjectNotFoundError(error)) {
+          throw error;
         }
-
-        throw error;
-      } finally {
-        await fs.rm(tempDir, { force: true, recursive: true });
       }
+      return { deleted: true };
     },
-    async downloadFile(storageUri, filePath) {
-      const { bucket, key } = parseStorageUri(storageUri, "r2");
-      ensureExpectedR2Bucket(bucket, bucketName);
-
-      try {
-        await fs.mkdir(path.dirname(filePath), { recursive: true });
-        const { stderr, exitCode } = await wrangler(
-          "r2",
-          "object",
-          "get",
-          [bucketName, key].join("/"),
-          "--file",
-          filePath,
-          "--remote",
-        );
-        if (exitCode !== 0 && stderr) {
-          throw new Error(stderr);
-        }
-      } catch (error) {
-        if (error instanceof ExecaError) {
-          throw new Error(error.stderr || error.stdout);
-        }
-
-        throw error;
-      }
-    },
-  };
+  });
 };
-
-export const createWranglerRuntimeStorageProfile =
-  (): RuntimeStorageProfile => {
-    const error = new Error(
-      "r2Storage runtime profile requires R2 S3 credentials. Wrangler-based R2 access is only supported by the node profile.",
-    );
-
-    return {
-      async readText() {
-        throw error;
-      },
-      async getDownloadUrl() {
-        throw error;
-      },
-    };
-  };

@@ -4,7 +4,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import { Hono } from "hono";
 
 import { firebaseDatabase } from "../../src/firebaseDatabase";
-import { firebaseFunctionsStorage } from "../../src/firebaseFunctionsStorage";
+import { firebaseStorage } from "../../src/firebaseStorage";
 
 declare global {
   var HotUpdater: {
@@ -27,19 +27,19 @@ if (!storageBucket) {
 
 const hotUpdater = createHotUpdater({
   database: firebaseDatabase(adminOptions),
-  storages: [
-    firebaseFunctionsStorage({
+  features: {
+    updateCheck: true,
+    bundles: false,
+    analytics: true,
+  },
+  storage: [
+    firebaseStorage({
       ...adminOptions,
       storageBucket,
       cdnUrl,
     }),
   ],
   basePath: HOT_UPDATER_BASE_PATH,
-  features: {
-    analytics: true,
-    updateCheck: true,
-    bundles: false,
-  },
 });
 
 const app = new Hono();

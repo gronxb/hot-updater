@@ -16,27 +16,22 @@ describe("createHandler update routes", () => {
   it("supports the app-version route without a cohort segment", async () => {
     const api = createApi();
     const handler = createHandler(api, { basePath: "/hot-updater" });
-    const context = { env: { tenantId: "tenant-a" } };
     const response = await handler(
       new Request(
         "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
       ),
-      context,
     );
 
     expect(response.status).toBe(200);
-    expect(api.getAppUpdateInfo).toHaveBeenCalledWith(
-      {
-        _updateStrategy: "appVersion",
-        appVersion: "1.0.0",
-        bundleId: "default",
-        channel: "production",
-        cohort: undefined,
-        minBundleId: "default",
-        platform: "ios",
-      },
-      context,
-    );
+    expect(api.getAppUpdateInfo).toHaveBeenCalledWith({
+      _updateStrategy: "appVersion",
+      appVersion: "1.0.0",
+      bundleId: "default",
+      channel: "production",
+      cohort: undefined,
+      minBundleId: "default",
+      platform: "ios",
+    });
   });
 
   it("keeps legacy no-update responses as null when SDK version is missing", async () => {
@@ -97,18 +92,15 @@ describe("createHandler update routes", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(api.getAppUpdateInfo).toHaveBeenCalledWith(
-      {
-        _updateStrategy: "fingerprint",
-        bundleId: "default",
-        channel: "production",
-        cohort: undefined,
-        fingerprintHash: "fingerprint-123",
-        minBundleId: "default",
-        platform: "android",
-      },
-      undefined,
-    );
+    expect(api.getAppUpdateInfo).toHaveBeenCalledWith({
+      _updateStrategy: "fingerprint",
+      bundleId: "default",
+      channel: "production",
+      cohort: undefined,
+      fingerprintHash: "fingerprint-123",
+      minBundleId: "default",
+      platform: "android",
+    });
   });
 
   it("supports the version route", async () => {

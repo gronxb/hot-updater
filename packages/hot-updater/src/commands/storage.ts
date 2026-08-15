@@ -1,7 +1,3 @@
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import {
   getAssetBaseStorageUri,
@@ -11,13 +7,13 @@ import {
 } from "@hot-updater/core";
 import type {
   Bundle,
-  DatabaseClient,
   BundleRepository,
-  NodeStoragePlugin,
+  DatabaseClient,
   StorageObject,
+  StoragePluginWith,
 } from "@hot-updater/plugin-core";
 import {
-  assertNodeStoragePlugin,
+  assertStorageOperations,
   BUNDLE_STORAGE_PREFIX,
   createDatabaseClient,
   getManifestAssetDownloadPath,
@@ -261,9 +257,7 @@ async function loadAllBundles(database: DatabaseClient, databaseName: string) {
 
 async function readManifest(
   bundle: Bundle,
-  storagePlugin: NodeStoragePlugin,
-  workDir: string,
-  index: number,
+  storagePlugin: StoragePluginWith<"get">,
 ): Promise<BundleManifest> {
   const manifestStorageUri = getManifestStorageUri(bundle);
   if (!manifestStorageUri) {
@@ -283,17 +277,18 @@ async function readManifest(
     }
     manifestText = await response.text();
   } else {
-    if (protocol !== storagePlugin.supportedProtocol) {
+    if (protocol !== storagePlugin.protocol) {
       throw new Error(`No storage plugin for protocol: ${protocol}`);
     }
 
-    const manifestPath = path.join(workDir, `${index}.json`);
     try {
-      await storagePlugin.profiles.node.downloadFile(
-        manifestStorageUri,
-        manifestPath,
-      );
-      manifestText = await fs.readFile(manifestPath, "utf8");
+      const { response } = await storagePlugin.get({
+        storageUri: manifestStorageUri,
+      });
+      if (!response) {
+        throw new Error("Storage object not found");
+      }
+      manifestText = await response.text();
     } catch (error) {
       throw new Error(
         `Cannot prune shared assets: failed to read manifest for bundle ${bundle.id}.`,
@@ -323,7 +318,7 @@ async function readManifest(
 
 async function collectReferencedAssetUris(
   bundles: readonly Bundle[],
-  storagePlugin: NodeStoragePlugin,
+  storagePlugin: StoragePluginWith<"get">,
 ) {
   const bundlesWithSharedAssets = bundles.filter((bundle) => {
     const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
@@ -335,9 +330,9 @@ async function collectReferencedAssetUris(
     }
 
     const protocol = new URL(assetBaseStorageUri).protocol.replace(":", "");
-    if (protocol !== storagePlugin.supportedProtocol) {
+    if (protocol !== storagePlugin.protocol) {
       throw new Error(
-        `Cannot prune shared assets: bundle ${bundle.id} uses ${protocol} asset storage, but the configured storage plugin uses ${storagePlugin.supportedProtocol}.`,
+        `Cannot prune shared assets: bundle ${bundle.id} uses ${protocol} asset storage, but the configured storage plugin uses ${storagePlugin.protocol}.`,
       );
     }
     return true;
@@ -348,39 +343,27 @@ async function collectReferencedAssetUris(
     return { manifestCount: 0, referencedUris };
   }
 
-  const workDir = await fs.mkdtemp(
-    path.join(os.tmpdir(), "hot-updater-storage-prune-"),
-  );
-  try {
-    await forEachWithConcurrency(
-      bundlesWithSharedAssets,
-      MANIFEST_READ_CONCURRENCY,
-      async (bundle, index) => {
-        const assetBaseStorageUri = getAssetBaseStorageUri(bundle)!;
-        const manifest = await readManifest(
-          bundle,
-          storagePlugin,
-          workDir,
-          index,
-        );
+  await forEachWithConcurrency(
+    bundlesWithSharedAssets,
+    MANIFEST_READ_CONCURRENCY,
+    async (bundle) => {
+      const assetBaseStorageUri = getAssetBaseStorageUri(bundle)!;
+      const manifest = await readManifest(bundle, storagePlugin);
 
-        for (const [assetPath, asset] of Object.entries(manifest.assets)) {
-          const downloadPath = getManifestAssetDownloadPath(assetPath);
-          referencedUris.add(
-            normalizeStorageUri(
-              resolveManifestAssetStorageUri({
-                assetBaseStorageUri,
-                assetPath: downloadPath,
-                fileHash: asset.fileHash,
-              }),
-            ),
-          );
-        }
-      },
-    );
-  } finally {
-    await fs.rm(workDir, { force: true, recursive: true });
-  }
+      for (const [assetPath, asset] of Object.entries(manifest.assets)) {
+        const downloadPath = getManifestAssetDownloadPath(assetPath);
+        referencedUris.add(
+          normalizeStorageUri(
+            resolveManifestAssetStorageUri({
+              assetBaseStorageUri,
+              assetPath: downloadPath,
+              fileHash: asset.fileHash,
+            }),
+          ),
+        );
+      }
+    },
+  );
 
   return {
     manifestCount: bundlesWithSharedAssets.length,
@@ -490,18 +473,18 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
   const config = await loadConfig(null);
   const databasePlugin = config.database;
   const database = createDatabaseClient(databasePlugin);
-  const loadedStoragePlugin = await config.storage();
-  assertNodeStoragePlugin(loadedStoragePlugin);
+  const loadedStoragePlugin = config.storage;
+  assertStorageOperations(loadedStoragePlugin, ["get"]);
   const storagePlugin = loadedStoragePlugin;
 
   try {
-    const listObjects = storagePlugin.profiles.node.listObjects;
+    const listObjects = storagePlugin.listObjects;
     if (!listObjects) {
       throw new Error(
         `Storage plugin "${storagePlugin.name}" does not support storage prune.`,
       );
     }
-    const deleteObjects = storagePlugin.profiles.node.deleteObjects;
+    const deleteObjects = storagePlugin.deleteObjects;
     if (options.yes && !deleteObjects) {
       throw new Error(
         `Storage plugin "${storagePlugin.name}" does not support exact object deletion.`,

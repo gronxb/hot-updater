@@ -23,6 +23,6 @@ export * from "./queryBundles";
 export { createRequestBundleResolver } from "./requestBundleCache";
 export * from "./resolveUpdateInfoFromBundles";
 export * from "./semverSatisfies";
-export * from "./storageProfile";
+export * from "./storageDownloadPath";
 export * from "./types";
 export * from "./uuidv7";

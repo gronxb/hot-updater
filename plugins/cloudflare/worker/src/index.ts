@@ -2,12 +2,7 @@ import { createHotUpdater } from "@hot-updater/server";
 import { env } from "cloudflare:workers";
 import { Hono } from "hono";
 
-import {
-  d1Database,
-  type RequestEnvContext,
-  r2Storage,
-  verifyJwtSignedUrl,
-} from "../../src/worker";
+import { d1Database, r2Storage } from "../../src/worker";
 
 export type CloudflareWorkerEnv = {
   DB: {
@@ -15,79 +10,33 @@ export type CloudflareWorkerEnv = {
     prepare: D1Database["prepare"];
   };
   BUCKET: R2Bucket;
-  JWT_SECRET: string;
+  BUCKET_NAME: string;
+  STORAGE_DOWNLOAD_URL_SIGNING_KEY: string;
 };
-
-type WorkerContext = RequestEnvContext<CloudflareWorkerEnv>;
 
 export const HOT_UPDATER_BASE_PATH = "/api/check-update";
 
-const resolveRequestOrigin = (context?: WorkerContext) => {
-  const request = context?.request;
-
-  if (!request) {
-    throw new Error(
-      "r2WorkerStorage requires a request to resolve publicBaseUrl.",
-    );
-  }
-
-  return new URL(request.url).origin;
-};
-
-const hotUpdater = createHotUpdater<WorkerContext>({
+const hotUpdater = createHotUpdater({
   database: d1Database(env.DB),
-  storages: [
-    r2Storage<WorkerContext>({
-      publicBaseUrl: resolveRequestOrigin,
+  features: {
+    updateCheck: true,
+    bundles: false,
+    analytics: true,
+  },
+  storage: [
+    r2Storage({
+      bucket: env.BUCKET,
+      bucketName: env.BUCKET_NAME,
+      downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
     }),
   ],
   basePath: HOT_UPDATER_BASE_PATH,
-  features: {
-    analytics: true,
-    updateCheck: true,
-    bundles: false,
-  },
 });
 
 const app = new Hono<{ Bindings: CloudflareWorkerEnv }>();
 
-app.mount(
-  HOT_UPDATER_BASE_PATH,
-  (request: Request, env: CloudflareWorkerEnv) => {
-    return hotUpdater.handler(request, {
-      request,
-      env,
-    });
-  },
-  {
-    optionHandler: (c) => [c.env],
-  },
+app.mount(HOT_UPDATER_BASE_PATH, (request: Request) =>
+  hotUpdater.handler(request),
 );
-
-app.get("*", async (c) => {
-  const result = await verifyJwtSignedUrl({
-    path: c.req.path,
-    token: c.req.query("token"),
-    jwtSecret: c.env.JWT_SECRET,
-    handler: async (storageUri) => {
-      const [, ...key] = storageUri.split("/");
-      const object = await c.env.BUCKET.get(key.join("/"));
-      if (!object) {
-        return null;
-      }
-
-      return {
-        body: object.body,
-        contentType: object.httpMetadata?.contentType,
-      };
-    },
-  });
-
-  if (result.status !== 200) {
-    return c.json({ error: result.error }, result.status);
-  }
-
-  return c.body(result.responseBody, 200, result.responseHeaders);
-});
 
 export default app;

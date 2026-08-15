@@ -11,7 +11,6 @@ import {
 import {
   CreateBucketCommand,
   DeleteObjectsCommand,
-  GetObjectCommand,
   HeadBucketCommand,
   ListBucketsCommand,
   ListObjectsV2Command,
@@ -24,7 +23,6 @@ import {
   DynamoDBDocumentClient,
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { getSignedUrl as getS3SignedUrl } from "@aws-sdk/s3-request-presigner";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { createClientAccessKey, createHotUpdater } from "@hot-updater/server";
@@ -42,8 +40,9 @@ import {
   spawnRuntime,
   stopRuntime,
 } from "../../../packages/test-utils/src/runtimeProcess";
+import { cloudFrontDownloadUrl } from "../src/cloudFrontDownloadUrl";
 import { DYNAMODB_UPDATE_INDEX_NAME, dynamoDB } from "../src/dynamoDB";
-import { s3LambdaEdgeStorage } from "../src/s3LambdaEdgeStorage";
+import { s3Storage } from "../src/s3Storage";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -324,8 +323,14 @@ describe.sequential("aws lambda runtime acceptance", () => {
     });
     seedHotUpdater = createHotUpdater({
       database,
-      storages: [
-        s3LambdaEdgeStorage({
+      features: {
+        updateCheck: true,
+        bundles: false,
+        analytics: {},
+        clientAccessKeys: true,
+      },
+      storage: [
+        s3Storage({
           bucketName: S3_BUCKET_NAME,
           region: REGION,
           endpoint: localstackEndpoint,
@@ -334,19 +339,15 @@ describe.sequential("aws lambda runtime acceptance", () => {
             accessKeyId: ACCESS_KEY_ID,
             secretAccessKey: SECRET_ACCESS_KEY,
           },
-          keyPairId: CLOUDFRONT_KEY_PAIR_ID,
-          ssmRegion: REGION,
-          ssmParameterName: SSM_PARAMETER_NAME,
-          publicBaseUrl: PUBLIC_BASE_URL,
+          getDownloadUrl: cloudFrontDownloadUrl({
+            keyPairId: CLOUDFRONT_KEY_PAIR_ID,
+            ssmRegion: REGION,
+            ssmParameterName: SSM_PARAMETER_NAME,
+            publicBaseUrl: PUBLIC_BASE_URL,
+          }),
         }),
       ],
       basePath: HOT_UPDATER_BASE_PATH,
-      features: {
-        analytics: {},
-        updateCheck: true,
-        bundles: false,
-        clientAccessKeys: true,
-      },
     });
 
     runtimeDir = await mkdtemp(
@@ -482,14 +483,12 @@ describe.sequential("aws lambda runtime acceptance", () => {
           currentArtifacts: {
             assetBaseStorageUri: `s3://${S3_BUCKET_NAME}/releases/${fixture.currentBundleId}/files`,
             manifestFileHash: "sig:manifest-current",
-            manifestStorageUri:
-              await createRuntimeReadableS3Url(currentManifestKey),
+            manifestStorageUri: `s3://${S3_BUCKET_NAME}/${currentManifestKey}`,
           },
           nextArtifacts: {
             assetBaseStorageUri: `s3://${S3_BUCKET_NAME}/releases/${fixture.nextBundleId}/files`,
             manifestFileHash: "sig:manifest-next",
-            manifestStorageUri:
-              await createRuntimeReadableS3Url(nextManifestKey),
+            manifestStorageUri: `s3://${S3_BUCKET_NAME}/${nextManifestKey}`,
           },
         };
       },
@@ -551,13 +550,12 @@ describe.sequential("aws lambda runtime acceptance", () => {
         currentArtifacts: {
           assetBaseStorageUri: `s3://${S3_BUCKET_NAME}/releases/${fixture.currentBundleId}/files`,
           manifestFileHash: "sig:manifest-current",
-          manifestStorageUri:
-            await createRuntimeReadableS3Url(currentManifestKey),
+          manifestStorageUri: `s3://${S3_BUCKET_NAME}/${currentManifestKey}`,
         },
         nextArtifacts: {
           assetBaseStorageUri: `s3://${S3_BUCKET_NAME}/releases/${fixture.nextBundleId}/files`,
           manifestFileHash: "sig:manifest-next",
-          manifestStorageUri: await createRuntimeReadableS3Url(nextManifestKey),
+          manifestStorageUri: `s3://${S3_BUCKET_NAME}/${nextManifestKey}`,
           patches: [
             {
               baseBundleId: fixture.currentBundleId,
@@ -838,31 +836,6 @@ const clearDynamoDBTable = async (client: DynamoDBDocumentClient) => {
       }),
     );
   }
-};
-
-const createRuntimeS3Client = () => {
-  return new S3Client({
-    region: REGION,
-    endpoint: "http://localstack:4566",
-    forcePathStyle: true,
-    credentials: {
-      accessKeyId: ACCESS_KEY_ID,
-      secretAccessKey: SECRET_ACCESS_KEY,
-    },
-  });
-};
-
-const createRuntimeReadableS3Url = async (key: string) => {
-  return await getS3SignedUrl(
-    createRuntimeS3Client() as unknown as Parameters<typeof getS3SignedUrl>[0],
-    new GetObjectCommand({
-      Bucket: S3_BUCKET_NAME,
-      Key: key,
-    }),
-    {
-      expiresIn: 3600,
-    },
-  );
 };
 
 const putS3Object = async (

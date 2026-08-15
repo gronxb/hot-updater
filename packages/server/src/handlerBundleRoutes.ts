@@ -66,15 +66,9 @@ const requireBundlePatchPayload = (
   return rest;
 };
 
-export const createBundleRouteHandlers = <TContext>(): Record<
-  string,
-  RouteHandler<TContext>
-> => ({
-  getBundle: async (params, _request, api, context) => {
-    const bundle = await api.getBundleById(
-      requireRouteParam(params, "id"),
-      context,
-    );
+export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
+  getBundle: async (params, _request, api) => {
+    const bundle = await api.getBundleById(requireRouteParam(params, "id"));
     if (!bundle) {
       return new Response(JSON.stringify({ error: "Bundle not found" }), {
         status: 404,
@@ -87,7 +81,7 @@ export const createBundleRouteHandlers = <TContext>(): Record<
     });
   },
 
-  getBundles: async (_params, request, api, context) => {
+  getBundles: async (_params, request, api) => {
     const url = new URL(request.url);
     const channel = url.searchParams.get("channel") ?? undefined;
     const platform = url.searchParams.get("platform");
@@ -176,50 +170,47 @@ export const createBundleRouteHandlers = <TContext>(): Record<
       page === undefined
         ? { cursor, page: undefined }
         : { cursor: undefined, page };
-    const result = await api.getBundles(
-      {
-        where: {
-          ...(channel && { channel }),
-          ...(platform && { platform }),
-          ...(enabled !== undefined && { enabled }),
-          ...(idEq || idGt || idGte || idLt || idLte || idIn?.length
-            ? {
-                id: {
-                  ...(idEq && { eq: idEq }),
-                  ...(idGt && { gt: idGt }),
-                  ...(idGte && { gte: idGte }),
-                  ...(idLt && { lt: idLt }),
-                  ...(idLte && { lte: idLte }),
-                  ...(idIn?.length && { in: idIn }),
-                },
-              }
-            : {}),
-          ...(targetAppVersion !== undefined && { targetAppVersion }),
-          ...(targetAppVersionIn && { targetAppVersionIn }),
-          ...(targetAppVersionNotNull !== undefined && {
-            targetAppVersionNotNull,
-          }),
-          ...(fingerprintHash !== undefined && { fingerprintHash }),
-        },
-        limit,
-        ...pagination,
-        ...(orderDirection && {
-          orderBy: { field: "id", direction: orderDirection },
+    const result = await api.getBundles({
+      where: {
+        ...(channel && { channel }),
+        ...(platform && { platform }),
+        ...(enabled !== undefined && { enabled }),
+        ...(idEq || idGt || idGte || idLt || idLte || idIn?.length
+          ? {
+              id: {
+                ...(idEq && { eq: idEq }),
+                ...(idGt && { gt: idGt }),
+                ...(idGte && { gte: idGte }),
+                ...(idLt && { lt: idLt }),
+                ...(idLte && { lte: idLte }),
+                ...(idIn?.length && { in: idIn }),
+              },
+            }
+          : {}),
+        ...(targetAppVersion !== undefined && { targetAppVersion }),
+        ...(targetAppVersionIn && { targetAppVersionIn }),
+        ...(targetAppVersionNotNull !== undefined && {
+          targetAppVersionNotNull,
         }),
+        ...(fingerprintHash !== undefined && { fingerprintHash }),
       },
-      context,
-    );
+      limit,
+      ...pagination,
+      ...(orderDirection && {
+        orderBy: { field: "id", direction: orderDirection },
+      }),
+    });
     return new Response(JSON.stringify(result), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   },
 
-  createBundles: async (_params, request, api, context) => {
+  createBundles: async (_params, request, api) => {
     const body = await request.json();
     const bundles = Array.isArray(body) ? body : [body];
     if (api.insertBundles) {
-      await api.insertBundles(bundles as Bundle[], context);
+      await api.insertBundles(bundles as Bundle[]);
     } else {
       if (bundles.length > 1) {
         throw new HandlerBadRequestError(
@@ -228,7 +219,7 @@ export const createBundleRouteHandlers = <TContext>(): Record<
       }
       const bundle = bundles[0];
       if (bundle !== undefined) {
-        await api.insertBundle(bundle as Bundle, context);
+        await api.insertBundle(bundle as Bundle);
       }
     }
     return new Response(JSON.stringify({ success: true }), {
@@ -237,14 +228,13 @@ export const createBundleRouteHandlers = <TContext>(): Record<
     });
   },
 
-  updateBundle: async (params, request, api, context) => {
+  updateBundle: async (params, request, api) => {
     const bundleId = requireRouteParam(params, "id");
     const body = await request.json();
     const payload = Array.isArray(body) ? body[0] : body;
     await api.updateBundleById(
       bundleId,
       requireBundlePatchPayload(payload, bundleId),
-      context,
     );
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
@@ -252,17 +242,17 @@ export const createBundleRouteHandlers = <TContext>(): Record<
     });
   },
 
-  deleteBundle: async (params, _request, api, context) => {
-    await api.deleteBundleById(requireRouteParam(params, "id"), context);
+  deleteBundle: async (params, _request, api) => {
+    await api.deleteBundleById(requireRouteParam(params, "id"));
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   },
 
-  getChannels: async (_params, _request, api, context) => {
+  getChannels: async (_params, _request, api) => {
     const response: ChannelsResponse = {
-      data: { channels: await api.getChannels(context) },
+      data: { channels: await api.getChannels() },
     };
     return new Response(JSON.stringify(response), {
       status: 200,
@@ -270,10 +260,9 @@ export const createBundleRouteHandlers = <TContext>(): Record<
     });
   },
 
-  createChannel: async (_params, request, api, context) => {
+  createChannel: async (_params, request, api) => {
     const result = await api.insertChannel(
       requireChannelInsertInput(await request.json()),
-      context,
     );
     return new Response(JSON.stringify({ data: result }), {
       status: result.inserted ? 201 : 200,
@@ -281,11 +270,10 @@ export const createBundleRouteHandlers = <TContext>(): Record<
     });
   },
 
-  deleteChannel: async (params, _request, api, context) => {
-    const result = await api.deleteChannel(
-      { id: requireRouteParam(params, "id") },
-      context,
-    );
+  deleteChannel: async (params, _request, api) => {
+    const result = await api.deleteChannel({
+      id: requireRouteParam(params, "id"),
+    });
     if (result.deleted) {
       return new Response(null, { status: 204 });
     }

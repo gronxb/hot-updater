@@ -1,5 +1,7 @@
 import { getContentAddressedAssetStoragePath } from "./contentAddressedAssets";
+import { createStorageKeyBuilder } from "./createStorageKeyBuilder";
 import { getLegacyManifestAssetStoragePath } from "./legacyAssetStorageLayout";
+import { createStorageUri, parseStorageUri } from "./parseStorageUri";
 
 export type AssetStorageLayout = "content-addressed" | "legacy-files";
 
@@ -16,17 +18,54 @@ export const createStorageUriWithRelativePath = ({
   baseStorageUri: string;
   relativePath: string;
 }) => {
-  const storageUrl = new URL(baseStorageUri);
-  const normalizedBasePath = storageUrl.pathname.replace(/\/+$/, "");
-  const normalizedRelativePath = relativePath
-    .replace(/\\/g, "/")
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment))
-    .join("/");
+  const protocol = new URL(baseStorageUri).protocol.replace(":", "");
+  const parsed = parseStorageUri(baseStorageUri, protocol);
+  const childKey = createStorageKeyBuilder(undefined)(relativePath);
+  if (!childKey) {
+    throw new Error("Relative storage key must not be empty.");
+  }
+  return createStorageUri({
+    protocol: parsed.protocol,
+    bucket: parsed.bucket,
+    key: createStorageKeyBuilder(parsed.key)(childKey),
+  });
+};
 
-  storageUrl.pathname = `${normalizedBasePath}/${normalizedRelativePath}`;
-  return storageUrl.toString();
+export const replaceStorageUriKeySuffix = ({
+  storageUri,
+  keySuffix,
+  replacement,
+}: {
+  storageUri: string;
+  keySuffix: string;
+  replacement: string;
+}) => {
+  const protocol = new URL(storageUri).protocol.replace(":", "");
+  const parsed = parseStorageUri(storageUri, protocol);
+  const normalizedSuffix = createStorageKeyBuilder(undefined)(keySuffix);
+  const normalizedReplacement = createStorageKeyBuilder(undefined)(replacement);
+  if (!normalizedSuffix || !normalizedReplacement) {
+    throw new Error(
+      "Storage URI key suffix and replacement must not be empty.",
+    );
+  }
+  const keySegments = parsed.key.split("/");
+  const suffixSegments = normalizedSuffix.split("/");
+  const suffixOffset = keySegments.length - suffixSegments.length;
+  if (
+    suffixOffset < 0 ||
+    suffixSegments.some(
+      (segment, index) => keySegments[suffixOffset + index] !== segment,
+    )
+  ) {
+    throw new Error("Storage URI key does not end with the expected suffix.");
+  }
+  const prefix = keySegments.slice(0, suffixOffset).join("/");
+  return createStorageUri({
+    protocol: parsed.protocol,
+    bucket: parsed.bucket,
+    key: createStorageKeyBuilder(prefix)(normalizedReplacement),
+  });
 };
 
 export const getAssetStorageLayout = (

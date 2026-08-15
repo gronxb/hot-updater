@@ -1,13 +1,15 @@
-import fs from "node:fs/promises";
 import { brotliCompressSync } from "node:zlib";
 
 import type {
   Bundle,
   DatabasePlugin,
-  NodeStoragePlugin,
-  NodeStorageProfile,
+  StoragePlugin,
+  StoragePluginWith,
 } from "@hot-updater/plugin-core";
-import { createDatabaseClient } from "@hot-updater/plugin-core";
+import {
+  createDatabaseClient,
+  createStoragePlugin as createCoreStoragePlugin,
+} from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
@@ -46,30 +48,30 @@ const createDatabasePlugin = async (
 };
 
 const createStoragePlugin = (
-  upload: NodeStorageProfile["upload"],
-): NodeStoragePlugin => ({
-  name: "mockStorage",
-  supportedProtocol: "s3",
-  profiles: {
-    node: {
-      async delete() {},
-      async downloadFile(storageUri, filePath) {
+  put: NonNullable<StoragePlugin["put"]>,
+  options: {
+    get?: NonNullable<StoragePlugin["get"]>;
+    protocol?: string;
+  } = {},
+): StoragePluginWith<"get" | "put" | "delete"> =>
+  createCoreStoragePlugin({
+    name: "mockStorage",
+    protocol: options.protocol ?? "s3",
+    async delete({ storageUri }) {
+      void storageUri;
+      return { deleted: true };
+    },
+    get:
+      options.get ??
+      (async ({ storageUri }) => {
         const storageUrl = new URL(storageUri);
         const response = await fetch(
           `https://assets.example.com${storageUrl.pathname}`,
         );
-        await fs.writeFile(
-          filePath,
-          new Uint8Array(await response.arrayBuffer()),
-        );
-      },
-      async exists() {
-        return false;
-      },
-      upload,
-    },
-  },
-});
+        return { response: response.ok ? response : null };
+      }),
+    put,
+  });
 
 describe("createBundleDiff", () => {
   afterEach(() => {
@@ -86,10 +88,13 @@ describe("createBundleDiff", () => {
     const plugin = await createDatabasePlugin([baseBundle, targetBundle]);
     const databasePlugin: DatabasePlugin = plugin;
     const commit = vi.spyOn(databasePlugin, "commit");
-    const upload = vi.fn<NodeStorageProfile["upload"]>(
-      async (key, filePath) => ({
-        storageUri: `s3://test-bucket/${key}/${filePath.split("/").pop()}`,
-      }),
+    const upload = vi.fn<NonNullable<StoragePlugin["put"]>>(
+      async ({ key, body, contentLength }) => {
+        const bytes = new Uint8Array(await new Response(body).arrayBuffer());
+        expect(bytes).toEqual(new Uint8Array([1, 2, 3, 4]));
+        expect(contentLength).toBe(bytes.byteLength);
+        return { storageUri: `s3://test-bucket/${key}` };
+      },
     );
 
     vi.stubGlobal(
@@ -185,9 +190,9 @@ describe("createBundleDiff", () => {
       baseBundle,
       targetBundle,
     ]);
-    const upload = vi.fn<NodeStorageProfile["upload"]>(
-      async (key, filePath) => ({
-        storageUri: `s3://test-bucket/${key}/${filePath.split("/").pop()}`,
+    const upload = vi.fn<NonNullable<StoragePlugin["put"]>>(
+      async ({ key }) => ({
+        storageUri: `s3://test-bucket/${key}`,
       }),
     );
 
@@ -251,6 +256,84 @@ describe("createBundleDiff", () => {
     }
   });
 
+  it("uses a matching HTTPS storage plugin before direct fetch", async () => {
+    const baseBundle = createBundle("00000000-0000-0000-0000-000000000001", {
+      assetBaseStorageUri: "https://storage.example.com/releases/base/files",
+      manifestStorageUri:
+        "https://storage.example.com/releases/base/manifest.json",
+    });
+    const targetBundle = createBundle("00000000-0000-0000-0000-000000000002", {
+      assetBaseStorageUri: "https://storage.example.com/releases/target/files",
+      manifestStorageUri:
+        "https://storage.example.com/releases/target/manifest.json",
+    });
+    const databasePlugin = await createDatabasePlugin([
+      baseBundle,
+      targetBundle,
+    ]);
+    const responses = new Map<string, string | Uint8Array>([
+      [
+        baseBundle.manifestStorageUri!,
+        JSON.stringify({
+          assets: { "index.ios.bundle": { fileHash: "hash-old" } },
+          bundleId: baseBundle.id,
+        }),
+      ],
+      [
+        targetBundle.manifestStorageUri!,
+        JSON.stringify({
+          assets: { "index.ios.bundle": { fileHash: "hash-new" } },
+          bundleId: targetBundle.id,
+        }),
+      ],
+      [
+        `${baseBundle.assetBaseStorageUri}/index.ios.bundle`,
+        new Uint8Array([1, 2, 3]),
+      ],
+      [
+        `${targetBundle.assetBaseStorageUri}/index.ios.bundle`,
+        new Uint8Array([1, 9, 3]),
+      ],
+    ]);
+    const get = vi.fn<NonNullable<StoragePlugin["get"]>>(
+      async ({ storageUri }) => ({
+        response: responses.has(storageUri)
+          ? new Response(responses.get(storageUri))
+          : null,
+      }),
+    );
+    const directFetch = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", directFetch);
+    const upload = vi.fn<NonNullable<StoragePlugin["put"]>>(
+      async ({ key }) => ({
+        storageUri: `https://storage.example.com/${key}`,
+      }),
+    );
+
+    try {
+      await createBundleDiff(
+        { baseBundleId: baseBundle.id, bundleId: targetBundle.id },
+        {
+          databasePlugin,
+          storagePlugin: createStoragePlugin(upload, {
+            get,
+            protocol: "https",
+          }),
+        },
+      );
+
+      expect(get).toHaveBeenCalledWith({
+        storageUri: baseBundle.manifestStorageUri,
+      });
+      expect(get).toHaveBeenCalledWith({
+        storageUri: targetBundle.manifestStorageUri,
+      });
+      expect(directFetch).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("appends additional patch bases without replacing the primary patch when requested", async () => {
     const primaryBaseBundle = createBundle(
       "00000000-0000-0000-0000-000000000001",
@@ -277,9 +360,9 @@ describe("createBundleDiff", () => {
       secondaryBaseBundle,
       targetBundle,
     ]);
-    const upload = vi.fn<NodeStorageProfile["upload"]>(
-      async (key, filePath) => ({
-        storageUri: `s3://test-bucket/${key}/${filePath.split("/").pop()}`,
+    const upload = vi.fn<NonNullable<StoragePlugin["put"]>>(
+      async ({ key }) => ({
+        storageUri: `s3://test-bucket/${key}`,
       }),
     );
 

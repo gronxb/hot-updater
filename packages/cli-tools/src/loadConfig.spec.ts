@@ -2,13 +2,47 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ConfigInput } from "@hot-updater/plugin-core";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  expectTypeOf,
+  it,
+  vi,
+} from "vitest";
+
+import type { ConfigResponse } from "./loadConfig";
 
 let projectRoot = "";
 
 vi.mock("./cwd.js", () => ({
   getCwd: () => projectRoot,
 }));
+
+describe("ConfigResponse", () => {
+  it("requires defaulted config while preserving optional plugin capabilities", () => {
+    expectTypeOf<ConfigResponse["patch"]>().toEqualTypeOf<{
+      enabled: boolean;
+      maxBaseBundles: number;
+    }>();
+    expectTypeOf<ConfigResponse["compressStrategy"]>().toEqualTypeOf<
+      "zip" | "tar.br" | "tar.gz"
+    >();
+    expectTypeOf<ConfigResponse["console"]["port"]>().toEqualTypeOf<number>();
+
+    expectTypeOf<ConfigResponse["storage"]["getDownloadUrl"]>().toEqualTypeOf<
+      ConfigInput["storage"]["getDownloadUrl"]
+    >();
+    expectTypeOf<ConfigResponse["database"]["dispose"]>().toEqualTypeOf<
+      ConfigInput["database"]["dispose"]
+    >();
+    expectTypeOf<
+      ConfigResponse["database"]["queries"]["getUpdateInfo"]
+    >().toEqualTypeOf<ConfigInput["database"]["queries"]["getUpdateInfo"]>();
+  });
+});
 
 const writeProjectFile = async (
   rootDir: string,

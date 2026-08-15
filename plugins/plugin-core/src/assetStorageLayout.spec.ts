@@ -5,6 +5,7 @@ import {
   getAssetStorageLayout,
   getManifestAssetDownloadPath,
   getManifestAssetStoragePath,
+  replaceStorageUriKeySuffix,
   resolveManifestAssetStorageUri,
 } from "./assetStorageLayout";
 
@@ -47,11 +48,63 @@ describe("assetStorageLayout", () => {
   it("creates escaped child storage uris", () => {
     expect(
       createStorageUriWithRelativePath({
-        baseStorageUri: "s3://bucket/releases/assets/",
+        baseStorageUri: "s3://bucket/releases/assets",
         relativePath: "assets/icon one.png",
       }),
     ).toBe("s3://bucket/releases/assets/assets/icon%20one.png");
   });
+
+  it("round-trips a canonical base and child with special characters", () => {
+    expect(
+      createStorageUriWithRelativePath({
+        baseStorageUri: "r2://updates/releases/%ED%95%9C%EA%B8%80%20bundle",
+        relativePath: "assets/icon #100%.png",
+      }),
+    ).toBe(
+      "r2://updates/releases/%ED%95%9C%EA%B8%80%20bundle/assets/icon%20%23100%25.png",
+    );
+  });
+
+  it.each(["../asset.png", "assets/./logo.png", "assets\\logo.png", "//"])(
+    "rejects an ambiguous relative path %s",
+    (relativePath) => {
+      expect(() =>
+        createStorageUriWithRelativePath({
+          baseStorageUri: "s3://bucket/releases/assets",
+          relativePath,
+        }),
+      ).toThrow();
+    },
+  );
+
+  it("replaces a canonical key suffix at decoded segment boundaries", () => {
+    expect(
+      replaceStorageUriKeySuffix({
+        storageUri:
+          "s3://bucket/releases/%ED%95%9C%EA%B8%80%20bundle/bundle%20%231.zip",
+        keySuffix: "한글 bundle/bundle #1.zip",
+        replacement: "assets",
+      }),
+    ).toBe("s3://bucket/releases/assets");
+  });
+
+  it.each([
+    ["missing.zip", "assets"],
+    ["bundle.zip", ""],
+    ["bundle.zip", "../assets"],
+    ["bundle.zip", "files\\assets"],
+  ])(
+    "rejects an invalid suffix/replacement %s -> %s",
+    (keySuffix, replacement) => {
+      expect(() =>
+        replaceStorageUriKeySuffix({
+          storageUri: "s3://bucket/releases/bundle.zip",
+          keySuffix,
+          replacement,
+        }),
+      ).toThrow();
+    },
+  );
 
   it("resolves manifest asset storage uris through the layout entrypoint", () => {
     expect(

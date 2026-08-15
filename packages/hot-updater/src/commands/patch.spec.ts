@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockCli, mockServer, mockStoragePlugin } = vi.hoisted(() => {
   const mockStoragePlugin = {
+    delete: vi.fn(),
+    get: vi.fn(),
     name: "mock-storage",
+    protocol: "s3",
+    put: vi.fn(),
   };
   const mockServer = {
     createBundleDiff: vi.fn(),
@@ -59,7 +63,7 @@ describe("createPatch", () => {
     });
     mockCli.loadConfig.mockResolvedValue({
       database: databaseHarness.plugin,
-      storage: async () => mockStoragePlugin,
+      storage: mockStoragePlugin,
     });
   });
 

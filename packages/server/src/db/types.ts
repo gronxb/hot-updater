@@ -12,8 +12,6 @@ import type {
   ChannelInsertResult,
   ChannelRow,
   DatabasePlugin as DatabasePluginContract,
-  HotUpdaterContext,
-  RuntimeStoragePlugin,
 } from "@hot-updater/plugin-core";
 
 import type { PaginatedResult } from "../types";
@@ -167,52 +165,22 @@ export function getSQLProvider(
     : undefined;
 }
 
-export interface DatabaseAPI<TContext = unknown> {
+export interface DatabaseAPI {
   getAppUpdateInfo: (
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
-    context?: HotUpdaterContext<TContext>,
   ) => Promise<AppUpdateAvailableInfo | null>;
-  getBundleById(
-    id: string,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<Bundle | null>;
+  getBundleById(id: string): Promise<Bundle | null>;
   getUpdateInfo(
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
-    context?: HotUpdaterContext<TContext>,
   ): Promise<UpdateInfo | null>;
-  getChannels(
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<readonly ChannelRow[]>;
-  insertChannel(
-    input: ChannelInsertInput,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<ChannelInsertResult>;
-  deleteChannel(
-    input: ChannelDeleteInput,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<ChannelDeleteResult>;
+  getChannels(): Promise<readonly ChannelRow[]>;
+  insertChannel(input: ChannelInsertInput): Promise<ChannelInsertResult>;
+  deleteChannel(input: ChannelDeleteInput): Promise<ChannelDeleteResult>;
   getBundles(
     options: import("@hot-updater/plugin-core").DatabaseBundleQueryOptions,
-    context?: HotUpdaterContext<TContext>,
   ): Promise<PaginatedResult>;
-  insertBundle(
-    bundle: Bundle,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<void>;
-  insertBundles(
-    bundles: readonly Bundle[],
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<void>;
-  updateBundleById(
-    bundleId: string,
-    newBundle: Partial<Bundle>,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<void>;
-  deleteBundleById(
-    bundleId: string,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<void>;
+  insertBundle(bundle: Bundle): Promise<void>;
+  insertBundles(bundles: readonly Bundle[]): Promise<void>;
+  updateBundleById(bundleId: string, newBundle: Partial<Bundle>): Promise<void>;
+  deleteBundleById(bundleId: string): Promise<void>;
 }
-
-export type StoragePluginFactory<TContext = unknown> =
-  () => RuntimeStoragePlugin<TContext>;

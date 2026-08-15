@@ -120,7 +120,7 @@ describe("packed provider entrypoints", () => {
     {
       directory: "aws",
       packageName: "@hot-updater/aws",
-      exports: ["awsLambdaEdgeStorage", "s3LambdaEdgeStorage"],
+      exports: ["cloudFrontDownloadUrl", "s3Storage"],
       handler: "@hot-updater/aws/lambda",
     },
     {
@@ -132,6 +132,7 @@ describe("packed provider entrypoints", () => {
       directory: "firebase",
       packageName: "@hot-updater/firebase",
       exports: ["firebaseDatabase", "firebaseStorage"],
+      absentExports: ["firebaseStorageDelivery"],
       handler: "@hot-updater/firebase/functions",
     },
     {
@@ -146,6 +147,7 @@ describe("packed provider entrypoints", () => {
       absentExports: [
         "supabaseEdgeFunctionDatabase",
         "supabaseEdgeFunctionStorage",
+        "supabaseStorageDelivery",
       ],
     },
     {
@@ -155,6 +157,7 @@ describe("packed provider entrypoints", () => {
       absentExports: [
         "supabaseEdgeFunctionDatabase",
         "supabaseEdgeFunctionStorage",
+        "supabaseStorageDelivery",
       ],
     },
   ])(
@@ -196,6 +199,7 @@ describe("packed provider entrypoints", () => {
 
   it("resolves the packed Cloudflare Worker entrypoint for ESM and CommonJS consumers", async () => {
     const { packageDirectory } = await packProvider("cloudflare");
+    const rootSpecifier = "@hot-updater/cloudflare";
     const moduleSpecifier = "@hot-updater/cloudflare/worker";
 
     const { stdout } = await runNode(
@@ -212,6 +216,19 @@ describe("packed provider entrypoints", () => {
     expect(commonJsPath).toMatch(/[/\\]dist[/\\]worker[/\\]index\.cjs$/);
 
     const runtimeAssertions = `
+const rootStorage = rootRuntime.r2Storage({
+  accountId: "account-id",
+  bucketName: "updates",
+  credentials: {
+    accessKeyId: "access-key-id",
+    secretAccessKey: "secret-access-key",
+  },
+});
+if (rootStorage.name !== "r2Storage") throw new Error("invalid root r2Storage name");
+for (const operation of ["put", "get", "exists", "delete"]) {
+  if (typeof rootStorage[operation] !== "function") throw new Error("missing root storage " + operation);
+}
+if ("getDownloadUrl" in rootStorage) throw new Error("unexpected root storage download capability");
 const databaseBinding = {
   prepare: () => ({ bind: () => ({ all: async () => ({ results: [] }) }) }),
   batch: async (statements) => Promise.all(statements.map((statement) => statement.all())),
@@ -222,22 +239,33 @@ if (typeof database.models.analytics.append !== "function") throw new Error("mis
 if (typeof database.models.clientAccessKeys.create !== "function") throw new Error("missing clientAccessKeys model");
 if (typeof database.models.channels.list !== "function") throw new Error("missing channels model");
 if ("d1WorkerDatabase" in runtime) throw new Error("unexpected d1WorkerDatabase");
+const storage = runtime.r2Storage({
+  bucket: {},
+  bucketName: "updates",
+  downloadUrlSigningKey: "test-signing-key",
+});
+if (storage.name !== "r2Storage") throw new Error("invalid r2Storage name");
+for (const operation of ["put", "get", "getDownloadUrl", "exists", "delete"]) {
+  if (typeof storage[operation] !== "function") throw new Error("missing storage " + operation);
+}
 `;
     await runNode(
       packageDirectory,
-      `const runtime = await import(${JSON.stringify(moduleSpecifier)});${runtimeAssertions}`,
+      `const rootRuntime = await import(${JSON.stringify(rootSpecifier)});\nconst runtime = await import(${JSON.stringify(moduleSpecifier)});${runtimeAssertions}`,
       true,
     );
     await runNode(
       packageDirectory,
-      `const runtime = require(${JSON.stringify(moduleSpecifier)});${runtimeAssertions}`,
+      `const rootRuntime = require(${JSON.stringify(rootSpecifier)});\nconst runtime = require(${JSON.stringify(moduleSpecifier)});${runtimeAssertions}`,
     );
 
     const moduleConsumer = path.join(packageDirectory, "consumer.mts");
     const commonJsConsumer = path.join(packageDirectory, "consumer.cts");
-    const consumerSource = `import { d1Database, r2Storage } from ${JSON.stringify(
+    const consumerSource = `import { r2Storage as rootStorage } from ${JSON.stringify(
+      rootSpecifier,
+    )};\nimport { d1Database, r2Storage } from ${JSON.stringify(
       moduleSpecifier,
-    )};\ndeclare const binding: Parameters<typeof d1Database>[0];\nconst database = d1Database(binding);\nvoid database.models.bundles;\nvoid database.models.bundlePatches;\nvoid database.models.channels;\nvoid database.models.analytics;\nvoid database.models.clientAccessKeys;\nvoid database.queries.getUpdateInfo;\nvoid database.commit;\nvoid r2Storage;\n`;
+    )};\ndeclare const binding: Parameters<typeof d1Database>[0];\ndeclare const rootStorageConfig: Parameters<typeof rootStorage>[0];\ndeclare const storageConfig: Parameters<typeof r2Storage>[0];\nconst database = d1Database(binding);\nconst nodeStorage = rootStorage(rootStorageConfig);\nconst workerStorage = r2Storage(storageConfig);\nvoid database.models.bundles;\nvoid database.models.bundlePatches;\nvoid database.models.channels;\nvoid database.models.analytics;\nvoid database.models.clientAccessKeys;\nvoid database.queries.getUpdateInfo;\nvoid database.commit;\nvoid nodeStorage.put;\nvoid nodeStorage.get;\nvoid nodeStorage.exists;\nvoid nodeStorage.delete;\nvoid workerStorage.put;\nvoid workerStorage.get;\nvoid workerStorage.getDownloadUrl;\nvoid workerStorage.exists;\nvoid workerStorage.delete;\n`;
     await writeFile(moduleConsumer, consumerSource);
     await writeFile(commonJsConsumer, consumerSource);
 
@@ -261,6 +289,11 @@ for (const runtime of [rootRuntime, edgeRuntime]) {
   if (database.name !== "supabaseDatabase") throw new Error("invalid supabaseDatabase name");
   if (typeof database.models.channels.list !== "function") throw new Error("missing channels model");
   if ("supabaseEdgeFunctionDatabase" in runtime) throw new Error("unexpected supabaseEdgeFunctionDatabase");
+  const storage = runtime.supabaseStorage({ ...config, bucketName: "updates" });
+  if (storage.name !== "supabaseStorage") throw new Error("invalid supabaseStorage name");
+  for (const operation of ["put", "get", "getDownloadUrl", "exists", "delete"]) {
+    if (typeof storage[operation] !== "function") throw new Error("missing storage " + operation);
+  }
 }
 `;
 
@@ -279,11 +312,11 @@ for (const runtime of [rootRuntime, edgeRuntime]) {
       packageDirectory,
       "supabase-consumer.cts",
     );
-    const consumerSource = `import { supabaseDatabase as rootDatabase } from ${JSON.stringify(
+    const consumerSource = `import { supabaseDatabase as rootDatabase, supabaseStorage as rootStorage } from ${JSON.stringify(
       rootSpecifier,
-    )};\nimport { supabaseDatabase as edgeDatabase } from ${JSON.stringify(
+    )};\nimport { supabaseDatabase as edgeDatabase, supabaseStorage as edgeStorage } from ${JSON.stringify(
       edgeSpecifier,
-    )};\nconst config: Parameters<typeof rootDatabase>[0] = { supabaseUrl: "https://test.supabase.invalid", supabaseServiceRoleKey: "test-service-role-key" };\nconst edgeConfig: Parameters<typeof edgeDatabase>[0] = config;\nvoid rootDatabase(config).models.channels;\nvoid edgeDatabase(edgeConfig).models.channels;\n`;
+    )};\nconst config: Parameters<typeof rootDatabase>[0] = { supabaseUrl: "https://test.supabase.invalid", supabaseServiceRoleKey: "test-service-role-key" };\nconst edgeConfig: Parameters<typeof edgeDatabase>[0] = config;\nconst rootStorageConfig: Parameters<typeof rootStorage>[0] = { ...config, bucketName: "updates" };\nconst edgeStorageConfig: Parameters<typeof edgeStorage>[0] = rootStorageConfig;\nvoid rootDatabase(config).models.channels;\nvoid edgeDatabase(edgeConfig).models.channels;\nvoid rootStorage(rootStorageConfig).getDownloadUrl;\nvoid edgeStorage(edgeStorageConfig).getDownloadUrl;\n`;
     await writeFile(moduleConsumer, consumerSource);
     await writeFile(commonJsConsumer, consumerSource);
     await typeCheckConsumers(packageDirectory, [

@@ -1,126 +1,94 @@
-import { signToken } from "@hot-updater/js";
 import {
-  createRuntimeStoragePlugin,
-  type HotUpdaterContext,
-  type RequestEnvContext,
+  createStorageKeyBuilder,
+  createStorageDownloadUrl,
+  createStoragePlugin,
+  createStorageUri,
+  parseStorageUri,
+  type StoragePluginWith,
 } from "@hot-updater/plugin-core";
 
-export interface CloudflareWorkerStorageEnv {
-  JWT_SECRET: string;
-  BUCKET: {
-    get: (key: string) => Promise<{ text: () => Promise<string> } | null>;
+export interface CloudflareWorkerStorageConfig {
+  readonly bucket: R2Bucket;
+  readonly bucketName: string;
+  readonly basePath?: string;
+  readonly downloadUrlSigningKey: string;
+}
+
+export const r2WorkerStorage = (
+  config: CloudflareWorkerStorageConfig,
+): StoragePluginWith<
+  "put" | "get" | "getDownloadUrl" | "exists" | "delete"
+> => {
+  const getStorageKey = createStorageKeyBuilder(config.basePath);
+  const getDownloadUrl = createStorageDownloadUrl(config.downloadUrlSigningKey);
+
+  const parseAndValidate = (storageUri: string) => {
+    const parsed = parseStorageUri(storageUri, "r2");
+    if (parsed.bucket !== config.bucketName) {
+      throw new Error(
+        `Bucket name mismatch: expected "${config.bucketName}", but found "${parsed.bucket}".`,
+      );
+    }
+    return parsed;
   };
-}
 
-type ContextResolver<TContext, TValue> = (
-  context?: HotUpdaterContext<TContext>,
-) => TValue | Promise<TValue>;
-
-export interface CloudflareWorkerStorageConfig<
-  TContext extends RequestEnvContext<CloudflareWorkerStorageEnv>,
-> {
-  jwtSecret?: string | ContextResolver<TContext, string>;
-  publicBaseUrl: string | ContextResolver<TContext, string>;
-}
-
-const resolveContextValue = async <TContext, TValue>(
-  value: TValue | ContextResolver<TContext, TValue>,
-  context?: HotUpdaterContext<TContext>,
-) => {
-  return typeof value === "function"
-    ? await (value as ContextResolver<TContext, TValue>)(context)
-    : value;
-};
-
-const resolveJwtSecretFromContext = (
-  context?: RequestEnvContext<CloudflareWorkerStorageEnv>,
-) => {
-  const jwtSecret = context?.env?.JWT_SECRET;
-
-  if (!jwtSecret) {
-    throw new Error(
-      "r2WorkerStorage requires env.JWT_SECRET in the hot updater context.",
-    );
-  }
-
-  return jwtSecret;
-};
-
-const resolveR2BucketFromContext = (
-  context?: RequestEnvContext<CloudflareWorkerStorageEnv>,
-) => {
-  const bucket = context?.env?.BUCKET;
-
-  if (!bucket) {
-    throw new Error(
-      "r2WorkerStorage requires env.BUCKET in the hot updater context.",
-    );
-  }
-
-  return bucket;
-};
-
-const createPublicObjectPath = (storageUrl: URL) =>
-  `${storageUrl.host}${storageUrl.pathname}`;
-
-const createR2ObjectKey = (storageUrl: URL) =>
-  storageUrl.pathname.replace(/^\/+/, "");
-
-export const r2WorkerStorage = <
-  TContext extends RequestEnvContext<CloudflareWorkerStorageEnv> =
-    RequestEnvContext<CloudflareWorkerStorageEnv>,
->(
-  config: CloudflareWorkerStorageConfig<TContext>,
-) => {
-  return createRuntimeStoragePlugin<
-    CloudflareWorkerStorageConfig<TContext>,
-    TContext
-  >({
-    name: "r2WorkerStorage",
-    supportedProtocol: "r2",
-    factory: (config) => ({
-      async readText(storageUri, context) {
-        const storageUrl = new URL(storageUri);
-
-        if (storageUrl.protocol !== "r2:") {
-          throw new Error("Invalid R2 storage URI protocol");
-        }
-
-        const bucket = resolveR2BucketFromContext(context);
-        const key = createR2ObjectKey(storageUrl);
-        const object = await bucket.get(key);
-        if (!object) {
-          return null;
-        }
-
-        return object.text();
-      },
-      async getDownloadUrl(storageUri, context) {
-        const storageUrl = new URL(storageUri);
-
-        if (storageUrl.protocol !== "r2:") {
-          throw new Error("Invalid R2 storage URI protocol");
-        }
-
-        const key = createPublicObjectPath(storageUrl);
-        const [jwtSecret, publicBaseUrl] = await Promise.all([
-          resolveContextValue(
-            config.jwtSecret ?? resolveJwtSecretFromContext,
-            context,
+  return createStoragePlugin({
+    name: "r2Storage",
+    protocol: "r2",
+    async put({ key, body, contentLength, contentType }) {
+      const storageKey = getStorageKey(key);
+      const uploadOptions = {
+        httpMetadata: {
+          contentType,
+          cacheControl: "max-age=31536000",
+        },
+      };
+      if (contentLength === undefined) {
+        const bufferedBody = new Uint8Array(
+          await new Response(body).arrayBuffer(),
+        );
+        await config.bucket.put(storageKey, bufferedBody, uploadOptions);
+      } else {
+        const fixedLengthBody = new FixedLengthStream(contentLength);
+        await Promise.all([
+          body.pipeTo(fixedLengthBody.writable),
+          config.bucket.put(
+            storageKey,
+            fixedLengthBody.readable,
+            uploadOptions,
           ),
-          resolveContextValue(config.publicBaseUrl, context),
         ]);
-        const token = await signToken(key, jwtSecret);
-        const url = new URL(publicBaseUrl);
-
-        url.pathname = key;
-        url.search = "";
-        url.searchParams.set("token", token);
-
-        return {
-          fileUrl: url.toString(),
-        };
-      },
-    }),
-  })(config);
+      }
+      return {
+        storageUri: createStorageUri({
+          protocol: "r2",
+          bucket: config.bucketName,
+          key: storageKey,
+        }),
+      };
+    },
+    async get({ storageUri }) {
+      const { key } = parseAndValidate(storageUri);
+      const object = await config.bucket.get(key);
+      if (!object) return { response: null };
+      const headers = new Headers();
+      object.writeHttpMetadata(headers);
+      headers.set("etag", object.httpEtag);
+      headers.set("content-length", String(object.size));
+      return { response: new Response(object.body, { headers }) };
+    },
+    async getDownloadUrl({ storageUri }) {
+      parseAndValidate(storageUri);
+      return getDownloadUrl({ storageUri });
+    },
+    async exists({ storageUri }) {
+      const { key } = parseAndValidate(storageUri);
+      return { exists: (await config.bucket.head(key)) !== null };
+    },
+    async delete({ storageUri }) {
+      const { key } = parseAndValidate(storageUri);
+      await config.bucket.delete(key);
+      return { deleted: true };
+    },
+  });
 };

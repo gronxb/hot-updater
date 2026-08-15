@@ -11,26 +11,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BundleEditorForm } from "./BundleEditorForm";
 
-const {
-  mockUpdateBundleMutation,
-  mockBundleDownloadUrlMutation,
-  mockToastError,
-  mockToastSuccess,
-} = vi.hoisted(() => ({
-  mockUpdateBundleMutation: {
-    isPending: false,
-    mutateAsync: vi.fn(),
-  },
-  mockBundleDownloadUrlMutation: {
-    isPending: false,
-    mutateAsync: vi.fn(),
-  },
-  mockToastError: vi.fn(),
-  mockToastSuccess: vi.fn(),
-}));
+const { mockUpdateBundleMutation, mockToastError, mockToastSuccess } =
+  vi.hoisted(() => ({
+    mockUpdateBundleMutation: {
+      isPending: false,
+      mutateAsync: vi.fn(),
+    },
+    mockToastError: vi.fn(),
+    mockToastSuccess: vi.fn(),
+  }));
 
 vi.mock("@/lib/api", () => ({
-  useBundleDownloadUrlMutation: () => mockBundleDownloadUrlMutation,
   useUpdateBundleMutation: () => mockUpdateBundleMutation,
 }));
 
@@ -67,11 +58,6 @@ const bundle: Bundle = {
 
 describe("BundleEditorForm", () => {
   const originalWindowOpen = window.open;
-  let mockDownloadWindow: {
-    close: ReturnType<typeof vi.fn>;
-    location: { href: string };
-    opener: Record<string, never> | null;
-  };
 
   afterEach(() => {
     cleanup();
@@ -83,14 +69,7 @@ describe("BundleEditorForm", () => {
       unobserve() {}
       disconnect() {}
     };
-    mockDownloadWindow = {
-      close: vi.fn(),
-      location: { href: "" },
-      opener: {},
-    };
-    window.open = vi.fn(() => mockDownloadWindow as unknown as Window);
-    mockBundleDownloadUrlMutation.isPending = false;
-    mockBundleDownloadUrlMutation.mutateAsync.mockReset();
+    window.open = vi.fn(() => null);
     mockUpdateBundleMutation.isPending = false;
     mockUpdateBundleMutation.mutateAsync.mockReset();
     mockToastError.mockReset();
@@ -348,24 +327,15 @@ describe("BundleEditorForm", () => {
     expect(mockToastError).toHaveBeenCalledWith(INVALID_COHORT_ERROR_MESSAGE);
   });
 
-  it("opens the download URL when Download Bundle is clicked", async () => {
-    mockBundleDownloadUrlMutation.mutateAsync.mockResolvedValue({
-      fileUrl: "https://example.invalid/bundle.zip",
-    });
-
+  it("opens the Console streaming route when Download Bundle is clicked", () => {
     render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Download Bundle" }));
 
-    await waitFor(() => {
-      expect(mockBundleDownloadUrlMutation.mutateAsync).toHaveBeenCalledWith({
-        bundleId: bundle.id,
-      });
-    });
-
-    expect(window.open).toHaveBeenCalledWith("", "_blank");
-    expect(mockDownloadWindow.location.href).toBe(
-      "https://example.invalid/bundle.zip",
+    expect(window.open).toHaveBeenCalledWith(
+      `/api/bundles/${bundle.id}/download`,
+      "_blank",
+      "noopener,noreferrer",
     );
   });
 });

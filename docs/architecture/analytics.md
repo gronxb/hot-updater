@@ -23,6 +23,8 @@ deployments and local test fixtures.
 
 `features.updateCheck`, `features.bundles`, `features.analytics`, and
 `features.clientAccessKeys` are configured through the same feature boundary.
+Analytics owns its event and query routes and is enabled only by
+`features.analytics`.
 
 The database plugin owns physical storage and migration for `bundle_events`.
 The server owns event input validation, bounded scans, aggregation, installation

@@ -33,7 +33,6 @@ vi.mock("./api-rpc", () => ({
   getBundle: vi.fn(),
   getBundleChildCounts: vi.fn(),
   getBundleChildren: vi.fn(),
-  getBundleDownloadUrl: vi.fn(),
   getBundleEventSummary: vi.fn(),
   getBundleEventAnalytics: vi.fn(),
   getBundles: vi.fn(),

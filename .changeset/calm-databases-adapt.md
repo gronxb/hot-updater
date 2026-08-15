@@ -88,6 +88,8 @@ Self-hosted runtimes configure all route groups and optional behavior through
 `createHotUpdater({ features })`. `features.analytics` mounts Analytics
 ingestion and query routes backed by `database.models.analytics`, while
 `features.clientAccessKeys` protects update checks and Analytics ingestion
-through `database.models.clientAccessKeys`. The CLI-only
-`standaloneRepository` stays a bundle repository; the physical database passed
-to the self-hosted `createHotUpdater` instance owns the full official contract.
+through `database.models.clientAccessKeys`. `features.updateCheck` and
+`features.bundles` control the core route groups in the same object. The
+CLI-only `standaloneRepository` stays a bundle repository; the physical
+database passed to the self-hosted `createHotUpdater` instance owns the full
+official contract.

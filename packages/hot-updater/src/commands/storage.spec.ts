@@ -1,5 +1,3 @@
-import fs from "node:fs/promises";
-
 import type { Bundle, StorageObject } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,15 +22,15 @@ const {
   const mockStorageNode = {
     delete: vi.fn(),
     deleteObjects: vi.fn(),
-    downloadFile: vi.fn(),
     exists: vi.fn(),
+    get: vi.fn(),
     listObjects: vi.fn(),
-    upload: vi.fn(),
+    put: vi.fn(),
   };
   const mockStoragePlugin = {
+    ...mockStorageNode,
     name: "s3Storage",
-    profiles: { node: mockStorageNode },
-    supportedProtocol: "s3",
+    protocol: "s3",
   };
   const mockCli = {
     loadConfig: vi.fn(),
@@ -142,7 +140,7 @@ describe("handleStoragePrune", () => {
 
     mockCli.loadConfig.mockResolvedValue({
       database: mockDatabasePlugin,
-      storage: vi.fn().mockResolvedValue(mockStoragePlugin),
+      storage: mockStoragePlugin,
     });
     mockDatabasePlugin.getBundles.mockResolvedValue({
       data: [liveBundle],
@@ -154,20 +152,17 @@ describe("handleStoragePrune", () => {
         totalPages: 1,
       },
     });
-    mockStorageNode.downloadFile.mockImplementation(
-      async (_storageUri: string, filePath: string) => {
-        await fs.writeFile(
-          filePath,
-          JSON.stringify({
-            bundleId: LIVE_BUNDLE_ID,
-            assets: {
-              "images/logo.png": { fileHash: IMAGE_HASH },
-              "index.ios.bundle": { fileHash: BUNDLE_HASH },
-            },
-          }),
-        );
-      },
-    );
+    mockStorageNode.get.mockImplementation(async () => ({
+      response: new Response(
+        JSON.stringify({
+          bundleId: LIVE_BUNDLE_ID,
+          assets: {
+            "images/logo.png": { fileHash: IMAGE_HASH },
+            "index.ios.bundle": { fileHash: BUNDLE_HASH },
+          },
+        }),
+      ),
+    }));
     mockStorageNode.listObjects.mockResolvedValue([
       object(`assets/sha256/${IMAGE_HASH.slice(0, 2)}/${IMAGE_HASH}.png`, old),
       object(`assets/sha256/${BUNDLE_HASH.slice(0, 2)}/${BUNDLE_HASH}.br`, old),
@@ -289,11 +284,10 @@ describe("handleStoragePrune", () => {
 
   it("rechecks manifest references before deleting", async () => {
     let manifestReadCount = 0;
-    mockStorageNode.downloadFile.mockImplementation(
-      async (_storageUri: string, filePath: string) => {
-        manifestReadCount += 1;
-        await fs.writeFile(
-          filePath,
+    mockStorageNode.get.mockImplementation(async () => {
+      manifestReadCount += 1;
+      return {
+        response: new Response(
           JSON.stringify({
             bundleId: LIVE_BUNDLE_ID,
             assets: {
@@ -304,9 +298,9 @@ describe("handleStoragePrune", () => {
                 : {}),
             },
           }),
-        );
-      },
-    );
+        ),
+      };
+    });
     const { handleStoragePrune } = await import("./storage");
 
     await handleStoragePrune({ yes: true });
@@ -320,14 +314,13 @@ describe("handleStoragePrune", () => {
 
   it("does not delete when the final reference scan fails", async () => {
     let manifestReadCount = 0;
-    mockStorageNode.downloadFile.mockImplementation(
-      async (_storageUri: string, filePath: string) => {
-        manifestReadCount += 1;
-        if (manifestReadCount > 1) {
-          throw new Error("manifest unavailable");
-        }
-        await fs.writeFile(
-          filePath,
+    mockStorageNode.get.mockImplementation(async () => {
+      manifestReadCount += 1;
+      if (manifestReadCount > 1) {
+        throw new Error("manifest unavailable");
+      }
+      return {
+        response: new Response(
           JSON.stringify({
             bundleId: LIVE_BUNDLE_ID,
             assets: {
@@ -335,9 +328,9 @@ describe("handleStoragePrune", () => {
               "index.ios.bundle": { fileHash: BUNDLE_HASH },
             },
           }),
-        );
-      },
-    );
+        ),
+      };
+    });
     const { handleStoragePrune } = await import("./storage");
 
     await expect(handleStoragePrune({ yes: true })).rejects.toThrow(
@@ -428,19 +421,16 @@ describe("handleStoragePrune", () => {
   });
 
   it("fails closed when a manifest belongs to another bundle", async () => {
-    mockStorageNode.downloadFile.mockImplementation(
-      async (_storageUri: string, filePath: string) => {
-        await fs.writeFile(
-          filePath,
-          JSON.stringify({
-            bundleId: DEAD_BUNDLE_ID,
-            assets: {
-              "images/logo.png": { fileHash: IMAGE_HASH },
-            },
-          }),
-        );
-      },
-    );
+    mockStorageNode.get.mockImplementation(async () => ({
+      response: new Response(
+        JSON.stringify({
+          bundleId: DEAD_BUNDLE_ID,
+          assets: {
+            "images/logo.png": { fileHash: IMAGE_HASH },
+          },
+        }),
+      ),
+    }));
     const { handleStoragePrune } = await import("./storage");
 
     await expect(handleStoragePrune({ yes: true })).rejects.toThrow(
@@ -451,19 +441,16 @@ describe("handleStoragePrune", () => {
   });
 
   it("fails closed when a manifest contains a malformed asset hash", async () => {
-    mockStorageNode.downloadFile.mockImplementation(
-      async (_storageUri: string, filePath: string) => {
-        await fs.writeFile(
-          filePath,
-          JSON.stringify({
-            bundleId: LIVE_BUNDLE_ID,
-            assets: {
-              "images/logo.png": { fileHash: "not-a-sha256" },
-            },
-          }),
-        );
-      },
-    );
+    mockStorageNode.get.mockImplementation(async () => ({
+      response: new Response(
+        JSON.stringify({
+          bundleId: LIVE_BUNDLE_ID,
+          assets: {
+            "images/logo.png": { fileHash: "not-a-sha256" },
+          },
+        }),
+      ),
+    }));
     const { handleStoragePrune } = await import("./storage");
 
     await expect(handleStoragePrune({ yes: true })).rejects.toThrow(
@@ -490,7 +477,7 @@ describe("handleStoragePrune", () => {
     await expect(handleStoragePrune({ yes: true })).rejects.toThrow(
       "cannot provide safe cursor pagination",
     );
-    expect(mockStorageNode.downloadFile).not.toHaveBeenCalled();
+    expect(mockStorageNode.get).not.toHaveBeenCalled();
     expect(mockStorageNode.listObjects).not.toHaveBeenCalled();
     expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
   });
@@ -563,14 +550,12 @@ describe("handleStoragePrune", () => {
 
     await handleStoragePrune({ yes: true });
 
-    expect(mockStorageNode.downloadFile).not.toHaveBeenCalled();
+    expect(mockStorageNode.get).not.toHaveBeenCalled();
     expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
   });
 
   it("aborts before listing or deletion when a live manifest cannot be read", async () => {
-    mockStorageNode.downloadFile.mockRejectedValueOnce(
-      new Error("manifest missing"),
-    );
+    mockStorageNode.get.mockRejectedValueOnce(new Error("manifest missing"));
     const { handleStoragePrune } = await import("./storage");
 
     await expect(handleStoragePrune({ yes: true })).rejects.toThrow(
@@ -585,16 +570,11 @@ describe("handleStoragePrune", () => {
   it("reports when the configured storage plugin cannot enumerate objects", async () => {
     mockCli.loadConfig.mockResolvedValue({
       database: mockDatabasePlugin,
-      storage: vi.fn().mockResolvedValue({
+      storage: {
         ...mockStoragePlugin,
         name: "unsupportedStorage",
-        profiles: {
-          node: {
-            ...mockStorageNode,
-            listObjects: undefined,
-          },
-        },
-      }),
+        listObjects: undefined,
+      },
     });
     const { handleStoragePrune } = await import("./storage");
 
@@ -602,7 +582,7 @@ describe("handleStoragePrune", () => {
       'Storage plugin "unsupportedStorage" does not support storage prune.',
     );
 
-    expect(mockStorageNode.downloadFile).not.toHaveBeenCalled();
+    expect(mockStorageNode.get).not.toHaveBeenCalled();
     expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
     expect(mockDatabasePlugin.dispose).toHaveBeenCalledOnce();
   });

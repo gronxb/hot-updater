@@ -4,16 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { mockCli, mockStoragePlugin, mockPrintBanner, mockPromoteBundle } =
   vi.hoisted(() => {
     const mockStoragePlugin = {
+      delete: vi.fn(),
+      exists: vi.fn(async () => false),
+      get: vi.fn(),
       name: "mock-storage",
-      supportedProtocol: "s3",
-      profiles: {
-        node: {
-          delete: vi.fn(),
-          downloadFile: vi.fn(),
-          exists: vi.fn(async () => false),
-          upload: vi.fn(),
-        },
-      },
+      protocol: "s3",
+      put: vi.fn(),
     };
     const mockCli = {
       loadConfig: vi.fn(),
@@ -78,7 +74,7 @@ const buildBundle = (overrides: Partial<Bundle> = {}): Bundle => ({
 const stubLoadedConfig = () => {
   mockCli.loadConfig.mockResolvedValue({
     database: databaseHarness.plugin,
-    storage: vi.fn().mockResolvedValue(mockStoragePlugin),
+    storage: mockStoragePlugin,
   });
 };
 
@@ -154,6 +150,31 @@ describe("handlePromote", () => {
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       expect.stringContaining("Moved bundle to beta"),
     );
+  });
+
+  it("requires copy storage capabilities before reading the bundle", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      database: databaseHarness.plugin,
+      storage: {
+        name: "read-only-storage",
+        protocol: "s3",
+        get: mockStoragePlugin.get,
+      },
+    });
+
+    const { handlePromote } = await import("./promote");
+    await expect(
+      handlePromote("src-1", {
+        target: "beta",
+        action: "copy",
+        yes: true,
+      }),
+    ).rejects.toThrow(
+      'Storage plugin "read-only-storage" does not implement put.',
+    );
+
+    expect(databaseHarness.read).not.toHaveBeenCalled();
+    expect(mockPromoteBundle).not.toHaveBeenCalled();
   });
 
   it("defaults --action to copy when omitted", async () => {

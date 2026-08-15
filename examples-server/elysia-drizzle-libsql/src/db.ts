@@ -11,7 +11,7 @@ export const hotUpdater = createHotUpdater({
     db,
     provider: "sqlite",
   }),
-  storages: [
+  storage: [
     mockStorage({}),
     s3Storage({
       region: "auto",
@@ -21,6 +21,9 @@ export const hotUpdater = createHotUpdater({
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
       },
       bucketName: process.env.R2_BUCKET_NAME!,
+      downloadUrlSigningKey:
+        process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY ??
+        "development-storage-download-url-key",
     }),
   ],
   basePath: "/hot-updater",

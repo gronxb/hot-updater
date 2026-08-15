@@ -109,13 +109,10 @@ describe("createHandler management routes", () => {
         inserted: false,
       },
     });
-    expect(api.insertChannel).toHaveBeenCalledWith(
-      {
-        row: { id: "candidate-id", name: "preview" },
-        onConflict: "returnExisting",
-      },
-      undefined,
-    );
+    expect(api.insertChannel).toHaveBeenCalledWith({
+      row: { id: "candidate-id", name: "preview" },
+      onConflict: "returnExisting",
+    });
   });
 
   it.each([
@@ -176,10 +173,7 @@ describe("createHandler management routes", () => {
 
     expect(response.status).toBe(status);
     await expect(response.json()).resolves.toEqual({ data: result });
-    expect(api.deleteChannel).toHaveBeenCalledWith(
-      { id: "channel-preview" },
-      undefined,
-    );
+    expect(api.deleteChannel).toHaveBeenCalledWith({ id: "channel-preview" });
   });
 
   it("mounts bundle routes when explicitly enabled", async () => {
@@ -200,10 +194,12 @@ describe("createHandler management routes", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(api.getBundles).toHaveBeenCalledWith(
-      { cursor: undefined, limit: 50, page: undefined, where: {} },
-      undefined,
-    );
+    expect(api.getBundles).toHaveBeenCalledWith({
+      cursor: undefined,
+      limit: 50,
+      page: undefined,
+      where: {},
+    });
   });
 
   it("forwards an explicit bundle id order direction", async () => {
@@ -217,16 +213,13 @@ describe("createHandler management routes", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(api.getBundles).toHaveBeenCalledWith(
-      {
-        cursor: undefined,
-        limit: 50,
-        orderBy: { field: "id", direction: "asc" },
-        page: undefined,
-        where: {},
-      },
-      undefined,
-    );
+    expect(api.getBundles).toHaveBeenCalledWith({
+      cursor: undefined,
+      limit: 50,
+      orderBy: { field: "id", direction: "asc" },
+      page: undefined,
+      where: {},
+    });
   });
 
   it("rejects an invalid bundle id order direction", async () => {

@@ -29,16 +29,63 @@ Configure your CLI to connect to your self-hosted server:
 
 ```typescript title="hot-updater.config.ts"
 import { defineConfig } from "@hot-updater/core";
-import { standaloneRepository } from "@hot-updater/standalone";
+import {
+  standaloneRepository,
+  standaloneStorage,
+} from "@hot-updater/standalone";
 
 export default defineConfig({
   build: /* your build plugin */,
-  storage: /* your storage plugin */,
+  storage: standaloneStorage({
+    baseUrl: "https://storage.example.com/hot-updater",
+    protocol: "s3",
+  }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
   }),
 });
 ```
+
+## Remote Storage Adapter
+
+`standaloneStorage` is a CLI-side adapter for sending storage operations to a
+remote HTTP service. `baseUrl` selects that HTTP transport, while `protocol`
+selects the persisted Storage URI scheme owned by the adapter. They are
+independent: an HTTPS service can, for example, own `s3://...` URIs.
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "@hot-updater/core";
+import {
+  standaloneRepository,
+  standaloneStorage,
+} from "@hot-updater/standalone";
+
+export default defineConfig({
+  build: /* your build plugin */,
+  database: standaloneRepository({
+    baseUrl: "https://api.example.com/hot-updater",
+  }),
+  storage: standaloneStorage({
+    baseUrl: "https://storage.example.com/hot-updater",
+    protocol: "s3",
+  }),
+});
+```
+
+The remote storage service must implement these separate routes:
+
+| Method   | Default route | Request                             | Success response                         |
+| -------- | ------------- | ----------------------------------- | ---------------------------------------- |
+| `POST`   | `/upload`     | multipart `file` and `key` fields   | JSON `{ "storageUri": "s3://..." }`      |
+| `POST`   | `/get`        | JSON `{ "storageUri": "s3://..." }` | Object bytes, or `404` when missing      |
+| `POST`   | `/exists`     | JSON `{ "storageUri": "s3://..." }` | JSON `{ "exists": true }`                |
+| `DELETE` | `/delete`     | JSON `{ "storageUri": "s3://..." }` | Any `2xx`, or `404` for an absent object |
+
+`standaloneStorage` intentionally has no `getDownloadUrl` capability. It is
+for CLI-to-service storage transport, not the runtime storage passed to
+`createHotUpdater`. The built-in bundle routes mounted by `createHotUpdater`
+do not implement `/upload`, `/get`, `/exists`, or `/delete`; your remote
+storage service must provide them separately.
 
 ## Configuration
 
@@ -293,13 +340,13 @@ import { createHotUpdater } from "@hot-updater/server";
 
 const hotUpdater = createHotUpdater({
   database,
-  storages: [storage],
+  storage: [storage],
   basePath: "/hot-updater",
   features: {
-    analytics: true,
-    clientAccessKeys: true,
     updateCheck: true,
     bundles: true,
+    analytics: true,
+    clientAccessKeys: true,
   },
 });
 ```
@@ -321,8 +368,8 @@ bundle-management route groups.
 <Callout type="warn">
   The Console cannot read Analytics or manage client access keys through
   `standaloneRepository`; its HTTP contract is deliberately bundle-only. Run
-  Console or another protected management surface with direct access to the
-  same server-side database domains. Do not pass `standaloneRepository` to
+  Console or another protected management surface with direct access to the same
+  server-side database domains. Do not pass `standaloneRepository` to
   `createHotUpdater`.
 </Callout>
 
