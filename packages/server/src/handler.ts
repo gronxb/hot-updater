@@ -36,6 +36,9 @@ export function createHotUpdaterHandler<TContext = unknown>(
   api: HandlerAPI<TContext>,
   options: HandlerOptions = {},
   analytics?: AnalyticsHandlerOptions,
+  clientAccessKeys?: {
+    readonly authenticate: (request: Request) => Promise<boolean>;
+  },
 ): (
   request: Request,
   context?: HotUpdaterContext<TContext>,
@@ -115,6 +118,34 @@ export function createHotUpdaterHandler<TContext = unknown>(
           status: 404,
           headers: { "Content-Type": "application/json" },
         });
+      }
+      if (
+        clientAccessKeys !== undefined &&
+        (match.data === "fingerprintUpdateWithCohort" ||
+          match.data === "appVersionUpdateWithCohort" ||
+          match.data === "appendBundleEvent")
+      ) {
+        let authenticated: boolean;
+        try {
+          authenticated = await clientAccessKeys.authenticate(request);
+        } catch {
+          return Response.json(
+            { error: "Service unavailable" },
+            {
+              status: 503,
+              headers: { "cache-control": "private, no-store" },
+            },
+          );
+        }
+        if (!authenticated) {
+          return Response.json(
+            { error: "Unauthorized" },
+            {
+              status: 401,
+              headers: { "cache-control": "private, no-store" },
+            },
+          );
+        }
       }
       const handler = routeHandlers[match.data];
       if (!handler) {

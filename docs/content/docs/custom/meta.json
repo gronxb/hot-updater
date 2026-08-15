@@ -2,5 +2,13 @@
   "title": "Self Hosting (Custom)",
   "description": "Self-hosted server setup",
   "icon": "Server",
-  "pages": ["overview", "quick-start", "database", "frameworks", "cli-configuration", "hosting"]
+  "pages": [
+    "overview",
+    "quick-start",
+    "api-key-authentication",
+    "database",
+    "frameworks",
+    "cli-configuration",
+    "hosting"
+  ]
 }

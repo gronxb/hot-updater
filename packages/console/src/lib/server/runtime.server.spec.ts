@@ -10,16 +10,41 @@ import {
   parseSearchInstallationsInput,
 } from "../analytics-input";
 import {
+  createClientAccessKeyStore,
+  createRuntimeHotUpdater,
   getActiveInstallationOverview,
+  getAnalyticsCapability,
   getBundleEventAnalytics,
   getBundleEventSummary,
   getInstallationHistory,
-  getAnalyticsCapability,
   searchInstallations,
-  createRuntimeHotUpdater,
 } from "./runtime.server";
 
 const createDatabase = () => mockDatabase({ latency: { min: 0, max: 0 } });
+
+describe("client access-key runtime", () => {
+  it("uses only the official database domain", async () => {
+    const database = createDatabase();
+
+    const store = createClientAccessKeyStore({ database });
+
+    expect(store).toBe(database.models.clientAccessKeys);
+    expect(
+      createClientAccessKeyStore({
+        database: {
+          models: {
+            bundles: database.models.bundles,
+            bundlePatches: database.models.bundlePatches,
+            channels: database.models.channels,
+          },
+          commit: database.commit,
+          name: database.name,
+          queries: database.queries,
+        },
+      }),
+    ).toBeNull();
+  });
+});
 
 const createRuntime = () => ({
   mode: "bounded" as const,

@@ -62,6 +62,9 @@ describe("runtime createHotUpdater", () => {
     expectTypeOf<
       NonNullable<CreateHotUpdaterOptions["features"]>
     >().toHaveProperty("analytics");
+    expectTypeOf<
+      NonNullable<CreateHotUpdaterOptions["features"]>
+    >().toHaveProperty("clientAccessKeys");
   });
 
   it("accepts a direct v2 plugin object without exposing maintenance methods", () => {

@@ -1,5 +1,11 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { ChartNoAxesCombined, Moon, Package, Sun } from "lucide-react";
+import {
+  ChartNoAxesCombined,
+  KeyRound,
+  Moon,
+  Package,
+  Sun,
+} from "lucide-react";
 
 import { useAnalyticsCapability } from "@/components/features/analytics/AnalyticsCapabilityContext";
 import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
@@ -16,8 +22,10 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { useClientAccessKeyCapabilityQuery } from "@/lib/access-keys-api";
 export function AppSidebar() {
   const analyticsCapability = useAnalyticsCapability();
+  const accessKeyCapability = useClientAccessKeyCapabilityQuery();
   const { theme, setTheme } = useTheme();
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
@@ -25,6 +33,7 @@ export function AppSidebar() {
   const isBundlesActive = currentPath === "/";
   const isAnalyticsActive =
     currentPath === "/analytics" || currentPath === "/installations";
+  const isAccessKeysActive = currentPath === "/access-keys";
 
   return (
     <Sidebar collapsible="icon">
@@ -94,6 +103,20 @@ export function AppSidebar() {
                     <Link to="/analytics">
                       <ChartNoAxesCombined />
                       <span>Analytics</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ) : null}
+              {accessKeyCapability.data?.accessKeys ? (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isAccessKeysActive}
+                    tooltip="Access keys"
+                  >
+                    <Link to="/access-keys">
+                      <KeyRound />
+                      <span>Access keys</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

@@ -1,0 +1,52 @@
+---
+title: "Client access-key authentication"
+description: Protect OTA reads and Analytics writes with the built-in client access-key domain.
+---
+
+Client access-key authentication is built into `createHotUpdater` and uses the
+official `database.models.clientAccessKeys` domain. No authentication package
+or server plugin is required.
+
+```ts
+import { createHotUpdater } from "@hot-updater/server";
+
+export const hotUpdater = createHotUpdater({
+  database,
+  features: {
+    analytics: true,
+    clientAccessKeys: true,
+  },
+});
+```
+
+When enabled, `x-api-key` is required for update-check routes and
+`POST /events`. `/version` stays public. Client keys do not grant access to
+Analytics queries, bundle management, or key management.
+
+## Create a key
+
+The Hot Updater Console creates, lists, and revokes keys through the same
+official database domain. A custom management surface can use the server helper:
+
+```ts
+import { createClientAccessKey } from "@hot-updater/server";
+
+const { apiKey, record } = await createClientAccessKey({
+  clientAccessKeys: database.models.clientAccessKeys,
+  name: "Production app",
+});
+```
+
+The plaintext `apiKey` is returned only once. Persistence receives its SHA-256
+digest, prefix, role, creation time, and revocation time. Store the plaintext in
+your client configuration and send it as `x-api-key`.
+
+## Security boundary
+
+A key embedded in a mobile binary can be extracted. Treat this feature as an
+abuse-control boundary for OTA reads and Analytics writes, not as a management
+credential. Protect bundle management, Analytics reads, Console access, and key
+management with your application or framework authentication.
+
+Missing, malformed, unknown, and revoked keys return `401`. A database failure
+during credential lookup returns `503` and does not fall back to public access.
