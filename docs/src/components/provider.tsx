@@ -3,6 +3,7 @@ import type { Framework } from "fumadocs-core/framework";
 import { RootProvider } from "fumadocs-ui/provider/waku";
 import type { ComponentProps } from "react";
 import { Link } from "waku";
+import { useRouter } from "waku/router/client";
 
 type WakuLinkChildren = ComponentProps<typeof Link>["children"];
 
@@ -27,6 +28,10 @@ export function Provider({
 }: {
   children: ComponentProps<typeof RootProvider>["children"];
 }) {
+  const { path } = useRouter();
+  const docsVersion =
+    path === "/docs/v0" || path.startsWith("/docs/v0/") ? "v0" : "latest";
+
   return (
     <RootProvider
       components={{
@@ -34,6 +39,7 @@ export function Provider({
       }}
       search={{
         options: {
+          defaultTag: docsVersion,
           type: "static",
         },
       }}

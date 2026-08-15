@@ -1,0 +1,90 @@
+---
+title: "getChannel"
+description: "The `HotUpdater.getChannel()` function returns the app's current effective channel."
+icon: Radio
+---
+
+By default, if no channel is specified, the app is assigned to the `production` channel.
+
+For build-time setup, refer to
+[Default Channel Setup](/docs/v0/guides/channel-management). For runtime switching,
+see [Runtime Channel Switch](/docs/v0/guides/runtime-channel-switch).
+
+## Usage
+
+You can use `HotUpdater.getChannel()` to dynamically check which channel the app is currently using.
+
+### Example
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { Text, View } from "react-native";
+
+function App() {
+  const channel = HotUpdater.getChannel();
+
+  return (
+    <View>
+      <Text>Current Channel: {channel}</Text>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({
+  baseURL: "<your-update-server-url>",
+  updateStrategy: "appVersion", // or "fingerprint"
+  requestHeaders: {
+    "Authorization": "Bearer <your-access-token>",
+  },
+})(App);
+```
+
+## Behavior
+
+- If no runtime channel switch is active, `HotUpdater.getChannel()` returns the build-time channel.
+- If a bundle from another channel has been applied at runtime, `HotUpdater.getChannel()` returns that switched channel.
+- If no channel is configured, the default is `production`.
+- The build-time default channel is injected into the native app during the build process based on `releaseChannel` in `hot-updater.config.ts`.
+- Use [`HotUpdater.getDefaultChannel()`](/docs/v0/react-native-api/getDefaultChannel) when you need the embedded default channel regardless of runtime channel switch state.
+- You can restore the original channel with [`HotUpdater.resetChannel()`](/docs/v0/react-native-api/resetChannel).
+
+## Configuration Example (`hot-updater.config.ts`)
+
+```tsx
+import { defineConfig } from "hot-updater";
+import { config } from "dotenv";
+
+config({ path: ".env.hotupdater" });
+
+export default defineConfig({
+  releaseChannel: "dev", // Specifying the release channel
+  build: ...,
+  storage: ...,
+  database: ...,
+});
+```
+
+With this configuration, `HotUpdater.getChannel()` will initially return `"dev"`.
+
+## Runtime Example
+
+```tsx
+const updateInfo = await HotUpdater.checkForUpdate({
+  updateStrategy: "appVersion",
+  channel: "beta",
+});
+
+if (updateInfo) {
+  await updateInfo.updateBundle();
+  await HotUpdater.reload();
+}
+
+console.log(HotUpdater.getChannel()); // "beta"
+```
+
+## Related APIs
+
+- [`HotUpdater.checkForUpdate()`](/docs/v0/react-native-api/checkForUpdate)
+- [`HotUpdater.getDefaultChannel()`](/docs/v0/react-native-api/getDefaultChannel)
+- [`HotUpdater.isChannelSwitched()`](/docs/v0/react-native-api/isChannelSwitched)
+- [`HotUpdater.resetChannel()`](/docs/v0/react-native-api/resetChannel)

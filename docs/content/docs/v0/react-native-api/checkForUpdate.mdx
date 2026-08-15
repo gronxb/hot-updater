@@ -1,0 +1,169 @@
+---
+title: "checkForUpdate"
+description: "The `checkForUpdate` function checks if there is an available update for the app by comparing the current app version and platform with the update server's bundle information."
+icon: Search
+---
+
+## Usage
+
+Use `checkForUpdate` to verify if an update bundle is available. The function
+reuses the update source configured in `HotUpdater.wrap()` or
+`HotUpdater.init()`.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+// First, configure baseURL with init
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+});
+
+// Use checkForUpdate - it reuses the configured baseURL
+async function checkForAppUpdate() {
+  try {
+    const updateInfo = await HotUpdater.checkForUpdate({
+      updateStrategy: "appVersion",
+      requestHeaders: {
+        Authorization: "Bearer <your-access-token>",
+      },
+    });
+
+    if (!updateInfo) {
+      return {
+        status: "UP_TO_DATE",
+      };
+    }
+
+    /**
+     * You can apply updates using one of two methods:
+     *
+     * Method 1: Use the updateBundle() method from the updateInfo object
+     * - A convenience method built into the return value from checkForUpdate
+     * - Performs the same function as HotUpdater.updateBundle with all required arguments pre-filled
+     */
+    await updateInfo.updateBundle();
+
+    /**
+     * Method 2: Call HotUpdater.updateBundle() directly
+     * - Explicitly pass the necessary values extracted from updateInfo
+     */
+    // await HotUpdater.updateBundle({
+    //   bundleId: updateInfo.id,
+    //   fileUrl: updateInfo.fileUrl,
+    //   status: updateInfo.status,
+    // });
+
+    if (updateInfo.shouldForceUpdate) {
+      await HotUpdater.reload();
+    }
+    return updateInfo;
+  } catch (error) {
+    console.error("Failed to check for update:", error);
+    return null;
+  }
+}
+
+```
+
+## Important: HotUpdater.wrap or HotUpdater.init Required
+
+When using `checkForUpdate`, configure Hot Updater first with
+`HotUpdater.wrap()` or `HotUpdater.init()`. This is required for proper crash
+detection and rollback functionality.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { useEffect } from "react";
+
+function App() {
+  useEffect(() => {
+    HotUpdater.checkForUpdate({
+      updateStrategy: "appVersion",
+      requestHeaders: {
+        Authorization: "Bearer <your-access-token>",
+      },
+    }).then(async (updateInfo) => {
+      if (updateInfo) {
+        await updateInfo.updateBundle();
+        if (updateInfo.shouldForceUpdate) {
+          await HotUpdater.reload();
+        }
+      }
+    }).catch((error) => {
+      console.error("Failed to check for update:", error);
+    });
+  }, []);
+
+  return <YourApp />;
+}
+
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+});
+
+export default App;
+```
+
+`HotUpdater.init()` configures Hot Updater without the unnecessary HOC that
+manual `wrap` would create:
+
+```tsx
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+});
+```
+
+Without `wrap` or `init`, calling `checkForUpdate` will throw an error with
+instructions on how to fix it.
+
+## Parameters
+
+The `checkForUpdate` function accepts the following optional parameters:
+
+| Parameter         | Type                           | Required | Description                                                                      |
+|-------------------|--------------------------------|----------|----------------------------------------------------------------------------------|
+| `updateStrategy`  | `"appVersion"` \| `"fingerprint"` | ✅        | Update detection strategy for this check. |
+| `requestHeaders`  | `Record<string, string>`       | ❌        | Optional headers to include in the update request.                               |
+| `requestTimeout`  | `number`                       | ❌        | Request timeout in milliseconds (default: 5000).                                 |
+| `onError`         | `(error: Error) => void`       | ❌        | Error callback.                                                                  |
+
+The update source is always from `HotUpdater.wrap()` or `HotUpdater.init()`; it
+cannot be overridden in `checkForUpdate`.
+
+## How It Works
+
+When you call `checkForUpdate`, the function uses the configured `baseURL` and
+the provided `updateStrategy` to construct the appropriate endpoint URL:
+
+* For `updateStrategy: "appVersion"`: `GET {baseURL}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
+* For `updateStrategy: "fingerprint"`: `GET {baseURL}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
+
+For example, if you configured `baseURL: "https://your-update-server.com/api/update-check"` in `wrap`, the function automatically appends the correct path and parameters.
+
+## Return Value
+
+The function returns an object of type `UpdateInfo` or `null` if the app is up to date.
+
+```ts
+export type UpdateStatus = "ROLLBACK" | "UPDATE";
+
+export interface UpdateInfo {
+  id: string;
+  shouldForceUpdate: boolean;
+  fileUrl: string | null;
+  message: string | null;
+  status: UpdateStatus;
+}
+```
+
+### Example Return Value
+
+```json
+{
+  "id": "01952bbd-e7b2-7931-aee8-2e2187caa0ce",
+  "shouldForceUpdate": true,
+  "status": "UPDATE",
+  "fileUrl": "https://example.com/bundles/update.bundle",
+  "message": "This is a test message",
+}
+```

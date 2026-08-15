@@ -1,0 +1,44 @@
+---
+title: "clearCrashHistory"
+description: Clears the crash history to allow retrying previously failed bundles.
+icon: Eraser
+---
+
+## Usage
+
+Use `clearCrashHistory()` to reset the crash history and allow redeploying bundles that previously crashed.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+function AdminPanel() {
+  const handleClearHistory = () => {
+    const result = HotUpdater.clearCrashHistory();
+
+    if (result) {
+      console.log("Crash history cleared successfully");
+    } else {
+      console.log("Failed to clear crash history");
+    }
+  };
+
+  return (
+    <View>
+      <Button title="Clear Crash History" onPress={handleClearHistory} />
+    </View>
+  );
+}
+
+export default HotUpdater.wrap(AdminPanel);
+```
+
+## Return Value
+
+Returns a boolean indicating success.
+
+```typescript
+clearCrashHistory(): boolean
+```
+
+- `true` - Crash history cleared successfully
+- `false` - Failed to clear crash history

@@ -14,7 +14,7 @@ import { VersionTag } from "@/components/version-tag";
 import { source } from "@/lib/source";
 
 const githubBaseUrl =
-  "https://github.com/gronxb/hot-updater/blob/main/docs/content/docs";
+  "https://github.com/gronxb/hot-updater/blob/next/docs/content/docs";
 
 const getMarkdownUrl = (slugs: string[]) => {
   const segments = slugs.length > 0 ? slugs : ["index"];

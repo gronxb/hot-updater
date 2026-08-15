@@ -7,7 +7,9 @@ import type { Plugin, ResolvedConfig } from "vite";
 interface LLMsTxtPluginOptions {
   baseUrl: string;
   contentDir?: string;
+  generateIndex?: boolean;
   outputDir?: string;
+  urlPrefix?: string;
 }
 
 interface DocPage {
@@ -29,7 +31,9 @@ export function llmsTxtPlugin(options: LLMsTxtPluginOptions): Plugin {
   const {
     baseUrl,
     contentDir = "content/docs",
+    generateIndex = true,
     outputDir = "dist/public",
+    urlPrefix,
   } = options;
 
   let config: ResolvedConfig;
@@ -38,20 +42,24 @@ export function llmsTxtPlugin(options: LLMsTxtPluginOptions): Plugin {
     const contentRoot = join(process.cwd(), contentDir);
     const outputRoot = join(process.cwd(), outputDir);
     const categories = collectCategories(contentRoot);
-    const pages = collectDocPages(contentRoot, categories);
+    const pages = collectDocPages(contentRoot, categories, urlPrefix);
 
     await mkdir(outputRoot, { recursive: true });
     await Promise.all([
-      writeFile(
-        join(outputRoot, "llms.txt"),
-        generateLLMsIndex(pages, categories, baseUrl),
-        "utf-8",
-      ),
-      writeFile(
-        join(outputRoot, "llms-full.txt"),
-        generateLLMsFull(pages, baseUrl),
-        "utf-8",
-      ),
+      ...(generateIndex
+        ? [
+            writeFile(
+              join(outputRoot, "llms.txt"),
+              generateLLMsIndex(pages, categories, baseUrl),
+              "utf-8",
+            ),
+            writeFile(
+              join(outputRoot, "llms-full.txt"),
+              generateLLMsFull(pages, baseUrl),
+              "utf-8",
+            ),
+          ]
+        : []),
       ...pages.flatMap((page) => [
         writeMarkdownPage(outputRoot, page.markdownUrl, page, baseUrl),
         writeMarkdownPage(outputRoot, page.apiMarkdownUrl, page, baseUrl),
@@ -95,12 +103,13 @@ function collectCategories(contentRoot: string) {
 function collectDocPages(
   contentRoot: string,
   categories: Map<string, Category>,
+  urlPrefix?: string,
 ) {
   const pages: DocPage[] = [];
 
   for (const [categorySlug, category] of categories) {
     const categoryRoot = join(contentRoot, categorySlug);
-    const categoryPages = collectMdxFiles(categoryRoot, contentRoot);
+    const categoryPages = collectMdxFiles(categoryRoot, contentRoot, urlPrefix);
     const ordered = orderPages(categoryPages, category.pages);
 
     pages.push(
@@ -114,7 +123,7 @@ function collectDocPages(
   return pages;
 }
 
-function collectMdxFiles(dir: string, contentRoot: string) {
+function collectMdxFiles(dir: string, contentRoot: string, urlPrefix?: string) {
   if (!existsSync(dir)) return [];
 
   const pages: Omit<DocPage, "category">[] = [];
@@ -123,7 +132,7 @@ function collectMdxFiles(dir: string, contentRoot: string) {
     const fullPath = join(dir, entry.name);
 
     if (entry.isDirectory()) {
-      pages.push(...collectMdxFiles(fullPath, contentRoot));
+      pages.push(...collectMdxFiles(fullPath, contentRoot, urlPrefix));
       continue;
     }
 
@@ -139,17 +148,19 @@ function collectMdxFiles(dir: string, contentRoot: string) {
     const markdownSegments = sourcePath.split("/");
     const markdownLast = markdownSegments.at(-1)!;
     const markdownPath = [
+      ...(urlPrefix ? [urlPrefix] : []),
       ...markdownSegments.slice(0, -1),
       `${markdownLast}.md`,
     ].join("/");
+    const docsPath = [urlPrefix, sourcePath].filter(Boolean).join("/");
     const title =
       frontmatter.title || humanize(entry.name.replace(/\.mdx?$/, ""));
 
     pages.push({
       title,
       description: frontmatter.description || "",
-      pageUrl: `/docs/${sourcePath}`,
-      markdownUrl: `/docs/${sourcePath}.md`,
+      pageUrl: `/docs/${docsPath}`,
+      markdownUrl: `/docs/${docsPath}.md`,
       apiMarkdownUrl: `/api/markdown/${markdownPath}`,
       body,
     });

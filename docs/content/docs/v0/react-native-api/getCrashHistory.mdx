@@ -1,0 +1,136 @@
+---
+title: "getCrashHistory"
+description: Returns a list of bundle IDs that previously caused crashes.
+icon: AlertTriangle
+---
+
+## Usage
+
+Use `getCrashHistory()` to retrieve the list of bundles that crashed and triggered automatic rollback.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+function App() {
+  const checkCrashes = () => {
+    const crashedBundles = HotUpdater.getCrashHistory();
+
+    if (crashedBundles.length > 0) {
+      console.log("Crashed bundles:", crashedBundles);
+    } else {
+      console.log("No crashed bundles");
+    }
+  };
+
+  return (
+    <View>
+      <Button title="Check Crash History" onPress={checkCrashes} />
+    </View>
+  );
+}
+
+export default HotUpdater.wrap(App);
+```
+
+## Return Value
+
+Returns an array of bundle ID strings. Each ID represents a bundle that failed to load and triggered rollback.
+
+```typescript
+getCrashHistory(): string[]
+```
+
+**Example return value:**
+```typescript
+[
+  "01234567-89ab-cdef-0123-456789abcdef",
+  "12345678-9abc-def0-1234-56789abcdef0"
+]
+```
+
+An empty array means no bundles have crashed.
+
+## Use Cases
+
+### Monitor Deployment Health
+
+Check crash history after deployments to ensure bundles are working correctly.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { useEffect } from "react";
+
+function App() {
+  useEffect(() => {
+    const crashes = HotUpdater.getCrashHistory();
+
+    if (crashes.length > 0) {
+      console.warn(`${crashes.length} bundle(s) have crashed`);
+    }
+  }, []);
+
+  return <YourApp />;
+}
+```
+
+### Send to Monitoring Service
+
+Track crash frequency and bundle IDs in your analytics platform.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { useEffect } from "react";
+import * as Sentry from "@sentry/react-native";
+
+function App() {
+  useEffect(() => {
+    const crashes = HotUpdater.getCrashHistory();
+
+    if (crashes.length > 0) {
+      // Send to monitoring service
+      Sentry.captureMessage("Bundle crashes detected", {
+        level: "warning",
+        extra: {
+          crashedBundles: crashes,
+          count: crashes.length,
+        },
+      });
+    }
+  }, []);
+
+  return <YourApp />;
+}
+```
+
+## Example: Logging Crashes
+
+Create a utility function to log crash history with timestamps.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+function logCrashHistory() {
+  const crashes = HotUpdater.getCrashHistory();
+
+  if (crashes.length === 0) {
+    console.log("No crashed bundles");
+    return;
+  }
+
+  console.log("=== Crash History ===");
+  let i = 1;
+  for (const bundleId of crashes) {
+    console.log(`${i}. Bundle ID: ${bundleId}`);
+    i++;
+  }
+  console.log(`Total crashes: ${crashes.length}`);
+}
+
+// Call on app start or from debug panel
+logCrashHistory();
+```
+
+## Related APIs
+
+- [`clearCrashHistory()`](./clearCrashHistory) - Clear the crash history to allow retrying bundles
+- [`wrap()`](./wrap) - Required for automatic crash detection and rollback

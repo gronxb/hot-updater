@@ -4,3 +4,4 @@
 
 # Redirect root docs to introduction
 /docs /docs/get-started/introduction 302
+/docs/v0 /docs/v0/get-started/introduction 302

@@ -1,0 +1,112 @@
+---
+title: "S3"
+description: Build a self-hosted Hot Updater server with S3-compatible object storage.
+icon: aws
+version: "v0.22.0"
+---
+
+## Installation
+
+Install the AWS plugin.
+
+```package-install
+npm install @hot-updater/aws --save-dev
+```
+
+## Setup
+
+Create a `.env.hot-updater` file with your S3 credentials.
+
+```bash title=".env.hot-updater"
+S3_REGION=us-east-1
+S3_ACCESS_KEY_ID=your-access-key
+S3_SECRET_ACCESS_KEY=your-secret-key
+S3_BUCKET_NAME=hot-updater
+```
+
+<Callout>
+For S3-compatible services like Cloudflare R2, MinIO, and DigitalOcean Spaces,
+set `S3_ENDPOINT` and use the region expected by that provider.
+</Callout>
+
+## Hot Updater Configuration
+
+Create the Hot Updater instance:
+
+```typescript title="src/hotUpdater.ts"
+import { createHotUpdater } from "@hot-updater/server";
+import { s3Database, s3Storage } from "@hot-updater/aws";
+
+const s3Config = {
+  region: process.env.S3_REGION ?? "auto",
+  endpoint: process.env.S3_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.S3_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY!,
+  },
+  bucketName: process.env.S3_BUCKET_NAME!,
+};
+
+export const hotUpdater = createHotUpdater({
+  database: s3Database(s3Config),
+  storages: [s3Storage(s3Config)],
+  basePath: "/hot-updater",
+});
+```
+
+## Schema Management
+
+No schema generation or migration command is required. `s3Database` stores
+bundle metadata as JSON objects in your S3 bucket.
+
+<Callout type="warn">
+Make sure the server credentials can list, read, write, and delete objects in
+the metadata bucket.
+</Callout>
+
+## CLI Configuration
+
+Configure your CLI to use this self-hosted server.
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "@hot-updater/core";
+import { bare } from "@hot-updater/bare";
+import { s3Storage } from "@hot-updater/aws";
+import { standaloneRepository } from "@hot-updater/standalone";
+
+export default defineConfig({
+  build: bare(),
+  storage: s3Storage({
+    region: process.env.S3_REGION ?? "auto",
+    endpoint: process.env.S3_ENDPOINT,
+    credentials: {
+      accessKeyId: process.env.S3_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.S3_BUCKET_NAME!,
+  }),
+  database: standaloneRepository({
+    baseUrl: "http://localhost:3000/hot-updater",
+  }),
+});
+```
+
+<Callout type="warn">
+The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
+</Callout>
+
+## API Endpoints
+
+The server automatically creates these endpoints:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/hot-updater/version` | Get server version |
+| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
+| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
+| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
+| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
+| POST | `/hot-updater/api/bundles` | Create bundles |
+| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
+| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
+| GET | `/hot-updater/api/bundles/channels` | List all channels |

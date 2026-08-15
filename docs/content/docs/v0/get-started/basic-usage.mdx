@@ -1,0 +1,548 @@
+---
+title: "Basic Usage"
+description: "This guide walks you through the essential steps to integrate hot-updater into your React Native project."
+icon: Code
+---
+
+import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
+
+## Provider Setup
+
+Before configuring the build plugin, you need to set up a provider to handle updates. Hot-updater supports multiple managed providers that handle storage and update distribution.
+
+### Step 1: Install hot-updater
+
+First, install the hot-updater package:
+
+```package-install
+npm install hot-updater --save-dev
+```
+
+### Step 2: Initialize Your Provider
+
+Run the initialization command to set up your provider interactively:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive CLI will guide you through:
+
+1. **Build Plugin Selection**: Choose your build system (Bare/React Native CLI, Rock, or Expo)
+2. **Provider Selection**: Select from available providers:
+   - [Supabase](/docs/v0/managed/supabase)
+   - [Firebase](/docs/v0/managed/firebase)
+   - [Cloudflare](/docs/v0/managed/cloudflare)
+   - [AWS](/docs/v0/managed/aws)
+
+3. **Provider Configuration**: Follow provider-specific prompts for authentication and resource setup.
+
+### Step 3: Generated Configuration
+
+After initialization, two files will be generated:
+
+**`.env.hotupdater`** - Contains provider credentials and configuration:
+
+```
+# Example for Supabase
+HOT_UPDATER_SUPABASE_URL=https://your-project.supabase.co
+HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY=your-service-role-or-secret-key
+HOT_UPDATER_SUPABASE_BUCKET_NAME=your-bucket-name
+```
+
+**`hot-updater.config.ts`** - Contains provider integration settings:
+
+The example below uses the Bare (React Native CLI) build plugin. If you selected Rock or Expo, only the `build` field changes as shown in the build configuration section below.
+
+```ts title="hot-updater.config.ts"
+import { bare } from "@hot-updater/bare";
+import { supabaseStorage, supabaseDatabase } from "@hot-updater/supabase";
+import { defineConfig } from "hot-updater";
+import { config } from "dotenv";
+
+config({ path: ".env.hotupdater" });
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  storage: supabaseStorage({
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    supabaseServiceRoleKey:
+      process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
+  }),
+  database: supabaseDatabase({
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    supabaseServiceRoleKey:
+      process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+  }),
+});
+```
+
+<Callout type="info">
+For detailed provider-specific setup instructions, see the [Self-Hosting (Managed)](/docs/v0/managed/supabase) documentation.
+</Callout>
+
+<Callout type="warn">
+The environment variables in `.env` are used only during deployment, not in your app bundle. However, if you're using `react-native-dotenv`, review the [Security guidelines](/docs/v0/policy/security#plugin-token-protection).
+</Callout>
+
+### Step 4: Wrap Your Application
+
+Add the HotUpdater wrapper to your main application component:
+
+```tsx title="App.tsx"
+import { HotUpdater } from "@hot-updater/react-native";
+
+function App() {
+  return (
+    <View>
+      <Text>Hello World</Text>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({
+  baseURL: "https://your-update-server-url/api/check-update", // [!code ++]
+  updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
+  requestHeaders: {
+    // Optional: Add custom headers if needed
+  },
+  fallbackComponent: ({ progress, status }) => (
+    <View
+      style={{
+        flex: 1,
+        padding: 20,
+        borderRadius: 10,
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
+      }}
+    >
+      <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+        {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
+      </Text>
+      {progress > 0 ? (
+        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+          {Math.round(progress * 100)}%
+        </Text>
+      ) : null}
+    </View>
+  ),
+})(App);
+```
+
+<Callout type="info">
+The update server URL will be provided after running `npx hot-updater init`. Check your terminal output or provider console for the correct URL.
+</Callout>
+
+## Build Configuration
+
+Hot Updater now configures bundling through the `build` field in `hot-updater.config.ts`. Legacy build-time plugin examples are no longer used.
+
+<Tabs items={['Bare (React Native CLI)', 'Rock', 'Expo']}>
+  <Tab value="Bare (React Native CLI)">
+
+Use the Bare build plugin for standard React Native CLI projects:
+
+```ts title="hot-updater.config.ts"
+import { bare } from "@hot-updater/bare";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  build: bare({
+    enableHermes: true,
+  }),
+  // ... storage and database
+});
+```
+
+No additional Babel plugin setup is required.
+
+  </Tab>
+  <Tab value="Rock">
+
+Use the Rock build plugin for Rock projects:
+
+```ts title="hot-updater.config.ts"
+import { rock } from "@hot-updater/rock";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  build: rock(),
+  // ... storage and database
+});
+```
+
+No additional Babel plugin setup is required.
+
+  </Tab>
+  <Tab value="Expo">
+
+Use the Expo build plugin in `hot-updater.config.ts`:
+
+```ts title="hot-updater.config.ts"
+import { expo } from "@hot-updater/expo";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  build: expo(),
+  // ... storage and database
+});
+```
+
+Then add the config plugin to your `app.json`:
+
+```json title="app.json"
+{
+  "expo": {
+    "plugins": [
+      [
+        "@hot-updater/react-native",
+        {
+          "channel": "production"
+        }
+      ]
+    ]
+  }
+}
+```
+
+Run prebuild to apply the native changes:
+
+```package-install
+npx expo prebuild
+```
+
+<Callout>
+For Expo projects, the config plugin automatically generates the native code configuration described in the next section.
+</Callout>
+
+<Callout type="info">
+If you use Expo DOM components (`use dom`), see [Expo DOM Components (`use dom`)](/docs/v0/build-plugins/expo#expo-dom-components-use-dom) for the additional Babel plugin setup.
+</Callout>
+
+  </Tab>
+</Tabs>
+
+## Native Code Setup
+
+To complete the integration of `hot-updater`, you'll need to add native code modifications for both Android and iOS platforms. This step ensures the `hot-updater` can interact with your app's underlying framework to apply updates seamlessly.
+
+<Callout type="info">
+If you're using Expo with the plugin configured above, this step is handled automatically during prebuild.
+</Callout>
+
+### Android
+
+<Tabs items={['Kotlin (RN 0.82+)', 'Kotlin', 'Java']}>
+  <Tab value="Kotlin (RN 0.82+)">
+
+For React Native 0.82 and above, modify your `MainApplication.kt`:
+
+```kt title="android/app/src/main/java/com/<your-app-name>/MainApplication.kt"
+package com.hotupdaterexample
+
+import android.app.Application
+import com.facebook.react.PackageList
+import com.facebook.react.ReactApplication
+import com.facebook.react.ReactHost
+import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
+import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
+import com.hotupdater.HotUpdater
+
+class MainApplication : Application(), ReactApplication {
+
+  override val reactHost: ReactHost by lazy {
+    getDefaultReactHost(
+      context = applicationContext,
+      packageList =
+        PackageList(this).packages.apply {
+          // Packages that cannot be autolinked yet can be added manually here, for example:
+          // add(MyReactNativePackage())
+        },
+      jsBundleFilePath = HotUpdater.getJSBundleFile(applicationContext), // [!code ++]
+    )
+  }
+
+  override fun onCreate() {
+    super.onCreate()
+    loadReactNative(this)
+  }
+}
+```
+
+  </Tab>
+  <Tab value="Kotlin">
+
+For React Native versions below 0.82, modify your `MainApplication.kt`:
+
+```kt title="android/app/src/main/java/com/<your-app-name>/MainApplication.kt"
+package com.hotupdaterexample
+
+import android.app.Application
+import com.facebook.react.PackageList
+import com.facebook.react.ReactApplication
+import com.facebook.react.ReactHost
+import com.facebook.react.ReactNativeHost
+import com.facebook.react.ReactPackage
+import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.load
+import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
+import com.facebook.react.defaults.DefaultReactNativeHost
+import com.facebook.react.soloader.OpenSourceMergedSoMapping
+import com.facebook.soloader.SoLoader
+import com.hotupdater.HotUpdater // [!code ++]
+
+class MainApplication : Application(), ReactApplication {
+
+  override val reactNativeHost: ReactNativeHost =
+      object : DefaultReactNativeHost(this) {
+        override fun getPackages(): List<ReactPackage> =
+            PackageList(this).packages.apply {
+              // Packages that cannot be autolinked yet can be added manually here, for example:
+              // add(MyReactNativePackage())
+            }
+
+        override fun getJSMainModuleName(): String = "index"
+
+        override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
+
+        override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
+        override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
+
+        override fun getJSBundleFile(): String? {  // [!code ++]
+          return HotUpdater.getJSBundleFile(applicationContext)  // [!code ++]
+        }  // [!code ++]
+      }
+
+  override val reactHost: ReactHost
+    get() = getDefaultReactHost(applicationContext, reactNativeHost)
+
+  override fun onCreate() {
+    super.onCreate()
+    SoLoader.init(this, OpenSourceMergedSoMapping)
+    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+      // If you opted-in for the New Architecture, we load the native entry point for this app.
+      load()
+    }
+  }
+}
+```
+
+  </Tab>
+  <Tab value="Java">
+
+For Java-based projects, modify your `MainApplication.java`:
+
+```java title="android/app/src/main/java/com/<your-app-name>/MainApplication.java"
+package com.hotupdaterexample;
+
+import android.app.Application;
+import com.facebook.react.PackageList;
+import com.facebook.react.ReactApplication;
+import com.facebook.react.ReactNativeHost;
+import com.facebook.react.ReactPackage;
+import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint;
+import com.facebook.react.defaults.DefaultReactNativeHost;
+import com.facebook.soloader.SoLoader;
+import java.util.List;
+import com.hotupdater.HotUpdater;  // [!code ++]
+
+public class MainApplication extends Application implements ReactApplication {
+
+  private final ReactNativeHost mReactNativeHost =
+      new DefaultReactNativeHost(this) {
+        @Override
+        public boolean getUseDeveloperSupport() {
+          return BuildConfig.DEBUG;
+        }
+
+        @Override
+        protected List<ReactPackage> getPackages() {
+          @SuppressWarnings("UnnecessaryLocalVariable")
+          List<ReactPackage> packages = new PackageList(this).getPackages();
+          // Packages that cannot be autolinked yet can be added manually here, for example:
+          return packages;
+        }
+
+        @Override
+        protected String getJSMainModuleName() {
+          return "index";
+        }
+
+        @Override // [!code ++]
+        protected String getJSBundleFile() {  // [!code ++]
+            return HotUpdater.Companion.getJSBundleFile(this.getApplication().getApplicationContext());  // [!code ++]
+        }  // [!code ++]
+
+        @Override
+        protected boolean isNewArchEnabled() {
+          return BuildConfig.IS_NEW_ARCHITECTURE_ENABLED;
+        }
+
+        @Override
+        protected Boolean isHermesEnabled() {
+          return BuildConfig.IS_HERMES_ENABLED;
+        }
+      };
+
+  @Override
+  public ReactNativeHost getReactNativeHost() {
+    return mReactNativeHost;
+  }
+
+  @Override
+  public void onCreate() {
+    super.onCreate();
+    SoLoader.init(this, /* native exopackage */ false);
+
+    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+      // If you opted-in for the New Architecture, we load the native entry point for this app.
+      DefaultNewArchitectureEntryPoint.load();
+    }
+    ReactNativeFlipper.initializeFlipper(this, getReactNativeHost().getReactInstanceManager());
+  }
+}
+```
+
+  </Tab>
+</Tabs>
+
+### iOS
+
+<Tabs items={['Swift', 'Objective-C']}>
+  <Tab value="Swift">
+
+For Swift projects, modify your `AppDelegate.swift`:
+
+```swift title="ios/<your-app-name>/AppDelegate.swift"
+import UIKit
+import React
+import React_RCTAppDelegate
+import ReactAppDependencyProvider
+import HotUpdater // [!code ++]
+
+@main
+class AppDelegate: RCTAppDelegate {
+  override func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+    self.moduleName = "HotUpdaterExample"
+    self.dependencyProvider = RCTAppDependencyProvider()
+
+    // You can add your custom initial props in the dictionary below.
+    // They will be passed down to the ViewController used by React Native.
+    self.initialProps = [:]
+
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  override func sourceURL(for bridge: RCTBridge) -> URL? {
+    self.bundleURL()
+  }
+
+  override func bundleURL() -> URL? {
+#if DEBUG
+    RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
+#else
+    Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
+    HotUpdater.bundleURL() // [!code ++]
+#endif
+  }
+}
+```
+
+  </Tab>
+  <Tab value="Objective-C">
+
+For Objective-C projects, modify your `AppDelegate.mm`:
+
+```objc title="ios/<your-app-name>/AppDelegate.mm"
+#import "AppDelegate.h"
+#import <HotUpdater/HotUpdater.h> // [!code ++]
+#import <React/RCTBundleURLProvider.h>
+
+@implementation AppDelegate
+
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
+{
+  self.moduleName = @"HotUpdaterExample";
+  // You can add your custom initial props in the dictionary below.
+  // They will be passed down to the ViewController used by React Native.
+  self.initialProps = @{};
+
+  return [super application:application didFinishLaunchingWithOptions:launchOptions];
+}
+
+- (NSURL *)sourceURLForBridge:(RCTBridge *)bridge
+{
+  return [self bundleURL];
+}
+
+- (NSURL *)bundleURL
+{
+#if DEBUG
+  return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"];
+#else
+  return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"]; // [!code --]
+  return [HotUpdater bundleURL]; // [!code ++]
+#endif
+}
+
+@end
+```
+
+  </Tab>
+</Tabs>
+
+<Callout type="info">
+For brownfield apps where the JS bundle is embedded in an XCFramework, you can pass a custom `Bundle` instance to lookup the JavaScript bundle resource: `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
+</Callout>
+
+## Next Steps
+
+Now that you've completed the setup, you can start deploying updates:
+
+### Deploy Your First Update
+
+Build and publish an update to your users:
+
+```package-install
+npx hot-updater deploy
+```
+
+This default command deploys iOS first and Android second. Use `-p ios` or
+`-p android` when you want to target only one platform.
+
+Use the interactive mode for guided deployment:
+
+```package-install
+npx hot-updater deploy -i
+```
+
+For emergency updates with forced reload:
+
+```package-install
+npx hot-updater deploy -i -f
+```
+
+For staged rollouts, set the initial audience percentage explicitly:
+
+```package-install
+npx hot-updater deploy -p ios -r 25
+```
+
+### Monitor and Manage Updates
+
+Open the console to track deployments, manage versions, and perform rollbacks:
+
+```package-install
+npx hot-updater console
+```
+
+### Explore Advanced Features
+
+Learn more about advanced capabilities:
+
+- [Update Strategies](/docs/v0/guides/update-strategies) - Choose between app version and fingerprint strategies
+- [Default Channel Setup](/docs/v0/guides/channel-management) - Configure the app's default release channel
+- [Runtime Channel Switch](/docs/v0/guides/runtime-channel-switch) - Temporarily move a device to another channel without rebuilding
+- [Simulator Testing](/docs/v0/guides/simulator-test) - Test updates in release mode before production
+- [Security Best Practices](/docs/v0/policy/security) - Secure your update infrastructure
