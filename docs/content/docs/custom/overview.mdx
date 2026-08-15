@@ -7,7 +7,7 @@ version: "v0.22.0"
 
 ## Installation
 
-Install the server package and standalone plugin.
+Install the server package and standalone CLI repository.
 
 ```package-install
 npm install @hot-updater/server @hot-updater/standalone --save-dev
@@ -97,7 +97,14 @@ The server automatically uses the correct plugin to decode each `storageUri` bas
 `createHotUpdater` exposes runtime features through one `features` object:
 
 - `updateCheck`: update-check endpoints used by React Native clients
-- `bundles`: bundle management endpoints used by the CLI `standaloneRepository` plugin
+- `bundles`: bundle management endpoints used by the CLI `standaloneRepository`
+
+Optional server behavior is configured separately under `features`:
+
+- `analytics`: mounts event ingestion and Analytics query routes backed by
+  `database.models.analytics`
+- `clientAccessKeys`: authenticates update checks and Analytics ingestion
+  through `database.models.clientAccessKeys`
 
 `updateCheck` is mounted by default. `bundles` is disabled by default and must
 be enabled explicitly when the CLI needs bundle-management APIs. When
@@ -110,11 +117,17 @@ export const hotUpdater = createHotUpdater({
   storages: [s3Storage({ /* storage config */ })],
   basePath: "/hot-updater",
   features: {
+    analytics: true,
+    clientAccessKeys: true,
     updateCheck: true,
     bundles: true,
   },
 });
 ```
+
+Use `analytics: { queryAccess: "public" }` only when Analytics query routes
+are intentionally public, such as a local fixture. `analytics: true` keeps
+queries protected. `false` or an omitted feature disables it.
 
 If you want to hide bundle management endpoints but keep `/version`, disable the
 `bundles` group:

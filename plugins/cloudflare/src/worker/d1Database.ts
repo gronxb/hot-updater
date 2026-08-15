@@ -1,7 +1,7 @@
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 
-import { createD1Implementation } from "./d1Implementation";
+import { createD1Implementation } from "../d1Implementation";
 
 type D1Result = {
   readonly results?: readonly unknown[];
@@ -24,28 +24,27 @@ export interface CloudflareWorkerDatabaseEnv {
   readonly DB: D1Like;
 }
 
-export const d1WorkerDatabase = (db: D1Like) => {
+export const d1Database = (database: D1Like) => {
   const implementation = createD1Implementation({
     async query(sql, params) {
-      const result = await db
+      const result = await database
         .prepare(sql)
         .bind(...params)
         .all();
       return result.results ?? [];
     },
     async batch(statements) {
-      const results = await db.batch(
-        statements.map(({ sql, params }) => db.prepare(sql).bind(...params)),
+      const results = await database.batch(
+        statements.map(({ sql, params }) =>
+          database.prepare(sql).bind(...params),
+        ),
       );
       return results.map(({ results }) => results ?? []);
     },
   });
-  const adapter = createDatabasePluginAdapter(
-    "d1WorkerDatabase",
-    implementation,
-  );
+  const adapter = createDatabasePluginAdapter("d1Database", implementation);
   return createDatabasePlugin({
-    name: "d1WorkerDatabase",
+    name: "d1Database",
     models: adapter.models,
     queries: adapter.queries,
     commit: adapter.commit,

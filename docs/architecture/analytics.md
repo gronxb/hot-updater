@@ -21,6 +21,9 @@ ingestion route and the Analytics query routes. `queryAccess` defaults to
 authentication is configured. `"public"` is intended for explicitly public
 deployments and local test fixtures.
 
+`features.updateCheck`, `features.bundles`, `features.analytics`, and
+`features.clientAccessKeys` are configured through the same feature boundary.
+
 The database plugin owns physical storage and migration for `bundle_events`.
 The server owns event input validation, bounded scans, aggregation, installation
 search, and HTTP responses. Every database provider therefore exposes the same

@@ -1,8 +1,8 @@
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { describe, expect, it, vi } from "vitest";
 
+import { supabaseDatabase as supabaseEdgeDatabase } from "./edge";
 import { supabaseDatabase } from "./supabaseDatabase";
-import { supabaseEdgeFunctionDatabase } from "./supabaseEdgeFunctionDatabase";
 
 // allow: SIZE_OK — hoisted PostgREST query/filter state machine for public plugin conformance.
 const supabaseMock = vi.hoisted(() => {
@@ -609,7 +609,7 @@ setupDatabasePluginTestSuite({
 
 describe("supabase edge database", () => {
   it("exposes the same nested database contract as the root entrypoint", () => {
-    const database = supabaseEdgeFunctionDatabase({
+    const database = supabaseEdgeDatabase({
       supabaseUrl: "https://test.supabase.invalid",
       supabaseServiceRoleKey: "test-service-role-key",
     });

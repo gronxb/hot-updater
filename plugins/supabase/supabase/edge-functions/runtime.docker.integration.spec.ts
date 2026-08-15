@@ -1264,7 +1264,7 @@ const writeSupabaseRuntimeFiles = async ({
       "@hot-updater/server": pathToFileURL(
         path.join(WORKSPACE_ROOT, "packages/server/dist/index.mjs"),
       ).href,
-      "@hot-updater/supabase": pathToFileURL(
+      "@hot-updater/supabase/edge": pathToFileURL(
         path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),
       ).href,
     },
@@ -1273,8 +1273,8 @@ const writeSupabaseRuntimeFiles = async ({
   await writeFile(
     path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),
     `
-export { supabaseEdgeFunctionDatabase } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseEdgeFunctionDatabase.ts")).href)};
-export { supabaseEdgeFunctionStorage } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseEdgeFunctionStorage.ts")).href)};
+export { supabaseDatabase } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseDatabase.ts")).href)};
+export { supabaseEdgeFunctionStorage as supabaseStorage } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseEdgeFunctionStorage.ts")).href)};
 `.trim(),
   );
   await writeFile(

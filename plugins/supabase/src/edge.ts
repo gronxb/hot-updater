@@ -1,2 +1,8 @@
-export { supabaseEdgeFunctionDatabase } from "./supabaseEdgeFunctionDatabase";
-export { supabaseEdgeFunctionStorage } from "./supabaseEdgeFunctionStorage";
+export {
+  supabaseDatabase,
+  type SupabaseDatabaseConfig,
+} from "./supabaseDatabase";
+export {
+  type SupabaseEdgeFunctionStorageConfig as SupabaseStorageConfig,
+  supabaseEdgeFunctionStorage as supabaseStorage,
+} from "./supabaseEdgeFunctionStorage";

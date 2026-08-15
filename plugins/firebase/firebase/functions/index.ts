@@ -36,6 +36,7 @@ const hotUpdater = createHotUpdater({
   ],
   basePath: HOT_UPDATER_BASE_PATH,
   features: {
+    analytics: true,
     updateCheck: true,
     bundles: false,
   },

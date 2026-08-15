@@ -1,4 +1,5 @@
 import { createHotUpdater } from "@hot-updater/server";
+import { env } from "cloudflare:workers";
 import { Hono } from "hono";
 
 import {
@@ -34,7 +35,7 @@ const resolveRequestOrigin = (context?: WorkerContext) => {
 };
 
 const hotUpdater = createHotUpdater<WorkerContext>({
-  database: d1Database(),
+  database: d1Database(env.DB),
   storages: [
     r2Storage<WorkerContext>({
       publicBaseUrl: resolveRequestOrigin,
@@ -42,6 +43,7 @@ const hotUpdater = createHotUpdater<WorkerContext>({
   ],
   basePath: HOT_UPDATER_BASE_PATH,
   features: {
+    analytics: true,
     updateCheck: true,
     bundles: false,
   },

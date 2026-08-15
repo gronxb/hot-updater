@@ -49,6 +49,25 @@ export default defineConfig({
 });
 ```
 
+## Worker Runtime Usage
+
+The root export above is for `hot-updater.config.ts` and accesses D1 through
+the Cloudflare API. Inside a Cloudflare Worker, import the same provider name
+from the `/worker` subpath and pass the native D1 binding at the
+`createHotUpdater` boundary:
+
+```typescript
+import { d1Database } from "@hot-updater/cloudflare/worker";
+import { createHotUpdater } from "@hot-updater/server";
+import { env } from "cloudflare:workers";
+
+export const hotUpdater = createHotUpdater({
+  database: d1Database(env.DB),
+  features: { analytics: true },
+  // ... other options
+});
+```
+
 ## Complete Example
 
 Combined R2 storage and D1 database:

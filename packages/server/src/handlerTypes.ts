@@ -76,6 +76,9 @@ export interface HandlerFeatures {
    * - `GET /app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort`
    *
    * @default true
+   *
+   * This only controls the core route group. Optional authentication for
+   * these routes is configured through `features.clientAccessKeys`.
    */
   readonly updateCheck?: boolean;
   /**
@@ -91,6 +94,9 @@ export interface HandlerFeatures {
    * - `DELETE /api/bundles/:id`
    *
    * @default false
+   *
+   * Analytics and client access-key behavior are not route groups. Configure
+   * them through `features.analytics` and `features.clientAccessKeys`.
    */
   readonly bundles?: boolean;
 }

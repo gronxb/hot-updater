@@ -63,9 +63,31 @@ legacy `/api/bundles/channels` route. Standalone remains a narrower remote
 contract. The Console can create Channels and request safe deletion; a concurrent
 bundle reference is reported as `not_empty` without losing data.
 
+Official providers implement the fixed bundle access patterns used by the
+shared client: exact domain filters, id ordering, bounded pagination, row
+counts, patch lookup by owner ids, and atomic ordered changes across official
+models. Arbitrary
+distinct, projection, connector, and string-comparison query DSL operations are
+no longer part of the public database plugin contract. Cloudflare D1 rejects
+malformed count results instead of returning zero.
+
 The shared database client resolves the canonical Channel row before bundle
 writes, keeps `channel` and `channel_id` synchronized on moves, and uses the
 optional `queries.getUpdateInfo` optimization without exposing provider query
 languages. `@hot-updater/test-utils` now publishes conformance coverage for
 all-model commits, rollback, Channel persistence, canonical concurrent inserts,
 safe deletion, and the absence of bundle-scan channel reads.
+
+Runtime-specific composition entrypoints keep the same provider names behind
+explicit package subpaths. `@hot-updater/cloudflare/worker` accepts a native D1
+binding through `d1Database(database)`, while `@hot-updater/supabase/edge`
+exports the Edge-compatible `supabaseDatabase` and `supabaseStorage`. Root
+entrypoints remain the configuration-time providers.
+
+Self-hosted runtimes configure all route groups and optional behavior through
+`createHotUpdater({ features })`. `features.analytics` mounts Analytics
+ingestion and query routes backed by `database.models.analytics`, while
+`features.clientAccessKeys` protects update checks and Analytics ingestion
+through `database.models.clientAccessKeys`. The CLI-only
+`standaloneRepository` stays a bundle repository; the physical database passed
+to the self-hosted `createHotUpdater` instance owns the full official contract.

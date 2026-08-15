@@ -15,6 +15,7 @@ const createTestHotUpdater = () =>
     storages: [mockStorage({})],
     basePath: HOT_UPDATER_BASE_PATH,
     features: {
+      analytics: true,
       updateCheck: true,
       bundles: false,
     },
@@ -133,5 +134,36 @@ describe("cloudflare worker runtime integration", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Not found",
     });
+  });
+
+  it("mounts Analytics as a feature while keeping query routes protected", async () => {
+    currentHotUpdater = createTestHotUpdater();
+
+    const ingestion = await fetchApp(
+      new Request(`https://example.com${HOT_UPDATER_BASE_PATH}/events`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          appVersion: "1.0.0",
+          channel: "production",
+          cohort: "default",
+          fingerprintHash: null,
+          fromBundleId: null,
+          installId: "worker-install",
+          platform: "ios",
+          toBundleId: NIL_UUID,
+          type: "UNCHANGED",
+          updateStrategy: null,
+        }),
+      }),
+    );
+    const query = await fetchApp(
+      new Request(
+        `https://example.com${HOT_UPDATER_BASE_PATH}/api/installations/overview`,
+      ),
+    );
+
+    expect(ingestion.status).toBe(204);
+    expect(query.status).toBe(401);
   });
 });

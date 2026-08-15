@@ -25,8 +25,10 @@ Analytics queries, bundle management, or key management.
 
 ## Create a key
 
-The Hot Updater Console creates, lists, and revokes keys through the same
-official database domain. A custom management surface can use the server helper:
+When its database configuration exposes the official domain directly, the Hot
+Updater Console creates, lists, and revokes keys through that domain. The
+bundle-only `standaloneRepository` does not proxy key management. A self-hosted
+management surface can use the server helper:
 
 ```ts
 import { createClientAccessKey } from "@hot-updater/server";
@@ -50,3 +52,9 @@ management with your application or framework authentication.
 
 Missing, malformed, unknown, and revoked keys return `401`. A database failure
 during credential lookup returns `503` and does not fall back to public access.
+
+`routes` controls only the update-check and bundle-management route groups.
+`features.analytics` mounts Analytics routes, while
+`features.clientAccessKeys` applies authentication to update checks and
+Analytics ingestion. Neither feature makes bundle management or Analytics
+queries public.

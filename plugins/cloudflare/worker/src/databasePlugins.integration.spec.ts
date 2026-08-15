@@ -12,8 +12,8 @@ import {
   vi,
 } from "vitest";
 
-import { d1WorkerDatabase } from "../../src/cloudflareWorkerDatabase";
 import { d1Database } from "../../src/d1Database";
+import { d1Database as d1RuntimeDatabase } from "../../src/worker";
 
 const state = vi.hoisted<{ db: D1Database | undefined }>(() => ({
   db: undefined,
@@ -117,7 +117,7 @@ setupDatabasePluginTestSuite({
 setupDatabasePluginTestSuite({
   name: "cloudflare worker d1 fixed-model database plugin",
   migrate: () => undefined,
-  createPlugin: () => d1WorkerDatabase(env.DB),
+  createPlugin: () => d1RuntimeDatabase(env.DB),
   reset,
   dispose: () => {
     state.db = undefined;
@@ -136,7 +136,7 @@ describe.each([
   },
   {
     name: "cloudflare worker d1",
-    createPlugin: () => d1WorkerDatabase(env.DB),
+    createPlugin: () => d1RuntimeDatabase(env.DB),
   },
 ])("$name Channel deletion", ({ createPlugin }) => {
   beforeAll(() => {
