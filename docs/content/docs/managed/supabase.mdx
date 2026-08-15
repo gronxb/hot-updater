@@ -103,6 +103,25 @@ The generated Supabase migrations enable Row Level Security on Hot Updater
 tables and keep direct table/function access limited to the service role used by
 the CLI and deployed Edge Function.
 
+### Upgrade and rollback
+
+Database Plugin V2 continues to use the existing `bundles` and
+`bundle_patches` schema. Managed Supabase deployments track applied changes
+through Supabase migration history; they do not write or consume the generic
+server migrator's `schema.core` setting. Keep existing migration files
+immutable, and back up the database before applying any pending provider
+migration.
+
+Apply all pending Supabase migrations before upgrading the CLI writer or
+redeploying the Edge Function. Patch-bearing bundle inserts and patch
+replacements use service-role-only database functions so each bundle mutation
+commits atomically; if those functions are not installed, the operation fails
+instead of falling back to sequential writes.
+
+Roll back to an older Hot Updater package set only when it is documented as
+compatible with the upgraded schema. Otherwise, stop writers and restore the
+pre-migration backup.
+
 ## Step 4: Add HotUpdater to Your Project
 
 The HotUpdater component wraps your application, enabling seamless delivery of updates and fallback UI during updates. Follow these steps to integrate it into your App.tsx:

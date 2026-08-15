@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
+import type { Bundle, DatabaseClient } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import { getBundleChildCounts, getBundleChildren } from "./getBundleChildren";
@@ -22,12 +22,13 @@ const createBundle = (overrides: Partial<Bundle>): Bundle => ({
   ...overrides,
 });
 
-function createDatabasePlugin(bundles: Bundle[]) {
+function createDatabaseClient(bundles: Bundle[]) {
   const bundleMap = new Map(bundles.map((bundle) => [bundle.id, bundle]));
 
   return {
-    name: "mockDatabase",
     getChannels: vi.fn(),
+    insertChannel: vi.fn(),
+    deleteChannel: vi.fn(),
     getBundleById: vi.fn(
       async (bundleId: string) => bundleMap.get(bundleId) ?? null,
     ),
@@ -41,11 +42,12 @@ function createDatabasePlugin(bundles: Bundle[]) {
         totalPages: 1,
       },
     })),
-    updateBundle: vi.fn(),
-    appendBundle: vi.fn(),
-    commitBundle: vi.fn(),
-    deleteBundle: vi.fn(),
-  } satisfies DatabasePlugin;
+    getUpdateInfo: vi.fn(),
+    insertBundle: vi.fn(),
+    updateBundleById: vi.fn(),
+    deleteBundleById: vi.fn(),
+    mutate: vi.fn(),
+  } satisfies DatabaseClient;
 }
 
 describe("getBundleChildren", () => {
@@ -84,7 +86,7 @@ describe("getBundleChildren", () => {
         },
       ],
     });
-    const databasePlugin = createDatabasePlugin([
+    const databaseClient = createDatabaseClient([
       patchedBundle,
       unrelatedBundle,
       baseBundle,
@@ -92,7 +94,7 @@ describe("getBundleChildren", () => {
     ]);
 
     await expect(
-      getBundleChildren({ baseBundleId: baseBundle.id }, { databasePlugin }),
+      getBundleChildren({ baseBundleId: baseBundle.id }, { databaseClient }),
     ).resolves.toEqual([patchedBundle]);
   });
 
@@ -120,7 +122,7 @@ describe("getBundleChildren", () => {
         },
       ],
     });
-    const databasePlugin = createDatabasePlugin([
+    const databaseClient = createDatabaseClient([
       patchedBundle,
       baseBundle,
       olderBaseBundle,
@@ -128,7 +130,7 @@ describe("getBundleChildren", () => {
 
     await expect(
       getBundleChildCounts([baseBundle.id, olderBaseBundle.id], {
-        databasePlugin,
+        databaseClient,
       }),
     ).resolves.toEqual({
       [baseBundle.id]: 1,

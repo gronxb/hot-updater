@@ -1,0 +1,173 @@
+import { BlobDatabaseSnapshotError } from "./blobDatabaseErrors";
+import { blobDatabaseBackfillChannelId } from "./blobDatabaseSnapshotRows";
+import {
+  blobArray,
+  blobBoolean,
+  blobMetadataObject,
+  blobNullableString,
+  blobNumber,
+  blobPlatform,
+  blobProperty,
+  blobRecord,
+  blobString,
+  blobStringArray,
+} from "./blobDatabaseValue";
+import type { BundlePatchRow, BundleRow } from "./types";
+
+const legacyBundleFields = new Set([
+  "id",
+  "platform",
+  "shouldForceUpdate",
+  "enabled",
+  "fileHash",
+  "gitCommitHash",
+  "message",
+  "channel",
+  "storageUri",
+  "targetAppVersion",
+  "fingerprintHash",
+  "metadata",
+  "manifestStorageUri",
+  "manifestFileHash",
+  "assetBaseStorageUri",
+  "patches",
+  "patchBaseBundleId",
+  "patchBaseFileHash",
+  "patchFileHash",
+  "patchStorageUri",
+  "rolloutCohortCount",
+  "targetCohorts",
+]);
+const legacyPatchFields = new Set([
+  "baseBundleId",
+  "baseFileHash",
+  "patchFileHash",
+  "patchStorageUri",
+]);
+
+const assertLegacyFields = (
+  value: object,
+  allowedFields: ReadonlySet<string>,
+  source: string,
+): void => {
+  if (Object.keys(value).some((key) => !allowedFields.has(key))) {
+    throw new BlobDatabaseSnapshotError(source);
+  }
+};
+
+const parseLegacyPatch = (
+  value: object,
+  bundleId: string,
+  orderIndex: number,
+  source: string,
+): BundlePatchRow => {
+  assertLegacyFields(value, legacyPatchFields, source);
+  const baseBundleId = blobString(blobProperty(value, "baseBundleId"), source);
+  return {
+    id: `${bundleId}:${baseBundleId}`,
+    bundle_id: bundleId,
+    base_bundle_id: baseBundleId,
+    base_file_hash: blobString(blobProperty(value, "baseFileHash"), source),
+    patch_file_hash: blobString(blobProperty(value, "patchFileHash"), source),
+    patch_storage_uri: blobString(
+      blobProperty(value, "patchStorageUri"),
+      source,
+    ),
+    order_index: orderIndex,
+  };
+};
+
+const legacyScalarPatch = (
+  input: object,
+  bundleId: string,
+  source: string,
+): readonly BundlePatchRow[] => {
+  const baseBundleId = blobProperty(input, "patchBaseBundleId");
+  if (baseBundleId === null || baseBundleId === undefined) return [];
+  return [
+    parseLegacyPatch(
+      {
+        baseBundleId,
+        baseFileHash: blobProperty(input, "patchBaseFileHash"),
+        patchFileHash: blobProperty(input, "patchFileHash"),
+        patchStorageUri: blobProperty(input, "patchStorageUri"),
+      },
+      bundleId,
+      0,
+      source,
+    ),
+  ];
+};
+
+export const parseLegacyBundle = (
+  value: unknown,
+  source: string,
+): {
+  readonly bundle: BundleRow;
+  readonly channelName: string;
+  readonly patches: readonly BundlePatchRow[];
+} => {
+  const input = blobRecord(value, source);
+  assertLegacyFields(input, legacyBundleFields, source);
+  const id = blobString(blobProperty(input, "id"), source);
+  const channelName = blobString(blobProperty(input, "channel"), source);
+  const metadata = blobProperty(input, "metadata");
+  const bundle: BundleRow = {
+    id,
+    platform: blobPlatform(blobProperty(input, "platform"), source),
+    should_force_update: blobBoolean(
+      blobProperty(input, "shouldForceUpdate"),
+      source,
+    ),
+    enabled: blobBoolean(blobProperty(input, "enabled"), source),
+    file_hash: blobString(blobProperty(input, "fileHash"), source),
+    git_commit_hash: blobNullableString(
+      blobProperty(input, "gitCommitHash"),
+      source,
+    ),
+    message: blobNullableString(blobProperty(input, "message"), source),
+    channel: channelName,
+    channel_id: blobDatabaseBackfillChannelId(channelName),
+    storage_uri: blobString(blobProperty(input, "storageUri"), source),
+    target_app_version: blobNullableString(
+      blobProperty(input, "targetAppVersion"),
+      source,
+    ),
+    fingerprint_hash: blobNullableString(
+      blobProperty(input, "fingerprintHash"),
+      source,
+    ),
+    metadata: blobMetadataObject(
+      metadata === undefined ? {} : metadata,
+      source,
+    ),
+    rollout_cohort_count:
+      blobProperty(input, "rolloutCohortCount") === undefined
+        ? 1000
+        : blobNumber(blobProperty(input, "rolloutCohortCount"), source),
+    target_cohorts: blobStringArray(
+      blobProperty(input, "targetCohorts"),
+      source,
+    ),
+    manifest_storage_uri: blobNullableString(
+      blobProperty(input, "manifestStorageUri"),
+      source,
+    ),
+    manifest_file_hash: blobNullableString(
+      blobProperty(input, "manifestFileHash"),
+      source,
+    ),
+    asset_base_storage_uri: blobNullableString(
+      blobProperty(input, "assetBaseStorageUri"),
+      source,
+    ),
+  };
+  const patchesValue = blobProperty(input, "patches");
+  const patches =
+    patchesValue === null || patchesValue === undefined
+      ? legacyScalarPatch(input, id, source)
+      : blobArray(patchesValue, source).map((patch, index) =>
+          parseLegacyPatch(blobRecord(patch, source), id, index, source),
+        );
+  return { bundle, channelName, patches };
+};

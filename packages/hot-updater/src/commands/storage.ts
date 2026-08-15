@@ -11,13 +11,15 @@ import {
 } from "@hot-updater/core";
 import type {
   Bundle,
-  DatabasePlugin,
+  DatabaseClient,
+  BundleRepository,
   NodeStoragePlugin,
   StorageObject,
 } from "@hot-updater/plugin-core";
 import {
   assertNodeStoragePlugin,
   BUNDLE_STORAGE_PREFIX,
+  createDatabaseClient,
   getManifestAssetDownloadPath,
   isContentAddressedAssetBaseStorageUri,
   resolveManifestAssetStorageUri,
@@ -222,17 +224,17 @@ async function forEachWithConcurrency<T>(
   }
 }
 
-async function loadAllBundles(databasePlugin: DatabasePlugin) {
+async function loadAllBundles(database: DatabaseClient, databaseName: string) {
   const bundles: Bundle[] = [];
   const seenCursors = new Set<string>();
   const pageSize =
-    databasePlugin.name === STANDALONE_DATABASE_NAME
+    databaseName === STANDALONE_DATABASE_NAME
       ? STANDALONE_BUNDLE_PAGE_SIZE
       : BUNDLE_PAGE_SIZE;
   let after: string | undefined;
 
   while (true) {
-    const { data, pagination } = await databasePlugin.getBundles({
+    const { data, pagination } = await database.getBundles({
       cursor: after ? { after } : undefined,
       limit: pageSize,
       orderBy: { direction: "desc", field: "id" },
@@ -460,12 +462,12 @@ function getPruneCandidates({
   return candidates;
 }
 
-async function safeOnUnmount(databasePlugin: DatabasePlugin) {
+async function safeDispose(databasePlugin: BundleRepository) {
   try {
-    await databasePlugin.onUnmount?.();
+    await databasePlugin.dispose?.();
   } catch (error) {
     p.log.warn(
-      `Database plugin onUnmount failed: ${error instanceof Error ? error.message : String(error)}`,
+      `Database plugin dispose failed: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }
@@ -486,10 +488,9 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
   }
 
   const config = await loadConfig(null);
-  const [databasePlugin, loadedStoragePlugin] = await Promise.all([
-    config.database(),
-    config.storage(),
-  ]);
+  const databasePlugin = config.database;
+  const database = createDatabaseClient(databasePlugin);
+  const loadedStoragePlugin = await config.storage();
   assertNodeStoragePlugin(loadedStoragePlugin);
   const storagePlugin = loadedStoragePlugin;
 
@@ -515,7 +516,7 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
       );
     }
 
-    const bundles = await loadAllBundles(databasePlugin);
+    const bundles = await loadAllBundles(database, databasePlugin.name);
     const liveBundleIds = new Set(
       bundles.map((bundle) => bundle.id.toLowerCase()),
     );
@@ -538,7 +539,10 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
       return modifiedAt !== undefined && modifiedAt <= cutoff;
     });
     if (options.yes && candidates.length > 0) {
-      const refreshedBundles = await loadAllBundles(databasePlugin);
+      const refreshedBundles = await loadAllBundles(
+        database,
+        databasePlugin.name,
+      );
       const refreshedBundleIds = new Set(
         refreshedBundles.map((bundle) => bundle.id.toLowerCase()),
       );
@@ -606,6 +610,6 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
       `Pruned ${candidates.length} objects (${formatBytes(candidateBytes)}).`,
     );
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeDispose(databasePlugin);
   }
 }

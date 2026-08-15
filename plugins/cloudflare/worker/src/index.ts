@@ -10,15 +10,18 @@ import {
 
 export type CloudflareWorkerEnv = {
   DB: {
+    batch: D1Database["batch"];
     prepare: D1Database["prepare"];
   };
   BUCKET: R2Bucket;
   JWT_SECRET: string;
 };
 
+type WorkerContext = RequestEnvContext<CloudflareWorkerEnv>;
+
 export const HOT_UPDATER_BASE_PATH = "/api/check-update";
 
-const resolveRequestOrigin = (context?: RequestEnvContext) => {
+const resolveRequestOrigin = (context?: WorkerContext) => {
   const request = context?.request;
 
   if (!request) {
@@ -30,10 +33,10 @@ const resolveRequestOrigin = (context?: RequestEnvContext) => {
   return new URL(request.url).origin;
 };
 
-const hotUpdater = createHotUpdater({
+const hotUpdater = createHotUpdater<WorkerContext>({
   database: d1Database(),
   storages: [
-    r2Storage({
+    r2Storage<WorkerContext>({
       publicBaseUrl: resolveRequestOrigin,
     }),
   ],

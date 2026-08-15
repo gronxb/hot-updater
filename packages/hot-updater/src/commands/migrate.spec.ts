@@ -21,4 +21,18 @@ describe("migrate command operation formatting", () => {
       "Set setting: version=0.31.0",
     ]);
   });
+
+  it("keeps a Mongo settings index repair as an executable change", () => {
+    expect(
+      formatOperations([
+        {
+          description:
+            "Ensure unique MongoDB index: private_hot_updater_settings(key)",
+          type: "custom",
+        },
+      ]),
+    ).toEqual([
+      "Ensure unique MongoDB index: private_hot_updater_settings(key)",
+    ]);
+  });
 });

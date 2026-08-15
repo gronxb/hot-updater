@@ -12,6 +12,10 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
+    "./internal": {
+      "import": "./dist/internal.mjs",
+      "require": "./dist/internal.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -50,7 +54,6 @@
     "verkit": "0.3.2"
   },
   "devDependencies": {
-    "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native": "npm:typescript@7.0.2",
     "typescript": "npm:@typescript/typescript6@6.0.2"

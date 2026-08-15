@@ -10,7 +10,7 @@ import {
 } from "@hot-updater/core";
 import type {
   Bundle,
-  DatabasePlugin,
+  DatabaseClient,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
 import { isContentAddressedAssetBaseStorageUri } from "@hot-updater/plugin-core";
@@ -26,7 +26,7 @@ interface DeleteBundlesInput {
 }
 
 interface DeleteBundleDependencies {
-  databasePlugin: DatabasePlugin;
+  databaseClient: DatabaseClient;
   storagePlugin: NodeStoragePlugin;
   waitForStorageCleanup?: boolean;
 }
@@ -183,13 +183,13 @@ async function cleanupBundleStorage(
 export async function deleteBundles(
   { bundleIds }: DeleteBundlesInput,
   {
-    databasePlugin,
+    databaseClient,
     storagePlugin,
     waitForStorageCleanup = true,
   }: DeleteBundleDependencies,
 ) {
   const uniqueBundleIds = [...new Set(bundleIds)];
-  const { data: matchedBundles } = await databasePlugin.getBundles({
+  const { data: matchedBundles } = await databaseClient.getBundles({
     where: { id: { in: uniqueBundleIds } },
     limit: uniqueBundleIds.length,
   });
@@ -219,10 +219,11 @@ export async function deleteBundles(
   }
 
   if (bundles.length > 0) {
-    for (const bundle of bundles) {
-      await databasePlugin.deleteBundle(bundle);
-    }
-    await databasePlugin.commitBundle();
+    await databaseClient.mutate(async (mutation) => {
+      for (const bundle of bundles) {
+        await mutation.deleteBundleById(bundle.id);
+      }
+    });
   }
 
   const cleanupStorage = async () => {

@@ -1,0 +1,168 @@
+import type { Bundle, BundlePatchArtifact } from "@hot-updater/core";
+import {
+  DEFAULT_ROLLOUT_COHORT_COUNT,
+  getAssetBaseStorageUri,
+  getBundlePatches,
+  getManifestFileHash,
+  getManifestStorageUri,
+  stripBundleArtifactMetadata,
+} from "@hot-updater/core";
+
+import { bundleMetadataToRow } from "./databaseMetadata";
+import type { BundlePatchRow, BundleRow } from "./types";
+
+export const BundleRowHydrationErrorReason = {
+  duplicatePatchId: "duplicate_patch_id",
+  orphanPatchOwner: "orphan_patch_owner",
+  orphanPatchBase: "orphan_patch_base",
+} as const;
+
+export type BundleRowHydrationErrorReason =
+  (typeof BundleRowHydrationErrorReason)[keyof typeof BundleRowHydrationErrorReason];
+
+type BundleRowHydrationErrorInput = {
+  readonly reason: BundleRowHydrationErrorReason;
+  readonly patchId: string;
+  readonly bundleId: string;
+};
+
+export class BundleRowHydrationError extends Error {
+  readonly name = "BundleRowHydrationError";
+  readonly reason: BundleRowHydrationErrorReason;
+  readonly patchId: string;
+  readonly bundleId: string;
+
+  constructor({ reason, patchId, bundleId }: BundleRowHydrationErrorInput) {
+    super(
+      `Cannot hydrate bundle rows: ${reason} for patch "${patchId}" and bundle "${bundleId}".`,
+    );
+    this.reason = reason;
+    this.patchId = patchId;
+    this.bundleId = bundleId;
+  }
+}
+
+export const bundleToRow = (bundle: Bundle, channelId: string): BundleRow => {
+  const metadata = bundleMetadataToRow(bundle.metadata);
+  return {
+    id: bundle.id,
+    platform: bundle.platform,
+    should_force_update: bundle.shouldForceUpdate,
+    enabled: bundle.enabled,
+    file_hash: bundle.fileHash,
+    git_commit_hash: bundle.gitCommitHash,
+    message: bundle.message,
+    channel: bundle.channel,
+    channel_id: channelId,
+    storage_uri: bundle.storageUri,
+    target_app_version: bundle.targetAppVersion,
+    fingerprint_hash: bundle.fingerprintHash,
+    metadata,
+    rollout_cohort_count:
+      bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+    target_cohorts: bundle.targetCohorts ?? null,
+    manifest_storage_uri: getManifestStorageUri(bundle),
+    manifest_file_hash: getManifestFileHash(bundle),
+    asset_base_storage_uri: getAssetBaseStorageUri(bundle),
+  };
+};
+
+export const bundleToPatchRows = (bundle: Bundle): BundlePatchRow[] =>
+  getBundlePatches(bundle).map((patch, orderIndex) => ({
+    id: `${bundle.id}:${patch.baseBundleId}`,
+    bundle_id: bundle.id,
+    base_bundle_id: patch.baseBundleId,
+    base_file_hash: patch.baseFileHash,
+    patch_file_hash: patch.patchFileHash,
+    patch_storage_uri: patch.patchStorageUri,
+    order_index: orderIndex,
+  }));
+
+const comparePatchRows = (left: BundlePatchRow, right: BundlePatchRow) =>
+  left.order_index - right.order_index || left.id.localeCompare(right.id);
+
+const patchRowToArtifact = (row: BundlePatchRow): BundlePatchArtifact => ({
+  baseBundleId: row.base_bundle_id,
+  baseFileHash: row.base_file_hash,
+  patchFileHash: row.patch_file_hash,
+  patchStorageUri: row.patch_storage_uri,
+});
+
+export const rowToBundle = (
+  row: BundleRow,
+  patchRows: readonly BundlePatchRow[] = [],
+): Bundle => {
+  const patches = patchRows
+    .slice()
+    .sort(comparePatchRows)
+    .map(patchRowToArtifact);
+  const primaryPatch = patches[0] ?? null;
+  return {
+    id: row.id,
+    platform: row.platform,
+    shouldForceUpdate: row.should_force_update,
+    enabled: row.enabled,
+    fileHash: row.file_hash,
+    gitCommitHash: row.git_commit_hash,
+    message: row.message,
+    channel: row.channel,
+    storageUri: row.storage_uri,
+    targetAppVersion: row.target_app_version,
+    fingerprintHash: row.fingerprint_hash,
+    metadata: stripBundleArtifactMetadata(row.metadata),
+    rolloutCohortCount: row.rollout_cohort_count,
+    targetCohorts: row.target_cohorts === null ? null : [...row.target_cohorts],
+    manifestStorageUri: row.manifest_storage_uri,
+    manifestFileHash: row.manifest_file_hash,
+    assetBaseStorageUri: row.asset_base_storage_uri,
+    patches,
+    patchBaseBundleId: primaryPatch?.baseBundleId ?? null,
+    patchBaseFileHash: primaryPatch?.baseFileHash ?? null,
+    patchFileHash: primaryPatch?.patchFileHash ?? null,
+    patchStorageUri: primaryPatch?.patchStorageUri ?? null,
+  };
+};
+
+export const rowsToBundles = (
+  bundleRows: readonly BundleRow[],
+  patchRows: readonly BundlePatchRow[],
+  referencedBundleRows: readonly BundleRow[],
+): Bundle[] => {
+  const ownerIds = new Set(bundleRows.map(({ id }) => id));
+  const baseIds = new Set(ownerIds);
+  for (const row of referencedBundleRows) baseIds.add(row.id);
+
+  const patchIds = new Set<string>();
+  const patchesByOwner = new Map<string, BundlePatchRow[]>();
+  for (const patch of patchRows) {
+    if (patchIds.has(patch.id)) {
+      throw new BundleRowHydrationError({
+        reason: BundleRowHydrationErrorReason.duplicatePatchId,
+        patchId: patch.id,
+        bundleId: patch.bundle_id,
+      });
+    }
+    patchIds.add(patch.id);
+    if (!ownerIds.has(patch.bundle_id)) {
+      throw new BundleRowHydrationError({
+        reason: BundleRowHydrationErrorReason.orphanPatchOwner,
+        patchId: patch.id,
+        bundleId: patch.bundle_id,
+      });
+    }
+    if (!baseIds.has(patch.base_bundle_id)) {
+      throw new BundleRowHydrationError({
+        reason: BundleRowHydrationErrorReason.orphanPatchBase,
+        patchId: patch.id,
+        bundleId: patch.base_bundle_id,
+      });
+    }
+    const ownerPatches = patchesByOwner.get(patch.bundle_id) ?? [];
+    ownerPatches.push(patch);
+    patchesByOwner.set(patch.bundle_id, ownerPatches);
+  }
+
+  return bundleRows.map((row) =>
+    rowToBundle(row, patchesByOwner.get(row.id) ?? []),
+  );
+};

@@ -18,7 +18,7 @@ const {
     getBundles: vi.fn(),
     getChannels: vi.fn(),
     name: "mock-database",
-    onUnmount: vi.fn(),
+    dispose: vi.fn(),
     updateBundle: vi.fn(),
   };
   const mockStorageNode = {
@@ -63,6 +63,15 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     ...actual,
     loadConfig: mockCli.loadConfig,
     p: mockCli.p,
+  };
+});
+
+vi.mock("@hot-updater/plugin-core", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@hot-updater/plugin-core")>();
+  return {
+    ...actual,
+    createDatabaseClient: vi.fn(() => mockDatabasePlugin),
   };
 });
 
@@ -132,7 +141,7 @@ describe("handleStoragePrune", () => {
     mockDatabasePlugin.name = "mock-database";
 
     mockCli.loadConfig.mockResolvedValue({
-      database: vi.fn().mockResolvedValue(mockDatabasePlugin),
+      database: mockDatabasePlugin,
       storage: vi.fn().mockResolvedValue(mockStoragePlugin),
     });
     mockDatabasePlugin.getBundles.mockResolvedValue({
@@ -207,7 +216,7 @@ describe("handleStoragePrune", () => {
     expect(mockCli.p.log.warn).toHaveBeenCalledWith(
       expect.stringContaining("separate storage basePath"),
     );
-    expect(mockDatabasePlugin.onUnmount).toHaveBeenCalledOnce();
+    expect(mockDatabasePlugin.dispose).toHaveBeenCalledOnce();
   });
 
   it.each([
@@ -570,12 +579,12 @@ describe("handleStoragePrune", () => {
 
     expect(mockStorageNode.listObjects).not.toHaveBeenCalled();
     expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
-    expect(mockDatabasePlugin.onUnmount).toHaveBeenCalledOnce();
+    expect(mockDatabasePlugin.dispose).toHaveBeenCalledOnce();
   });
 
   it("reports when the configured storage plugin cannot enumerate objects", async () => {
     mockCli.loadConfig.mockResolvedValue({
-      database: vi.fn().mockResolvedValue(mockDatabasePlugin),
+      database: mockDatabasePlugin,
       storage: vi.fn().mockResolvedValue({
         ...mockStoragePlugin,
         name: "unsupportedStorage",
@@ -595,6 +604,6 @@ describe("handleStoragePrune", () => {
 
     expect(mockStorageNode.downloadFile).not.toHaveBeenCalled();
     expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
-    expect(mockDatabasePlugin.onUnmount).toHaveBeenCalledOnce();
+    expect(mockDatabasePlugin.dispose).toHaveBeenCalledOnce();
   });
 });

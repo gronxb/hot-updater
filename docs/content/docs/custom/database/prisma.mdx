@@ -14,6 +14,7 @@ npm install prisma @prisma/client --save-dev
 ```
 
 Initialize Prisma:
+
 ```bash
 npx prisma init
 ```
@@ -65,13 +66,17 @@ Generate the Prisma schema for Hot Updater tables.
 npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
-This command generates the schema. Copy it into your `prisma/schema.prisma` file.
+This command creates `prisma/schema.prisma` when it is missing or merges the
+Hot Updater models into the existing schema.
 
 <Callout>
-Need to generate SQL without config? See [SQL Export](/docs/custom/database/sql-export) for standalone SQL generation with the `--sql` flag.
+  Need to generate SQL without config? See [SQL
+  Export](/docs/custom/database/sql-export) for standalone SQL generation with
+  the `--sql` flag.
 </Callout>
 
 **Example schema.prisma:**
+
 ```prisma
 generator client {
   provider = "prisma-client-js"
@@ -99,14 +104,24 @@ model Bundle {
 ```
 
 Run migrations:
+
 ```bash
 npx prisma migrate dev --name init
 ```
 
 Generate Prisma Client:
+
 ```bash
 npx prisma generate
 ```
+
+## Query Semantics
+
+Prisma uses backend collations and pattern engines for string filters. The
+adapter therefore rejects explicit insensitive comparisons and pattern values
+containing backend metacharacters before querying Prisma. Explicit sensitive
+mode is available only for PostgreSQL, CockroachDB, and MongoDB; other
+providers reject it instead of silently using their default collation.
 
 ## CLI Configuration
 
@@ -136,21 +151,24 @@ export default defineConfig({
 ```
 
 <Callout type="warn">
-The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
+  The `storage` plugin must match the `storages` in your server's
+  `createHotUpdater`. Both use `s3Storage` in this example.
 </Callout>
 
 ## API Endpoints
 
 The server automatically creates these endpoints:
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/hot-updater/version` | Get server version |
-| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
-| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
-| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
-| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
-| POST | `/hot-updater/api/bundles` | Create bundles |
-| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
-| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
-| GET | `/hot-updater/api/bundles/channels` | List all channels |
+| Method | Endpoint                                                                              | Description                                                         |
+| ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| GET    | `/hot-updater/version`                                                                | Get server version                                                  |
+| GET    | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint                                    |
+| GET    | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId`         | Check for updates by app version                                    |
+| GET    | `/hot-updater/api/bundles`                                                            | List bundles (query: channel, platform, limit, page, after, before) |
+| GET    | `/hot-updater/api/bundles/:id`                                                        | Get bundle by ID                                                    |
+| POST   | `/hot-updater/api/bundles`                                                            | Create bundles                                                      |
+| PATCH  | `/hot-updater/api/bundles/:id`                                                        | Update a bundle                                                     |
+| DELETE | `/hot-updater/api/bundles/:id`                                                        | Delete bundle                                                       |
+| GET    | `/hot-updater/api/channels`                                                           | List all channels                                                   |
+| POST   | `/hot-updater/api/channels`                                                           | Insert or resolve a channel                                         |
+| DELETE | `/hot-updater/api/channels/:id`                                                       | Delete an empty channel                                             |

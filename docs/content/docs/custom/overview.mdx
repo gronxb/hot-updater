@@ -102,8 +102,7 @@ The server automatically uses the correct plugin to decode each `storageUri` bas
 `updateCheck` is mounted by default. `bundles` is disabled by default and must
 be enabled explicitly when the CLI needs bundle-management APIs. When
 `bundles: true`, protect `/api/bundles*` with framework middleware. The
-`/version` endpoint is always mounted for diagnostics. If you provide `routes`,
-specify both configurable route groups.
+`/version` endpoint is always mounted for diagnostics.
 
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({

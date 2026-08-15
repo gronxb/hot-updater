@@ -46,7 +46,6 @@
     "@hot-updater/core": "workspace:*"
   },
   "devDependencies": {
-    "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "jose": "^6.0.10",
     "verkit": "0.3.2"

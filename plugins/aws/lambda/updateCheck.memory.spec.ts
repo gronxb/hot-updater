@@ -144,19 +144,21 @@ const createMemoryHotUpdater = () => {
 
   const database = createBlobDatabasePlugin({
     name: "lambdaMemoryDatabase",
-    factory: () => ({
+    plugin: () => ({
       apiBasePath: BASE_PATH,
       listObjects: async (prefix: string) =>
         keys.filter((key) => key.startsWith(prefix)),
-      loadObject: async <T>(key: string): Promise<T | null> => {
+      loadObject: async (key: string): Promise<unknown | null> => {
         const value = store[key];
-        return value ? (JSON.parse(value) as T) : null;
+        if (!value) return null;
+        const parsed: unknown = JSON.parse(value);
+        return parsed;
       },
       uploadObject: async () => {},
-      deleteObject: async () => {},
+      compareAndSwapObject: async () => true,
       invalidatePaths: async () => {},
     }),
-  })({});
+  });
 
   return createHotUpdater({
     database,

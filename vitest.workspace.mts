@@ -1,12 +1,12 @@
 import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 import { defineConfig, defineProject } from "vitest/config";
 
-const rootExclude = [
+const commonExclude = [
   "**/dist/**",
-  "**/lib/**",
   "**/node_modules/**",
   "**/runtime-acceptance-*/**",
 ];
+const rootExclude = [...commonExclude, "**/lib/**"];
 const unitInclude = [
   "packages/**/*.spec.ts",
   "packages/**/*.test.ts",
@@ -61,7 +61,7 @@ export default defineConfig({
             "packages/console/**/*.spec.ts",
             "packages/console/**/*.test.ts",
           ],
-          exclude: [...rootExclude, "**/*.integration.spec.ts"],
+          exclude: [...commonExclude, "**/*.integration.spec.ts"],
         },
       }),
       defineProject({

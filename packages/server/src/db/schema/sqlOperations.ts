@@ -1,4 +1,5 @@
 import {
+  HOT_UPDATER_CORE_SCHEMA_KEY,
   HOT_UPDATER_SCHEMA_VERSION,
   HOT_UPDATER_SETTINGS_TABLE,
 } from "../../schema/types";
@@ -17,9 +18,9 @@ import {
 
 export const getSettingsInsertSql = (provider: ORMSQLProvider) => {
   if (provider === "mysql") {
-    return `insert into ${HOT_UPDATER_SETTINGS_TABLE} (\`key\`, value) values ('version', '${HOT_UPDATER_SCHEMA_VERSION}') on duplicate key update value = '${HOT_UPDATER_SCHEMA_VERSION}'`;
+    return `insert into ${HOT_UPDATER_SETTINGS_TABLE} (\`key\`, value) values ('${HOT_UPDATER_CORE_SCHEMA_KEY}', '${HOT_UPDATER_SCHEMA_VERSION}') on duplicate key update value = '${HOT_UPDATER_SCHEMA_VERSION}'`;
   }
-  return `insert into ${HOT_UPDATER_SETTINGS_TABLE} (key, value) values ('version', '${HOT_UPDATER_SCHEMA_VERSION}') on conflict (key) do update set value = '${HOT_UPDATER_SCHEMA_VERSION}'`;
+  return `insert into ${HOT_UPDATER_SETTINGS_TABLE} (key, value) values ('${HOT_UPDATER_CORE_SCHEMA_KEY}', '${HOT_UPDATER_SCHEMA_VERSION}') on conflict (key) do update set value = '${HOT_UPDATER_SCHEMA_VERSION}'`;
 };
 
 export const createSqlCreateOperations = (
@@ -44,7 +45,7 @@ export const createSqlCreateOperations = (
         (table.checks ?? []).map(
           (check): MigrationOperation => ({
             type: "custom",
-            sql: createCheckSql(table, check),
+            sql: createCheckSql(table, check, provider),
           }),
         ),
       )),
@@ -53,7 +54,7 @@ export const createSqlCreateOperations = (
         (table.foreignKeys ?? []).map(
           (foreignKey): MigrationOperation => ({
             type: "custom",
-            sql: createForeignKeySql(table, foreignKey),
+            sql: createForeignKeySql(table, foreignKey, provider),
           }),
         ),
       )

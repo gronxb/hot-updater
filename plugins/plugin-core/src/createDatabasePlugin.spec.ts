@@ -1,843 +1,611 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDatabasePlugin } from "./createDatabasePlugin";
-import type { Bundle, GetBundlesArgs, RequestEnvContext } from "./types";
+import {
+  createDatabasePlugin,
+  createDatabasePluginAdapter,
+  DatabaseAtomicCommitUnsupportedError,
+  DatabasePluginInputError,
+} from "./createDatabasePlugin";
+import type {
+  DatabaseChange,
+  DatabaseCommit,
+  DatabasePluginImplementation,
+  TransactionDatabasePluginImplementation,
+} from "./types/internal";
 
-const baseBundle: Bundle = {
-  id: "0195a408-8f13-7d9b-8df4-123456789abc",
-  channel: "production",
-  platform: "ios",
-  enabled: true,
-  shouldForceUpdate: false,
-  fileHash: "hash",
-  storageUri: "s3://bucket/bundle.zip",
-  gitCommitHash: "deadbeef",
-  message: "Initial message",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
-  rolloutCohortCount: 1000,
-  targetCohorts: ["device-1", "device-2"],
+class UnimplementedPluginMethodError extends Error {}
+
+const unimplemented = async (): Promise<never> => {
+  throw new UnimplementedPluginMethodError();
 };
 
+const createMethods = (): DatabasePluginImplementation => ({
+  create: unimplemented,
+  update: unimplemented,
+  delete: unimplemented,
+  count: unimplemented,
+  findOne: unimplemented,
+  findMany: unimplemented,
+  insertChannel: unimplemented,
+  deleteChannel: unimplemented,
+});
+
+const createTransactionMethods =
+  (): TransactionDatabasePluginImplementation => ({
+    create: unimplemented,
+    update: unimplemented,
+    delete: unimplemented,
+    count: unimplemented,
+    findOne: unimplemented,
+    findMany: unimplemented,
+  });
+
+const createTestPlugin = (
+  name: string,
+  implementation: DatabasePluginImplementation,
+) =>
+  createDatabasePlugin({
+    name,
+    ...createDatabasePluginAdapter(name, implementation),
+  });
+
+const channelRow = { id: "channel-1", name: "production" } as const;
+
+const bundleRow = {
+  id: "bundle-1",
+  platform: "ios" as const,
+  should_force_update: false,
+  enabled: true,
+  file_hash: "hash-1",
+  git_commit_hash: null,
+  message: null,
+  channel: channelRow.name,
+  channel_id: channelRow.id,
+  storage_uri: "storage://bundle-1.zip",
+  target_app_version: "1.0.0",
+  fingerprint_hash: null,
+  metadata: {},
+  rollout_cohort_count: 1000,
+  target_cohorts: null,
+  manifest_storage_uri: null,
+  manifest_file_hash: null,
+  asset_base_storage_uri: null,
+};
+
+const patchRow = {
+  id: "patch-1",
+  bundle_id: bundleRow.id,
+  base_bundle_id: "base-1",
+  base_file_hash: "base-hash",
+  patch_file_hash: "patch-hash",
+  patch_storage_uri: "storage://patch-1",
+  order_index: 0,
+} as const;
+
 describe("createDatabasePlugin", () => {
-  it("replaces targetCohorts instead of merging array items", async () => {
-    const commitBundle = vi.fn();
+  it("exposes only models, queries, commit, and lifecycle", () => {
+    const plugin = createTestPlugin("memory", createMethods());
 
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById: async (bundleId) =>
-          bundleId === baseBundle.id ? baseBundle : null,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle,
-      }),
-    })({})();
-
-    await plugin.updateBundle(baseBundle.id, {
-      targetCohorts: ["device-2"],
-    });
-    await plugin.commitBundle();
-
-    expect(commitBundle).toHaveBeenCalledWith({
-      changedSets: [
-        {
-          operation: "update",
-          data: {
-            ...baseBundle,
-            targetCohorts: ["device-2"],
-          },
-        },
-      ],
-    });
-  });
-
-  it("preserves pending updates while allowing targetCohorts to be cleared", async () => {
-    const commitBundle = vi.fn();
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById: async (bundleId) =>
-          bundleId === baseBundle.id ? baseBundle : null,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle,
-      }),
-    })({})();
-
-    await plugin.updateBundle(baseBundle.id, { enabled: false });
-    await plugin.updateBundle(baseBundle.id, { targetCohorts: null });
-    await plugin.commitBundle();
-
-    expect(commitBundle).toHaveBeenCalledWith({
-      changedSets: [
-        {
-          operation: "update",
-          data: {
-            ...baseBundle,
-            enabled: false,
-            targetCohorts: null,
-          },
-        },
-      ],
-    });
-  });
-
-  it("preserves pending changes after a failed commit", async () => {
-    const getBundleById = vi.fn(async (bundleId: string) =>
-      bundleId === baseBundle.id ? baseBundle : null,
-    );
-    const commitBundle = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("commit failed"))
-      .mockResolvedValueOnce(undefined);
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle,
-      }),
-    })({})();
-
-    await plugin.updateBundle(baseBundle.id, {
-      enabled: false,
-    });
-    await expect(plugin.commitBundle()).rejects.toThrow("commit failed");
-    await plugin.commitBundle();
-
-    expect(getBundleById).toHaveBeenCalledTimes(1);
-    expect(commitBundle).toHaveBeenNthCalledWith(1, {
-      changedSets: [
-        {
-          operation: "update",
-          data: {
-            ...baseBundle,
-            enabled: false,
-          },
-        },
-      ],
-    });
-    expect(commitBundle).toHaveBeenNthCalledWith(2, {
-      changedSets: [
-        {
-          operation: "update",
-          data: {
-            ...baseBundle,
-            enabled: false,
-          },
-        },
-      ],
-    });
-  });
-
-  it("stages no-context updates without keeping read-only cache entries", async () => {
-    const getBundleById = vi.fn(async (bundleId: string) =>
-      bundleId === baseBundle.id ? baseBundle : null,
-    );
-    const commitBundle = vi.fn();
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle,
-      }),
-    })({})();
-
-    await expect(plugin.getBundleById(baseBundle.id)).resolves.toStrictEqual(
-      baseBundle,
-    );
-    await plugin.updateBundle(baseBundle.id, {
-      enabled: false,
-    });
-    await plugin.commitBundle();
-
-    expect(getBundleById).toHaveBeenCalledTimes(2);
-    expect(commitBundle).toHaveBeenCalledWith({
-      changedSets: [
-        {
-          operation: "update",
-          data: {
-            ...baseBundle,
-            enabled: false,
-          },
-        },
-      ],
-    });
-  });
-
-  it("reads pending updates before commit in the same request context", async () => {
-    const getBundleById = vi.fn(async (bundleId: string) =>
-      bundleId === baseBundle.id ? baseBundle : null,
-    );
-    const context: RequestEnvContext<{ assetHost: string }> = {
-      env: {
-        assetHost: "https://assets.example.com",
-      },
-      request: new Request("https://updates.example.com"),
-    };
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await expect(plugin.getBundleById(baseBundle.id, context)).resolves.toEqual(
-      baseBundle,
-    );
-    await plugin.updateBundle(baseBundle.id, { enabled: false }, context);
-
-    await expect(plugin.getBundleById(baseBundle.id, context)).resolves.toEqual(
-      {
-        ...baseBundle,
-        enabled: false,
-      },
-    );
-    expect(getBundleById).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not cache no-context bundle reads across logical calls", async () => {
-    const nextBundle = {
-      ...baseBundle,
-      message: "Provider changed",
-    };
-    const getBundleById = vi
-      .fn()
-      .mockResolvedValueOnce(baseBundle)
-      .mockResolvedValueOnce(nextBundle);
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById,
-        getBundles: async () => ({
-          data: [nextBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await expect(plugin.getBundleById(baseBundle.id)).resolves.toEqual(
-      baseBundle,
-    );
-    await expect(plugin.getBundleById(baseBundle.id)).resolves.toEqual(
-      nextBundle,
-    );
-    expect(getBundleById).toHaveBeenCalledTimes(2);
-  });
-
-  it("overlays pending updates and deletes onto bundle lists before commit", async () => {
-    const deleteBundle = {
-      ...baseBundle,
-      id: "0195a408-8f13-7d9b-8df4-123456789abd",
-      message: "Delete me",
-    };
-    const getBundleById = vi.fn(async (bundleId: string) => {
-      if (bundleId === baseBundle.id) return baseBundle;
-      if (bundleId === deleteBundle.id) return deleteBundle;
-      return null;
-    });
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById,
-        getBundles: async () => ({
-          data: [baseBundle, deleteBundle],
-          pagination: {
-            total: 2,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await plugin.updateBundle(baseBundle.id, { enabled: false });
-    await plugin.deleteBundle(deleteBundle);
-
-    await expect(
-      plugin.getBundles({
-        limit: 10,
-        orderBy: { field: "id", direction: "asc" },
-      }),
-    ).resolves.toMatchObject({
-      data: [
-        {
-          ...baseBundle,
-          enabled: false,
-        },
-      ],
-    });
-  });
-
-  it("removes pending updates that no longer match bundle list filters", async () => {
-    const context: RequestEnvContext<{ assetHost: string }> = {
-      env: {
-        assetHost: "https://assets.example.com",
-      },
-      request: new Request("https://updates.example.com"),
-    };
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById: async (bundleId) =>
-          bundleId === baseBundle.id ? baseBundle : null,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await plugin.updateBundle(baseBundle.id, { enabled: false }, context);
-
-    await expect(
-      plugin.getBundles(
-        {
-          limit: 10,
-          where: { enabled: true },
-        },
-        context,
-      ),
-    ).resolves.toMatchObject({
-      data: [],
-      pagination: {
-        total: 0,
-        totalPages: 0,
-      },
-    });
-  });
-
-  it("adds pending updates that now match bundle list filters", async () => {
-    const disabledBundle = {
-      ...baseBundle,
-      enabled: false,
-    };
-    const context: RequestEnvContext<{ assetHost: string }> = {
-      env: {
-        assetHost: "https://assets.example.com",
-      },
-      request: new Request("https://updates.example.com"),
-    };
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById: async (bundleId) =>
-          bundleId === disabledBundle.id ? disabledBundle : null,
-        getBundles: async () => ({
-          data: [],
-          pagination: {
-            total: 0,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 0,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await plugin.updateBundle(disabledBundle.id, { enabled: true }, context);
-
-    await expect(
-      plugin.getBundles(
-        {
-          limit: 10,
-          where: { enabled: true },
-        },
-        context,
-      ),
-    ).resolves.toMatchObject({
-      data: [baseBundle],
-      pagination: {
-        total: 1,
-        totalPages: 1,
-      },
-    });
-  });
-
-  it("backfills bundle lists after pending deletes on a page boundary", async () => {
-    const deletedBundle = {
-      ...baseBundle,
-      id: "0195a408-8f13-7d9b-8df4-123456789abd",
-      message: "Delete me",
-    };
-    const nextBundle = {
-      ...baseBundle,
-      id: "0195a408-8f13-7d9b-8df4-123456789abe",
-      message: "Backfill me",
-    };
-    const bundles = [baseBundle, deletedBundle, nextBundle];
-    const getBundles = vi.fn(async (options) => ({
-      data: bundles.slice(0, options.limit),
-      pagination: {
-        total: bundles.length,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-      },
-    }));
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById: async (bundleId) =>
-          bundles.find((bundle) => bundle.id === bundleId) ?? null,
-        getBundles,
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await plugin.deleteBundle(deletedBundle);
-
-    await expect(
-      plugin.getBundles({
-        limit: 2,
-        orderBy: { field: "id", direction: "asc" },
-      }),
-    ).resolves.toMatchObject({
-      data: [baseBundle, nextBundle],
-      pagination: {
-        total: 2,
-        totalPages: 1,
-      },
-    });
-    expect(getBundles).toHaveBeenLastCalledWith({
-      limit: 3,
-      offset: 0,
-      orderBy: { field: "id", direction: "asc" },
-      where: undefined,
-    });
-  });
-
-  it("keeps pending inserts visible by id but out of provider-paginated lists", async () => {
-    const insertBundle = {
-      ...baseBundle,
-      id: "0195a408-8f13-7d9b-8df4-123456789abe",
-      message: "Inserted",
-    };
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById: async (bundleId) =>
-          bundleId === baseBundle.id ? baseBundle : null,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await plugin.appendBundle(insertBundle);
-
-    await expect(plugin.getBundleById(insertBundle.id)).resolves.toEqual(
-      insertBundle,
-    );
-    await expect(plugin.getBundles({ limit: 10 })).resolves.toMatchObject({
-      data: [baseBundle],
-    });
-  });
-
-  it("clears pending unit-of-work state after a successful commit", async () => {
-    const persistedBundle = { ...baseBundle, enabled: false };
-    const getBundleById = vi
-      .fn()
-      .mockResolvedValueOnce(baseBundle)
-      .mockResolvedValueOnce(persistedBundle);
-    const commitBundle = vi.fn();
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle,
-      }),
-    })({})();
-
-    await plugin.updateBundle(baseBundle.id, { enabled: false });
-    await plugin.commitBundle();
-
-    await expect(plugin.getBundleById(baseBundle.id)).resolves.toEqual(
-      persistedBundle,
-    );
-    expect(getBundleById).toHaveBeenCalledTimes(2);
-  });
-
-  it("keeps unit-of-work state isolated between request contexts", async () => {
-    const contextA: RequestEnvContext<{ assetHost: string }> = {
-      env: {
-        assetHost: "https://assets-a.example.com",
-      },
-      request: new Request("https://updates-a.example.com"),
-    };
-    const contextB: RequestEnvContext<{ assetHost: string }> = {
-      env: {
-        assetHost: "https://assets-b.example.com",
-      },
-      request: new Request("https://updates-b.example.com"),
-    };
-    const getBundleById = vi.fn(async (bundleId: string) =>
-      bundleId === baseBundle.id ? baseBundle : null,
-    );
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await plugin.updateBundle(baseBundle.id, { enabled: false }, contextA);
-
-    await expect(
-      plugin.getBundleById(baseBundle.id, contextA),
-    ).resolves.toEqual({
-      ...baseBundle,
-      enabled: false,
-    });
-    await expect(
-      plugin.getBundleById(baseBundle.id, contextB),
-    ).resolves.toEqual(baseBundle);
-    expect(getBundleById).toHaveBeenCalledTimes(2);
-  });
-
-  it("forwards getUpdateInfo fast-path calls with context when provided", async () => {
-    const expected = {
-      fileHash: baseBundle.fileHash,
-      id: baseBundle.id,
-      message: baseBundle.message,
-      shouldForceUpdate: baseBundle.shouldForceUpdate,
-      status: "UPDATE" as const,
-      storageUri: baseBundle.storageUri,
-    };
-    const getUpdateInfo = vi.fn(async () => expected);
-    const args: GetBundlesArgs = {
-      _updateStrategy: "appVersion",
-      appVersion: "1.0.0",
-      bundleId: baseBundle.id,
-      platform: "ios",
-    };
-    const context: RequestEnvContext<{ assetHost: string }> = {
-      env: {
-        assetHost: "https://assets.example.com",
-      },
-      request: new Request("https://updates.example.com"),
-    };
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById: async (bundleId) =>
-          bundleId === baseBundle.id ? baseBundle : null,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        getUpdateInfo,
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await expect(plugin.getUpdateInfo?.(args, context)).resolves.toEqual(
-      expected,
-    );
-    expect(getUpdateInfo).toHaveBeenCalledWith(args, context);
-  });
-
-  it("rejects removed offset pagination on the public plugin API", async () => {
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById: async () => null,
-        getBundles: async () => ({
-          data: [],
-          pagination: {
-            total: 0,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 0,
-          },
-        }),
-        getChannels: async () => [],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await expect(
-      plugin.getBundles({ limit: 20, offset: 10 } as never),
-    ).rejects.toThrow(
-      "Bundle offset pagination has been removed. Use cursor.after or cursor.before instead.",
-    );
-  });
-
-  it("adapts cursor pagination for legacy database methods that still page by offset", async () => {
-    const bundles = [
-      { ...baseBundle, id: "bundle-300" },
-      { ...baseBundle, id: "bundle-200" },
-      { ...baseBundle, id: "bundle-100" },
-    ];
-
-    const plugin = createDatabasePlugin({
-      name: "legacy-plugin",
-      factory: () => ({
-        getBundleById: async (bundleId) =>
-          bundles.find((bundle) => bundle.id === bundleId) ?? null,
-        getBundles: async (options) => {
-          const offset = options.offset ?? 0;
-          const filtered = bundles
-            .filter((bundle) => {
-              if (options.where?.id?.lt) {
-                return bundle.id.localeCompare(options.where.id.lt) < 0;
-              }
-              if (options.where?.id?.gt) {
-                return bundle.id.localeCompare(options.where.id.gt) > 0;
-              }
-              return true;
-            })
-            .sort((a, b) => {
-              const result = a.id.localeCompare(b.id);
-              return options.orderBy?.direction === "asc" ? result : -result;
-            });
-          const page =
-            options.limit > 0
-              ? filtered.slice(offset, offset + options.limit)
-              : filtered.slice(offset);
-
-          return {
-            data: page,
-            pagination: {
-              total: filtered.length,
-              hasNextPage: offset + options.limit < filtered.length,
-              hasPreviousPage: offset > 0,
-              currentPage: Math.floor(offset / options.limit) + 1,
-              totalPages: Math.ceil(filtered.length / options.limit),
-            },
-          };
-        },
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    const firstPage = await plugin.getBundles({ limit: 2 });
-    const secondPage = await plugin.getBundles({
-      limit: 2,
-      cursor: {
-        after: firstPage.pagination.nextCursor ?? undefined,
-      },
-    });
-
-    expect(firstPage.data.map((bundle) => bundle.id)).toEqual([
-      "bundle-300",
-      "bundle-200",
+    expect(plugin.name).toBe("memory");
+    expect(plugin.models.bundles.findById).toBeTypeOf("function");
+    expect(plugin.models.bundlePatches.findByBundleIds).toBeTypeOf("function");
+    expect(plugin.models.channels.insert).toBeTypeOf("function");
+    expect(plugin.models.channels.delete).toBeTypeOf("function");
+    expect(plugin.models.analytics.append).toBeTypeOf("function");
+    expect(plugin.models.clientAccessKeys.findByHash).toBeTypeOf("function");
+    expect(plugin.commit).toBeTypeOf("function");
+    expect(Object.keys(plugin).sort()).toEqual([
+      "commit",
+      "models",
+      "name",
+      "queries",
     ]);
-    expect(firstPage.pagination.nextCursor).toBe("bundle-200");
-    expect(secondPage.data.map((bundle) => bundle.id)).toEqual(["bundle-100"]);
-    expect(secondPage.pagination.previousCursor).toBe("bundle-100");
-    expect(secondPage.pagination.currentPage).toBe(2);
+    expect(Reflect.has(plugin, "bundles")).toBe(false);
+    expect(Reflect.has(plugin, "getChannels")).toBe(false);
+    expect(Reflect.has(plugin, "transaction")).toBe(false);
   });
 
-  it("uses internal offset pagination when a stable page number is provided", async () => {
-    const bundles = Array.from({ length: 45 }, (_, index) => ({
-      ...baseBundle,
-      id: `bundle-${String(45 - index).padStart(3, "0")}`,
-    }));
-    const getBundles = vi.fn(async (options) => {
-      const filtered = bundles.slice();
-      const offset = options.offset ?? 0;
-      const page =
-        options.limit > 0
-          ? filtered.slice(offset, offset + options.limit)
-          : filtered.slice(offset);
-
-      return {
-        data: page,
-        pagination: {
-          total: filtered.length,
-          hasNextPage: offset + options.limit < filtered.length,
-          hasPreviousPage: offset > 0,
-          currentPage: Math.floor(offset / options.limit) + 1,
-          totalPages: Math.ceil(filtered.length / options.limit),
-        },
-      };
+  it("maps the domain bundle query to the low-level adapter", async () => {
+    const findMany = vi.fn(async () => [bundleRow]);
+    const plugin = createTestPlugin("memory", {
+      ...createMethods(),
+      findMany,
     });
 
-    const plugin = createDatabasePlugin({
-      name: "page-aware-plugin",
-      factory: () => ({
-        supportsCursorPagination: true,
-        getBundleById: async (bundleId) =>
-          bundles.find((bundle) => bundle.id === bundleId) ?? null,
-        getBundles,
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    const pageTwo = await plugin.getBundles({
-      limit: 20,
-      page: 2,
-      cursor: {
-        after: "bundle-033",
-      },
-    });
-
-    expect(getBundles).toHaveBeenCalledWith(
-      expect.objectContaining({
+    await expect(
+      plugin.models.bundles.findMany({
+        where: { channel: "production", enabled: true, id: { gte: "a" } },
         limit: 20,
-        offset: 20,
-        cursor: {
-          after: "bundle-033",
-        },
+        offset: 40,
+        orderBy: { field: "id", direction: "desc" },
       }),
+    ).resolves.toEqual([bundleRow]);
+    expect(findMany).toHaveBeenCalledWith({
+      model: "bundles",
+      where: [
+        { field: "channel", value: "production" },
+        { field: "enabled", value: true },
+        { field: "id", operator: "gte", value: "a" },
+      ],
+      limit: 20,
+      offset: 40,
+      orderBy: [{ field: "id", direction: "desc" }],
+    });
+  });
+
+  it("lists channels only from channel storage in name order", async () => {
+    const findMany = vi.fn(async (input) =>
+      input.model === "channels"
+        ? [
+            { id: "channel-1", name: "production" },
+            { id: "channel-2", name: "preview" },
+          ]
+        : [],
     );
-    expect(pageTwo.data.map((bundle) => bundle.id)).toEqual([
-      "bundle-025",
-      "bundle-024",
-      "bundle-023",
-      "bundle-022",
-      "bundle-021",
-      "bundle-020",
-      "bundle-019",
-      "bundle-018",
-      "bundle-017",
-      "bundle-016",
-      "bundle-015",
-      "bundle-014",
-      "bundle-013",
-      "bundle-012",
-      "bundle-011",
-      "bundle-010",
-      "bundle-009",
-      "bundle-008",
-      "bundle-007",
-      "bundle-006",
+    const plugin = createTestPlugin("memory", {
+      ...createMethods(),
+      findMany,
+    });
+
+    await expect(plugin.models.channels.list({})).resolves.toEqual({
+      channels: [
+        { id: "channel-2", name: "preview" },
+        { id: "channel-1", name: "production" },
+      ],
+    });
+    expect(findMany).toHaveBeenCalledOnce();
+    expect(findMany).toHaveBeenCalledWith({
+      model: "channels",
+      limit: 100,
+      offset: 0,
+      orderBy: [{ field: "name", direction: "asc" }],
+    });
+  });
+
+  it("returns the canonical channel selected by the provider", async () => {
+    const canonical = { id: "canonical", name: "production" } as const;
+    const insertChannel = vi.fn(async () => ({
+      row: canonical,
+      inserted: false,
+    }));
+    const plugin = createTestPlugin("memory", {
+      ...createMethods(),
+      insertChannel,
+    });
+    const input = {
+      row: { id: "losing-candidate", name: "production" },
+      onConflict: "returnExisting" as const,
+    };
+
+    await expect(plugin.models.channels.insert(input)).resolves.toEqual({
+      row: canonical,
+      inserted: false,
+    });
+    expect(insertChannel).toHaveBeenCalledWith(input);
+  });
+
+  it.each(["id", "name"] as const)(
+    "accepts a Channel %s containing exactly 255 Unicode code points",
+    async (field) => {
+      const value = "😀".repeat(255);
+      const row = { ...channelRow, [field]: value };
+      const insertChannel = vi.fn(async () => ({
+        row,
+        inserted: true,
+      }));
+      const plugin = createTestPlugin("memory", {
+        ...createMethods(),
+        insertChannel,
+      });
+
+      await expect(
+        plugin.models.channels.insert({
+          row,
+          onConflict: "returnExisting",
+        }),
+      ).resolves.toEqual({ row, inserted: true });
+      expect(insertChannel).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(["id", "name"] as const)(
+    "rejects a Channel %s containing 256 Unicode code points",
+    async (field) => {
+      const row = { ...channelRow, [field]: "😀".repeat(256) };
+      const insertChannel = vi.fn(async () => ({
+        row,
+        inserted: true,
+      }));
+      const plugin = createTestPlugin("memory", {
+        ...createMethods(),
+        insertChannel,
+      });
+
+      await expect(
+        plugin.models.channels.insert({
+          row,
+          onConflict: "returnExisting",
+        }),
+      ).rejects.toMatchObject({ code: "invalid-data" });
+      expect(insertChannel).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["id", "name"] as const)(
+    "rejects an empty Channel %s",
+    async (field) => {
+      const row = { ...channelRow, [field]: "" };
+      const insertChannel = vi.fn(async () => ({
+        row,
+        inserted: true,
+      }));
+      const plugin = createTestPlugin("memory", {
+        ...createMethods(),
+        insertChannel,
+      });
+
+      await expect(
+        plugin.models.channels.insert({
+          row,
+          onConflict: "returnExisting",
+        }),
+      ).rejects.toMatchObject({ code: "invalid-data" });
+      expect(insertChannel).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["id", "name"] as const)(
+    "enforces the 255-code-point Channel %s limit in generic commits",
+    async (field) => {
+      const acceptedRow = {
+        ...channelRow,
+        [field]: "😀".repeat(255),
+      };
+      const rejectedRow = {
+        ...channelRow,
+        [field]: "😀".repeat(256),
+      };
+      const create = vi.fn(async (input) => input.data);
+      const plugin = createTestPlugin("memory", {
+        ...createMethods(),
+        create,
+      });
+
+      await expect(
+        plugin.commit({
+          changes: [
+            {
+              model: "channels",
+              operation: "insert",
+              row: acceptedRow,
+              onConflict: "ignore",
+            },
+          ],
+        }),
+      ).resolves.toEqual({ committed: true });
+      expect(create).toHaveBeenCalledOnce();
+
+      create.mockClear();
+      await expect(
+        plugin.commit({
+          changes: [
+            {
+              model: "channels",
+              operation: "insert",
+              row: rejectedRow,
+              onConflict: "ignore",
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({ code: "invalid-data" });
+      expect(create).not.toHaveBeenCalled();
+    },
+  );
+
+  it("delegates atomic referenced-channel deletion to the provider", async () => {
+    const deleteChannel = vi.fn(async () => ({
+      deleted: false as const,
+      reason: "not_empty" as const,
+    }));
+    const plugin = createTestPlugin("memory", {
+      ...createMethods(),
+      deleteChannel,
+    });
+
+    await expect(
+      plugin.models.channels.delete({ id: channelRow.id }),
+    ).resolves.toEqual({ deleted: false, reason: "not_empty" });
+    expect(deleteChannel).toHaveBeenCalledWith({ id: channelRow.id });
+  });
+
+  it.each(["", "😀".repeat(256)])(
+    "rejects an invalid Channel delete identity before calling the provider",
+    async (id) => {
+      const deleteChannel = vi.fn(async () => ({ deleted: true as const }));
+      const plugin = createTestPlugin("memory", {
+        ...createMethods(),
+        deleteChannel,
+      });
+
+      await expect(plugin.models.channels.delete({ id })).rejects.toEqual(
+        new DatabasePluginInputError("invalid-data"),
+      );
+      expect(deleteChannel).not.toHaveBeenCalled();
+    },
+  );
+
+  it("commits model changes in one adapter transaction", async () => {
+    const create = vi.fn(async (input) => input.data);
+    const findOne = vi.fn(async (input) =>
+      input.model === "channels" ? channelRow : null,
+    );
+    const transaction = vi.fn(async (callback) =>
+      callback({ ...createTransactionMethods(), create, findOne }),
+    );
+    const plugin = createTestPlugin("transactional", {
+      ...createMethods(),
+      transaction,
+    });
+    const changes = [
+      {
+        model: "channels",
+        operation: "insert",
+        row: channelRow,
+        onConflict: "ignore",
+      },
+      { model: "bundles", operation: "insert", row: bundleRow },
+      { model: "bundlePatches", operation: "insert", row: patchRow },
+    ] as const satisfies readonly DatabaseChange[];
+
+    await expect(plugin.commit({ changes })).resolves.toEqual({
+      committed: true,
+    });
+    expect(transaction).toHaveBeenCalledOnce();
+    expect(create.mock.calls.map(([input]) => input.model)).toEqual([
+      "channels",
+      "bundles",
+      "bundle_patches",
     ]);
-    expect(pageTwo.pagination.currentPage).toBe(2);
-    expect(pageTwo.pagination.previousCursor).toBe("bundle-025");
-    expect(pageTwo.pagination.nextCursor).toBe("bundle-006");
+  });
+
+  it("returns an indexed conflict and aborts the transaction", async () => {
+    const rollback = vi.fn();
+    const transaction = vi.fn(async (callback) => {
+      try {
+        return await callback({
+          ...createTransactionMethods(),
+          update: async () => null,
+        });
+      } catch (error) {
+        rollback();
+        throw error;
+      }
+    });
+    const plugin = createTestPlugin("transactional", {
+      ...createMethods(),
+      transaction,
+    });
+
+    await expect(
+      plugin.commit({
+        changes: [
+          {
+            model: "bundles",
+            operation: "update",
+            where: { id: bundleRow.id },
+            update: { enabled: false },
+          },
+        ],
+      }),
+    ).resolves.toEqual({
+      committed: false,
+      conflict: { changeIndex: 0, reason: "not_found" },
+    });
+    expect(rollback).toHaveBeenCalledOnce();
+  });
+
+  it("rolls back a commit that deletes a referenced channel", async () => {
+    const deleteRows = vi.fn(async () => undefined);
+    const rollback = vi.fn();
+    const transaction = vi.fn(async (callback) => {
+      try {
+        return await callback({
+          ...createTransactionMethods(),
+          count: async (input: { readonly model: string }) =>
+            input.model === "bundles" ? 1 : 0,
+          delete: deleteRows,
+        });
+      } catch (error) {
+        rollback();
+        throw error;
+      }
+    });
+    const plugin = createTestPlugin("transactional", {
+      ...createMethods(),
+      transaction,
+    });
+
+    await expect(
+      plugin.commit({
+        changes: [
+          {
+            model: "channels",
+            operation: "delete",
+            where: { id: channelRow.id },
+          },
+        ],
+      }),
+    ).resolves.toEqual({
+      committed: false,
+      conflict: { changeIndex: 0, reason: "referenced" },
+    });
+    expect(rollback).toHaveBeenCalledOnce();
+    expect(deleteRows).not.toHaveBeenCalled();
+  });
+
+  it("rejects a multi-change commit before a non-atomic adapter mutates", async () => {
+    const create = vi.fn(async (input) => input.data);
+    const plugin = createTestPlugin("non-atomic", {
+      ...createMethods(),
+      create,
+    });
+
+    await expect(
+      plugin.commit({
+        changes: [
+          {
+            model: "channels",
+            operation: "insert",
+            row: channelRow,
+            onConflict: "ignore",
+          },
+          { model: "bundles", operation: "insert", row: bundleRow },
+        ],
+      }),
+    ).rejects.toEqual(new DatabaseAtomicCommitUnsupportedError("non-atomic"));
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("uses an explicit provider-native commit", async () => {
+    const commit = vi.fn(async () => ({ committed: true as const }));
+    const plugin = createTestPlugin("native", {
+      ...createMethods(),
+      commit,
+    });
+    const input = { changes: [] } as const;
+
+    await plugin.commit(input);
+
+    expect(commit).toHaveBeenCalledWith(input);
+  });
+
+  it("rejects an invalid native commit envelope before calling the provider", async () => {
+    const commit = vi.fn(async () => ({ committed: true as const }));
+    const plugin = createTestPlugin("native", {
+      ...createMethods(),
+      commit,
+    });
+
+    await expect(
+      plugin.commit(null as unknown as DatabaseCommit),
+    ).rejects.toEqual(new DatabasePluginInputError("invalid-data"));
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed native change before calling the provider", async () => {
+    const commit = vi.fn(async () => ({ committed: true as const }));
+    const plugin = createTestPlugin("native", {
+      ...createMethods(),
+      commit,
+    });
+    const input = {
+      changes: [{ model: "channels", operation: "replace" }],
+    } as unknown as DatabaseCommit;
+
+    await expect(plugin.commit(input)).rejects.toBeInstanceOf(
+      DatabasePluginInputError,
+    );
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it("validates every native change, including Channel limits, before calling the provider", async () => {
+    const commit = vi.fn(async () => ({ committed: true as const }));
+    const plugin = createTestPlugin("native", {
+      ...createMethods(),
+      commit,
+    });
+    const input = {
+      changes: [
+        {
+          model: "channels",
+          operation: "insert",
+          row: channelRow,
+          onConflict: "ignore",
+        },
+        {
+          model: "channels",
+          operation: "insert",
+          row: { id: "channel-2", name: "😀".repeat(256) },
+          onConflict: "ignore",
+        },
+      ],
+    } as const;
+
+    await expect(plugin.commit(input)).rejects.toEqual(
+      new DatabasePluginInputError("invalid-data"),
+    );
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it.each(["insert", "update"] as const)(
+    "rejects invalid bundle Channel identity in a native %s before calling the provider",
+    async (operation) => {
+      const commit = vi.fn(async () => ({ committed: true as const }));
+      const plugin = createTestPlugin("native", {
+        ...createMethods(),
+        commit,
+      });
+      const invalidChannel = "😀".repeat(256);
+      const change =
+        operation === "insert"
+          ? {
+              model: "bundles" as const,
+              operation,
+              row: {
+                ...bundleRow,
+                channel: invalidChannel,
+                channel_id: "",
+              },
+            }
+          : {
+              model: "bundles" as const,
+              operation,
+              where: { id: bundleRow.id },
+              update: {
+                channel: invalidChannel,
+                channel_id: "",
+              },
+            };
+
+      await expect(plugin.commit({ changes: [change] })).rejects.toEqual(
+        new DatabasePluginInputError("invalid-data"),
+      );
+      expect(commit).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects an invalid native Channel delete identity before calling the provider", async () => {
+    const commit = vi.fn(async () => ({ committed: true as const }));
+    const plugin = createTestPlugin("native", {
+      ...createMethods(),
+      commit,
+    });
+
+    await expect(
+      plugin.commit({
+        changes: [
+          {
+            model: "channels",
+            operation: "delete",
+            where: { id: "" },
+          },
+        ],
+      }),
+    ).rejects.toEqual(new DatabasePluginInputError("invalid-data"));
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it("composes optional lifecycle and cross-model query methods", async () => {
+    const getUpdateInfo = vi.fn(async () => null);
+    const dispose = vi.fn(async () => undefined);
+    const plugin = createTestPlugin("memory", {
+      ...createMethods(),
+      getUpdateInfo,
+      dispose,
+    });
+
+    expect(plugin.queries.getUpdateInfo).toBe(getUpdateInfo);
+    await expect(plugin.dispose?.()).resolves.toBeUndefined();
+    expect(dispose).toHaveBeenCalledOnce();
   });
 });

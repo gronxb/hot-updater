@@ -19,8 +19,14 @@ export type HotUpdaterColumnDsl = {
   readonly default?: HotUpdaterDefault;
   readonly nullableValue?: true;
   readonly primaryKeyValue?: true;
+  readonly providerCollations?: HotUpdaterColumnSchema["providerCollations"];
   readonly nullable: () => HotUpdaterColumnDsl;
   readonly primaryKey: () => HotUpdaterColumnDsl;
+  readonly collate: (
+    providerCollations: NonNullable<
+      HotUpdaterColumnSchema["providerCollations"]
+    >,
+  ) => HotUpdaterColumnDsl;
   readonly defaultTo: (value: DefaultValue) => HotUpdaterColumnDsl;
 };
 
@@ -45,6 +51,9 @@ const defaultValue = (value: DefaultValue): HotUpdaterDefault =>
 const columnSchema = (column: HotUpdaterColumnDsl): HotUpdaterColumnSchema => ({
   ormName: column.ormName,
   type: column.type,
+  ...(column.providerCollations
+    ? { providerCollations: column.providerCollations }
+    : {}),
   ...(column.nullableValue ? { nullable: true } : {}),
   ...(column.primaryKeyValue ? { primaryKey: true } : {}),
   ...(column.default ? { default: column.default } : {}),
@@ -59,11 +68,16 @@ const createColumn = (state: ColumnState): HotUpdaterColumnDsl => ({
   dsl: "column",
   ormName: state.ormName,
   type: state.type,
+  ...(state.providerCollations
+    ? { providerCollations: state.providerCollations }
+    : {}),
   ...(state.nullableValue ? { nullableValue: true } : {}),
   ...(state.primaryKeyValue ? { primaryKeyValue: true } : {}),
   ...(state.default ? { default: state.default } : {}),
   nullable: () => createColumn({ ...state, nullableValue: true }),
   primaryKey: () => createColumn({ ...state, primaryKeyValue: true }),
+  collate: (providerCollations) =>
+    createColumn({ ...state, providerCollations }),
   defaultTo: (value) =>
     createColumn({ ...state, default: defaultValue(value) }),
 });
@@ -88,6 +102,9 @@ export const uuid = (ormName: string): HotUpdaterColumnDsl =>
 export const integer = (ormName: string): HotUpdaterColumnDsl =>
   column(ormName, "integer");
 
+export const float = (ormName: string): HotUpdaterColumnDsl =>
+  column(ormName, "float");
+
 export const bool = (ormName: string): HotUpdaterColumnDsl =>
   column(ormName, "bool");
 
@@ -107,18 +124,32 @@ export const index = (
   ...(providers ? { providers } : {}),
 });
 
+export const uniqueIndex = (
+  name: string,
+  columns: readonly string[],
+  providers?: HotUpdaterIndexSchema["providers"],
+): HotUpdaterIndexSchema => ({
+  name,
+  columns,
+  ...(providers ? { providers } : {}),
+  unique: true,
+});
+
 export const foreignKey = (
   name: string,
   columns: readonly string[],
   referencedTable: string,
   referencedColumns: readonly string[],
+  options: {
+    readonly onDelete?: HotUpdaterForeignKeySchema["onDelete"];
+  } = {},
 ): HotUpdaterForeignKeySchema => ({
   name,
   columns,
   referencedTable,
   referencedColumns,
   onUpdate: "restrict",
-  onDelete: "cascade",
+  onDelete: options.onDelete ?? "cascade",
 });
 
 export const check = (config: HotUpdaterCheckSchema): HotUpdaterCheckSchema =>

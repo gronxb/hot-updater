@@ -1,614 +1,649 @@
-import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
-import { mergeWith } from "es-toolkit";
-
-import { BundleUnitOfWork } from "./bundleUnitOfWork";
-import { getRequestBundleUnitOfWork } from "./bundleUnitOfWorkStore";
-import { calculatePagination } from "./calculatePagination";
+import { createDatabasePluginCrud } from "./databasePluginCrud";
+import { DatabasePluginInputError } from "./databasePluginCrudValidation";
+import { isChannelText, isRecord } from "./databasePluginCrudValidationFields";
+import {
+  validateBundleUpdateData,
+  validateClientAccessKeyUpdateData,
+} from "./databasePluginCrudValidationMutations";
+import {
+  validateCreateData,
+  validateResult,
+} from "./databasePluginCrudValidationRows";
+import { createTransactionDatabasePlugin } from "./databasePluginTransaction";
 import type {
-  DatabaseBundleCursor,
-  DatabaseBundleIdFilter,
-  DatabaseBundleQueryOptions,
-  DatabaseBundleQueryOrder,
+  BundleEventRow,
+  BundlePatchRow,
+  BundleRow,
+  ChannelInsertInput,
+  ChannelInsertResult,
+  ChannelRow,
+  ClientAccessKeyRow,
   DatabaseBundleQueryWhere,
+  DatabaseChange,
+  DatabaseCommit,
+  DatabaseCommitResult,
   DatabasePlugin,
-  DatabasePluginHooks,
-  HotUpdaterContext,
-  PaginationInfo,
-  Paginated,
-} from "./types";
+  DatabasePluginCrud,
+  DatabasePluginImplementation,
+  DatabaseWhere,
+} from "./types/internal";
 
-export interface AbstractDatabasePlugin<TContext = unknown> {
-  supportsCursorPagination?: boolean;
-  getBundleById: (
-    bundleId: string,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<Bundle | null>;
-  getUpdateInfo?: (
-    args: GetBundlesArgs,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<UpdateInfo | null>;
-  getBundles: (
-    options: DatabaseBundleQueryOptions & { offset?: number },
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<Paginated<Bundle[]>>;
-  getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
-  onUnmount?: () => Promise<void>;
-  commitBundle: (
-    params: {
-      changedSets: {
-        operation: "insert" | "update" | "delete";
-        data: Bundle;
-      }[];
-    },
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<void>;
+export {
+  DatabasePluginInputError,
+  type DatabasePluginInputErrorCode,
+} from "./databasePluginCrud";
+
+const PAGE_SIZE = 100;
+
+const compareChannelRows = (left: ChannelRow, right: ChannelRow): number =>
+  left.name < right.name ? -1 : left.name > right.name ? 1 : 0;
+
+export class DatabaseAtomicCommitUnsupportedError extends Error {
+  readonly name = "DatabaseAtomicCommitUnsupportedError";
+
+  constructor(readonly pluginName: string) {
+    super(
+      `Database plugin "${pluginName}" cannot atomically commit changes across models.`,
+    );
+  }
 }
 
 /**
- * Database plugin methods without name
+ * Internal provider signal for a delete rejected by a live reference.
+ *
+ * Provider implementations throw this after translating their native
+ * foreign-key or reference-condition error. The public database contract
+ * observes only the indexed `referenced` commit conflict.
  */
-type DatabasePluginMethods<TContext = unknown> = Omit<
-  AbstractDatabasePlugin<TContext>,
-  never
->;
+export class DatabaseRowReferencedError extends Error {
+  readonly name = "DatabaseRowReferencedError";
 
-/**
- * Factory function that creates database plugin methods
- */
-type DatabasePluginFactory<TConfig, TContext = unknown> = (
-  config: TConfig,
-) => DatabasePluginMethods<TContext>;
-
-const REPLACE_ON_UPDATE_KEYS = ["patches", "targetCohorts"] as const;
-const DEFAULT_DESC_ORDER = { field: "id", direction: "desc" } as const;
-
-function normalizePage(value: number | undefined): number | undefined {
-  if (!Number.isInteger(value) || value === undefined || value < 1) {
-    return undefined;
+  constructor() {
+    super("The database row is still referenced.");
   }
-
-  return value;
 }
 
-function mergeBundleUpdate(baseBundle: Bundle, patch: Partial<Bundle>): Bundle {
-  return mergeWith(
-    { ...baseBundle },
-    patch,
-    (_targetValue, sourceValue, key) => {
-      if (
-        REPLACE_ON_UPDATE_KEYS.includes(
-          key as (typeof REPLACE_ON_UPDATE_KEYS)[number],
-        )
-      ) {
-        return sourceValue;
-      }
+class DatabaseCommitConflictError extends Error {
+  readonly name = "DatabaseCommitConflictError";
 
-      return undefined;
-    },
-  );
-}
-
-function mergeIdFilter(
-  base: DatabaseBundleIdFilter | undefined,
-  patch: DatabaseBundleIdFilter,
-): DatabaseBundleIdFilter {
-  return {
-    ...base,
-    ...patch,
-  };
-}
-
-function mergeWhereWithIdFilter(
-  where: DatabaseBundleQueryWhere | undefined,
-  idFilter: DatabaseBundleIdFilter,
-): DatabaseBundleQueryWhere {
-  return {
-    ...where,
-    id: mergeIdFilter(where?.id, idFilter),
-  };
-}
-
-function buildCursorPageQuery(
-  where: DatabaseBundleQueryWhere | undefined,
-  cursor: DatabaseBundleCursor,
-  orderBy: DatabaseBundleQueryOrder,
-): {
-  reverseData: boolean;
-  where: DatabaseBundleQueryWhere;
-  orderBy: DatabaseBundleQueryOrder;
-} {
-  const direction = orderBy.direction;
-
-  if (cursor.after) {
-    return {
-      reverseData: false,
-      where: mergeWhereWithIdFilter(where, {
-        [direction === "desc" ? "lt" : "gt"]: cursor.after,
-      }),
-      orderBy,
-    };
+  constructor(readonly result: DatabaseCommitResult) {
+    super("Database commit precondition failed.");
   }
-
-  if (cursor.before) {
-    return {
-      reverseData: true,
-      where: mergeWhereWithIdFilter(where, {
-        [direction === "desc" ? "gt" : "lt"]: cursor.before,
-      }),
-      orderBy: {
-        field: orderBy.field,
-        direction: direction === "desc" ? "asc" : "desc",
-      },
-    };
-  }
-
-  return {
-    reverseData: false,
-    where: where ?? {},
-    orderBy,
-  };
 }
 
-function buildCountBeforeWhere(
+export type CreateDatabasePluginOptions = DatabasePlugin;
+
+export type DatabasePluginAdapter = Omit<DatabasePlugin, "name">;
+
+const toBundleWhere = (
   where: DatabaseBundleQueryWhere | undefined,
-  firstBundleId: string,
-  orderBy: DatabaseBundleQueryOrder,
-): DatabaseBundleQueryWhere {
-  return mergeWhereWithIdFilter(where, {
-    [orderBy.direction === "desc" ? "gt" : "lt"]: firstBundleId,
+): readonly DatabaseWhere<"bundles">[] => {
+  if (!where) return [];
+  const filters: DatabaseWhere<"bundles">[] = [];
+  if (where.channel !== undefined)
+    filters.push({ field: "channel", value: where.channel });
+  if (where.platform !== undefined)
+    filters.push({ field: "platform", value: where.platform });
+  if (where.enabled !== undefined)
+    filters.push({ field: "enabled", value: where.enabled });
+  if (where.id?.eq !== undefined)
+    filters.push({ field: "id", value: where.id.eq });
+  if (where.id?.gt !== undefined)
+    filters.push({ field: "id", operator: "gt", value: where.id.gt });
+  if (where.id?.gte !== undefined)
+    filters.push({ field: "id", operator: "gte", value: where.id.gte });
+  if (where.id?.lt !== undefined)
+    filters.push({ field: "id", operator: "lt", value: where.id.lt });
+  if (where.id?.lte !== undefined)
+    filters.push({ field: "id", operator: "lte", value: where.id.lte });
+  if (where.id?.in !== undefined)
+    filters.push({ field: "id", operator: "in", value: where.id.in });
+  if (where.targetAppVersion !== undefined)
+    filters.push({
+      field: "target_app_version",
+      value: where.targetAppVersion,
+    });
+  if (where.targetAppVersionNotNull)
+    filters.push({
+      field: "target_app_version",
+      operator: "ne",
+      value: null,
+    });
+  if (where.targetAppVersionIn !== undefined)
+    filters.push({
+      field: "target_app_version",
+      operator: "in",
+      value: where.targetAppVersionIn,
+    });
+  if (where.fingerprintHash !== undefined)
+    filters.push({
+      field: "fingerprint_hash",
+      value: where.fingerprintHash,
+    });
+  return filters;
+};
+
+const assertBundleChannel = async (
+  database: DatabasePluginCrud,
+  row: Pick<BundleRow, "channel" | "channel_id">,
+): Promise<void> => {
+  const channel = await database.findOne({
+    model: "channels",
+    where: [{ field: "id", value: row.channel_id }],
   });
-}
-
-function createPaginatedResult(
-  total: number,
-  limit: number,
-  startIndex: number,
-  data: Bundle[],
-) {
-  const pagination = calculatePagination(total, {
-    limit,
-    offset: startIndex,
-  });
-  const nextCursor =
-    data.length > 0 && startIndex + data.length < total
-      ? data.at(-1)?.id
-      : undefined;
-  const previousCursor =
-    data.length > 0 && startIndex > 0 ? data[0]?.id : undefined;
-
-  return {
-    data,
-    pagination: {
-      ...pagination,
-      ...(nextCursor ? { nextCursor } : {}),
-      ...(previousCursor ? { previousCursor } : {}),
-    },
-  };
-}
-
-function expandLimitForUnitOfWork(
-  options: DatabaseBundleQueryOptions,
-  unitOfWork: BundleUnitOfWork,
-): DatabaseBundleQueryOptions {
-  const extraLimit = unitOfWork.listFetchExtraCount();
-  if (extraLimit === 0) {
-    return options;
+  if (channel === null || channel.name !== row.channel) {
+    throw new DatabasePluginInputError("invalid-data");
   }
+};
 
-  return {
-    ...options,
-    limit: options.limit + extraLimit,
-  };
-}
-
-function adjustPaginationTotal(
-  pagination: PaginationInfo,
-  options: {
-    readonly limit: number;
-    readonly totalDelta: number;
-  },
-): PaginationInfo {
-  if (options.totalDelta === 0) {
-    return pagination;
-  }
-
-  const total = Math.max(0, pagination.total + options.totalDelta);
-  const hasPreviousPage = pagination.currentPage > 1;
-  const hasNextPage = pagination.currentPage * options.limit < total;
-  return {
-    ...pagination,
-    total,
-    hasNextPage,
-    hasPreviousPage,
-    totalPages: total === 0 ? 0 : Math.ceil(total / options.limit),
-  };
-}
-
-/**
- * Configuration options for creating a database plugin
- */
-export interface CreateDatabasePluginOptions<TConfig, TContext = unknown> {
-  /**
-   * The name of the database plugin (e.g., "postgres", "d1Database")
-   */
-  name: string;
-  /**
-   * Function that creates the database plugin methods
-   */
-  factory: DatabasePluginFactory<TConfig, TContext>;
-}
-
-/**
- * Creates a database plugin with lazy initialization and automatic hook execution.
- *
- * This factory function abstracts the double currying pattern used by all database plugins,
- * ensuring consistent lazy initialization behavior across different database providers.
- * Hooks are automatically executed at appropriate times without requiring manual invocation.
- *
- * @param options - Configuration options for the database plugin
- * @returns A double-curried function that lazily initializes the database plugin
- *
- * @example
- * ```typescript
- * export const postgres = createDatabasePlugin<PostgresConfig>({
- *   name: "postgres",
- *   factory: (config) => {
- *     const db = new Kysely(config);
- *     return {
- *       async getBundleById(bundleId) { ... },
- *       async getBundles(options) { ... },
- *       async getChannels() { ... },
- *       async commitBundle({ changedSets }) { ... }
- *     };
- *   }
- * });
- * ```
- */
-export function createDatabasePlugin<TConfig, TContext = unknown>(
-  options: CreateDatabasePluginOptions<TConfig, TContext>,
-) {
-  return (
-    config: TConfig,
-    hooks?: DatabasePluginHooks,
-  ): (() => DatabasePlugin<TContext>) => {
-    // Share the underlying plugin methods for a configured factory while
-    // keeping each returned DatabasePlugin instance's pending changes isolated.
-    let cachedMethods: DatabasePluginMethods<TContext> | null = null;
-    const getMethods = () => {
-      if (!cachedMethods) {
-        cachedMethods = options.factory(config);
-      }
-      return cachedMethods;
-    };
-
-    return (): DatabasePlugin<TContext> => {
-      const instanceMutationUnitOfWork = new BundleUnitOfWork();
-      const getRequestUnitOfWork = (context?: HotUpdaterContext<TContext>) => {
-        return getRequestBundleUnitOfWork(context);
-      };
-      const getMutationUnitOfWork = (context?: HotUpdaterContext<TContext>) => {
-        return getRequestUnitOfWork(context) ?? instanceMutationUnitOfWork;
-      };
-
-      const runGetBundles = async (
-        options: DatabaseBundleQueryOptions & { offset?: number },
-        context?: HotUpdaterContext<TContext>,
-      ) => {
-        if (context === undefined) {
-          return getMethods().getBundles(options);
-        }
-
-        return getMethods().getBundles(options, context);
-      };
-
-      const getBundlesWithLegacyCursorFallback = async (
-        options: DatabaseBundleQueryOptions,
-        context?: HotUpdaterContext<TContext>,
-      ) => {
-        const orderBy = options.orderBy ?? DEFAULT_DESC_ORDER;
-        const baseWhere = options.where;
-        const totalResult = await runGetBundles(
-          {
-            where: baseWhere,
-            limit: 1,
-            offset: 0,
-            orderBy,
-          },
-          context,
-        );
-        const total = totalResult.pagination.total;
-
-        if (!options.cursor?.after && !options.cursor?.before) {
-          const firstPage = await runGetBundles(
-            {
-              where: baseWhere,
-              limit: options.limit,
-              offset: 0,
-              orderBy,
-            },
-            context,
-          );
-
-          return createPaginatedResult(total, options.limit, 0, firstPage.data);
-        }
-
-        const {
-          where,
-          orderBy: queryOrderBy,
-          reverseData,
-        } = buildCursorPageQuery(baseWhere, options.cursor, orderBy);
-
-        const cursorPage = await runGetBundles(
-          {
-            where,
-            limit: options.limit,
-            offset: 0,
-            orderBy: queryOrderBy,
-          },
-          context,
-        );
-        const data = reverseData
-          ? cursorPage.data.slice().reverse()
-          : cursorPage.data;
-
-        if (data.length === 0) {
-          const emptyStartIndex = options.cursor.after ? total : 0;
-          return {
-            data,
-            pagination: {
-              ...calculatePagination(total, {
-                limit: options.limit,
-                offset: emptyStartIndex,
-              }),
-              ...(options.cursor.after
-                ? { previousCursor: options.cursor.after }
-                : {}),
-              ...(options.cursor.before
-                ? { nextCursor: options.cursor.before }
-                : {}),
-            },
-          };
-        }
-
-        const firstBundleId = data[0]!.id;
-        const countBeforeResult = await runGetBundles(
-          {
-            where: buildCountBeforeWhere(baseWhere, firstBundleId, orderBy),
-            limit: 1,
-            offset: 0,
-            orderBy,
-          },
-          context,
-        );
-
-        return createPaginatedResult(
-          total,
-          options.limit,
-          countBeforeResult.pagination.total,
-          data,
-        );
-      };
-
-      const plugin: DatabasePlugin<TContext> = {
-        name: options.name,
-
-        async getBundleById(bundleId: string, context) {
-          const requestUnitOfWork = getRequestUnitOfWork(context);
-          if (requestUnitOfWork) {
-            return requestUnitOfWork.getById(bundleId, () =>
-              getMethods().getBundleById(bundleId, context),
-            );
-          }
-
-          const pendingMutation =
-            instanceMutationUnitOfWork.peekChanged(bundleId);
-          if (pendingMutation.found) {
-            return pendingMutation.value;
-          }
-
-          return getMethods().getBundleById(bundleId);
-        },
-
-        async getBundles(options, context) {
-          if (
-            typeof options === "object" &&
-            options !== null &&
-            "offset" in options &&
-            options.offset !== undefined
-          ) {
-            throw new Error(
-              "Bundle offset pagination has been removed. Use cursor.after or cursor.before instead.",
-            );
-          }
-
-          const methods = getMethods();
-          const requestUnitOfWork = getRequestUnitOfWork(context);
-          const unitOfWork = requestUnitOfWork ?? instanceMutationUnitOfWork;
-          const shouldOverlay =
-            requestUnitOfWork !== null ||
-            instanceMutationUnitOfWork.hasChanges();
-          const normalizedOptions = {
-            ...options,
-            page: normalizePage(options.page),
-            orderBy: options.orderBy ?? DEFAULT_DESC_ORDER,
-          };
-          const overlayResult = <TData extends Paginated<Bundle[]>>(
-            result: TData,
-          ): TData => ({
-            ...result,
-            data: unitOfWork.overlayList(result.data, {
-              limit: normalizedOptions.limit,
-              orderBy: normalizedOptions.orderBy,
-              where: normalizedOptions.where,
-            }),
-            pagination: adjustPaginationTotal(result.pagination, {
-              limit: normalizedOptions.limit,
-              totalDelta: unitOfWork.totalDelta(normalizedOptions.where),
-            }),
-          });
-
-          if (normalizedOptions.page !== undefined) {
-            const { page, ...pageOptions } = normalizedOptions;
-            const requestedOffset = (page - 1) * normalizedOptions.limit;
-            const fetchPageOptions = expandLimitForUnitOfWork(
-              pageOptions,
-              unitOfWork,
-            );
-            let pageResult = await runGetBundles(
-              {
-                ...fetchPageOptions,
-                offset: requestedOffset,
-              },
-              context,
-            );
-
-            const total = pageResult.pagination.total;
-            const totalPages =
-              total === 0 ? 0 : Math.ceil(total / normalizedOptions.limit);
-            const maxOffset =
-              totalPages === 0
-                ? 0
-                : (Math.max(1, totalPages) - 1) * normalizedOptions.limit;
-            const resolvedOffset = Math.min(requestedOffset, maxOffset);
-
-            if (resolvedOffset !== requestedOffset) {
-              pageResult = await runGetBundles(
-                {
-                  ...fetchPageOptions,
-                  offset: resolvedOffset,
-                },
-                context,
-              );
-            }
-
-            const result = {
-              ...createPaginatedResult(
-                total,
-                normalizedOptions.limit,
-                resolvedOffset,
-                pageResult.data,
-              ),
-            };
-            return shouldOverlay ? overlayResult(result) : result;
-          }
-
-          if (methods.supportsCursorPagination) {
-            const fetchOptions = expandLimitForUnitOfWork(
-              normalizedOptions,
-              unitOfWork,
-            );
-            const result =
-              context === undefined
-                ? await methods.getBundles(fetchOptions)
-                : await methods.getBundles(fetchOptions, context);
-            return shouldOverlay ? overlayResult(result) : result;
-          }
-
-          const result = await getBundlesWithLegacyCursorFallback(
-            shouldOverlay
-              ? expandLimitForUnitOfWork(normalizedOptions, unitOfWork)
-              : normalizedOptions,
-            context,
-          );
-          return shouldOverlay ? overlayResult(result) : result;
-        },
-
-        async getChannels(context) {
-          if (context === undefined) {
-            return getMethods().getChannels();
-          }
-
-          return getMethods().getChannels(context);
-        },
-
-        async onUnmount() {
-          const methods = getMethods();
-          if (methods.onUnmount) {
-            return methods.onUnmount();
-          }
-        },
-
-        async commitBundle(context) {
-          const methods = getMethods();
-          const unitOfWork = getMutationUnitOfWork(context);
-          const params = {
-            changedSets: unitOfWork.changedSets(),
-          };
-
-          if (context === undefined) {
-            await methods.commitBundle(params);
-          } else {
-            await methods.commitBundle(params, context);
-          }
-
-          unitOfWork.clear();
-          await hooks?.onDatabaseUpdated?.();
-        },
-
-        async updateBundle(
-          targetBundleId: string,
-          newBundle: Partial<Bundle>,
-          context,
-        ) {
-          const unitOfWork = getMutationUnitOfWork(context);
-          const currentBundle = await unitOfWork.getById(targetBundleId, () =>
-            context === undefined
-              ? getMethods().getBundleById(targetBundleId)
-              : getMethods().getBundleById(targetBundleId, context),
-          );
-          if (!currentBundle) {
-            throw new Error("targetBundleId not found");
-          }
-
-          const updatedBundle = mergeBundleUpdate(currentBundle, newBundle);
-          unitOfWork.markUpdate(updatedBundle);
-        },
-
-        async appendBundle(inputBundle: Bundle, context) {
-          getMutationUnitOfWork(context).markInsert(inputBundle);
-        },
-
-        async deleteBundle(deleteBundle: Bundle, context): Promise<void> {
-          getMutationUnitOfWork(context).markDelete(deleteBundle);
-        },
-      };
-
-      Object.defineProperty(plugin, "getUpdateInfo", {
-        configurable: true,
-        enumerable: true,
-        get() {
-          const methods = getMethods();
-          const directGetUpdateInfo = methods.getUpdateInfo;
-
-          if (!directGetUpdateInfo) {
-            Object.defineProperty(plugin, "getUpdateInfo", {
-              configurable: true,
-              enumerable: true,
-              value: undefined,
+const applyChange = async (
+  database: DatabasePluginCrud,
+  change: DatabaseChange,
+  changeIndex: number,
+): Promise<void> => {
+  switch (change.model) {
+    case "bundles":
+      switch (change.operation) {
+        case "insert":
+          await assertBundleChannel(database, change.row);
+          await database.create({ model: "bundles", data: change.row });
+          return;
+        case "update": {
+          if (change.update.channel !== undefined) {
+            await assertBundleChannel(database, {
+              channel: change.update.channel,
+              channel_id: change.update.channel_id,
             });
-            return undefined;
           }
-
-          const wrappedGetUpdateInfo: NonNullable<
-            DatabasePlugin<TContext>["getUpdateInfo"]
-          > = async (args, context) => {
-            if (context === undefined) {
-              return directGetUpdateInfo(args);
-            }
-
-            return directGetUpdateInfo(args, context);
-          };
-
-          Object.defineProperty(plugin, "getUpdateInfo", {
-            configurable: true,
-            enumerable: true,
-            value: wrappedGetUpdateInfo,
+          const row = await database.update({
+            model: "bundles",
+            where: [{ field: "id", value: change.where.id }],
+            update: change.update,
           });
-          return wrappedGetUpdateInfo;
-        },
-      });
+          if (row === null) {
+            throw new DatabaseCommitConflictError({
+              committed: false,
+              conflict: { changeIndex, reason: "not_found" },
+            });
+          }
+          return;
+        }
+        case "delete":
+          await database.delete({
+            model: "bundles",
+            where: [{ field: "id", value: change.where.id }],
+          });
+          return;
+      }
+    case "bundlePatches":
+      switch (change.operation) {
+        case "insert":
+          await database.create({
+            model: "bundle_patches",
+            data: change.row,
+          });
+          return;
+        case "delete":
+          await database.delete({
+            model: "bundle_patches",
+            where: [{ field: "bundle_id", value: change.where.bundleId }],
+          });
+          return;
+      }
+    case "channels":
+      switch (change.operation) {
+        case "insert":
+          await database.create({
+            model: "channels",
+            data: change.row,
+            onConflict: change.onConflict,
+          });
+          return;
+        case "delete": {
+          const referencedBundles = await database.count({
+            model: "bundles",
+            where: [{ field: "channel_id", value: change.where.id }],
+          });
+          if (referencedBundles > 0) {
+            throw new DatabaseCommitConflictError({
+              committed: false,
+              conflict: { changeIndex, reason: "referenced" },
+            });
+          }
+          try {
+            await database.delete({
+              model: "channels",
+              where: [{ field: "id", value: change.where.id }],
+            });
+          } catch (error) {
+            if (error instanceof DatabaseRowReferencedError) {
+              throw new DatabaseCommitConflictError({
+                committed: false,
+                conflict: { changeIndex, reason: "referenced" },
+              });
+            }
+            throw error;
+          }
+          return;
+        }
+      }
+    case "analytics":
+      await database.create({ model: "bundle_events", data: change.row });
+      return;
+    case "clientAccessKeys":
+      switch (change.operation) {
+        case "insert":
+          await database.create({
+            model: "client_access_keys",
+            data: change.row,
+            onConflict: change.onConflict,
+          });
+          return;
+        case "update": {
+          const row = await database.update({
+            model: "client_access_keys",
+            where: [{ field: "id", value: change.where.id }],
+            update: { revoked_at_ms: change.update.revokedAtMs },
+          });
+          if (row === null) {
+            throw new DatabaseCommitConflictError({
+              committed: false,
+              conflict: { changeIndex, reason: "not_found" },
+            });
+          }
+          return;
+        }
+      }
+  }
+};
 
-      return plugin;
-    };
-  };
+const applyChanges = async (
+  database: DatabasePluginCrud,
+  input: DatabaseCommit,
+): Promise<DatabaseCommitResult> => {
+  for (const [changeIndex, change] of input.changes.entries()) {
+    await applyChange(database, change, changeIndex);
+  }
+  return { committed: true };
+};
+
+const hasOnlyKeys = (
+  value: Record<PropertyKey, unknown>,
+  keys: readonly string[],
+): boolean => {
+  const actual = Reflect.ownKeys(value);
+  return (
+    actual.length === keys.length &&
+    keys.every((key) => Object.hasOwn(value, key))
+  );
+};
+
+const validateWhere = (
+  where: unknown,
+  field: "bundleId" | "id",
+  validateValue: (value: unknown) => boolean = (value) =>
+    typeof value === "string",
+): void => {
+  if (
+    !isRecord(where) ||
+    !hasOnlyKeys(where, [field]) ||
+    !validateValue(Reflect.get(where, field))
+  ) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+};
+
+const validateDatabaseChange = (change: unknown): void => {
+  if (!isRecord(change)) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+  switch (change.model) {
+    case "bundles":
+      switch (change.operation) {
+        case "insert":
+          if (!hasOnlyKeys(change, ["model", "operation", "row"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateCreateData("bundles", change.row);
+          return;
+        case "update":
+          if (!hasOnlyKeys(change, ["model", "operation", "where", "update"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateWhere(change.where, "id");
+          validateBundleUpdateData(change.update);
+          return;
+        case "delete":
+          if (!hasOnlyKeys(change, ["model", "operation", "where"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateWhere(change.where, "id");
+          return;
+        default:
+          throw new DatabasePluginInputError("invalid-operation");
+      }
+    case "bundlePatches":
+      switch (change.operation) {
+        case "insert":
+          if (!hasOnlyKeys(change, ["model", "operation", "row"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateCreateData("bundle_patches", change.row);
+          return;
+        case "delete":
+          if (!hasOnlyKeys(change, ["model", "operation", "where"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateWhere(change.where, "bundleId");
+          return;
+        default:
+          throw new DatabasePluginInputError("invalid-operation");
+      }
+    case "channels":
+      switch (change.operation) {
+        case "insert":
+          if (
+            !hasOnlyKeys(change, ["model", "operation", "row", "onConflict"]) ||
+            change.onConflict !== "ignore"
+          ) {
+            throw new DatabasePluginInputError("invalid-operation");
+          }
+          validateCreateData("channels", change.row);
+          return;
+        case "delete":
+          if (!hasOnlyKeys(change, ["model", "operation", "where"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateWhere(change.where, "id", isChannelText);
+          return;
+        default:
+          throw new DatabasePluginInputError("invalid-operation");
+      }
+    case "analytics":
+      if (
+        change.operation !== "insert" ||
+        !hasOnlyKeys(change, ["model", "operation", "row"])
+      ) {
+        throw new DatabasePluginInputError("invalid-operation");
+      }
+      validateCreateData("bundle_events", change.row);
+      return;
+    case "clientAccessKeys":
+      switch (change.operation) {
+        case "insert":
+          if (
+            !hasOnlyKeys(change, ["model", "operation", "row", "onConflict"]) ||
+            change.onConflict !== "ignore"
+          ) {
+            throw new DatabasePluginInputError("invalid-operation");
+          }
+          validateCreateData("client_access_keys", change.row);
+          return;
+        case "update":
+          if (!hasOnlyKeys(change, ["model", "operation", "where", "update"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateWhere(change.where, "id");
+          if (!isRecord(change.update)) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          if (!hasOnlyKeys(change.update, ["revokedAtMs"])) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          validateClientAccessKeyUpdateData({
+            revoked_at_ms: change.update.revokedAtMs,
+          });
+          return;
+        default:
+          throw new DatabasePluginInputError("invalid-operation");
+      }
+    default:
+      throw new DatabasePluginInputError("invalid-model");
+  }
+};
+
+function validateDatabaseCommit(
+  input: unknown,
+): asserts input is DatabaseCommit {
+  if (
+    !isRecord(input) ||
+    !hasOnlyKeys(input, ["changes"]) ||
+    !Array.isArray(input.changes)
+  ) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+  input.changes.forEach(validateDatabaseChange);
 }
+
+const validateChannelInsertResult = (
+  input: ChannelInsertInput,
+  result: ChannelInsertResult,
+): void => {
+  validateResult("channels", result.row, undefined);
+  if (
+    typeof result.inserted !== "boolean" ||
+    result.row.name !== input.row.name ||
+    (result.inserted && result.row.id !== input.row.id)
+  ) {
+    throw new DatabasePluginInputError("invalid-result");
+  }
+};
+
+const validateChannelDeleteResult = (
+  result: Awaited<ReturnType<DatabasePluginImplementation["deleteChannel"]>>,
+): void => {
+  if (result.deleted) return;
+  if (result.reason !== "not_found" && result.reason !== "not_empty") {
+    throw new DatabasePluginInputError("invalid-result");
+  }
+};
+
+export const createDatabasePluginAdapter = (
+  name: string,
+  implementation: DatabasePluginImplementation,
+): DatabasePluginAdapter => {
+  const crud = createDatabasePluginCrud(implementation);
+  const transaction = implementation.transaction;
+  const executeCommit = implementation.commit
+    ? implementation.commit
+    : async (input: DatabaseCommit): Promise<DatabaseCommitResult> => {
+        if (transaction) {
+          try {
+            return await transaction((database) =>
+              applyChanges(createTransactionDatabasePlugin(database), input),
+            );
+          } catch (error) {
+            if (error instanceof DatabaseCommitConflictError) {
+              return error.result;
+            }
+            throw error;
+          }
+        }
+        if (
+          input.changes.length > 1 ||
+          input.changes.some(
+            (change) =>
+              change.model === "channels" && change.operation === "delete",
+          )
+        ) {
+          throw new DatabaseAtomicCommitUnsupportedError(name);
+        }
+        try {
+          return await applyChanges(crud, input);
+        } catch (error) {
+          if (error instanceof DatabaseCommitConflictError) return error.result;
+          throw error;
+        }
+      };
+  const commit = async (
+    input: DatabaseCommit,
+  ): Promise<DatabaseCommitResult> => {
+    validateDatabaseCommit(input);
+    return executeCommit(input);
+  };
+
+  const findClientAccessKeyByHash = (
+    database: DatabasePluginCrud,
+    hash: string,
+  ): Promise<ClientAccessKeyRow | null> =>
+    database.findOne({
+      model: "client_access_keys",
+      where: [{ field: "hash", value: hash }],
+    });
+
+  return {
+    models: {
+      bundles: {
+        findById: (id): Promise<BundleRow | null> =>
+          crud.findOne({
+            model: "bundles",
+            where: [{ field: "id", value: id }],
+          }),
+        findMany: (query): Promise<readonly BundleRow[]> =>
+          crud.findMany({
+            model: "bundles",
+            where: toBundleWhere(query.where),
+            limit: query.limit,
+            offset: query.offset,
+            orderBy: [query.orderBy],
+          }),
+        count: (where) =>
+          crud.count({ model: "bundles", where: toBundleWhere(where) }),
+      },
+      bundlePatches: {
+        async findByBundleIds(bundleIds): Promise<readonly BundlePatchRow[]> {
+          if (bundleIds.length === 0) return [];
+          const rows: BundlePatchRow[] = [];
+          for (let offset = 0; ; offset += PAGE_SIZE) {
+            const page = await crud.findMany({
+              model: "bundle_patches",
+              where: [{ field: "bundle_id", operator: "in", value: bundleIds }],
+              limit: PAGE_SIZE,
+              offset,
+              orderBy: [{ field: "id", direction: "asc" }],
+            });
+            rows.push(...page);
+            if (page.length < PAGE_SIZE) return rows;
+          }
+        },
+      },
+      channels: {
+        async insert(input) {
+          if (input.onConflict !== "returnExisting") {
+            throw new DatabasePluginInputError("invalid-operation");
+          }
+          validateCreateData("channels", input.row);
+          const result = await implementation.insertChannel(input);
+          validateChannelInsertResult(input, result);
+          return result;
+        },
+        async list(_input) {
+          const channels: ChannelRow[] = [];
+          for (let offset = 0; ; offset += PAGE_SIZE) {
+            const page = await crud.findMany({
+              model: "channels",
+              orderBy: [{ field: "name", direction: "asc" }],
+              limit: PAGE_SIZE,
+              offset,
+            });
+            channels.push(...page);
+            if (page.length < PAGE_SIZE) {
+              channels.sort(compareChannelRows);
+              return { channels };
+            }
+          }
+        },
+        async delete(input) {
+          if (!isChannelText(input.id)) {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          const result = await implementation.deleteChannel(input);
+          validateChannelDeleteResult(result);
+          return result;
+        },
+      },
+      analytics: {
+        async append(row) {
+          await crud.create({ model: "bundle_events", data: row });
+        },
+        async scan(input) {
+          const rows: BundleEventRow[] = [];
+          for (let offset = 0; rows.length < input.limit; offset += PAGE_SIZE) {
+            const page = await crud.findMany({
+              model: "bundle_events",
+              where: [
+                {
+                  field: "received_at_ms",
+                  operator: "lt",
+                  value: input.beforeReceivedAtMs,
+                },
+              ],
+              orderBy: [
+                { field: "received_at_ms", direction: "asc" },
+                { field: "id", direction: "asc" },
+              ],
+              limit: PAGE_SIZE,
+              offset,
+            });
+            rows.push(
+              ...page.filter(
+                (row) =>
+                  input.after === undefined ||
+                  row.received_at_ms > input.after.receivedAtMs ||
+                  (row.received_at_ms === input.after.receivedAtMs &&
+                    row.id > input.after.id),
+              ),
+            );
+            if (page.length < PAGE_SIZE) break;
+          }
+          return rows.slice(0, input.limit);
+        },
+      },
+      clientAccessKeys: {
+        async create(row) {
+          const run = async (database: DatabasePluginCrud) => {
+            if (
+              (await findClientAccessKeyByHash(database, row.hash)) !== null
+            ) {
+              return "existing" as const;
+            }
+            await database.create({ model: "client_access_keys", data: row });
+            return "created" as const;
+          };
+          return transaction
+            ? transaction((database) =>
+                run(createTransactionDatabasePlugin(database)),
+              )
+            : run(crud);
+        },
+        findByHash: (hash) => findClientAccessKeyByHash(crud, hash),
+        list: () =>
+          crud.findMany({
+            model: "client_access_keys",
+            orderBy: [
+              { field: "created_at_ms", direction: "desc" },
+              { field: "id", direction: "asc" },
+            ],
+            limit: Number.MAX_SAFE_INTEGER,
+            offset: 0,
+          }),
+        async revoke({ id, revokedAtMs }) {
+          return crud.update({
+            model: "client_access_keys",
+            where: [{ field: "id", value: id }],
+            update: { revoked_at_ms: revokedAtMs },
+          });
+        },
+      },
+    },
+    queries: implementation.getUpdateInfo
+      ? { getUpdateInfo: implementation.getUpdateInfo }
+      : {},
+    commit,
+    ...(implementation.dispose ? { dispose: implementation.dispose } : {}),
+  };
+};
+
+export const createDatabasePlugin = (
+  options: CreateDatabasePluginOptions,
+): DatabasePlugin => ({ ...options });

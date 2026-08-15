@@ -1,4 +1,5 @@
 import type { Bundle, Platform } from "@hot-updater/core";
+import type { ChannelRow } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it } from "vitest";
 
 interface PaginationInfo {
@@ -30,10 +31,9 @@ interface DatabaseBundleQueryOptions {
     fingerprintHash?: string | null;
   };
   limit: number;
-  cursor?: {
-    after?: string;
-    before?: string;
-  };
+  cursor?:
+    | { after: string; before?: never }
+    | { after?: never; before: string };
   orderBy?: {
     field: "id";
     direction: "asc" | "desc";
@@ -65,7 +65,7 @@ export const setupBundleMethodsTestSuite = ({
   deleteBundleById,
 }: {
   getBundleById: (id: string) => Promise<Bundle | null>;
-  getChannels: () => Promise<string[]>;
+  getChannels: () => Promise<readonly ChannelRow[]>;
   insertBundle: (bundle: Bundle) => Promise<void>;
   getBundles: (
     options: DatabaseBundleQueryOptions,
@@ -189,10 +189,11 @@ export const setupBundleMethodsTestSuite = ({
 
       // This should not throw a Prisma validation error
       const channels = await getChannels();
+      const names = channels.map(({ name }) => name);
 
       expect(channels.length).toBeGreaterThanOrEqual(2);
-      expect(channels).toContain("production");
-      expect(channels).toContain("staging");
+      expect(names).toContain("production");
+      expect(names).toContain("staging");
     });
   });
 
@@ -368,12 +369,12 @@ export const setupBundleMethodsTestSuite = ({
       const page1 = await getBundles({
         limit: 1,
       });
+      const nextCursor = page1.pagination.nextCursor;
+      if (!nextCursor) throw new TypeError("Expected a next bundle cursor");
 
       const page2 = await getBundles({
         limit: 1,
-        cursor: {
-          after: page1.pagination.nextCursor ?? undefined,
-        },
+        cursor: { after: nextCursor },
       });
 
       expect(page1.data.length).toBe(1);
@@ -505,6 +506,8 @@ export const setupBundleMethodsTestSuite = ({
       ]);
       expect(firstPage.pagination.total).toBe(2);
       expect(firstPage.pagination.hasNextPage).toBe(true);
+      const nextCursor = firstPage.pagination.nextCursor;
+      if (!nextCursor) throw new TypeError("Expected a next bundle cursor");
 
       const secondPage = await getBundles({
         where: {
@@ -512,9 +515,7 @@ export const setupBundleMethodsTestSuite = ({
         },
         orderBy: { field: "id", direction: "desc" },
         limit: 1,
-        cursor: {
-          after: firstPage.pagination.nextCursor ?? undefined,
-        },
+        cursor: { after: nextCursor },
       });
 
       expect(secondPage.data.map((bundle) => bundle.id)).toEqual([

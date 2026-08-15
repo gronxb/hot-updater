@@ -1,552 +1,266 @@
 import {
-  DEFAULT_ROLLOUT_COHORT_COUNT,
-  getAssetBaseStorageUri,
-  getBundlePatches,
-  getManifestFileHash,
-  getManifestStorageUri,
-  getPatchBaseBundleId,
-  getPatchBaseFileHash,
-  getPatchFileHash,
-  getPatchStorageUri,
-  NIL_UUID,
-  type SnakeCaseBundle,
-  stripBundleArtifactMetadata,
-} from "@hot-updater/core";
-import type {
-  Bundle,
-  DatabaseBundleQueryOrder,
-  DatabaseBundleQueryWhere,
-} from "@hot-updater/plugin-core";
-import {
-  calculatePagination,
   createDatabasePlugin,
-  filterCompatibleAppVersions,
   resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
+import {
+  createDatabasePluginAdapter,
+  type DatabasePluginImplementation,
+  type TransactionDatabasePluginImplementation,
+} from "@hot-updater/plugin-core/internal";
 import {
   getApp,
   getApps,
   initializeApp,
   type AppOptions,
 } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+
 import {
-  getFirestore,
-  type DocumentData,
-  type Query,
-} from "firebase-admin/firestore";
+  parseFirebaseBundleRow,
+  parseFirebaseChannelRow,
+  parseFirebaseClientAccessKeyRow,
+  parseFirebasePatchRow,
+} from "./firebaseDatabaseParser";
+import {
+  createFirebaseDatabaseCollections,
+  firebaseChannelDocumentId,
+  firebaseChannelIdDocumentId,
+  loadFirebaseChannels,
+  loadFirebaseDatabaseSnapshot,
+  loadFirebaseTransactionSnapshot,
+  migrateFirebaseDatabase,
+  persistFirebaseDatabaseSnapshot,
+  requireFirebaseDocumentKey,
+} from "./firebaseDatabasePersistence";
+import { queryFirebaseDatabaseRows } from "./firebaseDatabaseQuery";
+import {
+  cloneFirebaseDatabaseSnapshot,
+  createFirebaseDatabaseState,
+  FirebaseDatabaseConstraintError,
+} from "./firebaseDatabaseState";
+import { loadFirebaseUpdateBundles } from "./firebaseDatabaseUpdateInfo";
 
-type FirestoreData = DocumentData;
+type FirebaseMutation<TResult> = (
+  database: TransactionDatabasePluginImplementation,
+) => Promise<TResult>;
 
-const bundleMatchesQueryWhere = (
-  bundle: Bundle,
-  where: DatabaseBundleQueryWhere | undefined,
-) => {
-  if (!where) return true;
-  if (where.channel !== undefined && bundle.channel !== where.channel)
-    return false;
-  if (where.platform !== undefined && bundle.platform !== where.platform)
-    return false;
-  if (where.enabled !== undefined && bundle.enabled !== where.enabled)
-    return false;
-  if (where.id?.eq !== undefined && bundle.id !== where.id.eq) return false;
-  if (where.id?.gt !== undefined && bundle.id.localeCompare(where.id.gt) <= 0)
-    return false;
-  if (where.id?.gte !== undefined && bundle.id.localeCompare(where.id.gte) < 0)
-    return false;
-  if (where.id?.lt !== undefined && bundle.id.localeCompare(where.id.lt) >= 0)
-    return false;
-  if (where.id?.lte !== undefined && bundle.id.localeCompare(where.id.lte) > 0)
-    return false;
-  if (where.id?.in && !where.id.in.includes(bundle.id)) return false;
-  if (where.targetAppVersionNotNull && bundle.targetAppVersion === null) {
-    return false;
-  }
-  if (
-    where.targetAppVersion !== undefined &&
-    bundle.targetAppVersion !== where.targetAppVersion
-  ) {
-    return false;
-  }
-  if (
-    where.targetAppVersionIn &&
-    !where.targetAppVersionIn.includes(bundle.targetAppVersion ?? "")
-  ) {
-    return false;
-  }
-  if (
-    where.fingerprintHash !== undefined &&
-    bundle.fingerprintHash !== where.fingerprintHash
-  ) {
-    return false;
-  }
-  return true;
+const exactId = (
+  input: Parameters<DatabasePluginImplementation["findOne"]>[0],
+): string | undefined => {
+  if (input.where?.length !== 1) return undefined;
+  const [condition] = input.where;
+  return condition.field === "id" &&
+    (condition.operator === undefined || condition.operator === "eq") &&
+    typeof condition.value === "string"
+    ? condition.value
+    : undefined;
 };
 
-const sortBundles = (
-  bundles: Bundle[],
-  orderBy: DatabaseBundleQueryOrder | undefined,
-) => {
-  const direction = orderBy?.direction ?? "desc";
-  return bundles.slice().sort((a, b) => {
-    const result = a.id.localeCompare(b.id);
-    return direction === "asc" ? result : -result;
-  });
-};
-
-const applyFirestoreQueryableFilters = (
-  query: Query<FirestoreData>,
-  where: DatabaseBundleQueryWhere | undefined,
-) => {
-  let nextQuery = query;
-
-  if (where?.channel) {
-    nextQuery = nextQuery.where("channel", "==", where.channel);
-  }
-  if (where?.platform) {
-    nextQuery = nextQuery.where("platform", "==", where.platform);
-  }
-  if (where?.enabled !== undefined) {
-    nextQuery = nextQuery.where("enabled", "==", where.enabled);
-  }
-  if (where?.fingerprintHash !== undefined && where.fingerprintHash !== null) {
-    nextQuery = nextQuery.where(
-      "fingerprint_hash",
-      "==",
-      where.fingerprintHash,
-    );
-  }
-  if (
-    where?.targetAppVersion !== undefined &&
-    where.targetAppVersion !== null
-  ) {
-    nextQuery = nextQuery.where(
-      "target_app_version",
-      "==",
-      where.targetAppVersion,
-    );
-  }
-  if (where?.id?.eq) {
-    nextQuery = nextQuery.where("id", "==", where.id.eq);
-  }
-  if (where?.id?.gt) {
-    nextQuery = nextQuery.where("id", ">", where.id.gt);
-  }
-  if (where?.id?.gte) {
-    nextQuery = nextQuery.where("id", ">=", where.id.gte);
-  }
-  if (where?.id?.lt) {
-    nextQuery = nextQuery.where("id", "<", where.id.lt);
-  }
-  if (where?.id?.lte) {
-    nextQuery = nextQuery.where("id", "<=", where.id.lte);
-  }
-
-  return nextQuery;
-};
-
-const requiresInMemoryFiltering = (
-  where: DatabaseBundleQueryWhere | undefined,
-) => {
-  return Boolean(
-    where?.id?.in ||
-    where?.targetAppVersionIn ||
-    where?.targetAppVersionNotNull ||
-    where?.targetAppVersion === null ||
-    where?.fingerprintHash === null,
-  );
-};
-
-const chunkValues = <T>(values: T[], size: number) => {
-  const chunks: T[][] = [];
-
-  for (let index = 0; index < values.length; index += size) {
-    chunks.push(values.slice(index, index + size));
-  }
-
-  return chunks;
-};
-
-const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => {
-  const rawMetadata = firestoreData.metadata;
-  const storedPatches = (
-    firestoreData as SnakeCaseBundle & {
-      patches?: Bundle["patches"];
-    }
-  ).patches;
-  const patches =
-    storedPatches && Array.isArray(storedPatches)
-      ? storedPatches
-      : getBundlePatches({
-          metadata: rawMetadata,
-          patchBaseBundleId: firestoreData.patch_base_bundle_id ?? null,
-          patchBaseFileHash: firestoreData.patch_base_file_hash ?? null,
-          patchFileHash: firestoreData.patch_file_hash ?? null,
-          patchStorageUri: firestoreData.patch_storage_uri ?? null,
-        });
-  const primaryPatch = patches[0] ?? null;
-
-  return {
-    channel: firestoreData.channel,
-    enabled: Boolean(firestoreData.enabled),
-    shouldForceUpdate: Boolean(firestoreData.should_force_update),
-    fileHash: firestoreData.file_hash,
-    gitCommitHash: firestoreData.git_commit_hash,
-    id: firestoreData.id,
-    message: firestoreData.message,
-    platform: firestoreData.platform,
-    targetAppVersion: firestoreData.target_app_version,
-    storageUri: firestoreData.storage_uri,
-    fingerprintHash: firestoreData.fingerprint_hash,
-    metadata: stripBundleArtifactMetadata(rawMetadata),
-    manifestStorageUri: firestoreData.manifest_storage_uri ?? null,
-    manifestFileHash: firestoreData.manifest_file_hash ?? null,
-    assetBaseStorageUri: firestoreData.asset_base_storage_uri ?? null,
-    patches,
-    patchBaseBundleId:
-      primaryPatch?.baseBundleId ?? firestoreData.patch_base_bundle_id ?? null,
-    patchBaseFileHash:
-      primaryPatch?.baseFileHash ?? firestoreData.patch_base_file_hash ?? null,
-    patchFileHash:
-      primaryPatch?.patchFileHash ?? firestoreData.patch_file_hash ?? null,
-    patchStorageUri:
-      primaryPatch?.patchStorageUri ?? firestoreData.patch_storage_uri ?? null,
-    rolloutCohortCount:
-      firestoreData.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
-    targetCohorts: firestoreData.target_cohorts ?? null,
-  };
-};
-
-export const firebaseDatabase = createDatabasePlugin<AppOptions>({
-  name: "firebaseDatabase",
-  factory: (config) => {
+export const firebaseDatabase = (config: AppOptions) => {
+  const implementation: DatabasePluginImplementation = (() => {
     const app = getApps().length ? getApp() : initializeApp(config);
     const db = getFirestore(app);
-    const bundlesCollection = db.collection("bundles");
-    const targetAppVersionsCollection = db.collection("target_app_versions");
+    const collections = createFirebaseDatabaseCollections(db);
+    let migration: Promise<void> | undefined;
+
+    const ensureMigrated = (): Promise<void> => {
+      migration ??= migrateFirebaseDatabase(db, collections).catch((error) => {
+        migration = undefined;
+        throw error;
+      });
+      return migration;
+    };
+
+    const mutate = async <TResult>(
+      operation: FirebaseMutation<TResult>,
+    ): Promise<TResult> => {
+      await ensureMigrated();
+      return db.runTransaction(async (transaction) => {
+        const before = await loadFirebaseTransactionSnapshot(
+          transaction,
+          collections,
+        );
+        const after = cloneFirebaseDatabaseSnapshot(before);
+        const database = createFirebaseDatabaseState(after);
+        const result = await operation(database);
+        persistFirebaseDatabaseSnapshot({
+          transaction,
+          collections,
+          before,
+          after,
+        });
+        return result;
+      });
+    };
+
+    const read = async <TResult>(
+      operation: FirebaseMutation<TResult>,
+    ): Promise<TResult> => {
+      await ensureMigrated();
+      const snapshot = await loadFirebaseDatabaseSnapshot(collections);
+      return operation(createFirebaseDatabaseState(snapshot));
+    };
 
     return {
-      async getUpdateInfo(args, context) {
-        const channel = args.channel ?? "production";
-        const minBundleId = args.minBundleId ?? NIL_UUID;
-
-        if (args._updateStrategy === "appVersion") {
-          const querySnapshot = await targetAppVersionsCollection
-            .where("platform", "==", args.platform)
-            .where("channel", "==", channel)
-            .select("target_app_version")
-            .get();
-
-          const targetAppVersions = Array.from(
-            new Set(
-              querySnapshot.docs
-                .map(
-                  (doc) => doc.data().target_app_version as string | undefined,
-                )
-                .filter((version): version is string => Boolean(version)),
-            ),
-          );
-          const compatibleAppVersions = filterCompatibleAppVersions(
-            targetAppVersions,
-            args.appVersion,
-          );
-          const results =
-            compatibleAppVersions.length > 0
-              ? await Promise.all(
-                  chunkValues(compatibleAppVersions, 10).map((versions) =>
-                    bundlesCollection
-                      .where("platform", "==", args.platform)
-                      .where("channel", "==", channel)
-                      .where("enabled", "==", true)
-                      .where("id", ">=", minBundleId)
-                      .where("target_app_version", "in", versions)
-                      .get(),
+      create: (input) => mutate((database) => database.create(input)),
+      update: (input) => mutate((database) => database.update(input)),
+      delete: (input) => mutate((database) => database.delete(input)),
+      count: (input) => read((database) => database.count(input)),
+      findOne: async (input) => {
+        const id = exactId(input);
+        if (id === undefined) {
+          return read((database) => database.findOne(input));
+        }
+        await ensureMigrated();
+        switch (input.model) {
+          case "bundles": {
+            const document = await collections.bundles.doc(id).get();
+            return document.exists
+              ? requireFirebaseDocumentKey(
+                  "bundles",
+                  document.id,
+                  parseFirebaseBundleRow(
+                    document.data(),
+                    `bundles/${document.id}`,
                   ),
                 )
-              : [];
-          const bundles = results.flatMap((snapshot) =>
-            snapshot.docs.map((doc) =>
-              convertToBundle(doc.data() as SnakeCaseBundle),
-            ),
-          );
-
-          return resolveUpdateInfoFromBundles({
-            args: { ...args, channel, minBundleId },
-            bundles,
-            context,
-          });
+              : null;
+          }
+          case "bundle_patches": {
+            const document = await collections.bundlePatches.doc(id).get();
+            return document.exists
+              ? requireFirebaseDocumentKey(
+                  "bundle_patches",
+                  document.id,
+                  parseFirebasePatchRow(
+                    document.data(),
+                    `bundle_patches/${document.id}`,
+                  ),
+                )
+              : null;
+          }
+          case "client_access_keys": {
+            const document = await collections.clientAccessKeys.doc(id).get();
+            return document.exists
+              ? requireFirebaseDocumentKey(
+                  "client_access_keys",
+                  document.id,
+                  parseFirebaseClientAccessKeyRow(
+                    document.data(),
+                    `client_access_keys/${document.id}`,
+                  ),
+                )
+              : null;
+          }
+          case "channels":
+            return read((database) => database.findOne(input));
         }
-
-        const querySnapshot = await bundlesCollection
-          .where("platform", "==", args.platform)
-          .where("channel", "==", channel)
-          .where("enabled", "==", true)
-          .where("id", ">=", minBundleId)
-          .where("fingerprint_hash", "==", args.fingerprintHash)
-          .get();
-
-        const bundles = querySnapshot.docs.map((doc) =>
-          convertToBundle(doc.data() as SnakeCaseBundle),
+      },
+      findMany: async (input) => {
+        if (input.model !== "channels") {
+          return read((database) => database.findMany(input));
+        }
+        await ensureMigrated();
+        return queryFirebaseDatabaseRows(
+          await loadFirebaseChannels(collections),
+          input,
         );
-
+      },
+      insertChannel: async (input) => {
+        await ensureMigrated();
+        return db.runTransaction(async (transaction) => {
+          const reference = collections.channels.doc(
+            firebaseChannelDocumentId(input.row.name),
+          );
+          const idReference = collections.settings.doc(
+            firebaseChannelIdDocumentId(input.row.id),
+          );
+          const [document, idDocument] = await transaction.getAll(
+            reference,
+            idReference,
+          );
+          if (idDocument.exists) {
+            const row = parseFirebaseChannelRow(
+              idDocument.data(),
+              `private_hot_updater_settings/${idDocument.id}`,
+            );
+            if (row.id !== input.row.id || row.name !== input.row.name) {
+              throw new FirebaseDatabaseConstraintError("channels.id.registry");
+            }
+          }
+          if (idDocument.exists && !document.exists) {
+            throw new FirebaseDatabaseConstraintError("channels.id.unique");
+          }
+          if (document.exists) {
+            const row = parseFirebaseChannelRow(
+              document.data(),
+              `channels/${document.id}`,
+            );
+            if (document.id !== firebaseChannelDocumentId(row.name)) {
+              throw new FirebaseDatabaseConstraintError(
+                "channels.name.document-key",
+              );
+            }
+            return {
+              row,
+              inserted: false,
+            };
+          }
+          transaction.create(reference, input.row);
+          transaction.create(idReference, input.row);
+          return { row: input.row, inserted: true };
+        });
+      },
+      deleteChannel: async ({ id }) => {
+        await ensureMigrated();
+        return db.runTransaction(async (transaction) => {
+          const idReference = collections.settings.doc(
+            firebaseChannelIdDocumentId(id),
+          );
+          const idDocument = await transaction.get(idReference);
+          if (!idDocument.exists) {
+            return { deleted: false, reason: "not_found" };
+          }
+          const row = parseFirebaseChannelRow(
+            idDocument.data(),
+            `private_hot_updater_settings/${idDocument.id}`,
+          );
+          const reference = collections.channels.doc(
+            firebaseChannelDocumentId(row.name),
+          );
+          const document = await transaction.get(reference);
+          if (!document.exists || row.id !== id) {
+            throw new FirebaseDatabaseConstraintError("channels.id.registry");
+          }
+          const referencedBundles = await transaction.get(
+            collections.bundles.where("channel_id", "==", id).limit(1),
+          );
+          if (!referencedBundles.empty) {
+            return { deleted: false, reason: "not_empty" };
+          }
+          transaction.delete(reference);
+          transaction.delete(idReference);
+          return { deleted: true };
+        });
+      },
+      getUpdateInfo: async (args) => {
+        await ensureMigrated();
         return resolveUpdateInfoFromBundles({
-          args: { ...args, channel, minBundleId },
-          bundles,
-          context,
+          args,
+          bundles: await loadFirebaseUpdateBundles(collections, args),
         });
       },
-
-      async getBundleById(bundleId) {
-        const bundleRef = bundlesCollection.doc(bundleId);
-        const bundleSnap = await bundleRef.get();
-
-        if (!bundleSnap.exists) {
-          return null;
-        }
-
-        const firestoreData = bundleSnap.data() as SnakeCaseBundle;
-        return convertToBundle(firestoreData);
-      },
-
-      async getBundles(options) {
-        const { where, limit, orderBy } = options;
-        const offset =
-          (("offset" in options ? options.offset : undefined) as
-            | number
-            | undefined) ?? 0;
-
-        let query = applyFirestoreQueryableFilters(bundlesCollection, where);
-
-        query = query.orderBy(
-          "id",
-          orderBy?.direction === "asc" ? "asc" : "desc",
-        );
-
-        if (requiresInMemoryFiltering(where)) {
-          const querySnapshot = await query.get();
-          const filteredBundles = sortBundles(
-            querySnapshot.docs
-              .map((doc) => convertToBundle(doc.data() as SnakeCaseBundle))
-              .filter((bundle) => bundleMatchesQueryWhere(bundle, where)),
-            orderBy,
-          );
-          const total = filteredBundles.length;
-          const data = filteredBundles.slice(offset, offset + limit);
-
-          return {
-            data,
-            pagination: calculatePagination(total, {
-              limit,
-              offset,
-            }),
-          };
-        }
-
-        const totalSnapshot = await query.get();
-        const total = totalSnapshot.size;
-
-        if (offset > 0) {
-          query = query.offset(offset);
-        }
-        if (limit) {
-          query = query.limit(limit);
-        }
-
-        const querySnapshot = await query.get();
-
-        const data = sortBundles(
-          querySnapshot.docs.map((doc) =>
-            convertToBundle(doc.data() as SnakeCaseBundle),
-          ),
-          orderBy,
-        );
-
-        return {
-          data,
-          pagination: calculatePagination(total, {
-            limit,
-            offset,
-          }),
-        };
-      },
-
-      async getChannels() {
-        const channelsCollection = db.collection("channels");
-        const querySnapshot = await channelsCollection.get();
-
-        if (querySnapshot.empty) {
-          return [];
-        }
-
-        const channels = new Set<string>();
-        for (const doc of querySnapshot.docs) {
-          const data = doc.data();
-          if (data.name) {
-            channels.add(data.name as string);
-          }
-        }
-
-        return Array.from(channels);
-      },
-
-      async commitBundle({ changedSets }) {
-        if (changedSets.length === 0) {
-          return;
-        }
-
-        let isTargetAppVersionChanged = false;
-
-        await db.runTransaction(async (transaction) => {
-          const bundlesSnapshot = await transaction.get(bundlesCollection);
-          const targetVersionsSnapshot = await transaction.get(
-            db.collection("target_app_versions"),
-          );
-          const channelsSnapshot = await transaction.get(
-            db.collection("channels"),
-          );
-
-          const bundlesMap: { [id: string]: any } = {};
-          for (const doc of bundlesSnapshot.docs) {
-            bundlesMap[doc.id] = doc.data();
-          }
-
-          // Process all operations
-          for (const { operation, data } of changedSets) {
-            if (data.targetAppVersion) {
-              isTargetAppVersionChanged = true;
-            }
-
-            if (operation === "insert" || operation === "update") {
-              bundlesMap[data.id] = {
-                id: data.id,
-                channel: data.channel,
-                enabled: data.enabled,
-                should_force_update: data.shouldForceUpdate,
-                file_hash: data.fileHash,
-                git_commit_hash: data.gitCommitHash || null,
-                message: data.message || null,
-                platform: data.platform,
-                target_app_version: data.targetAppVersion,
-                storage_uri: data.storageUri,
-                fingerprint_hash: data.fingerprintHash,
-                metadata: stripBundleArtifactMetadata(data.metadata) ?? {},
-                manifest_storage_uri: getManifestStorageUri(data),
-                manifest_file_hash: getManifestFileHash(data),
-                asset_base_storage_uri: getAssetBaseStorageUri(data),
-                patches: data.patches ?? null,
-                patch_base_bundle_id: getPatchBaseBundleId(data),
-                patch_base_file_hash: getPatchBaseFileHash(data),
-                patch_file_hash: getPatchFileHash(data),
-                patch_storage_uri: getPatchStorageUri(data),
-                rollout_cohort_count:
-                  data.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
-                target_cohorts: data.targetCohorts ?? null,
-              } as SnakeCaseBundle;
-
-              // Add channel to channels collection
-              const channelRef = db.collection("channels").doc(data.channel);
-              transaction.set(
-                channelRef,
-                {
-                  name: data.channel,
-                },
-                { merge: true },
-              );
-            } else if (operation === "delete") {
-              // Check if bundle exists
-              if (!bundlesMap[data.id]) {
-                throw new Error(`Bundle with id ${data.id} not found`);
-              }
-
-              // Remove from bundlesMap
-              delete bundlesMap[data.id];
-              isTargetAppVersionChanged = true;
-            }
-          }
-
-          // Calculate required target app versions and channels from remaining bundles
-          const requiredTargetVersionKeys = new Set<string>();
-          const requiredChannels = new Set<string>();
-          for (const bundle of Object.values(bundlesMap)) {
-            if (bundle.target_app_version) {
-              const key = `${bundle.platform}_${bundle.channel}_${bundle.target_app_version}`;
-              requiredTargetVersionKeys.add(key);
-            }
-            requiredChannels.add(bundle.channel);
-          }
-
-          // Execute database operations
-          for (const { operation, data } of changedSets) {
-            const bundleRef = bundlesCollection.doc(data.id);
-
-            if (operation === "insert" || operation === "update") {
-              transaction.set(
-                bundleRef,
-                {
-                  id: data.id,
-                  channel: data.channel,
-                  enabled: data.enabled,
-                  should_force_update: data.shouldForceUpdate,
-                  file_hash: data.fileHash,
-                  git_commit_hash: data.gitCommitHash || null,
-                  message: data.message || null,
-                  platform: data.platform,
-                  target_app_version: data.targetAppVersion || null,
-                  storage_uri: data.storageUri,
-                  fingerprint_hash: data.fingerprintHash,
-                  metadata: stripBundleArtifactMetadata(data.metadata) ?? {},
-                  manifest_storage_uri: getManifestStorageUri(data),
-                  manifest_file_hash: getManifestFileHash(data),
-                  asset_base_storage_uri: getAssetBaseStorageUri(data),
-                  patches: data.patches ?? null,
-                  patch_base_bundle_id: getPatchBaseBundleId(data),
-                  patch_base_file_hash: getPatchBaseFileHash(data),
-                  patch_file_hash: getPatchFileHash(data),
-                  patch_storage_uri: getPatchStorageUri(data),
-                  rollout_cohort_count:
-                    data.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
-                  target_cohorts: data.targetCohorts ?? null,
-                } as SnakeCaseBundle,
-                { merge: true },
-              );
-
-              if (data.targetAppVersion) {
-                const versionDocId = `${data.platform}_${data.channel}_${data.targetAppVersion}`;
-                const targetAppVersionsRef = db
-                  .collection("target_app_versions")
-                  .doc(versionDocId);
-                transaction.set(
-                  targetAppVersionsRef,
-                  {
-                    channel: data.channel,
-                    platform: data.platform,
-                    target_app_version: data.targetAppVersion,
-                  },
-                  { merge: true },
-                );
-              }
-            } else if (operation === "delete") {
-              // Delete the bundle document
-              transaction.delete(bundleRef);
-            }
-          }
-
-          // Clean up orphaned target app versions
-          if (isTargetAppVersionChanged) {
-            for (const targetDoc of targetVersionsSnapshot.docs) {
-              if (!requiredTargetVersionKeys.has(targetDoc.id)) {
-                transaction.delete(targetDoc.ref);
-              }
-            }
-          }
-
-          // Clean up orphaned channels
-          for (const channelDoc of channelsSnapshot.docs) {
-            if (!requiredChannels.has(channelDoc.id)) {
-              transaction.delete(channelDoc.ref);
-            }
-          }
-        });
-      },
+      transaction: (callback) => mutate(callback),
     };
-  },
-});
+  })();
+  const adapter = createDatabasePluginAdapter(
+    "firebaseDatabase",
+    implementation,
+  );
+  return createDatabasePlugin({
+    name: "firebaseDatabase",
+    models: adapter.models,
+    queries: adapter.queries,
+    commit: adapter.commit,
+  });
+};

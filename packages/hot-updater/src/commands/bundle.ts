@@ -3,9 +3,10 @@ import { setTimeout as sleep } from "timers/promises";
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import type {
   Bundle,
-  DatabasePlugin,
+  BundleRepository,
   Platform,
 } from "@hot-updater/plugin-core";
+import { createDatabaseClient } from "@hot-updater/plugin-core";
 
 import { printBanner } from "@/utils/printBanner";
 
@@ -138,12 +139,12 @@ const refuseNonInteractiveMutation = (action: string): never => {
   process.exit(1);
 };
 
-const safeOnUnmount = async (databasePlugin: DatabasePlugin): Promise<void> => {
+const safeDispose = async (databasePlugin: BundleRepository): Promise<void> => {
   try {
-    await databasePlugin.onUnmount?.();
+    await databasePlugin.dispose?.();
   } catch (err) {
     p.log.warn(
-      `Database plugin onUnmount failed (cleanup-only, original error preserved): ${
+      `Database plugin dispose failed (cleanup-only, original error preserved): ${
         (err as Error)?.message ?? String(err)
       }`,
     );
@@ -157,13 +158,14 @@ export const handleBundleList = async (options: BundleListOptions = {}) => {
 
   const config = await loadConfig(null);
 
-  const databasePlugin: DatabasePlugin = await config.database();
+  const databasePlugin = config.database;
+  const database = createDatabaseClient(databasePlugin);
   try {
     const limit =
       Number.isInteger(options.limit) && options.limit! > 0
         ? options.limit!
         : DEFAULT_LIMIT;
-    const result = await databasePlugin.getBundles({
+    const result = await database.getBundles({
       where: {
         channel: options.channel,
         platform: options.platform,
@@ -175,7 +177,7 @@ export const handleBundleList = async (options: BundleListOptions = {}) => {
       options.json ? JSON.stringify(result, null, 2) : tabulate(result.data),
     );
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeDispose(databasePlugin);
   }
 };
 
@@ -188,9 +190,10 @@ export const handleBundleShow = async (
   }
 
   const config = await loadConfig(null);
-  const databasePlugin: DatabasePlugin = await config.database();
+  const databasePlugin = config.database;
+  const database = createDatabaseClient(databasePlugin);
   try {
-    const bundle = await databasePlugin.getBundleById(bundleId);
+    const bundle = await database.getBundleById(bundleId);
     if (!bundle) {
       p.log.error(`No bundle with id ${bundleId}.`);
       process.exit(1);
@@ -203,7 +206,7 @@ export const handleBundleShow = async (
 
     p.log.message(formatBundleSummary(bundle));
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeDispose(databasePlugin);
   }
 };
 
@@ -217,9 +220,10 @@ export const handleBundleSetEnabled = async (
 
   const config = await loadConfig(null);
 
-  const databasePlugin: DatabasePlugin = await config.database();
+  const databasePlugin = config.database;
+  const database = createDatabaseClient(databasePlugin);
   try {
-    const bundle = await databasePlugin.getBundleById(bundleId);
+    const bundle = await database.getBundleById(bundleId);
     if (!bundle) {
       p.log.error(`No bundle with id ${bundleId}.`);
       process.exit(1);
@@ -246,10 +250,9 @@ export const handleBundleSetEnabled = async (
       }
     }
 
-    await databasePlugin.updateBundle(bundleId, { enabled: nextEnabled });
-    await databasePlugin.commitBundle();
+    await database.updateBundleById(bundleId, { enabled: nextEnabled });
 
-    const refetched = await databasePlugin.getBundleById(bundleId);
+    const refetched = await database.getBundleById(bundleId);
     if (!refetched) {
       p.log.warn(
         `${bundleId} was deleted between commit and verify; treating as ${action}d.`,
@@ -264,7 +267,7 @@ export const handleBundleSetEnabled = async (
       p.log.info(`  ${ui.id(bundleId)}`);
     }
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeDispose(databasePlugin);
   }
 };
 
@@ -297,9 +300,10 @@ export const handleBundleUpdate = async (
   }
 
   const config = await loadConfig(null);
-  const databasePlugin: DatabasePlugin = await config.database();
+  const databasePlugin = config.database;
+  const database = createDatabaseClient(databasePlugin);
   try {
-    const bundle = await databasePlugin.getBundleById(bundleId);
+    const bundle = await database.getBundleById(bundleId);
     if (!bundle) {
       p.log.error(`No bundle with id ${bundleId}.`);
       process.exit(1);
@@ -323,10 +327,9 @@ export const handleBundleUpdate = async (
       }
     }
 
-    await databasePlugin.updateBundle(bundleId, patch);
-    await databasePlugin.commitBundle();
+    await database.updateBundleById(bundleId, patch);
 
-    const refetched = await databasePlugin.getBundleById(bundleId);
+    const refetched = await database.getBundleById(bundleId);
     if (!refetched) {
       p.log.error(`Verification failed: ${bundleId} is missing after update.`);
       process.exit(1);
@@ -340,7 +343,7 @@ export const handleBundleUpdate = async (
     p.log.success("Updated bundle.");
     p.log.info(`  ${ui.id(bundleId)}`);
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeDispose(databasePlugin);
   }
 };
 
@@ -357,9 +360,10 @@ export const handleBundleDelete = async (
   }
 
   const config = await loadConfig(null);
-  const databasePlugin: DatabasePlugin = await config.database();
+  const databasePlugin = config.database;
+  const database = createDatabaseClient(databasePlugin);
   try {
-    // Resolve local/blob targets from one management snapshot. The standard
+    // Resolve targets from management snapshots. The standard
     // standalone API caps list requests at 100 IDs, so only that remote plugin
     // uses bounded lookups.
     const lookupBatches =
@@ -377,7 +381,7 @@ export const handleBundleDelete = async (
         : [ids];
     const matchedBundles: Bundle[] = [];
     for (const batch of lookupBatches) {
-      const { data } = await databasePlugin.getBundles({
+      const { data } = await database.getBundles({
         where: { id: { in: batch } },
         limit: batch.length,
       });
@@ -423,16 +427,15 @@ export const handleBundleDelete = async (
       }
     }
 
-    // Delete every target, then commit once — fewer index rewrites and CDN
-    // invalidations than committing per bundle.
-    for (const bundle of targets) {
-      await databasePlugin.deleteBundle(bundle);
-    }
-    await databasePlugin.commitBundle();
+    await database.mutate(async (mutation) => {
+      for (const bundle of targets) {
+        await mutation.deleteBundleById(bundle.id);
+      }
+    });
 
     const stillPresent: string[] = [];
     for (const bundle of targets) {
-      const deleted = await waitForDeletedBundle(databasePlugin, bundle.id);
+      const deleted = await waitForDeletedBundle(database, bundle.id);
       if (!deleted) {
         stillPresent.push(bundle.id);
       }
@@ -451,16 +454,16 @@ export const handleBundleDelete = async (
       p.log.success(`Deleted ${targets.length} bundle records.`);
     }
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeDispose(databasePlugin);
   }
 };
 
 async function waitForDeletedBundle(
-  databasePlugin: DatabasePlugin,
+  database: ReturnType<typeof createDatabaseClient>,
   bundleId: string,
 ) {
   for (let attempt = 0; attempt < DELETE_VERIFY_ATTEMPTS; attempt += 1) {
-    const refetched = await databasePlugin.getBundleById(bundleId);
+    const refetched = await database.getBundleById(bundleId);
     if (!refetched) {
       return true;
     }

@@ -1,0 +1,234 @@
+import type {
+  BundleEventRow,
+  BundlePatchRow,
+  BundleRow,
+  ChannelRow,
+  ClientAccessKeyRow,
+} from "@hot-updater/plugin-core";
+import { isDatabaseMetadataObject } from "@hot-updater/plugin-core";
+import type { DatabaseModel } from "@hot-updater/plugin-core/internal";
+
+import type { PrismaQuery } from "./prismaQuery";
+
+export type PrismaDelegate = {
+  readonly count: (args?: PrismaQuery) => Promise<number>;
+  readonly create: (args: PrismaQuery) => Promise<unknown>;
+  readonly deleteMany: (args?: PrismaQuery) => Promise<unknown>;
+  readonly findFirst: (args?: PrismaQuery) => Promise<unknown>;
+  readonly findMany: (args?: PrismaQuery) => Promise<readonly unknown[]>;
+  readonly update: (args: PrismaQuery) => Promise<unknown>;
+  readonly updateMany?: (args: PrismaQuery) => Promise<unknown>;
+  readonly upsert: (args: PrismaQuery) => Promise<unknown>;
+};
+
+export class PrismaAdapterError extends Error {
+  readonly name = "PrismaAdapterError";
+
+  constructor(readonly reason: string) {
+    super(`Invalid Prisma plugin state: ${reason}`);
+  }
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const hasDelegateMethods = (value: unknown): value is PrismaDelegate =>
+  isRecord(value) &&
+  typeof value["count"] === "function" &&
+  typeof value["create"] === "function" &&
+  typeof value["deleteMany"] === "function" &&
+  typeof value["findFirst"] === "function" &&
+  typeof value["findMany"] === "function" &&
+  typeof value["update"] === "function" &&
+  typeof value["upsert"] === "function";
+
+const modelDelegates = {
+  bundles: "bundles",
+  bundle_patches: "bundle_patches",
+  bundle_events: "bundle_events",
+  channels: "channels",
+  client_access_keys: "client_access_keys",
+} as const satisfies Record<DatabaseModel, string>;
+
+export const getPrismaDelegate = (
+  client: object,
+  model: DatabaseModel,
+): PrismaDelegate => {
+  const delegate = Object.entries(client).find(
+    ([key]) => key === modelDelegates[model],
+  )?.[1];
+  if (delegate === undefined)
+    throw new PrismaAdapterError(`missing model delegate "${model}"`);
+  if (!hasDelegateMethods(delegate)) {
+    throw new PrismaAdapterError(`invalid model delegate "${model}"`);
+  }
+  return delegate;
+};
+
+const readString = (row: Record<string, unknown>, field: string): string => {
+  const value = row[field];
+  if (typeof value !== "string") {
+    throw new PrismaAdapterError(`expected string field "${field}"`);
+  }
+  return value;
+};
+
+const readNullableString = (
+  row: Record<string, unknown>,
+  field: string,
+): string | null => {
+  const value = row[field];
+  if (value === null) return null;
+  if (typeof value !== "string") {
+    throw new PrismaAdapterError(`expected nullable string field "${field}"`);
+  }
+  return value;
+};
+
+export const parsePrismaBundleRow = (value: unknown): BundleRow => {
+  if (!isRecord(value)) throw new PrismaAdapterError("invalid bundle row");
+  const platform = value["platform"];
+  if (platform !== "android" && platform !== "ios") {
+    throw new PrismaAdapterError('expected platform "android" or "ios"');
+  }
+  const shouldForceUpdate = value["should_force_update"];
+  const enabled = value["enabled"];
+  const rolloutCohortCount = value["rollout_cohort_count"];
+  if (
+    typeof shouldForceUpdate !== "boolean" ||
+    typeof enabled !== "boolean" ||
+    typeof rolloutCohortCount !== "number"
+  ) {
+    throw new PrismaAdapterError("invalid bundle scalar fields");
+  }
+  const targetCohorts = value["target_cohorts"];
+  const metadata = value["metadata"];
+  if (
+    targetCohorts !== null &&
+    (!Array.isArray(targetCohorts) ||
+      !targetCohorts.every((item) => typeof item === "string"))
+  ) {
+    throw new PrismaAdapterError("invalid target_cohorts field");
+  }
+  if (!isDatabaseMetadataObject(metadata)) {
+    throw new PrismaAdapterError("invalid metadata field");
+  }
+  return {
+    id: readString(value, "id"),
+    platform,
+    should_force_update: shouldForceUpdate,
+    enabled,
+    file_hash: readString(value, "file_hash"),
+    git_commit_hash: readNullableString(value, "git_commit_hash"),
+    message: readNullableString(value, "message"),
+    channel: readString(value, "channel"),
+    channel_id: readString(value, "channel_id"),
+    storage_uri: readString(value, "storage_uri"),
+    target_app_version: readNullableString(value, "target_app_version"),
+    fingerprint_hash: readNullableString(value, "fingerprint_hash"),
+    metadata,
+    rollout_cohort_count: rolloutCohortCount,
+    target_cohorts: targetCohorts,
+    manifest_storage_uri: readNullableString(value, "manifest_storage_uri"),
+    manifest_file_hash: readNullableString(value, "manifest_file_hash"),
+    asset_base_storage_uri: readNullableString(value, "asset_base_storage_uri"),
+  };
+};
+
+export const parsePrismaChannelRow = (value: unknown): ChannelRow => {
+  if (!isRecord(value)) throw new PrismaAdapterError("invalid channel row");
+  return {
+    id: readString(value, "id"),
+    name: readString(value, "name"),
+  };
+};
+
+export const parsePrismaPatchRow = (value: unknown): BundlePatchRow => {
+  if (!isRecord(value)) throw new PrismaAdapterError("invalid patch row");
+  const orderIndex = value["order_index"];
+  if (typeof orderIndex !== "number") {
+    throw new PrismaAdapterError("invalid patch order_index field");
+  }
+  return {
+    id: readString(value, "id"),
+    bundle_id: readString(value, "bundle_id"),
+    base_bundle_id: readString(value, "base_bundle_id"),
+    base_file_hash: readString(value, "base_file_hash"),
+    patch_file_hash: readString(value, "patch_file_hash"),
+    patch_storage_uri: readString(value, "patch_storage_uri"),
+    order_index: orderIndex,
+  };
+};
+
+const readNumber = (row: Record<string, unknown>, field: string): number => {
+  const value = row[field];
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new PrismaAdapterError(`expected number field "${field}"`);
+  }
+  return value;
+};
+
+export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
+  if (!isRecord(value)) throw new PrismaAdapterError("invalid event row");
+  const type = readString(value, "type");
+  const platform = readString(value, "platform");
+  const fromBundleId = readNullableString(value, "from_bundle_id");
+  const updateStrategy = readNullableString(value, "update_strategy");
+  if (
+    (platform !== "ios" && platform !== "android") ||
+    !(
+      ((type === "UPDATE_APPLIED" || type === "RECOVERED") &&
+        fromBundleId !== null &&
+        (updateStrategy === "fingerprint" ||
+          updateStrategy === "appVersion")) ||
+      (type === "UNCHANGED" && fromBundleId === null && updateStrategy === null)
+    )
+  ) {
+    throw new PrismaAdapterError("invalid event shape");
+  }
+  return {
+    id: readString(value, "id"),
+    type,
+    install_id: readString(value, "install_id"),
+    user_id: readNullableString(value, "user_id"),
+    username: readNullableString(value, "username"),
+    from_bundle_id: fromBundleId,
+    to_bundle_id: readString(value, "to_bundle_id"),
+    platform,
+    app_version: readString(value, "app_version"),
+    channel: readString(value, "channel"),
+    cohort: readString(value, "cohort"),
+    update_strategy: updateStrategy,
+    fingerprint_hash: readNullableString(value, "fingerprint_hash"),
+    sdk_version: readNullableString(value, "sdk_version"),
+    received_at_ms: readNumber(value, "received_at_ms"),
+  } as BundleEventRow;
+};
+
+export const parsePrismaClientAccessKeyRow = (
+  value: unknown,
+): ClientAccessKeyRow => {
+  if (!isRecord(value)) {
+    throw new PrismaAdapterError("invalid client access-key row");
+  }
+  const role = readString(value, "role");
+  if (role !== "client") {
+    throw new PrismaAdapterError("invalid client access-key role");
+  }
+  const revokedAt = value["revoked_at_ms"];
+  return {
+    id: readString(value, "id"),
+    hash: readString(value, "hash"),
+    name: readString(value, "name"),
+    prefix: readString(value, "prefix"),
+    role,
+    created_at_ms: readNumber(value, "created_at_ms"),
+    revoked_at_ms:
+      revokedAt === null ? null : readNumber(value, "revoked_at_ms"),
+  };
+};
+
+export const parsePrismaRows = <TRow>(
+  rows: readonly unknown[],
+  parse: (value: unknown) => TRow,
+): TRow[] => rows.map(parse);

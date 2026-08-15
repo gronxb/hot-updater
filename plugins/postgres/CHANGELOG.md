@@ -1,5 +1,15 @@
 # @hot-updater/postgres
 
+## Unreleased
+
+### Minor Changes
+
+- Replace the aggregate PostgreSQL database plugin with the fixed `bundles`
+  and `bundle_patches` row contract.
+- Implement exact single- and compound-field distinct counts, ordered
+  `distinctOn`, and every requested order clause, including an explicit `id`
+  tie-break.
+
 ## 0.36.0
 
 ### Patch Changes

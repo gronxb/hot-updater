@@ -113,6 +113,19 @@ export default defineConfig({
 });
 ```
 
+### Upgrade and rollback
+
+Back up Firestore before the database v2 migration. The migration moves legacy
+inline or scalar patch fields into `bundle_patches`, removes those legacy
+fields, and records `database_adapter_version` as `2`. Managed Firebase does
+not write or consume the generic server migrator's `schema.core` setting. The
+migration is forward-only, so a v1 code rollback is not assumed to be
+compatible with the migrated documents.
+
+Roll back only to a complete Hot Updater package set documented as compatible
+with Core schema `0.36.0`. Otherwise, stop writers and restore the pre-migration
+backup.
+
 ## Step 4: Add HotUpdater to Your Project
 
 The HotUpdater component wraps your application, enabling seamless delivery of updates and fallback UI during updates. Follow these steps to integrate it into your App.tsx:

@@ -1,6 +1,19 @@
-import { blob, foreignKey, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core"
+import { blob, foreignKey, index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 
 import { relations } from "drizzle-orm"
+
+export const channels = sqliteTable("channels", {
+  id: text("id", { length: 255 }).primaryKey().notNull(),
+  name: text("name", { length: 255 }).notNull()
+}, (table) => [
+  uniqueIndex("channels_name_key").on(table.name)
+])
+
+export const channelsRelations = relations(channels, ({ many }) => ({
+  bundles: many(bundles, {
+    relationName: "bundles_channels"
+  })
+}))
 
 export const bundles = sqliteTable("bundles", {
   id: text("id").primaryKey().notNull(),
@@ -11,6 +24,7 @@ export const bundles = sqliteTable("bundles", {
   git_commit_hash: text("git_commit_hash"),
   message: text("message"),
   channel: text("channel").notNull().default("production"),
+  channel_id: text("channel_id", { length: 255 }).notNull(),
   storage_uri: text("storage_uri").notNull(),
   target_app_version: text("target_app_version"),
   fingerprint_hash: text("fingerprint_hash"),
@@ -21,11 +35,31 @@ export const bundles = sqliteTable("bundles", {
   manifest_file_hash: text("manifest_file_hash"),
   asset_base_storage_uri: text("asset_base_storage_uri")
 }, (table) => [
+  foreignKey({
+    columns: [table.channel_id],
+    foreignColumns: [channels.id],
+    name: "bundles_channel_id_fk"
+  }).onUpdate("restrict").onDelete("restrict"),
   index("bundles_target_app_version_idx").on(table.target_app_version),
   index("bundles_fingerprint_hash_idx").on(table.fingerprint_hash),
   index("bundles_channel_idx").on(table.channel),
+  index("bundles_channel_id_idx").on(table.channel_id),
   index("bundles_rollout_idx").on(table.rollout_cohort_count)
 ])
+
+export const bundlesRelations = relations(bundles, ({ one, many }) => ({
+  channelRecord: one(channels, {
+    relationName: "bundles_channels",
+    fields: [bundles.channel_id],
+    references: [channels.id]
+  }),
+  patches: many(bundle_patches, {
+    relationName: "bundle_patches_bundles_patches"
+  }),
+  baseForPatches: many(bundle_patches, {
+    relationName: "bundle_patches_bundles_baseForPatches"
+  })
+}))
 
 export const bundle_patches = sqliteTable("bundle_patches", {
   id: text("id", { length: 255 }).primaryKey().notNull(),
@@ -63,7 +97,45 @@ export const bundle_patchesRelations = relations(bundle_patches, ({ one }) => ({
   })
 }))
 
+export const bundle_events = sqliteTable("bundle_events", {
+  id: text("id").primaryKey().notNull(),
+  type: text("type").notNull(),
+  install_id: text("install_id").notNull(),
+  user_id: text("user_id"),
+  username: text("username"),
+  from_bundle_id: text("from_bundle_id"),
+  to_bundle_id: text("to_bundle_id").notNull(),
+  platform: text("platform").notNull(),
+  app_version: text("app_version").notNull(),
+  channel: text("channel").notNull(),
+  cohort: text("cohort").notNull(),
+  update_strategy: text("update_strategy"),
+  fingerprint_hash: text("fingerprint_hash"),
+  sdk_version: text("sdk_version"),
+  received_at_ms: real("received_at_ms").notNull()
+}, (table) => [
+  index("bundle_events_received_at_idx").on(table.received_at_ms, table.id),
+  index("bundle_events_install_idx").on(table.install_id, table.received_at_ms, table.id),
+  index("bundle_events_user_id_idx").on(table.user_id, table.received_at_ms, table.id),
+  index("bundle_events_username_idx").on(table.username, table.received_at_ms, table.id),
+  index("bundle_events_to_bundle_idx").on(table.type, table.to_bundle_id, table.received_at_ms, table.id),
+  index("bundle_events_from_bundle_idx").on(table.type, table.from_bundle_id, table.received_at_ms, table.id)
+])
+
+export const client_access_keys = sqliteTable("client_access_keys", {
+  id: text("id", { length: 255 }).primaryKey().notNull(),
+  hash: text("hash").notNull(),
+  name: text("name").notNull(),
+  prefix: text("prefix").notNull(),
+  role: text("role").notNull(),
+  created_at_ms: real("created_at_ms").notNull(),
+  revoked_at_ms: real("revoked_at_ms")
+}, (table) => [
+  uniqueIndex("client_access_keys_hash_key").on(table.hash),
+  index("client_access_keys_created_at_idx").on(table.created_at_ms, table.id)
+])
+
 export const private_hot_updater_settings = sqliteTable("private_hot_updater_settings", {
   id: text("id", { length: 255 }).primaryKey().notNull(),
-  version: text("version", { length: 255 }).notNull().default("0.31.0")
+  version: text("version", { length: 255 }).notNull().default("0.38.0")
 })

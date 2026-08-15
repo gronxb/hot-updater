@@ -5,6 +5,7 @@ import type {
   Platform,
   RequiredDeep,
 } from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
@@ -15,6 +16,65 @@ export type HotUpdaterConfigOptions = {
   platform: Platform;
   channel: string;
 } | null;
+
+const missingDatabase = createDatabasePlugin({
+  name: "missingDatabase",
+  models: {
+    bundles: {
+      findById: async () => {
+        throw new Error("database plugin is required");
+      },
+      findMany: async () => {
+        throw new Error("database plugin is required");
+      },
+      count: async () => {
+        throw new Error("database plugin is required");
+      },
+    },
+    bundlePatches: {
+      findByBundleIds: async () => {
+        throw new Error("database plugin is required");
+      },
+    },
+    channels: {
+      insert: async () => {
+        throw new Error("database plugin is required");
+      },
+      list: async () => {
+        throw new Error("database plugin is required");
+      },
+      delete: async () => {
+        throw new Error("database plugin is required");
+      },
+    },
+    analytics: {
+      append: async () => {
+        throw new Error("database plugin is required");
+      },
+      scan: async () => {
+        throw new Error("database plugin is required");
+      },
+    },
+    clientAccessKeys: {
+      create: async () => {
+        throw new Error("database plugin is required");
+      },
+      findByHash: async () => {
+        throw new Error("database plugin is required");
+      },
+      list: async () => {
+        throw new Error("database plugin is required");
+      },
+      revoke: async () => {
+        throw new Error("database plugin is required");
+      },
+    },
+  },
+  queries: {},
+  commit: async () => {
+    throw new Error("database plugin is required");
+  },
+});
 
 const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
   // Find actual Info.plist files in the ios directory
@@ -115,9 +175,7 @@ const getDefaultConfig = (): ConfigInput => {
     storage: () => {
       throw new Error("storage plugin is required");
     },
-    database: () => {
-      throw new Error("database plugin is required");
-    },
+    database: missingDatabase,
   };
 };
 
@@ -126,10 +184,13 @@ export type ConfigResponse = RequiredDeep<ConfigInput>;
 const mergeConfigSources = (
   ...sources: Array<ConfigInput | null | undefined>
 ) => {
-  return sources.reduceRight<ConfigInput>(
+  const mergedConfig = sources.reduceRight<ConfigInput>(
     (mergedConfig, source) => merge(mergedConfig, source ?? {}),
     {} as ConfigInput,
   );
+
+  const database = sources.find((source) => source?.database)?.database;
+  return database ? { ...mergedConfig, database } : mergedConfig;
 };
 
 const getConfigLoaderOptions = (

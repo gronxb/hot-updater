@@ -38,19 +38,30 @@ export const getSqlType = (
 ): string => {
   if (provider === "sqlite") {
     if (type === "bool" || type === "integer") return "integer";
+    if (type === "float") return "real";
     return "text";
   }
   if (provider === "mysql") {
     if (type === "uuid") return "char(36)";
     if (type === "bool") return "boolean";
     if (type === "integer") return "integer";
+    if (type === "float") return "double";
     if (type === "json") return "json";
     if (type.startsWith("varchar")) return type;
     return "text";
   }
+  if (provider === "mssql") {
+    if (type === "uuid") return "uniqueidentifier";
+    if (type === "bool") return "bit";
+    if (type === "integer") return "int";
+    if (type === "float") return "float";
+    if (type.startsWith("varchar")) return type.replace("varchar", "nvarchar");
+    return "nvarchar(max)";
+  }
   if (type === "uuid") return "uuid";
   if (type === "bool") return "boolean";
   if (type === "integer") return "integer";
+  if (type === "float") return "double precision";
   if (type === "json") return "json";
   if (type.startsWith("varchar")) return type;
   return "text";
@@ -103,12 +114,21 @@ export const sqlColumnDefinition = (
     column.primaryKey ? "primary key" : undefined,
     column.nullable ? undefined : "not null",
   ].filter(Boolean);
+  const collation = column.providerCollations?.[provider];
+  const collationClause = collation
+    ? provider === "mysql"
+      ? `character set utf8mb4 collate ${collation}`
+      : `collate ${collation}`
+    : undefined;
   return (
     [
       sqlColumnName(table, column, provider),
       getSqlType(column.type, provider),
+      collationClause,
       ...constraints,
-    ].join(" ") + sqlDefaultClause(column, provider)
+    ]
+      .filter(Boolean)
+      .join(" ") + sqlDefaultClause(column, provider)
   );
 };
 
@@ -125,24 +145,30 @@ const sqlIndexColumn = (
 
 export const createIndexSql = (
   table: HotUpdaterTableSchema,
-  index: { readonly name: string; readonly columns: readonly string[] },
+  index: {
+    readonly name: string;
+    readonly columns: readonly string[];
+    readonly unique?: true;
+  },
   provider: ORMSQLProvider,
 ): string =>
-  `create index ${index.name} on ${table.ormName}(${index.columns
+  `create ${index.unique ? "unique " : ""}index ${index.name} on ${table.ormName}(${index.columns
     .map((column) => sqlIndexColumn(table, column, provider))
     .join(", ")})`;
 
 export const createForeignKeySql = (
   table: HotUpdaterTableSchema,
   foreignKey: HotUpdaterForeignKeySchema,
+  provider?: ORMSQLProvider,
 ): string =>
-  `alter table ${table.ormName} add constraint ${foreignKey.name} foreign key (${foreignKey.columns.join(", ")}) references ${foreignKey.referencedTable}(${foreignKey.referencedColumns.join(", ")}) on update ${foreignKey.onUpdate} on delete ${foreignKey.onDelete}`;
+  `alter table ${table.ormName} add constraint ${foreignKey.name} foreign key (${foreignKey.columns.join(", ")}) references ${foreignKey.referencedTable}(${foreignKey.referencedColumns.join(", ")}) on update ${provider === "mssql" && foreignKey.onUpdate === "restrict" ? "no action" : foreignKey.onUpdate} on delete ${provider === "mssql" && foreignKey.onDelete === "restrict" ? "no action" : foreignKey.onDelete}`;
 
 export const createCheckSql = (
   table: HotUpdaterTableSchema,
   check: HotUpdaterCheckSchema,
+  provider?: ORMSQLProvider,
 ): string =>
-  `alter table ${table.ormName} add constraint ${check.name} check (${check.expression})`;
+  `alter table ${table.ormName} add constraint ${check.name} check (${(provider && check.providerExpressions?.[provider]) ?? check.expression})`;
 
 const inlineSqlChecks = (
   table: HotUpdaterTableSchema,
@@ -151,20 +177,30 @@ const inlineSqlChecks = (
   provider === "sqlite"
     ? (table.checks ?? [])
         .filter((check) => check.sqliteInline)
-        .map((check) => `constraint ${check.name} check (${check.expression})`)
+        .map(
+          (check) =>
+            `constraint ${check.name} check (${check.providerExpressions?.sqlite ?? check.expression})`,
+        )
     : [];
 
 export const createTableStatement = (
   table: HotUpdaterTableSchema,
   provider: ORMSQLProvider,
+  relationMode: RelationMode = "foreign-keys",
 ): string => {
   const lines = [
     ...table.columns.map((column) =>
       sqlColumnDefinition(table, column, provider),
     ),
     ...inlineSqlChecks(table, provider),
+    ...(provider === "sqlite" && relationMode === "foreign-keys"
+      ? (table.foreignKeys ?? []).map(
+          (foreignKey) =>
+            `constraint ${foreignKey.name} foreign key (${foreignKey.columns.join(", ")}) references ${foreignKey.referencedTable}(${foreignKey.referencedColumns.join(", ")}) on update ${foreignKey.onUpdate} on delete ${foreignKey.onDelete}`,
+        )
+      : []),
   ];
-  return `create table if not exists ${table.ormName} (\n${lines.join(",\n")}\n)`;
+  return `create table ${table.ormName} (\n${lines.join(",\n")}\n)`;
 };
 
 export const createForeignKeySqlStatements = (
@@ -174,7 +210,7 @@ export const createForeignKeySqlStatements = (
   if (relationMode !== "foreign-keys" || provider === "sqlite") return [];
   return hotUpdaterSchema.tables.flatMap((table) =>
     (table.foreignKeys ?? []).map((foreignKey) =>
-      createForeignKeySql(table, foreignKey),
+      createForeignKeySql(table, foreignKey, provider),
     ),
   );
 };
@@ -184,7 +220,7 @@ export const createTableSql = (
   relationMode: RelationMode = "foreign-keys",
 ): readonly string[] => [
   ...hotUpdaterSchema.tables.map((table) =>
-    createTableStatement(table, provider),
+    createTableStatement(table, provider, relationMode),
   ),
   ...hotUpdaterSchema.tables.flatMap((table) =>
     (table.indexes ?? [])
@@ -194,7 +230,9 @@ export const createTableSql = (
   ...(provider === "sqlite"
     ? []
     : hotUpdaterSchema.tables.flatMap((table) =>
-        (table.checks ?? []).map((check) => createCheckSql(table, check)),
+        (table.checks ?? []).map((check) =>
+          createCheckSql(table, check, provider),
+        ),
       )),
   ...createForeignKeySqlStatements(provider, relationMode),
 ];

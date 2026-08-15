@@ -78,7 +78,6 @@
     "dayjs": "^1.11.13",
     "execa": "catalog:tools",
     "mime": "^4.0.4",
-    "pg-minify": "^1.6.5",
     "toml": "^3.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "npm:@typescript/typescript6@^6.0.2",

@@ -1,10 +1,13 @@
 import { loadConfig, p, promoteBundle } from "@hot-updater/cli-tools";
 import type {
   Bundle,
-  DatabasePlugin,
+  BundleRepository,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
-import { assertNodeStoragePlugin } from "@hot-updater/plugin-core";
+import {
+  assertNodeStoragePlugin,
+  createDatabaseClient,
+} from "@hot-updater/plugin-core";
 
 import { printBanner } from "@/utils/printBanner";
 
@@ -18,12 +21,12 @@ export interface PromoteOptions {
   yes?: boolean;
 }
 
-const safeOnUnmount = async (databasePlugin: DatabasePlugin): Promise<void> => {
+const safeDispose = async (databasePlugin: BundleRepository): Promise<void> => {
   try {
-    await databasePlugin.onUnmount?.();
+    await databasePlugin.dispose?.();
   } catch (err) {
     p.log.warn(
-      `Database plugin onUnmount failed (cleanup-only, original error preserved): ${
+      `Database plugin dispose failed (cleanup-only, original error preserved): ${
         (err as Error)?.message ?? String(err)
       }`,
     );
@@ -64,7 +67,8 @@ export const handlePromote = async (
   }
 
   const config = await loadConfig(null);
-  const databasePlugin: DatabasePlugin = await config.database();
+  const databasePlugin = config.database;
+  const databaseClient = createDatabaseClient(databasePlugin);
   let storagePlugin: NodeStoragePlugin | null = null;
   try {
     storagePlugin = await config.storage();
@@ -74,7 +78,7 @@ export const handlePromote = async (
   }
 
   try {
-    const bundle = await databasePlugin.getBundleById(bundleId);
+    const bundle = await databaseClient.getBundleById(bundleId);
     if (!bundle) {
       p.log.error(`No bundle with id ${bundleId}.`);
       process.exit(1);
@@ -111,7 +115,7 @@ export const handlePromote = async (
       },
       {
         config,
-        databasePlugin,
+        databaseClient,
         storagePlugin,
       },
     );
@@ -124,6 +128,6 @@ export const handlePromote = async (
       p.log.info(`  ${ui.id(promoted.id)}`);
     }
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeDispose(databasePlugin);
   }
 };

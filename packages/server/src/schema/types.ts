@@ -1,10 +1,12 @@
 import type { ORMProvider } from "../db/types";
 
-export const HOT_UPDATER_SCHEMA_VERSION = "0.31.0";
+export const HOT_UPDATER_SCHEMA_VERSION = "0.38.0";
+export const HOT_UPDATER_CORE_SCHEMA_KEY = "schema.core";
 export const HOT_UPDATER_SETTINGS_TABLE = "private_hot_updater_settings";
 
 export type HotUpdaterColumnType =
   | "bool"
+  | "float"
   | "integer"
   | "json"
   | "string"
@@ -18,6 +20,7 @@ export type HotUpdaterDefault =
 export interface HotUpdaterColumnSchema {
   readonly ormName: string;
   readonly type: HotUpdaterColumnType;
+  readonly providerCollations?: Partial<Record<ORMProvider, string>>;
   readonly nullable?: boolean;
   readonly primaryKey?: boolean;
   readonly default?: HotUpdaterDefault;
@@ -27,11 +30,13 @@ export interface HotUpdaterIndexSchema {
   readonly name: string;
   readonly columns: readonly string[];
   readonly providers?: readonly ORMProvider[];
+  readonly unique?: true;
 }
 
 export interface HotUpdaterCheckSchema {
   readonly name: string;
   readonly expression: string;
+  readonly providerExpressions?: Partial<Record<ORMProvider, string>>;
   readonly sqliteInline?: boolean;
 }
 
@@ -41,7 +46,7 @@ export interface HotUpdaterForeignKeySchema {
   readonly referencedTable: string;
   readonly referencedColumns: readonly string[];
   readonly onUpdate: "restrict";
-  readonly onDelete: "cascade";
+  readonly onDelete: "cascade" | "restrict";
 }
 
 export interface HotUpdaterRelationSchema {
@@ -70,4 +75,10 @@ export interface HotUpdaterVersionedSchema {
   readonly tables: readonly HotUpdaterTableSchema[];
 }
 
-export type HotUpdaterSchemaVersion = "0.21.0" | "0.29.0" | "0.31.0";
+export type HotUpdaterSchemaVersion =
+  | "0.21.0"
+  | "0.29.0"
+  | "0.31.0"
+  | "0.36.0"
+  | "0.37.0"
+  | "0.38.0";

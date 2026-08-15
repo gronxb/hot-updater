@@ -846,15 +846,14 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         "@hot-updater/js": "./_hot-updater/hot-updater-js/dist/index.mjs",
         "@hot-updater/plugin-core":
           "./_hot-updater/hot-updater-plugin-core/dist/index.mjs",
+        "@hot-updater/plugin-core/internal":
+          "./_hot-updater/hot-updater-plugin-core/dist/internal.mjs",
         "@supabase/supabase-js": `npm:@supabase/supabase-js@${resolvePackageVersion(
           "@supabase/supabase-js",
           {
             searchFrom: path.resolve("plugins/supabase"),
           },
         )}`,
-        "es-toolkit": `npm:es-toolkit@${resolvePackageVersion("es-toolkit", {
-          searchFrom: path.resolve("plugins/plugin-core"),
-        })}`,
         mime: `npm:mime@${resolvePackageVersion("mime", {
           searchFrom: path.resolve("plugins/plugin-core"),
         })}`,

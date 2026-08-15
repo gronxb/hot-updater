@@ -1,10 +1,13 @@
 import { type ConfigResponse, loadConfig } from "@hot-updater/cli-tools";
 import {
   assertNodeStoragePlugin,
+  createDatabaseClient,
+  type DatabaseClient,
   type NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
 
 let configPromise: Promise<ConfigResponse> | null = null;
+let databaseClient: DatabaseClient | null = null;
 let storagePluginPromise: Promise<NodeStoragePlugin> | null = null;
 
 const loadCachedConfig = async () => {
@@ -41,16 +44,14 @@ const loadCachedStoragePlugin = async (config: ConfigResponse) => {
 export const prepareConfig = async () => {
   try {
     const config = await loadCachedConfig();
-    const [databasePlugin, storagePlugin] = await Promise.all([
-      config.database(),
-      loadCachedStoragePlugin(config),
-    ]);
 
-    if (!databasePlugin) {
-      throw new Error("Database plugin initialization failed");
+    if (!databaseClient) {
+      databaseClient = createDatabaseClient(config.database);
     }
 
-    return { config, databasePlugin, storagePlugin };
+    const storagePlugin = await loadCachedStoragePlugin(config);
+
+    return { config, databaseClient, storagePlugin };
   } catch (error) {
     console.error("Error during configuration initialization:", error);
     throw error;

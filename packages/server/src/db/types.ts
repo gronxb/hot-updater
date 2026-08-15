@@ -1,20 +1,22 @@
 import type {
   AppUpdateAvailableInfo,
+  AppVersionGetBundlesArgs,
   Bundle,
-  GetBundlesArgs,
+  FingerprintGetBundlesArgs,
   UpdateInfo,
 } from "@hot-updater/core";
 import type {
-  DatabaseBundleQueryOptions,
-  DatabasePlugin,
+  ChannelDeleteInput,
+  ChannelDeleteResult,
+  ChannelInsertInput,
+  ChannelInsertResult,
+  ChannelRow,
+  DatabasePlugin as DatabasePluginContract,
   HotUpdaterContext,
   RuntimeStoragePlugin,
 } from "@hot-updater/plugin-core";
 
 import type { PaginatedResult } from "../types";
-
-export type DatabasePluginFactory<TContext = unknown> =
-  (() => DatabasePlugin<TContext>) & Partial<DatabaseAdapterCapabilities>;
 
 export const sqlProviders = [
   "sqlite",
@@ -45,6 +47,7 @@ export type MigrationOperation =
         columns: Record<string, { ormName: string; type: string }>;
       };
     }
+  | { type: "custom"; description: string }
   | { type: "custom"; sql: string }
   | { type: "custom"; key: string; value: unknown };
 
@@ -83,29 +86,72 @@ export interface DatabaseAdapterCapabilities {
   generateSchema?: SchemaGenerator;
 }
 
-export type DatabaseAdapterWithCapabilities<TContext = unknown> =
-  DatabasePlugin<TContext> & DatabaseAdapterCapabilities;
+export type DatabaseAdapterWithCapabilities = DatabasePluginContract &
+  DatabaseAdapterCapabilities;
 
-export type DatabaseAdapter<TContext = unknown> =
-  | DatabaseAdapterWithCapabilities<TContext>
-  | DatabasePlugin<TContext>
-  | DatabasePluginFactory<TContext>;
+export type DatabasePlugin = DatabaseAdapterWithCapabilities;
 
-export function isDatabasePluginFactory<TContext = unknown>(
-  adapter: DatabaseAdapter<TContext>,
-): adapter is DatabasePluginFactory<TContext> {
-  return typeof adapter === "function";
-}
-
-export function isDatabasePlugin<TContext = unknown>(
-  adapter: DatabaseAdapter<TContext>,
-): adapter is DatabasePlugin<TContext> {
+export function isDatabasePlugin(plugin: unknown): plugin is DatabasePlugin {
   return (
-    typeof adapter === "object" &&
-    adapter !== null &&
-    "getBundleById" in adapter &&
-    "getBundles" in adapter &&
-    "getChannels" in adapter
+    typeof plugin === "object" &&
+    plugin !== null &&
+    "name" in plugin &&
+    typeof plugin.name === "string" &&
+    "models" in plugin &&
+    typeof plugin.models === "object" &&
+    plugin.models !== null &&
+    "bundles" in plugin.models &&
+    typeof plugin.models.bundles === "object" &&
+    plugin.models.bundles !== null &&
+    "findById" in plugin.models.bundles &&
+    typeof plugin.models.bundles.findById === "function" &&
+    "findMany" in plugin.models.bundles &&
+    typeof plugin.models.bundles.findMany === "function" &&
+    "count" in plugin.models.bundles &&
+    typeof plugin.models.bundles.count === "function" &&
+    "bundlePatches" in plugin.models &&
+    typeof plugin.models.bundlePatches === "object" &&
+    plugin.models.bundlePatches !== null &&
+    "findByBundleIds" in plugin.models.bundlePatches &&
+    typeof plugin.models.bundlePatches.findByBundleIds === "function" &&
+    "channels" in plugin.models &&
+    typeof plugin.models.channels === "object" &&
+    plugin.models.channels !== null &&
+    "insert" in plugin.models.channels &&
+    typeof plugin.models.channels.insert === "function" &&
+    "list" in plugin.models.channels &&
+    typeof plugin.models.channels.list === "function" &&
+    "delete" in plugin.models.channels &&
+    typeof plugin.models.channels.delete === "function" &&
+    "analytics" in plugin.models &&
+    typeof plugin.models.analytics === "object" &&
+    plugin.models.analytics !== null &&
+    "append" in plugin.models.analytics &&
+    typeof plugin.models.analytics.append === "function" &&
+    "scan" in plugin.models.analytics &&
+    typeof plugin.models.analytics.scan === "function" &&
+    "clientAccessKeys" in plugin.models &&
+    typeof plugin.models.clientAccessKeys === "object" &&
+    plugin.models.clientAccessKeys !== null &&
+    "create" in plugin.models.clientAccessKeys &&
+    typeof plugin.models.clientAccessKeys.create === "function" &&
+    "findByHash" in plugin.models.clientAccessKeys &&
+    typeof plugin.models.clientAccessKeys.findByHash === "function" &&
+    "list" in plugin.models.clientAccessKeys &&
+    typeof plugin.models.clientAccessKeys.list === "function" &&
+    "revoke" in plugin.models.clientAccessKeys &&
+    typeof plugin.models.clientAccessKeys.revoke === "function" &&
+    "queries" in plugin &&
+    typeof plugin.queries === "object" &&
+    plugin.queries !== null &&
+    (!("getUpdateInfo" in plugin.queries) ||
+      plugin.queries.getUpdateInfo === undefined ||
+      typeof plugin.queries.getUpdateInfo === "function") &&
+    "commit" in plugin &&
+    typeof plugin.commit === "function" &&
+    (!("dispose" in plugin) ||
+      plugin.dispose === undefined ||
+      typeof plugin.dispose === "function")
   );
 }
 
@@ -122,25 +168,39 @@ export function getSQLProvider(
 }
 
 export interface DatabaseAPI<TContext = unknown> {
+  getAppUpdateInfo: (
+    args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<AppUpdateAvailableInfo | null>;
   getBundleById(
     id: string,
     context?: HotUpdaterContext<TContext>,
   ): Promise<Bundle | null>;
   getUpdateInfo(
-    args: GetBundlesArgs,
+    args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
     context?: HotUpdaterContext<TContext>,
   ): Promise<UpdateInfo | null>;
-  getAppUpdateInfo(
-    args: GetBundlesArgs,
+  getChannels(
     context?: HotUpdaterContext<TContext>,
-  ): Promise<AppUpdateAvailableInfo | null>;
-  getChannels(context?: HotUpdaterContext<TContext>): Promise<string[]>;
+  ): Promise<readonly ChannelRow[]>;
+  insertChannel(
+    input: ChannelInsertInput,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<ChannelInsertResult>;
+  deleteChannel(
+    input: ChannelDeleteInput,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<ChannelDeleteResult>;
   getBundles(
-    options: DatabaseBundleQueryOptions,
+    options: import("@hot-updater/plugin-core").DatabaseBundleQueryOptions,
     context?: HotUpdaterContext<TContext>,
   ): Promise<PaginatedResult>;
   insertBundle(
     bundle: Bundle,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<void>;
+  insertBundles(
+    bundles: readonly Bundle[],
     context?: HotUpdaterContext<TContext>,
   ): Promise<void>;
   updateBundleById(
