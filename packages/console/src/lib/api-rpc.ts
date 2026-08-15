@@ -19,6 +19,7 @@ import { DEFAULT_PAGE_LIMIT } from "./constants";
 type GetBundlesInput = {
   channel?: string;
   platform?: "ios" | "android";
+  targetAppVersion?: string;
   page?: number;
   limit?: string;
   after?: string;
@@ -55,6 +56,10 @@ type PromoteBundleInput = {
 
 type DeleteBundleInput = {
   bundleId: string;
+};
+
+type DeleteBundlesInput = {
+  bundleIds: string[];
 };
 
 const assertRemoteDownloadUrl = (fileUrl: string) => {
@@ -146,6 +151,7 @@ export const getBundles = createServerFn({ method: "GET" })
       const query = {
         channel: data?.channel ?? undefined,
         platform: data?.platform ?? undefined,
+        targetAppVersion: data?.targetAppVersion ?? undefined,
         page:
           typeof data?.page === "number" &&
           Number.isInteger(data.page) &&
@@ -177,6 +183,7 @@ export const getBundles = createServerFn({ method: "GET" })
         where: {
           channel: query.channel,
           platform: query.platform,
+          targetAppVersion: query.targetAppVersion,
         },
         limit: query.limit,
         ...pagination,
@@ -443,6 +450,28 @@ export const deleteBundle = createServerFn({ method: "POST" })
       });
 
       return { success: true };
+    } catch (error) {
+      console.error("Error during bundle deletion:", error);
+      throw error;
+    }
+  });
+
+export const deleteBundles = createServerFn({ method: "POST" })
+  .inputValidator((input: DeleteBundlesInput) => input)
+  .handler(async ({ data }) => {
+    try {
+      const { prepareConfig } = await import("./server/config.server");
+      const { deleteBundles: deleteBundlesWithStorage } =
+        await import("./server/deleteBundle");
+      const { databaseClient, storagePlugin } = await prepareConfig();
+
+      const result = await deleteBundlesWithStorage(data, {
+        databaseClient,
+        storagePlugin,
+        waitForStorageCleanup: false,
+      });
+
+      return { success: true, ...result };
     } catch (error) {
       console.error("Error during bundle deletion:", error);
       throw error;

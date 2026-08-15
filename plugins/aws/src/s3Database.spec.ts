@@ -30,6 +30,10 @@ import { s3Database } from "./s3Database";
 const bucketName = "database-bucket";
 const objects = new Map<string, string>();
 const archivedKeys = new Set<string>();
+let listObjectRequests: Array<{
+  readonly delimiter?: string;
+  readonly prefix: string;
+}> = [];
 let replacementBeforeConditionalPut:
   | { readonly key: string; readonly value: string }
   | undefined;
@@ -59,11 +63,59 @@ const readActiveRevision = (pointerKey: string): string => {
   return value.active_revision;
 };
 
-s3Mock.on(ListObjectsV2Command).callsFake(async (input) => ({
-  Contents: [...objects.keys()]
-    .filter((key) => key.startsWith(input.Prefix ?? ""))
-    .map((Key) => ({ Key })),
-}));
+s3Mock.on(ListObjectsV2Command).callsFake(async (input) => {
+  const prefix = input.Prefix ?? "";
+  listObjectRequests.push({
+    ...(input.Delimiter ? { delimiter: input.Delimiter } : {}),
+    prefix,
+  });
+  const keys = [...objects.keys()]
+    .filter((key) => key.startsWith(prefix))
+    .sort();
+  const offset = Number(input.ContinuationToken ?? 0);
+  const pageSize = 1000;
+  if (input.Delimiter) {
+    const directKeys: string[] = [];
+    const commonPrefixes = new Set<string>();
+    for (const key of keys) {
+      const relative = key.slice(prefix.length);
+      const delimiterIndex = relative.indexOf(input.Delimiter);
+      if (delimiterIndex === -1) {
+        directKeys.push(key);
+      } else {
+        commonPrefixes.add(
+          `${prefix}${relative.slice(0, delimiterIndex + input.Delimiter.length)}`,
+        );
+      }
+    }
+    const entries = [
+      ...directKeys.map((value) => ({ type: "key" as const, value })),
+      ...[...commonPrefixes].map((value) => ({
+        type: "prefix" as const,
+        value,
+      })),
+    ].sort((left, right) => left.value.localeCompare(right.value));
+    const page = entries.slice(offset, offset + pageSize);
+    const nextOffset = offset + page.length;
+    return {
+      CommonPrefixes: page
+        .filter((entry) => entry.type === "prefix")
+        .map(({ value: Prefix }) => ({ Prefix })),
+      Contents: page
+        .filter((entry) => entry.type === "key")
+        .map(({ value: Key }) => ({ Key })),
+      NextContinuationToken:
+        nextOffset < entries.length ? String(nextOffset) : undefined,
+    };
+  }
+  const page = keys.slice(offset, offset + pageSize);
+  const nextOffset = offset + page.length;
+  return {
+    Contents: page.map((Key) => ({ Key })),
+    NextContinuationToken:
+      nextOffset < keys.length ? String(nextOffset) : undefined,
+  };
+});
 s3Mock.on(GetObjectCommand).callsFake(async (input) => {
   if (input.Key && archivedKeys.has(input.Key)) {
     const error = new Error("InvalidObjectState");
@@ -109,6 +161,7 @@ s3Mock.on(PutObjectCommand).callsFake(async (input) => {
 beforeEach(() => {
   objects.clear();
   archivedKeys.clear();
+  listObjectRequests = [];
   replacementBeforeConditionalPut = undefined;
   cloudFrontMock.reset();
   cloudFrontMock.on(CreateInvalidationCommand).resolves({
@@ -138,6 +191,54 @@ setupDatabaseClientTestSuite({
 });
 
 describe("s3Database storage behavior", () => {
+  it("discovers legacy manifests without traversing bundle artifact directories", async () => {
+    const uuidChannel = "0198a408-8f13-7d9b-8df4-123456789abc";
+    const productionBundle = legacyBundle("1", "production");
+    const uuidChannelBundle = legacyBundle("2", uuidChannel);
+    objects.set(
+      "production/ios/1.0.0/update.json",
+      JSON.stringify([productionBundle]),
+    );
+    objects.set(
+      `${uuidChannel}/ios/1.0.0/update.json`,
+      JSON.stringify([uuidChannelBundle]),
+    );
+    objects.set("assets/sha256/aa/shared.png", "asset");
+    for (let index = 0; index < 1005; index += 1) {
+      const bundleId = `0198a408-8f13-7d9b-8df4-${String(index).padStart(12, "0")}`;
+      objects.set(`${bundleId}/bundle.zip`, "bundle");
+    }
+
+    const client = createDatabaseClient(s3Database({ bucketName }));
+    await expect(
+      client.getBundleById(productionBundle.id),
+    ).resolves.toMatchObject({ id: productionBundle.id });
+    const result = await client.getBundles({ limit: 20 });
+
+    expect(result.data.map(({ id }) => id).sort()).toEqual(
+      [productionBundle.id, uuidChannelBundle.id].sort(),
+    );
+    expect(
+      listObjectRequests.filter(
+        (request) => request.prefix === "" && request.delimiter === "/",
+      ),
+    ).toHaveLength(2);
+    expect(
+      listObjectRequests.filter(
+        (request) => request.prefix === "0" && request.delimiter === undefined,
+      ),
+    ).toHaveLength(2);
+    expect(
+      listObjectRequests.some(({ prefix }) =>
+        prefix.startsWith("0198a408-8f13-7d9b-8df4-"),
+      ),
+    ).toBe(false);
+    expect(listObjectRequests).not.toContainEqual({
+      delimiter: "/",
+      prefix: "assets/sha256/",
+    });
+  });
+
   it("writes an immutable revision below the configured base path", async () => {
     const plugin = s3Database({ bucketName, basePath: "/metadata/" });
 
@@ -359,6 +460,26 @@ describe("s3Database storage behavior", () => {
 
 const fixtureId = (suffix: string): string =>
   `00000000-0000-0000-0000-${suffix.padStart(12, "0")}`;
+
+const legacyBundle = (suffix: string, channel: string) => ({
+  id: fixtureId(suffix),
+  channel,
+  platform: "ios" as const,
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: `hash-${suffix}`,
+  gitCommitHash: null,
+  message: null,
+  storageUri: `s3://${bucketName}/bundles/${suffix}.zip`,
+  targetAppVersion: "1.0.0",
+  fingerprintHash: null,
+  metadata: {},
+  rolloutCohortCount: 1000,
+  targetCohorts: [],
+  manifestStorageUri: null,
+  manifestFileHash: null,
+  assetBaseStorageUri: null,
+});
 
 const channelRow = (name: string): ChannelRow => ({
   id: fixtureId(name === "production" ? "100" : "101"),

@@ -1,5 +1,14 @@
 # @hot-updater/android-helper
 
+## 0.36.0
+
+### Patch Changes
+
+- Updated dependencies [9759e8a]
+  - @hot-updater/cli-tools@0.36.0
+  - @hot-updater/plugin-core@0.36.0
+  - @hot-updater/core@0.36.0
+
 ## 0.35.12
 
 ### Patch Changes

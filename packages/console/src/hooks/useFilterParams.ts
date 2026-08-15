@@ -3,6 +3,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 export interface BundleFilters {
   channel?: string;
   platform?: "ios" | "android";
+  targetAppVersion?: string;
   page?: number;
   after?: string;
   before?: string;
@@ -11,6 +12,7 @@ export interface BundleFilters {
 interface BundleSearchParams {
   channel: string | undefined;
   platform: "ios" | "android" | undefined;
+  targetAppVersion: string | undefined;
   page: number | undefined;
   after: string | undefined;
   before: string | undefined;
@@ -25,6 +27,7 @@ export function useFilterParams() {
   const filters: BundleFilters = {
     channel: search.channel as string | undefined,
     platform: search.platform as "ios" | "android" | undefined,
+    targetAppVersion: search.targetAppVersion as string | undefined,
     page: search.page as number | undefined,
     after: search.after as string | undefined,
     before: search.before as string | undefined,
@@ -46,10 +49,12 @@ export function useFilterParams() {
   const getNextFilters = (newFilters: Partial<BundleFilters>) => {
     const hasChannel = Object.hasOwn(newFilters, "channel");
     const hasPlatform = Object.hasOwn(newFilters, "platform");
+    const hasTargetAppVersion = Object.hasOwn(newFilters, "targetAppVersion");
     const hasPage = Object.hasOwn(newFilters, "page");
     const hasAfter = Object.hasOwn(newFilters, "after");
     const hasBefore = Object.hasOwn(newFilters, "before");
-    const shouldResetPagination = hasChannel || hasPlatform;
+    const shouldResetPagination =
+      hasChannel || hasPlatform || hasTargetAppVersion;
     const nextPage =
       hasPage && newFilters.page !== undefined && newFilters.page > 1
         ? newFilters.page
@@ -58,6 +63,9 @@ export function useFilterParams() {
     return {
       channel: hasChannel ? newFilters.channel : filters.channel,
       platform: hasPlatform ? newFilters.platform : filters.platform,
+      targetAppVersion: hasTargetAppVersion
+        ? newFilters.targetAppVersion
+        : filters.targetAppVersion,
       page: shouldResetPagination
         ? undefined
         : hasPage
@@ -120,6 +128,7 @@ export function useFilterParams() {
     navigateWithSearch({
       channel: undefined,
       platform: undefined,
+      targetAppVersion: undefined,
       page: undefined,
       after: undefined,
       before: undefined,

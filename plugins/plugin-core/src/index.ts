@@ -1,4 +1,5 @@
 export * from "./calculatePagination";
+export * from "./bundleStorageLayout";
 export * from "./compressionFormat";
 export * from "./assetStorageLayout";
 export * from "./contentAddressedAssets";

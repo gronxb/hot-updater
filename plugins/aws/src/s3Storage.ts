@@ -16,6 +16,7 @@ import {
   createUniversalStoragePlugin,
   getContentType,
   parseStorageUri,
+  type StorageObject,
 } from "@hot-updater/plugin-core";
 
 import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
@@ -34,10 +35,84 @@ export const s3Storage = createUniversalStoragePlugin<S3StorageConfig>({
   factory: (config) => {
     const { bucketName, ...s3Config } = config;
     const client = new S3Client(applyS3RuntimeAwsConfig(s3Config));
-    const getStorageKey = createStorageKeyBuilder(config.basePath);
+    const normalizedBasePath = config.basePath?.replace(/^\/+|\/+$/g, "") ?? "";
+    const getStorageKey = createStorageKeyBuilder(normalizedBasePath);
+
+    const getListPrefix = (prefix = "") => {
+      const normalizedPrefix = prefix.replace(/^\/+|\/+$/g, "");
+      const value = [normalizedBasePath, normalizedPrefix]
+        .filter(Boolean)
+        .join("/");
+      return value ? `${value}/` : "";
+    };
+
+    const getRelativeKey = (key: string) => {
+      if (!normalizedBasePath) {
+        return key;
+      }
+
+      const basePrefix = `${normalizedBasePath}/`;
+      return key.startsWith(basePrefix) ? key.slice(basePrefix.length) : key;
+    };
 
     return {
       node: {
+        async listObjects(prefix) {
+          const objects: StorageObject[] = [];
+          let continuationToken: string | undefined;
+
+          do {
+            const response = await client.send(
+              new ListObjectsV2Command({
+                Bucket: bucketName,
+                ContinuationToken: continuationToken,
+                Prefix: getListPrefix(prefix),
+              }),
+            );
+
+            for (const object of response.Contents ?? []) {
+              if (!object.Key) {
+                continue;
+              }
+
+              objects.push({
+                key: getRelativeKey(object.Key),
+                lastModifiedAt: object.LastModified,
+                size: object.Size ?? 0,
+                storageUri: `s3://${bucketName}/${object.Key}`,
+              });
+            }
+
+            continuationToken = response.NextContinuationToken;
+          } while (continuationToken);
+
+          return objects;
+        },
+        async deleteObjects(relativeKeys) {
+          const keys = relativeKeys.map((key) => getStorageKey(key));
+
+          for (let offset = 0; offset < keys.length; offset += 1000) {
+            const batch = keys.slice(offset, offset + 1000);
+            if (batch.length === 0) {
+              continue;
+            }
+
+            const response = await client.send(
+              new DeleteObjectsCommand({
+                Bucket: bucketName,
+                Delete: {
+                  Objects: batch.map((Key) => ({ Key })),
+                  Quiet: true,
+                },
+              }),
+            );
+            if (response.Errors && response.Errors.length > 0) {
+              throw new Error(
+                `Failed to delete ${response.Errors.length} S3 object(s).`,
+              );
+            }
+          }
+        },
         async delete(storageUri) {
           const { bucket, key } = parseStorageUri(storageUri, "s3");
           if (bucket !== bucketName) {

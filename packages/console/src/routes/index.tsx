@@ -22,6 +22,7 @@ export const Route = createFileRoute("/")({
     return {
       channel: search.channel as string | undefined,
       platform: search.platform as "ios" | "android" | undefined,
+      targetAppVersion: search.targetAppVersion as string | undefined,
       page:
         parsedPage !== undefined &&
         Number.isInteger(parsedPage) &&
@@ -46,6 +47,7 @@ function BundlesPage() {
   const { data: bundlesData, isLoading } = useBundlesQuery({
     channel: filters.channel,
     platform: filters.platform,
+    targetAppVersion: filters.targetAppVersion,
     page: filters.page,
     after: filters.after,
     before: filters.before,
