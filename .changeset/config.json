@@ -6,7 +6,7 @@
   "linked": [],
   "fixed": [["hot-updater", "@hot-updater/*"]],
   "access": "public",
-  "baseBranch": "main",
+  "baseBranch": "next",
   "bumpVersionsWithWorkspaceProtocolOnly": true,
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true
