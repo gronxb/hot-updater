@@ -27,10 +27,7 @@ export const isBundle = (value: unknown): value is Bundle =>
   isRecord(value) &&
   typeof value.id === "string" &&
   (value.platform === "ios" || value.platform === "android") &&
-  typeof value.enabled === "boolean" &&
-  typeof value.shouldForceUpdate === "boolean" &&
   typeof value.fileHash === "string" &&
-  typeof value.channel === "string" &&
   typeof value.storageUri === "string";
 
 const isPaginationInfo = (

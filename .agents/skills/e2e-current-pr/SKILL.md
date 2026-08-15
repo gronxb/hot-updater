@@ -21,7 +21,8 @@ owns build, deploy, device interaction, and evidence gathering.
    not rely on the tags alone if the patch excerpt points at risky runtime code.
 4. Translate the diff into a concrete scenario before execution. State the base
    branch, changed risk areas, chosen platform scope, stable assertions, and
-   crash assertions if any. Then execute it with [$e2e](../e2e/SKILL.md).
+  crash assertions if any. Name Release-selection assertions separately from
+  Bundle-byte assertions, then execute it with [$e2e](../e2e/SKILL.md).
 5. Run one platform at a time. Default to both platforms when shared runtime or
    cross-platform native code changes.
 6. Report the chosen scenario, evidence, and any surfaces you intentionally
@@ -37,6 +38,13 @@ owns build, deploy, device interaction, and evidence gathering.
   `examples/v0.85.0/ios` or `examples/v0.85.0/android` boot code, or files
   mentioning rollback, crash history, launch reports, `notifyAppReady`, or
   bundle-store behavior.
+- Add catalog/local-selection races when the diff touches Release compilation,
+  authority/scope URLs, high-water/context CAS, rollout, cohorts, or artifact
+  resolution. Use proxy capture/freeze/replay/delay and assert stale catalog or
+  artifact completions cannot commit.
+- Add a same-Bundle adoption phase when a management change can create a new
+  Release over existing Bundle bytes. Assert the Release receipt changes with
+  zero artifact requests and no reload.
 - Prefer iOS first when the diff is iOS-only. Prefer Android first when the
   diff is Android-only. Run both platforms when shared packages, deploy logic,
   or cross-platform example code changes.
@@ -58,6 +66,9 @@ owns build, deploy, device interaction, and evidence gathering.
 - Keep the scenario tight to the changed behavior. Do not default to the full
   fixed regression in `../e2e-default` unless the diff truly spans both stable and
   recovery flows.
+- Treat Release policy and Bundle artifacts as separate risk surfaces. Policy
+  changes use `/e2e/jobs/patch-release` and Release IDs; patch/manifest/storage
+  assertions keep Bundle IDs.
 
 ## Script
 
@@ -87,5 +98,6 @@ Include:
 - changed OTA surfaces
 - scenario chosen and why
 - platforms run and why
-- deployed bundle ids and final status evidence from `../e2e`
+- deployed Release/Bundle pairs, final receipt/high-water, and public status
+  evidence from `../e2e`
 - any areas intentionally left uncovered

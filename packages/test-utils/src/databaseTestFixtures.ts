@@ -5,6 +5,7 @@ import type {
   BundleRow,
   ChannelRow,
   ClientAccessKeyRow,
+  ReleaseRow,
 } from "@hot-updater/plugin-core";
 
 const fixtureId = (suffix: string): string =>
@@ -25,23 +26,14 @@ export const createChannelRowFixture = (name = "production"): ChannelRow => ({
 
 export const createBundleRowFixture = (
   suffix: string,
-  channel = "production",
+  _channel = "production",
 ): BundleRow => ({
   id: fixtureId(suffix),
   platform: "ios",
-  should_force_update: false,
-  enabled: true,
   file_hash: `hash-${suffix}`,
   git_commit_hash: null,
-  message: `bundle-${suffix}`,
-  channel,
-  channel_id: createChannelRowFixture(channel).id,
   storage_uri: `storage://bundles/${suffix}.zip`,
-  target_app_version: "1.0.0",
-  fingerprint_hash: null,
   metadata: { app_version: suffix },
-  rollout_cohort_count: 1000,
-  target_cohorts: null,
   manifest_storage_uri: null,
   manifest_file_hash: null,
   asset_base_storage_uri: null,
@@ -62,6 +54,32 @@ export const createBundlePatchRowFixture = (
   order_index: orderIndex,
 });
 
+export const createReleaseRowFixture = (
+  suffix: string,
+  bundle: BundleRow,
+  channel: ChannelRow,
+): ReleaseRow => ({
+  id: fixtureId(`${Number(suffix) + 5000}`),
+  scope_key: `v1:app-version:test:ios:${channel.name}`,
+  channel_id: channel.id,
+  platform: bundle.platform,
+  kind: "BUNDLE",
+  bundle_id: bundle.id,
+  strategy: "APP_VERSION",
+  target_app_version: "1.0.0",
+  fingerprint_hash: null,
+  enabled: true,
+  should_force_update: false,
+  message: `release-${suffix}`,
+  rollout_cohort_count: 1000,
+  target_cohorts: [],
+  operation: "DEPLOY",
+  source_release_id: null,
+  revision: 1,
+  created_at_ms: Number(suffix),
+  updated_at_ms: Number(suffix),
+});
+
 export const createBundleEventRowFixture = (
   suffix: string,
   receivedAtMs: number,
@@ -72,7 +90,9 @@ export const createBundleEventRowFixture = (
   user_id: null,
   username: null,
   from_bundle_id: fixtureId(`${Number(suffix) + 1000}`),
+  from_release_id: null,
   to_bundle_id: fixtureId(`${Number(suffix) + 2000}`),
+  to_release_id: null,
   platform: "ios",
   app_version: "1.0.0",
   channel: "production",
@@ -98,18 +118,12 @@ export const createClientAccessKeyRowFixture = (
 
 export const createBundleFixture = (
   suffix: string,
-  channel = "production",
+  _channel = "production",
 ): Bundle => ({
   id: fixtureId(suffix),
   platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
   fileHash: `hash-${suffix}`,
   gitCommitHash: null,
-  message: `bundle-${suffix}`,
-  channel,
   storageUri: `storage://bundles/${suffix}.zip`,
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
   metadata: { app_version: suffix },
 });

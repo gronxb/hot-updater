@@ -69,6 +69,7 @@ export type CrashRecoveryWaitOptions = {
   readonly getMetadataState: (
     metadata: Record<string, unknown> | null,
   ) => MetadataState;
+  readonly isAndroidAppRunning: () => boolean;
   readonly launchAndroidApp: () => void;
   readonly platform: CrashRecoveryPlatform;
   readonly pollIntervalMs: number;
@@ -135,6 +136,16 @@ function isRecovered(args: {
   );
 }
 
+function hasRecoveredMetadata(args: {
+  readonly metadataState: MetadataState;
+  readonly stableBundleId: string;
+}) {
+  return (
+    args.metadataState.stagingBundleId === args.stableBundleId &&
+    args.metadataState.verificationPending === false
+  );
+}
+
 export async function waitForCrashRecoveryState(
   options: CrashRecoveryWaitOptions,
 ) {
@@ -142,7 +153,7 @@ export async function waitForCrashRecoveryState(
     crashedBundleId: options.crashedBundleId,
     stableBundleId: options.stableBundleId,
   });
-  let androidRelaunchAttempts = 0;
+  let androidLaunchAttempts = 0;
 
   for (let index = 0; index < options.attempts; index += 1) {
     throwIfAborted(options.signal);
@@ -163,9 +174,17 @@ export async function waitForCrashRecoveryState(
       return {};
     }
 
-    if (options.platform === "android" && androidRelaunchAttempts < 3) {
+    if (
+      options.platform === "android" &&
+      androidLaunchAttempts < 3 &&
+      !hasRecoveredMetadata({
+        metadataState,
+        stableBundleId: options.stableBundleId,
+      }) &&
+      (androidLaunchAttempts === 0 || !options.isAndroidAppRunning())
+    ) {
       options.launchAndroidApp();
-      androidRelaunchAttempts += 1;
+      androidLaunchAttempts += 1;
       await options.sleepMs(options.androidLaunchSettleMs, options.signal);
       continue;
     }

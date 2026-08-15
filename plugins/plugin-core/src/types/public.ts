@@ -1,4 +1,8 @@
-export type { BundleRowUpdate } from "./databaseOperations";
+export type {
+  BundleRowUpdate,
+  ReleaseCatalogRowUpdate,
+  ReleaseRowUpdate,
+} from "./databaseOperations";
 export type {
   AnalyticsModel,
   AnalyticsScanCursor,
@@ -17,10 +21,12 @@ export type {
   ClientAccessKeyModel,
   DatabaseChange,
   DatabaseCommit,
+  DatabaseCommitExpectation,
   DatabaseCommitResult,
   DatabaseModels,
   DatabasePlugin,
-  DatabaseQueries,
+  ReleaseCatalogModel,
+  ReleaseModel,
 } from "./databasePlugin";
 export type {
   BundleEventRow,
@@ -32,4 +38,6 @@ export type {
   DatabaseBundleMetadata,
   DatabaseJsonObject,
   DatabaseJsonValue,
+  ReleaseCatalogRow,
+  ReleaseRow,
 } from "./databaseRows";

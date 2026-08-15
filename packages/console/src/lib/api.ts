@@ -1,7 +1,7 @@
 import type {
-  Bundle,
   ChannelDeleteInput,
   ChannelInsertInput,
+  ReleasePolicyPatch,
 } from "@hot-updater/plugin-core";
 import type { BundleEventAnalyticsWindow } from "@hot-updater/server";
 import {
@@ -14,10 +14,10 @@ import {
 
 import {
   createChannel as createChannelApi,
-  createBundle as createBundleApi,
   deleteChannel as deleteChannelApi,
   deleteBundle as deleteBundleApi,
   deleteBundles as deleteBundlesApi,
+  deleteRelease as deleteReleaseApi,
   getBundle,
   getBundleChildCounts,
   getBundleChildren,
@@ -28,15 +28,16 @@ import {
   getConfig,
   getConfigLoaded,
   getInstallationHistory as getInstallationHistoryApi,
-  promoteBundle as promoteBundleApi,
+  getRelease,
+  getReleaseCatalogDiagnostics,
+  getReleases,
+  preflightRelease as preflightReleaseApi,
   searchInstallations as searchInstallationsApi,
-  updateBundle as updateBundleApi,
+  updateRelease as updateReleaseApi,
 } from "./api-rpc";
 
 type BundleFilters = {
-  channel?: string;
   platform?: "ios" | "android";
-  targetAppVersion?: string;
   page?: number;
   limit?: string;
   after?: string;
@@ -63,6 +64,7 @@ export type InstallationSearchRow = InstallationSearchResult["data"][number];
 export type InstallationHistoryRow = InstallationHistoryResult["data"][number];
 
 const bundleListQueryKey = ["bundles"] as const;
+const releaseListQueryKey = ["releases"] as const;
 
 export const queryKeys = {
   config: ["config"] as const,
@@ -73,6 +75,13 @@ export const queryKeys = {
     list: (filters?: BundleFilters) =>
       [...bundleListQueryKey, filters ?? {}] as const,
   },
+  releases: {
+    all: releaseListQueryKey,
+    list: (filters?: ReleaseFilters) =>
+      [...releaseListQueryKey, filters ?? {}] as const,
+  },
+  release: (releaseId: string) => ["release", releaseId] as const,
+  releaseCatalog: (scopeKey: string) => ["release-catalog", scopeKey] as const,
   bundleChildren: {
     all: ["bundle-children"] as const,
     list: (baseBundleId: string) => ["bundle-children", baseBundleId] as const,
@@ -97,21 +106,12 @@ export const queryKeys = {
   },
 };
 
-function replaceBundleInQueryData(
-  data: BundlesQueryData | undefined,
-  updatedBundle: Bundle,
-) {
-  if (!data) {
-    return data;
-  }
-
-  return {
-    ...data,
-    data: data.data.map((bundle) =>
-      bundle.id === updatedBundle.id ? updatedBundle : bundle,
-    ),
-  };
-}
+export type ReleaseFilters = {
+  beforeReleaseId?: string;
+  channelId?: string;
+  platform?: "ios" | "android";
+  limit?: number;
+};
 
 function removeBundleFromQueryData(
   data: BundlesQueryData | undefined,
@@ -141,9 +141,6 @@ function removeBundlesFromQueryData(
     data: data.data.filter((bundle) => !bundleIdSet.has(bundle.id)),
   };
 }
-
-const hasOwn = (value: object, key: PropertyKey) =>
-  Object.prototype.hasOwnProperty.call(value, key);
 
 const invalidateInBackground = (
   queryClient: QueryClient,
@@ -183,6 +180,30 @@ export function useBundlesQuery(filters?: BundleFilters) {
     queryFn: () => getBundles({ data: filters }),
     staleTime: Infinity,
     placeholderData: (previousData) => previousData,
+  });
+}
+
+export function useReleasesQuery(filters?: ReleaseFilters) {
+  return useQuery({
+    queryKey: queryKeys.releases.list(filters),
+    queryFn: () => getReleases({ data: filters }),
+    placeholderData: (previousData) => previousData,
+  });
+}
+
+export function useReleaseQuery(releaseId: string) {
+  return useQuery({
+    enabled: releaseId.length > 0,
+    queryFn: () => getRelease({ data: { releaseId } }),
+    queryKey: queryKeys.release(releaseId),
+  });
+}
+
+export function useReleaseCatalogDiagnosticsQuery(scopeKey: string) {
+  return useQuery({
+    enabled: scopeKey.length > 0,
+    queryFn: () => getReleaseCatalogDiagnostics({ data: { scopeKey } }),
+    queryKey: queryKeys.releaseCatalog(scopeKey),
   });
 }
 
@@ -305,81 +326,6 @@ export function useDeleteChannelMutation() {
   });
 }
 
-export function useUpdateBundleMutation() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (params: { bundleId: string; bundle: Partial<Bundle> }) =>
-      updateBundleApi({ data: params }),
-    onSuccess: ({ bundle: updatedBundle }, vars) => {
-      queryClient.setQueryData(queryKeys.bundle(vars.bundleId), updatedBundle);
-      queryClient.setQueriesData(
-        { queryKey: queryKeys.bundles.all },
-        (data: BundlesQueryData | undefined) =>
-          replaceBundleInQueryData(data, updatedBundle),
-      );
-
-      invalidateInBackground(queryClient, queryKeys.bundles.all);
-
-      if (
-        hasOwn(vars.bundle, "patches") ||
-        hasOwn(vars.bundle, "channel") ||
-        hasOwn(vars.bundle, "platform")
-      ) {
-        invalidateInBackground(queryClient, queryKeys.bundleChildren.all);
-      }
-
-      if (hasOwn(vars.bundle, "channel")) {
-        invalidateInBackground(queryClient, queryKeys.channels);
-      }
-    },
-  });
-}
-
-export function useCreateBundleMutation() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (bundle: Bundle) => createBundleApi({ data: bundle }),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.bundleChildren.all,
-        }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
-      ]);
-    },
-  });
-}
-
-export function usePromoteBundleMutation() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (params: {
-      action: "copy" | "move";
-      bundleId: string;
-      nextBundleId?: string;
-      targetChannel: string;
-    }) => promoteBundleApi({ data: params }),
-    onSuccess: async ({ bundle }) => {
-      queryClient.setQueryData(queryKeys.bundle(bundle.id), bundle);
-
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.bundleChildren.all,
-        }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.bundle(bundle.id),
-        }),
-      ]);
-    },
-  });
-}
-
 export function useDeleteBundleMutation() {
   const queryClient = useQueryClient();
 
@@ -418,7 +364,55 @@ export function useDeleteBundlesMutation() {
 
       invalidateInBackground(queryClient, queryKeys.bundles.all);
       invalidateInBackground(queryClient, queryKeys.bundleChildren.all);
-      invalidateInBackground(queryClient, queryKeys.channels);
+    },
+  });
+}
+
+export function useUpdateReleaseMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      expectedRevision: number;
+      patch: ReleasePolicyPatch;
+      releaseId: string;
+    }) => updateReleaseApi({ data: input }),
+    onSuccess: async (_, input) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.releases.all }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.release(input.releaseId),
+        }),
+        queryClient.invalidateQueries({ queryKey: ["release-catalog"] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
+      ]);
+    },
+  });
+}
+
+export function usePreflightReleaseMutation() {
+  return useMutation({
+    mutationFn: (input: {
+      expectedRevision: number;
+      patch: ReleasePolicyPatch;
+      releaseId: string;
+    }) => preflightReleaseApi({ data: input }),
+  });
+}
+
+export function useDeleteReleaseMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { expectedRevision: number; releaseId: string }) =>
+      deleteReleaseApi({ data: input }),
+    onSuccess: async (_, input) => {
+      queryClient.removeQueries({
+        queryKey: queryKeys.release(input.releaseId),
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.releases.all }),
+        queryClient.invalidateQueries({ queryKey: ["release-catalog"] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
+      ]);
     },
   });
 }

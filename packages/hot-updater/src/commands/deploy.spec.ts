@@ -206,7 +206,7 @@ vi.mock("./console", () => ({
 
 import fs from "fs";
 
-import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
+import type { DatabasePlugin, LegacyBundle } from "@hot-updater/plugin-core";
 import {
   createStorageUri,
   DatabaseAtomicCommitUnsupportedError,
@@ -230,10 +230,20 @@ import {
   normalizeRolloutPercentage,
 } from "./deploy";
 
-type BundleFixture = Pick<Bundle, "id"> & Partial<Bundle>;
+type BundleFixture = Pick<LegacyBundle, "id"> & Partial<LegacyBundle>;
+
+const fixtureBundleId = (sequence: number): string =>
+  `01900000-0000-7000-8000-${String(sequence).padStart(12, "0")}`;
+const DEPLOY_BUNDLE_ID = fixtureBundleId(123);
 
 const mockGetBundlesWithFixtures = (fixtures: BundleFixture[]) => {
-  databaseHarness.setBundles(
+  mockBuildPlugin.build.mockResolvedValue({
+    buildPath: "/mock/build",
+    bundleId: DEPLOY_BUNDLE_ID,
+    stdout: null,
+  });
+  mockServer.createBundleDiff.mockResolvedValue({ id: DEPLOY_BUNDLE_ID });
+  return databaseHarness.seedLegacyBundles(
     fixtures.map((fixture) => ({
       channel: "production",
       enabled: true,
@@ -415,8 +425,8 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect((await databaseHarness.bundles())[0]).toMatchObject({
-      rolloutCohortCount: 1000,
+    expect((await databaseHarness.releases())[0]).toMatchObject({
+      rollout_cohort_count: 1000,
     });
   });
 
@@ -430,8 +440,8 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect((await databaseHarness.bundles())[0]).toMatchObject({
-      rolloutCohortCount: 0,
+    expect((await databaseHarness.releases())[0]).toMatchObject({
+      rollout_cohort_count: 0,
     });
   });
 
@@ -445,8 +455,8 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect((await databaseHarness.bundles())[0]).toMatchObject({
-      rolloutCohortCount: 550,
+    expect((await databaseHarness.releases())[0]).toMatchObject({
+      rollout_cohort_count: 550,
     });
   });
 
@@ -1137,9 +1147,9 @@ describe("deploy rollout wiring", () => {
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
-    mockGetBundlesWithFixtures([
-      { id: "bundle-122", targetAppVersion: "1.0.x" },
-      { id: "bundle-121", targetAppVersion: "1.0.x" },
+    await mockGetBundlesWithFixtures([
+      { id: fixtureBundleId(122), targetAppVersion: "1.0.x" },
+      { id: fixtureBundleId(121), targetAppVersion: "1.0.x" },
     ]);
 
     await deploy({
@@ -1153,8 +1163,8 @@ describe("deploy rollout wiring", () => {
     expect(mockServer.createBundleDiff).toHaveBeenNthCalledWith(
       1,
       {
-        baseBundleId: "bundle-122",
-        bundleId: "bundle-123",
+        baseBundleId: fixtureBundleId(122),
+        bundleId: DEPLOY_BUNDLE_ID,
       },
       {
         databasePlugin,
@@ -1167,8 +1177,8 @@ describe("deploy rollout wiring", () => {
     expect(mockServer.createBundleDiff).toHaveBeenNthCalledWith(
       2,
       {
-        baseBundleId: "bundle-121",
-        bundleId: "bundle-123",
+        baseBundleId: fixtureBundleId(121),
+        bundleId: DEPLOY_BUNDLE_ID,
       },
       {
         databasePlugin,
@@ -1194,9 +1204,9 @@ describe("deploy rollout wiring", () => {
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
-    mockGetBundlesWithFixtures([
+    await mockGetBundlesWithFixtures([
       {
-        id: "bundle-122",
+        id: fixtureBundleId(122),
         targetAppVersion: "1.1.0",
       },
     ]);
@@ -1211,8 +1221,8 @@ describe("deploy rollout wiring", () => {
 
     expect(mockServer.createBundleDiff).toHaveBeenCalledWith(
       {
-        baseBundleId: "bundle-122",
-        bundleId: "bundle-123",
+        baseBundleId: fixtureBundleId(122),
+        bundleId: DEPLOY_BUNDLE_ID,
       },
       {
         databasePlugin,
@@ -1238,9 +1248,9 @@ describe("deploy rollout wiring", () => {
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
-    mockGetBundlesWithFixtures([
+    await mockGetBundlesWithFixtures([
       {
-        id: "bundle-122",
+        id: fixtureBundleId(122),
         targetAppVersion: "1.x",
       },
     ]);
@@ -1270,13 +1280,13 @@ describe("deploy rollout wiring", () => {
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
-    mockGetBundlesWithFixtures([
+    await mockGetBundlesWithFixtures([
       ...Array.from({ length: 10 }, (_, index) => ({
-        id: `bundle-${String(122 - index).padStart(3, "0")}`,
+        id: fixtureBundleId(122 - index),
         targetAppVersion: "1.0.0",
       })),
       {
-        id: "bundle-112",
+        id: fixtureBundleId(112),
         targetAppVersion: "1.1.0",
       },
     ]);
@@ -1291,8 +1301,8 @@ describe("deploy rollout wiring", () => {
 
     expect(mockServer.createBundleDiff).toHaveBeenCalledWith(
       {
-        baseBundleId: "bundle-112",
-        bundleId: "bundle-123",
+        baseBundleId: fixtureBundleId(112),
+        bundleId: DEPLOY_BUNDLE_ID,
       },
       {
         databasePlugin,
@@ -1318,8 +1328,8 @@ describe("deploy rollout wiring", () => {
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
-    mockGetBundlesWithFixtures([
-      { id: "bundle-122", targetAppVersion: "1.0.x" },
+    await mockGetBundlesWithFixtures([
+      { id: fixtureBundleId(122), targetAppVersion: "1.0.x" },
     ]);
     mockServer.createBundleDiff.mockRejectedValueOnce(
       new Error("storage unavailable"),
@@ -1334,10 +1344,10 @@ describe("deploy rollout wiring", () => {
     });
 
     expect(mockCli.p.outro).toHaveBeenCalledWith(
-      "🚀 Deployment Successful (bundle-123)",
+      `🚀 Deployment Successful (${DEPLOY_BUNDLE_ID})`,
     );
     expect(mockCli.p.log.warn).toHaveBeenCalledWith(
-      "Partial update skipped for bundle-1: storage unavailable",
+      `Partial update skipped for ${fixtureBundleId(122).slice(0, 8)}: storage unavailable`,
     );
   });
 
@@ -1351,8 +1361,8 @@ describe("deploy rollout wiring", () => {
       platform: "ios",
     });
 
-    expect((await databaseHarness.bundles())[0]).toMatchObject({
-      targetAppVersion: "1.5.0",
+    expect((await databaseHarness.releases())[0]).toMatchObject({
+      target_app_version: "1.5.0",
     });
   });
 
@@ -1383,8 +1393,8 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.2.0",
     });
 
-    expect((await databaseHarness.bundles())[0]).toMatchObject({
-      targetAppVersion: "1.2.0",
+    expect((await databaseHarness.releases())[0]).toMatchObject({
+      target_app_version: "1.2.0",
     });
   });
 
@@ -1406,8 +1416,8 @@ describe("deploy rollout wiring", () => {
         initialValue: "1.5.0",
       }),
     );
-    expect((await databaseHarness.bundles())[0]).toMatchObject({
-      targetAppVersion: "1.7.0",
+    expect((await databaseHarness.releases())[0]).toMatchObject({
+      target_app_version: "1.7.0",
     });
   });
 });

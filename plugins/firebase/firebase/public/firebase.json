@@ -13,5 +13,18 @@
       "*.local"
     ],
     "gen": 2
+  },
+  "hosting": {
+    "public": "hosting",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "/api/check-update{,/**}",
+        "function": {
+          "functionId": "hot-updater",
+          "pinTag": true
+        }
+      }
+    ]
   }
 }

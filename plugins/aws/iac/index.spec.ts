@@ -70,16 +70,17 @@ describe("AWS DynamoDB deployment preparation", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.ensureTable.mockResolvedValue(undefined);
+    mocks.ensureTable.mockResolvedValue("aws.test-authority");
   });
 
   it("ensures the official-domain table before deployment", async () => {
-    await prepareDynamoDBDeployment({
+    const authorityId = await prepareDynamoDBDeployment({
       credentials,
       region: "ap-northeast-2",
       tableName: "hot-updater-metadata",
     });
 
     expect(mocks.ensureTable).toHaveBeenCalledWith("hot-updater-metadata");
+    expect(authorityId).toBe("aws.test-authority");
   });
 });

@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import type { Bundle } from "@hot-updater/plugin-core";
+import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -11,18 +11,59 @@ import {
 
 const createBundle = (id: string): Bundle => ({
   id,
-  channel: "production",
   platform: "ios",
-  enabled: true,
-  shouldForceUpdate: false,
   fileHash: `hash-${id}`,
   storageUri: `storage://${id}.zip`,
   gitCommitHash: null,
-  message: null,
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
-  rolloutCohortCount: 1000,
 });
+
+const createRelease = (bundleId: string): ReleaseRow => ({
+  id: `release-${bundleId}`,
+  revision: 1,
+  scope_key: "scope-production-ios",
+  channel_id: "channel-production",
+  platform: "ios",
+  kind: "BUNDLE",
+  bundle_id: bundleId,
+  strategy: "APP_VERSION",
+  target_app_version: "1.0.0",
+  fingerprint_hash: null,
+  enabled: true,
+  should_force_update: false,
+  message: null,
+  rollout_cohort_count: 1000,
+  target_cohorts: [],
+  operation: "DEPLOY",
+  source_release_id: null,
+  created_at_ms: 1,
+  updated_at_ms: 1,
+});
+
+const createReleasePager =
+  (releases: readonly ReleaseRow[]) =>
+  async ({
+    beforeReleaseId,
+    limit,
+  }: {
+    beforeReleaseId?: string;
+    limit: number;
+  }) => {
+    const start = beforeReleaseId
+      ? releases.findIndex(({ id }) => id === beforeReleaseId) + 1
+      : 0;
+    return releases.slice(start, start + limit);
+  };
+
+type CollectInput = Parameters<typeof collectAnalyticsOverview>[0];
+const collect = (
+  input: Omit<CollectInput, "getChannels" | "getReleases"> &
+    Partial<Pick<CollectInput, "getChannels" | "getReleases">>,
+) =>
+  collectAnalyticsOverview({
+    getChannels: async () => [{ id: "channel-production", name: "production" }],
+    getReleases: async () => [],
+    ...input,
+  });
 
 const createRuntime = () => ({
   mode: "bounded" as const,
@@ -112,7 +153,7 @@ describe("collectAnalyticsOverview", () => {
     const runtime = { ...createRuntime(), searchInstallations: undefined };
 
     // When
-    const result = collectAnalyticsOverview({ runtime, getBundles });
+    const result = collect({ runtime, getBundles });
 
     // Then
     await expect(result).rejects.toThrow(/not supported/i);
@@ -148,9 +189,12 @@ describe("collectAnalyticsOverview", () => {
     }));
 
     // When
-    const overview = await collectAnalyticsOverview({
+    const overview = await collect({
       runtime,
       getBundles,
+      getReleases: createReleasePager(
+        allBundles.map(({ id }) => createRelease(id)),
+      ),
       pageSize: 1,
     });
 
@@ -182,7 +226,7 @@ describe("collectAnalyticsOverview", () => {
     }));
 
     // When
-    const overview = await collectAnalyticsOverview({ runtime, getBundles });
+    const overview = await collect({ runtime, getBundles });
 
     // Then
     expect(runtime.getBundleEventOverview).toHaveBeenCalledOnce();
@@ -203,7 +247,7 @@ describe("collectAnalyticsOverview", () => {
       }));
 
       // When
-      const result = collectAnalyticsOverview({ runtime, getBundles });
+      const result = collect({ runtime, getBundles });
 
       // Then
       await expect(result).rejects.toBeInstanceOf(
@@ -227,7 +271,7 @@ describe("collectAnalyticsOverview", () => {
       }));
 
       // When
-      const result = collectAnalyticsOverview({ runtime, getBundles });
+      const result = collect({ runtime, getBundles });
 
       // Then
       await expect(result).rejects.toBeInstanceOf(
@@ -280,7 +324,7 @@ describe("collectAnalyticsOverview", () => {
     );
 
     // When
-    const result = collectAnalyticsOverview({ runtime, getBundles });
+    const result = collect({ runtime, getBundles });
 
     // Then
     await expect(result).rejects.toBeInstanceOf(AnalyticsBundlePaginationError);
@@ -304,7 +348,15 @@ describe("collectAnalyticsOverview", () => {
     }));
 
     // When
-    const result = await collectAnalyticsOverview({ runtime, getBundles });
+    const result = await collect({
+      runtime,
+      getBundles,
+      getReleases: createReleasePager(
+        Array.from({ length: 101 }, (_, index) =>
+          createRelease(`bundle-${index + 1}`),
+        ),
+      ),
+    });
 
     // Then
     expect(result.configuredRollouts).toHaveLength(101);
@@ -330,7 +382,15 @@ describe("collectAnalyticsOverview", () => {
     }));
 
     // When
-    const result = await collectAnalyticsOverview({ runtime, getBundles });
+    const result = await collect({
+      runtime,
+      getBundles,
+      getReleases: createReleasePager(
+        Array.from({ length: 10_001 }, (_, index) =>
+          createRelease(`bundle-${index}`),
+        ),
+      ),
+    });
 
     // Then
     expect(result.configuredRollouts).toHaveLength(10_001);

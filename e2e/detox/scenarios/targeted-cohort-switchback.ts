@@ -16,13 +16,16 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "numericBundleId",
+        saveResultFieldsAs: {
+          releaseId: "numericReleaseId",
+        },
       },
     );
     await app.control(
       "compute numeric rollout sample",
       "/e2e/compute-rollout-sample",
       {
-        bundleId: "$numericBundleId",
+        releaseId: "$numericReleaseId",
       },
       {
         saveResultFieldsAs: {
@@ -45,6 +48,9 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "qaBundleId",
+        saveResultFieldsAs: {
+          releaseId: "qaReleaseId",
+        },
       },
     );
     await app.launch("launch targeted cohort app");
@@ -66,7 +72,7 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert numeric cohort action result",
       "update-action-result",
-      "current-channel -> installed $numericBundleId",
+      "current-channel -> installed Release $numericReleaseId / Bundle $numericBundleId",
       { exactText: true },
     );
     await app.control(

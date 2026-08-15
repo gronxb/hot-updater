@@ -81,3 +81,12 @@ hot-updater-agent -json timeline <profile|task-id> -limit 10
 Use `timeline` data to distinguish setup, deploy, service boot, app reload, and
 E2E command execution bottlenecks. Compare `providerBottlenecks[*].totalMs`,
 `providerBottlenecks[*].slowestStage`, and global `bottlenecks`.
+
+## Default suite contract
+
+Full-platform `verify` reads
+`e2e/detox/default-scenario-names.json` from the exact checked-out PR commit.
+Adding a scenario to that manifest automatically includes it in every
+full-platform verification profile. A missing, empty, malformed, or duplicate
+manifest is a verification failure; do not replace it with an agent-side
+fallback list.

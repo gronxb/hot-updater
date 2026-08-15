@@ -1,8 +1,5 @@
 import { createDatabaseClient } from "@hot-updater/plugin-core";
-import {
-  setupDatabasePluginTestSuite,
-  setupGetUpdateInfoTestSuite,
-} from "@hot-updater/test-utils";
+import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { DynamoDBIntegrationFixture } from "./dynamoDB.integration-fixture";
@@ -22,19 +19,6 @@ setupDatabasePluginTestSuite({
   dispose: () => undefined,
 });
 
-setupGetUpdateInfoTestSuite({
-  getUpdateInfo: async (bundles, args) => {
-    await clearTable();
-    const plugin = createPlugin();
-    const database = createDatabaseClient(plugin);
-    for (const bundle of bundles) await database.insertBundle(bundle);
-    if (!plugin.queries.getUpdateInfo) {
-      throw new Error("DynamoDB database plugin has no update-check fast path");
-    }
-    return plugin.queries.getUpdateInfo(args);
-  },
-});
-
 describe("DynamoDB aggregate mutations", () => {
   beforeEach(clearTable);
 
@@ -43,15 +27,9 @@ describe("DynamoDB aggregate mutations", () => {
     const baseBundle = {
       id: "00000000-0000-0000-0000-000000000901",
       platform: "ios",
-      shouldForceUpdate: false,
-      enabled: true,
       fileHash: "base-hash",
       gitCommitHash: null,
-      message: "base",
-      channel: "production",
       storageUri: "storage://base.zip",
-      targetAppVersion: "1.0.0",
-      fingerprintHash: null,
       metadata: {},
     } as const;
     const bundle = {

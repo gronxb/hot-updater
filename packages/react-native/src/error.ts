@@ -157,3 +157,10 @@ export class HotUpdaterError extends Error {
     this.name = "HotUpdaterError";
   }
 }
+
+export class StaleReleaseCatalogError extends HotUpdaterError {
+  constructor() {
+    super("Release catalog selection became stale before it was committed");
+    this.name = "StaleReleaseCatalogError";
+  }
+}

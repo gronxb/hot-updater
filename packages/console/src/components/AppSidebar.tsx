@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   ChartNoAxesCombined,
+  Gauge,
   KeyRound,
   Moon,
   Package,
@@ -30,7 +31,8 @@ export function AppSidebar() {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
-  const isBundlesActive = currentPath === "/";
+  const isReleasesActive = currentPath === "/";
+  const isArtifactsActive = currentPath === "/artifacts";
   const isAnalyticsActive =
     currentPath === "/analytics" || currentPath === "/installations";
   const isAccessKeysActive = currentPath === "/access-keys";
@@ -72,8 +74,8 @@ export function AppSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild
-                  isActive={isBundlesActive}
-                  tooltip="Bundles"
+                  isActive={isReleasesActive}
+                  tooltip="Releases"
                 >
                   <Link
                     to="/"
@@ -88,8 +90,30 @@ export function AppSidebar() {
                       expandedBundleId: undefined,
                     }}
                   >
+                    <Gauge />
+                    <span>Releases</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isArtifactsActive}
+                  tooltip="Artifacts"
+                >
+                  <Link
+                    to="/artifacts"
+                    search={{
+                      platform: undefined,
+                      page: undefined,
+                      after: undefined,
+                      before: undefined,
+                      bundleId: undefined,
+                      expandedBundleId: undefined,
+                    }}
+                  >
                     <Package />
-                    <span>Bundles</span>
+                    <span>Artifacts</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

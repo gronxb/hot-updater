@@ -1,9 +1,6 @@
-import { NIL_UUID } from "@hot-updater/core";
 import {
   type DatabasePlugin,
   type DatabaseChange,
-  resolveUpdateInfoFromBundles,
-  rowToBundle,
 } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
@@ -14,6 +11,7 @@ import {
   createBundleRowFixture,
   createChannelRowFixture,
   createClientAccessKeyRowFixture,
+  createReleaseRowFixture,
 } from "./databaseTestFixtures";
 
 type CapabilityTestState = DatabasePluginTestState<DatabasePlugin>;
@@ -34,11 +32,11 @@ export const registerDatabasePluginCapabilityTests = (
           "bundles",
           "channels",
           "clientAccessKeys",
+          "releaseCatalogs",
+          "releases",
         ].sort(),
       );
-      expect(Object.keys(plugin.queries)).toEqual(
-        Reflect.has(plugin.queries, "getUpdateInfo") ? ["getUpdateInfo"] : [],
-      );
+      expect(Reflect.has(plugin, "queries")).toBe(false);
       expect(Reflect.has(plugin, "transaction")).toBe(false);
       for (const member of [
         "bundles",
@@ -139,12 +137,6 @@ export const registerDatabasePluginCapabilityTests = (
       const accessKey = createClientAccessKeyRowFixture("89", 100);
       await commit(
         plugin,
-        {
-          model: "channels",
-          operation: "insert",
-          row: createChannelRowFixture(bundle.channel),
-          onConflict: "ignore",
-        },
         { model: "bundles", operation: "insert", row: bundle },
         {
           model: "clientAccessKeys",
@@ -161,7 +153,7 @@ export const registerDatabasePluginCapabilityTests = (
             model: "bundles",
             operation: "update",
             where: { id: bundle.id },
-            update: { enabled: false },
+            update: { storage_uri: "storage://bundles/89-updated.zip" },
           },
           {
             model: "clientAccessKeys",
@@ -173,7 +165,9 @@ export const registerDatabasePluginCapabilityTests = (
       ).resolves.toEqual({ committed: true });
       await expect(
         plugin.models.bundles.findById(bundle.id),
-      ).resolves.toMatchObject({ enabled: false });
+      ).resolves.toMatchObject({
+        storage_uri: "storage://bundles/89-updated.zip",
+      });
       await expect(
         plugin.models.clientAccessKeys.findByHash(accessKey.hash),
       ).resolves.toEqual({ ...accessKey, revoked_at_ms: 200 });
@@ -215,7 +209,7 @@ export const registerDatabasePluginCapabilityTests = (
       ).resolves.toEqual({ committed: true });
     });
 
-    it("deletes a bundle before its channel in one ordered commit", async () => {
+    it("deletes an artifact and an independent empty channel atomically", async () => {
       const plugin = state.getPlugin();
       const channel = createChannelRowFixture("retired");
       const bundle = createBundleRowFixture("90", channel.name);
@@ -252,7 +246,7 @@ export const registerDatabasePluginCapabilityTests = (
       });
     });
 
-    it("returns an indexed referenced conflict and rolls back prior changes", async () => {
+    it("returns an indexed Release-referenced channel conflict and rolls back prior changes", async () => {
       const plugin = state.getPlugin();
       const channel = createChannelRowFixture("protected");
       const bundle = createBundleRowFixture("96", channel.name);
@@ -265,6 +259,12 @@ export const registerDatabasePluginCapabilityTests = (
         operation: "insert",
         row: bundle,
       });
+      const release = createReleaseRowFixture("96", bundle, channel);
+      await commit(plugin, {
+        model: "releases",
+        operation: "insert",
+        row: release,
+      });
 
       await expect(
         commit(
@@ -273,7 +273,7 @@ export const registerDatabasePluginCapabilityTests = (
             model: "bundles",
             operation: "update",
             where: { id: bundle.id },
-            update: { enabled: false },
+            update: { storage_uri: "storage://bundles/96-updated.zip" },
           },
           {
             model: "channels",
@@ -311,7 +311,7 @@ export const registerDatabasePluginCapabilityTests = (
             {
               model: "channels",
               operation: "insert",
-              row: createChannelRowFixture(first.channel),
+              row: createChannelRowFixture("production"),
               onConflict: "ignore",
             },
             { model: "bundles", operation: "insert", row: first },
@@ -348,23 +348,26 @@ export const registerDatabasePluginCapabilityTests = (
       ).resolves.toBeNull();
     });
 
-    it("rejects mismatched channel ids and names without inserting a bundle", async () => {
+    it("rejects a Release that references a missing channel", async () => {
       const plugin = state.getPlugin();
       const channel = createChannelRowFixture("production");
-      const bundle = {
-        ...createBundleRowFixture("95", "staging"),
-        channel_id: channel.id,
-      };
-      await plugin.models.channels.insert({
-        row: channel,
-        onConflict: "returnExisting",
+      const bundle = createBundleRowFixture("95");
+      await commit(plugin, {
+        model: "bundles",
+        operation: "insert",
+        row: bundle,
       });
+      const release = createReleaseRowFixture("95", bundle, channel);
 
       await expect(
-        commit(plugin, { model: "bundles", operation: "insert", row: bundle }),
+        commit(plugin, {
+          model: "releases",
+          operation: "insert",
+          row: release,
+        }),
       ).rejects.toThrow();
       await expect(
-        plugin.models.bundles.findById(bundle.id),
+        plugin.models.releases.findById(release.id),
       ).resolves.toBeNull();
     });
 
@@ -374,12 +377,6 @@ export const registerDatabasePluginCapabilityTests = (
       const accessKey = createClientAccessKeyRowFixture("94", 100);
       await commit(
         plugin,
-        {
-          model: "channels",
-          operation: "insert",
-          row: createChannelRowFixture(bundle.channel),
-          onConflict: "ignore",
-        },
         { model: "bundles", operation: "insert", row: bundle },
         {
           model: "clientAccessKeys",
@@ -396,7 +393,7 @@ export const registerDatabasePluginCapabilityTests = (
             model: "bundles",
             operation: "update",
             where: { id: bundle.id },
-            update: { enabled: false },
+            update: { storage_uri: "storage://bundles/94-updated.zip" },
           },
           {
             model: "clientAccessKeys",
@@ -409,45 +406,12 @@ export const registerDatabasePluginCapabilityTests = (
         committed: false,
         conflict: { changeIndex: 1, reason: "not_found" },
       });
-      await expect(
-        plugin.models.bundles.findById(bundle.id),
-      ).resolves.toMatchObject({ enabled: true });
+      await expect(plugin.models.bundles.findById(bundle.id)).resolves.toEqual(
+        bundle,
+      );
       await expect(
         plugin.models.clientAccessKeys.findByHash(accessKey.hash),
       ).resolves.toEqual(accessKey);
-    });
-
-    it("matches the generic update resolver through the optional fast path", async (context) => {
-      const plugin = state.getPlugin();
-      if (plugin.queries.getUpdateInfo === undefined) {
-        context.skip();
-        return;
-      }
-      const bundle = createBundleRowFixture("99");
-      await commit(
-        plugin,
-        {
-          model: "channels",
-          operation: "insert",
-          row: createChannelRowFixture(bundle.channel),
-          onConflict: "ignore",
-        },
-        { model: "bundles", operation: "insert", row: bundle },
-      );
-
-      const args = {
-        appVersion: "1.0.0",
-        bundleId: NIL_UUID,
-        platform: "ios",
-        _updateStrategy: "appVersion",
-      } as const;
-      const update = await plugin.queries.getUpdateInfo(args);
-      const genericUpdate = await resolveUpdateInfoFromBundles({
-        args,
-        bundles: [rowToBundle(bundle)],
-      });
-
-      expect(update).toEqual(genericUpdate);
     });
   });
 };

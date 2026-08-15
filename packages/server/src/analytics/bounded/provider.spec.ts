@@ -126,6 +126,27 @@ describe("createAnalyticsProvider", () => {
     });
   });
 
+  it("tracks an installation with unknown directional ids without inventing a bundle bucket", async () => {
+    const unknownTarget: BundleEventPersistenceRow = {
+      ...eventRow("unknown-target", 1, "install-unknown"),
+      from_bundle_id: null,
+      to_bundle_id: null,
+    };
+    const provider = createAnalyticsProvider(
+      inMemoryPersistence([unknownTarget]),
+    );
+
+    await expect(provider.getBundleEventOverview()).resolves.toEqual({
+      trackedInstallations: 1,
+      bundles: [],
+    });
+    await expect(
+      provider.getInstallationHistory("install-unknown", 20, 0),
+    ).resolves.toMatchObject({
+      data: [{ fromBundleId: null, toBundleId: null }],
+    });
+  });
+
   it.each([
     [eventRow("same", 1), eventRow("same", 2)],
     [eventRow("later", 2), eventRow("earlier", 1)],

@@ -36,12 +36,15 @@ interface CommonHotUpdaterOptions {
 
 interface BaseURLConfig {
   baseURL: HotUpdaterBaseURL;
+  /** Stable server/project identity used to isolate Release catalog state. */
+  authorityId?: string;
   resolver?: never;
 }
 
 interface ResolverConfig {
   resolver: HotUpdaterResolver;
   baseURL?: never;
+  authorityId?: never;
 }
 
 type NetworkConfig = BaseURLConfig | ResolverConfig;

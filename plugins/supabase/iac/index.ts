@@ -52,6 +52,7 @@ import {
   type SupabaseManagementApi,
   type SupabaseProject,
 } from "./supabaseManagementApi";
+import { materializeReleaseCatalogMigration } from "./supabaseReleaseCatalogMigration";
 
 const require = createRequire(import.meta.url);
 const EDGE_VENDOR_DIR = "_hot-updater";
@@ -60,12 +61,17 @@ const SUPABASE_PROJECT_READY_STATUS = "ACTIVE_HEALTHY";
 const SUPABASE_PROJECT_PROVISIONING_STATUS = "COMING_UP";
 const SUPABASE_PROJECT_READINESS_MAX_ATTEMPTS = 60 * 5;
 const SUPABASE_PROJECT_READINESS_POLL_INTERVAL_MS = 1000;
+const LEGACY_SUPABASE_CATALOG_CDN_URL_ENV_KEY =
+  "HOT_UPDATER_SUPABASE_CATALOG_CDN_URL";
 const STATIC_IMPORT_SPECIFIER_PATTERN =
   /^\s*(?:import|export)\s+(?:type\s+)?(?:[^"'`]+?\s+from\s+)?["']([^"']+)["'];?/gm;
 const DYNAMIC_IMPORT_SPECIFIER_PATTERN =
   /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
 
-const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
+const getConfigScaffold = (
+  build: BuildType,
+  authorityId: string,
+): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
     configString: `supabaseStorage({
@@ -87,6 +93,7 @@ const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
       .setBuildType(build)
       .setStorage(storageConfig)
       .setDatabase(databaseConfig),
+    { authorityIdInitializer: JSON.stringify(authorityId) },
   );
 };
 
@@ -147,6 +154,22 @@ export default HotUpdater.wrap({
   baseURL: "%%source%%",
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;
+
+export const getSupabaseReactNativeSource = ({
+  functionName,
+  projectId,
+}: {
+  readonly functionName: string;
+  readonly projectId: string;
+}): string =>
+  transformTemplate(SOURCE_TEMPLATE, {
+    source: `https://${projectId}.supabase.co/functions/v1/${functionName}`,
+  });
+
+export const reportSupabaseOriginCatalogReady = () => {
+  p.log.success("Release catalog endpoint is ready in origin-only mode.");
+  p.log.info("Catalog checks still invoke the Supabase Edge Function.");
+};
 
 const resolvePackageExportPath = async (
   packageName: string,
@@ -645,6 +668,7 @@ const deployEdgeFunction = async (
   const edgeFunctionsLibPath = path.join(workdir, "supabase", "edge-functions");
   const edgeFunctionsCodePath = path.join(edgeFunctionsLibPath, "index.ts");
   const edgeFunctionsCode = transformEnv(edgeFunctionsCodePath, {
+    AUTHORITY_ID: projectId,
     BUCKET_NAME: bucketName,
     FUNCTION_NAME: functionName,
   });
@@ -962,9 +986,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     providerEnv[SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY] = project.id;
   }
   await makeEnv(providerEnv, ".env.hotupdater", {
-    removeKeys: persistDatabasePassword
-      ? []
-      : [databasePasswordKey, SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY],
+    removeKeys: [
+      LEGACY_SUPABASE_CATALOG_CDN_URL_ENV_KEY,
+      ...(persistDatabasePassword
+        ? []
+        : [databasePasswordKey, SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY]),
+    ],
   });
 
   const bucket = await createSelectedBucket(projectAccess.api, bucketSelection);
@@ -985,10 +1012,18 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   const migrationPath = await path.join(tmpDir, "supabase", "migrations");
   const migrationFiles = await fs.readdir(migrationPath);
+  const legacyBundles = await projectAccess.api.listLegacyBundlePolicies();
   for (const file of migrationFiles) {
     if (file.endsWith(".sql")) {
       const filePath = path.join(migrationPath, file);
-      const content = await fs.readFile(filePath, "utf-8");
+      let content = await fs.readFile(filePath, "utf-8");
+      if (file.includes("1.0.0")) {
+        content = await materializeReleaseCatalogMigration({
+          authorityId: project.id,
+          legacyBundles,
+          migrationSql: content,
+        });
+      }
       await fs.writeFile(
         filePath,
         transformTemplate(content, {
@@ -1016,7 +1051,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   await removeTmpDir();
 
   const configWriteResult = await writeHotUpdaterConfig(
-    getConfigScaffold(build),
+    getConfigScaffold(build, project.id),
   );
   await assertSkippedConfigDoesNotUseLegacySupabaseKey(configWriteResult);
 
@@ -1036,10 +1071,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
 
   p.note(
-    transformTemplate(SOURCE_TEMPLATE, {
-      source: `https://${project.id}.supabase.co/functions/v1/${functionName}`,
+    getSupabaseReactNativeSource({
+      functionName,
+      projectId: project.id,
     }),
   );
+  reportSupabaseOriginCatalogReady();
 
   p.log.message(
     `Next step: ${link(

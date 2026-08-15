@@ -15,6 +15,9 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "previousBundleId",
+        saveResultFieldsAs: {
+          releaseId: "previousReleaseId",
+        },
       },
     );
     await app.launch("launch manifest base app");
@@ -51,6 +54,9 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "intermediateBundleId",
+        saveResultFieldsAs: {
+          releaseId: "intermediateReleaseId",
+        },
       },
     );
     await app.control(
@@ -66,6 +72,9 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "bundleId",
+        saveResultFieldsAs: {
+          releaseId: "releaseId",
+        },
       },
     );
     await app.control(

@@ -54,19 +54,10 @@ const channelRow = { id: "channel-1", name: "production" } as const;
 const bundleRow = {
   id: "bundle-1",
   platform: "ios" as const,
-  should_force_update: false,
-  enabled: true,
   file_hash: "hash-1",
   git_commit_hash: null,
-  message: null,
-  channel: channelRow.name,
-  channel_id: channelRow.id,
   storage_uri: "storage://bundle-1.zip",
-  target_app_version: "1.0.0",
-  fingerprint_hash: null,
   metadata: {},
-  rollout_cohort_count: 1000,
-  target_cohorts: null,
   manifest_storage_uri: null,
   manifest_file_hash: null,
   asset_base_storage_uri: null,
@@ -83,7 +74,7 @@ const patchRow = {
 } as const;
 
 describe("createDatabasePlugin", () => {
-  it("exposes only models, queries, commit, and lifecycle", () => {
+  it("exposes only models, commit, and lifecycle", () => {
     const plugin = createTestPlugin("memory", createMethods());
 
     expect(plugin.name).toBe("memory");
@@ -94,12 +85,8 @@ describe("createDatabasePlugin", () => {
     expect(plugin.models.analytics.append).toBeTypeOf("function");
     expect(plugin.models.clientAccessKeys.findByHash).toBeTypeOf("function");
     expect(plugin.commit).toBeTypeOf("function");
-    expect(Object.keys(plugin).sort()).toEqual([
-      "commit",
-      "models",
-      "name",
-      "queries",
-    ]);
+    expect(Object.keys(plugin).sort()).toEqual(["commit", "models", "name"]);
+    expect(Reflect.has(plugin, "queries")).toBe(false);
     expect(Reflect.has(plugin, "bundles")).toBe(false);
     expect(Reflect.has(plugin, "getChannels")).toBe(false);
     expect(Reflect.has(plugin, "transaction")).toBe(false);
@@ -114,7 +101,7 @@ describe("createDatabasePlugin", () => {
 
     await expect(
       plugin.models.bundles.findMany({
-        where: { channel: "production", enabled: true, id: { gte: "a" } },
+        where: { platform: "ios", id: { gte: "a" } },
         limit: 20,
         offset: 40,
         orderBy: { field: "id", direction: "desc" },
@@ -123,8 +110,7 @@ describe("createDatabasePlugin", () => {
     expect(findMany).toHaveBeenCalledWith({
       model: "bundles",
       where: [
-        { field: "channel", value: "production" },
-        { field: "enabled", value: true },
+        { field: "platform", value: "ios" },
         { field: "id", operator: "gte", value: "a" },
       ],
       limit: 20,
@@ -393,7 +379,7 @@ describe("createDatabasePlugin", () => {
             model: "bundles",
             operation: "update",
             where: { id: bundleRow.id },
-            update: { enabled: false },
+            update: { git_commit_hash: "next" },
           },
         ],
       }),
@@ -412,7 +398,7 @@ describe("createDatabasePlugin", () => {
         return await callback({
           ...createTransactionMethods(),
           count: async (input: { readonly model: string }) =>
-            input.model === "bundles" ? 1 : 0,
+            input.model === "releases" ? 1 : 0,
           delete: deleteRows,
         });
       } catch (error) {
@@ -537,43 +523,6 @@ describe("createDatabasePlugin", () => {
     expect(commit).not.toHaveBeenCalled();
   });
 
-  it.each(["insert", "update"] as const)(
-    "rejects invalid bundle Channel identity in a native %s before calling the provider",
-    async (operation) => {
-      const commit = vi.fn(async () => ({ committed: true as const }));
-      const plugin = createTestPlugin("native", {
-        ...createMethods(),
-        commit,
-      });
-      const invalidChannel = "😀".repeat(256);
-      const change =
-        operation === "insert"
-          ? {
-              model: "bundles" as const,
-              operation,
-              row: {
-                ...bundleRow,
-                channel: invalidChannel,
-                channel_id: "",
-              },
-            }
-          : {
-              model: "bundles" as const,
-              operation,
-              where: { id: bundleRow.id },
-              update: {
-                channel: invalidChannel,
-                channel_id: "",
-              },
-            };
-
-      await expect(plugin.commit({ changes: [change] })).rejects.toEqual(
-        new DatabasePluginInputError("invalid-data"),
-      );
-      expect(commit).not.toHaveBeenCalled();
-    },
-  );
-
   it("rejects an invalid native Channel delete identity before calling the provider", async () => {
     const commit = vi.fn(async () => ({ committed: true as const }));
     const plugin = createTestPlugin("native", {
@@ -595,16 +544,13 @@ describe("createDatabasePlugin", () => {
     expect(commit).not.toHaveBeenCalled();
   });
 
-  it("composes optional lifecycle and cross-model query methods", async () => {
-    const getUpdateInfo = vi.fn(async () => null);
+  it("composes the optional lifecycle method", async () => {
     const dispose = vi.fn(async () => undefined);
     const plugin = createTestPlugin("memory", {
       ...createMethods(),
-      getUpdateInfo,
       dispose,
     });
 
-    expect(plugin.queries.getUpdateInfo).toBe(getUpdateInfo);
     await expect(plugin.dispose?.()).resolves.toBeUndefined();
     expect(dispose).toHaveBeenCalledOnce();
   });

@@ -3,7 +3,9 @@ import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
 
-import { closeClient, getDB, schema } from "./drizzle";
+import { closeClient, getDB, resetDecisionFixtures, schema } from "./drizzle";
+
+export { resetDecisionFixtures };
 
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
@@ -11,6 +13,7 @@ export const hotUpdater = createHotUpdater({
     db: getDB,
     provider: "postgresql",
     schema,
+    transaction: true,
   }),
   storage: [
     mockStorage({}),

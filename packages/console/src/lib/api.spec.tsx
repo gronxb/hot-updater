@@ -12,24 +12,23 @@ import {
   useDeleteChannelMutation,
   useDeleteBundleMutation,
   useDeleteBundlesMutation,
-  useUpdateBundleMutation,
 } from "./api";
 import {
   createChannel as createChannelApi,
   deleteChannel as deleteChannelApi,
   deleteBundle as deleteBundleApi,
-  getBundleEventAnalytics as getBundleEventAnalyticsApi,
   deleteBundles as deleteBundlesApi,
   getBundleEventSummary as getBundleEventSummaryApi,
-  updateBundle as updateBundleApi,
+  getBundleEventAnalytics as getBundleEventAnalyticsApi,
 } from "./api-rpc";
 
 vi.mock("./api-rpc", () => ({
   createBundle: vi.fn(),
   createChannel: vi.fn(),
   deleteBundle: vi.fn(),
-  deleteChannel: vi.fn(),
   deleteBundles: vi.fn(),
+  deleteChannel: vi.fn(),
+  deleteRelease: vi.fn(),
   getBundle: vi.fn(),
   getBundleChildCounts: vi.fn(),
   getBundleChildren: vi.fn(),
@@ -39,22 +38,19 @@ vi.mock("./api-rpc", () => ({
   getChannels: vi.fn(),
   getConfig: vi.fn(),
   getConfigLoaded: vi.fn(),
-  promoteBundle: vi.fn(),
-  updateBundle: vi.fn(),
+  getRelease: vi.fn(),
+  getReleaseCatalogDiagnostics: vi.fn(),
+  getReleases: vi.fn(),
+  preflightRelease: vi.fn(),
+  updateRelease: vi.fn(),
 }));
 
 const bundle: Bundle = {
   id: "bundle-001",
-  channel: "production",
   platform: "ios",
-  enabled: true,
-  shouldForceUpdate: false,
   fileHash: "hash",
   gitCommitHash: null,
-  message: null,
   storageUri: "s3://bucket/bundle.zip",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
 };
 
 const otherBundle: Bundle = {
@@ -190,83 +186,6 @@ describe("channel mutations", () => {
   });
 });
 
-describe("useUpdateBundleMutation", () => {
-  let queryClient: QueryClient;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    queryClient = new QueryClient({
-      defaultOptions: {
-        mutations: {
-          retry: false,
-        },
-        queries: {
-          retry: false,
-        },
-      },
-    });
-  });
-
-  afterEach(() => {
-    queryClient.clear();
-  });
-
-  it("does not wait for background invalidations after updating cached bundle data", async () => {
-    const updatedBundle = {
-      ...bundle,
-      enabled: false,
-    };
-    vi.mocked(updateBundleApi).mockResolvedValue({
-      success: true,
-      bundle: updatedBundle,
-    });
-    const invalidateQueries = vi
-      .spyOn(queryClient, "invalidateQueries")
-      .mockImplementation(() => new Promise<never>(() => {}));
-
-    queryClient.setQueryData(queryKeys.bundle(bundle.id), bundle);
-    queryClient.setQueryData(queryKeys.bundles.list({}), {
-      data: [bundle],
-      pagination: {
-        total: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-      },
-    });
-
-    const wrapper = ({ children }: PropsWithChildren) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    );
-    const { result } = renderHook(() => useUpdateBundleMutation(), {
-      wrapper,
-    });
-
-    let mutation: Promise<unknown> | undefined;
-    act(() => {
-      mutation = result.current.mutateAsync({
-        bundleId: bundle.id,
-        bundle: {
-          enabled: false,
-        },
-      });
-    });
-
-    await expect(
-      Promise.race([mutation!.then(() => "resolved"), timeout(20)]),
-    ).resolves.toBe("resolved");
-
-    expect(queryClient.getQueryData(queryKeys.bundle(bundle.id))).toEqual(
-      updatedBundle,
-    );
-    expect(invalidateQueries).toHaveBeenCalledTimes(1);
-    expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: queryKeys.bundles.all,
-    });
-  });
-});
-
 describe("useDeleteBundleMutation", () => {
   let queryClient: QueryClient;
 
@@ -398,7 +317,7 @@ describe("useDeleteBundleMutation", () => {
 });
 
 describe("useDeleteBundlesMutation", () => {
-  it("removes a batch from cached lists and invalidates once", async () => {
+  it("removes the whole batch from artifact caches and invalidates once", async () => {
     vi.mocked(deleteBundlesApi).mockResolvedValue({
       success: true,
       deletedBundleIds: [bundle.id, otherBundle.id],
@@ -413,8 +332,10 @@ describe("useDeleteBundlesMutation", () => {
     const invalidateQueries = vi
       .spyOn(queryClient, "invalidateQueries")
       .mockResolvedValue();
+    const filters = { platform: "ios" as const, limit: "2000" };
 
-    const filters = { channel: "development", limit: "2000" };
+    queryClient.setQueryData(queryKeys.bundle(bundle.id), bundle);
+    queryClient.setQueryData(queryKeys.bundle(otherBundle.id), otherBundle);
     queryClient.setQueryData(queryKeys.bundles.list(filters), {
       data: [bundle, otherBundle],
       pagination: {
@@ -439,6 +360,12 @@ describe("useDeleteBundlesMutation", () => {
       });
     });
 
+    expect(
+      queryClient.getQueryData(queryKeys.bundle(bundle.id)),
+    ).toBeUndefined();
+    expect(
+      queryClient.getQueryData(queryKeys.bundle(otherBundle.id)),
+    ).toBeUndefined();
     expect(queryClient.getQueryData(queryKeys.bundles.list(filters))).toEqual({
       data: [],
       pagination: {
@@ -449,6 +376,14 @@ describe("useDeleteBundlesMutation", () => {
         totalPages: 1,
       },
     });
-    expect(invalidateQueries).toHaveBeenCalledTimes(3);
+    expect(invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.bundles.all,
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.bundleChildren.all,
+    });
+
+    queryClient.clear();
   });
 });

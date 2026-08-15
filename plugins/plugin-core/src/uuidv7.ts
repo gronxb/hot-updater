@@ -50,6 +50,24 @@ function createUUIDv7FromTimestampHex(timestampHex: string) {
 export const createUUIDv7 = () =>
   createUUIDv7FromTimestampHex(Date.now().toString(16).padStart(12, "0"));
 
+export const createUUIDv7After = (
+  floor: string | null,
+  nowMs = Date.now(),
+): string => {
+  const timestamp = Math.max(
+    nowMs,
+    floor === null ? 0 : extractTimestampFromUUIDv7(floor) + 1,
+  );
+  if (
+    !Number.isSafeInteger(timestamp) ||
+    timestamp < 0 ||
+    timestamp >= 2 ** 48
+  ) {
+    throw new RangeError("UUIDv7 timestamp is out of range");
+  }
+  return createUUIDv7FromTimestampHex(timestamp.toString(16).padStart(12, "0"));
+};
+
 export const createUUIDv7WithSameTimestamp = (originalUuid: string) => {
   const cleanUuid = originalUuid.split("-").join("");
   const timestampHex = cleanUuid.slice(0, 12);

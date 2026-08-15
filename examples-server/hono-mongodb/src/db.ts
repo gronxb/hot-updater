@@ -8,7 +8,7 @@ import { createHotUpdater } from "@hot-updater/server";
 import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
 import { config } from "dotenv";
 
-import { client, closeDatabase as closeMongo } from "./mongodb";
+import { client, closeDatabase as closeMongo, db } from "./mongodb";
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 config({ path: path.join(__dirname, ".env.hotupdater") });
@@ -54,10 +54,23 @@ export const hotUpdater = createHotUpdater({
   features: {
     updateCheck: true,
     bundles: true,
+    analytics: { queryAccess: "public" },
   },
 });
 
 // Cleanup function for graceful shutdown
 export async function closeDatabase() {
   await closeMongo();
+}
+
+export async function resetDecisionFixtures() {
+  await Promise.all(
+    [
+      "bundle_patches",
+      "release_catalogs",
+      "releases",
+      "bundles",
+      "channels",
+    ].map((collection) => db.collection(collection).deleteMany({})),
+  );
 }

@@ -78,6 +78,19 @@ const readDetoxScreenRoutesSource = async (): Promise<string> => {
 };
 
 describe("E2E navigation contract", () => {
+  it("forgets the cached screen before a replacement app can disconnect", async () => {
+    const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const launchBody = detoxPageSource.slice(
+      detoxPageSource.indexOf("async function launchApp"),
+      detoxPageSource.indexOf("function textFromAttributes"),
+    );
+    const resetIndex = launchBody.indexOf("activeScreenPath = undefined;");
+    const launchIndex = launchBody.indexOf("await device.launchApp");
+
+    expect(resetIndex).toBeGreaterThan(-1);
+    expect(resetIndex).toBeLessThan(launchIndex);
+  });
+
   it("uses React Navigation screens instead of one scroll-heavy E2E surface", async () => {
     const appSource = await fs.readFile(appPath, "utf8");
     const e2eAppIndexSource = await fs.readFile(e2eAppIndexPath, "utf8");
@@ -137,7 +150,8 @@ describe("E2E navigation contract", () => {
     expect(e2eAppScreenFiles).toContain("runtime-marker-screen.tsx");
     expect(e2eAppScreenFiles).toContain("runtime-large-asset-screen.tsx");
     expect(e2eAppScreenFiles).toContain("launch-status-screen.tsx");
-    expect(e2eAppScreenFiles).toContain("launch-crashed-bundle-screen.tsx");
+    expect(e2eAppScreenFiles).toContain("launch-transition-screen.tsx");
+    expect(e2eAppScreenFiles).toContain("runtime-release-state-screen.tsx");
     expect(e2eAppScreenFiles).toContain(
       "install-current-channel-update-action-screen.tsx",
     );
@@ -245,7 +259,7 @@ describe("E2E navigation contract", () => {
       "hotupdaterexample://e2e/launch-status",
     );
     expect(detoxScreenRoutesSource).toContain(
-      "hotupdaterexample://e2e/launch-crashed-bundle",
+      "hotupdaterexample://e2e/launch-transition",
     );
     expect(detoxScreenRoutesSource).toContain(
       "hotupdaterexample://e2e/crash-history",

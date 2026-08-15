@@ -38,6 +38,8 @@ describe("database plugin operation matrix", () => {
     expectTypeOf<DatabaseModel>().toEqualTypeOf<
       | "bundles"
       | "bundle_patches"
+      | "releases"
+      | "release_catalogs"
       | "channels"
       | "bundle_events"
       | "client_access_keys"
@@ -45,21 +47,26 @@ describe("database plugin operation matrix", () => {
     expectTypeOf<CreateDatabaseModel>().toEqualTypeOf<DatabaseModel>();
   });
 
-  it("limits delete to bundles, bundle patches, and channels", () => {
+  it("limits delete to canonical mutable rows", () => {
     expectTypeOf<DatabaseDeleteModel>().toEqualTypeOf<
-      "bundles" | "bundle_patches" | "channels"
+      "bundles" | "bundle_patches" | "releases" | "channels"
     >();
   });
 
   it("limits findOne to models with read-by-selector support", () => {
     expectTypeOf<DatabaseFindOneModel>().toEqualTypeOf<
-      "bundles" | "bundle_patches" | "channels" | "client_access_keys"
+      | "bundles"
+      | "bundle_patches"
+      | "releases"
+      | "release_catalogs"
+      | "channels"
+      | "client_access_keys"
     >();
   });
 
   it("allows count across all readable models while preserving bundle aliases", () => {
     expectTypeOf<CountDatabaseModel>().toEqualTypeOf<
-      "bundles" | "bundle_patches"
+      "bundles" | "bundle_patches" | "releases"
     >();
     expectTypeOf<
       UpdateBundleDatabaseInput["model"]
@@ -71,8 +78,8 @@ describe("database plugin operation matrix", () => {
 
   it("narrows selected result fields", () => {
     expectTypeOf<
-      SelectedDatabaseRow<"bundles", readonly ["id", "channel", "channel_id"]>
-    >().toEqualTypeOf<Pick<BundleRow, "id" | "channel" | "channel_id">>();
+      SelectedDatabaseRow<"bundles", readonly ["id", "storage_uri"]>
+    >().toEqualTypeOf<Pick<BundleRow, "id" | "storage_uri">>();
   });
 
   it("uses normalized channel rows", () => {
@@ -82,10 +89,9 @@ describe("database plugin operation matrix", () => {
     }>();
   });
 
-  it("requires channel names and ids to change together", () => {
+  it("limits Bundle updates to artifact fields", () => {
     expectTypeOf<{
-      readonly channel: string;
-      readonly channel_id: string;
+      readonly storage_uri: string;
     }>().toMatchTypeOf<BundleRowUpdate>();
     expectTypeOf<{
       readonly channel: string;
@@ -95,9 +101,9 @@ describe("database plugin operation matrix", () => {
     }>().not.toMatchTypeOf<BundleRowUpdate>();
   });
 
-  it("limits commit operations to insert, update, and delete", () => {
+  it("includes the catalog put operation in atomic commits", () => {
     expectTypeOf<DatabaseChange["operation"]>().toEqualTypeOf<
-      "insert" | "update" | "delete"
+      "insert" | "update" | "delete" | "put"
     >();
     expectTypeOf<
       Extract<DatabaseChange, { readonly operation: "ensure" }>
@@ -127,7 +133,7 @@ describe("database plugin operation matrix", () => {
         DatabaseCommitResult,
         { readonly committed: false }
       >["conflict"]["reason"]
-    >().toEqualTypeOf<"not_found" | "referenced">();
+    >().toEqualTypeOf<"not_found" | "referenced" | "version_conflict">();
   });
 
   it("only exposes onConflict on idempotent commit inserts", () => {

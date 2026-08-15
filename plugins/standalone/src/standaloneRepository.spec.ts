@@ -1,5 +1,16 @@
-import type { Bundle, BundleRepository } from "@hot-updater/plugin-core";
-import { createDatabaseClient } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  BundlePatchRow,
+  BundleRepository,
+  BundleRow,
+  DatabaseCommit,
+} from "@hot-updater/plugin-core";
+import {
+  bundleToPatchRows,
+  bundleToRow,
+  createDatabaseClient,
+  rowToBundle,
+} from "@hot-updater/plugin-core";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import {
@@ -22,6 +33,7 @@ import {
 const BASE_URL = "http://localhost/hot-updater";
 const bundles = new Map<string, Bundle>();
 const channels = new Set<string>();
+const referencedChannels = new Set<string>();
 const channelIds = new Map<string, string>();
 const requestPaths: string[] = [];
 const createRequestBodies: unknown[] = [];
@@ -30,18 +42,11 @@ const bundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => {
   const value: Bundle = {
     id,
     platform: "ios",
-    shouldForceUpdate: false,
-    enabled: true,
     fileHash: `hash-${id}`,
     gitCommitHash: null,
-    message: id,
-    channel: "production",
     storageUri: `storage://${id}`,
-    targetAppVersion: "1.0.0",
-    fingerprintHash: null,
     ...overrides,
   };
-  channels.add(value.channel);
   return value;
 };
 
@@ -89,7 +94,7 @@ const server = setupServer(
         { status: 404 },
       );
     }
-    if ([...bundles.values()].some((bundle) => bundle.channel === name)) {
+    if (referencedChannels.has(name)) {
       return HttpResponse.json(
         { data: { deleted: false, reason: "not_empty" } },
         { status: 409 },
@@ -125,6 +130,66 @@ const server = setupServer(
       },
     });
   }),
+  http.post(`${BASE_URL}/api/database/commit`, async ({ request }) => {
+    requestPaths.push(new URL(request.url).pathname);
+    const input = (await request.json()) as DatabaseCommit;
+    createRequestBodies.push(input);
+    const staged = new Map(bundles);
+    for (const change of input.changes) {
+      if (change.model === "bundles") {
+        if (change.operation === "insert") {
+          staged.set(change.row.id, rowToBundle(change.row));
+        } else if (change.operation === "update") {
+          const current = staged.get(change.where.id);
+          if (!current) {
+            return HttpResponse.json({
+              data: {
+                committed: false,
+                conflict: {
+                  changeIndex: input.changes.indexOf(change),
+                  reason: "not_found",
+                },
+              },
+            });
+          }
+          staged.set(
+            current.id,
+            rowToBundle(
+              { ...bundleToRow(current), ...change.update } as BundleRow,
+              bundleToPatchRows(current),
+            ),
+          );
+        } else {
+          staged.delete(change.where.id);
+        }
+        continue;
+      }
+      if (change.model !== "bundlePatches") continue;
+      if (change.operation === "insert") {
+        const current = staged.get(change.row.bundle_id);
+        if (!current) {
+          return HttpResponse.json({ error: "foreign key" }, { status: 409 });
+        }
+        staged.set(
+          current.id,
+          rowToBundle(bundleToRow(current), [
+            ...bundleToPatchRows(current),
+            change.row,
+          ]),
+        );
+      } else {
+        const current = staged.get(change.where.bundleId);
+        if (!current) continue;
+        staged.set(
+          current.id,
+          rowToBundle(bundleToRow(current), [] as BundlePatchRow[]),
+        );
+      }
+    }
+    bundles.clear();
+    for (const [id, value] of staged) bundles.set(id, value);
+    return HttpResponse.json({ data: { committed: true } });
+  }),
   http.post(`${BASE_URL}/api/bundles`, async ({ request }) => {
     requestPaths.push(new URL(request.url).pathname);
     const body: unknown = await request.json();
@@ -134,7 +199,6 @@ const server = setupServer(
       if (typeof value === "object" && value !== null && "id" in value) {
         const next = value as Bundle;
         bundles.set(next.id, next);
-        channels.add(next.channel);
       }
     }
     return HttpResponse.json({ success: true }, { status: 201 });
@@ -149,7 +213,6 @@ const server = setupServer(
     const update = (await request.json()) as Partial<Bundle>;
     const next = { ...current, ...update, id };
     bundles.set(id, next);
-    channels.add(next.channel);
     return HttpResponse.json({ success: true });
   }),
   http.delete(`${BASE_URL}/api/bundles/:id`, ({ params, request }) => {
@@ -163,6 +226,7 @@ beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 beforeEach(() => {
   bundles.clear();
   channels.clear();
+  referencedChannels.clear();
   channelIds.clear();
   requestPaths.length = 0;
   createRequestBodies.length = 0;
@@ -192,7 +256,7 @@ describe("standaloneRepository", () => {
     >();
   });
 
-  it("uses only the existing bundle routes for aggregate mutations", async () => {
+  it("uses the atomic database commit route for aggregate mutations", async () => {
     const base = bundle("00000000-0000-0000-0000-000000000001");
     const target = bundle("00000000-0000-0000-0000-000000000002", {
       patches: [
@@ -213,14 +277,13 @@ describe("standaloneRepository", () => {
       id: target.id,
       patches: target.patches,
     });
-    expect(requestPaths).not.toContainEqual(
-      expect.stringContaining("/database/"),
-    );
+    expect(requestPaths).toContain("/hot-updater/api/database/commit");
     expect(
       requestPaths.every(
         (path) =>
           path.startsWith("/hot-updater/api/bundles") ||
-          path === "/hot-updater/api/channels",
+          path === "/hot-updater/api/channels" ||
+          path === "/hot-updater/api/database/commit",
       ),
     ).toBe(true);
   });
@@ -259,13 +322,15 @@ describe("standaloneRepository", () => {
     await client.insertBundle(target);
 
     const mutation = client.mutate(async (transaction) => {
-      await transaction.updateBundleById(target.id, { enabled: false });
+      await transaction.updateBundleById(target.id, {
+        storageUri: "storage://staged",
+      });
       throw new Error("reject transaction");
     });
 
     await expect(mutation).rejects.toThrow("reject transaction");
     await expect(client.getBundleById(target.id)).resolves.toMatchObject({
-      enabled: true,
+      storageUri: target.storageUri,
     });
   });
 
@@ -282,10 +347,23 @@ describe("standaloneRepository", () => {
     });
 
     expect(createRequestBodies).toEqual([
-      [
-        expect.objectContaining({ id: ios.id, platform: "ios" }),
-        expect.objectContaining({ id: android.id, platform: "android" }),
-      ],
+      {
+        changes: [
+          expect.objectContaining({
+            model: "bundles",
+            operation: "insert",
+            row: expect.objectContaining({ id: ios.id, platform: "ios" }),
+          }),
+          expect.objectContaining({
+            model: "bundles",
+            operation: "insert",
+            row: expect.objectContaining({
+              id: android.id,
+              platform: "android",
+            }),
+          }),
+        ],
+      },
     ]);
     await expect(client.getBundleById(ios.id)).resolves.toMatchObject({
       id: ios.id,
@@ -300,7 +378,7 @@ describe("standaloneRepository", () => {
     const second = bundle("00000000-0000-0000-0000-000000000002");
     const client = createDatabaseClient(createRepository());
     server.use(
-      http.post(`${BASE_URL}/api/bundles`, async ({ request }) => {
+      http.post(`${BASE_URL}/api/database/commit`, async ({ request }) => {
         createRequestBodies.push(await request.json());
         return HttpResponse.json(
           { error: "response lost after commit" },
@@ -316,10 +394,18 @@ describe("standaloneRepository", () => {
 
     await expect(commit).rejects.toBeInstanceOf(StandaloneDatabaseError);
     expect(createRequestBodies).toHaveLength(1);
-    expect(createRequestBodies[0]).toEqual([
-      expect.objectContaining({ id: first.id }),
-      expect.objectContaining({ id: second.id }),
-    ]);
+    expect(createRequestBodies[0]).toEqual({
+      changes: [
+        expect.objectContaining({
+          model: "bundles",
+          row: expect.objectContaining({ id: first.id }),
+        }),
+        expect.objectContaining({
+          model: "bundles",
+          row: expect.objectContaining({ id: second.id }),
+        }),
+      ],
+    });
   });
 
   it("loads normalized rows through the canonical Channel route", async () => {
@@ -385,7 +471,7 @@ describe("standaloneRepository", () => {
   it("deletes only an empty Channel through the canonical route", async () => {
     channels.add("preview");
     channels.add("production");
-    bundles.set("bundle-production", bundle("bundle-production"));
+    referencedChannels.add("production");
     const repository = createRepository();
 
     await expect(
@@ -399,18 +485,17 @@ describe("standaloneRepository", () => {
     ).resolves.toEqual({ deleted: false, reason: "not_found" });
   });
 
-  it("keeps aggregate bundle channel names", async () => {
+  it("keeps aggregate artifact fields", async () => {
     const value = bundle("00000000-0000-0000-0000-000000000021", {
-      channel: "preview",
+      storageUri: "storage://preview-artifact",
     });
     bundles.set(value.id, value);
-    channels.add("preview");
 
     await expect(
       createRepository().models.bundles.findById(value.id),
     ).resolves.toMatchObject({
       id: value.id,
-      channel: "preview",
+      storage_uri: "storage://preview-artifact",
     });
   });
 
@@ -441,7 +526,7 @@ describe("standaloneRepository", () => {
       repository.models.bundles.findById(value.id),
     ).resolves.toMatchObject({
       id: value.id,
-      channel: "production",
+      storage_uri: value.storageUri,
     });
     expect(retrieveCalls).toBe(1);
   });
@@ -466,9 +551,7 @@ describe("standaloneRepository", () => {
 
     await createRepository().models.bundles.findMany({
       where: {
-        channel: "preview",
         platform: "ios",
-        enabled: true,
         id: { gte: "bundle-20" },
       },
       orderBy: { field: "id", direction: "desc" },
@@ -476,9 +559,9 @@ describe("standaloneRepository", () => {
       offset: 20,
     });
 
-    expect(requestedUrl?.searchParams.get("channel")).toBe("preview");
     expect(requestedUrl?.searchParams.get("platform")).toBe("ios");
-    expect(requestedUrl?.searchParams.get("enabled")).toBe("true");
+    expect(requestedUrl?.searchParams.has("channel")).toBe(false);
+    expect(requestedUrl?.searchParams.has("enabled")).toBe(false);
     expect(requestedUrl?.searchParams.get("idGte")).toBe("bundle-20");
     expect(requestedUrl?.searchParams.get("limit")).toBe("10");
     expect(requestedUrl?.searchParams.get("page")).toBe("3");
@@ -517,11 +600,11 @@ describe("standaloneRepository", () => {
     expect(requestedUrl?.searchParams.get("orderDirection")).toBe("asc");
   });
 
-  it("counts filtered bundle values through the compatibility view", async () => {
+  it("counts filtered artifact values through the compatibility view", async () => {
     const first = bundle("00000000-0000-0000-0000-000000000041");
     const second = bundle("00000000-0000-0000-0000-000000000042");
     const preview = bundle("00000000-0000-0000-0000-000000000043", {
-      channel: "preview",
+      platform: "android",
     });
     bundles.set(first.id, first);
     bundles.set(second.id, second);
@@ -544,11 +627,11 @@ describe("standaloneRepository", () => {
     );
 
     const result = await createRepository().models.bundles.count({
-      channel: "production",
+      platform: "ios",
     });
 
     expect(result).toBe(2);
-    expect(requestedUrl?.searchParams.get("channel")).toBe("production");
+    expect(requestedUrl?.searchParams.get("platform")).toBe("ios");
   });
 
   it("counts all bundle rows", async () => {
@@ -557,7 +640,7 @@ describe("standaloneRepository", () => {
       platform: "android",
     });
     const previewIos = bundle("00000000-0000-0000-0000-000000000046", {
-      channel: "preview",
+      storageUri: "storage://preview",
     });
     bundles.set(productionIos.id, productionIos);
     bundles.set(productionAndroid.id, productionAndroid);
@@ -591,13 +674,13 @@ describe("standaloneRepository", () => {
     expect(result).toHaveLength(1);
   });
 
-  it("returns the highest id for a filtered channel", async () => {
+  it("returns the highest id for a filtered platform", async () => {
     const production = bundle("00000000-0000-0000-0000-000000000051");
     const previewLow = bundle("00000000-0000-0000-0000-000000000052", {
-      channel: "preview",
+      platform: "android",
     });
     const previewHigh = bundle("00000000-0000-0000-0000-000000000053", {
-      channel: "preview",
+      platform: "android",
     });
     bundles.set(production.id, production);
     bundles.set(previewLow.id, previewLow);
@@ -620,14 +703,14 @@ describe("standaloneRepository", () => {
     );
 
     const result = await createRepository().models.bundles.findMany({
-      where: { channel: "preview" },
+      where: { platform: "android" },
       orderBy: { field: "id", direction: "desc" },
       limit: 1,
       offset: 0,
     });
 
     expect(result.map(({ id }) => id)).toEqual([previewHigh.id]);
-    expect(requestedUrl?.searchParams.get("channel")).toBe("preview");
+    expect(requestedUrl?.searchParams.get("platform")).toBe("android");
     expect(requestedUrl?.searchParams.get("orderDirection")).toBe("desc");
   });
 
@@ -676,16 +759,16 @@ describe("standaloneRepository", () => {
     expect(requestedUrl?.searchParams.has("channel")).toBe(false);
   });
 
-  it("forwards direct channel filters to the aggregate endpoint", async () => {
+  it("forwards direct platform filters to the aggregate endpoint", async () => {
     const value = bundle("00000000-0000-0000-0000-000000000025");
     bundles.set(value.id, value);
     let requestedUrl: URL | undefined;
     server.use(
       http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
         requestedUrl = new URL(request.url);
-        const channel = requestedUrl.searchParams.get("channel");
+        const platform = requestedUrl.searchParams.get("platform");
         const filtered = [...bundles.values()].filter(
-          (bundle) => channel === null || bundle.channel === channel,
+          (bundle) => platform === null || bundle.platform === platform,
         );
         return HttpResponse.json({
           data: filtered,
@@ -703,10 +786,10 @@ describe("standaloneRepository", () => {
     await expect(
       createDatabaseClient(createRepository()).getBundles({
         limit: 50,
-        where: { channel: "missing" },
+        where: { platform: "android" },
       }),
     ).resolves.toMatchObject({ data: [], pagination: { total: 0 } });
-    expect(requestedUrl?.searchParams.get("channel")).toBe("missing");
+    expect(requestedUrl?.searchParams.get("platform")).toBe("android");
     expect(requestedUrl?.searchParams.has("idIn")).toBe(false);
   });
 
@@ -739,8 +822,8 @@ describe("standaloneRepository", () => {
     ]);
   });
 
-  it("does not expose a standalone update-info capability flag", () => {
-    expect(createRepository().queries.getUpdateInfo).toBeUndefined();
+  it("does not expose provider-owned update decisions", () => {
+    expect(Reflect.has(createRepository(), "queries")).toBe(false);
   });
 
   it("preserves common headers on the canonical Channel route", async () => {

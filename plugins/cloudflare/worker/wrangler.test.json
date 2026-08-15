@@ -2,12 +2,16 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "worker",
   "main": "src/testWorker.ts",
-  "compatibility_date": "2025-01-24",
+  "compatibility_date": "2026-08-13",
   "compatibility_flags": ["nodejs_compat"],
+  "cache": {
+    "enabled": true
+  },
   "observability": {
     "enabled": true
   },
   "vars": {
+    "AUTHORITY_ID": "00000000-0000-0000-0000-000000000000",
     "BUCKET_NAME": "hot-updater-test",
     "STORAGE_DOWNLOAD_URL_SIGNING_KEY": "test-storage-download-url-signing-key"
   },

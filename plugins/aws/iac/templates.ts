@@ -15,6 +15,7 @@ export type AwsConfigScaffoldAuthMode =
 export const getConfigScaffold = (
   build: BuildType,
   authMode: AwsConfigScaffoldAuthMode,
+  authorityId?: string,
 ): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/aws", named: ["s3Storage"] }],
@@ -112,6 +113,9 @@ const awsOptions = {
 
   return createHotUpdaterConfigScaffoldFromBuilder(builder, {
     helperStatements,
+    ...(authorityId
+      ? { authorityIdInitializer: JSON.stringify(authorityId) }
+      : {}),
   });
 };
 

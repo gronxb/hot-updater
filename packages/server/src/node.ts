@@ -14,7 +14,7 @@ interface NodeRequest {
 interface NodeResponse {
   status(code: number): NodeResponse;
   setHeader(name: string, value: string | string[]): void;
-  send(body: string): void;
+  send(body: string | Uint8Array): void;
   end(): void;
   [key: string]: unknown;
 }
@@ -92,9 +92,9 @@ export function toNodeHandler(
       });
 
       // Send response body
-      const text = await response.text();
-      if (text) {
-        res.send(text);
+      const responseBody = Buffer.from(await response.arrayBuffer());
+      if (responseBody.length > 0) {
+        res.send(responseBody);
       } else {
         res.end();
       }

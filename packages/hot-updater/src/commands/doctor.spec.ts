@@ -548,6 +548,37 @@ describe("doctor", () => {
     });
   });
 
+  it("accepts a direct Supabase Edge URL as origin-only mode", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: { dependencies: { "hot-updater": "0.30.0" } },
+      path: "/mock/cwd/package.json",
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      Response.json({ version: "0.30.0" }),
+    );
+
+    const result = await doctor({
+      fetch: fetchImpl,
+      serverBaseUrl: "https://project.supabase.co/functions/v1/update-server",
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      details: {
+        infrastructure: {
+          catalogMode: "origin-only",
+          catalogModeNote: expect.stringContaining(
+            "still invokes the Supabase Edge Function",
+          ),
+          needsUpdate: false,
+        },
+      },
+    });
+    expect(result).not.toMatchObject({
+      details: { infrastructure: { remediation: expect.anything() } },
+    });
+  });
+
   it("should pass when server version is newer than the required infrastructure target", async () => {
     mockReadPackageUp.mockResolvedValue({
       packageJson: {

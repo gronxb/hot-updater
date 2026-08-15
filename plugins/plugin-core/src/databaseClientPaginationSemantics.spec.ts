@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/core";
+import type { LegacyBundle } from "@hot-updater/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDatabaseClient } from "./databaseClient";
@@ -7,7 +7,7 @@ import { DatabasePluginInputError } from "./databasePluginCrud";
 import { createMemoryDatabasePlugin } from "./databasePluginMemory.testFixtures";
 import type { DatabasePlugin } from "./types";
 
-const createBundle = (id: string): Bundle => ({
+const createBundle = (id: string): LegacyBundle => ({
   id,
   platform: "ios",
   shouldForceUpdate: false,

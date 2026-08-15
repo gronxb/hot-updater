@@ -1,7 +1,8 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { closeDatabase } from "./db.js";
+
+import { closeDatabase, resetDecisionFixtures } from "./db.js";
 import { requestLogger } from "./requestLogger.js";
 import routes from "./routes.js";
 
@@ -21,6 +22,11 @@ app.get("/", (c) => {
 });
 
 if (process.env.NODE_ENV === "test") {
+  app.post("/reset-decision-fixtures", async (c) => {
+    await resetDecisionFixtures();
+    return c.json({ status: "reset" });
+  });
+
   app.post("/shutdown", async (c) => {
     console.log("Shutdown endpoint called");
     await closeDatabase();

@@ -63,31 +63,23 @@ describe("kyselyAdapter SQLite JSON storage", () => {
       DATABASE_PLUGIN_TEST_SCHEMA_SQL.replace(
         "metadata jsonb not null default '{}'::jsonb",
         "metadata text not null",
-      ).replace("target_cohorts jsonb", "target_cohorts text"),
+      ),
     );
     const plugin = kyselyAdapter({ db: sqliteDatabase, provider: "sqlite" });
     const row = {
       ...createBundleRowFixture("901"),
       metadata: { app_version: "1.0.0" },
-      target_cohorts: ["17", "qa-group"],
     };
-    const channel = createChannelRowFixture();
-    await sqliteClient.query(
-      "insert into channels (id, name) values ($1, $2)",
-      [channel.id, channel.name],
-    );
 
     await plugin.commit({
       changes: [{ model: "bundles", operation: "insert", row }],
     });
     const stored = await sqliteClient.query<{
       metadata: string;
-      target_cohorts: string;
-    }>("select metadata, target_cohorts from bundles where id = $1", [row.id]);
+    }>("select metadata from bundles where id = $1", [row.id]);
 
     expect(stored.rows[0]).toEqual({
       metadata: JSON.stringify(row.metadata),
-      target_cohorts: JSON.stringify(row.target_cohorts),
     });
     await expect(plugin.models.bundles.findById(row.id)).resolves.toEqual(row);
     await sqliteDatabase.destroy();

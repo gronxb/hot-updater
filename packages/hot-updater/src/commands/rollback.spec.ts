@@ -1,304 +1,137 @@
-import type { Bundle, Platform } from "@hot-updater/plugin-core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const { mockCli, mockPrintBanner } = vi.hoisted(() => {
-  const mockCli = {
-    loadConfig: vi.fn(),
-    p: {
-      confirm: vi.fn(),
-      isCancel: vi.fn(() => false),
-      log: {
-        error: vi.fn(),
-        info: vi.fn(),
-        message: vi.fn(),
-        success: vi.fn(),
-        warn: vi.fn(),
-      },
-    },
-  };
-  const mockPrintBanner = vi.fn();
-  return { mockCli, mockPrintBanner };
-});
-
-vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@hot-updater/cli-tools")>();
-  return {
-    ...actual,
-    loadConfig: mockCli.loadConfig,
-    p: mockCli.p,
-  };
-});
-
-vi.mock("@/utils/printBanner", () => ({
-  printBanner: mockPrintBanner,
-}));
+import type { LegacyBundle } from "@hot-updater/plugin-core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
 
+const { loadConfig, log } = vi.hoisted(() => ({
+  loadConfig: vi.fn(),
+  log: {
+    error: vi.fn(),
+    info: vi.fn(),
+    message: vi.fn(),
+    success: vi.fn(),
+    warn: vi.fn(),
+  },
+}));
+
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
+  loadConfig,
+  p: {
+    confirm: vi.fn(),
+    isCancel: vi.fn(() => false),
+    log,
+  },
+}));
+
+vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
+
 const databaseHarness = createDatabasePluginHarness();
 
-const buildBundle = (overrides: Partial<Bundle> = {}): Bundle => ({
-  id: "0195a408-8f13-7d9b-8df4-123456789abc",
-  channel: "dev",
+const bundle = (id: string, enabled = true): LegacyBundle => ({
+  id,
   platform: "ios",
-  enabled: true,
-  shouldForceUpdate: false,
-  fileHash: "abc123",
-  storageUri: "s3://bucket/bundle.zip",
-  gitCommitHash: "deadbeefcafe",
-  message: "msg",
-  targetAppVersion: "1.0.0",
+  fileHash: `hash-${id}`,
+  storageUri: `storage://artifacts/${id}.zip`,
+  gitCommitHash: null,
+  channel: "production",
+  enabled,
   fingerprintHash: null,
-  rolloutCohortCount: 1000,
+  message: id,
+  shouldForceUpdate: false,
+  targetAppVersion: "1.0.x",
+  rolloutCohortCount: 1_000,
   targetCohorts: [],
-  ...overrides,
 });
 
-const stubLoadedConfig = () => {
-  mockCli.loadConfig.mockResolvedValue({ database: databaseHarness.plugin });
-};
+const first = bundle("01900000-0000-7000-8000-000000000001");
+const second = bundle("01900000-0000-7000-8000-000000000002");
 
-const expectExit = (code: number) => {
-  const exitSpy = vi.spyOn(process, "exit").mockImplementation((c) => {
-    throw new Error(`process.exit(${c})`);
-  });
-  return { exitSpy, code };
-};
-
-const setupConsoleSpies = () => {
-  vi.spyOn(console, "log").mockImplementation(() => {});
-};
-
-const stubGetBundlesByPlatform = (
-  byPlatform: Partial<Record<Platform, Bundle[]>>,
-) => {
-  databaseHarness.setBundles(Object.values(byPlatform).flat());
+const latestRelease = async () => {
+  const channel = (
+    await databaseHarness.plugin.models.channels.list({})
+  ).channels.find(({ name }) => name === "production")!;
+  return (
+    await databaseHarness.plugin.models.releases.findMany({
+      channelId: channel.id,
+      limit: 100,
+      platform: "ios",
+    })
+  )[0];
 };
 
 describe("handleRollback", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     databaseHarness.reset();
-    stubLoadedConfig();
-    setupConsoleSpies();
-  });
-  afterEach(() => {
-    vi.restoreAllMocks();
+    await databaseHarness.seedLegacyBundles([first, second]);
+    loadConfig.mockResolvedValue({ database: databaseHarness.plugin });
   });
 
-  it("rolls back both platforms when each has >=2 enabled bundles", async () => {
-    stubGetBundlesByPlatform({
-      ios: [
-        buildBundle({ id: "ios-2", platform: "ios" }),
-        buildBundle({ id: "ios-1", platform: "ios" }),
-      ],
-      android: [
-        buildBundle({ id: "and-2", platform: "android" }),
-        buildBundle({ id: "and-1", platform: "android" }),
-      ],
-    });
+  it("uses --to-release as an unambiguous target", async () => {
     const { handleRollback } = await import("./rollback");
-    await handleRollback("dev", { yes: true });
 
-    expect(await databaseHarness.bundles()).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: "ios-2", enabled: false }),
-        expect.objectContaining({ id: "and-2", enabled: false }),
-      ]),
-    );
-    expect(mockCli.p.log.success).toHaveBeenCalledWith(
-      expect.stringContaining("ios-2"),
-    );
-    expect(mockCli.p.log.success).toHaveBeenCalledWith(
-      expect.stringContaining("and-2"),
-    );
-    expect(mockCli.p.log.message).toHaveBeenCalledWith(
-      expect.stringContaining("Disable:"),
-    );
-    expect(mockCli.p.log.message).toHaveBeenCalledWith(
-      expect.stringContaining("Fallback:"),
-    );
-    expect(mockCli.p.log.message).toHaveBeenCalledWith(
-      expect.stringContaining("ios-1"),
-    );
+    await handleRollback("production", {
+      platform: "ios",
+      toRelease: first.id,
+      yes: true,
+    });
+
+    expect(await latestRelease()).toMatchObject({
+      bundle_id: first.id,
+      operation: "ROLLBACK",
+      should_force_update: true,
+      rollout_cohort_count: 1_000,
+      source_release_id: first.id,
+    });
   });
 
-  it("only mutates the specified platform when -p is passed", async () => {
-    stubGetBundlesByPlatform({
-      ios: [
-        buildBundle({ id: "ios-2", platform: "ios" }),
-        buildBundle({ id: "ios-1", platform: "ios" }),
-      ],
-    });
+  it("creates a newer EMBEDDED Release explicitly", async () => {
     const { handleRollback } = await import("./rollback");
-    await handleRollback("dev", { platform: "ios", yes: true });
 
-    const bundles = await databaseHarness.bundles();
-    expect(bundles.find(({ id }) => id === "ios-2")?.enabled).toBe(false);
-    expect(bundles.some(({ id }) => id.startsWith("and-"))).toBe(false);
-  });
-
-  it("rolls back to binary-shipped JS when a platform has one enabled bundle", async () => {
-    stubGetBundlesByPlatform({
-      ios: [buildBundle({ id: "ios-1", platform: "ios" })],
-      android: [
-        buildBundle({ id: "and-2", platform: "android" }),
-        buildBundle({ id: "and-1", platform: "android" }),
-      ],
-    });
-    const { handleRollback } = await import("./rollback");
-    await handleRollback("dev", { yes: true });
-
-    expect(await databaseHarness.bundles()).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: "ios-1", enabled: false }),
-        expect.objectContaining({ id: "and-2", enabled: false }),
-      ]),
-    );
-    expect(mockCli.p.log.message).toHaveBeenCalledWith(
-      expect.stringContaining("binary-shipped JS"),
-    );
-  });
-
-  it("rolls back a specified platform to binary-shipped JS", async () => {
-    stubGetBundlesByPlatform({
-      ios: [buildBundle({ id: "ios-1", platform: "ios" })],
-    });
-    const { handleRollback } = await import("./rollback");
-    await handleRollback("dev", {
+    await handleRollback("production", {
+      embedded: true,
       platform: "ios",
       yes: true,
     });
-    expect((await databaseHarness.bundles())[0]?.enabled).toBe(false);
-    expect(mockCli.p.log.success).toHaveBeenCalled();
+
+    expect(await latestRelease()).toMatchObject({
+      bundle_id: null,
+      kind: "EMBEDDED",
+      operation: "ROLLBACK",
+    });
   });
 
-  it("skips a platform with no enabled bundle and proceeds on the rest", async () => {
-    stubGetBundlesByPlatform({
-      ios: [
-        buildBundle({ id: "ios-2", platform: "ios" }),
-        buildBundle({ id: "ios-1", platform: "ios" }),
-      ],
-      android: [],
-    });
+  it("a repeated rollback moves farther back instead of bouncing forward", async () => {
+    const third = bundle("01900000-0000-7000-8000-000000000003");
+    databaseHarness.reset();
+    await databaseHarness.seedLegacyBundles([first, second, third]);
     const { handleRollback } = await import("./rollback");
-    await handleRollback("dev", { yes: true });
 
-    expect(
-      (await databaseHarness.bundles()).find(({ id }) => id === "ios-2")
-        ?.enabled,
-    ).toBe(false);
-    expect(mockCli.p.log.info).toHaveBeenCalledWith(
-      expect.stringContaining("No enabled bundle on dev/android"),
-    );
+    await handleRollback("production", { platform: "ios", yes: true });
+    const firstRollback = await latestRelease();
+    expect(firstRollback?.bundle_id).toBe(second.id);
+
+    await handleRollback("production", { platform: "ios", yes: true });
+    expect(await latestRelease()).toMatchObject({
+      bundle_id: first.id,
+      operation: "ROLLBACK",
+    });
   });
 
-  it("exits 1 when no platform has any enabled bundle on the channel", async () => {
-    stubGetBundlesByPlatform({ ios: [], android: [] });
-    const { exitSpy } = expectExit(1);
+  it("rejects mutually ambiguous rollback targets before mutating", async () => {
     const { handleRollback } = await import("./rollback");
-    await expect(handleRollback("dev", { yes: true })).rejects.toThrow(
-      "process.exit(1)",
-    );
-    expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(mockCli.p.log.error).toHaveBeenCalledWith(
-      expect.stringContaining("Nothing to roll back"),
-    );
-  });
 
-  it("aborts with exit code 2 when interactive confirmation declines", async () => {
-    stubGetBundlesByPlatform({
-      ios: [
-        buildBundle({ id: "ios-2", platform: "ios" }),
-        buildBundle({ id: "ios-1", platform: "ios" }),
-      ],
-      android: [
-        buildBundle({ id: "and-2", platform: "android" }),
-        buildBundle({ id: "and-1", platform: "android" }),
-      ],
-    });
-    const isTtyDescriptor = Object.getOwnPropertyDescriptor(
-      process.stdin,
-      "isTTY",
+    await expect(
+      handleRollback("production", {
+        embedded: true,
+        toRelease: first.id,
+        yes: true,
+      }),
+    ).rejects.toThrow();
+    expect(log.error).toHaveBeenCalledWith(
+      "Choose only one of --to-release, --to-bundle, or --embedded.",
     );
-    Object.defineProperty(process.stdin, "isTTY", {
-      configurable: true,
-      value: true,
-    });
-    mockCli.p.confirm.mockResolvedValueOnce(false);
-    const { exitSpy } = expectExit(2);
-    const { handleRollback } = await import("./rollback");
-    await expect(handleRollback("dev", {})).rejects.toThrow("process.exit(2)");
-    expect(exitSpy).toHaveBeenCalledWith(2);
-    expect(mockCli.p.confirm).toHaveBeenCalledWith({
-      message: "Apply this rollback plan to dev?",
-      initialValue: false,
-    });
     expect(databaseHarness.commit).not.toHaveBeenCalled();
-    if (isTtyDescriptor) {
-      Object.defineProperty(process.stdin, "isTTY", isTtyDescriptor);
-    }
-  });
-
-  it("refuses to mutate without -y in a non-TTY shell", async () => {
-    stubGetBundlesByPlatform({
-      ios: [
-        buildBundle({ id: "ios-2", platform: "ios" }),
-        buildBundle({ id: "ios-1", platform: "ios" }),
-      ],
-      android: [
-        buildBundle({ id: "and-2", platform: "android" }),
-        buildBundle({ id: "and-1", platform: "android" }),
-      ],
-    });
-    const isTtyDescriptor = Object.getOwnPropertyDescriptor(
-      process.stdin,
-      "isTTY",
-    );
-    Object.defineProperty(process.stdin, "isTTY", {
-      configurable: true,
-      value: false,
-    });
-    const { exitSpy } = expectExit(1);
-    const { handleRollback } = await import("./rollback");
-    await expect(handleRollback("dev", {})).rejects.toThrow("process.exit(1)");
-    expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(databaseHarness.commit).not.toHaveBeenCalled();
-    if (isTtyDescriptor) {
-      Object.defineProperty(process.stdin, "isTTY", isTtyDescriptor);
-    }
-  });
-
-  it("verify phase: exits 1 when a target is still enabled after commit", async () => {
-    stubGetBundlesByPlatform({
-      ios: [
-        buildBundle({ id: "ios-2", platform: "ios" }),
-        buildBundle({ id: "ios-1", platform: "ios" }),
-      ],
-      android: [
-        buildBundle({ id: "and-2", platform: "android" }),
-        buildBundle({ id: "and-1", platform: "android" }),
-      ],
-    });
-    databaseHarness.commit.mockResolvedValue({ committed: true });
-    const { exitSpy } = expectExit(1);
-    const { handleRollback } = await import("./rollback");
-    await expect(handleRollback("dev", { yes: true })).rejects.toThrow(
-      "process.exit(1)",
-    );
-    expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(mockCli.p.log.error).toHaveBeenCalledWith(
-      expect.stringContaining("FAILED: android and-2 is still enabled"),
-    );
-  });
-
-  it("calls dispose even when getBundles throws", async () => {
-    databaseHarness.read.mockRejectedValueOnce(new Error("DB down"));
-    const { handleRollback } = await import("./rollback");
-    await expect(handleRollback("dev", { yes: true })).rejects.toThrow(
-      "DB down",
-    );
-    expect(databaseHarness.dispose).toHaveBeenCalled();
   });
 });

@@ -13,6 +13,8 @@ export {
 
 export interface InfrastructureStatus {
   baseUrl: string;
+  catalogMode?: "origin-only";
+  catalogModeNote?: string;
   versionEndpoint: string;
   serverVersion?: string;
   requiredVersion: string;
@@ -48,6 +50,24 @@ export function resolveVersionEndpoint(serverBaseUrl: string): string {
   return url.toString();
 }
 
+const getCatalogMode = (
+  serverBaseUrl: string,
+): Pick<InfrastructureStatus, "catalogMode" | "catalogModeNote"> => {
+  const url = new URL(serverBaseUrl);
+  if (
+    url.hostname.endsWith(".supabase.co") &&
+    url.pathname.startsWith("/functions/v1/")
+  ) {
+    return {
+      catalogMode: "origin-only",
+      catalogModeNote:
+        "Each catalog check still invokes the Supabase Edge Function; " +
+        "compiled catalogs avoid per-install decision queries.",
+    };
+  }
+  return {};
+};
+
 export const createInfrastructureRemediation =
   (): InfrastructureRemediation => {
     return {
@@ -69,6 +89,7 @@ export async function checkInfrastructureStatus({
 }): Promise<InfrastructureStatus> {
   const versionEndpoint = resolveVersionEndpoint(serverBaseUrl);
   const baseUrl = serverBaseUrl.trim();
+  const catalogMode = getCatalogMode(baseUrl);
   const requiredVersion = requiredTarget.version;
 
   try {
@@ -82,6 +103,7 @@ export async function checkInfrastructureStatus({
       if (response.status === 404) {
         return {
           baseUrl,
+          ...catalogMode,
           versionEndpoint,
           requiredVersion,
           needsUpdate: true,
@@ -91,6 +113,7 @@ export async function checkInfrastructureStatus({
 
       return {
         baseUrl,
+        ...catalogMode,
         versionEndpoint,
         requiredVersion,
         error: `Version endpoint returned ${response.status}`,
@@ -101,6 +124,7 @@ export async function checkInfrastructureStatus({
     if (typeof data.version !== "string") {
       return {
         baseUrl,
+        ...catalogMode,
         versionEndpoint,
         requiredVersion,
         error: "Version endpoint response must include a string version",
@@ -114,6 +138,7 @@ export async function checkInfrastructureStatus({
 
     return {
       baseUrl,
+      ...catalogMode,
       versionEndpoint,
       serverVersion: data.version,
       requiredVersion,
@@ -123,6 +148,7 @@ export async function checkInfrastructureStatus({
   } catch (error) {
     return {
       baseUrl,
+      ...catalogMode,
       versionEndpoint,
       requiredVersion,
       error: error instanceof Error ? error.message : String(error),

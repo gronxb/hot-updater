@@ -19,19 +19,10 @@ export type DatabaseBundleMetadata = DatabaseJsonObject & {
 export interface BundleRow {
   readonly id: string;
   readonly platform: Platform;
-  readonly should_force_update: boolean;
-  readonly enabled: boolean;
   readonly file_hash: string;
   readonly git_commit_hash: string | null;
-  readonly message: string | null;
-  readonly channel: string;
-  readonly channel_id: string;
   readonly storage_uri: string;
-  readonly target_app_version: string | null;
-  readonly fingerprint_hash: string | null;
   readonly metadata: DatabaseBundleMetadata;
-  readonly rollout_cohort_count: number;
-  readonly target_cohorts: readonly string[] | null;
   readonly manifest_storage_uri: string | null;
   readonly manifest_file_hash: string | null;
   readonly asset_base_storage_uri: string | null;
@@ -47,6 +38,44 @@ export interface BundlePatchRow {
   readonly order_index: number;
 }
 
+export interface ReleaseRow {
+  readonly id: string;
+  readonly revision: number;
+  readonly scope_key: string;
+  readonly channel_id: string;
+  readonly platform: Platform;
+  readonly kind: "BUNDLE" | "EMBEDDED";
+  readonly bundle_id: string | null;
+  readonly strategy: "APP_VERSION" | "FINGERPRINT";
+  readonly target_app_version: string | null;
+  readonly fingerprint_hash: string | null;
+  readonly enabled: boolean;
+  readonly should_force_update: boolean;
+  readonly message: string | null;
+  readonly rollout_cohort_count: number;
+  readonly target_cohorts: readonly string[];
+  readonly operation: "DEPLOY" | "PROMOTE" | "ROLLBACK";
+  readonly source_release_id: string | null;
+  readonly created_at_ms: number;
+  readonly updated_at_ms: number;
+}
+
+export interface ReleaseCatalogRow {
+  readonly scope_key: string;
+  readonly authority_id: string;
+  readonly strategy: "APP_VERSION" | "FINGERPRINT";
+  readonly channel_id: string;
+  readonly channel_key: string;
+  readonly platform: Platform;
+  readonly fingerprint_hash: string | null;
+  readonly generation: number;
+  readonly payload: string;
+  readonly catalog_hash: string;
+  readonly byte_size: number;
+  readonly is_tombstone: boolean;
+  readonly updated_at_ms: number;
+}
+
 export interface ChannelRow {
   readonly id: string;
   readonly name: string;
@@ -57,7 +86,9 @@ export type BundleEventRowBase = {
   readonly install_id: string;
   readonly user_id: string | null;
   readonly username: string | null;
-  readonly to_bundle_id: string;
+  readonly from_release_id?: string | null;
+  readonly to_release_id?: string | null;
+  readonly to_bundle_id: string | null;
   readonly platform: Platform;
   readonly app_version: string;
   readonly channel: string;
@@ -69,8 +100,8 @@ export type BundleEventRowBase = {
 
 export type BundleEventRow =
   | (BundleEventRowBase & {
-      readonly type: "UPDATE_APPLIED" | "RECOVERED";
-      readonly from_bundle_id: string;
+      readonly type: "UPDATE_APPLIED" | "RECOVERED" | "RELEASE_ADOPTED";
+      readonly from_bundle_id: string | null;
       readonly update_strategy: "fingerprint" | "appVersion";
     })
   | (BundleEventRowBase & {
@@ -92,6 +123,8 @@ export interface ClientAccessKeyRow {
 export interface DatabaseModelMap {
   readonly bundles: BundleRow;
   readonly bundle_patches: BundlePatchRow;
+  readonly releases: ReleaseRow;
+  readonly release_catalogs: ReleaseCatalogRow;
   readonly channels: ChannelRow;
   readonly bundle_events: BundleEventRow;
   readonly client_access_keys: ClientAccessKeyRow;

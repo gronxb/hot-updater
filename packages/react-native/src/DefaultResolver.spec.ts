@@ -16,12 +16,19 @@ const mocks = vi.hoisted(() => {
   ).HotUpdater = { SDK_VERSION: "test-sdk-version" };
 
   return {
+    fetchJSON: vi.fn(),
+    fetchReleaseCatalogWithCache: vi.fn(),
     fetchUpdateInfo: vi.fn(),
   };
 });
 
 vi.mock("./fetchUpdateInfo", () => ({
+  fetchJSON: mocks.fetchJSON,
   fetchUpdateInfo: mocks.fetchUpdateInfo,
+}));
+
+vi.mock("./releaseCatalogCache", () => ({
+  fetchReleaseCatalogWithCache: mocks.fetchReleaseCatalogWithCache,
 }));
 
 const createParams = (
@@ -42,6 +49,10 @@ describe("createDefaultResolver", () => {
   beforeEach(() => {
     mocks.fetchUpdateInfo.mockReset();
     mocks.fetchUpdateInfo.mockResolvedValue(null);
+    mocks.fetchJSON.mockReset();
+    mocks.fetchJSON.mockResolvedValue({});
+    mocks.fetchReleaseCatalogWithCache.mockReset();
+    mocks.fetchReleaseCatalogWithCache.mockResolvedValue({});
     vi.unstubAllGlobals();
     vi.stubGlobal(
       "fetch",
@@ -73,6 +84,63 @@ describe("createDefaultResolver", () => {
       },
       requestTimeout: undefined,
       url: "http://localhost:3007/hot-updater/app-version/android/1.0/production/min-bundle/current-bundle/730",
+    });
+  });
+
+  it("fetches a shared canonical Release catalog without device state", async () => {
+    const resolver = createDefaultResolver(
+      "https://updates.example.com/hot-updater/",
+      { authorityId: "project-a" },
+    );
+
+    expect(resolver.catalogCachePartition).toBe("x-api-key");
+
+    await resolver.fetchReleaseCatalog?.({
+      appVersion: "1.2",
+      authorityId: "project-a",
+      channel: "production",
+      fingerprintHash: null,
+      platform: "ios",
+      requestHeaders: { authorization: "Bearer token" },
+      requestTimeout: 1500,
+      updateStrategy: "appVersion",
+    });
+
+    expect(mocks.fetchReleaseCatalogWithCache).toHaveBeenCalledWith({
+      authorityId: "project-a",
+      baseURL: "https://updates.example.com/hot-updater",
+      requestHeaders: {
+        authorization: "Bearer token",
+        "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
+      },
+      requestTimeout: 1500,
+      scopeKey: "v1:app-version:project-a:ios:cHJvZHVjdGlvbg",
+      url: "https://updates.example.com/hot-updater/v2/release-catalogs/app-version/project-a/ios/cHJvZHVjdGlvbg/1.2.0",
+    });
+    expect(
+      mocks.fetchReleaseCatalogWithCache.mock.calls[0]?.[0].url,
+    ).not.toContain("bundle-id");
+    expect(
+      mocks.fetchReleaseCatalogWithCache.mock.calls[0]?.[0].url,
+    ).not.toContain("cohort");
+  });
+
+  it("resolves artifacts only from Bundle identities", async () => {
+    const resolver = createDefaultResolver("https://updates.example.com", {
+      authorityId: "project-a",
+    });
+
+    await resolver.resolveArtifact?.({
+      currentBundleId: "bundle-1",
+      targetBundleId: "bundle-2",
+    });
+
+    expect(mocks.fetchJSON).toHaveBeenCalledWith({
+      requestHeaders: {
+        "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
+      },
+      requestTimeout: undefined,
+      url: "https://updates.example.com/v2/artifacts/bundle-2/from/bundle-1",
     });
   });
 

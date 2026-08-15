@@ -1,4 +1,4 @@
-import { type Bundle, NIL_UUID } from "@hot-updater/core";
+import { type LegacyBundle, NIL_UUID } from "@hot-updater/core";
 import { vi } from "vitest";
 
 import {
@@ -10,7 +10,7 @@ import {
 export const NEXT_SDK_VERSION_FOR_TEST = "0.31.0";
 export const CURRENT_PACKAGE_SDK_VERSION = "0.30.10";
 
-export const testBundle: Bundle = {
+export const testBundle: LegacyBundle = {
   id: "bundle-1",
   platform: "ios",
   shouldForceUpdate: false,

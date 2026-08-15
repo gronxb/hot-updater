@@ -3,7 +3,7 @@ import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
 
-import { db } from "./drizzle";
+import { client, db } from "./drizzle";
 
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
@@ -30,8 +30,22 @@ export const hotUpdater = createHotUpdater({
   features: {
     updateCheck: true,
     bundles: true,
+    analytics: { queryAccess: "public" },
   },
 });
 
 // Cleanup function for graceful shutdown
 export async function closeDatabase() {}
+
+export async function resetDecisionFixtures() {
+  await client.batch(
+    [
+      "DELETE FROM bundle_patches",
+      "DELETE FROM release_catalogs",
+      "DELETE FROM releases",
+      "DELETE FROM bundles",
+      "DELETE FROM channels",
+    ],
+    "write",
+  );
+}

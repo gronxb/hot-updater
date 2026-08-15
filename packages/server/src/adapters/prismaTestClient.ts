@@ -4,6 +4,8 @@ import type {
   BundleRow,
   ChannelRow,
   ClientAccessKeyRow,
+  ReleaseCatalogRow,
+  ReleaseRow,
 } from "@hot-updater/plugin-core";
 
 type Row =
@@ -11,7 +13,9 @@ type Row =
   | BundlePatchRow
   | BundleRow
   | ChannelRow
-  | ClientAccessKeyRow;
+  | ClientAccessKeyRow
+  | ReleaseRow
+  | ReleaseCatalogRow;
 type Table = Row[];
 type Tables = {
   bundle_patches: Table;
@@ -19,6 +23,8 @@ type Tables = {
   bundle_events: Table;
   channels: Table;
   client_access_keys: Table;
+  releases: Table;
+  release_catalogs: Table;
 };
 
 type Hooks = {
@@ -34,7 +40,9 @@ type QueryArgs = {
   readonly where?: unknown;
 };
 type CreateArgs = QueryArgs & { readonly data: Row };
-type UpdateArgs = QueryArgs & { readonly data: Partial<BundleRow> };
+type UpdateArgs = QueryArgs & {
+  readonly data: Readonly<Record<string, unknown>>;
+};
 type UpsertArgs = QueryArgs & {
   readonly create: Row;
   readonly update: Partial<Row>;
@@ -62,6 +70,8 @@ const normalize = (value: unknown, insensitive: boolean): unknown =>
 
 const readField = (row: Row, field: string): unknown =>
   Object.entries(row).find(([key]) => key === field)?.[1];
+
+const rowKey = (row: Row): string => ("id" in row ? row.id : row.scope_key);
 
 const matchesCondition = (current: unknown, condition: unknown): boolean => {
   if (!isRecord(condition)) return Object.is(current, condition);
@@ -150,21 +160,28 @@ const assertReferences = (
   model: keyof Tables,
   row: Row,
 ): void => {
-  if (model === "bundle_patches" && "bundle_id" in row) {
-    const bundleIds = new Set(tables.bundles.map(({ id }) => id));
+  if (model === "bundle_patches" && "base_bundle_id" in row) {
+    const bundleIds = new Set(
+      tables.bundles.flatMap((bundle) => ("id" in bundle ? [bundle.id] : [])),
+    );
     if (!bundleIds.has(row.bundle_id) || !bundleIds.has(row.base_bundle_id)) {
       throw new PrismaTestConstraintError("missing patch reference");
     }
   }
-  if (model === "bundles" && "channel_id" in row) {
-    const channel = tables.channels.find(
-      (candidate) =>
-        "name" in candidate &&
-        candidate.id === row.channel_id &&
-        candidate.name === row.channel,
-    );
-    if (channel === undefined) {
-      throw new PrismaTestConstraintError("missing channel reference");
+  if (model === "releases" && "kind" in row) {
+    if (
+      !tables.channels.some(
+        (channel) => "id" in channel && channel.id === row.channel_id,
+      ) ||
+      (row.bundle_id !== null &&
+        !tables.bundles.some(
+          (bundle) =>
+            "file_hash" in bundle &&
+            bundle.id === row.bundle_id &&
+            bundle.platform === row.platform,
+        ))
+    ) {
+      throw new PrismaTestConstraintError("missing Release reference");
     }
   }
 };
@@ -173,7 +190,7 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
   count: async (args?: QueryArgs): Promise<number> =>
     tables[model].filter((row) => matchesWhere(row, args?.where)).length,
   create: async ({ data }: CreateArgs): Promise<Row> => {
-    if (tables[model].some(({ id }) => id === data.id)) {
+    if (tables[model].some((row) => rowKey(row) === rowKey(data))) {
       throw new PrismaTestConstraintError("duplicate id");
     }
     if (
@@ -205,10 +222,20 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
       matchesWhere(row, args?.where),
     );
     if (model === "bundles") {
-      const ids = new Set(selected.map(({ id }) => id));
+      const ids = new Set(selected.map(rowKey));
+      if (
+        tables.releases.some(
+          (row) =>
+            "bundle_id" in row &&
+            row.bundle_id !== null &&
+            ids.has(row.bundle_id),
+        )
+      ) {
+        throw new PrismaTestConstraintError("referenced bundle");
+      }
       tables.bundle_patches = tables.bundle_patches.filter(
         (row) =>
-          !("bundle_id" in row) ||
+          !("base_bundle_id" in row) ||
           (!ids.has(row.bundle_id) && !ids.has(row.base_bundle_id)),
       );
     }
@@ -235,7 +262,7 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
     if (current === undefined) {
       throw new PrismaTestConstraintError("missing update row");
     }
-    const updated = { ...current, ...data };
+    const updated = { ...current, ...data } as Row;
     assertReferences(tables, model, updated);
     tables[model][index] = updated;
     return structuredClone(updated);
@@ -252,7 +279,7 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
     let count = 0;
     tables[model] = tables[model].map((row) => {
       if (!matchesWhere(row, where)) return row;
-      const updated = { ...row, ...data };
+      const updated = { ...row, ...data } as Row;
       assertReferences(tables, model, updated);
       count += 1;
       return updated;
@@ -268,7 +295,7 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
       tables[model][index] = updated;
       return structuredClone(updated);
     }
-    if (tables[model].some((row) => row.id === create.id)) {
+    if (tables[model].some((row) => rowKey(row) === rowKey(create))) {
       throw new PrismaTestConstraintError("duplicate id");
     }
     assertReferences(tables, model, create);
@@ -283,6 +310,8 @@ const createClient = (tables: Tables, hooks: Hooks) => ({
   bundles: createDelegate(tables, "bundles", hooks),
   channels: createDelegate(tables, "channels", hooks),
   client_access_keys: createDelegate(tables, "client_access_keys", hooks),
+  releases: createDelegate(tables, "releases", hooks),
+  release_catalogs: createDelegate(tables, "release_catalogs", hooks),
 });
 
 export const createPrismaTestHarness = () => {
@@ -292,6 +321,8 @@ export const createPrismaTestHarness = () => {
     bundle_events: [],
     channels: [],
     client_access_keys: [],
+    releases: [],
+    release_catalogs: [],
   };
   const hooks: Hooks = {
     beforeNextBundleUpdateMany: undefined,
@@ -320,6 +351,8 @@ export const createPrismaTestHarness = () => {
         tables.bundle_events = transactionTables.bundle_events;
         tables.channels = transactionTables.channels;
         tables.client_access_keys = transactionTables.client_access_keys;
+        tables.releases = transactionTables.releases;
+        tables.release_catalogs = transactionTables.release_catalogs;
         return result;
       } finally {
         release();
@@ -335,7 +368,7 @@ export const createPrismaTestHarness = () => {
       hooks.beforeNextBundleUpdateMany = (transactionTables) => {
         for (const currentTables of new Set([tables, transactionTables])) {
           const index = currentTables.bundles.findIndex(
-            (candidate) => candidate.id === id,
+            (candidate) => "id" in candidate && candidate.id === id,
           );
           const row = currentTables.bundles[index];
           if (row !== undefined && "target_app_version" in row) {
@@ -358,6 +391,8 @@ export const createPrismaTestHarness = () => {
       tables.bundle_events = [];
       tables.channels = [];
       tables.client_access_keys = [];
+      tables.releases = [];
+      tables.release_catalogs = [];
     },
   };
 };

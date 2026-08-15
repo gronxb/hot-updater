@@ -1,11 +1,12 @@
 import { PGlite } from "@electric-sql/pglite";
-import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
+import type {
+  GetBundlesArgs,
+  LegacyBundle,
+  UpdateInfo,
+} from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import { createStoragePlugin } from "@hot-updater/plugin-core";
-import {
-  setupBundleMethodsTestSuite,
-  setupGetUpdateInfoTestSuite,
-} from "@hot-updater/test-utils";
+import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
 import { sql } from "drizzle-orm";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
@@ -201,7 +202,7 @@ function createSchemaOnlyAdapter({
   };
 }
 
-const transactionBundle: Bundle = {
+const transactionBundle: LegacyBundle = {
   id: "00000000-0000-0000-0000-000000000777",
   platform: "ios",
   shouldForceUpdate: false,
@@ -215,34 +216,6 @@ const transactionBundle: Bundle = {
   fingerprintHash: null,
 };
 const transactionChannelId = "00000000-0000-0000-0000-000000000700";
-
-const appVersionFastPathBundle: Bundle = {
-  ...transactionBundle,
-  id: "00000000-0000-0000-0000-000000000778",
-  fileHash: "app-version-fast-path-hash",
-  message: "app version fast path bundle",
-  targetAppVersion: "1.0.0",
-};
-
-const fingerprintFastPathBundle: Bundle = {
-  ...transactionBundle,
-  id: "00000000-0000-0000-0000-000000000779",
-  fileHash: "fingerprint-fast-path-hash",
-  fingerprintHash: "fingerprint-fast-path",
-  message: "fingerprint fast path bundle",
-  targetAppVersion: null,
-};
-
-const createMongoCursor = <TRow>(rows: readonly TRow[]) => {
-  const cursor = {
-    limit: vi.fn(() => cursor),
-    project: vi.fn(() => cursor),
-    skip: vi.fn(() => cursor),
-    sort: vi.fn(() => cursor),
-    toArray: vi.fn(async () => [...rows]),
-  };
-  return cursor;
-};
 
 describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   const db = new PGlite();
@@ -331,6 +304,8 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
   beforeEach(async () => {
     storageTexts.clear();
+    await db.exec("DELETE FROM release_catalogs");
+    await db.exec("DELETE FROM releases");
     await db.exec("DELETE FROM bundle_patches");
     await db.exec("DELETE FROM bundles");
     await db.exec("DELETE FROM channels");
@@ -342,11 +317,13 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   });
 
   const getUpdateInfo = async (
-    bundles: Bundle[],
+    bundles: LegacyBundle[],
     options: GetBundlesArgs,
   ): Promise<UpdateInfo | null> => {
     // Insert fixtures via the server API to exercise its types + mapping
-    for (const b of bundles) {
+    for (const b of [...bundles].sort((left, right) =>
+      left.id.localeCompare(right.id),
+    )) {
       const current = await hotUpdater.getBundleById(b.id);
       if (current === null) await hotUpdater.insertBundle(b);
       else await hotUpdater.updateBundleById(b.id, b);
@@ -355,29 +332,19 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   };
 
   setupGetUpdateInfoTestSuite({ getUpdateInfo });
-  setupBundleMethodsTestSuite({
-    getBundleById: hotUpdater.getBundleById.bind(hotUpdater),
-    getChannels: hotUpdater.getChannels.bind(hotUpdater),
-    insertBundle: hotUpdater.insertBundle.bind(hotUpdater),
-    getBundles: hotUpdater.getBundles.bind(hotUpdater),
-    updateBundleById: hotUpdater.updateBundleById.bind(hotUpdater),
-    deleteBundleById: hotUpdater.deleteBundleById.bind(hotUpdater),
-  });
-
   describe("schema generation", () => {
     it("includes relations, defaults, and indexes in Prisma output", () => {
       const code = generateSchema(prismaSchemaHotUpdater, "latest").code;
 
-      expect(code).toContain('channel String @default("production")');
       expect(code).toContain('metadata Json @default("{}")');
-      expect(code).toContain('value String @default("0.38.0")');
+      expect(code).toContain('value String @default("1.0.0")');
       expect(code).toContain("model channels {");
       expect(code).toContain("id String @db.VarChar(255) @id");
       expect(code).toContain("name String @db.VarChar(255)");
       expect(code).toContain('@@unique([name], map: "channels_name_key")');
       expect(code).toContain("channel_id String @db.VarChar(255)");
       expect(code).toContain(
-        'channelRecord channels @relation("bundles_channels", fields: [channel_id], references: [id], onUpdate: Restrict, onDelete: Restrict)',
+        'channelRecord channels @relation("releases_channels", fields: [channel_id], references: [id], onUpdate: Restrict, onDelete: Restrict)',
       );
       expect(code).toContain(
         'patches bundle_patches[] @relation("bundle_patches_bundles_patches")',
@@ -391,7 +358,13 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(code).toContain(
         'baseBundle bundles @relation("bundle_patches_bundles_baseForPatches"',
       );
-      expect(code).toContain('@@index([channel], map: "bundles_channel_idx")');
+      expect(code).not.toContain(
+        '@@index([channel], map: "bundles_channel_idx")',
+      );
+      expect(code).toContain(
+        '@@index([scope_key, id], map: "releases_scope_order_idx")',
+      );
+      expect(code).toContain("scope_key String @db.VarChar(2048) @id");
       expect(code).not.toContain("bundles_platform_idx");
       expect(code).toContain(
         '@@index([bundle_id], map: "bundle_patches_bundle_id_idx")',
@@ -423,43 +396,39 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       )?.[0];
 
       expect(code).toContain(
-        'channel: text("channel").notNull().default("production")',
-      );
-      expect(code).toContain(
         'metadata: json("metadata").notNull().default({})',
       );
       expect(code).toContain('name: "bundle_patches_bundle_id_fk"');
       expect(code).toContain('name: "bundle_patches_base_bundle_id_fk"');
       expect(code).toContain('.onDelete("cascade")');
-      expect(bundlesBlock).toContain(
-        'index("bundles_channel_idx").on(table.channel)',
-      );
+      expect(bundlesBlock).not.toContain("bundles_channel_idx");
       expect(bundlesBlock).not.toContain("bundles_platform_idx");
-      expect(bundlesBlock).toContain(
-        'index("bundles_target_app_version_idx").on(table.target_app_version)',
-      );
+      expect(bundlesBlock).not.toContain("target_app_version");
       expect(bundlesBlock).not.toContain(
         'index("bundle_patches_bundle_id_idx").on(table.bundle_id)',
       );
       expect(bundlePatchesBlock).toContain(
         'index("bundle_patches_bundle_id_idx").on(table.bundle_id)',
       );
-      expect(bundlePatchesBlock).not.toContain(
-        'index("bundles_target_app_version_idx").on(table.target_app_version)',
+      expect(code).toContain(
+        'index("releases_scope_order_idx").on(table.scope_key, table.id)',
+      );
+      expect(code).toContain(
+        'scope_key: varchar("scope_key", { length: 2048 }).primaryKey().notNull()',
       );
       const generatedCode = generateDrizzleSchema("postgresql");
       expect(generatedCode).toContain(
         'id: varchar("id", { length: 255 }).primaryKey().notNull()',
       );
       expect(generatedCode).toContain(
-        'version: varchar("version", { length: 255 }).notNull().default("0.38.0")',
+        'version: varchar("version", { length: 255 }).notNull().default("1.0.0")',
       );
       expect(generatedCode).toContain(
         'uniqueIndex("channels_name_key").on(table.name)',
       );
-      expect(generatedCode).toContain('name: "bundles_channel_id_fk"');
+      expect(generatedCode).toContain('name: "releases_channel_id_fk"');
       expect(generatedCode).toContain(
-        'index("bundles_channel_id_idx").on(table.channel_id)',
+        'index("releases_channel_platform_order_idx").on(table.channel_id, table.platform, table.id)',
       );
       expect(generatedCode).not.toContain('key: varchar("key"');
       expect(generatedCode).not.toContain('value: text("value"');
@@ -475,6 +444,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         "0.36.0",
         "0.37.0",
         "0.38.0",
+        "1.0.0",
       ]);
 
       const v029Sql = createSchemaMigrationSql(
@@ -547,9 +517,11 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         });
         const sql = result.getSQL?.() ?? "";
 
-        expect(sql).toContain("create index bundles_channel_idx on bundles");
         expect(sql).toContain(
-          "add constraint check_version_or_fingerprint check",
+          "create index releases_scope_order_idx on releases",
+        );
+        expect(sql).toContain(
+          "add constraint releases_strategy_target_check check",
         );
         expect(sql).toContain(
           "add constraint bundle_patches_bundle_id_fk foreign key",
@@ -630,14 +602,16 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           value: string;
         }>("select key, value from private_hot_updater_settings order by key");
         expect(versions.rows).toEqual([
-          { key: "schema.core", value: "0.38.0" },
+          { key: "schema.core", value: "1.0.0" },
           { key: "version", value: "0.21.0" },
         ]);
         await migrationDb.query(
-          "select rollout_cohort_count, target_cohorts, manifest_storage_uri from bundles limit 0",
+          "select platform, file_hash, manifest_storage_uri from bundles limit 0",
         );
         await migrationDb.query("select * from bundle_patches limit 0");
         await migrationDb.query("select id, name from channels limit 0");
+        await migrationDb.query("select * from releases limit 0");
+        await migrationDb.query("select * from release_catalogs limit 0");
       } finally {
         await migrationKysely.destroy();
         await migrationDb.close();
@@ -741,11 +715,11 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           }),
           expect.objectContaining({
             description:
-              "Create MongoDB index: bundles_target_app_version_idx on bundles(target_app_version)",
+              "Create unique MongoDB index: release_catalogs_scope_key_idx on release_catalogs(scope_key)",
           }),
           expect.objectContaining({
             description:
-              "Create MongoDB index: bundles_fingerprint_hash_idx on bundles(fingerprint_hash)",
+              "Create MongoDB index: releases_fingerprint_hash_idx on releases(fingerprint_hash)",
           }),
           expect.objectContaining({
             description:
@@ -883,419 +857,8 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         limit: 10,
         where: { id: { in: [] } },
       });
-      const byTargetAppVersion = await hotUpdater.getBundles({
-        limit: 10,
-        where: { targetAppVersionIn: [] },
-      });
-
       expect(byId.data).toEqual([]);
       expect(byId.pagination.total).toBe(0);
-      expect(byTargetAppVersion.data).toEqual([]);
-      expect(byTargetAppVersion.pagination.total).toBe(0);
-    });
-
-    it("combines Prisma targetAppVersion filters without overwriting", async () => {
-      const bundles = {
-        count: vi.fn(async () => 0),
-        create: vi.fn(),
-        deleteMany: vi.fn(),
-        findFirst: vi.fn(),
-        findMany: vi.fn(async () => []),
-        update: vi.fn(),
-        upsert: vi.fn(),
-      };
-      const patches = {
-        count: vi.fn(),
-        create: vi.fn(),
-        deleteMany: vi.fn(),
-        findFirst: vi.fn(),
-        findMany: vi.fn(async () => []),
-        update: vi.fn(),
-        upsert: vi.fn(),
-      };
-      const adapter = prismaAdapter({
-        prisma: { bundles, bundle_patches: patches },
-        provider: "postgresql",
-      });
-
-      await adapter.models.bundles.findMany({
-        limit: 10,
-        offset: 0,
-        orderBy: { field: "id", direction: "asc" },
-        where: {
-          targetAppVersion: "1.0.x",
-          targetAppVersionNotNull: true,
-        },
-      });
-
-      expect(bundles.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            AND: [
-              { target_app_version: "1.0.x" },
-              { target_app_version: { not: null } },
-            ],
-          }),
-        }),
-      );
-    });
-
-    it("combines MongoDB targetAppVersion filters without overwriting", async () => {
-      const cursor = createMongoCursor([]);
-      const bundles = {
-        countDocuments: vi.fn(async () => 0),
-        distinct: vi.fn(),
-        find: vi.fn(() => cursor),
-        findOne: vi.fn(),
-      };
-      const patches = {
-        deleteMany: vi.fn(),
-        find: vi.fn(() => createMongoCursor([])),
-        insertMany: vi.fn(),
-      };
-      const client = {
-        db: () => ({
-          collection: (name: string) =>
-            name === "bundle_patches" ? patches : bundles,
-        }),
-      } as unknown as MongoClient;
-      const adapter = mongoAdapter({ client });
-
-      await adapter.models.bundles.findMany({
-        limit: 10,
-        offset: 0,
-        orderBy: { field: "id", direction: "asc" },
-        where: {
-          targetAppVersion: "1.0.x",
-          targetAppVersionNotNull: true,
-        },
-      });
-
-      expect(bundles.find).toHaveBeenCalledWith(
-        {
-          $and: [
-            {
-              $and: [
-                {
-                  $expr: {
-                    $eq: ["$target_app_version", { $literal: "1.0.x" }],
-                  },
-                },
-                {
-                  $expr: {
-                    $ne: ["$target_app_version", { $literal: null }],
-                  },
-                },
-              ],
-            },
-            { _hot_updater_deletion_token: { $exists: false } },
-          ],
-        },
-        { projection: { _hot_updater_deletion_token: 0, _id: 0 } },
-      );
-      expect(bundles.countDocuments).not.toHaveBeenCalled();
-    });
-
-    it("uses Prisma update-check queries without generic list pagination", async () => {
-      const appVersionRow = bundleToRow(
-        appVersionFastPathBundle,
-        transactionChannelId,
-      );
-      const fingerprintRow = bundleToRow(
-        fingerprintFastPathBundle,
-        transactionChannelId,
-      );
-      const bundles = {
-        count: vi.fn(async () => {
-          throw new Error("unexpected generic Prisma count");
-        }),
-        create: vi.fn(),
-        deleteMany: vi.fn(),
-        findFirst: vi.fn(),
-        findMany: vi
-          .fn()
-          .mockResolvedValueOnce([appVersionRow])
-          .mockResolvedValueOnce([appVersionRow])
-          .mockResolvedValueOnce([fingerprintRow]),
-        update: vi.fn(),
-        upsert: vi.fn(),
-      };
-      const patches = {
-        count: vi.fn(),
-        create: vi.fn(),
-        deleteMany: vi.fn(),
-        findFirst: vi.fn(),
-        findMany: vi.fn(async () => []),
-        update: vi.fn(),
-        upsert: vi.fn(),
-      };
-      const adapter = prismaAdapter({
-        prisma: { bundles, bundle_patches: patches },
-        provider: "postgresql",
-      });
-
-      await expect(
-        adapter.queries.getUpdateInfo?.({
-          _updateStrategy: "appVersion",
-          appVersion: "1.0.0",
-          bundleId: NIL_UUID,
-          platform: "ios",
-        }),
-      ).resolves.toMatchObject({
-        id: appVersionFastPathBundle.id,
-        status: "UPDATE",
-      });
-      await expect(
-        adapter.queries.getUpdateInfo?.({
-          _updateStrategy: "fingerprint",
-          bundleId: NIL_UUID,
-          fingerprintHash: "fingerprint-fast-path",
-          platform: "ios",
-        }),
-      ).resolves.toMatchObject({
-        id: fingerprintFastPathBundle.id,
-        status: "UPDATE",
-      });
-
-      expect(bundles.count).not.toHaveBeenCalled();
-      expect(bundles.findMany).toHaveBeenNthCalledWith(
-        1,
-        expect.objectContaining({
-          where: expect.objectContaining({
-            channel: "production",
-            id: { gte: NIL_UUID },
-            target_app_version: { not: null },
-          }),
-        }),
-      );
-      expect(bundles.findMany).toHaveBeenNthCalledWith(
-        2,
-        expect.objectContaining({
-          where: expect.objectContaining({
-            target_app_version: { in: ["1.0.0"] },
-          }),
-        }),
-      );
-      expect(bundles.findMany).toHaveBeenNthCalledWith(
-        3,
-        expect.objectContaining({
-          where: expect.objectContaining({
-            fingerprint_hash: "fingerprint-fast-path",
-          }),
-        }),
-      );
-      expect(patches.findMany).toHaveBeenCalledTimes(2);
-    });
-
-    it("uses Drizzle update-check queries without generic list pagination", async () => {
-      const appVersionRow = bundleToRow(
-        appVersionFastPathBundle,
-        transactionChannelId,
-      );
-      const fingerprintRow = bundleToRow(
-        fingerprintFastPathBundle,
-        transactionChannelId,
-      );
-      const tables = {
-        bundle_events: {
-          id: sql.raw("event_id"),
-        },
-        bundle_patches: {
-          bundle_id: sql.raw("bundle_id"),
-          id: sql.raw("patch_id"),
-          order_index: sql.raw("order_index"),
-        },
-        bundles: {
-          channel: sql.raw("channel"),
-          enabled: sql.raw("enabled"),
-          fingerprint_hash: sql.raw("fingerprint_hash"),
-          id: sql.raw("id"),
-          platform: sql.raw("platform"),
-          target_app_version: sql.raw("target_app_version"),
-        },
-        channels: {
-          id: sql.raw("channel_id"),
-          name: sql.raw("channel_name"),
-        },
-        client_access_keys: {
-          id: sql.raw("access_key_id"),
-        },
-      };
-      const bundleFindMany = vi
-        .fn()
-        .mockResolvedValueOnce([appVersionRow])
-        .mockResolvedValueOnce([appVersionRow])
-        .mockResolvedValueOnce([fingerprintRow]);
-      const patchFindMany = vi.fn(async () => []);
-      const db = {
-        _: { fullSchema: tables },
-        $count: vi.fn(async () => {
-          throw new Error("unexpected generic Drizzle count");
-        }),
-        delete: vi.fn(() => ({
-          where: vi.fn(async () => undefined),
-        })),
-        insert: vi.fn(),
-        query: {
-          bundle_events: { findFirst: vi.fn(), findMany: vi.fn() },
-          bundle_patches: {
-            findFirst: vi.fn(),
-            findMany: patchFindMany,
-          },
-          bundles: {
-            findFirst: vi.fn(),
-            findMany: bundleFindMany,
-          },
-          channels: { findFirst: vi.fn(), findMany: vi.fn() },
-          client_access_keys: { findFirst: vi.fn(), findMany: vi.fn() },
-        },
-        select: vi.fn(),
-        update: vi.fn(),
-      };
-      const adapter = drizzleAdapter({
-        db,
-        provider: "postgresql",
-      });
-
-      await expect(
-        adapter.queries.getUpdateInfo?.({
-          _updateStrategy: "appVersion",
-          appVersion: "1.0.0",
-          bundleId: NIL_UUID,
-          platform: "ios",
-        }),
-      ).resolves.toMatchObject({
-        id: appVersionFastPathBundle.id,
-        status: "UPDATE",
-      });
-      await expect(
-        adapter.queries.getUpdateInfo?.({
-          _updateStrategy: "fingerprint",
-          bundleId: NIL_UUID,
-          fingerprintHash: "fingerprint-fast-path",
-          platform: "ios",
-        }),
-      ).resolves.toMatchObject({
-        id: fingerprintFastPathBundle.id,
-        status: "UPDATE",
-      });
-
-      expect(db.$count).not.toHaveBeenCalled();
-      expect(bundleFindMany).toHaveBeenNthCalledWith(
-        1,
-        expect.objectContaining({
-          where: expect.anything(),
-        }),
-      );
-      const appVersionWhere = JSON.stringify(bundleFindMany.mock.calls[0]?.[0]);
-      const fingerprintWhere = JSON.stringify(
-        bundleFindMany.mock.calls[2]?.[0],
-      );
-      expect(appVersionWhere).toContain("production");
-      expect(appVersionWhere).toContain(NIL_UUID);
-      expect(fingerprintWhere).toContain("production");
-      expect(fingerprintWhere).toContain(NIL_UUID);
-      expect(fingerprintWhere).toContain("fingerprint-fast-path");
-      expect(bundleFindMany).toHaveBeenCalledTimes(3);
-      expect(patchFindMany).toHaveBeenCalledTimes(2);
-    });
-
-    it("uses MongoDB update-check queries without generic list pagination", async () => {
-      const appVersionRow = bundleToRow(
-        appVersionFastPathBundle,
-        transactionChannelId,
-      );
-      const fingerprintRow = bundleToRow(
-        fingerprintFastPathBundle,
-        transactionChannelId,
-      );
-      let bundleFindCount = 0;
-      const bundles = {
-        countDocuments: vi.fn(async () => {
-          throw new Error("unexpected generic MongoDB count");
-        }),
-        deleteMany: vi.fn(),
-        distinct: vi.fn(),
-        find: vi.fn((filter: Record<string, unknown>) => {
-          bundleFindCount += 1;
-          const targetAppVersion = filter["target_app_version"];
-          if (
-            typeof targetAppVersion === "object" &&
-            targetAppVersion !== null &&
-            "$ne" in targetAppVersion
-          ) {
-            return createMongoCursor([appVersionRow]);
-          }
-          return createMongoCursor(
-            bundleFindCount === 2 ? [appVersionRow] : [fingerprintRow],
-          );
-        }),
-        findOne: vi.fn(),
-        updateOne: vi.fn(),
-      };
-      const patches = {
-        deleteMany: vi.fn(),
-        find: vi.fn(() => createMongoCursor([])),
-        insertMany: vi.fn(),
-      };
-      const client = {
-        db: () => ({
-          collection: (name: string) => {
-            if (name === "bundle_patches") return patches;
-            return bundles;
-          },
-        }),
-      } as unknown as MongoClient;
-      const adapter = mongoAdapter({ client });
-
-      await expect(
-        adapter.queries.getUpdateInfo?.({
-          _updateStrategy: "appVersion",
-          appVersion: "1.0.0",
-          bundleId: NIL_UUID,
-          platform: "ios",
-        }),
-      ).resolves.toMatchObject({
-        id: appVersionFastPathBundle.id,
-        status: "UPDATE",
-      });
-      await expect(
-        adapter.queries.getUpdateInfo?.({
-          _updateStrategy: "fingerprint",
-          bundleId: NIL_UUID,
-          fingerprintHash: "fingerprint-fast-path",
-          platform: "ios",
-        }),
-      ).resolves.toMatchObject({
-        id: fingerprintFastPathBundle.id,
-        status: "UPDATE",
-      });
-
-      expect(bundles.countDocuments).not.toHaveBeenCalled();
-      expect(bundles.find).toHaveBeenNthCalledWith(
-        1,
-        expect.objectContaining({
-          channel: "production",
-          id: { $gte: NIL_UUID },
-          target_app_version: { $ne: null },
-        }),
-        { projection: { _hot_updater_deletion_token: 0, _id: 0 } },
-      );
-      expect(bundles.find).toHaveBeenNthCalledWith(
-        2,
-        expect.objectContaining({
-          target_app_version: { $in: ["1.0.0"] },
-        }),
-        { projection: { _hot_updater_deletion_token: 0, _id: 0 } },
-      );
-      expect(bundles.find).toHaveBeenNthCalledWith(
-        3,
-        expect.objectContaining({
-          fingerprint_hash: "fingerprint-fast-path",
-        }),
-        { projection: { _hot_updater_deletion_token: 0, _id: 0 } },
-      );
-      expect(patches.find).toHaveBeenCalledTimes(2);
     });
 
     it("commits Prisma bundle changes inside a transaction when available", async () => {
@@ -1387,6 +950,13 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         client_access_keys: {
           id: "access_key_id",
         },
+        release_catalogs: {
+          scope_key: "scope_key",
+        },
+        releases: {
+          id: "release_id",
+          scope_key: "scope_key",
+        },
       };
       const rootInsert = vi.fn(() => ({
         values: vi.fn(() => ({ execute: vi.fn(async () => undefined) })),
@@ -1422,6 +992,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
             findMany: vi.fn(),
           },
           client_access_keys: {
+            findFirst: vi.fn(),
+            findMany: vi.fn(),
+          },
+          release_catalogs: {
+            findFirst: vi.fn(),
+            findMany: vi.fn(),
+          },
+          releases: {
             findFirst: vi.fn(),
             findMany: vi.fn(),
           },
@@ -1560,7 +1138,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
   describe("getBundleById", () => {
     it("should retrieve bundle by id without Prisma validation errors", async () => {
-      const bundle: Bundle = {
+      const bundle: LegacyBundle = {
         id: "00000000-0000-0000-0000-000000000010",
         platform: "ios",
         shouldForceUpdate: false,
@@ -1596,7 +1174,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
   describe("getChannels", () => {
     it("should retrieve all unique channels without Prisma validation errors", async () => {
-      const bundles: Bundle[] = [
+      const bundles: LegacyBundle[] = [
         {
           id: "00000000-0000-0000-0000-000000000020",
           platform: "ios",
@@ -1670,7 +1248,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     });
 
     it("resolves s3:// storage URI to signed URL via s3StoragePlugin", async () => {
-      const bundle: Bundle = {
+      const bundle: LegacyBundle = {
         id: "00000000-0000-0000-0000-000000000001",
         platform: "ios",
         shouldForceUpdate: false,
@@ -1700,7 +1278,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     });
 
     it("passes through http:// URLs without plugin resolution", async () => {
-      const bundle: Bundle = {
+      const bundle: LegacyBundle = {
         id: "00000000-0000-0000-0000-000000000004",
         platform: "ios",
         shouldForceUpdate: false,
@@ -1730,7 +1308,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     });
 
     it("passes through https:// URLs without plugin resolution", async () => {
-      const bundle: Bundle = {
+      const bundle: LegacyBundle = {
         id: "00000000-0000-0000-0000-000000000005",
         platform: "ios",
         shouldForceUpdate: false,
@@ -1769,7 +1347,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     });
 
     it("works with fingerprint strategy", async () => {
-      const bundle: Bundle = {
+      const bundle: LegacyBundle = {
         id: "00000000-0000-0000-0000-000000000008",
         platform: "ios",
         shouldForceUpdate: false,
@@ -1803,7 +1381,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         "s3://test-bucket/releases/00000000-0000-0000-0000-000000000101/manifest.json";
       const nextManifestStorageUri =
         "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/manifest.json";
-      const olderBundle: Bundle = {
+      const olderBundle: LegacyBundle = {
         id: "00000000-0000-0000-0000-000000000100",
         platform: "ios",
         shouldForceUpdate: false,
@@ -1817,7 +1395,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         targetAppVersion: "1.0.0",
         fingerprintHash: null,
       };
-      const currentBundle: Bundle = {
+      const currentBundle: LegacyBundle = {
         id: "00000000-0000-0000-0000-000000000101",
         platform: "ios",
         shouldForceUpdate: false,
@@ -1835,7 +1413,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         manifestFileHash: "sig:manifest-current",
         manifestStorageUri: currentManifestStorageUri,
       };
-      const nextBundle: Bundle = {
+      const nextBundle: LegacyBundle = {
         id: "00000000-0000-0000-0000-000000000102",
         platform: "ios",
         shouldForceUpdate: false,
@@ -1955,7 +1533,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     it("propagates manifest storage read failures for createHotUpdater", async () => {
       const nextManifestStorageUri =
         "s3://test-bucket/releases/00000000-0000-0000-0000-000000000109/manifest.json";
-      const nextBundle: Bundle = {
+      const nextBundle: LegacyBundle = {
         id: "00000000-0000-0000-0000-000000000109",
         platform: "ios",
         shouldForceUpdate: false,

@@ -5,6 +5,7 @@ let SHARED_EDGE_CACHE_CONTROL = "";
 
 beforeAll(async () => {
   globalThis.HotUpdater = {
+    AUTHORITY_ID: "aws.test-authority",
     CLOUDFRONT_KEY_PAIR_ID: "KTEST",
     DYNAMODB_REGION: "us-east-1",
     DYNAMODB_TABLE_NAME: "hot-updater-metadata",

@@ -9,18 +9,13 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
-  Fingerprint,
-  Package,
   Trash2,
 } from "lucide-react";
 import { Fragment, useState } from "react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
-import { ChannelBadge } from "@/components/ChannelBadge";
-import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
 import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { PlatformIcon } from "@/components/PlatformIcon";
-import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,43 +49,6 @@ type CursorPaginationInfo = PaginationInfo & {
   nextCursor?: string | null;
   previousCursor?: string | null;
 };
-
-function MobileStatusBadge({
-  enabled,
-  trueLabel,
-  falseLabel,
-  falseIcon = "x",
-  trueTone = "success",
-}: {
-  enabled: boolean;
-  trueLabel: string;
-  falseLabel: string;
-  falseIcon?: "minus" | "x";
-  trueTone?: "success" | "warning";
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium",
-        enabled
-          ? trueTone === "warning"
-            ? "bg-amber-500/14 text-amber-700 dark:text-amber-300"
-            : "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
-          : falseIcon === "minus"
-            ? "bg-muted text-muted-foreground"
-            : "bg-red-500/12 text-red-700 dark:text-red-300",
-      )}
-    >
-      <EnabledStatusIcon
-        enabled={enabled}
-        falseIcon={falseIcon}
-        colorMode="inherit"
-        className="h-3.5 w-3.5"
-      />
-      <span>{enabled ? trueLabel : falseLabel}</span>
-    </span>
-  );
-}
 
 export function BundlesTable({
   bundles,
@@ -185,8 +143,6 @@ export function BundlesTable({
               bundles.map((bundle) => {
                 const isExpanded = bundle.id === expandedBundleId;
                 const panelId = `bundle-lineage-panel-${bundle.id}`;
-                const rolloutCohortCount = bundle.rolloutCohortCount ?? 1000;
-                const rolloutPercentage = rolloutCohortCount / 10;
                 const patchCount = patchCountsByBundleId[bundle.id];
 
                 return (
@@ -229,9 +185,10 @@ export function BundlesTable({
                             />
                           </div>
                         </div>
-                        <div className="shrink-0">
-                          <ChannelBadge channel={bundle.channel} />
-                        </div>
+                        <PlatformIcon
+                          platform={bundle.platform}
+                          className="h-5 w-5 shrink-0"
+                        />
                       </div>
 
                       <div className="grid grid-cols-2 gap-3 text-sm">
@@ -259,14 +216,6 @@ export function BundlesTable({
                         </div>
                         <div className="rounded-md bg-muted/40 p-3">
                           <div className="mb-1 text-[11px] font-medium uppercase text-muted-foreground/70">
-                            Rollout
-                          </div>
-                          <RolloutPercentageBadge
-                            percentage={rolloutPercentage}
-                          />
-                        </div>
-                        <div className="rounded-md bg-muted/40 p-3">
-                          <div className="mb-1 text-[11px] font-medium uppercase text-muted-foreground/70">
                             Patches
                           </div>
                           <div className="text-xs text-foreground">
@@ -279,63 +228,28 @@ export function BundlesTable({
                                 : "-"}
                           </div>
                         </div>
-                        <div className="rounded-md bg-muted/40 p-3">
-                          <div className="mb-1 text-[11px] font-medium uppercase text-muted-foreground/70">
-                            Status
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <MobileStatusBadge
-                              enabled={bundle.enabled}
-                              trueLabel="Enabled"
-                              falseLabel="Disabled"
-                            />
-                            {bundle.shouldForceUpdate ? (
-                              <MobileStatusBadge
-                                enabled={bundle.shouldForceUpdate}
-                                trueLabel="Force update"
-                                falseLabel="Optional"
-                                falseIcon="minus"
-                                trueTone="warning"
-                              />
-                            ) : null}
-                          </div>
-                        </div>
                       </div>
 
                       <div className="grid gap-2 rounded-md border border-border/70 bg-background/80 p-3 text-sm">
                         <div className="flex items-center justify-between gap-3">
-                          <span className="text-muted-foreground">Target</span>
+                          <span className="text-muted-foreground">
+                            File hash
+                          </span>
                           <div className="min-w-0 text-right">
-                            {bundle.fingerprintHash ? (
-                              <span
-                                translate="no"
-                                className="inline-flex min-w-0 items-start gap-2 font-mono text-xs"
-                              >
-                                <Fingerprint className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                <HashValueDisplay
-                                  value={bundle.fingerprintHash}
-                                  maxLength={12}
-                                />
-                              </span>
-                            ) : bundle.targetAppVersion ? (
-                              <span
-                                translate="no"
-                                className="inline-flex items-center gap-2 text-xs"
-                              >
-                                <Package className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                {bundle.targetAppVersion}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">
-                                -
-                              </span>
-                            )}
+                            <HashValueDisplay
+                              value={bundle.fileHash}
+                              maxLength={12}
+                            />
                           </div>
                         </div>
                         <div className="flex items-start justify-between gap-3">
-                          <span className="text-muted-foreground">Message</span>
-                          <span className="min-w-0 text-right text-xs text-foreground/80">
-                            {bundle.message || "-"}
+                          <span className="text-muted-foreground">Storage</span>
+                          <span
+                            translate="no"
+                            className="max-w-[70%] truncate text-right font-mono text-xs text-foreground/80"
+                            title={bundle.storageUri}
+                          >
+                            {bundle.storageUri}
                           </span>
                         </div>
                       </div>

@@ -10,7 +10,12 @@ import type {
   HotUpdaterVersionedSchema,
 } from "./types";
 
-type DefaultValue = boolean | number | string | Record<string, unknown>;
+type DefaultValue =
+  | boolean
+  | number
+  | string
+  | Record<string, unknown>
+  | readonly unknown[];
 
 export type HotUpdaterColumnDsl = {
   readonly dsl: "column";
@@ -113,6 +118,9 @@ export const json = (ormName: string): HotUpdaterColumnDsl =>
 
 export const stringColumn = (ormName: string): HotUpdaterColumnDsl =>
   column(ormName, "string");
+
+export const largeString = (ormName: string): HotUpdaterColumnDsl =>
+  column(ormName, "large-string");
 
 export const index = (
   name: string,

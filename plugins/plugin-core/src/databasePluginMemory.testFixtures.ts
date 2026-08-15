@@ -8,6 +8,8 @@ import type {
   DatabaseBundleQueryWhere,
   DatabaseCommit,
   DatabasePlugin,
+  ReleaseCatalogRow,
+  ReleaseRow,
 } from "./types";
 
 const matchesBundleWhere = (
@@ -15,29 +17,7 @@ const matchesBundleWhere = (
   where: DatabaseBundleQueryWhere | undefined,
 ): boolean => {
   if (!where) return true;
-  if (where.channel !== undefined && row.channel !== where.channel)
-    return false;
   if (where.platform !== undefined && row.platform !== where.platform)
-    return false;
-  if (where.enabled !== undefined && row.enabled !== where.enabled)
-    return false;
-  if (
-    where.targetAppVersion !== undefined &&
-    row.target_app_version !== where.targetAppVersion
-  )
-    return false;
-  if (
-    where.targetAppVersionIn !== undefined &&
-    (row.target_app_version === null ||
-      !where.targetAppVersionIn.includes(row.target_app_version))
-  )
-    return false;
-  if (where.targetAppVersionNotNull && row.target_app_version === null)
-    return false;
-  if (
-    where.fingerprintHash !== undefined &&
-    row.fingerprint_hash !== where.fingerprintHash
-  )
     return false;
   const id = where.id;
   if (!id) return true;
@@ -58,13 +38,43 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
   const bundles = new Map<string, BundleRow>();
   const patches = new Map<string, BundlePatchRow>();
   const events = new Map<string, BundleEventRow>();
+  const releases = new Map<string, ReleaseRow>();
+  const releaseCatalogs = new Map<string, ReleaseCatalogRow>();
   const channels = new Map<string, ChannelRow>();
   const accessKeys = new Map<string, ClientAccessKeyRow>();
 
   const commit = async (input: DatabaseCommit) => {
+    for (const expectation of input.expectations ?? []) {
+      const actualVersion =
+        expectation.model === "releases"
+          ? (releases.get(expectation.id)?.revision ?? null)
+          : (releaseCatalogs.get(expectation.scopeKey)?.generation ?? null);
+      const expectedVersion =
+        expectation.model === "releases"
+          ? expectation.revision
+          : expectation.generation;
+      if (actualVersion !== expectedVersion) {
+        return {
+          committed: false,
+          conflict: {
+            actualVersion,
+            changeIndex: -1,
+            expectedVersion,
+            key:
+              expectation.model === "releases"
+                ? expectation.id
+                : expectation.scopeKey,
+            model: expectation.model,
+            reason: "version_conflict",
+          },
+        } as const;
+      }
+    }
     const nextBundles = new Map(bundles);
     const nextPatches = new Map(patches);
     const nextEvents = new Map(events);
+    const nextReleases = new Map(releases);
+    const nextReleaseCatalogs = new Map(releaseCatalogs);
     const nextChannels = new Map(channels);
     const nextAccessKeys = new Map(accessKeys);
     for (const [changeIndex, change] of input.changes.entries()) {
@@ -85,6 +95,16 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
               ...change.update,
             });
           } else {
+            if (
+              [...nextReleases.values()].some(
+                ({ bundle_id }) => bundle_id === change.where.id,
+              )
+            ) {
+              return {
+                committed: false,
+                conflict: { changeIndex, reason: "referenced" },
+              } as const;
+            }
             if (!nextBundles.delete(change.where.id)) {
               return {
                 committed: false,
@@ -100,6 +120,34 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
               }
             }
           }
+          break;
+        case "releases":
+          if (change.operation === "insert") {
+            nextReleases.set(change.row.id, structuredClone(change.row));
+          } else if (change.operation === "update") {
+            const current = nextReleases.get(change.where.id);
+            if (!current) {
+              return {
+                committed: false,
+                conflict: { changeIndex, reason: "not_found" },
+              } as const;
+            }
+            nextReleases.set(change.where.id, {
+              ...current,
+              ...change.update,
+            });
+          } else if (!nextReleases.delete(change.where.id)) {
+            return {
+              committed: false,
+              conflict: { changeIndex, reason: "not_found" },
+            } as const;
+          }
+          break;
+        case "releaseCatalogs":
+          nextReleaseCatalogs.set(
+            change.row.scope_key,
+            structuredClone(change.row),
+          );
           break;
         case "bundlePatches":
           if (change.operation === "insert") {
@@ -122,7 +170,7 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
             }
           } else {
             if (
-              [...nextBundles.values()].some(
+              [...nextReleases.values()].some(
                 ({ channel_id }) => channel_id === change.where.id,
               )
             ) {
@@ -169,6 +217,8 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
     replaceMap(bundles, nextBundles);
     replaceMap(patches, nextPatches);
     replaceMap(events, nextEvents);
+    replaceMap(releases, nextReleases);
+    replaceMap(releaseCatalogs, nextReleaseCatalogs);
     replaceMap(channels, nextChannels);
     replaceMap(accessKeys, nextAccessKeys);
     return { committed: true } as const;
@@ -211,6 +261,63 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
           );
         },
       },
+      releases: {
+        async findById(id) {
+          return structuredClone(releases.get(id) ?? null);
+        },
+        async findMany(input) {
+          return structuredClone(
+            [...releases.values()]
+              .filter(
+                (row) =>
+                  (input.beforeReleaseId === undefined ||
+                    row.id < input.beforeReleaseId) &&
+                  (input.bundleId === undefined ||
+                    row.bundle_id === input.bundleId) &&
+                  (input.channelId === undefined ||
+                    row.channel_id === input.channelId) &&
+                  (input.enabled === undefined ||
+                    row.enabled === input.enabled) &&
+                  (input.platform === undefined ||
+                    row.platform === input.platform),
+              )
+              .sort((left, right) => right.id.localeCompare(left.id))
+              .slice(0, input.limit),
+          );
+        },
+        async findManyByScope(input) {
+          return structuredClone(
+            [...releases.values()]
+              .filter(
+                (row) =>
+                  row.scope_key === input.scopeKey &&
+                  (input.afterReleaseId === undefined ||
+                    row.id > input.afterReleaseId),
+              )
+              .sort((left, right) => left.id.localeCompare(right.id))
+              .slice(0, input.limit),
+          );
+        },
+      },
+      releaseCatalogs: {
+        async findByScopeKey(scopeKey) {
+          return structuredClone(releaseCatalogs.get(scopeKey) ?? null);
+        },
+        async findMany(input) {
+          return structuredClone(
+            [...releaseCatalogs.values()]
+              .filter(
+                (row) =>
+                  input.afterScopeKey === undefined ||
+                  row.scope_key > input.afterScopeKey,
+              )
+              .sort((left, right) =>
+                left.scope_key.localeCompare(right.scope_key),
+              )
+              .slice(0, input.limit),
+          );
+        },
+      },
       channels: {
         async insert({ row }) {
           const existing = [...channels.values()].find(
@@ -236,7 +343,7 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
             return { deleted: false, reason: "not_found" } as const;
           }
           if (
-            [...bundles.values()].some(({ channel_id }) => channel_id === id)
+            [...releases.values()].some(({ channel_id }) => channel_id === id)
           ) {
             return { deleted: false, reason: "not_empty" } as const;
           }
@@ -293,7 +400,6 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
         },
       },
     },
-    queries: {},
     commit,
   });
 };

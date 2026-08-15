@@ -16,15 +16,9 @@ const productionChannelId = "00000000-0000-0000-0000-000000000100";
 const bundle = (sequence: number): Bundle => ({
   id: `00000000-0000-0000-0000-${sequence.toString().padStart(12, "0")}`,
   platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
   fileHash: `hash-${sequence}`,
   gitCommitHash: null,
-  message: null,
-  channel: "production",
   storageUri: `storage://bundle-${sequence}.zip`,
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
   metadata: {},
 });
 
@@ -254,14 +248,14 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
     await crud.update({
       model: "bundles",
       where: [{ field: "id", operator: "eq", value: target.id }],
-      update: { message: "updated during delete" },
+      update: { metadata: { app_version: "updated-during-delete" } },
     });
     paused.release();
     await expect(deletion).rejects.toBeDefined();
     paused.remove();
 
     await expect(database.getBundleById(target.id)).resolves.toMatchObject({
-      message: "updated during delete",
+      metadata: { app_version: "updated-during-delete" },
     });
     const stored = await fixture.client.send(
       new GetCommand({

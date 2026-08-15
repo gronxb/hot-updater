@@ -7,18 +7,10 @@ import { getBundleChildCounts, getBundleChildren } from "./getBundleChildren";
 
 const createBundle = (overrides: Partial<Bundle>): Bundle => ({
   id: "0195a408-8f13-7d9b-8df4-123456789abc",
-  channel: "production",
   platform: "ios",
-  enabled: true,
-  shouldForceUpdate: false,
   fileHash: "bundle-hash",
   storageUri: "s3://bucket/bundle.zip",
   gitCommitHash: "deadbeef",
-  message: "Bundle",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
-  rolloutCohortCount: 1000,
-  targetCohorts: [],
   ...overrides,
 });
 
@@ -42,7 +34,6 @@ function createDatabaseClient(bundles: Bundle[]) {
         totalPages: 1,
       },
     })),
-    getUpdateInfo: vi.fn(),
     insertBundle: vi.fn(),
     updateBundleById: vi.fn(),
     deleteBundleById: vi.fn(),

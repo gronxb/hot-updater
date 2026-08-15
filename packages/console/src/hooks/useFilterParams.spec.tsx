@@ -19,9 +19,8 @@ describe("useFilterParams", () => {
     mockUseSearch.mockReset();
   });
 
-  it("treats explicit undefined channel updates as clears", () => {
+  it("resets pagination when the platform filter changes", () => {
     mockUseSearch.mockReturnValue({
-      channel: "stable",
       platform: "ios",
       page: 3,
       after: "bundle-020",
@@ -31,15 +30,13 @@ describe("useFilterParams", () => {
     const { result } = renderHook(() => useFilterParams());
 
     act(() => {
-      result.current.setFilters({ channel: undefined });
+      result.current.setFilters({ platform: "android" });
     });
 
     expect(mockNavigate).toHaveBeenCalledWith({
-      to: "/",
+      to: "/artifacts",
       search: {
-        channel: undefined,
-        platform: "ios",
-        targetAppVersion: undefined,
+        platform: "android",
         page: undefined,
         after: undefined,
         before: undefined,
@@ -51,7 +48,6 @@ describe("useFilterParams", () => {
 
   it("preserves omitted filters while allowing cursor params to be cleared", () => {
     mockUseSearch.mockReturnValue({
-      channel: "stable",
       platform: "android",
       page: 4,
       after: "bundle-020",
@@ -65,11 +61,9 @@ describe("useFilterParams", () => {
     });
 
     expect(mockNavigate).toHaveBeenCalledWith({
-      to: "/",
+      to: "/artifacts",
       search: {
-        channel: "stable",
         platform: "android",
-        targetAppVersion: undefined,
         page: 4,
         after: undefined,
         before: undefined,
@@ -79,9 +73,8 @@ describe("useFilterParams", () => {
     });
   });
 
-  it("sets bundleId in the URL and resets cursors when the channel changes", () => {
+  it("sets bundleId in the URL and resets cursors when platform changes", () => {
     mockUseSearch.mockReturnValue({
-      channel: "stable",
       platform: "ios",
       page: 5,
       after: "bundle-040",
@@ -92,15 +85,13 @@ describe("useFilterParams", () => {
     const { result } = renderHook(() => useFilterParams());
 
     act(() => {
-      result.current.setBundleId("bundle-123", { channel: "beta" });
+      result.current.setBundleId("bundle-123", { platform: "android" });
     });
 
     expect(mockNavigate).toHaveBeenCalledWith({
-      to: "/",
+      to: "/artifacts",
       search: {
-        channel: "beta",
-        platform: "ios",
-        targetAppVersion: undefined,
+        platform: "android",
         page: undefined,
         after: undefined,
         before: undefined,
@@ -113,7 +104,6 @@ describe("useFilterParams", () => {
 
   it("omits page 1 from the URL while keeping higher pages", () => {
     mockUseSearch.mockReturnValue({
-      channel: "stable",
       platform: "ios",
       page: 2,
       after: "bundle-040",
@@ -132,45 +122,12 @@ describe("useFilterParams", () => {
     });
 
     expect(mockNavigate).toHaveBeenCalledWith({
-      to: "/",
+      to: "/artifacts",
       search: {
-        channel: "stable",
         platform: "ios",
-        targetAppVersion: undefined,
         page: undefined,
         after: undefined,
         before: "bundle-020",
-        bundleId: undefined,
-        expandedBundleId: undefined,
-      },
-    });
-  });
-
-  it("sets the target app version and resets pagination", () => {
-    mockUseSearch.mockReturnValue({
-      channel: "stable",
-      platform: "ios",
-      targetAppVersion: undefined,
-      page: 3,
-      after: "bundle-020",
-      before: undefined,
-    });
-
-    const { result } = renderHook(() => useFilterParams());
-
-    act(() => {
-      result.current.setFilters({ targetAppVersion: "1.2.3" });
-    });
-
-    expect(mockNavigate).toHaveBeenCalledWith({
-      to: "/",
-      search: {
-        channel: "stable",
-        platform: "ios",
-        targetAppVersion: "1.2.3",
-        page: undefined,
-        after: undefined,
-        before: undefined,
         bundleId: undefined,
         expandedBundleId: undefined,
       },

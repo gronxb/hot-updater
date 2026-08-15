@@ -48,6 +48,7 @@ const catalog: CatalogOverview = {
   latestReportedBundles: [],
   configuredRollouts: [
     {
+      releaseId: "release-a",
       bundleId: "bundle-a",
       configuredPercentage: 25,
       trackedInstallations: 3,

@@ -30,10 +30,21 @@ export const hotUpdater = createHotUpdater({
   features: {
     updateCheck: true,
     bundles: true,
+    analytics: { queryAccess: "public" },
   },
 });
 
 // Cleanup function for graceful shutdown
 export async function closeDatabase() {
   await prisma.$disconnect();
+}
+
+export async function resetDecisionFixtures() {
+  await prisma.$transaction([
+    prisma.bundle_patches.deleteMany(),
+    prisma.release_catalogs.deleteMany(),
+    prisma.releases.deleteMany(),
+    prisma.bundles.deleteMany(),
+    prisma.channels.deleteMany(),
+  ]);
 }

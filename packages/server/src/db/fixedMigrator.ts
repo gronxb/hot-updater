@@ -12,11 +12,14 @@ import {
   inferLegacyCoreSchemaVersion,
   isCurrentSchemaVersion,
 } from "./fixedMigratorShared";
+import { createReleaseCatalogBackfillSql } from "./releaseCatalogBackfill";
 import { hotUpdaterSchema } from "./schema/registry";
 import { createTableSql } from "./schema/sql";
 import {
   createSchemaMigrationSql,
   SQLITE_RESTORE_BUNDLES_SCHEMA_MARKER,
+  SQLITE_RESTORE_V100_BUNDLES_SCHEMA_MARKER,
+  V100_RELEASE_CATALOG_BACKFILL_MARKER,
 } from "./schema/sqlMigrations";
 import {
   createSqlCreateOperations,
@@ -61,7 +64,10 @@ const expandSqliteUserSchemaRestore = async (
   db: QueryExecutorProvider,
   statements: readonly string[],
 ): Promise<readonly string[]> => {
-  if (!statements.includes(SQLITE_RESTORE_BUNDLES_SCHEMA_MARKER)) {
+  if (
+    !statements.includes(SQLITE_RESTORE_BUNDLES_SCHEMA_MARKER) &&
+    !statements.includes(SQLITE_RESTORE_V100_BUNDLES_SCHEMA_MARKER)
+  ) {
     return statements;
   }
   const officialIndexes = new Set(
@@ -95,11 +101,30 @@ const expandSqliteUserSchemaRestore = async (
       ? []
       : [row.sql];
   });
+  const removedV100Columns = [
+    "should_force_update",
+    "enabled",
+    "message",
+    "channel",
+    "channel_id",
+    "target_app_version",
+    "fingerprint_hash",
+    "rollout_cohort_count",
+    "target_cohorts",
+  ];
+  const v100UserSchema = userSchema.filter((statement) => {
+    const normalized = statement.toLowerCase();
+    return !removedV100Columns.some((column) =>
+      new RegExp(`\\b${column}\\b`).test(normalized),
+    );
+  });
 
   return statements.flatMap((statement) =>
     statement === SQLITE_RESTORE_BUNDLES_SCHEMA_MARKER
       ? userSchema
-      : [statement],
+      : statement === SQLITE_RESTORE_V100_BUNDLES_SCHEMA_MARKER
+        ? v100UserSchema
+        : [statement],
   );
 };
 
@@ -185,10 +210,43 @@ export const createKyselyMigrator = ({
             provider,
             relationMode,
           );
+    const statementsWithBackfill = rawMigrationStatements.includes(
+      V100_RELEASE_CATALOG_BACKFILL_MARKER,
+    )
+      ? rawMigrationStatements.flatMap((statement) =>
+          statement === V100_RELEASE_CATALOG_BACKFILL_MARKER ? [] : [statement],
+        )
+      : rawMigrationStatements;
+    const requiresReleaseCatalogBackfill = rawMigrationStatements.includes(
+      V100_RELEASE_CATALOG_BACKFILL_MARKER,
+    );
+    let backfillStatements: readonly string[] = [];
+    if (requiresReleaseCatalogBackfill) {
+      if (currentVersion === undefined) {
+        throw new Error("Release Catalog backfill requires a source version.");
+      }
+      backfillStatements = await createReleaseCatalogBackfillSql({
+        authorityId: options.authorityId,
+        db,
+        provider,
+        sourceVersion: currentVersion,
+      });
+    }
+    const markerIndex = rawMigrationStatements.indexOf(
+      V100_RELEASE_CATALOG_BACKFILL_MARKER,
+    );
+    const migrationWithBackfill =
+      markerIndex < 0
+        ? statementsWithBackfill
+        : [
+            ...rawMigrationStatements.slice(0, markerIndex),
+            ...backfillStatements,
+            ...rawMigrationStatements.slice(markerIndex + 1),
+          ];
     const migrationStatements =
       provider === "sqlite"
-        ? await expandSqliteUserSchemaRestore(db, rawMigrationStatements)
-        : rawMigrationStatements;
+        ? await expandSqliteUserSchemaRestore(db, migrationWithBackfill)
+        : migrationWithBackfill;
     const statements =
       currentVersion === undefined
         ? [...createTableSql(provider, relationMode), settingsStatement]

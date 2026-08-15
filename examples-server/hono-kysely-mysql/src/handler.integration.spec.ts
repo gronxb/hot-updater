@@ -1,11 +1,12 @@
 import path from "path";
 import { fileURLToPath } from "url";
 
-import type { Bundle } from "@hot-updater/core";
+import type { Bundle, LegacyBundle } from "@hot-updater/core";
 import { createHotUpdater, type HotUpdaterAPI } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { createMigrator } from "@hot-updater/server/db";
 import {
+  deleteLegacyBundle,
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
@@ -36,6 +37,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
   let baseUrl: string;
   let hotUpdater: HotUpdaterAPI;
   let closeDatabase: (() => Promise<void>) | null = null;
+  let resetDecisionFixtures: () => Promise<void>;
   const port = 13579;
 
   beforeAll(async () => {
@@ -63,6 +65,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
     hotUpdater = db.hotUpdater;
     closeDatabase = db.closeDatabase;
+    resetDecisionFixtures = db.resetDecisionFixtures;
 
     serverProcess = spawnServerProcess({
       serverCommand: ["npx", "tsx", "src/index.ts"],
@@ -89,6 +92,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
   ) => {
     return createGetUpdateInfo({
       baseUrl: `${baseUrl}/hot-updater`,
+      resetDecisionFixtures,
     })(bundles, options);
   };
 
@@ -97,12 +101,12 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
   setupBundleMethodsTestSuite({
     getBundleById: (id: string) => hotUpdater.getBundleById(id),
     getChannels: () => hotUpdater.getChannels(),
-    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
+    insertBundle: (bundle: LegacyBundle) => hotUpdater.insertBundle(bundle),
     getBundles: (options) => hotUpdater.getBundles(options),
     updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
       hotUpdater.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId: string) =>
-      hotUpdater.deleteBundleById(bundleId),
+      deleteLegacyBundle(hotUpdater, bundleId),
   });
 
   it("normalizes bundle channels while migrating from v0.31", async () => {
@@ -134,14 +138,48 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     });
 
     try {
-      await sql
-        .raw(`
-        create table bundles (
-          id varchar(255) primary key,
-          channel varchar(255) not null
-        )
-      `)
-        .execute(db);
+      for (const statement of [
+        `create table bundles (
+          id char(36) primary key not null,
+          platform text not null,
+          should_force_update boolean not null,
+          enabled boolean not null,
+          file_hash text not null,
+          git_commit_hash text,
+          message text,
+          channel text not null,
+          storage_uri text not null,
+          target_app_version text,
+          fingerprint_hash text,
+          metadata json not null,
+          rollout_cohort_count integer not null default 1000,
+          target_cohorts json,
+          manifest_storage_uri text,
+          manifest_file_hash text,
+          asset_base_storage_uri text
+        )`,
+        "create index bundles_target_app_version_idx on bundles(target_app_version(255))",
+        "create index bundles_fingerprint_hash_idx on bundles(fingerprint_hash(255))",
+        "create index bundles_channel_idx on bundles(channel(255))",
+        "create index bundles_rollout_idx on bundles(rollout_cohort_count)",
+        "alter table bundles add constraint check_version_or_fingerprint check ((target_app_version is not null) or (fingerprint_hash is not null))",
+        "alter table bundles add constraint bundles_rollout_cohort_count_check check (rollout_cohort_count >= 0 and rollout_cohort_count <= 1000)",
+        `create table bundle_patches (
+          id varchar(255) primary key not null,
+          bundle_id char(36) not null,
+          base_bundle_id char(36) not null,
+          base_file_hash text not null,
+          patch_file_hash text not null,
+          patch_storage_uri text not null,
+          order_index integer not null default 0
+        )`,
+        "create index bundle_patches_bundle_id_idx on bundle_patches(bundle_id)",
+        "create index bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id)",
+        "alter table bundle_patches add constraint bundle_patches_bundle_id_fk foreign key (bundle_id) references bundles(id) on update restrict on delete cascade",
+        "alter table bundle_patches add constraint bundle_patches_base_bundle_id_fk foreign key (base_bundle_id) references bundles(id) on update restrict on delete cascade",
+      ]) {
+        await sql.raw(statement).execute(db);
+      }
       await sql
         .raw(`
         create table private_hot_updater_settings (
@@ -152,7 +190,13 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
         .execute(db);
       await sql
         .raw(
-          "insert into bundles (id, channel) values ('bundle-1', 'production')",
+          `insert into bundles (
+            id, platform, should_force_update, enabled, file_hash, channel,
+            storage_uri, target_app_version, metadata
+          ) values (
+            '00000000-0000-0000-0000-000000000001', 'ios', false, true,
+            'bundle-hash', 'production', 'storage://bundle-1', '1.0.0', '{}'
+          )`,
         )
         .execute(db);
       await sql
@@ -171,30 +215,43 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       });
       await migration.execute();
 
-      expect(await migrator.getVersion()).toBe("0.38.0");
-      const migrated = await sql<{
-        readonly channel: string;
+      expect(await migrator.getVersion()).toBe("1.0.0");
+      const releases = await sql<{
+        readonly bundle_id: string;
         readonly channel_id: string;
+        readonly target_app_version: string;
       }>`
-        select channel, channel_id from bundles
+        select bundle_id, channel_id, target_app_version from releases
       `.execute(db);
-      expect(migrated.rows).toEqual([
-        { channel: "production", channel_id: expect.any(String) },
+      expect(releases.rows).toEqual([
+        {
+          bundle_id: "00000000-0000-0000-0000-000000000001",
+          channel_id: expect.any(String),
+          target_app_version: "1.0.0",
+        },
       ]);
       const channels = await sql<{
         readonly id: string;
         readonly name: string;
       }>`select id, name from channels`.execute(db);
       expect(channels.rows).toEqual([
-        { id: migrated.rows[0]?.channel_id, name: "production" },
+        { id: releases.rows[0]?.channel_id, name: "production" },
       ]);
+      const catalogs = await sql<{
+        readonly generation: number;
+      }>`select generation from release_catalogs`.execute(db);
+      expect(catalogs.rows).toEqual([{ generation: 1 }]);
       const finalColumns = await sql<{ readonly name: string }>`
         select column_name as name
         from information_schema.columns
         where table_schema = ${database} and table_name = 'bundles'
       `.execute(db);
-      expect(finalColumns.rows.map(({ name }) => name)).toContain("channel");
-      expect(finalColumns.rows.map(({ name }) => name)).toContain("channel_id");
+      expect(finalColumns.rows.map(({ name }) => name)).not.toContain(
+        "channel",
+      );
+      expect(finalColumns.rows.map(({ name }) => name)).not.toContain(
+        "channel_id",
+      );
     } finally {
       await db.destroy();
       await admin.query(`drop database if exists \`${database}\``);
@@ -457,7 +514,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
         inserted: false,
       });
       for (const id of [baseId, ownerId]) {
-        const row = createAdapterBundleRow(id, resolvedChannel.row);
+        const row = createAdapterBundleRow(id);
         await expect(
           adapter.commit({
             changes: [{ model: "bundles", operation: "insert", row }],
@@ -538,25 +595,13 @@ interface SettingsDatabase {
   };
 }
 
-const createAdapterBundleRow = (
-  id: string,
-  channel: { readonly id: string; readonly name: string },
-) => ({
+const createAdapterBundleRow = (id: string) => ({
   id,
   platform: "ios" as const,
-  should_force_update: false,
-  enabled: true,
   file_hash: `${id}-hash`,
   git_commit_hash: null,
-  message: null,
-  channel: channel.name,
-  channel_id: channel.id,
   storage_uri: `storage://${id}`,
-  target_app_version: "1.0.0",
-  fingerprint_hash: null,
   metadata: {},
-  rollout_cohort_count: 1000,
-  target_cohorts: null,
   manifest_storage_uri: null,
   manifest_file_hash: null,
   asset_base_storage_uri: null,

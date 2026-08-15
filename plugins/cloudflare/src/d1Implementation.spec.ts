@@ -20,7 +20,7 @@ it("guards every write and reports the missing change index", async () => {
         model: "bundles",
         operation: "update",
         where: { id: "bundle-1" },
-        update: { message: "first" },
+        update: { metadata: { app_version: "1.0.0" } },
       },
       {
         model: "clientAccessKeys",
@@ -49,6 +49,50 @@ it("guards every write and reports the missing change index", async () => {
       ]),
     );
   }
+});
+
+it("aborts an atomic commit when a Release expectation changes after preflight", async () => {
+  let queryCount = 0;
+  const implementation = createD1Implementation({
+    async query(sql) {
+      expect(sql).toContain("SELECT revision FROM releases");
+      queryCount += 1;
+      return [{ revision: queryCount }];
+    },
+    async batch(statements) {
+      expect(statements[0]?.sql).toContain(
+        "HOT_UPDATER_COMMIT_EXPECTATION_CONFLICT",
+      );
+      expect(
+        statements.some(({ sql }) => sql.includes("UPDATE releases")),
+      ).toBe(true);
+      throw new Error("D1_ERROR: malformed JSON");
+    },
+  });
+
+  await expect(
+    implementation.commit?.({
+      changes: [
+        {
+          model: "releases",
+          operation: "update",
+          where: { id: "release-1" },
+          update: { revision: 2 },
+        },
+      ],
+      expectations: [{ id: "release-1", model: "releases", revision: 1 }],
+    }),
+  ).resolves.toEqual({
+    committed: false,
+    conflict: {
+      actualVersion: 2,
+      changeIndex: -1,
+      expectedVersion: 1,
+      key: "release-1",
+      model: "releases",
+      reason: "version_conflict",
+    },
+  });
 });
 
 it("maps idempotent Channel inserts to the normalized table", async () => {
@@ -106,7 +150,7 @@ it("deletes an empty Channel and distinguishes missing and referenced rows", asy
   const results = [
     [[{ id: "empty" }], [], [{ id: "empty" }]],
     [[], [], []],
-    [[{ id: "active" }], [{ id: "bundle" }], []],
+    [[{ id: "active" }], [{ id: "release" }], []],
   ];
   const implementation = createD1Implementation({
     query: () => Promise.reject(new Error("unexpected standalone query")),

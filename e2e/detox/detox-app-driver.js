@@ -15,8 +15,11 @@ const SCREEN_STATE_TEXT_INPUTS = {
 };
 
 const ACTION_RESULT_FIELDS = {
+  "action-apply-captured-update": "updateActionResult",
   "action-apply-cohort-input": "cohortActionResult",
+  "action-capture-current-channel-update": "updateActionResult",
   "action-install-current-channel-update": "updateActionResult",
+  "action-install-fingerprint-update": "updateActionResult",
   "action-install-runtime-channel-update": "updateActionResult",
   "action-reset-runtime-channel": "channelActionResult",
   "action-restore-initial-cohort": "cohortActionResult",
@@ -77,7 +80,7 @@ class DetoxAppDriver {
     });
   }
 
-  async launch(stage) {
+  async launch(stage, options = {}) {
     await this.runStage(stage, async () => {
       const launchState = await this.controlClient.postJson(
         `${stage}: prepare launch`,
@@ -94,7 +97,7 @@ class DetoxAppDriver {
         }
         await launchApp({ newInstance: true });
       } catch (error) {
-        if (!isCrashLaunch) throw error;
+        if (!isCrashLaunch && options.allowDisconnect !== true) throw error;
       }
     });
   }
@@ -248,7 +251,11 @@ class DetoxAppDriver {
 
   async reattachAfterExternalLaunch(pathName) {
     if (!isAndroidRun()) return;
-    if (pathName !== "/e2e/wait-for-crash-recovery") return;
+    if (
+      pathName !== "/e2e/jobs/wait-for-android-restart" &&
+      pathName !== "/e2e/wait-for-crash-recovery"
+    )
+      return;
     await launchApp({ newInstance: false });
   }
 

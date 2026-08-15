@@ -86,20 +86,12 @@ const YOUNG_ORPHAN_HASH = "d".repeat(64);
 
 const liveBundle: Bundle = {
   assetBaseStorageUri: "s3://bucket/assets",
-  channel: "production",
-  enabled: true,
   fileHash: "archive-hash",
-  fingerprintHash: null,
   gitCommitHash: null,
   id: LIVE_BUNDLE_ID,
   manifestStorageUri: `s3://bucket/${LIVE_BUNDLE_ID}/manifest.json`,
-  message: null,
   platform: "ios",
-  rolloutCohortCount: 1000,
-  shouldForceUpdate: false,
   storageUri: `s3://bucket/${LIVE_BUNDLE_ID}/bundle.zip`,
-  targetAppVersion: "1.0.0",
-  targetCohorts: null,
 };
 
 const object = (

@@ -862,6 +862,12 @@ export const handleDoctor = async ({
       p.log.success("Infrastructure is up to date.");
     }
 
+    if (infrastructure.catalogMode) {
+      p.log.info(
+        `Release catalog: ${infrastructure.catalogMode}. ${infrastructure.catalogModeNote}`,
+      );
+    }
+
     if (infrastructure.remediation) {
       const recoveryLines = infrastructure.remediation.commands.map(
         (command, index) =>

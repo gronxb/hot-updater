@@ -7,6 +7,7 @@ const RUNTIME_SCREEN_URLS = {
   runtimeInitialCohort: "hotupdaterexample://e2e/runtime-initial-cohort",
   runtimeLargeAsset: "hotupdaterexample://e2e/runtime-large-asset",
   runtimeMarker: "hotupdaterexample://e2e/runtime-marker",
+  runtimeReleaseState: "hotupdaterexample://e2e/runtime-release-state",
 };
 
 const RUNTIME_TEST_ID_SCREEN_PATHS = {
@@ -18,6 +19,7 @@ const RUNTIME_TEST_ID_SCREEN_PATHS = {
   "runtime-initial-cohort": "runtimeInitialCohort",
   "runtime-large-e2e-asset": "runtimeLargeAsset",
   "runtime-scenario-marker": "runtimeMarker",
+  "runtime-release-state": "runtimeReleaseState",
 };
 
 module.exports = { RUNTIME_SCREEN_URLS, RUNTIME_TEST_ID_SCREEN_PATHS };

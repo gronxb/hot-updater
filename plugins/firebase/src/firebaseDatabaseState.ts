@@ -4,6 +4,8 @@ import type {
   BundleEventRow,
   ClientAccessKeyRow,
   ChannelRow,
+  ReleaseCatalogRow,
+  ReleaseRow,
 } from "@hot-updater/plugin-core";
 import type {
   DatabaseImplementationResult,
@@ -21,6 +23,8 @@ export interface FirebaseDatabaseSnapshot {
   readonly bundleEvents: Map<string, BundleEventRow>;
   readonly channels: Map<string, ChannelRow>;
   readonly clientAccessKeys: Map<string, ClientAccessKeyRow>;
+  readonly releaseCatalogs: Map<string, ReleaseCatalogRow>;
+  readonly releases: Map<string, ReleaseRow>;
 }
 
 export class FirebaseDatabaseConstraintError extends Error {
@@ -39,6 +43,8 @@ export const cloneFirebaseDatabaseSnapshot = (
   bundleEvents: new Map(snapshot.bundleEvents),
   channels: new Map(snapshot.channels),
   clientAccessKeys: new Map(snapshot.clientAccessKeys),
+  releaseCatalogs: new Map(snapshot.releaseCatalogs),
+  releases: new Map(snapshot.releases),
 });
 
 const requireUnique = (
@@ -64,19 +70,6 @@ const distinctCount = <TRow extends object>(
   return seen.size;
 };
 
-const requireBundleChannel = (
-  snapshot: FirebaseDatabaseSnapshot,
-  row: Pick<BundleRow, "channel" | "channel_id">,
-): void => {
-  const channel = snapshot.channels.get(row.channel_id);
-  if (channel === undefined) {
-    throw new FirebaseDatabaseConstraintError("bundles.channel_id.foreign-key");
-  }
-  if (channel.name !== row.channel) {
-    throw new FirebaseDatabaseConstraintError("bundles.channel.dual-write");
-  }
-};
-
 export const createFirebaseDatabaseState = (
   snapshot: FirebaseDatabaseSnapshot,
 ): TransactionDatabasePluginImplementation => ({
@@ -84,15 +77,6 @@ export const createFirebaseDatabaseState = (
     switch (input.model) {
       case "bundles":
         requireUnique(snapshot.bundles, input.data.id, input.model);
-        requireBundleChannel(snapshot, input.data);
-        if (
-          input.data.target_app_version === null &&
-          input.data.fingerprint_hash === null
-        ) {
-          throw new FirebaseDatabaseConstraintError(
-            "bundles.version-or-fingerprint.check",
-          );
-        }
         snapshot.bundles.set(input.data.id, input.data);
         return input.data;
       case "bundle_patches":
@@ -112,6 +96,31 @@ export const createFirebaseDatabaseState = (
       case "bundle_events":
         requireUnique(snapshot.bundleEvents, input.data.id, input.model);
         snapshot.bundleEvents.set(input.data.id, input.data);
+        return input.data;
+      case "releases":
+        requireUnique(snapshot.releases, input.data.id, input.model);
+        if (!snapshot.channels.has(input.data.channel_id)) {
+          throw new FirebaseDatabaseConstraintError(
+            "releases.channel_id.foreign-key",
+          );
+        }
+        if (
+          input.data.bundle_id !== null &&
+          !snapshot.bundles.has(input.data.bundle_id)
+        ) {
+          throw new FirebaseDatabaseConstraintError(
+            "releases.bundle_id.foreign-key",
+          );
+        }
+        snapshot.releases.set(input.data.id, input.data);
+        return input.data;
+      case "release_catalogs":
+        if (snapshot.releaseCatalogs.has(input.data.scope_key)) {
+          throw new FirebaseDatabaseConstraintError(
+            "release_catalogs.scope_key.unique",
+          );
+        }
+        snapshot.releaseCatalogs.set(input.data.scope_key, input.data);
         return input.data;
       case "channels": {
         const existing = [...snapshot.channels.values()].find(
@@ -141,7 +150,7 @@ export const createFirebaseDatabaseState = (
       }
     }
   },
-  async update(input): Promise<Partial<BundleRow | ClientAccessKeyRow> | null> {
+  async update(input): Promise<DatabaseImplementationResult | null> {
     if (input.model === "client_access_keys") {
       const current = [...snapshot.clientAccessKeys.values()].find((row) =>
         matchesFirebaseDatabaseWhere(row, input.where),
@@ -151,20 +160,29 @@ export const createFirebaseDatabaseState = (
       snapshot.clientAccessKeys.set(current.id, updated);
       return updated;
     }
+    if (input.model === "releases") {
+      const current = [...snapshot.releases.values()].find((row) =>
+        matchesFirebaseDatabaseWhere<"releases">(row, input.where),
+      );
+      if (!current) return null;
+      const updated = { ...current, ...input.update };
+      snapshot.releases.set(current.id, updated);
+      return updated;
+    }
+    if (input.model === "release_catalogs") {
+      const current = [...snapshot.releaseCatalogs.values()].find((row) =>
+        matchesFirebaseDatabaseWhere<"release_catalogs">(row, input.where),
+      );
+      if (!current) return null;
+      const updated = { ...current, ...input.update };
+      snapshot.releaseCatalogs.set(current.scope_key, updated);
+      return updated;
+    }
     const current = [...snapshot.bundles.values()].find((row) =>
       matchesFirebaseDatabaseWhere(row, input.where),
     );
     if (!current) return null;
     const updated = { ...current, ...input.update };
-    if (
-      updated.target_app_version === null &&
-      updated.fingerprint_hash === null
-    ) {
-      throw new FirebaseDatabaseConstraintError(
-        "bundles.version-or-fingerprint.check",
-      );
-    }
-    requireBundleChannel(snapshot, updated);
     snapshot.bundles.set(current.id, updated);
     return updated;
   },
@@ -181,6 +199,14 @@ export const createFirebaseDatabaseState = (
       for (const row of snapshot.bundlePatches.values()) {
         if (matchesFirebaseDatabaseWhere(row, input.where)) {
           snapshot.bundlePatches.delete(row.id);
+        }
+      }
+      return;
+    }
+    if (input.model === "releases") {
+      for (const row of snapshot.releases.values()) {
+        if (matchesFirebaseDatabaseWhere<"releases">(row, input.where)) {
+          snapshot.releases.delete(row.id);
         }
       }
       return;
@@ -216,6 +242,13 @@ export const createFirebaseDatabaseState = (
           ),
           input.distinct as readonly string[] | undefined,
         );
+      case "releases":
+        return distinctCount(
+          [...snapshot.releases.values()].filter((row) =>
+            matchesFirebaseDatabaseWhere<"releases">(row, input.where),
+          ),
+          input.distinct as readonly string[] | undefined,
+        );
     }
   },
   async findOne(input): Promise<DatabaseImplementationResult | null> {
@@ -244,6 +277,18 @@ export const createFirebaseDatabaseState = (
             matchesFirebaseDatabaseWhere(row, input.where),
           ) ?? null
         );
+      case "releases":
+        return (
+          [...snapshot.releases.values()].find((row) =>
+            matchesFirebaseDatabaseWhere<"releases">(row, input.where),
+          ) ?? null
+        );
+      case "release_catalogs":
+        return (
+          [...snapshot.releaseCatalogs.values()].find((row) =>
+            matchesFirebaseDatabaseWhere<"release_catalogs">(row, input.where),
+          ) ?? null
+        );
     }
   },
   async findMany(input): Promise<readonly DatabaseImplementationResult[]> {
@@ -268,6 +313,16 @@ export const createFirebaseDatabaseState = (
       case "client_access_keys":
         return queryFirebaseDatabaseRows(
           [...snapshot.clientAccessKeys.values()],
+          input,
+        );
+      case "releases":
+        return queryFirebaseDatabaseRows<"releases">(
+          [...snapshot.releases.values()],
+          input,
+        );
+      case "release_catalogs":
+        return queryFirebaseDatabaseRows<"release_catalogs">(
+          [...snapshot.releaseCatalogs.values()],
           input,
         );
     }

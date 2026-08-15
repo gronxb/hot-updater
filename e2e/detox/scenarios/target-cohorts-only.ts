@@ -17,6 +17,9 @@ export const targetCohortsOnlyScenario: DetoxScenarioDefinition = {
       },
       {
         saveResultAs: "bundleId",
+        saveResultFieldsAs: {
+          releaseId: "releaseId",
+        },
       },
     );
     await app.launch("launch target cohort app");
@@ -34,7 +37,7 @@ export const targetCohortsOnlyScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert target cohort action result",
       "update-action-result",
-      "current-channel -> installed $bundleId",
+      "current-channel -> installed Release $releaseId / Bundle $bundleId",
       { exactText: true },
     );
     await app.control(

@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { brotliDecompressSync } from "node:zlib";
 
-import type { Bundle, DatabaseClient } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/plugin-core";
 import { createStoragePlugin } from "@hot-updater/plugin-core";
 import JSZip from "jszip";
 import * as tar from "tar";
@@ -15,23 +15,14 @@ import type { ConfigResponse } from "./loadConfig";
 import {
   createCopiedBundleArchive,
   LEGACY_BUNDLE_ERROR,
-  promoteBundle,
 } from "./promoteBundle";
 
 const baseBundle: Bundle = {
   id: "0195a408-8f13-7d9b-8df4-123456789abc",
-  channel: "stable",
   platform: "ios",
-  enabled: true,
-  shouldForceUpdate: false,
   fileHash: "abc123",
   storageUri: "https://example.com/bundle.zip",
   gitCommitHash: "deadbeef",
-  message: "Initial message",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
-  rolloutCohortCount: 1000,
-  targetCohorts: [],
 };
 
 const config = {
@@ -206,43 +197,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("promoteBundle", () => {
-  it("updates the existing bundle through DatabaseClient when moving channels", async () => {
-    const movedBundle = { ...baseBundle, channel: "beta" };
-    const databaseClient = {
-      insertBundle: vi.fn(),
-      deleteBundleById: vi.fn(),
-      getBundleById: vi
-        .fn()
-        .mockResolvedValueOnce(baseBundle)
-        .mockResolvedValueOnce(movedBundle),
-      getBundles: vi.fn(),
-      getChannels: vi.fn(),
-      insertChannel: vi.fn(),
-      deleteChannel: vi.fn(),
-      getUpdateInfo: vi.fn(),
-      updateBundleById: vi.fn(),
-      mutate: vi.fn(),
-    } satisfies DatabaseClient;
-
-    const result = await promoteBundle(
-      {
-        action: "move",
-        bundleId: baseBundle.id,
-        targetChannel: "beta",
-      },
-      { config, databaseClient, storagePlugin: null },
-    );
-
-    expect(databaseClient.updateBundleById).toHaveBeenCalledWith(
-      baseBundle.id,
-      { channel: "beta" },
-    );
-    expect(databaseClient.insertBundle).not.toHaveBeenCalled();
-    expect(result).toEqual(movedBundle);
-  });
-});
-
 describe("createCopiedBundleArchive", () => {
   it.each([
     ["zip", readZipManifest],
@@ -318,11 +272,9 @@ describe("createCopiedBundleArchive", () => {
             config,
             nextBundleId: "bundle-copy-id",
             storagePlugin,
-            targetChannel: "beta",
           });
 
         expect(copiedBundle.id).toBe("bundle-copy-id");
-        expect(copiedBundle.channel).toBe("beta");
         expect(copiedBundle.storageUri).toBe(
           `s3://bucket/bundles/bundle-copy-id/bundle.${format}`,
         );
@@ -397,7 +349,6 @@ describe("createCopiedBundleArchive", () => {
           config,
           nextBundleId: "bundle-copy-id",
           storagePlugin,
-          targetChannel: "beta",
         }),
       ).rejects.toThrow(LEGACY_BUNDLE_ERROR);
     } finally {
@@ -461,7 +412,6 @@ describe("createCopiedBundleArchive", () => {
         config,
         nextBundleId: "bundle-copy-id",
         storagePlugin,
-        targetChannel: "beta",
       });
 
       expect(uploadedStorageUris).toEqual(
@@ -483,90 +433,6 @@ describe("createCopiedBundleArchive", () => {
           await fs.readFile(uploadedBundlePath as string),
         ).toString("utf8"),
       ).toBe("hermes bytecode");
-    } finally {
-      await cleanup();
-    }
-  });
-
-  it("cleans up manifest artifacts when insertBundle fails after copy upload", async () => {
-    const { archivePath, cleanup } = await createSourceArchive("zip", {
-      "assets/logo.png": "logo",
-      "index.js": "console.log('hello');",
-      "manifest.json": JSON.stringify({
-        bundleId: baseBundle.id,
-        assets: {
-          "assets/logo.png": {
-            fileHash: "logo-hash",
-          },
-          "index.js": {
-            fileHash: "bundle-hash",
-          },
-        },
-      }),
-    });
-    const deleteFromStorage = vi.fn(async () => ({ deleted: true as const }));
-    const getFromStorage = vi.fn(async () => ({
-      response: new Response(await fs.readFile(archivePath)),
-    }));
-    const storagePlugin = createStoragePlugin({
-      name: "mockStorage",
-      protocol: "https",
-      delete: deleteFromStorage,
-      exists: vi.fn(async () => ({ exists: false })),
-      get: getFromStorage,
-      put: vi.fn(async ({ key }) => {
-        return {
-          storageUri: `https://storage.example/${key.replaceAll("//", "/")}`,
-        };
-      }),
-    });
-    const databaseClient = {
-      insertBundle: vi.fn(async () => {
-        throw new Error("insert failed");
-      }),
-      deleteBundleById: vi.fn(),
-      getBundleById: vi.fn(async () => baseBundle),
-      getBundles: vi.fn(),
-      getChannels: vi.fn(),
-      insertChannel: vi.fn(),
-      deleteChannel: vi.fn(),
-      getUpdateInfo: vi.fn(),
-      updateBundleById: vi.fn(),
-      mutate: vi.fn(),
-    } satisfies DatabaseClient;
-
-    const fetchDirectly = vi.fn();
-    vi.stubGlobal("fetch", fetchDirectly);
-
-    try {
-      await expect(
-        promoteBundle(
-          {
-            action: "copy",
-            bundleId: baseBundle.id,
-            nextBundleId: "bundle-copy-id",
-            targetChannel: "beta",
-          },
-          {
-            config,
-            databaseClient,
-            storagePlugin,
-          },
-        ),
-      ).rejects.toThrow("insert failed");
-
-      expect(getFromStorage).toHaveBeenCalledWith({
-        storageUri: baseBundle.storageUri,
-      });
-      expect(fetchDirectly).not.toHaveBeenCalled();
-      expect(deleteFromStorage).toHaveBeenCalledWith({
-        storageUri: "https://storage.example/bundles/bundle-copy-id/bundle.zip",
-      });
-      expect(deleteFromStorage).toHaveBeenCalledWith({
-        storageUri:
-          "https://storage.example/bundles/bundle-copy-id/manifest.json",
-      });
-      expect(deleteFromStorage).toHaveBeenCalledTimes(2);
     } finally {
       await cleanup();
     }

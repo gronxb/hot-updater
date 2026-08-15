@@ -68,6 +68,54 @@ export const modelValidators: ValidatorMap = {
     order_index: (value) =>
       typeof value === "number" && Number.isInteger(value) && value >= 0,
   },
+  releases: {
+    id: (value) => typeof value === "string" && value.length > 0,
+    revision: (value) =>
+      typeof value === "number" && Number.isSafeInteger(value) && value >= 1,
+    scope_key: (value) => typeof value === "string" && value.length > 0,
+    channel_id: isChannelText,
+    platform: (value) => value === "ios" || value === "android",
+    kind: (value) => value === "BUNDLE" || value === "EMBEDDED",
+    bundle_id: (value) => value === null || typeof value === "string",
+    strategy: (value) => value === "APP_VERSION" || value === "FINGERPRINT",
+    target_app_version: (value) => value === null || typeof value === "string",
+    fingerprint_hash: (value) => value === null || typeof value === "string",
+    enabled: (value) => typeof value === "boolean",
+    should_force_update: (value) => typeof value === "boolean",
+    message: (value) => value === null || typeof value === "string",
+    rollout_cohort_count: (value) =>
+      typeof value === "number" &&
+      Number.isInteger(value) &&
+      value >= 0 &&
+      value <= 1000,
+    target_cohorts: (value) =>
+      Array.isArray(value) && value.every((item) => typeof item === "string"),
+    operation: (value) =>
+      value === "DEPLOY" || value === "PROMOTE" || value === "ROLLBACK",
+    source_release_id: (value) => value === null || typeof value === "string",
+    created_at_ms: (value) =>
+      typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
+    updated_at_ms: (value) =>
+      typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
+  },
+  release_catalogs: {
+    scope_key: (value) => typeof value === "string" && value.length > 0,
+    authority_id: (value) => typeof value === "string" && value.length > 0,
+    strategy: (value) => value === "APP_VERSION" || value === "FINGERPRINT",
+    channel_id: isChannelText,
+    channel_key: (value) => typeof value === "string" && value.length > 0,
+    platform: (value) => value === "ios" || value === "android",
+    fingerprint_hash: (value) => value === null || typeof value === "string",
+    generation: (value) =>
+      typeof value === "number" && Number.isSafeInteger(value) && value >= 1,
+    payload: (value) => typeof value === "string",
+    catalog_hash: (value) => typeof value === "string" && value.length > 0,
+    byte_size: (value) =>
+      typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
+    is_tombstone: (value) => typeof value === "boolean",
+    updated_at_ms: (value) =>
+      typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
+  },
   channels: {
     id: isChannelText,
     name: isChannelText,
@@ -77,12 +125,15 @@ export const modelValidators: ValidatorMap = {
     type: (value) =>
       value === "UPDATE_APPLIED" ||
       value === "RECOVERED" ||
+      value === "RELEASE_ADOPTED" ||
       value === "UNCHANGED",
     install_id: (value) => typeof value === "string",
     user_id: (value) => value === null || typeof value === "string",
     username: (value) => value === null || typeof value === "string",
     from_bundle_id: (value) => value === null || typeof value === "string",
-    to_bundle_id: (value) => typeof value === "string",
+    from_release_id: (value) => value === null || typeof value === "string",
+    to_release_id: (value) => value === null || typeof value === "string",
+    to_bundle_id: (value) => value === null || typeof value === "string",
     platform: (value) => value === "ios" || value === "android",
     app_version: (value) => typeof value === "string",
     channel: (value) => typeof value === "string",
@@ -124,6 +175,16 @@ export const stringFields = new Set<string>([
   "base_file_hash",
   "patch_file_hash",
   "patch_storage_uri",
+  "scope_key",
+  "authority_id",
+  "channel_key",
+  "kind",
+  "bundle_id",
+  "strategy",
+  "operation",
+  "source_release_id",
+  "payload",
+  "catalog_hash",
   "type",
   "install_id",
   "user_id",
@@ -143,6 +204,10 @@ export const stringFields = new Set<string>([
 export const numberFields = new Set<string>([
   "rollout_cohort_count",
   "order_index",
+  "revision",
+  "generation",
+  "byte_size",
+  "updated_at_ms",
   "received_at_ms",
   "created_at_ms",
   "revoked_at_ms",
@@ -151,6 +216,7 @@ export const numberFields = new Set<string>([
 export const booleanFields = new Set<string>([
   "should_force_update",
   "enabled",
+  "is_tombstone",
 ]);
 
 export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
@@ -179,6 +245,40 @@ export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
     "patch_storage_uri",
     "order_index",
   ]),
+  releases: new Set([
+    "id",
+    "revision",
+    "scope_key",
+    "channel_id",
+    "platform",
+    "kind",
+    "bundle_id",
+    "strategy",
+    "target_app_version",
+    "fingerprint_hash",
+    "enabled",
+    "should_force_update",
+    "message",
+    "rollout_cohort_count",
+    "operation",
+    "source_release_id",
+    "created_at_ms",
+    "updated_at_ms",
+  ]),
+  release_catalogs: new Set([
+    "scope_key",
+    "authority_id",
+    "strategy",
+    "channel_id",
+    "channel_key",
+    "platform",
+    "fingerprint_hash",
+    "generation",
+    "catalog_hash",
+    "byte_size",
+    "is_tombstone",
+    "updated_at_ms",
+  ]),
   channels: new Set(["id", "name"]),
   bundle_events: new Set([
     "id",
@@ -187,6 +287,8 @@ export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
     "user_id",
     "username",
     "from_bundle_id",
+    "from_release_id",
+    "to_release_id",
     "to_bundle_id",
     "platform",
     "app_version",

@@ -4,6 +4,8 @@ import type {
   BundleRow,
   ChannelRow,
   ClientAccessKeyRow,
+  ReleaseCatalogRow,
+  ReleaseRow,
 } from "@hot-updater/plugin-core";
 
 export type MongoTestRow =
@@ -11,7 +13,9 @@ export type MongoTestRow =
   | BundlePatchRow
   | BundleRow
   | ChannelRow
-  | ClientAccessKeyRow;
+  | ClientAccessKeyRow
+  | ReleaseRow
+  | ReleaseCatalogRow;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;

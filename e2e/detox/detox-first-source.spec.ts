@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -27,16 +28,29 @@ const expectedScenarioModuleFiles = [
   "bspatch-consecutive-diff-ota.ts",
   "bspatch-disabled-chain-rollback.ts",
   "bspatch-manifest-diff-fallback.ts",
+  "catalog-only-no-update.ts",
+  "crash-then-next-safe-update.ts",
   "disabled-bundle-rollback-to-builtin.ts",
   "disabled-bundle-rollback-to-previous-ota.ts",
+  "explicit-embedded-receipt.ts",
+  "failed-download-same-generation-retry.ts",
+  "fingerprint-initial-install.ts",
   "force-update-auto-reload.ts",
+  "forward-release-rollback-old-bundle.ts",
+  "metadata-v1-migration.ts",
   "multi-asset-replacement.ts",
   "numeric-cohort-rollout.ts",
   "release-ota-recovery.ts",
+  "republished-crashed-bundle-skipped.ts",
+  "runtime-channel-crash-restore.ts",
   "runtime-channel-switch-reset.ts",
+  "same-bundle-release-adoption.ts",
+  "slow-old-artifact-after-newer-install.ts",
+  "stale-catalog-after-newer-generation.ts",
   "target-cohorts-only.ts",
   "target-cohorts-rollout-interaction.ts",
   "targeted-cohort-switchback.ts",
+  "ten-crash-history-safe-bundle.ts",
   "types.ts",
 ] as const;
 
@@ -47,7 +61,10 @@ function trackedE2eFiles(): readonly string[] {
   });
 
   expect(result.status).toBe(0);
-  return result.stdout.split("\n").filter(Boolean);
+  return result.stdout
+    .split("\n")
+    .filter(Boolean)
+    .filter((file) => existsSync(path.join(repoDir, file)));
 }
 
 describe("Detox-first source shape", () => {
@@ -137,12 +154,29 @@ describe("Detox-first source shape", () => {
       "HOT_UPDATER_E2E_UPDATE_CHECK_EXCLUSION_ATTEMPTS",
     );
     expect(controlServerSource).toContain("update check visibility pending");
-    expect(controlServerSource).toContain("update check exclusion pending");
+    expect(controlServerSource).toContain("Release catalog exclusion pending");
     expect(controlServerSource).not.toMatch(
-      /waitForUpdateCheckVisibilityUrl[\s\S]*index < 360/,
+      /waitForReleaseCatalogVisibility[\s\S]*index < 360/,
     );
     expect(controlServerSource).not.toMatch(
-      /waitForUpdateCheckExcludesBundle[\s\S]*index < 240/,
+      /waitForReleaseCatalogExcludesRelease[\s\S]*index < 240/,
+    );
+  });
+
+  it("probes the selector stored by the deployed Release catalog", async () => {
+    const controlServerSource = await fs.readFile(controlServerPath, "utf8");
+
+    expect(controlServerSource).toMatch(
+      /args\.catalog\.strategy === "FINGERPRINT"[\s\S]{0,400}fingerprintHash: args\.catalog\.fingerprint_hash/,
+    );
+    expect(controlServerSource).toMatch(
+      /waitForReleaseCatalogVisibility\(\{[\s\S]{0,120}catalog: deployed\.catalog/,
+    );
+    expect(controlServerSource).toMatch(
+      /waitForReleaseCatalogExcludesRelease\(\{[\s\S]{0,120}catalog: result\.catalog/,
+    );
+    expect(controlServerSource).toMatch(
+      /waitForReleaseCatalogVisibility\(\{[\s\S]{0,120}catalog: created\.catalog/,
     );
   });
 });

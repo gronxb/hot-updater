@@ -6,6 +6,7 @@ import type {
   BundleRow,
   ChannelRow,
   ClientAccessKeyRow,
+  ReleaseRow,
 } from "@hot-updater/plugin-core";
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { PGliteDialect } from "kysely-pglite-dialect";
@@ -39,7 +40,7 @@ setupDatabasePluginTestSuite({
   createPlugin: () => postgres({ dialect: new PGliteDialect(getClient()) }),
   reset: async () => {
     await getClient().exec(
-      "DELETE FROM bundle_events; DELETE FROM client_access_keys; DELETE FROM bundle_patches; DELETE FROM bundles; DELETE FROM channels;",
+      "DELETE FROM bundle_events; DELETE FROM client_access_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
     );
   },
   dispose: async (plugin) => {
@@ -63,25 +64,41 @@ const createPostgresTestPlugin = async () => {
 
 const channelFixture = (name: string, id: string): ChannelRow => ({ id, name });
 
-const bundleFixture = (channel: ChannelRow): BundleRow => ({
+const bundleFixture = (): BundleRow => ({
   id: "00000000-0000-0000-0000-000000000701",
   platform: "ios",
-  should_force_update: false,
-  enabled: true,
   file_hash: "file-hash",
   git_commit_hash: null,
-  message: null,
-  channel: channel.name,
-  channel_id: channel.id,
   storage_uri: "storage://bundles/701.zip",
-  target_app_version: "1.0.0",
-  fingerprint_hash: null,
   metadata: {},
-  rollout_cohort_count: 1000,
-  target_cohorts: null,
   manifest_storage_uri: null,
   manifest_file_hash: null,
   asset_base_storage_uri: null,
+});
+
+const releaseFixture = (
+  channel: ChannelRow,
+  bundle: BundleRow,
+): ReleaseRow => ({
+  id: "00000000-0000-0000-0000-000000000702",
+  revision: 1,
+  scope_key: `v1:test:${channel.name}:ios:app-version`,
+  channel_id: channel.id,
+  platform: bundle.platform,
+  kind: "BUNDLE",
+  bundle_id: bundle.id,
+  strategy: "APP_VERSION",
+  target_app_version: "1.0.0",
+  fingerprint_hash: null,
+  enabled: true,
+  should_force_update: false,
+  message: null,
+  rollout_cohort_count: 1000,
+  target_cohorts: [],
+  operation: "DEPLOY",
+  source_release_id: null,
+  created_at_ms: 100,
+  updated_at_ms: 100,
 });
 
 const accessKeyFixture = (): ClientAccessKeyRow => ({
@@ -140,7 +157,7 @@ describe("PostgreSQL channel model", () => {
         row: channel,
         onConflict: "returnExisting",
       });
-      const bundle = bundleFixture(channel);
+      const bundle = bundleFixture();
       await plugin.commit({
         changes: [{ model: "bundles", operation: "insert", row: bundle }],
       });
@@ -186,13 +203,14 @@ describe("PostgreSQL channel model", () => {
     }
   });
 
-  it("atomically refuses to delete a channel referenced by a bundle", async () => {
+  it("atomically refuses to delete a channel referenced by a Release", async () => {
     const { plugin } = await createPostgresTestPlugin();
     const channel = channelFixture(
       "active",
       "00000000-0000-0000-0000-000000000004",
     );
-    const bundle = bundleFixture(channel);
+    const bundle = bundleFixture();
+    const release = releaseFixture(channel, bundle);
 
     try {
       await plugin.models.channels.insert({
@@ -200,7 +218,10 @@ describe("PostgreSQL channel model", () => {
         onConflict: "returnExisting",
       });
       await plugin.commit({
-        changes: [{ model: "bundles", operation: "insert", row: bundle }],
+        changes: [
+          { model: "bundles", operation: "insert", row: bundle },
+          { model: "releases", operation: "insert", row: release },
+        ],
       });
 
       await expect(
@@ -210,9 +231,9 @@ describe("PostgreSQL channel model", () => {
         plugin.commit({
           changes: [
             {
-              model: "bundles",
+              model: "releases",
               operation: "update",
-              where: { id: bundle.id },
+              where: { id: release.id },
               update: { enabled: false },
             },
             {
@@ -226,9 +247,9 @@ describe("PostgreSQL channel model", () => {
         committed: false,
         conflict: { changeIndex: 1, reason: "referenced" },
       });
-      await expect(plugin.models.bundles.findById(bundle.id)).resolves.toEqual(
-        bundle,
-      );
+      await expect(
+        plugin.models.releases.findById(release.id),
+      ).resolves.toEqual(release);
       await expect(plugin.models.channels.list({})).resolves.toEqual({
         channels: [channel],
       });

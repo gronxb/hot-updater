@@ -1,46 +1,78 @@
-import type { Bundle } from "@hot-updater/plugin-core";
+import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import { createAnalyticsOverview } from "./analytics-overview";
 
 const createBundle = (overrides: Partial<Bundle>): Bundle => ({
   id: "bundle-a",
-  channel: "production",
   platform: "ios",
-  enabled: true,
-  shouldForceUpdate: false,
   fileHash: "hash",
   storageUri: "storage://bundle.zip",
   gitCommitHash: null,
-  message: null,
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
-  rolloutCohortCount: 1000,
   ...overrides,
 });
 
 const bundles = [
-  createBundle({ id: "bundle-a", rolloutCohortCount: 1000 }),
+  createBundle({ id: "bundle-a" }),
   createBundle({
     id: "bundle-b",
     platform: "android",
-    targetAppVersion: null,
-    fingerprintHash: "fp-b",
-    rolloutCohortCount: 250,
   }),
-  createBundle({
-    id: "bundle-c",
-    channel: "beta",
-    targetAppVersion: "1.1.0",
-    rolloutCohortCount: null,
-  }),
+  createBundle({ id: "bundle-c" }),
   createBundle({
     id: "bundle-zero",
-    channel: "beta",
     platform: "android",
-    targetAppVersion: "2.0.0",
-    rolloutCohortCount: 0,
   }),
+] as const;
+
+const createRelease = (
+  bundle: Bundle,
+  overrides: Partial<ReleaseRow> = {},
+): ReleaseRow => ({
+  id: `release-${bundle.id.slice("bundle-".length)}`,
+  revision: 1,
+  scope_key: `scope-${bundle.id}`,
+  channel_id: "channel-production",
+  platform: bundle.platform,
+  kind: "BUNDLE",
+  bundle_id: bundle.id,
+  strategy: "APP_VERSION",
+  target_app_version: "1.0.0",
+  fingerprint_hash: null,
+  enabled: true,
+  should_force_update: false,
+  message: null,
+  rollout_cohort_count: 1000,
+  target_cohorts: [],
+  operation: "DEPLOY",
+  source_release_id: null,
+  created_at_ms: 1,
+  updated_at_ms: 1,
+  ...overrides,
+});
+
+const releases = [
+  createRelease(bundles[0]),
+  createRelease(bundles[1], {
+    strategy: "FINGERPRINT",
+    target_app_version: null,
+    fingerprint_hash: "fp-b",
+    rollout_cohort_count: 250,
+  }),
+  createRelease(bundles[2], {
+    channel_id: "channel-beta",
+    target_app_version: "1.1.0",
+  }),
+  createRelease(bundles[3], {
+    channel_id: "channel-beta",
+    target_app_version: "2.0.0",
+    rollout_cohort_count: 0,
+  }),
+] as const;
+
+const channels = [
+  { id: "channel-production", name: "production" },
+  { id: "channel-beta", name: "beta" },
 ] as const;
 
 describe("createAnalyticsOverview", () => {
@@ -54,7 +86,12 @@ describe("createAnalyticsOverview", () => {
     ] as const;
 
     // When
-    const overview = createAnalyticsOverview(bundles, latestRows);
+    const overview = createAnalyticsOverview(
+      bundles,
+      releases,
+      channels,
+      latestRows,
+    );
 
     // Then
     expect(overview.trackedInstallations).toBe(4);
@@ -91,8 +128,13 @@ describe("createAnalyticsOverview", () => {
     ] as const;
 
     // When
-    const forward = createAnalyticsOverview(bundles, rows);
-    const reverse = createAnalyticsOverview(bundles, [...rows].reverse());
+    const forward = createAnalyticsOverview(bundles, releases, channels, rows);
+    const reverse = createAnalyticsOverview(
+      bundles,
+      releases,
+      channels,
+      [...rows].reverse(),
+    );
 
     // Then
     expect(
@@ -107,7 +149,12 @@ describe("createAnalyticsOverview", () => {
     const latestRows: readonly [] = [];
 
     // When
-    const overview = createAnalyticsOverview(bundles, latestRows);
+    const overview = createAnalyticsOverview(
+      bundles,
+      releases,
+      channels,
+      latestRows,
+    );
 
     // Then
     expect(overview).toMatchObject({

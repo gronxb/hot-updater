@@ -113,6 +113,12 @@ export default App;
 
 \*Either `baseURL` or `resolver` must be provided (mutually exclusive)
 
+Protocol-v2 custom resolvers implement `fetchReleaseCatalog` and
+`resolveArtifact`. Declare `catalogCachePartition` only when the catalog
+transport uses a stable shared-cache partition; otherwise keep catalog
+responses private/no-store. The default resolver partitions shared catalog
+responses by `x-api-key`.
+
 ### Automatic Mode Options
 
 The following options are available in automatic mode:

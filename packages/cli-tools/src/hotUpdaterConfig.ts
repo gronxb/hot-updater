@@ -40,11 +40,13 @@ export type CreateHotUpdaterConfigScaffoldOptions = {
   extraImports?: ImportInfo[];
   helperStatements?: ManagedHelperStatement[];
   updateStrategy?: "appVersion" | "fingerprint";
+  authorityIdInitializer?: string;
 };
 
 export type CreateHotUpdaterConfigScaffoldFromBuilderOptions = {
   helperStatements?: ManagedHelperStatement[];
   updateStrategy?: "appVersion" | "fingerprint";
+  authorityIdInitializer?: string;
 };
 
 export type HotUpdaterConfigScaffold = {
@@ -64,6 +66,7 @@ export type HotUpdaterConfigScaffold = {
   };
   helperStatements: ManagedHelperStatement[];
   updateStrategy: string;
+  authorityIdInitializer?: string;
 };
 
 export type WriteHotUpdaterConfigResult = {
@@ -616,6 +619,26 @@ const updateManagedObject = (
     });
   }
 
+  const nextAuthority = findManagedProperty(
+    next.objectExpression,
+    "authorityId",
+  );
+  if (nextAuthority) {
+    const existingAuthority = findManagedProperty(
+      existing.objectExpression,
+      "authorityId",
+    );
+    if (existingAuthority) {
+      propertyEdits.push({
+        start: existingAuthority.value.start - objectStart,
+        end: existingAuthority.value.end - objectStart,
+        text: getNodeText(next.source, nextAuthority.value),
+      });
+    } else {
+      missingPropertyTexts.push(getNodeText(next.source, nextAuthority));
+    }
+  }
+
   let mergedText = objectText;
   for (const edit of propertyEdits.sort(
     (left, right) => right.start - left.start,
@@ -847,6 +870,7 @@ export const createHotUpdaterConfigScaffold = ({
   extraImports = [],
   helperStatements = [],
   updateStrategy = "appVersion",
+  authorityIdInitializer,
 }: CreateHotUpdaterConfigScaffoldOptions): HotUpdaterConfigScaffold => {
   const intermediateCode = helperStatements
     .map((statement) => statement.code.trim())
@@ -869,6 +893,7 @@ export const createHotUpdaterConfigScaffold = ({
   return createHotUpdaterConfigScaffoldFromBuilder(builder, {
     helperStatements,
     updateStrategy,
+    authorityIdInitializer,
   });
 };
 
@@ -877,17 +902,25 @@ export const createHotUpdaterConfigScaffoldFromBuilder = (
   {
     helperStatements = [],
     updateStrategy = "appVersion",
+    authorityIdInitializer,
   }: CreateHotUpdaterConfigScaffoldFromBuilderOptions = {},
 ): HotUpdaterConfigScaffold => {
   const scaffold = builder.getScaffold();
+  const strategyText =
+    updateStrategy === "appVersion"
+      ? scaffold.text
+      : scaffold.text.replace(
+          'updateStrategy: "appVersion"',
+          `updateStrategy: "${updateStrategy}"`,
+        );
+  const text = authorityIdInitializer
+    ? strategyText.replace(
+        "export default defineConfig({",
+        `export default defineConfig({\n  authorityId: ${authorityIdInitializer},`,
+      )
+    : strategyText;
   return {
-    text:
-      updateStrategy === "appVersion"
-        ? scaffold.text
-        : scaffold.text.replace(
-            'updateStrategy: "appVersion"',
-            `updateStrategy: "${updateStrategy}"`,
-          ),
+    text,
     imports: scaffold.imports,
     build: {
       initializer: scaffold.buildConfigString,
@@ -903,6 +936,7 @@ export const createHotUpdaterConfigScaffoldFromBuilder = (
     },
     helperStatements,
     updateStrategy: `"${updateStrategy}"`,
+    ...(authorityIdInitializer ? { authorityIdInitializer } : {}),
   };
 };
 

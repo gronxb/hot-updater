@@ -21,20 +21,14 @@ vi.mock("@hot-updater/bsdiff", () => ({
 import { createBundleDiff } from "./createBundleDiff";
 
 const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
-  channel: "production",
-  enabled: true,
   fileHash: `${id}-file-hash`,
-  fingerprintHash: null,
   gitCommitHash: null,
   id,
-  message: id,
   assetBaseStorageUri: `s3://test-bucket/releases/${id}/files`,
   manifestStorageUri: `s3://test-bucket/releases/${id}/manifest.json`,
   metadata: {},
   platform: "ios",
-  shouldForceUpdate: false,
   storageUri: `s3://test-bucket/releases/${id}/bundle.zip`,
-  targetAppVersion: "1.0.0",
   ...overrides,
 });
 
@@ -79,12 +73,8 @@ describe("createBundleDiff", () => {
   });
 
   it("uploads a Hermes patch and stores patch metadata on the target bundle", async () => {
-    const baseBundle = createBundle("00000000-0000-0000-0000-000000000001", {
-      message: "base",
-    });
-    const targetBundle = createBundle("00000000-0000-0000-0000-000000000002", {
-      message: "target",
-    });
+    const baseBundle = createBundle("00000000-0000-0000-0000-000000000001");
+    const targetBundle = createBundle("00000000-0000-0000-0000-000000000002");
     const plugin = await createDatabasePlugin([baseBundle, targetBundle]);
     const databasePlugin: DatabasePlugin = plugin;
     const commit = vi.spyOn(databasePlugin, "commit");

@@ -22,7 +22,7 @@ const supportsExplicitNoUpdateResponse = (request: Request): boolean => {
   );
 };
 
-const serializeUpdateInfo = (
+export const serializeUpdateInfo = (
   updateInfo: AppUpdateAvailableInfo | null,
   request: Request,
 ): string => {

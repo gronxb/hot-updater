@@ -3,9 +3,9 @@ import { Hono } from "hono";
 import {
   cancelJob,
   getJob,
+  handleAssertBsdiffPatchApplied,
   handleAssertBundleAssetsStored,
   handleAssertBundlePatchBases,
-  handleAssertBsdiffPatchApplied,
   handleAssertCrashHistory,
   handleAssertFirstOtaUsesArchive,
   handleAssertLaunchReport,
@@ -13,24 +13,32 @@ import {
   handleAssertMetadataActive,
   handleAssertMetadataReset,
   handleAssertMultipleAssetsReplaced,
-  handlePrepareAppLaunch,
-  handleProxyRemoteAssetRequest,
-  handleProxyUpdateRequest,
+  handleAssertProxy,
   handleCaptureBuiltInBundleId,
   handleCaptureState,
   handleCleanup,
   handleComputeRolloutSample,
+  handleConfigureProxy,
+  handlePrepareAppLaunch,
+  handleProxyRemoteAssetRequest,
+  handleProxyState,
+  handleProxyUpdateRequest,
   handleResetLocalAppState,
   handleResetRemoteBundles,
   handleRuntimeConfig,
+  handleSeedCrashHistory,
+  handleSeedLegacyMetadata,
+  handleVerifyConsoleAnalytics,
   handleWaitForCrashRecovery,
   handleWaitForMetadata,
-  handleVerifyConsoleAnalytics,
   handleWriteSummary,
   startBootstrapJob,
+  startCreateRollbackReleaseJob,
   startDeployBundleJob,
-  startPatchBundleJob,
+  startPatchReleaseJob,
   startResetRemoteBundlesJob,
+  startSeedCrashedBundleFrontierJob,
+  startWaitForAndroidRestartJob,
   startWaitForMetadataJob,
 } from "./controller.ts";
 import { handlePatchE2eScreenState } from "./screen-state.ts";
@@ -105,6 +113,45 @@ app.all("/e2e/proxy-url/:targetId", async (c) => {
   return handleProxyRemoteAssetRequest(c.req.raw);
 });
 
+app.post("/e2e/proxy-control", async (c) => {
+  const payload = (await c.req.json()) as {
+    artifactDelayMs?: number;
+    artifactFailures?: number;
+    catalogDelayMs?: number;
+    catalogMode?: "freeze" | "live" | "replay";
+    replayGeneration?: number | null;
+    reset?: boolean;
+  };
+  for (const value of [payload.artifactDelayMs, payload.catalogDelayMs]) {
+    if (value !== undefined && (!Number.isFinite(value) || value < 0)) {
+      return c.json({ error: "proxy delays must be non-negative" }, 400);
+    }
+  }
+  if (
+    payload.artifactFailures !== undefined &&
+    (!Number.isSafeInteger(payload.artifactFailures) ||
+      payload.artifactFailures < 0)
+  ) {
+    return c.json(
+      { error: "artifactFailures must be a non-negative integer" },
+      400,
+    );
+  }
+  return c.json(handleConfigureProxy(payload));
+});
+
+app.post("/e2e/proxy-state", (c) => c.json(handleProxyState()));
+
+app.post("/e2e/assert-proxy", async (c) => {
+  const payload = (await c.req.json()) as {
+    artifactFailuresRemaining?: number;
+    artifactRequests?: number;
+    catalogRequests?: number;
+    maxPathCardinality?: number;
+  };
+  return c.json(handleAssertProxy(payload));
+});
+
 app.post("/e2e/jobs/deploy-bundle", async (c) => {
   const payload = (await c.req.json()) as {
     bundleProfile?: "archive300mb" | "default" | "multiAssetReplacement";
@@ -118,6 +165,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     patchMaxBaseBundles?: number;
     rollout?: number;
     safeBundleIds?: string[];
+    strategy?: "appVersion" | "fingerprint";
     targetAppVersion?: string;
     targetCohorts?: string[];
   };
@@ -173,23 +221,82 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
       patchMaxBaseBundles: payload.patchMaxBaseBundles,
       rollout: payload.rollout,
       safeBundleIds: payload.safeBundleIds ?? [],
+      strategy: payload.strategy,
       targetAppVersion: payload.targetAppVersion,
       targetCohorts: payload.targetCohorts,
     }),
   });
 });
 
-app.post("/e2e/jobs/patch-bundle", async (c) => {
+app.post("/e2e/jobs/create-rollback-release", async (c) => {
   const payload = (await c.req.json()) as {
-    bundleId?: string;
+    sourceReleaseId?: string;
+    toBundleId?: string | null;
+  };
+  if (!payload.sourceReleaseId || payload.toBundleId === undefined) {
+    return c.json(
+      { error: "sourceReleaseId and toBundleId are required" },
+      400,
+    );
+  }
+  return c.json({
+    jobId: startCreateRollbackReleaseJob({
+      sourceReleaseId: payload.sourceReleaseId,
+      toBundleId: payload.toBundleId,
+    }),
+  });
+});
+
+app.post("/e2e/jobs/seed-crashed-bundle-frontier", async (c) => {
+  const payload = (await c.req.json()) as {
+    count?: number;
+    sourceReleaseId?: string;
+  };
+  if (
+    !payload.sourceReleaseId ||
+    !Number.isSafeInteger(payload.count) ||
+    payload.count! < 1 ||
+    payload.count! > 10
+  ) {
+    return c.json(
+      { error: "sourceReleaseId and count between 1 and 10 are required" },
+      400,
+    );
+  }
+  return c.json({
+    jobId: startSeedCrashedBundleFrontierJob({
+      count: payload.count!,
+      sourceReleaseId: payload.sourceReleaseId,
+    }),
+  });
+});
+
+app.post("/e2e/seed-crash-history", async (c) => {
+  const payload = (await c.req.json()) as { bundleIds?: unknown };
+  if (
+    !Array.isArray(payload.bundleIds) ||
+    !payload.bundleIds.every((value) => typeof value === "string")
+  ) {
+    return c.json({ error: "bundleIds must be a string array" }, 400);
+  }
+  return c.json(handleSeedCrashHistory(payload.bundleIds));
+});
+
+app.post("/e2e/seed-legacy-metadata", async (c) => {
+  return c.json(handleSeedLegacyMetadata());
+});
+
+app.post("/e2e/jobs/patch-release", async (c) => {
+  const payload = (await c.req.json()) as {
+    releaseId?: string;
     enabled?: boolean;
     rolloutCohortCount?: number | null;
     shouldForceUpdate?: boolean;
     targetCohorts?: string[];
   };
 
-  if (!payload.bundleId) {
-    return c.json({ error: "bundleId is required" }, 400);
+  if (!payload.releaseId) {
+    return c.json({ error: "releaseId is required" }, 400);
   }
 
   if (
@@ -199,14 +306,14 @@ app.post("/e2e/jobs/patch-bundle", async (c) => {
     payload.targetCohorts === undefined
   ) {
     return c.json(
-      { error: "at least one bundle patch field is required" },
+      { error: "at least one Release policy field is required" },
       400,
     );
   }
 
   return c.json({
-    jobId: startPatchBundleJob({
-      bundleId: payload.bundleId,
+    jobId: startPatchReleaseJob({
+      releaseId: payload.releaseId,
       enabled: payload.enabled,
       rolloutCohortCount: payload.rolloutCohortCount,
       shouldForceUpdate: payload.shouldForceUpdate,
@@ -219,6 +326,7 @@ app.post("/e2e/jobs/wait-for-metadata", async (c) => {
   const payload = (await c.req.json()) as {
     attempts?: number;
     bundleId?: string;
+    releaseId?: string;
     recoveredStableBundleId?: string;
     relaunchLimit?: number;
     verificationPending?: boolean;
@@ -236,10 +344,25 @@ app.post("/e2e/jobs/wait-for-metadata", async (c) => {
       payload.verificationPending,
       {
         attempts: payload.attempts,
+        releaseId: payload.releaseId,
         recoveredStableBundleId: payload.recoveredStableBundleId,
         relaunchLimit: payload.relaunchLimit,
       },
     ),
+  });
+});
+
+app.post("/e2e/jobs/wait-for-android-restart", async (c) => {
+  const payload = (await c.req.json()) as {
+    bundleId?: string;
+    releaseId?: string;
+  };
+  if (!payload.bundleId || !payload.releaseId) {
+    return c.json({ error: "bundleId and releaseId are required" }, 400);
+  }
+
+  return c.json({
+    jobId: startWaitForAndroidRestartJob(payload.bundleId, payload.releaseId),
   });
 });
 
@@ -266,17 +389,18 @@ app.post("/e2e/capture-built-in-bundle-id", async (c) => {
 });
 
 app.post("/e2e/compute-rollout-sample", async (c) => {
-  const payload = (await c.req.json()) as { bundleId?: string };
-  if (!payload.bundleId) {
-    return c.json({ error: "bundleId is required" }, 400);
+  const payload = (await c.req.json()) as { releaseId?: string };
+  if (!payload.releaseId) {
+    return c.json({ error: "releaseId is required" }, 400);
   }
 
-  return c.json(await handleComputeRolloutSample(payload.bundleId));
+  return c.json(await handleComputeRolloutSample(payload.releaseId));
 });
 
 app.post("/e2e/wait-for-metadata", async (c) => {
   const payload = (await c.req.json()) as {
     bundleId?: string;
+    releaseId?: string;
     verificationPending?: boolean;
   };
   if (!payload.bundleId || typeof payload.verificationPending !== "boolean") {
@@ -287,7 +411,9 @@ app.post("/e2e/wait-for-metadata", async (c) => {
   }
 
   return c.json(
-    await handleWaitForMetadata(payload.bundleId, payload.verificationPending),
+    await handleWaitForMetadata(payload.bundleId, payload.verificationPending, {
+      releaseId: payload.releaseId,
+    }),
   );
 });
 
@@ -429,10 +555,12 @@ app.post("/e2e/assert-metadata-reset", async (c) => {
 
 app.post("/e2e/assert-launch-report", async (c) => {
   const payload = (await c.req.json()) as {
-    crashedBundleId?: string;
+    fromBundleId?: string;
+    fromReleaseId?: string;
     optional?: boolean;
-    stableBundleId?: string;
     status?: string;
+    toBundleId?: string;
+    toReleaseId?: string;
   };
   if (!payload.status) {
     return c.json({ error: "status is required" }, 400);
@@ -440,10 +568,12 @@ app.post("/e2e/assert-launch-report", async (c) => {
 
   return c.json(
     await handleAssertLaunchReport({
-      crashedBundleId: payload.crashedBundleId,
+      fromBundleId: payload.fromBundleId,
+      fromReleaseId: payload.fromReleaseId,
       optional: payload.optional ?? false,
-      stableBundleId: payload.stableBundleId,
       status: payload.status,
+      toBundleId: payload.toBundleId,
+      toReleaseId: payload.toReleaseId,
     }),
   );
 });

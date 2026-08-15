@@ -13,6 +13,33 @@ abstract class HotUpdaterSpec internal constructor(
         promise: Promise,
     )
 
+    abstract fun acceptReleaseCatalog(params: ReadableMap): Boolean
+
+    abstract fun getActiveUpdateState(): String
+
+    abstract fun getReleaseCatalogCache(
+        partition: String,
+        promise: Promise,
+    )
+
+    abstract fun setReleaseCatalogCache(
+        partition: String,
+        payload: String,
+        promise: Promise,
+    )
+
+    abstract fun removeReleaseCatalogCache(
+        partition: String,
+        promise: Promise,
+    )
+
+    abstract fun isReleaseSelectionCurrent(params: ReadableMap): Boolean
+
+    abstract fun commitReleaseSelection(
+        params: ReadableMap,
+        promise: Promise,
+    )
+
     abstract fun reload(promise: Promise)
 
     abstract fun reloadProcess(promise: Promise)

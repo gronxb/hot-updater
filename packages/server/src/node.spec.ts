@@ -23,8 +23,8 @@ describe("server node entry", () => {
       setHeader(name: string, value: string | string[]) {
         headers.set(name, value);
       },
-      send(body: string) {
-        this.body = body;
+      send(body: Uint8Array) {
+        this.body = new TextDecoder().decode(body);
       },
       end() {},
     };
@@ -46,5 +46,42 @@ describe("server node entry", () => {
       method: "GET",
       pathname: "/api/check",
     });
+  });
+
+  it("preserves binary response bytes", async () => {
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0xfe, 0x00]);
+    const middleware = toNodeHandler({
+      handler: async () =>
+        new Response(bytes, {
+          headers: { "content-type": "application/zip" },
+        }),
+    });
+    const response = {
+      body: new Uint8Array(),
+      statusCode: 0,
+      status(code: number) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader() {},
+      send(body: Uint8Array) {
+        this.body = new Uint8Array(body);
+      },
+      end() {},
+    };
+
+    await middleware(
+      {
+        method: "GET",
+        url: "/hot-updater/storage/token/signature",
+        headers: { host: "example.com" },
+        protocol: "https",
+        get: (name: string) => (name === "host" ? "example.com" : undefined),
+      },
+      response,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect([...response.body]).toEqual([...bytes]);
   });
 });

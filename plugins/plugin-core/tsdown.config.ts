@@ -7,6 +7,10 @@ export default defineConfig([
     outDir: "dist",
     dts: true,
     exports: true,
+    deps: {
+      alwaysBundle: ["verkit"],
+      onlyBundle: ["verkit"],
+    },
     unbundle: true,
     failOnWarn: true,
   },

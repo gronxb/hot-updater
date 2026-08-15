@@ -109,12 +109,12 @@ the CLI and deployed Edge Function.
 
 ### Upgrade and rollback
 
-Database Plugin V2 continues to use the existing `bundles` and
-`bundle_patches` schema. Managed Supabase deployments track applied changes
-through Supabase migration history; they do not write or consume the generic
-server migrator's `schema.core` setting. Keep existing migration files
-immutable, and back up the database before applying any pending provider
-migration.
+Schema `1.0.0` adds Releases, Release catalogs, ordered compiler indexes, and
+atomic revision/generation checks. It removes the legacy desired-state RPCs.
+Managed Supabase deployments track applied changes through Supabase migration
+history; they do not write or consume the generic server migrator's
+`schema.core` setting. Keep existing migration files immutable, and back up the
+database before applying any pending provider migration.
 
 Apply all pending Supabase migrations before upgrading the CLI writer or
 redeploying the Edge Function. Patch-bearing bundle inserts and patch
@@ -125,6 +125,22 @@ instead of falling back to sequential writes.
 Roll back to an older Hot Updater package set only when it is documented as
 compatible with the upgraded schema. Otherwise, stop writers and restore the
 pre-migration backup.
+
+### Release catalog cache
+
+Supabase officially uses the direct Edge Function URL in `origin-only` mode.
+`hot-updater init` generates that URL in the React Native configuration, and
+`hot-updater doctor --server-base-url <direct-edge-url>` reports the mode as a
+healthy informational status.
+
+The request still benefits from the Release Catalog architecture: the Edge
+Function serves an already compiled catalog, coalesces concurrent cold reads,
+and performs one exact catalog-row read on an in-process cache miss instead of
+running per-install rollout decisions. However, Supabase does not document a
+reusable response cache in front of Function execution, so every device check
+still invokes the Edge Function. Supabase origin-only measurements must report
+Edge Function invocations and Postgres reads separately and must not be
+presented as shared-CDN hit metrics.
 
 ## Step 4: Add HotUpdater to Your Project
 
@@ -142,7 +158,7 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  baseURL: "https://<project-id>.supabase.co/functions/v1/update-server", // [!code ++]
+  baseURL: "https://updates.example.com/hot-updater", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
     // if you want to use the request headers, you can add them here
@@ -178,7 +194,7 @@ The managed Supabase runtime exposes public update checks, Analytics event
 ingestion, and `/version`. Internally, it enables
 `features: { updateCheck: true, bundles: false, analytics: true }`.
 Analytics query routes stay protected, and bundle management routes are not
-mounted on the public function URL.
+mounted on the public CDN URL.
 </Callout>
 
 ## Step 5: If You Use Expo, Add the Config Plugin

@@ -204,7 +204,7 @@ function InstallationResultRow({
       <TableCell className="max-w-64 whitespace-normal">
         <div className="flex flex-col gap-1">
           <span className="text-muted-foreground">Last known bundle</span>
-          <code className="break-all">{row.lastKnownBundleId}</code>
+          <code className="break-all">{row.lastKnownBundleId ?? "—"}</code>
         </div>
       </TableCell>
       <TableCell>

@@ -40,14 +40,6 @@ export interface Bundle {
    */
   platform: Platform;
   /**
-   * Whether the bundle should force an update.
-   */
-  shouldForceUpdate: boolean;
-  /**
-   * Whether the bundle is enabled.
-   */
-  enabled: boolean;
-  /**
    * The hash of the bundle.
    */
   fileHash: string;
@@ -63,30 +55,6 @@ export interface Bundle {
    * The git commit hash of the bundle.
    */
   gitCommitHash: string | null;
-  /**
-   * The message of the bundle.
-   */
-  message: string | null;
-  /**
-   * The name of the channel where the bundle is deployed.
-   *
-   * Examples:
-   * - production: Production channel for end users
-   * - development: Development channel for testing
-   * - staging: Staging channel for quality assurance before production
-   * - app-name: Channel for specific app instances (e.g., my-app, app-test)
-   *
-   * Different channel values can be used based on each app's requirements.
-   */
-  channel: string;
-  /**
-   * The target app version of the bundle.
-   */
-  targetAppVersion: string | null;
-  /**
-   * The fingerprint hash of the bundle.
-   */
-  fingerprintHash: string | null;
   /**
    * The metadata of the bundle.
    */
@@ -136,28 +104,21 @@ export interface Bundle {
    * @deprecated Use Bundle.patches.
    */
   patchStorageUri?: string | null;
+}
 
-  /**
-   * Rollout cohort count (0-1000). Controls gradual rollout to numeric cohorts.
-   * - 0: No cohorts receive this update
-   * - 250: 25.0% of numeric cohorts receive this update
-   * - 1000 or null: All numeric cohorts receive this update (full rollout)
-   *
-   * @default 1000
-   */
-  rolloutCohortCount?: number | null;
-
-  /**
-   * Additional cohorts to include for this update.
-   * Matching cohorts receive the update even if they are outside the current
-   * numeric rollout.
-   * If empty/null, only rolloutCohortCount-based rollout is used.
-   *
-   * NOTE: This field is stored in database but should NOT be returned to
-   * update-check clients for security reasons. Server uses it for rollout
-   * decisions only.
-   */
-  targetCohorts?: string[] | null;
+/**
+ * Transitional input accepted by legacy deployment and management surfaces.
+ * The policy fields are persisted on a Release, never on the Bundle artifact.
+ */
+export interface LegacyBundle extends Bundle {
+  readonly channel: string;
+  readonly enabled: boolean;
+  readonly fingerprintHash: string | null;
+  readonly message: string | null;
+  readonly rolloutCohortCount?: number | null;
+  readonly shouldForceUpdate: boolean;
+  readonly targetAppVersion: string | null;
+  readonly targetCohorts?: string[] | null;
 }
 
 type SnakeCase<S extends string> = S extends `${infer T}${infer U}`
@@ -179,7 +140,7 @@ type SnakeKeyObject<T> = T extends readonly (infer U)[]
       }
     : T;
 
-export type SnakeCaseBundle = SnakeKeyObject<Bundle>;
+export type SnakeCaseBundle = SnakeKeyObject<LegacyBundle>;
 
 export type UpdateStatus = "ROLLBACK" | "UPDATE";
 export type AppUpdateStatus = UpdateStatus | "UP_TO_DATE";

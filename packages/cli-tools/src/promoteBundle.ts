@@ -10,15 +10,10 @@ import {
   getManifestFileHash,
   stripBundleArtifactMetadata,
 } from "@hot-updater/core";
-import type {
-  Bundle,
-  DatabaseClient,
-  StoragePluginWith,
-} from "@hot-updater/plugin-core";
+import type { Bundle, StoragePluginWith } from "@hot-updater/plugin-core";
 import {
   createBundleStorageKey,
   createStorageRootUriWithPath,
-  createUUIDv7,
   detectCompressionFormat,
   getContentAddressedAssetStoragePath,
   getManifestAssetDownloadPath,
@@ -49,19 +44,6 @@ const SIGNED_HASH_PREFIX = "sig:";
 interface BundleManifest {
   bundleId?: string;
   assets?: Record<string, { fileHash: string; signature?: string }>;
-}
-
-export interface PromoteBundleInput {
-  action: "copy" | "move";
-  bundleId: string;
-  nextBundleId?: string;
-  targetChannel: string;
-}
-
-export interface PromoteBundleDependencies {
-  config: ConfigResponse;
-  databaseClient: DatabaseClient;
-  storagePlugin: PromoteStoragePlugin | null;
 }
 
 function isSignedFileHash(fileHash: string) {
@@ -340,13 +322,11 @@ export async function createCopiedBundleArchive({
   config,
   nextBundleId,
   storagePlugin,
-  targetChannel,
 }: {
   bundle: Bundle;
   config: ConfigResponse;
   nextBundleId: string;
   storagePlugin: PromoteStoragePlugin;
-  targetChannel: string;
 }) {
   // Re-upload follows deploy.ts after build: repackage, hash/sign, upload.
   const archiveFilename = getArchiveFilename(bundle.storageUri);
@@ -460,7 +440,6 @@ export async function createCopiedBundleArchive({
       bundle: {
         ...bundle,
         id: nextBundleId,
-        channel: targetChannel,
         storageUri: archiveUpload.storageUri,
         fileHash: nextFileHash,
         metadata: stripBundleArtifactMetadata(bundle.metadata),
@@ -502,66 +481,6 @@ async function deleteUploadedCopy(
     } catch (error) {
       console.error("Failed to delete uploaded bundle copy:", error);
     }
-  }
-}
-
-export async function promoteBundle(
-  { action, bundleId, nextBundleId, targetChannel }: PromoteBundleInput,
-  deps: PromoteBundleDependencies,
-) {
-  const normalizedTargetChannel = targetChannel.trim();
-  if (!normalizedTargetChannel) {
-    throw new Error("Target channel is required");
-  }
-
-  const bundle = await deps.databaseClient.getBundleById(bundleId);
-  if (!bundle) {
-    throw new Error("Bundle not found");
-  }
-
-  if (bundle.channel === normalizedTargetChannel) {
-    throw new Error(
-      "Target channel must be different from the current channel",
-    );
-  }
-
-  if (action === "move") {
-    await deps.databaseClient.updateBundleById(bundleId, {
-      channel: normalizedTargetChannel,
-    });
-
-    const updatedBundle = await deps.databaseClient.getBundleById(bundleId);
-    if (!updatedBundle) {
-      throw new Error("Promoted bundle not found");
-    }
-
-    return updatedBundle;
-  }
-
-  if (!deps.storagePlugin) {
-    throw new Error("Storage plugin is not configured");
-  }
-
-  const resolvedNextBundleId = nextBundleId?.trim() || createUUIDv7();
-  const { bundle: copiedBundle, uploadedStorageUris } =
-    await createCopiedBundleArchive({
-      bundle,
-      config: deps.config,
-      nextBundleId: resolvedNextBundleId,
-      storagePlugin: deps.storagePlugin,
-      targetChannel: normalizedTargetChannel,
-    });
-  let shouldCleanupUploadedCopy = true;
-
-  try {
-    await deps.databaseClient.insertBundle(copiedBundle);
-    shouldCleanupUploadedCopy = false;
-    return copiedBundle;
-  } catch (error) {
-    if (shouldCleanupUploadedCopy) {
-      await deleteUploadedCopy(deps.storagePlugin, uploadedStorageUris);
-    }
-    throw error;
   }
 }
 

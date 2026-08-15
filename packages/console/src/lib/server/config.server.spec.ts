@@ -24,6 +24,15 @@ const createTestDatabasePlugin = (name: string) =>
       bundlePatches: {
         findByBundleIds: vi.fn(async () => []),
       },
+      releases: {
+        findById: vi.fn(async () => null),
+        findMany: vi.fn(async () => []),
+        findManyByScope: vi.fn(async () => []),
+      },
+      releaseCatalogs: {
+        findByScopeKey: vi.fn(async () => null),
+        findMany: vi.fn(async () => []),
+      },
       channels: {
         insert: vi.fn(async ({ row }) => ({ row, inserted: true })),
         list: vi.fn(async () => ({ channels: [] })),
@@ -40,7 +49,6 @@ const createTestDatabasePlugin = (name: string) =>
         revoke: vi.fn(async () => null),
       },
     },
-    queries: {},
     commit: vi.fn(async () => ({ committed: true as const })),
   });
 

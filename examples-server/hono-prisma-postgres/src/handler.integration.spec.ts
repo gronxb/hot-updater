@@ -1,10 +1,11 @@
 import path from "path";
 import { fileURLToPath } from "url";
 
-import type { Bundle } from "@hot-updater/core";
+import type { Bundle, LegacyBundle } from "@hot-updater/core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
 import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
 import {
+  deleteLegacyBundle,
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
@@ -89,6 +90,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
   const port = 13583;
   let hotUpdater: HotUpdaterAPI;
   let prisma: typeof import("./prisma.js").prisma;
+  let resetDecisionFixtures: () => Promise<void>;
 
   beforeAll(async () => {
     // Kill any process using the port before starting
@@ -170,6 +172,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
 
     const db = await import("./db.js");
     hotUpdater = db.hotUpdater;
+    resetDecisionFixtures = db.resetDecisionFixtures;
     prisma = (await import("./prisma.js")).prisma;
   }, 120000);
 
@@ -211,6 +214,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
   ) => {
     return createGetUpdateInfo({
       baseUrl: `${baseUrl}/hot-updater`,
+      resetDecisionFixtures,
     })(bundles, options);
   };
 
@@ -221,96 +225,68 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
   setupBundleMethodsTestSuite({
     getBundleById: (id: string) => hotUpdater.getBundleById(id),
     getChannels: () => hotUpdater.getChannels(),
-    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
+    insertBundle: (bundle: LegacyBundle) => hotUpdater.insertBundle(bundle),
     getBundles: (options) => hotUpdater.getBundles(options),
     updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
       hotUpdater.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId: string) =>
-      hotUpdater.deleteBundleById(bundleId),
+      deleteLegacyBundle(hotUpdater, bundleId),
   });
 
-  it("rejects exactly one concurrent opposing target clear", async () => {
+  it("allows exactly one concurrent Release/catalog CAS writer", async () => {
     const database = prismaAdapter({ prisma, provider: "postgresql" });
     const id = "141ee03e-7599-4e29-a827-0c4732bc4f10";
-    const createdChannel = await database.models.channels.insert({
-      row: {
-        id: "6ec76524-f26a-43e4-8c9a-f00c8c43ef70",
-        name: "prisma-concurrency",
-      },
-      onConflict: "returnExisting",
-    });
-    expect(createdChannel.inserted).toBe(true);
-    const channel = await database.models.channels.insert({
-      row: {
-        id: "f2f29e33-844e-40bf-bbf4-9ba10cfe67db",
-        name: createdChannel.row.name,
-      },
-      onConflict: "returnExisting",
-    });
-    expect(channel).toEqual({ row: createdChannel.row, inserted: false });
-    const row = {
+    await hotUpdater.insertBundle({
       id,
-      platform: "ios" as const,
-      should_force_update: false,
+      platform: "ios",
+      shouldForceUpdate: false,
       enabled: true,
-      file_hash: "concurrent-target-hash",
-      git_commit_hash: null,
+      fileHash: "concurrent-target-hash",
+      gitCommitHash: null,
       message: null,
-      channel: channel.row.name,
-      channel_id: channel.row.id,
-      storage_uri: "storage://concurrent-target",
-      target_app_version: "1.0.0",
-      fingerprint_hash: "concurrent-fingerprint",
-      metadata: {},
-      rollout_cohort_count: 1000,
-      target_cohorts: null,
-      manifest_storage_uri: null,
-      manifest_file_hash: null,
-      asset_base_storage_uri: null,
-    };
-    await database.commit({
-      changes: [
-        {
-          model: "bundles",
-          operation: "insert",
-          row,
-        },
-      ],
+      channel: "prisma-concurrency",
+      storageUri: "storage://concurrent-target",
+      targetAppVersion: "1.0.0",
+      fingerprintHash: null,
     });
-
-    const results = await Promise.allSettled([
+    const release = await database.models.releases.findById(id);
+    if (release === null) throw new Error("Expected the legacy Release");
+    const catalog = await database.models.releaseCatalogs.findByScopeKey(
+      release.scope_key,
+    );
+    if (catalog === null) throw new Error("Expected the Release catalog");
+    const commit = (message: string) =>
       database.commit({
-        changes: [
+        expectations: [
+          { model: "releases", id, revision: release.revision },
           {
-            model: "bundles",
-            operation: "update",
-            where: { id },
-            update: { target_app_version: null },
+            model: "releaseCatalogs",
+            scopeKey: catalog.scope_key,
+            generation: catalog.generation,
           },
         ],
-      }),
-      database.commit({
         changes: [
           {
-            model: "bundles",
+            model: "releases",
             operation: "update",
             where: { id },
-            update: { fingerprint_hash: null },
+            update: { message, revision: release.revision + 1 },
+          },
+          {
+            model: "releaseCatalogs",
+            operation: "put",
+            row: { ...catalog, generation: catalog.generation + 1 },
           },
         ],
-      }),
-    ]);
+      });
 
-    expect(results.map(({ status }) => status).sort()).toEqual([
-      "fulfilled",
-      "rejected",
-    ]);
-    const stored = await database.models.bundles.findById(id);
-    expect(
-      [stored?.target_app_version, stored?.fingerprint_hash].filter(
-        (target) => target !== null,
-      ),
-    ).toHaveLength(1);
+    const results = await Promise.all([commit("writer-a"), commit("writer-b")]);
+
+    expect(results.filter(({ committed }) => committed)).toHaveLength(1);
+    expect(results.filter(({ committed }) => !committed)).toHaveLength(1);
+    expect(await database.models.releases.findById(id)).toMatchObject({
+      revision: release.revision + 1,
+    });
   });
 
   it("rolls back emulated patch cleanup when bundle deletion fails", async () => {
@@ -322,28 +298,12 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
     const baseId = "5d8b5ebf-8008-4ab8-9fb5-79af0ec766c3";
     const targetId = "5e08db65-e31d-4de3-a795-8492327c30d8";
     const patchId = "prisma-rollback-patch";
-    const channel = await database.models.channels.insert({
-      row: {
-        id: "c42763c0-29ec-4ff2-883a-dad3d1ee9b07",
-        name: "prisma-rollback",
-      },
-      onConflict: "returnExisting",
-    });
     const bundle = {
       platform: "ios" as const,
-      should_force_update: false,
-      enabled: true,
       file_hash: "rollback-hash",
       git_commit_hash: null,
-      message: null,
-      channel: channel.row.name,
-      channel_id: channel.row.id,
       storage_uri: "storage://rollback",
-      target_app_version: "1.0.0",
-      fingerprint_hash: null,
       metadata: {},
-      rollout_cohort_count: 1000,
-      target_cohorts: null,
       manifest_storage_uri: null,
       manifest_file_hash: null,
       asset_base_storage_uri: null,

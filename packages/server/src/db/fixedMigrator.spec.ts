@@ -78,16 +78,15 @@ const createNodeSqliteV031DatabaseWithPatch = (): DatabaseSync => {
     values ('version', '0.31.0');
     create table bundle_audit (
       bundle_id text not null,
-      message text
+      storage_uri text
     );
-    create index user_bundles_enabled_idx
-      on bundles(enabled)
-      where enabled = 1;
-    create trigger user_bundles_message_audit
-      after update of message on bundles
+    create index user_bundles_platform_idx
+      on bundles(platform);
+    create trigger user_bundles_storage_uri_audit
+      after update of storage_uri on bundles
       begin
-        insert into bundle_audit (bundle_id, message)
-        values (new.id, new.message);
+        insert into bundle_audit (bundle_id, storage_uri)
+        values (new.id, new.storage_uri);
       end;
   `);
   return database;
@@ -132,7 +131,7 @@ describe("createKyselyMigrator", () => {
     const sql = migration.getSQL?.();
 
     expect(sql).toContain(
-      "insert into private_hot_updater_settings (key, value) values ('schema.core', '0.38.0')",
+      "insert into private_hot_updater_settings (key, value) values ('schema.core', '1.0.0')",
     );
     expect(sql).not.toContain("values ('version'");
     expect(sql).toContain("bundle_events");
@@ -140,7 +139,7 @@ describe("createKyselyMigrator", () => {
     expect(sql).toContain("channel_id");
   });
 
-  it.each(["0.38.0"])(
+  it.each(["1.0.0"])(
     "records current Core readiness without rewriting legacy version %s",
     async (legacyVersion) => {
       const database = new PGlite();
@@ -181,7 +180,7 @@ describe("createKyselyMigrator", () => {
         readonly value: string;
       }>("select key, value from private_hot_updater_settings order by key");
       expect(settings.rows).toEqual([
-        { key: "schema.core", value: "0.38.0" },
+        { key: "schema.core", value: "1.0.0" },
         { key: "version", value: legacyVersion },
       ]);
       const extensionRows = await database.query<{
@@ -191,7 +190,7 @@ describe("createKyselyMigrator", () => {
       expect(extensionRows.rows).toEqual([
         { id: "extension-1", value: "preserve-me" },
       ]);
-      await expect(migrator.getVersion()).resolves.toBe("0.38.0");
+      await expect(migrator.getVersion()).resolves.toBe("1.0.0");
     },
   );
 
@@ -216,7 +215,7 @@ describe("createKyselyMigrator", () => {
     },
     {
       name: "legacy marker beside a current Core marker",
-      coreValue: "0.38.0",
+      coreValue: "1.0.0",
       legacyValue: new Uint8Array([0xff]),
       invalidKey: "version",
     },
@@ -260,7 +259,7 @@ describe("createKyselyMigrator", () => {
           value text not null
         );
         insert into private_hot_updater_settings (key, value) values
-          ('schema.core', '0.38.0'),
+          ('schema.core', '1.0.0'),
           ('version', '${legacyVersion}');
       `);
       const migrator = createKyselyMigrator({
@@ -268,7 +267,7 @@ describe("createKyselyMigrator", () => {
         provider: "postgresql",
       });
 
-      await expect(migrator.getVersion()).resolves.toBe("0.38.0");
+      await expect(migrator.getVersion()).resolves.toBe("1.0.0");
       await expect(
         migrator.migrateToLatest({ mode: "from-schema" }),
       ).resolves.toMatchObject({ operations: [] });
@@ -332,7 +331,7 @@ describe("createKyselyMigrator", () => {
       const insertSetting = database.prepare(
         "insert into private_hot_updater_settings (key, value) values (?, ?)",
       );
-      insertSetting.run("schema.core", "0.38.0");
+      insertSetting.run("schema.core", "1.0.0");
       insertSetting.run("version", legacyValue);
       const kysely = createNodeSqliteKysely(database);
       kyselyInstances.push(kysely);
@@ -369,6 +368,7 @@ describe("createKyselyMigrator", () => {
         provider: "sqlite",
       });
       const migration = await migrator.migrateToLatest({
+        authorityId: "test",
         mode: "from-schema",
         updateSettings: true,
       });
@@ -385,11 +385,11 @@ describe("createKyselyMigrator", () => {
         sqlitePatchRow,
       ]);
       expect(
-        database.prepare("select channel from bundles order by id").all(),
+        database.prepare("select platform from bundles order by id").all(),
       ).toEqual([
-        { channel: "production" },
-        { channel: "production" },
-        { channel: "Production" },
+        { platform: "ios" },
+        { platform: "ios" },
+        { platform: "android" },
       ]);
       const channels = database
         .prepare("select id, name from channels order by name")
@@ -404,7 +404,7 @@ describe("createKyselyMigrator", () => {
       expect(
         database
           .prepare(
-            "select channel, channel_id from bundles order by channel, id",
+            "select channels.name as channel, releases.channel_id from releases join channels on channels.id = releases.channel_id order by channel, releases.id",
           )
           .all(),
       ).toEqual([
@@ -422,12 +422,12 @@ describe("createKyselyMigrator", () => {
         },
       ]);
       const channelIdColumn = database
-        .prepare("pragma table_info(bundles)")
+        .prepare("pragma table_info(releases)")
         .all()
         .find((column) => column["name"] === "channel_id");
       expect(channelIdColumn).toMatchObject({ notnull: 1, type: "TEXT" });
       expect(
-        database.prepare("pragma foreign_key_list(bundles)").all(),
+        database.prepare("pragma foreign_key_list(releases)").all(),
       ).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -446,18 +446,18 @@ describe("createKyselyMigrator", () => {
       expect(
         database
           .prepare(
-            "select name, type from sqlite_master where name in ('user_bundles_enabled_idx', 'user_bundles_message_audit') order by name",
+            "select name, type from sqlite_master where name in ('user_bundles_platform_idx', 'user_bundles_storage_uri_audit') order by name",
           )
           .all(),
       ).toEqual([
-        { name: "user_bundles_enabled_idx", type: "index" },
-        { name: "user_bundles_message_audit", type: "trigger" },
+        { name: "user_bundles_platform_idx", type: "index" },
+        { name: "user_bundles_storage_uri_audit", type: "trigger" },
       ]);
       database
-        .prepare("update bundles set message = ? where id = ?")
-        .run("migrated", "bundle-1");
+        .prepare("update bundles set storage_uri = ? where id = ?")
+        .run("s3://migrated", "bundle-1");
       expect(database.prepare("select * from bundle_audit").all()).toEqual([
-        { bundle_id: "bundle-1", message: "migrated" },
+        { bundle_id: "bundle-1", storage_uri: "s3://migrated" },
       ]);
     },
   );
@@ -495,6 +495,7 @@ describe("createKyselyMigrator", () => {
       provider: "postgresql",
     });
     const migration = await migrator.migrateToLatest({
+      authorityId: "test",
       mode: "from-schema",
       updateSettings: true,
     });
@@ -525,33 +526,33 @@ describe("createKyselyMigrator", () => {
       { id: expect.any(String), name: "beta" },
       { id: expect.any(String), name: "production" },
     ]);
-    const bundles = await database.query<{
+    const releases = await database.query<{
       channel: string;
       channel_id: string;
       channel_name: string;
     }>(`
-      select bundle.channel, bundle.channel_id, channel.name as channel_name
-      from bundles as bundle
-      join channels as channel on channel.id = bundle.channel_id
-      order by bundle.id
+      select channel.name as channel, release.channel_id, channel.name as channel_name
+      from releases as release
+      join channels as channel on channel.id = release.channel_id
+      order by release.id
     `);
-    expect(bundles.rows).toHaveLength(4);
+    expect(releases.rows).toHaveLength(4);
     expect(
-      bundles.rows.every(
+      releases.rows.every(
         ({ channel, channel_name }) => channel === channel_name,
       ),
     ).toBe(true);
-    expect(new Set(bundles.rows.map(({ channel_id }) => channel_id))).toEqual(
+    expect(new Set(releases.rows.map(({ channel_id }) => channel_id))).toEqual(
       new Set(channels.rows.map(({ id }) => id)),
     );
     await expect(
       database.exec(
-        "update bundles set channel_id = null where id = '00000000-0000-0000-0000-000000000001'",
+        "update releases set channel_id = null where id = '00000000-0000-0000-0000-000000000001'",
       ),
     ).rejects.toThrow();
     await expect(
       database.exec(
-        "update bundles set channel_id = 'missing' where id = '00000000-0000-0000-0000-000000000001'",
+        "update releases set channel_id = 'missing' where id = '00000000-0000-0000-0000-000000000001'",
       ),
     ).rejects.toThrow();
     const production = channels.rows.find(({ name }) => name === "production")!;
@@ -562,7 +563,7 @@ describe("createKyselyMigrator", () => {
       "insert into channels (id, name) values ('empty-channel', 'empty')",
     );
     await database.exec("delete from channels where id = 'empty-channel'");
-    await expect(migrator.getVersion()).resolves.toBe("0.38.0");
+    await expect(migrator.getVersion()).resolves.toBe("1.0.0");
   });
 
   it("accepts 255 Unicode code points and rejects 256 before advancing PostgreSQL", async () => {
@@ -601,22 +602,26 @@ describe("createKyselyMigrator", () => {
         db: kysely,
         provider: "postgresql",
       });
-      const migration = await migrator.migrateToLatest({
-        mode: "from-schema",
-        updateSettings: true,
-      });
-
       if (valid) {
+        const migration = await migrator.migrateToLatest({
+          authorityId: "test",
+          mode: "from-schema",
+          updateSettings: true,
+        });
         await migration.execute();
         const channels = await database.query<{ name: string }>(
           "select name from channels",
         );
         expect(channels.rows).toEqual([{ name: validName }]);
-        await expect(migrator.getVersion()).resolves.toBe("0.38.0");
+        await expect(migrator.getVersion()).resolves.toBe("1.0.0");
       } else {
-        await expect(migration.execute()).rejects.toThrow(
-          "hot_updater_channel_name_is_valid",
-        );
+        await expect(
+          migrator.migrateToLatest({
+            authorityId: "test",
+            mode: "from-schema",
+            updateSettings: true,
+          }),
+        ).rejects.toThrow("Channel name must not exceed 255 characters");
         await expect(migrator.getVersion()).resolves.toBe("0.37.0");
       }
     }

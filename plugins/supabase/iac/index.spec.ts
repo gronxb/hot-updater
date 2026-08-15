@@ -57,7 +57,9 @@ vi.mock("execa", async (importOriginal) => {
 import {
   createSelectedBucket,
   getSupabaseProjectAccess,
+  getSupabaseReactNativeSource,
   getLegacySupabaseConfigReference,
+  reportSupabaseOriginCatalogReady,
   resolveEdgeFunctionDenoConfig,
   selectBucket,
   selectProject,
@@ -101,6 +103,36 @@ const collectUserFacingErrorOutput = () => [
   ...mockCli.p.log.error.mock.calls.flat(),
   ...vi.mocked(console.error).mock.calls.flat(),
 ];
+
+describe("Supabase React Native init output", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("uses the direct Edge Function URL for origin-only catalogs", () => {
+    const source = getSupabaseReactNativeSource({
+      functionName: "update-server",
+      projectId: "project-ref",
+    });
+
+    expect(source).toContain(
+      'baseURL: "https://project-ref.supabase.co/functions/v1/update-server"',
+    );
+    expect(source).not.toContain("HOT_UPDATER_SUPABASE_CATALOG_CDN_URL");
+  });
+
+  it("reports origin-only readiness without CDN remediation warnings", () => {
+    reportSupabaseOriginCatalogReady();
+
+    expect(mockCli.p.log.success).toHaveBeenCalledWith(
+      "Release catalog endpoint is ready in origin-only mode.",
+    );
+    expect(mockCli.p.log.info).toHaveBeenCalledWith(
+      "Catalog checks still invoke the Supabase Edge Function.",
+    );
+    expect(mockCli.p.log.warn).not.toHaveBeenCalled();
+  });
+});
 
 describe("getLegacySupabaseConfigReference", () => {
   it("detects legacy Supabase env references", () => {
@@ -272,6 +304,7 @@ describe("selectBucket", () => {
     // Given
     const api: SupabaseApi = {
       createBucket: vi.fn(),
+      listLegacyBundlePolicies: vi.fn().mockResolvedValue([]),
       listBuckets: vi.fn().mockResolvedValue([
         {
           createdAt: "2026-07-26",
@@ -305,6 +338,7 @@ describe("selectBucket", () => {
     // Given
     const api: SupabaseApi = {
       createBucket: vi.fn(),
+      listLegacyBundlePolicies: vi.fn().mockResolvedValue([]),
       listBuckets: vi.fn().mockResolvedValue([
         {
           createdAt: "2026-07-26",
@@ -332,6 +366,7 @@ describe("selectBucket", () => {
   it("plans a missing saved bucket before creating it", async () => {
     const api: SupabaseApi = {
       createBucket: vi.fn().mockResolvedValue({ name: "saved-bucket" }),
+      listLegacyBundlePolicies: vi.fn().mockResolvedValue([]),
       listBuckets: vi
         .fn()
         .mockResolvedValueOnce([])
@@ -854,6 +889,9 @@ describe("resolveEdgeFunctionDenoConfig", () => {
             searchFrom: path.resolve("plugins/supabase"),
           },
         )}`,
+        kysely: `npm:kysely@${resolvePackageVersion("kysely", {
+          searchFrom: path.resolve("packages/server"),
+        })}`,
         mime: `npm:mime@${resolvePackageVersion("mime", {
           searchFrom: path.resolve("plugins/plugin-core"),
         })}`,

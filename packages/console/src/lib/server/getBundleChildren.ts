@@ -33,28 +33,20 @@ async function collectBundleChildrenByBaseIds(
     )
   ).filter((bundle): bundle is Bundle => Boolean(bundle));
 
-  const groupMap = new Map<
-    string,
-    { channel: string; platform: Bundle["platform"]; bundleIds: Set<string> }
-  >();
+  const groupMap = new Map<Bundle["platform"], Set<string>>();
 
   for (const baseBundle of baseBundles) {
-    const groupKey = `${baseBundle.channel}:${baseBundle.platform}`;
-    const existingGroup = groupMap.get(groupKey);
+    const existingGroup = groupMap.get(baseBundle.platform);
 
     if (existingGroup) {
-      existingGroup.bundleIds.add(baseBundle.id);
+      existingGroup.add(baseBundle.id);
       continue;
     }
 
-    groupMap.set(groupKey, {
-      channel: baseBundle.channel,
-      platform: baseBundle.platform,
-      bundleIds: new Set([baseBundle.id]),
-    });
+    groupMap.set(baseBundle.platform, new Set([baseBundle.id]));
   }
 
-  for (const group of groupMap.values()) {
+  for (const [platform, bundleIds] of groupMap) {
     const seenBundleIds = new Set<string>();
     const seenCursors = new Set<string>();
     let after: string | undefined;
@@ -62,8 +54,7 @@ async function collectBundleChildrenByBaseIds(
     while (true) {
       const page = await deps.databaseClient.getBundles({
         where: {
-          channel: group.channel,
-          platform: group.platform,
+          platform,
         },
         limit: CHILDREN_QUERY_LIMIT,
         cursor: after ? { after } : undefined,
@@ -74,7 +65,7 @@ async function collectBundleChildrenByBaseIds(
           (patch) => patch.baseBundleId,
         );
         const matchedParentBundleIds = parentBundleIds.filter((bundleId) =>
-          group.bundleIds.has(bundleId),
+          bundleIds.has(bundleId),
         );
 
         if (

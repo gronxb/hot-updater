@@ -1,10 +1,10 @@
 import { actionCohortRouteElements } from "./action-cohort-route-elements";
-import { actionInstallRouteElements } from "./action-install-route-elements";
+import { actionPrimaryRouteElements } from "./action-primary-route-elements";
 import { actionRecoveryRouteElements } from "./action-recovery-route-elements";
 import { actionRuntimeRouteElements } from "./action-runtime-route-elements";
 
 export const actionRouteElements = [
-  ...actionInstallRouteElements,
+  ...actionPrimaryRouteElements,
   ...actionCohortRouteElements,
   ...actionRecoveryRouteElements,
   ...actionRuntimeRouteElements,

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   type AttributeValue,
@@ -9,6 +9,12 @@ import {
   waitUntilTableExists,
 } from "@aws-sdk/client-dynamodb";
 import { InitError } from "@hot-updater/cli-tools";
+import type { ReleaseCatalogRow, ReleaseRow } from "@hot-updater/plugin-core";
+import {
+  compileLegacyReleaseCatalogBackfill,
+  type LegacyBundlePolicyRow,
+} from "@hot-updater/server";
+import { isEqual } from "es-toolkit";
 
 import {
   DYNAMODB_CHANNEL_NAME_PARTITION,
@@ -18,6 +24,31 @@ import {
 
 const DYNAMODB_DESCRIBE_TABLE_ACTION = "dynamodb:DescribeTable";
 const DYNAMODB_BUNDLE_PARTITION = "bundles";
+const DYNAMODB_MIGRATION_PARTITION = "_hot-updater";
+const DYNAMODB_RELEASE_CATALOG_MIGRATION = "migration.release-catalog-v1";
+const DYNAMODB_RELEASE_ID_PARTITION = "_hot-updater#release-scope-by-id";
+
+const legacyBundlePolicyFields = [
+  "channel",
+  "channel_id",
+  "enabled",
+  "should_force_update",
+  "message",
+  "target_app_version",
+  "fingerprint_hash",
+  "rollout_cohort_count",
+  "target_cohorts",
+] as const;
+
+type ReleaseCatalogMigrationPhase =
+  | "preparing"
+  | "cleanup_pending"
+  | "complete";
+
+type ReleaseCatalogMigrationMarker = {
+  readonly authorityId: string;
+  readonly phase: ReleaseCatalogMigrationPhase;
+};
 
 type DynamoDBChannel = {
   readonly id: string;
@@ -32,8 +63,21 @@ type DynamoDBBundleChannel = {
   readonly channelId?: string;
 };
 
+type DynamoDBReleaseCatalogMigrationState = {
+  readonly bundles: readonly Record<string, AttributeValue>[];
+  readonly channelsByName: ReadonlyMap<string, DynamoDBChannel>;
+};
+
 export class DynamoDBChannelMigrationError extends Error {
   readonly name = "DynamoDBChannelMigrationError";
+
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+export class DynamoDBReleaseCatalogMigrationError extends Error {
+  readonly name = "DynamoDBReleaseCatalogMigrationError";
 
   constructor(message: string) {
     super(message);
@@ -131,6 +175,116 @@ const isResourceNotFound = (error: unknown): boolean =>
   error !== null &&
   Reflect.get(error, "name") === "ResourceNotFoundException";
 
+const releaseCatalogAuthorityId = (tableArn: string): string =>
+  `aws.${createHash("sha256").update(tableArn).digest("base64url")}`;
+
+const attributeValueToUnknown = (
+  value: AttributeValue | undefined,
+): unknown => {
+  if (value === undefined) return undefined;
+  if (value.S !== undefined) return value.S;
+  if (value.N !== undefined) return Number(value.N);
+  if (value.BOOL !== undefined) return value.BOOL;
+  if (value.NULL) return null;
+  if (value.L !== undefined) return value.L.map(attributeValueToUnknown);
+  if (value.M !== undefined) {
+    return Object.fromEntries(
+      Object.entries(value.M).map(([key, entry]) => [
+        key,
+        attributeValueToUnknown(entry),
+      ]),
+    );
+  }
+  throw new DynamoDBReleaseCatalogMigrationError(
+    "DynamoDB contains an unsupported legacy Bundle value",
+  );
+};
+
+const unknownToAttributeValue = (value: unknown): AttributeValue => {
+  if (value === null) return { NULL: true };
+  if (typeof value === "string") return { S: value };
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return { N: String(value) };
+  }
+  if (typeof value === "boolean") return { BOOL: value };
+  if (Array.isArray(value)) {
+    return { L: value.map(unknownToAttributeValue) };
+  }
+  if (typeof value === "object" && value !== null) {
+    return {
+      M: Object.fromEntries(
+        Object.entries(value).map(([key, entry]) => [
+          key,
+          unknownToAttributeValue(entry),
+        ]),
+      ),
+    };
+  }
+  throw new DynamoDBReleaseCatalogMigrationError(
+    "Release Catalog migration produced an unsupported DynamoDB value",
+  );
+};
+
+const rowAttribute = (row: object): AttributeValue =>
+  unknownToAttributeValue(row);
+
+const hasLegacyBundlePolicy = (
+  item: Record<string, AttributeValue>,
+): boolean => {
+  const row = item.row?.M;
+  return (
+    row !== undefined &&
+    legacyBundlePolicyFields.some((field) => row[field] !== undefined)
+  );
+};
+
+const parseLegacyBundlePolicy = (
+  item: Record<string, AttributeValue>,
+): LegacyBundlePolicyRow => {
+  const row = item.row?.M;
+  if (item.pk?.S !== DYNAMODB_BUNDLE_PARTITION || row === undefined) {
+    throw new DynamoDBReleaseCatalogMigrationError(
+      "DynamoDB contains an invalid legacy Bundle item",
+    );
+  }
+  return {
+    id: attributeValueToUnknown(row.id),
+    platform: attributeValueToUnknown(row.platform),
+    channel: attributeValueToUnknown(row.channel),
+    enabled: attributeValueToUnknown(row.enabled),
+    should_force_update: attributeValueToUnknown(row.should_force_update),
+    message: attributeValueToUnknown(row.message),
+    target_app_version: attributeValueToUnknown(row.target_app_version),
+    fingerprint_hash: attributeValueToUnknown(row.fingerprint_hash),
+    rollout_cohort_count: attributeValueToUnknown(row.rollout_cohort_count),
+    target_cohorts: attributeValueToUnknown(row.target_cohorts),
+  };
+};
+
+const releaseItem = (row: ReleaseRow): Record<string, AttributeValue> => ({
+  pk: { S: `release-scope#${row.scope_key}` },
+  sk: { S: row.id },
+  version: { N: "1" },
+  row: rowAttribute(row),
+});
+
+const releaseLocatorItem = (
+  row: ReleaseRow,
+): Record<string, AttributeValue> => ({
+  pk: { S: DYNAMODB_RELEASE_ID_PARTITION },
+  sk: { S: row.id },
+  scope_key: { S: row.scope_key },
+});
+
+const releaseCatalogItem = (
+  row: ReleaseCatalogRow,
+): Record<string, AttributeValue> => ({
+  pk: { S: "release_catalogs" },
+  sk: { S: row.scope_key },
+  version: { N: "1" },
+  row: rowAttribute(row),
+});
+
 export class DynamoDBManager {
   private readonly client: DynamoDB;
 
@@ -144,7 +298,7 @@ export class DynamoDBManager {
     this.client = new DynamoDB({ credentials, region });
   }
 
-  async ensureTable(tableName: string): Promise<void> {
+  async ensureTable(tableName: string): Promise<string> {
     try {
       const { Table } = await this.client.describeTable({
         TableName: tableName,
@@ -153,8 +307,10 @@ export class DynamoDBManager {
         throw new DynamoDBTableSchemaError(tableName);
       }
       await this.ensureLifecycle(tableName);
-      await this.ensureChannels(tableName);
-      return;
+      const migrationState = await this.ensureChannels(tableName);
+      const authorityId = this.getAuthorityId(tableName, Table);
+      await this.ensureReleaseCatalog(tableName, authorityId, migrationState);
+      return authorityId;
     } catch (error) {
       if (
         error instanceof Error &&
@@ -166,7 +322,7 @@ export class DynamoDBManager {
       if (!isResourceNotFound(error)) throw error;
     }
 
-    await this.client.createTable({
+    const created = await this.client.createTable({
       AttributeDefinitions: [
         { AttributeName: "pk", AttributeType: "S" },
         { AttributeName: "sk", AttributeType: "S" },
@@ -192,7 +348,26 @@ export class DynamoDBManager {
       { TableName: tableName },
     );
     await this.ensureLifecycle(tableName);
-    await this.ensureChannels(tableName);
+    const migrationState = await this.ensureChannels(tableName);
+    const table =
+      created.TableDescription ??
+      (await this.client.describeTable({ TableName: tableName })).Table;
+    const authorityId = this.getAuthorityId(tableName, table);
+    await this.ensureReleaseCatalog(tableName, authorityId, migrationState);
+    return authorityId;
+  }
+
+  private getAuthorityId(
+    tableName: string,
+    table: TableDescription | undefined,
+  ): string {
+    const tableArn = table?.TableArn;
+    if (!tableArn) {
+      throw new DynamoDBReleaseCatalogMigrationError(
+        `DynamoDB table "${tableName}" did not return its stable ARN`,
+      );
+    }
+    return releaseCatalogAuthorityId(tableArn);
   }
 
   private async queryPartition(
@@ -246,10 +421,11 @@ export class DynamoDBManager {
 
   private parseBundleChannel(
     item: Record<string, AttributeValue>,
-  ): DynamoDBBundleChannel {
+  ): DynamoDBBundleChannel | undefined {
     const id = item.row?.M?.id?.S;
     const channel = item.row?.M?.channel?.S;
     const channelId = item.row?.M?.channel_id?.S;
+    if (!hasLegacyBundlePolicy(item)) return undefined;
     if (
       item.pk?.S !== DYNAMODB_BUNDLE_PARTITION ||
       item.sk?.S !== id ||
@@ -442,7 +618,7 @@ export class DynamoDBManager {
       });
       if (
         Item !== undefined &&
-        this.parseBundleChannel(Item).channelId === channelId
+        this.parseBundleChannel(Item)?.channelId === channelId
       ) {
         return;
       }
@@ -492,7 +668,9 @@ export class DynamoDBManager {
     }
   }
 
-  private async ensureChannels(tableName: string): Promise<void> {
+  private async ensureChannels(
+    tableName: string,
+  ): Promise<DynamoDBReleaseCatalogMigrationState> {
     const storedChannels = (
       await this.queryPartition(tableName, DYNAMODB_CHANNEL_PARTITION)
     ).map((item) => this.parseChannel(item));
@@ -520,9 +698,14 @@ export class DynamoDBManager {
       claimedChannelsByName.set(channel.name, canonical);
     }
 
-    const bundles = (
-      await this.queryPartition(tableName, DYNAMODB_BUNDLE_PARTITION)
-    ).map((item) => this.parseBundleChannel(item));
+    const bundleItems = await this.queryPartition(
+      tableName,
+      DYNAMODB_BUNDLE_PARTITION,
+    );
+    const bundles = bundleItems.flatMap((item) => {
+      const bundle = this.parseBundleChannel(item);
+      return bundle === undefined ? [] : [bundle];
+    });
     for (const name of new Set(bundles.map(({ channel }) => channel))) {
       const existing = channelsByName.get(name);
       const channel =
@@ -570,6 +753,283 @@ export class DynamoDBManager {
         tableName,
         channel,
         referenceCounts.get(channel.id) ?? 0,
+      );
+    }
+    return { bundles: bundleItems, channelsByName };
+  }
+
+  private async readReleaseCatalogMigrationMarker(
+    tableName: string,
+  ): Promise<ReleaseCatalogMigrationMarker | undefined> {
+    const { Item } = await this.client.getItem({
+      TableName: tableName,
+      ConsistentRead: true,
+      Key: {
+        pk: { S: DYNAMODB_MIGRATION_PARTITION },
+        sk: { S: DYNAMODB_RELEASE_CATALOG_MIGRATION },
+      },
+    });
+    if (Item === undefined) return undefined;
+    const authorityId = Item.authority_id?.S;
+    const phase = Item.phase?.S;
+    if (
+      Item.pk?.S !== DYNAMODB_MIGRATION_PARTITION ||
+      Item.sk?.S !== DYNAMODB_RELEASE_CATALOG_MIGRATION ||
+      authorityId === undefined ||
+      (phase !== "preparing" &&
+        phase !== "cleanup_pending" &&
+        phase !== "complete")
+    ) {
+      throw new DynamoDBReleaseCatalogMigrationError(
+        "DynamoDB contains an invalid Release Catalog migration marker",
+      );
+    }
+    return { authorityId, phase };
+  }
+
+  private requireMigrationAuthority(
+    marker: ReleaseCatalogMigrationMarker,
+    authorityId: string,
+  ): ReleaseCatalogMigrationMarker {
+    if (marker.authorityId !== authorityId) {
+      throw new DynamoDBReleaseCatalogMigrationError(
+        "DynamoDB Release Catalog authority does not match the table identity",
+      );
+    }
+    return marker;
+  }
+
+  private async ensureReleaseCatalogMigrationMarker(
+    tableName: string,
+    authorityId: string,
+  ): Promise<ReleaseCatalogMigrationMarker> {
+    const existing = await this.readReleaseCatalogMigrationMarker(tableName);
+    if (existing !== undefined) {
+      return this.requireMigrationAuthority(existing, authorityId);
+    }
+    try {
+      await this.client.putItem({
+        TableName: tableName,
+        Item: {
+          pk: { S: DYNAMODB_MIGRATION_PARTITION },
+          sk: { S: DYNAMODB_RELEASE_CATALOG_MIGRATION },
+          authority_id: { S: authorityId },
+          phase: { S: "preparing" },
+        },
+        ConditionExpression: "attribute_not_exists(#pk)",
+        ExpressionAttributeNames: { "#pk": "pk" },
+      });
+      return { authorityId, phase: "preparing" };
+    } catch (error) {
+      if (!this.isConditionalConflict(error)) throw error;
+      const winner = await this.readReleaseCatalogMigrationMarker(tableName);
+      if (winner === undefined) throw error;
+      return this.requireMigrationAuthority(winner, authorityId);
+    }
+  }
+
+  private async transitionReleaseCatalogMigration(
+    tableName: string,
+    authorityId: string,
+    from: ReleaseCatalogMigrationPhase,
+    to: ReleaseCatalogMigrationPhase,
+  ): Promise<ReleaseCatalogMigrationMarker> {
+    try {
+      await this.client.updateItem({
+        TableName: tableName,
+        Key: {
+          pk: { S: DYNAMODB_MIGRATION_PARTITION },
+          sk: { S: DYNAMODB_RELEASE_CATALOG_MIGRATION },
+        },
+        ConditionExpression:
+          "#authorityId = :authorityId AND #phase = :fromPhase",
+        UpdateExpression: "SET #phase = :toPhase",
+        ExpressionAttributeNames: {
+          "#authorityId": "authority_id",
+          "#phase": "phase",
+        },
+        ExpressionAttributeValues: {
+          ":authorityId": { S: authorityId },
+          ":fromPhase": { S: from },
+          ":toPhase": { S: to },
+        },
+      });
+      return { authorityId, phase: to };
+    } catch (error) {
+      if (!this.isConditionalConflict(error)) throw error;
+      const latest = await this.readReleaseCatalogMigrationMarker(tableName);
+      if (latest === undefined) throw error;
+      this.requireMigrationAuthority(latest, authorityId);
+      const phaseOrder: Record<ReleaseCatalogMigrationPhase, number> = {
+        preparing: 0,
+        cleanup_pending: 1,
+        complete: 2,
+      };
+      if (phaseOrder[latest.phase] >= phaseOrder[to]) return latest;
+      throw error;
+    }
+  }
+
+  private async putReleaseCatalogProjection(
+    tableName: string,
+    expected: Record<string, AttributeValue>,
+  ): Promise<void> {
+    try {
+      await this.client.putItem({
+        TableName: tableName,
+        Item: expected,
+        ConditionExpression: "attribute_not_exists(#pk)",
+        ExpressionAttributeNames: { "#pk": "pk" },
+      });
+    } catch (error) {
+      if (!this.isConditionalConflict(error)) throw error;
+      const { Item } = await this.client.getItem({
+        TableName: tableName,
+        ConsistentRead: true,
+        Key: { pk: expected.pk!, sk: expected.sk! },
+      });
+      if (Item !== undefined && isEqual(Item, expected)) return;
+      throw new DynamoDBReleaseCatalogMigrationError(
+        "DynamoDB contains a conflicting Release Catalog projection",
+      );
+    }
+  }
+
+  private async cleanupLegacyBundlePolicy(
+    tableName: string,
+    item: Record<string, AttributeValue>,
+  ): Promise<void> {
+    if (!hasLegacyBundlePolicy(item)) return;
+    const id = item.row?.M?.id?.S;
+    const platform = item.row?.M?.platform?.S;
+    if (
+      item.pk?.S !== DYNAMODB_BUNDLE_PARTITION ||
+      item.sk?.S !== id ||
+      id === undefined ||
+      (platform !== "ios" && platform !== "android")
+    ) {
+      throw new DynamoDBReleaseCatalogMigrationError(
+        "DynamoDB contains an invalid legacy Bundle artifact",
+      );
+    }
+    const policyNames = Object.fromEntries(
+      legacyBundlePolicyFields.map((field, index) => [
+        `#policy${index}`,
+        field,
+      ]),
+    );
+    try {
+      await this.client.updateItem({
+        TableName: tableName,
+        Key: {
+          pk: { S: DYNAMODB_BUNDLE_PARTITION },
+          sk: { S: id },
+        },
+        ConditionExpression:
+          "#row.#id = :id AND attribute_exists(#row.#channel)",
+        UpdateExpression: [
+          "SET #relationCount = if_not_exists(#relationCount, :zero) + :one,",
+          "#gsi1pk = :gsi1pk, #gsi1sk = :id,",
+          "#version = if_not_exists(#version, :zero) + :one",
+          `REMOVE ${legacyBundlePolicyFields
+            .map((_, index) => `#row.#policy${index}`)
+            .join(", ")}`,
+        ].join(" "),
+        ExpressionAttributeNames: {
+          "#channel": "channel",
+          "#gsi1pk": "gsi1pk",
+          "#gsi1sk": "gsi1sk",
+          "#id": "id",
+          "#relationCount": "relation_count",
+          "#row": "row",
+          "#version": "version",
+          ...policyNames,
+        },
+        ExpressionAttributeValues: {
+          ":gsi1pk": { S: `bundle#${platform}` },
+          ":id": { S: id },
+          ":one": { N: "1" },
+          ":zero": { N: "0" },
+        },
+      });
+    } catch (error) {
+      if (!this.isConditionalConflict(error)) throw error;
+      const { Item } = await this.client.getItem({
+        TableName: tableName,
+        ConsistentRead: true,
+        Key: {
+          pk: { S: DYNAMODB_BUNDLE_PARTITION },
+          sk: { S: id },
+        },
+      });
+      if (Item !== undefined && !hasLegacyBundlePolicy(Item)) return;
+      throw error;
+    }
+  }
+
+  private async ensureReleaseCatalog(
+    tableName: string,
+    authorityId: string,
+    state: DynamoDBReleaseCatalogMigrationState,
+  ): Promise<void> {
+    let marker = await this.ensureReleaseCatalogMigrationMarker(
+      tableName,
+      authorityId,
+    );
+    if (marker.phase === "complete") return;
+
+    if (marker.phase === "preparing") {
+      const legacyBundles = state.bundles.filter(hasLegacyBundlePolicy);
+      const backfill = await compileLegacyReleaseCatalogBackfill({
+        authorityId,
+        rows: legacyBundles.map(parseLegacyBundlePolicy),
+      });
+      for (const release of backfill.releases) {
+        const channel = state.channelsByName.get(release.channelName);
+        if (channel === undefined) {
+          throw new DynamoDBReleaseCatalogMigrationError(
+            `DynamoDB legacy channel "${release.channelName}" is missing`,
+          );
+        }
+        const row = { ...release.row, channel_id: channel.id };
+        await this.putReleaseCatalogProjection(tableName, releaseItem(row));
+        await this.putReleaseCatalogProjection(
+          tableName,
+          releaseLocatorItem(row),
+        );
+      }
+      for (const catalog of backfill.catalogs) {
+        const channel = state.channelsByName.get(catalog.channelName);
+        if (channel === undefined) {
+          throw new DynamoDBReleaseCatalogMigrationError(
+            `DynamoDB legacy channel "${catalog.channelName}" is missing`,
+          );
+        }
+        await this.putReleaseCatalogProjection(
+          tableName,
+          releaseCatalogItem({
+            ...catalog.row,
+            channel_id: channel.id,
+          }),
+        );
+      }
+      marker = await this.transitionReleaseCatalogMigration(
+        tableName,
+        authorityId,
+        "preparing",
+        "cleanup_pending",
+      );
+    }
+
+    if (marker.phase === "cleanup_pending") {
+      for (const item of state.bundles) {
+        await this.cleanupLegacyBundlePolicy(tableName, item);
+      }
+      await this.transitionReleaseCatalogMigration(
+        tableName,
+        authorityId,
+        "cleanup_pending",
+        "complete",
       );
     }
   }

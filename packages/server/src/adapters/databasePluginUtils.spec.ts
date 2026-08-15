@@ -26,16 +26,4 @@ describe("fromStoredBundleRow", () => {
       ).toThrow("Invalid metadata");
     },
   );
-
-  it.each(['["stable",42]', "not-json", { cohort: "stable" }])(
-    "rejects invalid target_cohorts values",
-    (targetCohorts) => {
-      expect(() =>
-        fromStoredBundleRow({
-          ...createBundleRowFixture("invalid-cohorts"),
-          target_cohorts: targetCohorts,
-        }),
-      ).toThrow("Invalid target_cohorts");
-    },
-  );
 });

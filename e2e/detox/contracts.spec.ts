@@ -78,17 +78,23 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/analytics-http-client.ts",
       "e2e/detox/analytics-provider-client.spec.ts",
       "e2e/detox/analytics-provider-client.ts",
+      "e2e/detox/control-server/android-instrumentation.spec.ts",
+      "e2e/detox/control-server/android-instrumentation.ts",
+      "e2e/detox/control-server/android-restart-wait.spec.ts",
+      "e2e/detox/control-server/android-restart-wait.ts",
       "e2e/detox/control-server/controller.ts",
       "e2e/detox/control-server/crash-recovery-wait.spec.ts",
       "e2e/detox/control-server/crash-recovery-wait.ts",
       "e2e/detox/control-server/deploy-lock-contract.spec.ts",
       "e2e/detox/control-server/fair-file-lock.ts",
       "e2e/detox/control-server/index.ts",
+      "e2e/detox/control-server/provider-reset-retry.spec.ts",
+      "e2e/detox/control-server/provider-reset-retry.ts",
       "e2e/detox/control-server/routes.ts",
       "e2e/detox/control-server/screen-state.spec.ts",
       "e2e/detox/control-server/screen-state.ts",
-      "e2e/detox/control-server/update-check-request-bundle-id.spec.ts",
-      "e2e/detox/control-server/update-check-request-bundle-id.ts",
+      "e2e/detox/control-server/release-catalog-url.spec.ts",
+      "e2e/detox/control-server/release-catalog-url.ts",
       "e2e/detox/control-server/update-check-visibility.spec.ts",
       "e2e/detox/control-server/update-check-visibility.ts",
       "e2e/detox/android-native.spec.ts",
@@ -99,6 +105,7 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/control-client.ts",
       "e2e/detox/control-protocol.ts",
       "e2e/detox/control-server-env.spec.ts",
+      "e2e/detox/default-scenario-names.json",
       "e2e/detox/detox-assertion-contract.spec.ts",
       "e2e/detox/e2e-navigation-action-routes-contract.spec.ts",
       "e2e/detox/e2e-navigation-compact-contract.spec.ts",
@@ -120,16 +127,29 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/scenarios/bspatch-consecutive-diff-ota.ts",
       "e2e/detox/scenarios/bspatch-disabled-chain-rollback.ts",
       "e2e/detox/scenarios/bspatch-manifest-diff-fallback.ts",
+      "e2e/detox/scenarios/catalog-only-no-update.ts",
+      "e2e/detox/scenarios/crash-then-next-safe-update.ts",
       "e2e/detox/scenarios/disabled-bundle-rollback-to-builtin.ts",
       "e2e/detox/scenarios/disabled-bundle-rollback-to-previous-ota.ts",
+      "e2e/detox/scenarios/explicit-embedded-receipt.ts",
+      "e2e/detox/scenarios/failed-download-same-generation-retry.ts",
+      "e2e/detox/scenarios/fingerprint-initial-install.ts",
       "e2e/detox/scenarios/force-update-auto-reload.ts",
+      "e2e/detox/scenarios/forward-release-rollback-old-bundle.ts",
+      "e2e/detox/scenarios/metadata-v1-migration.ts",
       "e2e/detox/scenarios/multi-asset-replacement.ts",
       "e2e/detox/scenarios/numeric-cohort-rollout.ts",
       "e2e/detox/scenarios/release-ota-recovery.ts",
+      "e2e/detox/scenarios/republished-crashed-bundle-skipped.ts",
+      "e2e/detox/scenarios/runtime-channel-crash-restore.ts",
       "e2e/detox/scenarios/runtime-channel-switch-reset.ts",
+      "e2e/detox/scenarios/same-bundle-release-adoption.ts",
+      "e2e/detox/scenarios/slow-old-artifact-after-newer-install.ts",
+      "e2e/detox/scenarios/stale-catalog-after-newer-generation.ts",
       "e2e/detox/scenarios/target-cohorts-only.ts",
       "e2e/detox/scenarios/target-cohorts-rollout-interaction.ts",
       "e2e/detox/scenarios/targeted-cohort-switchback.ts",
+      "e2e/detox/scenarios/ten-crash-history-safe-bundle.ts",
       "e2e/detox/scenarios/types.ts",
       "e2e/detox/screen-routes/action-screen-routes.js",
       "e2e/detox/screen-routes/index.js",
@@ -203,7 +223,7 @@ describe("Detox E2E harness contract", () => {
     );
   });
 
-  it("allows serialized provider deploys to run for up to 30 minutes", () => {
+  it("allows serialized provider deploy scenarios to run for up to 60 minutes", () => {
     // Given: no profile-specific timeout override is exported to Jest.
     const result = spawnSync(
       process.execPath,
@@ -217,9 +237,9 @@ describe("Detox E2E harness contract", () => {
       },
     );
 
-    // Then: serialized invalidation waits do not hit the old 12-minute limit.
+    // Then: multiple fair-lock waits fit while each control job stays bounded.
     expect(result.status).toBe(0);
-    expect(result.stdout).toBe("1800000");
+    expect(result.stdout).toBe("3600000");
   });
 
   it("injects the fixed E2E min bundle id into Detox release builds", async () => {

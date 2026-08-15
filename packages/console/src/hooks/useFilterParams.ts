@@ -1,18 +1,14 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
 
 export interface BundleFilters {
-  channel?: string;
   platform?: "ios" | "android";
-  targetAppVersion?: string;
   page?: number;
   after?: string;
   before?: string;
 }
 
 interface BundleSearchParams {
-  channel: string | undefined;
   platform: "ios" | "android" | undefined;
-  targetAppVersion: string | undefined;
   page: number | undefined;
   after: string | undefined;
   before: string | undefined;
@@ -21,13 +17,11 @@ interface BundleSearchParams {
 }
 
 export function useFilterParams() {
-  const search = useSearch({ from: "/" });
+  const search = useSearch({ from: "/artifacts" });
   const navigate = useNavigate();
 
   const filters: BundleFilters = {
-    channel: search.channel as string | undefined,
     platform: search.platform as "ios" | "android" | undefined,
-    targetAppVersion: search.targetAppVersion as string | undefined,
     page: search.page as number | undefined,
     after: search.after as string | undefined,
     before: search.before as string | undefined,
@@ -40,32 +34,25 @@ export function useFilterParams() {
     options?: { resetScroll?: boolean },
   ) => {
     void navigate({
-      to: "/",
+      to: "/artifacts",
       search: nextSearch,
       resetScroll: options?.resetScroll,
     });
   };
 
   const getNextFilters = (newFilters: Partial<BundleFilters>) => {
-    const hasChannel = Object.hasOwn(newFilters, "channel");
     const hasPlatform = Object.hasOwn(newFilters, "platform");
-    const hasTargetAppVersion = Object.hasOwn(newFilters, "targetAppVersion");
     const hasPage = Object.hasOwn(newFilters, "page");
     const hasAfter = Object.hasOwn(newFilters, "after");
     const hasBefore = Object.hasOwn(newFilters, "before");
-    const shouldResetPagination =
-      hasChannel || hasPlatform || hasTargetAppVersion;
+    const shouldResetPagination = hasPlatform;
     const nextPage =
       hasPage && newFilters.page !== undefined && newFilters.page > 1
         ? newFilters.page
         : undefined;
 
     return {
-      channel: hasChannel ? newFilters.channel : filters.channel,
       platform: hasPlatform ? newFilters.platform : filters.platform,
-      targetAppVersion: hasTargetAppVersion
-        ? newFilters.targetAppVersion
-        : filters.targetAppVersion,
       page: shouldResetPagination
         ? undefined
         : hasPage
@@ -126,9 +113,7 @@ export function useFilterParams() {
 
   const resetFilters = () => {
     navigateWithSearch({
-      channel: undefined,
       platform: undefined,
-      targetAppVersion: undefined,
       page: undefined,
       after: undefined,
       before: undefined,

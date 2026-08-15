@@ -1,20 +1,9 @@
-import {
-  DatabasePluginInputError,
-  type BundleRow,
-} from "@hot-updater/plugin-core";
+import { DatabasePluginInputError } from "@hot-updater/plugin-core";
 import type {
   DatabasePluginImplementation,
   TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  isNotNull,
-  sql,
-  type SQLWrapper,
-} from "drizzle-orm";
+import { asc, desc, eq, sql, type SQLWrapper } from "drizzle-orm";
 
 import {
   isChannelDeleteReferencedError,
@@ -22,8 +11,12 @@ import {
 } from "./databaseConstraintErrors";
 import {
   fromStoredBundleRow,
+  fromStoredReleaseCatalogRow,
+  fromStoredReleaseRow,
   toStoredBundleRow,
   toStoredBundleUpdate,
+  toStoredReleaseRow,
+  toStoredReleaseUpdate,
 } from "./databasePluginUtils";
 import type { DrizzleProvider } from "./drizzle";
 import type { DrizzleDB, DrizzleTable } from "./drizzleLazyDB";
@@ -85,20 +78,6 @@ const executeInsert = async (
   await ignored.execute();
 };
 
-const assertBundleChannel = async (
-  db: DrizzleDB,
-  channels: DrizzleTable,
-  bundle: Pick<BundleRow, "channel" | "channel_id">,
-): Promise<void> => {
-  const row = await db.query.channels.findFirst({
-    where: and(
-      eq(getDrizzleColumn(channels, "id"), bundle.channel_id),
-      eq(getDrizzleColumn(channels, "name"), bundle.channel),
-    ),
-  });
-  if (row === undefined) throw new DrizzleAdapterInvariantError();
-};
-
 const toOrderBy = (
   table: DrizzleTable,
   input: {
@@ -136,6 +115,8 @@ export const createDrizzleCrud = (
   const bundles = getDrizzleTable(db, "bundles");
   const patches = getDrizzleTable(db, "bundle_patches");
   const events = getDrizzleTable(db, "bundle_events");
+  const releases = getDrizzleTable(db, "releases");
+  const releaseCatalogs = getDrizzleTable(db, "release_catalogs");
   const channels = getDrizzleTable(db, "channels");
   const clientAccessKeys = getDrizzleTable(db, "client_access_keys");
   return {
@@ -147,11 +128,13 @@ export const createDrizzleCrud = (
       if (existing === undefined) {
         return { deleted: false, reason: "not_found" };
       }
-      const referenced = await db.$count(
-        bundles,
-        eq(getDrizzleColumn(bundles, "channel_id"), id),
+      const referencedReleases = await db.$count(
+        releases,
+        eq(getDrizzleColumn(releases, "channel_id"), id),
       );
-      if (referenced > 0) return { deleted: false, reason: "not_empty" };
+      if (referencedReleases > 0) {
+        return { deleted: false, reason: "not_empty" };
+      }
       try {
         await db.delete(channels).where(idPredicate).execute();
       } catch (error) {
@@ -177,7 +160,6 @@ export const createDrizzleCrud = (
     async create(input) {
       switch (input.model) {
         case "bundles":
-          await assertBundleChannel(db, channels, input.data);
           await executeInsert(
             db,
             provider,
@@ -191,6 +173,24 @@ export const createDrizzleCrud = (
           return input.data;
         case "bundle_events":
           await executeInsert(db, provider, events, input.data, undefined);
+          return input.data;
+        case "releases":
+          await executeInsert(
+            db,
+            provider,
+            releases,
+            toStoredReleaseRow(input.data, provider),
+            undefined,
+          );
+          return input.data;
+        case "release_catalogs":
+          await executeInsert(
+            db,
+            provider,
+            releaseCatalogs,
+            input.data,
+            undefined,
+          );
           return input.data;
         case "client_access_keys":
           await executeInsert(
@@ -233,51 +233,43 @@ export const createDrizzleCrud = (
           })) ?? null
         );
       }
-      if (
-        input.update.target_app_version === null &&
-        input.update.fingerprint_hash === null
-      ) {
-        throw new DrizzleAdapterInvariantError();
+      if (input.model === "releases") {
+        const idPredicate = eq(
+          getDrizzleColumn(releases, "id"),
+          selector.value,
+        );
+        await db
+          .update(releases)
+          .set(toStoredReleaseUpdate(input.update, provider))
+          .where(idPredicate)
+          .execute();
+        const row = await db.query.releases.findFirst({ where: idPredicate });
+        return row === undefined ? null : fromStoredReleaseRow(row);
       }
-      const currentStored = await db.query.bundles.findFirst({
-        where: eq(getDrizzleColumn(bundles, "id"), selector.value),
-      });
-      if (currentStored === undefined) return null;
-      await assertBundleChannel(db, channels, {
-        ...fromStoredBundleRow(currentStored),
-        ...input.update,
-      });
+      if (input.model === "release_catalogs") {
+        const scopePredicate = eq(
+          getDrizzleColumn(releaseCatalogs, "scope_key"),
+          selector.value,
+        );
+        await db
+          .update(releaseCatalogs)
+          .set(input.update)
+          .where(scopePredicate)
+          .execute();
+        const row = await db.query.release_catalogs.findFirst({
+          where: scopePredicate,
+        });
+        return row === undefined ? null : fromStoredReleaseCatalogRow(row);
+      }
       const idPredicate = eq(getDrizzleColumn(bundles, "id"), selector.value);
-      const targetPredicate =
-        input.update.target_app_version === null &&
-        input.update.fingerprint_hash === undefined
-          ? isNotNull(getDrizzleColumn(bundles, "fingerprint_hash"))
-          : input.update.fingerprint_hash === null &&
-              input.update.target_app_version === undefined
-            ? isNotNull(getDrizzleColumn(bundles, "target_app_version"))
-            : undefined;
-      const predicate =
-        targetPredicate === undefined
-          ? idPredicate
-          : and(idPredicate, targetPredicate);
-      if (predicate === undefined) throw new DrizzleAdapterInvariantError();
       await db
         .update(bundles)
         .set(toStoredBundleUpdate(input.update, provider))
-        .where(predicate)
+        .where(idPredicate)
         .execute();
       const stored = await db.query.bundles.findFirst({ where: idPredicate });
       if (stored === undefined) return null;
-      const updated = fromStoredBundleRow(stored);
-      if (
-        (input.update.target_app_version !== undefined &&
-          updated.target_app_version !== input.update.target_app_version) ||
-        (input.update.fingerprint_hash !== undefined &&
-          updated.fingerprint_hash !== input.update.fingerprint_hash)
-      ) {
-        throw new DrizzleAdapterInvariantError();
-      }
-      return updated;
+      return fromStoredBundleRow(stored);
     },
     async delete(input) {
       switch (input.model) {
@@ -291,6 +283,12 @@ export const createDrizzleCrud = (
           const where = buildDrizzleWhere(provider, patches, input.where);
           if (where === undefined) throw new DrizzleAdapterInvariantError();
           await db.delete(patches).where(where).execute();
+          return;
+        }
+        case "releases": {
+          const where = buildDrizzleWhere(provider, releases, input.where);
+          if (where === undefined) throw new DrizzleAdapterInvariantError();
+          await db.delete(releases).where(where).execute();
           return;
         }
         case "channels": {
@@ -320,6 +318,11 @@ export const createDrizzleCrud = (
             patches,
             buildDrizzleWhere(provider, patches, input.where),
           );
+        case "releases":
+          return db.$count(
+            releases,
+            buildDrizzleWhere(provider, releases, input.where),
+          );
       }
     },
     async findOne(input) {
@@ -348,6 +351,18 @@ export const createDrizzleCrud = (
               where: buildDrizzleWhere(provider, channels, input.where),
             })) ?? null
           );
+        case "releases": {
+          const row = await db.query.releases.findFirst({
+            where: buildDrizzleWhere(provider, releases, input.where),
+          });
+          return row === undefined ? null : fromStoredReleaseRow(row);
+        }
+        case "release_catalogs": {
+          const row = await db.query.release_catalogs.findFirst({
+            where: buildDrizzleWhere(provider, releaseCatalogs, input.where),
+          });
+          return row === undefined ? null : fromStoredReleaseCatalogRow(row);
+        }
       }
     },
     async findMany(input) {
@@ -392,6 +407,24 @@ export const createDrizzleCrud = (
             limit: input.limit,
             offset: input.offset,
           });
+        case "releases": {
+          const rows = await db.query.releases.findMany({
+            where: buildDrizzleWhere(provider, releases, input.where),
+            orderBy: toOrderBy(releases, input),
+            limit: input.limit,
+            offset: input.offset,
+          });
+          return rows.map(fromStoredReleaseRow);
+        }
+        case "release_catalogs": {
+          const rows = await db.query.release_catalogs.findMany({
+            where: buildDrizzleWhere(provider, releaseCatalogs, input.where),
+            orderBy: toOrderBy(releaseCatalogs, input),
+            limit: input.limit,
+            offset: input.offset,
+          });
+          return rows.map(fromStoredReleaseCatalogRow);
+        }
       }
     },
   };

@@ -30,6 +30,9 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
         },
         {
           saveResultAs: "previousBundleId",
+          saveResultFieldsAs: {
+            releaseId: "previousReleaseId",
+          },
         },
       );
       await app.launch("launch previous bundle app");
@@ -40,7 +43,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
       await app.assertText(
         "assert previous bundle action result",
         "update-action-result",
-        "current-channel -> installed $previousBundleId",
+        "current-channel -> installed Release $previousReleaseId / Bundle $previousBundleId",
         { exactText: true },
       );
       await app.control(
@@ -92,6 +95,9 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
         },
         {
           saveResultAs: "nextBundleId",
+          saveResultFieldsAs: {
+            releaseId: "nextReleaseId",
+          },
         },
       );
       await app.launch("launch next bundle app");
@@ -102,7 +108,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
       await app.assertText(
         "assert next bundle action result",
         "update-action-result",
-        "current-channel -> installed $nextBundleId",
+        "current-channel -> installed Release $nextReleaseId / Bundle $nextBundleId",
         { exactText: true },
       );
       await app.control(
@@ -142,9 +148,9 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
           bundleId: "$nextBundleId",
         },
       );
-      await app.control("disable next bundle", "/e2e/jobs/patch-bundle", {
-        bundleId: "$nextBundleId",
+      await app.control("disable next bundle", "/e2e/jobs/patch-release", {
         enabled: false,
+        releaseId: "$nextReleaseId",
       });
       await app.tap(
         "install rollback to previous ota",
@@ -153,7 +159,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
       await app.assertText(
         "assert previous ota rollback action result",
         "update-action-result",
-        "current-channel -> installed $previousBundleId",
+        "current-channel -> installed Release $previousReleaseId / Bundle $previousBundleId",
         { exactText: true },
       );
       await app.control(
@@ -185,11 +191,6 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
           "Current Launch Status: UNCHANGED",
           "Current Launch Status: UPDATE_APPLIED",
         ],
-      );
-      await app.assertText(
-        "assert previous ota rollback crashed bundle",
-        "launch-crashed-bundle-result",
-        "Current Crashed Bundle ID: null",
       );
       await app.assertText(
         "assert previous ota rollback crash history empty",

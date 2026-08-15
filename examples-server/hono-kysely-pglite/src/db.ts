@@ -7,7 +7,7 @@ import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { config } from "dotenv";
-import { Kysely } from "kysely";
+import { Kysely, sql } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -51,6 +51,7 @@ export const hotUpdater = createHotUpdater({
   features: {
     updateCheck: true,
     bundles: true,
+    analytics: { queryAccess: "public" },
   },
 });
 
@@ -58,4 +59,16 @@ export const hotUpdater = createHotUpdater({
 export async function closeDatabase() {
   await kysely.destroy();
   await db.close();
+}
+
+export async function resetDecisionFixtures() {
+  await sql`
+    TRUNCATE TABLE
+      bundle_patches,
+      release_catalogs,
+      releases,
+      bundles,
+      channels
+    CASCADE
+  `.execute(kysely);
 }

@@ -44,6 +44,8 @@ export interface UpdateBundleParams {
    * the currently active bundle.
    */
   changedAssets?: UnsafeObject | null;
+  /** Full protocol-v2 selection receipt committed with the staged Bundle. */
+  selection?: UnsafeObject | null;
 }
 
 export interface Spec extends TurboModule {
@@ -88,6 +90,27 @@ export interface Spec extends TurboModule {
    */
   updateBundle(params: UpdateBundleParams): Promise<boolean>;
 
+  /** Accepts and durably advances the catalog high-water for a scope. */
+  acceptReleaseCatalog(params: UnsafeObject): boolean;
+
+  /** Reads active/stable selection receipts and catalog high-water state. */
+  getActiveUpdateState(): UnsafeObject;
+
+  /** Reads a checksum-verified Release Catalog cache entry. */
+  getReleaseCatalogCache(partition: string): Promise<string | null>;
+
+  /** Atomically stores a bounded Release Catalog cache entry. */
+  setReleaseCatalogCache(partition: string, payload: string): Promise<boolean>;
+
+  /** Removes an incompatible Release Catalog cache entry. */
+  removeReleaseCatalogCache(partition: string): Promise<boolean>;
+
+  /** Rechecks generation/context immediately before a v2 side effect. */
+  isReleaseSelectionCurrent(params: UnsafeObject): boolean;
+
+  /** Atomically commits a metadata-only, EMBEDDED, or BUILTIN selection. */
+  commitReleaseSelection(params: UnsafeObject): Promise<boolean>;
+
   /**
    * Reads the launch report for the current process.
    * This is a read-only API; native launch state has already been finalized.
@@ -97,7 +120,9 @@ export interface Spec extends TurboModule {
    */
   notifyAppReady(): {
     status: "PENDING" | "UNCHANGED" | "UPDATE_APPLIED" | "RECOVERED";
+    fromReleaseId?: string;
     fromBundleId?: string;
+    toReleaseId?: string;
     toBundleId?: string;
     updateStrategy?: "fingerprint" | "appVersion";
     crashedBundleId?: string;

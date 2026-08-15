@@ -265,13 +265,44 @@ const deployFunctions = async (
   }
 };
 
+const deployHosting = async (
+  cwd: string,
+  nonInteractive = false,
+  cliEnv?: FirebaseCliEnv,
+) => {
+  try {
+    await execa(
+      "npx",
+      [
+        "firebase",
+        "deploy",
+        "--only",
+        "hosting",
+        ...(nonInteractive ? ["--non-interactive"] : []),
+      ],
+      {
+        cwd,
+        env: cliEnv,
+        stdio: "inherit",
+      },
+    );
+  } catch (e) {
+    if (e instanceof ExecaError) {
+      p.log.error(e.stderr || e.stdout || e.message);
+    } else if (e instanceof Error) {
+      p.log.error(e.message);
+    }
+    process.exit(1);
+  }
+};
+
 const printTemplate = async (
   projectId: string,
   region: string,
   cliEnv?: FirebaseCliEnv,
 ) => {
   try {
-    const { stdout } = await execa(
+    await execa(
       "gcloud",
       [
         "functions",
@@ -287,10 +318,7 @@ const printTemplate = async (
         env: cliEnv,
       },
     );
-    const parsedData = JSON.parse(stdout);
-    const url = parsedData?.serviceConfig?.uri ?? parsedData.url;
-
-    const functionUrl = `${url}/api/check-update`;
+    const functionUrl = `https://${projectId}.web.app/api/check-update`;
 
     p.note(
       transformTemplate(SOURCE_TEMPLATE, {
@@ -395,6 +423,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     return;
   }
   const functionsCode = transformEnv(functionsIndexPath, {
+    AUTHORITY_ID: initializeVariable.projectId,
     REGION: currentRegion,
   });
   await fs.promises.writeFile(functionsIndexPath, functionsCode);
@@ -441,6 +470,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   await deployFirestore(tmpDir, nonInteractive, cliEnv);
   await deployFunctions(tmpDir, nonInteractive, cliEnv);
+  await deployHosting(tmpDir, nonInteractive, cliEnv);
 
   await p.tasks([
     {

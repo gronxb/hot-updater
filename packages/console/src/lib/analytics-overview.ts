@@ -1,9 +1,9 @@
 import { normalizeRolloutCohortCount } from "@hot-updater/core";
-import type { Bundle } from "@hot-updater/plugin-core";
+import type { Bundle, ChannelRow, ReleaseRow } from "@hot-updater/plugin-core";
 
 export type AnalyticsBundleMetadata = {
   readonly platform: "ios" | "android";
-  readonly channel: string;
+  readonly channel: string | null;
   readonly targetAppVersion: string | null;
   readonly fingerprintHash: string | null;
 };
@@ -16,6 +16,7 @@ export type LatestReportedBundle = {
 };
 
 export type ConfiguredRollout = {
+  readonly releaseId: string;
   readonly bundleId: string;
   readonly configuredPercentage: number;
   readonly trackedInstallations: number;
@@ -30,7 +31,7 @@ export type AnalyticsOverview = {
 };
 
 export type LatestInstallationBundle = {
-  readonly lastKnownBundleId: string;
+  readonly lastKnownBundleId: string | null;
 };
 
 export type InstallationBundleCount = {
@@ -38,11 +39,15 @@ export type InstallationBundleCount = {
   readonly installations: number;
 };
 
-const toBundleMetadata = (bundle: Bundle): AnalyticsBundleMetadata => ({
+const toBundleMetadata = (
+  bundle: Bundle,
+  release: ReleaseRow | undefined,
+  channelById: ReadonlyMap<string, string>,
+): AnalyticsBundleMetadata => ({
   platform: bundle.platform,
-  channel: bundle.channel,
-  targetAppVersion: bundle.targetAppVersion,
-  fingerprintHash: bundle.fingerprintHash,
+  channel: release ? (channelById.get(release.channel_id) ?? null) : null,
+  targetAppVersion: release?.target_app_version ?? null,
+  fingerprintHash: release?.fingerprint_hash ?? null,
 });
 
 const compareCodePoints = (left: string, right: string): number =>
@@ -50,10 +55,27 @@ const compareCodePoints = (left: string, right: string): number =>
 
 const createOverview = (
   bundles: readonly Bundle[],
+  releases: readonly ReleaseRow[],
+  channels: readonly ChannelRow[],
   trackedInstallations: number,
   latestReportedCounts: ReadonlyMap<string, number>,
 ): AnalyticsOverview => {
   const bundleById = new Map(bundles.map((bundle) => [bundle.id, bundle]));
+  const channelById = new Map(
+    channels.map((channel) => [channel.id, channel.name]),
+  );
+  const bundleReleases = releases
+    .filter(
+      (release): release is ReleaseRow & { readonly bundle_id: string } =>
+        release.kind === "BUNDLE" && release.bundle_id !== null,
+    )
+    .sort((left, right) => compareCodePoints(right.id, left.id));
+  const latestReleaseByBundleId = new Map<string, ReleaseRow>();
+  for (const release of bundleReleases) {
+    if (!latestReleaseByBundleId.has(release.bundle_id)) {
+      latestReleaseByBundleId.set(release.bundle_id, release);
+    }
+  }
   const latestReportedBundles = [...latestReportedCounts]
     .map(([bundleId, count]): LatestReportedBundle => {
       const bundle = bundleById.get(bundleId);
@@ -62,7 +84,13 @@ const createOverview = (
         trackedInstallations: count,
         observedShare:
           trackedInstallations === 0 ? 0 : count / trackedInstallations,
-        bundle: bundle ? toBundleMetadata(bundle) : null,
+        bundle: bundle
+          ? toBundleMetadata(
+              bundle,
+              latestReleaseByBundleId.get(bundle.id),
+              channelById,
+            )
+          : null,
       };
     })
     .sort(
@@ -70,17 +98,23 @@ const createOverview = (
         right.trackedInstallations - left.trackedInstallations ||
         compareCodePoints(left.bundleId, right.bundleId),
     );
-  const configuredRollouts = bundles
+  const configuredRollouts = bundleReleases
+    .filter((release) => bundleById.has(release.bundle_id))
     .map(
-      (bundle): ConfiguredRollout => ({
-        bundleId: bundle.id,
+      (release): ConfiguredRollout => ({
+        releaseId: release.id,
+        bundleId: release.bundle_id,
         configuredPercentage:
-          normalizeRolloutCohortCount(bundle.rolloutCohortCount) / 10,
-        trackedInstallations: latestReportedCounts.get(bundle.id) ?? 0,
-        bundle: toBundleMetadata(bundle),
+          normalizeRolloutCohortCount(release.rollout_cohort_count) / 10,
+        trackedInstallations: latestReportedCounts.get(release.bundle_id) ?? 0,
+        bundle: toBundleMetadata(
+          bundleById.get(release.bundle_id)!,
+          release,
+          channelById,
+        ),
       }),
     )
-    .sort((left, right) => compareCodePoints(left.bundleId, right.bundleId));
+    .sort((left, right) => compareCodePoints(left.releaseId, right.releaseId));
 
   return {
     trackedInstallations,
@@ -95,6 +129,7 @@ const countLatestInstallationBundles = (
 ): ReadonlyMap<string, number> => {
   const counts = new Map<string, number>();
   for (const row of rows) {
+    if (row.lastKnownBundleId === null) continue;
     counts.set(
       row.lastKnownBundleId,
       (counts.get(row.lastKnownBundleId) ?? 0) + 1,
@@ -105,11 +140,15 @@ const countLatestInstallationBundles = (
 
 export const createAnalyticsOverviewFromCounts = (
   bundles: readonly Bundle[],
+  releases: readonly ReleaseRow[],
+  channels: readonly ChannelRow[],
   trackedInstallations: number,
   counts: readonly InstallationBundleCount[],
 ): AnalyticsOverview =>
   createOverview(
     bundles,
+    releases,
+    channels,
     trackedInstallations,
     new Map(
       counts.map(({ bundleId, installations }) => [bundleId, installations]),
@@ -118,10 +157,14 @@ export const createAnalyticsOverviewFromCounts = (
 
 export const createAnalyticsOverview = (
   bundles: readonly Bundle[],
+  releases: readonly ReleaseRow[],
+  channels: readonly ChannelRow[],
   latestInstallations: readonly LatestInstallationBundle[],
 ): AnalyticsOverview =>
   createOverview(
     bundles,
+    releases,
+    channels,
     latestInstallations.length,
     countLatestInstallationBundles(latestInstallations),
   );

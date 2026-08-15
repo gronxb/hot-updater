@@ -30,23 +30,14 @@ const cloudFrontInvalidation = (status: string) => ({
     Paths: { Quantity: 0, Items: [] },
   },
 });
-const bundleRow = bundleToRow(
-  {
-    id: "00000000-0000-0000-0000-000000000001",
-    platform: "ios",
-    shouldForceUpdate: false,
-    enabled: true,
-    fileHash: "hash",
-    gitCommitHash: null,
-    message: null,
-    channel: productionChannel.name,
-    storageUri: "storage://bundle",
-    targetAppVersion: "1.0.0",
-    fingerprintHash: null,
-    metadata: {},
-  },
-  productionChannel.id,
-);
+const bundleRow = bundleToRow({
+  id: "00000000-0000-0000-0000-000000000001",
+  platform: "ios",
+  fileHash: "hash",
+  gitCommitHash: null,
+  storageUri: "storage://bundle",
+  metadata: {},
+});
 
 const commitBundle = (plugin: ReturnType<typeof dynamoDB>) =>
   plugin.commit({
@@ -85,6 +76,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
     documentClient.reset();
     cloudFront.on(CreateInvalidationCommand).resolves({});
     documentClient.on(QueryCommand).resolves({ Items: [] });
+    documentClient.on(ScanCommand).resolves({ Items: [] });
     documentClient.on(TransactWriteCommand).resolves({});
   });
 
@@ -168,7 +160,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
     expect(plugin.models.channels).toBeDefined();
     expect(plugin.models.analytics).toBeDefined();
     expect(plugin.models.clientAccessKeys).toBeDefined();
-    expect(plugin.queries.getUpdateInfo).toBeTypeOf("function");
+    expect(plugin).not.toHaveProperty("queries");
     expect(typeof plugin.commit).toBe("function");
     expect(plugin).not.toHaveProperty("bundles");
     expect(plugin).not.toHaveProperty("bundlePatches");
