@@ -11,13 +11,13 @@ import {
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
 
+import { BundleAnalyticsSummary } from "./BundleAnalyticsSummary";
 import { BundleBasicInfo } from "./BundleBasicInfo";
 import { BundleEditorForm } from "./BundleEditorForm";
 import { BundleMetadata } from "./BundleMetadata";
@@ -98,6 +98,7 @@ export function BundleEditorSheet({
 
   const bodyContent = bundle ? (
     <div className="flex flex-col gap-6 px-4 pb-4 sm:px-6 sm:pb-6">
+      <BundleAnalyticsSummary bundle={bundle} />
       <BundleEditorForm
         key={bundle.id}
         bundle={bundle}
@@ -108,6 +109,7 @@ export function BundleEditorSheet({
     </div>
   ) : loading ? (
     <div className="flex flex-col gap-4 px-4 pb-4 sm:px-6 sm:pb-6">
+      <Skeleton className="h-24 w-full" />
       <Skeleton className="h-10 w-full" />
       <Skeleton className="h-28 w-full" />
       <Skeleton className="h-10 w-full" />
@@ -170,7 +172,9 @@ export function BundleEditorSheet({
       >
         <SheetHeader>
           <SheetTitle>{bundle ? "Bundle Detail" : "Bundle Details"}</SheetTitle>
-          <SheetDescription>{headerContent}</SheetDescription>
+          <div className="text-muted-foreground text-xs/relaxed">
+            {headerContent}
+          </div>
         </SheetHeader>
         {bodyContent}
       </SheetContent>

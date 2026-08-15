@@ -37,12 +37,16 @@ class DetoxAppDriver {
 
   async assertText(stage, testID, contains, options = {}) {
     await this.runStage(stage, async () => {
-      const expectedText = String(this.resolvePlaceholders(contains));
+      const resolvedContains = this.resolvePlaceholders(contains);
+      const expectedTexts = (
+        Array.isArray(resolvedContains) ? resolvedContains : [resolvedContains]
+      ).map(String);
       await withSynchronizationDisabledForAssertion(async () => {
         const target = await findVisibleTestID(this.controlClient, testID, {
           ensureForeground: options.ensureForeground,
         });
         if (options.exactText === true) {
+          const [expectedText] = expectedTexts;
           await this.waitForExpectedActionResultText(
             stage,
             testID,
@@ -52,9 +56,9 @@ class DetoxAppDriver {
           return;
         }
         const text = textFromAttributes(await target.getAttributes());
-        if (!text.includes(expectedText)) {
+        if (!expectedTexts.some((expectedText) => text.includes(expectedText))) {
           throw new Error(
-            `${stage} expected ${testID} to contain "${expectedText}", received "${text}"`,
+            `${stage} expected ${testID} to contain one of ${JSON.stringify(expectedTexts)}, received "${text}"`,
           );
         }
       });
@@ -160,6 +164,27 @@ class DetoxAppDriver {
   readStageValue(key) {
     if (Object.hasOwn(this.stageValues, key)) return this.stageValues[key];
     throw new Error(`Missing Detox scenario value: ${key}`);
+  }
+
+  async verifyConsoleAnalytics(sinceMs) {
+    const bundleIds = [
+      ...new Set(
+        Object.values(this.stageValues).filter(
+          (value) =>
+            typeof value === "string" &&
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+              value,
+            ),
+        ),
+      ),
+    ];
+    const evidence = await this.controlClient.postJson(
+      "verify Console Analytics",
+      "/e2e/verify-console-analytics",
+      { bundleIds, sinceMs },
+    );
+    console.log(`[detox-console-analytics] ${JSON.stringify(evidence)}`);
+    return evidence;
   }
 
   resolvePlaceholders(value) {

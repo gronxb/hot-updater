@@ -14,7 +14,7 @@ export type DetoxAppDriver = {
   readonly assertText: (
     stage: string,
     testID: string,
-    contains: string,
+    contains: string | readonly string[],
     options?: DetoxAssertTextOptions,
   ) => Promise<void>;
   readonly control: (

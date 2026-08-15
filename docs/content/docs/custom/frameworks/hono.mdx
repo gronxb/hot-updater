@@ -47,7 +47,7 @@ app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
 export default app;
 ```
 
-If you set `routes: { updateCheck: true, bundles: false }`,
+If you set `features: { updateCheck: true, bundles: false }`,
 `/hot-updater/api/*` is not mounted and `/hot-updater/version` stays
 available for diagnostics.
 Set `bundles: true` only when this server accepts bundle-management requests;

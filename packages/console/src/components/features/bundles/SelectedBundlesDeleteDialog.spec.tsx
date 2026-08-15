@@ -155,8 +155,9 @@ describe("SelectedBundlesDeleteDialog", () => {
     expect(mockOnOpenChange).not.toHaveBeenCalled();
 
     expect(screen.getByRole("columnheader", { name: "Status" })).toBeTruthy();
-    expect(screen.queryByRole("img", { name: "Queued" })).toBeNull();
+    expect(screen.queryByLabelText("Queued")).toBeNull();
     expect(screen.getAllByLabelText("Deleting")).toHaveLength(2);
+    expect(screen.getByText("Deleting 2 bundles in one batch.")).toBeTruthy();
 
     deletion.resolve({
       deletedBundleIds: [firstBundle.id, secondBundle.id],

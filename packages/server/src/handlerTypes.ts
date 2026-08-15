@@ -62,14 +62,11 @@ export interface HandlerAPI<TContext = unknown> {
 export interface HandlerOptions {
   /** Base path for all routes. @default "/api" */
   readonly basePath?: string;
-  /**
-   * Route groups to mount. `GET /version` is always mounted independently.
-   * All paths are relative to `basePath`.
-   */
-  readonly routes?: HandlerRoutes;
+  /** Runtime features to mount. `GET /version` is always available. */
+  readonly features?: HandlerFeatures;
 }
 
-export interface HandlerRoutes {
+export interface HandlerFeatures {
   /**
    * Mounts the React Native update-check endpoints:
    *
@@ -80,7 +77,7 @@ export interface HandlerRoutes {
    *
    * @default true
    */
-  readonly updateCheck: boolean;
+  readonly updateCheck?: boolean;
   /**
    * Mounts the bundle management endpoints used by `standaloneRepository`:
    *
@@ -95,7 +92,7 @@ export interface HandlerRoutes {
    *
    * @default false
    */
-  readonly bundles: boolean;
+  readonly bundles?: boolean;
 }
 
 export type RouteHandler<TContext = unknown> = (

@@ -2,6 +2,24 @@ import Foundation
 
 // MARK: - BundleMetadata
 
+/// Strategy used to derive update identities for OTA updates.
+public enum UpdateStrategy: String, Codable {
+    case appVersion
+    case fingerprint
+}
+
+public struct PendingBundleTransition: Codable {
+    let fromBundleId: String
+    let toBundleId: String
+    let updateStrategy: UpdateStrategy
+
+    init(fromBundleId: String, toBundleId: String, updateStrategy: UpdateStrategy) {
+        self.fromBundleId = fromBundleId
+        self.toBundleId = toBundleId
+        self.updateStrategy = updateStrategy
+    }
+}
+
 /// Bundle metadata for managing stable/staging bundles and verification state
 public struct BundleMetadata: Codable {
     static let schemaVersion = "metadata-v1"
@@ -12,6 +30,7 @@ public struct BundleMetadata: Codable {
     var stableBundleId: String?
     var stagingBundleId: String?
     var verificationPending: Bool
+    var pendingTransition: PendingBundleTransition?
     var updatedAt: Double
 
     enum CodingKeys: String, CodingKey {
@@ -20,6 +39,7 @@ public struct BundleMetadata: Codable {
         case stableBundleId = "stable_bundle_id"
         case stagingBundleId = "staging_bundle_id"
         case verificationPending = "verification_pending"
+        case pendingTransition = "pending_transition"
         case updatedAt = "updated_at"
     }
 
@@ -29,6 +49,7 @@ public struct BundleMetadata: Codable {
         stableBundleId: String? = nil,
         stagingBundleId: String? = nil,
         verificationPending: Bool = false,
+        pendingTransition: PendingBundleTransition? = nil,
         updatedAt: Double = Date().timeIntervalSince1970 * 1000
     ) {
         self.schema = schema
@@ -36,6 +57,7 @@ public struct BundleMetadata: Codable {
         self.stableBundleId = stableBundleId
         self.stagingBundleId = stagingBundleId
         self.verificationPending = verificationPending
+        self.pendingTransition = pendingTransition
         self.updatedAt = updatedAt
     }
 
@@ -202,15 +224,30 @@ public struct LaunchSelection {
     let shouldRollbackOnCrash: Bool
 }
 
+public enum LaunchReportStatus: String, Codable {
+    case unchanged = "UNCHANGED"
+    case updateApplied = "UPDATE_APPLIED"
+    case recovered = "RECOVERED"
+}
+
 public struct LaunchReport: Codable {
     static let launchReportFilename = "launch-report.json"
 
-    let status: String
-    let crashedBundleId: String?
+    let status: LaunchReportStatus
+    let fromBundleId: String?
+    let toBundleId: String?
+    let updateStrategy: UpdateStrategy?
 
-    init(status: String = "STABLE", crashedBundleId: String? = nil) {
+    init(
+        status: LaunchReportStatus = .unchanged,
+        fromBundleId: String? = nil,
+        toBundleId: String? = nil,
+        updateStrategy: UpdateStrategy? = nil
+    ) {
         self.status = status
-        self.crashedBundleId = crashedBundleId
+        self.fromBundleId = fromBundleId
+        self.toBundleId = toBundleId
+        self.updateStrategy = updateStrategy
     }
 
     static func load(from file: URL) -> LaunchReport? {
@@ -240,6 +277,96 @@ public struct LaunchReport: Codable {
             return true
         } catch {
             print("[LaunchReport] Failed to save launch report: \(error)")
+            return false
+        }
+    }
+}
+
+public struct InstallIdentity: Codable {
+    static let installIdentityFilename = "install-identity.json"
+
+    let installId: String
+
+    init(installId: String = UUID().uuidString) {
+        self.installId = installId
+    }
+
+    static func load(from file: URL) -> InstallIdentity? {
+        guard FileManager.default.fileExists(atPath: file.path) else {
+            return nil
+        }
+
+        do {
+            let data = try Data(contentsOf: file)
+            let identity = try JSONDecoder().decode(InstallIdentity.self, from: data)
+            return identity.installId.isEmpty ? nil : identity
+        } catch {
+            print("[InstallIdentity] Failed to load install identity: \(error)")
+            return nil
+        }
+    }
+
+    func save(to file: URL) -> Bool {
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .prettyPrinted
+            let data = try encoder.encode(self)
+            let directory = file.deletingLastPathComponent()
+            if !FileManager.default.fileExists(atPath: directory.path) {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            }
+            try data.write(to: file)
+            return true
+        } catch {
+            print("[InstallIdentity] Failed to save install identity: \(error)")
+            return false
+        }
+    }
+}
+
+public struct UserIdentity: Codable {
+    static let userIdentityFilename = "user-identity.json"
+
+    let userId: String?
+    let username: String?
+
+    init(userId: String?, username: String?) {
+        self.userId = userId
+        self.username = username
+    }
+
+    var isEmpty: Bool {
+        userId == nil && username == nil
+    }
+
+    static func load(from file: URL) -> UserIdentity? {
+        guard FileManager.default.fileExists(atPath: file.path) else {
+            return nil
+        }
+
+        do {
+            let data = try Data(contentsOf: file)
+            let identity = try JSONDecoder().decode(UserIdentity.self, from: data)
+            return identity.isEmpty ? nil : identity
+        } catch {
+            print("[UserIdentity] Failed to load user identity: \(error)")
+            return nil
+        }
+    }
+
+    func save(to file: URL) -> Bool {
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .prettyPrinted
+            let data = try encoder.encode(self)
+            let directory = file.deletingLastPathComponent()
+            if !FileManager.default.fileExists(atPath: directory.path) {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            }
+            try data.write(to: file)
+            return true
+        } catch {
+            print("[UserIdentity] Failed to save user identity: \(error)")
             return false
         }
     }

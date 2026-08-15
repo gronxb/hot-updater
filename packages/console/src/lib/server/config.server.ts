@@ -8,6 +8,9 @@ import {
 
 let configPromise: Promise<ConfigResponse> | null = null;
 let databaseClient: DatabaseClient | null = null;
+let hotUpdater: ReturnType<
+  typeof import("./runtime.server").createRuntimeHotUpdater
+> | null = null;
 let storagePluginPromise: Promise<NodeStoragePlugin> | null = null;
 
 const loadCachedConfig = async () => {
@@ -49,9 +52,14 @@ export const prepareConfig = async () => {
       databaseClient = createDatabaseClient(config.database);
     }
 
+    if (!hotUpdater) {
+      const { createRuntimeHotUpdater } = await import("./runtime.server");
+      hotUpdater = createRuntimeHotUpdater(config);
+    }
+
     const storagePlugin = await loadCachedStoragePlugin(config);
 
-    return { config, databaseClient, storagePlugin };
+    return { config, databaseClient, hotUpdater, storagePlugin };
   } catch (error) {
     console.error("Error during configuration initialization:", error);
     throw error;

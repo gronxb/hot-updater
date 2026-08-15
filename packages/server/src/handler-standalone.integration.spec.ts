@@ -23,7 +23,7 @@ const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
 const api = createHotUpdater({
   database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
   basePath: "/hot-updater",
-  routes: { updateCheck: true, bundles: true },
+  features: { updateCheck: true, bundles: true },
 });
 const baseUrl = "http://localhost:3000";
 const server = setupServer();
@@ -282,7 +282,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     const customApi = createHotUpdater({
       database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
       basePath: "/api/v2",
-      routes: { updateCheck: true, bundles: true },
+      features: { updateCheck: true, bundles: true },
     });
     server.use(
       http.all(`${baseUrl}/api/v2/*`, async ({ request }) => {
@@ -316,7 +316,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     const blobApi = createHotUpdater({
       database: createInMemoryBlobDatabase(store),
       basePath: "/blob-hot-updater",
-      routes: { updateCheck: true, bundles: true },
+      features: { updateCheck: true, bundles: true },
     });
     server.use(
       http.all(`${baseUrl}/blob-hot-updater/*`, async ({ request }) => {

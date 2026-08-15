@@ -48,11 +48,10 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
-    await app.assertText(
-      "assert stable launch",
-      "launch-status-result",
-      "Current Launch Status: STABLE",
-    );
+    await app.assertText("assert stable launch", "launch-status-result", [
+      "Current Launch Status: UNCHANGED",
+      "Current Launch Status: UPDATE_APPLIED",
+    ]);
     await app.control(
       "deploy crash bundle",
       "/e2e/jobs/deploy-bundle",

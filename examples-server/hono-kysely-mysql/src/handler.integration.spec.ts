@@ -59,13 +59,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     await new Promise((resolve) => setTimeout(resolve, 3000));
 
     const db = await import("./db.js");
-    const { createMigrator } = await import("@hot-updater/server/db");
-    const migrator = createMigrator(db.hotUpdater);
-    const result = await migrator.migrateToLatest({
-      mode: "from-schema",
-      updateSettings: true,
-    });
-    await result.execute();
+    await migrateCurrentSchema(db.hotUpdater, projectRoot);
 
     hotUpdater = db.hotUpdater;
     closeDatabase = db.closeDatabase;
@@ -610,6 +604,35 @@ async function waitForMySQLReady(
   }
   throw new Error("MySQL failed to become ready");
 }
+
+const migrateCurrentSchema = async (
+  hotUpdater: HotUpdaterAPI,
+  projectRoot: string,
+): Promise<void> => {
+  const migrate = async () => {
+    const migrator = createMigrator(hotUpdater);
+    const result = await migrator.migrateToLatest({
+      mode: "from-schema",
+      updateSettings: true,
+    });
+    await result.execute();
+  };
+
+  try {
+    await migrate();
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      (error.message !== "Connection lost: The server closed the connection." &&
+        Reflect.get(error, "code") !== "PROTOCOL_CONNECTION_LOST")
+    ) {
+      throw error;
+    }
+    await waitForMySQLReady(projectRoot, 30);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await migrate();
+  }
+};
 
 // Helper function to clean up test database
 async function cleanupMySQLDatabase(projectRoot: string): Promise<void> {

@@ -52,6 +52,9 @@ catalogs:
     "execa": 9.5.2
     tsdown: 0.21.6
 
+overrides:
+  recharts@3.8.0>es-toolkit: 1.46.0
+
 onlyBuiltDependencies:
   - "@bugsnag/cli"
   - "@prisma/client"

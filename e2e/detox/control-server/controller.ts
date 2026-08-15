@@ -17,13 +17,24 @@ import {
 } from "../../../packages/core/src/bundleArtifacts.ts";
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
 import type { Bundle } from "../../../packages/core/src/types.ts";
+import { createAnalyticsProvider } from "../../../packages/server/dist/index.mjs";
 import {
+  type AnalyticsModel,
+  type BundleRepository,
   createDatabaseClient,
   type DatabaseClient,
 } from "../../../plugins/plugin-core/dist/index.mjs";
-import type { DatabasePlugin } from "../../../plugins/plugin-core/src/types/index.ts";
+import { createConsoleAnalyticsHttpClient } from "../analytics-http-client.ts";
+import { createConsoleAnalyticsProviderClient } from "../analytics-provider-client.ts";
+import {
+  ConsoleAnalyticsQaError,
+  readObservedAnalyticsEvent,
+  verifyConsoleAnalytics,
+  type ObservedAnalyticsEvent,
+} from "../console-analytics-qa.ts";
 import {
   createCrashRecoveryArtifactNames,
+  getLaunchReportState,
   waitForCrashRecoveryState,
 } from "./crash-recovery-wait.ts";
 import type { CrashRecoveryArtifactNames } from "./crash-recovery-wait.ts";
@@ -85,6 +96,7 @@ type SessionState = {
   largeArchiveAssetBackupPath: string | null;
   largeArchiveAssetPath: string;
   multiAssetBackupPaths: Record<string, string | null>;
+  observedAnalyticsEvents: ObservedAnalyticsEvent[];
   platform: Platform;
   resultsDir: string;
   storePath: string | null;
@@ -466,6 +478,7 @@ const fixtureSession: SessionState = {
     LARGE_ARCHIVE_ASSET_RELATIVE_PATH,
   ),
   multiAssetBackupPaths: {},
+  observedAnalyticsEvents: [],
   platform,
   resultsDir,
   storePath: null,
@@ -1315,12 +1328,12 @@ async function runHotUpdaterCliLogged(args: string[], logName: string) {
   });
 }
 
-async function withDatabaseClient<T>(
-  callback: (databaseClient: DatabaseClient) => Promise<T>,
+async function withConfiguredDatabase<T>(
+  callback: (database: BundleRepository) => Promise<T>,
 ): Promise<T> {
   const { loadConfig } =
     (await import("../../../packages/cli-tools/dist/index.mjs")) as {
-      loadConfig: (options: null) => Promise<{ database: DatabasePlugin }>;
+      loadConfig: (options: null) => Promise<{ database: BundleRepository }>;
     };
   const originalCwd = process.cwd();
 
@@ -1329,14 +1342,70 @@ async function withDatabaseClient<T>(
     return await withHotUpdaterControlEnv(async () => {
       const config = await loadConfig(null);
       try {
-        return await callback(createDatabaseClient(config.database));
+        return await callback(config.database);
       } finally {
-        await config.database.onUnmount?.();
+        await config.database.dispose?.();
       }
     });
   } finally {
     process.chdir(originalCwd);
   }
+}
+
+async function withDatabaseClient<T>(
+  callback: (databaseClient: DatabaseClient) => Promise<T>,
+): Promise<T> {
+  return withConfiguredDatabase((database) =>
+    callback(createDatabaseClient(database)),
+  );
+}
+
+function readAnalyticsModel(database: BundleRepository): AnalyticsModel | null {
+  const models: unknown = Reflect.get(database, "models");
+  const analytics: unknown =
+    typeof models === "object" && models !== null
+      ? Reflect.get(models, "analytics")
+      : undefined;
+  return typeof analytics === "object" &&
+    analytics !== null &&
+    typeof Reflect.get(analytics, "append") === "function" &&
+    typeof Reflect.get(analytics, "scan") === "function"
+    ? (analytics as AnalyticsModel)
+    : null;
+}
+
+async function verifyConfiguredConsoleAnalytics(args: {
+  bundleIds: readonly string[];
+  sinceMs: number;
+}) {
+  return withConfiguredDatabase(async (database) => {
+    const analytics = readAnalyticsModel(database);
+    const client = analytics
+      ? createConsoleAnalyticsProviderClient(createAnalyticsProvider(analytics))
+      : createConsoleAnalyticsHttpClient({
+          baseUrl: getControllerReachableAppBaseUrl(),
+          headers: getHotUpdaterManagementHeaders(),
+        });
+    for (let attempt = 1; attempt <= 30; attempt += 1) {
+      try {
+        const evidence = await verifyConsoleAnalytics(client, args.bundleIds, {
+          observedEvents: fixtureSession.observedAnalyticsEvents,
+          sinceMs: args.sinceMs,
+        });
+        return { skipped: false, ...evidence };
+      } catch (error) {
+        if (
+          !(error instanceof ConsoleAnalyticsQaError) ||
+          error.code === "unsupported" ||
+          attempt === 30
+        ) {
+          throw error;
+        }
+        await sleep(1_000);
+      }
+    }
+    throw new Error("Console Analytics verification exhausted its retries.");
+  });
 }
 
 async function fetchProviderBundlesPage(args: {
@@ -2117,7 +2186,8 @@ function assertMetadataReset(metadata: Record<string, unknown>) {
 function assertLaunchReport(
   filePath: string,
   expectedStatus: string,
-  expectedCrashBundleId = "",
+  expectedFromBundleId = "",
+  expectedToBundleId = "",
 ) {
   const report = readJson(filePath);
 
@@ -2127,12 +2197,15 @@ function assertLaunchReport(
     );
   }
 
-  if (
-    expectedCrashBundleId &&
-    report.crashedBundleId !== expectedCrashBundleId
-  ) {
+  if (expectedFromBundleId && report.fromBundleId !== expectedFromBundleId) {
     throw new Error(
-      `Expected crashedBundleId ${expectedCrashBundleId} but received ${String(report.crashedBundleId)}`,
+      `Expected fromBundleId ${expectedFromBundleId} but received ${String(report.fromBundleId)}`,
+    );
+  }
+
+  if (expectedToBundleId && report.toBundleId !== expectedToBundleId) {
+    throw new Error(
+      `Expected toBundleId ${expectedToBundleId} but received ${String(report.toBundleId)}`,
     );
   }
 }
@@ -2294,8 +2367,9 @@ function isExpectedCrashRecoveryReached(
     verificationPending: boolean | null;
   },
   launchReportState: {
-    crashedBundleId: string | null;
+    fromBundleId: string | null;
     status: string | null;
+    toBundleId: string | null;
   },
   crashedBundleId: string,
   stableBundleId: string | undefined,
@@ -2305,7 +2379,8 @@ function isExpectedCrashRecoveryReached(
     metadataState.stagingBundleId === stableBundleId &&
     metadataState.verificationPending === false &&
     launchReportState.status === "RECOVERED" &&
-    launchReportState.crashedBundleId === crashedBundleId
+    launchReportState.fromBundleId === crashedBundleId &&
+    launchReportState.toBundleId === stableBundleId
   );
 }
 
@@ -2695,16 +2770,6 @@ function readFirstOtaArchiveState(bundleId: string) {
     bundleFile,
     diagnostics,
     metadataState,
-  };
-}
-
-function getLaunchReportState(report: Record<string, unknown> | null) {
-  return {
-    crashedBundleId:
-      (report?.crashedBundleId as string | undefined) ??
-      (report?.crashed_bundle_id as string | undefined) ??
-      null,
-    status: (report?.status as string | undefined) ?? null,
   };
 }
 
@@ -3224,14 +3289,30 @@ export async function handleProxyUpdateRequest(request: Request) {
   const headers = new Headers(request.headers);
   headers.delete("host");
 
+  const requestBody =
+    request.method === "GET" || request.method === "HEAD"
+      ? undefined
+      : await request.arrayBuffer();
+
   const response = await fetch(targetUrl, {
-    body:
-      request.method === "GET" || request.method === "HEAD"
-        ? undefined
-        : await request.arrayBuffer(),
+    body: requestBody,
     headers,
     method: request.method,
   });
+
+  if (requestUrl.pathname.endsWith("/events") && response.ok && requestBody) {
+    try {
+      const event = readObservedAnalyticsEvent(
+        JSON.parse(new TextDecoder().decode(requestBody)),
+        Date.now(),
+      );
+      if (event) fixtureSession.observedAnalyticsEvents.push(event);
+    } catch (error) {
+      logDetoxFixture("analytics event observation skipped", {
+        error: formatErrorMessage(error),
+      });
+    }
+  }
 
   logDetoxFixture("proxied update request", {
     method: request.method,
@@ -3806,9 +3887,9 @@ function createWaitForRecoveryTimeoutError(args: {
   const launchReportState = getLaunchReportState(args.launchReport.value);
   const message = [
     "Timed out waiting for crash recovery state.",
-    `Expected stagingBundleId=${args.stableBundleId}, verificationPending=false, launchReport.status=RECOVERED, crashedBundleId=${args.crashedBundleId}.`,
+    `Expected stagingBundleId=${args.stableBundleId}, verificationPending=false, launchReport.status=RECOVERED, fromBundleId=${args.crashedBundleId}, toBundleId=${args.stableBundleId}.`,
     `${formatObservedMetadataState(metadataState)}.`,
-    `Observed launchReport.status=${String(launchReportState.status)} and crashedBundleId=${String(launchReportState.crashedBundleId)}.`,
+    `Observed launchReport.status=${String(launchReportState.status)}, fromBundleId=${String(launchReportState.fromBundleId)}, and toBundleId=${String(launchReportState.toBundleId)}.`,
     `Metadata path: ${args.metadata.path}`,
   ].join("\n");
 
@@ -4360,6 +4441,7 @@ async function bootstrap() {
 
   fixtureSession.builtInBundleId = null;
   fixtureSession.deployedBundles = [];
+  fixtureSession.observedAnalyticsEvents = [];
   fixtureSession.storePath = null;
 
   await waitForLocalProviderReady();
@@ -5447,6 +5529,7 @@ async function resetRemoteBundles() {
 
 async function resetLocalAppState() {
   resetE2eScreenState();
+  fixtureSession.observedAnalyticsEvents = [];
   if (fixtureSession.platform === "ios") {
     await clearIosLocalBundleState();
   } else {
@@ -5621,7 +5704,12 @@ async function assertLaunchReportState({
     throw new Error("launch-report.json is missing");
   }
 
-  assertLaunchReport(launchReportPath, status, crashedBundleId ?? "");
+  assertLaunchReport(
+    launchReportPath,
+    status,
+    crashedBundleId ?? "",
+    stableBundleId ?? "",
+  );
   return {};
 }
 
@@ -5913,4 +6001,11 @@ export async function handleWriteSummary(args: {
 
 export async function handleCleanup() {
   return cleanup();
+}
+
+export async function handleVerifyConsoleAnalytics(args: {
+  bundleIds: readonly string[];
+  sinceMs: number;
+}) {
+  return verifyConfiguredConsoleAnalytics(args);
 }

@@ -4,6 +4,9 @@ import type {
 } from "@hot-updater/plugin-core";
 import { assertRuntimeStoragePlugin } from "@hot-updater/plugin-core";
 
+import { createAnalyticsProvider } from "./analytics/bounded/provider";
+import type { AnalyticsQueryAccess } from "./analytics/routes";
+import type { AnalyticsProvider } from "./analytics/types";
 import { createDatabasePluginCore } from "./db/databasePluginCore";
 import { createSchemaReadinessChecker } from "./db/schemaReadiness";
 import {
@@ -13,7 +16,7 @@ import {
   isDatabasePlugin,
   type StoragePluginFactory,
 } from "./db/types";
-import { createHandler, type HandlerRoutes } from "./handler";
+import { createHotUpdaterHandler, type HandlerFeatures } from "./handler";
 import { normalizeBasePath } from "./route";
 import { createStorageAccess } from "./storageAccess";
 
@@ -25,13 +28,24 @@ export type RuntimeHotUpdaterAPI<TContext = undefined> =
       context?: HotUpdaterContext<TContext>,
     ) => Promise<Response>;
     readonly adapterName: string;
+    readonly analytics?: AnalyticsProvider;
   };
 
 export type HotUpdaterAPI<TContext = undefined> =
   RuntimeHotUpdaterAPI<TContext>;
 
+export interface CreateHotUpdaterFeatures extends HandlerFeatures {
+  readonly analytics?:
+    | boolean
+    | {
+        /** Query routes deny access until client access-key auth is configured. */
+        readonly queryAccess?: AnalyticsQueryAccess;
+      };
+}
+
 export interface CreateHotUpdaterOptions<TContext = undefined> {
   readonly database: DatabasePlugin;
+  readonly features?: CreateHotUpdaterFeatures;
   readonly storages?: readonly (
     | RuntimeStoragePlugin<TContext>
     | StoragePluginFactory<TContext>
@@ -45,8 +59,22 @@ export interface CreateHotUpdaterOptions<TContext = undefined> {
   )[];
   readonly basePath?: string;
   readonly cwd?: string;
-  readonly routes?: HandlerRoutes;
 }
+
+const normalizeAnalyticsQueryAccess = (
+  analytics: CreateHotUpdaterFeatures["analytics"],
+): AnalyticsQueryAccess | undefined => {
+  if (analytics === undefined || analytics === false) return undefined;
+  if (analytics === true) return "protected";
+  if (typeof analytics !== "object" || analytics === null) {
+    throw new TypeError("Analytics options must be an object.");
+  }
+  const queryAccess = analytics.queryAccess ?? "protected";
+  if (queryAccess !== "protected" && queryAccess !== "public") {
+    throw new TypeError("Invalid Analytics queryAccess option.");
+  }
+  return queryAccess;
+};
 
 type DatabasePluginCore<TContext> = {
   readonly api: DatabaseAPI<TContext>;
@@ -110,11 +138,36 @@ export function createHotUpdaterCore<TContext = undefined>(
     beforeOperation: assertSchemaReady,
     readStorageText,
   });
+  const analyticsQueryAccess = normalizeAnalyticsQueryAccess(
+    options.features?.analytics,
+  );
+  const analytics =
+    analyticsQueryAccess === undefined
+      ? undefined
+      : createAnalyticsProvider({
+          async append(row) {
+            await assertSchemaReady();
+            return plugin.models.analytics.append(row);
+          },
+          async scan(input) {
+            await assertSchemaReady();
+            return plugin.models.analytics.scan(input);
+          },
+        });
 
-  const internalHandler = createHandler(core.api, {
-    basePath,
-    routes: options.routes,
-  });
+  const internalHandler = createHotUpdaterHandler(
+    core.api,
+    {
+      basePath,
+      features: options.features,
+    },
+    analytics === undefined
+      ? undefined
+      : {
+          provider: analytics,
+          queryAccess: analyticsQueryAccess ?? "protected",
+        },
+  );
 
   // Some framework adapters strip the mounted base path or pass extra
   // bindings/execution context arguments. Ignore those extras here so the
@@ -135,6 +188,7 @@ export function createHotUpdaterCore<TContext = undefined>(
     {
       basePath,
       adapterName: adapterCapabilities.adapterName ?? core.adapterName,
+      ...(analytics === undefined ? {} : { analytics }),
       handler,
     },
     core.api,

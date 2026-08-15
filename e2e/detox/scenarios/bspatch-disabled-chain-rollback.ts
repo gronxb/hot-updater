@@ -77,7 +77,10 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert chain bundle A launch status",
       "launch-status-result",
-      "Current Launch Status: STABLE",
+      [
+        "Current Launch Status: UNCHANGED",
+        "Current Launch Status: UPDATE_APPLIED",
+      ],
     );
 
     await app.control(
@@ -129,7 +132,10 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert chain bundle B launch status",
       "launch-status-result",
-      "Current Launch Status: STABLE",
+      [
+        "Current Launch Status: UNCHANGED",
+        "Current Launch Status: UPDATE_APPLIED",
+      ],
     );
 
     await app.control(
@@ -200,7 +206,10 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert chain bundle C launch status",
       "launch-status-result",
-      "Current Launch Status: STABLE",
+      [
+        "Current Launch Status: UNCHANGED",
+        "Current Launch Status: UPDATE_APPLIED",
+      ],
     );
     await app.assertText(
       "assert chain bundle C crash history empty",
@@ -262,7 +271,10 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert chain bundle B rollback launch status",
       "launch-status-result",
-      "Current Launch Status: STABLE",
+      [
+        "Current Launch Status: UNCHANGED",
+        "Current Launch Status: UPDATE_APPLIED",
+      ],
     );
     await app.assertText(
       "assert chain bundle B rollback crashed bundle",
@@ -321,7 +333,10 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert chain bundle A rollback launch status",
       "launch-status-result",
-      "Current Launch Status: STABLE",
+      [
+        "Current Launch Status: UNCHANGED",
+        "Current Launch Status: UPDATE_APPLIED",
+      ],
     );
     await app.assertText(
       "assert chain bundle A rollback crashed bundle",
@@ -368,7 +383,10 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert chain built-in launch status",
       "launch-status-result",
-      "Current Launch Status: STABLE",
+      [
+        "Current Launch Status: UNCHANGED",
+        "Current Launch Status: UPDATE_APPLIED",
+      ],
     );
     await app.assertText(
       "assert chain built-in crashed bundle",
