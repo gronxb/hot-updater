@@ -638,9 +638,9 @@ describe("Detox scenario contract", () => {
 
     // When: the control server reports that focusedPackage matches targetAppId.
     // Then: the Detox driver reattaches through Detox APIs instead of forcing a
-    // fresh Android app instance. A launch that explicitly permits disconnection
-    // waits for the old instrumentation to remain cleared before Detox
-    // establishes the replacement process once; the app may already be running.
+    // fresh Android app instance. A force-update scenario explicitly proves the
+    // native restart and waits for the old instrumentation to remain cleared
+    // before Detox establishes the replacement process once.
     expect(prepareBody).toContain("alreadyFocused");
     expect(prepareBody).toContain("focusedPackage === fixtureSession.appId");
     expect(prepareBody).toContain("if (!alreadyFocused) {");
@@ -650,20 +650,23 @@ describe("Detox scenario contract", () => {
     expect(launchBody).toContain("newInstance: false");
     expect(launchBody).toContain("newInstance: true");
     expect(launchBody).toContain("options.allowDisconnect !== true");
-    expect(launchCatchBody).toContain('"/e2e/jobs/wait-for-android-restart"');
-    expect(launchCatchBody).toContain("newInstance: false");
-    expect(controllerSource).toContain(
-      "async function waitForAndroidRestart(signal?: AbortSignal)",
+    expect(launchCatchBody).not.toContain(
+      '"/e2e/jobs/wait-for-android-restart"',
     );
+    expect(controllerSource).toContain("async function waitForAndroidRestart(");
     expect(controllerSource).toContain(
       "E2E_ANDROID_INSTRUMENTATION_CLEARED_STABLE_OBSERVATIONS",
     );
     expect(controllerSource).toContain("hasActiveInstrumentationForPackage(");
-    expect(controllerSource).toContain('"android instrumentation cleared"');
+    expect(controllerSource).toContain("hasNativeRestartEvidenceAfterMarker(");
+    expect(controllerSource).toContain('"android automatic restart observed"');
     expect(controlBody).toContain(
       "await this.reattachAfterExternalLaunch(pathName)",
     );
     expect(externalReattachBody).not.toContain('"/e2e/jobs/wait-for-metadata"');
+    expect(externalReattachBody).toContain(
+      '"/e2e/jobs/wait-for-android-restart"',
+    );
     expect(externalReattachBody).toContain(
       "await launchApp({ newInstance: false });",
     );
@@ -1675,6 +1678,7 @@ describe("Detox scenario contract", () => {
     expect(stages).toEqual([
       "deploy force update bundle",
       "launch force update app",
+      "prove force update native reload",
       "wait force update automatic reload",
       "assert force update Bundle",
       "assert force update Release",
@@ -1695,6 +1699,19 @@ describe("Detox scenario contract", () => {
           call.kind === "launch" && call.stage === "launch force update app",
       ),
     ).toMatchObject({ options: { allowDisconnect: true } });
+    expect(
+      await controlStepDefinition(
+        "force-update-auto-reload",
+        "prove force update native reload",
+      ),
+    ).toMatchObject({
+      body: {
+        bundleId: "$forceBundleId",
+        releaseId: "$forceReleaseId",
+      },
+      pathName: "/e2e/jobs/wait-for-android-restart",
+    });
+    expect(calls.some((call) => call.kind === "reload")).toBe(false);
   });
 
   it("models archive-to-diff OTA install and metadata verification sequence", async () => {

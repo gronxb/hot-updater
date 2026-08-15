@@ -98,14 +98,6 @@ class DetoxAppDriver {
         await launchApp({ newInstance: true });
       } catch (error) {
         if (!isCrashLaunch && options.allowDisconnect !== true) throw error;
-        if (!isCrashLaunch && isAndroidRun()) {
-          await this.controlClient.runJob(
-            `${stage}: wait for Android restart`,
-            "/e2e/jobs/wait-for-android-restart",
-            {},
-          );
-          await launchApp({ newInstance: false });
-        }
       }
     });
   }
@@ -260,6 +252,7 @@ class DetoxAppDriver {
   async reattachAfterExternalLaunch(pathName) {
     if (!isAndroidRun()) return;
     if (
+      pathName !== "/e2e/jobs/wait-for-android-restart" &&
       pathName !== "/e2e/wait-for-crash-recovery"
     )
       return;

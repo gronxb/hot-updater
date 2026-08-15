@@ -46,6 +46,10 @@ import {
 } from "../console-analytics-qa.ts";
 import { hasActiveInstrumentationForPackage } from "./android-instrumentation.ts";
 import {
+  advanceAndroidRestartWait,
+  hasNativeRestartEvidenceAfterMarker,
+} from "./android-restart-wait.ts";
+import {
   createCrashRecoveryArtifactNames,
   getLaunchReportState,
   waitForCrashRecoveryState,
@@ -341,7 +345,7 @@ const E2E_ANDROID_FOREGROUND_POLL_MS = Number(
   process.env.HOT_UPDATER_E2E_ANDROID_FOREGROUND_POLL_MS || 500,
 );
 const E2E_ANDROID_RESTART_WAIT_ATTEMPTS = Number(
-  process.env.HOT_UPDATER_E2E_ANDROID_RESTART_WAIT_ATTEMPTS || 30,
+  process.env.HOT_UPDATER_E2E_ANDROID_RESTART_WAIT_ATTEMPTS || 120,
 );
 const E2E_ANDROID_INSTRUMENTATION_CLEARED_STABLE_OBSERVATIONS = 3;
 const E2E_ANDROID_ANR_DISMISS_ATTEMPTS = Number(
@@ -511,6 +515,7 @@ let replayCatalogGeneration: number | null = null;
 let catalogResponseDelayMs = 0;
 let artifactResponseDelayMs = 0;
 let bootstrapJobId: string | null = null;
+let androidLaunchLogMarker: string | null = null;
 
 function getAbortSignalReason(signal: AbortSignal) {
   const reason = signal.reason;
@@ -4618,15 +4623,47 @@ function getAndroidActivityProcessesOutput() {
   );
 }
 
-async function waitForAndroidRestart(signal?: AbortSignal) {
+function readAndroidAutomaticRestartLogs() {
+  return captureCommand(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "logcat",
+      "-d",
+      "-v",
+      "brief",
+      "HotUpdaterE2E:I",
+      "HotUpdaterImpl:I",
+      "*:S",
+    ],
+    { allowFailure: true, maxBuffer: 1024 * 1024 },
+  );
+}
+
+async function waitForAndroidRestart(
+  bundleId: string,
+  releaseId: string,
+  signal?: AbortSignal,
+) {
   if (fixtureSession.platform !== "android") {
     return {};
+  }
+
+  const launchLogMarker = androidLaunchLogMarker;
+  if (!launchLogMarker) {
+    throw new Error("Missing Android launch log marker");
   }
 
   let lastFocusedPackage: string | null = null;
   let lastInstrumentationActive = true;
   let lastProcessId = "";
-  let clearedObservations = 0;
+  let lastHasNativeRestartEvidence = false;
+  let lastMetadata = readAndroidMetadataSnapshot(
+    "wait-for-android-restart-metadata.json",
+  );
+  let lastNativeLogs = "";
+  let waitState = { clearedObservations: 0 };
 
   for (
     let attempt = 1;
@@ -4641,36 +4678,68 @@ async function waitForAndroidRestart(signal?: AbortSignal) {
       activityProcessesOutput,
       fixtureSession.appId,
     );
+    lastMetadata = readAndroidMetadataSnapshot(
+      "wait-for-android-restart-metadata.json",
+    );
+    const metadataState = getMetadataState(lastMetadata.value);
+    const hasTargetStaging =
+      metadataState.stagingBundleId === bundleId &&
+      metadataState.stagingSelection?.releaseId === releaseId;
+    lastNativeLogs = readAndroidAutomaticRestartLogs();
+    lastHasNativeRestartEvidence = hasNativeRestartEvidenceAfterMarker(
+      lastNativeLogs,
+      launchLogMarker,
+    );
+    waitState = advanceAndroidRestartWait(waitState, {
+      hasNativeRestartEvidence: lastHasNativeRestartEvidence,
+      hasTargetStaging,
+      instrumentationActive:
+        activityProcessesOutput.length === 0 || lastInstrumentationActive,
+    });
 
     // Native restart can launch a replacement app process while
-    // AndroidJUnitRunner tears down the old instrumented process. Wait for the
-    // instrumentation itself to clear before Detox reattaches.
-    if (activityProcessesOutput && !lastInstrumentationActive) {
-      clearedObservations += 1;
-      if (
-        clearedObservations >=
-        E2E_ANDROID_INSTRUMENTATION_CLEARED_STABLE_OBSERVATIONS
-      ) {
-        logDetoxFixture("android instrumentation cleared", {
-          attempt,
-          clearedObservations,
-          focusedPackage: lastFocusedPackage,
-          processId: lastProcessId || null,
-        });
-        return {
-          focusedPackage: lastFocusedPackage,
-          processId: lastProcessId || null,
-        };
-      }
-    } else {
-      clearedObservations = 0;
+    // AndroidJUnitRunner tears down the old instrumented process. Require the
+    // current launch's native restart and target staging metadata before Detox
+    // reattaches, so stale logs or an unrelated disconnect cannot pass.
+    if (
+      waitState.clearedObservations >=
+      E2E_ANDROID_INSTRUMENTATION_CLEARED_STABLE_OBSERVATIONS
+    ) {
+      logDetoxFixture("android automatic restart observed", {
+        attempt,
+        bundleId,
+        clearedObservations: waitState.clearedObservations,
+        focusedPackage: lastFocusedPackage,
+        processId: lastProcessId || null,
+        releaseId,
+      });
+      androidLaunchLogMarker = null;
+      return {
+        bundleId,
+        focusedPackage: lastFocusedPackage,
+        processId: lastProcessId || null,
+        releaseId,
+      };
     }
 
     await abortableSleep(E2E_ANDROID_FOREGROUND_POLL_MS, signal);
   }
 
-  throw new Error(
-    `Timed out waiting for Android instrumentation to clear; active=${String(lastInstrumentationActive)}, focusedPackage=${String(lastFocusedPackage)}, processId=${lastProcessId || "none"}`,
+  const nativeLogPath = writeResultDiagnosticFile(
+    "wait-for-android-restart-native.log",
+    lastNativeLogs,
+  );
+  throw createEndpointError(
+    `Timed out waiting for the Android automatic restart; nativeRestart=${String(lastHasNativeRestartEvidence)}, instrumentationActive=${String(lastInstrumentationActive)}, focusedPackage=${String(lastFocusedPackage)}, processId=${lastProcessId || "none"}`,
+    {
+      expected: { bundleId, releaseId },
+      nativeLogPath,
+      observed: {
+        metadata: lastMetadata,
+        metadataState: getMetadataState(lastMetadata.value),
+        nativeRestart: lastHasNativeRestartEvidence,
+      },
+    },
   );
 }
 
@@ -5010,6 +5079,17 @@ async function prepareAppLaunch() {
     );
     await sleep(E2E_POLL_INTERVAL_MS);
   }
+
+  androidLaunchLogMarker = `HotUpdaterE2ELaunch:${randomUUID()}`;
+  captureCommand("adb", [
+    "-s",
+    deviceId as string,
+    "shell",
+    "log",
+    "-t",
+    "HotUpdaterE2E",
+    androidLaunchLogMarker,
+  ]);
 
   return { alreadyFocused };
 }
@@ -6668,8 +6748,13 @@ export function startWaitForMetadataJob(
   );
 }
 
-export function startWaitForAndroidRestartJob() {
-  return createJob((context) => waitForAndroidRestart(context.signal));
+export function startWaitForAndroidRestartJob(
+  bundleId: string,
+  releaseId: string,
+) {
+  return createJob((context) =>
+    waitForAndroidRestart(bundleId, releaseId, context.signal),
+  );
 }
 
 export function getJob(jobId: string) {

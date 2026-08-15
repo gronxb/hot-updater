@@ -352,8 +352,18 @@ app.post("/e2e/jobs/wait-for-metadata", async (c) => {
   });
 });
 
-app.post("/e2e/jobs/wait-for-android-restart", (c) => {
-  return c.json({ jobId: startWaitForAndroidRestartJob() });
+app.post("/e2e/jobs/wait-for-android-restart", async (c) => {
+  const payload = (await c.req.json()) as {
+    bundleId?: string;
+    releaseId?: string;
+  };
+  if (!payload.bundleId || !payload.releaseId) {
+    return c.json({ error: "bundleId and releaseId are required" }, 400);
+  }
+
+  return c.json({
+    jobId: startWaitForAndroidRestartJob(payload.bundleId, payload.releaseId),
+  });
 });
 
 app.get("/e2e/jobs/:jobId", async (c) => {
