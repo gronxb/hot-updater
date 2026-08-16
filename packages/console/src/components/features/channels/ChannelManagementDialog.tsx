@@ -85,7 +85,7 @@ export function ChannelManagementDialog({
         toast.success(`Channel ${channelToDelete.name} deleted`);
       } else if (result.reason === "not_empty") {
         toast.error(
-          `Channel ${channelToDelete.name} now contains bundles and cannot be deleted`,
+          `Channel ${channelToDelete.name} is still in use and cannot be deleted`,
         );
       } else {
         toast.error(`Channel ${channelToDelete.name} no longer exists`);
@@ -107,8 +107,8 @@ export function ChannelManagementDialog({
               Channels
             </DialogTitle>
             <DialogDescription>
-              Create deployment channels and remove them when they contain no
-              bundles. Empty channels remain available until you delete them.
+              Create deployment channels and remove them when no Release uses
+              them. Empty channels remain available until you delete them.
             </DialogDescription>
           </DialogHeader>
 

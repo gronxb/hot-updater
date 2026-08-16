@@ -1,7 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   ChartNoAxesCombined,
-  Gauge,
   KeyRound,
   Moon,
   Package,
@@ -31,8 +30,7 @@ export function AppSidebar() {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
-  const isReleasesActive = currentPath === "/";
-  const isArtifactsActive = currentPath === "/artifacts";
+  const isBundlesActive = currentPath === "/";
   const isAnalyticsActive =
     currentPath === "/analytics" || currentPath === "/installations";
   const isAccessKeysActive = currentPath === "/access-keys";
@@ -43,14 +41,15 @@ export function AppSidebar() {
         <Link
           to="/"
           search={{
-            channel: undefined,
+            afterReleaseId: undefined,
+            beforeReleaseId: undefined,
+            channelId: undefined,
+            enabled: undefined,
+            releaseId: undefined,
             platform: undefined,
             targetAppVersion: undefined,
-            page: undefined,
-            after: undefined,
-            before: undefined,
             bundleId: undefined,
-            expandedBundleId: undefined,
+            page: undefined,
           }}
           className="flex items-center gap-3 p-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2"
         >
@@ -74,46 +73,25 @@ export function AppSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild
-                  isActive={isReleasesActive}
-                  tooltip="Releases"
+                  isActive={isBundlesActive}
+                  tooltip="Bundles"
                 >
                   <Link
                     to="/"
                     search={{
-                      channel: undefined,
+                      afterReleaseId: undefined,
+                      beforeReleaseId: undefined,
+                      channelId: undefined,
+                      enabled: undefined,
+                      releaseId: undefined,
                       platform: undefined,
                       targetAppVersion: undefined,
-                      page: undefined,
-                      after: undefined,
-                      before: undefined,
                       bundleId: undefined,
-                      expandedBundleId: undefined,
-                    }}
-                  >
-                    <Gauge />
-                    <span>Releases</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={isArtifactsActive}
-                  tooltip="Artifacts"
-                >
-                  <Link
-                    to="/artifacts"
-                    search={{
-                      platform: undefined,
                       page: undefined,
-                      after: undefined,
-                      before: undefined,
-                      bundleId: undefined,
-                      expandedBundleId: undefined,
                     }}
                   >
                     <Package />
-                    <span>Artifacts</span>
+                    <span>Bundles</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

@@ -1,11 +1,14 @@
 import {
   DatabasePluginInputError,
   type Bundle,
+  type ReleaseRow,
   type ChannelDeleteInput,
   type ChannelInsertInput,
   type DatabaseBundleQueryOptions,
   deleteRelease as deleteReleaseMutation,
   preflightReleasePolicy,
+  promoteRelease as promoteReleaseMutation,
+  rollbackRelease as rollbackReleaseMutation,
   type ReleasePolicyPatch,
   updateReleasePolicy,
 } from "@hot-updater/plugin-core";
@@ -18,6 +21,7 @@ import {
   parseSearchInstallationsInput,
 } from "./analytics-input";
 import { DEFAULT_PAGE_LIMIT } from "./constants";
+import { listReleases } from "./server/listReleases";
 
 type GetBundlesInput = {
   platform?: "ios" | "android";
@@ -48,10 +52,15 @@ type DeleteBundlesInput = {
 };
 
 type GetReleasesInput = {
+  afterReleaseId?: string;
   beforeReleaseId?: string;
+  bundleId?: string;
   channelId?: string;
+  enabled?: boolean;
   platform?: "ios" | "android";
   limit?: number;
+  page?: number;
+  targetAppVersion?: string;
 };
 
 type ReleaseMutationInput = {
@@ -70,12 +79,21 @@ export const getReleases = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const { prepareConfig } = await import("./server/config.server");
     const { config } = await prepareConfig();
-    return config.database.models.releases.findMany({
+    return listReleases(config.database.models.releases, {
+      ...(data?.afterReleaseId === undefined
+        ? {}
+        : { afterReleaseId: data.afterReleaseId }),
       ...(data?.beforeReleaseId === undefined
         ? {}
         : { beforeReleaseId: data.beforeReleaseId }),
+      ...(data?.bundleId === undefined ? {} : { bundleId: data.bundleId }),
       ...(data?.channelId === undefined ? {} : { channelId: data.channelId }),
+      ...(data?.enabled === undefined ? {} : { enabled: data.enabled }),
+      ...(data?.page === undefined ? {} : { page: data.page }),
       ...(data?.platform === undefined ? {} : { platform: data.platform }),
+      ...(data?.targetAppVersion === undefined
+        ? {}
+        : { targetAppVersion: data.targetAppVersion }),
       limit: data?.limit ?? DEFAULT_PAGE_LIMIT,
     });
   });
@@ -110,6 +128,70 @@ export const deleteRelease = createServerFn({ method: "POST" })
     const { prepareConfig } = await import("./server/config.server");
     const { config } = await prepareConfig();
     return deleteReleaseMutation({ database: config.database, ...data });
+  });
+
+export const promoteRelease = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: {
+      action: "copy" | "move";
+      expectedRevision?: number;
+      releaseId: string;
+      targetChannel: string;
+    }) => input,
+  )
+  .handler(async ({ data }) => {
+    const { prepareConfig } = await import("./server/config.server");
+    const { config } = await prepareConfig();
+    return promoteReleaseMutation({ database: config.database, ...data });
+  });
+
+export const rollbackRelease = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: {
+      expectedRevision?: number;
+      releaseId: string;
+      toBundleId?: string | null;
+      toReleaseId?: string;
+    }) => input,
+  )
+  .handler(async ({ data }) => {
+    const { prepareConfig } = await import("./server/config.server");
+    const { config } = await prepareConfig();
+    return rollbackReleaseMutation({ database: config.database, ...data });
+  });
+
+export const getReleaseRollbackCandidates = createServerFn({ method: "GET" })
+  .inputValidator((input: { releaseId: string }) => input)
+  .handler(async ({ data }) => {
+    const { prepareConfig } = await import("./server/config.server");
+    const { config } = await prepareConfig();
+    const release = await config.database.models.releases.findById(
+      data.releaseId,
+    );
+    if (release === null) return [];
+
+    const candidates: ReleaseRow[] = [];
+    let afterReleaseId: string | undefined;
+    for (;;) {
+      const page = await config.database.models.releases.findManyByScope({
+        ...(afterReleaseId === undefined ? {} : { afterReleaseId }),
+        consistency: "strong",
+        limit: 100,
+        scopeKey: release.scope_key,
+      });
+      for (const candidate of page) {
+        if (candidate.id >= release.id) {
+          return candidates.slice(-20).reverse();
+        }
+        candidates.push(candidate);
+      }
+      if (page.length < 100) return candidates.slice(-20).reverse();
+      const nextCursor = page.at(-1)?.id;
+      if (nextCursor === undefined || nextCursor === afterReleaseId) {
+        return candidates.slice(-20).reverse();
+      }
+      afterReleaseId = nextCursor;
+    }
   });
 
 export const getReleaseCatalogDiagnostics = createServerFn({ method: "GET" })

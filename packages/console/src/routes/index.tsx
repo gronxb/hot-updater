@@ -1,30 +1,37 @@
-import type { ReleasePolicyPatch, ReleaseRow } from "@hot-updater/plugin-core";
-import { createFileRoute } from "@tanstack/react-router";
+import type { ChannelRow, ReleaseRow } from "@hot-updater/plugin-core";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   AlertTriangle,
-  ArrowRight,
-  Box,
-  Check,
-  CircleOff,
-  Gauge,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
   RotateCcw,
-  Trash2,
+  Tags,
+  X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { useState } from "react";
 
+import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { ChannelBadge } from "@/components/ChannelBadge";
+import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
+import { ChannelManagementDialog } from "@/components/features/channels/ChannelManagementDialog";
+import { ReleaseEditorSheet } from "@/components/features/releases/ReleaseEditorSheet";
+import { ReleaseStateBadge } from "@/components/features/releases/ReleaseStateBadge";
+import { PlatformIcon } from "@/components/PlatformIcon";
+import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -33,525 +40,560 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
+  useBundleChildCountsQuery,
   useChannelsQuery,
-  useDeleteReleaseMutation,
-  usePreflightReleaseMutation,
-  useReleaseCatalogDiagnosticsQuery,
-  useReleaseQuery,
   useReleasesQuery,
-  useUpdateReleaseMutation,
 } from "@/lib/api";
-import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/")({ component: ReleasesPage });
+import {
+  type ReleaseSearch,
+  updateReleaseFilters,
+  validateReleaseSearch,
+} from "./-releases-search";
 
-type Draft = {
-  enabled: boolean;
-  message: string;
-  rolloutCohortCount: string;
-  shouldForceUpdate: boolean;
-  targetAppVersion: string;
-  targetCohorts: string;
-};
-
-const draftFromRelease = (release: ReleaseRow): Draft => ({
-  enabled: release.enabled,
-  message: release.message ?? "",
-  rolloutCohortCount: String(release.rollout_cohort_count),
-  shouldForceUpdate: release.should_force_update,
-  targetAppVersion: release.target_app_version ?? "",
-  targetCohorts: release.target_cohorts.join(", "),
+const PAGE_SIZE = 20;
+const dateFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
 });
 
-const patchFromDraft = (
-  release: ReleaseRow,
-  draft: Draft,
-): ReleasePolicyPatch => ({
-  enabled: draft.enabled,
-  message: draft.message.trim() || null,
-  rolloutCohortCount: Number(draft.rolloutCohortCount),
-  shouldForceUpdate: draft.shouldForceUpdate,
-  ...(release.strategy === "APP_VERSION"
-    ? { targetAppVersion: draft.targetAppVersion.trim() }
-    : {}),
-  targetCohorts: draft.targetCohorts
-    .split(",")
-    .map((cohort) => cohort.trim())
-    .filter(Boolean),
+export const Route = createFileRoute("/")({
+  component: BundlesPage,
+  validateSearch: validateReleaseSearch,
 });
 
 const shortId = (id: string) => `${id.slice(0, 8)}…${id.slice(-4)}`;
 
-function ReleaseState({ release }: { release: ReleaseRow }) {
+function BundleFilterToolbar({
+  channels,
+  onChange,
+  onClear,
+  onManageChannels,
+  search,
+}: {
+  channels: readonly ChannelRow[];
+  onChange: (filters: Partial<ReleaseSearch>) => void;
+  onClear: () => void;
+  onManageChannels: () => void;
+  search: ReleaseSearch;
+}) {
+  const hasFilters = Boolean(
+    search.bundleId ||
+    search.channelId ||
+    search.enabled !== undefined ||
+    search.platform ||
+    search.targetAppVersion,
+  );
+
   return (
-    <Badge
-      className={cn(
-        "gap-1 border-0",
-        release.enabled
-          ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
-          : "bg-muted text-muted-foreground",
-      )}
-      variant="secondary"
-    >
-      {release.enabled ? (
-        <Check className="size-3" />
-      ) : (
-        <CircleOff className="size-3" />
-      )}
-      {release.enabled ? "Enabled" : "Disabled"}
-    </Badge>
+    <header className="sticky top-0 z-20 flex shrink-0 flex-wrap items-center gap-2 border-b bg-background px-3 py-3 sm:h-12 sm:flex-nowrap sm:bg-card/85 sm:px-4 sm:py-0 sm:backdrop-blur-sm">
+      <SidebarTrigger className="-ml-1" />
+      <h1 className="sr-only">Bundles</h1>
+      <div className="ml-1 flex items-center gap-1.5 text-muted-foreground sm:ml-2">
+        <Filter className="size-3.5" />
+        <span className="text-xs font-medium">Filters</span>
+      </div>
+      <Select
+        onValueChange={(value) =>
+          onChange({
+            platform:
+              value === "all" ? undefined : (value as "ios" | "android"),
+          })
+        }
+        value={search.platform ?? "all"}
+      >
+        <SelectTrigger
+          aria-label="Platform"
+          className="h-8 w-[calc(50%-0.25rem)] min-w-[132px] text-xs sm:w-[140px]"
+        >
+          <SelectValue placeholder="All Platforms" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            <SelectItem value="all">All Platforms</SelectItem>
+            <SelectItem value="ios">iOS</SelectItem>
+            <SelectItem value="android">Android</SelectItem>
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+      <Select
+        onValueChange={(value) =>
+          onChange({ channelId: value === "all" ? undefined : value })
+        }
+        value={search.channelId ?? "all"}
+      >
+        <SelectTrigger
+          aria-label="Channel"
+          className="h-8 w-[calc(50%-0.25rem)] min-w-[132px] text-xs sm:w-[140px]"
+        >
+          <SelectValue placeholder="All Channels" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            <SelectItem value="all">All Channels</SelectItem>
+            {channels.map((channel) => (
+              <SelectItem key={channel.id} value={channel.id}>
+                {channel.name}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+      <Button
+        aria-label="Manage channels"
+        onClick={onManageChannels}
+        size="icon-sm"
+        title="Manage channels"
+        variant="outline"
+      >
+        <Tags />
+      </Button>
+      {search.bundleId ? (
+        <Badge className="max-w-48 gap-1" variant="secondary">
+          Bundle {shortId(search.bundleId)}
+          <button
+            aria-label="Clear Bundle filter"
+            className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => onChange({ bundleId: undefined })}
+            type="button"
+          >
+            <X className="size-3" />
+          </button>
+        </Badge>
+      ) : null}
+      {hasFilters ? (
+        <Button
+          className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground sm:ml-auto"
+          onClick={onClear}
+          size="sm"
+          variant="ghost"
+        >
+          <X data-icon="inline-start" />
+          Clear
+        </Button>
+      ) : null}
+    </header>
   );
 }
 
-function ReleasesPage() {
-  const [selectedReleaseId, setSelectedReleaseId] = useState("");
-  const { data: releases = [], isLoading } = useReleasesQuery({ limit: 100 });
-  const { data: channels = [] } = useChannelsQuery();
-  const channelNames = new Map(
-    channels.map((channel) => [channel.id, channel.name]),
-  );
+function BundleEntry({
+  onOpen,
+  release,
+}: {
+  onOpen: () => void;
+  release: ReleaseRow;
+}) {
+  const bundleLabel = release.bundle_id
+    ? `bundle ${release.bundle_id}`
+    : "the built-in app deployment";
 
   return (
-    <div className="flex h-svh min-h-0 flex-col bg-muted/5">
-      <header className="border-b bg-background px-4 py-4 sm:px-6">
-        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              <Gauge className="size-3.5" /> Delivery control plane
-            </div>
-            <h1 className="text-2xl font-semibold tracking-tight">Releases</h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              Mutable delivery policy, ordered independently from immutable
-              Bundle artifacts.
-            </p>
-          </div>
-          <div className="grid grid-cols-3 overflow-hidden rounded-lg border bg-card text-xs shadow-sm">
-            <div className="border-r px-4 py-3">
-              <div className="text-muted-foreground">Visible</div>
-              <div className="mt-1 text-lg font-semibold">
-                {releases.length}
-              </div>
-            </div>
-            <div className="border-r px-4 py-3">
-              <div className="text-muted-foreground">Enabled</div>
-              <div className="mt-1 text-lg font-semibold text-emerald-600">
-                {releases.filter((release) => release.enabled).length}
-              </div>
-            </div>
-            <div className="px-4 py-3">
-              <div className="text-muted-foreground">Embedded</div>
-              <div className="mt-1 text-lg font-semibold">
-                {
-                  releases.filter((release) => release.kind === "EMBEDDED")
-                    .length
-                }
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="min-h-0 flex-1 p-3 sm:p-6">
-        <div className="h-full overflow-auto rounded-lg border bg-card shadow-sm [content-visibility:auto]">
-          <Table>
-            <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur">
-              <TableRow>
-                <TableHead>Release</TableHead>
-                <TableHead>Bundle / Embedded</TableHead>
-                <TableHead>Channel</TableHead>
-                <TableHead>Platform</TableHead>
-                <TableHead>Target</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Rollout</TableHead>
-                <TableHead>Operation</TableHead>
-                <TableHead>Created</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading
-                ? Array.from({ length: 7 }, (_, index) => (
-                    <TableRow key={index}>
-                      <TableCell colSpan={9}>
-                        <Skeleton className="h-8 w-full" />
-                      </TableCell>
-                    </TableRow>
-                  ))
-                : releases.map((release) => (
-                    <TableRow
-                      className="cursor-pointer transition-colors hover:bg-muted/45"
-                      key={release.id}
-                      onClick={() => setSelectedReleaseId(release.id)}
-                    >
-                      <TableCell>
-                        <div
-                          className="font-mono text-xs font-medium"
-                          title={release.id}
-                        >
-                          {shortId(release.id)}
-                        </div>
-                        <div className="mt-1 text-[11px] text-muted-foreground">
-                          rev {release.revision}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {release.bundle_id === null ? (
-                          <span className="inline-flex items-center gap-1.5 text-sm">
-                            <RotateCcw className="size-3.5 text-amber-600" />{" "}
-                            Embedded
-                          </span>
-                        ) : (
-                          <span
-                            className="inline-flex items-center gap-1.5 font-mono text-xs"
-                            title={release.bundle_id}
-                          >
-                            <Box className="size-3.5 text-muted-foreground" />{" "}
-                            {shortId(release.bundle_id)}
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {channelNames.get(release.channel_id) ??
-                          release.channel_id}
-                      </TableCell>
-                      <TableCell className="capitalize">
-                        {release.platform}
-                      </TableCell>
-                      <TableCell className="max-w-40 truncate font-mono text-xs">
-                        {release.target_app_version ?? release.fingerprint_hash}
-                      </TableCell>
-                      <TableCell>
-                        <ReleaseState release={release} />
-                      </TableCell>
-                      <TableCell>
-                        {release.rollout_cohort_count / 10}%
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{release.operation}</Badge>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                        {new Date(release.created_at_ms).toLocaleString()}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-              {!isLoading && releases.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    className="h-40 text-center text-muted-foreground"
-                    colSpan={9}
-                  >
-                    No Releases yet. A deploy creates one Release per platform.
-                  </TableCell>
-                </TableRow>
-              ) : null}
-            </TableBody>
-          </Table>
-        </div>
-      </main>
-
-      <ReleaseEditor
-        channelName={
-          releases.find((release) => release.id === selectedReleaseId)
-            ? channelNames.get(
-                releases.find((release) => release.id === selectedReleaseId)!
-                  .channel_id,
-              )
-            : undefined
-        }
-        onOpenChange={(open) => !open && setSelectedReleaseId("")}
-        open={selectedReleaseId.length > 0}
-        releaseId={selectedReleaseId}
-      />
+    <div className="flex min-w-[220px] flex-col items-start gap-1.5">
+      <button
+        aria-label={`Open details for ${bundleLabel}`}
+        className="min-w-0 rounded-sm text-left font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={onOpen}
+        title={release.bundle_id ?? release.id}
+        type="button"
+      >
+        {release.bundle_id ? (
+          <BundleIdDisplay bundleId={release.bundle_id} />
+        ) : (
+          <span className="inline-flex items-center gap-1.5 text-sm">
+            <RotateCcw className="size-3.5" /> Built-in app
+          </span>
+        )}
+      </button>
+      <span className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+        <span>rev {release.revision}</span>
+        <Badge variant="outline">{release.operation}</Badge>
+      </span>
     </div>
   );
 }
 
-function ReleaseEditor({
-  channelName,
-  onOpenChange,
-  open,
-  releaseId,
-}: {
-  channelName?: string;
-  onOpenChange: (open: boolean) => void;
-  open: boolean;
-  releaseId: string;
-}) {
-  const { data: release } = useReleaseQuery(releaseId);
-  const diagnostics = useReleaseCatalogDiagnosticsQuery(
-    release?.scope_key ?? "",
+function BundlesPage() {
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const isMobile = useIsMobile();
+  const [channelsOpen, setChannelsOpen] = useState(false);
+  const releasesQuery = useReleasesQuery({
+    afterReleaseId: search.afterReleaseId,
+    beforeReleaseId: search.beforeReleaseId,
+    bundleId: search.bundleId,
+    channelId: search.channelId,
+    enabled: search.enabled,
+    limit: PAGE_SIZE,
+    page: search.page,
+    platform: search.platform,
+    targetAppVersion: search.targetAppVersion,
+  });
+  const channelsQuery = useChannelsQuery();
+  const channels = channelsQuery.data ?? [];
+  const releases = releasesQuery.data?.data ?? [];
+  const bundleIds = Array.from(
+    new Set(
+      releases.flatMap((release) =>
+        release.bundle_id ? [release.bundle_id] : [],
+      ),
+    ),
   );
-  const update = useUpdateReleaseMutation();
-  const preflight = usePreflightReleaseMutation();
-  const remove = useDeleteReleaseMutation();
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const patchCountsQuery = useBundleChildCountsQuery(bundleIds);
+  const patchCountsByBundleId = patchCountsQuery.data ?? {};
+  const pagination = releasesQuery.data?.pagination;
+  const channelNames = new Map(
+    channels.map((channel) => [channel.id, channel.name]),
+  );
 
-  useEffect(() => {
-    setDraft(release ? draftFromRelease(release) : null);
-  }, [release]);
+  const go = (nextSearch: ReleaseSearch, resetScroll = true) =>
+    void navigate({ resetScroll, search: nextSearch, to: "/" });
+  const changeFilters = (filters: Partial<ReleaseSearch>) =>
+    go(updateReleaseFilters(search, filters));
+  const currentPage = pagination?.currentPage ?? 1;
+  const previousPage = currentPage - 1;
+  const firstReleaseId = releases[0]?.id;
+  const lastReleaseId = releases.at(-1)?.id;
+  const previousSearch: ReleaseSearch | null =
+    pagination?.hasPreviousPage && firstReleaseId
+      ? {
+          ...search,
+          afterReleaseId: firstReleaseId,
+          beforeReleaseId: undefined,
+          page: previousPage > 1 ? previousPage : undefined,
+          releaseId: undefined,
+        }
+      : null;
+  const nextSearch: ReleaseSearch | null =
+    pagination?.hasNextPage && lastReleaseId
+      ? {
+          ...search,
+          afterReleaseId: undefined,
+          beforeReleaseId: lastReleaseId,
+          page: currentPage + 1,
+          releaseId: undefined,
+        }
+      : null;
 
-  const save = async () => {
-    if (!release || !draft) return;
-    const rollout = Number(draft.rolloutCohortCount);
-    if (!Number.isInteger(rollout) || rollout < 0 || rollout > 1000) {
-      toast.error("Rollout must be an integer from 0 to 1000.");
-      return;
-    }
-    const input = {
-      expectedRevision: release.revision,
-      patch: patchFromDraft(release, draft),
-      releaseId: release.id,
-    };
-    await preflight.mutateAsync(input);
-    await update.mutateAsync(input);
-    toast.success("Release policy and catalog committed atomically.");
-  };
-
-  const hardDelete = async () => {
-    if (!release || release.enabled) return;
-    if (!window.confirm(`Permanently delete disabled Release ${release.id}?`))
-      return;
-    await remove.mutateAsync({
-      expectedRevision: release.revision,
-      releaseId: release.id,
-    });
-    toast.success("Release deleted; catalog tombstone generation retained.");
-    onOpenChange(false);
-  };
-
-  const projected = preflight.data;
   return (
-    <Sheet onOpenChange={onOpenChange} open={open}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-[620px]">
-        <SheetHeader className="border-b pb-5">
-          <SheetTitle>Release policy</SheetTitle>
-          {release ? (
-            <div className="space-y-2 text-xs text-muted-foreground">
-              <div className="font-mono text-foreground">{release.id}</div>
-              <div className="flex flex-wrap items-center gap-2">
-                <ReleaseState release={release} />
-                <Badge variant="outline">revision {release.revision}</Badge>
-                <Badge variant="outline">
-                  {channelName ?? release.channel_id}
-                </Badge>
-                <Badge variant="outline">{release.platform}</Badge>
-              </div>
-            </div>
-          ) : (
-            <Skeleton className="h-12 w-full" />
-          )}
-        </SheetHeader>
+    <div className="flex h-svh min-h-0 min-w-0 flex-col bg-muted/5">
+      <BundleFilterToolbar
+        channels={channels}
+        onChange={changeFilters}
+        onClear={() => go({})}
+        onManageChannels={() => setChannelsOpen(true)}
+        search={search}
+      />
 
-        {release && draft ? (
-          <div className="space-y-6 px-4 pb-6 sm:px-6">
-            <section className="grid grid-cols-2 gap-3 rounded-lg border bg-muted/20 p-4 text-xs">
-              <div>
-                <div className="text-muted-foreground">Bundle</div>
-                <div className="mt-1 font-mono">
-                  {release.bundle_id ?? "EMBEDDED"}
-                </div>
-              </div>
-              <div>
-                <div className="text-muted-foreground">Operation</div>
-                <div className="mt-1">{release.operation}</div>
-              </div>
-              <div>
-                <div className="text-muted-foreground">Generation</div>
-                <div className="mt-1">
-                  {diagnostics.data?.generation ?? "—"}
-                </div>
-              </div>
-              <div>
-                <div className="text-muted-foreground">Catalog bytes</div>
-                <div className="mt-1">
-                  {diagnostics.data?.byte_size ?? "—"} / 262144
-                </div>
-              </div>
-              <div className="col-span-2">
-                <div className="text-muted-foreground">Scope</div>
-                <div className="mt-1 break-all font-mono">
-                  {release.scope_key}
-                </div>
-              </div>
-            </section>
-
-            <div className="grid gap-5">
-              <div className="flex items-center justify-between gap-6">
-                <div>
-                  <Label htmlFor="release-enabled">Enabled</Label>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Disabling can converge active clients to an older Release or
-                    local BUILTIN.
-                  </p>
-                </div>
-                <Switch
-                  checked={draft.enabled}
-                  id="release-enabled"
-                  onCheckedChange={(enabled) =>
-                    setDraft((current) => current && { ...current, enabled })
-                  }
-                />
-              </div>
-              <div className="flex items-center justify-between gap-6">
-                <div>
-                  <Label htmlFor="release-force">Force update</Label>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Same-Bundle adoption changes metadata only and does not
-                    reload.
-                  </p>
-                </div>
-                <Switch
-                  checked={draft.shouldForceUpdate}
-                  id="release-force"
-                  onCheckedChange={(shouldForceUpdate) =>
-                    setDraft(
-                      (current) => current && { ...current, shouldForceUpdate },
-                    )
-                  }
-                />
-              </div>
-              {release.strategy === "APP_VERSION" ? (
-                <div className="space-y-2">
-                  <Label htmlFor="release-target">App-version target</Label>
-                  <Input
-                    id="release-target"
-                    value={draft.targetAppVersion}
-                    onChange={(event) =>
-                      setDraft({
-                        ...draft,
-                        targetAppVersion: event.target.value,
-                      })
-                    }
-                  />
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label>Fingerprint target</Label>
-                  <Input disabled value={release.fingerprint_hash ?? ""} />
-                  <p className="text-xs text-muted-foreground">
-                    Fingerprint identity is part of the catalog scope and cannot
-                    be moved by this editor.
-                  </p>
-                </div>
-              )}
-              <div className="space-y-2">
-                <Label htmlFor="release-rollout">Rollout cohort count</Label>
-                <Input
-                  id="release-rollout"
-                  inputMode="numeric"
-                  max={1000}
-                  min={0}
-                  type="number"
-                  value={draft.rolloutCohortCount}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      rolloutCohortCount: event.target.value,
-                    })
-                  }
-                />
-                <p className="text-xs text-muted-foreground">
-                  Reducing rollout may move excluded active clients to a prior
-                  Release or BUILTIN.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="release-cohorts">Target cohorts</Label>
-                <Input
-                  id="release-cohorts"
-                  placeholder="qa, dogfood"
-                  value={draft.targetCohorts}
-                  onChange={(event) =>
-                    setDraft({ ...draft, targetCohorts: event.target.value })
-                  }
-                />
-                <p className="flex gap-1.5 text-xs text-amber-700 dark:text-amber-300">
-                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                  Cohort names are shipped in the public device catalog. Use
-                  opaque buckets, never identities or secrets.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="release-message">Message</Label>
-                <Textarea
-                  id="release-message"
-                  value={draft.message}
-                  onChange={(event) =>
-                    setDraft({ ...draft, message: event.target.value })
-                  }
-                />
-              </div>
-            </div>
-
-            {projected ? (
-              <section className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4 text-xs">
-                <div className="mb-3 flex items-center gap-2 font-medium text-emerald-700 dark:text-emerald-300">
-                  <Check className="size-4" /> Compiler preflight passed
-                </div>
-                <div className="grid grid-cols-3 gap-3 text-muted-foreground">
-                  <div>
-                    <span className="block text-foreground">
-                      {projected.diagnostics.byteSize}
-                    </span>
-                    projected bytes
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-3 sm:p-6">
+        {releasesQuery.isError ? (
+          <Alert variant="destructive">
+            <AlertTriangle />
+            <AlertTitle>Bundles could not be loaded</AlertTitle>
+            <AlertDescription>{releasesQuery.error.message}</AlertDescription>
+          </Alert>
+        ) : (
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border bg-card shadow-sm [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-auto">
+            {isMobile ? (
+              <div className="h-full overflow-y-auto">
+                {releasesQuery.isPending ? (
+                  <div className="flex flex-col gap-3 p-4">
+                    {Array.from({ length: 5 }, (_, index) => (
+                      <Skeleton className="h-44 w-full" key={index} />
+                    ))}
                   </div>
-                  <div>
-                    <span className="block text-foreground">
-                      {projected.diagnostics.descriptorCount}
-                    </span>
-                    descriptors
-                  </div>
-                  <div>
-                    <span className="block text-foreground">
-                      {projected.catalog.generation}
-                    </span>
-                    next generation
-                  </div>
-                </div>
-              </section>
-            ) : null}
+                ) : releases.length ? (
+                  releases.map((release) => {
+                    const channelName =
+                      channelNames.get(release.channel_id) ??
+                      release.channel_id;
+                    const patchCount = release.bundle_id
+                      ? patchCountsByBundleId[release.bundle_id]
+                      : 0;
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-5">
-              <Button
-                disabled={release.enabled || remove.isPending}
-                onClick={hardDelete}
-                size="sm"
-                variant="destructive"
-              >
-                <Trash2 className="size-4" /> Hard delete
-              </Button>
-              <div className="flex gap-2">
-                <Button
-                  disabled={preflight.isPending || update.isPending}
-                  onClick={() =>
-                    preflight.mutate({
-                      expectedRevision: release.revision,
-                      patch: patchFromDraft(release, draft),
-                      releaseId: release.id,
-                    })
-                  }
-                  variant="outline"
-                >
-                  <Gauge className="size-4" /> Preflight
-                </Button>
-                <Button
-                  disabled={preflight.isPending || update.isPending}
-                  onClick={save}
-                >
-                  <ArrowRight className="size-4" /> Save atomically
-                </Button>
+                    return (
+                      <article
+                        className="flex flex-col gap-4 border-b p-4 last:border-b-0"
+                        key={release.id}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <BundleEntry
+                            onOpen={() =>
+                              go({ ...search, releaseId: release.id }, false)
+                            }
+                            release={release}
+                          />
+                          <ChannelBadge
+                            channel={channelName}
+                            className="shrink-0"
+                          />
+                        </div>
+                        <dl className="grid grid-cols-2 gap-3 text-xs">
+                          <div className="rounded-md bg-muted/40 p-3">
+                            <dt className="text-muted-foreground">Platform</dt>
+                            <dd className="mt-1 flex items-center gap-2 font-medium">
+                              <PlatformIcon
+                                className="size-4"
+                                platform={release.platform}
+                              />
+                              {release.platform === "ios" ? "iOS" : "Android"}
+                            </dd>
+                          </div>
+                          <div className="rounded-md bg-muted/40 p-3">
+                            <dt className="text-muted-foreground">Created</dt>
+                            <dd className="mt-1 tabular-nums">
+                              {dateFormatter.format(release.created_at_ms)}
+                            </dd>
+                          </div>
+                          <div className="rounded-md bg-muted/40 p-3">
+                            <dt className="text-muted-foreground">Rollout</dt>
+                            <dd className="mt-1">
+                              <RolloutPercentageBadge
+                                percentage={release.rollout_cohort_count / 10}
+                              />
+                            </dd>
+                          </div>
+                          <div className="rounded-md bg-muted/40 p-3">
+                            <dt className="text-muted-foreground">Patches</dt>
+                            <dd className="mt-1">
+                              {patchCount === undefined
+                                ? "Checking"
+                                : patchCount > 0
+                                  ? `${patchCount} ${
+                                      patchCount === 1 ? "patch" : "patches"
+                                    }`
+                                  : "—"}
+                            </dd>
+                          </div>
+                          <div className="col-span-2 flex flex-wrap items-center gap-2 rounded-md bg-muted/40 p-3">
+                            <ReleaseStateBadge release={release} />
+                            {release.should_force_update ? (
+                              <Badge variant="secondary">Force update</Badge>
+                            ) : null}
+                          </div>
+                          <div className="col-span-2 grid gap-2 rounded-md border bg-background/80 p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <dt className="text-muted-foreground">Target</dt>
+                              <dd className="min-w-0 truncate text-right font-mono">
+                                {release.target_app_version ??
+                                  release.fingerprint_hash ??
+                                  "—"}
+                              </dd>
+                            </div>
+                            <div className="flex items-start justify-between gap-3">
+                              <dt className="text-muted-foreground">Message</dt>
+                              <dd className="min-w-0 text-right text-foreground">
+                                {release.message || "—"}
+                              </dd>
+                            </div>
+                          </div>
+                        </dl>
+                      </article>
+                    );
+                  })
+                ) : (
+                  <p className="p-8 text-center text-sm text-muted-foreground">
+                    {search.bundleId ||
+                    search.channelId ||
+                    search.enabled !== undefined ||
+                    search.platform ||
+                    search.targetAppVersion
+                      ? "No bundles match these filters."
+                      : "No bundles yet. Deploy a bundle to see it here."}
+                  </p>
+                )}
               </div>
-            </div>
-            {release.enabled ? (
-              <p className="text-xs text-muted-foreground">
-                Disable this Release before hard deletion. Bundle deletion
-                remains blocked while any Release or patch references it.
-              </p>
-            ) : null}
+            ) : (
+              <Table>
+                <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur">
+                  <TableRow>
+                    <TableHead>Bundle ID</TableHead>
+                    <TableHead>Channel</TableHead>
+                    <TableHead>Platform</TableHead>
+                    <TableHead>Patches</TableHead>
+                    <TableHead>Target</TableHead>
+                    <TableHead>Enabled</TableHead>
+                    <TableHead>Force Update</TableHead>
+                    <TableHead>Rollout</TableHead>
+                    <TableHead>Message</TableHead>
+                    <TableHead>Created</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {releasesQuery.isPending
+                    ? Array.from({ length: 7 }, (_, index) => (
+                        <TableRow key={index}>
+                          <TableCell colSpan={10}>
+                            <Skeleton className="h-8 w-full" />
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    : releases.map((release) => (
+                        <TableRow key={release.id}>
+                          <TableCell>
+                            <BundleEntry
+                              onOpen={() =>
+                                go({ ...search, releaseId: release.id }, false)
+                              }
+                              release={release}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <ChannelBadge
+                              channel={
+                                channelNames.get(release.channel_id) ??
+                                release.channel_id
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            <span className="flex items-center gap-2">
+                              <PlatformIcon
+                                className="size-4"
+                                platform={release.platform}
+                              />
+                              {release.platform === "ios" ? "iOS" : "Android"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {release.bundle_id &&
+                            patchCountsByBundleId[release.bundle_id] ===
+                              undefined ? (
+                              <span className="text-sm text-muted-foreground">
+                                Checking
+                              </span>
+                            ) : release.bundle_id &&
+                              patchCountsByBundleId[release.bundle_id]! > 0 ? (
+                              <Badge variant="secondary">
+                                {patchCountsByBundleId[release.bundle_id]}{" "}
+                                {patchCountsByBundleId[release.bundle_id] === 1
+                                  ? "patch"
+                                  : "patches"}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell
+                            className="max-w-44 truncate font-mono text-xs"
+                            title={
+                              release.target_app_version ??
+                              release.fingerprint_hash ??
+                              undefined
+                            }
+                          >
+                            {release.target_app_version ??
+                              release.fingerprint_hash ??
+                              "—"}
+                          </TableCell>
+                          <TableCell>
+                            <EnabledStatusIcon enabled={release.enabled} />
+                            <span className="sr-only">
+                              {release.enabled ? "Enabled" : "Disabled"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <EnabledStatusIcon
+                              enabled={release.should_force_update}
+                              falseIcon="minus"
+                            />
+                            <span className="sr-only">
+                              {release.should_force_update
+                                ? "Force update"
+                                : "Optional update"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <RolloutPercentageBadge
+                              percentage={release.rollout_cohort_count / 10}
+                            />
+                          </TableCell>
+                          <TableCell
+                            className="max-w-52 truncate text-xs text-muted-foreground"
+                            title={release.message ?? undefined}
+                          >
+                            {release.message || "—"}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                            {dateFormatter.format(release.created_at_ms)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                  {!releasesQuery.isPending && releases.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        className="h-40 text-center text-muted-foreground"
+                        colSpan={10}
+                      >
+                        {search.bundleId ||
+                        search.channelId ||
+                        search.enabled !== undefined ||
+                        search.platform ||
+                        search.targetAppVersion
+                          ? "No bundles match these filters."
+                          : "No bundles yet. Deploy a bundle to see it here."}
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </TableBody>
+              </Table>
+            )}
           </div>
+        )}
+
+        {!releasesQuery.isError && !releasesQuery.isPending ? (
+          <nav
+            aria-label="Bundle pagination"
+            className="flex items-center justify-between gap-3"
+          >
+            <p className="text-xs text-muted-foreground">
+              Page {pagination?.currentPage ?? 1}
+            </p>
+            <div className="flex gap-2">
+              {previousSearch ? (
+                <Button asChild size="sm" variant="outline">
+                  <Link search={previousSearch} to="/">
+                    <ChevronLeft data-icon="inline-start" />
+                    Previous
+                  </Link>
+                </Button>
+              ) : (
+                <Button disabled size="sm" variant="outline">
+                  <ChevronLeft data-icon="inline-start" />
+                  Previous
+                </Button>
+              )}
+              {nextSearch ? (
+                <Button asChild size="sm" variant="outline">
+                  <Link search={nextSearch} to="/">
+                    Next
+                    <ChevronRight data-icon="inline-end" />
+                  </Link>
+                </Button>
+              ) : (
+                <Button disabled size="sm" variant="outline">
+                  Next
+                  <ChevronRight data-icon="inline-end" />
+                </Button>
+              )}
+            </div>
+          </nav>
         ) : null}
-      </SheetContent>
-    </Sheet>
+      </div>
+
+      <ReleaseEditorSheet
+        channels={channels}
+        onOpenChange={(open) =>
+          !open && go({ ...search, releaseId: undefined }, false)
+        }
+        open={Boolean(search.releaseId)}
+        releaseId={search.releaseId ?? ""}
+      />
+      <ChannelManagementDialog
+        onOpenChange={setChannelsOpen}
+        open={channelsOpen}
+      />
+    </div>
   );
 }

@@ -30,8 +30,11 @@ import {
   getInstallationHistory as getInstallationHistoryApi,
   getRelease,
   getReleaseCatalogDiagnostics,
+  getReleaseRollbackCandidates,
   getReleases,
   preflightRelease as preflightReleaseApi,
+  promoteRelease as promoteReleaseApi,
+  rollbackRelease as rollbackReleaseApi,
   searchInstallations as searchInstallationsApi,
   updateRelease as updateReleaseApi,
 } from "./api-rpc";
@@ -107,10 +110,15 @@ export const queryKeys = {
 };
 
 export type ReleaseFilters = {
+  afterReleaseId?: string;
   beforeReleaseId?: string;
+  bundleId?: string;
   channelId?: string;
+  enabled?: boolean;
   platform?: "ios" | "android";
   limit?: number;
+  page?: number;
+  targetAppVersion?: string;
 };
 
 function removeBundleFromQueryData(
@@ -204,6 +212,14 @@ export function useReleaseCatalogDiagnosticsQuery(scopeKey: string) {
     enabled: scopeKey.length > 0,
     queryFn: () => getReleaseCatalogDiagnostics({ data: { scopeKey } }),
     queryKey: queryKeys.releaseCatalog(scopeKey),
+  });
+}
+
+export function useReleaseRollbackCandidatesQuery(releaseId: string) {
+  return useQuery({
+    enabled: releaseId.length > 0,
+    queryFn: () => getReleaseRollbackCandidates({ data: { releaseId } }),
+    queryKey: ["release-rollback-candidates", releaseId],
   });
 }
 
@@ -410,6 +426,46 @@ export function useDeleteReleaseMutation() {
       });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.releases.all }),
+        queryClient.invalidateQueries({ queryKey: ["release-catalog"] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
+      ]);
+    },
+  });
+}
+
+export function usePromoteReleaseMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      action: "copy" | "move";
+      expectedRevision: number;
+      releaseId: string;
+      targetChannel: string;
+    }) => promoteReleaseApi({ data: input }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.releases.all }),
+        queryClient.invalidateQueries({ queryKey: ["release"] }),
+        queryClient.invalidateQueries({ queryKey: ["release-catalog"] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
+      ]);
+    },
+  });
+}
+
+export function useRollbackReleaseMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      expectedRevision: number;
+      releaseId: string;
+      toBundleId?: string | null;
+      toReleaseId?: string;
+    }) => rollbackReleaseApi({ data: input }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.releases.all }),
+        queryClient.invalidateQueries({ queryKey: ["release"] }),
         queryClient.invalidateQueries({ queryKey: ["release-catalog"] }),
         queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
       ]);

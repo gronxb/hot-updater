@@ -1,0 +1,179 @@
+import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { ReleaseEditorSheet } from "./ReleaseEditorSheet";
+
+const preflight = vi.fn();
+const update = vi.fn();
+
+const release = {
+  bundle_id: "bundle-1",
+  channel_id: "channel-1",
+  created_at_ms: 1,
+  enabled: true,
+  fingerprint_hash: null,
+  id: "release-1",
+  kind: "BUNDLE",
+  message: "Initial message",
+  operation: "DEPLOY",
+  platform: "ios",
+  revision: 2,
+  rollout_cohort_count: 1_000,
+  scope_key: "scope-1",
+  should_force_update: false,
+  source_release_id: null,
+  strategy: "APP_VERSION",
+  target_app_version: "1.2.x",
+  target_cohorts: [],
+  updated_at_ms: 1,
+} as ReleaseRow;
+
+const bundle = {
+  fileHash: "bundle-file-hash",
+  gitCommitHash: "commit-hash",
+  id: "bundle-1",
+  platform: "ios",
+  storageUri: "s3://updates/bundle-1",
+} as Bundle;
+
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({ children, to }: { children: ReactNode; to: string }) => (
+    <a href={to}>{children}</a>
+  ),
+}));
+
+vi.mock("@/components/ui/sheet", () => ({
+  Sheet: ({ children, open }: { children: ReactNode; open: boolean }) =>
+    open ? <div>{children}</div> : null,
+  SheetContent: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  SheetDescription: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  SheetHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
+}));
+
+vi.mock("@/components/ui/slider", () => ({
+  Slider: () => <div aria-hidden="true" />,
+}));
+
+vi.mock("@/lib/api", () => ({
+  useBundleQuery: () => ({
+    data: bundle,
+    isError: false,
+    isPending: false,
+  }),
+  useDeleteReleaseMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  usePreflightReleaseMutation: () => ({
+    isPending: false,
+    mutateAsync: preflight,
+  }),
+  usePromoteReleaseMutation: () => ({
+    isPending: false,
+    mutateAsync: vi.fn(),
+  }),
+  useReleaseCatalogDiagnosticsQuery: () => ({ data: null }),
+  useReleaseQuery: () => ({ data: release, isError: false }),
+  useReleaseRollbackCandidatesQuery: () => ({ data: [] }),
+  useRollbackReleaseMutation: () => ({
+    isPending: false,
+    mutateAsync: vi.fn(),
+  }),
+  useUpdateReleaseMutation: () => ({ isPending: false, mutateAsync: update }),
+}));
+
+describe("ReleaseEditorSheet", () => {
+  afterEach(cleanup);
+
+  beforeEach(() => {
+    preflight.mockReset();
+    preflight.mockResolvedValue({});
+    update.mockReset();
+    update.mockResolvedValue({});
+  });
+
+  it("converts percentage input and preflights before saving", async () => {
+    render(
+      <ReleaseEditorSheet
+        channels={[{ id: "channel-1", name: "production" }]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={release.id}
+      />,
+    );
+
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Rollout percentage" }),
+      { target: { value: "33.37" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    expect(preflight).toHaveBeenCalledWith({
+      expectedRevision: 2,
+      patch: expect.objectContaining({ rolloutCohortCount: 333 }),
+      releaseId: "release-1",
+    });
+    expect(preflight.mock.invocationCallOrder[0]).toBeLessThan(
+      update.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("keeps Bundle delivery and file actions in one familiar detail flow", () => {
+    render(
+      <ReleaseEditorSheet
+        channels={[{ id: "channel-1", name: "production" }]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={release.id}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Bundle Detail" }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Promote to Channel" }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Download Bundle" }),
+    ).toBeDefined();
+    expect(screen.getByText("File details")).toBeDefined();
+    expect(screen.getByText("s3://updates/bundle-1")).toBeDefined();
+  });
+
+  it("keeps the draft and skips the update when preflight fails", async () => {
+    preflight.mockRejectedValue(new Error("Catalog exceeds its size limit"));
+    render(
+      <ReleaseEditorSheet
+        channels={[{ id: "channel-1", name: "production" }]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={release.id}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Message"), {
+      target: { value: "Keep this draft" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(
+      await screen.findByText("Catalog exceeds its size limit"),
+    ).not.toBeNull();
+    expect(update).not.toHaveBeenCalled();
+    expect(
+      (screen.getByLabelText("Message") as HTMLTextAreaElement).value,
+    ).toBe("Keep this draft");
+  });
+});

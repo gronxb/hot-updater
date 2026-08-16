@@ -105,16 +105,7 @@ export const ensureAnalyticsRouteAccess = async (
   if (!result.capabilities.analytics) {
     throw redirect({
       to: "/",
-      search: {
-        channel: undefined,
-        platform: undefined,
-        targetAppVersion: undefined,
-        page: undefined,
-        after: undefined,
-        before: undefined,
-        bundleId: undefined,
-        expandedBundleId: undefined,
-      },
+      search: {},
       replace: true,
     });
   }

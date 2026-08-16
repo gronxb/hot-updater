@@ -32,16 +32,7 @@ export const ensureClientAccessKeyRouteAccess = async (
   if (!capability.accessKeys) {
     throw redirect({
       to: "/",
-      search: {
-        channel: undefined,
-        platform: undefined,
-        targetAppVersion: undefined,
-        page: undefined,
-        after: undefined,
-        before: undefined,
-        bundleId: undefined,
-        expandedBundleId: undefined,
-      },
+      search: {},
       replace: true,
     });
   }

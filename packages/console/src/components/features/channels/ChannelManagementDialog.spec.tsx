@@ -179,7 +179,7 @@ describe("ChannelManagementDialog", () => {
 
     await waitFor(() => {
       expect(mockToastError).toHaveBeenCalledWith(
-        "Channel beta now contains bundles and cannot be deleted",
+        "Channel beta is still in use and cannot be deleted",
       );
     });
     expect(mockToastSuccess).not.toHaveBeenCalled();

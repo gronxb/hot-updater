@@ -86,27 +86,16 @@ describe("AppSidebar analytics navigation", () => {
   });
 
   it.each(["unresolved", "unsupported", "error"] as const)(
-    "shows Releases and Artifacts while capability is %s",
+    "keeps Bundles as the primary destination while capability is %s",
     (status) => {
       renderSidebar(capability(status));
 
-      expect(screen.getByRole("link", { name: /releases/i })).toBeDefined();
-      expect(screen.getByRole("link", { name: /artifacts/i })).toBeDefined();
+      expect(screen.getByRole("link", { name: /bundles/i })).toBeDefined();
+      expect(screen.queryByRole("link", { name: /releases/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /analytics/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /installations/i })).toBeNull();
     },
   );
-
-  it("marks the immutable Artifacts destination active", () => {
-    pathname = "/artifacts";
-    renderSidebar(capability("unsupported"));
-
-    expect(
-      screen
-        .getByRole("link", { name: /artifacts/i })
-        .parentElement?.getAttribute("data-active"),
-    ).toBe("true");
-  });
 
   it("shows Access keys only when the official database domain is available", () => {
     const rendered = renderSidebar(capability("supported"));
