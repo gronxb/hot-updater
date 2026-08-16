@@ -49,9 +49,9 @@ describe("analytics static guards", () => {
       )),
       ...[
         "README.md",
-        "docs/content/docs/guides/console.mdx",
-        "docs/content/docs/database-plugins/custom-database.mdx",
-        "docs/content/docs/react-native-api/init.mdx",
+        "docs/content/docs/(latest)/guides/console.mdx",
+        "docs/content/docs/(latest)/database-plugins/custom-database.mdx",
+        "docs/content/docs/(latest)/react-native-api/init.mdx",
       ].map((file) => resolve(repositoryRoot, file)),
     ];
 
