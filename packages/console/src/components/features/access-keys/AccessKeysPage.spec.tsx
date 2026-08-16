@@ -132,14 +132,21 @@ vi.mock("@/components/ui/alert-dialog", async () => {
     AlertDialogTitle: ({ children }: { children: ReactNode }) => (
       <h2>{children}</h2>
     ),
-    AlertDialogTrigger: ({ children }: { children: ReactNode }) => {
+    AlertDialogTrigger: ({
+      children,
+      render,
+    }: {
+      children: ReactNode;
+      render?: ReactNode;
+    }) => {
       const { onOpenChange } = React.useContext(Context);
-      if (!React.isValidElement(children)) return null;
+      if (!React.isValidElement(render)) return null;
       return React.cloneElement(
-        children as React.ReactElement<{
+        render as React.ReactElement<{
+          children?: ReactNode;
           onClick?: () => void;
         }>,
-        { onClick: () => onOpenChange?.(true) },
+        { children, onClick: () => onOpenChange?.(true) },
       );
     },
   };

@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, Search, X } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -28,12 +28,13 @@ export function InstallationPageHeader() {
   return (
     <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b bg-background px-3 py-3 sm:min-h-12 sm:flex-nowrap sm:bg-card/70 sm:px-4 sm:backdrop-blur-sm">
       <SidebarTrigger className="-ml-1" />
-      <Button asChild size="sm" variant="ghost">
-        <Link to="/analytics">
-          <ArrowLeft aria-hidden="true" data-icon="inline-start" />
-          Back to Analytics
-        </Link>
-      </Button>
+      <Link
+        className={buttonVariants({ size: "sm", variant: "ghost" })}
+        to="/analytics"
+      >
+        <ArrowLeft aria-hidden="true" data-icon="inline-start" />
+        Back to Analytics
+      </Link>
       <Separator className="mx-1 hidden h-4 sm:block" orientation="vertical" />
       <div className="basis-full pl-9 sm:basis-auto sm:pl-0">
         <h1 className="text-sm font-medium">Installation history</h1>

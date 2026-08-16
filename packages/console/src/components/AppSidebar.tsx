@@ -72,54 +72,50 @@ export function AppSidebar() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  asChild
                   isActive={isBundlesActive}
+                  render={
+                    <Link
+                      to="/"
+                      search={{
+                        afterReleaseId: undefined,
+                        beforeReleaseId: undefined,
+                        channelId: undefined,
+                        enabled: undefined,
+                        releaseId: undefined,
+                        platform: undefined,
+                        targetAppVersion: undefined,
+                        bundleId: undefined,
+                        page: undefined,
+                      }}
+                    />
+                  }
                   tooltip="Bundles"
                 >
-                  <Link
-                    to="/"
-                    search={{
-                      afterReleaseId: undefined,
-                      beforeReleaseId: undefined,
-                      channelId: undefined,
-                      enabled: undefined,
-                      releaseId: undefined,
-                      platform: undefined,
-                      targetAppVersion: undefined,
-                      bundleId: undefined,
-                      page: undefined,
-                    }}
-                  >
-                    <Package />
-                    <span>Bundles</span>
-                  </Link>
+                  <Package />
+                  <span>Bundles</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               {analyticsCapability.status === "supported" ? (
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    asChild
                     isActive={isAnalyticsActive}
+                    render={<Link to="/analytics" />}
                     tooltip="Analytics"
                   >
-                    <Link to="/analytics">
-                      <ChartNoAxesCombined />
-                      <span>Analytics</span>
-                    </Link>
+                    <ChartNoAxesCombined />
+                    <span>Analytics</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ) : null}
               {accessKeyCapability.data?.accessKeys ? (
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    asChild
                     isActive={isAccessKeysActive}
+                    render={<Link to="/access-keys" />}
                     tooltip="Access keys"
                   >
-                    <Link to="/access-keys">
-                      <KeyRound />
-                      <span>Access keys</span>
-                    </Link>
+                    <KeyRound />
+                    <span>Access keys</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ) : null}

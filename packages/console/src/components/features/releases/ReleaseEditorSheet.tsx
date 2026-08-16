@@ -103,6 +103,11 @@ interface Draft {
   targetCohorts: string[];
 }
 
+const promoteActionItems = [
+  { label: "Keep source enabled", value: "copy" },
+  { label: "Disable source after promoting", value: "move" },
+];
+
 const draftFromRelease = (release: ReleaseRow): Draft => ({
   enabled: release.enabled,
   message: release.message ?? "",
@@ -171,9 +176,13 @@ function RolloutPercentageInput({
         aria-label="Rollout percentage"
         max={1_000}
         min={0}
-        onValueChange={([nextValue]) => onChange(nextValue ?? value)}
+        onValueChange={(nextValue) =>
+          onChange(
+            Array.isArray(nextValue) ? (nextValue[0] ?? value) : nextValue,
+          )
+        }
         step={1}
-        value={[value]}
+        value={value}
       />
       <InputGroup className="w-24 shrink-0">
         <InputGroupInput
@@ -379,6 +388,22 @@ export function ReleaseEditorSheet({
   const availableChannels = channels.filter(
     (channel) => channel.id !== release?.channel_id,
   );
+  const availableChannelItems = [
+    { label: "Select a channel", value: null },
+    ...availableChannels.map((channel) => ({
+      label: channel.name,
+      value: channel.name,
+    })),
+  ];
+  const rollbackItems = [
+    { label: "Built-in app", value: "builtin" },
+    ...(rollbackCandidates.data ?? []).map((candidate) => ({
+      label: candidate.bundle_id
+        ? `Bundle ${candidate.bundle_id.slice(0, 12)}…`
+        : "Built-in app",
+      value: candidate.id,
+    })),
+  ];
 
   return (
     <>
@@ -823,6 +848,7 @@ export function ReleaseEditorSheet({
                     releaseId: release.id,
                   });
                   toast.success("Deployment deleted");
+                  setConfirmDelete(false);
                   onOpenChange(false);
                 } catch (caught) {
                   setError(
@@ -851,9 +877,13 @@ export function ReleaseEditorSheet({
           <FieldGroup>
             <Field>
               <FieldLabel>Target channel</FieldLabel>
-              <Select onValueChange={setTargetChannel} value={targetChannel}>
+              <Select
+                items={availableChannelItems}
+                onValueChange={(value) => setTargetChannel(value ?? "")}
+                value={targetChannel || null}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a channel" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
@@ -869,6 +899,7 @@ export function ReleaseEditorSheet({
             <Field>
               <FieldLabel>Source deployment</FieldLabel>
               <Select
+                items={promoteActionItems}
                 onValueChange={(value) =>
                   setPromoteAction(value as "copy" | "move")
                 }
@@ -931,7 +962,11 @@ export function ReleaseEditorSheet({
           </DialogHeader>
           <Field>
             <FieldLabel>Rollback target</FieldLabel>
-            <Select onValueChange={setRollbackTarget} value={rollbackTarget}>
+            <Select
+              items={rollbackItems}
+              onValueChange={(value) => setRollbackTarget(value ?? "builtin")}
+              value={rollbackTarget}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

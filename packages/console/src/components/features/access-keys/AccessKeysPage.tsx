@@ -222,11 +222,9 @@ function RevokeAccessKeyDialog({ record }: { record: ClientAccessKeyView }) {
         if (!revoke.isPending) setOpen(nextOpen);
       }}
     >
-      <AlertDialogTrigger asChild>
-        <Button size="sm" variant="ghost">
-          <ShieldOff data-icon="inline-start" />
-          Revoke
-        </Button>
+      <AlertDialogTrigger render={<Button size="sm" variant="ghost" />}>
+        <ShieldOff data-icon="inline-start" />
+        Revoke
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>

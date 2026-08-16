@@ -21,7 +21,7 @@ import { PlatformIcon } from "@/components/PlatformIcon";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -54,6 +54,11 @@ import {
 } from "./-releases-search";
 
 const PAGE_SIZE = 20;
+const platformFilterItems = [
+  { label: "All Platforms", value: "all" },
+  { label: "iOS", value: "ios" },
+  { label: "Android", value: "android" },
+];
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
@@ -86,6 +91,13 @@ function BundleFilterToolbar({
     search.platform ||
     search.targetAppVersion,
   );
+  const channelFilterItems = [
+    { label: "All Channels", value: "all" },
+    ...channels.map((channel) => ({
+      label: channel.name,
+      value: channel.id,
+    })),
+  ];
 
   return (
     <header className="sticky top-0 z-20 flex shrink-0 flex-wrap items-center gap-2 border-b bg-background px-3 py-3 sm:h-12 sm:flex-nowrap sm:bg-card/85 sm:px-4 sm:py-0 sm:backdrop-blur-sm">
@@ -96,6 +108,7 @@ function BundleFilterToolbar({
         <span className="text-xs font-medium">Filters</span>
       </div>
       <Select
+        items={platformFilterItems}
         onValueChange={(value) =>
           onChange({
             platform:
@@ -108,7 +121,7 @@ function BundleFilterToolbar({
           aria-label="Platform"
           className="h-8 w-[calc(50%-0.25rem)] min-w-[132px] text-xs sm:w-[140px]"
         >
-          <SelectValue placeholder="All Platforms" />
+          <SelectValue />
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
@@ -119,8 +132,11 @@ function BundleFilterToolbar({
         </SelectContent>
       </Select>
       <Select
+        items={channelFilterItems}
         onValueChange={(value) =>
-          onChange({ channelId: value === "all" ? undefined : value })
+          onChange({
+            channelId: value === null || value === "all" ? undefined : value,
+          })
         }
         value={search.channelId ?? "all"}
       >
@@ -128,7 +144,7 @@ function BundleFilterToolbar({
           aria-label="Channel"
           className="h-8 w-[calc(50%-0.25rem)] min-w-[132px] text-xs sm:w-[140px]"
         >
-          <SelectValue placeholder="All Channels" />
+          <SelectValue />
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
@@ -552,12 +568,14 @@ function BundlesPage() {
             </p>
             <div className="flex gap-2">
               {previousSearch ? (
-                <Button asChild size="sm" variant="outline">
-                  <Link search={previousSearch} to="/">
-                    <ChevronLeft data-icon="inline-start" />
-                    Previous
-                  </Link>
-                </Button>
+                <Link
+                  className={buttonVariants({ size: "sm", variant: "outline" })}
+                  search={previousSearch}
+                  to="/"
+                >
+                  <ChevronLeft data-icon="inline-start" />
+                  Previous
+                </Link>
               ) : (
                 <Button disabled size="sm" variant="outline">
                   <ChevronLeft data-icon="inline-start" />
@@ -565,12 +583,14 @@ function BundlesPage() {
                 </Button>
               )}
               {nextSearch ? (
-                <Button asChild size="sm" variant="outline">
-                  <Link search={nextSearch} to="/">
-                    Next
-                    <ChevronRight data-icon="inline-end" />
-                  </Link>
-                </Button>
+                <Link
+                  className={buttonVariants({ size: "sm", variant: "outline" })}
+                  search={nextSearch}
+                  to="/"
+                >
+                  Next
+                  <ChevronRight data-icon="inline-end" />
+                </Link>
               ) : (
                 <Button disabled size="sm" variant="outline">
                   Next

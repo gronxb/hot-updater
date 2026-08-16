@@ -30,7 +30,8 @@ view backed by Releases. The Console keeps Bundle content, delivery settings,
 promote, rollback, and download actions in one workflow while Release identity
 stays secondary. Deploy, promote, rollback, rollout, targeting, enablement, and
 messages now mutate Releases while patch, manifest, signing, and storage
-behavior remain Bundle-keyed.
+behavior remain Bundle-keyed. Console shadcn primitives now use Base UI instead
+of Radix while preserving the existing management flow and visual density.
 
 React Native clients select desired Releases locally, persist authority/scope
 generation high-water and full Release/Bundle receipts, support same-Bundle
