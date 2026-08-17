@@ -1,5 +1,11 @@
 import type { ReleaseRow } from "@hot-updater/plugin-core";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import type { ComponentType, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -19,9 +25,6 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }));
 
-vi.mock("@/components/BundleIdDisplay", () => ({
-  BundleIdDisplay: ({ bundleId }: { bundleId: string }) => bundleId,
-}));
 vi.mock("@/components/features/channels/ChannelManagementDialog", () => ({
   ChannelManagementDialog: () => null,
 }));
@@ -125,5 +128,20 @@ describe("BundlesPage", () => {
       search: { releaseId: "release-1" },
       to: "/",
     });
+  });
+
+  it("keeps a default Bundle row focused on delivery decisions", () => {
+    render(<BundlesPage />);
+    const row = screen.getByRole("row", { name: "Open bundle bundle-1" });
+
+    expect(within(row).getByText("bundle-1")).toBeDefined();
+    expect(within(row).getByText("production")).toBeDefined();
+    expect(within(row).getByText("iOS")).toBeDefined();
+    expect(within(row).getByText("1.2.x")).toBeDefined();
+    expect(within(row).getByText("Enabled")).toBeDefined();
+    expect(within(row).getByText("Optional")).toBeDefined();
+    expect(within(row).getByText("100.0%")).toBeDefined();
+    expect(within(row).queryByText("DEPLOY")).toBeNull();
+    expect(within(row).queryByText("rev 1")).toBeNull();
   });
 });

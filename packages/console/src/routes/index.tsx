@@ -4,19 +4,20 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  Fingerprint,
   Filter,
+  Package,
   RotateCcw,
   Tags,
   X,
 } from "lucide-react";
 import { useState } from "react";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
-import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
 import { ChannelManagementDialog } from "@/components/features/channels/ChannelManagementDialog";
 import { ReleaseEditorSheet } from "@/components/features/releases/ReleaseEditorSheet";
 import { ReleaseStateBadge } from "@/components/features/releases/ReleaseStateBadge";
+import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -63,13 +64,17 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
 });
+const tableDateFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+});
 
 export const Route = createFileRoute("/")({
   component: BundlesPage,
   validateSearch: validateReleaseSearch,
 });
 
-const shortId = (id: string) => `${id.slice(0, 8)}…${id.slice(-4)}`;
+const shortId = (id: string) =>
+  id.length > 18 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
 
 function BundleFilterToolbar({
   channels,
@@ -204,28 +209,40 @@ function BundleEntry({
   const bundleLabel = release.bundle_id
     ? `bundle ${release.bundle_id}`
     : "the built-in app deployment";
+  const operationLabel =
+    release.operation === "PROMOTE"
+      ? "Promoted"
+      : release.operation === "ROLLBACK"
+        ? "Rollback"
+        : null;
 
   return (
-    <div className="flex min-w-[220px] flex-col items-start gap-1.5">
+    <div className="flex min-w-[144px] items-center gap-2">
       <button
         aria-label={`Open details for ${bundleLabel}`}
-        className="min-w-0 rounded-sm text-left font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="min-w-0 rounded-sm text-left text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={onOpen}
         title={release.bundle_id ?? release.id}
         type="button"
       >
         {release.bundle_id ? (
-          <BundleIdDisplay bundleId={release.bundle_id} />
+          <span
+            className="font-mono text-xs font-medium tabular-nums"
+            translate="no"
+          >
+            {shortId(release.bundle_id)}
+          </span>
         ) : (
           <span className="inline-flex items-center gap-1.5 text-sm">
             <RotateCcw className="size-3.5" /> Built-in app
           </span>
         )}
       </button>
-      <span className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-        <span>rev {release.revision}</span>
-        <Badge variant="outline">{release.operation}</Badge>
-      </span>
+      {operationLabel ? (
+        <Badge className="shrink-0 font-normal" variant="secondary">
+          {operationLabel}
+        </Badge>
+      ) : null}
     </div>
   );
 }
@@ -430,7 +447,7 @@ function BundlesPage() {
                     <TableHead>Patches</TableHead>
                     <TableHead>Target</TableHead>
                     <TableHead>Enabled</TableHead>
-                    <TableHead>Force Update</TableHead>
+                    <TableHead>Force update</TableHead>
                     <TableHead>Rollout</TableHead>
                     <TableHead>Message</TableHead>
                     <TableHead>Created</TableHead>
@@ -448,7 +465,7 @@ function BundlesPage() {
                     : releases.map((release) => (
                         <TableRow
                           aria-label={`Open bundle ${release.bundle_id ?? release.id}`}
-                          className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                          className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&>td]:py-3"
                           data-state={
                             search.releaseId === release.id
                               ? "selected"
@@ -487,12 +504,21 @@ function BundlesPage() {
                             />
                           </TableCell>
                           <TableCell>
-                            <ChannelBadge
-                              channel={
+                            <span
+                              className="block max-w-40"
+                              title={
                                 channelNames.get(release.channel_id) ??
                                 release.channel_id
                               }
-                            />
+                            >
+                              <ChannelBadge
+                                channel={
+                                  channelNames.get(release.channel_id) ??
+                                  release.channel_id
+                                }
+                                className="max-w-full truncate font-normal"
+                              />
+                            </span>
                           </TableCell>
                           <TableCell className="whitespace-nowrap">
                             <span className="flex items-center gap-2">
@@ -522,34 +548,42 @@ function BundlesPage() {
                               <span className="text-muted-foreground">—</span>
                             )}
                           </TableCell>
-                          <TableCell
-                            className="max-w-44 truncate font-mono text-xs"
-                            title={
-                              release.target_app_version ??
-                              release.fingerprint_hash ??
-                              undefined
-                            }
-                          >
-                            {release.target_app_version ??
-                              release.fingerprint_hash ??
-                              "—"}
+                          <TableCell>
+                            {release.target_app_version ? (
+                              <span className="flex items-center gap-2">
+                                <Package className="size-4 shrink-0 text-muted-foreground" />
+                                <span className="font-medium">
+                                  {release.target_app_version}
+                                </span>
+                              </span>
+                            ) : release.fingerprint_hash ? (
+                              <span className="flex min-w-[160px] items-center gap-2">
+                                <Fingerprint className="size-4 shrink-0 text-muted-foreground" />
+                                <HashValueDisplay
+                                  maxLength={12}
+                                  value={release.fingerprint_hash}
+                                />
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
                           </TableCell>
                           <TableCell>
-                            <EnabledStatusIcon enabled={release.enabled} />
-                            <span className="sr-only">
-                              {release.enabled ? "Enabled" : "Disabled"}
-                            </span>
+                            <ReleaseStateBadge release={release} />
                           </TableCell>
                           <TableCell>
-                            <EnabledStatusIcon
-                              enabled={release.should_force_update}
-                              falseIcon="minus"
-                            />
-                            <span className="sr-only">
-                              {release.should_force_update
-                                ? "Force update"
-                                : "Optional update"}
-                            </span>
+                            {release.should_force_update ? (
+                              <Badge
+                                className="font-normal"
+                                variant="secondary"
+                              >
+                                Required
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">
+                                Optional
+                              </span>
+                            )}
                           </TableCell>
                           <TableCell>
                             <RolloutPercentageBadge
@@ -557,13 +591,16 @@ function BundlesPage() {
                             />
                           </TableCell>
                           <TableCell
-                            className="max-w-52 truncate text-xs text-muted-foreground"
+                            className="max-w-44 truncate text-xs text-muted-foreground"
                             title={release.message ?? undefined}
                           >
                             {release.message || "—"}
                           </TableCell>
-                          <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                            {dateFormatter.format(release.created_at_ms)}
+                          <TableCell
+                            className="whitespace-nowrap text-xs text-muted-foreground"
+                            title={dateFormatter.format(release.created_at_ms)}
+                          >
+                            {tableDateFormatter.format(release.created_at_ms)}
                           </TableCell>
                         </TableRow>
                       ))}
