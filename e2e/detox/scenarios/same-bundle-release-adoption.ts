@@ -44,10 +44,10 @@ export const sameBundleReleaseAdoptionScenario: DetoxScenarioDefinition = {
     );
     await app.control(
       "create same-Bundle Release",
-      "/e2e/jobs/create-rollback-release",
+      "/e2e/jobs/create-republished-release",
       {
         sourceReleaseId: "$originalReleaseId",
-        toBundleId: "$adoptionBundleId",
+        bundleId: "$adoptionBundleId",
       },
       { saveResultFieldsAs: { releaseId: "adoptedReleaseId" } },
     );

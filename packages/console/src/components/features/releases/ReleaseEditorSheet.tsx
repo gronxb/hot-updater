@@ -44,7 +44,6 @@ import {
   FieldError,
   FieldGroup,
   FieldLabel,
-  FieldTitle,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -79,8 +78,6 @@ import {
   usePromoteReleaseMutation,
   useReleaseCatalogDiagnosticsQuery,
   useReleaseQuery,
-  useReleaseRollbackCandidatesQuery,
-  useRollbackReleaseMutation,
   useUpdateReleaseMutation,
 } from "@/lib/api";
 
@@ -224,18 +221,14 @@ export function ReleaseEditorSheet({
   const preflight = usePreflightReleaseMutation();
   const remove = useDeleteReleaseMutation();
   const promote = usePromoteReleaseMutation();
-  const rollback = useRollbackReleaseMutation();
-  const rollbackCandidates = useReleaseRollbackCandidatesQuery(releaseId);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [newCohort, setNewCohort] = useState("");
   const [error, setError] = useState("");
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showPromote, setShowPromote] = useState(false);
-  const [showRollback, setShowRollback] = useState(false);
   const [targetChannel, setTargetChannel] = useState("");
   const [promoteAction, setPromoteAction] = useState<"copy" | "move">("copy");
-  const [rollbackTarget, setRollbackTarget] = useState("builtin");
 
   useEffect(() => {
     setDraft(release ? draftFromRelease(release) : null);
@@ -251,8 +244,7 @@ export function ReleaseEditorSheet({
     preflight.isPending ||
     update.isPending ||
     remove.isPending ||
-    promote.isPending ||
-    rollback.isPending;
+    promote.isPending;
 
   const requestClose = () => {
     if (busy) return;
@@ -324,16 +316,6 @@ export function ReleaseEditorSheet({
       value: channel.name,
     })),
   ];
-  const rollbackItems = [
-    { label: "Built-in app", value: "builtin" },
-    ...(rollbackCandidates.data ?? []).map((candidate) => ({
-      label: candidate.bundle_id
-        ? `Bundle ${candidate.bundle_id.slice(0, 12)}…`
-        : "Built-in app",
-      value: candidate.id,
-    })),
-  ];
-
   return (
     <>
       <Sheet
@@ -430,30 +412,26 @@ export function ReleaseEditorSheet({
                         />
                       </Field>
                     ) : null}
-                    <Field orientation="horizontal">
-                      <FieldLabel htmlFor="release-enabled">
-                        Enabled for new installs
-                      </FieldLabel>
-                      <Switch
-                        aria-label="Enabled for new installs"
-                        checked={draft.enabled}
-                        id="release-enabled"
-                        name="enabled"
-                        onCheckedChange={(enabled) =>
-                          setDraft({ ...draft, enabled })
-                        }
-                      />
-                    </Field>
-                    <Field orientation="horizontal">
-                      <FieldTitle>Installed devices</FieldTitle>
-                      <Button
-                        disabled={busy}
-                        onClick={() => setShowRollback(true)}
-                        type="button"
-                        variant="outline"
-                      >
-                        Roll back…
-                      </Button>
+                    <Field>
+                      <div className="flex items-center justify-between gap-4">
+                        <FieldLabel htmlFor="release-enabled">
+                          Enabled
+                        </FieldLabel>
+                        <Switch
+                          aria-label="Enabled"
+                          checked={draft.enabled}
+                          id="release-enabled"
+                          name="enabled"
+                          onCheckedChange={(enabled) =>
+                            setDraft({ ...draft, enabled })
+                          }
+                        />
+                      </div>
+                      <FieldDescription>
+                        Disabling rolls devices back to the previous enabled
+                        Release on their next check, or to the built-in app when
+                        none remains.
+                      </FieldDescription>
                     </Field>
                     <Field orientation="horizontal">
                       <FieldLabel htmlFor="release-force-update">
@@ -825,72 +803,6 @@ export function ReleaseEditorSheet({
               }}
             >
               {promote.isPending ? "Promoting…" : "Promote"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog onOpenChange={setShowRollback} open={showRollback}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Roll back installed devices</DialogTitle>
-            <DialogDescription>
-              Move installed devices to a previous Bundle or the built-in app.
-            </DialogDescription>
-          </DialogHeader>
-          <Field>
-            <FieldLabel htmlFor="rollback-target">Move devices to</FieldLabel>
-            <Select
-              items={rollbackItems}
-              onValueChange={(value) => setRollbackTarget(value ?? "builtin")}
-              value={rollbackTarget}
-            >
-              <SelectTrigger id="rollback-target">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="builtin">Built-in app</SelectItem>
-                  {(rollbackCandidates.data ?? []).map((candidate) => (
-                    <SelectItem key={candidate.id} value={candidate.id}>
-                      {candidate.bundle_id
-                        ? `Bundle ${candidate.bundle_id.slice(0, 12)}…`
-                        : "Built-in app"}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Field>
-          <DialogFooter>
-            <Button onClick={() => setShowRollback(false)} variant="outline">
-              Cancel
-            </Button>
-            <Button
-              disabled={rollback.isPending}
-              onClick={async () => {
-                if (!release) return;
-                try {
-                  await rollback.mutateAsync({
-                    expectedRevision: release.revision,
-                    releaseId: release.id,
-                    ...(rollbackTarget === "builtin"
-                      ? { toBundleId: null }
-                      : { toReleaseId: rollbackTarget }),
-                  });
-                  setShowRollback(false);
-                  toast.success("Rollback published");
-                } catch (caught) {
-                  setError(
-                    caught instanceof Error
-                      ? caught.message
-                      : "Rollback could not be published.",
-                  );
-                  setShowRollback(false);
-                }
-              }}
-            >
-              {rollback.isPending ? "Rolling back…" : "Roll back devices"}
             </Button>
           </DialogFooter>
         </DialogContent>

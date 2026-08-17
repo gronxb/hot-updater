@@ -64,7 +64,8 @@ describe("selectDesiredRelease", () => {
         builtInBundleId: bundleId(0),
         cohort: includedCohort,
         crashedBundleIds: [],
-        minimumReleaseId: releaseId(1),
+        currentBundleId: bundleId(0),
+        minimumReleaseId: bundleId(1),
       },
     );
 
@@ -73,6 +74,7 @@ describe("selectDesiredRelease", () => {
       kind: "BUNDLE",
       release: expect.objectContaining({ releaseId: newestReleaseId }),
       releaseId: newestReleaseId,
+      status: "UPDATE",
     });
   });
 
@@ -87,7 +89,8 @@ describe("selectDesiredRelease", () => {
         builtInBundleId: bundleId(0),
         cohort: "qa",
         crashedBundleIds: [],
-        minimumReleaseId: releaseId(1),
+        currentBundleId: bundleId(0),
+        minimumReleaseId: bundleId(1),
       })?.releaseId,
     ).toBe(releaseId(3));
     expect(
@@ -95,7 +98,8 @@ describe("selectDesiredRelease", () => {
         builtInBundleId: bundleId(0),
         cohort: "design",
         crashedBundleIds: [],
-        minimumReleaseId: releaseId(1),
+        currentBundleId: bundleId(0),
+        minimumReleaseId: bundleId(1),
       })?.releaseId,
     ).toBe(releaseId(2));
   });
@@ -112,7 +116,8 @@ describe("selectDesiredRelease", () => {
         builtInBundleId: bundleId(0),
         cohort: "1",
         crashedBundleIds: [crashedBundleId],
-        minimumReleaseId: releaseId(1),
+        currentBundleId: bundleId(0),
+        minimumReleaseId: bundleId(1),
       },
     );
 
@@ -120,7 +125,7 @@ describe("selectDesiredRelease", () => {
     expect(desired?.bundleId).toBe(bundleId(2));
   });
 
-  it("can select an explicit EMBEDDED Release after crashed Bundle candidates", () => {
+  it("can read a legacy EMBEDDED Release after crashed Bundle candidates", () => {
     const desired = selectDesiredRelease(
       catalog([
         descriptor(3, { bundleId: bundleId(9) }),
@@ -130,7 +135,8 @@ describe("selectDesiredRelease", () => {
         builtInBundleId: bundleId(0),
         cohort: "1",
         crashedBundleIds: [bundleId(9)],
-        minimumReleaseId: releaseId(1),
+        currentBundleId: bundleId(0),
+        minimumReleaseId: bundleId(1),
       },
     );
 
@@ -139,6 +145,7 @@ describe("selectDesiredRelease", () => {
       kind: "EMBEDDED",
       release: expect.objectContaining({ releaseId: releaseId(2) }),
       releaseId: releaseId(2),
+      status: "ROLLBACK",
     });
   });
 
@@ -147,7 +154,8 @@ describe("selectDesiredRelease", () => {
       builtInBundleId: bundleId(0),
       cohort: "1",
       crashedBundleIds: [],
-      minimumReleaseId: releaseId(2),
+      currentBundleId: bundleId(0),
+      minimumReleaseId: bundleId(2),
     });
 
     expect(desired).toEqual({
@@ -155,7 +163,88 @@ describe("selectDesiredRelease", () => {
       kind: "BUILTIN",
       release: null,
       releaseId: null,
+      status: "ROLLBACK",
     });
+  });
+
+  it("rolls an ineligible active Release back without applying rollout to the predecessor", () => {
+    const desired = selectDesiredRelease(
+      catalog([descriptor(4, { rolloutCohortCount: 0 })], {
+        rollbackReleases: [
+          descriptor(4, { rolloutCohortCount: 0 }),
+          descriptor(3, { rolloutCohortCount: 0 }),
+        ],
+      }),
+      {
+        activeReleaseId: releaseId(4),
+        builtInBundleId: bundleId(0),
+        cohort: "not-targeted",
+        crashedBundleIds: [],
+        currentBundleId: bundleId(4),
+        minimumReleaseId: bundleId(1),
+      },
+    );
+
+    expect(desired).toMatchObject({
+      bundleId: bundleId(3),
+      releaseId: releaseId(3),
+      status: "ROLLBACK",
+    });
+  });
+
+  it("does not roll an active Release at the native minimum floor to BUILTIN", () => {
+    const desired = selectDesiredRelease(
+      catalog([], { rollbackReleases: [descriptor(3)] }),
+      {
+        activeReleaseId: releaseId(4),
+        builtInBundleId: bundleId(0),
+        cohort: "1",
+        crashedBundleIds: [],
+        currentBundleId: bundleId(4),
+        minimumReleaseId: bundleId(4),
+      },
+    );
+
+    expect(desired).toBeNull();
+  });
+
+  it("prefers a newer eligible Release before considering rollback", () => {
+    const desired = selectDesiredRelease(
+      catalog([descriptor(5), descriptor(4)], {
+        rollbackReleases: [descriptor(5), descriptor(4), descriptor(3)],
+      }),
+      {
+        activeReleaseId: releaseId(4),
+        builtInBundleId: bundleId(0),
+        cohort: "1",
+        crashedBundleIds: [],
+        currentBundleId: bundleId(4),
+        minimumReleaseId: bundleId(1),
+      },
+    );
+
+    expect(desired).toMatchObject({
+      releaseId: releaseId(5),
+      status: "UPDATE",
+    });
+  });
+
+  it("never installs a Bundle below the native minimum floor", () => {
+    const desired = selectDesiredRelease(
+      catalog([descriptor(5, { bundleId: bundleId(2) })], {
+        rollbackReleases: [descriptor(5, { bundleId: bundleId(2) })],
+      }),
+      {
+        activeReleaseId: releaseId(4),
+        builtInBundleId: bundleId(3),
+        cohort: "1",
+        crashedBundleIds: [],
+        currentBundleId: bundleId(4),
+        minimumReleaseId: bundleId(3),
+      },
+    );
+
+    expect(desired).toMatchObject({ kind: "BUILTIN", status: "ROLLBACK" });
   });
 });
 
@@ -164,7 +253,7 @@ describe("createReleaseSelectionContextHash", () => {
     const base = {
       cohort: " qa ",
       crashedBundleIds: ["bundle-b", "bundle-a", "bundle-a"],
-      minimumReleaseId: releaseId(1),
+      minimumReleaseId: bundleId(1),
       strategy: "APP_VERSION" as const,
       strategyValue: "1.2.3",
     };
@@ -185,7 +274,14 @@ describe("createReleaseSelectionContextHash", () => {
     expect(
       createReleaseSelectionContextHash({
         ...base,
-        minimumReleaseId: releaseId(2),
+        minimumReleaseId: bundleId(2),
+      }),
+    ).not.toBe(createReleaseSelectionContextHash(base));
+    expect(
+      createReleaseSelectionContextHash({
+        ...base,
+        activeBundleId: bundleId(2),
+        activeReleaseId: releaseId(2),
       }),
     ).not.toBe(createReleaseSelectionContextHash(base));
   });

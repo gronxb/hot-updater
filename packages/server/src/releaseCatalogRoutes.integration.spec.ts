@@ -16,25 +16,45 @@ const createCatalogDatabase = async () => {
     onConflict: "returnExisting",
     row: channel,
   });
+  const bundleId = "00000000-0000-7001-8000-000000000001";
+  await database.commit({
+    changes: [
+      {
+        model: "bundles",
+        operation: "insert",
+        row: {
+          asset_base_storage_uri: null,
+          file_hash: "bundle-hash",
+          git_commit_hash: null,
+          id: bundleId,
+          manifest_file_hash: null,
+          manifest_storage_uri: null,
+          metadata: {},
+          platform: "ios",
+          storage_uri: "storage://bundle.zip",
+        },
+      },
+    ],
+  });
   await commitReleaseCatalogMutation({
     database,
     mutation: {
       operation: "insert",
       row: {
-        bundle_id: null,
+        bundle_id: bundleId,
         channel_id: channel.id,
         created_at_ms: 1,
         enabled: true,
         fingerprint_hash: null,
         id: "00000000-0000-7000-8000-000000000001",
-        kind: "EMBEDDED",
-        message: "Return to built-in",
-        operation: "ROLLBACK",
+        kind: "BUNDLE",
+        message: "Stable Release",
+        operation: "DEPLOY",
         platform: "ios",
         revision: 1,
         rollout_cohort_count: 1000,
         scope_key: scopeKey,
-        should_force_update: true,
+        should_force_update: false,
         source_release_id: null,
         strategy: "APP_VERSION",
         target_app_version: ">=1.0.0 <2.0.0",
@@ -83,10 +103,16 @@ describe("Release catalog routes", () => {
       generation: 1,
       releases: [
         {
-          bundleId: null,
-          kind: "EMBEDDED",
-          message: "Return to built-in",
-          shouldForceUpdate: true,
+          bundleId: "00000000-0000-7001-8000-000000000001",
+          kind: "BUNDLE",
+          message: "Stable Release",
+          shouldForceUpdate: false,
+        },
+      ],
+      rollbackReleases: [
+        {
+          bundleId: "00000000-0000-7001-8000-000000000001",
+          kind: "BUNDLE",
         },
       ],
       scopeKey,

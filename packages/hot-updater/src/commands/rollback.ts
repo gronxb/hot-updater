@@ -14,17 +14,14 @@ import { ui } from "../utils/cli-ui";
 const RELEASE_PAGE_SIZE = 1_000;
 
 export interface RollbackOptions {
-  readonly embedded?: boolean;
   readonly platform?: Platform;
-  readonly toBundle?: string;
-  readonly toRelease?: string;
+  readonly target?: string;
   readonly yes?: boolean;
 }
 
 interface RollbackTarget {
   readonly source: ReleaseRow;
-  readonly target: ReleaseRow | null;
-  readonly toBundleId?: string | null;
+  readonly fallback: ReleaseRow | null;
 }
 
 const safeDispose = async (database: BundleRepository): Promise<void> => {
@@ -68,30 +65,25 @@ const summarizeTarget = (target: RollbackTarget): string =>
     ui.kv("Current Release", ui.id(target.source.id)),
     ui.kv(
       "Target Release",
-      target.target === null
-        ? ui.muted("advanced target")
-        : ui.id(target.target.id),
+      target.fallback === null
+        ? ui.warning("Built-in app")
+        : ui.id(target.fallback.id),
     ),
-    ui.kv(
-      "Bundle",
-      target.target?.bundle_id ?? target.toBundleId ?? ui.warning("Embedded"),
-    ),
-    ui.kv("Force update", "yes"),
-    ui.kv("Rollout", "100%"),
+    ui.kv("Bundle", target.fallback?.bundle_id ?? ui.warning("Built-in app")),
+    ui.kv("Action", `Disable ${ui.id(target.source.id)}`),
   ]);
 
 const selectDefaultTarget = (
   releases: readonly ReleaseRow[],
   source: ReleaseRow,
 ): ReleaseRow | null => {
-  const anchorId =
-    source.operation === "ROLLBACK" && source.source_release_id !== null
-      ? source.source_release_id
-      : source.id;
   return (
     releases.find(
       (release) =>
-        release.scope_key === source.scope_key && release.id < anchorId,
+        release.enabled &&
+        release.kind === "BUNDLE" &&
+        release.scope_key === source.scope_key &&
+        release.id < source.id,
     ) ?? null
   );
 };
@@ -105,16 +97,6 @@ export const handleRollback = async (
     p.log.error("rollback requires a channel argument: `rollback <channel>`");
     process.exit(1);
   }
-  const explicitTargets = [
-    options.toRelease !== undefined,
-    options.toBundle !== undefined,
-    options.embedded === true,
-  ].filter(Boolean).length;
-  if (explicitTargets > 1) {
-    p.log.error("Choose only one of --to-release, --to-bundle, or --embedded.");
-    process.exit(1);
-  }
-
   const config = await loadConfig(null);
   const database = config.database;
   try {
@@ -126,83 +108,69 @@ export const handleRollback = async (
       process.exit(1);
     }
 
-    let explicitRelease: ReleaseRow | null = null;
-    if (options.toRelease !== undefined) {
-      explicitRelease = await database.models.releases.findById(
-        options.toRelease,
-      );
+    const targets: RollbackTarget[] = [];
+    if (options.target !== undefined) {
+      const bundle = await database.models.bundles.findById(options.target);
+      if (bundle === null) {
+        p.log.error(`No Bundle with id ${options.target}.`);
+        process.exit(1);
+      }
       if (
-        explicitRelease === null ||
-        explicitRelease.channel_id !== channel.id
+        options.platform !== undefined &&
+        bundle.platform !== options.platform
       ) {
         p.log.error(
-          `Target Release ${options.toRelease} does not belong to ${channelName}.`,
+          `Bundle ${options.target} is on ${bundle.platform}, not ${options.platform}.`,
         );
         process.exit(1);
       }
-    }
-
-    let explicitBundlePlatform: Platform | null = null;
-    if (options.toBundle !== undefined) {
-      const bundle = await database.models.bundles.findById(options.toBundle);
-      if (bundle === null) {
-        p.log.error(`No Bundle with id ${options.toBundle}.`);
-        process.exit(1);
-      }
-      explicitBundlePlatform = bundle.platform;
-    }
-
-    const platforms = explicitRelease
-      ? [explicitRelease.platform]
-      : explicitBundlePlatform
-        ? [explicitBundlePlatform]
-        : options.platform
-          ? [options.platform]
-          : PLATFORMS;
-    if (
-      options.platform !== undefined &&
-      platforms.some((platform) => platform !== options.platform)
-    ) {
-      p.log.error("The explicit rollback target does not match --platform.");
-      process.exit(1);
-    }
-
-    const targets: RollbackTarget[] = [];
-    for (const platform of platforms) {
       const releases = await readChannelReleases(
         database,
         channel.id,
-        platform,
+        bundle.platform,
       );
-      const scopedReleases = explicitRelease
-        ? releases.filter(
-            ({ scope_key }) => scope_key === explicitRelease.scope_key,
-          )
-        : releases;
-      const source = scopedReleases.find(({ enabled }) => enabled);
+      const matching = releases.filter(
+        (release) => release.bundle_id === bundle.id,
+      );
+      const source = matching.find(({ enabled }) => enabled);
       if (source === undefined) {
-        p.log.info(
-          `No enabled Release on ${channelName}/${platform}; skipping.`,
+        if (matching.length > 0) {
+          p.log.info(
+            `Bundle ${options.target} is already disabled. No changes.`,
+          );
+          return;
+        }
+        p.log.error(
+          `No Release for Bundle ${options.target} on ${channelName}/${bundle.platform}.`,
         );
-        continue;
-      }
-      const target =
-        options.embedded || options.toBundle !== undefined
-          ? null
-          : (explicitRelease ?? selectDefaultTarget(releases, source));
-      if (explicitRelease !== null && explicitRelease.id >= source.id) {
-        p.log.error("--to-release must identify an earlier Release.");
         process.exit(1);
       }
       targets.push({
+        fallback: selectDefaultTarget(releases, source),
         source,
-        target,
-        ...(options.toBundle !== undefined
-          ? { toBundleId: options.toBundle }
-          : options.embedded || target === null
-            ? { toBundleId: null }
-            : {}),
       });
+    } else {
+      const platforms = options.platform ? [options.platform] : PLATFORMS;
+      for (const platform of platforms) {
+        const releases = await readChannelReleases(
+          database,
+          channel.id,
+          platform,
+        );
+        const source = releases.find(
+          ({ enabled, kind }) => enabled && kind === "BUNDLE",
+        );
+        if (source === undefined) {
+          p.log.info(
+            `No enabled Release on ${channelName}/${platform}; skipping.`,
+          );
+          continue;
+        }
+        targets.push({
+          fallback: selectDefaultTarget(releases, source),
+          source,
+        });
+      }
     }
     if (targets.length === 0) {
       p.log.error(`Nothing to roll back on ${channelName}.`);
@@ -220,7 +188,7 @@ export const handleRollback = async (
       }
       const confirmed = await p.confirm({
         initialValue: false,
-        message: `Create ${targets.length} forward rollback Release(s)?`,
+        message: `Disable ${targets.length} current Release(s)?`,
       });
       if (p.isCancel(confirmed) || !confirmed) {
         p.log.info("Aborted.");
@@ -230,20 +198,16 @@ export const handleRollback = async (
 
     const results = await rollbackReleases({
       database,
-      rollbacks: targets.map(({ source, target, toBundleId }) => ({
+      rollbacks: targets.map(({ source }) => ({
+        expectedRevision: source.revision,
         releaseId: source.id,
-        ...(target === null ? { toBundleId } : { toReleaseId: target.id }),
       })),
     });
     for (const result of results) {
       const release = result.release;
-      if (release === null)
-        throw new Error("Rollback Release was not persisted.");
+      if (release === null) throw new Error("Release was not persisted.");
       p.log.success(
-        `Created ${ui.id(release.id)} for ${ui.platform(release.platform)}.`,
-      );
-      p.log.info(
-        `  Bundle ${release.bundle_id === null ? "Embedded" : ui.id(release.bundle_id)}`,
+        `Disabled ${ui.id(release.id)} for ${ui.platform(release.platform)}.`,
       );
     }
   } finally {

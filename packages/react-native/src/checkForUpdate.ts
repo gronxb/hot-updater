@@ -239,7 +239,27 @@ async function checkForReleaseCatalogUpdate(input: {
   validateCatalog(catalog, authorityId, scopeKey);
 
   const crashedBundleIds = getCrashHistory();
+  const active = getActiveUpdateState().activeSelection;
+  const explicitScopeSwitch =
+    input.explicitChannel !== undefined &&
+    input.explicitChannel !== input.currentChannel;
+  const activeInTargetScope =
+    active?.authorityId === authorityId && active.scopeKey === scopeKey
+      ? active
+      : null;
+  const hasAuthenticatedActive =
+    active !== null &&
+    active.authorityId !== null &&
+    active.scopeKey !== null &&
+    active.generation !== null;
+  const selectorCurrentBundleId =
+    activeInTargetScope !== null ||
+    (!hasAuthenticatedActive && !explicitScopeSwitch)
+      ? input.currentBundleId
+      : input.minimumReleaseId;
   const selectionContextHash = createReleaseSelectionContextHash({
+    activeBundleId: selectorCurrentBundleId,
+    activeReleaseId: activeInTargetScope?.releaseId ?? null,
     cohort: input.cohort,
     crashedBundleIds,
     minimumReleaseId: input.minimumReleaseId,
@@ -264,12 +284,22 @@ async function checkForReleaseCatalogUpdate(input: {
     );
   }
   const desired = selectDesiredRelease(catalog, {
+    activeReleaseId: activeInTargetScope?.releaseId ?? null,
     builtInBundleId: input.minimumReleaseId,
     cohort: input.cohort,
     crashedBundleIds,
+    currentBundleId: selectorCurrentBundleId,
     minimumReleaseId: input.minimumReleaseId,
   });
   if (desired === null) return null;
+
+  if (
+    desired.kind === "BUILTIN" &&
+    input.currentBundleId === input.minimumReleaseId &&
+    (active === null || active.kind === "BUILTIN")
+  ) {
+    return null;
+  }
 
   const receipt: PersistedSelectionReceipt = {
     authorityId,
@@ -282,12 +312,8 @@ async function checkForReleaseCatalogUpdate(input: {
     scopeKey,
     selectionContextHash,
   };
-  const active = getActiveUpdateState().activeSelection;
   if (sameReceipt(active, receipt)) return null;
 
-  const explicitScopeSwitch =
-    input.explicitChannel !== undefined &&
-    input.explicitChannel !== input.currentChannel;
   const authorization = authorizeReleaseTransition({
     active,
     desired: receipt,
@@ -364,7 +390,7 @@ async function checkForReleaseCatalogUpdate(input: {
       manifestUrl: artifact.manifestUrl ?? null,
       selection: receipt,
       shouldSkipCurrentBundleIdCheck: true,
-      status: "UPDATE",
+      status: desired.status,
     });
   };
 
@@ -375,8 +401,13 @@ async function checkForReleaseCatalogUpdate(input: {
     message: release?.message ?? null,
     releaseId: desired.releaseId,
     rolloutCohortCount: release?.rolloutCohortCount ?? 1000,
-    shouldForceUpdate: release?.shouldForceUpdate ?? false,
-    status: desired.kind === "BUNDLE" ? "UPDATE" : "ROLLBACK",
+    shouldForceUpdate:
+      transitionKind === "ADOPT_RELEASE"
+        ? false
+        : desired.status === "ROLLBACK"
+          ? true
+          : (release?.shouldForceUpdate ?? false),
+    status: desired.status,
     targetCohorts: release?.targetCohorts ? [...release.targetCohorts] : [],
     transitionKind,
     updateBundle: updateBundleForSelection,

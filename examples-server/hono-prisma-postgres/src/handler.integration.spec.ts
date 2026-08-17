@@ -235,7 +235,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
 
   it("allows exactly one concurrent Release/catalog CAS writer", async () => {
     const database = prismaAdapter({ prisma, provider: "postgresql" });
-    const id = "141ee03e-7599-4e29-a827-0c4732bc4f10";
+    const id = "0198a5b0-0000-7000-8000-000000000001";
     await hotUpdater.insertBundle({
       id,
       platform: "ios",

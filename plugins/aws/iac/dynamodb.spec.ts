@@ -443,7 +443,7 @@ describe("DynamoDBManager", () => {
     // Given
     const channel = channelItem("channel-production", "production");
     const bundle = legacyBundleItem(
-      "00000000-0000-0000-0000-000000000001",
+      "00000000-0000-7000-8000-000000000001",
       "production",
       "channel-production",
     );
@@ -479,11 +479,11 @@ describe("DynamoDBManager", () => {
       expect.arrayContaining([
         expect.objectContaining({
           pk: { S: expect.stringMatching(/^release-scope#/u) },
-          sk: { S: "00000000-0000-0000-0000-000000000001" },
+          sk: { S: "00000000-0000-7000-8000-000000000001" },
           row: {
             M: expect.objectContaining({
               bundle_id: {
-                S: "00000000-0000-0000-0000-000000000001",
+                S: "00000000-0000-7000-8000-000000000001",
               },
               channel_id: { S: "channel-production" },
               revision: { N: "1" },
@@ -492,7 +492,7 @@ describe("DynamoDBManager", () => {
         }),
         expect.objectContaining({
           pk: { S: "_hot-updater#release-scope-by-id" },
-          sk: { S: "00000000-0000-0000-0000-000000000001" },
+          sk: { S: "00000000-0000-7000-8000-000000000001" },
         }),
         expect.objectContaining({
           pk: { S: "release_catalogs" },
@@ -527,7 +527,7 @@ describe("DynamoDBManager", () => {
     // Given
     const channel = channelItem("channel-production", "production");
     const bundle = legacyBundleItem(
-      "00000000-0000-0000-0000-000000000001",
+      "00000000-0000-7000-8000-000000000001",
       "production",
       "channel-production",
     );

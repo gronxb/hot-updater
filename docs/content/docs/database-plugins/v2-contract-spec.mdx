@@ -98,10 +98,14 @@ ascending, exclusive-keyset compiler scan over canonical primary storage. It
 must be strongly consistent. A provider may not satisfy it with an eventual
 secondary index or an unordered scan.
 
-A Release has a monotonically increasing `revision`, one canonical
-`scope_key`, one Channel, platform, `BUNDLE` or `EMBEDDED` kind, compatibility
-strategy, rollout/target policy, operation lineage, and timestamps. A Bundle
-Release references a same-platform Bundle. An embedded Release has no Bundle.
+A Release has a canonical lowercase UUIDv7 `id`, a monotonically increasing
+`revision`, one canonical `scope_key`, one Channel, platform, compatibility
+strategy, rollout/target policy, operation lineage, and timestamps. Newly
+authored Releases are `BUNDLE` Releases and reference a same-platform Bundle.
+`EMBEDDED` kind and `ROLLBACK` operation values are accepted only to read
+pre-1.0 development data; management APIs do not create them and the compiler
+does not emit them into new catalogs. Operational rollback updates the current
+Release to `enabled=false` without changing its ID.
 
 ## Catalog model
 
@@ -205,23 +209,31 @@ The generation expectation invalidates a paged read series crossed by a
 concurrent mutation. Providers must not hold a transaction open while parsing
 or compiling a large history.
 
+The compiler keeps a bounded 11-artifact frontier for newer update and crash
+selection, plus the complete compatible enabled Release spine needed to find
+the predecessor of any active Release. Rollback candidates ignore rollout and
+target cohorts, matching the v0 selector. This rollback spine is intentionally
+linear in compatible enabled history. It is never silently truncated; if the
+canonical catalog exceeds 256 KiB, the Release mutation fails before the atomic
+commit and the previous Release/catalog state remains unchanged.
+
 Required provider mappings:
 
-| Provider | Strong compiler read | Conditional write |
-| --- | --- | --- |
-| DynamoDB | base-table scope partition with `ConsistentRead=true` | `TransactWrite` condition checks |
-| Firestore | strong server document/query reads | transaction preconditions |
-| PostgreSQL/Supabase | ordered primary reads | revision/generation predicates in one transaction |
-| D1 | ordered primary reads | batch whose failed predicate aborts every statement |
-| MongoDB | deterministic majority reads | short write transaction with predicates |
-| Drizzle/Kysely/Prisma | adapter's ordered canonical query | adapter's real transaction and affected-row checks |
+| Provider              | Strong compiler read                                  | Conditional write                                   |
+| --------------------- | ----------------------------------------------------- | --------------------------------------------------- |
+| DynamoDB              | base-table scope partition with `ConsistentRead=true` | `TransactWrite` condition checks                    |
+| Firestore             | strong server document/query reads                    | transaction preconditions                           |
+| PostgreSQL/Supabase   | ordered primary reads                                 | revision/generation predicates in one transaction   |
+| D1                    | ordered primary reads                                 | batch whose failed predicate aborts every statement |
+| MongoDB               | deterministic majority reads                          | short write transaction with predicates             |
+| Drizzle/Kysely/Prisma | adapter's ordered canonical query                     | adapter's real transaction and affected-row checks  |
 
 ## Schema 1.0.0 migration
 
 Migration from `0.38.0` performs preflight before recording the new version:
 
-1. Validate Channels, compatibility ranges, scopes, cohort limits, and
-   provider conditional-commit support.
+1. Validate Channels, canonical UUIDv7 Bundle IDs, compatibility ranges,
+   scopes, cohort limits, and provider conditional-commit support.
 2. Create Release/catalog storage, references, and canonical strong-read
    indexes.
 3. Backfill one Release per legacy Bundle using the Bundle ID as Release ID,

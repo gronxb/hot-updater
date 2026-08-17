@@ -104,8 +104,6 @@ const defaultDetoxScenarioNames = [
   "stale-catalog-after-newer-generation",
   "slow-old-artifact-after-newer-install",
   "failed-download-same-generation-retry",
-  "forward-release-rollback-old-bundle",
-  "explicit-embedded-receipt",
   "republished-crashed-bundle-skipped",
   "crash-then-next-safe-update",
   "runtime-channel-crash-restore",
@@ -279,7 +277,7 @@ describe("Detox scenario contract", () => {
 
     expect(detoxScenarios).toEqual(defaultDetoxScenarioNames);
     expect(listDetoxScenarioNames()).toEqual(defaultDetoxScenarioNames);
-    expect(new Set(listDetoxScenarioNames()).size).toBe(27);
+    expect(new Set(listDetoxScenarioNames()).size).toBe(25);
   });
 
   it("establishes a BUILTIN receipt before proving catalog-only no-update", async () => {
@@ -903,9 +901,6 @@ describe("Detox scenario contract", () => {
       "stale-catalog-after-newer-generation: install stale-catalog baseline",
       "stale-catalog-after-newer-generation: install newer catalog generation",
       "slow-old-artifact-after-newer-install: install newer artifact Release",
-      "forward-release-rollback-old-bundle: install rollback base",
-      "forward-release-rollback-old-bundle: install rollback source",
-      "explicit-embedded-receipt: install embedded source",
       "republished-crashed-bundle-skipped: install republish stable",
       "republished-crashed-bundle-skipped: install republish crash",
       "crash-then-next-safe-update: install next-safe stable",

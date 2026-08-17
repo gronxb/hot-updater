@@ -527,22 +527,18 @@ program
 
 program
   .command("rollback")
-  .description("Create a newer Release that selects an earlier artifact")
+  .description("Disable the current Release to restore its predecessor")
   .argument("<channel>", "the channel to roll back")
   .addOption(platformCommandOption)
+  .option("--target <bundle-id>", "retry rollback for one source Bundle")
   .option("-y, --yes", "skip confirmation prompt")
-  .option("--to-release <release-id>", "unambiguous earlier Release target")
-  .option("--to-bundle <bundle-id>", "advanced direct Bundle target")
-  .option("--embedded", "select the native embedded bytes")
   .action(
     (
       channel: string,
       options: {
         platform?: "ios" | "android";
+        target?: string;
         yes?: boolean;
-        embedded?: boolean;
-        toBundle?: string;
-        toRelease?: string;
       },
     ) => handleRollback(channel, options),
   );

@@ -14,6 +14,7 @@ import {
   bundleToRow,
   commitReleaseCatalogMutations,
   createUUIDv7After,
+  isUUIDv7,
   ReleaseCatalogMutationError,
 } from "@hot-updater/plugin-core";
 
@@ -77,10 +78,10 @@ const prepareDeploymentMutation = async (
           strategy: "FINGERPRINT",
         });
   const latestReleaseId = await findLatestReleaseId(database, scopeKey);
-  const floor =
-    latestReleaseId === null || bundle.id > latestReleaseId
-      ? bundle.id
-      : latestReleaseId;
+  const floor = [latestReleaseId, isUUIDv7(bundle.id) ? bundle.id : null]
+    .filter((candidate): candidate is string => candidate !== null)
+    .sort()
+    .at(-1);
   const now = Date.now();
   const release: ReleaseRow = {
     bundle_id: bundle.id,
@@ -88,7 +89,7 @@ const prepareDeploymentMutation = async (
     created_at_ms: now,
     enabled: bundle.enabled,
     fingerprint_hash: fingerprintHash,
-    id: createUUIDv7After(floor),
+    id: createUUIDv7After(floor ?? null),
     kind: "BUNDLE",
     message: bundle.message,
     operation: "DEPLOY",

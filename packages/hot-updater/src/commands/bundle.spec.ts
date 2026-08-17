@@ -105,14 +105,15 @@ describe("Bundle artifact commands", () => {
   });
 
   it("preserves an artifact referenced by a Release", async () => {
-    await databaseHarness.seedLegacyBundles([artifact("B1")]);
+    const bundleId = "00000000-0000-7000-8000-000000000001";
+    await databaseHarness.seedLegacyBundles([artifact(bundleId)]);
     const { handleBundleDelete } = await import("./bundle");
 
-    await expect(handleBundleDelete(["B1"], { yes: true })).rejects.toThrow(
+    await expect(handleBundleDelete([bundleId], { yes: true })).rejects.toThrow(
       /referenced/i,
     );
     await expect(
-      databaseHarness.plugin.models.bundles.findById("B1"),
+      databaseHarness.plugin.models.bundles.findById(bundleId),
     ).resolves.not.toBeNull();
   });
 });

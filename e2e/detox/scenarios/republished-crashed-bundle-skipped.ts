@@ -90,10 +90,10 @@ export const republishedCrashedBundleSkippedScenario: DetoxScenarioDefinition =
       );
       await app.control(
         "republish crashed Bundle",
-        "/e2e/jobs/create-rollback-release",
+        "/e2e/jobs/create-republished-release",
         {
           sourceReleaseId: "$republishedCrashReleaseId",
-          toBundleId: "$republishedCrashBundleId",
+          bundleId: "$republishedCrashBundleId",
         },
         { saveResultFieldsAs: { releaseId: "republishedReleaseId" } },
       );

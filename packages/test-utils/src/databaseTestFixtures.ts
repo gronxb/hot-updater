@@ -9,7 +9,7 @@ import type {
 } from "@hot-updater/plugin-core";
 
 const fixtureId = (suffix: string): string =>
-  `00000000-0000-0000-0000-${suffix.padStart(12, "0")}`;
+  `00000000-0000-7000-8000-${suffix.padStart(12, "0")}`;
 
 const channelFixtureSuffix = (name: string): string => {
   let hash = 0;

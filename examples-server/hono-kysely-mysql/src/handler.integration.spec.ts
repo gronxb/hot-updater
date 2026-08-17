@@ -194,7 +194,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
             id, platform, should_force_update, enabled, file_hash, channel,
             storage_uri, target_app_version, metadata
           ) values (
-            '00000000-0000-0000-0000-000000000001', 'ios', false, true,
+            '0198a5b0-0000-7000-8000-000000000001', 'ios', false, true,
             'bundle-hash', 'production', 'storage://bundle-1', '1.0.0', '{}'
           )`,
         )
@@ -225,7 +225,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       `.execute(db);
       expect(releases.rows).toEqual([
         {
-          bundle_id: "00000000-0000-0000-0000-000000000001",
+          bundle_id: "0198a5b0-0000-7000-8000-000000000001",
           channel_id: expect.any(String),
           target_app_version: "1.0.0",
         },

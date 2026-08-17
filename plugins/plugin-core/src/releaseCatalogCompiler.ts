@@ -23,6 +23,8 @@ import {
   type SemVerComparator,
 } from "verkit";
 
+import { isUUIDv7 } from "./uuidv7";
+
 export interface CatalogVersionBound {
   readonly version: string;
   readonly inclusive: boolean;
@@ -32,6 +34,7 @@ export interface CompiledCatalogSegment {
   readonly lower: CatalogVersionBound | null;
   readonly upper: CatalogVersionBound | null;
   readonly releaseIndexes: readonly number[];
+  readonly rollbackReleaseIndexes: readonly number[];
 }
 
 export type CompiledReleaseCatalog =
@@ -48,6 +51,7 @@ export type CompiledReleaseCatalog =
       readonly fallbackPolicy: typeof RELEASE_CATALOG_FALLBACK_POLICY;
       readonly releaseDescriptors: readonly ReleaseCatalogDescriptor[];
       readonly releaseIndexes: readonly number[];
+      readonly rollbackReleaseIndexes: readonly number[];
     };
 
 export interface ReleaseCatalogCompilerDiagnostics {
@@ -208,6 +212,12 @@ function validateReleases(
   const seenIds = new Set<string>();
 
   for (const release of enabled) {
+    if (!isUUIDv7(release.id)) {
+      throw new ReleaseCatalogCompilationError(
+        "INVALID_RELEASE",
+        `Release ${release.id} must use a canonical lowercase UUIDv7 ID`,
+      );
+    }
     if (seenIds.has(release.id)) {
       throw new ReleaseCatalogCompilationError(
         "INVALID_RELEASE",
@@ -256,7 +266,7 @@ function validateReleases(
       );
     }
   }
-  return enabled;
+  return enabled.filter((release) => release.kind === "BUNDLE");
 }
 
 function collectFrontierReleaseIds(
@@ -477,7 +487,11 @@ function mergeSegments(
     const previous = merged.at(-1);
     if (
       previous &&
-      sameIndexes(previous.releaseIndexes, segment.releaseIndexes)
+      sameIndexes(previous.releaseIndexes, segment.releaseIndexes) &&
+      sameIndexes(
+        previous.rollbackReleaseIndexes,
+        segment.rollbackReleaseIndexes,
+      )
     ) {
       merged[merged.length - 1] = { ...previous, upper: segment.upper };
     } else {
@@ -505,10 +519,17 @@ function compileAppVersion(releases: readonly Release[]): {
         .get(release.id)!
         .some((range) => intervalContainsSegment(range, segment)),
     );
-    return { segment, retainedIds: collectFrontierReleaseIds(applicable) };
+    return {
+      rollbackIds: new Set(applicable.map(({ id }) => id)),
+      segment,
+      retainedIds: collectFrontierReleaseIds(applicable),
+    };
   });
   const retainedIds = new Set(
-    segmentReleases.flatMap(({ retainedIds }) => [...retainedIds]),
+    segmentReleases.flatMap(({ retainedIds, rollbackIds }) => [
+      ...retainedIds,
+      ...rollbackIds,
+    ]),
   );
   const retainedReleases = releases.filter((release) =>
     retainedIds.has(release.id),
@@ -518,14 +539,22 @@ function compileAppVersion(releases: readonly Release[]): {
   );
   const segments = mergeSegments(
     segmentReleases
-      .map(({ segment, retainedIds }) => ({
+      .map(({ segment, retainedIds, rollbackIds }) => ({
         ...segment,
         releaseIndexes: releases
           .filter((release) => retainedIds.has(release.id))
           .map((release) => descriptorIndex.get(release.id)!)
           .filter((index) => index !== undefined),
+        rollbackReleaseIndexes: releases
+          .filter((release) => rollbackIds.has(release.id))
+          .map((release) => descriptorIndex.get(release.id)!)
+          .filter((index) => index !== undefined),
       }))
-      .filter((segment) => segment.releaseIndexes.length > 0),
+      .filter(
+        (segment) =>
+          segment.releaseIndexes.length > 0 ||
+          segment.rollbackReleaseIndexes.length > 0,
+      ),
   );
 
   return {
@@ -547,13 +576,14 @@ function compileFingerprint(releases: readonly Release[]): {
   readonly retainedReleases: readonly Release[];
 } {
   const retainedIds = collectFrontierReleaseIds(releases);
-  const retainedReleases = releases.filter((release) =>
-    retainedIds.has(release.id),
-  );
+  const retainedReleases = releases;
   return {
     envelope: {
       fallbackPolicy: RELEASE_CATALOG_FALLBACK_POLICY,
-      releaseIndexes: retainedReleases.map((_, index) => index),
+      releaseIndexes: retainedReleases
+        .map((release, index) => (retainedIds.has(release.id) ? index : -1))
+        .filter((index) => index >= 0),
+      rollbackReleaseIndexes: retainedReleases.map((_, index) => index),
       schemaVersion: RELEASE_CATALOG_SCHEMA_VERSION,
       strategy: "FINGERPRINT",
     },
@@ -670,6 +700,24 @@ export function projectCompiledCatalog(
       catalog.segments.find((segment) =>
         versionInSegment(canonicalVersion, segment),
       )?.releaseIndexes ?? [];
+  }
+  return indexes.map((index) => catalog.releaseDescriptors[index]!);
+}
+
+export function projectCompiledRollbackCatalog(
+  catalog: CompiledReleaseCatalog,
+  appVersion?: string,
+): readonly ReleaseCatalogDescriptor[] {
+  let indexes: readonly number[];
+  if (catalog.strategy === "FINGERPRINT") {
+    indexes = catalog.rollbackReleaseIndexes ?? catalog.releaseIndexes;
+  } else {
+    const canonicalVersion = appVersion && canonicalizeAppVersion(appVersion);
+    if (!canonicalVersion) return [];
+    const segment = catalog.segments.find((candidate) =>
+      versionInSegment(canonicalVersion, candidate),
+    );
+    indexes = segment?.rollbackReleaseIndexes ?? segment?.releaseIndexes ?? [];
   }
   return indexes.map((index) => catalog.releaseDescriptors[index]!);
 }
