@@ -44,10 +44,16 @@ const bundle = {
   storageUri: "s3://updates/bundle-1",
 } as Bundle;
 
+let releaseValue = release;
+
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children, to }: { children: ReactNode; to: string }) => (
     <a href={to}>{children}</a>
   ),
+}));
+
+vi.mock("@/components/features/bundles/BundleAnalyticsSummary", () => ({
+  BundleAnalyticsSummary: () => <div>Bundle Movement · 30 Days</div>,
 }));
 
 vi.mock("@/components/ui/sheet", () => ({
@@ -67,6 +73,8 @@ vi.mock("@/components/ui/slider", () => ({
   Slider: () => <div aria-hidden="true" />,
 }));
 
+vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
+
 vi.mock("@/lib/api", () => ({
   useBundleQuery: () => ({
     data: bundle,
@@ -74,6 +82,7 @@ vi.mock("@/lib/api", () => ({
     isPending: false,
   }),
   useDeleteReleaseMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useConfigQuery: () => ({ data: undefined, isFetched: true }),
   usePreflightReleaseMutation: () => ({
     isPending: false,
     mutateAsync: preflight,
@@ -83,7 +92,7 @@ vi.mock("@/lib/api", () => ({
     mutateAsync: vi.fn(),
   }),
   useReleaseCatalogDiagnosticsQuery: () => ({ data: null }),
-  useReleaseQuery: () => ({ data: release, isError: false }),
+  useReleaseQuery: () => ({ data: releaseValue, isError: false }),
   useReleaseRollbackCandidatesQuery: () => ({ data: [] }),
   useRollbackReleaseMutation: () => ({
     isPending: false,
@@ -96,6 +105,7 @@ describe("ReleaseEditorSheet", () => {
   afterEach(cleanup);
 
   beforeEach(() => {
+    releaseValue = release;
     preflight.mockReset();
     preflight.mockResolvedValue({});
     update.mockReset();
@@ -129,8 +139,8 @@ describe("ReleaseEditorSheet", () => {
     );
   });
 
-  it("keeps Bundle delivery and file actions in one familiar detail flow", () => {
-    render(
+  it("keeps Analytics, editing, and readable metadata in one familiar detail flow", () => {
+    const { container } = render(
       <ReleaseEditorSheet
         channels={[{ id: "channel-1", name: "production" }]}
         onOpenChange={vi.fn()}
@@ -148,8 +158,30 @@ describe("ReleaseEditorSheet", () => {
     expect(
       screen.getByRole("button", { name: "Download Bundle" }),
     ).toBeDefined();
-    expect(screen.getByText("File details")).toBeDefined();
+    expect(screen.getByText("Bundle Movement · 30 Days")).toBeDefined();
+    expect(screen.getByText("Metadata")).toBeDefined();
+    expect(screen.getAllByText("Target App Version").length).toBeGreaterThan(0);
     expect(screen.getByText("s3://updates/bundle-1")).toBeDefined();
+    expect(
+      container.textContent!.indexOf("Bundle Movement · 30 Days"),
+    ).toBeLessThan(container.textContent!.indexOf("Delivery settings"));
+  });
+
+  it("restores the main Console cohort preview for gradual rollout", () => {
+    releaseValue = { ...release, rollout_cohort_count: 100 };
+    render(
+      <ReleaseEditorSheet
+        channels={[{ id: "channel-1", name: "production" }]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={release.id}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview Cohorts" }));
+
+    expect(screen.getByRole("dialog")).toBeDefined();
+    expect(screen.getByText("Selected Cohorts")).toBeDefined();
   });
 
   it("keeps the draft and skips the update when preflight fails", async () => {

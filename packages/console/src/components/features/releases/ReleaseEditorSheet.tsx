@@ -1,30 +1,22 @@
 import {
-  getNumericCohortRolloutPosition,
   INVALID_COHORT_ERROR_MESSAGE,
   isValidCohort,
   normalizeCohortValue,
-  NUMERIC_COHORT_SIZE,
 } from "@hot-updater/core";
 import type {
   ChannelRow,
   ReleasePolicyPatch,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
-import {
-  AlertTriangle,
-  Box,
-  Download,
-  List,
-  Plus,
-  Trash2,
-  X,
-} from "lucide-react";
+import { AlertTriangle, Box, Download, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { normalizeRange } from "verkit";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
-import { HashValueDisplay } from "@/components/HashValueDisplay";
+import { BundleAnalyticsSummary } from "@/components/features/bundles/BundleAnalyticsSummary";
+import { BundleMetadata } from "@/components/features/bundles/BundleMetadata";
+import { RolloutCohortsDialog } from "@/components/features/bundles/RolloutCohortsDialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -189,6 +181,7 @@ function RolloutPercentageInput({
           aria-label="Rollout percentage"
           autoComplete="off"
           className="text-right tabular-nums"
+          id="release-rollout-percentage"
           inputMode="decimal"
           name="rolloutPercentage"
           onBlur={commitInput}
@@ -206,70 +199,6 @@ function RolloutPercentageInput({
         </InputGroupAddon>
       </InputGroup>
     </div>
-  );
-}
-
-function RolloutCohortsPreview({
-  releaseId,
-  rolloutCohortCount,
-  targetCohorts,
-}: {
-  releaseId: string;
-  rolloutCohortCount: number;
-  targetCohorts: readonly string[];
-}) {
-  if (rolloutCohortCount <= 0 || rolloutCohortCount >= NUMERIC_COHORT_SIZE) {
-    return null;
-  }
-
-  const rolloutCohorts = Array.from(
-    { length: NUMERIC_COHORT_SIZE },
-    (_, index) => index + 1,
-  ).filter(
-    (cohort) =>
-      getNumericCohortRolloutPosition(releaseId, cohort) < rolloutCohortCount,
-  );
-
-  return (
-    <details className="rounded-lg border bg-muted/10 p-3">
-      <summary className="cursor-pointer list-none text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <span className="inline-flex items-center gap-2">
-          <List className="size-4" /> Preview cohorts
-        </span>
-      </summary>
-      <div className="mt-3 grid gap-3">
-        <p className="text-xs text-muted-foreground">
-          {formatRolloutPercentage(rolloutCohortCount)}% currently includes{" "}
-          {rolloutCohorts.length} of {NUMERIC_COHORT_SIZE} numeric cohorts. The
-          selected set stays stable as rollout changes.
-        </p>
-        <div className="max-h-[50vh] overflow-y-auto rounded-lg border bg-muted/20 p-3">
-          <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
-            {rolloutCohorts.map((cohort) => (
-              <Badge
-                className="justify-center font-mono"
-                key={cohort}
-                variant="outline"
-              >
-                {cohort}
-              </Badge>
-            ))}
-          </div>
-        </div>
-        {targetCohorts.length ? (
-          <div>
-            <p className="mb-2 text-sm font-medium">Always included</p>
-            <div className="flex flex-wrap gap-2">
-              {targetCohorts.map((cohort) => (
-                <Badge className="font-mono" key={cohort}>
-                  {cohort}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        ) : null}
-      </div>
-    </details>
   );
 }
 
@@ -428,6 +357,21 @@ export function ReleaseEditorSheet({
                     </span>
                   )}
                 </div>
+                <div className="flex flex-wrap items-start gap-2">
+                  <span className="font-medium text-muted-foreground">
+                    {release.strategy === "APP_VERSION"
+                      ? "Target App Version"
+                      : "Fingerprint Target"}
+                  </span>
+                  <span
+                    className="min-w-0 break-all font-mono text-foreground"
+                    translate="no"
+                  >
+                    {release.strategy === "APP_VERSION"
+                      ? release.target_app_version
+                      : release.fingerprint_hash}
+                  </span>
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <ReleaseStateBadge release={release} />
                   <Badge variant="outline">{channelName}</Badge>
@@ -452,75 +396,23 @@ export function ReleaseEditorSheet({
 
           {release && draft ? (
             <div className="flex flex-col gap-6 px-4 pb-6 sm:px-6">
-              <section className="flex flex-col gap-3 rounded-lg border bg-muted/20 p-4 text-sm">
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">Bundle file</p>
-                  {release.bundle_id === null ? (
-                    <p className="mt-1 flex items-center gap-2 font-medium">
-                      <Box className="size-4" /> Built-in app
-                    </p>
-                  ) : (
-                    <p className="mt-1 min-w-0 font-medium">
-                      <BundleIdDisplay bundleId={release.bundle_id} />
-                    </p>
-                  )}
-                </div>
-                <p className="break-all text-xs text-muted-foreground">
-                  {release.strategy === "APP_VERSION"
-                    ? release.target_app_version
-                    : release.fingerprint_hash}
-                </p>
-                {release.bundle_id && bundleQuery.isPending ? (
-                  <Skeleton className="h-16 w-full" />
-                ) : null}
-                {release.bundle_id && bundleQuery.isError ? (
-                  <p className="text-xs text-destructive">
-                    Content file details could not be loaded.
-                  </p>
-                ) : null}
-                {bundle ? (
-                  <details className="rounded-md border bg-background/70 p-3 text-xs">
-                    <summary className="cursor-pointer font-medium">
-                      File details
-                    </summary>
-                    <dl className="mt-3 grid gap-3 text-muted-foreground">
-                      <div className="flex items-start justify-between gap-4">
-                        <dt>File hash</dt>
-                        <dd className="min-w-0 text-right">
-                          <HashValueDisplay
-                            maxLength={16}
-                            value={bundle.fileHash}
-                          />
-                        </dd>
-                      </div>
-                      <div className="flex items-start justify-between gap-4">
-                        <dt>Storage</dt>
-                        <dd
-                          className="min-w-0 break-all text-right font-mono text-foreground"
-                          translate="no"
-                        >
-                          {bundle.storageUri}
-                        </dd>
-                      </div>
-                      {bundle.gitCommitHash ? (
-                        <div className="flex items-start justify-between gap-4">
-                          <dt>Git commit</dt>
-                          <dd className="min-w-0 text-right">
-                            <HashValueDisplay
-                              maxLength={12}
-                              value={bundle.gitCommitHash}
-                            />
-                          </dd>
-                        </div>
-                      ) : null}
-                    </dl>
-                  </details>
-                ) : null}
-                <p className="text-xs text-muted-foreground">
-                  Bundle files are immutable. Delivery settings below can be
-                  changed without replacing the file.
-                </p>
-              </section>
+              {release.bundle_id ? (
+                <BundleAnalyticsSummary bundleId={release.bundle_id} />
+              ) : null}
+              {release.bundle_id && bundleQuery.isPending ? (
+                <Skeleton className="h-64 w-full" />
+              ) : null}
+              {release.bundle_id && bundleQuery.isError ? (
+                <Alert variant="destructive">
+                  <AlertTriangle />
+                  <AlertTitle>
+                    Bundle file details could not be loaded
+                  </AlertTitle>
+                  <AlertDescription>
+                    Delivery settings are still available below.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
 
               <section className="flex flex-col gap-4">
                 <div>
@@ -606,7 +498,16 @@ export function ReleaseEditorSheet({
                     />
                   </Field>
                   <Field>
-                    <FieldLabel>Rollout percentage</FieldLabel>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <FieldLabel htmlFor="release-rollout-percentage">
+                        Rollout percentage
+                      </FieldLabel>
+                      <RolloutCohortsDialog
+                        releaseId={release.id}
+                        rolloutCohortCount={draft.rolloutCohortCount}
+                        targetCohorts={draft.targetCohorts}
+                      />
+                    </div>
                     <RolloutPercentageInput
                       onChange={(rolloutCohortCount) =>
                         setDraft({ ...draft, rolloutCohortCount })
@@ -617,11 +518,6 @@ export function ReleaseEditorSheet({
                       {formatRolloutPercentage(draft.rolloutCohortCount)}% of
                       numeric cohorts, plus any cohorts below.
                     </FieldDescription>
-                    <RolloutCohortsPreview
-                      releaseId={release.id}
-                      rolloutCohortCount={draft.rolloutCohortCount}
-                      targetCohorts={draft.targetCohorts}
-                    />
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="release-cohort">
@@ -690,6 +586,12 @@ export function ReleaseEditorSheet({
                     : "Save changes"}
                 </Button>
               </section>
+
+              <BundleMetadata
+                bundle={bundle}
+                channelName={channelName ?? release.channel_id}
+                release={release}
+              />
 
               <section className="flex flex-col gap-3 border-t pt-5">
                 <div>

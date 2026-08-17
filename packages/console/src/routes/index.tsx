@@ -446,7 +446,38 @@ function BundlesPage() {
                         </TableRow>
                       ))
                     : releases.map((release) => (
-                        <TableRow key={release.id}>
+                        <TableRow
+                          aria-label={`Open bundle ${release.bundle_id ?? release.id}`}
+                          className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                          data-state={
+                            search.releaseId === release.id
+                              ? "selected"
+                              : undefined
+                          }
+                          key={release.id}
+                          onClick={(event) => {
+                            if (
+                              event.target instanceof Element &&
+                              event.target.closest(
+                                "button, a, input, select, textarea",
+                              )
+                            ) {
+                              return;
+                            }
+                            go({ ...search, releaseId: release.id }, false);
+                          }}
+                          onKeyDown={(event) => {
+                            if (
+                              event.target !== event.currentTarget ||
+                              (event.key !== "Enter" && event.key !== " ")
+                            ) {
+                              return;
+                            }
+                            event.preventDefault();
+                            go({ ...search, releaseId: release.id }, false);
+                          }}
+                          tabIndex={0}
+                        >
                           <TableCell>
                             <BundleEntry
                               onOpen={() =>
