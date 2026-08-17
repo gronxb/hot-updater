@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,6 +32,7 @@ const {
     error: null as Error | null,
     isError: false,
     isLoading: false,
+    refetch: vi.fn(),
   },
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
@@ -158,6 +160,7 @@ describe("AccessKeysPage", () => {
     accessKeysQuery.error = null;
     accessKeysQuery.isError = false;
     accessKeysQuery.isLoading = false;
+    accessKeysQuery.refetch.mockReset();
     createMutation.isPending = false;
     createMutation.mutateAsync.mockReset();
     createMutation.reset.mockReset();
@@ -224,5 +227,42 @@ describe("AccessKeysPage", () => {
       expect(screen.queryByRole("alertdialog")).toBeNull();
     });
     expect(toastSuccess).toHaveBeenCalledWith("Access key revoked");
+  });
+
+  it("presents a key as one compact identity without repeated permissions", () => {
+    accessKeysQuery.data = [
+      {
+        created_at_ms: 1_700_000_000_000,
+        id: `client-${"b".repeat(43)}`,
+        name: "Production app",
+        prefix: "abcdef",
+        revoked_at_ms: null,
+        role: "client",
+      },
+    ];
+
+    render(<AccessKeysPage />);
+    const row = screen.getByRole("row", { name: /Production app/ });
+
+    expect(within(row).getByText("Production app")).toBeDefined();
+    expect(within(row).getByText("abcdef…")).toBeDefined();
+    expect(screen.queryByText("OTA read")).toBeNull();
+    expect(screen.queryByText("Analytics write")).toBeNull();
+  });
+
+  it("offers a useful empty state and a retryable error state", () => {
+    const { rerender } = render(<AccessKeysPage />);
+
+    expect(screen.getByText("No client keys")).toBeDefined();
+    expect(screen.getByText("Create a key to connect an app.")).toBeDefined();
+
+    accessKeysQuery.error = new Error("database relation is missing");
+    accessKeysQuery.isError = true;
+    rerender(<AccessKeysPage />);
+
+    expect(screen.getByText("Access keys couldn't be loaded")).toBeDefined();
+    expect(screen.queryByText("database relation is missing")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(accessKeysQuery.refetch).toHaveBeenCalledOnce();
   });
 });
