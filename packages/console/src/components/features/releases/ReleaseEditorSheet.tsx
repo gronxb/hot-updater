@@ -340,45 +340,37 @@ export function ReleaseEditorSheet({
         onOpenChange={(nextOpen) => (nextOpen ? undefined : requestClose())}
         open={open}
       >
-        <SheetContent className="min-w-0 overflow-y-auto data-[side=right]:w-full sm:max-w-[620px]">
-          <SheetHeader className="border-b pb-4">
+        <SheetContent className="min-w-0 overflow-hidden data-[side=right]:w-full sm:max-w-[620px]">
+          <SheetHeader className="shrink-0 border-b p-4 pr-12 sm:p-6 sm:pr-12">
             <SheetTitle>Bundle Detail</SheetTitle>
-            <SheetDescription>
-              Manage delivery settings and actions for this bundle.
+            <SheetDescription className="sr-only">
+              Edit bundle delivery settings.
             </SheetDescription>
             {release ? (
-              <div className="flex flex-col gap-2 text-xs text-muted-foreground">
-                <div className="text-foreground">
+              <div className="flex min-w-0 flex-col gap-2 pt-1 text-xs text-muted-foreground">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <ReleaseStateBadge release={release} />
+                  <Badge className="max-w-full" variant="outline">
+                    <span className="truncate">{channelName}</span>
+                  </Badge>
+                  <Badge variant="outline">
+                    {release.platform === "ios" ? "iOS" : "Android"}
+                  </Badge>
+                </div>
+                <div
+                  className="min-w-0 text-foreground"
+                  title={release.bundle_id ?? undefined}
+                >
                   {release.bundle_id ? (
-                    <BundleIdDisplay bundleId={release.bundle_id} />
+                    <BundleIdDisplay
+                      bundleId={release.bundle_id}
+                      className="block truncate break-normal"
+                    />
                   ) : (
                     <span className="inline-flex items-center gap-2 font-medium">
                       <Box className="size-4" /> Built-in app
                     </span>
                   )}
-                </div>
-                <div className="flex flex-wrap items-start gap-2">
-                  <span className="font-medium text-muted-foreground">
-                    {release.strategy === "APP_VERSION"
-                      ? "Target App Version"
-                      : "Fingerprint Target"}
-                  </span>
-                  <span
-                    className="min-w-0 break-all font-mono text-foreground"
-                    translate="no"
-                  >
-                    {release.strategy === "APP_VERSION"
-                      ? release.target_app_version
-                      : release.fingerprint_hash}
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <ReleaseStateBadge release={release} />
-                  <Badge variant="outline">{channelName}</Badge>
-                  <Badge className="capitalize" variant="outline">
-                    {release.platform}
-                  </Badge>
-                  <Badge variant="outline">{release.operation}</Badge>
                 </div>
               </div>
             ) : (
@@ -386,333 +378,301 @@ export function ReleaseEditorSheet({
             )}
           </SheetHeader>
 
-          {releaseQuery.isError ? (
-            <Alert className="mx-4" variant="destructive">
-              <AlertTriangle />
-              <AlertTitle>Bundle details could not be loaded</AlertTitle>
-              <AlertDescription>{releaseQuery.error.message}</AlertDescription>
-            </Alert>
-          ) : null}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {releaseQuery.isError ? (
+              <Alert className="m-4 sm:m-6" variant="destructive">
+                <AlertTriangle />
+                <AlertTitle>Bundle details could not be loaded</AlertTitle>
+                <AlertDescription>
+                  {releaseQuery.error.message}
+                </AlertDescription>
+              </Alert>
+            ) : null}
 
-          {release && draft ? (
-            <div className="flex flex-col gap-6 px-4 pb-6 sm:px-6">
-              {release.bundle_id ? (
-                <BundleAnalyticsSummary bundleId={release.bundle_id} />
-              ) : null}
-              {release.bundle_id && bundleQuery.isPending ? (
-                <Skeleton className="h-64 w-full" />
-              ) : null}
-              {release.bundle_id && bundleQuery.isError ? (
-                <Alert variant="destructive">
-                  <AlertTriangle />
-                  <AlertTitle>
-                    Bundle file details could not be loaded
-                  </AlertTitle>
-                  <AlertDescription>
-                    Delivery settings are still available below.
-                  </AlertDescription>
-                </Alert>
-              ) : null}
+            {release && draft ? (
+              <div className="flex flex-col gap-8 px-4 py-6 sm:px-6">
+                {release.bundle_id ? (
+                  <BundleAnalyticsSummary bundleId={release.bundle_id} />
+                ) : null}
+                {release.bundle_id && bundleQuery.isPending ? (
+                  <Skeleton className="h-64 w-full" />
+                ) : null}
+                {release.bundle_id && bundleQuery.isError ? (
+                  <Alert variant="destructive">
+                    <AlertTriangle />
+                    <AlertTitle>
+                      Bundle file details could not be loaded
+                    </AlertTitle>
+                    <AlertDescription>
+                      Delivery settings are still available below.
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
 
-              <section className="flex flex-col gap-4">
-                <div>
-                  <h3 className="text-sm font-semibold">Delivery settings</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Control which eligible devices receive this content.
-                  </p>
-                </div>
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="release-message">Message</FieldLabel>
-                    <Textarea
-                      autoComplete="off"
-                      id="release-message"
-                      name="message"
-                      onChange={(event) =>
-                        setDraft({ ...draft, message: event.target.value })
-                      }
-                      value={draft.message}
-                    />
-                  </Field>
-                  {release.strategy === "APP_VERSION" ? (
+                <section className="flex flex-col gap-5">
+                  <h3 className="text-sm font-semibold">Delivery</h3>
+                  <FieldGroup className="gap-5">
                     <Field>
-                      <FieldLabel htmlFor="release-target">
-                        Target app version
-                      </FieldLabel>
-                      <Input
+                      <FieldLabel htmlFor="release-message">Message</FieldLabel>
+                      <Textarea
                         autoComplete="off"
-                        id="release-target"
-                        name="targetAppVersion"
+                        id="release-message"
+                        name="message"
                         onChange={(event) =>
-                          setDraft({
-                            ...draft,
-                            targetAppVersion: event.target.value,
-                          })
+                          setDraft({ ...draft, message: event.target.value })
                         }
-                        value={draft.targetAppVersion}
+                        rows={2}
+                        value={draft.message}
                       />
                     </Field>
-                  ) : (
-                    <Field>
-                      <FieldLabel htmlFor="release-fingerprint">
-                        Fingerprint target
+                    {release.strategy === "APP_VERSION" ? (
+                      <Field>
+                        <FieldLabel htmlFor="release-target">
+                          Target app version
+                        </FieldLabel>
+                        <Input
+                          autoComplete="off"
+                          id="release-target"
+                          name="targetAppVersion"
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              targetAppVersion: event.target.value,
+                            })
+                          }
+                          value={draft.targetAppVersion}
+                        />
+                      </Field>
+                    ) : null}
+                    <Field orientation="horizontal">
+                      <FieldLabel htmlFor="release-enabled">
+                        Enabled for new installs
                       </FieldLabel>
-                      <Input
-                        disabled
-                        id="release-fingerprint"
-                        name="fingerprintHash"
-                        value={release.fingerprint_hash ?? ""}
-                      />
-                    </Field>
-                  )}
-                  <Field>
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <FieldTitle>Enabled</FieldTitle>
-                        <FieldDescription>
-                          Turn off to stop new installs. Devices already using
-                          this Bundle stay on it.
-                        </FieldDescription>
-                      </div>
                       <Switch
-                        aria-label="Enabled"
+                        aria-label="Enabled for new installs"
                         checked={draft.enabled}
+                        id="release-enabled"
                         name="enabled"
                         onCheckedChange={(enabled) =>
                           setDraft({ ...draft, enabled })
                         }
                       />
-                    </div>
-                    <div className="flex flex-col gap-3 rounded-lg border bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">
-                      <p className="text-xs text-muted-foreground">
-                        To move installed devices back, choose a previous Bundle
-                        or the built-in app.
-                      </p>
+                    </Field>
+                    <Field>
+                      <FieldTitle>Installed devices</FieldTitle>
                       <Button
-                        className="shrink-0"
+                        className="w-full"
                         disabled={busy}
                         onClick={() => setShowRollback(true)}
-                        size="sm"
+                        size="lg"
                         type="button"
                         variant="outline"
                       >
                         Roll Back Installed Devices…
                       </Button>
-                    </div>
-                  </Field>
-                  <Field orientation="horizontal">
-                    <div>
-                      <FieldTitle>Force update</FieldTitle>
-                      <FieldDescription>
-                        Ask the app to apply this bundle immediately.
-                      </FieldDescription>
-                    </div>
-                    <Switch
-                      aria-label="Force update"
-                      checked={draft.shouldForceUpdate}
-                      name="shouldForceUpdate"
-                      onCheckedChange={(shouldForceUpdate) =>
-                        setDraft({ ...draft, shouldForceUpdate })
-                      }
-                    />
-                  </Field>
-                  <Field>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <FieldLabel htmlFor="release-rollout-percentage">
-                        Rollout percentage
+                    </Field>
+                    <Field orientation="horizontal">
+                      <FieldLabel htmlFor="release-force-update">
+                        Force update
                       </FieldLabel>
-                      <RolloutCohortsDialog
-                        releaseId={release.id}
-                        rolloutCohortCount={draft.rolloutCohortCount}
-                        targetCohorts={draft.targetCohorts}
+                      <Switch
+                        aria-label="Force update"
+                        checked={draft.shouldForceUpdate}
+                        id="release-force-update"
+                        name="shouldForceUpdate"
+                        onCheckedChange={(shouldForceUpdate) =>
+                          setDraft({ ...draft, shouldForceUpdate })
+                        }
                       />
-                    </div>
-                    <RolloutPercentageInput
-                      onChange={(rolloutCohortCount) =>
-                        setDraft({ ...draft, rolloutCohortCount })
-                      }
-                      value={draft.rolloutCohortCount}
-                    />
-                    <FieldDescription>
-                      {formatRolloutPercentage(draft.rolloutCohortCount)}% of
-                      numeric cohorts, plus any cohorts below.
-                    </FieldDescription>
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="release-cohort">
-                      Target cohorts
-                    </FieldLabel>
-                    <div className="flex gap-2">
-                      <Input
-                        autoComplete="off"
-                        id="release-cohort"
-                        name="targetCohort"
-                        onChange={(event) => setNewCohort(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            addCohort();
-                          }
-                        }}
-                        placeholder="qa-team"
-                        value={newCohort}
-                      />
-                      <Button
-                        aria-label="Add cohort"
-                        disabled={!newCohort.trim()}
-                        onClick={addCohort}
-                        size="icon"
-                        type="button"
-                        variant="outline"
-                      >
-                        <Plus />
-                      </Button>
-                    </div>
-                    {draft.targetCohorts.length ? (
-                      <div className="flex flex-wrap gap-2">
-                        {draft.targetCohorts.map((cohort) => (
-                          <Badge className="gap-1 font-mono" key={cohort}>
-                            {cohort}
-                            <button
-                              aria-label={`Remove cohort ${cohort}`}
-                              className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                              onClick={() =>
-                                setDraft({
-                                  ...draft,
-                                  targetCohorts: draft.targetCohorts.filter(
-                                    (value) => value !== cohort,
-                                  ),
-                                })
-                              }
-                              type="button"
-                            >
-                              <X className="size-3" />
-                            </button>
-                          </Badge>
-                        ))}
+                    </Field>
+                    <Field>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <FieldLabel htmlFor="release-rollout-percentage">
+                          Rollout percentage
+                        </FieldLabel>
+                        <RolloutCohortsDialog
+                          releaseId={release.id}
+                          rolloutCohortCount={draft.rolloutCohortCount}
+                          targetCohorts={draft.targetCohorts}
+                        />
                       </div>
-                    ) : null}
-                    <FieldDescription>
-                      Cohort names are public catalog data. Never use identities
-                      or secrets.
-                    </FieldDescription>
-                  </Field>
-                </FieldGroup>
-                {error ? <FieldError>{error}</FieldError> : null}
-                <Button disabled={!dirty || busy} onClick={save}>
-                  {preflight.isPending || update.isPending
-                    ? "Saving…"
-                    : "Save changes"}
-                </Button>
-              </section>
-
-              <BundleMetadata
-                bundle={bundle}
-                channelName={channelName ?? release.channel_id}
-                release={release}
-              />
-
-              <section className="flex flex-col gap-3 border-t pt-5">
-                <div>
-                  <h3 className="text-sm font-semibold">Actions</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Promote this Bundle to another channel or download its file.
-                  </p>
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2">
+                      <RolloutPercentageInput
+                        onChange={(rolloutCohortCount) =>
+                          setDraft({ ...draft, rolloutCohortCount })
+                        }
+                        value={draft.rolloutCohortCount}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="release-cohort">
+                        Additional cohorts (optional)
+                      </FieldLabel>
+                      <div className="flex gap-2">
+                        <Input
+                          autoComplete="off"
+                          id="release-cohort"
+                          name="targetCohort"
+                          onChange={(event) => setNewCohort(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              addCohort();
+                            }
+                          }}
+                          placeholder="e.g. qa-team…"
+                          value={newCohort}
+                        />
+                        <Button
+                          aria-label="Add cohort"
+                          disabled={!newCohort.trim()}
+                          onClick={addCohort}
+                          size="icon"
+                          type="button"
+                          variant="outline"
+                        >
+                          <Plus />
+                        </Button>
+                      </div>
+                      {draft.targetCohorts.length ? (
+                        <div className="flex flex-wrap gap-2">
+                          {draft.targetCohorts.map((cohort) => (
+                            <Badge className="gap-1 font-mono" key={cohort}>
+                              {cohort}
+                              <button
+                                aria-label={`Remove cohort ${cohort}`}
+                                className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                onClick={() =>
+                                  setDraft({
+                                    ...draft,
+                                    targetCohorts: draft.targetCohorts.filter(
+                                      (value) => value !== cohort,
+                                    ),
+                                  })
+                                }
+                                type="button"
+                              >
+                                <X className="size-3" />
+                              </button>
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : null}
+                      <FieldDescription>
+                        Public names—no IDs or secrets.
+                      </FieldDescription>
+                    </Field>
+                  </FieldGroup>
+                  {error ? <FieldError>{error}</FieldError> : null}
                   <Button
-                    disabled={release.kind !== "BUNDLE" || busy}
-                    onClick={() => setShowPromote(true)}
-                    variant="outline"
+                    className="w-full"
+                    disabled={!dirty || busy}
+                    onClick={save}
+                    size="lg"
                   >
-                    Promote to Channel
+                    {preflight.isPending || update.isPending
+                      ? "Saving…"
+                      : "Save changes"}
                   </Button>
-                  {release.bundle_id ? (
+                </section>
+
+                <BundleMetadata bundle={bundle} release={release} />
+
+                <section className="flex flex-col gap-4 border-t pt-8">
+                  <h3 className="text-sm font-semibold">Actions</h3>
+                  <div className="grid gap-2 sm:grid-cols-2">
                     <Button
-                      disabled={busy}
-                      onClick={() => {
-                        window.open(
-                          `/api/bundles/${encodeURIComponent(release.bundle_id!)}/download`,
-                          "_blank",
-                          "noopener,noreferrer",
-                        );
-                        toast.success("Bundle download started");
-                      }}
+                      disabled={release.kind !== "BUNDLE" || busy}
+                      onClick={() => setShowPromote(true)}
                       variant="outline"
                     >
-                      <Download data-icon="inline-start" />
-                      Download Bundle
+                      Promote to Channel
                     </Button>
+                    {release.bundle_id ? (
+                      <Button
+                        disabled={busy}
+                        onClick={() => {
+                          window.open(
+                            `/api/bundles/${encodeURIComponent(release.bundle_id!)}/download`,
+                            "_blank",
+                            "noopener,noreferrer",
+                          );
+                          toast.success("Bundle download started");
+                        }}
+                        variant="outline"
+                      >
+                        <Download data-icon="inline-start" />
+                        Download Bundle
+                      </Button>
+                    ) : null}
+                  </div>
+                </section>
+
+                <details className="rounded-lg border bg-muted/10 p-4 text-xs">
+                  <summary className="cursor-pointer font-medium">
+                    Advanced diagnostics
+                  </summary>
+                  <dl className="mt-4 grid gap-3 text-muted-foreground sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <dt>Release ID</dt>
+                      <dd className="mt-1 break-all font-mono text-foreground">
+                        {release.id}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Revision</dt>
+                      <dd className="mt-1 font-mono text-foreground">
+                        {release.revision}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Catalog generation</dt>
+                      <dd className="mt-1 font-mono text-foreground">
+                        {diagnostics.data?.generation ?? "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Catalog size</dt>
+                      <dd className="mt-1 font-mono text-foreground">
+                        {diagnostics.data
+                          ? `${diagnostics.data.byte_size} bytes`
+                          : "—"}
+                      </dd>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <dt>Scope key</dt>
+                      <dd className="mt-1 break-all font-mono text-foreground">
+                        {release.scope_key}
+                      </dd>
+                    </div>
+                  </dl>
+                  {diagnostics.isError ? (
+                    <p className="mt-3 text-destructive">
+                      Catalog diagnostics could not be loaded.
+                    </p>
                   ) : null}
-                </div>
-              </section>
+                </details>
 
-              <details className="rounded-lg border bg-muted/10 p-4 text-xs">
-                <summary className="cursor-pointer font-medium">
-                  Advanced diagnostics
-                </summary>
-                <dl className="mt-4 grid gap-3 text-muted-foreground sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <dt>Release ID</dt>
-                    <dd className="mt-1 break-all font-mono text-foreground">
-                      {release.id}
-                    </dd>
-                  </div>
+                <section className="flex flex-col gap-4 border-t pt-8">
                   <div>
-                    <dt>Revision</dt>
-                    <dd className="mt-1 font-mono text-foreground">
-                      {release.revision}
-                    </dd>
+                    <h3 className="text-sm font-semibold text-destructive">
+                      Danger zone
+                    </h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Disable before deleting.
+                    </p>
                   </div>
-                  <div>
-                    <dt>Catalog generation</dt>
-                    <dd className="mt-1 font-mono text-foreground">
-                      {diagnostics.data?.generation ?? "—"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Catalog size</dt>
-                    <dd className="mt-1 font-mono text-foreground">
-                      {diagnostics.data
-                        ? `${diagnostics.data.byte_size} bytes`
-                        : "—"}
-                    </dd>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <dt>Scope key</dt>
-                    <dd className="mt-1 break-all font-mono text-foreground">
-                      {release.scope_key}
-                    </dd>
-                  </div>
-                </dl>
-                {diagnostics.isError ? (
-                  <p className="mt-3 text-destructive">
-                    Catalog diagnostics could not be loaded.
-                  </p>
-                ) : null}
-              </details>
-
-              <section className="flex flex-col gap-3 border-t pt-5">
-                <div>
-                  <h3 className="text-sm font-semibold text-destructive">
-                    Danger zone
-                  </h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Disable this bundle deployment before deleting it
-                    permanently.
-                  </p>
-                </div>
-                <Button
-                  disabled={release.enabled || busy}
-                  onClick={() => setConfirmDelete(true)}
-                  variant="destructive"
-                >
-                  <Trash2 data-icon="inline-start" />
-                  Delete Deployment
-                </Button>
-              </section>
-            </div>
-          ) : null}
+                  <Button
+                    disabled={release.enabled || busy}
+                    onClick={() => setConfirmDelete(true)}
+                    variant="destructive"
+                  >
+                    <Trash2 data-icon="inline-start" />
+                    Delete Deployment
+                  </Button>
+                </section>
+              </div>
+            ) : null}
+          </div>
         </SheetContent>
       </Sheet>
 
@@ -870,9 +830,7 @@ export function ReleaseEditorSheet({
           <DialogHeader>
             <DialogTitle>Roll Back Installed Devices</DialogTitle>
             <DialogDescription>
-              Create a newer, forced Release that moves installed devices to a
-              previous Bundle or the built-in app. Turning off Enabled only
-              stops new installs.
+              Move installed devices to a previous Bundle or the built-in app.
             </DialogDescription>
           </DialogHeader>
           <Field>

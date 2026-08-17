@@ -62,7 +62,7 @@ describe("BundleAnalyticsSummary", () => {
   it("does not query or render when Analytics is unavailable", () => {
     render(<BundleAnalyticsSummary bundleId={bundleId} />);
 
-    expect(screen.queryByText("Bundle Movement · 30 Days")).toBeNull();
+    expect(screen.queryByText("Activity · 30 days")).toBeNull();
     expect(useBundleEventAnalyticsQueryMock).not.toHaveBeenCalled();
   });
 
@@ -80,9 +80,9 @@ describe("BundleAnalyticsSummary", () => {
 
     render(<BundleAnalyticsSummary bundleId={bundleId} />);
 
-    expect(screen.getByText("Bundle Movement · 30 Days")).toBeDefined();
-    expect(screen.getAllByText("Newly applied").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Recovered away").length).toBeGreaterThan(0);
+    expect(screen.getByText("Activity · 30 days")).toBeDefined();
+    expect(screen.getAllByText("Applied").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Recovered").length).toBeGreaterThan(0);
     expect(
       screen.getByRole("img", { name: "Bundle movement over 30 days" }),
     ).toBeDefined();

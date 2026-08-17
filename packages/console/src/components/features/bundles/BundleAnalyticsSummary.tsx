@@ -32,7 +32,7 @@ function Metric({
         />
         {label}
       </dt>
-      <dd className="text-2xl font-semibold tracking-tight tabular-nums">
+      <dd className="text-xl font-semibold tracking-tight tabular-nums">
         {value}
       </dd>
     </div>
@@ -54,22 +54,22 @@ function SupportedBundleAnalyticsSummary({
 
   return (
     <Card>
-      <CardHeader className="pb-4">
+      <CardHeader className="p-4 pb-3">
         <CardTitle className="text-sm font-medium">
-          Bundle Movement · 30 Days
+          Activity · 30 days
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent className="flex flex-col gap-3 px-4 pb-4">
         {isLoading ? (
           <div
             aria-label="Loading reported bundle outcomes"
-            className="flex flex-col gap-4"
+            className="flex flex-col gap-3"
           >
             <div className="grid grid-cols-2 gap-4">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
             </div>
-            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-24 w-full sm:h-32" />
           </div>
         ) : error ? (
           <AnalyticsErrorAlert
@@ -85,14 +85,14 @@ function SupportedBundleAnalyticsSummary({
             <dl className="grid grid-cols-2 divide-x divide-border/70">
               <div className="pr-4">
                 <Metric
-                  label="Newly applied"
+                  label="Applied"
                   tone="applied"
                   value={data?.summary.installed ?? 0}
                 />
               </div>
               <div className="pl-4">
                 <Metric
-                  label="Recovered away"
+                  label="Recovered"
                   tone="recovered"
                   value={data?.summary.recovered ?? 0}
                 />

@@ -54,7 +54,7 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 vi.mock("@/components/features/bundles/BundleAnalyticsSummary", () => ({
-  BundleAnalyticsSummary: () => <div>Bundle Movement · 30 Days</div>,
+  BundleAnalyticsSummary: () => <div>Activity · 30 days</div>,
 }));
 
 vi.mock("@/components/ui/sheet", () => ({
@@ -161,13 +161,18 @@ describe("ReleaseEditorSheet", () => {
     expect(
       screen.getByRole("button", { name: "Download Bundle" }),
     ).toBeDefined();
-    expect(screen.getByText("Bundle Movement · 30 Days")).toBeDefined();
+    expect(screen.getByText("Activity · 30 days")).toBeDefined();
     expect(screen.getByText("Metadata")).toBeDefined();
     expect(screen.getAllByText("Target App Version").length).toBeGreaterThan(0);
-    expect(screen.getByText("s3://updates/bundle-1")).toBeDefined();
+    expect(screen.getByText("Bundle Hash")).toBeDefined();
+    expect(screen.queryByText("s3://updates/bundle-1")).toBeNull();
+    expect(screen.queryByText("DEPLOY")).toBeNull();
     expect(
-      container.textContent!.indexOf("Bundle Movement · 30 Days"),
-    ).toBeLessThan(container.textContent!.indexOf("Delivery settings"));
+      screen.queryByText("Manage delivery settings and actions"),
+    ).toBeNull();
+    expect(container.textContent!.indexOf("Activity · 30 days")).toBeLessThan(
+      container.textContent!.indexOf("Delivery"),
+    );
   });
 
   it("restores the main Console cohort preview for gradual rollout", () => {
@@ -197,11 +202,8 @@ describe("ReleaseEditorSheet", () => {
       />,
     );
 
-    expect(
-      screen.getByText(
-        "Turn off to stop new installs. Devices already using this Bundle stay on it.",
-      ),
-    ).toBeDefined();
+    expect(screen.getByText("Enabled for new installs")).toBeDefined();
+    expect(screen.getByText("Installed devices")).toBeDefined();
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -213,7 +215,9 @@ describe("ReleaseEditorSheet", () => {
       screen.getByRole("heading", { name: "Roll Back Installed Devices" }),
     ).toBeDefined();
     expect(
-      screen.getByText(/Turning off Enabled only stops new installs/),
+      screen.getByText(
+        "Move installed devices to a previous Bundle or the built-in app.",
+      ),
     ).toBeDefined();
 
     fireEvent.click(screen.getByRole("button", { name: "Roll Back Devices" }));

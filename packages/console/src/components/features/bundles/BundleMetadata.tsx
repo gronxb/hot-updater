@@ -14,14 +14,8 @@ import { getCommitUrl } from "@/lib/git";
 
 interface BundleMetadataProps {
   readonly bundle: Bundle | null | undefined;
-  readonly channelName: string;
   readonly release: ReleaseRow;
 }
-
-const createdAtFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -32,11 +26,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-export function BundleMetadata({
-  bundle,
-  channelName,
-  release,
-}: BundleMetadataProps) {
+export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
   const { data: configData, isFetched } = useConfigQuery();
   const patchBaseBundleId = bundle ? getPatchBaseBundleId(bundle) : null;
   const hbcPatchFileHash = bundle ? getPatchFileHash(bundle) : null;
@@ -49,13 +39,22 @@ export function BundleMetadata({
     release.strategy === "APP_VERSION"
       ? release.target_app_version
       : release.fingerprint_hash;
+  const hasMetadata =
+    target ||
+    bundle?.gitCommitHash ||
+    bundle?.fileHash ||
+    patchBaseBundleId ||
+    hbcPatchBaseFileHash ||
+    hbcPatchFileHash;
+
+  if (!hasMetadata) return null;
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="p-4 pb-3">
         <CardTitle className="text-sm font-medium">Metadata</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-4 pb-4">
         <dl className="flex flex-col gap-3 text-sm">
           <Row
             label={
@@ -69,34 +68,6 @@ export function BundleMetadata({
               </span>
             }
           />
-          <Row
-            label="Channel"
-            value={<span translate="no">{channelName}</span>}
-          />
-          <Row
-            label="Platform"
-            value={release.platform === "ios" ? "iOS" : "Android"}
-          />
-          <Row
-            label="Created"
-            value={createdAtFormatter.format(release.created_at_ms)}
-          />
-          <Row
-            label="Release Revision"
-            value={<span className="tabular-nums">{release.revision}</span>}
-          />
-          {release.bundle_id ? (
-            <Row
-              label="Bundle ID"
-              value={
-                <BundleIdDisplay
-                  bundleId={release.bundle_id}
-                  fullOnMobile
-                  maxLength={18}
-                />
-              }
-            />
-          ) : null}
           {bundle?.gitCommitHash ? (
             <Row
               label="Git Commit"
@@ -127,47 +98,6 @@ export function BundleMetadata({
               label="Bundle Hash"
               value={
                 <HashValueDisplay maxLength={16} value={bundle.fileHash} />
-              }
-            />
-          ) : null}
-          {bundle?.storageUri ? (
-            <Row
-              label="Storage"
-              value={
-                <span className="break-all font-mono text-xs" translate="no">
-                  {bundle.storageUri}
-                </span>
-              }
-            />
-          ) : null}
-          {bundle?.manifestStorageUri ? (
-            <Row
-              label="Manifest"
-              value={
-                <span className="break-all font-mono text-xs" translate="no">
-                  {bundle.manifestStorageUri}
-                </span>
-              }
-            />
-          ) : null}
-          {bundle?.manifestFileHash ? (
-            <Row
-              label="Manifest Hash"
-              value={
-                <HashValueDisplay
-                  maxLength={16}
-                  value={bundle.manifestFileHash}
-                />
-              }
-            />
-          ) : null}
-          {bundle?.assetBaseStorageUri ? (
-            <Row
-              label="Asset Storage"
-              value={
-                <span className="break-all font-mono text-xs" translate="no">
-                  {bundle.assetBaseStorageUri}
-                </span>
               }
             />
           ) : null}
