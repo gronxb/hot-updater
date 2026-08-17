@@ -23,7 +23,7 @@ import {
   type SemVerComparator,
 } from "verkit";
 
-import { isUUIDv7 } from "./uuidv7";
+import { isUUIDv7 } from "./uuidv7.ts";
 
 export interface CatalogVersionBound {
   readonly version: string;
