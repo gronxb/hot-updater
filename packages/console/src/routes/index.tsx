@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import { ChannelManagementDialog } from "@/components/features/channels/ChannelManagementDialog";
 import { ReleaseEditorSheet } from "@/components/features/releases/ReleaseEditorSheet";
@@ -217,21 +218,16 @@ function BundleEntry({
         : null;
 
   return (
-    <div className="flex min-w-[144px] items-center gap-2">
+    <div className="flex min-w-[240px] items-center gap-2">
       <button
         aria-label={`Open details for ${bundleLabel}`}
-        className="min-w-0 rounded-sm text-left text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="min-w-0 rounded-sm text-left text-foreground transition-colors underline-offset-4 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={onOpen}
         title={release.bundle_id ?? release.id}
         type="button"
       >
         {release.bundle_id ? (
-          <span
-            className="font-mono text-xs font-medium tabular-nums"
-            translate="no"
-          >
-            {shortId(release.bundle_id)}
-          </span>
+          <BundleIdDisplay bundleId={release.bundle_id} fullOnMobile />
         ) : (
           <span className="inline-flex items-center gap-1.5 text-sm">
             <RotateCcw className="size-3.5" /> Built-in app
@@ -504,21 +500,13 @@ function BundlesPage() {
                             />
                           </TableCell>
                           <TableCell>
-                            <span
-                              className="block max-w-40"
-                              title={
+                            <ChannelBadge
+                              channel={
                                 channelNames.get(release.channel_id) ??
                                 release.channel_id
                               }
-                            >
-                              <ChannelBadge
-                                channel={
-                                  channelNames.get(release.channel_id) ??
-                                  release.channel_id
-                                }
-                                className="max-w-full truncate font-normal"
-                              />
-                            </span>
+                              className="min-w-64 max-w-72 whitespace-normal break-words py-1 font-normal leading-4"
+                            />
                           </TableCell>
                           <TableCell className="whitespace-nowrap">
                             <span className="flex items-center gap-2">

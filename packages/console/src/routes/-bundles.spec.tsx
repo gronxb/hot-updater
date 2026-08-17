@@ -51,7 +51,7 @@ vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
 const release = vi.hoisted(
   () =>
     ({
-      bundle_id: "bundle-1",
+      bundle_id: "019ff641-01eb-72ea-8a03-a28aef188d32",
       channel_id: "channel-1",
       created_at_ms: Date.UTC(2026, 6, 18),
       enabled: true,
@@ -74,9 +74,16 @@ const release = vi.hoisted(
 );
 
 vi.mock("@/lib/api", () => ({
-  useBundleChildCountsQuery: () => ({ data: { "bundle-1": 0 } }),
+  useBundleChildCountsQuery: () => ({
+    data: { "019ff641-01eb-72ea-8a03-a28aef188d32": 0 },
+  }),
   useChannelsQuery: () => ({
-    data: [{ id: "channel-1", name: "production" }],
+    data: [
+      {
+        id: "channel-1",
+        name: "e2e-job-20260812132427-qy22fi-android-s2-production",
+      },
+    ],
   }),
   useReleasesQuery: () => ({
     data: {
@@ -110,7 +117,9 @@ describe("BundlesPage", () => {
 
   it("opens the Bundle edit sheet from the whole table row", () => {
     render(<BundlesPage />);
-    const row = screen.getByRole("row", { name: "Open bundle bundle-1" });
+    const row = screen.getByRole("row", {
+      name: "Open bundle 019ff641-01eb-72ea-8a03-a28aef188d32",
+    });
 
     fireEvent.click(row);
 
@@ -132,10 +141,18 @@ describe("BundlesPage", () => {
 
   it("keeps a default Bundle row focused on delivery decisions", () => {
     render(<BundlesPage />);
-    const row = screen.getByRole("row", { name: "Open bundle bundle-1" });
+    const row = screen.getByRole("row", {
+      name: "Open bundle 019ff641-01eb-72ea-8a03-a28aef188d32",
+    });
 
-    expect(within(row).getByText("bundle-1")).toBeDefined();
-    expect(within(row).getByText("production")).toBeDefined();
+    expect(
+      within(row).getByText("019ff641-01eb-72ea-8a03-a28aef188d32"),
+    ).toBeDefined();
+    expect(
+      within(row).getByText(
+        "e2e-job-20260812132427-qy22fi-android-s2-production",
+      ),
+    ).toBeDefined();
     expect(within(row).getByText("iOS")).toBeDefined();
     expect(within(row).getByText("1.2.x")).toBeDefined();
     expect(within(row).getByText("Enabled")).toBeDefined();
