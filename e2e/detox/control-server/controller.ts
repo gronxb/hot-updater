@@ -5675,7 +5675,7 @@ async function createFixtureRepublishedRelease(input: {
         scope: {
           authorityId,
           channelId: catalog.channel_id,
-          channelKey: catalog.channel_key,
+          channelName: channel.name,
           fingerprintHash: catalog.fingerprint_hash,
           platform: catalog.platform,
           scopeKey: catalog.scope_key,
@@ -5778,7 +5778,7 @@ async function seedCrashedBundleFrontier(input: {
         scope: {
           authorityId: catalog.authority_id,
           channelId: catalog.channel_id,
-          channelKey: catalog.channel_key,
+          channelName: decodeChannelKey(catalog.channel_key),
           fingerprintHash: catalog.fingerprint_hash,
           platform: catalog.platform,
           scopeKey: catalog.scope_key,
