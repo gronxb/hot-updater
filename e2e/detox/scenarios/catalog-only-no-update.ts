@@ -18,13 +18,13 @@ export const catalogOnlyNoUpdateScenario: DetoxScenarioDefinition = {
     );
     await app.launch("launch catalog-only app");
     await app.tap(
-      "establish excluded catalog receipt",
+      "check excluded catalog while built-in",
       "action-install-current-channel-update",
     );
     await app.assertText(
-      "assert excluded catalog built-in selection",
+      "assert excluded catalog no update",
       "update-action-result",
-      "current-channel -> selected BUILTIN",
+      "current-channel -> no-update",
       { exactText: true },
     );
     await app.control("reset catalog-only proxy", "/e2e/proxy-control", {
@@ -32,7 +32,7 @@ export const catalogOnlyNoUpdateScenario: DetoxScenarioDefinition = {
       reset: true,
     });
     await app.tap(
-      "check excluded catalog Release",
+      "repeat excluded catalog check",
       "action-install-current-channel-update",
     );
     await app.assertText(
