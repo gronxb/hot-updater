@@ -156,15 +156,19 @@ describe("ReleaseEditorSheet", () => {
       screen.getByRole("heading", { name: "Bundle Detail" }),
     ).toBeDefined();
     expect(
-      screen.getByRole("button", { name: "Promote to Channel" }),
+      screen.getByRole("button", { name: "Promote to channel" }),
     ).toBeDefined();
     expect(
-      screen.getByRole("button", { name: "Download Bundle" }),
+      screen.getByRole("button", { name: "Download bundle" }),
     ).toBeDefined();
     expect(screen.getByText("Activity · 30 days")).toBeDefined();
     expect(screen.getByText("Metadata")).toBeDefined();
-    expect(screen.getAllByText("Target App Version").length).toBeGreaterThan(0);
-    expect(screen.getByText("Bundle Hash")).toBeDefined();
+    expect(screen.getAllByText("Target app version").length).toBeGreaterThan(0);
+    expect(screen.getByText("Bundle hash")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Remove from channel" }),
+    ).toBeDefined();
+    expect(screen.queryByText(/deployment/i)).toBeNull();
     expect(screen.queryByText("s3://updates/bundle-1")).toBeNull();
     expect(screen.queryByText("DEPLOY")).toBeNull();
     expect(
@@ -186,10 +190,10 @@ describe("ReleaseEditorSheet", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Preview Cohorts" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview cohorts" }));
 
     expect(screen.getByRole("dialog")).toBeDefined();
-    expect(screen.getByText("Selected Cohorts")).toBeDefined();
+    expect(screen.getByText("Selected cohorts")).toBeDefined();
   });
 
   it("distinguishes stopping new installs from rolling back installed devices", async () => {
@@ -207,12 +211,12 @@ describe("ReleaseEditorSheet", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Roll Back Installed Devices…",
+        name: "Roll back…",
       }),
     );
 
     expect(
-      screen.getByRole("heading", { name: "Roll Back Installed Devices" }),
+      screen.getByRole("heading", { name: "Roll back installed devices" }),
     ).toBeDefined();
     expect(
       screen.getByText(
@@ -220,7 +224,7 @@ describe("ReleaseEditorSheet", () => {
       ),
     ).toBeDefined();
 
-    fireEvent.click(screen.getByRole("button", { name: "Roll Back Devices" }));
+    fireEvent.click(screen.getByRole("button", { name: "Roll back devices" }));
 
     await waitFor(() =>
       expect(rollback).toHaveBeenCalledWith({

@@ -61,31 +61,20 @@ export function RolloutCohortsDialog({
 
   const dialogBody = (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3">
         <Card>
           <CardHeader className="p-4">
-            <CardDescription>Selected Cohorts</CardDescription>
-            <CardTitle className="font-mono text-xl tabular-nums">
+            <CardDescription>Selected cohorts</CardDescription>
+            <CardTitle className="font-mono text-2xl tabular-nums">
               {rolloutCohorts.length}
             </CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="p-4">
-            <CardDescription>Excluded Cohorts</CardDescription>
-            <CardTitle className="font-mono text-xl tabular-nums">
+            <CardDescription>Excluded cohorts</CardDescription>
+            <CardTitle className="font-mono text-2xl tabular-nums">
               {excludedCount}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card className="col-span-2 sm:col-span-1">
-          <CardHeader className="p-4">
-            <CardDescription>Release ID</CardDescription>
-            <CardTitle
-              className="break-all font-mono text-xs leading-relaxed"
-              translate="no"
-            >
-              {releaseId}
             </CardTitle>
           </CardHeader>
         </Card>
@@ -93,10 +82,7 @@ export function RolloutCohortsDialog({
 
       <Card>
         <CardHeader className="p-4 pb-3">
-          <CardTitle className="text-sm">Numeric Cohorts</CardTitle>
-          <CardDescription>
-            Listed in ascending order for readability.
-          </CardDescription>
+          <CardTitle className="text-sm">Numeric cohorts</CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-0">
           <div className="max-h-[50vh] overflow-y-auto overscroll-contain rounded-lg border bg-muted/20 p-3 sm:max-h-[45vh]">
@@ -118,9 +104,9 @@ export function RolloutCohortsDialog({
       {hasTargetCohorts ? (
         <Card>
           <CardHeader className="p-4 pb-3">
-            <CardTitle className="text-sm">Target Cohorts</CardTitle>
+            <CardTitle className="text-sm">Additional cohorts</CardTitle>
             <CardDescription>
-              These cohorts are included in addition to the numeric rollout.
+              Always included in addition to the percentage rollout.
             </CardDescription>
           </CardHeader>
           <CardContent className="p-4 pt-0">
@@ -147,7 +133,7 @@ export function RolloutCohortsDialog({
         render={<Button size="sm" type="button" variant="outline" />}
       >
         <List data-icon="inline-start" />
-        Preview Cohorts
+        Preview cohorts
       </DialogTrigger>
       <DialogContent
         className={
@@ -159,13 +145,12 @@ export function RolloutCohortsDialog({
         {isMobile ? (
           <div className="flex h-full flex-col overflow-hidden">
             <DialogHeader className="shrink-0 border-b border-border/70 px-4 py-4">
-              <DialogTitle>Rolled Out Cohorts</DialogTitle>
+              <DialogTitle>Rolled out cohorts</DialogTitle>
               <DialogDescription>
-                {rolloutPercentage}% rollout currently targets{" "}
-                {rolloutCohorts.length} of {NUMERIC_COHORT_SIZE} numeric
-                cohorts. The selected set stays stable as rollout changes.
+                {rolloutPercentage}% includes {rolloutCohorts.length} of{" "}
+                {NUMERIC_COHORT_SIZE} numeric cohorts.
                 {hasTargetCohorts
-                  ? " Target Cohorts are added on top of this numeric rollout."
+                  ? " Additional cohorts are always included."
                   : ""}
               </DialogDescription>
             </DialogHeader>
@@ -180,13 +165,12 @@ export function RolloutCohortsDialog({
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle>Rolled Out Cohorts</DialogTitle>
+              <DialogTitle>Rolled out cohorts</DialogTitle>
               <DialogDescription>
-                {rolloutPercentage}% rollout currently targets{" "}
-                {rolloutCohorts.length} of {NUMERIC_COHORT_SIZE} numeric
-                cohorts. The selected set stays stable as rollout changes.
+                {rolloutPercentage}% includes {rolloutCohorts.length} of{" "}
+                {NUMERIC_COHORT_SIZE} numeric cohorts.
                 {hasTargetCohorts
-                  ? " Target Cohorts are added on top of this numeric rollout."
+                  ? " Additional cohorts are always included."
                   : ""}
               </DialogDescription>
             </DialogHeader>

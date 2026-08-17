@@ -59,8 +59,8 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
           <Row
             label={
               release.strategy === "APP_VERSION"
-                ? "Target App Version"
-                : "Fingerprint Target"
+                ? "Target app version"
+                : "Fingerprint target"
             }
             value={
               <span className="break-all font-mono text-xs" translate="no">
@@ -70,7 +70,7 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
           />
           {bundle?.gitCommitHash ? (
             <Row
-              label="Git Commit"
+              label="Git commit"
               value={
                 <div className="flex items-center justify-start gap-1 sm:justify-end">
                   <HashValueDisplay
@@ -95,7 +95,7 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
           ) : null}
           {bundle?.fileHash ? (
             <Row
-              label="Bundle Hash"
+              label="Bundle hash"
               value={
                 <HashValueDisplay maxLength={16} value={bundle.fileHash} />
               }
@@ -103,7 +103,7 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
           ) : null}
           {patchBaseBundleId ? (
             <Row
-              label="Patch Base"
+              label="Patch base"
               value={
                 <BundleIdDisplay
                   bundleId={patchBaseBundleId}
@@ -115,7 +115,7 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
           ) : null}
           {hbcPatchBaseFileHash ? (
             <Row
-              label="Base Hash"
+              label="Base hash"
               value={
                 <HashValueDisplay maxLength={16} value={hbcPatchBaseFileHash} />
               }
@@ -123,7 +123,7 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
           ) : null}
           {hbcPatchFileHash ? (
             <Row
-              label="Patch Hash"
+              label="Patch hash"
               value={
                 <HashValueDisplay maxLength={16} value={hbcPatchFileHash} />
               }

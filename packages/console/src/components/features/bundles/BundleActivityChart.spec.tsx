@@ -27,6 +27,14 @@ vi.mock("@/components/ui/chart", () => ({
 describe("BundleActivityChart", () => {
   afterEach(cleanup);
 
+  it("explains the empty 30-day activity window", () => {
+    render(<BundleActivityChart installed={[]} recovered={[]} window="30d" />);
+
+    expect(
+      screen.getByText("No device activity in the last 30 days."),
+    ).toBeDefined();
+  });
+
   it("keeps exact per-bucket values in a non-overflowing hidden wrapper", () => {
     render(
       <BundleActivityChart

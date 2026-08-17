@@ -28,15 +28,13 @@ describe("RolloutCohortsDialog", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Preview Cohorts" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview cohorts" }));
 
     expect(screen.getByRole("dialog")).toBeDefined();
-    expect(screen.getByText("Selected Cohorts")).toBeDefined();
+    expect(screen.getByText("Selected cohorts")).toBeDefined();
     expect(screen.getByText(/^100$/)).toBeDefined();
     expect(
-      screen.getByText(
-        /10\.0% rollout currently targets 100 of 1000 numeric cohorts\./,
-      ),
+      screen.getByText(/10\.0% includes 100 of 1000 numeric cohorts\./),
     ).toBeDefined();
     expect(screen.getByText(String(rolloutCohorts[0]))).toBeDefined();
     expect(screen.getByText("qa-group")).toBeDefined();
@@ -48,7 +46,7 @@ describe("RolloutCohortsDialog", () => {
     );
 
     expect(
-      screen.queryByRole("button", { name: "Preview Cohorts" }),
+      screen.queryByRole("button", { name: "Preview cohorts" }),
     ).toBeNull();
 
     rerender(
@@ -56,7 +54,7 @@ describe("RolloutCohortsDialog", () => {
     );
 
     expect(
-      screen.queryByRole("button", { name: "Preview Cohorts" }),
+      screen.queryByRole("button", { name: "Preview cohorts" }),
     ).toBeNull();
   });
 });

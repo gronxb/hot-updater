@@ -2,18 +2,12 @@ import type { ReleaseRow } from "@hot-updater/plugin-core";
 import { Check, CircleOff } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 
 export function ReleaseStateBadge({ release }: { release: ReleaseRow }) {
   return (
     <Badge
-      className={cn(
-        "gap-1 border-0",
-        release.enabled
-          ? "bg-primary/10 text-primary"
-          : "bg-muted text-muted-foreground",
-      )}
-      variant="secondary"
+      className="gap-1 font-normal text-muted-foreground"
+      variant={release.enabled ? "outline" : "secondary"}
     >
       {release.enabled ? (
         <Check className="size-3" />

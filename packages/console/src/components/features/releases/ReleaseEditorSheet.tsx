@@ -394,20 +394,6 @@ export function ReleaseEditorSheet({
                 {release.bundle_id ? (
                   <BundleAnalyticsSummary bundleId={release.bundle_id} />
                 ) : null}
-                {release.bundle_id && bundleQuery.isPending ? (
-                  <Skeleton className="h-64 w-full" />
-                ) : null}
-                {release.bundle_id && bundleQuery.isError ? (
-                  <Alert variant="destructive">
-                    <AlertTriangle />
-                    <AlertTitle>
-                      Bundle file details could not be loaded
-                    </AlertTitle>
-                    <AlertDescription>
-                      Delivery settings are still available below.
-                    </AlertDescription>
-                  </Alert>
-                ) : null}
 
                 <section className="flex flex-col gap-5">
                   <h3 className="text-sm font-semibold">Delivery</h3>
@@ -458,17 +444,15 @@ export function ReleaseEditorSheet({
                         }
                       />
                     </Field>
-                    <Field>
+                    <Field orientation="horizontal">
                       <FieldTitle>Installed devices</FieldTitle>
                       <Button
-                        className="w-full"
                         disabled={busy}
                         onClick={() => setShowRollback(true)}
-                        size="lg"
                         type="button"
                         variant="outline"
                       >
-                        Roll Back Installed Devices…
+                        Roll back…
                       </Button>
                     </Field>
                     <Field orientation="horizontal">
@@ -536,7 +520,11 @@ export function ReleaseEditorSheet({
                       {draft.targetCohorts.length ? (
                         <div className="flex flex-wrap gap-2">
                           {draft.targetCohorts.map((cohort) => (
-                            <Badge className="gap-1 font-mono" key={cohort}>
+                            <Badge
+                              className="gap-1 font-mono"
+                              key={cohort}
+                              variant="secondary"
+                            >
                               {cohort}
                               <button
                                 aria-label={`Remove cohort ${cohort}`}
@@ -575,7 +563,21 @@ export function ReleaseEditorSheet({
                   </Button>
                 </section>
 
-                <BundleMetadata bundle={bundle} release={release} />
+                {release.bundle_id && bundleQuery.isPending ? (
+                  <Skeleton className="h-40 w-full" />
+                ) : null}
+                {release.bundle_id && bundleQuery.isError ? (
+                  <Alert variant="destructive">
+                    <AlertTriangle />
+                    <AlertTitle>Build details are unavailable</AlertTitle>
+                    <AlertDescription>
+                      Delivery settings are unaffected.
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
+                {!release.bundle_id || !bundleQuery.isPending ? (
+                  <BundleMetadata bundle={bundle} release={release} />
+                ) : null}
 
                 <section className="flex flex-col gap-4 border-t pt-8">
                   <h3 className="text-sm font-semibold">Actions</h3>
@@ -585,7 +587,7 @@ export function ReleaseEditorSheet({
                       onClick={() => setShowPromote(true)}
                       variant="outline"
                     >
-                      Promote to Channel
+                      Promote to channel
                     </Button>
                     {release.bundle_id ? (
                       <Button
@@ -601,7 +603,7 @@ export function ReleaseEditorSheet({
                         variant="outline"
                       >
                         <Download data-icon="inline-start" />
-                        Download Bundle
+                        Download bundle
                       </Button>
                     ) : null}
                   </div>
@@ -647,7 +649,8 @@ export function ReleaseEditorSheet({
                   </dl>
                   {diagnostics.isError ? (
                     <p className="mt-3 text-destructive">
-                      Catalog diagnostics could not be loaded.
+                      Diagnostics are unavailable. Bundle settings are
+                      unaffected.
                     </p>
                   ) : null}
                 </details>
@@ -655,10 +658,10 @@ export function ReleaseEditorSheet({
                 <section className="flex flex-col gap-4 border-t pt-8">
                   <div>
                     <h3 className="text-sm font-semibold text-destructive">
-                      Danger zone
+                      Remove from channel
                     </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Disable before deleting.
+                      Disable before removing.
                     </p>
                   </div>
                   <Button
@@ -667,7 +670,7 @@ export function ReleaseEditorSheet({
                     variant="destructive"
                   >
                     <Trash2 data-icon="inline-start" />
-                    Delete Deployment
+                    Remove from channel
                   </Button>
                 </section>
               </div>
@@ -681,7 +684,7 @@ export function ReleaseEditorSheet({
           <AlertDialogHeader>
             <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
             <AlertDialogDescription>
-              Your edits to this bundle deployment will be lost.
+              Your Bundle changes will be lost.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -703,11 +706,11 @@ export function ReleaseEditorSheet({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Delete this deployment permanently?
+              Remove this Bundle from {channelName ?? "the channel"}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              The Bundle file is not deleted. This only removes the deployment
-              from the catalog and keeps a tombstone for clients.
+              The Bundle file stays available. This only removes it from the
+              channel.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -720,20 +723,22 @@ export function ReleaseEditorSheet({
                     expectedRevision: release.revision,
                     releaseId: release.id,
                   });
-                  toast.success("Deployment deleted");
+                  toast.success(
+                    `Bundle removed from ${channelName ?? "the channel"}`,
+                  );
                   setConfirmDelete(false);
                   onOpenChange(false);
                 } catch (caught) {
                   setError(
                     caught instanceof Error
                       ? caught.message
-                      : "Deployment could not be deleted.",
+                      : "Bundle could not be removed from the channel.",
                   );
                 }
               }}
               variant="destructive"
             >
-              Delete Deployment
+              Remove from channel
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -742,7 +747,7 @@ export function ReleaseEditorSheet({
       <Dialog onOpenChange={setShowPromote} open={showPromote}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Promote to Channel</DialogTitle>
+            <DialogTitle>Promote to channel</DialogTitle>
             <DialogDescription>
               Reuse this Bundle in another channel without copying its file.
             </DialogDescription>
@@ -770,7 +775,7 @@ export function ReleaseEditorSheet({
               </Select>
             </Field>
             <Field>
-              <FieldLabel>Source deployment</FieldLabel>
+              <FieldLabel>Current channel</FieldLabel>
               <Select
                 items={promoteActionItems}
                 onValueChange={(value) =>
@@ -828,7 +833,7 @@ export function ReleaseEditorSheet({
       <Dialog onOpenChange={setShowRollback} open={showRollback}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Roll Back Installed Devices</DialogTitle>
+            <DialogTitle>Roll back installed devices</DialogTitle>
             <DialogDescription>
               Move installed devices to a previous Bundle or the built-in app.
             </DialogDescription>
@@ -874,18 +879,18 @@ export function ReleaseEditorSheet({
                       : { toReleaseId: rollbackTarget }),
                   });
                   setShowRollback(false);
-                  toast.success("Rollback created");
+                  toast.success("Rollback published");
                 } catch (caught) {
                   setError(
                     caught instanceof Error
                       ? caught.message
-                      : "Rollback could not be created.",
+                      : "Rollback could not be published.",
                   );
                   setShowRollback(false);
                 }
               }}
             >
-              {rollback.isPending ? "Rolling back…" : "Roll Back Devices"}
+              {rollback.isPending ? "Rolling back…" : "Roll back devices"}
             </Button>
           </DialogFooter>
         </DialogContent>
