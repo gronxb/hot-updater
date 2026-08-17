@@ -465,21 +465,40 @@ export function ReleaseEditorSheet({
                       />
                     </Field>
                   )}
-                  <Field orientation="horizontal">
-                    <div>
-                      <FieldTitle>Enabled</FieldTitle>
-                      <FieldDescription>
-                        Disabled bundles are skipped during update selection.
-                      </FieldDescription>
+                  <Field>
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <FieldTitle>Enabled</FieldTitle>
+                        <FieldDescription>
+                          Turn off to stop new installs. Devices already using
+                          this Bundle stay on it.
+                        </FieldDescription>
+                      </div>
+                      <Switch
+                        aria-label="Enabled"
+                        checked={draft.enabled}
+                        name="enabled"
+                        onCheckedChange={(enabled) =>
+                          setDraft({ ...draft, enabled })
+                        }
+                      />
                     </div>
-                    <Switch
-                      aria-label="Enabled"
-                      checked={draft.enabled}
-                      name="enabled"
-                      onCheckedChange={(enabled) =>
-                        setDraft({ ...draft, enabled })
-                      }
-                    />
+                    <div className="flex flex-col gap-3 rounded-lg border bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-xs text-muted-foreground">
+                        To move installed devices back, choose a previous Bundle
+                        or the built-in app.
+                      </p>
+                      <Button
+                        className="shrink-0"
+                        disabled={busy}
+                        onClick={() => setShowRollback(true)}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        Roll Back Installed Devices…
+                      </Button>
+                    </div>
                   </Field>
                   <Field orientation="horizontal">
                     <div>
@@ -597,8 +616,7 @@ export function ReleaseEditorSheet({
                 <div>
                   <h3 className="text-sm font-semibold">Actions</h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Promote or roll back delivery without changing the Bundle
-                    file.
+                    Promote this Bundle to another channel or download its file.
                   </p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
@@ -626,13 +644,6 @@ export function ReleaseEditorSheet({
                       Download Bundle
                     </Button>
                   ) : null}
-                  <Button
-                    disabled={busy}
-                    onClick={() => setShowRollback(true)}
-                    variant="outline"
-                  >
-                    Roll Back
-                  </Button>
                 </div>
               </section>
 
@@ -857,19 +868,21 @@ export function ReleaseEditorSheet({
       <Dialog onOpenChange={setShowRollback} open={showRollback}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Roll Back Bundle</DialogTitle>
+            <DialogTitle>Roll Back Installed Devices</DialogTitle>
             <DialogDescription>
-              Restore a previous Bundle or the built-in app for this channel.
+              Create a newer, forced Release that moves installed devices to a
+              previous Bundle or the built-in app. Turning off Enabled only
+              stops new installs.
             </DialogDescription>
           </DialogHeader>
           <Field>
-            <FieldLabel>Rollback target</FieldLabel>
+            <FieldLabel htmlFor="rollback-target">Move devices to</FieldLabel>
             <Select
               items={rollbackItems}
               onValueChange={(value) => setRollbackTarget(value ?? "builtin")}
               value={rollbackTarget}
             >
-              <SelectTrigger>
+              <SelectTrigger id="rollback-target">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -914,7 +927,7 @@ export function ReleaseEditorSheet({
                 }
               }}
             >
-              {rollback.isPending ? "Creating…" : "Create Rollback"}
+              {rollback.isPending ? "Rolling back…" : "Roll Back Devices"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReleaseEditorSheet } from "./ReleaseEditorSheet";
 
 const preflight = vi.fn();
+const rollback = vi.fn();
 const update = vi.fn();
 
 const release = {
@@ -96,7 +97,7 @@ vi.mock("@/lib/api", () => ({
   useReleaseRollbackCandidatesQuery: () => ({ data: [] }),
   useRollbackReleaseMutation: () => ({
     isPending: false,
-    mutateAsync: vi.fn(),
+    mutateAsync: rollback,
   }),
   useUpdateReleaseMutation: () => ({ isPending: false, mutateAsync: update }),
 }));
@@ -108,6 +109,8 @@ describe("ReleaseEditorSheet", () => {
     releaseValue = release;
     preflight.mockReset();
     preflight.mockResolvedValue({});
+    rollback.mockReset();
+    rollback.mockResolvedValue({});
     update.mockReset();
     update.mockResolvedValue({});
   });
@@ -182,6 +185,46 @@ describe("ReleaseEditorSheet", () => {
 
     expect(screen.getByRole("dialog")).toBeDefined();
     expect(screen.getByText("Selected Cohorts")).toBeDefined();
+  });
+
+  it("distinguishes stopping new installs from rolling back installed devices", async () => {
+    render(
+      <ReleaseEditorSheet
+        channels={[{ id: "channel-1", name: "production" }]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={release.id}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "Turn off to stop new installs. Devices already using this Bundle stay on it.",
+      ),
+    ).toBeDefined();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Roll Back Installed Devices…",
+      }),
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Roll Back Installed Devices" }),
+    ).toBeDefined();
+    expect(
+      screen.getByText(/Turning off Enabled only stops new installs/),
+    ).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Roll Back Devices" }));
+
+    await waitFor(() =>
+      expect(rollback).toHaveBeenCalledWith({
+        expectedRevision: 2,
+        releaseId: "release-1",
+        toBundleId: null,
+      }),
+    );
   });
 
   it("keeps the draft and skips the update when preflight fails", async () => {
