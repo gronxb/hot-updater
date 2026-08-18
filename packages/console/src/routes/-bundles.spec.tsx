@@ -1,4 +1,4 @@
-import type { ReleaseRow } from "@hot-updater/plugin-core";
+import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
 import {
   cleanup,
   fireEvent,
@@ -73,10 +73,28 @@ const release = vi.hoisted(
       currentlyUnreachable: false,
     }) as ReleaseRow & { currentlyUnreachable: boolean },
 );
+const baseBundle = {
+  id: "019ff641-01eb-72ea-8a03-a28aef188d32",
+  platform: "ios",
+} as Bundle;
+const childBundle = {
+  id: "019ff642-01eb-72ea-8a03-a28aef188d33",
+  platform: "ios",
+} as Bundle;
 
 vi.mock("@/lib/api", () => ({
   useBundleChildCountsQuery: () => ({
-    data: { "019ff641-01eb-72ea-8a03-a28aef188d32": 0 },
+    data: { "019ff641-01eb-72ea-8a03-a28aef188d32": 1 },
+  }),
+  useBundleChildrenQuery: () => ({
+    data: [childBundle],
+    isError: false,
+    isPending: false,
+  }),
+  useBundleQuery: () => ({
+    data: baseBundle,
+    isError: false,
+    isPending: false,
   }),
   useChannelsQuery: () => ({
     data: [
@@ -177,6 +195,23 @@ describe("BundlesPage", () => {
     expect(state.getAttribute("title")).toBe(
       "No catalog segment or cohort selects this release first with the current delivery settings.",
     );
+  });
+
+  it("expands the base-to-patch relationship from the Bundle row", () => {
+    render(<BundlesPage />);
+    const row = screen.getByRole("row", {
+      name: "Open bundle 019ff641-01eb-72ea-8a03-a28aef188d32",
+    });
+
+    fireEvent.click(within(row).getByRole("button", { name: "Show Lineage" }));
+
+    expect(screen.getByText("Base bundle")).toBeDefined();
+    expect(screen.getByText("Patch bundles from this base")).toBeDefined();
+    expect(screen.getAllByText(childBundle.id).length).toBeGreaterThan(0);
+    expect(screen.getByText("bsdiff")).toBeDefined();
+    expect(
+      within(row).getByRole("button", { name: "Hide Lineage" }),
+    ).toBeDefined();
   });
 
   it("keeps the main Console filters and pagination summary", () => {

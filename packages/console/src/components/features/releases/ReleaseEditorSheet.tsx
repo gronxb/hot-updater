@@ -473,16 +473,9 @@ export function ReleaseEditorSheet({
                       />
                     </Field>
                     <Field>
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <FieldLabel htmlFor="release-rollout-percentage">
-                          Rollout percentage
-                        </FieldLabel>
-                        <RolloutCohortsDialog
-                          releaseId={release.id}
-                          rolloutCohortCount={draft.rolloutCohortCount}
-                          targetCohorts={draft.targetCohorts}
-                        />
-                      </div>
+                      <FieldLabel htmlFor="release-rollout-percentage">
+                        Rollout percentage
+                      </FieldLabel>
                       <RolloutPercentageInput
                         onChange={(rolloutCohortCount) =>
                           setDraft({ ...draft, rolloutCohortCount })
@@ -491,9 +484,16 @@ export function ReleaseEditorSheet({
                       />
                     </Field>
                     <Field>
-                      <FieldLabel htmlFor="release-cohort">
-                        Additional cohorts (optional)
-                      </FieldLabel>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <FieldLabel htmlFor="release-cohort">
+                          Additional cohorts (optional)
+                        </FieldLabel>
+                        <RolloutCohortsDialog
+                          releaseId={release.id}
+                          rolloutCohortCount={draft.rolloutCohortCount}
+                          targetCohorts={draft.targetCohorts}
+                        />
+                      </div>
                       <div className="flex gap-2">
                         <Input
                           autoComplete="off"

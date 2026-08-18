@@ -42,22 +42,24 @@ export function RolloutCohortsDialog({
   const hasTargetCohorts = normalizedTargetCohorts.length > 0;
   const isPartialRollout =
     normalizedRolloutCount > 0 && normalizedRolloutCount < NUMERIC_COHORT_SIZE;
+  const isFullRollout = normalizedRolloutCount === NUMERIC_COHORT_SIZE;
   const isMobile = useIsMobile();
 
-  if (!isPartialRollout) {
-    return null;
-  }
-
-  const rolloutCohorts = Array.from(
-    { length: NUMERIC_COHORT_SIZE },
-    (_, index) => index + 1,
-  ).filter(
-    (cohortValue) =>
-      getNumericCohortRolloutPosition(releaseId, cohortValue) <
-      normalizedRolloutCount,
-  );
+  const rolloutCohorts = isPartialRollout
+    ? Array.from(
+        { length: NUMERIC_COHORT_SIZE },
+        (_, index) => index + 1,
+      ).filter(
+        (cohortValue) =>
+          getNumericCohortRolloutPosition(releaseId, cohortValue) <
+          normalizedRolloutCount,
+      )
+    : [];
   const rolloutPercentage = (normalizedRolloutCount / 10).toFixed(1);
-  const excludedCount = NUMERIC_COHORT_SIZE - rolloutCohorts.length;
+  const selectedCount = isFullRollout
+    ? NUMERIC_COHORT_SIZE
+    : rolloutCohorts.length;
+  const excludedCount = NUMERIC_COHORT_SIZE - selectedCount;
 
   const dialogBody = (
     <div className="flex flex-col gap-4">
@@ -66,7 +68,7 @@ export function RolloutCohortsDialog({
           <CardHeader className="p-4">
             <CardDescription>Selected cohorts</CardDescription>
             <CardTitle className="font-mono text-2xl tabular-nums">
-              {rolloutCohorts.length}
+              {selectedCount}
             </CardTitle>
           </CardHeader>
         </Card>
@@ -86,17 +88,25 @@ export function RolloutCohortsDialog({
         </CardHeader>
         <CardContent className="p-4 pt-0">
           <div className="max-h-[50vh] overflow-y-auto overscroll-contain rounded-lg border bg-muted/20 p-3 sm:max-h-[45vh]">
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-8">
-              {rolloutCohorts.map((cohortValue) => (
-                <Badge
-                  className="justify-center font-mono tabular-nums"
-                  key={cohortValue}
-                  variant="outline"
-                >
-                  {cohortValue}
-                </Badge>
-              ))}
-            </div>
+            {isPartialRollout ? (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-8">
+                {rolloutCohorts.map((cohortValue) => (
+                  <Badge
+                    className="justify-center font-mono tabular-nums"
+                    key={cohortValue}
+                    variant="outline"
+                  >
+                    {cohortValue}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {isFullRollout
+                  ? `All ${NUMERIC_COHORT_SIZE} numeric cohorts are included.`
+                  : "No numeric cohorts are included."}
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -147,7 +157,7 @@ export function RolloutCohortsDialog({
             <DialogHeader className="shrink-0 border-b border-border/70 px-4 py-4">
               <DialogTitle>Rolled out cohorts</DialogTitle>
               <DialogDescription>
-                {rolloutPercentage}% includes {rolloutCohorts.length} of{" "}
+                {rolloutPercentage}% includes {selectedCount} of{" "}
                 {NUMERIC_COHORT_SIZE} numeric cohorts.
                 {hasTargetCohorts
                   ? " Additional cohorts are always included."
@@ -167,7 +177,7 @@ export function RolloutCohortsDialog({
             <DialogHeader>
               <DialogTitle>Rolled out cohorts</DialogTitle>
               <DialogDescription>
-                {rolloutPercentage}% includes {rolloutCohorts.length} of{" "}
+                {rolloutPercentage}% includes {selectedCount} of{" "}
                 {NUMERIC_COHORT_SIZE} numeric cohorts.
                 {hasTargetCohorts
                   ? " Additional cohorts are always included."
