@@ -10,10 +10,7 @@ version: "v0.22.0"
 Install the AWS plugin.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/aws hono dotenv
-```
-
-```package-install
+npm install @hot-updater/server @hot-updater/aws dotenv
 npm install @hot-updater/bare @hot-updater/standalone hot-updater --save-dev
 ```
 
@@ -29,13 +26,9 @@ S3_BUCKET_NAME=hot-updater
 HOT_UPDATER_AUTH_TOKEN=replace-with-a-secret
 ```
 
-Both the server and CLI snippets below load this file explicitly from the
-project root. Run their commands with the project root as the working
-directory.
-
 <Callout>
-  For S3-compatible services like Cloudflare R2, MinIO, and DigitalOcean Spaces,
-  set `S3_ENDPOINT` and use the region expected by that provider.
+For S3-compatible services like Cloudflare R2, MinIO, and DigitalOcean Spaces,
+set `S3_ENDPOINT` and use the region expected by that provider.
 </Callout>
 
 ## Hot Updater Configuration
@@ -63,33 +56,12 @@ export const hotUpdater = createHotUpdater({
   database: s3Database(s3Config),
   storages: [s3Storage(s3Config)],
   basePath: "/hot-updater",
-  routes: {
-    updateCheck: true,
-    bundles: true,
-  },
+  routes: { updateCheck: true, bundles: true },
 });
 ```
 
-Management routes must fail closed before the handler is mounted. For
-example, with Hono:
-
-```typescript title="src/index.ts (excerpt)"
-import { bearerAuth } from "hono/bearer-auth";
-
-import { hotUpdater } from "./hotUpdater";
-
-const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
-if (!managementToken) {
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
-}
-
-app.use("/hot-updater/api/*", bearerAuth({ token: managementToken }));
-app.mount("/hot-updater", hotUpdater.handler);
-```
-
-Update-check routes remain public; only `/hot-updater/api/*` is protected.
-This is the same fail-closed management middleware pattern used by the
-[Quick Start](../quick-start).
+Protect `/hot-updater/api/*` with fail-closed authentication before mounting
+the management routes. See [Security Settings](../quick-start#security-settings).
 
 ## Schema Management
 
@@ -97,8 +69,8 @@ No schema generation or migration command is required. `s3Database` stores
 bundle metadata as JSON objects in your S3 bucket.
 
 <Callout type="warn">
-  Make sure the server credentials can list, read, write, and delete objects in
-  the metadata bucket.
+Make sure the server credentials can list, read, write, and delete objects in
+the metadata bucket.
 </Callout>
 
 ## CLI Configuration
@@ -132,34 +104,31 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
-    commonHeaders: {
-      Authorization: `Bearer ${managementToken}`,
-    },
+    commonHeaders: { Authorization: `Bearer ${managementToken}` },
   }),
   updateStrategy: "appVersion",
 });
 ```
 
 <Callout type="warn">
-  The `storage` plugin must match the `storages` in your server's
-  `createHotUpdater`. Both use `s3Storage` in this example.
+The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
 </Callout>
 
 ## API Endpoints
 
-The server automatically creates these endpoints:
+With the route groups enabled above, the server creates these endpoints:
 
-| Method | Endpoint                                                                              | Description                                      |
-| ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| GET    | `/hot-updater/version`                                                                | Get server version                               |
-| GET    | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint                 |
-| GET    | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId`         | Check for updates by app version                 |
-| GET    | `/hot-updater/api/bundles`                                                            | List bundles; see the standalone server contract |
-| GET    | `/hot-updater/api/bundles/:id`                                                        | Get bundle by ID                                 |
-| POST   | `/hot-updater/api/bundles`                                                            | Create bundles                                   |
-| PATCH  | `/hot-updater/api/bundles/:id`                                                        | Update a bundle                                  |
-| DELETE | `/hot-updater/api/bundles/:id`                                                        | Delete bundle                                    |
-| GET    | `/hot-updater/api/bundles/channels`                                                   | List all channels                                |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/hot-updater/version` | Get server version |
+| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
+| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
+| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
+| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
+| POST | `/hot-updater/api/bundles` | Create bundles |
+| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
+| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
+| GET | `/hot-updater/api/bundles/channels` | List all channels |
 
 See the [standalone server contract](/docs/database-plugins/standalone#list-bundles-contract)
-for the complete list-query parameters, encodings, and response shape.
+for the complete list-query encoding.

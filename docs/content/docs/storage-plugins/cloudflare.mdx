@@ -12,25 +12,20 @@ npm install @hot-updater/cloudflare
 
 ## Setup
 
-The easiest way to provision R2, D1, and the managed update worker is:
+The easiest way to set up your backend is using the init command:
 
 ```package-install
 npx hot-updater init
 ```
 
-See the [managed Cloudflare guide](/docs/managed/cloudflare) for the resources
-and environment variables created by this command.
+This interactive command will guide you through the setup process. For details on what the init command does, see the [Cloudflare](/docs/managed/cloudflare) documentation.
 
-For manual setup, create R2 S3-compatible credentials with **Object Read &
-Write** access. You need the Access Key ID and Secret Access Key, not a regular
-Cloudflare API token. See the [Cloudflare R2 API token
-guide](https://developers.cloudflare.com/r2/api/tokens/).
+For manual configuration, use the settings below.
+
+Create R2 S3-compatible credentials from the Cloudflare R2 API token page or
+follow the [Cloudflare R2 API token guide](https://developers.cloudflare.com/r2/api/tokens/).
 
 ## Configuration
-
-### S3-compatible credentials
-
-This is the recommended configuration:
 
 ```typescript
 interface R2S3StorageConfig {
@@ -44,13 +39,8 @@ interface R2S3StorageConfig {
 }
 ```
 
-`R2S3StorageConfig` also accepts AWS SDK `S3ClientConfig` options when you need
-to customize the client. By default, `r2Storage` derives the R2 endpoint from
-`accountId`, uses region `auto`, and enables path-style requests.
-
-### Legacy Wrangler configuration
-
-The previous configuration remains available for backward compatibility:
+The previous Wrangler configuration remains available for backward
+compatibility. It supports only deploy-time (`node`) operations:
 
 ```typescript
 interface R2WranglerStorageConfig {
@@ -62,17 +52,9 @@ interface R2WranglerStorageConfig {
 }
 ```
 
-<Callout type="warn">
-  Do not use the Wrangler configuration for new projects. It is slower, supports
-  only the `node` profile, and cannot serve bundle URLs from a self-hosted
-  `createHotUpdater` runtime.
-</Callout>
+## Usage
 
-## Deploy Configuration
-
-Configure the root package in `hot-updater.config.ts`:
-
-```typescript title="hot-updater.config.ts"
+```typescript
 import { r2Storage } from "@hot-updater/cloudflare";
 import { defineConfig } from "hot-updater";
 
@@ -89,14 +71,10 @@ export default defineConfig({
 });
 ```
 
-The S3-compatible path uploads, downloads, checks, and deletes R2 objects
-directly. It does not invoke Wrangler for each object operation.
+## Runtime Usage
 
-## Self-hosted Runtime
-
-The root `r2Storage` export also implements the `runtime` profile when you
-provide S3-compatible credentials. Use the same bucket configuration in a
-Node.js or compatible server runtime:
+With S3-compatible credentials, the root `r2Storage` export implements both the
+deploy-time (`node`) and self-hosted (`runtime`) profiles:
 
 ```typescript title="src/hotUpdater.ts"
 import { r2Storage } from "@hot-updater/cloudflare";
@@ -113,50 +91,21 @@ const storage = r2Storage({
 
 export const hotUpdater = createHotUpdater({
   storages: [storage],
-  // ... database and route options
+  // ... other options
 });
 ```
 
-At runtime, the plugin creates presigned download URLs and reads small metadata
-objects directly through the R2 S3-compatible API.
+Cloudflare Worker deployments use the binding-based export from
+`@hot-updater/cloudflare/worker`.
 
-Cloudflare Worker deployments use the R2 binding implementation exported from
-`@hot-updater/cloudflare/worker`. The [managed Cloudflare
-guide](/docs/managed/cloudflare) configures that runtime for you.
+## Limitations
 
-## Migrating from Wrangler
-
-Replace `cloudflareApiToken` in the storage configuration with R2 credentials:
-
-```typescript
-r2Storage({
-  accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-  bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
-  credentials: {
-    accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
-  },
-});
-```
-
-The Cloudflare API token is still used by `d1Database`; only the R2 storage
-configuration moves to S3-compatible credentials.
-
-## Maintenance
-
-`r2Storage` does not implement the object-listing capability required by
-`hot-updater storage prune`. Deploy, update checks, promotion, and exact object
-deletion remain supported.
-
-If storage-wide pruning is a requirement for a new deployment, you can use
-[`s3Storage`](/docs/storage-plugins/aws) with the same R2 S3-compatible
-credentials. It stores `s3://` URIs instead of `r2://` URIs, so do not switch an
-existing deployment without planning for its previously stored records. See
-the [Storage Cleanup guide](/docs/guides/storage-cleanup) for details.
+- S3-compatible credentials are required for the root export's runtime profile.
+- Legacy configs with `cloudflareApiToken` use Wrangler and support only the
+  node profile.
 
 ## Protocol
 
-`r2://<bucket>/<key>`
+`r2://`
 
-The database stores this URI in the `storageUri` field. The configured bucket
-must match the bucket encoded in the URI.
+This prefix is stored in the `storageUri` field in the database.

@@ -8,7 +8,7 @@ icon: cloudflare
 ## Installation
 
 ```package-install
-npm install @hot-updater/cloudflare --save-dev
+npm install @hot-updater/cloudflare @hot-updater/aws --save-dev
 ```
 
 ## Setup
@@ -27,58 +27,60 @@ For manual configuration, use the settings below.
 
 ```typescript
 interface D1DatabaseConfig {
-  databaseId: string; // D1 database ID
-  accountId: string; // Cloudflare account ID
-  cloudflareApiToken: string; // Cloudflare API token
+  databaseId: string;           // D1 database ID
+  accountId: string;            // Cloudflare account ID
+  cloudflareApiToken: string;   // Cloudflare API token
 }
 ```
 
 ## Usage
 
-```typescript title="hot-updater.config.ts (excerpt)"
-import { d1Database } from "@hot-updater/cloudflare";
-import { defineConfig } from "hot-updater";
-import { build } from "./build";
-import { storage } from "./storage";
+```typescript
+import { build } from './build';
+import { d1Database } from '@hot-updater/cloudflare';
+import { defineConfig } from 'hot-updater';
+import { storage } from './storage';
 
 export default defineConfig({
   build,
   database: d1Database({
     databaseId: process.env.D1_DATABASE_ID!,
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
-    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN!,
+    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN!
   }),
   storage,
-  updateStrategy: "appVersion",
+  updateStrategy: 'appVersion',
+  // ... other config
 });
 ```
 
-## R2 Storage and D1 Database
+## Complete Example
 
-Use the native R2 storage and D1 database plugins together. This is a provider
-excerpt: the local `build` import represents your chosen build plugin. Change
-the update strategy if your project uses fingerprints.
+Combined R2 storage and D1 database:
 
-```typescript title="hot-updater.config.ts (excerpt)"
-import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-import { defineConfig } from "hot-updater";
-import { build } from "./build";
+```typescript
+import { d1Database } from '@hot-updater/cloudflare';
+import { s3Storage } from '@hot-updater/aws';
+import { defineConfig } from 'hot-updater';
+import { build } from './build';
 
 export default defineConfig({
   build,
-  storage: r2Storage({
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
-    bucketName: "my-r2-bucket",
+  storage: s3Storage({
+    region: 'auto',
+    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID!}.r2.cloudflarestorage.com`,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!
     },
+    bucketName: 'my-r2-bucket'
   }),
   database: d1Database({
     databaseId: process.env.D1_DATABASE_ID!,
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
-    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN!,
+    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN!
   }),
-  updateStrategy: "appVersion",
+  updateStrategy: 'appVersion',
+  // ... other config
 });
 ```

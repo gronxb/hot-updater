@@ -12,7 +12,7 @@
     "db:push": "npx prisma db push"
   },
   "devDependencies": {
-    "@hot-updater/cloudflare": "workspace:*",
+    "@hot-updater/aws": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",

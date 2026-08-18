@@ -1,139 +1,146 @@
 # Hot Updater Server with Hono + PGlite
 
-This workspace example runs the v0 Hot Updater server contract with Hono,
-PGlite, and Kysely. PGlite persists its PostgreSQL-compatible data in
-`./data`; no separate PostgreSQL server is required.
+A production-ready Hot Updater server example using:
+- **Hono** - Fast web framework
+- **PGlite** - Lightweight PostgreSQL in Node.js (no server required)
+- **Kysely** - Type-safe SQL query builder
+- **Hot Updater schema migrations** - Versioned schema setup through the CLI
+
+## Features
+
+- ✅ No PostgreSQL server needed (uses PGlite)
+- ✅ File-based persistence
+- ✅ Explicit schema migration
+- ✅ RESTful API endpoints
+- ✅ CORS enabled
+- ✅ Request logging
+- ✅ Graceful shutdown
 
 ## Setup
 
-Install workspace dependencies from the repository root, then enter this
-example:
-
+1. Install dependencies:
 ```bash
 pnpm install
-cd examples-server/hono-kysely-pglite
 ```
 
-Copy the documented server environment file to the path loaded by
-`src/db.ts`:
-
+2. Configure environment variables:
 ```bash
 cp .env.example src/.env.hotupdater
+# Edit src/.env.hotupdater with your auth and storage credentials
 ```
 
-Set a strong `HOT_UPDATER_AUTH_TOKEN` and valid R2 credentials in that
-file. Management requests fail closed when the token is unset or incorrect.
-
-Apply the checked-in Hot Updater migrations before starting the server:
-
+3. Apply the Hot Updater schema:
 ```bash
 pnpm exec hot-updater db migrate src/db.ts --yes
+```
+
+The server does not apply migrations on startup.
+
+4. Start development server:
+```bash
 pnpm dev
 ```
 
-The server listens on `http://localhost:3000`. Startup does not apply
-database migrations automatically.
+The server will start on http://localhost:3000
 
-## Routes
+## API Endpoints
 
-Health check:
-
+### Health Check
 ```bash
-curl http://localhost:3000/
+GET /
 ```
 
-App-version update check (public):
-
+### Check for Updates
 ```bash
-curl "http://localhost:3000/hot-updater/app-version/ios/1.0.0/production/0/0"
+GET /hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId
+GET /hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId
 ```
 
-Fingerprint update check (public):
-
+### List Bundles
 ```bash
-curl "http://localhost:3000/hot-updater/fingerprint/ios/YOUR_FINGERPRINT/production/0/0"
+GET /hot-updater/api/bundles?channel=production&platform=ios&limit=50
+Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>
 ```
 
-List bundles (Bearer token required):
-
-Replace `<HOT_UPDATER_AUTH_TOKEN>` below with the value configured in
-`src/.env.hotupdater`; that file is loaded by the server, not exported to your
-shell.
-
+### Create Bundle
 ```bash
-curl \
-  -H "Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>" \
-  "http://localhost:3000/hot-updater/api/bundles?channel=production&platform=ios&limit=50"
+POST /hot-updater/api/bundles
+Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>
+Content-Type: application/json
+
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "platform": "ios",
+  "targetAppVersion": "1.0.0",
+  "channel": "production",
+  "enabled": true,
+  "shouldForceUpdate": false,
+  "fileHash": "abc123",
+  "storageUri": "s3://bucket/bundles/bundle.zip",
+  "message": "Initial release",
+  "gitCommitHash": null,
+  "fingerprintHash": null
+}
 ```
 
-Create a bundle. The v0 create route accepts an array of full bundle objects:
-
+### Delete Bundle
 ```bash
-curl -X POST \
-  -H "Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>" \
-  -H "Content-Type: application/json" \
-  http://localhost:3000/hot-updater/api/bundles \
-  --data '[
-    {
-      "id": "550e8400-e29b-41d4-a716-446655440000",
-      "platform": "ios",
-      "targetAppVersion": "1.0.0",
-      "channel": "production",
-      "enabled": true,
-      "shouldForceUpdate": false,
-      "fileHash": "abc123",
-      "storageUri": "r2://your-bucket-name/bundles/bundle.zip",
-      "message": "Initial release",
-      "gitCommitHash": null,
-      "fingerprintHash": null,
-      "metadata": {}
-    }
-  ]'
+DELETE /hot-updater/api/bundles/:id
+Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>
 ```
 
-List channels:
-
+### List Channels
 ```bash
-curl \
-  -H "Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>" \
-  http://localhost:3000/hot-updater/api/bundles/channels
+GET /hot-updater/api/bundles/channels
+Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>
 ```
 
-Delete a bundle:
+## Project Structure
 
-```bash
-curl -X DELETE \
-  -H "Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>" \
-  http://localhost:3000/hot-updater/api/bundles/550e8400-e29b-41d4-a716-446655440000
+```
+hono-server/
+├── src/
+│   ├── index.ts      # Main server entry point
+│   ├── db.ts         # Database setup (PGlite + Kysely + Hot Updater)
+│   └── routes.ts     # API routes
+├── data/             # PGlite database files (gitignored)
+├── package.json
+└── tsconfig.json
 ```
 
-Omitting the header, using the wrong token, or leaving
-`HOT_UPDATER_AUTH_TOKEN` unset returns `401` for management
-routes. Public update-check routes remain reachable.
+## Database
 
-## Storage and Persistence
+The server uses PGlite with file-based storage in `./data`.
+The database schema is generated from Hot Updater's versioned schema and
+migrated through the Hot Updater CLI.
 
-The example registers mock storage for local tests and Cloudflare R2 for real
-artifacts with these variables:
+## Storage Configuration
+
+The example uses Cloudflare R2 through its S3-compatible endpoint. Configure
+the `s3Storage` credentials with:
 
 ```env
-CLOUDFLARE_ACCOUNT_ID=your-cloudflare-account-id
-R2_ACCESS_KEY_ID=your-access-key-id
-R2_SECRET_ACCESS_KEY=your-secret-access-key
+R2_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=your-access-key
+R2_SECRET_ACCESS_KEY=your-secret-key
 R2_BUCKET_NAME=your-bucket-name
 ```
 
-PGlite stores database files in `./data`, relative to the example's
-working directory.
+You can also use other storage providers by modifying `src/db.ts`.
 
 ## Production
 
+Build and run in production:
+
 ```bash
-pnpm exec hot-updater db migrate src/db.ts --yes
 pnpm build
+set -a
+. src/.env.hotupdater
+set +a
 node dist/src/index.js
 ```
 
-The compiled module does not load the source-tree `src/.env.hotupdater` file.
-Supply `PORT`, the management token, and R2 credentials through the deployment
-environment or process manager instead of copying secrets into `dist`.
+The compiled entry resolves its dotenv path under `dist/src`, so production
+must inject the environment externally as shown above. The checked-in
+`pnpm start` command still points to `dist/index.js`; use the emitted entry
+point above.

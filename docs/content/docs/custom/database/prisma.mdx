@@ -10,33 +10,28 @@ version: "v0.22.0"
 Install Prisma and initialize your project.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/cloudflare hono @prisma/client@6
-```
-
-```package-install
+npm install @hot-updater/server @hot-updater/aws @prisma/client@6
 npm install @hot-updater/bare @hot-updater/standalone hot-updater prisma@6 --save-dev
 ```
 
-Initialize a Prisma 6 SQLite project and generate the initial client:
-
+Initialize Prisma:
 ```bash
-npx prisma init \
-  --datasource-provider sqlite \
-  --generator-provider prisma-client-js \
-  --output ../generated/prisma
+npx prisma init --datasource-provider sqlite --generator-provider prisma-client-js
 npx prisma generate
 ```
 
-The initial generation is required because the Hot Updater schema command
-loads `src/hotUpdater.ts`, which imports and instantiates this client. For other
-databases, see [Prisma's database documentation](https://www.prisma.io/docs/orm/overview/databases).
+Keep the Prisma CLI, `@prisma/client`, and generated client on the same major
+version. The initial generate step is required before `src/hotUpdater.ts`
+imports the client.
+
+For other databases, see [Prisma's database documentation](https://www.prisma.io/docs/orm/overview/databases).
 
 ## Setup
 
 Create a database connection file:
 
 ```typescript title="src/prisma.ts"
-import { PrismaClient } from "../generated/prisma";
+import { PrismaClient } from "@prisma/client";
 
 export const prisma = new PrismaClient();
 ```
@@ -48,14 +43,15 @@ Create the Hot Updater instance:
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
-import { r2Storage } from "@hot-updater/cloudflare";
+import { s3Storage } from "@hot-updater/aws";
 import { prisma } from "./prisma";
 
 export const hotUpdater = createHotUpdater({
   database: prismaAdapter({ prisma, provider: "sqlite" }),
   storages: [
-    r2Storage({
-      accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+    s3Storage({
+      region: "auto",
+      endpoint: process.env.R2_ENDPOINT!,
       credentials: {
         accessKeyId: process.env.R2_ACCESS_KEY_ID!,
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -64,57 +60,37 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
-  routes: {
-    updateCheck: true,
-    bundles: true,
-  },
+  routes: { updateCheck: true, bundles: true },
 });
 ```
 
-Management routes must fail closed before the handler is mounted. For
-example, with Hono:
-
-```typescript title="src/index.ts (excerpt)"
-import { bearerAuth } from "hono/bearer-auth";
-
-import { hotUpdater } from "./hotUpdater";
-
-const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
-if (!managementToken) {
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
-}
-
-app.use("/hot-updater/api/*", bearerAuth({ token: managementToken }));
-app.mount("/hot-updater", hotUpdater.handler);
-```
-
-Update-check routes remain public; only `/hot-updater/api/*` is protected.
+Protect `/hot-updater/api/*` with fail-closed authentication before mounting
+the management routes. See [Security Settings](../quick-start#security-settings).
 
 ## Schema Generation
 
-Generate and merge the Hot Updater models into
-`prisma/schema.prisma`:
+Generate the Prisma schema for Hot Updater tables.
 
 ```bash
 npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
-The generator preserves your datasource, client generator, and application
-models while replacing the managed Hot Updater block. Do not copy a
-handwritten model excerpt: the generated block includes the current
-`bundles`, `bundle_patches`, and internal settings delegates
-required by the adapter.
+This command merges or replaces the Hot Updater-managed block in
+`prisma/schema.prisma` while preserving your datasource, generator, and app
+models.
 
 <Callout>
-  Need to generate SQL without config? See [SQL
-  Export](/docs/custom/database/sql-export) for standalone SQL generation with
-  the `--sql` flag.
+Need to generate SQL without config? See [SQL Export](/docs/custom/database/sql-export) for standalone SQL generation with the `--sql` flag.
 </Callout>
 
-Regenerate Prisma Client with the merged models, then apply the schema:
-
+Generate Prisma Client:
 ```bash
 npx prisma generate
+```
+
+Apply the schema to the development database:
+
+```bash
 npx prisma db push
 ```
 
@@ -127,7 +103,7 @@ Configure your CLI to use this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
-import { r2Storage } from "@hot-updater/cloudflare";
+import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
@@ -138,8 +114,9 @@ if (!managementToken) {
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  storage: r2Storage({
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT!,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -148,31 +125,28 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
-    commonHeaders: {
-      Authorization: `Bearer ${managementToken}`,
-    },
+    commonHeaders: { Authorization: `Bearer ${managementToken}` },
   }),
   updateStrategy: "appVersion",
 });
 ```
 
 <Callout type="warn">
-  The `storage` plugin must match the `storages` in your server's
-  `createHotUpdater`. Both use `r2Storage` in this example.
+The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
 </Callout>
 
 ## API Endpoints
 
-The server automatically creates these endpoints:
+With the route groups enabled above, the server creates these endpoints:
 
-| Method | Endpoint                                                                              | Description                                                         |
-| ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| GET    | `/hot-updater/version`                                                                | Get server version                                                  |
-| GET    | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint                                    |
-| GET    | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId`         | Check for updates by app version                                    |
-| GET    | `/hot-updater/api/bundles`                                                            | List bundles (query: channel, platform, limit, page, after, before) |
-| GET    | `/hot-updater/api/bundles/:id`                                                        | Get bundle by ID                                                    |
-| POST   | `/hot-updater/api/bundles`                                                            | Create bundles                                                      |
-| PATCH  | `/hot-updater/api/bundles/:id`                                                        | Update a bundle                                                     |
-| DELETE | `/hot-updater/api/bundles/:id`                                                        | Delete bundle                                                       |
-| GET    | `/hot-updater/api/bundles/channels`                                                   | List all channels                                                   |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/hot-updater/version` | Get server version |
+| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
+| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
+| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
+| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
+| POST | `/hot-updater/api/bundles` | Create bundles |
+| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
+| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
+| GET | `/hot-updater/api/bundles/channels` | List all channels |

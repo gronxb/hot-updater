@@ -7,12 +7,10 @@ version: "v0.22.0"
 
 ## Installation
 
-Install the server and storage packages as application dependencies. Install
-the CLI, build, and standalone packages in the React Native project that runs
-deploy commands.
+Install the server package and standalone plugin.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/cloudflare
+npm install @hot-updater/server @hot-updater/aws
 npm install @hot-updater/bare @hot-updater/standalone hot-updater --save-dev
 ```
 
@@ -21,7 +19,6 @@ npm install @hot-updater/bare @hot-updater/standalone hot-updater --save-dev
 Self-hosted mode lets you control the database layer while using existing cloud storage plugins.
 
 **How it works:**
-
 - **CLI**: Uses `standaloneRepository` in hot-updater.config.ts to send requests to your server
 - **Server**: Handles database operations with `@hot-updater/server`
 - **Storage**: Uses existing plugins (AWS S3, Supabase, Cloudflare R2, Firebase)
@@ -34,19 +31,15 @@ Configure your Hot Updater CLI to use the self-hosted database.
 
 ```typescript title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
-import { r2Storage } from "@hot-updater/cloudflare";
+import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
-const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
-if (!managementToken) {
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
-}
-
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  storage: r2Storage({
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT!,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -55,9 +48,6 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
-    commonHeaders: {
-      Authorization: `Bearer ${managementToken}`,
-    },
   }),
   updateStrategy: "appVersion",
 });
@@ -75,37 +65,28 @@ directly from storage when bundle diffing data is available.
 3. When diffing data is available, the server reads it directly from storage so the client can reuse unchanged files
 4. React Native clients download the update files using the returned URLs
 
-The CLI `storage` field uses the `node` profile for upload, existence checks,
-delete, and local file downloads. Official storage plugins such as `r2Storage`
-provide both the `node` and `runtime` profiles. Other providers can expose
-different implementations for each environment behind the same storage URI
-format.
+The CLI `storage` field uses the `node` profile for upload/delete/local file
+download operations. A plugin such as `s3Storage` can support both profiles,
+while edge providers such as Cloudflare Workers may use a separate runtime
+plugin that reads from platform bindings.
 
 ### Multiple Storage Plugins
 
 `storages` is an array, allowing you to configure multiple storage providers simultaneously. Each plugin acts as a decoder for its specific storage URI format.
 
 **Use cases:**
-
 - Bundles stored across different storage providers
 - Migrating between storage providers (old and new bundles coexist)
 - Multi-region deployments with different storage backends
 
 **Example with multiple plugins:**
-
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
   storages: [
-    r2Storage({
-      /* Cloudflare R2 config */
-    }),
-    supabaseStorage({
-      /* Supabase config */
-    }),
-    myCustomStorage({
-      /* My Custom Storage */
-    }),
+    s3Storage({ /* AWS S3 config */ }),
+    supabaseStorage({ /* Supabase config */ }),
+    myCustomStorage({ /* My Custom Storage */})
   ],
   basePath: "/hot-updater",
 });
@@ -129,11 +110,7 @@ specify both configurable route groups.
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
-  storages: [
-    r2Storage({
-      /* storage config */
-    }),
-  ],
+  storages: [s3Storage({ /* storage config */ })],
   basePath: "/hot-updater",
   routes: {
     updateCheck: true,
@@ -148,11 +125,7 @@ If you want to hide bundle management endpoints but keep `/version`, disable the
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
-  storages: [
-    r2Storage({
-      /* storage config */
-    }),
-  ],
+  storages: [s3Storage({ /* storage config */ })],
   basePath: "/hot-updater",
   routes: {
     updateCheck: true,
@@ -167,25 +140,21 @@ export const hotUpdater = createHotUpdater({
 For most use cases, use only the storage plugin that matches your CLI's `hot-updater.config.ts`.
 
 **CLI (hot-updater.config.ts):**
-
 ```typescript
-storage: r2Storage({ ... })
+storage: s3Storage({ ... })
 ```
 
 **Server (src/hotUpdater.ts):**
-
 ```typescript
-storages: [r2Storage({ ... })]
+storages: [s3Storage({ ... })]
 ```
 
 This ensures consistency and simplifies configuration. Only use multiple plugins when you need to support bundles from different storage providers.
-
 </Callout>
 
 **Available official plugins:**
-
-- [r2Storage](../storage-plugins/cloudflare) - Cloudflare R2
 - [s3Storage](../storage-plugins/aws) - AWS S3 and S3-compatible storage
+- [r2Storage](../storage-plugins/cloudflare) - Cloudflare R2
 - [supabaseStorage](../storage-plugins/supabase) - Supabase Storage
 - [firebaseStorage](../storage-plugins/firebase) - Firebase Cloud Storage
 
@@ -214,5 +183,5 @@ After configuring your database, choose the framework that fits your stack:
 - **Database control**: PostgreSQL, SQLite, or MongoDB on your infrastructure
 - **Cloud storage**: Leverage existing AWS S3, Cloudflare R2, Supabase, or Firebase storage
 - **Type safety**: Full TypeScript support across all adapters
-- **Operational control**: Add framework-specific authentication, lifecycle,
-  and error handling for your deployment environment
+- **Lifecycle ownership**: Handle authentication, close database clients, and
+  implement graceful shutdown and error handling in your hosting framework

@@ -1,76 +1,29 @@
 ---
 title: "Native Build (alpha)"
-description: "Compile Android artifacts and try experimental iOS and device-run helpers from the CLI."
+description: "Compile and run Android and iOS builds from the CLI."
 icon: Hammer
 ---
 
-## Command Status
+## Overview
 
-`build:android` is available by default. The other native helpers are
-experimental and appear only when `EXPERIMENTAL=1` is set.
-
-| Command         | Status       | Result                                                                                |
-| --------------- | ------------ | ------------------------------------------------------------------------------------- |
-| `build:android` | Available    | Builds an APK/AAB and copies the build directory to the artifact output path.         |
-| `build:ios`     | Experimental | Builds an archive/app/IPA and copies the build directory to the artifact output path. |
-| `run:android`   | Experimental | Builds, installs, and launches the app on an Android device or emulator.              |
-| `run:ios`       | Experimental | Builds, installs, and launches the app on an Apple device or simulator.               |
-
-The `run:*` commands act directly on a target. They do not run build-plugin
-native hooks or copy artifacts to `.hot-updater/output`.
+Hot Updater ships dedicated native helpers so you can create store-ready artifacts or boot the app on a device without leaving the CLI. `build:android` is available by default. `build:ios`, `run:android`, and `run:ios` are experimental and require `EXPERIMENTAL=1`. The `build:*` commands copy artifacts into a predictable output directory; `run:*` builds, installs, and launches directly without copying artifacts.
 
 ## Prerequisites
 
-- A React Native project with the platform directory you plan to build.
-- The local platform toolchain: Gradle/Android SDK or Xcode, CocoaPods, and
-  `devicectl`/`simctl`.
-- At least one named scheme under `nativeBuild.android` or
-  `nativeBuild.ios`.
-- A configured `updateStrategy`. Native builds refresh fingerprint metadata
-  for the fingerprint strategy and read the native app version for
-  `appVersion`.
+- React Native project with the platform directory you plan to build.
+- `hot-updater.config.ts` defines at least one scheme under `nativeBuild.android` and/or `nativeBuild.ios`.
+- Platform toolchains are installed locally (`gradlew`, `xcodebuild`, CocoaPods (or Bundler), `devicectl`/`simctl`).
+- Run `hot-updater channel set <channel>` so the channel exists in Info.plist or application-level AndroidManifest metadata.
+- Decide on an update strategy (`appVersion` or `fingerprint`); the CLI follows it automatically.
 
-Set the default channel before a store build:
+## Configure nativeBuild schemes
 
-```package-install
-npx hot-updater channel set production
-```
-
-On Android, the command writes application-level metadata in
-`AndroidManifest.xml`:
-
-```xml title="android/app/src/main/AndroidManifest.xml"
-<application ...>
-  <meta-data
-    android:name="com.hotupdater.CHANNEL"
-    android:value="production" />
-</application>
-```
-
-Hot Updater discovers Android manifests automatically. For non-standard
-projects or multiple variants, configure them explicitly:
-
-```ts title="hot-updater.config.ts"
-platform: {
-  android: {
-    androidManifestPaths: [
-      "android/app/src/main/AndroidManifest.xml",
-      "android/app/src/internal/AndroidManifest.xml",
-    ],
-  },
-},
-```
-
-`stringResourcePaths` and the old `strings.xml` keys remain available only
-as a deprecated read fallback for older projects.
-
-## Configure Native Build Schemes
+Schemes describe how each platform should be built. Define as many as needed (debug APK, release AAB, AdHoc IPA, etc.) and reference them via `-s/--scheme`.
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  // ... build, storage, database, and updateStrategy
   nativeBuild: {
     android: {
       releaseApk: {
@@ -80,10 +33,10 @@ export default defineConfig({
       },
       internalAab: {
         packageName: "com.example.app",
-        applicationId: "com.example.app.internal",
         variant: "InternalRelease",
-        appModuleName: "app",
         aab: true,
+        appModuleName: "app",
+        applicationId: "com.example.app.internal",
       },
     },
     ios: {
@@ -98,82 +51,114 @@ export default defineConfig({
         bundleIdentifier: "com.example.app.dev",
         scheme: "ExampleApp",
         configuration: "Debug",
+        platform: "ios",
+        installPods: true,
         simulator: true,
       },
     },
   },
+  // …
 });
 ```
 
-### Android Scheme Options
+### Android scheme options
 
-| Field           | Description                                        | Default       |
-| --------------- | -------------------------------------------------- | ------------- |
-| `packageName`   | Android package name.                              | Required      |
-| `variant`       | Gradle build variant.                              | `Release`     |
-| `aab`           | Build `.aab` when `true`, otherwise `.apk`.        | `true`        |
-| `appModuleName` | Android application module.                        | `app`         |
-| `applicationId` | Application ID used to install and launch the app. | `packageName` |
+| Field | Description | Default |
+| --- | --- | --- |
+| `packageName` | Android application package name. | Required |
+| `variant` | Android application module build variant. | `Release` |
+| `aab` | Artifact type (`true` generates `.aab`, `false` generates `.apk`). | `true` |
+| `appModuleName` | Android application module name. | `app` |
+| `applicationId` | Android application ID. | same as `packageName` |
 
-### iOS Scheme Options
+### iOS scheme options
 
-| Field                | Description                                                                                | Default                    |
-| -------------------- | ------------------------------------------------------------------------------------------ | -------------------------- |
-| `bundleIdentifier`   | App bundle identifier.                                                                     | Required                   |
-| `scheme`             | Xcode scheme.                                                                              | Required                   |
-| `platform`           | Apple platform.                                                                            | `ios`                      |
-| `configuration`      | Xcode build configuration.                                                                 | `Release`                  |
-| `destination`        | Destination IDs, names, `ios-device`, or `ios-simulator`.                                  | `["generic/platform=iOS"]` |
-| `simulator`          | Convenience shortcut for a `build:ios` simulator build; do not combine with `destination`. | `false`                    |
-| `exportOptionsPlist` | Plist used to export an archive.                                                           | `undefined`                |
-| `xcconfig`           | Additional Xcode configuration file.                                                       | `undefined`                |
-| `installPods`        | Install CocoaPods dependencies before building.                                            | `false`                    |
-| `extraParams`        | Extra `xcodebuild` parameters.                                                             | `[]`                       |
-| `exportExtraParams`  | Extra `-exportArchive` parameters.                                                         | `[]`                       |
+| Field | Description | Default |
+| --- | --- | --- |
+| `bundleIdentifier` | The bundle identifier of the app. | Required |
+| `platform` | Apple platform for build & archive. | `ios` |
+| `scheme` | The Xcode scheme to build. | Required |
+| `configuration` | The build configuration to use. | `Release` |
+| `destination` | The destination for the build. | `['generic/platform=iOS']` |
+| `exportOptionsPlist` | Path to a plist file that specifies options for exporting the archive. | `undefined` |
+| `exportExtraParams` | Additional parameters for `exportArchive`. | `[]` |
+| `xcconfig` | Path to an `.xcconfig` file to include additional build settings. | `undefined` |
+| `installPods` | Automatically install CocoaPods dependencies before building. | `false` |
+| `simulator` | Build for an iOS simulator; do not combine with `destination`. | `false` |
+| `extraParams` | Additional parameters passed to `xcodebuild`. | `[]` |
 
-## Build Artifacts
 
-A scheme is required unless you use interactive mode.
+## CLI commands
+
+All commands require `-s/--scheme` unless `-i/--interactive` is used. Artifact output applies only to `build:*`.
+
+```
+Options:
+  -s, --scheme <scheme>           predefined scheme for the native build configuration
+  -o, --output-path <outputPath>  where build:* artifacts will be copied (default: .hot-updater/output/build/<platform>/<scheme>)
+  -i, --interactive               interactive mode (default: false)
+  -h, --help                      display help for command
+```
+
+### `hot-updater build:android`
+
+Assembles the selected Gradle variant and copies the resulting APK/AAB to the output directory.
 
 ```package-install
 npx hot-updater build:android -s releaseApk
+```
+
+- Generates `.apk` or `.aab` by option.
+
+### `hot-updater build:ios`
+
+This experimental command archives (and optionally exports) the selected scheme using `xcodebuild`, then copies the `.xcarchive`, `.app`, or `.ipa`.
+
+```package-install
 EXPERIMENTAL=1 npx hot-updater build:ios -s release
 ```
 
-Build commands support:
+- If `exportOptionsPlist` is present, an IPA export is performed; otherwise the `.xcarchive` and extracted `.app` are stored.
 
-```txt
--s, --scheme <scheme>           use a configured native-build scheme
--o, --output-path <outputPath>  copy the completed build directory here
--i, --interactive               select a scheme interactively
+### `hot-updater run:android`
+
+This experimental command builds an APK, installs it on target devices, and launches the main activity.
+
 ```
-
-The default output is
-`.hot-updater/output/build/<platform>/<scheme>`. Hot Updater recreates that
-directory for each build, so copy an artifact elsewhere if it must persist
-across builds.
-
-Only `build:*` runs the selected build plugin's `nativeBuild.prebuild` and
-`nativeBuild.postbuild` hooks, then copies the completed build directory.
-For iOS, `exportOptionsPlist` controls whether the archive is exported as an
-IPA.
-
-## Run on a Device or Simulator
-
-Both run commands are experimental:
+Options:
+  -d, --device [deviceName | deviceId]  specify the ADB device name or use default
+  --port <port>                         specify the port number
+  --app-id-suffix <appIdSuffix>         specify the app ID suffix
+```
 
 ```package-install
-EXPERIMENTAL=1 npx hot-updater run:android -s releaseApk -d emulator-5554
-EXPERIMENTAL=1 npx hot-updater run:ios -s simulatorDebug -d "iPhone 16 Pro"
+EXPERIMENTAL=1 npx hot-updater run:android -s debugApk -d "Pixel_6_Pro_API_35" --port 8082
 ```
 
-`run:android` accepts an ADB device ID or known emulator name. It also supports
-`--port <port>` for ADB reverse and `--app-id-suffix <suffix>`.
+- `-d` selects a specific device; otherwise all connected devices receive the build (or the CLI launches the first emulator).
+- `--port` forwards the Metro port before the app starts.
 
-`run:ios` accepts an available Apple device or simulator name, formatted name,
-or identifier. In interactive mode, `-d` lets you choose from discovered
-targets. Without a selected target, the command chooses an available target.
+### `hot-updater run:ios`
 
-The `run:*` flow prepares native metadata, builds the app, installs it, and
-launches it directly. Options such as `outputPath`, artifact copying, and
-build-plugin native hooks apply only to `build:*`.
+This experimental command builds for simulator or device, installs the app, and launches it.
+
+```
+Options:
+  -d, --device [deviceName | deviceId]  specify an Apple device/simulator name or identifier
+```
+
+```package-install
+EXPERIMENTAL=1 npx hot-updater run:ios -s simulatorDebug -d "iPhone 15 (iOS 17.5)"
+```
+
+- Works with `devicectl` (physical devices) and `simctl` (simulators); interactive mode lists everything discovered.
+- If no device is specified, the first available simulator is used and Simulator.app is opened automatically.
+
+## Artifact storage
+
+For `build:*`, artifacts default to `.hot-updater/output/build/<platform>/<scheme>`. The directory is recreated on every build, so copy artifacts elsewhere if you need to keep older output. Copying happens after build plugin hooks complete. The `run:*` commands do not run those hooks or copy artifacts.
+
+## Fingerprint and version awareness
+
+- `updateStrategy: "fingerprint"` regenerates `fingerprint.json` before the build and surfaces diffs from the last checked-in fingerprint.
+- `updateStrategy: "appVersion"` reads the native app version (`CFBundleShortVersionString` / `versionName`). Missing values stop the build so artifacts never ship with unknown versions.

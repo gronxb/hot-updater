@@ -44,12 +44,6 @@ directories exist, `doctor` checks:
   fingerprint hashes match it
 - Signing settings match native public key entries
 
-On Android, `doctor` reads application-level `AndroidManifest.xml` metadata:
-`com.hotupdater.CHANNEL`, `com.hotupdater.FINGERPRINT_HASH`, and
-`com.hotupdater.PUBLIC_KEY`. Configure non-standard locations with
-`platform.android.androidManifestPaths`. Legacy `strings.xml` entries are
-read only as a deprecated fallback through `stringResourcePaths`.
-
 If any required native setting is missing, rebuild-time OTA configuration is not
 healthy yet. Run the command shown by `doctor`, then rebuild the native app.
 

@@ -52,7 +52,6 @@ The default channel is the release channel embedded in your native app at build 
       ```
       </Tab>
     </Tabs>
-
   </Tab>
   <Tab value="Expo">
     For Expo, add the channel to the plugin configuration in your `app.json`
@@ -82,7 +81,6 @@ The default channel is the release channel embedded in your native app at build 
     ```package-install
     npx expo prebuild --clean
     ```
-
   </Tab>
 </Tabs>
 
@@ -108,7 +106,7 @@ export default defineConfig({
     android: {
       androidManifestPaths: [
         "android/app/src/main/AndroidManifest.xml",
-        "android/app/src/internal/AndroidManifest.xml", // Include another variant
+        "android/app/src/debug/AndroidManifest.xml", // Include additional variant files
       ],
     },
   },
@@ -121,9 +119,7 @@ This is useful when:
 - You have multiple Android build variants with different resource paths
 - Your project does not follow the standard React Native file structure
 
-`stringResourcePaths` is a deprecated read fallback for projects that still
-store Hot Updater values in `strings.xml`. New writes use application-level
-`AndroidManifest.xml` metadata and remove the corresponding legacy string.
+`stringResourcePaths` is a deprecated read fallback for projects that still store Hot Updater values in `strings.xml`. New writes use application-level `AndroidManifest.xml` metadata.
 
 **Important**: Configure these custom paths before running
 `hot-updater channel set` so all relevant files are updated with the new
@@ -145,7 +141,6 @@ After setting the channel, rebuild your app in Release mode:
     ```sh
     npx react-native run-android --mode Release
     ```
-
   </Tab>
   <Tab value="Rock">
     **iOS:**
@@ -157,7 +152,6 @@ After setting the channel, rebuild your app in Release mode:
     ```sh
     npx rock run:android --variant Release
     ```
-
   </Tab>
   <Tab value="Expo">
     **iOS:**
@@ -169,7 +163,6 @@ After setting the channel, rebuild your app in Release mode:
     ```sh
     npx expo run:android --variant release
     ```
-
   </Tab>
 </Tabs>
 

@@ -57,11 +57,10 @@ downloaded. No deploy flag is required for this behavior.
 
 Deploy also tries to prepare compatible `bsdiff` patches for the Hermes bundle.
 Binary patch generation is enabled by default and uses up to three compatible
-base bundles. Patch generation is best-effort; a skipped patch does not fail the
-deployment because the normal archive update remains available.
-
-Set `patch.enabled: false` in `hot-updater.config.ts` to disable binary patch
-generation. Use `patch.maxBaseBundles` to change the default base count of `3`.
+base bundles. Set `patch.enabled: false` to disable it, or change
+`patch.maxBaseBundles` from its default of `3`. Patch generation is best-effort;
+a skipped patch does not fail the deployment because the normal archive update
+remains available.
 
 See [Bundle Diffing](/docs/guides/bundle-diffing) for the runtime behavior and
 fallback rules.
@@ -156,17 +155,6 @@ npx hot-updater deploy -p <"ios" | "android"> -m "<message>"
 
 If you omit `-p`, the same message is applied to both sequential platform
 deploys.
-
-### Create a Disabled Bundle
-
-Use `-d` (or `--disabled`) to upload and persist a bundle without making it
-eligible for update checks:
-
-```package-install
-npx hot-updater deploy -p <"ios" | "android"> --disabled
-```
-
-Enable the bundle later from the console or with `hot-updater bundle enable`.
 
 ## Force Update Flag Difference
 

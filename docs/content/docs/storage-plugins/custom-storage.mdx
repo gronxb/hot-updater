@@ -283,17 +283,6 @@ export const customStorage = createUniversalStoragePlugin<CustomStorageConfig>({
           };
         },
 
-        async delete(storageUri) {
-          const { key } = parseAndValidateStorageUri(storageUri);
-
-          await client.send(
-            new DeleteObjectCommand({
-              Bucket: bucketName,
-              Key: key,
-            }),
-          );
-        },
-
         async exists(storageUri) {
           const { key } = parseAndValidateStorageUri(storageUri);
 
@@ -312,6 +301,17 @@ export const customStorage = createUniversalStoragePlugin<CustomStorageConfig>({
 
             throw error;
           }
+        },
+
+        async delete(storageUri) {
+          const { key } = parseAndValidateStorageUri(storageUri);
+
+          await client.send(
+            new DeleteObjectCommand({
+              Bucket: bucketName,
+              Key: key,
+            }),
+          );
         },
 
         async downloadFile(storageUri, filePath) {

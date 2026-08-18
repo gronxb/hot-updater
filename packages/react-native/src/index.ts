@@ -255,9 +255,7 @@ function createHotUpdaterClient() {
      * `HotUpdater.wrap` checks for updates at the entry point, and if there is a bundle to update, it downloads the bundle and applies the update strategy.
      *
      * @param {object} options - Configuration options
-     * @param {string | (() => string | Promise<string>)} [options.baseURL] - Update server URL
-     * @param {HotUpdaterResolver} [options.resolver] - Custom update resolver
-     * @param {"appVersion" | "fingerprint"} options.updateStrategy - Update strategy
+     * @param {string} options.source - Update server URL
      * @param {object} [options.requestHeaders] - Request headers
      * @param {React.ComponentType} [options.fallbackComponent] - Component to display during updates
      * @param {boolean} [options.reloadOnForceUpdate=true] - Whether to automatically reload the app on force updates
@@ -433,16 +431,16 @@ function createHotUpdaterClient() {
      * Manually checks for updates.
      *
      * @param {Object} config - Update check configuration
-     * @param {"appVersion" | "fingerprint"} config.updateStrategy - Update strategy
+     * @param {string} config.source - Update server URL
      * @param {string} [config.channel] - Optional channel override for this update check
      * @param {Record<string, string>} [config.requestHeaders] - Request headers
      *
-     * @returns {Promise<CheckForUpdateResult | null>} Update information with a pre-filled updateBundle callback, or null if up to date
+     * @returns {Promise<UpdateInfo | null>} Update information or null if up to date
      *
      * @example
      * ```ts
      * const updateInfo = await HotUpdater.checkForUpdate({
-     *   updateStrategy: "appVersion",
+     *   source: "<your-update-server-url>",
      *   requestHeaders: {
      *     Authorization: "Bearer <your-access-token>",
      *   },
@@ -453,7 +451,7 @@ function createHotUpdaterClient() {
      *   return;
      * }
      *
-     * await updateInfo.updateBundle();
+     * await HotUpdater.updateBundle(updateInfo.id, updateInfo.fileUrl);
      * if (updateInfo.shouldForceUpdate) {
      *   await HotUpdater.reload();
      * }
@@ -479,18 +477,16 @@ function createHotUpdaterClient() {
     /**
      * Updates the bundle of the app.
      *
-     * @param {UpdateParams} params - Parameters object required for bundle update
+     * @param {UpdateBundleParams} params - Parameters object required for bundle update
      * @param {string} params.bundleId - The bundle ID of the app
      * @param {string|null} params.fileUrl - The URL of the zip file
-     * @param {string|null} params.fileHash - The bundle hash or signature
-     * @param {"ROLLBACK" | "UPDATE"} params.status - The update status
      *
      * @returns {Promise<boolean>} Whether the update was successful
      *
      * @example
      * ```ts
      * const updateInfo = await HotUpdater.checkForUpdate({
-     *   updateStrategy: "appVersion",
+     *   source: "<your-update-server-url>",
      *   requestHeaders: {
      *     Authorization: "Bearer <your-access-token>",
      *   },
@@ -502,8 +498,10 @@ function createHotUpdaterClient() {
      *   };
      * }
      *
-     * // Prefer the callable result so channel and manifest-diff context is preserved.
-     * await updateInfo.updateBundle();
+     * await HotUpdater.updateBundle({
+     *   bundleId: updateInfo.id,
+     *   fileUrl: updateInfo.fileUrl
+     * });
      * if (updateInfo.shouldForceUpdate) {
      *   await HotUpdater.reload();
      * }

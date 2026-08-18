@@ -4,6 +4,7 @@ description: Build plugin for Expo projects. Bundles your Expo app using Expo's 
 icon: expo
 ---
 
+
 ## Installation
 
 ```package-install
@@ -14,8 +15,8 @@ npm install @hot-updater/expo --save-dev
 
 ```typescript
 interface ExpoPluginConfig {
-  outDir?: string; // Output directory (default: "dist")
-  sourcemap?: boolean; // Generate sourcemaps (default: false)
+  outDir?: string;      // Output directory (default: "dist")
+  sourcemap?: boolean;  // Generate sourcemaps (default: false)
   resetCache?: boolean; // Reset Metro cache before bundling (default: true)
 }
 ```
@@ -23,12 +24,12 @@ interface ExpoPluginConfig {
 ## Usage
 
 ```typescript
-import { expo } from "@hot-updater/expo";
-import { defineConfig } from "hot-updater";
+import { expo } from '@hot-updater/expo';
+import { defineConfig } from 'hot-updater';
 
 export default defineConfig({
   build: expo({
-    sourcemap: false,
+    sourcemap: false
   }),
   // ... other config
 });
@@ -44,8 +45,7 @@ Add the plugin to your `app.json` file as shown below:
     "plugins": [
       [
         "@hot-updater/react-native", // [!code ++]
-        {
-          // [!code ++]
+        { // [!code ++]
           "channel": "production" // [!code ++]
         } // [!code ++]
       ] // [!code ++]
@@ -79,8 +79,8 @@ module.exports = function (api) {
   api.cache(true);
 
   return {
-    presets: ["babel-preset-expo"],
-    plugins: ["@hot-updater/expo/babel-plugin"], // [!code ++]
+    presets: ['babel-preset-expo'],
+    plugins: ['@hot-updater/expo/babel-plugin'], // [!code ++]
   };
 };
 ```

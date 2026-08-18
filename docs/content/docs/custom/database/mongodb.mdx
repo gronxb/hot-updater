@@ -10,10 +10,7 @@ version: "v0.22.0"
 Install the MongoDB native driver.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/cloudflare hono mongodb
-```
-
-```package-install
+npm install @hot-updater/server @hot-updater/aws mongodb
 npm install @hot-updater/bare @hot-updater/standalone hot-updater --save-dev
 ```
 
@@ -37,14 +34,15 @@ Create the Hot Updater instance:
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
-import { r2Storage } from "@hot-updater/cloudflare";
+import { s3Storage } from "@hot-updater/aws";
 import { client } from "./mongodb";
 
 export const hotUpdater = createHotUpdater({
   database: mongoAdapter({ client }),
   storages: [
-    r2Storage({
-      accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+    s3Storage({
+      region: "auto",
+      endpoint: process.env.R2_ENDPOINT!,
       credentials: {
         accessKeyId: process.env.R2_ACCESS_KEY_ID!,
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -53,42 +51,23 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
-  routes: {
-    updateCheck: true,
-    bundles: true,
-  },
+  routes: { updateCheck: true, bundles: true },
 });
 ```
 
-Management routes must fail closed before the handler is mounted. For
-example, with Hono:
-
-```typescript title="src/index.ts (excerpt)"
-import { bearerAuth } from "hono/bearer-auth";
-
-import { hotUpdater } from "./hotUpdater";
-
-const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
-if (!managementToken) {
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
-}
-
-app.use("/hot-updater/api/*", bearerAuth({ token: managementToken }));
-app.mount("/hot-updater", hotUpdater.handler);
-```
-
-Update-check routes remain public; only `/hot-updater/api/*` is protected.
+Protect `/hot-updater/api/*` with fail-closed authentication before mounting
+the management routes. See [Security Settings](../quick-start#security-settings).
 
 ## Schema Generation
 
 Run the database migration to create the Hot Updater collections and indexes.
 
 ```bash
-npx hot-updater db migrate src/hotUpdater.ts --yes
+npx hot-updater db migrate src/hotUpdater.ts
 ```
 
-This command targets `src/hotUpdater.ts` and creates every collection
-and index required by the current Hot Updater schema.
+This command targets `src/hotUpdater.ts` and creates every collection and index
+required by the current Hot Updater schema.
 
 ## CLI Configuration
 
@@ -96,7 +75,7 @@ Configure your CLI to use this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
-import { r2Storage } from "@hot-updater/cloudflare";
+import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
@@ -107,8 +86,9 @@ if (!managementToken) {
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  storage: r2Storage({
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT!,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -117,31 +97,28 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
-    commonHeaders: {
-      Authorization: `Bearer ${managementToken}`,
-    },
+    commonHeaders: { Authorization: `Bearer ${managementToken}` },
   }),
   updateStrategy: "appVersion",
 });
 ```
 
 <Callout type="warn">
-  The `storage` plugin must match the `storages` in your server's
-  `createHotUpdater`. Both use `r2Storage` in this example.
+The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
 </Callout>
 
 ## API Endpoints
 
-The server automatically creates these endpoints:
+With the route groups enabled above, the server creates these endpoints:
 
-| Method | Endpoint                                                                              | Description                                                         |
-| ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| GET    | `/hot-updater/version`                                                                | Get server version                                                  |
-| GET    | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint                                    |
-| GET    | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId`         | Check for updates by app version                                    |
-| GET    | `/hot-updater/api/bundles`                                                            | List bundles (query: channel, platform, limit, page, after, before) |
-| GET    | `/hot-updater/api/bundles/:id`                                                        | Get bundle by ID                                                    |
-| POST   | `/hot-updater/api/bundles`                                                            | Create bundles                                                      |
-| PATCH  | `/hot-updater/api/bundles/:id`                                                        | Update a bundle                                                     |
-| DELETE | `/hot-updater/api/bundles/:id`                                                        | Delete bundle                                                       |
-| GET    | `/hot-updater/api/bundles/channels`                                                   | List all channels                                                   |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/hot-updater/version` | Get server version |
+| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
+| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
+| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
+| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
+| POST | `/hot-updater/api/bundles` | Create bundles |
+| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
+| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
+| GET | `/hot-updater/api/bundles/channels` | List all channels |

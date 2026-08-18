@@ -22,21 +22,15 @@ Use `createDatabasePlugin` to build custom database plugins:
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 
 export const myDatabase = createDatabasePlugin<MyConfig>({
-  name: "myDatabase", // Plugin identifier
+  name: "myDatabase",              // Plugin identifier
   factory: (config) => ({
     // Return these required methods:
-    getBundleById: async (bundleId) => {
-      /* ... */
-    },
+    getBundleById: async (bundleId) => { /* ... */ },
     getBundles: async (options) => ({ data: [], pagination: {} }),
     getChannels: async () => [],
-    commitBundle: async ({ changedSets }) => {
-      /* ... */
-    },
-    onUnmount: async () => {
-      /* optional cleanup */
-    },
-  }),
+    commitBundle: async ({ changedSets }) => { /* ... */ },
+    onUnmount: async () => { /* optional cleanup */ }
+  })
 });
 ```
 
@@ -52,12 +46,9 @@ Your factory function must return an object with these methods:
   // Optional but recommended: direct update-check fast path
   getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;
 
-  // Set this only when getBundles implements cursor boundaries itself
-  supportsCursorPagination?: boolean;
-
-  // Fetch paginated bundles with the complete DatabaseBundleQueryOptions
+  // Fetch paginated bundles with optional filtering
   getBundles: (
-    options: DatabaseBundleQueryOptions & { offset?: number },
+    options: DatabaseBundleQueryOptions & { offset?: number }
   ) => Promise<Paginated<Bundle[]>>;
 
   // Get all available channels
@@ -90,6 +81,7 @@ Here's a complete custom database plugin using a REST API:
 ```typescript title="customDatabase.ts"
 import {
   type Bundle,
+  type DatabaseBundleQueryOptions,
   type Paginated,
   createDatabasePlugin,
 } from "@hot-updater/plugin-core";
@@ -98,26 +90,6 @@ export interface CustomDatabaseConfig {
   baseUrl: string;
   apiKey: string;
 }
-
-const appendValues = (
-  params: URLSearchParams,
-  key: string,
-  values: string[] | undefined,
-) => {
-  for (const value of values ?? []) {
-    params.append(key, value);
-  }
-};
-
-const setNullable = (
-  params: URLSearchParams,
-  key: string,
-  value: string | null | undefined,
-) => {
-  if (value !== undefined) {
-    params.set(key, value === null ? "null" : value);
-  }
-};
 
 export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
   name: "customDatabase",
@@ -128,12 +100,11 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
     };
 
     return {
-      supportsCursorPagination: true,
-
       async getBundleById(bundleId) {
-        const response = await fetch(`${config.baseUrl}/bundles/${bundleId}`, {
-          headers,
-        });
+        const response = await fetch(
+          `${config.baseUrl}/bundles/${bundleId}`,
+          { headers }
+        );
 
         if (!response.ok) {
           if (response.status === 404) return null;
@@ -143,19 +114,15 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
         return response.json();
       },
 
-      async getBundles(options): Promise<Paginated<Bundle[]>> {
+      async getBundles(
+        options: DatabaseBundleQueryOptions & { offset?: number },
+      ): Promise<Paginated<Bundle[]>> {
         const params = new URLSearchParams({
           limit: String(options.limit),
         });
 
-        if (options.page !== undefined) {
-          params.set("page", String(options.page));
-        }
-        if (options.cursor?.after) {
-          params.set("after", options.cursor.after);
-        }
-        if (options.cursor?.before) {
-          params.set("before", options.cursor.before);
+        if (options.offset !== undefined) {
+          params.set("offset", String(options.offset));
         }
 
         if (options.where?.channel) {
@@ -167,41 +134,44 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
         if (options.where?.enabled !== undefined) {
           params.set("enabled", String(options.where.enabled));
         }
-
-        const id = options.where?.id;
-        if (id?.eq !== undefined) params.set("idEq", id.eq);
-        if (id?.gt !== undefined) params.set("idGt", id.gt);
-        if (id?.gte !== undefined) params.set("idGte", id.gte);
-        if (id?.lt !== undefined) params.set("idLt", id.lt);
-        if (id?.lte !== undefined) params.set("idLte", id.lte);
-        appendValues(params, "idIn", id?.in);
-
-        setNullable(
-          params,
-          "targetAppVersion",
-          options.where?.targetAppVersion,
-        );
-        appendValues(
-          params,
-          "targetAppVersionIn",
-          options.where?.targetAppVersionIn,
-        );
+        if (options.where?.id?.eq) params.set("idEq", options.where.id.eq);
+        if (options.where?.id?.gt) params.set("idGt", options.where.id.gt);
+        if (options.where?.id?.gte) params.set("idGte", options.where.id.gte);
+        if (options.where?.id?.lt) params.set("idLt", options.where.id.lt);
+        if (options.where?.id?.lte) params.set("idLte", options.where.id.lte);
+        for (const id of options.where?.id?.in ?? []) {
+          params.append("idIn", id);
+        }
+        if (options.where?.targetAppVersion !== undefined) {
+          params.set(
+            "targetAppVersion",
+            options.where.targetAppVersion ?? "null",
+          );
+        }
+        for (const version of options.where?.targetAppVersionIn ?? []) {
+          params.append("targetAppVersionIn", version);
+        }
         if (options.where?.targetAppVersionNotNull !== undefined) {
           params.set(
             "targetAppVersionNotNull",
             String(options.where.targetAppVersionNotNull),
           );
         }
-        setNullable(params, "fingerprintHash", options.where?.fingerprintHash);
-
+        if (options.where?.fingerprintHash !== undefined) {
+          params.set(
+            "fingerprintHash",
+            options.where.fingerprintHash ?? "null",
+          );
+        }
         if (options.orderBy) {
           params.set("orderBy", options.orderBy.field);
           params.set("orderDirection", options.orderBy.direction);
         }
 
-        const response = await fetch(`${config.baseUrl}/bundles?${params}`, {
-          headers,
-        });
+        const response = await fetch(
+          `${config.baseUrl}/bundles?${params}`,
+          { headers }
+        );
 
         if (!response.ok) {
           throw new Error(`Failed to fetch bundles: ${response.statusText}`);
@@ -253,13 +223,9 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
 });
 ```
 
-This example opts into native cursor pagination, so its REST backend must
-honor `after`, `before`, `orderBy`, every filter above,
-and return matching cursor metadata. Do not set
-`supportsCursorPagination: true` if the backend ignores those fields.
-Without that flag, `createDatabasePlugin` supplies offset/ID/order
-fallback queries to `getBundles`; an implementation using that mode
-must honor the internal `offset` value instead.
+The wrapper translates public page and cursor requests into internal offset,
+ID-bound, and ordering queries. Your backend must honor `offset`, every `where`
+filter, and `orderBy` so that fallback pagination remains correct.
 
 ## Helper Utilities
 
@@ -267,13 +233,13 @@ The `@hot-updater/plugin-core` package provides helper functions:
 
 ### calculatePagination
 
-Generates pagination metadata after your implementation resolves a cursor into
-an internal start index:
+Generates pagination metadata from the internal offset window handled by your
+implementation:
 
 ```typescript
 import { calculatePagination } from "@hot-updater/plugin-core";
 
-const startIndex = resolvedCursorStartIndex;
+const startIndex = options.offset ?? 0;
 const pagination = calculatePagination(totalCount, {
   limit: 10,
   offset: startIndex,
@@ -283,11 +249,9 @@ const pagination = calculatePagination(totalCount, {
 
 ## CLI Configuration
 
-Use the plugin as the database field in `hot-updater.config.ts`. This is
-a field excerpt; a complete config must also provide build, storage, and update
-strategy fields:
+Use your custom plugin as the `database` field in `hot-updater.config.ts`:
 
-```typescript title="hot-updater.config.ts (excerpt)"
+```typescript
 import { customDatabase } from "./customDatabase";
 
 const database = customDatabase({

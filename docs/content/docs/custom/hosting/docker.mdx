@@ -7,47 +7,33 @@ version: "v0.22.0"
 
 ## Prerequisites
 
-- Docker Engine or Docker Desktop (OrbStack is also supported)
-- Docker Compose
-- A PostgreSQL database, or the Compose service shown below
-- A configured Hot Updater storage plugin
-
-This guide stays provider-neutral. Create `src/storage.ts` for your
-chosen storage provider and export a configured value named `storage`.
-Use the same value in the server and CLI configuration excerpts below.
+- Docker Or OrbStack: Install it via [Docker](https://docs.docker.com/get-docker/) or [OrbStack](https://orbstack.dev/).
+- Docker Compose (included with Docker Desktop)
+- PostgreSQL database or use Docker Compose setup below
 
 ## Installation
 
-Install the packages used by the deployed server:
+Install required dependencies.
 
 ```package-install
-npm install @hot-updater/server hono @hono/node-server drizzle-orm postgres
+npm install @hot-updater/server @hot-updater/aws hono @hono/node-server drizzle-orm postgres
 ```
 
-Install the selected storage plugin as a runtime dependency. Install build and
-schema tooling separately:
-
 ```package-install
-npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater drizzle-kit tsx typescript @types/node
+npm install @hot-updater/bare @hot-updater/standalone hot-updater drizzle-kit tsx typescript @types/node --save-dev
 ```
 
 ## Database Setup
 
-Generate the Hot Updater Drizzle schema at the project root and load it when
-constructing Drizzle:
+Create the database connection file.
 
 ```typescript title="src/drizzle.ts"
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-
 import * as schema from "../hot-updater-schema";
 
 const client = postgres(process.env.DATABASE_URL!);
-
-export const db = drizzle(client, {
-  schema,
-  casing: "snake_case",
-});
+export const db = drizzle(client, { schema, casing: "snake_case" });
 ```
 
 ```typescript title="drizzle.config.ts"
@@ -57,46 +43,46 @@ export default defineConfig({
   schema: "./hot-updater-schema.ts",
   out: "./drizzle",
   dialect: "postgresql",
-  dbCredentials: {
-    url: process.env.DATABASE_URL!,
-  },
+  dbCredentials: { url: process.env.DATABASE_URL! },
 });
 ```
 
 ## Hot Updater Configuration
 
-The following is a configuration excerpt: `storage` comes from the
-provider-specific `src/storage.ts` described above.
+Create the Hot Updater instance.
 
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
-
+import { s3Storage } from "@hot-updater/aws";
 import { db } from "./drizzle";
-import { storage } from "./storage";
 
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "postgresql" }),
-  storages: [storage],
+  storages: [
+    s3Storage({
+      region: "auto",
+      endpoint: process.env.R2_ENDPOINT!,
+      credentials: {
+        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      },
+      bucketName: process.env.R2_BUCKET_NAME!,
+    }),
+  ],
   basePath: "/hot-updater",
-  routes: {
-    updateCheck: true,
-    bundles: true,
-  },
+  routes: { updateCheck: true, bundles: true },
 });
 ```
 
 ## Server Setup
 
-Reject management requests before mounting the handler. The process exits at
-startup when the management token is not configured, so it cannot accidentally
-accept an unset token.
+Create the server entry point.
 
 ```typescript title="src/index.ts"
-import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { serve } from "@hono/node-server";
 import { bearerAuth } from "hono/bearer-auth";
-
 import { hotUpdater } from "./hotUpdater";
 
 const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
@@ -110,19 +96,38 @@ app.use("/hot-updater/api/*", bearerAuth({ token: managementToken }));
 app.mount("/hot-updater", hotUpdater.handler);
 
 const port = Number(process.env.PORT) || 3000;
+
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`Server running at http://localhost:${info.port}`);
 });
 ```
 
-Update-check routes remain public for the React Native client.
-`/hot-updater/api/*` requires
-`Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>`.
+<Callout type="warn">
+When using Hono `mount()`, update-check routes such as
+`/hot-updater/app-version/*` and `/hot-updater/fingerprint/*` are usually
+exposed for React Native clients, but that is a deployment choice.
+`/hot-updater/version` is always mounted for diagnostics. Always protect
+`/hot-updater/api/*` when `routes.bundles: true`.
+</Callout>
+
+## Schema Generation
+
+Generate the Drizzle schema for Hot Updater tables.
+
+```bash
+npx hot-updater db generate src/hotUpdater.ts --yes
+```
+
+`db generate` writes `hot-updater-schema.ts`; it does not change the database.
+Apply the generated schema separately:
+
+```bash
+npx drizzle-kit push
+```
 
 ## Build Configuration
 
-The Docker stages below use the following build script and TypeScript output
-layout:
+The image uses CommonJS and compiles the root schema together with `src`:
 
 ```json title="package.json (excerpt)"
 {
@@ -149,29 +154,11 @@ layout:
 }
 ```
 
-Including both the root schema and `src` produces the server entry point at
-`dist/src/index.js`, which matches the runtime command below.
-
-## Generate and Apply the Schema
-
-`db generate` creates `hot-updater-schema.ts`; it does not
-change the database:
-
-```bash
-npx hot-updater db generate src/hotUpdater.ts --yes
-```
-
-Apply the generated schema from a build environment that has the project
-source, Drizzle config, CLI, and development dependencies:
-
-```bash
-npx drizzle-kit push
-```
-
-Review and run this as a separate deployment step before starting the new app
-image. The runtime image below intentionally does not contain migration tools.
+This emits the server entry point as `dist/src/index.js`.
 
 ## Dockerfile
+
+Create `Dockerfile` for schema generation, migration, and production runtime.
 
 ```dockerfile
 FROM node:22-slim AS builder
@@ -213,9 +200,39 @@ dist
 *.log
 ```
 
+## Build and Run
+
+Build the migration and runtime images, then apply the schema before starting
+the server.
+
+```bash
+docker build --target migrator -t hot-updater-migrator .
+docker run --rm \
+  -e DATABASE_URL="postgresql://user:password@host:5432/dbname" \
+  hot-updater-migrator
+docker build --target runtime -t hot-updater-server .
+```
+
+Run the container with environment variables.
+
+```bash
+docker run -p 3000:3000 \
+  -e DATABASE_URL="postgresql://user:password@host:5432/dbname" \
+  -e HOT_UPDATER_AUTH_TOKEN="replace-with-a-secret" \
+  -e R2_ENDPOINT="https://your-account-id.r2.cloudflarestorage.com" \
+  -e R2_ACCESS_KEY_ID="..." \
+  -e R2_SECRET_ACCESS_KEY="..." \
+  -e R2_BUCKET_NAME="..." \
+  hot-updater-server
+```
+
 ## Docker Compose
 
-```yaml title="compose.yaml"
+Create `docker-compose.yml` for complete setup with PostgreSQL.
+
+```yaml
+version: "3.8"
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -225,6 +242,8 @@ services:
       POSTGRES_PASSWORD: postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -252,7 +271,10 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/hot_updater
       HOT_UPDATER_AUTH_TOKEN: replace-with-a-secret
       PORT: 3000
-      # Add the environment variables required by src/storage.ts.
+      R2_ENDPOINT: https://your-account-id.r2.cloudflarestorage.com
+      R2_ACCESS_KEY_ID: "..."
+      R2_SECRET_ACCESS_KEY: "..."
+      R2_BUCKET_NAME: "..."
     depends_on:
       postgres:
         condition: service_healthy
@@ -262,30 +284,37 @@ volumes:
   postgres_data:
 ```
 
-Build both targets, apply the schema as an explicit one-off job, and then start
-the runtime service:
+## Run with Docker Compose
+
+Build the targets, apply the schema once, then start the server.
 
 ```bash
 docker compose build
 docker compose run --rm migrate
 docker compose up -d hot-updater
+```
+
+View logs.
+
+```bash
 docker compose logs -f hot-updater
 ```
 
-Stop the services with `docker compose down`. Add `--volumes`
-only when you intentionally want to delete the PostgreSQL data volume.
+Stop all services.
+
+```bash
+docker compose down
+```
 
 ## CLI Configuration
 
-Reuse the same storage plugin and send the management token on every standalone
-request:
+Configure your CLI to use this server.
 
 ```typescript title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
+import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
-
-import { storage } from "./src/storage";
 
 const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
 if (!managementToken) {
@@ -294,15 +323,23 @@ if (!managementToken) {
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  storage,
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT!,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.R2_BUCKET_NAME!,
+  }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
-    commonHeaders: {
-      Authorization: `Bearer ${managementToken}`,
-    },
+    commonHeaders: { Authorization: `Bearer ${managementToken}` },
   }),
   updateStrategy: "appVersion",
 });
 ```
 
-The CLI `storage` must match one of the server's `storages`.
+<Callout type="warn">
+The `storage` plugin must match the `storages` in your server's `createHotUpdater`.
+</Callout>
