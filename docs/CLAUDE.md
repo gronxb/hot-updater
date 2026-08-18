@@ -215,8 +215,9 @@ Located in `content/docs/build-plugins/`
 ### Storage Plugins
 Located in `content/docs/storage-plugins/`
 - supabase.mdx - Supabase Storage
-- aws.mdx - AWS S3 (also covers Cloudflare R2)
-- cloudflare.mdx - Cloudflare R2 via Wrangler
+- aws.mdx - AWS S3 and S3-compatible object storage
+- cloudflare.mdx - Cloudflare R2 via S3-compatible credentials, with legacy
+  Wrangler and Worker binding guidance
 - firebase.mdx - Firebase Cloud Storage
 - standalone.mdx - Custom self-hosted storage
 
@@ -234,10 +235,12 @@ Located in `content/docs/database-plugins/`
 Include a "Complete Example" section showing both storage and database combined.
 
 ### When documenting alternatives:
-If one plugin has limitations (e.g., Cloudflare R2 storage), recommend the better alternative upfront with a warning box:
+Recommend the provider-specific plugin by default. Document an alternative only
+when it provides a distinct capability, and state the protocol or migration
+tradeoff explicitly:
 
 ```mdx
-> **⚠️ Recommendation**: Use alternative plugin instead...
+> **Alternative**: Use this plugin when you need its object-management API...
 ```
 
 ### When documenting peer dependencies:

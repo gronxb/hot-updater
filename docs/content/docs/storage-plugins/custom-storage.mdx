@@ -36,9 +36,10 @@ Use the helper that matches where the plugin will run:
 | `createRuntimeStoragePlugin`   | The plugin is passed to `createHotUpdater({ storages })` from `@hot-updater/server` for update-check runtime reads.            |
 | `createUniversalStoragePlugin` | The same plugin should work in both places: `hot-updater.config.ts` for CLI commands and `createHotUpdater` for update checks. |
 
-Most providers should use `createUniversalStoragePlugin`. Split providers, such
-as Cloudflare R2, can expose one `node` plugin for Wrangler-based upload and
-download, and a separate `runtime` plugin for Worker bindings.
+Most providers should use `createUniversalStoragePlugin`. For example, the root
+Cloudflare `r2Storage` export is universal with R2 S3-compatible credentials.
+The package also exposes a runtime-only Worker binding implementation from
+`@hot-updater/cloudflare/worker` when credentials are not appropriate.
 
 ## What Universal Means
 

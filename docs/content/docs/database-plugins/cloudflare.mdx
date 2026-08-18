@@ -54,19 +54,17 @@ export default defineConfig({
 Combined R2 storage and D1 database:
 
 ```typescript
-import { d1Database } from '@hot-updater/cloudflare';
-import { s3Storage } from '@hot-updater/aws';
+import { d1Database, r2Storage } from '@hot-updater/cloudflare';
 import { defineConfig } from 'hot-updater';
 
 export default defineConfig({
-  storage: s3Storage({
-    region: 'auto',
-    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  storage: r2Storage({
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+    bucketName: 'my-r2-bucket',
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
-    },
-    bucketName: 'my-r2-bucket'
+    }
   }),
   database: d1Database({
     databaseId: process.env.D1_DATABASE_ID,
