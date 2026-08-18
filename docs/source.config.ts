@@ -1,6 +1,21 @@
 import { type } from "arktype";
 import { remarkNpm } from "fumadocs-core/mdx-plugins";
-import { defineConfig, defineDocs } from "fumadocs-mdx/config";
+import {
+  defineCollections,
+  defineConfig,
+  defineDocs,
+} from "fumadocs-mdx/config";
+
+export const blogPosts = defineCollections({
+  type: "doc",
+  dir: "content/blog",
+  schema: type({
+    title: "string",
+    description: "string",
+    date: "string",
+    author: "string",
+  }),
+});
 
 export const docs = defineDocs({
   dir: "content/docs",
