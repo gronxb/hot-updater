@@ -20,6 +20,8 @@ import {
 } from "./analytics-input";
 import { DEFAULT_PAGE_LIMIT } from "./constants";
 import { listReleases } from "./server/listReleases";
+import { getReleaseActivity30d } from "./server/releaseActivity";
+import { addReleaseReachability } from "./server/releaseReachability";
 
 type GetBundlesInput = {
   platform?: "ios" | "android";
@@ -76,8 +78,8 @@ export const getReleases = createServerFn({ method: "GET" })
   .inputValidator((input: GetReleasesInput | undefined) => input)
   .handler(async ({ data }) => {
     const { prepareConfig } = await import("./server/config.server");
-    const { config } = await prepareConfig();
-    return listReleases(config.database.models.releases, {
+    const { config, hotUpdater } = await prepareConfig();
+    const result = await listReleases(config.database.models.releases, {
       ...(data?.afterReleaseId === undefined
         ? {}
         : { afterReleaseId: data.afterReleaseId }),
@@ -94,6 +96,23 @@ export const getReleases = createServerFn({ method: "GET" })
         : { targetAppVersion: data.targetAppVersion }),
       limit: data?.limit ?? DEFAULT_PAGE_LIMIT,
     });
+    const [releases, activityByBundleId] = await Promise.all([
+      addReleaseReachability(
+        config.database.models.releaseCatalogs,
+        result.data,
+      ),
+      getReleaseActivity30d(hotUpdater, result.data),
+    ]);
+    return {
+      ...result,
+      data: releases.map((release) => ({
+        ...release,
+        activity30d:
+          release.bundle_id === null
+            ? null
+            : (activityByBundleId.get(release.bundle_id) ?? null),
+      })),
+    };
   });
 
 export const getRelease = createServerFn({ method: "GET" })

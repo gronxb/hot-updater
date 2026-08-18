@@ -70,7 +70,9 @@ const release = vi.hoisted(
       target_app_version: "1.2.x",
       target_cohorts: [],
       updated_at_ms: Date.UTC(2026, 6, 18),
-    }) as ReleaseRow,
+      currentlyUnreachable: false,
+      activity30d: { installed: 1, recovered: 0 },
+    }) as ReleaseRow & { currentlyUnreachable: boolean },
 );
 const baseBundle = {
   id: "019ff641-01eb-72ea-8a03-a28aef188d32",
@@ -126,6 +128,7 @@ const BundlesPage = (Route as unknown as { readonly component: ComponentType })
 describe("BundlesPage", () => {
   beforeEach(() => {
     mocks.search.mockReturnValue({});
+    release.currentlyUnreachable = false;
   });
 
   afterEach(() => {
@@ -176,8 +179,33 @@ describe("BundlesPage", () => {
     expect(within(row).getByText("Enabled")).toBeDefined();
     expect(within(row).getByText("Optional")).toBeDefined();
     expect(within(row).getByText("100.0%").className).toContain("bg-primary");
+    const movement = within(row).getByRole("group", {
+      name: "Bundle movement over 30 days, distinct installations",
+    });
+    expect(within(movement).getByText("Applied")).toBeDefined();
+    expect(within(movement).getByText("1")).toBeDefined();
+    expect(within(movement).getByText("Recovered")).toBeDefined();
+    expect(within(movement).getByText("0")).toBeDefined();
     expect(within(row).queryByText("DEPLOY")).toBeNull();
     expect(within(row).queryByText("rev 1")).toBeNull();
+  });
+
+  it("subdues a Release that no catalog path currently selects first", () => {
+    release.currentlyUnreachable = true;
+
+    render(<BundlesPage />);
+    const row = screen.getByRole("row", {
+      name: "Open bundle 019ff641-01eb-72ea-8a03-a28aef188d32",
+    });
+    const state = within(row).getByText("Unreachable");
+
+    expect(row.className).toContain("bg-muted/35");
+    expect(row.className).toContain("saturate-50");
+    expect(row.className).toContain("hover:saturate-100");
+    expect(row.className).toContain("motion-reduce:transition-none");
+    expect(state.getAttribute("title")).toBe(
+      "No catalog segment or cohort selects this release first with the current delivery settings.",
+    );
   });
 
   it("expands the base-to-patch relationship from the Bundle row", () => {

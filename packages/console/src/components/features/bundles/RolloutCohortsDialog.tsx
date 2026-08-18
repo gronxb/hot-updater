@@ -31,6 +31,11 @@ interface RolloutCohortsDialogProps {
   readonly targetCohorts?: readonly string[] | null | undefined;
 }
 
+const ALL_NUMERIC_COHORTS = Array.from(
+  { length: NUMERIC_COHORT_SIZE },
+  (_, index) => index + 1,
+);
+
 export function RolloutCohortsDialog({
   releaseId,
   rolloutCohortCount,
@@ -45,16 +50,15 @@ export function RolloutCohortsDialog({
   const isFullRollout = normalizedRolloutCount === NUMERIC_COHORT_SIZE;
   const isMobile = useIsMobile();
 
-  const rolloutCohorts = isPartialRollout
-    ? Array.from(
-        { length: NUMERIC_COHORT_SIZE },
-        (_, index) => index + 1,
-      ).filter(
-        (cohortValue) =>
-          getNumericCohortRolloutPosition(releaseId, cohortValue) <
-          normalizedRolloutCount,
-      )
-    : [];
+  const rolloutCohorts = isFullRollout
+    ? ALL_NUMERIC_COHORTS
+    : isPartialRollout
+      ? ALL_NUMERIC_COHORTS.filter(
+          (cohortValue) =>
+            getNumericCohortRolloutPosition(releaseId, cohortValue) <
+            normalizedRolloutCount,
+        )
+      : [];
   const rolloutPercentage = (normalizedRolloutCount / 10).toFixed(1);
   const selectedCount = isFullRollout
     ? NUMERIC_COHORT_SIZE
@@ -82,35 +86,6 @@ export function RolloutCohortsDialog({
         </Card>
       </div>
 
-      <Card>
-        <CardHeader className="p-4 pb-3">
-          <CardTitle className="text-sm">Numeric cohorts</CardTitle>
-        </CardHeader>
-        <CardContent className="p-4 pt-0">
-          <div className="max-h-[50vh] overflow-y-auto overscroll-contain rounded-lg border bg-muted/20 p-3 sm:max-h-[45vh]">
-            {isPartialRollout ? (
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-8">
-                {rolloutCohorts.map((cohortValue) => (
-                  <Badge
-                    className="justify-center font-mono tabular-nums"
-                    key={cohortValue}
-                    variant="outline"
-                  >
-                    {cohortValue}
-                  </Badge>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                {isFullRollout
-                  ? `All ${NUMERIC_COHORT_SIZE} numeric cohorts are included.`
-                  : "No numeric cohorts are included."}
-              </p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
       {hasTargetCohorts ? (
         <Card>
           <CardHeader className="p-4 pb-3">
@@ -134,6 +109,38 @@ export function RolloutCohortsDialog({
           </CardContent>
         </Card>
       ) : null}
+
+      <Card>
+        <CardHeader className="p-4 pb-3">
+          <CardTitle className="text-sm">Numeric cohorts</CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+          <div className="max-h-[50vh] overflow-y-auto overscroll-contain rounded-lg border bg-muted/20 p-3 sm:max-h-[45vh]">
+            {rolloutCohorts.length > 0 ? (
+              <div
+                aria-label="Included numeric cohorts"
+                className="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-8"
+                role="list"
+              >
+                {rolloutCohorts.map((cohortValue) => (
+                  <Badge
+                    className="justify-center font-mono tabular-nums"
+                    key={cohortValue}
+                    role="listitem"
+                    variant="outline"
+                  >
+                    {cohortValue}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No numeric cohorts are included.
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 

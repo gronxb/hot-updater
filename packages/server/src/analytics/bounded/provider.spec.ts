@@ -111,6 +111,52 @@ describe("createAnalyticsProvider", () => {
     });
   });
 
+  it("collects distinct 30-day movement for multiple Bundles in one scan", async () => {
+    const now = Date.UTC(2026, 7, 18, 12);
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const applied = eventRow("applied", now - 1_000, "install-applied");
+    const duplicateApplied = eventRow(
+      "applied-again",
+      now - 900,
+      "install-applied",
+    );
+    const recovered = {
+      ...eventRow("recovered", now - 800, "install-recovered"),
+      type: "RECOVERED" as const,
+      from_bundle_id: "new",
+      to_bundle_id: "fallback",
+      update_strategy: "fingerprint" as const,
+    } satisfies BundleEventPersistenceRow;
+    const other = {
+      ...eventRow("other", now - 700, "install-other"),
+      to_bundle_id: "other",
+    };
+    const outsideWindow = eventRow(
+      "outside-window",
+      now - 31 * 24 * 60 * 60 * 1_000,
+      "install-old",
+    );
+    const persistence = inMemoryPersistence([
+      outsideWindow,
+      applied,
+      duplicateApplied,
+      recovered,
+      other,
+    ]);
+    const scan = vi.spyOn(persistence, "scan");
+    const provider = createAnalyticsProvider(persistence);
+
+    await expect(
+      provider.getBundleEventSummaries(["new", "other", "missing"], "30d"),
+    ).resolves.toEqual([
+      { bundleId: "new", installed: 1, recovered: 1 },
+      { bundleId: "other", installed: 1, recovered: 0 },
+      { bundleId: "missing", installed: 0, recovered: 0 },
+    ]);
+    expect(scan).toHaveBeenCalledTimes(2);
+    vi.restoreAllMocks();
+  });
+
   it("counts an installation whose current bundle is reported by UNCHANGED", async () => {
     const unchanged: BundleEventPersistenceRow = {
       ...eventRow("unchanged", 1, "install-unchanged"),
