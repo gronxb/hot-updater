@@ -37,7 +37,7 @@ vi.mock("@hot-updater/server", async () => {
   return {
     ...actual,
     createHotUpdater: serverMocks.createHotUpdater.mockReturnValue({
-      basePath: "/api/check-update",
+      basePath: "/",
       handler: fakeHotUpdaterHandler,
     }),
   };
@@ -128,7 +128,7 @@ describe("aws lambda entrypoint", () => {
     const { handler } = await import("./index");
     await handler(
       createCloudFrontRequest(
-        "/api/check-update/v2/release-catalogs/app-version/aws.test-authority/ios/cHJvZHVjdGlvbg/1.0.0",
+        "/v2/release-catalogs/app-version/aws.test-authority/ios/cHJvZHVjdGlvbg/1.0.0",
       ),
       {} as never,
       () => undefined,
@@ -156,7 +156,7 @@ describe("aws lambda entrypoint", () => {
 
     const response = await handler(
       createCloudFrontRequest(
-        "/api/check-update/v2/release-catalogs/app-version/aws.test-authority/ios/cHJvZHVjdGlvbg/1.0.0",
+        "/v2/release-catalogs/app-version/aws.test-authority/ios/cHJvZHVjdGlvbg/1.0.0",
       ),
       {} as never,
       () => undefined,

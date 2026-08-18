@@ -36,7 +36,7 @@ const __dirname = path.dirname(__filename);
 const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
 const REGION = "us-central1";
 const FUNCTION_NAME = "hot-updater";
-const HOT_UPDATER_BASE_PATH = "/api/check-update";
+const HOT_UPDATER_BASE_PATH = "/";
 const FIREBASE_CLI_VERSION_ARGS = [
   "--filter",
   "@hot-updater/firebase",
@@ -328,7 +328,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     );
 
     const response = await invokeHandler(
-      `${HOT_UPDATER_BASE_PATH}/v2/release-catalogs/app-version/${encodeURIComponent(projectId)}/ios/cHJvZHVjdGlvbg/1.0.0`,
+      `/v2/release-catalogs/app-version/${encodeURIComponent(projectId)}/ios/cHJvZHVjdGlvbg/1.0.0`,
     );
 
     await expect(response.json()).resolves.toMatchObject({
@@ -337,15 +337,13 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
   });
 
   it("does not support the legacy exact path", async () => {
-    const response = await invokeHandler(HOT_UPDATER_BASE_PATH);
+    const response = await invokeHandler("/api/check-update");
 
     expect(response.status).toBe(404);
   });
 
   it("does not expose management routes from the emulator entrypoint", async () => {
-    const response = await invokeHandler(
-      `${HOT_UPDATER_BASE_PATH}/api/bundles`,
-    );
+    const response = await invokeHandler("/api/bundles");
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({

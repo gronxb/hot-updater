@@ -4,7 +4,7 @@ description: "This guide walks you through the essential steps to integrate hot-
 icon: Code
 ---
 
-import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 
 ## Provider Setup
 
@@ -66,24 +66,25 @@ export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey:
-      process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
     bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
   }),
   database: supabaseDatabase({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey:
-      process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
 });
 ```
 
 <Callout type="info">
-For detailed provider-specific setup instructions, see the [Self-Hosting (Managed)](/docs/managed/supabase) documentation.
+  For detailed provider-specific setup instructions, see the [Self-Hosting
+  (Managed)](/docs/managed/supabase) documentation.
 </Callout>
 
 <Callout type="warn">
-The environment variables in `.env` are used only during deployment, not in your app bundle. However, if you're using `react-native-dotenv`, review the [Security guidelines](/docs/policy/security#plugin-token-protection).
+  The environment variables in `.env` are used only during deployment, not in
+  your app bundle. However, if you're using `react-native-dotenv`, review the
+  [Security guidelines](/docs/policy/security#plugin-token-protection).
 </Callout>
 
 ### Step 4: Wrap Your Application
@@ -102,7 +103,7 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  baseURL: "https://your-update-server-url/api/check-update", // [!code ++]
+  baseURL: "https://your-update-server-url", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
     // Optional: Add custom headers if needed
@@ -132,7 +133,8 @@ export default HotUpdater.wrap({
 ```
 
 <Callout type="info">
-The update server URL will be provided after running `npx hot-updater init`. Check your terminal output or provider console for the correct URL.
+  The update server URL will be provided after running `npx hot-updater init`.
+  Check your terminal output or provider console for the correct URL.
 </Callout>
 
 ## Build Configuration
@@ -214,11 +216,14 @@ npx expo prebuild
 ```
 
 <Callout>
-For Expo projects, the config plugin automatically generates the native code configuration described in the next section.
+  For Expo projects, the config plugin automatically generates the native code
+  configuration described in the next section.
 </Callout>
 
 <Callout type="info">
-If you use Expo DOM components (`use dom`), see [Expo DOM Components (`use dom`)](/docs/build-plugins/expo#expo-dom-components-use-dom) for the additional Babel plugin setup.
+  If you use Expo DOM components (`use dom`), see [Expo DOM Components (`use
+  dom`)](/docs/build-plugins/expo#expo-dom-components-use-dom) for the
+  additional Babel plugin setup.
 </Callout>
 
   </Tab>
@@ -229,7 +234,8 @@ If you use Expo DOM components (`use dom`), see [Expo DOM Components (`use dom`)
 To complete the integration of `hot-updater`, you'll need to add native code modifications for both Android and iOS platforms. This step ensures the `hot-updater` can interact with your app's underlying framework to apply updates seamlessly.
 
 <Callout type="info">
-If you're using Expo with the plugin configured above, this step is handled automatically during prebuild.
+  If you're using Expo with the plugin configured above, this step is handled
+  automatically during prebuild.
 </Callout>
 
 ### Android
@@ -493,7 +499,10 @@ For Objective-C projects, modify your `AppDelegate.mm`:
 </Tabs>
 
 <Callout type="info">
-For brownfield apps where the JS bundle is embedded in an XCFramework, you can pass a custom `Bundle` instance to lookup the JavaScript bundle resource: `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
+  For brownfield apps where the JS bundle is embedded in an XCFramework, you can
+  pass a custom `Bundle` instance to lookup the JavaScript bundle resource:
+  `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater
+  bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
 </Callout>
 
 ## Next Steps

@@ -735,7 +735,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   if (subdomains.subdomain) {
     p.note(
       transformTemplate(SOURCE_TEMPLATE, {
-        source: `https://${workerName}.${subdomains.subdomain}.workers.dev/api/check-update`,
+        source: `https://${workerName}.${subdomains.subdomain}.workers.dev`,
       }),
     );
   }

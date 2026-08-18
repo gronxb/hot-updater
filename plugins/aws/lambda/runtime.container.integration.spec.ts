@@ -55,7 +55,7 @@ const CLOUDFRONT_KEY_PAIR_ID = "KTEST";
 const AUTHORITY_ID = "aws.runtime-acceptance";
 const LOCALSTACK_IMAGE = "localstack/localstack:3";
 const LAMBDA_IMAGE = "public.ecr.aws/lambda/nodejs:22";
-const HOT_UPDATER_BASE_PATH = "/api/check-update";
+const HOT_UPDATER_BASE_PATH = "/";
 const ORIGIN_HOST = `${S3_BUCKET_NAME}.s3.${REGION}.amazonaws.com`;
 const REQUIRED_BUILD_ARTIFACTS = [
   {
@@ -422,7 +422,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       }),
     );
 
-    const updatePath = `${HOT_UPDATER_BASE_PATH}/v2/release-catalogs/app-version/${encodeURIComponent(AUTHORITY_ID)}/ios/cHJvZHVjdGlvbg/1.0.0`;
+    const updatePath = `/v2/release-catalogs/app-version/${encodeURIComponent(AUTHORITY_ID)}/ios/cHJvZHVjdGlvbg/1.0.0`;
     const unauthorizedResponse = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
@@ -459,7 +459,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     const response = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
-        path: HOT_UPDATER_BASE_PATH,
+        path: "/api/check-update",
         headers: new Headers(),
       }),
     );
@@ -476,7 +476,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     const response = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
-        path: `${HOT_UPDATER_BASE_PATH}/api/bundles`,
+        path: "/api/bundles",
         headers: new Headers(),
       }),
     );
@@ -505,7 +505,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     const unauthorizedIngestionResponse = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
-        path: `${HOT_UPDATER_BASE_PATH}/events`,
+        path: "/events",
         headers: new Headers({ "content-type": "application/json" }),
         method: "POST",
         body: JSON.stringify(event),
@@ -516,7 +516,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     const ingestionResponse = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
-        path: `${HOT_UPDATER_BASE_PATH}/events`,
+        path: "/events",
         headers: new Headers({
           "content-type": "application/json",
           "x-api-key": rawApiKey,
@@ -532,7 +532,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     expect(unauthorizedIngestionPayload.status).toBe("401");
     expect(ingestionPayload.status).toBe("204");
 
-    const protectedPath = `${HOT_UPDATER_BASE_PATH}/api/installations/overview`;
+    const protectedPath = "/api/installations/overview";
     const unauthorizedResponse = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
@@ -700,7 +700,7 @@ const waitForLambdaReady = async ({
 }) => {
   const deadline = Date.now() + timeoutMs;
   const warmupEvent = createCloudFrontEvent({
-    path: HOT_UPDATER_BASE_PATH,
+    path: "/version",
     headers: new Headers({
       "x-app-platform": "ios",
       "x-app-version": "1.0.0",

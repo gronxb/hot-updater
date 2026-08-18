@@ -6,7 +6,7 @@ export const assertAwsInfrastructureGeneration = async (input: {
   readonly domainName: string;
   readonly fetchImpl?: Fetch;
 }): Promise<void> => {
-  const versionUrl = `https://${input.domainName}/api/check-update/version`;
+  const versionUrl = `https://${input.domainName}/version`;
   let response: Response;
   try {
     response = await (input.fetchImpl ?? fetch)(versionUrl);

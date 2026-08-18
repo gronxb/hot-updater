@@ -20,7 +20,7 @@ declare global {
   };
 }
 
-export const HOT_UPDATER_BASE_PATH = "/api/check-update";
+export const HOT_UPDATER_BASE_PATH = "/";
 
 const CLOUDFRONT_KEY_PAIR_ID = HotUpdater.CLOUDFRONT_KEY_PAIR_ID;
 const AUTHORITY_ID = HotUpdater.AUTHORITY_ID;

@@ -3212,7 +3212,7 @@ export interface DynamoDBConfig extends DynamoDBClientConfig {
 
 export const dynamoDB = (config: DynamoDBConfig) => {
   const {
-    apiBasePath = "/api/check-update",
+    apiBasePath = "/v2/release-catalogs",
     cloudfrontDistributionId,
     shouldWaitForInvalidation = false,
     tableName,

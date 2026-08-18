@@ -224,7 +224,7 @@ describe("infrastructure version helpers", () => {
 
   it("blocks a v0 endpoint instead of suggesting an in-place update", async () => {
     const status = await checkInfrastructureStatus({
-      serverBaseUrl: "https://updates.example.com/api/check-update",
+      serverBaseUrl: "https://updates.example.com",
       fetchImpl: vi
         .fn<typeof fetch>()
         .mockResolvedValue(Response.json({ version: "0.38.0" })),
@@ -249,7 +249,7 @@ describe("infrastructure version helpers", () => {
 
   it("accepts a v1 infrastructure generation marker", async () => {
     const status = await checkInfrastructureStatus({
-      serverBaseUrl: "https://updates.example.com/api/check-update",
+      serverBaseUrl: "https://updates.example.com",
       fetchImpl: vi.fn<typeof fetch>().mockResolvedValue(
         Response.json({
           infrastructureGeneration: 1,
@@ -574,18 +574,15 @@ describe("doctor", () => {
     });
 
     const result = await doctor({
-      serverBaseUrl: "https://example.com/api/check-update",
+      serverBaseUrl: "https://example.com",
       fetch: fetchImpl,
     });
 
-    expect(fetchImpl).toHaveBeenCalledWith(
-      "https://example.com/api/check-update/version",
-      {
-        headers: {
-          Accept: "application/json",
-        },
+    expect(fetchImpl).toHaveBeenCalledWith("https://example.com/version", {
+      headers: {
+        Accept: "application/json",
       },
-    );
+    });
     expect(result).toEqual({
       success: true,
       details: {
@@ -593,8 +590,8 @@ describe("doctor", () => {
         installedHotUpdaterPackages: [],
         packageJsonPath: "/mock/cwd/package.json",
         infrastructure: {
-          baseUrl: "https://example.com/api/check-update",
-          versionEndpoint: "https://example.com/api/check-update/version",
+          baseUrl: "https://example.com",
+          versionEndpoint: "https://example.com/version",
           serverVersion: "0.30.0",
           requiredVersion: "0.30.0",
           needsUpdate: false,
@@ -651,7 +648,7 @@ describe("doctor", () => {
     });
 
     const result = await doctor({
-      serverBaseUrl: "https://example.com/api/check-update",
+      serverBaseUrl: "https://example.com",
       fetch: fetchImpl,
     });
 
@@ -684,7 +681,7 @@ describe("doctor", () => {
     });
 
     const result = await doctor({
-      serverBaseUrl: "https://example.com/api/check-update",
+      serverBaseUrl: "https://example.com",
       fetch: fetchImpl,
     });
 
@@ -725,7 +722,7 @@ describe("doctor", () => {
     });
 
     const result = await doctor({
-      serverBaseUrl: "https://example.com/api/check-update",
+      serverBaseUrl: "https://example.com",
       fetch: fetchImpl,
     });
 
@@ -762,7 +759,7 @@ describe("doctor", () => {
     });
 
     const result = await doctor({
-      serverBaseUrl: "https://example.com/api/check-update",
+      serverBaseUrl: "https://example.com",
       fetch: fetchImpl,
     });
 
@@ -802,7 +799,7 @@ describe("doctor", () => {
     });
 
     const result = await doctor({
-      serverBaseUrl: "https://example.com/api/check-update",
+      serverBaseUrl: "https://example.com",
       fetch: fetchImpl,
     });
 
@@ -810,7 +807,7 @@ describe("doctor", () => {
       success: false,
       details: {
         infrastructure: {
-          versionEndpoint: "https://example.com/api/check-update/version",
+          versionEndpoint: "https://example.com/version",
           requiredVersion: "0.30.0",
           needsUpdate: true,
           updateReason: "Version endpoint not found",

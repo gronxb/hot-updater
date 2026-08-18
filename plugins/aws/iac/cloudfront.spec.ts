@@ -94,9 +94,10 @@ describe("buildDistributionConfigOverrides", () => {
     expect("MaxTTL" in defaultBehavior).toBe(false);
 
     expect(behaviorItems.map(({ PathPattern }) => PathPattern)).toEqual([
-      "/api/check-update/v2/release-catalogs/*",
-      "/api/check-update",
-      "/api/check-update/*",
+      "/v2/release-catalogs/*",
+      "/events",
+      "/v2/artifacts/*",
+      "/version",
     ]);
     expect(catalogBehavior.CachePolicyId).toBe(
       baseOptions.releaseCatalogCachePolicyId,
@@ -284,10 +285,11 @@ describe("buildDistributionConfigOverrides", () => {
     );
     expect(updatedConfig.CacheBehaviors?.Items).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ PathPattern: "/api/check-update" }),
-        expect.objectContaining({ PathPattern: "/api/check-update/*" }),
+        expect.objectContaining({ PathPattern: "/events" }),
+        expect.objectContaining({ PathPattern: "/v2/artifacts/*" }),
+        expect.objectContaining({ PathPattern: "/version" }),
         expect.objectContaining({
-          PathPattern: "/api/check-update/v2/release-catalogs/*",
+          PathPattern: "/v2/release-catalogs/*",
         }),
         expect.objectContaining({ PathPattern: "/unrelated/*" }),
       ]),
@@ -356,6 +358,7 @@ describe("buildDistributionConfigOverrides", () => {
       existingOriginId,
       existingOriginId,
       existingOriginId,
+      existingOriginId,
     ]);
   });
 
@@ -396,10 +399,11 @@ describe("buildDistributionConfigOverrides", () => {
         ({ PathPattern }) => PathPattern,
       ),
     ).toEqual([
-      "/api/check-update/v2/release-catalogs/*",
-      "/api/check-update",
-      "/api/check-update/*",
       "/api/*",
+      "/v2/release-catalogs/*",
+      "/events",
+      "/v2/artifacts/*",
+      "/version",
     ]);
   });
 
@@ -419,7 +423,7 @@ describe("buildDistributionConfigOverrides", () => {
             },
             CachePolicyId: "private-cache-policy-id",
             Compress: true,
-            PathPattern: "/api/check-update/private/*",
+            PathPattern: "/custom/private/*",
             SmoothStreaming: false,
             TargetOriginId: baseOptions.bucketName,
             ViewerProtocolPolicy: "redirect-to-https",
@@ -453,11 +457,12 @@ describe("buildDistributionConfigOverrides", () => {
         ({ PathPattern }) => PathPattern,
       ),
     ).toEqual([
-      "/api/check-update/private/*",
-      "/api/check-update/v2/release-catalogs/*",
-      "/api/check-update",
-      "/api/check-update/*",
+      "/custom/private/*",
       "/api/*",
+      "/v2/release-catalogs/*",
+      "/events",
+      "/v2/artifacts/*",
+      "/version",
     ]);
   });
 
@@ -477,7 +482,7 @@ describe("buildDistributionConfigOverrides", () => {
             },
             CachePolicyId: "single-character-cache-policy-id",
             Compress: true,
-            PathPattern: "/api/check-update/?.json",
+            PathPattern: "/custom/?.json",
             SmoothStreaming: false,
             TargetOriginId: baseOptions.bucketName,
             ViewerProtocolPolicy: "redirect-to-https",
@@ -524,12 +529,13 @@ describe("buildDistributionConfigOverrides", () => {
         ({ PathPattern }) => PathPattern,
       ),
     ).toEqual([
-      "/api/check-update/?.json",
+      "/custom/?.json",
       "/*.js",
-      "/api/check-update/v2/release-catalogs/*",
-      "/api/check-update",
-      "/api/check-update/*",
       "/api/*",
+      "/v2/release-catalogs/*",
+      "/events",
+      "/v2/artifacts/*",
+      "/version",
     ]);
   });
 });

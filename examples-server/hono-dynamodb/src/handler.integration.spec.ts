@@ -263,7 +263,10 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     });
 
     expect(unauthorized.status).toBe(401);
-    expect(authorized.status).toBe(404);
+    expect(authorized.status).toBe(200);
+    expect(authorized.headers.get("content-type")).toContain(
+      "application/vnd.hot-updater.release-catalog+json",
+    );
   });
 
   it("updates Release policy through the authenticated standalone repository", async () => {

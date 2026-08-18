@@ -14,7 +14,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { transformEnv } from "@hot-updater/cli-tools";
-import type { Bundle } from "@hot-updater/core";
+import { type Bundle, NIL_UUID } from "@hot-updater/core";
 import { createDatabaseClient } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import { createClient } from "@supabase/supabase-js";

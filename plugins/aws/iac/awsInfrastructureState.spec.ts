@@ -20,6 +20,9 @@ describe("assertAwsInfrastructureGeneration", () => {
         fetchImpl,
       }),
     ).resolves.toBeUndefined();
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://updates.example.com/version",
+    );
   });
 
   it("blocks a v0 distribution before it can be updated", async () => {

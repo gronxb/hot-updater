@@ -319,7 +319,7 @@ const printTemplate = async (
         env: cliEnv,
       },
     );
-    const functionUrl = `https://${projectId}.web.app/api/check-update`;
+    const functionUrl = `https://${projectId}.web.app`;
 
     p.note(
       transformTemplate(SOURCE_TEMPLATE, {

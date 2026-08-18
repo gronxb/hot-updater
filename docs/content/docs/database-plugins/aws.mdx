@@ -98,9 +98,10 @@ lets you rely on local AWS CLI sessions, `AWS_PROFILE`, shared config files, or
 other standard AWS credential sources.
 
 When `cloudfrontDistributionId` is set, metadata mutations submit an
-invalidation for the update-check route. Set `shouldWaitForInvalidation: true`
-when a deployment or E2E flow must wait for CloudFront propagation; it defaults
-to `false`.
+invalidation for `/v2/release-catalogs/*` by default. Override `apiBasePath`
+only when a custom deployment mounts the catalog routes elsewhere.
+Set `shouldWaitForInvalidation: true` when a deployment or E2E flow must wait
+for CloudFront propagation; it defaults to `false`.
 
 ## Usage
 

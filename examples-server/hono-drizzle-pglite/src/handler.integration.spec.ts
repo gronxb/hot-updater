@@ -109,6 +109,9 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
     expect(unauthorizedBundles.status).toBe(401);
     expect(authorizedBundles.status).toBe(200);
     expect(version.status).toBe(200);
-    expect(updateCheck.status).toBe(404);
+    expect(updateCheck.status).toBe(200);
+    expect(updateCheck.headers.get("content-type")).toContain(
+      "application/vnd.hot-updater.release-catalog+json",
+    );
   });
 });

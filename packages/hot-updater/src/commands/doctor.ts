@@ -779,7 +779,7 @@ const promptServerBaseUrl = async () => {
 
   const serverBaseUrl = await p.text({
     message: "Server base URL for infrastructure check (Enter to skip)",
-    placeholder: "https://example.com/api/check-update",
+    placeholder: "https://updates.example.com",
     validate(value) {
       const trimmed = value?.trim() ?? "";
       if (!trimmed) return;

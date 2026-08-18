@@ -92,13 +92,13 @@ To check the deployed server in CI or a non-interactive shell, pass the public
 update-check base URL.
 
 ```package-install
-npx hot-updater doctor --server-base-url https://updates.example.com/api/check-update
+npx hot-updater doctor --server-base-url https://updates.example.com
 ```
 
 `doctor` appends `/version` and checks:
 
 ```txt
-https://updates.example.com/api/check-update/version
+https://updates.example.com/version
 ```
 
 Example success output:
@@ -106,7 +106,7 @@ Example success output:
 ```txt
 Checking the health of Hot Updater.
 hot-updater CLI version: x.x.x
-Server version endpoint: https://updates.example.com/api/check-update/version
+Server version endpoint: https://updates.example.com/version
 Server version: x.x.x
 Required infrastructure version: x.x.x
 ✅ Server infrastructure is up to date.

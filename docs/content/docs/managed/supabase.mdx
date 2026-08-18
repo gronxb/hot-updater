@@ -148,7 +148,7 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  baseURL: "https://updates.example.com/hot-updater", // [!code ++]
+  baseURL: "https://<project-ref>.supabase.co/functions/v1/<function-name>", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
     // if you want to use the request headers, you can add them here

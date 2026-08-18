@@ -60,6 +60,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
   });
 
   it("serves v1 Release Catalog routes from the worker entrypoint", async () => {
+    expect(HOT_UPDATER_BASE_PATH).toBe("/");
     await seedBundles([
       {
         id: "00000000-0000-0000-0000-000000000001",
@@ -78,7 +79,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
 
     const response = await worker.fetch(
       new Request(
-        `${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/v2/release-catalogs/app-version/${encodeURIComponent(env.AUTHORITY_ID)}/ios/cHJvZHVjdGlvbg/1.0.0`,
+        `${PUBLIC_BASE_URL}/v2/release-catalogs/app-version/${encodeURIComponent(env.AUTHORITY_ID)}/ios/cHJvZHVjdGlvbg/1.0.0`,
       ),
       env,
     );
@@ -90,7 +91,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
 
   it("does not support the legacy exact path", async () => {
     const response = await worker.fetch(
-      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}`),
+      new Request(`${PUBLIC_BASE_URL}/api/check-update`),
       env,
     );
 
@@ -102,7 +103,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
 
   it("does not expose management routes from the worker entrypoint", async () => {
     const response = await worker.fetch(
-      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/api/bundles`),
+      new Request(`${PUBLIC_BASE_URL}/api/bundles`),
       env,
     );
 

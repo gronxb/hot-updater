@@ -132,9 +132,9 @@ OTA service.
 
 ### Release catalog cache
 
-Init deploys a Firebase Hosting rewrite for
-`/api/check-update{,/**}` in front of the `hot-updater` Function. Use the
-Hosting domain so successful catalog responses can be served by Firebase's
+Init deploys Firebase Hosting rewrites for `/version`, `/v2/**`, and `/events`
+in front of the `hot-updater` Function. Use the Hosting domain as the base URL
+so successful catalog responses can be served by Firebase's
 global CDN without invoking the Function or reading Firestore. The response's
 five-second `s-maxage` and `Vary: Accept-Encoding, x-api-key` define freshness
 and authentication partitioning. Errors are `private, no-store`.
@@ -158,7 +158,7 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  baseURL: "https://<project-id>.web.app/api/check-update", // [!code ++]
+  baseURL: "https://<project-id>.web.app", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
     // if you want to use the request headers, you can add them here

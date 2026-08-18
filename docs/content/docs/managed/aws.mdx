@@ -184,9 +184,9 @@ the removed v0 SDK-version header is not forwarded.
 
 If regional reach matters less than transfer price, change the distribution price
 class in AWS after init; later init runs preserve that setting. Init invalidates
-only `/api/check-update/*`, leaving immutable bundle caches warm. CloudFront
-provides the first 1,000 invalidation paths per account each month at no extra
-charge; see [invalidation pricing](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PayingForInvalidation.html).
+only `/version`, `/events`, and `/v2/*`, leaving immutable bundle caches warm.
+CloudFront provides the first 1,000 invalidation paths per account each month
+at no extra charge; see [invalidation pricing](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PayingForInvalidation.html).
 
 Rerunning init preserves unrelated CloudFront origins/cache behaviors and S3
 bucket-policy statements. Lambda roles are isolated by Lambda name and grant
@@ -280,7 +280,7 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  baseURL: "https://<your-cloudfront-distribution-url>/api/check-update", // [!code ++]
+  baseURL: "https://<your-cloudfront-distribution-url>", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
     // if you want to use the request headers, you can add them here

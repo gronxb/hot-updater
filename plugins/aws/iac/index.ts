@@ -442,7 +442,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
 
   // Provide API URL for client use (using CloudFront domain)
-  const sourceUrl = `https://${distributionDomain}/api/check-update`;
+  const sourceUrl = `https://${distributionDomain}`;
   p.note(
     transformTemplate(SOURCE_TEMPLATE, {
       source: sourceUrl,

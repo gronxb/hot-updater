@@ -10,20 +10,20 @@ Catalogs. The v0 update-check protocol and database layout are not compatible
 with this model.
 
 <Callout type="warn">
-  There is no in-place v0 to v1 infrastructure upgrade. Do not point v1 init
-  at v0 resources. Create new provider resources and ship their endpoint in a
-  new native app build.
+  There is no in-place v0 to v1 infrastructure upgrade. Do not point v1 init at
+  v0 resources. Create new provider resources and ship their endpoint in a new
+  native app build.
 </Callout>
 
 ## Compatibility boundary
 
-| Combination | Supported | Action |
-| --- | --- | --- |
-| v0 native app → v0 infrastructure | Yes | Keep the old endpoint running while those binaries need OTA updates. |
-| v0 native app → v1 infrastructure | No | v1 does not expose the v0 app-version or fingerprint routes. |
-| v1 native app → v0 infrastructure | No | Release Catalog and artifact routes are required. |
-| v1 init → existing v0 resources | No | Init stops before changing detected v0 resources. |
-| v1 native app → new v1 infrastructure | Yes | This is the supported target. |
+| Combination                           | Supported | Action                                                               |
+| ------------------------------------- | --------- | -------------------------------------------------------------------- |
+| v0 native app → v0 infrastructure     | Yes       | Keep the old endpoint running while those binaries need OTA updates. |
+| v0 native app → v1 infrastructure     | No        | v1 does not expose the v0 app-version or fingerprint routes.         |
+| v1 native app → v0 infrastructure     | No        | Release Catalog and artifact routes are required.                    |
+| v1 init → existing v0 resources       | No        | Init stops before changing detected v0 resources.                    |
+| v1 native app → new v1 infrastructure | Yes       | This is the supported target.                                        |
 
 Do not deliver v1 `@hot-updater/react-native` JavaScript to a v0 native binary
 by OTA. Receipt and rollback behavior requires the v1 native module.
@@ -57,7 +57,7 @@ want to serve from their source artifacts; v0 policy is not backfilled.
 Run doctor against the generated public base URL:
 
 ```bash
-npx hot-updater doctor --server-base-url https://updates.example.com/api/check-update
+npx hot-updater doctor --server-base-url https://updates.example.com
 ```
 
 A v1 endpoint reports `infrastructureGeneration: 1` from `/version`. If the
