@@ -266,23 +266,32 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
           return structuredClone(releases.get(id) ?? null);
         },
         async findMany(input) {
+          const rows = [...releases.values()]
+            .filter(
+              (row) =>
+                (input.afterReleaseId === undefined ||
+                  row.id > input.afterReleaseId) &&
+                (input.beforeReleaseId === undefined ||
+                  row.id < input.beforeReleaseId) &&
+                (input.bundleId === undefined ||
+                  row.bundle_id === input.bundleId) &&
+                (input.channelId === undefined ||
+                  row.channel_id === input.channelId) &&
+                (input.enabled === undefined ||
+                  row.enabled === input.enabled) &&
+                (input.platform === undefined ||
+                  row.platform === input.platform) &&
+                (input.targetAppVersion === undefined ||
+                  row.target_app_version === input.targetAppVersion),
+            )
+            .sort((left, right) =>
+              input.afterReleaseId === undefined
+                ? right.id.localeCompare(left.id)
+                : left.id.localeCompare(right.id),
+            )
+            .slice(0, input.limit);
           return structuredClone(
-            [...releases.values()]
-              .filter(
-                (row) =>
-                  (input.beforeReleaseId === undefined ||
-                    row.id < input.beforeReleaseId) &&
-                  (input.bundleId === undefined ||
-                    row.bundle_id === input.bundleId) &&
-                  (input.channelId === undefined ||
-                    row.channel_id === input.channelId) &&
-                  (input.enabled === undefined ||
-                    row.enabled === input.enabled) &&
-                  (input.platform === undefined ||
-                    row.platform === input.platform),
-              )
-              .sort((left, right) => right.id.localeCompare(left.id))
-              .slice(0, input.limit),
+            input.afterReleaseId === undefined ? rows : rows.reverse(),
           );
         },
         async findManyByScope(input) {

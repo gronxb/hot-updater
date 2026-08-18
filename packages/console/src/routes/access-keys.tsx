@@ -24,12 +24,12 @@ function AccessKeysRoute() {
           <h1 className="text-sm font-medium">Access keys</h1>
         </div>
         <p className="basis-full pl-9 text-xs text-muted-foreground sm:basis-auto sm:pl-0">
-          Control app access to OTA and analytics ingestion endpoints.
+          Client keys can download OTA updates and submit analytics only.
         </p>
       </header>
 
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 p-3 sm:p-6">
-        <div className="mx-auto w-full max-w-6xl">
+        <div className="mx-auto w-full max-w-5xl">
           <AccessKeysPage />
         </div>
       </div>

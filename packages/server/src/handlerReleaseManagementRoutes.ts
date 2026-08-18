@@ -118,12 +118,14 @@ export const createReleaseManagementRouteHandlers = (): Record<
     }
     return Response.json({
       data: await api.getReleases({
+        afterReleaseId: url.searchParams.get("afterReleaseId") ?? undefined,
         beforeReleaseId: url.searchParams.get("beforeReleaseId") ?? undefined,
         bundleId: url.searchParams.get("bundleId") ?? undefined,
         channelId: url.searchParams.get("channelId") ?? undefined,
         enabled,
         limit,
         platform,
+        targetAppVersion: url.searchParams.get("targetAppVersion") ?? undefined,
       }),
     });
   },

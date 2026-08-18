@@ -106,8 +106,21 @@ export const registerDatabasePluginReleaseCatalogTests = (
           channelId: channel.id,
           limit: 10,
           platform: "ios",
+          targetAppVersion: "1.0.0",
         }),
       ).resolves.toEqual([secondRelease, firstRelease]);
+      await expect(
+        plugin.models.releases.findMany({
+          afterReleaseId: firstRelease.id,
+          limit: 10,
+        }),
+      ).resolves.toEqual([secondRelease]);
+      await expect(
+        plugin.models.releases.findMany({
+          limit: 10,
+          targetAppVersion: "2.0.0",
+        }),
+      ).resolves.toEqual([]);
       await expect(
         plugin.models.releaseCatalogs.findByScopeKey(catalog.scope_key),
       ).resolves.toEqual(catalog);

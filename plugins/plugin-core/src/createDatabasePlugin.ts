@@ -699,12 +699,26 @@ export const createDatabasePluginAdapter = (
             where: [{ field: "id", value: id }],
           }),
         findMany(input): Promise<readonly ReleaseRow[]> {
-          if (!Number.isSafeInteger(input.limit) || input.limit <= 0) {
+          if (
+            !Number.isSafeInteger(input.limit) ||
+            input.limit <= 0 ||
+            (input.afterReleaseId !== undefined &&
+              input.beforeReleaseId !== undefined)
+          ) {
             throw new DatabasePluginInputError("invalid-query");
           }
-          return crud.findMany({
+          const query = crud.findMany({
             model: "releases",
             where: [
+              ...(input.afterReleaseId === undefined
+                ? []
+                : [
+                    {
+                      field: "id" as const,
+                      operator: "gt" as const,
+                      value: input.afterReleaseId,
+                    },
+                  ]),
               ...(input.beforeReleaseId === undefined
                 ? []
                 : [
@@ -726,11 +740,30 @@ export const createDatabasePluginAdapter = (
               ...(input.platform === undefined
                 ? []
                 : [{ field: "platform" as const, value: input.platform }]),
+              ...(input.targetAppVersion === undefined
+                ? []
+                : [
+                    {
+                      field: "target_app_version" as const,
+                      value: input.targetAppVersion,
+                    },
+                  ]),
             ],
             limit: input.limit,
             offset: 0,
-            orderBy: [{ field: "id", direction: "desc" }],
+            orderBy: [
+              {
+                field: "id",
+                direction:
+                  input.afterReleaseId === undefined
+                    ? ("desc" as const)
+                    : ("asc" as const),
+              },
+            ],
           });
+          return input.afterReleaseId === undefined
+            ? query
+            : query.then((rows) => [...rows].reverse());
         },
         findManyByScope(input): Promise<readonly ReleaseRow[]> {
           if (

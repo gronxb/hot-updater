@@ -35,11 +35,13 @@ export interface BundlePatchModel {
 export interface ReleaseModel {
   findById(id: string): Promise<ReleaseRow | null>;
   findMany(input: {
+    readonly afterReleaseId?: string;
     readonly beforeReleaseId?: string;
     readonly bundleId?: string;
     readonly channelId?: string;
     readonly enabled?: boolean;
     readonly platform?: "ios" | "android";
+    readonly targetAppVersion?: string;
     readonly limit: number;
   }): Promise<readonly ReleaseRow[]>;
   findManyByScope(input: {

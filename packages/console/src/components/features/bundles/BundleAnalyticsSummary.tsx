@@ -1,5 +1,3 @@
-import type { Bundle } from "@hot-updater/plugin-core";
-
 import { useAnalyticsCapability } from "@/components/features/analytics/AnalyticsCapabilityContext";
 import { AnalyticsErrorAlert } from "@/components/features/analytics/AnalyticsErrorAlert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,16 +7,16 @@ import { useBundleEventAnalyticsQuery } from "@/lib/api";
 import { BundleActivityChart } from "./BundleActivityChart";
 
 interface BundleAnalyticsSummaryProps {
-  readonly bundle: Bundle;
+  readonly bundleId: string;
 }
 
 function Metric({
-  colorClassName,
   label,
+  tone,
   value,
 }: {
-  readonly colorClassName: string;
   readonly label: string;
+  readonly tone: "applied" | "recovered";
   readonly value: number;
 }) {
   return (
@@ -26,11 +24,15 @@ function Metric({
       <dt className="flex items-center gap-2 text-xs text-muted-foreground">
         <span
           aria-hidden="true"
-          className={`size-2 rounded-full ${colorClassName}`}
+          className={
+            tone === "applied"
+              ? "size-2 rounded-full bg-chart-2"
+              : "size-2 rounded-full bg-muted-foreground"
+          }
         />
         {label}
       </dt>
-      <dd className="text-2xl font-semibold tracking-tight tabular-nums">
+      <dd className="text-xl font-semibold tracking-tight tabular-nums">
         {value}
       </dd>
     </div>
@@ -38,13 +40,11 @@ function Metric({
 }
 
 function SupportedBundleAnalyticsSummary({
-  bundle,
-}: {
-  readonly bundle: Bundle;
-}) {
+  bundleId,
+}: BundleAnalyticsSummaryProps) {
   const { data, error, isLoading } = useBundleEventAnalyticsQuery(
     {
-      bundleId: bundle.id,
+      bundleId,
       window: "30d",
       limit: 1,
       offset: 0,
@@ -54,22 +54,22 @@ function SupportedBundleAnalyticsSummary({
 
   return (
     <Card>
-      <CardHeader className="pb-4">
+      <CardHeader className="p-4 pb-3">
         <CardTitle className="text-sm font-medium">
-          Bundle movement · 30 days
+          Activity · 30 days
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent className="flex flex-col gap-3 px-4 pb-4">
         {isLoading ? (
           <div
             aria-label="Loading reported bundle outcomes"
-            className="flex flex-col gap-4"
+            className="flex flex-col gap-3"
           >
             <div className="grid grid-cols-2 gap-4">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
             </div>
-            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-24 w-full sm:h-32" />
           </div>
         ) : error ? (
           <AnalyticsErrorAlert
@@ -85,15 +85,15 @@ function SupportedBundleAnalyticsSummary({
             <dl className="grid grid-cols-2 divide-x divide-border/70">
               <div className="pr-4">
                 <Metric
-                  colorClassName="bg-chart-2"
-                  label="Newly applied"
+                  label="Applied"
+                  tone="applied"
                   value={data?.summary.installed ?? 0}
                 />
               </div>
               <div className="pl-4">
                 <Metric
-                  colorClassName="bg-muted-foreground"
-                  label="Recovered away"
+                  label="Recovered"
+                  tone="recovered"
                   value={data?.summary.recovered ?? 0}
                 />
               </div>
@@ -111,7 +111,7 @@ function SupportedBundleAnalyticsSummary({
 }
 
 export function BundleAnalyticsSummary({
-  bundle,
+  bundleId,
 }: BundleAnalyticsSummaryProps) {
   const capability = useAnalyticsCapability();
 
@@ -119,5 +119,5 @@ export function BundleAnalyticsSummary({
     return null;
   }
 
-  return <SupportedBundleAnalyticsSummary bundle={bundle} />;
+  return <SupportedBundleAnalyticsSummary bundleId={bundleId} />;
 }

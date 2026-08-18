@@ -51,12 +51,13 @@ export function AnalyticsControls({
               aria-label="Reporting period"
               className="w-full lg:w-fit"
               onValueChange={(value) => {
-                if (value) onWindowChange(value as ActiveInstallationWindow);
+                if (value[0]) {
+                  onWindowChange(value[0] as ActiveInstallationWindow);
+                }
               }}
               spacing={0}
               size="lg"
-              type="single"
-              value={window}
+              value={[window]}
               variant="outline"
             >
               {windows.map((item) => (
