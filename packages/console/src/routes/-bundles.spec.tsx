@@ -159,7 +159,7 @@ describe("BundlesPage", () => {
     expect(within(row).getByText("1.2.x")).toBeDefined();
     expect(within(row).getByText("Enabled")).toBeDefined();
     expect(within(row).getByText("Optional")).toBeDefined();
-    expect(within(row).getByText("100.0%")).toBeDefined();
+    expect(within(row).getByText("100.0%").className).toContain("bg-primary");
     expect(within(row).queryByText("DEPLOY")).toBeNull();
     expect(within(row).queryByText("rev 1")).toBeNull();
   });
@@ -177,5 +177,27 @@ describe("BundlesPage", () => {
     expect(state.getAttribute("title")).toBe(
       "No catalog segment or cohort selects this release first with the current delivery settings.",
     );
+  });
+
+  it("keeps the main Console filters and pagination summary", () => {
+    render(<BundlesPage />);
+
+    const targetAppVersion = screen.getByLabelText("Target app version");
+    fireEvent.change(targetAppVersion, { target: { value: "1.2.x" } });
+    fireEvent.keyDown(targetAppVersion, { key: "Enter" });
+
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      resetScroll: true,
+      search: { targetAppVersion: "1.2.x" },
+      to: "/",
+    });
+    expect(
+      screen.getByText((_, node) =>
+        Boolean(node?.textContent === "Showing 1 to 1 entries"),
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByText((_, node) => Boolean(node?.textContent === "Page 1")),
+    ).toBeDefined();
   });
 });

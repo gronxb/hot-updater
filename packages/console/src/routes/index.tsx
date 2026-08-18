@@ -12,10 +12,11 @@ import {
   Tags,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
+import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
 import { ChannelManagementDialog } from "@/components/features/channels/ChannelManagementDialog";
 import { ReleaseEditorSheet } from "@/components/features/releases/ReleaseEditorSheet";
 import { ReleaseStateBadge } from "@/components/features/releases/ReleaseStateBadge";
@@ -25,6 +26,7 @@ import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -93,6 +95,9 @@ function BundleFilterToolbar({
   onManageChannels: () => void;
   search: ReleaseSearch;
 }) {
+  const [targetAppVersion, setTargetAppVersion] = useState(
+    search.targetAppVersion ?? "",
+  );
   const hasFilters = Boolean(
     search.bundleId ||
     search.channelId ||
@@ -107,9 +112,17 @@ function BundleFilterToolbar({
       value: channel.id,
     })),
   ];
+  const applyTargetAppVersion = () => {
+    const value = targetAppVersion.trim();
+    onChange({ targetAppVersion: value || undefined });
+  };
+
+  useEffect(() => {
+    setTargetAppVersion(search.targetAppVersion ?? "");
+  }, [search.targetAppVersion]);
 
   return (
-    <header className="sticky top-0 z-20 flex shrink-0 flex-wrap items-center gap-2 border-b bg-background px-3 py-3 sm:h-12 sm:flex-nowrap sm:bg-card/85 sm:px-4 sm:py-0 sm:backdrop-blur-sm">
+    <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-2 border-b bg-background px-3 py-3 sm:h-12 sm:flex-nowrap sm:bg-card/70 sm:px-4 sm:py-0 sm:backdrop-blur-sm">
       <SidebarTrigger className="-ml-1" />
       <h1 className="sr-only">Bundles</h1>
       <div className="ml-1 flex items-center gap-1.5 text-muted-foreground sm:ml-2">
@@ -140,6 +153,19 @@ function BundleFilterToolbar({
           </SelectGroup>
         </SelectContent>
       </Select>
+      <Input
+        aria-label="Target app version"
+        className="h-8 w-full min-w-[132px] text-xs sm:w-[160px]"
+        onBlur={applyTargetAppVersion}
+        onChange={(event) => setTargetAppVersion(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            applyTargetAppVersion();
+          }
+        }}
+        placeholder="Target version"
+        value={targetAppVersion}
+      />
       <Select
         items={channelFilterItems}
         onValueChange={(value) =>
@@ -294,6 +320,9 @@ function BundlesPage() {
   const changeFilters = (filters: Partial<ReleaseSearch>) =>
     go(updateReleaseFilters(search, filters));
   const currentPage = pagination?.currentPage ?? 1;
+  const startEntry =
+    releases.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const endEntry = startEntry === 0 ? 0 : startEntry + releases.length - 1;
   const previousPage = currentPage - 1;
   const firstReleaseId = releases[0]?.id;
   const lastReleaseId = releases.at(-1)?.id;
@@ -319,7 +348,7 @@ function BundlesPage() {
       : null;
 
   return (
-    <div className="flex h-svh min-h-0 min-w-0 flex-col bg-muted/5">
+    <div className="flex h-svh min-h-0 min-w-0 flex-col">
       <BundleFilterToolbar
         channels={channels}
         onChange={changeFilters}
@@ -328,7 +357,7 @@ function BundlesPage() {
         search={search}
       />
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-3 sm:p-6">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 bg-muted/5 p-3 sm:p-6">
         {releasesQuery.isError ? (
           <Alert variant="destructive">
             <AlertTriangle />
@@ -336,7 +365,7 @@ function BundlesPage() {
             <AlertDescription>{releasesQuery.error.message}</AlertDescription>
           </Alert>
         ) : (
-          <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border bg-card shadow-sm [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-auto">
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-auto">
             {isMobile ? (
               <div className="h-full overflow-y-auto">
                 {releasesQuery.isPending ? (
@@ -451,8 +480,8 @@ function BundlesPage() {
               </div>
             ) : (
               <Table>
-                <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur">
-                  <TableRow>
+                <TableHeader className="bg-muted/40">
+                  <TableRow className="border-b border-border/60 hover:bg-transparent [&>th]:h-10 [&>th]:text-xs [&>th]:font-semibold [&>th]:uppercase [&>th]:text-muted-foreground/70">
                     <TableHead>Bundle ID</TableHead>
                     <TableHead>Channel</TableHead>
                     <TableHead>Platform</TableHead>
@@ -478,7 +507,7 @@ function BundlesPage() {
                         <TableRow
                           aria-label={`Open bundle ${release.bundle_id ?? release.id}`}
                           className={cn(
-                            "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&>td]:py-3",
+                            "cursor-pointer transition-colors hover:bg-muted/10 focus-within:bg-muted/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-[state=selected]:bg-muted/15 [&>td]:py-3",
                             release.currentlyUnreachable &&
                               "bg-muted/35 hover:bg-muted/50",
                           )}
@@ -525,7 +554,6 @@ function BundlesPage() {
                                 channelNames.get(release.channel_id) ??
                                 release.channel_id
                               }
-                              className="min-w-64 max-w-72 whitespace-normal break-words py-1 font-normal leading-4"
                             />
                           </TableCell>
                           <TableCell className="whitespace-nowrap">
@@ -553,7 +581,7 @@ function BundlesPage() {
                                   : "patches"}
                               </Badge>
                             ) : (
-                              <span className="text-muted-foreground">—</span>
+                              <span className="text-muted-foreground">-</span>
                             )}
                           </TableCell>
                           <TableCell>
@@ -573,25 +601,29 @@ function BundlesPage() {
                                 />
                               </span>
                             ) : (
-                              <span className="text-muted-foreground">—</span>
+                              <span className="text-muted-foreground">-</span>
                             )}
                           </TableCell>
                           <TableCell>
-                            <ReleaseStateBadge release={release} />
-                          </TableCell>
-                          <TableCell>
-                            {release.should_force_update ? (
-                              <Badge
-                                className="font-normal"
-                                variant="secondary"
-                              >
-                                Required
-                              </Badge>
-                            ) : (
-                              <span className="text-muted-foreground">
-                                Optional
+                            <span className="flex items-center">
+                              <EnabledStatusIcon enabled={release.enabled} />
+                              <span className="sr-only">
+                                {release.enabled ? "Enabled" : "Disabled"}
                               </span>
-                            )}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="flex items-center">
+                              <EnabledStatusIcon
+                                enabled={release.should_force_update}
+                                falseIcon="minus"
+                              />
+                              <span className="sr-only">
+                                {release.should_force_update
+                                  ? "Required"
+                                  : "Optional"}
+                              </span>
+                            </span>
                           </TableCell>
                           <TableCell>
                             <RolloutPercentageBadge
@@ -602,7 +634,7 @@ function BundlesPage() {
                             className="max-w-44 truncate text-xs text-muted-foreground"
                             title={release.message ?? undefined}
                           >
-                            {release.message || "—"}
+                            {release.message || "-"}
                           </TableCell>
                           <TableCell
                             className="whitespace-nowrap text-xs text-muted-foreground"
@@ -637,15 +669,23 @@ function BundlesPage() {
         {!releasesQuery.isError && !releasesQuery.isPending ? (
           <nav
             aria-label="Bundle pagination"
-            className="flex items-center justify-between gap-3"
+            className="flex flex-col gap-3 px-2 sm:flex-row sm:items-center sm:justify-between"
           >
-            <p className="text-xs text-muted-foreground">
-              Page {pagination?.currentPage ?? 1}
+            <p className="text-xs font-medium text-muted-foreground">
+              Showing <span className="text-foreground">{startEntry}</span> to{" "}
+              <span className="text-foreground">{endEntry}</span> entries
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+              <p className="text-xs font-medium text-muted-foreground">
+                Page <span className="text-foreground">{currentPage}</span>
+              </p>
               {previousSearch ? (
                 <Link
-                  className={buttonVariants({ size: "sm", variant: "outline" })}
+                  className={buttonVariants({
+                    className: "h-8 flex-1 px-3 text-xs sm:flex-none",
+                    size: "sm",
+                    variant: "outline",
+                  })}
                   search={previousSearch}
                   to="/"
                 >
@@ -653,14 +693,23 @@ function BundlesPage() {
                   Previous
                 </Link>
               ) : (
-                <Button disabled size="sm" variant="outline">
+                <Button
+                  className="h-8 flex-1 px-3 text-xs sm:flex-none"
+                  disabled
+                  size="sm"
+                  variant="outline"
+                >
                   <ChevronLeft data-icon="inline-start" />
                   Previous
                 </Button>
               )}
               {nextSearch ? (
                 <Link
-                  className={buttonVariants({ size: "sm", variant: "outline" })}
+                  className={buttonVariants({
+                    className: "h-8 flex-1 px-3 text-xs sm:flex-none",
+                    size: "sm",
+                    variant: "outline",
+                  })}
                   search={nextSearch}
                   to="/"
                 >
@@ -668,7 +717,12 @@ function BundlesPage() {
                   <ChevronRight data-icon="inline-end" />
                 </Link>
               ) : (
-                <Button disabled size="sm" variant="outline">
+                <Button
+                  className="h-8 flex-1 px-3 text-xs sm:flex-none"
+                  disabled
+                  size="sm"
+                  variant="outline"
+                >
                   Next
                   <ChevronRight data-icon="inline-end" />
                 </Button>

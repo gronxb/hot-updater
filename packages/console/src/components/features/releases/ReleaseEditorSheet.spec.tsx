@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -160,15 +161,34 @@ describe("ReleaseEditorSheet", () => {
     expect(
       screen.getByRole("button", { name: "Remove from channel" }),
     ).toBeDefined();
+    expect(screen.getByText("Channel")).toBeDefined();
+    expect(screen.getByText("Platform")).toBeDefined();
     expect(screen.queryByText(/deployment/i)).toBeNull();
     expect(screen.queryByText("s3://updates/bundle-1")).toBeNull();
     expect(screen.queryByText("DEPLOY")).toBeNull();
     expect(
       screen.queryByText("Manage delivery settings and actions"),
     ).toBeNull();
-    expect(container.textContent!.indexOf("Activity · 30 days")).toBeLessThan(
-      container.textContent!.indexOf("Delivery"),
+    expect(container.textContent!.indexOf("Message")).toBeLessThan(
+      container.textContent!.indexOf("Actions"),
     );
+    expect(container.textContent!.indexOf("Actions")).toBeLessThan(
+      container.textContent!.indexOf("Metadata"),
+    );
+    expect(container.textContent!.indexOf("Metadata")).toBeLessThan(
+      container.textContent!.indexOf("Activity · 30 days"),
+    );
+    expect(screen.queryByRole("heading", { name: "Delivery" })).toBeNull();
+
+    for (const actionName of [
+      "Promote to channel",
+      "Download bundle",
+      "Remove from channel",
+    ]) {
+      expect(
+        screen.getByRole("button", { name: actionName }).className,
+      ).toContain("w-full");
+    }
   });
 
   it("restores the main Console cohort preview for gradual rollout", () => {
@@ -182,7 +202,13 @@ describe("ReleaseEditorSheet", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Preview cohorts" }));
+    const rolloutLabel = screen.getByText("Rollout percentage");
+    const previewButton = within(rolloutLabel.parentElement!).getByRole(
+      "button",
+      { name: "Preview cohorts" },
+    );
+
+    fireEvent.click(previewButton);
 
     expect(screen.getByRole("dialog")).toBeDefined();
     expect(screen.getByText("Selected cohorts")).toBeDefined();
