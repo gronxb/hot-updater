@@ -4,13 +4,14 @@ description: "The `withDatadog()` plugin for hot-updater enables automatic sourc
 icon: datadog
 ---
 
-import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 
 ## Prerequisites
 
 - Datadog Account: Sign up here if you don't have one.
 - Auth Token: Generate a token from your Datadog dashboard. This must be defined as the environment variable `DATADOG_API_KEY`.
-- Datadog host: in order to communicate with Datadog, you need to specify the host to which the Auth token refers using the environment variable `DATADOG_HOST` (e.g., `DATADOG_HOST=datadoghq.eu`)
+- Datadog site: set `DATADOG_SITE` to your Datadog site, for example
+  `DATADOG_SITE=datadoghq.eu`.
 - Install the plugin:
 
 ```package-install
@@ -41,14 +42,15 @@ export default defineConfig({
       sourcemap: true, // [!code ++] Required for sourcemap upload
     }),
     {
-      buildNumber: "build number",       // [!code ++] The build number through which Datadog will sort the uploaded sourcemaps belonging to the same version
-      releaseVersion: "release version",    // [!code ++] This is the release version that must match the release version used to stream logs from the app
+      buildNumber: "build number", // [!code ++] The build number through which Datadog will sort the uploaded sourcemaps belonging to the same version
+      releaseVersion: "release version", // [!code ++] This is the release version that must match the release version used to stream logs from the app
       service: "service", // [!code ++] The datadog service to which the sourcemaps belong
     },
   ),
   // .. your other config
 });
 ```
+
 </Tab>
 <Tab value="Expo">
 
@@ -63,14 +65,15 @@ export default defineConfig({
       sourcemap: true, // [!code ++] Required for sourcemap upload
     }),
     {
-      buildNumber: "build number",       // [!code ++] The build number through which Datadog will sort the uploaded sourcemaps belonging to the same version
-      releaseVersion: "release version",    // [!code ++] This is the release version that must match the release version used to stream logs from the app
+      buildNumber: "build number", // [!code ++] The build number through which Datadog will sort the uploaded sourcemaps belonging to the same version
+      releaseVersion: "release version", // [!code ++] This is the release version that must match the release version used to stream logs from the app
       service: "service", // [!code ++] The datadog service to which the sourcemaps belong
     },
   ),
   // .. your other config
 });
 ```
+
 </Tab>
 
 <Tab value="Rock">
@@ -86,8 +89,8 @@ export default defineConfig({
       sourcemap: true, // [!code ++] Required for sourcemap upload
     }),
     {
-      buildNumber: "build number",       // [!code ++] The build number through which Datadog will sort the uploaded sourcemaps belonging to the same version
-      releaseVersion: "release version",    // [!code ++] This is the release version that must match the release version used to stream logs from the app
+      buildNumber: "build number", // [!code ++] The build number through which Datadog will sort the uploaded sourcemaps belonging to the same version
+      releaseVersion: "release version", // [!code ++] This is the release version that must match the release version used to stream logs from the app
       service: "service", // [!code ++] The datadog service to which the sourcemaps belong
     },
   ),
@@ -100,7 +103,8 @@ export default defineConfig({
 </Tabs>
 
 <Callout title="Automatic Upload">
-When `withDatadog()` wraps your build plugin, all generated sourcemaps are uploaded to Datadog automatically during the `hot-updater deploy` process.
+  When `withDatadog()` wraps your build plugin, all generated sourcemaps are
+  uploaded to Datadog automatically during the `hot-updater deploy` process.
 </Callout>
 
 ## Step 3: Deploy

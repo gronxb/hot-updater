@@ -10,7 +10,11 @@ version: "v0.22.0"
 Install Drizzle ORM and SQLite driver.
 
 ```package-install
-npm install drizzle-orm better-sqlite3 @types/better-sqlite3 --save-dev
+npm install @hot-updater/server @hot-updater/cloudflare hono drizzle-orm better-sqlite3
+```
+
+```package-install
+npm install @hot-updater/bare @hot-updater/standalone hot-updater drizzle-kit @types/better-sqlite3 --save-dev
 ```
 
 For other databases, see [Drizzle's adapter documentation](https://orm.drizzle.team/docs/get-started).
@@ -22,9 +26,28 @@ Create a database connection file:
 ```typescript title="src/drizzle.ts"
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
+import * as schema from "../hot-updater-schema";
 
 const sqlite = new Database("./data/database.db");
-export const db = drizzle(sqlite);
+export const db = drizzle(sqlite, {
+  schema,
+  casing: "snake_case",
+});
+```
+
+Point Drizzle Kit at the generated schema:
+
+```typescript title="drizzle.config.ts"
+import { defineConfig } from "drizzle-kit";
+
+export default defineConfig({
+  schema: "./hot-updater-schema.ts",
+  out: "./drizzle",
+  dialect: "sqlite",
+  dbCredentials: {
+    url: "./data/database.db",
+  },
+});
 ```
 
 ## Hot Updater Configuration
@@ -34,15 +57,14 @@ Create the Hot Updater instance:
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
-import { s3Storage } from "@hot-updater/aws";
+import { r2Storage } from "@hot-updater/cloudflare";
 import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "sqlite" }),
   storages: [
-    s3Storage({
-      region: "auto",
-      endpoint: process.env.R2_ENDPOINT,
+    r2Storage({
+      accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
       credentials: {
         accessKeyId: process.env.R2_ACCESS_KEY_ID!,
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -51,8 +73,31 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
+  routes: {
+    updateCheck: true,
+    bundles: true,
+  },
 });
 ```
+
+Management routes must fail closed before the handler is mounted. For
+example, with Hono:
+
+```typescript title="src/index.ts (excerpt)"
+import { bearerAuth } from "hono/bearer-auth";
+
+import { hotUpdater } from "./hotUpdater";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
+
+app.use("/hot-updater/api/*", bearerAuth({ token: managementToken }));
+app.mount("/hot-updater", hotUpdater.handler);
+```
+
+Update-check routes remain public; only `/hot-updater/api/*` is protected.
 
 ## Schema Generation
 
@@ -62,10 +107,17 @@ Generate the Drizzle schema for Hot Updater tables.
 npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
-This command targets the `src/hotUpdater.ts` file and adds the necessary table definitions.
+This command writes `hot-updater-schema.ts`; it does not modify the
+database. Apply that schema before starting the server:
+
+```bash
+npx drizzle-kit push
+```
 
 <Callout>
-Need to generate SQL without config? See [SQL Export](/docs/custom/database/sql-export) for standalone SQL generation with the `--sql` flag.
+  Need to generate SQL without config? See [SQL
+  Export](/docs/custom/database/sql-export) for standalone SQL generation with
+  the `--sql` flag.
 </Callout>
 
 ## CLI Configuration
@@ -73,16 +125,20 @@ Need to generate SQL without config? See [SQL Export](/docs/custom/database/sql-
 Configure your CLI to use this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
-import { s3Storage } from "@hot-updater/aws";
+import { r2Storage } from "@hot-updater/cloudflare";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 export default defineConfig({
-  build: bare(),
-  storage: s3Storage({
-    region: "auto",
-    endpoint: process.env.R2_ENDPOINT,
+  build: bare({ enableHermes: true }),
+  storage: r2Storage({
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -91,26 +147,31 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${managementToken}`,
+    },
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
 <Callout type="warn">
-The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
+  The `storage` plugin must match the `storages` in your server's
+  `createHotUpdater`. Both use `r2Storage` in this example.
 </Callout>
 
 ## API Endpoints
 
 The server automatically creates these endpoints:
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/hot-updater/version` | Get server version |
-| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
-| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
-| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
-| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
-| POST | `/hot-updater/api/bundles` | Create bundles |
-| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
-| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
-| GET | `/hot-updater/api/bundles/channels` | List all channels |
+| Method | Endpoint                                                                              | Description                                                         |
+| ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| GET    | `/hot-updater/version`                                                                | Get server version                                                  |
+| GET    | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint                                    |
+| GET    | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId`         | Check for updates by app version                                    |
+| GET    | `/hot-updater/api/bundles`                                                            | List bundles (query: channel, platform, limit, page, after, before) |
+| GET    | `/hot-updater/api/bundles/:id`                                                        | Get bundle by ID                                                    |
+| POST   | `/hot-updater/api/bundles`                                                            | Create bundles                                                      |
+| PATCH  | `/hot-updater/api/bundles/:id`                                                        | Update a bundle                                                     |
+| DELETE | `/hot-updater/api/bundles/:id`                                                        | Delete bundle                                                       |
+| GET    | `/hot-updater/api/bundles/channels`                                                   | List all channels                                                   |

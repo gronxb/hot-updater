@@ -14,16 +14,20 @@ Your CLI configuration (`hot-updater.config.ts`) connects your React Native proj
 Create a `hot-updater.config.ts` file in your React Native project root:
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
-import { s3Storage } from "@hot-updater/aws";
+import { r2Storage } from "@hot-updater/cloudflare";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 export default defineConfig({
-  build: bare(),
-  storage: s3Storage({
-    region: "auto",
-    endpoint: process.env.R2_ENDPOINT,
+  build: bare({ enableHermes: true }),
+  storage: r2Storage({
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -32,7 +36,11 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${managementToken}`,
+    },
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
@@ -41,9 +49,10 @@ export default defineConfig({
 
 The `storage` plugin in your CLI config must match the `storages` in your server's `createHotUpdater` configuration.
 
-**CLI uses `s3Storage` → Server must use `s3Storage`**
+**CLI uses `r2Storage` → Server must use `r2Storage`**
 
 Both sides need the same plugin type and configuration to encode/decode storage URIs correctly.
+
 </Callout>
 
 ## Standalone Repository Configuration
@@ -52,113 +61,106 @@ The `standaloneRepository` plugin connects your CLI to your self-hosted server:
 
 ```typescript
 interface StandaloneRepositoryConfig {
-  baseUrl: string;                        // Your server URL
+  baseUrl: string; // Your server URL
   commonHeaders?: Record<string, string>; // Optional headers (e.g., authentication)
-  routes?: Routes;                        // Optional custom route configuration
+  routes?: Routes; // Optional custom route configuration
 }
-```
-
-### Basic Example
-
-```typescript
-database: standaloneRepository({
-  baseUrl: "http://localhost:3000/hot-updater",
-})
 ```
 
 ### With Authentication
 
 ```typescript
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
+
 database: standaloneRepository({
   baseUrl: process.env.HOT_UPDATER_SERVER_URL!,
   commonHeaders: {
-    "Authorization": `Bearer ${process.env.API_TOKEN}`
-  }
-})
+    Authorization: `Bearer ${managementToken}`,
+  },
+});
 ```
 
 ### With Custom Routes
 
 ```typescript
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
+
 database: standaloneRepository({
   baseUrl: "https://api.example.com",
+  commonHeaders: {
+    Authorization: `Bearer ${managementToken}`,
+  },
   routes: {
     create: () => ({
       path: "/v1/hot-updater/api/bundles",
-      headers: { "X-Custom-Header": "value" }
+      headers: { "X-Custom-Header": "value" },
     }),
     update: (bundleId) => ({
       path: `/v1/hot-updater/api/bundles/${bundleId}`,
-      headers: { "X-Custom-Header": "value" }
+      headers: { "X-Custom-Header": "value" },
     }),
     list: () => ({
-      path: "/v1/hot-updater/api/bundles"
+      path: "/v1/hot-updater/api/bundles",
     }),
     channels: () => ({
-      path: "/v1/hot-updater/api/bundles/channels"
+      path: "/v1/hot-updater/api/bundles/channels",
     }),
     retrieve: (bundleId) => ({
-      path: `/v1/hot-updater/api/bundles/${bundleId}`
+      path: `/v1/hot-updater/api/bundles/${bundleId}`,
     }),
     delete: (bundleId) => ({
-      path: `/v1/hot-updater/api/bundles/${bundleId}`
-    })
-  }
-})
+      path: `/v1/hot-updater/api/bundles/${bundleId}`,
+    }),
+  },
+});
 ```
 
 ## API Endpoints
 
-Your server must implement these endpoints (when using default routes):
+With `routes: { updateCheck: true, bundles: true }`,
+`@hot-updater/server` mounts the legacy management contract used by
+`standaloneRepository`. All six routes can be remapped with the `routes`
+option shown above:
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/hot-updater/api/bundles` | Create bundles |
-| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
-| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
-| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
-| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
-| GET | `/hot-updater/api/bundles/channels` | List all channels |
+| Method | Default endpoint                    | Purpose            |
+| ------ | ----------------------------------- | ------------------ |
+| POST   | `/hot-updater/api/bundles`          | Create Bundles     |
+| PATCH  | `/hot-updater/api/bundles/:id`      | Update a Bundle    |
+| GET    | `/hot-updater/api/bundles`          | List Bundles       |
+| GET    | `/hot-updater/api/bundles/:id`      | Retrieve a Bundle  |
+| DELETE | `/hot-updater/api/bundles/:id`      | Delete a Bundle    |
+| GET    | `/hot-updater/api/bundles/channels` | List Channel names |
 
-These endpoints are automatically created when you use `@hot-updater/server` with database adapters.
+The Bundle-list request supports `channel`, `platform`, `enabled`, the
+`idEq`/`idGt`/`idGte`/`idLt`/`idLte`/`idIn` filters,
+`targetAppVersion`/`targetAppVersionIn`/`targetAppVersionNotNull`,
+`fingerprintHash`, and `limit`/`page`/`after`/`before`. Undefined
+filters are omitted; nullable filters use the literal `null`, booleans use
+`true` or `false`, and array filters use repeated query keys rather than
+comma-separated values.
 
-`GET /hot-updater/api/bundles` should return a `Paginated<Bundle[]>` body
-consumed by `standaloneRepository`:
-
-Cursor pagination is the official contract. `page` is an optional positive
-integer that keeps page numbers stable for console and standalone repository
-requests.
-
-```json
-{
-  "data": [{ "id": "bundle-id", "channel": "production" }],
-  "pagination": {
-    "total": 1,
-    "hasNextPage": false,
-    "hasPreviousPage": false,
-    "currentPage": 1,
-    "totalPages": 1
-  }
-}
-```
-
-`GET /hot-updater/api/bundles/channels` should return:
-
-```json
-{
-  "data": {
-    "channels": ["production", "staging"]
-  }
-}
-```
+For the complete Bundle shape, pagination response, query defaults, and
+encoding rules, use the canonical
+[Standalone Database server contract](../database-plugins/standalone#server-contract).
+The management routes do not authenticate themselves. Protect
+`/hot-updater/api/*` with fail-closed authentication before mounting the
+handler.
 
 ## Next Steps
 
 **Choose your build and storage plugins:**
+
 - [Build Plugins](../build-plugins/bare) - React Native CLI, Expo, Re.Pack
 - [Storage Plugins](../storage-plugins/supabase) - AWS S3, Supabase, Firebase, Cloudflare R2
 
 **Set up your server:**
+
 - [Quick Start Guide](./quick-start) - Set up a server in 5 minutes
 - [Database Adapters](./database/drizzle) - Drizzle, Prisma, Kysely, MongoDB
 - [Server Frameworks](./frameworks/hono) - Hono, Express, Elysia

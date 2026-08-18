@@ -18,7 +18,6 @@ docs/
 │       ├── database-plugins/   # Database plugin documentation
 │       ├── react-native-api/   # Client-side API reference
 │       ├── guides/             # Advanced topics and guides
-│       ├── cli-reference/      # CLI command documentation
 │       └── policy/             # Security and best practices
 ├── src/                        # Documentation site source
 ├── public/                     # Static assets
@@ -52,6 +51,7 @@ Each directory with documentation pages needs a `meta.json` file:
 ### Examples
 
 **Plugin section** (`content/docs/storage-plugins/meta.json`):
+
 ```json
 {
   "title": "Storage Plugins",
@@ -62,16 +62,13 @@ Each directory with documentation pages needs a `meta.json` file:
 ```
 
 **Multi-page section** (`content/docs/custom/meta.json`):
+
 ```json
 {
   "title": "Self Hosting (Custom)",
   "description": "Self-hosted server setup",
   "icon": "Server",
-  "pages": [
-    "overview",
-    "quick-start",
-    "cli-configuration"
-  ]
+  "pages": ["overview", "quick-start", "cli-configuration"]
 }
 ```
 
@@ -87,11 +84,13 @@ Each directory with documentation pages needs a `meta.json` file:
 ## Documentation Standards
 
 ### File Format
+
 - Use `.mdx` format for all documentation files
 - Include frontmatter with `title`, `description`, and `icon`
 - Use kebab-case for file names (e.g., `aws.mdx`, `supabase.mdx`)
 
 ### Frontmatter Template
+
 ```mdx
 ---
 title: "Plugin Name"
@@ -101,17 +100,20 @@ icon: icon-name
 ```
 
 **Frontmatter Description Rules:**
+
 - **Keep it concise**: 1 sentence maximum, ideally under 20 words
 - **High-level overview**: Don't include technical details or implementation specifics
 - **No links**: Save links for the body content
 - **Action-oriented**: Focus on what it does or what problem it solves
 
 **Body Structure Rules:**
+
 - **Start with ## heading**: Body content must begin directly with a `##` heading (no text between frontmatter and first heading)
 - **No duplicate descriptions**: Don't repeat the frontmatter description as the first paragraph
 - **Natural flow**: Content should flow logically from one section to the next
 
 ### Package Installation
+
 **IMPORTANT**: Use `package-install` code block syntax with full npm command:
 
 ```package-install
@@ -119,6 +121,7 @@ npm install @hot-updater/plugin-name --save-dev
 ```
 
 **NOT** these:
+
 ```bash
 npm install @hot-updater/plugin-name
 ```
@@ -154,18 +157,21 @@ Each plugin documentation should follow this structure:
 ## Code Block Guidelines
 
 ### TypeScript Configuration
+
 ```typescript
 interface PluginConfig {
-  field: string;  // Brief inline comment
+  field: string; // Brief inline comment
 }
 ```
 
 ### Usage Examples
+
 - Always use `process.env.VARIABLE_NAME` for sensitive data
 - Include `defineConfig` wrapper
 - Show full imports
 
 ### Environment Variables
+
 ```bash
 VARIABLE_NAME=value
 ```
@@ -191,14 +197,18 @@ VARIABLE_NAME=value
 ## Documentation Sections
 
 ### Self-Hosting (Managed)
+
 Located in `content/docs/managed/`
+
 - supabase.mdx - Supabase setup guide
 - firebase.mdx - Firebase setup guide
 - cloudflare.mdx - Cloudflare setup guide
 - aws.mdx - AWS setup guide
 
 ### Self-Hosting (Custom)
+
 Located in `content/docs/custom/`
+
 - overview.mdx - Self-hosting architecture overview
 - quick-start.mdx - Quick start guide
 - cli-configuration.mdx - CLI configuration
@@ -207,22 +217,28 @@ Located in `content/docs/custom/`
 - hosting/ - Deployment platform guides (Docker, Cloudflare Workers, Vercel)
 
 ### Build Plugins
+
 Located in `content/docs/build-plugins/`
+
 - bare.mdx - React Native CLI
 - expo.mdx - Expo projects
 - rock.mdx - Rock bundler
 
 ### Storage Plugins
+
 Located in `content/docs/storage-plugins/`
+
 - supabase.mdx - Supabase Storage
 - aws.mdx - AWS S3 and S3-compatible object storage
 - cloudflare.mdx - Cloudflare R2 via S3-compatible credentials, with legacy
   Wrangler and Worker binding guidance
 - firebase.mdx - Firebase Cloud Storage
-- standalone.mdx - Custom self-hosted storage
+- custom-storage.mdx - Custom self-hosted storage
 
 ### Database Plugins
+
 Located in `content/docs/database-plugins/`
+
 - supabase.mdx - Supabase PostgreSQL
 - aws.mdx - S3 + CloudFront JSON storage
 - cloudflare.mdx - Cloudflare D1
@@ -232,9 +248,11 @@ Located in `content/docs/database-plugins/`
 ## Common Patterns
 
 ### When documenting plugins that work together:
+
 Include a "Complete Example" section showing both storage and database combined.
 
 ### When documenting alternatives:
+
 Recommend the provider-specific plugin by default. Document an alternative only
 when it provides a distinct capability, and state the protocol or migration
 tradeoff explicitly:
@@ -244,11 +262,13 @@ tradeoff explicitly:
 ```
 
 ### When documenting peer dependencies:
+
 Show both in installation and include a separate Dependencies section at the end.
 
 ## Commands
 
 ### Build documentation site
+
 ```bash
 cd docs
 pnpm install
@@ -256,6 +276,7 @@ pnpm dev
 ```
 
 ### Build for production
+
 ```bash
 pnpm build
 ```
@@ -263,28 +284,34 @@ pnpm build
 ## 404 Page Guidelines
 
 ### Global 404 Page
+
 Located at `src/pages/404.tsx` - handles all unmatched routes.
 
 **Structure:**
+
 - Uses HomeLayout for consistent navigation and branding
 - Center-aligned content with proper spacing
 - Includes "Go Back Home" link
 - Theme-aware colors (dark/light mode support)
 
 **When to modify:**
+
 - Update styling to match site theme changes
 - Add custom error tracking if needed
 - Maintain consistent branding with other pages
 
 ### Inline 404 Handler
+
 Located in `src/pages/docs/[...slugs].tsx:14-24` - handles missing documentation pages.
 
 **Purpose:**
+
 - Shows 404 within docs layout when a doc page doesn't exist
 - Preserves sidebar and navigation for better UX
 - Different from global 404 (no layout redirect needed)
 
 **Key differences:**
+
 - **Global 404**: Unmatched routes (e.g., `/random`) → Full layout with navigation
 - **Inline 404**: Missing docs (e.g., `/docs/invalid`) → Shows within docs layout
 
@@ -301,7 +328,7 @@ When referencing documentation in code, comments, or other docs, use these patte
 - **Database plugins**: `/docs/database-plugins/{provider}` (e.g., `/docs/database-plugins/cloudflare`)
 - **Build plugins**: `/docs/build-plugins/{bundler}` (e.g., `/docs/build-plugins/expo`)
 - **React Native API**: `/docs/react-native-api/{topic}` (e.g., `/docs/react-native-api/wrap`)
-- **Guides**: `/docs/guides/{topic}` (e.g., `/docs/guides/update-strategies`)
+- **Guides**: `/docs/guides/{topic}` (e.g., `/docs/guides/update-strategies/app-version`)
 
 ## Notes for Claude
 

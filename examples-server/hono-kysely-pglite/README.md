@@ -1,135 +1,139 @@
 # Hot Updater Server with Hono + PGlite
 
-A production-ready Hot Updater server example using:
-- **Hono** - Fast web framework
-- **PGlite** - Lightweight PostgreSQL in Node.js (no server required)
-- **Kysely** - Type-safe SQL query builder
-- **Hot Updater schema migrations** - Versioned schema setup through the CLI
-
-## Features
-
-- ✅ No PostgreSQL server needed (uses PGlite)
-- ✅ File-based persistence
-- ✅ Automatic schema migration
-- ✅ RESTful API endpoints
-- ✅ CORS enabled
-- ✅ Request logging
-- ✅ Graceful shutdown
+This workspace example runs the v0 Hot Updater server contract with Hono,
+PGlite, and Kysely. PGlite persists its PostgreSQL-compatible data in
+`./data`; no separate PostgreSQL server is required.
 
 ## Setup
 
-1. Install dependencies:
+Install workspace dependencies from the repository root, then enter this
+example:
+
 ```bash
 pnpm install
+cd examples-server/hono-kysely-pglite
 ```
 
-2. Configure environment variables (optional):
+Copy the documented server environment file to the path loaded by
+`src/db.ts`:
+
 ```bash
-cp .env.example .env
-# Edit .env with your AWS credentials
+cp .env.example src/.env.hotupdater
 ```
 
-3. Start development server:
+Set a strong `HOT_UPDATER_AUTH_TOKEN` and valid R2 credentials in that
+file. Management requests fail closed when the token is unset or incorrect.
+
+Apply the checked-in Hot Updater migrations before starting the server:
+
 ```bash
+pnpm exec hot-updater db migrate src/db.ts --yes
 pnpm dev
 ```
 
-The server will start on http://localhost:3000
+The server listens on `http://localhost:3000`. Startup does not apply
+database migrations automatically.
 
-## API Endpoints
+## Routes
 
-### Health Check
+Health check:
+
 ```bash
-GET /
+curl http://localhost:3000/
 ```
 
-### Check for Updates
+App-version update check (public):
+
 ```bash
-POST /api/update
-Content-Type: application/json
-
-{
-  "platform": "ios",
-  "appVersion": "1.0.0",
-  "bundleId": "00000000-0000-0000-0000-000000000000",
-  "_updateStrategy": "appVersion"
-}
+curl "http://localhost:3000/hot-updater/app-version/ios/1.0.0/production/0/0"
 ```
 
-### List Bundles
+Fingerprint update check (public):
+
 ```bash
-GET /api/bundles?channel=production&platform=ios&limit=50
+curl "http://localhost:3000/hot-updater/fingerprint/ios/YOUR_FINGERPRINT/production/0/0"
 ```
 
-### Create Bundle
+List bundles (Bearer token required):
+
+Replace `<HOT_UPDATER_AUTH_TOKEN>` below with the value configured in
+`src/.env.hotupdater`; that file is loaded by the server, not exported to your
+shell.
+
 ```bash
-POST /api/bundles
-Content-Type: application/json
-
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "platform": "ios",
-  "targetAppVersion": "1.0.0",
-  "channel": "production",
-  "enabled": true,
-  "shouldForceUpdate": false,
-  "fileHash": "abc123",
-  "storageUri": "s3://bucket/bundles/bundle.zip",
-  "message": "Initial release",
-  "gitCommitHash": null,
-  "fingerprintHash": null
-}
+curl \
+  -H "Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>" \
+  "http://localhost:3000/hot-updater/api/bundles?channel=production&platform=ios&limit=50"
 ```
 
-### Delete Bundle
+Create a bundle. The v0 create route accepts an array of full bundle objects:
+
 ```bash
-DELETE /api/bundles/:id
+curl -X POST \
+  -H "Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>" \
+  -H "Content-Type: application/json" \
+  http://localhost:3000/hot-updater/api/bundles \
+  --data '[
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "platform": "ios",
+      "targetAppVersion": "1.0.0",
+      "channel": "production",
+      "enabled": true,
+      "shouldForceUpdate": false,
+      "fileHash": "abc123",
+      "storageUri": "r2://your-bucket-name/bundles/bundle.zip",
+      "message": "Initial release",
+      "gitCommitHash": null,
+      "fingerprintHash": null,
+      "metadata": {}
+    }
+  ]'
 ```
 
-### List Channels
+List channels:
+
 ```bash
-GET /api/channels
+curl \
+  -H "Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>" \
+  http://localhost:3000/hot-updater/api/bundles/channels
 ```
 
-## Project Structure
+Delete a bundle:
 
-```
-hono-server/
-├── src/
-│   ├── index.ts      # Main server entry point
-│   ├── db.ts         # Database setup (PGlite + Kysely + Hot Updater schema)
-│   └── routes.ts     # API routes
-├── data/             # PGlite database files (gitignored)
-├── package.json
-└── tsconfig.json
+```bash
+curl -X DELETE \
+  -H "Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>" \
+  http://localhost:3000/hot-updater/api/bundles/550e8400-e29b-41d4-a716-446655440000
 ```
 
-## Database
+Omitting the header, using the wrong token, or leaving
+`HOT_UPDATER_AUTH_TOKEN` unset returns `401` for management
+routes. Public update-check routes remain reachable.
 
-The server uses PGlite with file-based storage at `./data/hot-updater.db`.
-The database schema is generated from Hot Updater's versioned schema and
-migrated through the Hot Updater CLI.
+## Storage and Persistence
 
-On first run, the schema will be initialized automatically.
-
-## Storage Configuration
-
-By default, the example uses AWS S3 for bundle storage. Configure credentials via environment variables:
+The example registers mock storage for local tests and Cloudflare R2 for real
+artifacts with these variables:
 
 ```env
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-AWS_BUCKET_NAME=your-bucket-name
+CLOUDFLARE_ACCOUNT_ID=your-cloudflare-account-id
+R2_ACCESS_KEY_ID=your-access-key-id
+R2_SECRET_ACCESS_KEY=your-secret-access-key
+R2_BUCKET_NAME=your-bucket-name
 ```
 
-You can also use other storage providers by modifying `src/db.ts`.
+PGlite stores database files in `./data`, relative to the example's
+working directory.
 
 ## Production
 
-Build and run in production:
-
 ```bash
+pnpm exec hot-updater db migrate src/db.ts --yes
 pnpm build
-pnpm start
+node dist/src/index.js
 ```
+
+The compiled module does not load the source-tree `src/.env.hotupdater` file.
+Supply `PORT`, the management token, and R2 credentials through the deployment
+environment or process manager instead of copying secrets into `dist`.

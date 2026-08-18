@@ -7,7 +7,7 @@ icon: Hammer
 ## Installation
 
 ```package-install
-npm install @hot-updater/plugin-core --save-dev
+npm install @hot-updater/plugin-core
 ```
 
 ## Overview
@@ -22,15 +22,21 @@ Use `createDatabasePlugin` to build custom database plugins:
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 
 export const myDatabase = createDatabasePlugin<MyConfig>({
-  name: "myDatabase",              // Plugin identifier
+  name: "myDatabase", // Plugin identifier
   factory: (config) => ({
     // Return these required methods:
-    getBundleById: async (bundleId) => { /* ... */ },
+    getBundleById: async (bundleId) => {
+      /* ... */
+    },
     getBundles: async (options) => ({ data: [], pagination: {} }),
     getChannels: async () => [],
-    commitBundle: async ({ changedSets }) => { /* ... */ },
-    onUnmount: async () => { /* optional cleanup */ }
-  })
+    commitBundle: async ({ changedSets }) => {
+      /* ... */
+    },
+    onUnmount: async () => {
+      /* optional cleanup */
+    },
+  }),
 });
 ```
 
@@ -46,13 +52,13 @@ Your factory function must return an object with these methods:
   // Optional but recommended: direct update-check fast path
   getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;
 
-  // Fetch paginated bundles with optional filtering
-  getBundles: (options: {
-    where?: { channel?: string; platform?: string };
-    limit: number;
-    page?: number;
-    cursor?: { after?: string; before?: string };
-  }) => Promise<Paginated<Bundle[]>>;
+  // Set this only when getBundles implements cursor boundaries itself
+  supportsCursorPagination?: boolean;
+
+  // Fetch paginated bundles with the complete DatabaseBundleQueryOptions
+  getBundles: (
+    options: DatabaseBundleQueryOptions & { offset?: number },
+  ) => Promise<Paginated<Bundle[]>>;
 
   // Get all available channels
   getChannels: () => Promise<string[]>;
@@ -93,6 +99,26 @@ export interface CustomDatabaseConfig {
   apiKey: string;
 }
 
+const appendValues = (
+  params: URLSearchParams,
+  key: string,
+  values: string[] | undefined,
+) => {
+  for (const value of values ?? []) {
+    params.append(key, value);
+  }
+};
+
+const setNullable = (
+  params: URLSearchParams,
+  key: string,
+  value: string | null | undefined,
+) => {
+  if (value !== undefined) {
+    params.set(key, value === null ? "null" : value);
+  }
+};
+
 export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
   name: "customDatabase",
   factory: (config) => {
@@ -102,11 +128,12 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
     };
 
     return {
+      supportsCursorPagination: true,
+
       async getBundleById(bundleId) {
-        const response = await fetch(
-          `${config.baseUrl}/bundles/${bundleId}`,
-          { headers }
-        );
+        const response = await fetch(`${config.baseUrl}/bundles/${bundleId}`, {
+          headers,
+        });
 
         if (!response.ok) {
           if (response.status === 404) return null;
@@ -137,11 +164,44 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
         if (options.where?.platform) {
           params.set("platform", options.where.platform);
         }
+        if (options.where?.enabled !== undefined) {
+          params.set("enabled", String(options.where.enabled));
+        }
 
-        const response = await fetch(
-          `${config.baseUrl}/bundles?${params}`,
-          { headers }
+        const id = options.where?.id;
+        if (id?.eq !== undefined) params.set("idEq", id.eq);
+        if (id?.gt !== undefined) params.set("idGt", id.gt);
+        if (id?.gte !== undefined) params.set("idGte", id.gte);
+        if (id?.lt !== undefined) params.set("idLt", id.lt);
+        if (id?.lte !== undefined) params.set("idLte", id.lte);
+        appendValues(params, "idIn", id?.in);
+
+        setNullable(
+          params,
+          "targetAppVersion",
+          options.where?.targetAppVersion,
         );
+        appendValues(
+          params,
+          "targetAppVersionIn",
+          options.where?.targetAppVersionIn,
+        );
+        if (options.where?.targetAppVersionNotNull !== undefined) {
+          params.set(
+            "targetAppVersionNotNull",
+            String(options.where.targetAppVersionNotNull),
+          );
+        }
+        setNullable(params, "fingerprintHash", options.where?.fingerprintHash);
+
+        if (options.orderBy) {
+          params.set("orderBy", options.orderBy.field);
+          params.set("orderDirection", options.orderBy.direction);
+        }
+
+        const response = await fetch(`${config.baseUrl}/bundles?${params}`, {
+          headers,
+        });
 
         if (!response.ok) {
           throw new Error(`Failed to fetch bundles: ${response.statusText}`);
@@ -193,8 +253,13 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
 });
 ```
 
-Use cursor pagination as the contract for bundle-management queries. The
-`offset` query parameter has been removed from the public API.
+This example opts into native cursor pagination, so its REST backend must
+honor `after`, `before`, `orderBy`, every filter above,
+and return matching cursor metadata. Do not set
+`supportsCursorPagination: true` if the backend ignores those fields.
+Without that flag, `createDatabasePlugin` supplies offset/ID/order
+fallback queries to `getBundles`; an implementation using that mode
+must honor the internal `offset` value instead.
 
 ## Helper Utilities
 
@@ -218,18 +283,16 @@ const pagination = calculatePagination(totalCount, {
 
 ## CLI Configuration
 
-Use your custom plugin in `hot-updater.config.ts`:
+Use the plugin as the database field in `hot-updater.config.ts`. This is
+a field excerpt; a complete config must also provide build, storage, and update
+strategy fields:
 
-```typescript
-import { defineConfig } from "@hot-updater/core";
+```typescript title="hot-updater.config.ts (excerpt)"
 import { customDatabase } from "./customDatabase";
 
-export default defineConfig({
-  database: customDatabase({
-    baseUrl: process.env.DATABASE_BASE_URL!,
-    apiKey: process.env.DATABASE_API_KEY!,
-  }),
-  // ... other config
+const database = customDatabase({
+  baseUrl: process.env.DATABASE_BASE_URL!,
+  apiKey: process.env.DATABASE_API_KEY!,
 });
 ```
 

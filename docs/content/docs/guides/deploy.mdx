@@ -26,6 +26,7 @@ Options:
   -i, --interactive                            interactive mode (default: false)
   -c, --channel <channel>                      specify the channel to deploy (default: "production")
   -m, --message <message>                      Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message
+  -d, --disabled                               create the bundle in a disabled state (default: false)
   -h, --help                                   display help for command
 ```
 
@@ -54,10 +55,13 @@ alongside the archive bundle. When the app runtime supports manifest-based
 diffing, unchanged files can be reused locally and only changed files are
 downloaded. No deploy flag is required for this behavior.
 
-If `patch.enabled: true` is set in `hot-updater.config.ts`, deploy also tries
-to prepare compatible `bsdiff` patches for the Hermes bundle. This optimization
-is disabled by default. Patch generation is best-effort; a skipped patch does
-not fail the deployment because the normal archive update remains available.
+Deploy also tries to prepare compatible `bsdiff` patches for the Hermes bundle.
+Binary patch generation is enabled by default and uses up to three compatible
+base bundles. Patch generation is best-effort; a skipped patch does not fail the
+deployment because the normal archive update remains available.
+
+Set `patch.enabled: false` in `hot-updater.config.ts` to disable binary patch
+generation. Use `patch.maxBaseBundles` to change the default base count of `3`.
 
 See [Bundle Diffing](/docs/guides/bundle-diffing) for the runtime behavior and
 fallback rules.
@@ -152,6 +156,17 @@ npx hot-updater deploy -p <"ios" | "android"> -m "<message>"
 
 If you omit `-p`, the same message is applied to both sequential platform
 deploys.
+
+### Create a Disabled Bundle
+
+Use `-d` (or `--disabled`) to upload and persist a bundle without making it
+eligible for update checks:
+
+```package-install
+npx hot-updater deploy -p <"ios" | "android"> --disabled
+```
+
+Enable the bundle later from the console or with `hot-updater bundle enable`.
 
 ## Force Update Flag Difference
 

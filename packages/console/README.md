@@ -17,6 +17,7 @@ Modern web-based management console for Hot Updater built with **TanStack Start*
 ## 🛠️ Tech Stack
 
 ### Frontend
+
 - **TanStack Start** - Full-stack React framework with SSR
 - **TanStack Router** - File-based routing with type safety
 - **TanStack Query** - Data fetching and caching
@@ -25,12 +26,14 @@ Modern web-based management console for Hot Updater built with **TanStack Start*
 - **React 19** - Latest React features
 
 ### UI Components
+
 - **shadcn/ui** - High-quality accessible components (Radix Mira style)
 - **Tailwind CSS v4** - Utility-first CSS with oklch color system
 - **Lucide React** - Beautiful icon library
 - **Sonner** - Toast notifications
 
 ### Backend
+
 - **TanStack Start Server Functions** - Type-safe server endpoints
 - **Hot Updater Plugins** - Storage and database plugin integration
 
@@ -92,16 +95,19 @@ src/
 ## 🎨 Key Components
 
 ### Bundle List Page
+
 - **FilterToolbar** - Platform and channel filters with reset button
 - **BundlesTable** - Server-side paginated table (20 per page)
 - **BundleTableColumns** - Column definitions with custom cell renderers
 
 ### Bundle Editor Sheet
+
 - **BundleEditorSheet** - Right-side slide-out panel
 - **BundleEditorForm** - TanStack Form with validation
 - **BundleMetadata** - Read-only bundle information display
 
 ### Dialogs
+
 - **PromoteChannelDialog** - Channel promotion with copy/move toggle
 - **DeleteBundleDialog** - Confirmation dialog with bundle details
 - **EmergencyRollbackButton** - One-click disable + 0% rollout
@@ -126,7 +132,7 @@ Configure Hot Updater in `hot-updater.config.ts`:
 import { mockDatabase, mockStorage } from "@hot-updater/mock";
 
 export default {
-  storage: mockStorage(),
+  storage: mockStorage({}),
   database: mockDatabase({
     latency: { min: 500, max: 700 },
     initialBundles: [
@@ -171,14 +177,17 @@ The console uses Tailwind CSS v4 with oklch color space for accessible colors. T
 ## 🐛 Troubleshooting
 
 ### Build Errors
+
 - Ensure `.server.ts` files are not imported on the client
 - Check that native modules (`.node`) are excluded from bundling
 
 ### Development Server
+
 - Default port is 3000
 - Change port: `pnpm dev --port 3001`
 
 ### Hot Updater Config
+
 - Ensure `hot-updater.config.ts` is at package root
 - Verify storage and database plugins are correctly initialized
 

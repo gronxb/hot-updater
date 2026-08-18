@@ -1,192 +1,109 @@
-# Express + Prisma Example
+# Express + Prisma + SQLite Example
 
-This example demonstrates how to use Hot Updater with Express and Prisma.
-
-## Features
-
-- **Framework**: Express.js 4.x
-- **Database**: SQLite with Prisma ORM
-- **Adapter**: Prisma adapter (`@hot-updater/server/adapters/prisma`)
-- **Node.js Adapter**: `toNodeHandler` for seamless Express integration
-- **Storage**: Mock storage + AWS S3 / Cloudflare R2
-
-## Quick Start
-
-```typescript
-import express from "express";
-import { toNodeHandler } from "@hot-updater/server/node";
-import { hotUpdater } from "./db";
-
-const app = express();
-
-// Mount middleware
-app.use(express.json());
-
-// Mount Hot Updater handler
-app.all("/hot-updater/*", toNodeHandler(hotUpdater));
-```
-
-The `toNodeHandler` adapter automatically converts between Express's req/res and Web Standard Request/Response.
+This workspace example runs the v0 Hot Updater server contract with Express,
+Prisma, and SQLite. Management routes are protected with Bearer authentication;
+update-check routes remain public.
 
 ## Setup
 
-1. Install dependencies:
+Install workspace dependencies from the repository root, then enter the
+example:
 
 ```bash
 pnpm install
+cd examples-server/express-prisma-sqlite
 ```
 
-2. Configure environment variables:
+Copy the environment template to the path loaded by `src/prisma.ts`:
 
 ```bash
-cp .env.example .env
-# Edit .env with your database and storage credentials
+cp .env.example src/.env.hotupdater
 ```
 
-3. Generate Prisma schema from Hot Updater:
+Set a strong `HOT_UPDATER_AUTH_TOKEN` and valid Cloudflare R2 credentials.
+Mock storage is registered for local tests only.
+
+## Prisma Workflow
+
+Generate and merge the current Hot Updater models directly into
+`prisma/schema.prisma`:
 
 ```bash
 pnpm db:generate
 ```
 
-This will create a `hot-updater-schema.ts` file with the Prisma schema definitions.
+The generator preserves application models and replaces the managed
+Hot Updater block, including `bundles` and
+`bundle_patches`. There is no separate schema excerpt to copy.
 
-4. Apply the schema to the database:
-
-```bash
-pnpm db:push
-```
-
-For production, use Prisma migrations:
+Generate Prisma Client and apply the merged schema:
 
 ```bash
-npx prisma migrate dev    # Create migration
-npx prisma migrate deploy # Apply migration
+pnpm exec prisma generate
+DATABASE_URL=file:../data/prisma.db pnpm db:push
 ```
+
+For production, create and deploy a reviewed Prisma migration instead of using
+`db push`.
+
+## Secured Express Mount
+
+The server parses JSON before the Hot Updater handler, rejects missing or
+incorrect management credentials, and mounts without an unnamed wildcard:
+
+```typescript
+import { toNodeHandler } from "@hot-updater/server/node";
+import express from "express";
+
+import { hotUpdater } from "./db";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
+
+const app = express();
+app.use(express.json());
+
+app.use("/hot-updater/api", (req, res, next) => {
+  if (req.get("Authorization") !== `Bearer ${managementToken}`) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  next();
+});
+
+app.use("/hot-updater", toNodeHandler(hotUpdater));
+```
+
+The checked-in implementation uses the same fail-closed token check. Supply
+`Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>` for
+`/hot-updater/api/*`. Requests without the header, with a wrong token,
+or with an unset server token are rejected.
 
 ## Development
-
-Start the development server:
 
 ```bash
 pnpm dev
 ```
 
-The server will run on `http://localhost:3002`.
+The server listens on `http://localhost:3002`.
 
-## Production
-
-Build and run:
+## Build Verification
 
 ```bash
 pnpm build
-pnpm start
 ```
 
-## Testing
+The current emitted ESM is not directly launchable by Node because its relative
+imports omit file extensions. Use `pnpm dev` for this example until that build
+issue is fixed. A deployed adaptation must run reviewed schema migrations and
+inject `PORT`, `HOT_UPDATER_AUTH_TOKEN`, and the R2 credentials through its
+deployment environment instead of relying on the source-tree env file.
 
-Run integration tests:
+## Tests
 
 ```bash
 pnpm test
 ```
-
-## Database Management
-
-### Prisma Workflow for Hot Updater
-
-Prisma uses a different workflow compared to Drizzle or Kysely adapters. The process involves integrating generated models into your Prisma schema file:
-
-**Step 1: Generate Hot Updater Models**
-
-```bash
-pnpm db:generate
-```
-
-This command:
-1. Reads your Hot Updater configuration from `src/db.ts`
-2. Generates `hot-updater-schema.ts` with Prisma model definitions
-3. The file contains model schemas for `bundles` and `private_hot_updater_settings`
-
-**Step 2: Integrate Models into `prisma/schema.prisma`**
-
-The generated models need to be added to your `prisma/schema.prisma` file. This example already includes them:
-
-```prisma
-model bundles {
-  id                  String  @id
-  platform            String
-  should_force_update Boolean
-  enabled             Boolean
-  file_hash           String
-  git_commit_hash     String?
-  message             String?
-  channel             String
-  storage_uri         String
-  target_app_version  String?
-  fingerprint_hash    String?
-  metadata            Json
-}
-
-model private_hot_updater_settings {
-  key   String @id
-  value String @default("0.29.0")
-}
-```
-
-**Step 3: Generate Prisma Client**
-
-```bash
-npx prisma generate
-```
-
-**Step 4: Apply Schema to Database**
-
-For development (quick sync without migration files):
-
-```bash
-pnpm db:push
-```
-
-For production (with migration history):
-
-```bash
-npx prisma migrate dev --name init
-npx prisma migrate deploy
-```
-
-### Why This Workflow?
-
-Unlike Drizzle (which generates complete TypeScript schema files) or Kysely (which uses SQL migrations), Prisma requires:
-1. **Schema file integration**: Models must be in `prisma/schema.prisma`
-2. **Client generation**: Prisma Client must be generated from the schema
-3. **Database sync**: Use `db push` (dev) or `migrate` (production) to apply changes
-
-This is the standard Prisma workflow and applies to other tools using Prisma (like better-auth).
-
-## Project Structure
-
-```
-express-server/
-├── src/
-│   ├── index.ts              # Express server entry point
-│   ├── db.ts                 # Hot Updater configuration
-│   ├── prisma.ts             # Prisma client initialization
-│   ├── routes.ts             # Route handlers
-│   └── handler.integration.spec.ts  # Integration tests
-├── prisma/
-│   └── schema.prisma         # Base Prisma schema
-├── data/                     # SQLite database (gitignored)
-├── package.json
-├── tsconfig.json
-└── vitest.config.ts
-```
-
-## Notes
-
-- The Prisma adapter uses Hot Updater's DatabasePlugin contract with generated
-  Prisma schema artifacts
-- Schema generation is handled by Hot Updater CLI (`db generate`)
-- Database migrations use Prisma's built-in migration system
-- The server includes graceful shutdown handlers for SIGTERM/SIGINT
-- Integration tests automatically run schema generation and database push before starting the server

@@ -7,7 +7,7 @@ icon: firebase
 ## Installation
 
 ```package-install
-npm install @hot-updater/firebase firebase-admin --save-dev
+npm install @hot-updater/firebase firebase-admin dotenv --save-dev
 ```
 
 ## Setup
@@ -25,16 +25,15 @@ For manual configuration, use the settings below.
 ## Configuration
 
 ```typescript
-import type { Credential } from 'firebase-admin/app';
+import type { Credential } from "firebase-admin/app";
 
 interface FirebaseStorageConfig {
-  projectId: string;               // Firebase project ID
-  storageBucket: string;           // Storage bucket name
-  credential: Credential;          // Firebase credential
-  basePath?: string;               // Optional base path within bucket
+  projectId: string; // Firebase project ID
+  storageBucket: string; // Storage bucket name
+  credential: Credential; // Firebase credential
+  basePath?: string; // Optional base path within bucket
 }
 ```
-
 
 ## Environment Variables
 
@@ -47,16 +46,18 @@ FIREBASE_PROJECT_ID=your-project-id
 FIREBASE_STORAGE_BUCKET=your-bucket-name
 ```
 
-
 ## Usage
 
 ```typescript
-import { firebaseStorage } from '@hot-updater/firebase';
-import { applicationDefault } from 'firebase-admin/app';
-import { defineConfig } from 'hot-updater';
+import { firebaseStorage } from "@hot-updater/firebase";
+import { applicationDefault } from "firebase-admin/app";
+import { defineConfig } from "hot-updater";
+import { config } from "dotenv";
+
+config({ path: ".env.hotupdater" });
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Check your .env file and add the credentials
+// Check your .env.hotupdater file and add the credentials
 // Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
 // Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
 const credential = applicationDefault();
@@ -65,12 +66,11 @@ export default defineConfig({
   storage: firebaseStorage({
     projectId: process.env.FIREBASE_PROJECT_ID,
     storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-    credential
+    credential,
   }),
   // ... other config
 });
 ```
-
 
 ## Protocol
 
@@ -82,7 +82,7 @@ This prefix is stored in the `storageUri` field in the database.
 
 `firebaseStorage` implements both storage profiles:
 
-- `node`: uploads, deletes, and downloads local files during CLI/console workflows.
+- `node`: uploads, checks, deletes, and downloads local files during CLI/console workflows.
 - `runtime`: creates Firebase download URLs and reads small metadata files
   directly through Cloud Storage APIs.
 

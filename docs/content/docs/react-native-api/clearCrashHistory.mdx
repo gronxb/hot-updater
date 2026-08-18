@@ -10,6 +10,7 @@ Use `clearCrashHistory()` to reset the crash history and allow redeploying bundl
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
+import { Button, View } from "react-native";
 
 function AdminPanel() {
   const handleClearHistory = () => {
@@ -29,7 +30,7 @@ function AdminPanel() {
   );
 }
 
-export default HotUpdater.wrap(AdminPanel);
+export default AdminPanel;
 ```
 
 ## Return Value

@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { getConfigScaffold } from "./templates";
+import { getConfigScaffold, SOURCE_TEMPLATE } from "./templates";
 
 describe("AWS managed config scaffold", () => {
+  it("renders a self-contained app bootstrap placeholder", () => {
+    expect(SOURCE_TEMPLATE).toContain(
+      "return null; // Replace with your app root",
+    );
+    expect(SOURCE_TEMPLATE).not.toContain("YourApp");
+  });
+
   it("renders access key credentials for account mode", () => {
     const scaffold = getConfigScaffold("bare", { mode: "account" });
 

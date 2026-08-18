@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   events: [] as string[],
   existingProject: false,
   functionsDir: "",
+  messages: [] as string[],
+  notes: [] as string[],
+  text: vi.fn(async () => "credentials.json"),
   tmpDir: "",
 }));
 
@@ -76,9 +79,18 @@ vi.mock("@hot-updater/cli-tools", async () => {
     }),
     p: {
       ...actual.p,
+      log: {
+        ...actual.p.log,
+        message: vi.fn((message: string) => {
+          mocks.messages.push(message);
+        }),
+      },
+      note: vi.fn((message: string) => {
+        mocks.notes.push(message);
+      }),
       text: vi.fn(async () => {
         mocks.events.push("credentials");
-        return "credentials.json";
+        return mocks.text();
       }),
     },
     readHotUpdaterInitEnv: vi.fn(async () => ({
@@ -138,6 +150,9 @@ describe("Firebase project creation", () => {
     mocks.existingEnv = {};
     mocks.events.length = 0;
     mocks.existingProject = false;
+    mocks.messages.length = 0;
+    mocks.notes.length = 0;
+    mocks.text.mockResolvedValue("credentials.json");
     mocks.tmpDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-firebase-init-"),
     );
@@ -221,6 +236,25 @@ describe("Firebase project creation", () => {
           GOOGLE_APPLICATION_CREDENTIALS: "/tmp/firebase-credentials.json",
         },
       },
+    );
+    expect(mocks.notes).toHaveLength(1);
+    expect(mocks.notes[0]).toContain(
+      "return null; // Replace with your app root",
+    );
+    expect(mocks.notes[0]).not.toContain("return ...");
+  });
+
+  it("points missing application credentials to .env.hotupdater", async () => {
+    mocks.existingProject = true;
+    mocks.text.mockResolvedValue("");
+
+    await runInit({ build: "bare" });
+
+    expect(mocks.messages).toContain(
+      "Next step: Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env.hotupdater",
+    );
+    expect(mocks.messages).not.toContain(
+      "Next step: Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env file",
     );
   });
 });

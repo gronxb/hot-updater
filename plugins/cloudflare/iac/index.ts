@@ -81,7 +81,7 @@ const SOURCE_TEMPLATE = `// add this to your App.tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
 function App() {
-  return ...
+  return null; // Replace with your app root
 }
 
 export default HotUpdater.wrap({

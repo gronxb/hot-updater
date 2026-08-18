@@ -1,169 +1,116 @@
 ---
 title: "checkForUpdate"
-description: "The `checkForUpdate` function checks if there is an available update for the app by comparing the current app version and platform with the update server's bundle information."
+description: "`HotUpdater.checkForUpdate()` checks the configured update source and returns an applicable update with a pre-filled download helper."
 icon: Search
 ---
 
 ## Usage
 
-Use `checkForUpdate` to verify if an update bundle is available. The function
-reuses the update source configured in `HotUpdater.wrap()` or
-`HotUpdater.init()`.
+Configure Hot Updater once with `HotUpdater.wrap()` or `HotUpdater.init()`, then
+pass an update strategy for each check. The check reuses the configured
+`baseURL` or `resolver`.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
-// First, configure baseURL with init
 HotUpdater.init({
   baseURL: "<your-update-server-url>",
 });
 
-// Use checkForUpdate - it reuses the configured baseURL
 async function checkForAppUpdate() {
-  try {
-    const updateInfo = await HotUpdater.checkForUpdate({
-      updateStrategy: "appVersion",
-      requestHeaders: {
-        Authorization: "Bearer <your-access-token>",
-      },
-    });
+  const updateInfo = await HotUpdater.checkForUpdate({
+    updateStrategy: "appVersion",
+    requestHeaders: {
+      Authorization: "Bearer <your-access-token>",
+    },
+  });
 
-    if (!updateInfo) {
-      return {
-        status: "UP_TO_DATE",
-      };
-    }
+  if (!updateInfo) {
+    return;
+  }
 
-    /**
-     * You can apply updates using one of two methods:
-     *
-     * Method 1: Use the updateBundle() method from the updateInfo object
-     * - A convenience method built into the return value from checkForUpdate
-     * - Performs the same function as HotUpdater.updateBundle with all required arguments pre-filled
-     */
-    await updateInfo.updateBundle();
-
-    /**
-     * Method 2: Call HotUpdater.updateBundle() directly
-     * - Explicitly pass the necessary values extracted from updateInfo
-     */
-    // await HotUpdater.updateBundle({
-    //   bundleId: updateInfo.id,
-    //   fileUrl: updateInfo.fileUrl,
-    //   status: updateInfo.status,
-    // });
-
-    if (updateInfo.shouldForceUpdate) {
-      await HotUpdater.reload();
-    }
-    return updateInfo;
-  } catch (error) {
-    console.error("Failed to check for update:", error);
-    return null;
+  const didDownload = await updateInfo.updateBundle();
+  if (didDownload && updateInfo.shouldForceUpdate) {
+    await HotUpdater.reload();
   }
 }
-
 ```
 
-## Important: HotUpdater.wrap or HotUpdater.init Required
+Calling `checkForUpdate()` before `wrap()` or `init()` throws because no update
+source has been configured.
 
-When using `checkForUpdate`, configure Hot Updater first with
-`HotUpdater.wrap()` or `HotUpdater.init()`. This is required for proper crash
-detection and rollback functionality.
+## `CheckForUpdateOptions`
+
+`HotUpdater.checkForUpdate()` accepts these options:
+
+| Property         | Type                            | Required | Description                                                                          |
+| ---------------- | ------------------------------- | -------- | ------------------------------------------------------------------------------------ |
+| `updateStrategy` | `"appVersion" \| "fingerprint"` | Yes      | Strategy used for this check; it can override the strategy configured by `wrap()`    |
+| `channel`        | `string`                        | No       | Channel to check. A runtime switch is persisted only after `updateBundle()` succeeds |
+| `requestHeaders` | `Record<string, string>`        | No       | Headers merged over the headers configured by `wrap()` or `init()`                   |
+| `onError`        | `(error: Error) => void`        | No       | Handler for an error from this check; it overrides the configured handler            |
+| `requestTimeout` | `number`                        | No       | Request timeout in milliseconds; defaults to the configured value or 5000            |
+
+If a runtime channel override is already active, checking a different explicit
+channel throws. Call `HotUpdater.resetChannel()` first.
+
+## `CheckForUpdateResult`
+
+The function resolves to `CheckForUpdateResult | null`. `null` means there is
+no applicable update, the server returned `UP_TO_DATE`, or the check could not
+produce an update. An available result has the following fields:
+
+| Property             | Type                                   | Required | Description                                                                                                                   |
+| -------------------- | -------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `id`                 | `string`                               | Yes      | Bundle ID returned by the update server                                                                                       |
+| `shouldForceUpdate`  | `boolean`                              | Yes      | Whether the app should reload immediately after download                                                                      |
+| `message`            | `string \| null`                       | Yes      | Optional message associated with the update                                                                                   |
+| `status`             | `"ROLLBACK" \| "UPDATE"`               | Yes      | Operation the client should apply                                                                                             |
+| `fileUrl`            | `string \| null`                       | Yes      | Archive URL, or `null` for a rollback without an archive                                                                      |
+| `fileHash`           | `string \| null`                       | Yes      | Archive hash or `sig:<base64_signature>` value used for verification                                                          |
+| `rolloutCohortCount` | `number \| null`                       | No       | Numeric rollout size from 0 through 1000                                                                                      |
+| `targetCohorts`      | `string[] \| null`                     | No       | Compatibility field inherited from the core update type; standard servers use it internally and omit it from client responses |
+| `manifestUrl`        | `string \| null`                       | No       | Manifest URL for a manifest-driven update                                                                                     |
+| `manifestFileHash`   | `string \| null`                       | No       | Manifest hash or signature used for verification                                                                              |
+| `changedAssets`      | `Record<string, ChangedAsset> \| null` | No       | Changed-file descriptors used to download or patch a manifest diff                                                            |
+| `updateBundle`       | `() => Promise<boolean>`               | Yes      | Downloads or applies this result with all required values pre-filled                                                          |
+
+The `updateBundle` function is added by the React Native client; it is not a
+JSON field returned by the server. Prefer it over manually copying result fields
+into `HotUpdater.updateBundle()` because it also preserves runtime-channel and
+manifest-diff context.
+
+## Channel Override
+
+Pass `channel` to check another channel. The override is not persisted by the
+check itself; it becomes active only after the returned update is successfully
+applied.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
-import { useEffect } from "react";
-
-function App() {
-  useEffect(() => {
-    HotUpdater.checkForUpdate({
-      updateStrategy: "appVersion",
-      requestHeaders: {
-        Authorization: "Bearer <your-access-token>",
-      },
-    }).then(async (updateInfo) => {
-      if (updateInfo) {
-        await updateInfo.updateBundle();
-        if (updateInfo.shouldForceUpdate) {
-          await HotUpdater.reload();
-        }
-      }
-    }).catch((error) => {
-      console.error("Failed to check for update:", error);
-    });
-  }, []);
-
-  return <YourApp />;
-}
-
-HotUpdater.init({
-  baseURL: "<your-update-server-url>",
+const updateInfo = await HotUpdater.checkForUpdate({
+  channel: "beta",
+  updateStrategy: "fingerprint",
 });
 
-export default App;
-```
-
-`HotUpdater.init()` configures Hot Updater without the unnecessary HOC that
-manual `wrap` would create:
-
-```tsx
-HotUpdater.init({
-  baseURL: "<your-update-server-url>",
-});
-```
-
-Without `wrap` or `init`, calling `checkForUpdate` will throw an error with
-instructions on how to fix it.
-
-## Parameters
-
-The `checkForUpdate` function accepts the following optional parameters:
-
-| Parameter         | Type                           | Required | Description                                                                      |
-|-------------------|--------------------------------|----------|----------------------------------------------------------------------------------|
-| `updateStrategy`  | `"appVersion"` \| `"fingerprint"` | ✅        | Update detection strategy for this check. |
-| `requestHeaders`  | `Record<string, string>`       | ❌        | Optional headers to include in the update request.                               |
-| `requestTimeout`  | `number`                       | ❌        | Request timeout in milliseconds (default: 5000).                                 |
-| `onError`         | `(error: Error) => void`       | ❌        | Error callback.                                                                  |
-
-The update source is always from `HotUpdater.wrap()` or `HotUpdater.init()`; it
-cannot be overridden in `checkForUpdate`.
-
-## How It Works
-
-When you call `checkForUpdate`, the function uses the configured `baseURL` and
-the provided `updateStrategy` to construct the appropriate endpoint URL:
-
-* For `updateStrategy: "appVersion"`: `GET {baseURL}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
-* For `updateStrategy: "fingerprint"`: `GET {baseURL}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
-
-For example, if you configured `baseURL: "https://your-update-server.com/api/update-check"` in `wrap`, the function automatically appends the correct path and parameters.
-
-## Return Value
-
-The function returns an object of type `UpdateInfo` or `null` if the app is up to date.
-
-```ts
-export type UpdateStatus = "ROLLBACK" | "UPDATE";
-
-export interface UpdateInfo {
-  id: string;
-  shouldForceUpdate: boolean;
-  fileUrl: string | null;
-  message: string | null;
-  status: UpdateStatus;
+if (updateInfo) {
+  await updateInfo.updateBundle();
 }
 ```
 
-### Example Return Value
+## Default Resolver Requests
 
-```json
-{
-  "id": "01952bbd-e7b2-7931-aee8-2e2187caa0ce",
-  "shouldForceUpdate": true,
-  "status": "UPDATE",
-  "fileUrl": "https://example.com/bundles/update.bundle",
-  "message": "This is a test message",
-}
-```
+With `baseURL`, the default resolver requests one of these paths and appends
+the device cohort:
+
+- `GET {baseURL}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort`
+- `GET {baseURL}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort`
+
+A custom `resolver` receives the same runtime values through its
+`checkUpdate()` parameters and can use a different transport.
+
+## Related APIs
+
+- [`HotUpdater.init()`](/docs/react-native-api/init)
+- [`HotUpdater.wrap()`](/docs/react-native-api/wrap)
+- [`HotUpdater.updateBundle()`](/docs/react-native-api/updateBundle)
+- [`HotUpdater.resetChannel()`](/docs/react-native-api/resetChannel)
