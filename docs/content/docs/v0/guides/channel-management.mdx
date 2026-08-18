@@ -1,0 +1,215 @@
+---
+title: "Default Channel Setup"
+description: "Set the default release channel embedded in your native app and deploy updates to that channel."
+icon: Radio
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+
+## Overview
+
+The default channel is the release channel embedded in your native app at build time.
+
+- Apps use `production` when no channel is specified.
+- This channel decides where the app checks for updates by default.
+- Changing the default channel requires rebuilding the native app.
+
+<Callout type="info">
+  Need to temporarily move a device to another channel without rebuilding? See
+  [Runtime Channel Switch](/docs/v0/guides/runtime-channel-switch).
+</Callout>
+
+## Set the Default Channel
+
+### 1. Specify the Channel in Native Configuration
+
+<Tabs items={["Basic", "Expo"]}>
+  <Tab value="Basic">
+    Use the `hot-updater channel set` command to specify your desired channel.
+
+    ```package-install
+    npx hot-updater channel set <channel>
+    ```
+
+    This command modifies the native project files for you. Here is what changes:
+
+    <Tabs items={["iOS", "Android"]}>
+      <Tab value="iOS">
+      ```tsx title="ios/HotUpdaterExample/Info.plist"
+      <key>HOT_UPDATER_CHANNEL</key> // [!code ++]
+      <string>your_set_channel</string> // [!code ++]
+      ```
+      </Tab>
+
+      <Tab value="Android">
+      ```xml title="android/app/src/main/res/values/strings.xml"
+      <resources>
+          <string name="app_name">HotUpdaterExample</string>
+           // [!code ++]
+          <string name="hot_updater_channel" moduleConfig="true">your_set_channel</string>
+      </resources>
+      ```
+      </Tab>
+    </Tabs>
+  </Tab>
+  <Tab value="Expo">
+    For Expo, add the channel to the plugin configuration in your `app.json`
+    file.
+
+    ```json title="app.json"
+    {
+      "expo": {
+        "plugins": [
+          [
+            "@hot-updater/react-native",
+            {
+              "channel": "<your-channel-name>"
+            }
+          ]
+        ]
+      }
+    }
+    ```
+
+    Replace `<your-channel-name>` with your desired channel, for example
+    `production`.
+
+    After modifying `app.json`, run `prebuild` to apply the changes to the native
+    projects.
+
+    ```package-install
+    npx expo prebuild --clean
+    ```
+  </Tab>
+</Tabs>
+
+## Custom Configuration Paths
+
+For projects with non-standard structures or iOS app extensions, you can
+configure custom paths for platform-specific configuration files in your
+`hot-updater.config.ts`:
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  // ... other configurations
+  platform: {
+    ios: {
+      infoPlistPaths: [
+        "ios/YourApp/Info.plist",
+        "ios/YourAppExtension/Info.plist", // Include extension Info.plist
+        "ios/NotificationService/Info.plist",
+      ],
+    },
+    android: {
+      stringResourcePaths: [
+        "android/app/src/main/res/values/strings.xml",
+        "android/app/src/debug/res/values/strings.xml", // Include additional resource files
+      ],
+    },
+  },
+});
+```
+
+This is useful when:
+
+- Your iOS project has app extensions such as widgets or notification services
+- You have multiple Android build variants with different resource paths
+- Your project does not follow the standard React Native file structure
+
+**Important**: Configure these custom paths before running
+`hot-updater channel set` so all relevant files are updated with the new
+channel.
+
+### 2. Rebuild the App with the New Channel
+
+After setting the channel, rebuild your app in Release mode:
+
+<Tabs items={["Bare (React Native CLI)", "Rock", "Expo"]}>
+  <Tab value="Bare (React Native CLI)">
+    **iOS:**
+    ```sh
+    cd ios && pod install && cd ..
+    npx react-native run-ios --mode Release
+    ```
+
+    **Android:**
+    ```sh
+    npx react-native run-android --mode Release
+    ```
+  </Tab>
+  <Tab value="Rock">
+    **iOS:**
+    ```sh
+    npx rock run:ios --configuration Release
+    ```
+
+    **Android:**
+    ```sh
+    npx rock run:android --variant Release
+    ```
+  </Tab>
+  <Tab value="Expo">
+    **iOS:**
+    ```sh
+    npx expo run:ios --variant release
+    ```
+
+    **Android:**
+    ```sh
+    npx expo run:android --variant release
+    ```
+  </Tab>
+</Tabs>
+
+### 3. Deploy Updates to That Channel
+
+You can specify the target channel directly during deployment:
+
+```package-install
+npx hot-updater deploy -p <"ios" | "android"> -c "<channel>"
+```
+
+Replace `<channel>` with your target channel name, for example `dev`, `staging`,
+or `production`.
+
+## Check the Current Channel
+
+Use `HotUpdater.getChannel()` to retrieve the app's effective channel in your UI.
+This is useful for confirming that the build is using the intended default
+channel.
+
+### Example Usage
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { Text, View } from "react-native";
+
+function App() {
+  const channel = HotUpdater.getChannel();
+
+  return (
+    <View>
+      <Text>Current Channel: {channel}</Text>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({
+  baseURL: "<your-update-server-url>",
+  updateStrategy: "appVersion", // or "fingerprint"
+})(App);
+```
+
+## Key Rules
+
+- The default channel is embedded in the native app at build time.
+- Changing that default channel requires a rebuild.
+- `hot-updater deploy -c <channel>` should match the channel you want the app to
+  receive updates from.
+- `HotUpdater.getChannel()` returns the effective channel, which may differ at
+  runtime if a runtime channel switch is active.
+- If you need temporary runtime switching, use
+  [Runtime Channel Switch](/docs/v0/guides/runtime-channel-switch).

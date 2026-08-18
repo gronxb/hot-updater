@@ -9,6 +9,13 @@ export default function Layout({ children }: { children: ReactNode }) {
     <DocsLayout
       {...baseOptions()}
       links={[]}
+      tabs={{
+        transform: (tab) => ({
+          ...tab,
+          description: undefined,
+          icon: undefined,
+        }),
+      }}
       tree={source.pageTree}
       sidebar={{
         className: "bg-fd-background",

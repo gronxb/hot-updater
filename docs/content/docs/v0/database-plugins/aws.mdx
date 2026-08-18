@@ -1,0 +1,122 @@
+---
+title: "AWS S3 Database"
+description: Store your Hot Updater bundle metadata as JSON files in S3, served via CloudFront CDN.
+
+icon: aws
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/aws --save-dev
+```
+
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [AWS](/docs/v0/managed/aws) documentation.
+
+For manual configuration, use the settings below.
+
+## Configuration
+
+```typescript
+interface S3DatabaseConfig {
+  region: string;                     // AWS region
+  bucketName: string;                 // S3 bucket for metadata
+  cloudfrontDistributionId?: string;  // CloudFront distribution ID for cache invalidation
+  apiBasePath?: string;               // API path (default: "/api/check-update")
+  credentials?: {
+    accessKeyId: string;
+    secretAccessKey: string;
+  };
+}
+```
+
+If `credentials` is omitted, the AWS SDK default credential chain is used. This
+lets you rely on local AWS CLI sessions, `AWS_PROFILE`, shared config files, or
+other standard AWS credential sources.
+
+## Usage
+
+```typescript
+import { s3Database } from '@hot-updater/aws';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  database: s3Database({
+    region: 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-metadata-bucket',
+    cloudfrontDistributionId: process.env.CLOUDFRONT_DISTRIBUTION_ID
+  }),
+  // ... other config
+});
+```
+
+## Complete Example
+
+Combined storage and database:
+
+```typescript
+import { s3Storage, s3Database } from '@hot-updater/aws';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  storage: s3Storage({
+    region: 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-bundles-bucket'
+  }),
+  database: s3Database({
+    region: 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-metadata-bucket',
+    cloudfrontDistributionId: process.env.CLOUDFRONT_DISTRIBUTION_ID
+  }),
+  // ... other config
+});
+```
+
+## Custom Server Usage
+
+Use `s3Database` with `createHotUpdater` for self-hosted servers:
+
+```typescript
+import { s3Database } from "@hot-updater/aws";
+import { createHotUpdater } from "@hot-updater/server";
+
+const hotUpdater = createHotUpdater({
+  database: s3Database({
+    region: process.env.AWS_REGION!,
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.AWS_S3_METADATA_BUCKET!,
+  }),
+  // ... other options
+});
+```
+
+For complete server setup guides, see [S3 Database Adapter](/docs/v0/custom/database/s3).
+
+## CloudFront Cache Invalidation
+
+The `cloudfrontDistributionId` option enables automatic CloudFront cache invalidation when bundles are updated. This is particularly useful when using Lambda@Edge for request handling.
+
+If omitted, cache invalidation is skipped

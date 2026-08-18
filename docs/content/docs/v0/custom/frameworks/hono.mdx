@@ -1,0 +1,111 @@
+---
+title: "Hono"
+description: Build a self-hosted Hot Updater server with Hono framework.
+icon: hono
+version: "v0.22.0"
+---
+
+## Installation
+
+Install Hono.
+
+```package-install
+npm install hono --save-dev
+```
+
+## Setup and Security
+
+Make sure you've set up your database adapter first (see [Database Adapters](../database/drizzle)).
+
+The Hot Updater handler does not include built-in authentication. Always protect
+bundle management routes with framework middleware before mounting the handler.
+Update-check routes are usually exposed for React Native clients, but that is a
+deployment choice:
+
+- Update check: `/hot-updater/app-version/*`, `/hot-updater/fingerprint/*`
+- Optional public diagnostics: `/hot-updater/version`
+- Protected management API: `/hot-updater/api/*`
+
+This example uses Hono middleware to protect `/api/*` before mounting the Hot
+Updater handler:
+
+```typescript
+import { Hono } from "hono";
+import { bearerAuth } from "hono/bearer-auth"; // [!code ++]
+import { hotUpdater } from "./hotUpdater"; // [!code ++]
+
+const app = new Hono();
+
+app.use( // [!code ++]
+  "/hot-updater/api/*", // [!code ++]
+  bearerAuth({ token: process.env.HOT_UPDATER_AUTH_TOKEN ?? "" }), // [!code ++]
+); // [!code ++]
+
+app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
+
+export default app;
+```
+
+If you set `routes: { updateCheck: true, bundles: false }`,
+`/hot-updater/api/*` is not mounted and `/hot-updater/version` stays
+available for diagnostics.
+Set `bundles: true` only when this server accepts bundle-management requests;
+then the `/hot-updater/api/*` middleware above protects those routes.
+
+Set your auth token in environment variables:
+
+```bash
+HOT_UPDATER_AUTH_TOKEN=your-secret-auth-token
+```
+
+Configure the CLI to include the auth token when deploying bundles:
+
+```typescript title="hot-updater.config.ts"
+import { standaloneRepository } from "@hot-updater/standalone";
+
+export default defineConfig({
+  // ...
+  database: standaloneRepository({
+    baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${process.env.HOT_UPDATER_AUTH_TOKEN}`,
+    },
+  }),
+});
+```
+
+## API Endpoints
+
+The server automatically creates these endpoints. Bundle management endpoints
+under `/hot-updater/api/*` are mounted only when `routes.bundles` is enabled:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/hot-updater/version` | Get server version |
+| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
+| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
+| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
+| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
+| POST | `/hot-updater/api/bundles` | Create bundles |
+| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
+| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
+| GET | `/hot-updater/api/bundles/channels` | List all channels |
+
+## React Native Setup
+
+Configure your React Native app to connect to this server.
+
+```typescript title="App.tsx"
+import { HotUpdater } from '@hot-updater/react-native';
+
+export default HotUpdater.wrap({
+  baseURL: 'http://localhost:3000/hot-updater', // [!code ++]
+  updateStrategy: 'appVersion', // or "fingerprint" // [!code ++]
+  fallbackComponent: ({ progress, status }) => (
+    // ... Custom loading UI
+  ),
+  onError: error => {
+    // ... Error handling
+  },
+})(App);
+```

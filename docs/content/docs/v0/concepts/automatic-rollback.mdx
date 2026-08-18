@@ -1,0 +1,128 @@
+---
+title: "Automatic Rollback"
+description: Hot Updater verifies newly installed bundles on first launch and automatically recovers to a working bundle if startup fails.
+icon: ShieldCheck
+version: "0.24.0"
+---
+
+## What is Automatic Rollback?
+
+Automatic rollback is the safety mechanism that prevents a bad OTA bundle from trapping users in a crash loop.
+
+When a new bundle is installed, Hot Updater does not trust it immediately. It launches that bundle in a temporary state first, keeps the last known-good bundle as a fallback, and only treats the new bundle as safe after startup succeeds.
+
+This happens automatically when you use `HotUpdater.wrap()`. For custom manual
+flows without a root wrapper, call [`HotUpdater.init()`](/docs/v0/react-native-api/init)
+when your runtime considers the app ready.
+
+## Core Mechanism
+
+Hot Updater manages two roles during rollout:
+
+- **Staging bundle**: the newly installed bundle waiting to be verified
+- **Stable bundle**: the last bundle that was already known to start successfully
+
+The flow is:
+
+1. **Install the update**
+   - The downloaded bundle becomes the new staging bundle.
+   - The previously working bundle is kept as the fallback, if one exists.
+2. **Launch the staging bundle**
+   - On the next app start, Hot Updater loads the staging bundle first.
+3. **Verify startup**
+   - If the app reaches its first successful render, the launch is treated as successful.
+   - The staging bundle becomes the current trusted bundle.
+4. **Recover on failure**
+   - If the app exits or crashes before that point, the staging bundle is treated as failed.
+   - On the next launch, Hot Updater automatically returns to the last stable bundle.
+
+## What Counts as a Failed Launch?
+
+A bundle is considered failed if it cannot complete startup.
+
+In practice, that means the app never reaches the point where Hot Updater can confirm that the new bundle started successfully.
+
+Typical examples include:
+
+- a JavaScript error during startup
+- a native crash while the new bundle is loading
+- a fatal error before the first screen appears
+
+This is why Hot Updater must be configured with `HotUpdater.wrap()` or
+`HotUpdater.init()` for rollback support. These APIs connect bundle verification
+to the app lifecycle.
+
+## What Happens During Rollback?
+
+When rollback happens, Hot Updater:
+
+- stops using the failed staging bundle
+- restores the previous stable bundle when one exists
+- falls back to the embedded bundle when there is no stable OTA fallback
+- records the failed bundle in crash history
+
+This lets users reopen the app normally instead of hitting the same startup failure again.
+
+## Managing Crashed Bundles
+
+Hot Updater keeps a crash history for bundles that failed startup and triggered recovery.
+
+### getCrashHistory()
+
+Returns the bundle IDs that were marked as failed and rolled back.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+function checkCrashedBundles() {
+  const crashedBundles = HotUpdater.getCrashHistory();
+
+  if (crashedBundles.length > 0) {
+    console.log("Crashed bundles:", crashedBundles);
+    // Send to your monitoring service
+  }
+}
+```
+
+You can use this to:
+
+- monitor deployment health
+- identify which bundle IDs failed in production
+- send rollback events to analytics or error tracking tools
+
+### clearCrashHistory()
+
+Clears the crash history so a previously failed bundle ID can be retried again.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+async function retryFailedBundle() {
+  HotUpdater.clearCrashHistory();
+  console.log("Crash history cleared");
+}
+```
+
+<Callout type="warn">
+Only clear crash history after fixing the underlying issue. Otherwise the same broken bundle can be applied again.
+</Callout>
+
+### Crash History Blocking
+
+When a bundle fails startup, Hot Updater adds that exact bundle ID to crash history and blocks it from being applied again. This prevents repeated crash loops from the same broken deployment.
+
+To deploy a fixed version:
+
+1. Fix the bug in your code
+2. Deploy again with a new bundle ID
+3. The new bundle ID bypasses the crash history
+
+If you need to retry the same bundle ID:
+
+1. Verify the bundle is fixed
+2. Call `clearCrashHistory()` to reset the blocked list
+3. Redeploy the bundle
+
+## In One Sentence
+
+Hot Updater only trusts a new bundle after it launches successfully once. Until then, it keeps a working fallback and can automatically recover if startup fails.

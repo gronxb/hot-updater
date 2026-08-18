@@ -1,0 +1,20 @@
+{
+  "title": "v1 (Latest)",
+  "description": "Hot Updater 1.x documentation",
+  "root": true,
+  "pagesIndex": "get-started/introduction",
+  "icon": "Book",
+  "pages": [
+    "concepts",
+    "get-started",
+    "guides",
+    "react-native-api",
+    "managed",
+    "custom",
+    "build-plugins",
+    "storage-plugins",
+    "database-plugins",
+    "integration-plugins",
+    "policy"
+  ]
+}

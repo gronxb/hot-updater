@@ -1,0 +1,6 @@
+{
+  "title": "Hosting",
+  "description": "Deploy your Hot Updater server to production",
+  "icon": "Cloud",
+  "pages": ["docker", "vercel"]
+}

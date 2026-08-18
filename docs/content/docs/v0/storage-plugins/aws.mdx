@@ -1,0 +1,132 @@
+---
+title: "AWS S3 Storage"
+description: Store your Hot Updater bundles in AWS S3 or any S3-compatible storage service (including Cloudflare R2).
+icon: aws
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/aws --save-dev
+```
+
+## Setup
+
+The easiest way to set up your backend is using the init command:
+
+```package-install
+npx hot-updater init
+```
+
+This interactive command will guide you through the setup process. For details on what the init command does, see the [AWS](/docs/v0/managed/aws) documentation.
+
+For manual configuration, use the settings below.
+
+## Configuration
+
+```typescript
+interface S3StorageConfig {
+  region: string;           // AWS region or 'auto' for R2
+  bucketName: string;       // S3 bucket name
+  basePath?: string;        // Optional base path within bucket
+  endpoint?: string;        // Custom endpoint for S3-compatible services
+  credentials?: {
+    accessKeyId: string;
+    secretAccessKey: string;
+  };
+}
+```
+
+If `credentials` is omitted, the AWS SDK default credential chain is used. This
+lets you rely on local AWS CLI sessions, `AWS_PROFILE`, shared config files, or
+other standard AWS credential sources.
+
+## Usage
+
+### AWS S3
+
+```typescript
+import { s3Storage } from '@hot-updater/aws';
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  storage: s3Storage({
+    region: 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-hot-updater-bucket'
+  }),
+  // ... other config
+});
+```
+
+### Cloudflare R2
+
+```typescript
+export default defineConfig({
+  storage: s3Storage({
+    region: 'auto',
+    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
+    },
+    bucketName: 'my-r2-bucket'
+  }),
+  // ... other config
+});
+```
+
+## Protocol
+
+`s3://`
+
+This prefix is stored in the `storageUri` field in the database.
+
+## Profiles
+
+`s3Storage` implements both storage profiles:
+
+- `node`: uploads, deletes, and downloads local files during CLI/console workflows.
+- `runtime`: creates presigned HTTP(S) download URLs and reads small metadata
+  files directly through the S3 API.
+
+This means the same `s3Storage` configuration can be used in both
+`hot-updater.config.ts` and `createHotUpdater`.
+
+## Maintenance
+
+`s3Storage` provides the object listing and exact deletion capabilities used by
+`hot-updater storage prune`. Follow the [Storage Cleanup](/docs/v0/guides/storage-cleanup)
+guide to remove unreferenced bundle objects and shared assets safely.
+
+Use a separate `basePath` for every database or environment that shares a
+bucket. Pruning assumes that the configured database owns every object below
+its storage prefix.
+
+## Custom Server Usage
+
+Use `s3Storage` with `createHotUpdater` for self-hosted servers:
+
+```typescript
+import { s3Storage } from "@hot-updater/aws";
+import { createHotUpdater } from "@hot-updater/server";
+
+const hotUpdater = createHotUpdater({
+  storages: [
+    s3Storage({
+      region: process.env.AWS_REGION!,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      },
+      bucketName: process.env.AWS_S3_BUNDLES_BUCKET!,
+    }),
+  ],
+  // ... other options
+});
+```
+
+For complete server setup guides, see [S3 Database Adapter](/docs/v0/custom/database/s3).
