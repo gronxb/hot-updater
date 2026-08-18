@@ -41,7 +41,7 @@ export function buildReleaseCatalogUrl(input: ReleaseCatalogUrlInput): string {
 
   return [
     input.baseUrl.replace(/\/+$/, ""),
-    `v2/release-catalogs/${
+    `release-catalogs/${
       input.strategy === "fingerprint" ? "fingerprint" : "app-version"
     }`,
     encodeURIComponent(input.authorityId),

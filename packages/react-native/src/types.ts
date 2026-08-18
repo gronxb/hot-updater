@@ -220,7 +220,7 @@ export interface HotUpdaterResolver {
 
   /**
    * Fetches shared Release policy without installation-state inputs.
-   * Implement this together with `resolveArtifact` to opt into protocol v2.
+   * Implement this together with `resolveArtifact` to use Release Catalogs.
    */
   fetchReleaseCatalog?: (
     params: ReleaseCatalogRequest,

@@ -33,9 +33,12 @@ import {
 } from "./doctorInfrastructure";
 
 export {
+  checkInfrastructureStatus,
+  createInfrastructureRemediation,
   getRequiredInfrastructureVersion,
   getRequiredServerVersion,
   isInfrastructureUpdateRequired,
+  isV1InfrastructureRequired,
   resolveVersionEndpoint,
 } from "./doctorInfrastructure";
 
@@ -701,9 +704,12 @@ export async function doctor(
 
       if (
         details.infrastructure.error !== undefined ||
-        details.infrastructure.needsUpdate === true
+        details.infrastructure.needsUpdate === true ||
+        details.infrastructure.upgradeBlocked === true
       ) {
-        details.infrastructure.remediation = createInfrastructureRemediation();
+        details.infrastructure.remediation = createInfrastructureRemediation({
+          upgradeBlocked: details.infrastructure.upgradeBlocked,
+        });
       }
     }
 
@@ -719,7 +725,8 @@ export async function doctor(
     // Check if there are any issues
     const hasInfrastructureIssue =
       details.infrastructure?.error !== undefined ||
-      details.infrastructure?.needsUpdate === true;
+      details.infrastructure?.needsUpdate === true ||
+      details.infrastructure?.upgradeBlocked === true;
     const hasNativeIssue =
       details.native?.issues.some((issue) => issue.type === "error") === true;
     const hasIssues =
@@ -772,7 +779,7 @@ const promptServerBaseUrl = async () => {
 
   const serverBaseUrl = await p.text({
     message: "Server base URL for infrastructure check (Enter to skip)",
-    placeholder: "https://example.com/api/check-update",
+    placeholder: "https://updates.example.com",
     validate(value) {
       const trimmed = value?.trim() ?? "";
       if (!trimmed) return;
@@ -847,9 +854,19 @@ export const handleDoctor = async ({
       lines.push(ui.kv("Server", ui.version(infrastructure.serverVersion)));
       lines.push(ui.kv("Required", ui.version(infrastructure.requiredVersion)));
     }
+    if (infrastructure.infrastructureGeneration !== undefined) {
+      lines.push(
+        ui.kv("Generation", String(infrastructure.infrastructureGeneration)),
+      );
+    }
     p.log.message(ui.block("Infrastructure", lines));
 
-    if (infrastructure.needsUpdate) {
+    if (infrastructure.upgradeBlocked) {
+      p.log.error("In-place v0 to v1 infrastructure upgrade is not supported.");
+      if (infrastructure.updateReason) {
+        p.log.info(`Reason: ${infrastructure.updateReason}`);
+      }
+    } else if (infrastructure.needsUpdate) {
       p.log.error(
         `Infrastructure update required: ${infrastructure.requiredVersion}+`,
       );

@@ -81,14 +81,24 @@ This is the emergency deployment mode. After an update is created, the bundle wi
 npx hot-updater deploy -i --force-update
 ```
 
-## Step 3: Rollback
+## Step 3: Disable a Release
 
 <video src={"/docs/console/console.mp4"} controls autoPlay loop muted />
 
-When you set a bundle's `enabled` status to `false` in the console, users who have that bundle will immediately force update to the **previous bundle**.
-
-Open the console and set the bundle's `enabled` status to `false`.
+Open the Release in the Console and set its `enabled` policy to `false`. An
+affected installation moves to a previous compatible enabled Release or to its
+built-in Bundle when no compatible Release remains.
 
 ```package-install
 npx hot-updater console
 ```
+
+The same operational action is available from the CLI when you already know
+the Release ID:
+
+```package-install
+npx hot-updater release disable <release-id>
+```
+
+This policy rollback is different from automatic startup-crash recovery, which
+continues to track failed Bundle IDs on the device.

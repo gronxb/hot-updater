@@ -90,7 +90,7 @@ const hotUpdater = createHotUpdater({
   database,
 });
 const url =
-  `https://updates.example.com/api/v2/release-catalogs/app-version/` +
+  `https://updates.example.com/api/release-catalogs/app-version/` +
   `${AUTHORITY_ID}/ios/${CHANNEL_KEY}/1.0.0`;
 
 describe("database plugin update check benchmark", () => {

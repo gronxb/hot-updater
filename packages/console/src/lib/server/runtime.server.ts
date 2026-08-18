@@ -68,6 +68,7 @@ export function createClientAccessKeyStore(config: {
 const providerMethods = [
   "appendBundleEvent",
   "getBundleEventSummary",
+  "getBundleEventSummaries",
   "getBundleEventAnalytics",
   "getBundleEventOverview",
   "getActiveInstallationOverview",

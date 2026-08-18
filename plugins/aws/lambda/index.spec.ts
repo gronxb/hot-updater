@@ -37,7 +37,7 @@ vi.mock("@hot-updater/server", async () => {
   return {
     ...actual,
     createHotUpdater: serverMocks.createHotUpdater.mockReturnValue({
-      basePath: "/api/check-update",
+      basePath: "/",
       handler: fakeHotUpdaterHandler,
     }),
   };
@@ -128,7 +128,7 @@ describe("aws lambda entrypoint", () => {
     const { handler } = await import("./index");
     await handler(
       createCloudFrontRequest(
-        "/api/check-update/app-version/ios/1.0/production/default/default",
+        "/release-catalogs/app-version/aws.test-authority/ios/cHJvZHVjdGlvbg/1.0.0",
       ),
       {} as never,
       () => undefined,
@@ -151,12 +151,12 @@ describe("aws lambda entrypoint", () => {
     );
   });
 
-  it("serves canonical app-version routes without a cohort segment for origin-request events", async () => {
-    const { handler, SHARED_EDGE_CACHE_CONTROL } = await import("./index");
+  it("serves unversioned Release Catalog routes for origin-request events", async () => {
+    const { handler } = await import("./index");
 
     const response = await handler(
       createCloudFrontRequest(
-        "/api/check-update/app-version/ios/1.0/production/default/default",
+        "/release-catalogs/app-version/aws.test-authority/ios/cHJvZHVjdGlvbg/1.0.0",
       ),
       {} as never,
       () => undefined,
@@ -166,30 +166,6 @@ describe("aws lambda entrypoint", () => {
     expect(response).toMatchObject({
       status: "200",
     });
-    expect(response?.headers?.["cache-control"]?.[0]?.value).toBe(
-      SHARED_EDGE_CACHE_CONTROL,
-    );
-    expect(parseResponseBody(response?.body)).toEqual({ ok: true });
-  });
-
-  it("serves canonical app-version routes with a cohort segment for origin-request events", async () => {
-    const { handler, SHARED_EDGE_CACHE_CONTROL } = await import("./index");
-
-    const response = await handler(
-      createCloudFrontRequest(
-        "/api/check-update/app-version/ios/1.0/production/default/default/777",
-      ),
-      {} as never,
-      () => undefined,
-    );
-
-    expect(fakeHotUpdaterHandler).toHaveBeenCalledTimes(1);
-    expect(response).toMatchObject({
-      status: "200",
-    });
-    expect(response?.headers?.["cache-control"]?.[0]?.value).toBe(
-      SHARED_EDGE_CACHE_CONTROL,
-    );
     expect(parseResponseBody(response?.body)).toEqual({ ok: true });
   });
 });

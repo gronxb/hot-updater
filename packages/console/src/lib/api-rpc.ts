@@ -6,6 +6,7 @@ import {
   type DatabaseBundleQueryOptions,
   deleteRelease as deleteReleaseMutation,
   preflightReleasePolicy,
+  promoteRelease as promoteReleaseMutation,
   type ReleasePolicyPatch,
   updateReleasePolicy,
 } from "@hot-updater/plugin-core";
@@ -18,6 +19,9 @@ import {
   parseSearchInstallationsInput,
 } from "./analytics-input";
 import { DEFAULT_PAGE_LIMIT } from "./constants";
+import { listReleases } from "./server/listReleases";
+import { getReleaseActivity30d } from "./server/releaseActivity";
+import { addReleaseReachability } from "./server/releaseReachability";
 
 type GetBundlesInput = {
   platform?: "ios" | "android";
@@ -48,10 +52,15 @@ type DeleteBundlesInput = {
 };
 
 type GetReleasesInput = {
+  afterReleaseId?: string;
   beforeReleaseId?: string;
+  bundleId?: string;
   channelId?: string;
+  enabled?: boolean;
   platform?: "ios" | "android";
   limit?: number;
+  page?: number;
+  targetAppVersion?: string;
 };
 
 type ReleaseMutationInput = {
@@ -69,15 +78,41 @@ export const getReleases = createServerFn({ method: "GET" })
   .inputValidator((input: GetReleasesInput | undefined) => input)
   .handler(async ({ data }) => {
     const { prepareConfig } = await import("./server/config.server");
-    const { config } = await prepareConfig();
-    return config.database.models.releases.findMany({
+    const { config, hotUpdater } = await prepareConfig();
+    const result = await listReleases(config.database.models.releases, {
+      ...(data?.afterReleaseId === undefined
+        ? {}
+        : { afterReleaseId: data.afterReleaseId }),
       ...(data?.beforeReleaseId === undefined
         ? {}
         : { beforeReleaseId: data.beforeReleaseId }),
+      ...(data?.bundleId === undefined ? {} : { bundleId: data.bundleId }),
       ...(data?.channelId === undefined ? {} : { channelId: data.channelId }),
+      ...(data?.enabled === undefined ? {} : { enabled: data.enabled }),
+      ...(data?.page === undefined ? {} : { page: data.page }),
       ...(data?.platform === undefined ? {} : { platform: data.platform }),
+      ...(data?.targetAppVersion === undefined
+        ? {}
+        : { targetAppVersion: data.targetAppVersion }),
       limit: data?.limit ?? DEFAULT_PAGE_LIMIT,
     });
+    const [releases, activityByBundleId] = await Promise.all([
+      addReleaseReachability(
+        config.database.models.releaseCatalogs,
+        result.data,
+      ),
+      getReleaseActivity30d(hotUpdater, result.data),
+    ]);
+    return {
+      ...result,
+      data: releases.map((release) => ({
+        ...release,
+        activity30d:
+          release.bundle_id === null
+            ? null
+            : (activityByBundleId.get(release.bundle_id) ?? null),
+      })),
+    };
   });
 
 export const getRelease = createServerFn({ method: "GET" })
@@ -110,6 +145,21 @@ export const deleteRelease = createServerFn({ method: "POST" })
     const { prepareConfig } = await import("./server/config.server");
     const { config } = await prepareConfig();
     return deleteReleaseMutation({ database: config.database, ...data });
+  });
+
+export const promoteRelease = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: {
+      action: "copy" | "move";
+      expectedRevision?: number;
+      releaseId: string;
+      targetChannel: string;
+    }) => input,
+  )
+  .handler(async ({ data }) => {
+    const { prepareConfig } = await import("./server/config.server");
+    const { config } = await prepareConfig();
+    return promoteReleaseMutation({ database: config.database, ...data });
   });
 
 export const getReleaseCatalogDiagnostics = createServerFn({ method: "GET" })

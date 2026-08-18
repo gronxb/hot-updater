@@ -2,15 +2,10 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 
-import { NIL_UUID } from "@hot-updater/core";
-import {
-  setupBundleMethodsTestSuite,
-  setupGetUpdateInfoTestSuite,
-} from "@hot-updater/test-utils";
+import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
   cleanupServer,
   createBundleMethodsFromServer,
-  createGetUpdateInfo,
   createTestDbPath,
   killPort,
   spawnServerProcess,
@@ -30,7 +25,6 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
   let baseUrl: string;
   let testDbPath: string;
   let bundleMethods: ReturnType<typeof createBundleMethodsFromServer>;
-  let resetDecisionFixtures: () => Promise<void>;
   const port = 13582;
 
   beforeAll(async () => {
@@ -79,31 +73,11 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
     bundleMethods = createBundleMethodsFromServer({
       baseUrl: `${baseUrl}/hot-updater`,
     });
-    resetDecisionFixtures = async () => {
-      const response = await fetch(`${baseUrl}/reset-decision-fixtures`, {
-        method: "POST",
-      });
-      if (!response.ok) throw new Error("Failed to reset decision fixtures.");
-    };
   }, 120000);
 
   afterAll(async () => {
     await cleanupServer(baseUrl, serverProcess, testDbPath);
   }, 60000);
-
-  const getUpdateInfo: ReturnType<typeof createGetUpdateInfo> = (
-    bundles,
-    options,
-  ) => {
-    return createGetUpdateInfo({
-      baseUrl: `${baseUrl}/hot-updater`,
-      resetDecisionFixtures,
-    })(bundles, options);
-  };
-
-  setupGetUpdateInfoTestSuite({
-    getUpdateInfo,
-  });
 
   setupBundleMethodsTestSuite({
     getBundleById: (id) => bundleMethods.getBundleById(id),
@@ -115,7 +89,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
     deleteBundleById: (bundleId) => bundleMethods.deleteBundleById(bundleId),
   });
 
-  it("protects bundle management routes without hiding public update routes", async () => {
+  it("protects bundle management routes without hiding public catalog routes", async () => {
     const unauthorizedBundles = await fetch(
       `${baseUrl}/hot-updater/api/bundles`,
     );
@@ -129,12 +103,15 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
     );
     const version = await fetch(`${baseUrl}/hot-updater/version`);
     const updateCheck = await fetch(
-      `${baseUrl}/hot-updater/app-version/ios/1.0.0/production/${NIL_UUID}/${NIL_UUID}`,
+      `${baseUrl}/hot-updater/release-catalogs/app-version/default/ios/cHJvZHVjdGlvbg/1.0.0`,
     );
 
     expect(unauthorizedBundles.status).toBe(401);
     expect(authorizedBundles.status).toBe(200);
     expect(version.status).toBe(200);
     expect(updateCheck.status).toBe(200);
+    expect(updateCheck.headers.get("content-type")).toContain(
+      "application/vnd.hot-updater.release-catalog+json",
+    );
   });
 });

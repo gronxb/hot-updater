@@ -33,7 +33,7 @@ import {
   handleWaitForMetadata,
   handleWriteSummary,
   startBootstrapJob,
-  startCreateRollbackReleaseJob,
+  startCreateRepublishedReleaseJob,
   startDeployBundleJob,
   startPatchReleaseJob,
   startResetRemoteBundlesJob,
@@ -228,21 +228,18 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   });
 });
 
-app.post("/e2e/jobs/create-rollback-release", async (c) => {
+app.post("/e2e/jobs/create-republished-release", async (c) => {
   const payload = (await c.req.json()) as {
+    bundleId?: string;
     sourceReleaseId?: string;
-    toBundleId?: string | null;
   };
-  if (!payload.sourceReleaseId || payload.toBundleId === undefined) {
-    return c.json(
-      { error: "sourceReleaseId and toBundleId are required" },
-      400,
-    );
+  if (!payload.sourceReleaseId || !payload.bundleId) {
+    return c.json({ error: "sourceReleaseId and bundleId are required" }, 400);
   }
   return c.json({
-    jobId: startCreateRollbackReleaseJob({
+    jobId: startCreateRepublishedReleaseJob({
+      bundleId: payload.bundleId,
       sourceReleaseId: payload.sourceReleaseId,
-      toBundleId: payload.toBundleId,
     }),
   });
 });

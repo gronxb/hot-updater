@@ -16,12 +16,15 @@ const channelColors: Record<string, string> = {
 };
 
 export function ChannelBadge({ channel, className }: ChannelBadgeProps) {
-  const colorClass =
-    channelColors[channel.toLowerCase()] ||
-    "bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-500/20";
-
   return (
-    <Badge variant="outline" className={cn(colorClass, className)}>
+    <Badge
+      variant="outline"
+      className={cn(
+        channelColors[channel.toLowerCase()] ||
+          "bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-500/20",
+        className,
+      )}
+    >
       {channel}
     </Badge>
   );

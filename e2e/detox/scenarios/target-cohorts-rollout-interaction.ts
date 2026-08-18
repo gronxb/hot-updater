@@ -71,14 +71,10 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
         "action-install-current-channel-update",
       );
       await app.assertText(
-        "assert excluded cohort built-in selection",
+        "assert excluded cohort no update",
         "update-action-result",
-        "current-channel -> selected BUILTIN",
+        "current-channel -> no-update",
         { exactText: true },
-      );
-      await app.control(
-        "assert excluded metadata reset",
-        "/e2e/assert-metadata-reset",
       );
       await app.reload("reload excluded cohort state");
       await app.assertText(

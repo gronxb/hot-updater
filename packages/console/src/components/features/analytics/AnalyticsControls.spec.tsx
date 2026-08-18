@@ -23,7 +23,7 @@ describe("AnalyticsControls", () => {
     expect(controls.querySelector('[data-slot="card"]')).toBeNull();
     expect(
       screen
-        .getByRole("radio", { name: "24 hours" })
+        .getByRole("button", { name: "24 hours" })
         .closest('[data-slot="toggle-group"]')
         ?.getAttribute("data-size"),
     ).toBe("lg");
@@ -31,7 +31,7 @@ describe("AnalyticsControls", () => {
       screen.getByRole("button", { name: "Search" }).getAttribute("data-slot"),
     ).toBe("button");
 
-    fireEvent.click(screen.getByRole("radio", { name: "7 days" }));
+    fireEvent.click(screen.getByRole("button", { name: "7 days" }));
     fireEvent.change(
       screen.getByRole("searchbox", { name: "User or install ID" }),
       { target: { value: "  install-1  " } },

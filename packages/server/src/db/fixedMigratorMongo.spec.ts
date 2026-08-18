@@ -340,7 +340,7 @@ describe("MongoDB migration", () => {
     const settings = new Map<string, unknown>([["schema.core", "0.37.0"]]);
     const bundles: Record<string, unknown>[] = [
       {
-        id: "bundle-1",
+        id: "00000000-0000-7000-8000-000000000001",
         platform: "ios",
         file_hash: "hash-1",
         storage_uri: "storage://bundle-1",
@@ -354,7 +354,7 @@ describe("MongoDB migration", () => {
         target_cohorts: null,
       },
       {
-        id: "bundle-2",
+        id: "00000000-0000-7000-8000-000000000002",
         platform: "ios",
         file_hash: "hash-2",
         storage_uri: "storage://bundle-2",
@@ -368,7 +368,7 @@ describe("MongoDB migration", () => {
         target_cohorts: ["qa"],
       },
       {
-        id: "bundle-3",
+        id: "00000000-0000-7000-8000-000000000003",
         platform: "android",
         file_hash: "hash-3",
         storage_uri: "storage://bundle-3",
@@ -549,13 +549,13 @@ describe("MongoDB migration", () => {
     expect(releases).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          bundle_id: "bundle-1",
-          id: "bundle-1",
+          bundle_id: "00000000-0000-7000-8000-000000000001",
+          id: "00000000-0000-7000-8000-000000000001",
           revision: 1,
           operation: "DEPLOY",
         }),
         expect.objectContaining({
-          bundle_id: "bundle-2",
+          bundle_id: "00000000-0000-7000-8000-000000000002",
           enabled: false,
           rollout_cohort_count: 500,
           target_cohorts: ["qa"],

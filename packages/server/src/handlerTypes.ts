@@ -1,9 +1,7 @@
 import type {
   AppUpdateAvailableInfo,
-  AppVersionGetBundlesArgs,
   Bundle,
   LegacyBundle,
-  FingerprintGetBundlesArgs,
   ReleaseCatalog,
 } from "@hot-updater/core";
 import type {
@@ -27,9 +25,6 @@ import type { ReleaseCatalogRequest } from "./db/releaseCatalog";
 import type { PaginatedResult } from "./types";
 
 export interface HandlerAPI {
-  getAppUpdateInfo: (
-    args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
-  ) => Promise<AppUpdateAvailableInfo | null>;
   getReleaseCatalog?: (
     input: ReleaseCatalogRequest,
   ) => Promise<ReleaseCatalog | null>;
@@ -44,11 +39,13 @@ export interface HandlerAPI {
     readonly limit: number;
   }) => Promise<readonly ReleaseRow[]>;
   getReleases?: (input: {
+    readonly afterReleaseId?: string;
     readonly beforeReleaseId?: string;
     readonly bundleId?: string;
     readonly channelId?: string;
     readonly enabled?: boolean;
     readonly platform?: "ios" | "android";
+    readonly targetAppVersion?: string;
     readonly limit: number;
   }) => Promise<readonly ReleaseRow[]>;
   getReleaseCatalogByScopeKey?: (
@@ -91,7 +88,7 @@ export interface HandlerAPI {
 }
 
 export interface HandlerOptions {
-  /** Authority accepted by v2 Release catalog paths. */
+  /** Authority accepted by Release Catalog client paths. */
   readonly authorityId?: string;
   /** Base path for all routes. @default "/api" */
   readonly basePath?: string;
@@ -101,12 +98,11 @@ export interface HandlerOptions {
 
 export interface HandlerFeatures {
   /**
-   * Mounts the React Native update-check endpoints:
+   * Mounts the React Native v1 update-check endpoints:
    *
-   * - `GET /fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
-   * - `GET /fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort`
-   * - `GET /app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
-   * - `GET /app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort`
+   * - `GET /release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`
+   * - `GET /release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash`
+   * - `GET /artifacts/:targetBundleId/from/:currentBundleId`
    *
    * @default true
    *

@@ -26,14 +26,12 @@ import { createAnalyticsProvider } from "../../../packages/server/dist/index.mjs
 import {
   type AnalyticsModel,
   type BundleRepository,
-  createDatabaseClient,
   createUUIDv7After,
+  commitReleaseCatalogMutation,
   deleteRelease,
-  type DatabaseClient,
   type BundleRow,
   type ReleaseCatalogRow,
   type ReleaseRow,
-  rollbackRelease,
   updateReleasePolicy,
 } from "../../../plugins/plugin-core/dist/index.mjs";
 import { createConsoleAnalyticsHttpClient } from "../analytics-http-client.ts";
@@ -214,7 +212,6 @@ const BARE_BUILD_CACHE_INPUT_PATHS = [
   "packages/hot-updater/src/utils/bundleManifest.ts",
   "packages/react-native",
 ];
-const E2E_MIN_BUNDLE_ID = "00000000-0000-7000-8000-000000000000";
 const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
 const SIGNING_PRIVATE_KEY_RELATIVE_PATH = "keys/private-key.pem";
 const EMPTY_CRASH_HISTORY = {
@@ -1358,14 +1355,6 @@ async function withConfiguredDatabase<T>(
   } finally {
     process.chdir(originalCwd);
   }
-}
-
-async function withDatabaseClient<T>(
-  callback: (databaseClient: DatabaseClient) => Promise<T>,
-): Promise<T> {
-  return withConfiguredDatabase((database) =>
-    callback(createDatabaseClient(database)),
-  );
 }
 
 function readAnalyticsModel(database: BundleRepository): AnalyticsModel | null {
@@ -3178,9 +3167,7 @@ function readHotUpdaterApiKey() {
 }
 
 export function getHotUpdaterClientRequestHeaders() {
-  const headers = new Headers({
-    "Hot-Updater-SDK-Version": "e2e",
-  });
+  const headers = new Headers();
   const apiKey = readHotUpdaterApiKey();
   if (apiKey) headers.set("x-api-key", apiKey);
   return headers;
@@ -3445,13 +3432,12 @@ function rewriteProxiedUpdatePath(pathname: string) {
     segments[3] = getRemoteChannelPathSegment(segments[3]);
   }
   if (
-    segments[0] === "v2" &&
-    segments[1] === "release-catalogs" &&
-    (segments[2] === "app-version" || segments[2] === "fingerprint") &&
-    segments[5]
+    segments[0] === "release-catalogs" &&
+    (segments[1] === "app-version" || segments[1] === "fingerprint") &&
+    segments[4]
   ) {
-    const channel = decodeChannelKey(decodeURIComponent(segments[5]));
-    segments[5] = encodeChannelKey(
+    const channel = decodeChannelKey(decodeURIComponent(segments[4]));
+    segments[4] = encodeChannelKey(
       !channelNamespace || channel.startsWith(`${channelNamespace}-`)
         ? channel
         : getFixtureChannel(channel),
@@ -3547,31 +3533,30 @@ function rewriteReleaseCatalogScope(
   const segments = requestPathname.split("/").filter(Boolean);
   if (
     segments[0] !== "hot-updater" ||
-    segments[1] !== "v2" ||
-    segments[2] !== "release-catalogs" ||
-    (segments[3] !== "app-version" && segments[3] !== "fingerprint") ||
-    !segments[4] ||
-    (segments[5] !== "ios" && segments[5] !== "android") ||
-    !segments[6]
+    segments[1] !== "release-catalogs" ||
+    (segments[2] !== "app-version" && segments[2] !== "fingerprint") ||
+    !segments[3] ||
+    (segments[4] !== "ios" && segments[4] !== "android") ||
+    !segments[5]
   ) {
     return payload;
   }
 
-  const authorityId = decodeURIComponent(segments[4]);
-  const channelKey = decodeURIComponent(segments[6]);
+  const authorityId = decodeURIComponent(segments[3]);
+  const channelKey = decodeURIComponent(segments[5]);
   const scopeKey = createReleaseCatalogScopeKey(
-    segments[3] === "app-version"
+    segments[2] === "app-version"
       ? {
           authorityId,
           channelKey,
-          platform: segments[5],
+          platform: segments[4],
           strategy: "APP_VERSION",
         }
       : {
           authorityId,
           channelKey,
-          fingerprintHash: decodeURIComponent(segments[7] ?? ""),
-          platform: segments[5],
+          fingerprintHash: decodeURIComponent(segments[6] ?? ""),
+          platform: segments[4],
           strategy: "FINGERPRINT",
         },
   );
@@ -3632,8 +3617,8 @@ function summarizeUpdateInfoPayload(payload: unknown) {
 }
 
 function classifyProxiedUpdatePath(pathname: string) {
-  if (pathname.includes("/v2/release-catalogs/")) return "catalog" as const;
-  if (pathname.includes("/v2/artifacts/")) return "artifact" as const;
+  if (pathname.includes("/release-catalogs/")) return "catalog" as const;
+  if (pathname.includes("/artifacts/")) return "artifact" as const;
   return "legacy" as const;
 }
 
@@ -4135,7 +4120,7 @@ async function waitForArtifactResolution(args: {
   bundleId: string;
   signal?: AbortSignal;
 }) {
-  const url = `${getControllerReachableAppBaseUrl()}/v2/artifacts/${encodeURIComponent(
+  const url = `${getControllerReachableAppBaseUrl()}/artifacts/${encodeURIComponent(
     args.bundleId,
   )}/from/${NIL_UUID}`;
   const response = await fetch(url, {
@@ -5623,9 +5608,9 @@ async function updateFixtureRelease(
   };
 }
 
-async function createFixtureRollbackRelease(input: {
+async function createFixtureRepublishedRelease(input: {
   sourceReleaseId: string;
-  toBundleId: string | null;
+  bundleId: string;
 }) {
   const created = await withConfiguredDatabase(
     async (database, authorityId) => {
@@ -5647,16 +5632,51 @@ async function createFixtureRollbackRelease(input: {
       if (channel === undefined) {
         throw new Error(`Channel ${source.channel_id} was not found.`);
       }
-      const result = await rollbackRelease({
-        database,
-        releaseId: source.id,
-        toBundleId: input.toBundleId,
-      });
-      const release = result.release;
-      if (release === null) {
-        throw new Error("Rollback did not create a Release.");
+      const bundle = await database.models.bundles.findById(input.bundleId);
+      if (bundle === null || bundle.platform !== source.platform) {
+        throw new Error(`Bundle ${input.bundleId} was not found.`);
       }
-      return { authorityId, catalog: result.catalog, channel, release };
+      const releases = await database.models.releases.findManyByScope({
+        consistency: "strong",
+        limit: 1_000,
+        scopeKey: source.scope_key,
+      });
+      const updatedAtMs = Date.now();
+      const release: ReleaseRow = {
+        ...source,
+        bundle_id: input.bundleId,
+        created_at_ms: updatedAtMs,
+        enabled: true,
+        id: createUUIDv7After(releases.at(-1)?.id ?? source.id, updatedAtMs),
+        kind: "BUNDLE",
+        operation: "DEPLOY",
+        revision: 1,
+        source_release_id: null,
+        updated_at_ms: updatedAtMs,
+      };
+      const result = await commitReleaseCatalogMutation({
+        database,
+        mutation: { operation: "insert", row: release },
+        scope: {
+          authorityId,
+          channelId: catalog.channel_id,
+          channelName: channel.name,
+          fingerprintHash: catalog.fingerprint_hash,
+          platform: catalog.platform,
+          scopeKey: catalog.scope_key,
+          strategy: catalog.strategy,
+        },
+        updatedAtMs,
+      });
+      if (result.release === null) {
+        throw new Error("Republish did not create a Release.");
+      }
+      return {
+        authorityId,
+        catalog: result.catalog,
+        channel,
+        release: result.release,
+      };
     },
   );
 
@@ -5713,18 +5733,50 @@ async function seedCrashedBundleFrontier(input: {
           `Failed to insert crash-frontier Bundle ${bundleId}: ${inserted.conflict.reason}`,
         );
       }
-      const rollback = await rollbackRelease({
+      const releases = await database.models.releases.findManyByScope({
+        consistency: "strong",
+        limit: 1_000,
+        scopeKey: sourceRelease.scope_key,
+      });
+      const release: ReleaseRow = {
+        ...sourceRelease,
+        bundle_id: bundleId,
+        created_at_ms: baseTimeMs + index,
+        id: createUUIDv7After(
+          releases.at(-1)?.id ?? sourceRelease.id,
+          baseTimeMs + index,
+        ),
+        operation: "DEPLOY",
+        revision: 1,
+        source_release_id: null,
+        updated_at_ms: baseTimeMs + index,
+      };
+      const catalog = await database.models.releaseCatalogs.findByScopeKey(
+        sourceRelease.scope_key,
+      );
+      if (catalog === null) {
+        throw new Error(`Catalog ${sourceRelease.scope_key} was not found.`);
+      }
+      const published = await commitReleaseCatalogMutation({
         database,
-        releaseId: sourceRelease.id,
-        toBundleId: bundleId,
+        mutation: { operation: "insert", row: release },
+        scope: {
+          authorityId: catalog.authority_id,
+          channelId: catalog.channel_id,
+          channelName: decodeChannelKey(catalog.channel_key),
+          fingerprintHash: catalog.fingerprint_hash,
+          platform: catalog.platform,
+          scopeKey: catalog.scope_key,
+          strategy: catalog.strategy,
+        },
         updatedAtMs: baseTimeMs + index,
       });
-      if (rollback.release === null) {
-        throw new Error("Crash-frontier rollback did not create a Release.");
+      if (published.release === null) {
+        throw new Error("Crash-frontier republish did not create a Release.");
       }
       bundleIds.push(bundleId);
-      releaseIds.push(rollback.release.id);
-      generation = rollback.catalog.generation;
+      releaseIds.push(published.release.id);
+      generation = published.catalog.generation;
       bundleIdFloor = bundleId;
     }
 
@@ -6717,11 +6769,11 @@ export function startPatchReleaseJob(request: PatchReleaseRequest) {
   return createJob((context) => updateFixtureRelease(request, context));
 }
 
-export function startCreateRollbackReleaseJob(input: {
+export function startCreateRepublishedReleaseJob(input: {
   sourceReleaseId: string;
-  toBundleId: string | null;
+  bundleId: string;
 }) {
-  return createJob(() => createFixtureRollbackRelease(input));
+  return createJob(() => createFixtureRepublishedRelease(input));
 }
 
 export function startSeedCrashedBundleFrontierJob(input: {

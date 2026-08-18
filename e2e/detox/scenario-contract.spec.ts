@@ -104,8 +104,6 @@ const defaultDetoxScenarioNames = [
   "stale-catalog-after-newer-generation",
   "slow-old-artifact-after-newer-install",
   "failed-download-same-generation-retry",
-  "forward-release-rollback-old-bundle",
-  "explicit-embedded-receipt",
   "republished-crashed-bundle-skipped",
   "crash-then-next-safe-update",
   "runtime-channel-crash-restore",
@@ -279,25 +277,24 @@ describe("Detox scenario contract", () => {
 
     expect(detoxScenarios).toEqual(defaultDetoxScenarioNames);
     expect(listDetoxScenarioNames()).toEqual(defaultDetoxScenarioNames);
-    expect(new Set(listDetoxScenarioNames()).size).toBe(27);
+    expect(new Set(listDetoxScenarioNames()).size).toBe(25);
   });
 
-  it("establishes a BUILTIN receipt before proving catalog-only no-update", async () => {
-    // Given: a complete catalog excludes its only Release but explicitly
-    // authorizes the local BUILTIN fallback.
+  it("keeps repeated catalog checks as no-ops while already built-in", async () => {
+    // Given: a complete catalog excludes its only Release while the app is
+    // already running the built-in Bundle.
     const calls = await recordScenarioCalls("catalog-only-no-update");
 
-    // When: the first check commits that authenticated receipt and the second
-    // check evaluates the unchanged catalog.
-    // Then: only the second check is a no-update and neither check resolves an
-    // artifact.
+    // When: the app checks the unchanged catalog twice.
+    // Then: neither check surfaces a redundant built-in rollback or resolves
+    // an artifact.
     expect(calls.map((call) => call.stage)).toEqual([
       "deploy excluded catalog Release",
       "launch catalog-only app",
-      "establish excluded catalog receipt",
-      "assert excluded catalog built-in selection",
+      "check excluded catalog while built-in",
+      "assert excluded catalog no update",
       "reset catalog-only proxy",
-      "check excluded catalog Release",
+      "repeat excluded catalog check",
       "assert catalog-only no update",
       "assert catalog-only transport",
     ]);
@@ -305,10 +302,10 @@ describe("Detox scenario contract", () => {
       calls.find(
         (call) =>
           call.kind === "assertText" &&
-          call.stage === "assert excluded catalog built-in selection",
+          call.stage === "assert excluded catalog no update",
       ),
     ).toMatchObject({
-      contains: "current-channel -> selected BUILTIN",
+      contains: "current-channel -> no-update",
       options: { exactText: true },
       testID: "update-action-result",
     });
@@ -903,9 +900,6 @@ describe("Detox scenario contract", () => {
       "stale-catalog-after-newer-generation: install stale-catalog baseline",
       "stale-catalog-after-newer-generation: install newer catalog generation",
       "slow-old-artifact-after-newer-install: install newer artifact Release",
-      "forward-release-rollback-old-bundle: install rollback base",
-      "forward-release-rollback-old-bundle: install rollback source",
-      "explicit-embedded-receipt: install embedded source",
       "republished-crashed-bundle-skipped: install republish stable",
       "republished-crashed-bundle-skipped: install republish crash",
       "crash-then-next-safe-update: install next-safe stable",
@@ -2261,8 +2255,7 @@ describe("Detox scenario contract", () => {
       "apply excluded cohort",
       "assert excluded cohort applied",
       "install excluded cohort update",
-      "assert excluded cohort built-in selection",
-      "assert excluded metadata reset",
+      "assert excluded cohort no update",
       "reload excluded cohort state",
       "assert excluded cohort built-in bundle",
       "enter included cohort",
@@ -2296,10 +2289,10 @@ describe("Detox scenario contract", () => {
       (await recordScenarioCalls("target-cohorts-rollout-interaction")).find(
         (call) =>
           call.kind === "assertText" &&
-          call.stage === "assert excluded cohort built-in selection",
+          call.stage === "assert excluded cohort no update",
       ),
     ).toMatchObject({
-      contains: "current-channel -> selected BUILTIN",
+      contains: "current-channel -> no-update",
       options: { exactText: true },
       testID: "update-action-result",
     });

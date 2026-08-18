@@ -10,6 +10,7 @@ import type { HotUpdaterResolver } from "./types";
 
 const MINIMUM_RELEASE_ID = "00000000-0000-7000-8000-000000000001";
 const RELEASE_ID = "00000000-0000-7000-8000-000000000002";
+const ACTIVE_RELEASE_ID = "00000000-0000-7000-8000-000000000003";
 const CURRENT_BUNDLE_ID = "00000000-0000-7001-8000-000000000001";
 const TARGET_BUNDLE_ID = "00000000-0000-7001-8000-000000000002";
 const AUTHORITY_ID = "project-a";
@@ -172,14 +173,25 @@ describe("checkForUpdate Release catalog protocol", () => {
       verificationPending: false,
     });
     const { checkForUpdate } = await import("./checkForUpdate");
-    const { resolveArtifact, resolver } = createResolver();
+    const forceCatalog = createCatalog({
+      releases: [
+        {
+          ...createCatalog().releases[0]!,
+          shouldForceUpdate: true,
+        },
+      ],
+    });
+    const { resolveArtifact, resolver } = createResolver(forceCatalog);
 
     const result = await checkForUpdate({
       resolver,
       updateStrategy: "appVersion",
     });
 
-    expect(result?.transitionKind).toBe("ADOPT_RELEASE");
+    expect(result).toMatchObject({
+      shouldForceUpdate: false,
+      transitionKind: "ADOPT_RELEASE",
+    });
     await expect(result?.updateBundle()).resolves.toBe(true);
     expect(resolveArtifact).not.toHaveBeenCalled();
     expect(mocks.updateBundle).not.toHaveBeenCalled();
@@ -189,6 +201,49 @@ describe("checkForUpdate Release catalog protocol", () => {
         bundleId: TARGET_BUNDLE_ID,
         releaseId: RELEASE_ID,
       }),
+    });
+  });
+
+  it("selects a lower-id Release when explicitly switching scopes", async () => {
+    const betaChannel = "beta";
+    const betaScopeKey = createReleaseCatalogScopeKey({
+      authorityId: AUTHORITY_ID,
+      channelKey: encodeChannelKey(betaChannel),
+      platform: "ios",
+      strategy: "APP_VERSION",
+    });
+    const active: PersistedSelectionReceipt = {
+      authorityId: AUTHORITY_ID,
+      bundleId: CURRENT_BUNDLE_ID,
+      catalogHash: `sha256:${"b".repeat(64)}`,
+      channel: CHANNEL,
+      generation: 1,
+      kind: "BUNDLE",
+      releaseId: ACTIVE_RELEASE_ID,
+      scopeKey: SCOPE_KEY,
+      selectionContextHash: "old-context",
+    };
+    mocks.getActiveUpdateState.mockReturnValueOnce({
+      activeSelection: active,
+      highestSeenCatalogs: {},
+      stableSelection: active,
+      verificationPending: false,
+    });
+    const betaCatalog = createCatalog({ scopeKey: betaScopeKey });
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { resolver } = createResolver(betaCatalog);
+
+    const result = await checkForUpdate({
+      channel: betaChannel,
+      resolver,
+      updateStrategy: "appVersion",
+    });
+
+    expect(result).toMatchObject({
+      id: TARGET_BUNDLE_ID,
+      releaseId: RELEASE_ID,
+      status: "UPDATE",
+      transitionKind: "INSTALL",
     });
   });
 
@@ -258,6 +313,165 @@ describe("checkForUpdate Release catalog protocol", () => {
       StaleReleaseCatalogError,
     );
     expect(mocks.updateBundle).not.toHaveBeenCalled();
+  });
+
+  it("installs an older enabled Release as a forced rollback", async () => {
+    const active: PersistedSelectionReceipt = {
+      authorityId: AUTHORITY_ID,
+      bundleId: CURRENT_BUNDLE_ID,
+      catalogHash: `sha256:${"b".repeat(64)}`,
+      channel: CHANNEL,
+      generation: 1,
+      kind: "BUNDLE",
+      releaseId: ACTIVE_RELEASE_ID,
+      scopeKey: SCOPE_KEY,
+      selectionContextHash: "old-context",
+    };
+    mocks.getActiveUpdateState.mockReturnValueOnce({
+      activeSelection: active,
+      highestSeenCatalogs: {},
+      stableSelection: active,
+      verificationPending: false,
+    });
+    const catalog = createCatalog({
+      rollbackReleases: [
+        {
+          bundleId: TARGET_BUNDLE_ID,
+          kind: "BUNDLE",
+          message: "Previous Release",
+          releaseId: RELEASE_ID,
+          rolloutCohortCount: 0,
+          shouldForceUpdate: false,
+          targetCohorts: [],
+        },
+      ],
+    });
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { resolver } = createResolver(catalog);
+
+    const result = await checkForUpdate({
+      resolver,
+      updateStrategy: "appVersion",
+    });
+
+    expect(result).toMatchObject({
+      id: TARGET_BUNDLE_ID,
+      releaseId: RELEASE_ID,
+      shouldForceUpdate: true,
+      status: "ROLLBACK",
+      transitionKind: "INSTALL",
+    });
+    await expect(result?.updateBundle()).resolves.toBe(true);
+    expect(mocks.updateBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bundleId: TARGET_BUNDLE_ID,
+        status: "ROLLBACK",
+      }),
+    );
+  });
+
+  it("uses current Bundle identity when migrating an unauthenticated receipt", async () => {
+    const migratedCurrentBundleId = "00000000-0000-7001-8000-000000000003";
+    const active: PersistedSelectionReceipt = {
+      authorityId: null,
+      bundleId: migratedCurrentBundleId,
+      catalogHash: null,
+      channel: CHANNEL,
+      generation: null,
+      kind: "BUNDLE",
+      releaseId: null,
+      scopeKey: null,
+      selectionContextHash: null,
+    };
+    mocks.getBundleId.mockReturnValueOnce(migratedCurrentBundleId);
+    mocks.getActiveUpdateState.mockReturnValueOnce({
+      activeSelection: active,
+      highestSeenCatalogs: {},
+      stableSelection: active,
+      verificationPending: false,
+    });
+    const catalog = createCatalog({
+      releases: [],
+      rollbackReleases: [
+        {
+          ...createCatalog().releases[0]!,
+          rolloutCohortCount: 0,
+        },
+      ],
+    });
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { resolver } = createResolver(catalog);
+
+    const result = await checkForUpdate({
+      resolver,
+      updateStrategy: "appVersion",
+    });
+
+    expect(result).toMatchObject({
+      id: TARGET_BUNDLE_ID,
+      shouldForceUpdate: true,
+      status: "ROLLBACK",
+      transitionKind: "INSTALL",
+    });
+  });
+
+  it("returns a forced built-in rollback only for an active OTA", async () => {
+    const active: PersistedSelectionReceipt = {
+      authorityId: AUTHORITY_ID,
+      bundleId: CURRENT_BUNDLE_ID,
+      catalogHash: `sha256:${"b".repeat(64)}`,
+      channel: CHANNEL,
+      generation: 1,
+      kind: "BUNDLE",
+      releaseId: ACTIVE_RELEASE_ID,
+      scopeKey: SCOPE_KEY,
+      selectionContextHash: "old-context",
+    };
+    mocks.getActiveUpdateState.mockReturnValueOnce({
+      activeSelection: active,
+      highestSeenCatalogs: {},
+      stableSelection: active,
+      verificationPending: false,
+    });
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { resolver } = createResolver(
+      createCatalog({ releases: [], rollbackReleases: [] }),
+    );
+
+    const result = await checkForUpdate({
+      resolver,
+      updateStrategy: "appVersion",
+    });
+
+    expect(result).toMatchObject({
+      id: MINIMUM_RELEASE_ID,
+      releaseId: null,
+      shouldForceUpdate: true,
+      status: "ROLLBACK",
+      transitionKind: "USE_BUILTIN",
+    });
+    await expect(result?.updateBundle()).resolves.toBe(true);
+    expect(mocks.commitReleaseSelection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selection: expect.objectContaining({
+          kind: "BUILTIN",
+          releaseId: null,
+        }),
+      }),
+    );
+  });
+
+  it("does not surface a rollback when the app already uses built-in bytes", async () => {
+    mocks.getBundleId.mockReturnValueOnce(MINIMUM_RELEASE_ID);
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { resolver } = createResolver(
+      createCatalog({ releases: [], rollbackReleases: [] }),
+    );
+
+    await expect(
+      checkForUpdate({ resolver, updateStrategy: "appVersion" }),
+    ).resolves.toBeNull();
+    expect(mocks.commitReleaseSelection).not.toHaveBeenCalled();
   });
 
   it("reports a rejected generation without selecting or resolving artifacts", async () => {

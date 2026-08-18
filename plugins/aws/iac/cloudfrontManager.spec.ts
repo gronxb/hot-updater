@@ -173,14 +173,7 @@ describe("CloudFrontManager", () => {
           ParametersInCacheKeyAndForwardedToOrigin: expect.objectContaining({
             HeadersConfig: {
               HeaderBehavior: "whitelist",
-              Headers: {
-                Quantity: 3,
-                Items: [
-                  "authorization",
-                  "hot-updater-sdk-version",
-                  "x-api-key",
-                ],
-              },
+              Headers: { Quantity: 1, Items: ["x-api-key"] },
             },
           }),
         }),
@@ -198,12 +191,12 @@ describe("CloudFrontManager", () => {
           CacheBehaviors: expect.objectContaining({
             Items: expect.arrayContaining([
               expect.objectContaining({
-                PathPattern: "/api/check-update",
+                PathPattern: "/events",
                 CachePolicyId: "shared-cache-policy-id",
                 OriginRequestPolicyId: "origin-request-policy-id",
               }),
               expect.objectContaining({
-                PathPattern: "/api/check-update/*",
+                PathPattern: "/artifacts/*",
                 CachePolicyId: "shared-cache-policy-id",
                 OriginRequestPolicyId: "origin-request-policy-id",
                 LambdaFunctionAssociations: expect.objectContaining({
@@ -215,7 +208,12 @@ describe("CloudFrontManager", () => {
                 }),
               }),
               expect.objectContaining({
-                PathPattern: "/api/check-update/v2/release-catalogs/*",
+                PathPattern: "/version",
+                CachePolicyId: "shared-cache-policy-id",
+                OriginRequestPolicyId: "origin-request-policy-id",
+              }),
+              expect.objectContaining({
+                PathPattern: "/release-catalogs/*",
                 CachePolicyId: "release-catalog-cache-policy-id",
                 OriginRequestPolicyId: "origin-request-policy-id",
               }),
@@ -229,8 +227,8 @@ describe("CloudFrontManager", () => {
       InvalidationBatch: {
         CallerReference: expect.any(String),
         Paths: {
-          Quantity: 2,
-          Items: ["/api/check-update", "/api/check-update/*"],
+          Quantity: 4,
+          Items: ["/events", "/artifacts/*", "/version", "/release-catalogs/*"],
         },
       },
     });

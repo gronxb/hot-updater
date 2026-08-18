@@ -20,6 +20,7 @@ import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
 import { inputFirebaseApplicationCredentials } from "./firebaseApplicationCredentials";
+import { assertFirebaseInfrastructureCanInitialize } from "./firebaseInfrastructureState";
 import {
   assertFirebaseNonInteractiveInputs,
   type FirebaseCliEnv,
@@ -318,7 +319,7 @@ const printTemplate = async (
         env: cliEnv,
       },
     );
-    const functionUrl = `https://${projectId}.web.app/api/check-update`;
+    const functionUrl = `https://${projectId}.web.app`;
 
     p.note(
       transformTemplate(SOURCE_TEMPLATE, {
@@ -388,6 +389,13 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       return cliEnv;
     },
   );
+
+  if (initializeVariable.status === "ready") {
+    await assertFirebaseInfrastructureCanInitialize({
+      applicationCredentials,
+      projectId: initializeVariable.projectId,
+    });
+  }
 
   const currentRegion = await resolveFirebaseRegion({
     cwd: tmpDir,

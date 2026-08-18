@@ -15,11 +15,9 @@ import {
   type ReleaseCatalogScope,
 } from "./releaseCatalogMutation";
 import type { BundleRepository, ReleaseRow } from "./types";
-import { createUUIDv7After } from "./uuidv7";
+import { createUUIDv7After, isUUIDv7 } from "./uuidv7";
 
 const RELEASE_PAGE_SIZE = 1_000;
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface ReleasePolicyPatch {
   readonly enabled?: boolean;
@@ -86,9 +84,7 @@ const createForwardReleaseId = (
   nowMs: number,
 ): string => {
   const floor = [...candidates, rows.at(-1)?.id ?? null]
-    .filter((value): value is string =>
-      value === null ? false : UUID_PATTERN.test(value),
-    )
+    .filter((value): value is string => value !== null && isUUIDv7(value))
     .sort()
     .at(-1);
   return createUUIDv7After(floor ?? null, nowMs);
@@ -378,67 +374,25 @@ export async function promoteRelease(
   };
 }
 
-export interface RollbackReleaseInput extends ReleaseMutationTarget {
-  readonly toBundleId?: string | null;
-  readonly toReleaseId?: string;
-}
+export type RollbackReleaseInput = ReleaseMutationTarget;
 
 const prepareRollbackRelease = async (
   input: RollbackReleaseInput,
 ): Promise<ReleaseCatalogMutationInput> => {
   const { release: source, scope } = await loadReleaseTarget(input);
-  if ((input.toReleaseId === undefined) === (input.toBundleId === undefined)) {
+  if (!source.enabled) {
     throw new ReleaseManagementError(
       "TARGET_RELEASE_INVALID",
-      "Rollback requires exactly one Release or advanced Bundle target.",
+      "Rollback requires an enabled Release.",
     );
   }
-  const target =
-    input.toReleaseId === undefined
-      ? null
-      : await input.database.models.releases.findById(input.toReleaseId);
-  if (
-    input.toReleaseId !== undefined &&
-    (target === null || target.scope_key !== source.scope_key)
-  ) {
-    throw new ReleaseManagementError(
-      "TARGET_RELEASE_INVALID",
-      "Rollback target Release must belong to the same scope.",
-    );
-  }
-  const bundleId = target?.bundle_id ?? input.toBundleId ?? null;
-  if (bundleId !== null) {
-    const bundle = await input.database.models.bundles.findById(bundleId);
-    if (bundle === null || bundle.platform !== source.platform) {
-      throw new ReleaseManagementError(
-        "TARGET_RELEASE_INVALID",
-        "Rollback target Bundle was not found for the source platform.",
-      );
-    }
-  }
-  const rows = await readReleaseScope(input.database, source.scope_key);
   const updatedAtMs = input.updatedAtMs ?? Date.now();
-  const row: ReleaseRow = {
-    ...source,
-    id: createForwardReleaseId(
-      rows,
-      [source.id, target?.id ?? null, bundleId],
-      updatedAtMs,
-    ),
-    revision: 1,
-    kind: bundleId === null ? "EMBEDDED" : "BUNDLE",
-    bundle_id: bundleId,
-    enabled: true,
-    should_force_update: true,
-    rollout_cohort_count: 1_000,
-    target_cohorts: [],
-    operation: "ROLLBACK",
-    source_release_id: target?.id ?? null,
-    created_at_ms: updatedAtMs,
-    updated_at_ms: updatedAtMs,
-  };
   return {
-    mutation: { operation: "insert", row },
+    mutation: {
+      id: source.id,
+      operation: "update",
+      update: { enabled: false, updated_at_ms: updatedAtMs },
+    },
     scope,
     updatedAtMs,
   };

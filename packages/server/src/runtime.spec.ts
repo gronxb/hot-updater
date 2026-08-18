@@ -161,6 +161,7 @@ describe("runtime createHotUpdater", () => {
 
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toEqual({
+        infrastructureGeneration: 1,
         version: HOT_UPDATER_SERVER_VERSION,
       });
     },

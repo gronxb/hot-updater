@@ -32,6 +32,7 @@ import {
   getReleaseCatalogDiagnostics,
   getReleases,
   preflightRelease as preflightReleaseApi,
+  promoteRelease as promoteReleaseApi,
   searchInstallations as searchInstallationsApi,
   updateRelease as updateReleaseApi,
 } from "./api-rpc";
@@ -107,10 +108,15 @@ export const queryKeys = {
 };
 
 export type ReleaseFilters = {
+  afterReleaseId?: string;
   beforeReleaseId?: string;
+  bundleId?: string;
   channelId?: string;
+  enabled?: boolean;
   platform?: "ios" | "android";
   limit?: number;
+  page?: number;
+  targetAppVersion?: string;
 };
 
 function removeBundleFromQueryData(
@@ -410,6 +416,26 @@ export function useDeleteReleaseMutation() {
       });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.releases.all }),
+        queryClient.invalidateQueries({ queryKey: ["release-catalog"] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
+      ]);
+    },
+  });
+}
+
+export function usePromoteReleaseMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      action: "copy" | "move";
+      expectedRevision: number;
+      releaseId: string;
+      targetChannel: string;
+    }) => promoteReleaseApi({ data: input }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.releases.all }),
+        queryClient.invalidateQueries({ queryKey: ["release"] }),
         queryClient.invalidateQueries({ queryKey: ["release-catalog"] }),
         queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
       ]);

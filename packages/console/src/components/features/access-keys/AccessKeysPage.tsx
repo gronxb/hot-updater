@@ -1,14 +1,22 @@
 import {
+  AlertTriangle,
   Check,
   Clipboard,
   KeyRound,
   Loader2,
   Plus,
+  RefreshCw,
   ShieldOff,
 } from "lucide-react";
 import { type FormEvent, type MouseEvent, useState } from "react";
 import { toast } from "sonner";
 
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,14 +31,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -47,6 +48,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -222,11 +224,9 @@ function RevokeAccessKeyDialog({ record }: { record: ClientAccessKeyView }) {
         if (!revoke.isPending) setOpen(nextOpen);
       }}
     >
-      <AlertDialogTrigger asChild>
-        <Button size="sm" variant="ghost">
-          <ShieldOff data-icon="inline-start" />
-          Revoke
-        </Button>
+      <AlertDialogTrigger render={<Button size="sm" variant="ghost" />}>
+        <ShieldOff data-icon="inline-start" />
+        Revoke
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
@@ -260,66 +260,100 @@ export function AccessKeysPage() {
   const accessKeys = useClientAccessKeysQuery();
 
   return (
-    <Card>
-      <CardHeader className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 space-y-0">
-        <CardTitle>Client access keys</CardTitle>
-        <CardDescription>
-          Keys allow OTA reads and analytics writes. They cannot read analytics
-          or manage bundles and keys.
-        </CardDescription>
-        <CardAction>
-          <CreateAccessKeyDialog />
-        </CardAction>
+    <Card className="overflow-hidden shadow-sm">
+      <CardHeader className="flex-row items-center justify-between space-y-0 border-b px-4 py-3">
+        <CardTitle className="text-sm">
+          <h2>Keys</h2>
+        </CardTitle>
+        <CreateAccessKeyDialog />
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-0">
         {accessKeys.isError ? (
-          <p className="text-sm text-destructive" role="alert">
-            {accessKeys.error.message}
-          </p>
+          <div className="p-4">
+            <Alert variant="destructive">
+              <AlertTriangle />
+              <AlertTitle>Access keys couldn't be loaded</AlertTitle>
+              <AlertDescription>
+                Check your connection and try again.
+              </AlertDescription>
+              <AlertAction>
+                <Button
+                  onClick={() => void accessKeys.refetch()}
+                  size="xs"
+                  variant="outline"
+                >
+                  <RefreshCw data-icon="inline-start" />
+                  Retry
+                </Button>
+              </AlertAction>
+            </Alert>
+          </div>
         ) : (
-          <Table>
+          <Table aria-label="Client access keys" className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
                 <TableHead>Key</TableHead>
-                <TableHead>Permissions</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Action</TableHead>
+                <TableHead className="w-32">Created</TableHead>
+                <TableHead className="w-24 text-right">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {accessKeys.isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center">
-                    <Loader2 className="mx-auto animate-spin" />
-                    <span className="sr-only">Loading access keys</span>
-                  </TableCell>
-                </TableRow>
+                Array.from({ length: 3 }, (_, index) => (
+                  <TableRow key={index}>
+                    <TableCell className="space-y-2 py-3">
+                      {index === 0 ? (
+                        <span className="sr-only">Loading access keys</span>
+                      ) : null}
+                      <Skeleton className="h-3.5 w-32" />
+                      <Skeleton className="h-3 w-20" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-3.5 w-20" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="ml-auto h-6 w-16" />
+                    </TableCell>
+                  </TableRow>
+                ))
               ) : accessKeys.data?.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
-                    className="h-24 text-center text-muted-foreground"
+                    colSpan={3}
+                    className="h-40 text-center text-muted-foreground"
                   >
-                    No access keys yet.
+                    <div className="mx-auto flex max-w-xs flex-col items-center gap-2">
+                      <KeyRound className="size-5" />
+                      <p className="font-medium text-foreground">
+                        No client keys
+                      </p>
+                      <p>Create a key to connect an app.</p>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (
                 accessKeys.data?.map((accessKey) => (
-                  <TableRow key={accessKey.id}>
-                    <TableCell className="font-medium">
-                      {accessKey.name}
-                    </TableCell>
-                    <TableCell className="font-mono">
-                      {accessKey.prefix}…
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Badge variant="secondary">OTA read</Badge>
-                        <Badge variant="secondary">Analytics write</Badge>
+                  <TableRow
+                    className={
+                      accessKey.revoked_at_ms === null
+                        ? undefined
+                        : "text-muted-foreground"
+                    }
+                    key={accessKey.id}
+                  >
+                    <TableCell className="whitespace-normal py-3">
+                      <div className="min-w-0 space-y-1">
+                        <p className="break-words font-medium text-foreground">
+                          {accessKey.name}
+                        </p>
+                        <p className="font-mono text-xs text-muted-foreground">
+                          {accessKey.prefix}…
+                        </p>
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
                       <time
                         dateTime={new Date(
                           accessKey.created_at_ms,

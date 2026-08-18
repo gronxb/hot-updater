@@ -8,12 +8,10 @@ import { createMigrator } from "@hot-updater/server/db";
 import {
   deleteLegacyBundle,
   setupBundleMethodsTestSuite,
-  setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
 import {
   assertDockerComposeAvailable,
   cleanupServer,
-  createGetUpdateInfo,
   killPort,
   spawnServerProcess,
   waitForServer,
@@ -37,7 +35,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
   let baseUrl: string;
   let hotUpdater: HotUpdaterAPI;
   let closeDatabase: (() => Promise<void>) | null = null;
-  let resetDecisionFixtures: () => Promise<void>;
   const port = 13579;
 
   beforeAll(async () => {
@@ -65,7 +62,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
     hotUpdater = db.hotUpdater;
     closeDatabase = db.closeDatabase;
-    resetDecisionFixtures = db.resetDecisionFixtures;
 
     serverProcess = spawnServerProcess({
       serverCommand: ["npx", "tsx", "src/index.ts"],
@@ -85,18 +81,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     console.log("Cleaning up test database...");
     await cleanupMySQLDatabase(projectRoot);
   }, 60000);
-
-  const getUpdateInfo: ReturnType<typeof createGetUpdateInfo> = (
-    bundles,
-    options,
-  ) => {
-    return createGetUpdateInfo({
-      baseUrl: `${baseUrl}/hot-updater`,
-      resetDecisionFixtures,
-    })(bundles, options);
-  };
-
-  setupGetUpdateInfoTestSuite({ getUpdateInfo });
 
   setupBundleMethodsTestSuite({
     getBundleById: (id: string) => hotUpdater.getBundleById(id),
@@ -194,7 +178,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
             id, platform, should_force_update, enabled, file_hash, channel,
             storage_uri, target_app_version, metadata
           ) values (
-            '00000000-0000-0000-0000-000000000001', 'ios', false, true,
+            '0198a5b0-0000-7000-8000-000000000001', 'ios', false, true,
             'bundle-hash', 'production', 'storage://bundle-1', '1.0.0', '{}'
           )`,
         )
@@ -225,7 +209,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       `.execute(db);
       expect(releases.rows).toEqual([
         {
-          bundle_id: "00000000-0000-0000-0000-000000000001",
+          bundle_id: "0198a5b0-0000-7000-8000-000000000001",
           channel_id: expect.any(String),
           target_app_version: "1.0.0",
         },

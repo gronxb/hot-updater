@@ -18,10 +18,10 @@ export function RolloutPercentageBadge({
 
   return (
     <Badge
-      variant={isPartialRollout ? "secondary" : "default"}
       className={cn("gap-1", className)}
+      variant={isPartialRollout ? "secondary" : "default"}
     >
-      {isPartialRollout && <AlertTriangle className="h-3 w-3" />}
+      {isPartialRollout ? <AlertTriangle className="h-3 w-3" /> : null}
       {formattedPercentage}%
     </Badge>
   );

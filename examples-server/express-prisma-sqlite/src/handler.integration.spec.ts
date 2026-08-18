@@ -7,11 +7,9 @@ import type { HotUpdaterAPI } from "@hot-updater/server";
 import {
   deleteLegacyBundle,
   setupBundleMethodsTestSuite,
-  setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
 import {
   cleanupServer,
-  createGetUpdateInfo,
   createTestDbPath,
   killPort,
   spawnServerProcess,
@@ -30,7 +28,6 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
   let baseUrl: string;
   let testDbPath: string;
   let hotUpdater: HotUpdaterAPI;
-  let resetDecisionFixtures: () => Promise<void>;
   const port = 13581;
 
   beforeAll(async () => {
@@ -110,24 +107,11 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
 
     const db = await import("./db.js");
     hotUpdater = db.hotUpdater;
-    resetDecisionFixtures = db.resetDecisionFixtures;
   }, 60000);
 
   afterAll(async () => {
     await cleanupServer(baseUrl, serverProcess, testDbPath);
   }, 60000);
-
-  const getUpdateInfo: ReturnType<typeof createGetUpdateInfo> = (
-    bundles,
-    options,
-  ) => {
-    return createGetUpdateInfo({
-      baseUrl: `${baseUrl}/hot-updater`,
-      resetDecisionFixtures,
-    })(bundles, options);
-  };
-
-  setupGetUpdateInfoTestSuite({ getUpdateInfo });
 
   setupBundleMethodsTestSuite({
     getBundleById: (id: string) => hotUpdater.getBundleById(id),

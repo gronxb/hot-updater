@@ -26,16 +26,16 @@ export default defineConfig({
 
 Use version ranges to control which app versions receive updates. The `-t` option accepts various expressions:
 
-| Range | Who gets the update |
-| :--- | :--- |
-| `1.2.3` | Only version `1.2.3` |
-| `*` | All versions |
-| `1.2.x` | Any patch version of `1.2` |
-| `1.2.3 - 1.2.7` | Versions `1.2.3` through `1.2.7` (inclusive) |
+| Range            | Who gets the update                                 |
+| :--------------- | :-------------------------------------------------- |
+| `1.2.3`          | Only version `1.2.3`                                |
+| `*`              | All versions                                        |
+| `1.2.x`          | Any patch version of `1.2`                          |
+| `1.2.3 - 1.2.7`  | Versions `1.2.3` through `1.2.7` (inclusive)        |
 | `>=1.2.3 <1.2.7` | Versions `1.2.3` (inclusive) to `1.2.7` (exclusive) |
-| `1.2` | Same as `>=1.2.0 <1.3.0` |
-| `~1.2.3` | Same as `>=1.2.3 <1.3.0` |
-| `^1.2.3` | Same as `>=1.2.3 <2.0.0` |
+| `1.2`            | Same as `>=1.2.0 <1.3.0`                            |
+| `~1.2.3`         | Same as `>=1.2.3 <1.3.0`                            |
+| `^1.2.3`         | Same as `>=1.2.3 <2.0.0`                            |
 
 ## Deployment
 
@@ -46,6 +46,7 @@ npx hot-updater deploy -p <"ios" | "android"> -t "1.x.x"
 ```
 
 Examples:
+
 - `npx hot-updater deploy -p ios -t "1.0.0"` - Only version 1.0.0
 - `npx hot-updater deploy -p android -t ">=1.2.0"` - Version 1.2.0 and above
 - `npx hot-updater deploy -p ios -t "*"` - All versions
@@ -67,25 +68,31 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  baseURL: "https://your-update-server.com/api/update-check", // [!code ++]
+  baseURL: "https://your-update-server.com", // [!code ++]
   updateStrategy: "appVersion", // [!code ++]
 })(App);
 ```
 
-The client automatically constructs this endpoint:
+The client fetches the app-version Release Catalog:
+
 ```
-GET {baseUrl}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId
+GET {baseUrl}/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion
 ```
+
+It evaluates the catalog locally, then resolves the selected artifact through
+`/artifacts/:targetBundleId/from/:currentBundleId`. `:channelKey` is the
+base64url-encoded channel name.
 
 ## Testing the Endpoint
 
 Test your update endpoint using curl:
 
 ```bash
-curl "https://your-update-endpoint.com/check-update/app-version/ios/1.0.0/production/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000001"
+curl "https://your-update-endpoint.com/release-catalogs/app-version/default/ios/cHJvZHVjdGlvbg/1.0.0"
 ```
 
 Parameters:
+
 - `:platform` - `ios` or `android`
 - `:appVersion` - Current app version (e.g., `1.0.0`)
 - `:channel` - Channel name (e.g., `production`, `staging`)

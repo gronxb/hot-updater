@@ -14,18 +14,9 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { transformEnv } from "@hot-updater/cli-tools";
-import {
-  type Bundle,
-  type GetBundlesArgs,
-  NIL_UUID,
-  type UpdateInfo,
-} from "@hot-updater/core";
+import { type Bundle, NIL_UUID } from "@hot-updater/core";
 import { createDatabaseClient } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import {
-  setupBsdiffManifestUpdateInfoTestSuite,
-  setupGetUpdateInfoTestSuite,
-} from "@hot-updater/test-utils";
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -35,7 +26,6 @@ import {
   runCheckedCommand,
   spawnRuntime,
   stopRuntime,
-  formatRuntimeLogs,
   waitForHttpOk,
 } from "../../../../packages/test-utils/src/runtimeProcess";
 import { supabaseDatabase } from "../../src/supabaseDatabase";
@@ -47,7 +37,6 @@ const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
 const FUNCTION_NAME = "hot-updater-function";
 const FUNCTION_BASE_PATH = `/${FUNCTION_NAME}`;
 const HOT_UPDATER_BASE_PATH = "/";
-const LEGACY_HOT_UPDATER_BASE_PATH = "/api/check-update";
 const AUTHORITY_ID = "supabase.runtime-acceptance";
 const BUCKET_NAME = "hot-updater-bundles";
 const DENO_DOCKER_IMAGE = "denoland/deno:alpine";
@@ -98,28 +87,6 @@ const ensureBuiltArtifacts = async (
       );
     }
   }
-};
-
-const createCanonicalPath = (args: GetBundlesArgs) => {
-  const channel = args.channel ?? "production";
-  const minBundleId = args.minBundleId ?? NIL_UUID;
-  const cohortSegment = args.cohort
-    ? `/${encodeURIComponent(args.cohort)}`
-    : "";
-  const joinHotUpdaterPath = (routePath: string) =>
-    HOT_UPDATER_BASE_PATH === "/"
-      ? routePath
-      : `${HOT_UPDATER_BASE_PATH}${routePath}`;
-
-  if (args._updateStrategy === "appVersion") {
-    return joinHotUpdaterPath(
-      `/app-version/${encodeURIComponent(args.platform)}/${encodeURIComponent(args.appVersion)}/${encodeURIComponent(channel)}/${encodeURIComponent(minBundleId)}/${encodeURIComponent(args.bundleId)}${cohortSegment}`,
-    );
-  }
-
-  return joinHotUpdaterPath(
-    `/fingerprint/${encodeURIComponent(args.platform)}/${encodeURIComponent(args.fingerprintHash)}/${encodeURIComponent(channel)}/${encodeURIComponent(minBundleId)}/${encodeURIComponent(args.bundleId)}${cohortSegment}`,
-  );
 };
 
 const toRuntimeBundle = (bundle: Bundle): Bundle => {
@@ -394,161 +361,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
     }
   }, 60_000);
 
-  const seedRuntimeBundles = async (bundles: Bundle[]) => {
-    for (const bundle of bundles.map(toRuntimeBundle)) {
-      const existing = await seedHotUpdater.getBundleById(bundle.id);
-      if (existing) {
-        await seedHotUpdater.updateBundleById(bundle.id, bundle);
-      } else {
-        await seedHotUpdater.insertBundle(bundle);
-      }
-    }
-  };
-
-  const requestUpdateInfo = async (
-    args: GetBundlesArgs,
-  ): Promise<UpdateInfo | null> => {
-    const response = await fetch(
-      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${createCanonicalPath(args)}`,
-    );
-
-    if (!response.ok) {
-      throw new Error(
-        [
-          `Edge runtime returned ${response.status} ${response.statusText}`,
-          await response.text(),
-          edgeRuntime ? formatRuntimeLogs(edgeRuntime.logs) : "",
-        ].join("\n\n"),
-      );
-    }
-
-    return response.json();
-  };
-
-  const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
-    if (!supabaseAdmin) {
-      throw new Error("Supabase admin client was not initialized.");
-    }
-
-    for (const bundle of bundles) {
-      await uploadBundleObject(supabaseAdmin, bundle.id);
-    }
-    await seedRuntimeBundles(bundles);
-    return requestUpdateInfo(args);
-  };
-
-  setupGetUpdateInfoTestSuite({
-    getUpdateInfo,
-    manifestArtifacts: {
-      prepareArtifacts: async (fixture) => {
-        await Promise.all([
-          uploadStorageObject(
-            supabaseAdmin,
-            `${fixture.currentBundleId}/manifest.json`,
-            JSON.stringify(fixture.currentManifest),
-            "application/json",
-          ),
-          uploadStorageObject(
-            supabaseAdmin,
-            `${fixture.nextBundleId}/manifest.json`,
-            JSON.stringify(fixture.nextManifest),
-            "application/json",
-          ),
-          uploadStorageObject(
-            supabaseAdmin,
-            `${fixture.nextBundleId}/files/${fixture.changedAssetPath}.br`,
-            "next-bundle-bytes",
-            "application/javascript",
-          ),
-        ]);
-
-        return {
-          currentArtifacts: {
-            assetBaseStorageUri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/files`,
-            manifestFileHash: "sig:manifest-current",
-            manifestStorageUri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/manifest.json`,
-          },
-          nextArtifacts: {
-            assetBaseStorageUri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/files`,
-            manifestFileHash: "sig:manifest-next",
-            manifestStorageUri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/manifest.json`,
-          },
-        };
-      },
-      expectFileUrl: (fileUrl, fixture) => {
-        expect(fileUrl).toContain(
-          `/storage/v1/object/sign/${BUCKET_NAME}/${fixture.nextBundleId}/files/${fixture.changedAssetPath}.br`,
-        );
-      },
-      expectManifestUrl: (manifestUrl, fixture) => {
-        expect(manifestUrl).toContain(
-          `/storage/v1/object/sign/${BUCKET_NAME}/${fixture.nextBundleId}/manifest.json`,
-        );
-      },
-    },
-  });
-
-  setupBsdiffManifestUpdateInfoTestSuite({
-    seedBundles: seedRuntimeBundles,
-    getUpdateInfo: requestUpdateInfo,
-    prepareArtifacts: async (fixture) => {
-      await Promise.all([
-        uploadStorageObject(
-          supabaseAdmin,
-          `${fixture.currentBundleId}/manifest.json`,
-          JSON.stringify(fixture.currentManifest),
-          "application/json",
-        ),
-        uploadStorageObject(
-          supabaseAdmin,
-          `${fixture.nextBundleId}/manifest.json`,
-          JSON.stringify(fixture.nextManifest),
-          "application/json",
-        ),
-        uploadStorageObject(
-          supabaseAdmin,
-          `${fixture.nextBundleId}/files/${fixture.assetPath}`,
-          "next-bundle-bytes",
-          "application/javascript",
-        ),
-        uploadStorageObject(
-          supabaseAdmin,
-          fixture.patchPath,
-          "patch-bytes",
-          "application/octet-stream",
-        ),
-        uploadBundleObject(supabaseAdmin, fixture.currentBundleId),
-        uploadBundleObject(supabaseAdmin, fixture.nextBundleId),
-      ]);
-
-      return {
-        currentArtifacts: {
-          assetBaseStorageUri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/files`,
-          manifestFileHash: "sig:manifest-current",
-          manifestStorageUri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/manifest.json`,
-        },
-        nextArtifacts: {
-          assetBaseStorageUri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/files`,
-          manifestFileHash: "sig:manifest-next",
-          manifestStorageUri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/manifest.json`,
-          patches: [
-            {
-              baseBundleId: fixture.currentBundleId,
-              baseFileHash: "hash-old-bundle",
-              patchFileHash: "hash-bsdiff",
-              patchStorageUri: `supabase-storage://${BUCKET_NAME}/${fixture.patchPath}`,
-            },
-          ],
-        },
-      };
-    },
-    expectPatchUrl: (patchUrl, fixture) => {
-      expect(patchUrl).toContain(
-        `/storage/v1/object/sign/${BUCKET_NAME}/${fixture.patchPath}`,
-      );
-    },
-  });
-
   it("returns one canonical Channel row under concurrent inserts", async () => {
     const database = supabaseDatabase({
       supabaseUrl: gatewayBaseUrl,
@@ -816,7 +628,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
     expect(response.ok).toBe(false);
   });
 
-  it("serves canonical routes from the edge function entrypoint", async () => {
+  it("serves unversioned Release Catalog routes from the edge function entrypoint", async () => {
     const bundle = toRuntimeBundle({
       id: "00000000-0000-0000-0000-000000000001",
       platform: "ios",
@@ -835,24 +647,18 @@ describe.sequential("supabase edge runtime acceptance", () => {
     await seedHotUpdater.insertBundle(bundle);
 
     const response = await fetch(
-      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${createCanonicalPath({
-        appVersion: "1.0",
-        bundleId: NIL_UUID,
-        platform: "ios",
-        _updateStrategy: "appVersion",
-      })}`,
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/release-catalogs/app-version/${encodeURIComponent(AUTHORITY_ID)}/ios/cHJvZHVjdGlvbg/1.0.0`,
     );
 
     expect(response.ok).toBe(true);
     await expect(response.json()).resolves.toMatchObject({
-      id: "00000000-0000-0000-0000-000000000001",
-      status: "UPDATE",
+      releases: [{ bundleId: "00000000-0000-0000-0000-000000000001" }],
     });
   });
 
   it("does not support the legacy exact path", async () => {
     const response = await fetch(
-      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${LEGACY_HOT_UPDATER_BASE_PATH}`,
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/api/check-update`,
     );
 
     expect(response.status).toBe(404);

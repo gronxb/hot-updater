@@ -59,19 +59,17 @@ export type FirebaseDatabaseConfig = AppOptions & {
 
 export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
   const implementation: DatabasePluginImplementation = (() => {
-    const { authorityId, ...appOptions } = config;
+    const { authorityId: _authorityId, ...appOptions } = config;
     const app = getApps().length ? getApp() : initializeApp(appOptions);
     const db = getFirestore(app);
     const collections = createFirebaseDatabaseCollections(db);
     let migration: Promise<void> | undefined;
 
     const ensureMigrated = (): Promise<void> => {
-      migration ??= migrateFirebaseDatabase(db, collections, authorityId).catch(
-        (error) => {
-          migration = undefined;
-          throw error;
-        },
-      );
+      migration ??= migrateFirebaseDatabase(db, collections).catch((error) => {
+        migration = undefined;
+        throw error;
+      });
       return migration;
     };
 

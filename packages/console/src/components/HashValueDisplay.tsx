@@ -57,21 +57,23 @@ export function HashValueDisplay({
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          translate="no"
-          className={cn(
-            "ring-ring/30 bg-muted/40 border-border/70 inline-flex min-w-0 max-w-full cursor-pointer items-center rounded-md border px-1.5 py-0.5 align-top shadow-xs outline-none transition-[background-color,border-color,transform,box-shadow]",
-            "hover:bg-muted/70 active:scale-[0.98] active:bg-muted/85 focus-visible:ring-[2px]",
-            "touch-manipulation select-none",
-            !isTruncated && "cursor-copy",
-          )}
-          onClick={handleClick}
-          onKeyDown={handleKeyDown}
-        >
-          {content}
-        </button>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            translate="no"
+            className={cn(
+              "ring-ring/30 bg-muted/40 border-border/70 inline-flex min-w-0 max-w-full cursor-pointer items-center rounded-md border px-1.5 py-0.5 align-top shadow-xs outline-none transition-[background-color,border-color,transform,box-shadow]",
+              "hover:bg-muted/70 active:scale-[0.98] active:bg-muted/85 focus-visible:ring-[2px]",
+              "touch-manipulation select-none",
+              !isTruncated && "cursor-copy",
+            )}
+            onClick={handleClick}
+            onKeyDown={handleKeyDown}
+          />
+        }
+      >
+        {content}
       </TooltipTrigger>
       <TooltipContent hidden={!isTruncated}>
         <p translate="no" className="break-all font-mono text-xs tabular-nums">

@@ -25,3 +25,4 @@ export type {
 } from "./createHotUpdaterCore";
 export * from "./types";
 export { HOT_UPDATER_SERVER_VERSION } from "./version";
+export { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "./handlerVersionRoutes";

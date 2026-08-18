@@ -5,6 +5,7 @@ import type {
   Bundle,
   BundleRepository,
   Platform,
+  ReleaseRow,
 } from "@hot-updater/plugin-core";
 import { createDatabaseClient } from "@hot-updater/plugin-core";
 
@@ -51,6 +52,13 @@ const DELETE_VERIFY_ATTEMPTS = 12;
 const DELETE_VERIFY_DELAY_MS = 1000;
 const STANDALONE_DATABASE_NAME = "standalone-repository";
 const STANDALONE_DELETE_LOOKUP_LIMIT = 100;
+const RELEASE_REFERENCE_PAGE_SIZE = 1_000;
+const RELEASE_REFERENCE_ID_PREVIEW_LIMIT = 5;
+
+interface BundleReleaseReferences {
+  readonly count: number;
+  readonly ids: readonly string[];
+}
 
 const formatRow = (bundle: Bundle): Record<ListField, string> => {
   const out = {} as Record<ListField, string>;
@@ -76,7 +84,21 @@ const tabulate = (bundles: Bundle[]): string => {
   return ui.table(LIST_COLUMNS, bundles.map(formatRow));
 };
 
-const formatBundleSummary = (bundle: Bundle): string => {
+const formatReleaseReferenceIds = (
+  references: BundleReleaseReferences,
+): string => {
+  if (references.count === 0) return "-";
+  const visible = references.ids.slice(0, RELEASE_REFERENCE_ID_PREVIEW_LIMIT);
+  const remaining = references.count - visible.length;
+  return `${visible.map(ui.id).join(", ")}${
+    remaining > 0 ? ` (+${remaining} more)` : ""
+  }`;
+};
+
+const formatBundleSummary = (
+  bundle: Bundle,
+  references: BundleReleaseReferences,
+): string => {
   const lines = [
     ui.kv("Platform", ui.platform(bundle.platform)),
     ui.kv("ID", ui.id(bundle.id)),
@@ -86,9 +108,77 @@ const formatBundleSummary = (bundle: Bundle): string => {
       ? ui.kv("Manifest", ui.muted(bundle.manifestStorageUri))
       : null,
     ui.kv("Patches", String(bundle.patches?.length ?? 0)),
+    ui.kv("Release references", String(references.count)),
+    references.count > 0
+      ? ui.kv("Release IDs", formatReleaseReferenceIds(references))
+      : null,
   ].filter((line): line is string => line !== null);
   return ui.block("Artifact", lines);
 };
+
+const loadReleaseReferences = async (
+  database: BundleRepository,
+  bundleId: string,
+): Promise<BundleReleaseReferences> => {
+  const releases: ReleaseRow[] = [];
+  const seenReleaseIds = new Set<string>();
+  const seenCursors = new Set<string>();
+  let beforeReleaseId: string | undefined;
+
+  for (;;) {
+    const page = await database.models.releases.findMany({
+      ...(beforeReleaseId === undefined ? {} : { beforeReleaseId }),
+      bundleId,
+      limit: RELEASE_REFERENCE_PAGE_SIZE,
+    });
+    for (const release of page) {
+      if (release.bundle_id !== bundleId) {
+        throw new Error(
+          `Database returned Release ${release.id} for the wrong Bundle.`,
+        );
+      }
+      if (seenReleaseIds.has(release.id)) {
+        throw new Error(
+          `Database returned Release ${release.id} more than once while reading Bundle references.`,
+        );
+      }
+      seenReleaseIds.add(release.id);
+      releases.push(release);
+    }
+
+    if (page.length < RELEASE_REFERENCE_PAGE_SIZE) {
+      return {
+        count: releases.length,
+        ids: releases.map(({ id }) => id),
+      };
+    }
+
+    const nextCursor = page.at(-1)?.id;
+    if (
+      nextCursor === undefined ||
+      nextCursor === beforeReleaseId ||
+      seenCursors.has(nextCursor)
+    ) {
+      throw new Error(
+        `Database cannot provide safe Release pagination for Bundle ${bundleId}.`,
+      );
+    }
+    seenCursors.add(nextCursor);
+    beforeReleaseId = nextCursor;
+  }
+};
+
+const formatReferenceBlockers = (
+  entries: readonly {
+    readonly bundle: Bundle;
+    readonly references: BundleReleaseReferences;
+  }[],
+): string =>
+  entries
+    .map(
+      ({ bundle, references }) => `${bundle.id}: ${references.ids.join(", ")}`,
+    )
+    .join("\n");
 
 const refuseNonInteractiveMutation = (action: string): never => {
   p.log.error(
@@ -155,12 +245,15 @@ export const handleBundleShow = async (
       process.exit(1);
     }
 
+    const references = await loadReleaseReferences(databasePlugin, bundleId);
     if (options.json) {
-      console.log(JSON.stringify(bundle, null, 2));
+      console.log(
+        JSON.stringify({ ...bundle, releaseReferences: references }, null, 2),
+      );
       return;
     }
 
-    p.log.message(formatBundleSummary(bundle));
+    p.log.message(formatBundleSummary(bundle, references));
   } finally {
     await safeDispose(databasePlugin);
   }
@@ -222,9 +315,26 @@ export const handleBundleDelete = async (
       return;
     }
 
+    const targetReferences = await Promise.all(
+      targets.map(async (bundle) => ({
+        bundle,
+        references: await loadReleaseReferences(databasePlugin, bundle.id),
+      })),
+    );
+    const blockers = targetReferences.filter(
+      ({ references }) => references.count > 0,
+    );
+    if (blockers.length > 0) {
+      throw new Error(
+        `Cannot delete Bundle records referenced by Releases. Disable and delete these Releases first:\n${formatReferenceBlockers(blockers)}`,
+      );
+    }
+
     const [firstTarget] = targets;
     if (firstTarget && targets.length === 1) {
-      p.log.message(formatBundleSummary(firstTarget));
+      p.log.message(
+        formatBundleSummary(firstTarget, targetReferences[0]!.references),
+      );
     } else {
       p.log.message(`${targets.length} bundle records will be deleted.`);
     }
@@ -272,6 +382,9 @@ export const handleBundleDelete = async (
     } else {
       p.log.success(`Deleted ${targets.length} bundle records.`);
     }
+    p.log.info(
+      "Storage objects are unchanged. Preview cleanup with hot-updater storage prune --dry-run.",
+    );
   } finally {
     await safeDispose(databasePlugin);
   }

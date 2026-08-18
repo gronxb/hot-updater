@@ -147,7 +147,8 @@ result shape.
 | Consumer                                          | Required operations              |
 | ------------------------------------------------- | -------------------------------- |
 | `hot-updater deploy`                              | `put`, `get`, `exists`, `delete` |
-| `hot-updater patch` and promote-copy              | `get`, `put`, `delete`           |
+| `hot-updater patch`                               | `get`, `put`, `delete`           |
+| `hot-updater release promote`                     | None; reuses the existing Bundle |
 | Console server mutations                          | `get`, `put`, `delete`           |
 | `createHotUpdater({ storage })` update responses  | `getDownloadUrl`                 |
 | `createHotUpdater({ storage })` download handling | `get`                            |

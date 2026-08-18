@@ -1,8 +1,9 @@
-import type { LegacyBundlePolicyRow } from "@hot-updater/server";
 import { createClient } from "@supabase/supabase-js";
 
+export type SupabaseInfrastructureState = "fresh" | "v0" | "v1";
+
 export interface SupabaseApi {
-  listLegacyBundlePolicies: () => Promise<readonly LegacyBundlePolicyRow[]>;
+  getInfrastructureState: () => Promise<SupabaseInfrastructureState>;
   listBuckets: () => Promise<
     {
       id: string;
@@ -30,24 +31,25 @@ export const supabaseApi = (
   const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
   return {
-    listLegacyBundlePolicies: async () => {
-      const rows: LegacyBundlePolicyRow[] = [];
-      const pageSize = 1000;
-      for (let offset = 0; ; offset += pageSize) {
-        const { data, error } = await supabase
-          .from("bundles")
-          .select(
-            "id,platform,channel,enabled,should_force_update,message,target_app_version,fingerprint_hash,rollout_cohort_count,target_cohorts",
-          )
-          .order("id", { ascending: true })
-          .range(offset, offset + pageSize - 1);
-        if (error) {
-          if (error.code === "42P01" || error.code === "PGRST205") return [];
-          throw error;
-        }
-        rows.push(...(data as LegacyBundlePolicyRow[]));
-        if (data.length < pageSize) return rows;
+    getInfrastructureState: async () => {
+      const catalog = await supabase
+        .from("release_catalogs")
+        .select("scope_key")
+        .limit(1);
+      if (!catalog.error) return "v1";
+      if (catalog.error.code !== "42P01" && catalog.error.code !== "PGRST205") {
+        throw catalog.error;
       }
+
+      const bundles = await supabase
+        .from("bundles")
+        .select("target_app_version")
+        .limit(1);
+      if (!bundles.error) return "v0";
+      if (bundles.error.code === "42P01" || bundles.error.code === "PGRST205") {
+        return "fresh";
+      }
+      throw bundles.error;
     },
     listBuckets: async () => {
       const { data, error } = await supabase.storage.listBuckets();

@@ -5,8 +5,6 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDefaultResolver } from "./DefaultResolver";
-import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
-import type { ResolverCheckUpdateParams } from "./types";
 
 const mocks = vi.hoisted(() => {
   (
@@ -18,111 +16,53 @@ const mocks = vi.hoisted(() => {
   return {
     fetchJSON: vi.fn(),
     fetchReleaseCatalogWithCache: vi.fn(),
-    fetchUpdateInfo: vi.fn(),
   };
 });
 
 vi.mock("./fetchUpdateInfo", () => ({
   fetchJSON: mocks.fetchJSON,
-  fetchUpdateInfo: mocks.fetchUpdateInfo,
 }));
 
 vi.mock("./releaseCatalogCache", () => ({
   fetchReleaseCatalogWithCache: mocks.fetchReleaseCatalogWithCache,
 }));
 
-const createParams = (
-  params?: Partial<ResolverCheckUpdateParams>,
-): ResolverCheckUpdateParams => ({
-  appVersion: "1.0.0",
-  bundleId: "bundle-id",
+const catalogParams = {
+  appVersion: "1.2",
+  authorityId: "project-a",
   channel: "production",
-  cohort: "cohort",
   fingerprintHash: null,
-  minBundleId: "min-bundle-id",
-  platform: "ios",
-  updateStrategy: "appVersion",
-  ...params,
-});
+  platform: "ios" as const,
+  requestHeaders: { authorization: "Bearer token" },
+  requestTimeout: 1500,
+  updateStrategy: "appVersion" as const,
+};
 
 describe("createDefaultResolver", () => {
   beforeEach(() => {
-    mocks.fetchUpdateInfo.mockReset();
-    mocks.fetchUpdateInfo.mockResolvedValue(null);
     mocks.fetchJSON.mockReset();
     mocks.fetchJSON.mockResolvedValue({});
     mocks.fetchReleaseCatalogWithCache.mockReset();
     mocks.fetchReleaseCatalogWithCache.mockResolvedValue({});
-    vi.unstubAllGlobals();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        status: 204,
-      }),
-    );
   });
 
-  it("strips trailing slashes from baseURL for app-version requests", async () => {
-    const resolver = createDefaultResolver(
-      "http://localhost:3007/hot-updater/",
-    );
-
-    await resolver.checkUpdate?.(
-      createParams({
-        appVersion: "1.0",
-        bundleId: "current-bundle",
-        channel: "production",
-        cohort: "730",
-        minBundleId: "min-bundle",
-        platform: "android",
-      }),
-    );
-
-    expect(mocks.fetchUpdateInfo).toHaveBeenCalledWith({
-      requestHeaders: {
-        "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
-      },
-      requestTimeout: undefined,
-      url: "http://localhost:3007/hot-updater/app-version/android/1.0/production/min-bundle/current-bundle/730",
-    });
-  });
-
-  it("fetches a shared canonical Release catalog without device state", async () => {
+  it("fetches a shared canonical Release catalog without legacy headers", async () => {
     const resolver = createDefaultResolver(
       "https://updates.example.com/hot-updater/",
       { authorityId: "project-a" },
     );
 
     expect(resolver.catalogCachePartition).toBe("x-api-key");
-
-    await resolver.fetchReleaseCatalog?.({
-      appVersion: "1.2",
-      authorityId: "project-a",
-      channel: "production",
-      fingerprintHash: null,
-      platform: "ios",
-      requestHeaders: { authorization: "Bearer token" },
-      requestTimeout: 1500,
-      updateStrategy: "appVersion",
-    });
+    await resolver.fetchReleaseCatalog?.(catalogParams);
 
     expect(mocks.fetchReleaseCatalogWithCache).toHaveBeenCalledWith({
       authorityId: "project-a",
       baseURL: "https://updates.example.com/hot-updater",
-      requestHeaders: {
-        authorization: "Bearer token",
-        "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
-      },
+      requestHeaders: { authorization: "Bearer token" },
       requestTimeout: 1500,
       scopeKey: "v1:app-version:project-a:ios:cHJvZHVjdGlvbg",
-      url: "https://updates.example.com/hot-updater/v2/release-catalogs/app-version/project-a/ios/cHJvZHVjdGlvbg/1.2.0",
+      url: "https://updates.example.com/hot-updater/release-catalogs/app-version/project-a/ios/cHJvZHVjdGlvbg/1.2.0",
     });
-    expect(
-      mocks.fetchReleaseCatalogWithCache.mock.calls[0]?.[0].url,
-    ).not.toContain("bundle-id");
-    expect(
-      mocks.fetchReleaseCatalogWithCache.mock.calls[0]?.[0].url,
-    ).not.toContain("cohort");
   });
 
   it("resolves artifacts only from Bundle identities", async () => {
@@ -136,42 +76,40 @@ describe("createDefaultResolver", () => {
     });
 
     expect(mocks.fetchJSON).toHaveBeenCalledWith({
-      requestHeaders: {
-        "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
-      },
+      requestHeaders: undefined,
       requestTimeout: undefined,
-      url: "https://updates.example.com/v2/artifacts/bundle-2/from/bundle-1",
+      url: "https://updates.example.com/artifacts/bundle-2/from/bundle-1",
     });
   });
 
-  it("strips trailing slashes from baseURL for fingerprint requests", async () => {
-    const resolver = createDefaultResolver(
-      "http://localhost:3007/hot-updater///",
-    );
-
-    await resolver.checkUpdate?.(
-      createParams({
-        appVersion: "1.0",
-        bundleId: "current-bundle",
-        channel: "beta",
-        cohort: "qa",
-        fingerprintHash: "fingerprint-hash",
-        minBundleId: "min-bundle",
-        platform: "ios",
-        requestHeaders: { authorization: "Bearer token" },
-        requestTimeout: 1500,
-        updateStrategy: "fingerprint",
-      }),
-    );
-
-    expect(mocks.fetchUpdateInfo).toHaveBeenCalledWith({
-      requestHeaders: {
-        authorization: "Bearer token",
-        "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
-      },
-      requestTimeout: 1500,
-      url: "http://localhost:3007/hot-updater/fingerprint/ios/fingerprint-hash/beta/min-bundle/current-bundle/qa",
+  it("resolves a dynamic baseURL for every catalog request", async () => {
+    const resolveBaseURL = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce("https://one.example.com/")
+      .mockResolvedValueOnce("https://two.example.com");
+    const resolver = createDefaultResolver(resolveBaseURL, {
+      authorityId: "project-a",
     });
+
+    await resolver.fetchReleaseCatalog?.(catalogParams);
+    await resolver.fetchReleaseCatalog?.(catalogParams);
+
+    expect(resolveBaseURL).toHaveBeenCalledTimes(2);
+    expect(
+      mocks.fetchReleaseCatalogWithCache.mock.calls.map(
+        ([input]) => input.baseURL,
+      ),
+    ).toEqual(["https://one.example.com", "https://two.example.com"]);
+  });
+
+  it("rejects an empty dynamic baseURL", async () => {
+    const resolver = createDefaultResolver(() => "", {
+      authorityId: "project-a",
+    });
+
+    await expect(resolver.fetchReleaseCatalog?.(catalogParams)).rejects.toThrow(
+      "baseURL resolver must return a non-empty string",
+    );
   });
 
   it("keeps SDK version sync from leaving source changes behind", async () => {
@@ -188,81 +126,5 @@ describe("createDefaultResolver", () => {
 
     expect(result.status, result.stderr).toBe(0);
     await expect(readFile(sdkVersionPath, "utf-8")).resolves.toBe(before);
-  });
-
-  it("propagates fetchUpdateInfo errors", async () => {
-    mocks.fetchUpdateInfo.mockRejectedValueOnce(new Error("Network failed"));
-    const resolver = createDefaultResolver("http://localhost:3007/hot-updater");
-
-    await expect(resolver.checkUpdate?.(createParams())).rejects.toThrow(
-      "Network failed",
-    );
-  });
-
-  it("resolves dynamic baseURL before checking for updates", async () => {
-    const resolveBaseURL = vi.fn(async () => "https://updates.example.com");
-    const resolver = createDefaultResolver(resolveBaseURL);
-
-    await resolver.checkUpdate?.(createParams());
-
-    expect(resolveBaseURL).toHaveBeenCalledWith();
-    expect(mocks.fetchUpdateInfo).toHaveBeenCalledWith({
-      requestHeaders: {
-        "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
-      },
-      requestTimeout: undefined,
-      url: "https://updates.example.com/app-version/ios/1.0.0/production/min-bundle-id/bundle-id/cohort",
-    });
-  });
-
-  it("calls dynamic baseURL for each update check", async () => {
-    const resolveBaseURL = vi
-      .fn<() => Promise<string>>()
-      .mockResolvedValueOnce("https://one.example.com")
-      .mockResolvedValueOnce("https://two.example.com");
-    const resolver = createDefaultResolver(resolveBaseURL);
-
-    await resolver.checkUpdate?.(createParams());
-    await resolver.checkUpdate?.(createParams());
-
-    expect(resolveBaseURL).toHaveBeenCalledTimes(2);
-    expect(mocks.fetchUpdateInfo).toHaveBeenNthCalledWith(1, {
-      requestHeaders: {
-        "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
-      },
-      requestTimeout: undefined,
-      url: "https://one.example.com/app-version/ios/1.0.0/production/min-bundle-id/bundle-id/cohort",
-    });
-    expect(mocks.fetchUpdateInfo).toHaveBeenNthCalledWith(2, {
-      requestHeaders: {
-        "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
-      },
-      requestTimeout: undefined,
-      url: "https://two.example.com/app-version/ios/1.0.0/production/min-bundle-id/bundle-id/cohort",
-    });
-  });
-
-  it("strips trailing slashes from dynamic baseURL results", async () => {
-    const resolver = createDefaultResolver(
-      () => "https://updates.example.com/",
-    );
-
-    await resolver.checkUpdate?.(createParams());
-
-    expect(mocks.fetchUpdateInfo).toHaveBeenCalledWith({
-      requestHeaders: {
-        "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
-      },
-      requestTimeout: undefined,
-      url: "https://updates.example.com/app-version/ios/1.0.0/production/min-bundle-id/bundle-id/cohort",
-    });
-  });
-
-  it("rejects an empty dynamic baseURL", async () => {
-    const resolver = createDefaultResolver(() => "");
-
-    await expect(resolver.checkUpdate?.(createParams())).rejects.toThrow(
-      "baseURL resolver must return a non-empty string",
-    );
   });
 });

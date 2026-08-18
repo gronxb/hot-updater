@@ -1,5 +1,6 @@
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import {
+  type BundleRepository,
   deleteRelease,
   preflightReleasePolicy,
   type ReleasePolicyPatch,
@@ -11,8 +12,10 @@ import { ui } from "../utils/cli-ui";
 import { printBanner } from "../utils/printBanner";
 
 const DEFAULT_LIMIT = 20;
+const RELEASE_PAGE_SIZE = 1_000;
 
 export interface ReleaseListOptions {
+  readonly bundleId?: string;
   readonly channel?: string;
   readonly json?: boolean;
   readonly limit?: number;
@@ -75,10 +78,12 @@ const releaseTable = (
       { key: "rollout", label: "Rollout" },
       { key: "operation", label: "Operation" },
       { key: "message", label: "Message" },
+      { key: "created", label: "Created" },
     ],
     releases.map((release) => ({
       bundle: release.bundle_id ?? "Embedded",
       channel: channels.get(release.channel_id) ?? release.channel_id,
+      created: new Date(release.created_at_ms).toISOString(),
       enabled: release.enabled ? "yes" : "no",
       force: release.should_force_update ? "yes" : "no",
       message: release.message ?? "",
@@ -98,14 +103,71 @@ const releaseSummary = (release: ReleaseRow, channelName: string): string =>
       release.bundle_id === null ? "Embedded" : ui.id(release.bundle_id),
     ),
     ui.kv("Revision", String(release.revision)),
+    ui.kv("Scope", ui.muted(release.scope_key)),
     ui.kv("Channel", ui.channel(channelName)),
     ui.kv("Platform", ui.platform(release.platform)),
+    ui.kv("Kind", release.kind),
+    ui.kv("Strategy", release.strategy),
     ui.kv("Target", ui.version(releaseTarget(release))),
     ui.kv("Enabled", ui.status(release.enabled)),
     ui.kv("Force update", release.should_force_update ? "yes" : "no"),
     ui.kv("Rollout", `${release.rollout_cohort_count / 10}%`),
+    ui.kv(
+      "Target cohorts",
+      release.target_cohorts.length === 0
+        ? ui.muted("(none)")
+        : release.target_cohorts.join(", "),
+    ),
     ui.kv("Operation", release.operation),
+    ui.kv(
+      "Source Release",
+      release.source_release_id === null
+        ? ui.muted("(none)")
+        : ui.id(release.source_release_id),
+    ),
     release.message === null ? "" : ui.kv("Message", release.message),
+    ui.kv("Created", new Date(release.created_at_ms).toISOString()),
+    ui.kv("Updated", new Date(release.updated_at_ms).toISOString()),
+  ]);
+
+const readScopeReleases = async (
+  database: BundleRepository,
+  scopeKey: string,
+): Promise<readonly ReleaseRow[]> => {
+  const releases: ReleaseRow[] = [];
+  let afterReleaseId: string | undefined;
+  for (;;) {
+    const page = await database.models.releases.findManyByScope({
+      ...(afterReleaseId === undefined ? {} : { afterReleaseId }),
+      consistency: "strong",
+      limit: RELEASE_PAGE_SIZE,
+      scopeKey,
+    });
+    releases.push(...page);
+    if (page.length < RELEASE_PAGE_SIZE) return releases;
+    const nextCursor = page.at(-1)?.id;
+    if (nextCursor === undefined || nextCursor === afterReleaseId) {
+      throw new Error("Release pagination did not advance.");
+    }
+    afterReleaseId = nextCursor;
+  }
+};
+
+const releaseDisablePreview = (
+  release: ReleaseRow,
+  channelName: string,
+): string =>
+  ui.block("Disable Release", [
+    ui.kv("Release ID", ui.id(release.id)),
+    ui.kv("Revision", String(release.revision)),
+    ui.kv("Scope", ui.muted(release.scope_key)),
+    ui.kv("Channel", ui.channel(channelName)),
+    ui.kv("Platform", ui.platform(release.platform)),
+    ui.kv("Target", ui.version(releaseTarget(release))),
+    ui.kv(
+      "Device result",
+      "previous compatible enabled Release or BUILTIN (device-dependent)",
+    ),
   ]);
 
 const confirmMutation = async (
@@ -154,6 +216,7 @@ export const handleReleaseList = async (options: ReleaseListOptions = {}) => {
       process.exit(1);
     }
     const releases = await database.models.releases.findMany({
+      ...(options.bundleId === undefined ? {} : { bundleId: options.bundleId }),
       ...(channelId === undefined ? {} : { channelId }),
       ...(options.platform === undefined ? {} : { platform: options.platform }),
       limit: options.limit ?? DEFAULT_LIMIT,
@@ -268,16 +331,51 @@ export const handleReleaseEnablement = async (
   },
 ) => {
   if (!options.json) printBanner();
-  await confirmMutation(
-    `${enabled ? "Enable" : "Disable"} this Release?`,
-    options.yes,
-  );
   const config = await loadConfig(null);
   const database = config.database;
   try {
+    let expectedRevision = options.expectedRevision;
+    if (!enabled) {
+      const release = await database.models.releases.findById(releaseId);
+      if (release === null) {
+        p.log.error(`No Release with id ${releaseId}.`);
+        process.exit(1);
+      }
+      expectedRevision ??= release.revision;
+
+      if (!options.json) {
+        const [releases, channels] = await Promise.all([
+          readScopeReleases(database, release.scope_key),
+          channelNames(database),
+        ]);
+        p.log.message(
+          releaseDisablePreview(
+            release,
+            channels.get(release.channel_id) ?? release.channel_id,
+          ),
+        );
+        const enabledReleases = releases.filter(
+          (candidate) => candidate.enabled,
+        );
+        if (
+          release.enabled &&
+          enabledReleases.length === 1 &&
+          enabledReleases[0]?.id === release.id
+        ) {
+          p.log.warn(
+            "This is the only enabled Release in its scope. Compatible devices may fall back to BUILTIN.",
+          );
+        }
+      }
+    }
+
+    await confirmMutation(
+      `${enabled ? "Enable" : "Disable"} this Release?`,
+      options.yes,
+    );
     const result = await updateReleasePolicy({
       database,
-      expectedRevision: options.expectedRevision,
+      expectedRevision,
       patch: { enabled },
       releaseId,
     });

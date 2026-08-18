@@ -13,7 +13,7 @@ declare global {
   };
 }
 
-export const HOT_UPDATER_BASE_PATH = "/api/check-update";
+export const HOT_UPDATER_BASE_PATH = "/";
 
 const firebaseAdminApp = getApps()[0] ?? initializeApp();
 const adminOptions = firebaseAdminApp.options;

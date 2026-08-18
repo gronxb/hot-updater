@@ -35,15 +35,15 @@ export function BundleChildrenPanel({
 
   return (
     <div
-      id={panelId}
-      className="border-t bg-muted/10 p-3 sm:p-4"
       aria-live="polite"
+      className="border-t bg-muted/10 p-3 sm:p-4"
+      id={panelId}
     >
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2 text-sm sm:items-center">
             <span className="text-muted-foreground">Base bundle</span>
-            <BundleIdDisplay bundleId={bundle.id} maxLength={18} fullOnMobile />
+            <BundleIdDisplay bundleId={bundle.id} fullOnMobile maxLength={18} />
           </div>
           <Badge variant="outline">
             {bundles.length} {bundles.length === 1 ? "patch" : "patches"}
@@ -64,8 +64,8 @@ export function BundleChildrenPanel({
               <div className="flex flex-col gap-2">
                 {bundles.map((childBundle) => (
                   <div
-                    key={childBundle.id}
                     className="rounded-md border bg-background p-3"
+                    key={childBundle.id}
                   >
                     <div className="flex flex-col gap-3">
                       <div className="space-y-1">
@@ -74,8 +74,8 @@ export function BundleChildrenPanel({
                         </div>
                         <BundleIdDisplay
                           bundleId={childBundle.id}
-                          maxLength={18}
                           fullOnMobile
+                          maxLength={18}
                         />
                       </div>
                       <div className="space-y-1">
@@ -85,14 +85,14 @@ export function BundleChildrenPanel({
                         <div className="flex flex-col items-start gap-1 text-sm">
                           <BundleIdDisplay
                             bundleId={bundle.id}
-                            maxLength={12}
                             fullOnMobile
+                            maxLength={12}
                           />
-                          <ArrowRight className="h-4 w-4 rotate-90 text-muted-foreground" />
+                          <ArrowRight className="size-4 rotate-90 text-muted-foreground" />
                           <BundleIdDisplay
                             bundleId={childBundle.id}
-                            maxLength={12}
                             fullOnMobile
+                            maxLength={12}
                           />
                         </div>
                       </div>
@@ -113,11 +113,11 @@ export function BundleChildrenPanel({
                         </div>
                       </div>
                       <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
                         className="w-full"
                         onClick={() => onDetailClick(childBundle)}
+                        size="sm"
+                        type="button"
+                        variant="outline"
                       >
                         Detail
                       </Button>
@@ -127,16 +127,14 @@ export function BundleChildrenPanel({
               </div>
             ) : (
               <div className="overflow-x-auto rounded-md border bg-background">
-                <Table>
+                <Table className="min-w-max">
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
                       <TableHead>Patch Bundle</TableHead>
                       <TableHead>Relation</TableHead>
                       <TableHead>Artifact</TableHead>
                       <TableHead>Created</TableHead>
-                      <TableHead className="w-[96px] text-right">
-                        Detail
-                      </TableHead>
+                      <TableHead className="w-24 text-right">Detail</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -145,22 +143,22 @@ export function BundleChildrenPanel({
                         <TableCell>
                           <BundleIdDisplay
                             bundleId={childBundle.id}
-                            maxLength={18}
                             fullOnMobile
+                            maxLength={18}
                           />
                         </TableCell>
                         <TableCell>
                           <div className="flex min-w-[280px] flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
                             <BundleIdDisplay
                               bundleId={bundle.id}
-                              maxLength={12}
                               fullOnMobile
+                              maxLength={12}
                             />
-                            <ArrowRight className="h-4 w-4 shrink-0 rotate-90 text-muted-foreground sm:rotate-0" />
+                            <ArrowRight className="size-4 shrink-0 rotate-90 text-muted-foreground sm:rotate-0" />
                             <BundleIdDisplay
                               bundleId={childBundle.id}
-                              maxLength={12}
                               fullOnMobile
+                              maxLength={12}
                             />
                           </div>
                         </TableCell>
@@ -172,10 +170,10 @@ export function BundleChildrenPanel({
                         </TableCell>
                         <TableCell className="text-right">
                           <Button
+                            onClick={() => onDetailClick(childBundle)}
+                            size="sm"
                             type="button"
                             variant="outline"
-                            size="sm"
-                            onClick={() => onDetailClick(childBundle)}
                           >
                             Detail
                           </Button>

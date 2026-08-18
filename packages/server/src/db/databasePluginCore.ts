@@ -26,6 +26,7 @@ import {
   type ReleaseCatalogMutationInput,
   type ReleaseCatalogScope,
   type ReleaseRow,
+  isUUIDv7,
 } from "@hot-updater/plugin-core";
 
 import {
@@ -117,16 +118,18 @@ const createLegacyRelease = (
 ): ReleaseRow => {
   const latestReleaseId = rows.at(-1)?.id;
   const now = Date.now();
+  const canReuseBundleId =
+    isUUIDv7(bundle.id) &&
+    (latestReleaseId === undefined || bundle.id > latestReleaseId);
   return {
     bundle_id: bundle.id,
     channel_id: scope.channelId,
     created_at_ms: now,
     enabled: bundle.enabled,
     fingerprint_hash: bundle.fingerprintHash,
-    id:
-      latestReleaseId === undefined || bundle.id > latestReleaseId
-        ? bundle.id
-        : createUUIDv7After(latestReleaseId),
+    id: canReuseBundleId
+      ? bundle.id
+      : createUUIDv7After(latestReleaseId ?? null, now),
     kind: "BUNDLE",
     message: bundle.message,
     operation: "DEPLOY",

@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   compileReleaseCatalog,
   projectCompiledCatalog,
+  projectCompiledRollbackCatalog,
   referenceCompatibleReleases,
 } from "./releaseCatalogCompiler";
 
@@ -65,6 +66,19 @@ function compatibleIds(
 }
 
 describe("compileReleaseCatalog", () => {
+  it.each([
+    "00000000-0000-4000-8000-000000000001",
+    "00000000-0000-7000-8000-00000000000A",
+    "not-a-uuid",
+  ])("rejects non-canonical UUIDv7 Release id %s", async (id) => {
+    await expect(
+      compileReleaseCatalog({
+        releases: [release(1, { id })],
+        strategy: "APP_VERSION",
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_RELEASE" });
+  });
+
   it("compiles app-version ranges into exact projection segments", async () => {
     const releases = [
       release(3, { targetAppVersion: "^2.0.0" }),
@@ -104,7 +118,7 @@ describe("compileReleaseCatalog", () => {
     expect(reverse.catalogHash).toBe(forward.catalogHash);
   });
 
-  it("retains eleven distinct safe Bundles and the first EMBEDDED Release", async () => {
+  it("keeps a bounded update frontier and the full Bundle rollback spine", async () => {
     const repeatedBundle = bundleId(99);
     const releases = [
       fingerprintRelease(30, { bundleId: repeatedBundle }),
@@ -120,42 +134,40 @@ describe("compileReleaseCatalog", () => {
     });
     const descriptors = projectCompiledCatalog(compilation.payload);
 
-    expect(descriptors.filter(({ kind }) => kind === "BUNDLE")).toHaveLength(
-      11,
+    expect(descriptors).toHaveLength(11);
+    expect(projectCompiledRollbackCatalog(compilation.payload)).toHaveLength(
+      22,
     );
-    expect(descriptors.filter(({ kind }) => kind === "EMBEDDED")).toHaveLength(
-      1,
-    );
+    expect(compilation.payload.releaseDescriptors).toHaveLength(22);
     expect(
       descriptors.filter(({ bundleId: id }) => id === repeatedBundle),
     ).toHaveLength(1);
-    expect(descriptors.some(({ releaseId: id }) => id === releaseId(28))).toBe(
-      true,
-    );
+    expect(descriptors.every(({ kind }) => kind === "BUNDLE")).toBe(true);
+  });
+
+  it("keeps a rollout-ineligible app-version Release for rollback only", async () => {
+    const rollbackOnly = release(1, { rolloutCohortCount: 0 });
+    const compilation = await compileReleaseCatalog({
+      releases: [rollbackOnly],
+      strategy: "APP_VERSION",
+    });
+
+    expect(projectCompiledCatalog(compilation.payload, "1.0.0")).toEqual([]);
+    expect(
+      projectCompiledRollbackCatalog(compilation.payload, "1.0.0").map(
+        ({ releaseId }) => releaseId,
+      ),
+    ).toEqual([rollbackOnly.id]);
   });
 
   it("matches selector reachability across numeric and custom cohorts", async () => {
-    const releases = [
-      ...Array.from({ length: 30 }, (_, index) =>
-        fingerprintRelease(index + 1, {
-          bundleId: bundleId((index % 17) + 1),
-          rolloutCohortCount: (index * 73) % 1001,
-          targetCohorts:
-            index % 5 === 0 ? ["qa", String((index % 10) + 1)] : [],
-        }),
-      ),
-      fingerprintRelease(31, {
-        bundleId: null,
-        kind: "EMBEDDED",
-        rolloutCohortCount: 250,
+    const releases = Array.from({ length: 30 }, (_, index) =>
+      fingerprintRelease(index + 1, {
+        bundleId: bundleId((index % 17) + 1),
+        rolloutCohortCount: (index * 73) % 1001,
+        targetCohorts: index % 5 === 0 ? ["qa", String((index % 10) + 1)] : [],
       }),
-      fingerprintRelease(32, {
-        bundleId: null,
-        kind: "EMBEDDED",
-        rolloutCohortCount: 0,
-        targetCohorts: ["qa"],
-      }),
-    ];
+    );
     const ordered = [...releases].sort((left, right) =>
       right.id.localeCompare(left.id),
     );
@@ -167,19 +179,6 @@ describe("compileReleaseCatalog", () => {
     ];
     const expected = new Set<string>();
     for (const cohort of cohorts) {
-      const embedded = ordered.find(
-        (candidate) =>
-          candidate.kind === "EMBEDDED" &&
-          isReleaseEligibleForCohort(
-            {
-              releaseId: candidate.id,
-              rolloutCohortCount: candidate.rolloutCohortCount,
-              targetCohorts: candidate.targetCohorts,
-            },
-            cohort,
-          ),
-      );
-      if (embedded) expected.add(embedded.id);
       const bundleIds = new Set<string>();
       for (const candidate of ordered) {
         if (
@@ -209,29 +208,24 @@ describe("compileReleaseCatalog", () => {
     });
     expect(
       new Set(
-        compilation.payload.releaseDescriptors.map(
+        projectCompiledCatalog(compilation.payload).map(
           ({ releaseId }) => releaseId,
         ),
       ),
     ).toEqual(expected);
   });
 
-  it("bounds a representative 100,000-Release history by selector reachability", async () => {
+  it("rejects a history whose exact rollback spine exceeds the catalog limit", async () => {
     const releases = Array.from({ length: 100_000 }, (_, index) =>
       release(index + 1),
     );
-    const compilation = await compileReleaseCatalog({
-      releases,
-      strategy: "APP_VERSION",
-    });
-
-    expect(compilation.diagnostics.releaseCount).toBe(100_000);
-    expect(compilation.diagnostics.descriptorCount).toBe(11);
-    expect(compilation.byteSize).toBeLessThan(MAX_COMPILED_CATALOG_BYTES);
+    await expect(
+      compileReleaseCatalog({ releases, strategy: "APP_VERSION" }),
+    ).rejects.toMatchObject({ code: "CATALOG_OVERSIZE" });
   }, 20_000);
 
-  it("bounds the reported 1,680-Release fingerprint history", async () => {
-    const releases = Array.from({ length: 1_680 }, (_, index) =>
+  it("retains every supported fingerprint Release for exact rollback", async () => {
+    const releases = Array.from({ length: 100 }, (_, index) =>
       fingerprintRelease(index + 1),
     );
     const compilation = await compileReleaseCatalog({
@@ -240,11 +234,15 @@ describe("compileReleaseCatalog", () => {
     });
 
     expect(compilation.diagnostics).toMatchObject({
-      descriptorCount: 11,
-      releaseCount: 1_680,
+      descriptorCount: 100,
+      releaseCount: 100,
       segmentCount: 1,
     });
     expect(compilation.byteSize).toBeLessThan(MAX_COMPILED_CATALOG_BYTES);
+    expect(projectCompiledCatalog(compilation.payload)).toHaveLength(11);
+    expect(projectCompiledRollbackCatalog(compilation.payload)).toHaveLength(
+      100,
+    );
   });
 
   it("rejects an adversarial rollout frontier instead of truncating candidates", async () => {

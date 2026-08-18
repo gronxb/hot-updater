@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 
 const homeSearch = {
   channel: undefined,
@@ -20,11 +20,13 @@ export function NotFoundPage() {
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">
           Page not found
         </h1>
-        <Button asChild size="lg" className="mt-6">
-          <Link to="/" search={homeSearch}>
-            Go to home
-          </Link>
-        </Button>
+        <Link
+          className={buttonVariants({ className: "mt-6", size: "lg" })}
+          to="/"
+          search={homeSearch}
+        >
+          Go to home
+        </Link>
       </section>
     </div>
   );

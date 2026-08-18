@@ -15,9 +15,10 @@ import {
 } from "@hot-updater/cli-tools";
 import type {
   Bundle,
-  DatabaseMutationClient,
   BundleRepository,
+  DatabaseMutationClient,
   Platform,
+  ReleaseCatalogMutationResult,
   StoragePluginWith,
 } from "@hot-updater/plugin-core";
 import {
@@ -56,6 +57,7 @@ import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppV
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 import { PLATFORMS } from "../commandOptions";
+import { ui } from "../utils/cli-ui";
 import { getConsolePort, openConsole } from "./console";
 import {
   commitDeployment,
@@ -89,6 +91,13 @@ type DeployPlatformResult = {
   readonly bundleId: string;
   readonly platform: Platform;
   readonly runDeferredPatches: (() => Promise<void>) | null;
+};
+
+type CommittedDeployPlatformResult = DeployPlatformResult & {
+  readonly authorityId: string;
+  readonly generation: number;
+  readonly releaseId: string;
+  readonly scopeKey: string;
 };
 
 export interface DeployOptions {
@@ -423,6 +432,87 @@ const getUniqueContentAddressedAssetUploadTargets = ({
 
 const getPlatformName = (platform: Platform) =>
   platform === "ios" ? "iOS" : "Android";
+
+const resolveCommittedDeployments = (
+  preparedResults: readonly DeployPlatformResult[],
+  commitResults: readonly ReleaseCatalogMutationResult[],
+): readonly CommittedDeployPlatformResult[] => {
+  const commitsByBundleId = new Map<
+    string,
+    {
+      readonly commit: ReleaseCatalogMutationResult;
+      readonly releaseId: string;
+    }
+  >();
+
+  for (const commit of commitResults) {
+    const release = commit.release;
+    if (release === null || release.kind !== "BUNDLE" || !release.bundle_id) {
+      throw new Error(
+        "Deployment commit result did not contain a Bundle Release.",
+      );
+    }
+    if (commit.catalog.scope_key !== release.scope_key) {
+      throw new Error(
+        `Deployment commit result for Bundle ${release.bundle_id} has mismatched Release and Catalog scopes.`,
+      );
+    }
+    if (commitsByBundleId.has(release.bundle_id)) {
+      throw new Error(
+        `Deployment commit returned duplicate results for Bundle ${release.bundle_id}.`,
+      );
+    }
+    commitsByBundleId.set(release.bundle_id, {
+      commit,
+      releaseId: release.id,
+    });
+  }
+
+  const results = preparedResults.map((prepared) => {
+    const matched = commitsByBundleId.get(prepared.bundleId);
+    if (!matched) {
+      throw new Error(
+        `Deployment commit did not return a Release for Bundle ${prepared.bundleId}.`,
+      );
+    }
+    const release = matched.commit.release!;
+    if (
+      release.platform !== prepared.platform ||
+      matched.commit.catalog.platform !== prepared.platform
+    ) {
+      throw new Error(
+        `Deployment commit result for Bundle ${prepared.bundleId} has the wrong platform.`,
+      );
+    }
+    commitsByBundleId.delete(prepared.bundleId);
+    return {
+      ...prepared,
+      authorityId: matched.commit.catalog.authority_id,
+      generation: matched.commit.catalog.generation,
+      releaseId: matched.releaseId,
+      scopeKey: matched.commit.catalog.scope_key,
+    };
+  });
+
+  const unexpectedBundleId = commitsByBundleId.keys().next().value;
+  if (unexpectedBundleId !== undefined) {
+    throw new Error(
+      `Deployment commit returned an unexpected result for Bundle ${unexpectedBundleId}.`,
+    );
+  }
+  return results;
+};
+
+const summarizeDeploymentResult = (
+  result: CommittedDeployPlatformResult,
+): string =>
+  ui.block(`${getPlatformName(result.platform)} Deployment`, [
+    ui.kv("Release ID", ui.id(result.releaseId)),
+    ui.kv("Bundle ID", ui.id(result.bundleId)),
+    ui.kv("Authority ID", result.authorityId),
+    ui.kv("Scope key", ui.code(result.scopeKey)),
+    ui.kv("Generation", String(result.generation)),
+  ]);
 
 const getDeployPlatforms = async (
   options: DeployOptions,
@@ -1133,10 +1223,6 @@ const deployPlatform = async ({
 
       p.note(note);
     }
-    if (!multiPlatform) {
-      p.outro(`🚀 Deployment Successful (${confirmedBundleId})`);
-    }
-
     return { bundleId: confirmedBundleId, platform, runDeferredPatches };
   } catch (e) {
     await fs.promises.rm(bundlePath, { force: true });
@@ -1215,18 +1301,29 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
       );
     }
 
-    const results =
-      platforms.length > 1
-        ? await prepareAndCommitBundles({
-            database: databasePlugin,
-            prepare: deployPlatforms,
-          })
-        : await deployPlatforms(async (input) => {
-            await commitDeployment({ database: databasePlugin, ...input });
-          });
+    let preparedResults: readonly DeployPlatformResult[];
+    let commitResults: readonly ReleaseCatalogMutationResult[];
+    if (platforms.length > 1) {
+      const committed = await prepareAndCommitBundles({
+        database: databasePlugin,
+        prepare: deployPlatforms,
+      });
+      preparedResults = committed.results;
+      commitResults = committed.commitResults;
+    } else {
+      const committed: ReleaseCatalogMutationResult[] = [];
+      preparedResults = await deployPlatforms(async (input) => {
+        committed.push(
+          await commitDeployment({ database: databasePlugin, ...input }),
+        );
+      });
+      commitResults = committed;
+    }
+    const results = resolveCommittedDeployments(preparedResults, commitResults);
 
     for (const result of results) {
       await result.runDeferredPatches?.();
+      p.log.message(summarizeDeploymentResult(result));
       if (platforms.length > 1) {
         p.log.success(
           `✅ ${getPlatformName(result.platform)} Deployment Successful (${result.bundleId})`,
@@ -1238,6 +1335,8 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
       p.outro(
         `🚀 Deployment Successful (${results.map(({ platform }) => getPlatformName(platform)).join(", ")})`,
       );
+    } else {
+      p.outro(`🚀 Deployment Successful (${results[0]!.bundleId})`);
     }
   } catch (error) {
     if (!(error instanceof DeployAbortedError)) {

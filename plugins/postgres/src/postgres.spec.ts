@@ -80,7 +80,7 @@ const releaseFixture = (
   channel: ChannelRow,
   bundle: BundleRow,
 ): ReleaseRow => ({
-  id: "00000000-0000-0000-0000-000000000702",
+  id: "00000000-0000-7000-8000-000000000702",
   revision: 1,
   scope_key: `v1:test:${channel.name}:ios:app-version`,
   channel_id: channel.id,

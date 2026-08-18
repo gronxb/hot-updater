@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   events: [] as string[],
   existingProject: false,
   functionsDir: "",
+  assertInfrastructure: vi.fn(),
   tmpDir: "",
 }));
 
@@ -97,6 +98,10 @@ vi.mock("./firebaseRegion", () => ({
   }),
 }));
 
+vi.mock("./firebaseInfrastructureState", () => ({
+  assertFirebaseInfrastructureCanInitialize: mocks.assertInfrastructure,
+}));
+
 vi.mock("./prepareTemplate", () => ({
   prepareFirebaseTemplate: vi.fn(async () => ({
     functionsDir: mocks.functionsDir,
@@ -138,6 +143,7 @@ describe("Firebase project creation", () => {
     mocks.existingEnv = {};
     mocks.events.length = 0;
     mocks.existingProject = false;
+    mocks.assertInfrastructure.mockResolvedValue(undefined);
     mocks.tmpDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-firebase-init-"),
     );
@@ -222,5 +228,20 @@ describe("Firebase project creation", () => {
         },
       },
     );
+  });
+
+  it("blocks an existing v0 project before deployment", async () => {
+    mocks.existingProject = true;
+    mocks.assertInfrastructure.mockRejectedValueOnce(
+      new Error("Firebase v0 infrastructure was detected"),
+    );
+
+    await expect(runInit({ build: "bare" })).rejects.toThrow(
+      "Firebase v0 infrastructure was detected",
+    );
+
+    expect(mocks.events).toEqual(["project"]);
+    expect(execa).toHaveBeenCalledOnce();
+    expect(execa).toHaveBeenCalledWith("gcloud", ["--version"]);
   });
 });

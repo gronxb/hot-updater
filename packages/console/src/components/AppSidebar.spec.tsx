@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
+import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AnalyticsCapabilityState } from "@/lib/analytics-api";
@@ -11,8 +12,18 @@ let analyticsCapability: AnalyticsCapabilityState = { status: "unresolved" };
 let accessKeysSupported = false;
 
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({ children, to }: { children: ReactNode; to: string }) => (
-    <a href={to}>{children}</a>
+  Link: ({
+    children,
+    to,
+    ...props
+  }: {
+    children: ReactNode;
+    to: string;
+    "data-active"?: string;
+  }) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
   ),
   useRouterState: () => ({ location: { pathname } }),
 }));
@@ -40,10 +51,23 @@ vi.mock("@/components/ui/sidebar", () => {
   const MenuButton = ({
     children,
     isActive,
+    render,
   }: {
     children?: ReactNode;
     isActive?: boolean;
-  }) => <div data-active={isActive ? "true" : "false"}>{children}</div>;
+    render?: ReactNode;
+  }) =>
+    React.isValidElement(render) ? (
+      React.cloneElement(
+        render as React.ReactElement<{
+          children?: ReactNode;
+          "data-active"?: string;
+        }>,
+        { children, "data-active": isActive ? "true" : "false" },
+      )
+    ) : (
+      <div data-active={isActive ? "true" : "false"}>{children}</div>
+    );
 
   return {
     Sidebar: Wrapper,
@@ -86,27 +110,16 @@ describe("AppSidebar analytics navigation", () => {
   });
 
   it.each(["unresolved", "unsupported", "error"] as const)(
-    "shows Releases and Artifacts while capability is %s",
+    "keeps Bundles as the primary destination while capability is %s",
     (status) => {
       renderSidebar(capability(status));
 
-      expect(screen.getByRole("link", { name: /releases/i })).toBeDefined();
-      expect(screen.getByRole("link", { name: /artifacts/i })).toBeDefined();
+      expect(screen.getByRole("link", { name: /bundles/i })).toBeDefined();
+      expect(screen.queryByRole("link", { name: /releases/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /analytics/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /installations/i })).toBeNull();
     },
   );
-
-  it("marks the immutable Artifacts destination active", () => {
-    pathname = "/artifacts";
-    renderSidebar(capability("unsupported"));
-
-    expect(
-      screen
-        .getByRole("link", { name: /artifacts/i })
-        .parentElement?.getAttribute("data-active"),
-    ).toBe("true");
-  });
 
   it("shows Access keys only when the official database domain is available", () => {
     const rendered = renderSidebar(capability("supported"));
@@ -129,7 +142,7 @@ describe("AppSidebar analytics navigation", () => {
     expect(
       screen
         .getByRole("link", { name: /access keys/i })
-        .parentElement?.getAttribute("data-active"),
+        .getAttribute("data-active"),
     ).toBe("true");
   });
 
@@ -151,7 +164,7 @@ describe("AppSidebar analytics navigation", () => {
       expect(
         screen
           .getByRole("link", { name: /analytics/i })
-          .parentElement?.getAttribute("data-active"),
+          .getAttribute("data-active"),
       ).toBe("true");
     },
   );

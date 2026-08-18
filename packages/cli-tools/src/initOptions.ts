@@ -26,6 +26,16 @@ export class InitEnvFileError extends InitError {
   readonly name = "InitEnvFileError";
 }
 
+export class LegacyInfrastructureError extends InitError {
+  readonly name = "LegacyInfrastructureError";
+
+  constructor(provider: string, resource: string) {
+    super(
+      `${provider} v0 infrastructure was detected at ${resource}. Hot Updater v1 cannot upgrade it in place. Run init with new provider resources and ship the new endpoint in a new native build. The existing infrastructure was not changed.`,
+    );
+  }
+}
+
 export const assertInitInputs = ({
   inputs,
   strict,

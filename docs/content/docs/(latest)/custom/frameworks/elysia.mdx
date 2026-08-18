@@ -23,7 +23,7 @@ routes with framework middleware before mounting the handler. Update-check
 routes are usually exposed for React Native clients, but that is a deployment
 choice:
 
-- Update check: `/hot-updater/app-version/*`, `/hot-updater/fingerprint/*`
+- Client OTA: `/hot-updater/release-catalogs/*`, `/hot-updater/artifacts/*`
 - Optional public diagnostics: `/hot-updater/version`
 - Protected management API: `/hot-updater/api/*`
 
@@ -85,8 +85,8 @@ under `/hot-updater/api/*` are mounted only when `features.bundles` is enabled:
 | Method | Endpoint                                                                              | Description                                                         |
 | ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | GET    | `/hot-updater/version`                                                                | Get server version                                                  |
-| GET    | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint                                    |
-| GET    | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId`         | Check for updates by app version                                    |
+| GET    | `/hot-updater/release-catalogs/:strategy/:authorityId/:platform/:channelKey/:value` | Fetch a Release Catalog |
+| GET    | `/hot-updater/artifacts/:targetBundleId/from/:currentBundleId` | Resolve an artifact |
 | GET    | `/hot-updater/api/bundles`                                                            | List bundles (query: channel, platform, limit, page, after, before) |
 | GET    | `/hot-updater/api/bundles/:id`                                                        | Get bundle by ID                                                    |
 | POST   | `/hot-updater/api/bundles`                                                            | Create bundles                                                      |

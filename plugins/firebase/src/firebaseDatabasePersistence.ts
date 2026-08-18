@@ -7,16 +7,11 @@ import type {
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
-import { compileLegacyReleaseCatalogBackfill } from "@hot-updater/server";
-import { isEqual } from "es-toolkit";
 import {
   type CollectionReference,
   type DocumentData,
-  type DocumentReference,
-  FieldValue,
   type Firestore,
   type QuerySnapshot,
-  type Timestamp,
   type Transaction,
 } from "firebase-admin/firestore";
 
@@ -25,8 +20,6 @@ import {
   parseFirebaseBundleEventRow,
   parseFirebaseClientAccessKeyRow,
   parseFirebaseChannelRow,
-  parseFirebaseLegacyBundleRow,
-  parseFirebaseLegacyPatchRows,
   parseFirebasePatchRow,
   parseFirebaseReleaseCatalogRow,
   parseFirebaseReleaseRow,
@@ -122,29 +115,6 @@ const documentMap = <TRow extends FixedRow>(
     requireFirebaseDocumentKey(model, document.id, row);
   }
   return rows;
-};
-
-type FirebaseMigrationWrite =
-  | {
-      readonly kind: "create";
-      readonly reference: DocumentReference<DocumentData>;
-      readonly value: Readonly<Record<string, unknown>>;
-    }
-  | {
-      readonly kind: "update";
-      readonly reference: DocumentReference<DocumentData>;
-      readonly updateTime: Timestamp;
-      readonly value: Readonly<Record<string, unknown>>;
-    };
-
-const requireUpdateTime = (
-  document: { readonly updateTime?: Timestamp },
-  source: string,
-): Timestamp => {
-  if (!document.updateTime) {
-    throw new Error(`Missing update time for ${source}.`);
-  }
-  return document.updateTime;
 };
 
 const bundleMap = (
@@ -448,381 +418,37 @@ export const persistFirebaseDatabaseSnapshot = ({
   });
 };
 
-const applyFirebaseMigrationWrites = async (
-  db: Firestore,
-  writes: readonly FirebaseMigrationWrite[],
-): Promise<void> => {
-  for (let offset = 0; offset < writes.length; offset += 400) {
-    const batch = db.batch();
-    for (const write of writes.slice(offset, offset + 400)) {
-      if (write.kind === "create") {
-        batch.create(write.reference, write.value);
-      } else {
-        batch.update(write.reference, write.value, {
-          lastUpdateTime: write.updateTime,
-        });
-      }
-    }
-    await batch.commit();
-  }
-};
-
-const legacyBundlePolicyFields = [
-  "should_force_update",
-  "enabled",
-  "message",
-  "channel",
-  "channel_id",
-  "target_app_version",
-  "fingerprint_hash",
-  "rollout_cohort_count",
-  "target_cohorts",
-  "patches",
-  "patch_base_bundle_id",
-  "patch_base_file_hash",
-  "patch_file_hash",
-  "patch_storage_uri",
-] as const;
-
-const cleanupFirebaseLegacyBundles = async (
-  db: Firestore,
+export const migrateFirebaseDatabase = async (
+  _db: Firestore,
   collections: FirebaseDatabaseCollections,
-): Promise<void> => {
-  const bundles = await collections.bundles.get();
-  const writes: FirebaseMigrationWrite[] = [];
-  for (const document of bundles.docs) {
-    const data = document.data();
-    const row = requireFirebaseDocumentKey(
-      "bundles",
-      document.id,
-      parseFirebaseBundleRow(data, `bundles/${document.id}`),
-    );
-    if (!legacyBundlePolicyFields.some((field) => field in data)) continue;
-    writes.push({
-      kind: "update",
-      reference: document.ref,
-      updateTime: requireUpdateTime(document, `bundles/${document.id}`),
-      value: {
-        ...row,
-        ...Object.fromEntries(
-          legacyBundlePolicyFields.map((field) => [field, FieldValue.delete()]),
-        ),
-      },
-    });
-  }
-  await applyFirebaseMigrationWrites(db, writes);
-
-  const versionDocument = collections.settings.doc("database_adapter_version");
-  const version = await versionDocument.get();
-  if (version.data()?.version !== 4) {
-    throw new FirebaseDatabaseAdapterVersionError(version.data()?.version);
-  }
-  await applyFirebaseMigrationWrites(db, [
-    {
-      kind: "update",
-      reference: versionDocument,
-      updateTime: requireUpdateTime(version, versionDocument.path),
-      value: { version: 4, cleanup_pending: FieldValue.delete() },
-    },
-  ]);
-};
-
-const migrateFirebaseDatabaseAttempt = async (
-  db: Firestore,
-  collections: FirebaseDatabaseCollections,
-  authorityId: string | undefined,
 ): Promise<void> => {
   const versionDocument = collections.settings.doc("database_adapter_version");
   const version = await versionDocument.get();
   const adapterVersion = version.data()?.version;
   if (adapterVersion === 4) {
-    if (version.data()?.cleanup_pending === true) {
-      await cleanupFirebaseLegacyBundles(db, collections);
-    }
     return;
   }
-  if (
-    version.exists &&
-    adapterVersion !== 1 &&
-    adapterVersion !== 2 &&
-    adapterVersion !== 3
-  ) {
+  if (version.exists) {
     throw new FirebaseDatabaseAdapterVersionError(adapterVersion);
   }
 
-  const [bundles, patches, channels] = await Promise.all([
-    collections.bundles.get(),
-    collections.bundlePatches.get(),
-    collections.channels.get(),
+  const existingCollections = await Promise.all([
+    collections.bundles.limit(1).get(),
+    collections.bundlePatches.limit(1).get(),
+    collections.channels.limit(1).get(),
+    collections.releases.limit(1).get(),
+    collections.releaseCatalogs.limit(1).get(),
   ]);
-  const parsedBundles = bundles.docs.map((document) => ({
-    document,
-    row: parseFirebaseLegacyBundleRow(
-      document.data(),
-      `bundles/${document.id}`,
-    ),
-  }));
-  const bundleIds = new Set<string>();
-  for (const { row } of parsedBundles) {
-    if (bundleIds.has(row.id)) {
-      throw new FirebaseDatabaseConstraintError("bundles.id.unique");
-    }
-    bundleIds.add(row.id);
-  }
-  for (const { document, row } of parsedBundles) {
-    if (document.id !== row.id) {
-      throw new FirebaseDatabaseConstraintError("bundles.id.document-key");
-    }
-  }
-  const backfill = await compileLegacyReleaseCatalogBackfill({
-    authorityId,
-    rows: parsedBundles.map(({ row }) => row),
-  });
-
-  const parsedPatches = patches.docs.map((document) => ({
-    document,
-    row: parseFirebasePatchRow(
-      document.data(),
-      `bundle_patches/${document.id}`,
-    ),
-  }));
-  const existingPatches = documentMap("bundle_patches", parsedPatches);
-  for (const { row: patch } of parsedPatches) {
-    if (!bundleIds.has(patch.bundle_id)) {
-      throw new FirebaseDatabaseConstraintError(
-        "bundle_patches.bundle_id.foreign-key",
-      );
-    }
-    if (!bundleIds.has(patch.base_bundle_id)) {
-      throw new FirebaseDatabaseConstraintError(
-        "bundle_patches.base_bundle_id.foreign-key",
-      );
-    }
+  if (existingCollections.some((snapshot) => !snapshot.empty)) {
+    throw new FirebaseDatabaseAdapterVersionError("v0");
   }
 
-  const existingChannels = channelMap(channels);
-  const channelsByName = new Map(
-    [...existingChannels.values()].map((row) => [row.name, row]),
-  );
-  const channelWrites: FirebaseMigrationWrite[] = [];
-  for (const name of new Set(parsedBundles.map(({ row }) => row.channel))) {
-    if (channelsByName.has(name)) continue;
-    const row: ChannelRow = { id: firebaseChannelDocumentId(name), name };
-    channelWrites.push({
-      kind: "create",
-      reference: collections.channels.doc(firebaseChannelDocumentId(name)),
-      value: { ...row },
-    });
-    channelsByName.set(name, row);
-  }
-  await applyFirebaseMigrationWrites(db, channelWrites);
-
-  const canonicalChannels = channelMap(await collections.channels.get());
-  const canonicalChannelsByName = new Map(
-    [...canonicalChannels.values()].map((row) => [row.name, row]),
-  );
-  const patchWrites: FirebaseMigrationWrite[] = [];
-  const bundleWrites: FirebaseMigrationWrite[] = [];
-  const releaseWrites: FirebaseMigrationWrite[] = [];
-  const releaseCatalogWrites: FirebaseMigrationWrite[] = [];
-  const channelIdWrites: FirebaseMigrationWrite[] = [];
-  const migratesLegacyPatches = adapterVersion !== 2;
-
-  const settings = await collections.settings.get();
-  const settingIds = new Set(settings.docs.map(({ id }) => id));
-  for (const document of settings.docs) {
-    if (!document.id.startsWith("channel_id_")) continue;
-    const row = parseFirebaseChannelRow(
-      document.data(),
-      `private_hot_updater_settings/${document.id}`,
-    );
-    const canonical = canonicalChannels.get(row.id);
-    if (
-      document.id !== firebaseChannelIdDocumentId(row.id) ||
-      canonical?.name !== row.name
-    ) {
-      throw new FirebaseDatabaseConstraintError("channels.id.registry");
-    }
-  }
-  for (const channel of canonicalChannels.values()) {
-    const documentId = firebaseChannelIdDocumentId(channel.id);
-    if (!settingIds.has(documentId)) {
-      channelIdWrites.push({
-        kind: "create",
-        reference: collections.settings.doc(documentId),
-        value: { ...channel },
-      });
-    }
-  }
-  await applyFirebaseMigrationWrites(db, channelIdWrites);
-
-  const [storedReleases, storedCatalogs] = await Promise.all([
-    collections.releases.get(),
-    collections.releaseCatalogs.get(),
-  ]);
-  const existingReleases = releaseMap(storedReleases);
-  const existingCatalogs = releaseCatalogMap(storedCatalogs);
-  for (const { channelName, row } of backfill.releases) {
-    const channel = canonicalChannelsByName.get(channelName);
-    if (channel === undefined) {
-      throw new FirebaseDatabaseConstraintError(
-        "releases.channel_id.foreign-key",
-      );
-    }
-    const desired = { ...row, channel_id: channel.id };
-    const existing = existingReleases.get(row.id);
-    if (existing && !isEqual(existing, desired)) {
-      throw new FirebaseDatabaseConstraintError("releases.id.conflict");
-    }
-    if (!existing) {
-      releaseWrites.push({
-        kind: "create",
-        reference: collections.releases.doc(row.id),
-        value: desired,
-      });
-    }
-  }
-  for (const { channelName, row } of backfill.catalogs) {
-    const channel = canonicalChannelsByName.get(channelName);
-    if (channel === undefined) {
-      throw new FirebaseDatabaseConstraintError(
-        "release_catalogs.channel_id.foreign-key",
-      );
-    }
-    const desired = { ...row, channel_id: channel.id };
-    const existing = existingCatalogs.get(row.scope_key);
-    if (existing && !isEqual(existing, desired)) {
-      throw new FirebaseDatabaseConstraintError(
-        "release_catalogs.scope_key.conflict",
-      );
-    }
-    if (!existing) {
-      releaseCatalogWrites.push({
-        kind: "create",
-        reference: collections.releaseCatalogs.doc(row.scope_key),
-        value: desired,
-      });
-    }
-  }
-
-  for (const { document, row: bundle } of parsedBundles) {
-    const channel = canonicalChannelsByName.get(bundle.channel);
-    if (channel === undefined) {
-      throw new FirebaseDatabaseConstraintError(
-        "bundles.channel_id.foreign-key",
-      );
-    }
-    const legacyPatches = migratesLegacyPatches
-      ? parseFirebaseLegacyPatchRows(
-          document.data(),
-          bundle.id,
-          `bundles/${document.id}`,
-        )
-      : [];
-    for (const patch of legacyPatches) {
-      if (!bundleIds.has(patch.base_bundle_id)) {
-        throw new FirebaseDatabaseConstraintError(
-          "bundle_patches.base_bundle_id.foreign-key",
-        );
-      }
-      const existingPatch = existingPatches.get(patch.id);
-      if (
-        existingPatch !== undefined &&
-        (existingPatch.id !== patch.id ||
-          existingPatch.bundle_id !== patch.bundle_id ||
-          existingPatch.base_bundle_id !== patch.base_bundle_id ||
-          existingPatch.base_file_hash !== patch.base_file_hash ||
-          existingPatch.patch_file_hash !== patch.patch_file_hash ||
-          existingPatch.patch_storage_uri !== patch.patch_storage_uri ||
-          existingPatch.order_index !== patch.order_index)
-      ) {
-        throw new FirebaseDatabaseConstraintError("bundle_patches.id.conflict");
-      }
-      if (existingPatch === undefined) {
-        patchWrites.push({
-          kind: "create",
-          reference: collections.bundlePatches.doc(patch.id),
-          value: { ...patch },
-        });
-        existingPatches.set(patch.id, patch);
-      }
-    }
-    bundleWrites.push({
-      kind: "update",
-      reference: document.ref,
-      updateTime: requireUpdateTime(document, `bundles/${document.id}`),
-      value: {
-        id: bundle.id,
-        platform: bundle.platform,
-        file_hash: bundle.file_hash,
-        git_commit_hash: bundle.git_commit_hash,
-        storage_uri: bundle.storage_uri,
-        metadata: bundle.metadata,
-        manifest_storage_uri: bundle.manifest_storage_uri,
-        manifest_file_hash: bundle.manifest_file_hash,
-        asset_base_storage_uri: bundle.asset_base_storage_uri,
-        should_force_update: FieldValue.delete(),
-        enabled: FieldValue.delete(),
-        message: FieldValue.delete(),
-        channel: FieldValue.delete(),
-        channel_id: FieldValue.delete(),
-        target_app_version: FieldValue.delete(),
-        fingerprint_hash: FieldValue.delete(),
-        rollout_cohort_count: FieldValue.delete(),
-        target_cohorts: FieldValue.delete(),
-        patches: FieldValue.delete(),
-        patch_base_bundle_id: FieldValue.delete(),
-        patch_base_file_hash: FieldValue.delete(),
-        patch_file_hash: FieldValue.delete(),
-        patch_storage_uri: FieldValue.delete(),
-      },
-    });
-  }
-
-  await applyFirebaseMigrationWrites(db, [
-    ...patchWrites,
-    ...releaseWrites,
-    ...releaseCatalogWrites,
-    version.exists
-      ? {
-          kind: "update",
-          reference: versionDocument,
-          updateTime: requireUpdateTime(version, versionDocument.path),
-          value: { version: 4, cleanup_pending: true },
-        }
-      : {
-          kind: "create",
-          reference: versionDocument,
-          value: { version: 4, cleanup_pending: true },
-        },
-  ]);
-  await applyFirebaseMigrationWrites(db, bundleWrites);
-  await cleanupFirebaseLegacyBundles(db, collections);
-};
-
-const isFirebaseMigrationConflict = (error: unknown): boolean => {
-  if (typeof error !== "object" || error === null) return false;
-  const code = Reflect.get(error, "code");
-  return code === 6 || code === 9 || code === 10;
-};
-
-export const migrateFirebaseDatabase = async (
-  db: Firestore,
-  collections: FirebaseDatabaseCollections,
-  authorityId?: string,
-): Promise<void> => {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      await migrateFirebaseDatabaseAttempt(db, collections, authorityId);
-      return;
-    } catch (error) {
-      if (error instanceof FirebaseDatabaseAdapterVersionError) throw error;
-      if (!isFirebaseMigrationConflict(error)) throw error;
-      const version = await collections.settings
-        .doc("database_adapter_version")
-        .get();
-      if (version.data()?.version === 4) return;
-      if (attempt === 2) throw error;
+  try {
+    await versionDocument.create({ version: 4 });
+  } catch (error) {
+    const current = await versionDocument.get();
+    if (current.data()?.version !== 4) {
+      throw error;
     }
   }
 };

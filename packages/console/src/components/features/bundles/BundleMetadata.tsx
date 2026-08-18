@@ -3,7 +3,7 @@ import {
   getPatchBaseFileHash,
   getPatchFileHash,
 } from "@hot-updater/core";
-import type { Bundle } from "@hot-updater/plugin-core";
+import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
 import { ExternalLink } from "lucide-react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
@@ -13,152 +13,123 @@ import { useConfigQuery } from "@/lib/api";
 import { getCommitUrl } from "@/lib/git";
 
 interface BundleMetadataProps {
-  bundle: Bundle;
+  readonly bundle: Bundle | null | undefined;
+  readonly release: ReleaseRow;
 }
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-      <span className="text-muted-foreground">{label}</span>
-      <div className="min-w-0 text-left text-sm sm:text-right">{value}</div>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-left text-sm sm:text-right">{value}</dd>
     </div>
   );
 }
 
-export function BundleMetadata({ bundle }: BundleMetadataProps) {
+export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
   const { data: configData, isFetched } = useConfigQuery();
-  const patchBaseBundleId = getPatchBaseBundleId(bundle);
-  const hbcPatchFileHash = getPatchFileHash(bundle);
-  const hbcPatchBaseFileHash = getPatchBaseFileHash(bundle);
+  const patchBaseBundleId = bundle ? getPatchBaseBundleId(bundle) : null;
+  const hbcPatchFileHash = bundle ? getPatchFileHash(bundle) : null;
+  const hbcPatchBaseFileHash = bundle ? getPatchBaseFileHash(bundle) : null;
+  const gitCommitUrl =
+    bundle?.gitCommitHash && isFetched
+      ? getCommitUrl(configData?.console.gitUrl, bundle.gitCommitHash)
+      : null;
+  const target =
+    release.strategy === "APP_VERSION"
+      ? release.target_app_version
+      : release.fingerprint_hash;
   const hasMetadata =
-    bundle.gitCommitHash ||
-    bundle.fileHash ||
-    bundle.storageUri ||
-    bundle.manifestStorageUri ||
-    bundle.manifestFileHash ||
-    bundle.assetBaseStorageUri ||
+    target ||
+    bundle?.gitCommitHash ||
+    bundle?.fileHash ||
     patchBaseBundleId ||
     hbcPatchBaseFileHash ||
     hbcPatchFileHash;
-  const gitCommitUrl =
-    bundle.gitCommitHash && isFetched
-      ? getCommitUrl(configData?.console.gitUrl, bundle.gitCommitHash)
-      : null;
 
-  if (!hasMetadata) {
-    return null;
-  }
+  if (!hasMetadata) return null;
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="p-4 pb-3">
         <CardTitle className="text-sm font-medium">Metadata</CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3 text-sm">
-        {bundle.gitCommitHash ? (
+      <CardContent className="px-4 pb-4">
+        <dl className="flex flex-col gap-3 text-sm">
           <Row
-            label="Git Commit"
+            label={
+              release.strategy === "APP_VERSION"
+                ? "Target app version"
+                : "Fingerprint target"
+            }
             value={
-              <div className="flex items-center justify-start gap-1 sm:justify-end">
-                <HashValueDisplay
-                  value={bundle.gitCommitHash}
-                  maxLength={12}
-                  className={gitCommitUrl ? "text-primary" : undefined}
+              <span className="break-all font-mono text-xs" translate="no">
+                {target ?? "—"}
+              </span>
+            }
+          />
+          {bundle?.gitCommitHash ? (
+            <Row
+              label="Git commit"
+              value={
+                <div className="flex items-center justify-start gap-1 sm:justify-end">
+                  <HashValueDisplay
+                    className={gitCommitUrl ? "text-primary" : undefined}
+                    maxLength={12}
+                    value={bundle.gitCommitHash}
+                  />
+                  {gitCommitUrl ? (
+                    <a
+                      aria-label="Open git commit"
+                      className="shrink-0 text-primary hover:underline"
+                      href={gitCommitUrl}
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      <ExternalLink aria-hidden="true" />
+                    </a>
+                  ) : null}
+                </div>
+              }
+            />
+          ) : null}
+          {bundle?.fileHash ? (
+            <Row
+              label="Bundle hash"
+              value={
+                <HashValueDisplay maxLength={16} value={bundle.fileHash} />
+              }
+            />
+          ) : null}
+          {patchBaseBundleId ? (
+            <Row
+              label="Patch base"
+              value={
+                <BundleIdDisplay
+                  bundleId={patchBaseBundleId}
+                  fullOnMobile
+                  maxLength={18}
                 />
-                {gitCommitUrl ? (
-                  <a
-                    href={gitCommitUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="shrink-0 text-primary hover:underline"
-                    aria-label="Open git commit"
-                  >
-                    <ExternalLink aria-hidden="true" className="h-3 w-3" />
-                  </a>
-                ) : null}
-              </div>
-            }
-          />
-        ) : null}
-
-        {bundle.fileHash ? (
-          <Row
-            label="Bundle Hash"
-            value={<HashValueDisplay value={bundle.fileHash} maxLength={16} />}
-          />
-        ) : null}
-
-        <Row
-          label="Storage"
-          value={
-            <span translate="no" className="break-all font-mono text-xs">
-              {bundle.storageUri}
-            </span>
-          }
-        />
-
-        {bundle.manifestStorageUri ? (
-          <Row
-            label="Manifest"
-            value={
-              <span translate="no" className="break-all font-mono text-xs">
-                {bundle.manifestStorageUri}
-              </span>
-            }
-          />
-        ) : null}
-
-        {bundle.manifestFileHash ? (
-          <Row
-            label="Manifest Hash"
-            value={
-              <HashValueDisplay
-                value={bundle.manifestFileHash}
-                maxLength={16}
-              />
-            }
-          />
-        ) : null}
-
-        {bundle.assetBaseStorageUri ? (
-          <Row
-            label="Asset Storage"
-            value={
-              <span translate="no" className="break-all font-mono text-xs">
-                {bundle.assetBaseStorageUri}
-              </span>
-            }
-          />
-        ) : null}
-
-        {patchBaseBundleId ? (
-          <Row
-            label="Patch Base"
-            value={
-              <BundleIdDisplay
-                bundleId={patchBaseBundleId}
-                maxLength={18}
-                fullOnMobile
-              />
-            }
-          />
-        ) : null}
-
-        {hbcPatchBaseFileHash ? (
-          <Row
-            label="Base Hash"
-            value={
-              <HashValueDisplay value={hbcPatchBaseFileHash} maxLength={16} />
-            }
-          />
-        ) : null}
-
-        {hbcPatchFileHash ? (
-          <Row
-            label="Patch Hash"
-            value={<HashValueDisplay value={hbcPatchFileHash} maxLength={16} />}
-          />
-        ) : null}
+              }
+            />
+          ) : null}
+          {hbcPatchBaseFileHash ? (
+            <Row
+              label="Base hash"
+              value={
+                <HashValueDisplay maxLength={16} value={hbcPatchBaseFileHash} />
+              }
+            />
+          ) : null}
+          {hbcPatchFileHash ? (
+            <Row
+              label="Patch hash"
+              value={
+                <HashValueDisplay maxLength={16} value={hbcPatchFileHash} />
+              }
+            />
+          ) : null}
+        </dl>
       </CardContent>
     </Card>
   );

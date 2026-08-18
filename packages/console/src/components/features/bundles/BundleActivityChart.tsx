@@ -28,11 +28,11 @@ interface ActivityChartPoint {
 
 const chartConfig = {
   installed: {
-    label: "Newly applied",
+    label: "Applied",
     color: "var(--chart-2)",
   },
   recovered: {
-    label: "Recovered away",
+    label: "Recovered",
     color: "var(--muted-foreground)",
   },
 } satisfies ChartConfig;
@@ -98,18 +98,18 @@ export function BundleActivityChart({
 
   if (!hasWindowActivity) {
     return (
-      <div className="flex h-28 items-center justify-center border-t px-4 pt-4 text-center text-sm text-muted-foreground">
-        No bundle movement in this period.
+      <div className="flex h-16 items-center justify-center border-t px-4 pt-3 text-center text-xs text-muted-foreground sm:h-20 sm:pt-4">
+        No device activity in the last 30 days.
       </div>
     );
   }
 
   return (
-    <div className="border-t pt-4">
+    <div className="border-t pt-3 sm:pt-4">
       <ChartContainer
         aria-describedby={captionId}
         aria-label={`Bundle movement over ${windowLabels[window]}`}
-        className="h-32 w-full aspect-auto"
+        className="h-24 w-full aspect-auto sm:h-32"
         config={chartConfig}
         role="img"
       >
@@ -173,8 +173,8 @@ export function BundleActivityChart({
           <thead>
             <tr>
               <th scope="col">Date</th>
-              <th scope="col">Newly applied</th>
-              <th scope="col">Recovered away</th>
+              <th scope="col">Applied</th>
+              <th scope="col">Recovered</th>
             </tr>
           </thead>
           <tbody>

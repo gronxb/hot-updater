@@ -188,11 +188,13 @@ export interface DatabaseAPI {
     readonly limit: number;
   }): Promise<readonly ReleaseRow[]>;
   getReleases(input: {
+    readonly afterReleaseId?: string;
     readonly beforeReleaseId?: string;
     readonly bundleId?: string;
     readonly channelId?: string;
     readonly enabled?: boolean;
     readonly platform?: "ios" | "android";
+    readonly targetAppVersion?: string;
     readonly limit: number;
   }): Promise<readonly ReleaseRow[]>;
   getReleaseCatalogByScopeKey(

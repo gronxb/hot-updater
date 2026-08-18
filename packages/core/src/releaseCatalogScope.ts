@@ -170,7 +170,7 @@ export function decodeChannelKey(channelKey: string): string {
   return channel;
 }
 
-type CatalogScopeInput = {
+export type ReleaseCatalogScopeKeyInput = {
   readonly authorityId: string;
   readonly platform: Platform;
   readonly channelKey: string;
@@ -185,7 +185,9 @@ type CatalogScopeInput = {
     }
 );
 
-export function createReleaseCatalogScopeKey(input: CatalogScopeInput): string {
+export function createReleaseCatalogScopeKey(
+  input: ReleaseCatalogScopeKeyInput,
+): string {
   decodeChannelKey(input.channelKey);
   assertCatalogSegment(input.authorityId, "Catalog authority ID");
 
@@ -195,4 +197,46 @@ export function createReleaseCatalogScopeKey(input: CatalogScopeInput): string {
 
   assertCatalogSegment(input.fingerprintHash, "Fingerprint hash");
   return `v1:fingerprint:${input.authorityId}:${input.platform}:${input.channelKey}:${input.fingerprintHash}`;
+}
+
+export function parseReleaseCatalogScopeKey(
+  scopeKey: string,
+): ReleaseCatalogScopeKeyInput {
+  const segments = scopeKey.split(":");
+  const [version, strategy, authorityId, platform, channelKey] = segments;
+  if (
+    version !== "v1" ||
+    authorityId === undefined ||
+    (platform !== "ios" && platform !== "android") ||
+    channelKey === undefined
+  ) {
+    throw new Error("Invalid release catalog scope key");
+  }
+
+  const input: ReleaseCatalogScopeKeyInput =
+    strategy === "app-version" && segments.length === 5
+      ? {
+          authorityId,
+          channelKey,
+          platform,
+          strategy: "APP_VERSION",
+        }
+      : strategy === "fingerprint" &&
+          segments.length === 6 &&
+          segments[5] !== undefined
+        ? {
+            authorityId,
+            channelKey,
+            fingerprintHash: segments[5],
+            platform,
+            strategy: "FINGERPRINT",
+          }
+        : (() => {
+            throw new Error("Invalid release catalog scope key");
+          })();
+
+  if (createReleaseCatalogScopeKey(input) !== scopeKey) {
+    throw new Error("Release catalog scope key is not canonical");
+  }
+  return input;
 }
