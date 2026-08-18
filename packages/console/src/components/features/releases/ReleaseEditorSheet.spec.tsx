@@ -202,16 +202,41 @@ describe("ReleaseEditorSheet", () => {
       />,
     );
 
-    const rolloutLabel = screen.getByText("Rollout percentage");
-    const previewButton = within(rolloutLabel.parentElement!).getByRole(
-      "button",
-      { name: "Preview cohorts" },
+    const additionalCohortsLabel = screen.getByText(
+      "Additional cohorts (optional)",
     );
+    const previewButton = within(
+      additionalCohortsLabel.parentElement!,
+    ).getByRole("button", { name: "Preview cohorts" });
 
     fireEvent.click(previewButton);
 
     expect(screen.getByRole("dialog")).toBeDefined();
     expect(screen.getByText("Selected cohorts")).toBeDefined();
+  });
+
+  it("keeps Preview cohorts available at full rollout", () => {
+    render(
+      <ReleaseEditorSheet
+        channels={[{ id: "channel-1", name: "production" }]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={release.id}
+      />,
+    );
+
+    const additionalCohortsLabel = screen.getByText(
+      "Additional cohorts (optional)",
+    );
+    const previewButton = within(
+      additionalCohortsLabel.parentElement!,
+    ).getByRole("button", { name: "Preview cohorts" });
+
+    fireEvent.click(previewButton);
+
+    expect(
+      screen.getByText("All 1000 numeric cohorts are included."),
+    ).toBeDefined();
   });
 
   it("uses disabling as the only rollback action", async () => {
