@@ -53,6 +53,7 @@ import {
   InputGroupInput,
   InputGroupText,
 } from "@/components/ui/input-group";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -93,8 +94,8 @@ interface Draft {
 }
 
 const promoteActionItems = [
-  { label: "Keep source enabled", value: "copy" },
-  { label: "Disable source after promoting", value: "move" },
+  { label: "Move bundle", value: "move" },
+  { label: "Copy bundle", value: "copy" },
 ];
 
 const draftFromRelease = (release: ReleaseRow): Draft => ({
@@ -228,7 +229,7 @@ export function ReleaseEditorSheet({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showPromote, setShowPromote] = useState(false);
   const [targetChannel, setTargetChannel] = useState("");
-  const [promoteAction, setPromoteAction] = useState<"copy" | "move">("copy");
+  const [promoteAction, setPromoteAction] = useState<"copy" | "move">("move");
 
   useEffect(() => {
     setDraft(release ? draftFromRelease(release) : null);
@@ -309,16 +310,23 @@ export function ReleaseEditorSheet({
   const availableChannels = channels.filter(
     (channel) => channel.id !== release?.channel_id,
   );
-  const availableChannelItems = [
-    { label: "Select a channel", value: null },
-    ...availableChannels.map((channel) => ({
-      label: channel.name,
-      value: channel.name,
-    })),
-  ];
+  const normalizedTargetChannel = targetChannel.trim();
+  const isSameTargetChannel = normalizedTargetChannel === channelName;
+  const isCopyPromotion = promoteAction === "copy";
   const normalizedTargetAppVersion = draft
     ? normalizeRange(draft.targetAppVersion.trim())
     : null;
+
+  const resetPromoteDialog = () => {
+    setTargetChannel("");
+    setPromoteAction("move");
+  };
+
+  const handlePromoteOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && promote.isPending) return;
+    setShowPromote(nextOpen);
+    if (!nextOpen) resetPromoteDialog();
+  };
 
   return (
     <>
@@ -754,65 +762,101 @@ export function ReleaseEditorSheet({
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog onOpenChange={setShowPromote} open={showPromote}>
-        <DialogContent>
+      <Dialog onOpenChange={handlePromoteOpenChange} open={showPromote}>
+        <DialogContent showCloseButton={!promote.isPending}>
           <DialogHeader>
-            <DialogTitle>Promote to channel</DialogTitle>
+            <DialogTitle>Promote to Channel</DialogTitle>
             <DialogDescription>
-              Reuse this Bundle in another channel without copying its file.
+              Choose how to promote this Bundle, then select the target channel.
             </DialogDescription>
           </DialogHeader>
-          <FieldGroup>
-            <Field>
-              <FieldLabel>Target channel</FieldLabel>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="promote-action">Action</Label>
               <Select
-                items={availableChannelItems}
-                onValueChange={(value) => setTargetChannel(value ?? "")}
-                value={targetChannel || null}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {availableChannels.map((channel) => (
-                      <SelectItem key={channel.id} value={channel.name}>
-                        {channel.name}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel>Current channel</FieldLabel>
-              <Select
+                disabled={promote.isPending}
                 items={promoteActionItems}
                 onValueChange={(value) =>
                   setPromoteAction(value as "copy" | "move")
                 }
                 value={promoteAction}
               >
-                <SelectTrigger>
-                  <SelectValue />
+                <SelectTrigger className="w-full" id="promote-action">
+                  <SelectValue placeholder="Select an action" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="copy">Keep source enabled</SelectItem>
-                    <SelectItem value="move">
-                      Disable source after promoting
-                    </SelectItem>
+                    <SelectItem value="move">Move bundle</SelectItem>
+                    <SelectItem value="copy">Copy bundle</SelectItem>
                   </SelectGroup>
                 </SelectContent>
               </Select>
-            </Field>
-          </FieldGroup>
+              <p className="text-xs text-muted-foreground">
+                {isCopyPromotion
+                  ? "Make this Bundle available in the target channel and keep it in the current channel."
+                  : "Move this Bundle to the target channel. Devices in the current channel may fall back to an earlier Bundle."}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="target-channel">Target Channel</Label>
+              <Input
+                aria-invalid={isSameTargetChannel}
+                disabled={promote.isPending}
+                id="target-channel"
+                list="available-channels"
+                onChange={(event) => setTargetChannel(event.target.value)}
+                placeholder="Enter a channel name"
+                value={targetChannel}
+              />
+              <datalist id="available-channels">
+                {availableChannels.map((channel) => (
+                  <option key={channel.id} value={channel.name} />
+                ))}
+              </datalist>
+              {availableChannels.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {availableChannels.map((channel) => (
+                    <Button
+                      aria-label={`Use ${channel.name} as target channel`}
+                      disabled={promote.isPending}
+                      key={channel.id}
+                      onClick={() => setTargetChannel(channel.name)}
+                      size="xs"
+                      type="button"
+                      variant="outline"
+                    >
+                      {channel.name}
+                    </Button>
+                  ))}
+                </div>
+              ) : null}
+              <p className="text-xs text-muted-foreground">
+                Choose an existing channel or enter a new one.
+              </p>
+              {isSameTargetChannel ? (
+                <p className="text-xs text-destructive" role="alert">
+                  Target channel must be different from the current channel.
+                </p>
+              ) : null}
+            </div>
+          </div>
+
           <DialogFooter>
-            <Button onClick={() => setShowPromote(false)} variant="outline">
+            <Button
+              disabled={promote.isPending}
+              onClick={() => handlePromoteOpenChange(false)}
+              variant="outline"
+            >
               Cancel
             </Button>
             <Button
-              disabled={!targetChannel || promote.isPending}
+              disabled={
+                !normalizedTargetChannel ||
+                isSameTargetChannel ||
+                promote.isPending
+              }
               onClick={async () => {
                 if (!release) return;
                 try {
@@ -820,21 +864,33 @@ export function ReleaseEditorSheet({
                     action: promoteAction,
                     expectedRevision: release.revision,
                     releaseId: release.id,
-                    targetChannel,
+                    targetChannel: normalizedTargetChannel,
                   });
-                  setShowPromote(false);
-                  toast.success(`Bundle promoted to ${targetChannel}`);
+                  handlePromoteOpenChange(false);
+                  toast.success(
+                    isCopyPromotion
+                      ? `Bundle copied to ${normalizedTargetChannel}`
+                      : `Bundle moved to ${normalizedTargetChannel}`,
+                    release.bundle_id
+                      ? { description: `bundleId: ${release.bundle_id}` }
+                      : undefined,
+                  );
                 } catch (caught) {
-                  setError(
+                  toast.error(
                     caught instanceof Error
                       ? caught.message
                       : "Bundle could not be promoted.",
                   );
-                  setShowPromote(false);
                 }
               }}
             >
-              {promote.isPending ? "Promoting…" : "Promote"}
+              {promote.isPending
+                ? isCopyPromotion
+                  ? "Copying…"
+                  : "Moving…"
+                : isCopyPromotion
+                  ? "Copy"
+                  : "Move"}
             </Button>
           </DialogFooter>
         </DialogContent>

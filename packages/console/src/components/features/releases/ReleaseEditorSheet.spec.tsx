@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReleaseEditorSheet } from "./ReleaseEditorSheet";
 
 const preflight = vi.fn();
+const promote = vi.fn();
 const update = vi.fn();
 
 const release = {
@@ -90,7 +91,7 @@ vi.mock("@/lib/api", () => ({
   }),
   usePromoteReleaseMutation: () => ({
     isPending: false,
-    mutateAsync: vi.fn(),
+    mutateAsync: promote,
   }),
   useReleaseCatalogDiagnosticsQuery: () => ({ data: null }),
   useReleaseQuery: () => ({ data: releaseValue, isError: false }),
@@ -104,6 +105,8 @@ describe("ReleaseEditorSheet", () => {
     releaseValue = release;
     preflight.mockReset();
     preflight.mockResolvedValue({});
+    promote.mockReset();
+    promote.mockResolvedValue({});
     update.mockReset();
     update.mockResolvedValue({});
   });
@@ -243,6 +246,95 @@ describe("ReleaseEditorSheet", () => {
     expect(
       screen.getByRole("list", { name: "Included numeric cohorts" }),
     ).toBeDefined();
+  });
+
+  it("keeps the v0 move model and accepts a brand-new target channel", async () => {
+    render(
+      <ReleaseEditorSheet
+        channels={[
+          { id: "channel-1", name: "production" },
+          { id: "channel-2", name: "beta" },
+        ]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={release.id}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Promote to channel" }));
+
+    const dialog = screen.getByRole("dialog", {
+      name: "Promote to Channel",
+    });
+    expect(
+      within(dialog).getByRole("combobox", { name: "Action" }).textContent,
+    ).toContain("Move bundle");
+    expect(within(dialog).queryByText("Current channel")).toBeNull();
+    expect(
+      within(dialog).getByText(
+        "Move this Bundle to the target channel. Devices in the current channel may fall back to an earlier Bundle.",
+      ),
+    ).toBeDefined();
+
+    fireEvent.change(within(dialog).getByLabelText("Target Channel"), {
+      target: { value: "nightly" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+
+    await waitFor(() => {
+      expect(promote).toHaveBeenCalledWith({
+        action: "move",
+        expectedRevision: 2,
+        releaseId: "release-1",
+        targetChannel: "nightly",
+      });
+    });
+  });
+
+  it("maps the v0 copy action to keeping the source Release enabled", async () => {
+    render(
+      <ReleaseEditorSheet
+        channels={[
+          { id: "channel-1", name: "production" },
+          { id: "channel-2", name: "beta" },
+        ]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={release.id}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Promote to channel" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Action" }));
+    const copyOption = await screen.findByRole("option", {
+      name: "Copy bundle",
+    });
+    fireEvent.pointerDown(copyOption);
+    fireEvent.click(copyOption);
+
+    const dialog = screen.getByRole("dialog", {
+      name: "Promote to Channel",
+    });
+    expect(
+      within(dialog).getByText(
+        "Make this Bundle available in the target channel and keep it in the current channel.",
+      ),
+    ).toBeDefined();
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: "Use beta as target channel",
+      }),
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Copy" }));
+
+    await waitFor(() => {
+      expect(promote).toHaveBeenCalledWith({
+        action: "copy",
+        expectedRevision: 2,
+        releaseId: "release-1",
+        targetChannel: "beta",
+      });
+    });
   });
 
   it("uses disabling as the only rollback action", async () => {
