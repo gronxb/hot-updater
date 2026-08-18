@@ -2,12 +2,14 @@ import {
   getNumericCohortRolloutPosition,
   NUMERIC_COHORT_SIZE,
 } from "@hot-updater/core";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { RolloutCohortsDialog } from "./RolloutCohortsDialog";
 
 describe("RolloutCohortsDialog", () => {
+  afterEach(cleanup);
+
   it("renders a trigger and shows the rolled out cohorts for partial rollout", () => {
     const bundleId = "0195a408-8f13-7d9b-8df4-123456789abc";
     const rolloutCohorts = Array.from(
@@ -54,11 +56,11 @@ describe("RolloutCohortsDialog", () => {
     expect(screen.queryByRole("button", { name: "View Cohorts" })).toBeNull();
   });
 
-  it("keeps the trigger when target cohorts supplement gradual rollout", () => {
+  it("keeps the trigger when target cohorts supplement full rollout", () => {
     render(
       <RolloutCohortsDialog
         bundleId="0195a408-8f13-7d9b-8df4-123456789abc"
-        rolloutCohortCount={100}
+        rolloutCohortCount={1000}
         targetCohorts={["qa-group"]}
       />,
     );
@@ -67,10 +69,10 @@ describe("RolloutCohortsDialog", () => {
 
     expect(
       screen.getByText(
-        /Target Cohorts are added on top of this numeric rollout\./,
+        /Additional Cohorts are added on top of this numeric rollout\./,
       ),
     ).toBeTruthy();
-    expect(screen.getByText("Target Cohorts")).toBeTruthy();
+    expect(screen.getByText("Additional Cohorts")).toBeTruthy();
     expect(screen.getByText("qa-group")).toBeTruthy();
   });
 });

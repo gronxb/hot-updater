@@ -448,19 +448,7 @@ export function BundleEditorForm({
         <form.Field name="rolloutCohortCount">
           {(field) => (
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="rolloutPercentage">Rollout Percentage</Label>
-                <div className="flex items-center gap-2">
-                  <RolloutCohortsDialog
-                    bundleId={bundle.id}
-                    rolloutCohortCount={field.state.value}
-                    targetCohorts={targetCohorts}
-                    triggerLabel="Preview Cohorts"
-                    triggerVariant="outline"
-                    triggerSize="sm"
-                  />
-                </div>
-              </div>
+              <Label htmlFor="rolloutPercentage">Rollout Percentage</Label>
               <RolloutPercentageInput
                 value={field.state.value}
                 onChange={field.handleChange}
@@ -472,9 +460,22 @@ export function BundleEditorForm({
         <form.Field name="targetCohorts">
           {(field) => (
             <div className="space-y-2">
-              <Label>Target Cohorts (optional)</Label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label htmlFor="targetCohort">
+                  Additional Cohorts (optional)
+                </Label>
+                <RolloutCohortsDialog
+                  bundleId={bundle.id}
+                  rolloutCohortCount={form.getFieldValue("rolloutCohortCount")}
+                  targetCohorts={targetCohorts}
+                  triggerLabel="Preview Cohorts"
+                  triggerVariant="outline"
+                  triggerSize="sm"
+                />
+              </div>
               <div className="flex gap-2">
                 <Input
+                  id="targetCohort"
                   value={newCohort}
                   onChange={(e) => setNewCohort(e.target.value)}
                   onKeyDown={handleKeyDown}

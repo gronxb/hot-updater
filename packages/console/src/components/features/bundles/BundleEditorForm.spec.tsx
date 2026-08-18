@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -275,6 +276,47 @@ describe("BundleEditorForm", () => {
         }),
       });
     });
+  });
+
+  it("previews additional cohorts from the full-rollout edit form", () => {
+    render(
+      <BundleEditorForm
+        bundle={{
+          ...bundle,
+          targetCohorts: ["qa-group"],
+        }}
+        onClose={() => {}}
+      />,
+    );
+
+    const additionalCohortsLabel = screen.getByText(
+      "Additional Cohorts (optional)",
+    );
+    const previewButton = within(
+      additionalCohortsLabel.parentElement!,
+    ).getByRole("button", { name: "Preview Cohorts" });
+
+    fireEvent.click(previewButton);
+
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByText("Additional Cohorts")).toBeTruthy();
+    expect(screen.getAllByText("qa-group").length).toBeGreaterThan(1);
+  });
+
+  it("offers the preview from Additional Cohorts after lowering rollout", () => {
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    expect(
+      screen.queryByRole("button", { name: "Preview Cohorts" }),
+    ).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Rollout Percentage"), {
+      target: { value: "10" },
+    });
+
+    expect(
+      screen.getByRole("button", { name: "Preview Cohorts" }),
+    ).toBeTruthy();
   });
 
   it("submits null when the last target cohort is removed", async () => {

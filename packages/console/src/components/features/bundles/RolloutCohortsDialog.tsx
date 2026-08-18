@@ -52,7 +52,7 @@ export function RolloutCohortsDialog({
   const isPartialRollout =
     normalizedRolloutCount > 0 && normalizedRolloutCount < NUMERIC_COHORT_SIZE;
 
-  if (!isPartialRollout) {
+  if (!isPartialRollout && !hasTargetCohorts) {
     return null;
   }
 
@@ -122,7 +122,7 @@ export function RolloutCohortsDialog({
       {hasTargetCohorts ? (
         <Card>
           <CardHeader className="p-4 pb-3">
-            <CardTitle className="text-sm">Target Cohorts</CardTitle>
+            <CardTitle className="text-sm">Additional Cohorts</CardTitle>
             <CardDescription>
               These cohorts are also included, even if they are outside the
               numeric rollout.
@@ -177,7 +177,7 @@ export function RolloutCohortsDialog({
                 cohorts. The selected set stays stable for this bundle as you
                 expand or shrink rollout.
                 {hasTargetCohorts
-                  ? " Target Cohorts are added on top of this numeric rollout."
+                  ? " Additional Cohorts are added on top of this numeric rollout."
                   : ""}
               </DialogDescription>
             </DialogHeader>
@@ -199,7 +199,7 @@ export function RolloutCohortsDialog({
                 cohorts. The selected set stays stable for this bundle as you
                 expand or shrink rollout.
                 {hasTargetCohorts
-                  ? " Target Cohorts are added on top of this numeric rollout."
+                  ? " Additional Cohorts are added on top of this numeric rollout."
                   : ""}
               </DialogDescription>
             </DialogHeader>
