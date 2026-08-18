@@ -10,7 +10,7 @@ version: "v0.22.0"
 Install Drizzle ORM and SQLite driver.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/cloudflare hono drizzle-orm better-sqlite3
+npm install @hot-updater/server @hot-updater/aws drizzle-orm better-sqlite3
 ```
 
 ```package-install
@@ -39,14 +39,15 @@ Create the Hot Updater instance:
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
-import { r2Storage } from "@hot-updater/cloudflare";
+import { s3Storage } from "@hot-updater/aws";
 import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "sqlite" }),
   storages: [
-    r2Storage({
-      accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+    s3Storage({
+      region: "auto",
+      endpoint: process.env.R2_ENDPOINT,
       credentials: {
         accessKeyId: process.env.R2_ACCESS_KEY_ID!,
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -71,10 +72,8 @@ mkdir -p data
 npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
-This command writes `hot-updater-schema.ts` at the project root. The generator
-can bootstrap the missing import shown above on its first run.
-
-Point Drizzle Kit at the generated file and the same SQLite database:
+This command writes `hot-updater-schema.ts` at the project root. Point Drizzle
+Kit at that generated file and the same SQLite database:
 
 ```typescript title="drizzle.config.ts"
 import { defineConfig } from "drizzle-kit";
@@ -96,9 +95,7 @@ npx drizzle-kit push
 ```
 
 <Callout>
-  Need to generate SQL without config? See [SQL
-  Export](/docs/v0/custom/database/sql-export) for standalone SQL generation
-  with the `--sql` flag.
+Need to generate SQL without config? See [SQL Export](/docs/v0/custom/database/sql-export) for standalone SQL generation with the `--sql` flag.
 </Callout>
 
 ## CLI Configuration
@@ -107,7 +104,7 @@ Configure your CLI to use this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
-import { r2Storage } from "@hot-updater/cloudflare";
+import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
@@ -118,8 +115,9 @@ if (!managementToken) {
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  storage: r2Storage({
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -137,25 +135,21 @@ export default defineConfig({
 ```
 
 <Callout type="warn">
-  The `storage` plugin must match the `storages` in your server's
-  `createHotUpdater`. Both use `r2Storage` in this example. Because
-  `routes.bundles` enables management routes, protect `/hot-updater/api/*` with
-  fail-closed authentication before mounting the handler. The CLI header above
-  assumes the Bearer middleware from the Quick Start.
+The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example. Because `routes.bundles` enables management routes, protect `/hot-updater/api/*` with fail-closed authentication before mounting the handler.
 </Callout>
 
 ## API Endpoints
 
 The server automatically creates these endpoints:
 
-| Method | Endpoint                                                                              | Description                                                         |
-| ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| GET    | `/hot-updater/version`                                                                | Get server version                                                  |
-| GET    | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint                                    |
-| GET    | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId`         | Check for updates by app version                                    |
-| GET    | `/hot-updater/api/bundles`                                                            | List bundles (query: channel, platform, limit, page, after, before) |
-| GET    | `/hot-updater/api/bundles/:id`                                                        | Get bundle by ID                                                    |
-| POST   | `/hot-updater/api/bundles`                                                            | Create bundles                                                      |
-| PATCH  | `/hot-updater/api/bundles/:id`                                                        | Update a bundle                                                     |
-| DELETE | `/hot-updater/api/bundles/:id`                                                        | Delete bundle                                                       |
-| GET    | `/hot-updater/api/bundles/channels`                                                   | List all channels                                                   |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/hot-updater/version` | Get server version |
+| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
+| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
+| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
+| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
+| POST | `/hot-updater/api/bundles` | Create bundles |
+| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
+| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
+| GET | `/hot-updater/api/bundles/channels` | List all channels |

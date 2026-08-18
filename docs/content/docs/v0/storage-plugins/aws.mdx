@@ -26,10 +26,10 @@ For manual configuration, use the settings below.
 
 ```typescript
 interface S3StorageConfig {
-  region: string; // AWS region or 'auto' for R2
-  bucketName: string; // S3 bucket name
-  basePath?: string; // Optional base path within bucket
-  endpoint?: string; // Custom endpoint for S3-compatible services
+  region: string;           // AWS region or 'auto' for R2
+  bucketName: string;       // S3 bucket name
+  basePath?: string;        // Optional base path within bucket
+  endpoint?: string;        // Custom endpoint for S3-compatible services
   credentials?: {
     accessKeyId: string;
     secretAccessKey: string;
@@ -46,39 +46,34 @@ other standard AWS credential sources.
 ### AWS S3
 
 ```typescript
-import { s3Storage } from "@hot-updater/aws";
-import { defineConfig } from "hot-updater";
+import { s3Storage } from '@hot-updater/aws';
+import { defineConfig } from 'hot-updater';
 
 export default defineConfig({
   storage: s3Storage({
-    region: "us-east-1",
+    region: 'us-east-1',
     credentials: {
       accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
     },
-    bucketName: "my-hot-updater-bucket",
+    bucketName: 'my-hot-updater-bucket'
   }),
   // ... other config
 });
 ```
 
-### Cloudflare R2 (S3-compatible alternative)
-
-For new Cloudflare-specific configurations, prefer
-[`r2Storage`](/docs/v0/storage-plugins/cloudflare). Use `s3Storage` for R2 when
-you need its object-listing support for `storage prune` or intentionally want
-the same `s3://` protocol across S3-compatible providers.
+### Cloudflare R2
 
 ```typescript
 export default defineConfig({
   storage: s3Storage({
-    region: "auto",
+    region: 'auto',
     endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
     },
-    bucketName: "my-r2-bucket",
+    bucketName: 'my-r2-bucket'
   }),
   // ... other config
 });

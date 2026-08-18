@@ -1,124 +1,115 @@
-# Hot Updater Server with Hono, Kysely, and PGlite
+# Hot Updater Server with Hono + PGlite
 
-This example runs a self-hosted Hot Updater server with Hono, a persistent
-PGlite database, Kysely, and Cloudflare R2 storage. It enables update checks,
-bundle management, and analytics queries.
+A production-ready Hot Updater server example using:
+- **Hono** - Fast web framework
+- **PGlite** - Lightweight PostgreSQL in Node.js (no server required)
+- **Kysely** - Type-safe SQL query builder
+- **Hot Updater schema migrations** - Versioned schema setup through the CLI
+
+## Features
+
+- ✅ No PostgreSQL server needed (uses PGlite)
+- ✅ File-based persistence
+- ✅ Versioned schema migrations through the CLI
+- ✅ RESTful API endpoints
+- ✅ CORS enabled
+- ✅ Request logging
+- ✅ Graceful shutdown
 
 ## Setup
 
-1. Install the monorepo dependencies from the repository root:
+1. Install the workspace dependencies and enter this package:
+```bash
+pnpm install
+cd examples-server/hono-kysely-pglite
+```
 
-   ```bash
-   pnpm install
-   ```
+2. Copy the environment template to the path loaded by `src/db.ts` and replace
+   its authentication, signing, and R2 credential placeholders:
+```bash
+cp .env.example src/.env.hotupdater
+```
 
-2. Create the environment file loaded by `src/db.ts`:
-
-   ```bash
-   cd examples-server/hono-kysely-pglite
-   cp .env.example src/.env.hotupdater
-   ```
-
-   Replace every placeholder. `HOT_UPDATER_AUTH_TOKEN` protects management
-   routes, and `HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY` signs R2 download URLs.
-
-3. Apply the Hot Updater schema to a fresh or upgraded database:
-
-   ```bash
-   pnpm exec hot-updater db migrate src/db.ts --yes
-   ```
+3. Apply the Hot Updater schema. Startup does not run migrations automatically:
+```bash
+pnpm exec hot-updater db migrate src/db.ts --yes
+```
 
 4. Start the development server:
+```bash
+pnpm dev
+```
 
-   ```bash
-   pnpm dev
-   ```
+The server will start on http://localhost:3000
 
-The server listens on `http://localhost:3000` by default. PGlite stores its
-files in `./data`; starting the server does not run migrations automatically.
+## API Endpoints
 
-## Routes and authentication
-
-The health check is public:
-
-```text
+### Health Check
+```bash
 GET /
 ```
 
-Update-check routes are also public in this example. The current v1 server
-uses Release Catalog routes:
-
-```text
+### Check for Updates
+```bash
 GET /hot-updater/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion
 GET /hot-updater/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash
-GET /hot-updater/artifacts/:targetBundleId/from/:currentBundleId
 ```
 
 `channelKey` is the base64url-encoded channel key produced by the client.
 
-All routes under `/hot-updater/api/*` require the exact header
-`Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>`. A missing configured token,
-a missing header, or a mismatched token returns `401`.
+Management routes under `/hot-updater/api/*` require
+`Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>`. Missing or mismatched
+credentials are rejected.
 
+### List Bundles
 ```bash
-curl \
-  -H "Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>" \
-  http://localhost:3000/hot-updater/api/channels
+GET /hot-updater/api/bundles?limit=50
 ```
 
-The current v1 management surface is:
-
-| Method                   | Path                                                  | Purpose                           |
-| ------------------------ | ----------------------------------------------------- | --------------------------------- |
-| `GET`, `POST`            | `/hot-updater/api/channels`                           | List or create channels           |
-| `DELETE`                 | `/hot-updater/api/channels/:id`                       | Delete a channel                  |
-| `GET`, `POST`            | `/hot-updater/api/bundles`                            | List or create Bundles            |
-| `GET`, `PATCH`, `DELETE` | `/hot-updater/api/bundles/:id`                        | Read, update, or delete a Bundle  |
-| `GET`                    | `/hot-updater/api/releases`                           | List Releases                     |
-| `GET`, `PATCH`, `DELETE` | `/hot-updater/api/releases/:id`                       | Read, update, or delete a Release |
-| `POST`                   | `/hot-updater/api/releases/:id/preflight`             | Validate a Release change         |
-| `GET`                    | `/hot-updater/api/release-catalogs`                   | List Release Catalog rows         |
-| `GET`                    | `/hot-updater/api/release-catalogs/:scopeKey`         | Read a Release Catalog row        |
-| `POST`                   | `/hot-updater/api/release-catalogs/:scopeKey/rebuild` | Rebuild a Release Catalog row     |
-| `POST`                   | `/hot-updater/api/database/commit`                    | Commit a database change set      |
-
-Analytics ingestion is mounted at `POST /hot-updater/events`. Authenticated
-analytics queries are mounted at:
-
-```text
-GET /hot-updater/api/bundles/:id/events/summary
-GET /hot-updater/api/bundles/:id/events/analytics
-GET /hot-updater/api/installations/overview
-GET /hot-updater/api/installations/active
-GET /hot-updater/api/installations
-GET /hot-updater/api/installations/:installId/events
+### Create Bundle
+```bash
+POST /hot-updater/api/bundles
 ```
 
-### v0 route differences
-
-The v0 branch uses the legacy Bundle contract. Its public update-check paths
-are:
-
-```text
-GET /hot-updater/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId
-GET /hot-updater/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort
-GET /hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId
-GET /hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort
+### Delete Bundle
+```bash
+DELETE /hot-updater/api/bundles/:id
 ```
 
-Its management routes are `/hot-updater/api/bundles`,
-`/hot-updater/api/bundles/:id`, and
-`/hot-updater/api/bundles/channels`; it does not expose the v1 Release or
-Release Catalog management routes. Use the example source from the matching
-branch—the current NEXT source mounts only the v1 routes listed above.
+### List Channels
+```bash
+GET /hot-updater/api/channels
+```
 
-## Storage configuration
+## Project Structure
 
-The example registers mock storage first for local fixtures and Cloudflare R2
-for real artifacts. `src/.env.hotupdater` uses these names:
+```
+hono-server/
+├── src/
+│   ├── index.ts      # Main server entry point
+│   ├── db.ts         # Database setup (PGlite + Kysely + Hot Updater schema)
+│   └── routes.ts     # API routes
+├── data/             # PGlite database files (gitignored)
+├── package.json
+└── tsconfig.json
+```
+
+## Database
+
+The server uses PGlite with file-based storage in `./data`.
+The database schema is generated from Hot Updater's versioned schema and
+migrated through the Hot Updater CLI.
+
+Run `pnpm exec hot-updater db migrate src/db.ts --yes` before first use and
+whenever the checked-in schema changes.
+
+## Storage Configuration
+
+The example uses the AWS plugin against Cloudflare R2's S3-compatible endpoint.
+Configure these values in `src/.env.hotupdater`:
 
 ```env
-CLOUDFLARE_ACCOUNT_ID=your-cloudflare-account-id
+R2_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
 R2_ACCESS_KEY_ID=your-r2-access-key-id
 R2_SECRET_ACCESS_KEY=your-r2-secret-access-key
 R2_BUCKET_NAME=your-r2-bucket-name
@@ -126,24 +117,11 @@ HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY=replace-with-a-long-random-signing-key
 HOT_UPDATER_AUTH_TOKEN=replace-with-a-long-random-token
 ```
 
-## Project structure
-
-```text
-hono-kysely-pglite/
-├── src/
-│   ├── .env.hotupdater # Local environment file (gitignored)
-│   ├── db.ts           # PGlite, Kysely, storage, and Hot Updater setup
-│   ├── index.ts        # Hono server entry point
-│   └── routes.ts       # Management auth and Hot Updater route mount
-├── data/               # PGlite database directory (gitignored)
-├── .env.example
-├── package.json
-└── tsconfig.json
-```
+You can also use other storage providers by modifying `src/db.ts`.
 
 ## Production
 
-Apply migrations as a release step, then build and start the compiled server:
+Apply migrations as a release step, then build and start the emitted entry:
 
 ```bash
 pnpm exec hot-updater db migrate src/db.ts --yes
@@ -152,5 +130,5 @@ node dist/src/index.js
 ```
 
 The compiled module does not load the source-tree `src/.env.hotupdater` file.
-Supply `PORT`, the management token, and R2 credentials through the deployment
-environment or process manager instead of copying secrets into `dist`.
+Supply the port, authentication token, signing key, and R2 credentials through
+the deployment environment or process manager.

@@ -4,7 +4,7 @@ description: "The `withSentry()` plugin for hot-updater enables automatic source
 icon: sentry
 ---
 
-import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 
 ## Prerequisites
 
@@ -20,6 +20,7 @@ npm install @hot-updater/sentry-plugin --save-dev
 
 <Tabs items={['Metro', 'Re.Pack']}>
   <Tab value="Metro">
+    
 
     You need to configure Metro. Please refer to the [Sentry documentation](https://docs.sentry.io/platforms/react-native/manual-setup/metro/) above for detailed setup instructions.
 
@@ -30,11 +31,10 @@ npm install @hot-updater/sentry-plugin --save-dev
     const config = getDefaultConfig(__dirname);
     module.exports = withSentryConfig(config);
     ```
-
   </Tab>
   <Tab value="Re.Pack">
 
-You need to configure Re.Pack.
+  You need to configure Re.Pack.
 
 ```package-install
 npm install repack-plugin-sentry --save-dev
@@ -51,9 +51,10 @@ export default {
   ],
 };
 ```
-
   </Tab>
 </Tabs>
+
+
 
 ## Step 2: Wrap Your Build Plugin
 
@@ -79,15 +80,14 @@ export default defineConfig({
       sourcemap: true, // [!code ++] Required for sourcemap upload
     }),
     {
-      org: "your-org-slug", // [!code ++] Your Sentry organization slug
-      project: "your-project", // [!code ++] Your Sentry project slug
+      org: "your-org-slug",       // [!code ++] Your Sentry organization slug
+      project: "your-project",    // [!code ++] Your Sentry project slug
       authToken: process.env.SENTRY_AUTH_TOKEN!, // [!code ++]
     },
   ),
   // .. your other config
 });
 ```
-
 </Tab>
 <Tab value="Expo">
 
@@ -102,15 +102,14 @@ export default defineConfig({
       sourcemap: true, // [!code ++] Required for sourcemap upload
     }),
     {
-      org: "your-org-slug", // [!code ++] Your Sentry organization slug
-      project: "your-project", // [!code ++] Your Sentry project slug
+      org: "your-org-slug",       // [!code ++] Your Sentry organization slug
+      project: "your-project",    // [!code ++] Your Sentry project slug
       authToken: process.env.SENTRY_AUTH_TOKEN!, // [!code ++]
     },
   ),
   // .. your other config
 });
 ```
-
 </Tab>
 
 <Tab value="Rock">
@@ -126,8 +125,8 @@ export default defineConfig({
       sourcemap: true, // [!code ++] Required for sourcemap upload
     }),
     {
-      org: "your-org-slug", // [!code ++] Your Sentry organization slug
-      project: "your-project", // [!code ++] Your Sentry project slug
+      org: "your-org-slug",       // [!code ++] Your Sentry organization slug
+      project: "your-project",    // [!code ++] Your Sentry project slug
       authToken: process.env.SENTRY_AUTH_TOKEN!, // [!code ++]
     },
   ),
@@ -140,8 +139,7 @@ export default defineConfig({
 </Tabs>
 
 <Callout title="Automatic Upload">
-  When `withSentry()` wraps your build plugin, all generated sourcemaps are
-  uploaded to Sentry automatically during the `hot-updater deploy` process.
+When `withSentry()` wraps your build plugin, all generated sourcemaps are uploaded to Sentry automatically during the `hot-updater deploy` process.
 </Callout>
 
 ## Step 3: Deploy

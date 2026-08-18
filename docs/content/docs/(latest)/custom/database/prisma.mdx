@@ -10,22 +10,21 @@ version: "v0.22.0"
 Install Prisma and initialize your project.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/cloudflare hono @prisma/client@6
+npm install @hot-updater/server @hot-updater/aws @prisma/client@6.19.3
 ```
 
 ```package-install
-npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater prisma@6
+npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater prisma@6.19.3
 ```
 
 Initialize Prisma:
 
 ```bash
-npx prisma init --datasource-provider sqlite --generator-provider prisma-client-js --output ../generated/prisma
+npx prisma@6.19.3 init --datasource-provider sqlite --generator-provider prisma-client-js
 npx prisma generate
 ```
 
-This guide follows the Prisma 6 version used and tested by this repository.
-Generate the initial client before creating `src/prisma.ts`; Hot Updater's
+Generate the initial client before creating `src/prisma.ts`; the Hot Updater
 schema command loads that module while preparing the managed models.
 
 For other databases, see [Prisma's database documentation](https://www.prisma.io/docs/orm/overview/databases).
@@ -35,7 +34,7 @@ For other databases, see [Prisma's database documentation](https://www.prisma.io
 Create a database connection file:
 
 ```typescript title="src/prisma.ts"
-import { PrismaClient } from "../generated/prisma";
+import { PrismaClient } from "@prisma/client";
 
 export const prisma = new PrismaClient();
 ```
@@ -47,14 +46,15 @@ Create the Hot Updater instance:
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
-import { r2Storage } from "@hot-updater/cloudflare";
+import { s3Storage } from "@hot-updater/aws";
 import { prisma } from "./prisma";
 
 export const hotUpdater = createHotUpdater({
   database: prismaAdapter({ prisma, provider: "sqlite" }),
   storage: [
-    r2Storage({
-      accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+    s3Storage({
+      region: "auto",
+      endpoint: process.env.R2_ENDPOINT,
       credentials: {
         accessKeyId: process.env.R2_ACCESS_KEY_ID!,
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -79,12 +79,9 @@ Generate the Prisma schema for Hot Updater tables.
 npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
-Because `prisma init` created `prisma/schema.prisma`, this command writes
-directly to that file and merges the current Hot Updater models while
-preserving application models. Review the result in version control; do not
-copy a separate handwritten model block over it. If the file is missing, the
-generator can create a model-only file, but you must add the normal Prisma
-`generator` and `datasource` blocks before validating it.
+This command creates `prisma/schema.prisma` when it is missing or merges the
+Hot Updater models into the existing schema. Keep the generated models instead
+of replacing them with a handwritten schema.
 
 <Callout>
   Need to generate SQL without config? See [SQL
@@ -92,12 +89,11 @@ generator can create a model-only file, but you must add the normal Prisma
   the `--sql` flag.
 </Callout>
 
-Validate the merged schema and apply it:
+Regenerate Prisma Client and apply the merged schema:
 
 ```bash
-npx prisma validate
 npx prisma generate
-npx prisma migrate dev --name init
+npx prisma db push
 ```
 
 ## Query Semantics
@@ -114,7 +110,7 @@ Configure your CLI to use this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
-import { r2Storage } from "@hot-updater/cloudflare";
+import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
@@ -125,8 +121,9 @@ if (!managementToken) {
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  storage: r2Storage({
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -145,15 +142,16 @@ export default defineConfig({
 
 <Callout type="warn">
   The CLI `storage` plugin must match one entry in the server's
-  `createHotUpdater({storage})` array. Both use `r2Storage` here. Because
-  `features.bundles` enables management routes, protect `/hot-updater/api/*`
-  with fail-closed authentication before mounting the handler. The CLI header
-  above assumes the Bearer middleware from the Quick Start.
+  `createHotUpdater({storage})` array. Both use `s3Storage` here.
+  Because `features.bundles` enables management routes, protect
+  `/hot-updater/api/*` with fail-closed authentication before mounting the
+  handler. The CLI header above assumes the Bearer middleware from the Quick
+  Start.
 </Callout>
 
-## Enabled Routes
+## API Endpoints
 
-The configuration above enables the update-check and management groups:
+The configuration above enables the update-check routes:
 
 | Method | Endpoint                                                                                        | Description                            |
 | ------ | ----------------------------------------------------------------------------------------------- | -------------------------------------- |

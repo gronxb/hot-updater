@@ -20,11 +20,6 @@ npm install @hot-updater/server hono
 ```
 
 Install your chosen storage plugin separately (e.g., `@hot-updater/aws`, `@hot-updater/supabase`, `@hot-updater/firebase`).
-Create `src/storage.ts` and export a configured runtime-capable plugin as
-`storagePlugin`. This hosting guide intentionally leaves that provider choice
-to the matching [Storage Plugin](../../storage-plugins/custom-storage) guide.
-Configure that plugin's required credentials and settings in every Vercel
-environment that serves updates.
 
 Install Drizzle ORM with PostgreSQL driver.
 
@@ -33,19 +28,29 @@ npm install drizzle-orm pg
 ```
 
 ```package-install
-npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater drizzle-kit @types/pg dotenv
+npm install -D drizzle-kit @types/pg dotenv
 ```
 
 ## Database Setup
 
-Vercel Postgres is discontinued. For a new project, install a current Postgres
-integration from the Marketplace and connect it to the Vercel project. This
-example uses Neon, whose integration provides `DATABASE_URL` to the connected
-environments. Configure an unpooled `DATABASE_URL_UNPOOLED` value as well when
-you want Drizzle Kit to use a direct connection for migrations.
+Vercel Postgres is no longer available for new projects. Install a current
+Postgres integration from the Marketplace and connect it to the project. This
+example assumes the integration exposes `DATABASE_URL`.
 
-Create the database connection file. The runtime uses the Marketplace-provided
-`DATABASE_URL`.
+Add the Hot Updater management and storage values to `.env.local` for local
+development, and configure the same names for the Production environment in
+your Vercel project settings:
+
+```dotenv title=".env.local"
+HOT_UPDATER_AUTH_TOKEN=replace-with-a-secret
+R2_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=your-access-key-id
+R2_SECRET_ACCESS_KEY=your-secret-access-key
+R2_BUCKET_NAME=your-bucket-name
+```
+
+Create the database connection file with Drizzle's transaction-capable
+`node-postgres` driver.
 
 ```typescript title="src/drizzle.ts"
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -66,12 +71,22 @@ Create the Hot Updater instance.
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { s3Storage } from "@hot-updater/aws";
 import { db } from "./drizzle";
-import { storagePlugin } from "./storage";
 
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "postgresql" }),
-  storages: [storagePlugin],
+  storages: [
+    s3Storage({
+      region: "auto",
+      endpoint: process.env.R2_ENDPOINT,
+      credentials: {
+        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      },
+      bucketName: process.env.R2_BUCKET_NAME!,
+    }),
+  ],
   basePath: "/hot-updater",
   routes: {
     updateCheck: true,
@@ -89,12 +104,12 @@ import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
 import { hotUpdater } from "./hotUpdater";
 
-const app = new Hono();
-
 const authToken = process.env.HOT_UPDATER_AUTH_TOKEN;
 if (!authToken) {
   throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
 }
+
+const app = new Hono();
 
 app.use("/hot-updater/api/*", bearerAuth({ token: authToken }));
 app.mount("/hot-updater", hotUpdater.handler);
@@ -103,13 +118,13 @@ export default app;
 ```
 
 <Callout type="warn">
-  With Hono `mount()`, update-check routes such as `/hot-updater/app-version/*`
-  and `/hot-updater/fingerprint/*` are usually exposed for React Native clients,
-  but that is a deployment choice. `/hot-updater/version` is always mounted for
-  diagnostics. Always protect `/hot-updater/api/*` when `routes.bundles: true`.
+With Hono `mount()`, update-check routes such as `/hot-updater/app-version/*`
+and `/hot-updater/fingerprint/*` are usually exposed for React Native clients,
+but that is a deployment choice. `/hot-updater/version` is always mounted for
+diagnostics. Always protect `/hot-updater/api/*` when `routes.bundles: true`.
 </Callout>
 
-## Schema and Migration
+## Schema Generation
 
 Generate the Drizzle schema for Hot Updater tables.
 
@@ -118,8 +133,7 @@ npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
 The command writes `hot-updater-schema.ts` at the project root. Configure
-Drizzle Kit to load Vercel's local environment and prefer a direct migration
-connection when one is available:
+Drizzle Kit to load Vercel's local environment and apply that schema:
 
 ```typescript title="drizzle.config.ts"
 import { config } from "dotenv";
@@ -127,11 +141,8 @@ import { defineConfig } from "drizzle-kit";
 
 config({ path: ".env.local" });
 
-const migrationUrl =
-  process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL;
-
-if (!migrationUrl) {
-  throw new Error("DATABASE_URL_UNPOOLED or DATABASE_URL is required");
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is required");
 }
 
 export default defineConfig({
@@ -139,33 +150,32 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {
-    url: migrationUrl,
+    url: process.env.DATABASE_URL,
   },
 });
 ```
 
-Pull the development environment and apply the schema before deployment:
+Pull the target environment and apply the schema before deployment:
 
 ```bash
 npx vercel env pull .env.local
 npx drizzle-kit push
 ```
 
-For production, run the same schema step from a controlled release job against
-the production database before shifting traffic.
-
 ## Development
 
 Run the development server locally.
 
 ```bash
-npx vercel env pull .env.local
 npx vercel dev
 ```
 
 Server runs at `http://localhost:3000`.
 
 ## Deploy
+
+Set `HOT_UPDATER_AUTH_TOKEN`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`,
+`R2_SECRET_ACCESS_KEY`, and `R2_BUCKET_NAME` in the target Vercel environment.
 
 Deploy to Vercel.
 
@@ -181,9 +191,9 @@ Configure your CLI to use this deployed server.
 
 ```typescript title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
+import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
-import { cliStorage } from "./hot-updater-storage";
 
 const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
 if (!managementToken) {
@@ -192,7 +202,15 @@ if (!managementToken) {
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  storage: cliStorage,
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.R2_BUCKET_NAME!,
+  }),
   database: standaloneRepository({
     baseUrl: "https://your-project.vercel.app/hot-updater",
     commonHeaders: {
@@ -204,8 +222,5 @@ export default defineConfig({
 ```
 
 <Callout type="warn">
-  `./hot-updater-storage` is your React Native project's provider configuration.
-  Its exported `cliStorage` must use the same URI scheme and backing store as
-  the server's `storagePlugin`. Configure `HOT_UPDATER_AUTH_TOKEN` in every
-  Vercel environment and in the CLI environment.
+The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Configure `HOT_UPDATER_AUTH_TOKEN` in every Vercel environment and in the CLI environment.
 </Callout>

@@ -42,17 +42,14 @@ directories exist, `doctor` checks:
 - Android `MainApplication` uses `HotUpdater.getJSBundleFile(...)`
 - If `updateStrategy` is `fingerprint`, `fingerprint.json` exists and native
   fingerprint hashes match it
-- Signing settings match `HOT_UPDATER_PUBLIC_KEY` in `Info.plist` and
-  `com.hotupdater.PUBLIC_KEY` in Android application metadata
+- Signing settings match native public key entries
 
 If any required native setting is missing, rebuild-time OTA configuration is not
 healthy yet. Run the command shown by `doctor`, then rebuild the native app.
 
 `doctor` does not require a default channel in native files. If
-`HOT_UPDATER_CHANNEL` in `Info.plist` or `com.hotupdater.CHANNEL` in Android
-application metadata exists, the command reports it as context only. Android
-`strings.xml` values such as `hot_updater_channel` are still read for legacy
-projects, but new setup uses `AndroidManifest.xml`.
+`HOT_UPDATER_CHANNEL` or `hot_updater_channel` exists, the command reports it as
+context only.
 
 For fingerprint projects, fix missing or stale native fingerprint settings with:
 

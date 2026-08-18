@@ -10,7 +10,6 @@ Use `clearCrashHistory()` to reset the crash history and allow redeploying bundl
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
-import { Button, View } from "react-native";
 
 function AdminPanel() {
   const handleClearHistory = () => {
@@ -46,7 +45,3 @@ clearCrashHistory(): boolean
 
 - `true` - Crash history cleared successfully
 - `false` - Failed to clear crash history
-
-Clearing this list only allows those Bundle IDs to be attempted again. It does
-not repair a failing Bundle, so clear it only after correcting the underlying
-update or while testing recovery behavior.

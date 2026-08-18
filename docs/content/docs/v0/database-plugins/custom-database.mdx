@@ -22,21 +22,15 @@ Use `createDatabasePlugin` to build custom database plugins:
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 
 export const myDatabase = createDatabasePlugin<MyConfig>({
-  name: "myDatabase", // Plugin identifier
+  name: "myDatabase",              // Plugin identifier
   factory: (config) => ({
     // Return these required methods:
-    getBundleById: async (bundleId) => {
-      /* ... */
-    },
+    getBundleById: async (bundleId) => { /* ... */ },
     getBundles: async (options) => ({ data: [], pagination: {} }),
     getChannels: async () => [],
-    commitBundle: async ({ changedSets }) => {
-      /* ... */
-    },
-    onUnmount: async () => {
-      /* optional cleanup */
-    },
-  }),
+    commitBundle: async ({ changedSets }) => { /* ... */ },
+    onUnmount: async () => { /* optional cleanup */ }
+  })
 });
 ```
 
@@ -46,9 +40,6 @@ Your factory function must return an object with these methods:
 
 ```typescript
 {
-  // Declare this only when getBundles implements after/before cursors.
-  supportsCursorPagination?: boolean;
-
   // Fetch single bundle by ID
   getBundleById: (bundleId: string) => Promise<Bundle | null>;
 
@@ -56,31 +47,9 @@ Your factory function must return an object with these methods:
   getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;
 
   // Fetch paginated bundles with optional filtering
-  getBundles: (options: {
-    where?: {
-      channel?: string;
-      platform?: "ios" | "android";
-      enabled?: boolean;
-      id?: {
-        eq?: string;
-        gt?: string;
-        gte?: string;
-        lt?: string;
-        lte?: string;
-        in?: string[];
-      };
-      targetAppVersion?: string | null;
-      targetAppVersionIn?: string[];
-      targetAppVersionNotNull?: boolean;
-      fingerprintHash?: string | null;
-    };
-    limit: number;
-    page?: number;
-    cursor?: { after?: string; before?: string };
-    orderBy?: { field: "id"; direction: "asc" | "desc" };
-    // Internal provider input used when the public caller supplies page.
-    offset?: number;
-  }) => Promise<Paginated<Bundle[]>>;
+  getBundles: (
+    options: DatabaseBundleQueryOptions & { offset?: number },
+  ) => Promise<Paginated<Bundle[]>>;
 
   // Get all available channels
   getChannels: () => Promise<string[]>;
@@ -112,6 +81,7 @@ Here's a complete custom database plugin using a REST API:
 ```typescript title="customDatabase.ts"
 import {
   type Bundle,
+  type DatabaseBundleQueryOptions,
   type Paginated,
   createDatabasePlugin,
 } from "@hot-updater/plugin-core";
@@ -130,12 +100,11 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
     };
 
     return {
-      supportsCursorPagination: true,
-
       async getBundleById(bundleId) {
-        const response = await fetch(`${config.baseUrl}/bundles/${bundleId}`, {
-          headers,
-        });
+        const response = await fetch(
+          `${config.baseUrl}/bundles/${bundleId}`,
+          { headers }
+        );
 
         if (!response.ok) {
           if (response.status === 404) return null;
@@ -145,77 +114,27 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
         return response.json();
       },
 
-      async getBundles(options): Promise<Paginated<Bundle[]>> {
+      async getBundles(
+        options: DatabaseBundleQueryOptions & { offset?: number },
+      ): Promise<Paginated<Bundle[]>> {
         const params = new URLSearchParams({
           limit: String(options.limit),
         });
 
-        // createDatabasePlugin resolves a public page number to this internal
-        // offset before invoking the provider method.
         if (options.offset !== undefined) {
           params.set("offset", String(options.offset));
         }
-        if (options.page !== undefined) {
-          params.set("page", String(options.page));
-        }
-        if (options.cursor?.after !== undefined) {
-          params.set("after", options.cursor.after);
-        }
-        if (options.cursor?.before !== undefined) {
-          params.set("before", options.cursor.before);
+        if (options.where !== undefined) {
+          params.set("where", JSON.stringify(options.where));
         }
         if (options.orderBy !== undefined) {
-          params.set("orderField", options.orderBy.field);
-          params.set("orderDirection", options.orderBy.direction);
+          params.set("orderBy", JSON.stringify(options.orderBy));
         }
 
-        const where = options.where;
-        if (where?.channel !== undefined) {
-          params.set("channel", where.channel);
-        }
-        if (where?.platform !== undefined) {
-          params.set("platform", where.platform);
-        }
-        if (where?.enabled !== undefined) {
-          params.set("enabled", String(where.enabled));
-        }
-
-        const idFilters = {
-          idEq: where?.id?.eq,
-          idGt: where?.id?.gt,
-          idGte: where?.id?.gte,
-          idLt: where?.id?.lt,
-          idLte: where?.id?.lte,
-        };
-        for (const [key, value] of Object.entries(idFilters)) {
-          if (value !== undefined) params.set(key, value);
-        }
-        for (const id of where?.id?.in ?? []) {
-          params.append("idIn", id);
-        }
-
-        const nullableFilters = {
-          fingerprintHash: where?.fingerprintHash,
-          targetAppVersion: where?.targetAppVersion,
-        };
-        for (const [key, value] of Object.entries(nullableFilters)) {
-          if (value !== undefined) {
-            params.set(key, value === null ? "null" : value);
-          }
-        }
-        for (const version of where?.targetAppVersionIn ?? []) {
-          params.append("targetAppVersionIn", version);
-        }
-        if (where?.targetAppVersionNotNull !== undefined) {
-          params.set(
-            "targetAppVersionNotNull",
-            String(where.targetAppVersionNotNull),
-          );
-        }
-
-        const response = await fetch(`${config.baseUrl}/bundles?${params}`, {
-          headers,
-        });
+        const response = await fetch(
+          `${config.baseUrl}/bundles?${params}`,
+          { headers }
+        );
 
         if (!response.ok) {
           throw new Error(`Failed to fetch bundles: ${response.statusText}`);
@@ -267,14 +186,10 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
 });
 ```
 
-Use cursor pagination as the contract for bundle-management queries. The
-`offset` field is not part of the public query API; the wrapper uses it only
-when it converts a requested `page` into provider input. The REST service in
-this example must apply every filter and the ID ordering before applying the
-exclusive cursor or offset and `limit`. Its response must include correct
-pagination metadata for the filtered result. If your backend cannot implement
-that cursor contract, omit `supportsCursorPagination` and implement the
-wrapper's ID-filter, ordering, and internal-offset fallback inputs instead.
+The `createDatabasePlugin` fallback resolves cursor requests into `where.id`,
+`orderBy`, and the internal `offset` before calling the provider. The REST
+service must parse `where` and `orderBy`, apply all filters and ordering, and
+only then apply `offset` and `limit`.
 
 ## Helper Utilities
 
@@ -282,31 +197,34 @@ The `@hot-updater/plugin-core` package provides helper functions:
 
 ### calculatePagination
 
-Generates pagination metadata after your implementation resolves a cursor into
-an internal start index:
+Generates pagination metadata for the internal offset window passed to your
+provider:
 
 ```typescript
 import { calculatePagination } from "@hot-updater/plugin-core";
 
-const startIndex = resolvedCursorStartIndex;
+const offset = options.offset ?? 0;
 const pagination = calculatePagination(totalCount, {
   limit: 10,
-  offset: startIndex,
+  offset,
 });
 // Result: { total, hasNextPage, hasPreviousPage, currentPage, totalPages }
 ```
 
 ## CLI Configuration
 
-Add the exported value below as the `database` field of your complete
-`defineConfig` configuration:
+Use your custom plugin in `hot-updater.config.ts`:
 
-```typescript title="hot-updater.config.ts (database excerpt)"
+```typescript
+import { defineConfig } from "hot-updater";
 import { customDatabase } from "./customDatabase";
 
-export const database = customDatabase({
-  baseUrl: process.env.DATABASE_BASE_URL!,
-  apiKey: process.env.DATABASE_API_KEY!,
+export default defineConfig({
+  database: customDatabase({
+    baseUrl: process.env.DATABASE_BASE_URL!,
+    apiKey: process.env.DATABASE_API_KEY!,
+  }),
+  // ... other config
 });
 ```
 

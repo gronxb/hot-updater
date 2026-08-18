@@ -10,7 +10,7 @@ version: "v0.22.0"
 Install Kysely and SQLite driver.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/cloudflare hono kysely better-sqlite3
+npm install @hot-updater/server @hot-updater/aws kysely better-sqlite3
 ```
 
 ```package-install
@@ -41,14 +41,15 @@ Create the Hot Updater instance:
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
-import { r2Storage } from "@hot-updater/cloudflare";
+import { s3Storage } from "@hot-updater/aws";
 import { db } from "./kysely";
 
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
   storage: [
-    r2Storage({
-      accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+    s3Storage({
+      region: "auto",
+      endpoint: process.env.R2_ENDPOINT,
       credentials: {
         accessKeyId: process.env.R2_ACCESS_KEY_ID!,
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -77,7 +78,7 @@ npx hot-updater db generate src/hotUpdater.ts --yes
 Apply migrations to the database:
 
 ```bash
-npx hot-updater db migrate src/hotUpdater.ts --yes
+npx hot-updater db migrate src/hotUpdater.ts
 ```
 
 <Callout>
@@ -100,7 +101,7 @@ Configure your CLI to use this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
-import { r2Storage } from "@hot-updater/cloudflare";
+import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
@@ -111,8 +112,9 @@ if (!managementToken) {
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  storage: r2Storage({
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -131,15 +133,16 @@ export default defineConfig({
 
 <Callout type="warn">
   The CLI `storage` plugin must match one entry in the server's
-  `createHotUpdater({storage})` array. Both use `r2Storage` here. Because
-  `features.bundles` enables management routes, protect `/hot-updater/api/*`
-  with fail-closed authentication before mounting the handler. The CLI header
-  above assumes the Bearer middleware from the Quick Start.
+  `createHotUpdater({storage})` array. Both use `s3Storage` here.
+  Because `features.bundles` enables management routes, protect
+  `/hot-updater/api/*` with fail-closed authentication before mounting the
+  handler. The CLI header above assumes the Bearer middleware from the Quick
+  Start.
 </Callout>
 
-## Enabled Routes
+## API Endpoints
 
-The configuration above enables the update-check and management groups:
+The configuration above enables the update-check routes:
 
 | Method | Endpoint                                                                                        | Description                            |
 | ------ | ----------------------------------------------------------------------------------------------- | -------------------------------------- |

@@ -25,11 +25,11 @@ Later OTA update:
 
 What the device downloads depends on what changed:
 
-| When this happens                     | What the device downloads                                                     |
-| ------------------------------------- | ----------------------------------------------------------------------------- |
-| First OTA after native install        | Normal compressed archive                                                     |
-| Later OTA, unchanged file             | Nothing; the file is copied locally                                           |
-| Later OTA, changed regular asset      | Complete new asset file                                                       |
+| When this happens | What the device downloads |
+| --- | --- |
+| First OTA after native install | Normal compressed archive |
+| Later OTA, unchanged file | Nothing; the file is copied locally |
+| Later OTA, changed regular asset | Complete new asset file |
 | Later OTA, changed Hermes bundle file | `.bsdiff` patch when available, otherwise the complete new Hermes bundle file |
 
 For example, an update that would otherwise download a **10 MB archive** might
@@ -58,9 +58,9 @@ Bundle diffing has two separate optimizations:
 The key difference is that assets are reused at the file level, while changed
 Hermes bundles can also be patched at the byte level.
 
-| File type          | If unchanged    | If changed                                                                  |
-| ------------------ | --------------- | --------------------------------------------------------------------------- |
-| Regular asset      | Copy local file | Download the complete new asset file                                        |
+| File type | If unchanged | If changed |
+| --- | --- | --- |
+| Regular asset | Copy local file | Download the complete new asset file |
 | Hermes bundle file | Copy local file | Apply `.bsdiff` patch, then fallback to the complete new Hermes bundle file |
 
 Regular assets include files such as images and fonts. They are not binary
@@ -99,10 +99,10 @@ This is the default behavior. Add the `patch` block only when you want to
 override it, for example to disable binary patch generation or change how many
 previous OTA bundles are used as patch bases.
 
-| Option                 | Default | Meaning                                                              |
-| ---------------------- | ------- | -------------------------------------------------------------------- |
-| `patch.enabled`        | `true`  | Generates `.bsdiff` patches for changed Hermes bundles.              |
-| `patch.maxBaseBundles` | `3`     | Uses up to this many previous compatible OTA bundles as patch bases. |
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `patch.enabled` | `true` | Generates `.bsdiff` patches for changed Hermes bundles. |
+| `patch.maxBaseBundles` | `3` | Uses up to this many previous compatible OTA bundles as patch bases. |
 
 ### Binary patches
 

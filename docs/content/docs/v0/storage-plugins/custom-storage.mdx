@@ -52,15 +52,15 @@ them as separate `node` and `runtime` plugins instead.
 
 Before writing code, decide these values:
 
-| Item                | Example                                        | Notes                                                                    |
-| ------------------- | ---------------------------------------------- | ------------------------------------------------------------------------ |
-| `name`              | `customStorage`                                | Used in diagnostics. Keep it stable and human-readable.                  |
-| `supportedProtocol` | `custom-s3`                                    | Must match every `storageUri` the plugin returns.                        |
-| Storage URI shape   | `custom-s3://bucket/releases/bundle.zip`       | Include enough information to locate the object later.                   |
-| Upload key policy   | `basePath / bundleId / filename`               | Use `createStorageKeyBuilder` unless the provider needs custom behavior. |
-| Existence policy    | Provider metadata/head request                 | Return `false` only when the object is missing; rethrow other failures.  |
-| Runtime URL policy  | Signed URL, public CDN, or authenticated route | `runtime.getDownloadUrl` must return HTTP(S).                            |
-| Text read policy    | SDK call, binding read, or authenticated API   | `runtime.readText` is for small metadata such as `manifest.json`.        |
+| Item                | Example                                      | Notes                                                                    |
+| ------------------- | -------------------------------------------- | ------------------------------------------------------------------------ |
+| `name`              | `customStorage`                              | Used in diagnostics. Keep it stable and human-readable.                  |
+| `supportedProtocol` | `custom-s3`                                  | Must match every `storageUri` the plugin returns.                        |
+| Storage URI shape   | `custom-s3://bucket/releases/bundle.zip`     | Include enough information to locate the object later.                   |
+| Upload key policy   | `basePath / bundleId / filename`             | Use `createStorageKeyBuilder` unless the provider needs custom behavior. |
+| Existence policy    | Provider metadata/head request               | Return `false` only when the object is missing; rethrow other failures.  |
+| Runtime URL policy  | Signed URL, public CDN URL, or worker route  | `runtime.getDownloadUrl` must return HTTP(S).                            |
+| Text read policy    | SDK call, binding read, or authenticated API | `runtime.readText` is for small metadata such as `manifest.json`.        |
 
 ## Universal Storage Plugin
 
@@ -75,6 +75,10 @@ configuration surfaces:
 ```typescript
 import { createUniversalStoragePlugin } from "@hot-updater/plugin-core";
 
+interface MyStorageConfig {
+  objectExists(storageUri: string): Promise<boolean>;
+}
+
 export const myStorage = createUniversalStoragePlugin<MyStorageConfig>({
   name: "myStorage",
   supportedProtocol: "custom",
@@ -84,8 +88,7 @@ export const myStorage = createUniversalStoragePlugin<MyStorageConfig>({
         return { storageUri: "custom://bucket/path/bundle.zip" };
       },
       async exists(storageUri) {
-        // Return false only for your provider's missing-object response.
-        return storageClient.exists(storageUri);
+        return config.objectExists(storageUri);
       },
       async delete(storageUri) {
         // Delete the object referenced by storageUri.
@@ -144,8 +147,7 @@ exists: (storageUri: string) => Promise<boolean>;
 
 Use a provider metadata or head request when available. Return `false` only for
 the provider's missing-object response. Permission errors, invalid storage URIs,
-provider outages, and other failures must be rethrown so deploy does not mistake
-an inaccessible object for an absent one.
+provider outages, and other failures must be rethrown.
 
 ### `node.downloadFile`
 
@@ -383,11 +385,15 @@ export const customStorage = createUniversalStoragePlugin<CustomStorageConfig>({
 
 Use `createNodeStoragePlugin` when the plugin only needs to run from CLI/Node
 workflows. This is the profile used by `hot-updater deploy`, copy promotion,
-bundle diff generation, and console server actions that upload, download, or
-delete local files. The factory returns the `node` profile directly.
+bundle diff generation, and console server actions that upload, check, download,
+or delete local files. The factory returns the `node` profile directly.
 
 ```typescript
 import { createNodeStoragePlugin } from "@hot-updater/plugin-core";
+
+interface NodeOnlyConfig {
+  objectExists(storageUri: string): Promise<boolean>;
+}
 
 export const nodeOnlyStorage = createNodeStoragePlugin<NodeOnlyConfig>({
   name: "nodeOnlyStorage",
@@ -397,8 +403,7 @@ export const nodeOnlyStorage = createNodeStoragePlugin<NodeOnlyConfig>({
       return { storageUri: "node-only://bucket/path/bundle.zip" };
     },
     async exists(storageUri) {
-      // Return false only for your provider's missing-object response.
-      return storageClient.exists(storageUri);
+      return config.objectExists(storageUri);
     },
     async delete(storageUri) {},
     async downloadFile(storageUri, filePath) {},
@@ -472,39 +477,33 @@ const contentType = getContentType("bundle.js");
 
 ## CLI Configuration
 
-Use your custom plugin in `hot-updater.config.ts`. This excerpt shows only the
-storage field; keep the required `build`, `database`, and `updateStrategy`
-fields in the complete project configuration.
+Create the storage value used by your complete `hot-updater.config.ts`:
 
 ```typescript title="hot-updater.config.ts (storage excerpt)"
-import { defineConfig } from "hot-updater";
-
 import { customStorage } from "./customStorage";
 
-export default defineConfig({
-  // ...required build, database, and updateStrategy fields
-  storage: customStorage({
-    region: "us-east-1",
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-    },
-    bucketName: process.env.BUCKET_NAME!,
-    basePath: "releases",
-  }),
+const storage = customStorage({
+  region: "us-east-1",
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+  },
+  bucketName: process.env.BUCKET_NAME!,
+  basePath: "releases",
 });
 ```
 
-The configured plugin must implement the complete `node` profile because
-`hot-updater` CLI commands upload, check, download, and delete stored files.
+Assign this value to the required `storage` field alongside the config's
+`build`, `database`, and `updateStrategy` fields. The configured plugin must
+implement the `node` profile because CLI commands upload, check, download, and
+delete local files.
 
 ## Custom Server Usage
 
 Use the same universal plugin with `createHotUpdater` from
 `@hot-updater/server`. The plugin passed to `storages` must implement the
 `runtime` profile because update checks need download URLs and direct metadata
-reads. Import the database adapter configured for your server as well; it is a
-required `createHotUpdater` option.
+reads.
 
 ```typescript
 import { createHotUpdater } from "@hot-updater/server";

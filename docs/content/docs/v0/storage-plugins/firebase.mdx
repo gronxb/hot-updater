@@ -25,15 +25,16 @@ For manual configuration, use the settings below.
 ## Configuration
 
 ```typescript
-import type { Credential } from "firebase-admin/app";
+import type { Credential } from 'firebase-admin/app';
 
 interface FirebaseStorageConfig {
-  projectId: string; // Firebase project ID
-  storageBucket: string; // Storage bucket name
-  credential: Credential; // Firebase credential
-  basePath?: string; // Optional base path within bucket
+  projectId: string;               // Firebase project ID
+  storageBucket: string;           // Storage bucket name
+  credential: Credential;          // Firebase credential
+  basePath?: string;               // Optional base path within bucket
 }
 ```
+
 
 ## Environment Variables
 
@@ -46,19 +47,19 @@ FIREBASE_PROJECT_ID=your-project-id
 FIREBASE_STORAGE_BUCKET=your-bucket-name
 ```
 
+
 ## Usage
 
 ```typescript
-import { firebaseStorage } from "@hot-updater/firebase";
-import { applicationDefault } from "firebase-admin/app";
-import { config } from "dotenv";
-import { defineConfig } from "hot-updater";
+import { firebaseStorage } from '@hot-updater/firebase';
+import { config } from 'dotenv';
+import { applicationDefault } from 'firebase-admin/app';
+import { defineConfig } from 'hot-updater';
 
-config({ path: ".env.hotupdater" });
+config({ path: '.env.hotupdater' });
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Check your .env.hotupdater file and add the credentials
-// Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
+// Set GOOGLE_APPLICATION_CREDENTIALS in .env.hotupdater to your credentials file.
 // Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
 const credential = applicationDefault();
 
@@ -66,11 +67,12 @@ export default defineConfig({
   storage: firebaseStorage({
     projectId: process.env.FIREBASE_PROJECT_ID,
     storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-    credential,
+    credential
   }),
   // ... other config
 });
 ```
+
 
 ## Protocol
 

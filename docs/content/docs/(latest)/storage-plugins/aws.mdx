@@ -64,12 +64,7 @@ export default defineConfig({
 });
 ```
 
-### Cloudflare R2 (S3-compatible alternative)
-
-For new Cloudflare-specific configurations, prefer
-[`r2Storage`](/docs/storage-plugins/cloudflare). Use `s3Storage` for R2 when you
-need its object-listing support for `storage prune` or intentionally want the
-same `s3://` protocol across S3-compatible providers.
+### Cloudflare R2
 
 ```typescript
 export default defineConfig({

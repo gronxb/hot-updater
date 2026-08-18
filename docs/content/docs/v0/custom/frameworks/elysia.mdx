@@ -27,21 +27,10 @@ deployment choice:
 - Optional public diagnostics: `/hot-updater/version`
 - Protected management API: `/hot-updater/api/*`
 
-Management routes are disabled by default. Enable them only on a server where
-framework authentication protects the entire management prefix:
-
-```typescript title="src/hotUpdater.ts (route excerpt)"
-export const hotUpdater = createHotUpdater({
-  // Keep the database and storages fields from your adapter setup.
-  routes: {
-    updateCheck: true,
-    bundles: true,
-  },
-});
-```
-
-Require a nonempty token before starting Elysia. Missing, malformed, or
-mismatched bearer credentials then fail with `401`:
+Management routes are disabled by default, so set
+`routes: { updateCheck: true, bundles: true }` in your existing
+`createHotUpdater` options. This example requires a nonempty token before
+mounting the handler:
 
 ```typescript
 import { Elysia } from "elysia";
@@ -55,16 +44,10 @@ if (!authToken) {
 
 new Elysia()
   .use(bearer()) // [!code ++]
-  .onBeforeHandle(({ bearer, request }) => {
-    // [!code ++]
+  .onBeforeHandle(({ bearer, request }) => { // [!code ++]
     const pathname = new URL(request.url).pathname; // [!code ++]
-    if (
-      pathname === "/hot-updater/api" ||
-      pathname.startsWith("/hot-updater/api/")
-    ) {
-      // [!code ++]
-      if (bearer !== authToken) {
-        // [!code ++]
+    if (pathname === "/hot-updater/api" || pathname.startsWith("/hot-updater/api/")) { // [!code ++]
+      if (bearer !== authToken) { // [!code ++]
         return new Response("Unauthorized", { status: 401 }); // [!code ++]
       } // [!code ++]
     } // [!code ++]
@@ -79,11 +62,9 @@ Set your auth token in environment variables:
 HOT_UPDATER_AUTH_TOKEN=your-secret-auth-token
 ```
 
-Configure the CLI's standalone database plugin to send the same token. This is
-a database-field excerpt; keep the build, storage, and update-strategy fields
-from your existing config:
+Configure the CLI to include the auth token when deploying bundles:
 
-```typescript title="hot-updater.config.ts (database excerpt)"
+```typescript title="hot-updater.config.ts (excerpt)"
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
@@ -93,7 +74,7 @@ if (!authToken) {
 }
 
 export default defineConfig({
-  // Keep your build, storage, and updateStrategy fields here.
+  // ...
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
     commonHeaders: {
@@ -105,19 +86,20 @@ export default defineConfig({
 
 ## API Endpoints
 
-The server always mounts `/version`. Update-check routes require
-`routes.updateCheck`; every management route requires `routes.bundles` and the
-framework middleware shown above. Update checks also accept the same path with
-a trailing `/:cohort` segment.
+The server automatically creates these endpoints. Bundle management endpoints
+under `/hot-updater/api/*` are mounted only when `routes.bundles` is enabled:
 
-| Method             | Endpoint                                                                              | Purpose                          |
-| ------------------ | ------------------------------------------------------------------------------------- | -------------------------------- |
-| GET                | `/hot-updater/version`                                                                | Read the server version          |
-| GET                | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for a fingerprint update   |
-| GET                | `/hot-updater/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`      | Check for an app-version update  |
-| GET                | `/hot-updater/api/bundles/channels`                                                   | List Bundle channels             |
-| GET, POST          | `/hot-updater/api/bundles`                                                            | List or create Bundles           |
-| GET, PATCH, DELETE | `/hot-updater/api/bundles/:id`                                                        | Read, update, or delete a Bundle |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/hot-updater/version` | Get server version |
+| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
+| GET | `/hot-updater/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId` | Check for updates by app version |
+| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
+| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
+| POST | `/hot-updater/api/bundles` | Create bundles |
+| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
+| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
+| GET | `/hot-updater/api/bundles/channels` | List all channels |
 
 ## React Native Setup
 

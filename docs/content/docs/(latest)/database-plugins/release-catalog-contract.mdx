@@ -77,13 +77,11 @@ never mutate a Bundle.
 interface ReleaseModel {
   findById(id: string): Promise<ReleaseRow | null>;
   findMany(input: {
-    afterReleaseId?: string;
     beforeReleaseId?: string;
     bundleId?: string;
     channelId?: string;
     enabled?: boolean;
     platform?: "ios" | "android";
-    targetAppVersion?: string;
     limit: number;
   }): Promise<readonly ReleaseRow[]>;
   findManyByScope(input: {

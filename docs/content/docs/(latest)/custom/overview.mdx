@@ -7,11 +7,11 @@ version: "v0.22.0"
 
 ## Installation
 
-Install the server package in the deployed server project. Install the
-standalone repository in the React Native project that runs the CLI.
+Install the server and storage packages in the deployed server project. Install
+the CLI packages in the React Native project that runs Hot Updater commands.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/cloudflare
+npm install @hot-updater/server @hot-updater/aws
 ```
 
 ```package-install
@@ -36,7 +36,7 @@ Configure your Hot Updater CLI to use the self-hosted database.
 
 ```typescript title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
-import { r2Storage } from "@hot-updater/cloudflare";
+import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
@@ -47,8 +47,9 @@ if (!managementToken) {
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  storage: r2Storage({
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -100,7 +101,7 @@ subpath with the same public plugin name.
 
 **Example with multiple plugins:**
 
-```typescript title="src/hotUpdater.ts (storage excerpt)"
+```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
   storage: [
@@ -139,8 +140,7 @@ one `features` object:
 - `bundles`: Bundle, Release, Release Catalog, and Channel management endpoints
   used by the CLI and Console
 - `analytics`: event ingestion and query routes backed by
-  `database.models.analytics`; query access is denied unless it is explicitly
-  made public
+  `database.models.analytics`
 - `clientAccessKeys`: authentication for update checks and Analytics ingestion
   backed by `database.models.clientAccessKeys`
 
@@ -149,28 +149,27 @@ be enabled explicitly when the CLI needs management APIs. When `bundles: true`,
 protect every route under `/api/*` with framework middleware. The `/version`
 endpoint is always mounted for diagnostics.
 
-```typescript title="src/hotUpdater.ts (features excerpt)"
+```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
   storage: [
-    r2Storage({
-      /* Cloudflare R2 config */
+    s3Storage({
+      /* storage config */
     }),
   ],
   basePath: "/hot-updater",
   features: {
     updateCheck: true,
     bundles: true,
+    analytics: true,
+    clientAccessKeys: true,
   },
 });
 ```
 
-`analytics: true` enables ingestion, but its query routes deliberately reject
-requests because Hot Updater does not provide built-in query authentication.
-Use `analytics: { queryAccess: "public" }` only for an intentionally public
-surface such as a local fixture. For production queries, expose a separate
-authenticated endpoint over `hotUpdater.analytics` or query your provider
-directly. `false` or an omitted feature disables Analytics.
+Use `analytics: { queryAccess: "public" }` only when Analytics query routes
+are intentionally public, such as a local fixture. `analytics: true` keeps
+queries protected. `false` or an omitted feature disables it.
 
 <Callout type="warn">
 **Recommendation: Match Your CLI Configuration**
@@ -180,13 +179,13 @@ For most use cases, use only the storage plugin that matches your CLI's `hot-upd
 **CLI (hot-updater.config.ts):**
 
 ```typescript
-storage: r2Storage({ ... })
+storage: s3Storage({ ... })
 ```
 
 **Server (src/hotUpdater.ts):**
 
 ```typescript
-storage: [r2Storage({ ... })]
+storage: [s3Storage({ ... })]
 ```
 
 This ensures consistency and simplifies configuration. Only use multiple plugins when you need to support bundles from different storage providers.
@@ -195,8 +194,7 @@ This ensures consistency and simplifies configuration. Only use multiple plugins
 
 **Available official plugins:**
 
-- [r2Storage](../storage-plugins/cloudflare) - Cloudflare R2
-- [s3Storage](../storage-plugins/aws) - AWS S3 and S3-compatible storage
+- [s3Storage](../storage-plugins/aws) - AWS S3 and Cloudflare R2
 - [supabaseStorage](../storage-plugins/supabase) - Supabase Storage
 - [firebaseStorage](../storage-plugins/firebase) - Firebase Cloud Storage
 
@@ -212,7 +210,7 @@ Start by setting up your database adapter. Choose the ORM that fits your project
 Generate and apply the adapter's schema before serving requests. The exact
 workflow differs by adapter: Kysely and MongoDB use `hot-updater db migrate`,
 Drizzle uses the generated schema with Drizzle Kit, and Prisma merges its models
-into `prisma/schema.prisma` for Prisma Migrate.
+into `prisma/schema.prisma` before `prisma db push` applies them.
 
 ## Server Frameworks
 

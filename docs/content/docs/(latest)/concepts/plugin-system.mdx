@@ -4,7 +4,7 @@ description: "Hot Updater uses a flexible plugin system that lets you customize 
 icon: Puzzle
 ---
 
-import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 
 ## Build Plugin
 
@@ -17,6 +17,7 @@ Build plugins handle the bundling process when you run the `hot-updater deploy` 
 - **`@hot-updater/rock`**: Bundles Rock/Re.Pack projects through
   [Rock](https://github.com/callstack/rock) (formerly RNEF).
 - **`@hot-updater/expo`**: Executes the bundle command through Expo.
+
 
 ## Storage Plugin
 
@@ -31,7 +32,7 @@ export the same plugin name from runtime-specific subpaths; for example,
 ### Supported Plugins
 
 - **`@hot-updater/supabase`**: Provides `supabaseStorage` functionality, leveraging Supabase for storage.
-- **`@hot-updater/cloudflare`**: Provides `r2Storage` through R2 S3-compatible credentials and a Worker binding implementation.
+- **`@hot-updater/cloudflare`**: Provides deploy-time `r2Storage` and Worker runtime storage for Cloudflare R2.
 - **`@hot-updater/aws`**: Provides `s3Storage` functionality, enabling the use of AWS S3 for storage.
 - **`@hot-updater/firebase`**: Provides `firebaseStorage` functionality, utilizing Firebase Storage for storing update bundles.
 

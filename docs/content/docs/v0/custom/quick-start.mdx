@@ -10,7 +10,7 @@ version: "v0.22.0"
 Install all required dependencies at once.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/cloudflare hono @hono/node-server kysely better-sqlite3 dotenv
+npm install @hot-updater/server @hot-updater/aws hono @hono/node-server kysely better-sqlite3 dotenv
 ```
 
 ```package-install
@@ -40,7 +40,7 @@ Create the Hot Updater instance with your database adapter and storage plugin (s
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
-import { r2Storage } from "@hot-updater/cloudflare";
+import { s3Storage } from "@hot-updater/aws";
 import { config } from "dotenv";
 import { db } from "./kysely";
 
@@ -49,8 +49,9 @@ config({ path: ".env.hotupdater" });
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
   storages: [
-    r2Storage({
-      accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+    s3Storage({
+      region: "auto",
+      endpoint: process.env.R2_ENDPOINT,
       credentials: {
         accessKeyId: process.env.R2_ACCESS_KEY_ID!,
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -85,13 +86,11 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 const app = new Hono();
 
 const authToken = process.env.HOT_UPDATER_AUTH_TOKEN; // [!code ++]
-if (!authToken) {
-  // [!code ++]
+if (!authToken) { // [!code ++]
   throw new Error("HOT_UPDATER_AUTH_TOKEN is required"); // [!code ++]
 } // [!code ++]
 
-app.use(
-  // [!code ++]
+app.use( // [!code ++]
   "/hot-updater/api/*", // [!code ++]
   bearerAuth({ token: authToken }), // [!code ++]
 ); // [!code ++]
@@ -119,11 +118,11 @@ middleware must protect each management request before mounting the handler.
 The server example above uses Bearer authentication for `/hot-updater/api/*`.
 
 Create `.env.hotupdater` with the management token and R2 credentials used by
-both the server and CLI examples:
+the examples:
 
 ```bash title=".env.hotupdater"
 HOT_UPDATER_AUTH_TOKEN=replace-with-a-long-random-token
-CLOUDFLARE_ACCOUNT_ID=your-account-id
+R2_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
 R2_ACCESS_KEY_ID=your-r2-access-key-id
 R2_SECRET_ACCESS_KEY=your-r2-secret-access-key
 R2_BUCKET_NAME=your-r2-bucket
@@ -131,13 +130,13 @@ R2_BUCKET_NAME=your-r2-bucket
 
 ## Schema Migration
 
-Create the data directory, generate reviewable Kysely migration SQL, and apply
-the current schema before starting the server.
+Create the data directory, generate the Kysely migration, and apply it before
+starting the server.
 
 ```bash
 mkdir -p data
 npx hot-updater db generate src/hotUpdater.ts --yes
-npx hot-updater db migrate src/hotUpdater.ts --yes
+npx hot-updater db migrate src/hotUpdater.ts
 ```
 
 ## Run Server
@@ -156,7 +155,7 @@ Configure your Hot Updater CLI to connect to this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
-import { r2Storage } from "@hot-updater/cloudflare";
+import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
@@ -170,8 +169,9 @@ if (!managementToken) {
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  storage: r2Storage({
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -190,7 +190,7 @@ export default defineConfig({
 
 <Callout type="warn">
   The `storage` plugin here must match the `storages` in your server's
-  `createHotUpdater` configuration. Both use `r2Storage` in this example.
+  `createHotUpdater` configuration. Both use `s3Storage` in this example.
 </Callout>
 
 ## React Native Setup

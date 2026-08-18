@@ -28,20 +28,10 @@ choice:
 - Optional public diagnostics: `/hot-updater/version`
 - Protected management API: `/hot-updater/api/*`
 
-Management routes are disabled by default. Enable them only on a server where
-framework authentication protects the entire management prefix:
-
-```typescript title="src/hotUpdater.ts (route excerpt)"
-export const hotUpdater = createHotUpdater({
-  // Keep the database and storage fields from your adapter setup.
-  features: {
-    updateCheck: true,
-    bundles: true,
-  },
-});
-```
-
-Require a nonempty token before installing Hono's bearer middleware:
+Management routes are disabled by default, so set
+`features: { updateCheck: true, bundles: true }` in your existing
+`createHotUpdater` options. This example uses Hono middleware and requires a
+nonempty token before mounting the handler:
 
 ```typescript
 import { Hono } from "hono";
@@ -66,9 +56,11 @@ app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
 export default app;
 ```
 
-For an update-check-only server, set `bundles: false`; no
-`/hot-updater/api/*` management route is mounted. Keep `bundles: true` only
-when the CLI or Console needs this server's management API.
+If you set `features: { updateCheck: true, bundles: false }`,
+`/hot-updater/api/*` is not mounted and `/hot-updater/version` stays
+available for diagnostics.
+Set `bundles: true` only when this server accepts bundle-management requests;
+then the `/hot-updater/api/*` middleware above protects those routes.
 
 Set your auth token in environment variables:
 
@@ -76,11 +68,9 @@ Set your auth token in environment variables:
 HOT_UPDATER_AUTH_TOKEN=your-secret-auth-token
 ```
 
-Configure the CLI's standalone database plugin to send the same token. This is
-a database-field excerpt; keep the build, storage, and update-strategy fields
-from your existing config:
+Configure the CLI to include the auth token when deploying bundles:
 
-```typescript title="hot-updater.config.ts (database excerpt)"
+```typescript title="hot-updater.config.ts (excerpt)"
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
@@ -90,7 +80,7 @@ if (!authToken) {
 }
 
 export default defineConfig({
-  // Keep your build, storage, and updateStrategy fields here.
+  // ...
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
     commonHeaders: {
@@ -102,27 +92,23 @@ export default defineConfig({
 
 ## API Endpoints
 
-The server always mounts `/version`. Update-check routes require
-`features.updateCheck`; every management route requires `features.bundles` and
-the framework middleware shown above.
+The server automatically creates these endpoints. Bundle management endpoints
+under `/hot-updater/api/*` are mounted only when `features.bundles` is enabled:
 
-| Method             | Endpoint                                                                                        | Purpose                                |
-| ------------------ | ----------------------------------------------------------------------------------------------- | -------------------------------------- |
-| GET                | `/hot-updater/version`                                                                          | Read the server version                |
-| GET                | `/hot-updater/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`      | Resolve an app-version Release Catalog |
-| GET                | `/hot-updater/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash` | Resolve a fingerprint Release Catalog  |
-| GET                | `/hot-updater/artifacts/:targetBundleId/from/:currentBundleId`                                  | Resolve a full or patch artifact       |
-| GET                | `/hot-updater/api/releases`                                                                     | List Releases                          |
-| GET, PATCH, DELETE | `/hot-updater/api/releases/:id`                                                                 | Read, update, or delete a Release      |
-| POST               | `/hot-updater/api/releases/:id/preflight`                                                       | Validate a Release change              |
-| GET                | `/hot-updater/api/release-catalogs`                                                             | List Release Catalog rows              |
-| GET                | `/hot-updater/api/release-catalogs/:scopeKey`                                                   | Read one Release Catalog row           |
-| POST               | `/hot-updater/api/release-catalogs/:scopeKey/rebuild`                                           | Rebuild one Release Catalog            |
-| POST               | `/hot-updater/api/database/commit`                                                              | Commit standalone database changes     |
-| GET, POST          | `/hot-updater/api/channels`                                                                     | List or create Channels                |
-| DELETE             | `/hot-updater/api/channels/:id`                                                                 | Delete an unreferenced Channel         |
-| GET, POST          | `/hot-updater/api/bundles`                                                                      | List or create Bundles                 |
-| GET, PATCH, DELETE | `/hot-updater/api/bundles/:id`                                                                  | Read, update, or delete a Bundle       |
+| Method | Endpoint                                                                              | Description                                                         |
+| ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| GET    | `/hot-updater/version`                                                                | Get server version                                                  |
+| GET    | `/hot-updater/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion` | Fetch an app-version Release Catalog |
+| GET    | `/hot-updater/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash` | Fetch a fingerprint Release Catalog |
+| GET    | `/hot-updater/artifacts/:targetBundleId/from/:currentBundleId` | Resolve an artifact |
+| GET    | `/hot-updater/api/bundles`                                                            | List bundles (query: channel, platform, limit, page, after, before) |
+| GET    | `/hot-updater/api/bundles/:id`                                                        | Get bundle by ID                                                    |
+| POST   | `/hot-updater/api/bundles`                                                            | Create bundles                                                      |
+| PATCH  | `/hot-updater/api/bundles/:id`                                                        | Update a bundle                                                     |
+| DELETE | `/hot-updater/api/bundles/:id`                                                        | Delete bundle                                                       |
+| GET    | `/hot-updater/api/channels`                                                           | List all channels                                                   |
+| POST   | `/hot-updater/api/channels`                                                           | Insert or resolve a channel                                         |
+| DELETE | `/hot-updater/api/channels/:id`                                                       | Delete an empty channel                                             |
 
 ## React Native Setup
 

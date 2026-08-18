@@ -1,15 +1,13 @@
 ---
 title: "updateBundle"
-description: "Applies a prepared Bundle update or rollback, including archive and manifest-driven installs."
+description: "The `updateBundle` function applies a bundle transition selected by `checkForUpdate` to your React Native application."
 icon: Download
 ---
 
 ## Usage
 
-When an update comes from
-[`HotUpdater.checkForUpdate()`](/docs/v0/react-native-api/checkForUpdate), call
-the `updateBundle()` function on that result. It keeps the channel switch,
-hashes, manifest diff, and rollback values from the check together.
+Use `updateBundle` to apply an available update. Normally, call the pre-filled
+helper returned by `checkForUpdate()`.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -19,76 +17,86 @@ HotUpdater.init({
 });
 
 async function applyAppUpdate() {
-  const updateInfo = await HotUpdater.checkForUpdate({
-    updateStrategy: "appVersion",
-  });
+  try {
+    const updateInfo = await HotUpdater.checkForUpdate({
+      updateStrategy: "appVersion", // or "fingerprint"
+      requestHeaders: {
+        Authorization: "Bearer <your-access-token>",
+      },
+    });
 
-  if (!updateInfo) {
-    return;
-  }
+    if (!updateInfo) {
+      return {
+        status: "UP_TO_DATE",
+      };
+    }
 
-  const didUpdate = await updateInfo.updateBundle();
-  if (didUpdate && updateInfo.shouldForceUpdate) {
-    await HotUpdater.reload();
+    // Recommended: use the helper with all update arguments pre-filled.
+    const didUpdate = await updateInfo.updateBundle();
+
+    if (didUpdate && updateInfo.shouldForceUpdate) {
+      await HotUpdater.reload();
+    }
+
+    console.log("Update applied successfully");
+  } catch (error) {
+    console.error("Failed to apply update:", error);
   }
 }
 ```
 
-Call `HotUpdater.updateBundle(params)` directly only when you already have a
-complete `UpdateParams` object from another trusted update flow:
-
-```tsx
-const didUpdate = await HotUpdater.updateBundle({
-  bundleId: "01952bbd-e7b2-7931-aee8-2e2187caa0ce",
-  fileUrl: "https://updates.example.com/bundles/app.tar.br",
-  fileHash: "b8f6c4d7...",
-  status: "UPDATE",
-});
-```
-
-`HotUpdater.wrap()` or `HotUpdater.init()` must configure the client before
-either update API is called.
-
 ## Parameters
 
-The object overload accepts `UpdateParams`. Required nullable properties must
-be present even when their value is `null`.
+The `updateBundle` function accepts the following parameters:
 
-| Property                         | Type                     | Required | Description                                                                                                                      |
-| -------------------------------- | ------------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `bundleId`                       | `string`                 | Yes      | Target Bundle ID.                                                                                                                |
-| `fileUrl`                        | `string \| null`         | Yes      | Archive URL, or `null` for a rollback/manifest-only transition.                                                                  |
-| `fileHash`                       | `string \| null`         | Yes      | Archive SHA-256 hash or `sig:<base64-signature>`; `null` means no archive hash is available.                                     |
-| `status`                         | `"UPDATE" \| "ROLLBACK"` | Yes      | Direction of the transition.                                                                                                     |
-| `channel`                        | `string`                 | No       | Runtime channel to persist after a successful install.                                                                           |
-| `manifestUrl`                    | `string \| null`         | No       | Signed or hashed manifest artifact URL.                                                                                          |
-| `manifestFileHash`               | `string \| null`         | No       | Manifest hash or embedded signature.                                                                                             |
-| `changedAssets`                  | `UnsafeObject \| null`   | No       | Manifest-relative file and patch descriptors used for a diff install.                                                            |
-| `shouldSkipCurrentBundleIdCheck` | `boolean`                | No       | Allows an explicitly authorized channel transition that is not newer than the active Bundle. Leave unset in normal direct calls. |
+| Parameter  | Type                     | Required | Description                                      |
+|------------|--------------------------|----------|--------------------------------------------------|
+| `bundleId` | `string`                 | ✅        | Unique identifier of the update bundle.          |
+| `fileUrl`  | `string \| null`         | ✅        | Bundle archive URL, or `null` when none is used. |
+| `fileHash` | `string \| null`         | ✅        | SHA256 hash, `sig:<base64_signature>`, or `null`. |
+| `status`   | `"UPDATE" \| "ROLLBACK"` | ✅        | Update transition to apply.                      |
 
-For a rollback to the built-in bundle, pass the nullable properties explicitly:
+For a direct rollback transition with no archive, pass the required nullable
+properties explicitly:
 
 ```tsx
 await HotUpdater.updateBundle({
-  bundleId: "00000000-0000-0000-0000-000000000000",
+  bundleId: "<rollback-bundle-id>",
   fileUrl: null,
   fileHash: null,
   status: "ROLLBACK",
 });
 ```
 
-## Verification and reload behavior
+### Behavior
 
-- A plain hexadecimal `fileHash` verifies the archive SHA-256 value.
-- A value beginning with `sig:` invokes native signature verification.
-- `fileHash: null` is valid for transitions with no archive, but direct archive
-  installs should supply the hash/signature returned by a trusted server.
-- A successful call stages the selected Bundle. Call
-  [`HotUpdater.reload()`](/docs/v0/react-native-api/reload) to execute it
-  immediately; automatic `wrap` flows handle force-update reloads themselves.
+- Downloads the specified bundle when `fileUrl` is not `null`.
+- When `fileHash` is a hexadecimal hash, verifies the downloaded file's SHA256
+  hash. A `sig:` value verifies its RSA-SHA256 signature with the configured
+  public key. A failed verification aborts the update and deletes the download.
+- A `null` URL or hash represents a transition that does not use that archive
+  value; the properties must still be present in the object.
+- Applies the selected bundle transition for the application.
+- Requires an explicit call to `HotUpdater.reload()` if you want to immediately reload the application after updating, particularly when `shouldForceUpdate` is true.
 
-## Related APIs
+### Security Recommendation
 
-- [`HotUpdater.checkForUpdate()`](/docs/v0/react-native-api/checkForUpdate)
-- [`HotUpdater.reload()`](/docs/v0/react-native-api/reload)
-- [`HotUpdater.resetChannel()`](/docs/v0/react-native-api/resetChannel)
+Use the `fileHash` returned by `checkForUpdate()` whenever an update has a
+bundle archive. A plain SHA256 hash checks integrity but does not authenticate
+the publisher; a `sig:` value also verifies publisher authenticity with the
+configured public key.
+
+#### Recommended Approach
+
+Use `updateInfo.updateBundle()` whenever possible. The helper preserves the
+complete update context selected by `checkForUpdate()` without manual copying.
+
+```tsx
+const updateInfo = await HotUpdater.checkForUpdate({
+  updateStrategy: "appVersion",
+});
+
+if (updateInfo) {
+  await updateInfo.updateBundle();
+}
+```

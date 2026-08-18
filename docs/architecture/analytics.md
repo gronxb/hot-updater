@@ -47,6 +47,5 @@ models: {
 ```
 
 Scans are ordered by `(received_at_ms, id)` and are capped at 50,000 matching
-rows to keep built-in aggregation bounded. The Console constructs this provider
-server-side from the database model; it does not rely on the protected HTTP
-query routes or bind a separate Analytics package.
+rows to keep built-in aggregation bounded. The Console reads the same server
+domain and no longer binds a separate Analytics package or provider.

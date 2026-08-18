@@ -75,17 +75,9 @@ export const customStorage = createStoragePlugin({
 });
 ```
 
-The full interface is:
+The core object operations are:
 
 ```typescript
-interface StorageObject {
-  /** Key relative to the storage plugin's configured base path. */
-  readonly key: string;
-  readonly storageUri: string;
-  readonly size: number;
-  readonly lastModifiedAt?: Date;
-}
-
 interface StoragePlugin {
   readonly name: string;
   readonly protocol: string;
@@ -112,10 +104,6 @@ interface StoragePlugin {
   readonly delete?: (input: {
     readonly storageUri: string;
   }) => Promise<{ readonly deleted: true }>;
-
-  readonly listObjects?: (prefix?: string) => Promise<StorageObject[]>;
-
-  readonly deleteObjects?: (keys: readonly string[]) => Promise<void>;
 }
 ```
 
@@ -152,34 +140,23 @@ different object key.
 Operations are optional because a runtime-specific implementation may support
 only the capabilities its consumer needs. Hot Updater validates required
 operations at each boundary and reports the missing operation by name.
-The core object operations (`put`, `get`, `getDownloadUrl`, `exists`, and
-`delete`) each receive one input object and return one result object so new
-fields can be added without introducing positional parameters or changing the
-result shape. The optional management operations use a prefix or an exact-key
-batch instead.
+Each core object operation receives one input object and returns one result
+object so new fields can be added without introducing positional parameters or
+changing the result shape.
 
-| Consumer                                      | Required operations                   |
-| --------------------------------------------- | ------------------------------------- |
-| `hot-updater deploy`                          | `put`, `get`, `exists`, `delete`      |
-| `hot-updater patch`                           | `get`, `put`, `delete`                |
-| `hot-updater release promote`                 | None; reuses the existing Bundle      |
-| `hot-updater storage prune` dry run           | `get`, `listObjects`                  |
-| `hot-updater storage prune --yes`             | `get`, `listObjects`, `deleteObjects` |
-| Console server mutations                      | `get`, `put`, `exists`, `delete`      |
-| Every `createHotUpdater({ storage })` storage | `getDownloadUrl`, `get`               |
+| Consumer                                          | Required operations              |
+| ------------------------------------------------- | -------------------------------- |
+| `hot-updater deploy`                              | `put`, `get`, `exists`, `delete` |
+| `hot-updater patch`                               | `get`, `put`, `delete`           |
+| `hot-updater release promote`                     | None; reuses the existing Bundle |
+| Console server mutations                          | `get`, `put`, `delete`           |
+| `createHotUpdater({ storage })` update responses  | `getDownloadUrl`                 |
+| `createHotUpdater({ storage })` download handling | `get`                            |
 
 `delete` always targets exactly one object and returns `{ deleted: true }` once
 that object is absent. Deleting an already-missing object has the same result,
-which makes retrying cleanup safe. `listObjects` lists objects below an optional
-base-path-relative prefix. `deleteObjects` accepts base-path-relative keys and
-deletes exactly those keys as a batch. `storage prune` composes these operations:
-the dry run lists and classifies objects, while `--yes` sends only the selected
-exact keys to `deleteObjects`. Direct delete-by-prefix and bucket administration
-remain outside the contract.
-
-Every storage passed to `createHotUpdater` must implement both runtime
-operations. `getDownloadUrl` resolves the client-facing download location, while
-`get` lets the same server read or serve the stored object.
+which makes retrying cleanup safe. Prefix or bucket cleanup is an administrative
+provider operation and is intentionally outside this contract.
 
 `put.body` is a one-shot Web stream. A provider must consume or cancel it before
 the returned promise settles. `contentLength` is supplied when the consumer
@@ -202,23 +179,17 @@ duplicate owners are rejected because routing would be ambiguous.
 ## Configuration and runtime implementations
 
 Pass plugin objects directly; there is no plugin factory thunk or runtime
-profile. This excerpt shows only the storage field; keep the required `build`,
-`database`, and `updateStrategy` fields in the complete project configuration:
+profile. This excerpt shows only the storage value used by a complete
+`hot-updater.config.ts`:
 
 ```typescript title="hot-updater.config.ts (storage excerpt)"
-import { defineConfig } from "hot-updater";
-
 import { customStorage } from "./customStorage";
 
-export default defineConfig({
-  // ...required build, database, and updateStrategy fields
-  storage: customStorage,
-});
+const storage = customStorage;
 ```
 
-The same public name can be exported from a runtime subpath with a different
-implementation. For example, a provider can capture a platform binding instead
-of Node.js credentials while preserving the same storage protocol.
+Assign this value to the required `storage` field alongside the configuration's
+`build`, `database`, and `updateStrategy` fields.
 
 `getDownloadUrl` is the storage plugin's public URL boundary. A provider can
 return its CDN URL, a provider-signed URL, or a signed URL handled by the same

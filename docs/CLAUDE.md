@@ -26,21 +26,25 @@ docs/
 │       │   └── policy/
 │       └── v0/                 # Hot Updater 0.x; served under /docs/v0
 │           ├── meta.json
-│           └── <same section directories as (latest)>
+│           ├── concepts/
+│           ├── get-started/
+│           ├── guides/
+│           ├── react-native-api/
+│           ├── managed/
+│           ├── custom/
+│           ├── build-plugins/
+│           ├── storage-plugins/
+│           ├── database-plugins/
+│           ├── integration-plugins/
+│           └── policy/
 ├── src/                        # Documentation site source
 ├── public/                     # Static assets
 └── waku.config.ts             # Waku configuration
 ```
 
-Paths written as `<version-root>/...` below apply to both
-`content/docs/(latest)` and `content/docs/v0`. Version-specific paths are
-identified explicitly.
-
 ## Sidebar Configuration (meta.json)
 
-**IMPORTANT**: Every documentation section in each version root MUST have a
-`meta.json` file to appear in that version's sidebar. Each version root also
-has its own `meta.json`.
+**IMPORTANT**: Every documentation section in each version root MUST have a `meta.json` file to appear in the sidebar.
 
 ### meta.json Structure
 
@@ -64,10 +68,7 @@ Each directory with documentation pages needs a `meta.json` file:
 
 ### Examples
 
-**Plugin section** (identical in
-`content/docs/(latest)/storage-plugins/meta.json` and
-`content/docs/v0/storage-plugins/meta.json`):
-
+**Plugin section** (`content/docs/(latest)/storage-plugins/meta.json` and `content/docs/v0/storage-plugins/meta.json`):
 ```json
 {
   "title": "Storage Plugins",
@@ -77,9 +78,7 @@ Each directory with documentation pages needs a `meta.json` file:
 }
 ```
 
-**Multi-page section** (latest only,
-`content/docs/(latest)/custom/meta.json`):
-
+**Multi-page section** (`content/docs/(latest)/custom/meta.json`):
 ```json
 {
   "title": "Self Hosting (Custom)",
@@ -97,8 +96,7 @@ Each directory with documentation pages needs a `meta.json` file:
 }
 ```
 
-The v0 section has its own `content/docs/v0/custom/meta.json`. Keep each
-version's page list aligned with the files in that version root.
+The v0 section has its own `content/docs/v0/custom/meta.json` without the latest-only `api-key-authentication` page.
 
 ### When to Update meta.json
 
@@ -112,13 +110,11 @@ version's page list aligned with the files in that version root.
 ## Documentation Standards
 
 ### File Format
-
 - Use `.mdx` format for all documentation files
 - Include frontmatter with `title`, `description`, and `icon`
 - Use kebab-case for file names (e.g., `aws.mdx`, `supabase.mdx`)
 
 ### Frontmatter Template
-
 ```mdx
 ---
 title: "Plugin Name"
@@ -128,38 +124,30 @@ icon: icon-name
 ```
 
 **Frontmatter Description Rules:**
-
 - **Keep it concise**: 1 sentence maximum, ideally under 20 words
 - **High-level overview**: Don't include technical details or implementation specifics
 - **No links**: Save links for the body content
 - **Action-oriented**: Focus on what it does or what problem it solves
 
 **Body Structure Rules:**
-
 - **Start with ## heading**: Body content must begin directly with a `##` heading (no text between frontmatter and first heading)
 - **No duplicate descriptions**: Don't repeat the frontmatter description as the first paragraph
 - **Natural flow**: Content should flow logically from one section to the next
 
 ### Package Installation
-
-**IMPORTANT**: Use `package-install` code block syntax with the full npm
-command. Packages used only by configuration, build, or deployment tooling are
-development dependencies:
+**IMPORTANT**: Use `package-install` code block syntax with a full npm command. Packages used only by configuration, build, or deployment tooling are development dependencies:
 
 ```package-install
 npm install @hot-updater/plugin-name --save-dev
 ```
 
-Packages imported by a deployed server or other runtime code are regular
-dependencies:
+Packages imported by a deployed server or other runtime code are regular dependencies:
 
 ```package-install
 npm install @hot-updater/server
 ```
 
-If a package is imported by both tooling and runtime code, install it as a
-regular dependency. Do not apply `--save-dev` based only on the package being a
-Hot Updater plugin.
+If a package is imported by both tooling and runtime code, install it as a regular dependency.
 
 ### Documentation Structure
 
@@ -190,21 +178,18 @@ Each plugin documentation should follow this structure:
 ## Code Block Guidelines
 
 ### TypeScript Configuration
-
 ```typescript
 interface PluginConfig {
-  field: string; // Brief inline comment
+  field: string;  // Brief inline comment
 }
 ```
 
 ### Usage Examples
-
 - Always use `process.env.VARIABLE_NAME` for sensitive data
 - Include `defineConfig` wrapper
 - Show full imports
 
 ### Environment Variables
-
 ```bash
 VARIABLE_NAME=value
 ```
@@ -229,53 +214,38 @@ VARIABLE_NAME=value
 
 ## Documentation Sections
 
-The relative locations below exist under both `content/docs/(latest)` and
-`content/docs/v0`. The listed files apply to both versions unless marked
-otherwise.
-
 ### Self-Hosting (Managed)
-
-Relative location: `<version-root>/managed/`
-
+Located in `content/docs/(latest)/managed/` and `content/docs/v0/managed/`
 - supabase.mdx - Supabase setup guide
 - firebase.mdx - Firebase setup guide
 - cloudflare.mdx - Cloudflare setup guide
 - aws.mdx - AWS setup guide
 
 ### Self-Hosting (Custom)
-
-Relative location: `<version-root>/custom/`
-
+Located in `content/docs/(latest)/custom/` and `content/docs/v0/custom/`
 - overview.mdx - Self-hosting architecture overview
 - quick-start.mdx - Quick start guide
 - cli-configuration.mdx - CLI configuration
 - database/ - Database adapter guides (Drizzle, Prisma, Kysely, MongoDB)
 - frameworks/ - Server framework guides (Hono, Express, Elysia)
-- hosting/ - Deployment platform guides (Docker and Vercel)
+- hosting/ - Deployment platform guides (Docker, Vercel)
 
 ### Build Plugins
-
-Relative location: `<version-root>/build-plugins/`
-
+Located in `content/docs/(latest)/build-plugins/` and `content/docs/v0/build-plugins/`
 - bare.mdx - React Native CLI
 - expo.mdx - Expo projects
 - rock.mdx - Rock bundler
 
 ### Storage Plugins
-
-Relative location: `<version-root>/storage-plugins/`
-
+Located in `content/docs/(latest)/storage-plugins/` and `content/docs/v0/storage-plugins/`
 - supabase.mdx - Supabase Storage
-- aws.mdx - AWS S3 and S3-compatible object storage
-- cloudflare.mdx - Cloudflare R2 via S3-compatible credentials, with
-  self-hosted runtime, legacy Wrangler migration, and pruning guidance
+- aws.mdx - AWS S3 (also covers Cloudflare R2)
+- cloudflare.mdx - Cloudflare R2 via Wrangler
 - firebase.mdx - Firebase Cloud Storage
 - custom-storage.mdx - Custom self-hosted storage
 
 ### Database Plugins
-
-Relative location: `<version-root>/database-plugins/`
-
+Located in `content/docs/(latest)/database-plugins/` and `content/docs/v0/database-plugins/`
 - supabase.mdx - Supabase PostgreSQL
 - aws.mdx - S3 + CloudFront JSON storage
 - cloudflare.mdx - Cloudflare D1
@@ -285,27 +255,21 @@ Relative location: `<version-root>/database-plugins/`
 ## Common Patterns
 
 ### When documenting plugins that work together:
-
 Include a "Complete Example" section showing both storage and database combined.
 
 ### When documenting alternatives:
-
-Recommend the provider-specific plugin by default. Document an alternative only
-when it provides a distinct capability, and state the protocol or migration
-tradeoff explicitly:
+If one plugin has limitations (e.g., Cloudflare R2 storage), recommend the better alternative upfront with a warning box:
 
 ```mdx
-> **Alternative**: Use this plugin when you need its object-management API...
+> **⚠️ Recommendation**: Use alternative plugin instead...
 ```
 
 ### When documenting peer dependencies:
-
 Show both in installation and include a separate Dependencies section at the end.
 
 ## Commands
 
 ### Build documentation site
-
 ```bash
 cd docs
 pnpm install
@@ -313,7 +277,6 @@ pnpm dev
 ```
 
 ### Build for production
-
 ```bash
 pnpm build
 ```
@@ -321,42 +284,34 @@ pnpm build
 ## 404 Page Guidelines
 
 ### Global 404 Page
-
 Located at `src/pages/404.tsx` - handles all unmatched routes.
 
 **Structure:**
-
 - Uses HomeLayout for consistent navigation and branding
 - Center-aligned content with proper spacing
 - Includes "Go Back Home" link
 - Theme-aware colors (dark/light mode support)
 
 **When to modify:**
-
 - Update styling to match site theme changes
 - Add custom error tracking if needed
 - Maintain consistent branding with other pages
 
 ### Inline 404 Handler
-
 Located in `src/pages/docs/[...slugs].tsx` - handles missing documentation pages.
 
 **Purpose:**
-
 - Shows 404 within docs layout when a doc page doesn't exist
 - Preserves sidebar and navigation for better UX
 - Different from global 404 (no layout redirect needed)
 
 **Key differences:**
-
 - **Global 404**: Unmatched routes (e.g., `/random`) → Full layout with navigation
 - **Inline 404**: Missing docs (e.g., `/docs/invalid`) → Shows within docs layout
 
 ## Documentation URL Patterns
 
-When referencing documentation in code, comments, or other docs, use these
-patterns for the latest version. For v0, insert `/v0` after `/docs`; for
-example, `/docs/v0/managed/supabase`.
+When referencing documentation in code, comments, or other docs, use these patterns for the latest version. For v0, insert `/v0` after `/docs` (for example, `/docs/v0/managed/supabase`).
 
 - **Self-Hosting (Managed)**: `/docs/managed/{provider}` (e.g., `/docs/managed/supabase`)
 - **Self-Hosting (Custom)**: `/docs/custom/{topic}` (e.g., `/docs/custom/quick-start`)
@@ -383,5 +338,4 @@ example, `/docs/v0/managed/supabase`.
 - Show complete working examples with imports
 - Keep consistent structure across all plugin docs
 - Organize content logically: Overview → Setup → Usage → Advanced
-- **Important**: Under both `(latest)` and `v0`, documentation folder names are
-  `managed` (Self-Hosting (Managed)) and `custom` (Self-Hosting (Custom))
+- **Important**: Under both `(latest)` and `v0`, documentation folder names are `managed` (Self-Hosting (Managed)) and `custom` (Self-Hosting (Custom))
