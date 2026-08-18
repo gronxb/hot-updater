@@ -6,21 +6,13 @@ import {
   HOT_UPDATER_SETTINGS_TABLE,
 } from "../schema/types";
 import {
+  assertCurrentOrEmptySchemaVersion,
   assertSupportedMigrationMode,
-  assertSupportedSchemaVersion,
   getEmptyMigrationResult,
   inferLegacyCoreSchemaVersion,
   isCurrentSchemaVersion,
 } from "./fixedMigratorShared";
-import { createReleaseCatalogBackfillSql } from "./releaseCatalogBackfill";
-import { hotUpdaterSchema } from "./schema/registry";
 import { createTableSql } from "./schema/sql";
-import {
-  createSchemaMigrationSql,
-  SQLITE_RESTORE_BUNDLES_SCHEMA_MARKER,
-  SQLITE_RESTORE_V100_BUNDLES_SCHEMA_MARKER,
-  V100_RELEASE_CATALOG_BACKFILL_MARKER,
-} from "./schema/sqlMigrations";
 import {
   createSqlCreateOperations,
   getSettingsInsertSql,
@@ -28,7 +20,6 @@ import {
 import { executeMigrationStatements } from "./sqlMigrationExecution";
 import type {
   MigrateOptions,
-  MigrationOperation,
   MigrationResult,
   Migrator,
   ORMSQLProvider,
@@ -44,87 +35,6 @@ const isMissingSettingsTableError = (error: unknown): boolean => {
       message.includes("no such table") ||
       message.includes("doesn't exist") ||
       message.includes("not found"))
-  );
-};
-
-const toCustomOperations = (
-  statements: readonly string[],
-  settingsOperation?: MigrationOperation,
-): MigrationOperation[] => [
-  ...statements.map(
-    (statement): MigrationOperation => ({
-      type: "custom",
-      sql: statement,
-    }),
-  ),
-  ...(settingsOperation ? [settingsOperation] : []),
-];
-
-const expandSqliteUserSchemaRestore = async (
-  db: QueryExecutorProvider,
-  statements: readonly string[],
-): Promise<readonly string[]> => {
-  if (
-    !statements.includes(SQLITE_RESTORE_BUNDLES_SCHEMA_MARKER) &&
-    !statements.includes(SQLITE_RESTORE_V100_BUNDLES_SCHEMA_MARKER)
-  ) {
-    return statements;
-  }
-  const officialIndexes = new Set(
-    hotUpdaterSchema.tables
-      .find(({ ormName }) => ormName === "bundles")
-      ?.indexes?.map(({ name }) => name) ?? [],
-  );
-  const result = await sql<{
-    readonly name: unknown;
-    readonly sql: unknown;
-    readonly type: unknown;
-  }>`
-    select name, sql, type
-    from sqlite_master
-    where tbl_name = 'bundles'
-      and type in ('index', 'trigger')
-      and sql is not null
-    order by type, name
-  `.execute(db);
-  const userSchema = result.rows.flatMap((row) => {
-    if (
-      typeof row.name !== "string" ||
-      typeof row.sql !== "string" ||
-      (row.type !== "index" && row.type !== "trigger")
-    ) {
-      throw new Error(
-        "Invalid SQLite bundle index or trigger metadata during 0.38.0 migration.",
-      );
-    }
-    return row.type === "index" && officialIndexes.has(row.name)
-      ? []
-      : [row.sql];
-  });
-  const removedV100Columns = [
-    "should_force_update",
-    "enabled",
-    "message",
-    "channel",
-    "channel_id",
-    "target_app_version",
-    "fingerprint_hash",
-    "rollout_cohort_count",
-    "target_cohorts",
-  ];
-  const v100UserSchema = userSchema.filter((statement) => {
-    const normalized = statement.toLowerCase();
-    return !removedV100Columns.some((column) =>
-      new RegExp(`\\b${column}\\b`).test(normalized),
-    );
-  });
-
-  return statements.flatMap((statement) =>
-    statement === SQLITE_RESTORE_BUNDLES_SCHEMA_MARKER
-      ? userSchema
-      : statement === SQLITE_RESTORE_V100_BUNDLES_SCHEMA_MARKER
-        ? v100UserSchema
-        : [statement],
   );
 };
 
@@ -167,10 +77,6 @@ export const createKyselyMigrator = ({
     const legacyCoreVersion = inferLegacyCoreSchemaVersion(
       await getSetting("version"),
     );
-    if (coreVersion !== undefined) {
-      assertSupportedSchemaVersion(coreVersion);
-      assertSupportedSchemaVersion(legacyCoreVersion);
-    }
     return { coreVersion, legacyCoreVersion };
   };
 
@@ -185,79 +91,30 @@ export const createKyselyMigrator = ({
     assertSupportedMigrationMode(options);
 
     const { coreVersion, legacyCoreVersion } = await getSchemaVersions();
-    const currentVersion = coreVersion ?? legacyCoreVersion;
     if (isCurrentSchemaVersion(coreVersion)) {
       return getEmptyMigrationResult();
     }
-    assertSupportedSchemaVersion(currentVersion);
+    assertCurrentOrEmptySchemaVersion(coreVersion ?? legacyCoreVersion);
 
     const settingsStatement = getSettingsInsertSql(provider);
     const settingsOperation =
       options.updateSettings === false
         ? undefined
-        : ({
-            type: "custom",
+        : {
+            type: "custom" as const,
             sql: settingsStatement,
-          } satisfies MigrationOperation);
-    const executableSettingsStatements =
-      options.updateSettings === false ? [] : [settingsStatement];
-    const rawMigrationStatements =
-      currentVersion === undefined
-        ? []
-        : createSchemaMigrationSql(
-            currentVersion,
-            HOT_UPDATER_SCHEMA_VERSION,
-            provider,
-            relationMode,
-          );
-    const statementsWithBackfill = rawMigrationStatements.includes(
-      V100_RELEASE_CATALOG_BACKFILL_MARKER,
-    )
-      ? rawMigrationStatements.flatMap((statement) =>
-          statement === V100_RELEASE_CATALOG_BACKFILL_MARKER ? [] : [statement],
-        )
-      : rawMigrationStatements;
-    const requiresReleaseCatalogBackfill = rawMigrationStatements.includes(
-      V100_RELEASE_CATALOG_BACKFILL_MARKER,
-    );
-    let backfillStatements: readonly string[] = [];
-    if (requiresReleaseCatalogBackfill) {
-      if (currentVersion === undefined) {
-        throw new Error("Release Catalog backfill requires a source version.");
-      }
-      backfillStatements = await createReleaseCatalogBackfillSql({
-        authorityId: options.authorityId,
-        db,
-        provider,
-        sourceVersion: currentVersion,
-      });
-    }
-    const markerIndex = rawMigrationStatements.indexOf(
-      V100_RELEASE_CATALOG_BACKFILL_MARKER,
-    );
-    const migrationWithBackfill =
-      markerIndex < 0
-        ? statementsWithBackfill
-        : [
-            ...rawMigrationStatements.slice(0, markerIndex),
-            ...backfillStatements,
-            ...rawMigrationStatements.slice(markerIndex + 1),
-          ];
-    const migrationStatements =
-      provider === "sqlite"
-        ? await expandSqliteUserSchemaRestore(db, migrationWithBackfill)
-        : migrationWithBackfill;
-    const statements =
-      currentVersion === undefined
-        ? [...createTableSql(provider, relationMode), settingsStatement]
-        : [...migrationStatements, ...executableSettingsStatements];
-    const operations =
-      currentVersion === undefined
-        ? createSqlCreateOperations(provider, relationMode, settingsOperation)
-        : toCustomOperations(migrationStatements, settingsOperation);
+          };
+    const statements = [
+      ...createTableSql(provider, relationMode),
+      settingsStatement,
+    ];
 
     return {
-      operations,
+      operations: createSqlCreateOperations(
+        provider,
+        relationMode,
+        settingsOperation,
+      ),
       getSQL: () => statements.map((statement) => `${statement};`).join("\n\n"),
       execute: () => executeMigrationStatements({ db, provider, statements }),
     };

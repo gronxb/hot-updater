@@ -1,4 +1,37 @@
--- HotUpdater Release Catalog v1
+-- HotUpdater.schema
+
+CREATE TABLE public.channels (
+  id text COLLATE "C" PRIMARY KEY NOT NULL
+    CHECK (pg_catalog.char_length(id) BETWEEN 1 AND 255),
+  name text COLLATE "C" NOT NULL UNIQUE
+    CHECK (pg_catalog.char_length(name) BETWEEN 1 AND 255)
+);
+
+CREATE TABLE public.bundles (
+  id uuid PRIMARY KEY NOT NULL,
+  platform text NOT NULL,
+  file_hash text NOT NULL,
+  git_commit_hash text,
+  storage_uri text NOT NULL,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  manifest_storage_uri text,
+  manifest_file_hash text,
+  asset_base_storage_uri text
+);
+
+CREATE TABLE public.bundle_patches (
+  id varchar(255) PRIMARY KEY NOT NULL,
+  bundle_id uuid NOT NULL,
+  base_bundle_id uuid NOT NULL,
+  base_file_hash text NOT NULL,
+  patch_file_hash text NOT NULL,
+  patch_storage_uri text NOT NULL,
+  order_index integer NOT NULL DEFAULT 0,
+  CONSTRAINT bundle_patches_bundle_id_fk FOREIGN KEY (bundle_id)
+    REFERENCES public.bundles(id) ON UPDATE RESTRICT ON DELETE CASCADE,
+  CONSTRAINT bundle_patches_base_bundle_id_fk FOREIGN KEY (base_bundle_id)
+    REFERENCES public.bundles(id) ON UPDATE RESTRICT ON DELETE CASCADE
+);
 
 CREATE TABLE public.releases (
   id uuid PRIMARY KEY NOT NULL,
@@ -36,14 +69,6 @@ CREATE TABLE public.releases (
     REFERENCES public.releases(id) ON UPDATE RESTRICT ON DELETE SET NULL
 );
 
-CREATE INDEX releases_scope_order_idx ON public.releases(scope_key, id);
-CREATE INDEX releases_channel_platform_order_idx
-  ON public.releases(channel_id, platform, id);
-CREATE INDEX releases_bundle_id_idx ON public.releases(bundle_id);
-CREATE INDEX releases_fingerprint_hash_idx
-  ON public.releases(fingerprint_hash);
-CREATE INDEX releases_enabled_idx ON public.releases(enabled);
-
 CREATE TABLE public.release_catalogs (
   scope_key varchar(2048) COLLATE "C" PRIMARY KEY NOT NULL,
   authority_id varchar(255) COLLATE "C" NOT NULL,
@@ -67,94 +92,101 @@ CREATE TABLE public.release_catalogs (
     REFERENCES public.channels(id) ON UPDATE RESTRICT ON DELETE RESTRICT
 );
 
-CREATE INDEX release_catalogs_channel_idx
-  ON public.release_catalogs(channel_id);
-CREATE INDEX release_catalogs_authority_strategy_idx
-  ON public.release_catalogs(authority_id, strategy);
-
-ALTER TABLE public.bundle_events
-  DROP CONSTRAINT IF EXISTS bundle_events_type_check;
-ALTER TABLE public.bundle_events
-  DROP CONSTRAINT IF EXISTS bundle_events_shape_check;
-ALTER TABLE public.bundle_events
-  ADD COLUMN from_release_id uuid;
-ALTER TABLE public.bundle_events
-  ADD COLUMN to_release_id uuid;
-ALTER TABLE public.bundle_events
-  ALTER COLUMN to_bundle_id DROP NOT NULL;
-CREATE INDEX bundle_events_to_release_idx
-  ON public.bundle_events(type, to_release_id, received_at_ms, id);
-CREATE INDEX bundle_events_from_release_idx
-  ON public.bundle_events(type, from_release_id, received_at_ms, id);
-ALTER TABLE public.bundle_events
-  ADD CONSTRAINT bundle_events_type_check CHECK (
+CREATE TABLE public.bundle_events (
+  id uuid PRIMARY KEY NOT NULL,
+  type text NOT NULL,
+  install_id text NOT NULL,
+  user_id text,
+  username text,
+  from_release_id uuid,
+  from_bundle_id uuid,
+  to_release_id uuid,
+  to_bundle_id uuid,
+  platform text NOT NULL,
+  app_version text NOT NULL,
+  channel text NOT NULL,
+  cohort text NOT NULL,
+  update_strategy text,
+  fingerprint_hash text,
+  sdk_version text,
+  received_at_ms double precision NOT NULL,
+  CONSTRAINT bundle_events_type_check CHECK (
     type IN ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED', 'UNCHANGED')
-  );
-ALTER TABLE public.bundle_events
-  ADD CONSTRAINT bundle_events_shape_check CHECK (
+  ),
+  CONSTRAINT bundle_events_platform_check CHECK (
+    platform IN ('ios', 'android')
+  ),
+  CONSTRAINT bundle_events_shape_check CHECK (
     (type IN ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')
       AND update_strategy IN ('fingerprint', 'appVersion'))
     OR (type = 'UNCHANGED'
       AND update_strategy IS NULL)
-  );
-
--- hot-updater:release-catalog-backfill-start
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM public.bundles) THEN
-    RAISE EXCEPTION
-      'Release Catalog migration requires Hot Updater init to preflight and materialize legacy Bundle policy.';
-  END IF;
-END;
-$$;
--- hot-updater:release-catalog-backfill-end
-
-DROP FUNCTION IF EXISTS public.hot_updater_commit(jsonb);
-DROP FUNCTION IF EXISTS public.get_update_info_by_fingerprint_hash(
-  public.platforms, uuid, uuid, text, text, text
+  ),
+  CONSTRAINT bundle_events_received_at_check CHECK (received_at_ms >= 0)
 );
-DROP FUNCTION IF EXISTS public.get_update_info_by_app_version(
-  public.platforms, text, uuid, uuid, text, text[], text
-);
-DROP FUNCTION IF EXISTS public.get_target_app_version_list(
-  public.platforms, uuid
-);
-DROP FUNCTION IF EXISTS public.is_cohort_eligible(uuid, text, integer, text[]);
-DROP FUNCTION IF EXISTS public.get_numeric_cohort_rollout_position(uuid, text);
-DROP FUNCTION IF EXISTS public.is_numeric_cohort(text);
-DROP FUNCTION IF EXISTS public.get_modular_inverse(integer, integer);
-DROP FUNCTION IF EXISTS public.get_rollout_offset(uuid);
-DROP FUNCTION IF EXISTS public.get_rollout_multiplier(uuid);
-DROP FUNCTION IF EXISTS public.gcd_int(integer, integer);
-DROP FUNCTION IF EXISTS public.normalize_cohort_value(text);
-DROP FUNCTION IF EXISTS public.hash_rollout_value(text);
-DROP FUNCTION IF EXISTS public.positive_mod(integer, integer);
 
-ALTER TABLE public.bundles
-  DROP CONSTRAINT IF EXISTS bundles_channel_id_fkey;
-ALTER TABLE public.bundles
-  DROP CONSTRAINT IF EXISTS check_version_or_fingerprint;
-ALTER TABLE public.bundles
-  DROP CONSTRAINT IF EXISTS bundles_rollout_cohort_count_check;
-DROP INDEX IF EXISTS public.bundles_target_app_version_idx;
-DROP INDEX IF EXISTS public.bundles_fingerprint_hash_idx;
-DROP INDEX IF EXISTS public.bundles_channel_idx;
-DROP INDEX IF EXISTS public.bundles_channel_id_idx;
-DROP INDEX IF EXISTS public.bundles_rollout_idx;
-ALTER TABLE public.bundles
-  DROP COLUMN should_force_update,
-  DROP COLUMN enabled,
-  DROP COLUMN message,
-  DROP COLUMN channel,
-  DROP COLUMN channel_id,
-  DROP COLUMN target_app_version,
-  DROP COLUMN fingerprint_hash,
-  DROP COLUMN rollout_cohort_count,
-  DROP COLUMN target_cohorts;
+CREATE TABLE public.client_access_keys (
+  id text PRIMARY KEY NOT NULL,
+  hash text NOT NULL,
+  name text NOT NULL,
+  prefix text NOT NULL,
+  role text NOT NULL CHECK (role = 'client'),
+  created_at_ms double precision NOT NULL CHECK (created_at_ms >= 0),
+  revoked_at_ms double precision CHECK (
+    revoked_at_ms IS NULL OR revoked_at_ms >= 0
+  )
+);
 
+CREATE TABLE public.private_hot_updater_settings (
+  key varchar(255) PRIMARY KEY NOT NULL,
+  value text NOT NULL DEFAULT '1.0.0'
+);
+
+CREATE INDEX releases_scope_order_idx ON public.releases(scope_key, id);
+CREATE INDEX releases_channel_platform_order_idx
+  ON public.releases(channel_id, platform, id);
+CREATE INDEX releases_bundle_id_idx ON public.releases(bundle_id);
+CREATE INDEX releases_fingerprint_hash_idx ON public.releases(fingerprint_hash);
+CREATE INDEX releases_enabled_idx ON public.releases(enabled);
+CREATE INDEX release_catalogs_channel_idx ON public.release_catalogs(channel_id);
+CREATE INDEX release_catalogs_authority_strategy_idx
+  ON public.release_catalogs(authority_id, strategy);
+CREATE INDEX bundle_patches_bundle_id_idx ON public.bundle_patches(bundle_id);
+CREATE INDEX bundle_patches_base_bundle_id_idx
+  ON public.bundle_patches(base_bundle_id);
+CREATE INDEX bundle_events_received_at_idx
+  ON public.bundle_events(received_at_ms, id);
+CREATE INDEX bundle_events_install_idx
+  ON public.bundle_events(install_id, received_at_ms, id);
+CREATE INDEX bundle_events_user_id_idx
+  ON public.bundle_events(user_id, received_at_ms, id);
+CREATE INDEX bundle_events_username_idx
+  ON public.bundle_events(username, received_at_ms, id);
+CREATE INDEX bundle_events_to_bundle_idx
+  ON public.bundle_events(type, to_bundle_id, received_at_ms, id);
+CREATE INDEX bundle_events_from_bundle_idx
+  ON public.bundle_events(type, from_bundle_id, received_at_ms, id);
+CREATE INDEX bundle_events_to_release_idx
+  ON public.bundle_events(type, to_release_id, received_at_ms, id);
+CREATE INDEX bundle_events_from_release_idx
+  ON public.bundle_events(type, from_release_id, received_at_ms, id);
+CREATE UNIQUE INDEX client_access_keys_hash_key
+  ON public.client_access_keys(hash);
+CREATE INDEX client_access_keys_created_at_idx
+  ON public.client_access_keys(created_at_ms, id);
+
+ALTER TABLE public.channels ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bundles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bundle_patches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.releases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.release_catalogs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bundle_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.client_access_keys ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.private_hot_updater_settings ENABLE ROW LEVEL SECURITY;
 
+INSERT INTO public.private_hot_updater_settings (key, value)
+VALUES ('schema.core', '1.0.0')
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 CREATE FUNCTION public.hot_updater_commit(p_commit jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -502,4 +534,38 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.hot_updater_commit(jsonb)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.hot_updater_commit(jsonb)
+  TO service_role;
+
+CREATE FUNCTION public.hot_updater_delete_channel(p_id text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = pg_catalog
+AS $$
+BEGIN
+  BEGIN
+    DELETE FROM public.channels
+    WHERE id = p_id;
+
+    IF NOT FOUND THEN
+      RETURN pg_catalog.jsonb_build_object(
+        'deleted', false,
+        'reason', 'not_found'
+      );
+    END IF;
+  EXCEPTION
+    WHEN foreign_key_violation THEN
+      RETURN pg_catalog.jsonb_build_object(
+        'deleted', false,
+        'reason', 'not_empty'
+      );
+  END;
+
+  RETURN pg_catalog.jsonb_build_object('deleted', true);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.hot_updater_delete_channel(text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.hot_updater_delete_channel(text)
   TO service_role;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createSchemaMigrationSql } from "../db/schema/sqlMigrations";
+import { createTableSql } from "../db/schema/sql";
 import {
   generateDrizzleSchema,
   generatePrismaSchema,
@@ -60,15 +60,6 @@ describe("v1.0.0 Release Catalog schema", () => {
           ?.nullable,
       ).toBe(true);
     }
-
-    const postgres = createSchemaMigrationSql(
-      "0.38.0",
-      "1.0.0",
-      "postgresql",
-    ).join("\n");
-    expect(postgres).toContain(
-      "alter table bundle_events alter column to_bundle_id drop not null",
-    );
   });
 
   it("generates nullable source and artifact relations with the intended deletion rules", () => {
@@ -85,10 +76,8 @@ describe("v1.0.0 Release Catalog schema", () => {
     expect(drizzle).not.toContain("foreignColumns: [releases.id]");
   });
 
-  it("migrates v0.38 by adding both projection tables and their constraints", () => {
-    const sql = createSchemaMigrationSql("0.38.0", "1.0.0", "postgresql").join(
-      "\n",
-    );
+  it("creates both projection tables and their constraints from empty", () => {
+    const sql = createTableSql("postgresql").join("\n");
 
     expect(sql).toContain("create table releases");
     expect(sql).toContain("create table release_catalogs");
@@ -98,7 +87,7 @@ describe("v1.0.0 Release Catalog schema", () => {
   });
 
   it("uses byte-bounded MySQL catalog keys", () => {
-    const sql = createSchemaMigrationSql("0.38.0", "1.0.0", "mysql").join("\n");
+    const sql = createTableSql("mysql").join("\n");
 
     expect(sql).toContain(
       "scope_key varchar(2048) character set ascii collate ascii_bin",

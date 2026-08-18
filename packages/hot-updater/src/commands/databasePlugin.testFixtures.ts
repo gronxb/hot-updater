@@ -1,13 +1,157 @@
+import {
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+} from "@hot-updater/core";
 import { createMockDatabaseData, mockDatabase } from "@hot-updater/mock";
 import type { Bundle, LegacyBundle } from "@hot-updater/plugin-core";
 import {
   bundleToPatchRows,
   bundleToRow,
+  compileReleaseCatalog,
   createDatabaseClient,
   type DatabasePlugin,
+  extractTimestampFromUUIDv7,
+  releaseRowToRelease,
+  type ReleaseCatalogRow,
+  type ReleaseRow,
 } from "@hot-updater/plugin-core";
-import { compileLegacyReleaseCatalogBackfill } from "@hot-updater/server";
 import { vi } from "vitest";
+
+const createdAtMsFromId = (id: string): number => {
+  try {
+    const timestamp = extractTimestampFromUUIDv7(id);
+    return Number.isSafeInteger(timestamp) ? timestamp : 0;
+  } catch {
+    return 0;
+  }
+};
+
+const compileSeedCatalogs = async (
+  authorityId: string,
+  bundles: readonly LegacyBundle[],
+): Promise<{
+  readonly catalogs: readonly {
+    readonly channelName: string;
+    readonly row: ReleaseCatalogRow;
+  }[];
+  readonly releases: readonly {
+    readonly channelName: string;
+    readonly row: ReleaseRow;
+  }[];
+}> => {
+  if (bundles.length === 0) return { catalogs: [], releases: [] };
+
+  const scopes = new Map<
+    string,
+    {
+      readonly channelName: string;
+      readonly fingerprintHash: string | null;
+      readonly platform: LegacyBundle["platform"];
+      readonly releases: ReleaseRow[];
+      readonly strategy: "APP_VERSION" | "FINGERPRINT";
+    }
+  >();
+
+  for (const bundle of bundles) {
+    const strategy =
+      bundle.fingerprintHash === null ? "APP_VERSION" : "FINGERPRINT";
+    const channelKey = encodeChannelKey(bundle.channel);
+    const scopeKey =
+      strategy === "APP_VERSION"
+        ? createReleaseCatalogScopeKey({
+            authorityId,
+            channelKey,
+            platform: bundle.platform,
+            strategy,
+          })
+        : createReleaseCatalogScopeKey({
+            authorityId,
+            channelKey,
+            fingerprintHash: bundle.fingerprintHash ?? "",
+            platform: bundle.platform,
+            strategy,
+          });
+    const createdAtMs = createdAtMsFromId(bundle.id);
+    const release: ReleaseRow = {
+      id: bundle.id,
+      revision: 1,
+      scope_key: scopeKey,
+      channel_id: bundle.channel,
+      platform: bundle.platform,
+      kind: "BUNDLE",
+      bundle_id: bundle.id,
+      strategy,
+      target_app_version: bundle.targetAppVersion,
+      fingerprint_hash: bundle.fingerprintHash,
+      enabled: bundle.enabled,
+      should_force_update: bundle.shouldForceUpdate,
+      message: bundle.message,
+      rollout_cohort_count: bundle.rolloutCohortCount ?? 1000,
+      target_cohorts: bundle.targetCohorts ?? [],
+      operation: "DEPLOY",
+      source_release_id: null,
+      created_at_ms: createdAtMs,
+      updated_at_ms: createdAtMs,
+    };
+    const scope = scopes.get(scopeKey);
+    if (scope === undefined) {
+      scopes.set(scopeKey, {
+        channelName: bundle.channel,
+        fingerprintHash: bundle.fingerprintHash,
+        platform: bundle.platform,
+        releases: [release],
+        strategy,
+      });
+    } else {
+      scope.releases.push(release);
+    }
+  }
+
+  const catalogs: {
+    channelName: string;
+    row: ReleaseCatalogRow;
+  }[] = [];
+  const releases: {
+    channelName: string;
+    row: ReleaseRow;
+  }[] = [];
+  for (const [scopeKey, scope] of [...scopes].sort(([left], [right]) =>
+    left.localeCompare(right),
+  )) {
+    scope.releases.sort((left, right) => left.id.localeCompare(right.id));
+    releases.push(
+      ...scope.releases.map((row) => ({
+        channelName: scope.channelName,
+        row,
+      })),
+    );
+    const compilation = await compileReleaseCatalog({
+      releases: scope.releases.map(releaseRowToRelease),
+      strategy: scope.strategy,
+    });
+    catalogs.push({
+      channelName: scope.channelName,
+      row: {
+        scope_key: scopeKey,
+        authority_id: authorityId,
+        strategy: scope.strategy,
+        channel_id: scope.channelName,
+        channel_key: encodeChannelKey(scope.channelName),
+        platform: scope.platform,
+        fingerprint_hash: scope.fingerprintHash,
+        generation: 1,
+        payload: compilation.canonicalPayload,
+        catalog_hash: compilation.catalogHash,
+        byte_size: compilation.byteSize,
+        is_tombstone: compilation.payload.releaseDescriptors.length === 0,
+        updated_at_ms: Math.max(
+          ...scope.releases.map(({ updated_at_ms }) => updated_at_ms),
+        ),
+      },
+    });
+  }
+  return { catalogs, releases };
+};
 
 export const createDatabasePluginHarness = () => {
   const data = createMockDatabaseData();
@@ -133,28 +277,14 @@ export const createDatabasePluginHarness = () => {
       const channelIds = new Map(
         [...data.channels.values()].map(({ id, name }) => [name, id]),
       );
-      const backfill = await compileLegacyReleaseCatalogBackfill({
-        authorityId,
-        rows: bundles.map((bundle) => ({
-          id: bundle.id,
-          platform: bundle.platform,
-          channel: bundle.channel,
-          enabled: bundle.enabled,
-          should_force_update: bundle.shouldForceUpdate,
-          message: bundle.message,
-          target_app_version: bundle.targetAppVersion,
-          fingerprint_hash: bundle.fingerprintHash,
-          rollout_cohort_count: bundle.rolloutCohortCount,
-          target_cohorts: bundle.targetCohorts,
-        })),
-      });
-      for (const release of backfill.releases) {
+      const compiled = await compileSeedCatalogs(authorityId, bundles);
+      for (const release of compiled.releases) {
         data.releases.set(release.row.id, {
           ...release.row,
           channel_id: channelIds.get(release.channelName)!,
         });
       }
-      for (const catalog of backfill.catalogs) {
+      for (const catalog of compiled.catalogs) {
         data.releaseCatalogs.set(catalog.row.scope_key, {
           ...catalog.row,
           channel_id: channelIds.get(catalog.channelName)!,

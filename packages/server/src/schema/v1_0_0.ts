@@ -13,14 +13,12 @@ import {
   schema,
   stringColumn,
   table,
+  uniqueIndex,
   uuid,
   varchar,
 } from "./dsl";
 import { createSettingsTable } from "./settings";
 import { HOT_UPDATER_SETTINGS_TABLE } from "./types";
-import { bundlePatchesV036 } from "./v0_36_0";
-import { clientAccessKeysV037 } from "./v0_37_0";
-import { channelsV038 } from "./v0_38_0";
 
 const channelIdentityCollations = {
   mysql: "utf8mb4_bin",
@@ -33,6 +31,125 @@ const catalogKeyCollations = {
   mssql: "Latin1_General_100_BIN2",
   sqlite: "binary",
 } as const;
+
+export const channelsV100 = table(
+  "channels",
+  {
+    id: idColumn("id", varchar(255)).collate(channelIdentityCollations),
+    name: column("name", varchar(255)).collate(channelIdentityCollations),
+  },
+  {
+    indexes: [uniqueIndex("channels_name_key", ["name"])],
+    checks: [
+      check({
+        name: "channels_id_length_check",
+        expression: "char_length(id) between 1 and 255",
+        providerExpressions: {
+          mssql:
+            "len(id collate Latin1_General_100_BIN2_SC + N'#') - 1 between 1 and 255",
+          sqlite: "length(id) between 1 and 255",
+        },
+        sqliteInline: true,
+      }),
+      check({
+        name: "channels_name_length_check",
+        expression: "char_length(name) between 1 and 255",
+        providerExpressions: {
+          mssql:
+            "len(name collate Latin1_General_100_BIN2_SC + N'#') - 1 between 1 and 255",
+          sqlite: "length(name) between 1 and 255",
+        },
+        sqliteInline: true,
+      }),
+    ],
+  },
+);
+
+export const bundlePatchesV100 = table(
+  "bundle_patches",
+  {
+    id: idColumn("id", varchar(255)),
+    bundle_id: uuid("bundle_id"),
+    base_bundle_id: uuid("base_bundle_id"),
+    base_file_hash: column("base_file_hash", "string"),
+    patch_file_hash: column("patch_file_hash", "string"),
+    patch_storage_uri: column("patch_storage_uri", "string"),
+    order_index: integer("order_index").defaultTo(0),
+  },
+  {
+    indexes: [
+      index("bundle_patches_bundle_id_idx", ["bundle_id"]),
+      index("bundle_patches_base_bundle_id_idx", ["base_bundle_id"]),
+    ],
+    foreignKeys: [
+      foreignKey("bundle_patches_bundle_id_fk", ["bundle_id"], "bundles", [
+        "id",
+      ]),
+      foreignKey(
+        "bundle_patches_base_bundle_id_fk",
+        ["base_bundle_id"],
+        "bundles",
+        ["id"],
+      ),
+    ],
+    relations: [
+      relation({
+        name: "bundle",
+        fieldName: "patches",
+        targetFieldName: "bundle",
+        relationName: "bundle_patches_bundles_patches",
+        columns: ["bundle_id"],
+        referencedTable: "bundles",
+        referencedColumns: ["id"],
+      }),
+      relation({
+        name: "baseBundle",
+        fieldName: "baseForPatches",
+        targetFieldName: "baseBundle",
+        relationName: "bundle_patches_bundles_baseForPatches",
+        columns: ["base_bundle_id"],
+        referencedTable: "bundles",
+        referencedColumns: ["id"],
+      }),
+    ],
+  },
+);
+
+export const clientAccessKeysV100 = table(
+  "client_access_keys",
+  {
+    id: idColumn("id", varchar(255)),
+    hash: stringColumn("hash"),
+    name: stringColumn("name"),
+    prefix: stringColumn("prefix"),
+    role: stringColumn("role"),
+    created_at_ms: float("created_at_ms"),
+    revoked_at_ms: float("revoked_at_ms").nullable(),
+  },
+  {
+    indexes: [
+      uniqueIndex("client_access_keys_hash_key", ["hash"]),
+      index("client_access_keys_created_at_idx", ["created_at_ms", "id"]),
+    ],
+    checks: [
+      check({
+        name: "client_access_keys_role_check",
+        expression: "role = 'client'",
+        sqliteInline: true,
+      }),
+      check({
+        name: "client_access_keys_created_at_check",
+        expression: "created_at_ms >= 0",
+        sqliteInline: true,
+      }),
+      check({
+        name: "client_access_keys_revoked_at_check",
+        expression: "revoked_at_ms is null or revoked_at_ms >= 0",
+        sqliteInline: true,
+      }),
+    ],
+  },
+);
 
 export const bundlesV100 = table(
   "bundles",
@@ -325,13 +442,13 @@ export const v1_0_0 = schema({
   version: "1.0.0",
   settingsTable: HOT_UPDATER_SETTINGS_TABLE,
   tables: [
-    channelsV038,
+    channelsV100,
     bundlesV100,
-    bundlePatchesV036,
+    bundlePatchesV100,
     releasesV100,
     releaseCatalogsV100,
     bundleEventsV100,
-    clientAccessKeysV037,
+    clientAccessKeysV100,
     createSettingsTable("1.0.0"),
   ],
 });

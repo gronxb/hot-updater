@@ -13,36 +13,23 @@ export const assertSupportedMigrationMode = (options: MigrateOptions): void => {
   }
 };
 
-export const assertSupportedSchemaVersion = (
+export const unsupportedSchemaUpgradeMessage = (version: string): string =>
+  `Hot Updater v1 cannot migrate schema ${version} in place. Create a new empty database and run migrate or generate against schema ${HOT_UPDATER_SCHEMA_VERSION}.`;
+
+export const assertCurrentOrEmptySchemaVersion = (
   currentVersion: string | undefined,
 ): void => {
   if (
     currentVersion !== undefined &&
-    currentVersion !== "0.21.0" &&
-    currentVersion !== "0.29.0" &&
-    currentVersion !== "0.31.0" &&
-    currentVersion !== "0.36.0" &&
-    currentVersion !== "0.37.0" &&
-    currentVersion !== "0.38.0" &&
-    currentVersion !== "1.0.0"
+    currentVersion !== HOT_UPDATER_SCHEMA_VERSION
   ) {
-    throw new Error(
-      `Unsupported Hot Updater schema version: ${currentVersion}`,
-    );
+    throw new Error(unsupportedSchemaUpgradeMessage(currentVersion));
   }
 };
 
 export const inferLegacyCoreSchemaVersion = (
   legacyVersion: string | undefined,
 ): string | undefined => legacyVersion;
-
-export const resolveLegacyCoreSchemaVersion = (
-  legacyVersion: string | undefined,
-): string | undefined => {
-  const coreVersion = inferLegacyCoreSchemaVersion(legacyVersion);
-  assertSupportedSchemaVersion(coreVersion);
-  return coreVersion;
-};
 
 export const isCurrentSchemaVersion = (
   currentVersion: string | undefined,
