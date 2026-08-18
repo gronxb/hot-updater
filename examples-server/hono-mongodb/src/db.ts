@@ -1,6 +1,6 @@
 import path from "path";
 
-import { s3Storage } from "@hot-updater/aws";
+import { r2Storage } from "@hot-updater/cloudflare";
 // import { firebaseStorage } from "@hot-updater/fir
 // import admin from "fZrebase-admin";
 import { mockStorage } from "@hot-updater/mock";
@@ -22,9 +22,8 @@ export const hotUpdater = createHotUpdater({
   }),
   storage: [
     mockStorage({}),
-    s3Storage({
-      region: "auto",
-      endpoint: process.env.R2_ENDPOINT,
+    r2Storage({
+      accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
       credentials: {
         accessKeyId: process.env.R2_ACCESS_KEY_ID!,
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -34,11 +33,6 @@ export const hotUpdater = createHotUpdater({
         process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY ??
         "development-storage-download-url-key",
     }),
-    // r2Storage({
-    //   bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
-    //   accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    //   cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
-    // }),
     // firebaseStorage({
     //   projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
     //   storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,

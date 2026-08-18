@@ -8,7 +8,7 @@ This example demonstrates how to use Hot Updater with Express and Prisma.
 - **Database**: SQLite with Prisma ORM
 - **Adapter**: Prisma adapter (`@hot-updater/server/adapters/prisma`)
 - **Node.js Adapter**: `toNodeHandler` for seamless Express integration
-- **Storage**: Mock storage + AWS S3 / Cloudflare R2
+- **Storage**: Mock storage + Cloudflare R2
 
 ## Quick Start
 

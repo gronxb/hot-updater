@@ -1,4 +1,4 @@
-import { s3Storage } from "@hot-updater/aws";
+import { r2Storage } from "@hot-updater/cloudflare";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
@@ -13,9 +13,8 @@ export const hotUpdater = createHotUpdater({
   }),
   storage: [
     mockStorage({}),
-    s3Storage({
-      region: "auto",
-      endpoint: process.env.R2_ENDPOINT,
+    r2Storage({
+      accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
       credentials: {
         accessKeyId: process.env.R2_ACCESS_KEY_ID!,
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,

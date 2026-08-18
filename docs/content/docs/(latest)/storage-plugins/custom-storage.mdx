@@ -198,32 +198,16 @@ export default defineConfig({
 ```
 
 The same public name can be exported from a runtime subpath with a different
-implementation. For example, the Cloudflare Worker version captures an R2
-binding instead of Node.js credentials:
-
-```typescript
-import { createHotUpdater } from "@hot-updater/server";
-import { d1Database, r2Storage } from "@hot-updater/cloudflare/worker";
-import { env } from "cloudflare:workers";
-
-const hotUpdater = createHotUpdater({
-  database: d1Database(env.DB),
-  storage: [
-    r2Storage({
-      bucket: env.BUCKET,
-      bucketName: env.BUCKET_NAME,
-      downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
-    }),
-  ],
-});
-```
+implementation. For example, a provider can capture a platform binding instead
+of Node.js credentials while preserving the same storage protocol.
 
 `getDownloadUrl` is the storage plugin's public URL boundary. A provider can
 return its CDN URL, a provider-signed URL, or a signed URL handled by the same
 server. The contract exposes only the resulting URL; the delivery mechanism is
 an implementation detail. For example, AWS passes
-`cloudFrontDownloadUrl(...)` to `s3Storage`, while a private R2 Worker returns a
-signed handler-relative URL.
+`cloudFrontDownloadUrl(...)` to `s3Storage`, while the root Cloudflare
+`r2Storage` plugin creates a signed handler-relative URL when configured with
+`downloadUrlSigningKey`.
 
 ## File-system consumers
 

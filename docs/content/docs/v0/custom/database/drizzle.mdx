@@ -34,15 +34,14 @@ Create the Hot Updater instance:
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
-import { s3Storage } from "@hot-updater/aws";
+import { r2Storage } from "@hot-updater/cloudflare";
 import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "sqlite" }),
   storages: [
-    s3Storage({
-      region: "auto",
-      endpoint: process.env.R2_ENDPOINT,
+    r2Storage({
+      accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
       credentials: {
         accessKeyId: process.env.R2_ACCESS_KEY_ID!,
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -75,14 +74,13 @@ Configure your CLI to use this self-hosted server.
 ```typescript title="hot-updater.config.ts"
 import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
-import { s3Storage } from "@hot-updater/aws";
+import { r2Storage } from "@hot-updater/cloudflare";
 import { standaloneRepository } from "@hot-updater/standalone";
 
 export default defineConfig({
   build: bare(),
-  storage: s3Storage({
-    region: "auto",
-    endpoint: process.env.R2_ENDPOINT,
+  storage: r2Storage({
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -96,7 +94,7 @@ export default defineConfig({
 ```
 
 <Callout type="warn">
-The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
+The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `r2Storage` in this example.
 </Callout>
 
 ## API Endpoints

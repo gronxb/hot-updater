@@ -55,7 +55,8 @@ export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "postgres" }),
   storage: [
     // Configure a plugin with getDownloadUrl support - examples:
-    // s3Storage({ /* S3 or R2 config */ }),
+    // r2Storage({ /* R2 credentials + downloadUrlSigningKey */ }),
+    // s3Storage({ /* AWS S3 config */ }),
     // supabaseStorage({ /* Supabase config */ }),
     // firebaseStorage({ /* Firebase config */ }),
     // myCustomStorage({ /* custom config */ }),

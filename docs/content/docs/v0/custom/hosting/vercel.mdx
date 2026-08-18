@@ -55,7 +55,8 @@ export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "postgres" }),
   storages: [
     // Configure your storage plugin - examples:
-    // s3Storage({ /* S3 or R2 config */ }),
+    // r2Storage({ /* Cloudflare R2 credentials */ }),
+    // s3Storage({ /* AWS S3 config */ }),
     // supabaseStorage({ /* Supabase config */ }),
     // firebaseStorage({ /* Firebase config */ }),
     // myCustomStorage({ /* custom config */ }),
