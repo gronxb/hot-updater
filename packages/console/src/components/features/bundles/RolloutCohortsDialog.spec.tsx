@@ -2,12 +2,14 @@ import {
   getNumericCohortRolloutPosition,
   NUMERIC_COHORT_SIZE,
 } from "@hot-updater/core";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RolloutCohortsDialog } from "./RolloutCohortsDialog";
 
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
+
+afterEach(cleanup);
 
 describe("RolloutCohortsDialog", () => {
   it("previews the cohorts selected by the Release identity", () => {

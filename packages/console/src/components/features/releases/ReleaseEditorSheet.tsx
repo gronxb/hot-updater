@@ -8,7 +8,7 @@ import type {
   ReleasePolicyPatch,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
-import { AlertTriangle, Box, Download, Plus, Trash2, X } from "lucide-react";
+import { AlertTriangle, Download, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { normalizeRange } from "verkit";
@@ -17,6 +17,7 @@ import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { BundleAnalyticsSummary } from "@/components/features/bundles/BundleAnalyticsSummary";
 import { BundleMetadata } from "@/components/features/bundles/BundleMetadata";
 import { RolloutCohortsDialog } from "@/components/features/bundles/RolloutCohortsDialog";
+import { PlatformIcon } from "@/components/PlatformIcon";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -60,6 +61,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
   SheetContent,
@@ -80,8 +82,6 @@ import {
   useReleaseQuery,
   useUpdateReleaseMutation,
 } from "@/lib/api";
-
-import { ReleaseStateBadge } from "./ReleaseStateBadge";
 
 interface Draft {
   enabled: boolean;
@@ -316,43 +316,68 @@ export function ReleaseEditorSheet({
       value: channel.name,
     })),
   ];
+  const normalizedTargetAppVersion = draft
+    ? normalizeRange(draft.targetAppVersion.trim())
+    : null;
+
   return (
     <>
       <Sheet
         onOpenChange={(nextOpen) => (nextOpen ? undefined : requestClose())}
         open={open}
       >
-        <SheetContent className="min-w-0 overflow-hidden data-[side=right]:w-full sm:max-w-[620px]">
-          <SheetHeader className="shrink-0 border-b p-4 pr-12 sm:p-6 sm:pr-12">
+        <SheetContent className="min-w-0 overflow-hidden data-[side=right]:w-full sm:max-w-[600px]">
+          <SheetHeader className="shrink-0 pr-12">
             <SheetTitle>Bundle Detail</SheetTitle>
             <SheetDescription className="sr-only">
               Edit bundle delivery settings.
             </SheetDescription>
             {release ? (
-              <div className="flex min-w-0 flex-col gap-2 pt-1 text-xs text-muted-foreground">
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <ReleaseStateBadge release={release} />
-                  <Badge className="max-w-full" variant="outline">
-                    <span className="truncate">{channelName}</span>
-                  </Badge>
-                  <Badge variant="outline">
-                    {release.platform === "ios" ? "iOS" : "Android"}
-                  </Badge>
-                </div>
-                <div
-                  className="min-w-0 text-foreground"
-                  title={release.bundle_id ?? undefined}
-                >
-                  {release.bundle_id ? (
-                    <BundleIdDisplay
-                      bundleId={release.bundle_id}
-                      className="block truncate break-normal"
+              <div className="mt-1 flex min-w-0 flex-col gap-3 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-2">
+                    <PlatformIcon
+                      className="size-4"
+                      platform={release.platform}
                     />
-                  ) : (
-                    <span className="inline-flex items-center gap-2 font-medium">
-                      <Box className="size-4" /> Built-in app
+                    <span className="font-medium">
+                      {release.platform === "ios" ? "iOS" : "Android"}
                     </span>
-                  )}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-start gap-2">
+                  <span className="font-medium text-muted-foreground">
+                    Bundle
+                  </span>
+                  <span className="min-w-0 basis-full sm:basis-auto">
+                    {release.bundle_id ? (
+                      <BundleIdDisplay
+                        bundleId={release.bundle_id}
+                        fullOnMobile
+                        maxLength={18}
+                      />
+                    ) : (
+                      <span className="text-xs text-foreground">
+                        Built-in app
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-muted-foreground">
+                    Channel
+                  </span>
+                  <span className="text-xs text-foreground" translate="no">
+                    {channelName}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-muted-foreground">
+                    Platform
+                  </span>
+                  <span className="text-xs text-foreground">
+                    {release.platform === "ios" ? "iOS" : "Android"}
+                  </span>
                 </div>
               </div>
             ) : (
@@ -372,14 +397,9 @@ export function ReleaseEditorSheet({
             ) : null}
 
             {release && draft ? (
-              <div className="flex flex-col gap-8 px-4 py-6 sm:px-6">
-                {release.bundle_id ? (
-                  <BundleAnalyticsSummary bundleId={release.bundle_id} />
-                ) : null}
-
-                <section className="flex flex-col gap-5">
-                  <h3 className="text-sm font-semibold">Delivery</h3>
-                  <FieldGroup className="gap-5">
+              <div className="flex flex-col gap-6 px-4 pb-4 sm:px-6 sm:pb-6">
+                <section className="flex flex-col gap-6">
+                  <FieldGroup className="gap-6">
                     <Field>
                       <FieldLabel htmlFor="release-message">Message</FieldLabel>
                       <Textarea
@@ -389,7 +409,7 @@ export function ReleaseEditorSheet({
                         onChange={(event) =>
                           setDraft({ ...draft, message: event.target.value })
                         }
-                        rows={2}
+                        rows={3}
                         value={draft.message}
                       />
                     </Field>
@@ -410,6 +430,11 @@ export function ReleaseEditorSheet({
                           }
                           value={draft.targetAppVersion}
                         />
+                        {normalizedTargetAppVersion ? (
+                          <FieldDescription>
+                            {normalizedTargetAppVersion}
+                          </FieldDescription>
+                        ) : null}
                       </Field>
                     ) : null}
                     <Field>
@@ -541,6 +566,49 @@ export function ReleaseEditorSheet({
                   </Button>
                 </section>
 
+                <Separator className="my-2" />
+
+                <section className="flex flex-col gap-4">
+                  <h3 className="text-sm font-medium">Actions</h3>
+                  <Button
+                    className="w-full"
+                    disabled={release.kind !== "BUNDLE" || busy}
+                    onClick={() => setShowPromote(true)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    Promote to channel
+                  </Button>
+                  {release.bundle_id ? (
+                    <Button
+                      className="w-full"
+                      disabled={busy}
+                      onClick={() => {
+                        window.open(
+                          `/api/bundles/${encodeURIComponent(release.bundle_id!)}/download`,
+                          "_blank",
+                          "noopener,noreferrer",
+                        );
+                        toast.success("Bundle download started");
+                      }}
+                      size="sm"
+                      variant="outline"
+                    >
+                      <Download data-icon="inline-start" />
+                      Download bundle
+                    </Button>
+                  ) : null}
+                  <Button
+                    className="w-full"
+                    disabled={release.enabled || busy}
+                    onClick={() => setConfirmDelete(true)}
+                    size="sm"
+                    variant="destructive"
+                  >
+                    Remove from channel
+                  </Button>
+                </section>
+
                 {release.bundle_id && bundleQuery.isPending ? (
                   <Skeleton className="h-40 w-full" />
                 ) : null}
@@ -557,35 +625,9 @@ export function ReleaseEditorSheet({
                   <BundleMetadata bundle={bundle} release={release} />
                 ) : null}
 
-                <section className="flex flex-col gap-4 border-t pt-8">
-                  <h3 className="text-sm font-semibold">Actions</h3>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Button
-                      disabled={release.kind !== "BUNDLE" || busy}
-                      onClick={() => setShowPromote(true)}
-                      variant="outline"
-                    >
-                      Promote to channel
-                    </Button>
-                    {release.bundle_id ? (
-                      <Button
-                        disabled={busy}
-                        onClick={() => {
-                          window.open(
-                            `/api/bundles/${encodeURIComponent(release.bundle_id!)}/download`,
-                            "_blank",
-                            "noopener,noreferrer",
-                          );
-                          toast.success("Bundle download started");
-                        }}
-                        variant="outline"
-                      >
-                        <Download data-icon="inline-start" />
-                        Download bundle
-                      </Button>
-                    ) : null}
-                  </div>
-                </section>
+                {release.bundle_id ? (
+                  <BundleAnalyticsSummary bundleId={release.bundle_id} />
+                ) : null}
 
                 <details className="rounded-lg border bg-muted/10 p-4 text-xs">
                   <summary className="cursor-pointer font-medium">
@@ -632,25 +674,6 @@ export function ReleaseEditorSheet({
                     </p>
                   ) : null}
                 </details>
-
-                <section className="flex flex-col gap-4 border-t pt-8">
-                  <div>
-                    <h3 className="text-sm font-semibold text-destructive">
-                      Remove from channel
-                    </h3>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Disable before removing.
-                    </p>
-                  </div>
-                  <Button
-                    disabled={release.enabled || busy}
-                    onClick={() => setConfirmDelete(true)}
-                    variant="destructive"
-                  >
-                    <Trash2 data-icon="inline-start" />
-                    Remove from channel
-                  </Button>
-                </section>
               </div>
             ) : null}
           </div>

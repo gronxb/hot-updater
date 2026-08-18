@@ -16,19 +16,12 @@ export function RolloutPercentageBadge({
   const isPartialRollout = percentage < 100;
   const formattedPercentage = percentage.toFixed(1);
 
-  if (!isPartialRollout) {
-    return (
-      <span
-        className={cn("text-xs tabular-nums text-muted-foreground", className)}
-      >
-        {formattedPercentage}%
-      </span>
-    );
-  }
-
   return (
-    <Badge variant="secondary" className={cn("gap-1 font-normal", className)}>
-      <AlertTriangle className="h-3 w-3" />
+    <Badge
+      className={cn("gap-1", className)}
+      variant={isPartialRollout ? "secondary" : "default"}
+    >
+      {isPartialRollout ? <AlertTriangle className="h-3 w-3" /> : null}
       {formattedPercentage}%
     </Badge>
   );
