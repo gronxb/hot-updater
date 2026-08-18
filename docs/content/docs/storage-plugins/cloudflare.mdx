@@ -11,37 +11,10 @@ npm install @hot-updater/cloudflare --save-dev
 ```
 
 <Callout title="Recommended Approach">
-For a single plugin that supports both deploy-time storage and runtime presigned
-URLs, use the S3-compatible AWS plugin. See the [AWS S3 Storage
-documentation](/docs/storage-plugins/aws) for more details.
-
-Install the AWS plugin:
-
-```package-install
-npm install @hot-updater/aws --save-dev
-```
-
-Configure with R2:
-
-```typescript
-import { s3Storage } from "@hot-updater/aws";
-import { defineConfig } from "hot-updater";
-
-export default defineConfig({
-  storage: s3Storage({
-    region: "auto",
-    endpoint: "https://your-account-id.r2.cloudflarestorage.com",
-    credentials: {
-      accessKeyId: "your-r2-access-key-id",
-      secretAccessKey: "your-r2-secret-access-key",
-    },
-    bucketName: "my-r2-bucket",
-  }),
-  // ... other config
-});
-```
-
-This approach provides both the `node` and `runtime` storage profiles.
+Use R2 S3-compatible credentials with `r2Storage` from
+`@hot-updater/cloudflare`. This provides both the `node` and `runtime` storage
+profiles. The legacy `cloudflareApiToken` configuration uses Wrangler and only
+supports the `node` profile.
 
 </Callout>
 
@@ -96,9 +69,10 @@ export default defineConfig({
 
 ## Runtime Usage
 
-`r2Storage` is a CLI/deploy-time storage plugin. It implements the `node`
-profile and uses the R2 S3-compatible API when `credentials` are provided.
-Configs without `credentials` fall back to Wrangler for backward compatibility.
+`r2Storage` supports both CLI/deploy-time and server runtime storage when
+`credentials` are provided. It implements the `node` and `runtime` profiles
+using the R2 S3-compatible API. Configs using the legacy `cloudflareApiToken`
+fall back to Wrangler and support only the `node` profile.
 
 Cloudflare Workers should use the Worker runtime export instead:
 
@@ -123,11 +97,10 @@ public URL.
 
 ## Limitations
 
-- `r2Storage` does not implement the runtime profile.
-- Legacy `r2Storage` configs without `credentials` use Wrangler and are slower
-  than the S3-compatible API path.
-- For a single plugin that supports both deploy-time and runtime profiles, use
-  `s3Storage` from `@hot-updater/aws` with R2 S3 API credentials.
+- Legacy `r2Storage` configs using `cloudflareApiToken` support only the `node`
+  profile and are slower than the S3-compatible API path.
+- Cloudflare Worker code must import `r2Storage` from
+  `@hot-updater/cloudflare/worker`, not the root package.
 
 ## Protocol
 
