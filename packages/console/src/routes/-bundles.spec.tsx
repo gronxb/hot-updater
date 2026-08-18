@@ -192,6 +192,8 @@ describe("BundlesPage", () => {
     const state = within(row).getByText("Unreachable");
 
     expect(row.className).toContain("bg-muted/35");
+    expect(row.className).toContain("opacity-70");
+    expect(row.className).toContain("hover:opacity-90");
     expect(state.getAttribute("title")).toBe(
       "No catalog segment or cohort selects this release first with the current delivery settings.",
     );

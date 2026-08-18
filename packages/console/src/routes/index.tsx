@@ -496,7 +496,8 @@ function BundlesPage() {
                         <article
                           className={cn(
                             "flex flex-col gap-4 border-b p-4 last:border-b-0",
-                            release.currentlyUnreachable && "bg-muted/35",
+                            release.currentlyUnreachable &&
+                              "bg-muted/35 opacity-70 transition-opacity focus-within:opacity-100",
                             isExpanded && "border-b-0 bg-primary/5",
                           )}
                         >
@@ -641,9 +642,9 @@ function BundlesPage() {
                             <TableRow
                               aria-label={`Open bundle ${release.bundle_id ?? release.id}`}
                               className={cn(
-                                "cursor-pointer transition-colors hover:bg-muted/10 focus-within:bg-muted/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-[state=selected]:bg-muted/15 [&>td]:py-3",
+                                "cursor-pointer transition-[background-color,opacity] hover:bg-muted/10 focus-within:bg-muted/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-[state=selected]:bg-muted/15 [&>td]:py-3",
                                 release.currentlyUnreachable &&
-                                  "bg-muted/35 hover:bg-muted/50",
+                                  "bg-muted/35 opacity-70 hover:bg-muted/50 hover:opacity-90 focus-within:opacity-100",
                                 isExpanded && "bg-primary/5",
                               )}
                               data-state={
