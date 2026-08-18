@@ -628,7 +628,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
     expect(response.ok).toBe(false);
   });
 
-  it("serves v1 Release Catalog routes from the edge function entrypoint", async () => {
+  it("serves unversioned Release Catalog routes from the edge function entrypoint", async () => {
     const bundle = toRuntimeBundle({
       id: "00000000-0000-0000-0000-000000000001",
       platform: "ios",
@@ -647,7 +647,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
     await seedHotUpdater.insertBundle(bundle);
 
     const response = await fetch(
-      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/v2/release-catalogs/app-version/${encodeURIComponent(AUTHORITY_ID)}/ios/cHJvZHVjdGlvbg/1.0.0`,
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/release-catalogs/app-version/${encodeURIComponent(AUTHORITY_ID)}/ios/cHJvZHVjdGlvbg/1.0.0`,
     );
 
     expect(response.ok).toBe(true);

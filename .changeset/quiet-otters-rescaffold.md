@@ -18,9 +18,11 @@ and gives the parallel-cutover remediation.
 Remove the v0 app-version and fingerprint HTTP routes, the legacy SDK-version
 header contract, CDN forwarding and cache paths for those routes, and managed
 provider Release Catalog backfills. Existing v0 native binaries must remain on
-their unchanged v0 endpoint; new v1 native builds use the v2 catalog and
-artifact routes on fresh v1 infrastructure.
+their unchanged v0 endpoint; new v1 native builds use the unversioned catalog
+and artifact routes on fresh v1 infrastructure.
 
 Normalize managed provider base URLs to their public deployment roots. AWS,
-Cloudflare, and Firebase now serve `/version`, `/v2/*`, and `/events` directly;
-Supabase retains only its provider-owned Edge Function prefix.
+Cloudflare, and Firebase now serve `/version`, `/release-catalogs/*`,
+`/artifacts/*`, and `/events` directly; Supabase retains only its
+provider-owned Edge Function prefix. Client routes do not carry a library or
+protocol version prefix because incompatible generations use a fresh base URL.

@@ -113,7 +113,7 @@ export default App;
 
 \*Either `baseURL` or `resolver` must be provided (mutually exclusive)
 
-Protocol-v2 custom resolvers implement `fetchReleaseCatalog` and
+Release Catalog custom resolvers implement `fetchReleaseCatalog` and
 `resolveArtifact`. Declare `catalogCachePartition` only when the catalog
 transport uses a stable shared-cache partition; otherwise keep catalog
 responses private/no-store. The default resolver partitions shared catalog
@@ -325,9 +325,9 @@ export default HotUpdater.wrap({
 The default resolver fetches a shared Release Catalog, evaluates it on the
 device, and resolves the selected artifact:
 
-* App version catalog: `GET {baseURL}/v2/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`
-* Fingerprint catalog: `GET {baseURL}/v2/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash`
-* Artifact resolution: `GET {baseURL}/v2/artifacts/:targetBundleId/from/:currentBundleId`
+* App version catalog: `GET {baseURL}/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`
+* Fingerprint catalog: `GET {baseURL}/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash`
+* Artifact resolution: `GET {baseURL}/artifacts/:targetBundleId/from/:currentBundleId`
 
 `:channelKey` is the base64url-encoded channel name. The default authority is
 `default` unless the resolver is configured with another stable authority.

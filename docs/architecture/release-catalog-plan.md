@@ -79,7 +79,7 @@ that treats object Storage like Redis.
 
 The pull request is complete only when all of the following are true:
 
-- A v2 catalog URL contains no current Release ID, current Bundle ID, minimum
+- A Release Catalog URL contains no current Release ID, current Bundle ID, minimum
   Release ID, install ID, cohort, or crash history.
 - A cold origin GET reads one compiled catalog row by an exact derivable key;
   it does not scan Releases or Bundles and does not look up a channel first.
@@ -633,8 +633,8 @@ bottleneck. Compression is a CDN transport concern and not catalog identity.
 ### Shared endpoints
 
 ```http
-GET /v2/release-catalogs/app-version/:authorityId/:platform/:channelKey/:canonicalAppVersion
-GET /v2/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash
+GET /release-catalogs/app-version/:authorityId/:platform/:channelKey/:canonicalAppVersion
+GET /release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash
 ```
 
 The authority in configuration and path must match the authenticated project.
@@ -685,7 +685,7 @@ warn about this at create/edit time.
 After local selection chooses a different Bundle:
 
 ```http
-GET /v2/artifacts/:targetBundleId/from/:currentBundleId
+GET /artifacts/:targetBundleId/from/:currentBundleId
 ```
 
 This reuses archive, signed URL, manifest diff, changed asset, and binary patch
@@ -757,7 +757,7 @@ interface PersistedSelection {
 ```
 
 Null catalog fields are allowed only for metadata-v1 migration or legacy
-manual/custom installs. Every v2 `BUNDLE`, `EMBEDDED`, and especially local
+manual/custom installs. Every Release Catalog `BUNDLE`, `EMBEDDED`, and especially local
 `BUILTIN` action writes a complete receipt. Null Release ID otherwise means
 `BUILTIN`; migration-null is distinguished by its null scope/generation.
 
@@ -965,7 +965,7 @@ interface HotUpdaterResolver {
 }
 ```
 
-The default resolver implements v2. A legacy `checkUpdate` adapter remains for
+The default resolver implements the Release Catalog protocol. A legacy `checkUpdate` adapter remains for
 custom resolvers, but shared caching is opt-in through the explicit cache
 partition contract.
 
@@ -1002,7 +1002,7 @@ live device inputs; provider database plugins never call it.
 `CheckForUpdateResult` exposes `releaseId`, `bundleId`, and transition kind:
 `INSTALL`, `ADOPT_RELEASE`, `USE_BUILTIN`, or `NO_UPDATE`.
 `updateBundle` receives the full selection receipt. Legacy manual/custom calls
-without a receipt continue with null Release identity until a v2 check adopts
+without a receipt continue with null Release identity until a Release Catalog check adopts
 one.
 
 `shouldForceUpdate` reloads only when changed bytes or a `BUILTIN` byte
@@ -1242,7 +1242,7 @@ query is forbidden.
 - DynamoDB base-table scope partitions support strongly consistent Release
   paging and exact catalog reads.
 - TransactWrite condition-checks Release revisions and catalog generation.
-- A separate v2 CloudFront behavior removes legacy SDK-version/Authorization
+- A separate Release Catalog CloudFront behavior removes legacy SDK-version/Authorization
   cache fragmentation and keys only canonical path, `x-api-key`, and encoding.
 - Evidence proves warm CloudFront hits skip Lambda and DynamoDB.
 - IaC contract tests inspect the effective
@@ -1340,11 +1340,11 @@ Then:
 
 Metadata-v1 Bundle IDs migrate to a v2 active receipt with null Release/scope
 until the first authenticated catalog. Because backfilled Release ID equals
-Bundle ID, the first v2 selection can adopt exact identity without bytes.
+Bundle ID, the first Release Catalog selection can adopt exact identity without bytes.
 Stable and staging Bundle slots migrate independently. Crash history is
 deduplicated/clamped to ten.
 
-The v1 SDK uses v2 routes only. Existing v0 binaries remain on a separate v0
+The v1 SDK uses the unversioned Release Catalog routes only. Existing v0 binaries remain on a separate v0
 endpoint during cutover. Runtime startup/doctor rejects a schema with
 missing/inconsistent catalog projections. Analytics columns remain nullable.
 
@@ -1380,7 +1380,7 @@ missing/inconsistent catalog projections. Analytics columns remain nullable.
 - Integrate strong snapshot plus short CAS transaction in every provider.
 - Prove deterministic rebuild and atomic oversize/conflict failure.
 
-### 5. Implement the v1-only v2 server and CDN boundary
+### 5. Implement the v1-only Release Catalog server and CDN boundary
 
 - Add canonical catalog/artifact routes, auth, ETag, no-cache errors, LRU, and
   singleflight.
@@ -1450,7 +1450,7 @@ Expected RED: cache/origin/database work grows with randomized device state.
 Random/invalid keys are a separate auth-isolation test; mixing them into the
 main profile would intentionally defeat caching and obscure the result.
 
-### GREEN v2 profile
+### GREEN Release Catalog profile
 
 The same installation distribution now uses one canonical catalog path.
 
@@ -1547,7 +1547,7 @@ generation}` and scenario context stores both identities.
 - Metadata capture/wait/assert reads stable/staging receipts, verification,
   channel, and high-water.
 - Launch-report assertions accept from/to Release and Bundle IDs.
-- Replace the legacy `update-check-request-bundle-id` helper/spec with a v2 URL
+- Replace the legacy `update-check-request-bundle-id` helper/spec with a Release Catalog URL
   assertion proving current/minimum/cohort/crash state is absent.
 - Runtime Snapshot focused routes expose active Release ID, selection kind,
   authority/scope/generation/high-water, channel, and context. Manifest display

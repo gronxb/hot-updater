@@ -132,7 +132,8 @@ OTA service.
 
 ### Release catalog cache
 
-Init deploys Firebase Hosting rewrites for `/version`, `/v2/**`, and `/events`
+Init deploys Firebase Hosting rewrites for `/version`, `/release-catalogs/**`,
+`/artifacts/**`, and `/events`
 in front of the `hot-updater` Function. Use the Hosting domain as the base URL
 so successful catalog responses can be served by Firebase's
 global CDN without invoking the Function or reading Firestore. The response's

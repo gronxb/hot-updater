@@ -118,12 +118,12 @@ const HOT_UPDATER_BEHAVIOR_BASE = {
 
 export const HOT_UPDATER_CACHE_BEHAVIOR_PATHS = [
   "/events",
-  "/v2/artifacts/*",
+  "/artifacts/*",
   "/version",
 ] as const;
 
 export const HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS = [
-  "/v2/release-catalogs/*",
+  "/release-catalogs/*",
 ] as const;
 
 const omitLegacyCacheFields = <

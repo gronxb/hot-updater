@@ -59,7 +59,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     await env.DB.prepare("DELETE FROM channels").run();
   });
 
-  it("serves v1 Release Catalog routes from the worker entrypoint", async () => {
+  it("serves unversioned Release Catalog routes from the worker entrypoint", async () => {
     expect(HOT_UPDATER_BASE_PATH).toBe("/");
     await seedBundles([
       {
@@ -79,7 +79,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
 
     const response = await worker.fetch(
       new Request(
-        `${PUBLIC_BASE_URL}/v2/release-catalogs/app-version/${encodeURIComponent(env.AUTHORITY_ID)}/ios/cHJvZHVjdGlvbg/1.0.0`,
+        `${PUBLIC_BASE_URL}/release-catalogs/app-version/${encodeURIComponent(env.AUTHORITY_ID)}/ios/cHJvZHVjdGlvbg/1.0.0`,
       ),
       env,
     );

@@ -128,7 +128,7 @@ describe("aws lambda entrypoint", () => {
     const { handler } = await import("./index");
     await handler(
       createCloudFrontRequest(
-        "/v2/release-catalogs/app-version/aws.test-authority/ios/cHJvZHVjdGlvbg/1.0.0",
+        "/release-catalogs/app-version/aws.test-authority/ios/cHJvZHVjdGlvbg/1.0.0",
       ),
       {} as never,
       () => undefined,
@@ -151,12 +151,12 @@ describe("aws lambda entrypoint", () => {
     );
   });
 
-  it("serves v1 Release Catalog routes for origin-request events", async () => {
+  it("serves unversioned Release Catalog routes for origin-request events", async () => {
     const { handler } = await import("./index");
 
     const response = await handler(
       createCloudFrontRequest(
-        "/v2/release-catalogs/app-version/aws.test-authority/ios/cHJvZHVjdGlvbg/1.0.0",
+        "/release-catalogs/app-version/aws.test-authority/ios/cHJvZHVjdGlvbg/1.0.0",
       ),
       {} as never,
       () => undefined,

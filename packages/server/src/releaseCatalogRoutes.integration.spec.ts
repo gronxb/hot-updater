@@ -85,7 +85,7 @@ describe("Release catalog routes", () => {
       "findByScopeKey",
     );
     const url =
-      `https://updates.example.com/api/v2/release-catalogs/app-version/` +
+      `https://updates.example.com/api/release-catalogs/app-version/` +
       `${authorityId}/ios/${channelKey}/1.5.0`;
 
     const response = await hotUpdater.handler(new Request(url));
@@ -153,7 +153,7 @@ describe("Release catalog routes", () => {
     );
     const hotUpdater = createHotUpdater({ authorityId, database });
     const url =
-      `https://updates.example.com/api/v2/release-catalogs/app-version/` +
+      `https://updates.example.com/api/release-catalogs/app-version/` +
       `${authorityId}/ios/${channelKey}/1.5.0`;
 
     const responses = await Promise.all(

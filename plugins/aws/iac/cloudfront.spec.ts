@@ -94,9 +94,9 @@ describe("buildDistributionConfigOverrides", () => {
     expect("MaxTTL" in defaultBehavior).toBe(false);
 
     expect(behaviorItems.map(({ PathPattern }) => PathPattern)).toEqual([
-      "/v2/release-catalogs/*",
+      "/release-catalogs/*",
       "/events",
-      "/v2/artifacts/*",
+      "/artifacts/*",
       "/version",
     ]);
     expect(catalogBehavior.CachePolicyId).toBe(
@@ -286,10 +286,10 @@ describe("buildDistributionConfigOverrides", () => {
     expect(updatedConfig.CacheBehaviors?.Items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ PathPattern: "/events" }),
-        expect.objectContaining({ PathPattern: "/v2/artifacts/*" }),
+        expect.objectContaining({ PathPattern: "/artifacts/*" }),
         expect.objectContaining({ PathPattern: "/version" }),
         expect.objectContaining({
-          PathPattern: "/v2/release-catalogs/*",
+          PathPattern: "/release-catalogs/*",
         }),
         expect.objectContaining({ PathPattern: "/unrelated/*" }),
       ]),
@@ -400,9 +400,9 @@ describe("buildDistributionConfigOverrides", () => {
       ),
     ).toEqual([
       "/api/*",
-      "/v2/release-catalogs/*",
+      "/release-catalogs/*",
       "/events",
-      "/v2/artifacts/*",
+      "/artifacts/*",
       "/version",
     ]);
   });
@@ -459,9 +459,9 @@ describe("buildDistributionConfigOverrides", () => {
     ).toEqual([
       "/custom/private/*",
       "/api/*",
-      "/v2/release-catalogs/*",
+      "/release-catalogs/*",
       "/events",
-      "/v2/artifacts/*",
+      "/artifacts/*",
       "/version",
     ]);
   });
@@ -532,9 +532,9 @@ describe("buildDistributionConfigOverrides", () => {
       "/custom/?.json",
       "/*.js",
       "/api/*",
-      "/v2/release-catalogs/*",
+      "/release-catalogs/*",
       "/events",
-      "/v2/artifacts/*",
+      "/artifacts/*",
       "/version",
     ]);
   });

@@ -307,7 +307,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     );
   };
 
-  it("serves v1 Release Catalog routes from the emulator entrypoint", async () => {
+  it("serves unversioned Release Catalog routes from the emulator entrypoint", async () => {
     await seedHotUpdater.insertBundle(
       toRuntimeBundle(
         {
@@ -328,7 +328,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     );
 
     const response = await invokeHandler(
-      `/v2/release-catalogs/app-version/${encodeURIComponent(projectId)}/ios/cHJvZHVjdGlvbg/1.0.0`,
+      `/release-catalogs/app-version/${encodeURIComponent(projectId)}/ios/cHJvZHVjdGlvbg/1.0.0`,
     );
 
     await expect(response.json()).resolves.toMatchObject({

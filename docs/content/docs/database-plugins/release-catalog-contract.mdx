@@ -20,7 +20,7 @@ Bundle          immutable artifact identity and storage metadata
 Release         rollout, compatibility, Channel, operation, and message policy
 ReleaseCatalog  deterministic desired-state projection for one canonical scope
 Database        canonical rows, strong reads, and atomic conditional commits
-Server          catalog compiler and v2 routes
+Server          catalog compiler and unversioned client routes
 Device          catalog acceptance and local desired-state selection
 ```
 
@@ -253,9 +253,9 @@ their generation checks fail before mutating detected v0 infrastructure.
 The shared device endpoints are:
 
 ```text
-GET /v2/release-catalogs/app-version/:authorityId/:platform/:channelKey/:canonicalAppVersion
-GET /v2/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash
-GET /v2/artifacts/:targetBundleId/from/:currentBundleId
+GET /release-catalogs/app-version/:authorityId/:platform/:channelKey/:canonicalAppVersion
+GET /release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash
+GET /artifacts/:targetBundleId/from/:currentBundleId
 ```
 
 Catalog URLs contain no installation state. Successful catalog responses are

@@ -103,7 +103,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
     );
     const version = await fetch(`${baseUrl}/hot-updater/version`);
     const updateCheck = await fetch(
-      `${baseUrl}/hot-updater/v2/release-catalogs/app-version/default/ios/cHJvZHVjdGlvbg/1.0.0`,
+      `${baseUrl}/hot-updater/release-catalogs/app-version/default/ios/cHJvZHVjdGlvbg/1.0.0`,
     );
 
     expect(unauthorizedBundles.status).toBe(401);

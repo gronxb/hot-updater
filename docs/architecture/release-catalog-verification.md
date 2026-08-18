@@ -66,8 +66,8 @@ both canonical Releases and the prior compiled catalog.
 The checked-in provider contract tests inspect the effective deployment
 configuration rather than treating `Cache-Control` as proof:
 
-- AWS: `plugins/aws/iac/cloudfront.spec.ts` verifies a distinct canonical v2
-  behavior and cache policy keyed by `x-api-key` and encoding.
+- AWS: `plugins/aws/iac/cloudfront.spec.ts` verifies a distinct canonical
+  Release Catalog behavior and cache policy keyed by `x-api-key` and encoding.
 - Cloudflare: `plugins/cloudflare/iac/releaseCatalogCacheConfig.spec.ts`
   verifies the supported Wrangler version/date and pre-Worker cache switch.
 - Firebase: `plugins/firebase/iac/releaseCatalogHosting.spec.ts` verifies the

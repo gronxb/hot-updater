@@ -76,11 +76,11 @@ export default HotUpdater.wrap({
 The client fetches the app-version Release Catalog:
 
 ```
-GET {baseUrl}/v2/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion
+GET {baseUrl}/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion
 ```
 
 It evaluates the catalog locally, then resolves the selected artifact through
-`/v2/artifacts/:targetBundleId/from/:currentBundleId`. `:channelKey` is the
+`/artifacts/:targetBundleId/from/:currentBundleId`. `:channelKey` is the
 base64url-encoded channel name.
 
 ## Testing the Endpoint
@@ -88,7 +88,7 @@ base64url-encoded channel name.
 Test your update endpoint using curl:
 
 ```bash
-curl "https://your-update-endpoint.com/check-update/v2/release-catalogs/app-version/default/ios/cHJvZHVjdGlvbg/1.0.0"
+curl "https://your-update-endpoint.com/release-catalogs/app-version/default/ios/cHJvZHVjdGlvbg/1.0.0"
 ```
 
 Parameters:

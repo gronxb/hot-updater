@@ -254,9 +254,9 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     expect(managementQuery.status).toBe(200);
   });
 
-  it("requires a client key for v1 catalog routes", async () => {
+  it("requires a client key for unversioned catalog routes", async () => {
     const path =
-      "/hot-updater/v2/release-catalogs/app-version/default/ios/cHJvZHVjdGlvbg/1.0.0";
+      "/hot-updater/release-catalogs/app-version/default/ios/cHJvZHVjdGlvbg/1.0.0";
     const unauthorized = await fetch(`${baseUrl}${path}`);
     const authorized = await fetch(`${baseUrl}${path}`, {
       headers: { "x-api-key": rawApiKey },

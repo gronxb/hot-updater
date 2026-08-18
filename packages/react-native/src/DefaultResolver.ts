@@ -61,7 +61,7 @@ export function createDefaultResolver(
       }
       const strategyPath =
         params.updateStrategy === "fingerprint" ? "fingerprint" : "app-version";
-      const url = `${resolvedBaseURL}/v2/release-catalogs/${strategyPath}/${encodeURIComponent(
+      const url = `${resolvedBaseURL}/release-catalogs/${strategyPath}/${encodeURIComponent(
         authorityId,
       )}/${params.platform}/${channelKey}/${encodeURIComponent(strategyValue)}`;
       const scopeKey = createReleaseCatalogScopeKey(
@@ -97,7 +97,7 @@ export function createDefaultResolver(
       return fetchJSON<AppUpdateAvailableInfo>({
         requestHeaders: params.requestHeaders,
         requestTimeout: params.requestTimeout,
-        url: `${resolvedBaseURL}/v2/artifacts/${encodeURIComponent(
+        url: `${resolvedBaseURL}/artifacts/${encodeURIComponent(
           params.targetBundleId,
         )}/from/${encodeURIComponent(params.currentBundleId)}`,
       });

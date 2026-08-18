@@ -6,7 +6,7 @@ import { CLIENT_ACCESS_KEY_HEADER_NAME, createHotUpdater } from "./index";
 
 const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 const updateUrl =
-  "https://example.com/api/v2/release-catalogs/app-version/default/ios/" +
+  "https://example.com/api/release-catalogs/app-version/default/ios/" +
   "cHJvZHVjdGlvbg/1.0.0";
 
 const withApiKey = (url: string, init?: RequestInit) =>

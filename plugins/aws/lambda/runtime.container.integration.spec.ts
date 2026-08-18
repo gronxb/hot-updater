@@ -405,7 +405,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     }
   });
 
-  it("serves v1 Release Catalog routes from the packaged lambda entrypoint", async () => {
+  it("serves unversioned Release Catalog routes from the packaged lambda entrypoint", async () => {
     await seedHotUpdater.insertBundle(
       toRuntimeBundle({
         id: "00000000-0000-0000-0000-000000000001",
@@ -422,7 +422,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       }),
     );
 
-    const updatePath = `/v2/release-catalogs/app-version/${encodeURIComponent(AUTHORITY_ID)}/ios/cHJvZHVjdGlvbg/1.0.0`;
+    const updatePath = `/release-catalogs/app-version/${encodeURIComponent(AUTHORITY_ID)}/ios/cHJvZHVjdGlvbg/1.0.0`;
     const unauthorizedResponse = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({

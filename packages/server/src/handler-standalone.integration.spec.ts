@@ -203,7 +203,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     ).resolves.toMatchObject({ generation: committed.catalog.generation });
     const response = await api.handler(
       new Request(
-        `${baseUrl}/hot-updater/v2/release-catalogs/app-version/default/ios/${encodeChannelKey("production")}/1.0.0`,
+        `${baseUrl}/hot-updater/release-catalogs/app-version/default/ios/${encodeChannelKey("production")}/1.0.0`,
       ),
     );
     expect(response.status).toBe(200);
@@ -237,7 +237,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     await client.insertBundle(createTestBundle({ id: bundleId }));
     const updateCheck = await protectedApi.handler(
       new Request(
-        `${baseUrl}/protected-hot-updater/v2/release-catalogs/app-version/default/ios/${encodeChannelKey("production")}/1.0.0`,
+        `${baseUrl}/protected-hot-updater/release-catalogs/app-version/default/ios/${encodeChannelKey("production")}/1.0.0`,
       ),
     );
 

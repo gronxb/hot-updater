@@ -61,7 +61,7 @@ describe("createDefaultResolver", () => {
       requestHeaders: { authorization: "Bearer token" },
       requestTimeout: 1500,
       scopeKey: "v1:app-version:project-a:ios:cHJvZHVjdGlvbg",
-      url: "https://updates.example.com/hot-updater/v2/release-catalogs/app-version/project-a/ios/cHJvZHVjdGlvbg/1.2.0",
+      url: "https://updates.example.com/hot-updater/release-catalogs/app-version/project-a/ios/cHJvZHVjdGlvbg/1.2.0",
     });
   });
 
@@ -78,7 +78,7 @@ describe("createDefaultResolver", () => {
     expect(mocks.fetchJSON).toHaveBeenCalledWith({
       requestHeaders: undefined,
       requestTimeout: undefined,
-      url: "https://updates.example.com/v2/artifacts/bundle-2/from/bundle-1",
+      url: "https://updates.example.com/artifacts/bundle-2/from/bundle-1",
     });
   });
 

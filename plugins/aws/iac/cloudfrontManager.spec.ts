@@ -196,7 +196,7 @@ describe("CloudFrontManager", () => {
                 OriginRequestPolicyId: "origin-request-policy-id",
               }),
               expect.objectContaining({
-                PathPattern: "/v2/artifacts/*",
+                PathPattern: "/artifacts/*",
                 CachePolicyId: "shared-cache-policy-id",
                 OriginRequestPolicyId: "origin-request-policy-id",
                 LambdaFunctionAssociations: expect.objectContaining({
@@ -213,7 +213,7 @@ describe("CloudFrontManager", () => {
                 OriginRequestPolicyId: "origin-request-policy-id",
               }),
               expect.objectContaining({
-                PathPattern: "/v2/release-catalogs/*",
+                PathPattern: "/release-catalogs/*",
                 CachePolicyId: "release-catalog-cache-policy-id",
                 OriginRequestPolicyId: "origin-request-policy-id",
               }),
@@ -228,12 +228,7 @@ describe("CloudFrontManager", () => {
         CallerReference: expect.any(String),
         Paths: {
           Quantity: 4,
-          Items: [
-            "/events",
-            "/v2/artifacts/*",
-            "/version",
-            "/v2/release-catalogs/*",
-          ],
+          Items: ["/events", "/artifacts/*", "/version", "/release-catalogs/*"],
         },
       },
     });

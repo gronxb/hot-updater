@@ -101,7 +101,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
     ).toMatchObject({
       DistributionId: "distribution-id",
       InvalidationBatch: {
-        Paths: { Items: ["/v2/release-catalogs/*"] },
+        Paths: { Items: ["/release-catalogs/*"] },
       },
     });
     expect(cloudFront.commandCalls(GetInvalidationCommand)).toHaveLength(0);

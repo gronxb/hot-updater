@@ -44,7 +44,7 @@ export interface UpdateBundleParams {
    * the currently active bundle.
    */
   changedAssets?: UnsafeObject | null;
-  /** Full protocol-v2 selection receipt committed with the staged Bundle. */
+  /** Full Release Catalog selection receipt committed with the staged Bundle. */
   selection?: UnsafeObject | null;
 }
 
@@ -105,7 +105,7 @@ export interface Spec extends TurboModule {
   /** Removes an incompatible Release Catalog cache entry. */
   removeReleaseCatalogCache(partition: string): Promise<boolean>;
 
-  /** Rechecks generation/context immediately before a v2 side effect. */
+  /** Rechecks generation/context immediately before a catalog side effect. */
   isReleaseSelectionCurrent(params: UnsafeObject): boolean;
 
   /** Atomically commits a metadata-only, EMBEDDED, or BUILTIN selection. */

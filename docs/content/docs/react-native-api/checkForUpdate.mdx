@@ -135,9 +135,9 @@ cannot be overridden in `checkForUpdate`.
 The default resolver fetches a shared Release Catalog, evaluates it on the
 device, and resolves the selected artifact:
 
-* App version catalog: `GET {baseURL}/v2/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`
-* Fingerprint catalog: `GET {baseURL}/v2/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash`
-* Artifact resolution: `GET {baseURL}/v2/artifacts/:targetBundleId/from/:currentBundleId`
+* App version catalog: `GET {baseURL}/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`
+* Fingerprint catalog: `GET {baseURL}/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash`
+* Artifact resolution: `GET {baseURL}/artifacts/:targetBundleId/from/:currentBundleId`
 
 `:channelKey` is the base64url-encoded channel name. The default authority is
 `default` unless the resolver is configured with another stable authority.

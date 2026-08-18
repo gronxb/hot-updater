@@ -23,7 +23,7 @@ routes with framework middleware before mounting the handler. Update-check
 routes are usually exposed for React Native clients, but that is a deployment
 choice:
 
-- Client OTA: `/hot-updater/v2/release-catalogs/*`, `/hot-updater/v2/artifacts/*`
+- Client OTA: `/hot-updater/release-catalogs/*`, `/hot-updater/artifacts/*`
 - Optional public diagnostics: `/hot-updater/version`
 - Protected management API: `/hot-updater/api/*`
 
@@ -85,8 +85,8 @@ under `/hot-updater/api/*` are mounted only when `features.bundles` is enabled:
 | Method | Endpoint                                                                              | Description                                                         |
 | ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | GET    | `/hot-updater/version`                                                                | Get server version                                                  |
-| GET    | `/hot-updater/v2/release-catalogs/:strategy/:authorityId/:platform/:channelKey/:value` | Fetch a Release Catalog |
-| GET    | `/hot-updater/v2/artifacts/:targetBundleId/from/:currentBundleId` | Resolve an artifact |
+| GET    | `/hot-updater/release-catalogs/:strategy/:authorityId/:platform/:channelKey/:value` | Fetch a Release Catalog |
+| GET    | `/hot-updater/artifacts/:targetBundleId/from/:currentBundleId` | Resolve an artifact |
 | GET    | `/hot-updater/api/bundles`                                                            | List bundles (query: channel, platform, limit, page, after, before) |
 | GET    | `/hot-updater/api/bundles/:id`                                                        | Get bundle by ID                                                    |
 | POST   | `/hot-updater/api/bundles`                                                            | Create bundles                                                      |

@@ -96,19 +96,19 @@ export function createHotUpdaterHandler(
     addRoute(
       router,
       "GET",
-      "/v2/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion",
+      "/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion",
       "appVersionReleaseCatalog",
     );
     addRoute(
       router,
       "GET",
-      "/v2/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash",
+      "/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash",
       "fingerprintReleaseCatalog",
     );
     addRoute(
       router,
       "GET",
-      "/v2/artifacts/:targetBundleId/from/:currentBundleId",
+      "/artifacts/:targetBundleId/from/:currentBundleId",
       "artifact",
     );
   }

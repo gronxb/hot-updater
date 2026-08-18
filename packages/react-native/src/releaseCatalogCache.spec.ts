@@ -39,7 +39,7 @@ const SCOPE_KEY = createReleaseCatalogScopeKey({
   platform: "ios",
   strategy: "APP_VERSION",
 });
-const URL = `https://updates.example.com/v2/release-catalogs/app-version/${AUTHORITY_ID}/ios/${CHANNEL_KEY}/1.0.0`;
+const URL = `https://updates.example.com/release-catalogs/app-version/${AUTHORITY_ID}/ios/${CHANNEL_KEY}/1.0.0`;
 
 const catalog: ReleaseCatalog = {
   authorityId: AUTHORITY_ID,
@@ -166,7 +166,7 @@ describe("Release Catalog persistent cache", () => {
       input({
         baseURL: "https://other.example.com",
         scopeKey: betaScope,
-        url: "https://other.example.com/v2/release-catalogs/app-version/project-a/ios/YmV0YQ/1.0.0",
+        url: "https://other.example.com/release-catalogs/app-version/project-a/ios/YmV0YQ/1.0.0",
       }),
     );
 

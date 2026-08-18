@@ -88,7 +88,7 @@ export interface HandlerAPI {
 }
 
 export interface HandlerOptions {
-  /** Authority accepted by v2 Release catalog paths. */
+  /** Authority accepted by Release Catalog client paths. */
   readonly authorityId?: string;
   /** Base path for all routes. @default "/api" */
   readonly basePath?: string;
@@ -100,9 +100,9 @@ export interface HandlerFeatures {
   /**
    * Mounts the React Native v1 update-check endpoints:
    *
-   * - `GET /v2/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`
-   * - `GET /v2/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash`
-   * - `GET /v2/artifacts/:targetBundleId/from/:currentBundleId`
+   * - `GET /release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`
+   * - `GET /release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash`
+   * - `GET /artifacts/:targetBundleId/from/:currentBundleId`
    *
    * @default true
    *
