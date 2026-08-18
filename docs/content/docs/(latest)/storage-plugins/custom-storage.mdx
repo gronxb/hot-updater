@@ -182,18 +182,12 @@ Pass plugin objects directly; there is no plugin factory thunk or runtime
 profile:
 
 ```typescript
-// hot-updater.config.ts: deploy-time provider client
-import { r2Storage } from "@hot-updater/cloudflare";
+import { defineConfig } from "hot-updater";
+
+import { customStorage } from "./customStorage";
 
 export default defineConfig({
-  storage: r2Storage({
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
-    bucketName: process.env.CLOUDFLARE_R2_BUCKET_NAME!,
-    credentials: {
-      accessKeyId: process.env.CLOUDFLARE_R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
-    },
-  }),
+  storage: customStorage,
 });
 ```
 
@@ -204,10 +198,7 @@ of Node.js credentials while preserving the same storage protocol.
 `getDownloadUrl` is the storage plugin's public URL boundary. A provider can
 return its CDN URL, a provider-signed URL, or a signed URL handled by the same
 server. The contract exposes only the resulting URL; the delivery mechanism is
-an implementation detail. For example, AWS passes
-`cloudFrontDownloadUrl(...)` to `s3Storage`, while the root Cloudflare
-`r2Storage` plugin creates a signed handler-relative URL when configured with
-`downloadUrlSigningKey`.
+an implementation detail.
 
 ## File-system consumers
 
