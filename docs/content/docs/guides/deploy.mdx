@@ -6,6 +6,11 @@ icon: Upload
 
 <video src={"/docs/deploy/deploy.mov"} controls autoPlay loop muted />
 
+Deploy builds and uploads one immutable Bundle per platform, creates a Release
+that owns its delivery policy, and atomically recompiles the affected Release
+Catalog. Bundle IDs identify bytes; Release IDs identify delivery chronology,
+rollout, compatibility, enabled state, force update, and message policy.
+
 ## Checklist
 
 1. Ensure `hot-updater.config.ts` is properly configured.
@@ -20,9 +25,10 @@ If you haven't completed these steps, refer to the [Supabase Provider](/docs/man
 Options:
   -p, --platform <platform>                    specify the platform (choices: "ios", "android")
   -t, --target-app-version <targetAppVersion>  specify the target app version (semver format e.g. 1.0.0, 1.x.x)
+  -d, --disabled                               create the Release disabled (default: false)
   -f, --force-update                           force update the app (default: false)
   -o, --bundle-output-path <bundleOutputPath>  the directory where bundle archives will be generated
-  -r, --rollout <percentage>                   specify the rollout percentage for the deployed bundle (0-100) (default: 100)
+  -r, --rollout <percentage>                   specify the rollout percentage for the new Release (0-100) (default: 100)
   -i, --interactive                            interactive mode (default: false)
   -c, --channel <channel>                      specify the channel to deploy (default: "production")
   -m, --message <message>                      Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message
@@ -46,6 +52,21 @@ npx hot-updater deploy
   together.
 - Local bundle archives are written under platform-specific directories such as
   `<bundle-output-path>/ios/bundle/` and `<bundle-output-path>/android/bundle/`.
+
+### Deployment Result
+
+After the database commit succeeds, deploy prints the identity of each
+platform result:
+
+- Release ID
+- Bundle ID
+- authority ID
+- Release Catalog scope key
+- Catalog generation
+
+Use the Release ID with `release show`, `release update`, `release disable`, or
+`release promote`. Use the Bundle ID with artifact commands such as
+`bundle show`, `patch`, and `bundle delete`.
 
 ### Bundle Diffing
 
@@ -90,7 +111,7 @@ npx hot-updater deploy -p <"ios" | "android">
 
 ### Force Update
 
-Deploy a forced update for emergency purposes. This will immediately apply the update.
+Create a Release whose selected update is applied immediately.
 
 Run the following command:
 
@@ -98,7 +119,8 @@ Run the following command:
 npx hot-updater deploy -p <"ios" | "android"> -f
 ```
 
-The `-f` (or `--force-update`) flag enables force update.
+The `-f` (or `--force-update`) flag sets policy on the new Release. It does not
+mutate the immutable Bundle.
 
 ### Channel
 
@@ -117,8 +139,7 @@ For more details about default channels, refer to
 
 ### Rollout
 
-The `-r` (or `--rollout`) flag sets the rollout percentage for the deployed
-bundle.
+The `-r` (or `--rollout`) flag sets the rollout percentage for the new Release.
 
 Run the following command:
 
@@ -127,22 +148,23 @@ npx hot-updater deploy -p <"ios" | "android"> -r 25
 ```
 
 Use `1` to `99` for gradual rollout, `100` for a full rollout, and `0` when
-you want to keep the bundle deployed but unavailable to numeric rollout until
-you edit it later in the console.
+you want to create the Release without exposing it to numeric rollout until you
+edit the same Release later.
 
 Hot Updater maps rollout percentages to `1..1000` numeric cohorts internally.
 For example, `-r 25` means 250 of 1000 numeric cohorts are eligible for that
-bundle.
+Release. Numeric cohort selection is seeded by Release ID and remains stable
+when that Release's rollout policy changes.
 
-If you omit `-r`, the default value is `100`, so the bundle is deployed to the
-entire audience immediately.
+If you omit `-r`, the default value is `100`, so the new Release is eligible for
+the entire numeric audience immediately.
 
 For more on gradual rollout, current device cohorts, and cohort targeting from
 the console, see [Rollout & Cohorts](/docs/guides/rollout-cohorts).
 
 ### Message
 
-The `-m` (or `--message`) flag specifies the message.
+The `-m` (or `--message`) flag specifies the new Release's public message.
 
 Run the following command:
 
@@ -158,4 +180,4 @@ deploys.
 | Update Type  | When Applied                                                                                 | How to Enable                             |
 | ------------ | -------------------------------------------------------------------------------------------- | ----------------------------------------- |
 | Default      | Downloads the update bundle in the background and applies it when the user restarts the app. | Default setting                           |
-| Force Update | Downloads the update bundle and applies it immediately.                                      | Use the `--force-update` flag or console. |
+| Force Update | Downloads the selected Release's Bundle and applies it immediately.                           | Use the `--force-update` flag or console. |

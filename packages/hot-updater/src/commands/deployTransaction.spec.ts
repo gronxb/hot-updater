@@ -132,7 +132,7 @@ describe("Release deployment transaction", () => {
     ];
     const prepared: string[] = [];
 
-    const result = await prepareAndCommitBundles({
+    const { commitResults, results } = await prepareAndCommitBundles({
       database: harness.plugin,
       prepare: async (persistDeployment) => {
         for (const bundle of bundles) {
@@ -144,7 +144,25 @@ describe("Release deployment transaction", () => {
       },
     });
 
-    expect(result).toEqual(bundles.map(({ id }) => id));
+    expect(results).toEqual(bundles.map(({ id }) => id));
+    expect(
+      commitResults.map(({ release }) => ({
+        bundleId: release?.bundle_id,
+        platform: release?.platform,
+        releaseId: release?.id,
+      })),
+    ).toEqual([
+      {
+        bundleId: bundles[0]!.id,
+        platform: "ios",
+        releaseId: expect.any(String),
+      },
+      {
+        bundleId: bundles[1]!.id,
+        platform: "android",
+        releaseId: expect.any(String),
+      },
+    ]);
     expect(harness.commit).toHaveBeenCalledOnce();
     await expect(
       harness.plugin.models.releaseCatalogs.findByScopeKey(scopeKey("ios")),

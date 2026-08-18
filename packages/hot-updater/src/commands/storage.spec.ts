@@ -83,6 +83,7 @@ const IMAGE_HASH = "a".repeat(64);
 const BUNDLE_HASH = "b".repeat(64);
 const ORPHAN_HASH = "c".repeat(64);
 const YOUNG_ORPHAN_HASH = "d".repeat(64);
+const ORPHAN_PATCH_KEY = `bundles/${LIVE_BUNDLE_ID}/patches/${DEAD_BUNDLE_ID}/index.ios.bundle.bsdiff`;
 
 const liveBundle: Bundle = {
   assetBaseStorageUri: "s3://bucket/assets",
@@ -104,6 +105,29 @@ const object = (
   size,
   storageUri: `s3://bucket/${key}`,
 });
+
+const bundlePage = (bundle: Bundle) => ({
+  data: [bundle],
+  pagination: {
+    currentPage: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+    total: 1,
+    totalPages: 1,
+  },
+});
+
+const liveBundleWithPatch: Bundle = {
+  ...liveBundle,
+  patches: [
+    {
+      baseBundleId: DEAD_BUNDLE_ID,
+      baseFileHash: "base-hash",
+      patchFileHash: "patch-hash",
+      patchStorageUri: `s3://bucket/${ORPHAN_PATCH_KEY}`,
+    },
+  ],
+};
 
 describe("parseStoragePruneProtection", () => {
   it("parses minute, hour, day, and week durations", async () => {
@@ -200,10 +224,68 @@ describe("handleStoragePrune", () => {
     expect(mockCli.p.log.warn).toHaveBeenCalledWith(
       expect.stringContaining("requires exclusive access"),
     );
+    const exclusiveWarning = String(mockCli.p.log.warn.mock.calls[0]?.[0]);
+    expect(exclusiveWarning).toContain("deploy");
+    expect(exclusiveWarning).toContain("patch");
+    expect(exclusiveWarning).not.toContain("promote");
     expect(mockCli.p.log.warn).toHaveBeenCalledWith(
       expect.stringContaining("separate storage basePath"),
     );
     expect(mockDatabasePlugin.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("deletes an old unreferenced patch below a live Bundle", async () => {
+    mockStorageNode.listObjects.mockResolvedValue([
+      object(ORPHAN_PATCH_KEY, old),
+    ]);
+    const { handleStoragePrune } = await import("./storage");
+
+    await handleStoragePrune({ yes: true });
+
+    expect(mockStorageNode.deleteObjects).toHaveBeenCalledWith([
+      ORPHAN_PATCH_KEY,
+    ]);
+  });
+
+  it("preserves a patch referenced by its live Bundle", async () => {
+    mockDatabasePlugin.getBundles.mockResolvedValue(
+      bundlePage(liveBundleWithPatch),
+    );
+    mockStorageNode.listObjects.mockResolvedValue([
+      object(ORPHAN_PATCH_KEY, old),
+    ]);
+    const { handleStoragePrune } = await import("./storage");
+
+    await handleStoragePrune({ yes: true });
+
+    expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
+  });
+
+  it("preserves a patch that becomes referenced during the final scan", async () => {
+    mockDatabasePlugin.getBundles
+      .mockResolvedValueOnce(bundlePage(liveBundle))
+      .mockResolvedValueOnce(bundlePage(liveBundleWithPatch));
+    mockStorageNode.listObjects.mockResolvedValue([
+      object(ORPHAN_PATCH_KEY, old),
+    ]);
+    const { handleStoragePrune } = await import("./storage");
+
+    await handleStoragePrune({ yes: true });
+
+    expect(mockDatabasePlugin.getBundles).toHaveBeenCalledTimes(2);
+    expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
+  });
+
+  it("does not treat an unrecognized live Bundle path as a patch", async () => {
+    const unknownPatchPath = `bundles/${LIVE_BUNDLE_ID}/patches/not-a-bundle/readme.txt`;
+    mockStorageNode.listObjects.mockResolvedValue([
+      object(unknownPatchPath, old),
+    ]);
+    const { handleStoragePrune } = await import("./storage");
+
+    await handleStoragePrune({ yes: true });
+
+    expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
   });
 
   it.each([

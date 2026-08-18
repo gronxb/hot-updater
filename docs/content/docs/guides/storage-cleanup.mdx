@@ -14,10 +14,12 @@ It can remove:
 
 - Orphaned bundle objects in both the legacy `<bundle-id>/...` layout and the
   current `bundles/<bundle-id>/...` layout.
+- Patch objects that are no longer referenced, including orphaned patches under
+  a target Bundle that is still live.
 - Unreferenced content-addressed assets under `assets/sha256/...`.
 
-Live bundle objects, referenced assets, recently modified objects, objects
-without a modification timestamp, and unknown files are protected.
+Live bundle objects, referenced patches and assets, recently modified objects,
+objects without a modification timestamp, and unknown files are protected.
 
 <Callout type="info">
   Pruning is not a retention policy. Upgrading Hot Updater fixes new S3
@@ -25,23 +27,37 @@ without a modification timestamp, and unknown files are protected.
   longer need before pruning their objects.
 </Callout>
 
-## Select old bundle records
+## Remove policy references, then Bundle records
 
-List the records you intend to remove. Narrow the result by channel, platform,
-or exact target app version as needed:
+Channel, compatibility, enabled, and rollout fields belong to Releases. Start
+by listing the Release policy you intend to retire:
 
 ```package-install
-npx hot-updater bundle list --channel production --platform ios --target-app-version 1.0.0 --limit 100 --json
+npx hot-updater release list --channel production --platform ios --limit 100 --json
 ```
 
-Delete one or more selected records:
+Disable each selected Release, then hard-delete it. Hard deletion is separate
+from operational rollback and is required only when you intend to make the
+referenced Bundle eligible for garbage collection.
 
 ```package-install
+npx hot-updater release disable <release-id> --yes
+npx hot-updater release delete <release-id> --yes
+```
+
+A Bundle can be reused by multiple Releases, including Releases in other
+channels. Inspect its references and remove every Release reference before
+deleting the immutable artifact record:
+
+```package-install
+npx hot-updater bundle show <bundle-id>
 npx hot-updater bundle delete <bundle-id> <another-bundle-id> --yes
 ```
 
-`bundle delete` removes database records. Shared assets and bundle files remain
-until a reference-aware prune confirms that no remaining record uses them.
+`bundle delete` is rejected while any Release still references the Bundle. A
+successful delete removes database records only. Shared assets, patch objects,
+and Bundle files remain until a reference-aware prune confirms that no
+remaining record uses them.
 
 ## Preview eligible objects
 
@@ -68,7 +84,7 @@ Durations accept `m`, `h`, `d`, or `w`, such as `30m`, `24h`, `7d`, or `2w`.
 
 ## Delete eligible objects
 
-Pause every deploy and promote process that writes to the same storage prefix,
+Pause every deploy and patch process that writes to the same storage prefix,
 then run:
 
 ```package-install
@@ -78,11 +94,18 @@ npx hot-updater storage prune --protect-newer-than 24h --yes
 Before deletion, Hot Updater reloads bundle and manifest references and removes
 objects from the candidate set if they became live.
 
+`release promote` does not need to be paused for Storage safety. It creates a
+new Release that reuses an existing Bundle and does not upload or copy Storage
+objects.
+
 <Callout type="warn">
   The configured database must own every object under the configured storage
   prefix. If databases or environments share a bucket, assign each one a
   separate storage `basePath` before pruning.
 </Callout>
 
-Storage pruning currently requires the management capabilities provided by
-`s3Storage`, including AWS S3 and S3-compatible services such as Cloudflare R2.
+Storage pruning currently requires the `listObjects` and `deleteObjects`
+management capabilities provided by `s3Storage`, including AWS S3 and
+S3-compatible services such as Cloudflare R2. Other Storage plugins continue to
+support deploy and runtime delivery but cannot use `storage prune` until they
+implement those management operations.
