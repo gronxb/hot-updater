@@ -98,6 +98,43 @@ const getAnalyticsResult = async (
   };
 };
 
+const getAnalyticsSummaries = async (
+  persistence: AnalyticsPersistence,
+  bundleIds: readonly string[],
+  window: BundleEventAnalyticsWindow,
+) => {
+  const normalizedBundleIds = [...new Set(bundleIds)];
+  if (normalizedBundleIds.length === 0) return [];
+
+  const requestedBundleIds = new Set(normalizedBundleIds);
+  const installedByBundleId = new Map<string, Set<string>>();
+  const recoveredByBundleId = new Map<string, Set<string>>();
+  const rows = (
+    await materializeRowsForWindow(
+      { persistence, cutoffMs: Date.now() },
+      window,
+    )
+  ).filter(isTransitionEventRow);
+
+  for (const row of rows) {
+    const bundleId =
+      row.type === "UPDATE_APPLIED" ? row.to_bundle_id : row.from_bundle_id;
+    if (bundleId === null || !requestedBundleIds.has(bundleId)) continue;
+
+    const counts =
+      row.type === "UPDATE_APPLIED" ? installedByBundleId : recoveredByBundleId;
+    const installIds = counts.get(bundleId) ?? new Set<string>();
+    installIds.add(row.install_id);
+    counts.set(bundleId, installIds);
+  }
+
+  return normalizedBundleIds.map((bundleId) => ({
+    bundleId,
+    installed: installedByBundleId.get(bundleId)?.size ?? 0,
+    recovered: recoveredByBundleId.get(bundleId)?.size ?? 0,
+  }));
+};
+
 export const createAnalyticsProvider = (
   persistence: AnalyticsPersistence,
 ): AnalyticsProvider =>
@@ -119,6 +156,9 @@ export const createAnalyticsProvider = (
           rows.filter((row) => isRecoveredFromBundle(row, bundleId)),
         ),
       };
+    },
+    getBundleEventSummaries(bundleIds, window) {
+      return getAnalyticsSummaries(persistence, bundleIds, window);
     },
     getBundleEventAnalytics(bundleId, window, limit, offset) {
       return getAnalyticsResult(persistence, bundleId, window, limit, offset);

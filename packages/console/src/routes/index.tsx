@@ -86,6 +86,46 @@ export const Route = createFileRoute("/")({
 const shortId = (id: string) =>
   id.length > 18 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
 
+function BundleMovementSummary({
+  summary,
+}: {
+  readonly summary: ReleaseListRow["activity30d"];
+}) {
+  if (summary === null) {
+    return (
+      <span
+        aria-label="30-day Bundle activity unavailable"
+        className="text-sm text-muted-foreground"
+        title="Analytics are unavailable for this Bundle."
+      >
+        —
+      </span>
+    );
+  }
+
+  return (
+    <div
+      aria-label="Bundle movement over 30 days, distinct installations"
+      className="flex min-w-[140px] items-baseline gap-3 whitespace-nowrap"
+      role="group"
+      title="Distinct installations over the last 30 days."
+    >
+      <span className="flex items-baseline gap-1.5">
+        <span className="text-xs text-muted-foreground">Applied</span>
+        <span className="text-sm font-medium tabular-nums">
+          {summary.installed}
+        </span>
+      </span>
+      <span className="flex items-baseline gap-1.5">
+        <span className="text-xs text-muted-foreground">Recovered</span>
+        <span className="text-sm font-medium tabular-nums">
+          {summary.recovered}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 function BundleFilterToolbar({
   channels,
   onChange,
@@ -497,7 +537,7 @@ function BundlesPage() {
                           className={cn(
                             "flex flex-col gap-4 border-b p-4 last:border-b-0",
                             release.currentlyUnreachable &&
-                              "bg-muted/35 opacity-70 transition-opacity focus-within:opacity-100",
+                              "bg-muted/35 saturate-50 transition-[background-color,filter] focus-within:saturate-100 motion-reduce:transition-none",
                             isExpanded && "border-b-0 bg-primary/5",
                           )}
                         >
@@ -556,6 +596,16 @@ function BundlesPage() {
                                         patchCount === 1 ? "patch" : "patches"
                                       }`
                                     : "—"}
+                              </dd>
+                            </div>
+                            <div className="col-span-2 rounded-md bg-muted/40 p-3">
+                              <dt className="text-muted-foreground">
+                                Activity · 30d
+                              </dt>
+                              <dd className="mt-1">
+                                <BundleMovementSummary
+                                  summary={release.activity30d}
+                                />
                               </dd>
                             </div>
                             <div className="col-span-2 flex flex-wrap items-center gap-2 rounded-md bg-muted/40 p-3">
@@ -620,6 +670,9 @@ function BundlesPage() {
                     <TableHead>Enabled</TableHead>
                     <TableHead>Force update</TableHead>
                     <TableHead>Rollout</TableHead>
+                    <TableHead title="Distinct installations over the last 30 days.">
+                      Activity · 30d
+                    </TableHead>
                     <TableHead>Message</TableHead>
                     <TableHead>Created</TableHead>
                   </TableRow>
@@ -628,7 +681,7 @@ function BundlesPage() {
                   {releasesQuery.isPending
                     ? Array.from({ length: 7 }, (_, index) => (
                         <TableRow key={index}>
-                          <TableCell colSpan={10}>
+                          <TableCell colSpan={11}>
                             <Skeleton className="h-8 w-full" />
                           </TableCell>
                         </TableRow>
@@ -642,9 +695,9 @@ function BundlesPage() {
                             <TableRow
                               aria-label={`Open bundle ${release.bundle_id ?? release.id}`}
                               className={cn(
-                                "cursor-pointer transition-[background-color,opacity] hover:bg-muted/10 focus-within:bg-muted/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-[state=selected]:bg-muted/15 [&>td]:py-3",
+                                "cursor-pointer transition-[background-color,filter] hover:bg-muted/10 focus-within:bg-muted/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none data-[state=selected]:bg-muted/15 [&>td]:py-3",
                                 release.currentlyUnreachable &&
-                                  "bg-muted/35 opacity-70 hover:bg-muted/50 hover:opacity-90 focus-within:opacity-100",
+                                  "bg-muted/35 saturate-50 hover:bg-muted/50 hover:saturate-100 focus-within:saturate-100",
                                 isExpanded && "bg-primary/5",
                               )}
                               data-state={
@@ -785,6 +838,11 @@ function BundlesPage() {
                                   percentage={release.rollout_cohort_count / 10}
                                 />
                               </TableCell>
+                              <TableCell>
+                                <BundleMovementSummary
+                                  summary={release.activity30d}
+                                />
+                              </TableCell>
                               <TableCell
                                 className="text-sm text-muted-foreground"
                                 title={release.message ?? undefined}
@@ -806,7 +864,7 @@ function BundlesPage() {
                               <TableRow className="hover:bg-transparent">
                                 <TableCell
                                   className="border-t-0 p-0"
-                                  colSpan={10}
+                                  colSpan={11}
                                 >
                                   <ReleaseBundleChildrenPanel
                                     onDetailClick={openChildBundle}

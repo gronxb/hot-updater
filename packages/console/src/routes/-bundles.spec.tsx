@@ -71,6 +71,7 @@ const release = vi.hoisted(
       target_cohorts: [],
       updated_at_ms: Date.UTC(2026, 6, 18),
       currentlyUnreachable: false,
+      activity30d: { installed: 1, recovered: 0 },
     }) as ReleaseRow & { currentlyUnreachable: boolean },
 );
 const baseBundle = {
@@ -178,6 +179,13 @@ describe("BundlesPage", () => {
     expect(within(row).getByText("Enabled")).toBeDefined();
     expect(within(row).getByText("Optional")).toBeDefined();
     expect(within(row).getByText("100.0%").className).toContain("bg-primary");
+    const movement = within(row).getByRole("group", {
+      name: "Bundle movement over 30 days, distinct installations",
+    });
+    expect(within(movement).getByText("Applied")).toBeDefined();
+    expect(within(movement).getByText("1")).toBeDefined();
+    expect(within(movement).getByText("Recovered")).toBeDefined();
+    expect(within(movement).getByText("0")).toBeDefined();
     expect(within(row).queryByText("DEPLOY")).toBeNull();
     expect(within(row).queryByText("rev 1")).toBeNull();
   });
@@ -192,8 +200,9 @@ describe("BundlesPage", () => {
     const state = within(row).getByText("Unreachable");
 
     expect(row.className).toContain("bg-muted/35");
-    expect(row.className).toContain("opacity-70");
-    expect(row.className).toContain("hover:opacity-90");
+    expect(row.className).toContain("saturate-50");
+    expect(row.className).toContain("hover:saturate-100");
+    expect(row.className).toContain("motion-reduce:transition-none");
     expect(state.getAttribute("title")).toBe(
       "No catalog segment or cohort selects this release first with the current delivery settings.",
     );

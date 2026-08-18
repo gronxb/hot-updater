@@ -156,6 +156,9 @@ describe("ReleaseEditorSheet", () => {
     ).toBeDefined();
     expect(screen.getByText("Activity · 30 days")).toBeDefined();
     expect(screen.getByText("Metadata")).toBeDefined();
+    expect(
+      screen.getByRole("heading", { name: "Delivery settings" }),
+    ).toBeDefined();
     expect(screen.getAllByText("Target app version").length).toBeGreaterThan(0);
     expect(screen.getByText("Bundle hash")).toBeDefined();
     expect(
@@ -169,14 +172,17 @@ describe("ReleaseEditorSheet", () => {
     expect(
       screen.queryByText("Manage delivery settings and actions"),
     ).toBeNull();
+    expect(container.textContent!.indexOf("Activity · 30 days")).toBeLessThan(
+      container.textContent!.indexOf("Delivery settings"),
+    );
+    expect(container.textContent!.indexOf("Delivery settings")).toBeLessThan(
+      container.textContent!.indexOf("Message"),
+    );
     expect(container.textContent!.indexOf("Message")).toBeLessThan(
       container.textContent!.indexOf("Actions"),
     );
     expect(container.textContent!.indexOf("Actions")).toBeLessThan(
       container.textContent!.indexOf("Metadata"),
-    );
-    expect(container.textContent!.indexOf("Metadata")).toBeLessThan(
-      container.textContent!.indexOf("Activity · 30 days"),
     );
     expect(screen.queryByRole("heading", { name: "Delivery" })).toBeNull();
 

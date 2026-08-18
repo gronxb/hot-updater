@@ -5,6 +5,7 @@ import type {
   BundleEventAnalyticsWindow,
   BundleEventOverview,
   BundleEventSummary,
+  BundleEventSummaryByBundle,
   CreateBundleEventRequest,
   InstallationHistoryRow,
   InstallationSearchRow,
@@ -16,6 +17,10 @@ export type AnalyticsProvider = {
   readonly maxMatchingRows: number;
   appendBundleEvent(input: CreateBundleEventRequest): Promise<void>;
   getBundleEventSummary(bundleId: string): Promise<BundleEventSummary>;
+  getBundleEventSummaries(
+    bundleIds: readonly string[],
+    window: BundleEventAnalyticsWindow,
+  ): Promise<readonly BundleEventSummaryByBundle[]>;
   getBundleEventAnalytics(
     bundleId: string,
     window: BundleEventAnalyticsWindow,

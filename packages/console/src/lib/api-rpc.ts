@@ -20,6 +20,7 @@ import {
 } from "./analytics-input";
 import { DEFAULT_PAGE_LIMIT } from "./constants";
 import { listReleases } from "./server/listReleases";
+import { getReleaseActivity30d } from "./server/releaseActivity";
 import { addReleaseReachability } from "./server/releaseReachability";
 
 type GetBundlesInput = {
@@ -77,7 +78,7 @@ export const getReleases = createServerFn({ method: "GET" })
   .inputValidator((input: GetReleasesInput | undefined) => input)
   .handler(async ({ data }) => {
     const { prepareConfig } = await import("./server/config.server");
-    const { config } = await prepareConfig();
+    const { config, hotUpdater } = await prepareConfig();
     const result = await listReleases(config.database.models.releases, {
       ...(data?.afterReleaseId === undefined
         ? {}
@@ -95,12 +96,22 @@ export const getReleases = createServerFn({ method: "GET" })
         : { targetAppVersion: data.targetAppVersion }),
       limit: data?.limit ?? DEFAULT_PAGE_LIMIT,
     });
-    return {
-      ...result,
-      data: await addReleaseReachability(
+    const [releases, activityByBundleId] = await Promise.all([
+      addReleaseReachability(
         config.database.models.releaseCatalogs,
         result.data,
       ),
+      getReleaseActivity30d(hotUpdater, result.data),
+    ]);
+    return {
+      ...result,
+      data: releases.map((release) => ({
+        ...release,
+        activity30d:
+          release.bundle_id === null
+            ? null
+            : (activityByBundleId.get(release.bundle_id) ?? null),
+      })),
     };
   });
 

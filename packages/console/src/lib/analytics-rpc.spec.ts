@@ -71,6 +71,7 @@ const createRuntime = () => ({
   appendBundleEvent: vi.fn(),
   getActiveInstallationOverview: vi.fn(),
   getBundleEventSummary: vi.fn(),
+  getBundleEventSummaries: vi.fn(),
   getBundleEventAnalytics: vi.fn(),
   getBundleEventOverview: vi.fn(),
   searchInstallations: vi.fn(),

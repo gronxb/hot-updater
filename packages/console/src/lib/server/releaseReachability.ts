@@ -7,9 +7,14 @@ import type {
   ReleaseCatalogModel,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import type { BundleEventSummary } from "@hot-updater/server";
 
-export type ReleaseListRow = ReleaseRow & {
+export type ReleaseReachabilityRow = ReleaseRow & {
   readonly currentlyUnreachable: boolean;
+};
+
+export type ReleaseListRow = ReleaseReachabilityRow & {
+  readonly activity30d: BundleEventSummary | null;
 };
 
 const NON_TARGETED_COHORT = "release-catalog-non-targeted-cohort";
@@ -64,7 +69,7 @@ export function collectCurrentlyReachableReleaseIds(
 export async function addReleaseReachability(
   releaseCatalogs: Pick<ReleaseCatalogModel, "findByScopeKey">,
   releases: readonly ReleaseRow[],
-): Promise<readonly ReleaseListRow[]> {
+): Promise<readonly ReleaseReachabilityRow[]> {
   const scopeKeys = [...new Set(releases.map(({ scope_key }) => scope_key))];
   const reachableByScope = new Map(
     await Promise.all(

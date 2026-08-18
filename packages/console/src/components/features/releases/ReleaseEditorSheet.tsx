@@ -398,7 +398,20 @@ export function ReleaseEditorSheet({
 
             {release && draft ? (
               <div className="flex flex-col gap-6 px-4 pb-4 sm:px-6 sm:pb-6">
-                <section className="flex flex-col gap-6">
+                {release.bundle_id ? (
+                  <BundleAnalyticsSummary bundleId={release.bundle_id} />
+                ) : null}
+
+                <section
+                  aria-labelledby="delivery-settings-heading"
+                  className="flex flex-col gap-4"
+                >
+                  <h3
+                    className="text-sm font-medium"
+                    id="delivery-settings-heading"
+                  >
+                    Delivery settings
+                  </h3>
                   <FieldGroup className="gap-6">
                     <Field>
                       <FieldLabel htmlFor="release-message">Message</FieldLabel>
@@ -623,10 +636,6 @@ export function ReleaseEditorSheet({
                 ) : null}
                 {!release.bundle_id || !bundleQuery.isPending ? (
                   <BundleMetadata bundle={bundle} release={release} />
-                ) : null}
-
-                {release.bundle_id ? (
-                  <BundleAnalyticsSummary bundleId={release.bundle_id} />
                 ) : null}
 
                 <details className="rounded-lg border bg-muted/10 p-4 text-xs">

@@ -40,6 +40,10 @@ export type BundleEventSummary = {
   readonly recovered: number;
 };
 
+export type BundleEventSummaryByBundle = BundleEventSummary & {
+  readonly bundleId: string;
+};
+
 export type BundleEventAnalyticsWindow = "24h" | "7d" | "30d" | "all";
 export type ActiveInstallationWindow = "24h" | "7d" | "30d";
 
