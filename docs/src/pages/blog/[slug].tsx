@@ -1,3 +1,4 @@
+import { InlineTOC } from "fumadocs-ui/components/inline-toc";
 import defaultMdxComponents from "fumadocs-ui/mdx";
 import { ArrowLeft } from "lucide-react";
 import type { ComponentProps } from "react";
@@ -37,16 +38,27 @@ export default function BlogPost({ slug }: PageProps<"/blog/[slug]">) {
         All posts
       </a>
 
-      <header className="border-b border-fd-border pb-12 md:pb-16">
-        <div className="mb-8 flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-xs uppercase tracking-[0.13em] text-fd-muted-foreground">
-          <time dateTime={page.data.date}>
-            {formatBlogDate(page.data.date)}
-          </time>
-          <span aria-hidden="true" className="text-fd-primary">
-            /
-          </span>
-          <span>{page.data.author}</span>
-        </div>
+      <header className="border-b border-fd-border pb-12 md:pb-14">
+        <dl className="mb-8 flex flex-wrap gap-x-10 gap-y-4">
+          <div>
+            <dt className="font-mono text-xs uppercase tracking-[0.12em] text-fd-muted-foreground">
+              Written by
+            </dt>
+            <dd className="mt-1 text-sm font-medium text-fd-foreground">
+              {page.data.author}
+            </dd>
+          </div>
+          <div>
+            <dt className="font-mono text-xs uppercase tracking-[0.12em] text-fd-muted-foreground">
+              Published
+            </dt>
+            <dd className="mt-1 text-sm font-medium text-fd-foreground">
+              <time dateTime={page.data.date}>
+                {formatBlogDate(page.data.date)}
+              </time>
+            </dd>
+          </div>
+        </dl>
         <h1 className="text-balance text-4xl font-semibold tracking-[-0.04em] text-fd-foreground sm:text-6xl md:text-7xl">
           {page.data.title}
         </h1>
@@ -55,7 +67,9 @@ export default function BlogPost({ slug }: PageProps<"/blog/[slug]">) {
         </p>
       </header>
 
-      <div className="prose mt-12 max-w-none md:mt-16">
+      <InlineTOC items={page.data.toc} className="mt-10" />
+
+      <div className="prose mt-12 max-w-none md:mt-14">
         <MDX components={components} />
       </div>
     </article>

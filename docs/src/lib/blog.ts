@@ -9,6 +9,7 @@ type BlogPostData = PageData &
   DocMethods & {
     author: string;
     date: string;
+    image?: string;
   };
 
 export const blog = loader({

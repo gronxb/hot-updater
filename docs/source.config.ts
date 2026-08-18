@@ -14,6 +14,7 @@ export const blogPosts = defineCollections({
     description: "string",
     date: "string",
     author: "string",
+    "image?": "string",
   }),
 });
 
