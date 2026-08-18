@@ -1,9 +1,11 @@
 import type { LegacyBundle } from "@hot-updater/plugin-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { updateReleasePolicy } from "@hot-updater/plugin-core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
 
-const { loadConfig, log } = vi.hoisted(() => ({
+const { confirm, loadConfig, log } = vi.hoisted(() => ({
+  confirm: vi.fn(),
   loadConfig: vi.fn(),
   log: {
     error: vi.fn(),
@@ -18,7 +20,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   loadConfig,
   p: {
-    confirm: vi.fn(),
+    confirm,
     isCancel: vi.fn(() => false),
     log,
   },
@@ -27,6 +29,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 
 const databaseHarness = createDatabasePluginHarness();
+const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
 
 const sourceBundle: LegacyBundle = {
   id: "01900000-0000-7000-8000-000000000001",
@@ -63,6 +66,13 @@ describe("handlePromote", () => {
     loadConfig.mockResolvedValue({ database: databaseHarness.plugin });
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (originalIsTTY) {
+      Object.defineProperty(process.stdin, "isTTY", originalIsTTY);
+    }
+  });
+
   it("creates a target-channel Release that reuses the source Bundle", async () => {
     const { handlePromote } = await import("./promote");
 
@@ -82,6 +92,12 @@ describe("handlePromote", () => {
     });
     expect(await databaseHarness.bundles()).toHaveLength(1);
     expect(log.info).toHaveBeenCalledWith(expect.stringContaining("reused"));
+    const preview = String(log.message.mock.calls[0]?.[0]);
+    expect(preview).toContain("Target enabled");
+    expect(preview).toContain("100%");
+    expect(preview).toContain("(none)");
+    expect(preview).toContain("new Release ID");
+    expect(preview).toContain("remains unchanged");
   });
 
   it("atomically disables the source Release for move promotion", async () => {
@@ -101,6 +117,38 @@ describe("handlePromote", () => {
       operation: "PROMOTE",
     });
     expect(databaseHarness.commit).toHaveBeenCalledTimes(1);
+    expect(String(log.message.mock.calls[0]?.[0])).toContain(
+      "disabled atomically",
+    );
+  });
+
+  it("rejects promotion when the previewed source revision changes", async () => {
+    Object.defineProperty(process.stdin, "isTTY", {
+      configurable: true,
+      value: true,
+    });
+    confirm.mockImplementationOnce(async () => {
+      await updateReleasePolicy({
+        database: databaseHarness.plugin,
+        patch: { message: "changed concurrently" },
+        releaseId: sourceBundle.id,
+      });
+      return true;
+    });
+    const { handlePromote } = await import("./promote");
+
+    await expect(
+      handlePromote(sourceBundle.id, { target: "beta" }),
+    ).rejects.toThrow(/revision/i);
+
+    expect(await releasesForChannel("beta")).toEqual([]);
+    await expect(
+      databaseHarness.plugin.models.releases.findById(sourceBundle.id),
+    ).resolves.toMatchObject({
+      enabled: true,
+      message: "changed concurrently",
+      revision: 2,
+    });
   });
 
   it("rejects a promotion back into the same Release scope", async () => {

@@ -63,7 +63,6 @@ import {
   handleReleaseShow,
   handleReleaseUpdate,
 } from "./commands/release";
-import { handleRollback } from "./commands/rollback";
 import {
   DEFAULT_STORAGE_PRUNE_PROTECTION_MS,
   handleStoragePrune,
@@ -130,7 +129,7 @@ program
 
 const fingerprintCommand = program
   .command("fingerprint")
-  .description("Generate fingerprint");
+  .description("Check current fingerprints against fingerprint.json");
 
 fingerprintCommand.action(handleFingerprint);
 
@@ -141,13 +140,15 @@ fingerprintCommand
 
 const channelCommand = program
   .command("channel")
-  .description("Manage channels");
+  .description("Show and manage native default channels");
 
 channelCommand.action(handleChannel);
 
 channelCommand
   .command("set")
-  .description("Set the channel for Android (BuildConfig) and iOS (Info.plist)")
+  .description(
+    "Set the native default channel for Android (BuildConfig) and iOS (Info.plist)",
+  )
   .argument("<channel>", "the channel to set")
   .action(handleSetChannel);
 
@@ -174,7 +175,7 @@ bundleCommand
 
 bundleCommand
   .command("show")
-  .description("Show one bundle by id")
+  .description("Show one Bundle artifact and its Release references")
   .argument("<bundle-id>", "the bundle id to show")
   .option("--json", "output raw bundle data as JSON")
   .action((bundleId: string, options: { json?: boolean }) =>
@@ -183,7 +184,7 @@ bundleCommand
 
 bundleCommand
   .command("delete")
-  .description("Delete one or more bundle records by id")
+  .description("Delete Bundle records that have no Release references")
   .argument("<bundle-ids...>", "the bundle id(s) to delete")
   .option("-y, --yes", "skip confirmation prompt")
   .action((bundleIds: string[], options: { yes?: boolean }) =>
@@ -198,6 +199,7 @@ releaseCommand
   .command("list")
   .description("List Releases, most recent first")
   .option("-c, --channel <channel>", "filter by channel")
+  .option("--bundle-id <bundle-id>", "filter by referenced Bundle id")
   .option("--json", "output raw Release rows as JSON")
   .addOption(platformCommandOption)
   .option(
@@ -284,7 +286,11 @@ for (const [name, enabled] of [
 ] as const) {
   releaseCommand
     .command(name)
-    .description(`${enabled ? "Enable" : "Disable"} a Release`)
+    .description(
+      enabled
+        ? "Enable an exact Release"
+        : "Disable an exact Release and re-resolve compatible delivery",
+    )
     .argument("<release-id>", "the Release id")
     .option(
       "--expected-revision <revision>",
@@ -392,7 +398,8 @@ Examples:
 
 Only unreferenced bundle objects and shared assets are eligible.
 Protection uses object modification time, not time since bundle deletion.
-Deletion requires exclusive storage access; stop deploy and promote first.
+Deletion requires exclusive storage access; stop deploy and patch first.
+Object listing and deletion require a capable Storage plugin such as s3Storage.
 `,
   )
   .action(
@@ -445,7 +452,7 @@ keysCommand
 
 program
   .command("deploy")
-  .description("deploy a new version")
+  .description("Build an immutable Bundle and create a Release")
   .addOption(platformCommandOption)
   .addOption(
     new Option(
@@ -459,7 +466,9 @@ program
       return value;
     }),
   )
-  .addOption(new Option("-d, --disabled", "disable the update").default(false))
+  .addOption(
+    new Option("-d, --disabled", "create the Release disabled").default(false),
+  )
   .addOption(
     new Option("-f, --force-update", "force update the app").default(false),
   )
@@ -472,7 +481,7 @@ program
   .addOption(
     new Option(
       "-r, --rollout <percentage>",
-      "specify the rollout percentage for the deployed bundle (0-100)",
+      "specify the rollout percentage for the new Release (0-100)",
     )
       .argParser((value) => {
         try {
@@ -524,24 +533,6 @@ program
   .action(async (options: PatchOptions) => {
     await createPatch(options);
   });
-
-program
-  .command("rollback")
-  .description("Disable the current Release to restore its predecessor")
-  .argument("<channel>", "the channel to roll back")
-  .addOption(platformCommandOption)
-  .option("--target <bundle-id>", "retry rollback for one source Bundle")
-  .option("-y, --yes", "skip confirmation prompt")
-  .action(
-    (
-      channel: string,
-      options: {
-        platform?: "ios" | "android";
-        target?: string;
-        yes?: boolean;
-      },
-    ) => handleRollback(channel, options),
-  );
 
 program
   .command("console")
@@ -616,14 +607,20 @@ const catalogCommand = dbCommand
 catalogCommand
   .command("preflight")
   .description("Verify catalog projections without writing")
-  .argument("[scope-keys...]", "specific scope keys; defaults to all catalogs")
+  .argument(
+    "[scope-keys...]",
+    "specific scope keys; defaults to all Release and Catalog scopes",
+  )
   .option("--json", "output JSON")
   .action(handleCatalogPreflight);
 
 catalogCommand
   .command("rebuild")
-  .description("Deterministically rebuild drifted catalog projections")
-  .argument("[scope-keys...]", "specific scope keys; defaults to all catalogs")
+  .description("Create missing or rebuild drifted catalog projections")
+  .argument(
+    "[scope-keys...]",
+    "specific scope keys; defaults to all Release and Catalog scopes",
+  )
   .option("--json", "output JSON")
   .option("-y, --yes", "skip confirmation prompt")
   .action(handleCatalogRebuild);

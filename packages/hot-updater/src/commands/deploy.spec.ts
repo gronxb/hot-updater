@@ -30,6 +30,7 @@ const { mockBuildPlugin, mockCli, mockServer, mockStoragePlugin } = vi.hoisted(
         log: {
           error: vi.fn(),
           info: vi.fn(),
+          message: vi.fn(),
           step: vi.fn(),
           success: vi.fn(),
           warn: vi.fn(),
@@ -62,9 +63,16 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
       outputGitignorePath: ".hot-updater/output",
     },
     colors: {
+      blue: (value: string) => value,
       blueBright: (value: string) => value,
+      bold: (value: string) => value,
+      cyan: (value: string) => value,
+      dim: (value: string) => value,
+      green: (value: string) => value,
       magenta: (value: string) => value,
+      red: (value: string) => value,
       underline: (value: string) => value,
+      yellow: (value: string) => value,
     },
     createTarBrTargetFiles: mockCli.createTarBrTargetFiles,
     createTarGzTargetFiles: mockCli.createTarGzTargetFiles,
@@ -460,7 +468,7 @@ describe("deploy rollout wiring", () => {
     });
   });
 
-  it("prints deployment context and success outro", async () => {
+  it("prints the committed Release identity with the deployment result", async () => {
     await deploy({
       channel: "production",
       forceUpdate: false,
@@ -473,6 +481,21 @@ describe("deploy rollout wiring", () => {
       "Platform: iOS\nChannel: production\nRollout: 100%\nTarget app version: >=1.0.0 <1.1.0-0",
       "Deployment",
     );
+    const release = (await databaseHarness.releases())[0]!;
+    const catalog = await databasePlugin.models.releaseCatalogs.findByScopeKey(
+      release.scope_key,
+    );
+    const summary = mockCli.p.log.message.mock.calls[0]?.[0];
+    expect(summary).toContain("iOS Deployment");
+    expect(summary).toContain(`Release ID:`);
+    expect(summary).toContain(release.id);
+    expect(summary).toContain(`Bundle ID:`);
+    expect(summary).toContain("bundle-123");
+    expect(summary).toContain(`Authority ID:`);
+    expect(summary).toContain("default");
+    expect(summary).toContain(release.scope_key);
+    expect(summary).toContain(`Generation:`);
+    expect(summary).toContain(String(catalog?.generation));
     expect(mockCli.p.outro).toHaveBeenCalledWith(
       "🚀 Deployment Successful (bundle-123)",
     );
@@ -528,6 +551,29 @@ describe("deploy rollout wiring", () => {
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       "✅ Android Deployment Successful (bundle-android)",
     );
+    const releases = await databaseHarness.releases();
+    for (const [platform, platformName, bundleId] of [
+      ["ios", "iOS", "bundle-ios"],
+      ["android", "Android", "bundle-android"],
+    ] as const) {
+      const release = releases.find(
+        (candidate) =>
+          candidate.platform === platform && candidate.bundle_id === bundleId,
+      );
+      expect(release).toBeDefined();
+      const catalog =
+        await databasePlugin.models.releaseCatalogs.findByScopeKey(
+          release!.scope_key,
+        );
+      const summary = mockCli.p.log.message.mock.calls
+        .map(([message]) => message)
+        .find((message) => message.includes(`${platformName} Deployment`));
+      expect(summary).toContain(release!.id);
+      expect(summary).toContain(bundleId);
+      expect(summary).toContain("default");
+      expect(summary).toContain(release!.scope_key);
+      expect(summary).toContain(String(catalog?.generation));
+    }
     expect(mockCli.p.outro).toHaveBeenCalledWith(
       "🚀 Deployment Successful (iOS, Android)",
     );

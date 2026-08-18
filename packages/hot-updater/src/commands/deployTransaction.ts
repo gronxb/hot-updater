@@ -185,7 +185,10 @@ export const prepareAndCommitBundles = async <TResult>({
   readonly prepare: (
     persistDeployment: (input: DeploymentWrite) => Promise<void>,
   ) => Promise<readonly TResult[]>;
-}): Promise<readonly TResult[]> => {
+}): Promise<{
+  readonly commitResults: readonly ReleaseCatalogMutationResult[];
+  readonly results: readonly TResult[];
+}> => {
   const prepared: DeploymentWrite[] = [];
   const results = await prepare(async (input) => {
     prepared.push(input);
@@ -193,7 +196,10 @@ export const prepareAndCommitBundles = async <TResult>({
 
   // Uploaded content-addressed objects intentionally remain reusable when
   // the database transaction fails; shared assets must not be deleted.
-  await commitDeployments({ database, deployments: prepared });
+  const commitResults = await commitDeployments({
+    database,
+    deployments: prepared,
+  });
 
-  return results;
+  return { commitResults, results };
 };

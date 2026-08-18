@@ -52,7 +52,32 @@ resources and rerun init.
 The v1 scaffold starts with an empty Release history. Redeploy the releases you
 want to serve from their source artifacts; v0 policy is not backfilled.
 
-### 3. Verify the v1 endpoint
+### 3. Update CLI automation to use Release IDs
+
+v1 separates immutable Bundle artifacts from mutable Release policy. Update
+scripts before writers resume:
+
+| v0 command or assumption | v1 command or meaning |
+| --- | --- |
+| `bundle list --channel ... --target-app-version ...` | Use `release list --channel ... --platform ...` for delivery policy. `bundle list` is an artifact inventory. |
+| `bundle show <bundle-id>` for rollout or enabled state | Use `release show <release-id>`. `bundle show` reports artifact data and Release references. |
+| `bundle update <bundle-id>` | `release update <release-id>` |
+| `bundle enable <bundle-id>` | `release enable <release-id>` |
+| `bundle disable <bundle-id>` | `release disable <release-id>` |
+| `bundle promote <bundle-id>` | `release promote <source-release-id> --target <channel>` |
+| top-level `rollback <channel>` or `--target <bundle-id>` | Identify the exact Release and run `release disable <release-id>`. The Bundle-targeted rollback command is removed. |
+| Delete an old Bundle directly | Disable and hard-delete every referencing Release, then run `bundle delete` and preview `storage prune`. |
+
+Backfilled v0 rows may initially have matching Release and Bundle IDs. Do not
+build automation around that coincidence: deploy and promote create independent
+Release IDs, and multiple Releases can reference one Bundle.
+
+Promotion reuses Bundle bytes and never copies Storage objects. Its target
+Release is enabled with a 100% numeric rollout, no target cohorts, and a new
+Release-ID rollout seed. Review that policy in the command preview before
+confirming, especially when the source Release had a partial or QA-only rollout.
+
+### 4. Verify the v1 endpoint
 
 Run doctor against the generated public base URL:
 
@@ -64,7 +89,7 @@ A v1 endpoint reports `infrastructureGeneration: 1` from `/version`. If the
 marker is missing, doctor reports that in-place upgrade is blocked and directs
 you back to init with new resources.
 
-### 4. Publish a new native build
+### 5. Publish a new native build
 
 Build and release the app with the v1 native SDK and the new v1 endpoint. Test
 catalog fetch, artifact resolution, install, restart, and rollback before
