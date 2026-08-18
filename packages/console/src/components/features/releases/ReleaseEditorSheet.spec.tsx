@@ -241,7 +241,7 @@ describe("ReleaseEditorSheet", () => {
     fireEvent.click(previewButton);
 
     expect(
-      screen.getByText("All 1000 numeric cohorts are included."),
+      screen.getByRole("list", { name: "Included numeric cohorts" }),
     ).toBeDefined();
   });
 

@@ -2,7 +2,13 @@ import {
   getNumericCohortRolloutPosition,
   NUMERIC_COHORT_SIZE,
 } from "@hot-updater/core";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RolloutCohortsDialog } from "./RolloutCohortsDialog";
@@ -40,18 +46,29 @@ describe("RolloutCohortsDialog", () => {
     ).toBeDefined();
     expect(screen.getByText(String(rolloutCohorts[0]))).toBeDefined();
     expect(screen.getByText("qa-group")).toBeDefined();
+    expect(
+      screen
+        .getByText("Additional cohorts")
+        .compareDocumentPosition(screen.getByText("Numeric cohorts")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
-  it("summarizes a full rollout without rendering every cohort", () => {
+  it("renders every numeric cohort for a full rollout", () => {
     render(
       <RolloutCohortsDialog releaseId="release-1" rolloutCohortCount={1_000} />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Preview cohorts" }));
 
+    const included = screen.getByRole("list", {
+      name: "Included numeric cohorts",
+    });
+    expect(within(included).getAllByRole("listitem")).toHaveLength(1_000);
+    expect(within(included).getByText("1")).toBeDefined();
+    expect(within(included).getByText("1000")).toBeDefined();
     expect(
-      screen.getByText("All 1000 numeric cohorts are included."),
-    ).toBeDefined();
-    expect(screen.queryAllByText(/^\d+$/)).toHaveLength(2);
+      screen.queryByText("All 1000 numeric cohorts are included."),
+    ).toBeNull();
   });
 });
