@@ -7,10 +7,15 @@ version: "v0.22.0"
 
 ## Installation
 
-Install the server package and standalone plugin.
+Install the server package in the deployed server project. Install the
+standalone plugin in the React Native project that runs the CLI.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/standalone --save-dev
+npm install @hot-updater/server @hot-updater/cloudflare
+```
+
+```package-install
+npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater
 ```
 
 ## Architecture
@@ -18,6 +23,7 @@ npm install @hot-updater/server @hot-updater/standalone --save-dev
 Self-hosted mode lets you control the database layer while using existing cloud storage plugins.
 
 **How it works:**
+
 - **CLI**: Uses `standaloneRepository` in hot-updater.config.ts to send requests to your server
 - **Server**: Handles database operations with `@hot-updater/server`
 - **Storage**: Uses existing plugins (AWS S3, Supabase, Cloudflare R2, Firebase)
@@ -29,13 +35,18 @@ This approach gives you full control over metadata while leveraging reliable clo
 Configure your Hot Updater CLI to use the self-hosted database.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { r2Storage } from "@hot-updater/cloudflare";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 export default defineConfig({
-  build: bare(),
+  build: bare({ enableHermes: true }),
   storage: r2Storage({
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
     credentials: {
@@ -46,7 +57,11 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${managementToken}`,
+    },
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
@@ -72,18 +87,26 @@ still use a runtime implementation backed by a platform binding.
 `storages` is an array, allowing you to configure multiple storage providers simultaneously. Each plugin acts as a decoder for its specific storage URI format.
 
 **Use cases:**
+
 - Bundles stored across different storage providers
 - Migrating between storage providers (old and new bundles coexist)
 - Multi-region deployments with different storage backends
 
 **Example with multiple plugins:**
-```typescript title="src/hotUpdater.ts"
+
+```typescript title="src/hotUpdater.ts (storage excerpt)"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
   storages: [
-    s3Storage({ /* AWS S3 config */ }),
-    supabaseStorage({ /* Supabase config */ }),
-    myCustomStorage({ /* My Custom Storage */})
+    s3Storage({
+      /* AWS S3 config */
+    }),
+    supabaseStorage({
+      /* Supabase config */
+    }),
+    myCustomStorage({
+      /* My Custom Storage */
+    }),
   ],
   basePath: "/hot-updater",
 });
@@ -104,10 +127,14 @@ be enabled explicitly when the CLI needs bundle-management APIs. When
 `/version` endpoint is always mounted for diagnostics. If you provide `routes`,
 specify both configurable route groups.
 
-```typescript title="src/hotUpdater.ts"
+```typescript title="src/hotUpdater.ts (routes excerpt)"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
-  storages: [r2Storage({ /* Cloudflare R2 config */ })],
+  storages: [
+    r2Storage({
+      /* Cloudflare R2 config */
+    }),
+  ],
   basePath: "/hot-updater",
   routes: {
     updateCheck: true,
@@ -119,10 +146,14 @@ export const hotUpdater = createHotUpdater({
 If you want to hide bundle management endpoints but keep `/version`, disable the
 `bundles` group:
 
-```typescript title="src/hotUpdater.ts"
+```typescript title="src/hotUpdater.ts (routes excerpt)"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
-  storages: [r2Storage({ /* Cloudflare R2 config */ })],
+  storages: [
+    r2Storage({
+      /* Cloudflare R2 config */
+    }),
+  ],
   basePath: "/hot-updater",
   routes: {
     updateCheck: true,
@@ -137,19 +168,23 @@ export const hotUpdater = createHotUpdater({
 For most use cases, use only the storage plugin that matches your CLI's `hot-updater.config.ts`.
 
 **CLI (hot-updater.config.ts):**
+
 ```typescript
 storage: r2Storage({ ... })
 ```
 
 **Server (src/hotUpdater.ts):**
+
 ```typescript
 storages: [r2Storage({ ... })]
 ```
 
 This ensures consistency and simplifies configuration. Only use multiple plugins when you need to support bundles from different storage providers.
+
 </Callout>
 
 **Available official plugins:**
+
 - [r2Storage](../storage-plugins/cloudflare) - Cloudflare R2
 - [s3Storage](../storage-plugins/aws) - AWS S3 and S3-compatible storage
 - [supabaseStorage](../storage-plugins/supabase) - Supabase Storage
@@ -164,6 +199,11 @@ Start by setting up your database adapter. Choose the ORM that fits your project
 - [Kysely](./database/kysely) - Type-safe SQL query builder
 - [MongoDB](./database/mongodb) - Native MongoDB driver
 - [S3](./database/s3) - S3-compatible object storage for bundle metadata
+
+Generate and apply the adapter's schema before serving requests. The exact
+workflow differs by adapter: Kysely and MongoDB use `hot-updater db migrate`,
+Drizzle uses the generated schema with Drizzle Kit, and Prisma merges its models
+into `prisma/schema.prisma` for Prisma Migrate. S3 does not require a schema.
 
 ## Server Frameworks
 
@@ -180,4 +220,5 @@ After configuring your database, choose the framework that fits your stack:
 - **Database control**: PostgreSQL, SQLite, or MongoDB on your infrastructure
 - **Cloud storage**: Leverage existing AWS S3, Cloudflare R2, Supabase, or Firebase storage
 - **Type safety**: Full TypeScript support across all adapters
-- **Production ready**: Built-in graceful shutdown and error handling
+- **Operational control**: Add framework-specific authentication, lifecycle,
+  and error handling for your deployment environment

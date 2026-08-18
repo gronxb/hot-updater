@@ -77,6 +77,11 @@ vi.mock("@hot-updater/cli-tools", async () => {
     }),
     p: {
       ...actual.p,
+      log: {
+        ...actual.p.log,
+        message: vi.fn(),
+      },
+      note: vi.fn(),
       text: vi.fn(async () => {
         mocks.events.push("credentials");
         return "credentials.json";
@@ -133,6 +138,7 @@ vi.mock("./select", () => ({
   setEnv: vi.fn(),
 }));
 
+import { p } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 
 import { runInit } from "./index";
@@ -227,6 +233,26 @@ describe("Firebase project creation", () => {
           GOOGLE_APPLICATION_CREDENTIALS: "/tmp/firebase-credentials.json",
         },
       },
+    );
+  });
+
+  it("points missing Firebase credentials to .env.hotupdater", async () => {
+    // Given
+    mocks.existingProject = true;
+    mocks.existingEnv = {
+      HOT_UPDATER_FIREBASE_PROJECT_ID: "existing-project",
+      HOT_UPDATER_FIREBASE_REGION: "asia-northeast3",
+    };
+
+    // When
+    await runInit({ build: "bare" });
+
+    // Then
+    expect(p.log.message).toHaveBeenCalledWith(
+      "Next step: Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env.hotupdater",
+    );
+    expect(p.note).toHaveBeenCalledWith(
+      expect.stringContaining("return null; // Replace with your app root"),
     );
   });
 

@@ -7,7 +7,7 @@ icon: firebase
 ## Installation
 
 ```package-install
-npm install @hot-updater/firebase firebase-admin --save-dev
+npm install @hot-updater/firebase firebase-admin dotenv --save-dev
 ```
 
 ## Setup
@@ -53,10 +53,13 @@ FIREBASE_STORAGE_BUCKET=your-bucket-name
 ```typescript
 import { firebaseStorage } from "@hot-updater/firebase";
 import { applicationDefault } from "firebase-admin/app";
+import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
+config({ path: ".env.hotupdater" });
+
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Check your .env file and add the credentials
+// Check your .env.hotupdater file and add the credentials
 // Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
 // Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
 const credential = applicationDefault();
@@ -80,7 +83,8 @@ For example, `gs://my-bucket/releases/1.0.0/bundle%20ios.zip` is stored in the
 
 ## Capabilities
 
-`firebaseStorage` implements streaming upload, streaming Web-response reads,
-download URL
-generation, existence checks, and exact deletion. `getDownloadUrl` returns a CDN
-URL when `cdnUrl` is configured and a Firebase signed URL otherwise.
+`firebaseStorage` implements the Web-stream upload and `Response` read contract,
+but the current Firebase Admin implementation buffers each complete upload and
+download in memory. It also implements download URL generation, existence
+checks, and exact deletion. `getDownloadUrl` returns a CDN URL when `cdnUrl` is
+configured and a Firebase signed URL otherwise.

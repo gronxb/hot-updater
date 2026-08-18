@@ -4,7 +4,6 @@ description: "Set up DynamoDB metadata, S3 bundle storage, CloudFront, and Lambd
 icon: aws
 ---
 
-import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
 <video src={"/docs/get-started/init-aws.mov"} controls autoPlay loop muted />
@@ -13,7 +12,7 @@ import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
 Before you begin, make sure the following are ready:
 
-- **Node.js**: Version 20 or later is recommended.
+- **Node.js**: Version 20.19 or later is required; Node 22 is recommended.
 - **AWS Account**: Sign up at [AWS](https://aws.amazon.com) if you don't have one.
 - **AWS CLI**: Install the AWS CLI and sign in or configure a profile.
 
@@ -30,7 +29,7 @@ Used for `hot-updater init`:
 - `AWSLambda_FullAccess`: Create and update Lambda functions.
 - `CloudFrontFullAccess`: Manage CloudFront distributions.
 - `IAMFullAccess`: Create IAM roles for Lambda@Edge.
-- `SSMFullAccess`: Create Access to SSM Parameters for storing CloudFront key pairs.
+- `AmazonSSMFullAccess`: Access SSM Parameters used for CloudFront key pairs.
 
 ### 2. Ongoing Usage
 
@@ -40,13 +39,19 @@ Used for `hot-updater deploy` and `hot-updater console`:
 - DynamoDB table access for metadata queries and writes.
 - `cloudfront:CreateInvalidation`: Invalidate CloudFront cache after deployments.
 
-For ongoing usage, create a separate access token with limited permissions. Here's a minimal policy example for CloudFront invalidation:
+For ongoing usage, use a separate least-privilege IAM identity. Here is a
+minimal policy document for the CloudFront invalidation permission:
 
 ```json
 {
-  "Effect": "Allow",
-  "Action": ["cloudfront:CreateInvalidation"],
-  "Resource": "arn:aws:cloudfront::<ACCOUNT_ID>:distribution/<DISTRIBUTION_ID>"
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["cloudfront:CreateInvalidation"],
+      "Resource": "arn:aws:cloudfront::<ACCOUNT_ID>:distribution/<DISTRIBUTION_ID>"
+    }
+  ]
 }
 ```
 
@@ -90,25 +95,28 @@ npx hot-updater init
   </Accordion>
 </Accordions>
 
-Once setup is complete, `.env.hotupdater` contains the DynamoDB table, S3
-bucket, region, and CloudFront distribution ID. Client access keys are an
-official database domain rather than init-time provider configuration. Start
-`hot-updater console`, open **Access Keys**, and create a key for protected OTA
-selectors and Analytics event ingestion. Copy the plaintext when it is shown;
-only its SHA-256 digest and metadata are stored in DynamoDB.
+Once setup is complete, `.env.hotupdater` may include the following values.
+Resource selections and the authentication mode are persisted for deterministic
+reruns. AWS credentials are included only for account/access-key mode and only
+when you consent to storing them.
 
 ```
 HOT_UPDATER_DYNAMODB_TABLE_NAME=hot-updater
+HOT_UPDATER_AWS_AUTH_MODE=local-session
+HOT_UPDATER_AWS_LAMBDA_NAME=hot-updater-edge
 HOT_UPDATER_S3_BUCKET_NAME=your-s3-bucket-name
 HOT_UPDATER_S3_REGION=your-region
 HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID=your-distribution-id
+HOT_UPDATER_API_KEY=your-client-access-key
 ```
 
-Add the copied value to the environment used to configure your app, for
-example `HOT_UPDATER_API_KEY=your-client-access-key`. Init does not generate or
-persist this value.
+Init reuses `HOT_UPDATER_API_KEY` when supplied or creates a client access key,
+registers it in DynamoDB, and persists the plaintext value locally. Bundle this
+client key in the app's `x-api-key` request header. The key is intended for OTA
+catalog and event access; it does not authorize management or Analytics-query
+routes. Use the Console only when you need an additional key or rotation.
 
-If you choose a shared AWS profile, the generated env file will also include:
+If you choose a shared AWS profile or SSO, the generated env file also includes:
 
 ```bash
 HOT_UPDATER_AWS_PROFILE=your-profile-name
@@ -118,7 +126,8 @@ If you choose the current AWS CLI/default session mode, no extra credential env
 variables are written. The generated config uses the AWS SDK default provider
 chain directly.
 
-If you choose access keys, the generated env file will instead include:
+If you choose account/access-key mode and consent to persistence, the generated
+env file also includes:
 
 ```bash
 # The generated key may be over-privileged or temporary depending on how you authenticated during init.
@@ -128,7 +137,7 @@ HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
 
 <Callout type="warn">
 
-If you're **not** using the `react-native-dotenv` solution, the tokens from your `.env` file will not be included in your app bundle and are therefore not exposed to risks. However, if you're still concerned,
+If you're **not** using the `react-native-dotenv` solution, provider credentials from `.env.hotupdater` will not be included in your app bundle. The client access key is the exception: add it explicitly to the app as shown below.
 
 please refer to the article below for more details:
 [Security](/docs/policy/security#plugin-token-protection)
@@ -231,7 +240,9 @@ const storageOptions = {
 };
 
 export default defineConfig({
+  authorityId: "aws.<generated-authority-id>",
   build: bare({ enableHermes: true }),
+  updateStrategy: "appVersion",
   storage: s3Storage(storageOptions),
   database: dynamoDB({
     ...awsOptions,
@@ -243,18 +254,22 @@ export default defineConfig({
 ```
 
 If you choose **shared AWS profile**, `fromNodeProviderChain()` is replaced with
-`fromIni({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })`. If you choose
-access keys or SSO, the generated credential block matches that mode instead.
+`fromIni({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })`. SSO uses
+`fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })`; only
+account/access-key mode emits a literal access-key credential block. Keep the
+generated `authorityId`: it is derived from the selected DynamoDB table.
 
-## Step 4: Change `.env` file (Optional)
+## Step 4: Replace Account Access Keys (Optional)
 
-By this point, the .env file should already be created. The token inside was generated when you ran the `hot-updater init` command.
+By this point, `.env.hotupdater` already contains the settings selected during
+`hot-updater init`.
 
-This step only applies if you selected **access key** or **SSO** during `init`.
-If you selected **current AWS CLI/default session** or **shared AWS profile**,
-you can keep using the generated credential-provider setup and skip this section.
+This step applies only if you selected **account/access-key mode** during
+`init`. Current AWS CLI/default session, shared-profile, and SSO modes use their
+generated credential providers and do not read these two variables.
 
-The token may have excessive permissions due to infrastructure setup or expire if SSO was used.
+The account-mode credentials entered during infrastructure setup may have
+broader permissions than ongoing deployment requires.
 
 To avoid issues, replace it with a permanent least-privilege identity that can
 write bundle artifacts to S3, read and write the selected DynamoDB table, and
@@ -271,6 +286,7 @@ The HotUpdater component wraps your application, enabling seamless delivery of u
 
 ```tsx title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
+import { Text, View } from "react-native";
 
 function App() {
   return (
@@ -282,9 +298,10 @@ function App() {
 
 export default HotUpdater.wrap({
   baseURL: "https://<your-cloudfront-distribution-url>", // [!code ++]
+  authorityId: "aws.<generated-authority-id>", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
-    // if you want to use the request headers, you can add them here
+    "x-api-key": "<HOT_UPDATER_API_KEY from .env.hotupdater>", // [!code ++]
   },
   fallbackComponent: ({ progress, status }) => (
     <View
@@ -314,8 +331,8 @@ export default HotUpdater.wrap({
 
 <Callout type="info">
   The managed AWS runtime exposes `/version` publicly. OTA update checks and
-  Analytics ingestion require `x-api-key: $HOT_UPDATER_API_KEY`, using a key
-  created from the Console. Internally, it enables `updateCheck`, `analytics`,
+  Analytics ingestion require `x-api-key: $HOT_UPDATER_API_KEY`, using the key
+  created or reused by init. Internally, it enables `updateCheck`, `analytics`,
   and `clientAccessKeys`, while disabling `bundles`. Client access keys do not
   authorize Analytics query routes, and bundle management endpoints are not
   mounted on the public function URL.
@@ -357,263 +374,11 @@ npx expo prebuild
 
 ## Step 7: Add Native Code
 
-To complete the integration of `hot-updater`, you'll need to add native code modifications for both Android and iOS platforms. This step ensures the `hot-updater` can interact with your app's underlying framework to apply updates seamlessly.
-
-### Android
-
-<Tabs items={['Kotlin (RN 0.82+)', 'Kotlin', 'Java']}>
-  <Tab value="Kotlin (RN 0.82+)">
-    ```kt title="android/app/src/main/java/com/<your-app-name>/MainApplication.kt"
-    package com.hotupdaterexample
-
-    import android.app.Application
-    import com.facebook.react.PackageList
-    import com.facebook.react.ReactApplication
-    import com.facebook.react.ReactHost
-    import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
-    import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
-    import com.hotupdater.HotUpdater
-
-    class MainApplication : Application(), ReactApplication {
-
-    override val reactHost: ReactHost by lazy {
-      getDefaultReactHost(
-        context = applicationContext,
-        packageList =
-          PackageList(this).packages.apply {
-            // Packages that cannot be autolinked yet can be added manually here, for example:
-            // add(MyReactNativePackage())
-          },
-        jsBundleFilePath = HotUpdater.getJSBundleFile(applicationContext), // [!code ++]
-      )
-
-    }
-
-    override fun onCreate() {
-      super.onCreate()
-      loadReactNative(this)
-    }
-    }
-    ```
-
-  </Tab>
-  <Tab value="Kotlin">
-```kt title="android/app/src/main/java/com/<your-app-name>/MainApplication.kt"
-package com.hotupdaterexample
-
-import android.app.Application
-import com.facebook.react.PackageList
-import com.facebook.react.ReactApplication
-import com.facebook.react.ReactHost
-import com.facebook.react.ReactNativeHost
-import com.facebook.react.ReactPackage
-import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.load
-import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
-import com.facebook.react.defaults.DefaultReactNativeHost
-import com.facebook.react.soloader.OpenSourceMergedSoMapping
-import com.facebook.soloader.SoLoader
-import com.hotupdater.HotUpdater // [!code ++]
-
-class MainApplication : Application(), ReactApplication {
-
-override val reactNativeHost: ReactNativeHost =
-object : DefaultReactNativeHost(this) {
-override fun getPackages(): List<ReactPackage> =
-PackageList(this).packages.apply {
-// Packages that cannot be autolinked yet can be added manually here, for example:
-// add(MyReactNativePackage())
-}
-
-        override fun getJSMainModuleName(): String = "index"
-
-        override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
-
-        override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
-        override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
-
-        override fun getJSBundleFile(): String? {  // [!code ++]
-          return HotUpdater.getJSBundleFile(applicationContext)  // [!code ++]
-        }  // [!code ++]
-      }
-
-override val reactHost: ReactHost
-get() = getDefaultReactHost(applicationContext, reactNativeHost)
-
-override fun onCreate() {
-super.onCreate()
-SoLoader.init(this, OpenSourceMergedSoMapping)
-if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-// If you opted-in for the New Architecture, we load the native entry point for this app.
-load()
-}
-}
-}
-
-````
-  </Tab>
-  <Tab value="Java">
-  ```java title="android/app/src/main/java/com/<your-app-name>/MainApplication.java"
-
-package com.hotupdaterexample;
-
-import android.app.Application;
-import com.facebook.react.PackageList;
-import com.facebook.react.ReactApplication;
-import com.facebook.react.ReactNativeHost;
-import com.facebook.react.ReactPackage;
-import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint;
-import com.facebook.react.defaults.DefaultReactNativeHost;
-import com.facebook.soloader.SoLoader;
-import java.util.List;
-import com.hotupdater.HotUpdater;  // [!code ++]
-
-public class MainApplication extends Application implements ReactApplication {
-
-  private final ReactNativeHost mReactNativeHost =
-      new DefaultReactNativeHost(this) {
-        @Override
-        public boolean getUseDeveloperSupport() {
-          return BuildConfig.DEBUG;
-        }
-
-        @Override
-        protected List<ReactPackage> getPackages() {
-          @SuppressWarnings("UnnecessaryLocalVariable")
-          List<ReactPackage> packages = new PackageList(this).getPackages();
-          // Packages that cannot be autolinked yet can be added manually here, for example:
-          return packages;
-        }
-
-        @Override
-        protected String getJSMainModuleName() {
-          return "index";
-        }
-
-        @Override // [!code ++]
-        protected String getJSBundleFile() {  // [!code ++]
-            return HotUpdater.Companion.getJSBundleFile(this.getApplication().getApplicationContext());  // [!code ++]
-        }  // [!code ++]
-
-        @Override
-        protected boolean isNewArchEnabled() {
-          return BuildConfig.IS_NEW_ARCHITECTURE_ENABLED;
-        }
-
-        @Override
-        protected Boolean isHermesEnabled() {
-          return BuildConfig.IS_HERMES_ENABLED;
-        }
-      };
-
-  @Override
-  public ReactNativeHost getReactNativeHost() {
-    return mReactNativeHost;
-  }
-
-  @Override
-  public void onCreate() {
-    super.onCreate();
-    SoLoader.init(this, /* native exopackage */ false);
-
-    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-      // If you opted-in for the New Architecture, we load the native entry point for this app.
-      DefaultNewArchitectureEntryPoint.load();
-    }
-    ReactNativeFlipper.initializeFlipper(this, getReactNativeHost().getReactInstanceManager());
-  }
-}
-
-````
-
-  </Tab>
-</Tabs>
-
-### iOS
-
-<Tabs items={['Swift', 'Objective-C']}>
-<Tab value="Swift">
-```swift title="ios/<your-app-name>/AppDelegate.swift"
-import UIKit
-import React
-import React_RCTAppDelegate
-import ReactAppDependencyProvider
-import HotUpdater // [!code ++]
-
-@main
-class AppDelegate: RCTAppDelegate {
-override func application(\_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-self.moduleName = "HotUpdaterExample"
-self.dependencyProvider = RCTAppDependencyProvider()
-
-    // You can add your custom initial props in the dictionary below.
-    // They will be passed down to the ViewController used by React Native.
-    self.initialProps = [:]
-
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-
-}
-
-override func sourceURL(for bridge: RCTBridge) -> URL? {
-self.bundleURL()
-}
-
-override func bundleURL() -> URL? {
-#if DEBUG
-RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
-#else
-Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
-HotUpdater.bundleURL() // [!code ++]
-#endif
-}
-}
-
-````
-</Tab>
-<Tab value="Objective-C">
-```objc title="ios/<your-app-name>/AppDelegate.mm"
-#import "AppDelegate.h"
-#import <HotUpdater/HotUpdater.h> // [!code ++]
-#import <React/RCTBundleURLProvider.h>
-
-@implementation AppDelegate
-
-- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
-{
-  self.moduleName = @"HotUpdaterExample";
-  // You can add your custom initial props in the dictionary below.
-  // They will be passed down to the ViewController used by React Native.
-  self.initialProps = @{};
-
-  return [super application:application didFinishLaunchingWithOptions:launchOptions];
-}
-
-- (NSURL *)sourceURLForBridge:(RCTBridge *)bridge
-{
-  return [self bundleURL];
-}
-
-- (NSURL *)bundleURL
-{
-#if DEBUG
-  return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@"index"];
-#else
-  return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"]; // [!code --]
-  return [HotUpdater bundleURL]; // [!code ++]
-#endif
-}
-
-@end
-````
-
-</Tab>
-</Tabs>
-
-<Callout type="info">
-  For brownfield apps where the JS bundle is embedded in an XCFramework, you can
-  pass a custom `Bundle` instance to lookup the JavaScript bundle resource:
-  `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater
-  bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
-</Callout>
+For Bare and Rock projects, follow the version-specific Android and iOS
+instructions in [Native Code Setup](/docs/get-started/basic-usage#native-code-setup). The canonical guide separates
+current React Native template generations and preserves Metro in debug builds.
+Expo projects that ran `expo prebuild` with the config plugin do not need manual
+native edits.
 
 ## Verifying the Setup
 

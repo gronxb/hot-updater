@@ -21,9 +21,8 @@ export default defineConfig({
   fingerprint: {
     debug: true,
   },
-  // Bundle signing (optional)
-  // Uncomment to enable signed bundles for security
-  // Run: npx hot-updater keys generate
+  // Bundle signing is enabled for this example.
+  // Generate the configured private key with: npx hot-updater keys generate
   signing: {
     enabled: true,
     privateKeyPath: "./keys/private-key.pem",

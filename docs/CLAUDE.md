@@ -10,24 +10,37 @@ The docs directory uses Fumadocs (a modern documentation framework) with the fol
 docs/
 ├── content/
 │   └── docs/
-│       ├── get-started/        # Getting started guides
-│       ├── managed/            # Self-Hosting (Managed) - Managed cloud provider guides (Supabase, Firebase, Cloudflare, AWS)
-│       ├── custom/             # Self-Hosting (Custom) - Custom server setup guides
-│       ├── build-plugins/      # Build plugin documentation
-│       ├── storage-plugins/    # Storage plugin documentation
-│       ├── database-plugins/   # Database plugin documentation
-│       ├── react-native-api/   # Client-side API reference
-│       ├── guides/             # Advanced topics and guides
-│       ├── cli-reference/      # CLI command documentation
-│       └── policy/             # Security and best practices
+│       ├── meta.json           # Version navigation
+│       ├── (latest)/           # Hot Updater 1.x; served under /docs
+│       │   ├── meta.json
+│       │   ├── concepts/
+│       │   ├── get-started/
+│       │   ├── guides/
+│       │   ├── react-native-api/
+│       │   ├── managed/
+│       │   ├── custom/
+│       │   ├── build-plugins/
+│       │   ├── storage-plugins/
+│       │   ├── database-plugins/
+│       │   ├── integration-plugins/
+│       │   └── policy/
+│       └── v0/                 # Hot Updater 0.x; served under /docs/v0
+│           ├── meta.json
+│           └── <same section directories as (latest)>
 ├── src/                        # Documentation site source
 ├── public/                     # Static assets
 └── waku.config.ts             # Waku configuration
 ```
 
+Paths written as `<version-root>/...` below apply to both
+`content/docs/(latest)` and `content/docs/v0`. Version-specific paths are
+identified explicitly.
+
 ## Sidebar Configuration (meta.json)
 
-**IMPORTANT**: Every documentation section MUST have a `meta.json` file to appear in the sidebar.
+**IMPORTANT**: Every documentation section in each version root MUST have a
+`meta.json` file to appear in that version's sidebar. Each version root also
+has its own `meta.json`.
 
 ### meta.json Structure
 
@@ -51,17 +64,22 @@ Each directory with documentation pages needs a `meta.json` file:
 
 ### Examples
 
-**Plugin section** (`content/docs/storage-plugins/meta.json`):
+**Plugin section** (identical in
+`content/docs/(latest)/storage-plugins/meta.json` and
+`content/docs/v0/storage-plugins/meta.json`):
+
 ```json
 {
   "title": "Storage Plugins",
   "description": "Storage provider plugins",
   "icon": "Database",
-  "pages": ["supabase", "cloudflare", "firebase", "aws"]
+  "pages": ["supabase", "cloudflare", "firebase", "aws", "custom-storage"]
 }
 ```
 
-**Multi-page section** (`content/docs/custom/meta.json`):
+**Multi-page section** (latest only,
+`content/docs/(latest)/custom/meta.json`):
+
 ```json
 {
   "title": "Self Hosting (Custom)",
@@ -70,10 +88,17 @@ Each directory with documentation pages needs a `meta.json` file:
   "pages": [
     "overview",
     "quick-start",
-    "cli-configuration"
+    "api-key-authentication",
+    "database",
+    "frameworks",
+    "cli-configuration",
+    "hosting"
   ]
 }
 ```
+
+The v0 section has its own `content/docs/v0/custom/meta.json`. Keep each
+version's page list aligned with the files in that version root.
 
 ### When to Update meta.json
 
@@ -87,11 +112,13 @@ Each directory with documentation pages needs a `meta.json` file:
 ## Documentation Standards
 
 ### File Format
+
 - Use `.mdx` format for all documentation files
 - Include frontmatter with `title`, `description`, and `icon`
 - Use kebab-case for file names (e.g., `aws.mdx`, `supabase.mdx`)
 
 ### Frontmatter Template
+
 ```mdx
 ---
 title: "Plugin Name"
@@ -101,29 +128,38 @@ icon: icon-name
 ```
 
 **Frontmatter Description Rules:**
+
 - **Keep it concise**: 1 sentence maximum, ideally under 20 words
 - **High-level overview**: Don't include technical details or implementation specifics
 - **No links**: Save links for the body content
 - **Action-oriented**: Focus on what it does or what problem it solves
 
 **Body Structure Rules:**
+
 - **Start with ## heading**: Body content must begin directly with a `##` heading (no text between frontmatter and first heading)
 - **No duplicate descriptions**: Don't repeat the frontmatter description as the first paragraph
 - **Natural flow**: Content should flow logically from one section to the next
 
 ### Package Installation
-**IMPORTANT**: Use `package-install` code block syntax with full npm command:
+
+**IMPORTANT**: Use `package-install` code block syntax with the full npm
+command. Packages used only by configuration, build, or deployment tooling are
+development dependencies:
 
 ```package-install
 npm install @hot-updater/plugin-name --save-dev
 ```
 
-**NOT** these:
-```bash
-npm install @hot-updater/plugin-name
+Packages imported by a deployed server or other runtime code are regular
+dependencies:
+
+```package-install
+npm install @hot-updater/server
 ```
 
-All Hot Updater plugins should be installed as dev dependencies (`--save-dev`).
+If a package is imported by both tooling and runtime code, install it as a
+regular dependency. Do not apply `--save-dev` based only on the package being a
+Hot Updater plugin.
 
 ### Documentation Structure
 
@@ -154,18 +190,21 @@ Each plugin documentation should follow this structure:
 ## Code Block Guidelines
 
 ### TypeScript Configuration
+
 ```typescript
 interface PluginConfig {
-  field: string;  // Brief inline comment
+  field: string; // Brief inline comment
 }
 ```
 
 ### Usage Examples
+
 - Always use `process.env.VARIABLE_NAME` for sensitive data
 - Include `defineConfig` wrapper
 - Show full imports
 
 ### Environment Variables
+
 ```bash
 VARIABLE_NAME=value
 ```
@@ -190,39 +229,53 @@ VARIABLE_NAME=value
 
 ## Documentation Sections
 
+The relative locations below exist under both `content/docs/(latest)` and
+`content/docs/v0`. The listed files apply to both versions unless marked
+otherwise.
+
 ### Self-Hosting (Managed)
-Located in `content/docs/managed/`
+
+Relative location: `<version-root>/managed/`
+
 - supabase.mdx - Supabase setup guide
 - firebase.mdx - Firebase setup guide
 - cloudflare.mdx - Cloudflare setup guide
 - aws.mdx - AWS setup guide
 
 ### Self-Hosting (Custom)
-Located in `content/docs/custom/`
+
+Relative location: `<version-root>/custom/`
+
 - overview.mdx - Self-hosting architecture overview
 - quick-start.mdx - Quick start guide
 - cli-configuration.mdx - CLI configuration
 - database/ - Database adapter guides (Drizzle, Prisma, Kysely, MongoDB)
 - frameworks/ - Server framework guides (Hono, Express, Elysia)
-- hosting/ - Deployment platform guides (Docker, Cloudflare Workers, Vercel)
+- hosting/ - Deployment platform guides (Docker and Vercel)
 
 ### Build Plugins
-Located in `content/docs/build-plugins/`
+
+Relative location: `<version-root>/build-plugins/`
+
 - bare.mdx - React Native CLI
 - expo.mdx - Expo projects
 - rock.mdx - Rock bundler
 
 ### Storage Plugins
-Located in `content/docs/storage-plugins/`
+
+Relative location: `<version-root>/storage-plugins/`
+
 - supabase.mdx - Supabase Storage
 - aws.mdx - AWS S3 and S3-compatible object storage
 - cloudflare.mdx - Cloudflare R2 via S3-compatible credentials, with
   self-hosted runtime, legacy Wrangler migration, and pruning guidance
 - firebase.mdx - Firebase Cloud Storage
-- standalone.mdx - Custom self-hosted storage
+- custom-storage.mdx - Custom self-hosted storage
 
 ### Database Plugins
-Located in `content/docs/database-plugins/`
+
+Relative location: `<version-root>/database-plugins/`
+
 - supabase.mdx - Supabase PostgreSQL
 - aws.mdx - S3 + CloudFront JSON storage
 - cloudflare.mdx - Cloudflare D1
@@ -232,9 +285,11 @@ Located in `content/docs/database-plugins/`
 ## Common Patterns
 
 ### When documenting plugins that work together:
+
 Include a "Complete Example" section showing both storage and database combined.
 
 ### When documenting alternatives:
+
 Recommend the provider-specific plugin by default. Document an alternative only
 when it provides a distinct capability, and state the protocol or migration
 tradeoff explicitly:
@@ -244,11 +299,13 @@ tradeoff explicitly:
 ```
 
 ### When documenting peer dependencies:
+
 Show both in installation and include a separate Dependencies section at the end.
 
 ## Commands
 
 ### Build documentation site
+
 ```bash
 cd docs
 pnpm install
@@ -256,6 +313,7 @@ pnpm dev
 ```
 
 ### Build for production
+
 ```bash
 pnpm build
 ```
@@ -263,34 +321,42 @@ pnpm build
 ## 404 Page Guidelines
 
 ### Global 404 Page
+
 Located at `src/pages/404.tsx` - handles all unmatched routes.
 
 **Structure:**
+
 - Uses HomeLayout for consistent navigation and branding
 - Center-aligned content with proper spacing
 - Includes "Go Back Home" link
 - Theme-aware colors (dark/light mode support)
 
 **When to modify:**
+
 - Update styling to match site theme changes
 - Add custom error tracking if needed
 - Maintain consistent branding with other pages
 
 ### Inline 404 Handler
-Located in `src/pages/docs/[...slugs].tsx:14-24` - handles missing documentation pages.
+
+Located in `src/pages/docs/[...slugs].tsx` - handles missing documentation pages.
 
 **Purpose:**
+
 - Shows 404 within docs layout when a doc page doesn't exist
 - Preserves sidebar and navigation for better UX
 - Different from global 404 (no layout redirect needed)
 
 **Key differences:**
+
 - **Global 404**: Unmatched routes (e.g., `/random`) → Full layout with navigation
 - **Inline 404**: Missing docs (e.g., `/docs/invalid`) → Shows within docs layout
 
 ## Documentation URL Patterns
 
-When referencing documentation in code, comments, or other docs, use these patterns:
+When referencing documentation in code, comments, or other docs, use these
+patterns for the latest version. For v0, insert `/v0` after `/docs`; for
+example, `/docs/v0/managed/supabase`.
 
 - **Self-Hosting (Managed)**: `/docs/managed/{provider}` (e.g., `/docs/managed/supabase`)
 - **Self-Hosting (Custom)**: `/docs/custom/{topic}` (e.g., `/docs/custom/quick-start`)
@@ -317,4 +383,5 @@ When referencing documentation in code, comments, or other docs, use these patte
 - Show complete working examples with imports
 - Keep consistent structure across all plugin docs
 - Organize content logically: Overview → Setup → Usage → Advanced
-- **Important**: Documentation folder names are `managed` (Self-Hosting (Managed)) and `custom` (Self-Hosting (Custom))
+- **Important**: Under both `(latest)` and `v0`, documentation folder names are
+  `managed` (Self-Hosting (Managed)) and `custom` (Self-Hosting (Custom))

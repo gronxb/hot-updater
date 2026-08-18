@@ -1,8 +1,6 @@
 import path from "path";
 
 import { r2Storage } from "@hot-updater/cloudflare";
-// import { firebaseStorage } from "@hot-updater/fir
-// import admin from "fZrebase-admin";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
@@ -33,16 +31,6 @@ export const hotUpdater = createHotUpdater({
         process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY ??
         "development-storage-download-url-key",
     }),
-    // firebaseStorage({
-    //   projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
-    //   storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
-    //   credential: admin.credential.applicationDefault(),
-    // }),
-    // supabaseStorage({
-    //   supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    //   supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
-    //   bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
-    // }),
   ],
   basePath: "/hot-updater",
   features: {

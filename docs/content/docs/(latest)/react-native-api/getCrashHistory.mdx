@@ -10,6 +10,7 @@ Use `getCrashHistory()` to retrieve the list of bundles that crashed and trigger
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
+import { Button, View } from "react-native";
 
 function App() {
   const checkCrashes = () => {
@@ -29,7 +30,11 @@ function App() {
   );
 }
 
-export default HotUpdater.wrap(App);
+export default HotUpdater.wrap({
+  baseURL: "<your-update-server-url>",
+  authorityId: "<your-authority-id>",
+  updateStrategy: "appVersion",
+})(App);
 ```
 
 ## Return Value
@@ -41,11 +46,12 @@ getCrashHistory(): string[]
 ```
 
 **Example return value:**
+
 ```typescript
 [
   "01234567-89ab-cdef-0123-456789abcdef",
-  "12345678-9abc-def0-1234-56789abcdef0"
-]
+  "12345678-9abc-def0-1234-56789abcdef0",
+];
 ```
 
 An empty array means no bundles have crashed.
@@ -59,6 +65,7 @@ Check crash history after deployments to ensure bundles are working correctly.
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 import { useEffect } from "react";
+import YourApp from "./YourApp";
 
 function App() {
   useEffect(() => {
@@ -81,6 +88,7 @@ Track crash frequency and bundle IDs in your analytics platform.
 import { HotUpdater } from "@hot-updater/react-native";
 import { useEffect } from "react";
 import * as Sentry from "@sentry/react-native";
+import YourApp from "./YourApp";
 
 function App() {
   useEffect(() => {

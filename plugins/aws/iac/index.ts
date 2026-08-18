@@ -343,8 +343,9 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     region: bucketRegion,
     tableName: resolvedDynamoDBTableName,
   });
+  let apiKey: string;
   try {
-    const apiKey = await prepareDynamoDBClientAccessKey({
+    apiKey = await prepareDynamoDBClientAccessKey({
       clientAccessKeys: databasePlugin.models.clientAccessKeys,
       existingApiKey: providerEnv.HOT_UPDATER_API_KEY,
     });
@@ -445,7 +446,9 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const sourceUrl = `https://${distributionDomain}`;
   p.note(
     transformTemplate(SOURCE_TEMPLATE, {
-      source: sourceUrl,
+      apiKey: JSON.stringify(apiKey),
+      authorityId: JSON.stringify(authorityId),
+      source: JSON.stringify(sourceUrl),
     }),
   );
   p.log.message(

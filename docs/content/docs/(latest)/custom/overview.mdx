@@ -7,10 +7,15 @@ version: "v0.22.0"
 
 ## Installation
 
-Install the server package and standalone CLI repository.
+Install the server package in the deployed server project. Install the
+standalone repository in the React Native project that runs the CLI.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/standalone --save-dev
+npm install @hot-updater/server @hot-updater/cloudflare
+```
+
+```package-install
+npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater
 ```
 
 ## Architecture
@@ -30,13 +35,18 @@ This approach gives you full control over metadata while leveraging reliable clo
 Configure your Hot Updater CLI to use the self-hosted database.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { r2Storage } from "@hot-updater/cloudflare";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 export default defineConfig({
-  build: bare(),
+  build: bare({ enableHermes: true }),
   storage: r2Storage({
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
     credentials: {
@@ -47,15 +57,22 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${managementToken}`,
+    },
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
 ## Storage Plugins
 
-The `storage` field accepts an array of flat storage objects. `get` returns a Web
-`Response`, while `getDownloadUrl` returns the URL sent to update clients. How a
-provider produces or handles that URL remains inside its implementation.
+The server `storage` field accepts an array of flat storage objects. `get`
+returns a Web `Response`, while `getDownloadUrl` returns either an absolute
+HTTP(S) URL or a signed path relative to the Hot Updater server. The server
+resolves a relative path against the incoming update-check request before
+sending it to the client. How a provider produces or handles that value remains
+inside its implementation.
 
 Stored locations use the hierarchical
 `protocol://bucket/encoded/slash/key` form. Providers use the shared
@@ -83,7 +100,7 @@ subpath with the same public plugin name.
 
 **Example with multiple plugins:**
 
-```typescript title="src/hotUpdater.ts"
+```typescript title="src/hotUpdater.ts (storage excerpt)"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
   storage: [
@@ -119,19 +136,20 @@ URL; an unowned non-HTTP scheme is unsupported.
 one `features` object:
 
 - `updateCheck`: update-check endpoints used by React Native clients
-- `bundles`: bundle and Channel management endpoints used by the CLI and
-  Console
+- `bundles`: Bundle, Release, Release Catalog, and Channel management endpoints
+  used by the CLI and Console
 - `analytics`: event ingestion and query routes backed by
-  `database.models.analytics`
+  `database.models.analytics`; query access is denied unless it is explicitly
+  made public
 - `clientAccessKeys`: authentication for update checks and Analytics ingestion
   backed by `database.models.clientAccessKeys`
 
 `updateCheck` is mounted by default. `bundles` is disabled by default and must
-be enabled explicitly when the CLI needs bundle-management APIs. When
-`bundles: true`, protect `/api/bundles*` and `/api/channels*` with framework
-middleware. The `/version` endpoint is always mounted for diagnostics.
+be enabled explicitly when the CLI needs management APIs. When `bundles: true`,
+protect every route under `/api/*` with framework middleware. The `/version`
+endpoint is always mounted for diagnostics.
 
-```typescript title="src/hotUpdater.ts"
+```typescript title="src/hotUpdater.ts (features excerpt)"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
   storage: [
@@ -143,15 +161,16 @@ export const hotUpdater = createHotUpdater({
   features: {
     updateCheck: true,
     bundles: true,
-    analytics: true,
-    clientAccessKeys: true,
   },
 });
 ```
 
-Use `analytics: { queryAccess: "public" }` only when Analytics query routes
-are intentionally public, such as a local fixture. `analytics: true` keeps
-queries protected. `false` or an omitted feature disables it.
+`analytics: true` enables ingestion, but its query routes deliberately reject
+requests because Hot Updater does not provide built-in query authentication.
+Use `analytics: { queryAccess: "public" }` only for an intentionally public
+surface such as a local fixture. For production queries, expose a separate
+authenticated endpoint over `hotUpdater.analytics` or query your provider
+directly. `false` or an omitted feature disables Analytics.
 
 <Callout type="warn">
 **Recommendation: Match Your CLI Configuration**
@@ -190,6 +209,11 @@ Start by setting up your database adapter. Choose the ORM that fits your project
 - [Kysely](./database/kysely) - Type-safe SQL query builder
 - [MongoDB](./database/mongodb) - Native MongoDB driver
 
+Generate and apply the adapter's schema before serving requests. The exact
+workflow differs by adapter: Kysely and MongoDB use `hot-updater db migrate`,
+Drizzle uses the generated schema with Drizzle Kit, and Prisma merges its models
+into `prisma/schema.prisma` for Prisma Migrate.
+
 ## Server Frameworks
 
 After configuring your database, choose the framework that fits your stack:
@@ -205,4 +229,5 @@ After configuring your database, choose the framework that fits your stack:
 - **Database control**: PostgreSQL, SQLite, or MongoDB on your infrastructure
 - **Cloud storage**: Leverage existing AWS S3, Cloudflare R2, Supabase, or Firebase storage
 - **Type safety**: Full TypeScript support across all adapters
-- **Production ready**: Built-in graceful shutdown and error handling
+- **Operational control**: Add framework-specific authentication, lifecycle,
+  and error handling for your deployment environment

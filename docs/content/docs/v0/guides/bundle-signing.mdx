@@ -11,7 +11,7 @@ Bundle signing prevents man-in-the-middle attacks, bundle tampering, and unautho
 
 ## Setup
 
-import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 
 <Tabs items={['React Native CLI', 'Expo']}>
   <Tab value="React Native CLI">
@@ -31,6 +31,7 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
     ```
 
     You need to manually export the public key to native configuration files.
+
   </Tab>
   <Tab value="Expo">
     ```bash
@@ -49,6 +50,7 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
     ```
 
     The Expo config plugin automatically extracts the public key from your private key during `expo prebuild`.
+
   </Tab>
 </Tabs>
 
@@ -85,8 +87,10 @@ npx hot-updater keys export-public [--print-only] [--yes]
 ```
 
 Writes public key to:
+
 - iOS: `Info.plist` → `HOT_UPDATER_PUBLIC_KEY`
-- Android: `strings.xml` → `hot_updater_public_key`
+- Android: application metadata in `AndroidManifest.xml` →
+  `com.hotupdater.PUBLIC_KEY`
 
 The command auto-detects native files. For custom paths, configure `platform` in your config:
 
@@ -94,9 +98,9 @@ The command auto-detects native files. For custom paths, configure `platform` in
 export default defineConfig({
   platform: {
     android: {
-      stringResourcePaths: [
-        "android/app/src/main/res/values/strings.xml",
-        "android/app/src/prod/res/values/strings.xml", // production flavor
+      androidManifestPaths: [
+        "android/app/src/main/AndroidManifest.xml",
+        "android/app/src/prod/AndroidManifest.xml", // production flavor
       ],
     },
     ios: {
@@ -109,6 +113,10 @@ export default defineConfig({
 });
 ```
 
+`stringResourcePaths` is retained only as a legacy read fallback for projects
+that already store `hot_updater_public_key` in `strings.xml`. New setup should
+use application metadata and `androidManifestPaths`.
+
 ### Remove Public Keys
 
 ```bash
@@ -118,16 +126,18 @@ npx hot-updater keys remove [--yes]
 ## Manual Configuration
 
 **iOS** (`Info.plist`):
+
 ```xml
 <key>HOT_UPDATER_PUBLIC_KEY</key>
 <string>-----BEGIN PUBLIC KEY-----\nMIIB...your-key...\n-----END PUBLIC KEY-----</string>
 ```
 
-**Android** (`res/values/strings.xml`):
+**Android** (`AndroidManifest.xml`, inside `<application>`):
+
 ```xml
-<string name="hot_updater_public_key">-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkq...your-key...
------END PUBLIC KEY-----</string>
+<meta-data
+    android:name="com.hotupdater.PUBLIC_KEY"
+    android:value="-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkq...your-key...\n-----END PUBLIC KEY-----" />
 ```
 
 ## Expo Integration
@@ -149,6 +159,7 @@ export default defineConfig({
 ```
 
 When you run `expo prebuild`, the plugin:
+
 1. Reads the signing config
 2. Loads `./keys/public-key.pem` (derived from `privateKeyPath`)
 3. Embeds it in native files automatically
@@ -183,6 +194,7 @@ This tells EAS to include the `keys/` directory even though it's in `.gitignore`
 #### How It Works
 
 During EAS build, the plugin checks for the public key in this order:
+
 1. `HOT_UPDATER_PRIVATE_KEY` environment variable → Extract public key
 2. Private key file at `privateKeyPath` → Extract public key
 3. Public key file (derived from `privateKeyPath`) → Use directly
@@ -206,6 +218,7 @@ During EAS build, the plugin checks for the public key in this order:
 ### Other Platforms
 
 Store keys in:
+
 - GitHub Actions: Repository Secrets
 - GitLab CI: CI/CD Variables (masked)
 - AWS: Secrets Manager
@@ -213,12 +226,12 @@ Store keys in:
 
 ## Configuration States
 
-| Config `signing.enabled` | Native Public Key | Result |
-|--------------------------|-------------------|--------|
-| `false` | Not present | ✅ Normal updates |
-| `false` | Present | ❌ **Updates rejected** |
-| `true` | Present | ✅ Verified updates |
-| `true` | Not present | ❌ **Error: PublicKeyNotConfigured** |
+| Config `signing.enabled` | Native Public Key | Result                               |
+| ------------------------ | ----------------- | ------------------------------------ |
+| `false`                  | Not present       | ✅ Normal updates                    |
+| `false`                  | Present           | ❌ **Updates rejected**              |
+| `true`                   | Present           | ✅ Verified updates                  |
+| `true`                   | Not present       | ❌ **Error: PublicKeyNotConfigured** |
 
 > **Warning**: Config and native files must match. Mismatches cause update failures.
 
@@ -229,6 +242,7 @@ Store keys in:
 **Cause**: Public key in native files but `signing.enabled: false` in config.
 
 **Fix**:
+
 ```bash
 # Enable signing OR remove keys
 npx hot-updater keys remove
@@ -239,6 +253,7 @@ npx hot-updater keys remove
 **Cause**: `signing.enabled: true` but no public key in native files.
 
 **Fix**:
+
 ```bash
 npx hot-updater keys export-public
 # Rebuild and release app
@@ -249,6 +264,7 @@ npx hot-updater keys export-public
 **Causes**: Tampered bundle, wrong public key, or key mismatch.
 
 **Fix**:
+
 ```bash
 # Verify key matches
 npx hot-updater keys export-public --print-only

@@ -270,8 +270,11 @@ function createHotUpdaterClient() {
     /**
      * `HotUpdater.wrap` checks for updates at the entry point, and if there is a bundle to update, it downloads the bundle and applies the update strategy.
      *
-     * @param {object} options - Configuration options
-     * @param {string} options.source - Update server URL
+     * @param {HotUpdaterOptions} options - Configuration options
+     * @param {string|(() => string|Promise<string>)} [options.baseURL] - Update server URL or dynamic URL resolver
+     * @param {HotUpdaterResolver} [options.resolver] - Custom update resolver; mutually exclusive with baseURL
+     * @param {string} [options.authorityId="default"] - Release Catalog authority; valid only with baseURL
+     * @param {"appVersion"|"fingerprint"} options.updateStrategy - Update strategy for automatic mode
      * @param {object} [options.requestHeaders] - Request headers
      * @param {React.ComponentType} [options.fallbackComponent] - Component to display during updates
      * @param {boolean} [options.reloadOnForceUpdate=true] - Whether to automatically reload the app on force updates
@@ -283,6 +286,7 @@ function createHotUpdaterClient() {
      * ```tsx
      * export default HotUpdater.wrap({
      *   baseURL: "<your-update-server-url>",
+     *   authorityId: "<your-authority-id>",
      *   updateStrategy: "appVersion",
      *   requestHeaders: {
      *     "Authorization": "Bearer <your-access-token>",
@@ -308,6 +312,8 @@ function createHotUpdaterClient() {
      * ```tsx
      * HotUpdater.init({
      *   baseURL: "<your-update-server-url>",
+     *   authorityId: "<your-authority-id>",
+     *   analytics: true,
      * });
      *
      * export default App;
@@ -455,17 +461,25 @@ function createHotUpdaterClient() {
     /**
      * Manually checks for updates.
      *
-     * @param {Object} config - Update check configuration
-     * @param {string} config.source - Update server URL
+     * Uses the resolver configured by `HotUpdater.wrap()` or
+     * `HotUpdater.init()`; the update source is not a per-call option.
+     *
+     * @param {CheckForUpdateOptions} config - Update check configuration
+     * @param {"appVersion"|"fingerprint"} config.updateStrategy - Update strategy for this check
      * @param {string} [config.channel] - Optional channel override for this update check
      * @param {Record<string, string>} [config.requestHeaders] - Request headers
      *
-     * @returns {Promise<UpdateInfo | null>} Update information or null if up to date
+     * @returns {Promise<CheckForUpdateResult | null>} Update information with a pre-filled updateBundle callback, or null if up to date
      *
      * @example
      * ```ts
+     * HotUpdater.init({
+     *   baseURL: "<your-update-server-url>",
+     *   authorityId: "<your-authority-id>",
+     * });
+     *
      * const updateInfo = await HotUpdater.checkForUpdate({
-     *   source: "<your-update-server-url>",
+     *   updateStrategy: "appVersion",
      *   requestHeaders: {
      *     Authorization: "Bearer <your-access-token>",
      *   },
@@ -476,7 +490,7 @@ function createHotUpdaterClient() {
      *   return;
      * }
      *
-     * await HotUpdater.updateBundle(updateInfo.id, updateInfo.fileUrl);
+     * await updateInfo.updateBundle();
      * if (updateInfo.shouldForceUpdate) {
      *   await HotUpdater.reload();
      * }
@@ -502,16 +516,23 @@ function createHotUpdaterClient() {
     /**
      * Updates the bundle of the app.
      *
-     * @param {UpdateBundleParams} params - Parameters object required for bundle update
+     * @param {UpdateParams} params - Parameters object required for bundle update
      * @param {string} params.bundleId - The bundle ID of the app
      * @param {string|null} params.fileUrl - The URL of the zip file
+     * @param {string|null} params.fileHash - The archive hash/signature, or null when no archive is used
+     * @param {"UPDATE"|"ROLLBACK"} params.status - The update direction
      *
      * @returns {Promise<boolean>} Whether the update was successful
      *
      * @example
      * ```ts
+     * HotUpdater.init({
+     *   baseURL: "<your-update-server-url>",
+     *   authorityId: "<your-authority-id>",
+     * });
+     *
      * const updateInfo = await HotUpdater.checkForUpdate({
-     *   source: "<your-update-server-url>",
+     *   updateStrategy: "appVersion",
      *   requestHeaders: {
      *     Authorization: "Bearer <your-access-token>",
      *   },
@@ -523,10 +544,9 @@ function createHotUpdaterClient() {
      *   };
      * }
      *
-     * await HotUpdater.updateBundle({
-     *   bundleId: updateInfo.id,
-     *   fileUrl: updateInfo.fileUrl
-     * });
+     * // Prefer this callable result: it includes artifact resolution, hashes,
+     * // channel state, manifest data, and the Release selection receipt.
+     * await updateInfo.updateBundle();
      * if (updateInfo.shouldForceUpdate) {
      *   await HotUpdater.reload();
      * }
@@ -538,7 +558,8 @@ function createHotUpdaterClient() {
     },
 
     /**
-     * Clears the runtime channel override and restores the original bundle.
+     * Clears the runtime channel override and downloaded OTA state, then
+     * restores the built-in bundle selection.
      *
      * @returns {Promise<boolean>} Resolves with true if reset was successful
      */

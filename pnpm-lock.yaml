@@ -867,12 +867,12 @@ importers:
       '@babel/runtime':
         specifier: ^7.24.5
         version: 7.29.7
-      '@hot-updater/aws':
-        specifier: workspace:*
-        version: link:../../plugins/aws
       '@hot-updater/bare':
         specifier: workspace:*
         version: link:../../plugins/bare
+      '@hot-updater/cloudflare':
+        specifier: workspace:*
+        version: link:../../plugins/cloudflare
       '@hot-updater/react-native':
         specifier: workspace:*
         version: link:../../packages/react-native

@@ -4,7 +4,7 @@ description: "Hot Updater uses a flexible plugin system that lets you customize 
 icon: Puzzle
 ---
 
-import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 
 ## Build Plugin
 
@@ -12,10 +12,11 @@ Build plugins handle the bundling process when you run the `hot-updater deploy` 
 
 ### Supported Plugins
 
-- **`@hot-updater/bare`**: Executes the bundle command through React Native CLI. Bundles through Metro or Re.Pack.
-- **`@hot-updater/rock`**: Executes the bundle command through [Rock](https://github.com/callstack/rock)(Formerly RNEF).
+- **`@hot-updater/bare`**: Executes React Native CLI's Metro bundle command.
+  It is for Metro projects, not Re.Pack projects.
+- **`@hot-updater/rock`**: Bundles Rock/Re.Pack projects through
+  [Rock](https://github.com/callstack/rock) (formerly RNEF).
 - **`@hot-updater/expo`**: Executes the bundle command through Expo.
-
 
 ## Storage Plugin
 

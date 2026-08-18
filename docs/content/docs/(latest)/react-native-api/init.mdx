@@ -16,10 +16,12 @@ import { HotUpdater } from "@hot-updater/react-native";
 
 HotUpdater.init({
   baseURL: "<your-update-server-url>",
+  authorityId: "<your-authority-id>",
+  analytics: true,
   requestHeaders: {
     Authorization: "Bearer <your-access-token>",
   },
-  onError: error => {
+  onError: (error) => {
     console.error("Hot Updater failed", error);
   },
 });
@@ -33,6 +35,7 @@ HotUpdater.init({
   baseURL: async () => {
     return await getUpdateServerURL();
   },
+  authorityId: "<your-authority-id>",
 });
 ```
 
@@ -57,16 +60,26 @@ if (updateInfo.shouldForceUpdate) {
 
 ## Configuration Reference
 
-| Option             | Type                                        | Required | Description                                                      |
-| ------------------ | ------------------------------------------- | -------- | ---------------------------------------------------------------- |
-| `baseURL`          | `string \| () => string \| Promise<string>` | Yes*     | Your update server URL or runtime URL resolver                   |
-| `resolver`         | `HotUpdaterResolver`                        | Yes*     | Custom network operations                                        |
-| `requestHeaders`   | `Record<string, string>`                    | No       | Shared headers used by update checks and app-ready notifications |
-| `requestTimeout`   | `number`                                    | No       | Request timeout in milliseconds (default: 5000)                  |
-| `onNotifyAppReady` | `(result) => void`                          | No       | Callback invoked after native app-ready state is read            |
-| `onError`          | `(error) => void`                           | No       | Default error handler for initialization and update checks       |
+| Option             | Type                                        | Required | Description                                                                           |
+| ------------------ | ------------------------------------------- | -------- | ------------------------------------------------------------------------------------- |
+| `baseURL`          | `string \| () => string \| Promise<string>` | Yes\*    | Update server URL or runtime URL resolver.                                            |
+| `resolver`         | `HotUpdaterResolver`                        | Yes\*    | Custom network operations.                                                            |
+| `authorityId`      | `string`                                    | No       | Stable Release Catalog authority. Valid only with `baseURL`; defaults to `"default"`. |
+| `analytics`        | `boolean`                                   | No       | Opts into automatic bundle-event analytics after app ready. Defaults to `false`.      |
+| `requestHeaders`   | `Record<string, string>`                    | No       | Shared headers used by update checks and app-ready notifications.                     |
+| `requestTimeout`   | `number`                                    | No       | Request timeout in milliseconds. Defaults to `5000`.                                  |
+| `onNotifyAppReady` | `(result) => void`                          | No       | Callback invoked after native app-ready state is read.                                |
+| `onError`          | `(error) => void`                           | No       | Default error handler for initialization and update checks.                           |
 
-\*Either `baseURL` or `resolver` must be provided (mutually exclusive).
+\*Either `baseURL` or `resolver` must be provided; they are mutually exclusive.
+`authorityId` belongs to the `baseURL` form and cannot be supplied with a
+custom `resolver`. A custom resolver declares its own `authorityId`.
+
+When `analytics` is `true`, Hot Updater sends the native app-ready transition
+through `resolver.notifyAppReady()` once. The default `baseURL` resolver
+implements this method. A custom resolver must implement it before enabling
+analytics. `analytics: false` (the default) disables this automatic network
+report, but `onNotifyAppReady` still receives the native result locally.
 
 Release Catalog custom resolvers implement `fetchReleaseCatalog` and
 `resolveArtifact`. Declare `catalogCachePartition` only when the catalog

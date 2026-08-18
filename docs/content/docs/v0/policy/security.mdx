@@ -6,9 +6,10 @@ icon: Shield
 
 ## Plugin Token Protection
 
-Developers may worry that sensitive tokens defined in the `hot-updater.config.ts` file might be bundled into the app and exposed in production.
-
-Using environment variables is simply for populating the token value in the `hot-updater.config.ts` file. This is, in fact, unrelated to React Native.
+`hot-updater.config.ts` is CLI configuration. It may contain credentials used
+to upload artifacts or write database records, so load those values only in
+local tooling and CI. Do not import this file from React Native application
+code.
 
 ```ts title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
@@ -19,29 +20,29 @@ import { config } from "dotenv";
 config({ path: ".env.hotupdater" });
 
 export default defineConfig({
+  updateStrategy: "appVersion",
   build: bare({ enableHermes: true }),
   storage: supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey:
-      process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
     bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
   }),
   database: supabaseDatabase({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey:
-      process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
 });
-
 ```
 
-## Clarification
+## What is included in the app
 
-The `hot-updater.config.ts` file is not included in the app’s build. Instead, it serves as a configuration layer specifically for communicating with the `hot-updater` CLI. As a result, sensitive tokens defined in this file are not part of the distributed application code.
+The Hot Updater CLI reads `hot-updater.config.ts`; the React Native bundler does
+not include it automatically. Credentials remain out of the app as long as
+application code does not import the config or inject the same environment
+variables into the client bundle.
 
-What is actually included in the app’s build is as follows:
 ```ts
-import { HotUpdater } from "hot-updater";
+import { HotUpdater } from "@hot-updater/react-native";
 
 export default HotUpdater.wrap({
   baseURL: "https://<your-update-server-url>",
@@ -49,32 +50,35 @@ export default HotUpdater.wrap({
 });
 ```
 
-Here, the source URL is included in the app code, but sensitive environment variables, such as `HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY` tokens, are not bundled.
+The update server URL is public application configuration. Supabase service
+role keys, Cloudflare API tokens, private signing keys, and other server
+credentials must remain in local or server-side environments.
 
 ## Potential Token Exposure
 
 <Callout type="warn">
-If you're **not** using react-native-dotenv, tokens won't be included in your app by default. This is a guideline for projects using react-native-dotenv.
-
-Using tools like react-native-dotenv can expose sensitive tokens in your app build. To avoid this, only include non-sensitive or publicly safe variables in your configuration.
+  Environment-variable libraries replace referenced values in the client bundle.
+  Only expose variables whose values are safe to publish.
 </Callout>
 
-If you’re using tools like `react-native-dotenv` to read environment variables and inject them into the app during runtime, sensitive tokens might be exposed. To avoid this, ensure that only non-sensitive or publicly safe data is included in your app build.
+### Example with `react-native-dotenv`
 
-### Example: If you are using `react-native-dotenv`
+Allowlist only public client configuration:
 
-To ensure safe handling of environment variables, you can whitelist only the necessary variables using `react-native-dotenv` in your Babel configuration:
 ```js title="babel.config.js"
 module.exports = {
-  presets: ['module:@react-native/babel-preset'],
+  presets: ["module:@react-native/babel-preset"],
   plugins: [
     [
-      'module:react-native-dotenv',
+      "module:react-native-dotenv",
       {
-        envName: 'APP_ENV',
-        allowlist: ['HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY', 'HOT_UPDATER_CLOUDFLARE_API_TOKEN'], ❌ Do not add private keys to allowlist // [!code --]
-        allowlist: ['HOT_UPDATER_SUPABASE_URL'], // ✅ Only add public keys that are safe to expose to allowlist // [!code ++]
-        path: '.env.hotupdater', // ✅ Use .env.hotupdater file separate from .env file
+        envName: "APP_ENV",
+        allowlist: [
+          "HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY",
+          "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+        ], // [!code --]
+        allowlist: ["HOT_UPDATER_SUPABASE_URL"], // [!code ++]
+        path: ".env.hotupdater",
       },
     ],
   ],
@@ -83,7 +87,11 @@ module.exports = {
 
 ## Best Practices
 
-1. Restrict Exposure: Only include environment variables that are safe for public access in your app build.
-2. Use Whitelists: Use tools like react-native-dotenv to define a whitelist of allowed environment variables.
-3. Keep Sensitive Data Out of Builds: Store sensitive data securely on your server or backend, and ensure it is only accessed during server-side operations.
-4. Use `react-native-keys` to manage keys.
+1. Keep service credentials and private signing keys in local tooling, CI, or
+   the deployed server environment.
+2. Allowlist only public values when an environment-variable library injects
+   configuration into the mobile bundle.
+3. Keep `.env.hotupdater` out of version control and scope each credential to
+   the minimum provider permissions it needs.
+4. Rotate or revoke a credential immediately if it is committed or included in
+   a client build.

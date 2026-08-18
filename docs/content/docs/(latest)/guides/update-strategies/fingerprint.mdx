@@ -19,13 +19,14 @@ Choose Fingerprint for automatic safety. Choose App Version for manual control.
 
 ## Setup
 
-Fingerprint is the default strategy. Configure it explicitly if needed:
+App Version is the default strategy. Fingerprint is opt-in, so select it
+explicitly:
 
 ```typescript title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  updateStrategy: "fingerprint", // Default strategy
+  updateStrategy: "fingerprint",
 });
 ```
 
@@ -78,7 +79,8 @@ npx hot-updater fingerprint create
 This creates a `fingerprint.json` file and embeds the hash in your native files:
 
 - iOS: `ios/YourApp/Info.plist`
-- Android: `android/app/src/main/res/values/strings.xml`
+- Android: application metadata in
+  `android/app/src/main/AndroidManifest.xml`
 
 Example `fingerprint.json`:
 
@@ -216,14 +218,19 @@ export default defineConfig({
       ],
     },
     android: {
-      stringResourcePaths: [
-        "android/app/src/main/res/values/strings.xml",
-        "android/app/src/debug/res/values/strings.xml",
+      androidManifestPaths: [
+        "android/app/src/main/AndroidManifest.xml",
+        "android/app/src/debug/AndroidManifest.xml",
       ],
     },
   },
 });
 ```
+
+The Android hash is stored as `com.hotupdater.FINGERPRINT_HASH` application
+metadata. `stringResourcePaths` remains available only as a legacy read
+fallback for projects that already use `hot_updater_fingerprint_hash` in
+`strings.xml`.
 
 💡 Most projects don't need this - the defaults work perfectly.
 
@@ -237,8 +244,9 @@ curl "https://your-update-endpoint.com/release-catalogs/fingerprint/default/ios/
 
 Parameters:
 
+- `:authorityId` - Authority that owns the Release Catalog (defaults to
+  `default` unless configured)
 - `:platform` - `ios` or `android`
+- `:channelKey` - Canonical base64url encoding of the channel name (for example,
+  `production` becomes `cHJvZHVjdGlvbg`)
 - `:fingerprintHash` - Current fingerprint hash
-- `:channel` - Channel name (e.g., `production`, `staging`)
-- `:minBundleId` - Minimum supported bundle ID
-- `:bundleId` - Current bundle ID

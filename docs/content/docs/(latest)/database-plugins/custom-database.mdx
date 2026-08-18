@@ -7,7 +7,7 @@ icon: Hammer
 ## Installation
 
 ```package-install
-npm install @hot-updater/plugin-core --save-dev
+npm install @hot-updater/plugin-core
 ```
 
 Install the public conformance suites in the project that tests your provider:
@@ -102,11 +102,13 @@ force-update, and message fields belong to Releases.
 interface ReleaseModel {
   findById(id: string): Promise<ReleaseRow | null>;
   findMany(input: {
+    afterReleaseId?: string;
     beforeReleaseId?: string;
     bundleId?: string;
     channelId?: string;
     enabled?: boolean;
     platform?: "ios" | "android";
+    targetAppVersion?: string;
     limit: number;
   }): Promise<readonly ReleaseRow[]>;
   findManyByScope(input: {
@@ -313,7 +315,10 @@ const lifecycle = {
 };
 
 setupDatabasePluginTestSuite(lifecycle);
-setupDatabaseClientTestSuite({ ...lifecycle, createClient: createDatabaseClient });
+setupDatabaseClientTestSuite({
+  ...lifecycle,
+  createClient: createDatabaseClient,
+});
 ```
 
 The suites verify exact model semantics, strong Release paging, catalog point
@@ -322,15 +327,14 @@ Analytics ordering, and the absence of a public `queries` surface.
 
 ## Configure Hot Updater
 
-Use the same provider in the CLI and self-hosted server:
+Use the same provider in the CLI and self-hosted server. In
+`hot-updater.config.ts`, add the exported value below as the `database` field
+of your complete `defineConfig` configuration:
 
-```ts title="hot-updater.config.ts"
-export default defineConfig({
-  authorityId: "project-01",
-  database: myDatabase({ db }),
-  // build: ...
-  // storage: ...
-});
+```ts title="hot-updater.config.ts (database excerpt)"
+import { myDatabase } from "./myDatabase";
+
+export const database = myDatabase({ db });
 ```
 
 ```ts title="server.ts"

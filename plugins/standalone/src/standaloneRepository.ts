@@ -48,10 +48,12 @@ const toBundleWhere = (
 };
 
 /**
- * Bundle-only HTTP repository used by the CLI for a self-hosted server.
+ * Management HTTP repository used by the CLI for a self-hosted server.
  *
- * This is intentionally not a database plugin: analytics and access-key
- * persistence belong to the server's database provider.
+ * The repository covers Bundles, patches, Releases, Release Catalogs, Channels,
+ * and their conditional commits. It is intentionally not a complete database
+ * plugin: Analytics and access-key persistence belong to the server's database
+ * provider.
  */
 export const standaloneRepository = (
   config: StandaloneRepositoryConfig,

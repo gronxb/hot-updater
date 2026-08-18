@@ -6,14 +6,25 @@ icon: Hammer
 
 ## Overview
 
-Hot Updater ships dedicated native helpers so you can create store-ready artifacts or boot the app on a device without leaving the CLI. `build:android`, `build:ios`, `run:android`, and `run:ios` reuse the same configuration defined in `hot-updater.config.ts`, respect your update strategy, and copy every artifact into a predictable output directory for further automation.
+Hot Updater ships dedicated native helpers so you can create store-ready
+artifacts or boot the app on a device without leaving the CLI. All four
+commands reuse the schemes in `hot-updater.config.ts` and respect your update
+strategy. The `build:*` commands also copy artifacts to a predictable output
+directory for further automation; the `run:*` commands build, install, and
+launch directly.
+
+`build:android` is available normally. `build:ios`, `run:android`, and
+`run:ios` are experimental and are registered only when `EXPERIMENTAL=1` is
+set.
 
 ## Prerequisites
 
 - React Native project with both `android/` and `ios/` directories tracked.
 - `hot-updater.config.ts` defines at least one scheme under `nativeBuild.android` and/or `nativeBuild.ios`.
 - Platform toolchains are installed locally (`gradlew`, `xcodebuild`, CocoaPods (or Bundler), `devicectl`/`simctl`).
-- Run `hot-updater channel set <channel>` so `HOT_UPDATER_CHANNEL` exists in Info.plist/strings.xml.
+- Run `hot-updater channel set <channel>` so `HOT_UPDATER_CHANNEL` exists in
+  `Info.plist` and `com.hotupdater.CHANNEL` exists in the Android application
+  metadata.
 - Decide on an update strategy (`appVersion` or `fingerprint`); the CLI follows it automatically.
 
 ## Configure nativeBuild schemes
@@ -45,14 +56,14 @@ export default defineConfig({
         scheme: "ExampleApp",
         configuration: "Release",
         exportOptionsPlist: "./ios/ExampleApp/ExportOptions.plist",
-        installPods: true,
+        installPods: false,
       },
       simulatorDebug: {
         bundleIdentifier: "com.example.app.dev",
         scheme: "ExampleApp",
         configuration: "Debug",
-        platform: "ios",
-        installPods: true,
+        simulator: true,
+        installPods: false,
       },
     },
   },
@@ -62,40 +73,41 @@ export default defineConfig({
 
 ### Android scheme options
 
-| Field | Description | Default |
-| --- | --- | --- |
-| `packageName` | Android application package name. | Required |
-| `variant` | Android application module build variant. | `Release` |
-| `aab` | Artifact type (`true` generates `.aab`, `false` generates `.apk`). | `true` |
-| `appModuleName` | Android application module name. | `app` |
-| `applicationId` | Android application ID. | same as `packageName` |
+| Field           | Description                                                        | Default               |
+| --------------- | ------------------------------------------------------------------ | --------------------- |
+| `packageName`   | Android application package name.                                  | Required              |
+| `variant`       | Android application module build variant.                          | `Release`             |
+| `aab`           | Artifact type (`true` generates `.aab`, `false` generates `.apk`). | `true`                |
+| `appModuleName` | Android application module name.                                   | `app`                 |
+| `applicationId` | Android application ID.                                            | same as `packageName` |
 
 ### iOS scheme options
 
-| Field | Description | Default |
-| --- | --- | --- |
-| `bundleIdentifier` | The bundle identifier of the app. | Required |
-| `platform` | Apple platform for build & archive. | `ios` |
-| `scheme` | The Xcode scheme to build. | Required |
-| `configuration` | The build configuration to use. | `Release` |
-| `destination` | The destination for the build. | `['generic/platform=iOS']` |
-| `exportOptionsPlist` | Path to a plist file that specifies options for exporting the archive. | `undefined` |
-| `exportExtraParams` | Additional parameters for `exportArchive`. | `[]` |
-| `xcconfig` | Path to an `.xcconfig` file to include additional build settings. | `undefined` |
-| `installPods` | Automatically install CocoaPods dependencies before building. | `true` |
-| `extraParams` | Additional parameters passed to `xcodebuild`. | `[]` |
-
+| Field                | Description                                                                                          | Default                    |
+| -------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------- |
+| `bundleIdentifier`   | The bundle identifier of the app.                                                                    | Required                   |
+| `platform`           | Apple platform for build & archive.                                                                  | `ios`                      |
+| `scheme`             | The Xcode scheme to build.                                                                           | Required                   |
+| `configuration`      | The build configuration to use.                                                                      | `Release`                  |
+| `simulator`          | Build for an iOS simulator. Applies to `build:ios` only and must not be combined with `destination`. | `false`                    |
+| `destination`        | The destination for the build.                                                                       | `['generic/platform=iOS']` |
+| `exportOptionsPlist` | Path to a plist file that specifies options for exporting the archive.                               | `undefined`                |
+| `exportExtraParams`  | Additional parameters for `exportArchive`.                                                           | `[]`                       |
+| `xcconfig`           | Path to an `.xcconfig` file to include additional build settings.                                    | `undefined`                |
+| `installPods`        | Automatically install CocoaPods dependencies before building.                                        | `false`                    |
+| `extraParams`        | Additional parameters passed to `xcodebuild`.                                                        | `[]`                       |
 
 ## CLI commands
 
-All commands support the shared options below (unless noted). `-s/--scheme` is required unless `-i/--interactive` is used.
+All commands support `-s/--scheme` and `-i/--interactive`. The scheme is
+required unless interactive mode is used. `-o/--output-path` is meaningful for
+`build:*` commands, which copy their result to the selected directory.
 
 ```
 Options:
   -s, --scheme <scheme>           predefined scheme for the native build configuration
   -o, --output-path <outputPath>  the path where the artifacts will be generated (default: .hot-updater/output/build/<platform>/<scheme>)
   -i, --interactive               interactive mode (default: false)
-  -m, --message <message>         specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message
   -h, --help                      display help for command
 ```
 
@@ -114,7 +126,7 @@ npx hot-updater build:android -s releaseApk
 Archives (and optionally exports) the selected scheme using `xcodebuild`, then copies the `.xcarchive`, `.app`, or `.ipa`.
 
 ```package-install
-npx hot-updater build:ios -s release
+EXPERIMENTAL=1 npx hot-updater build:ios -s release
 ```
 
 - If `exportOptionsPlist` is present, an IPA export is performed; otherwise the `.xcarchive` and extracted `.app` are stored.
@@ -125,18 +137,18 @@ Builds an APK, installs it on target devices, and launches the main activity.
 
 ```
 Options:
-  -d, --device [deviceName | deviceId]  specify the ADB device name or use default
+  -d, --device [deviceName | deviceId]  select an Android device or emulator
   --port <port>                         specify the port number
   --app-id-suffix <appIdSuffix>         specify the app ID suffix
 ```
 
 ```package-install
-npx hot-updater run:android -s debugApk -d "Pixel_6_Pro_API_35" --port 8082
+EXPERIMENTAL=1 npx hot-updater run:android -s debugApk -d "Pixel_6_Pro_API_35" --port 8082
 ```
 
 - `-d` selects a specific device; otherwise all connected devices receive the build (or the CLI launches the first emulator).
 - `--port` forwards the Metro port before the app starts.
-- Uses `mainActivity` override when present; otherwise derives it from the package name.
+- The CLI derives the main activity from the package name.
 
 ### `hot-updater run:ios`
 
@@ -144,19 +156,24 @@ Builds for simulator or device, installs the app, and launches it.
 
 ```
 Options:
-  -d, --device [deviceName | deviceId]  specify the ADB device name or use default
+  -d, --device [deviceName | deviceId]  select an Apple device or simulator by name or UDID
 ```
 
 ```package-install
-npx hot-updater run:ios -s simulatorDebug -d "iPhone 15 (iOS 17.5)"
+EXPERIMENTAL=1 npx hot-updater run:ios -s simulatorDebug -d "iPhone 15 (iOS 17.5)"
 ```
 
 - Works with `devicectl` (physical devices) and `simctl` (simulators); interactive mode lists everything discovered.
 - If no device is specified, the first available simulator is used and Simulator.app is opened automatically.
 
-## Artifact storage
+## Build artifact storage
 
-Artifacts default to `.hot-updater/output/build/<platform>/<scheme>`. The directory is recreated on every run, so point `-o` to a temporary path if you need to keep older artifacts. Copying happens after build plugin hooks complete, giving CI pipelines a stable handoff point.
+For `build:android` and `build:ios`, artifacts default to
+`.hot-updater/output/build/<platform>/<scheme>`. The directory is recreated on
+every build, so point `-o` to a different path if you need to keep older
+artifacts. Copying happens after build plugin hooks complete, giving CI
+pipelines a stable handoff point. The `run:*` commands do not copy persistent
+artifacts or invoke build-plugin native hooks.
 
 ## Fingerprint and version awareness
 

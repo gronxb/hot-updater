@@ -4,13 +4,14 @@ description: "Automatically prevent incompatible OTA updates by tracking native 
 icon: Fingerprint
 ---
 
-import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 
 ## Why Choose Fingerprint?
 
 Fingerprint automatically detects native code changes and blocks incompatible OTA updates. This ensures only safe updates reach your users.
 
 **Fingerprint vs App Version:**
+
 - **Fingerprint**: Automatic protection - detects native changes and blocks unsafe updates
 - **App Version**: Manual control - you specify version targets, no automatic checking
 
@@ -18,13 +19,14 @@ Choose Fingerprint for automatic safety. Choose App Version for manual control.
 
 ## Setup
 
-Fingerprint is the default strategy. Configure it explicitly if needed:
+App Version is the default strategy. Fingerprint is opt-in, so select it
+explicitly:
 
 ```typescript title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  updateStrategy: "fingerprint", // Default strategy
+  updateStrategy: "fingerprint",
 });
 ```
 
@@ -38,10 +40,7 @@ import { defineConfig } from "hot-updater";
 export default defineConfig({
   updateStrategy: "fingerprint",
   fingerprint: {
-    extraSources: [
-      "config/native-config.json",
-      "scripts/post-build.sh",
-    ],
+    extraSources: ["config/native-config.json", "scripts/post-build.sh"],
     debug: true,
   },
 });
@@ -78,10 +77,13 @@ npx hot-updater fingerprint create
 ```
 
 This creates a `fingerprint.json` file and embeds the hash in your native files:
+
 - iOS: `ios/YourApp/Info.plist`
-- Android: `android/app/src/main/res/values/strings.xml`
+- Android: application metadata in
+  `android/app/src/main/AndroidManifest.xml`
 
 Example `fingerprint.json`:
+
 ```json
 {
   "ios": {
@@ -146,6 +148,7 @@ export default HotUpdater.wrap({
 ```
 
 The client automatically constructs this endpoint:
+
 ```
 GET {baseUrl}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId
 ```
@@ -193,6 +196,7 @@ $ npx hot-updater deploy
 ### Multiple App Targets
 
 `fingerprint create` automatically handles standard React Native projects. Only configure custom paths if you have:
+
 - iOS app extensions (widgets, share extensions)
 - Multiple Android build variants
 - Non-standard project structure
@@ -207,18 +211,23 @@ export default defineConfig({
       infoPlistPaths: [
         "ios/YourApp/Info.plist",
         "ios/YourAppWidget/Info.plist",
-        "ios/YourAppExtension/Info.plist"
-      ]
+        "ios/YourAppExtension/Info.plist",
+      ],
     },
     android: {
-      stringResourcePaths: [
-        "android/app/src/main/res/values/strings.xml",
-        "android/app/src/debug/res/values/strings.xml"
-      ]
-    }
-  }
+      androidManifestPaths: [
+        "android/app/src/main/AndroidManifest.xml",
+        "android/app/src/debug/AndroidManifest.xml",
+      ],
+    },
+  },
 });
 ```
+
+The Android hash is stored as `com.hotupdater.FINGERPRINT_HASH` application
+metadata. `stringResourcePaths` remains available only as a legacy read
+fallback for projects that already use `hot_updater_fingerprint_hash` in
+`strings.xml`.
 
 💡 Most projects don't need this - the defaults work perfectly.
 
@@ -231,6 +240,7 @@ curl "https://your-update-endpoint.com/check-update/fingerprint/ios/11142b906216
 ```
 
 Parameters:
+
 - `:platform` - `ios` or `android`
 - `:fingerprintHash` - Current fingerprint hash
 - `:channel` - Channel name (e.g., `production`, `staging`)
