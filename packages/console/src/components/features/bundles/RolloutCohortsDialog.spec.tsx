@@ -42,21 +42,16 @@ describe("RolloutCohortsDialog", () => {
     expect(screen.getByText("qa-group")).toBeDefined();
   });
 
-  it("matches main by hiding the preview outside gradual rollout", () => {
-    const { rerender } = render(
+  it("summarizes a full rollout without rendering every cohort", () => {
+    render(
       <RolloutCohortsDialog releaseId="release-1" rolloutCohortCount={1_000} />,
     );
 
-    expect(
-      screen.queryByRole("button", { name: "Preview cohorts" }),
-    ).toBeNull();
-
-    rerender(
-      <RolloutCohortsDialog releaseId="release-1" rolloutCohortCount={0} />,
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Preview cohorts" }));
 
     expect(
-      screen.queryByRole("button", { name: "Preview cohorts" }),
-    ).toBeNull();
+      screen.getByText("All 1000 numeric cohorts are included."),
+    ).toBeDefined();
+    expect(screen.queryAllByText(/^\d+$/)).toHaveLength(2);
   });
 });
