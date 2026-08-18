@@ -1,9 +1,10 @@
-import type { ChannelRow, ReleaseRow } from "@hot-updater/plugin-core";
+import type { ChannelRow } from "@hot-updater/plugin-core";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  CircleOff,
   Fingerprint,
   Filter,
   Package,
@@ -48,6 +49,8 @@ import {
   useChannelsQuery,
   useReleasesQuery,
 } from "@/lib/api";
+import type { ReleaseListRow } from "@/lib/server/releaseReachability";
+import { cn } from "@/lib/utils";
 
 import {
   type ReleaseSearch,
@@ -205,7 +208,7 @@ function BundleEntry({
   release,
 }: {
   onOpen: () => void;
-  release: ReleaseRow;
+  release: ReleaseListRow;
 }) {
   const bundleLabel = release.bundle_id
     ? `bundle ${release.bundle_id}`
@@ -238,6 +241,16 @@ function BundleEntry({
         <Badge className="shrink-0 font-normal" variant="secondary">
           {operationLabel}
         </Badge>
+      ) : null}
+      {release.currentlyUnreachable ? (
+        <span
+          aria-label="Currently unreachable. No catalog segment or cohort selects this release first."
+          className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
+          title="No catalog segment or cohort selects this release first with the current delivery settings."
+        >
+          <CircleOff className="size-3.5" />
+          Unreachable
+        </span>
       ) : null}
     </div>
   );
@@ -343,7 +356,10 @@ function BundlesPage() {
 
                     return (
                       <article
-                        className="flex flex-col gap-4 border-b p-4 last:border-b-0"
+                        className={cn(
+                          "flex flex-col gap-4 border-b p-4 last:border-b-0",
+                          release.currentlyUnreachable && "bg-muted/35",
+                        )}
                         key={release.id}
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -461,7 +477,11 @@ function BundlesPage() {
                     : releases.map((release) => (
                         <TableRow
                           aria-label={`Open bundle ${release.bundle_id ?? release.id}`}
-                          className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&>td]:py-3"
+                          className={cn(
+                            "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&>td]:py-3",
+                            release.currentlyUnreachable &&
+                              "bg-muted/35 hover:bg-muted/50",
+                          )}
                           data-state={
                             search.releaseId === release.id
                               ? "selected"

@@ -20,6 +20,7 @@ import {
 } from "./analytics-input";
 import { DEFAULT_PAGE_LIMIT } from "./constants";
 import { listReleases } from "./server/listReleases";
+import { addReleaseReachability } from "./server/releaseReachability";
 
 type GetBundlesInput = {
   platform?: "ios" | "android";
@@ -77,7 +78,7 @@ export const getReleases = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const { prepareConfig } = await import("./server/config.server");
     const { config } = await prepareConfig();
-    return listReleases(config.database.models.releases, {
+    const result = await listReleases(config.database.models.releases, {
       ...(data?.afterReleaseId === undefined
         ? {}
         : { afterReleaseId: data.afterReleaseId }),
@@ -94,6 +95,13 @@ export const getReleases = createServerFn({ method: "GET" })
         : { targetAppVersion: data.targetAppVersion }),
       limit: data?.limit ?? DEFAULT_PAGE_LIMIT,
     });
+    return {
+      ...result,
+      data: await addReleaseReachability(
+        config.database.models.releaseCatalogs,
+        result.data,
+      ),
+    };
   });
 
 export const getRelease = createServerFn({ method: "GET" })

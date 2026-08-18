@@ -70,7 +70,8 @@ const release = vi.hoisted(
       target_app_version: "1.2.x",
       target_cohorts: [],
       updated_at_ms: Date.UTC(2026, 6, 18),
-    }) as ReleaseRow,
+      currentlyUnreachable: false,
+    }) as ReleaseRow & { currentlyUnreachable: boolean },
 );
 
 vi.mock("@/lib/api", () => ({
@@ -108,6 +109,7 @@ const BundlesPage = (Route as unknown as { readonly component: ComponentType })
 describe("BundlesPage", () => {
   beforeEach(() => {
     mocks.search.mockReturnValue({});
+    release.currentlyUnreachable = false;
   });
 
   afterEach(() => {
@@ -160,5 +162,20 @@ describe("BundlesPage", () => {
     expect(within(row).getByText("100.0%")).toBeDefined();
     expect(within(row).queryByText("DEPLOY")).toBeNull();
     expect(within(row).queryByText("rev 1")).toBeNull();
+  });
+
+  it("subdues a Release that no catalog path currently selects first", () => {
+    release.currentlyUnreachable = true;
+
+    render(<BundlesPage />);
+    const row = screen.getByRole("row", {
+      name: "Open bundle 019ff641-01eb-72ea-8a03-a28aef188d32",
+    });
+    const state = within(row).getByText("Unreachable");
+
+    expect(row.className).toContain("bg-muted/35");
+    expect(state.getAttribute("title")).toBe(
+      "No catalog segment or cohort selects this release first with the current delivery settings.",
+    );
   });
 });
