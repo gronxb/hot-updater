@@ -28,12 +28,12 @@ import {
   type BundleRepository,
   createDatabaseClient,
   createUUIDv7After,
+  commitReleaseCatalogMutation,
   deleteRelease,
   type DatabaseClient,
   type BundleRow,
   type ReleaseCatalogRow,
   type ReleaseRow,
-  rollbackRelease,
   updateReleasePolicy,
 } from "../../../plugins/plugin-core/dist/index.mjs";
 import { createConsoleAnalyticsHttpClient } from "../analytics-http-client.ts";
@@ -5623,9 +5623,9 @@ async function updateFixtureRelease(
   };
 }
 
-async function createFixtureRollbackRelease(input: {
+async function createFixtureRepublishedRelease(input: {
   sourceReleaseId: string;
-  toBundleId: string | null;
+  bundleId: string;
 }) {
   const created = await withConfiguredDatabase(
     async (database, authorityId) => {
@@ -5647,16 +5647,51 @@ async function createFixtureRollbackRelease(input: {
       if (channel === undefined) {
         throw new Error(`Channel ${source.channel_id} was not found.`);
       }
-      const result = await rollbackRelease({
-        database,
-        releaseId: source.id,
-        toBundleId: input.toBundleId,
-      });
-      const release = result.release;
-      if (release === null) {
-        throw new Error("Rollback did not create a Release.");
+      const bundle = await database.models.bundles.findById(input.bundleId);
+      if (bundle === null || bundle.platform !== source.platform) {
+        throw new Error(`Bundle ${input.bundleId} was not found.`);
       }
-      return { authorityId, catalog: result.catalog, channel, release };
+      const releases = await database.models.releases.findManyByScope({
+        consistency: "strong",
+        limit: 1_000,
+        scopeKey: source.scope_key,
+      });
+      const updatedAtMs = Date.now();
+      const release: ReleaseRow = {
+        ...source,
+        bundle_id: input.bundleId,
+        created_at_ms: updatedAtMs,
+        enabled: true,
+        id: createUUIDv7After(releases.at(-1)?.id ?? source.id, updatedAtMs),
+        kind: "BUNDLE",
+        operation: "DEPLOY",
+        revision: 1,
+        source_release_id: null,
+        updated_at_ms: updatedAtMs,
+      };
+      const result = await commitReleaseCatalogMutation({
+        database,
+        mutation: { operation: "insert", row: release },
+        scope: {
+          authorityId,
+          channelId: catalog.channel_id,
+          channelName: channel.name,
+          fingerprintHash: catalog.fingerprint_hash,
+          platform: catalog.platform,
+          scopeKey: catalog.scope_key,
+          strategy: catalog.strategy,
+        },
+        updatedAtMs,
+      });
+      if (result.release === null) {
+        throw new Error("Republish did not create a Release.");
+      }
+      return {
+        authorityId,
+        catalog: result.catalog,
+        channel,
+        release: result.release,
+      };
     },
   );
 
@@ -5713,18 +5748,50 @@ async function seedCrashedBundleFrontier(input: {
           `Failed to insert crash-frontier Bundle ${bundleId}: ${inserted.conflict.reason}`,
         );
       }
-      const rollback = await rollbackRelease({
+      const releases = await database.models.releases.findManyByScope({
+        consistency: "strong",
+        limit: 1_000,
+        scopeKey: sourceRelease.scope_key,
+      });
+      const release: ReleaseRow = {
+        ...sourceRelease,
+        bundle_id: bundleId,
+        created_at_ms: baseTimeMs + index,
+        id: createUUIDv7After(
+          releases.at(-1)?.id ?? sourceRelease.id,
+          baseTimeMs + index,
+        ),
+        operation: "DEPLOY",
+        revision: 1,
+        source_release_id: null,
+        updated_at_ms: baseTimeMs + index,
+      };
+      const catalog = await database.models.releaseCatalogs.findByScopeKey(
+        sourceRelease.scope_key,
+      );
+      if (catalog === null) {
+        throw new Error(`Catalog ${sourceRelease.scope_key} was not found.`);
+      }
+      const published = await commitReleaseCatalogMutation({
         database,
-        releaseId: sourceRelease.id,
-        toBundleId: bundleId,
+        mutation: { operation: "insert", row: release },
+        scope: {
+          authorityId: catalog.authority_id,
+          channelId: catalog.channel_id,
+          channelName: decodeChannelKey(catalog.channel_key),
+          fingerprintHash: catalog.fingerprint_hash,
+          platform: catalog.platform,
+          scopeKey: catalog.scope_key,
+          strategy: catalog.strategy,
+        },
         updatedAtMs: baseTimeMs + index,
       });
-      if (rollback.release === null) {
-        throw new Error("Crash-frontier rollback did not create a Release.");
+      if (published.release === null) {
+        throw new Error("Crash-frontier republish did not create a Release.");
       }
       bundleIds.push(bundleId);
-      releaseIds.push(rollback.release.id);
-      generation = rollback.catalog.generation;
+      releaseIds.push(published.release.id);
+      generation = published.catalog.generation;
       bundleIdFloor = bundleId;
     }
 
@@ -6717,11 +6784,11 @@ export function startPatchReleaseJob(request: PatchReleaseRequest) {
   return createJob((context) => updateFixtureRelease(request, context));
 }
 
-export function startCreateRollbackReleaseJob(input: {
+export function startCreateRepublishedReleaseJob(input: {
   sourceReleaseId: string;
-  toBundleId: string | null;
+  bundleId: string;
 }) {
-  return createJob(() => createFixtureRollbackRelease(input));
+  return createJob(() => createFixtureRepublishedRelease(input));
 }
 
 export function startSeedCrashedBundleFrontierJob(input: {

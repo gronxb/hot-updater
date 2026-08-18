@@ -13,6 +13,32 @@
 This document is the implementation plan and acceptance contract for that one
 pull request. The numbered implementation sequence is not a PR split.
 
+### Rollback semantics amendment (2026-08-18)
+
+The following rules supersede any older forward-rollback or explicit
+`EMBEDDED` wording that remains in historical planning notes:
+
+- A Release ID is a canonical lowercase UUIDv7. Its lexical order is release
+  chronology.
+- Rollback does not insert a Release. It disables the current Release in the
+  existing Release/catalog CAS transaction and retains its ID and provenance.
+- Selection preserves v0 behavior: prefer a newer cohort-eligible Release;
+  otherwise keep an eligible current Release; otherwise select the newest
+  compatible enabled Release below the active Release while ignoring rollout
+  and target cohorts; if none exists, select local `BUILTIN`.
+- A lower Release or `BUILTIN` transition from OTA is a forced `ROLLBACK`.
+  Already being on `BUILTIN` is a no-op, and same-Bundle Release adoption does
+  not reload.
+- Product APIs, CLI, Console, and compiler output do not create or expose
+  explicit `EMBEDDED`/`ROLLBACK` Releases. Those schema values remain readable
+  only for pre-1.0 development-data compatibility.
+- The newer-update/crash frontier remains bounded to 11 Bundle artifacts. Exact
+  predecessor selection for arbitrarily old active devices requires the full
+  compatible enabled rollback spine, so that portion is O(history). It is never
+  truncated: a catalog above 256 KiB rejects the mutation atomically.
+- Console has no separate rollback dialog. Disabling `Enabled` explains that
+  devices select the previous compatible enabled Release or `BUILTIN`.
+
 ## Why this change exists
 
 The #1141 update-check URL contains `minBundleId`, current `bundleId`, and
@@ -94,8 +120,8 @@ The pull request is complete only when all of the following are true:
   ordinary HTTP Brotli/gzip compression.
 - Moving selector policy into native Storage code. Native persists and
   crash-recovers selections; JavaScript owns policy evaluation.
-- Claiming unbounded Release or target-cohort history. Exact catalog limits are
-  part of the compatibility contract.
+- Claiming that every history fits one catalog. The full rollback spine is
+  limited by the explicit 256 KiB atomic catalog ceiling.
 
 ## Domain model and changed mental model
 
@@ -138,12 +164,12 @@ or rollback must not rewrite or re-upload its manifest.
 A Release answers: “who should converge to which artifact?”
 
 ```ts
-type ReleaseKind = "BUNDLE" | "EMBEDDED";
+type ReleaseKind = "BUNDLE" | "EMBEDDED"; // EMBEDDED is legacy-read only
 type ReleaseStrategy = "APP_VERSION" | "FINGERPRINT";
-type ReleaseOperation = "DEPLOY" | "PROMOTE" | "ROLLBACK";
+type ReleaseOperation = "DEPLOY" | "PROMOTE" | "ROLLBACK"; // ROLLBACK is legacy-read only
 
 interface Release {
-  id: string;
+  id: string; // canonical lowercase UUIDv7
   revision: number;
   channelId: string;
   platform: "ios" | "android";
@@ -166,46 +192,46 @@ interface Release {
 
 Invariants:
 
-- `BUNDLE` requires a same-platform Bundle; `EMBEDDED` requires
-  `bundleId=null`.
+- Newly authored Releases are `BUNDLE` and require a same-platform Bundle.
+  `EMBEDDED` and `ROLLBACK` remain parser/schema compatibility values only.
 - Exactly one compatibility strategy target is present.
 - Release identity, Bundle reference, kind, and platform are immutable.
 - Message, enabled, force, compatibility target, rollout, and target cohorts
   mutate the same Release and increment `revision`.
 - Numeric rollout hashes the stable Release ID, not Bundle ID.
-- Deploy, promote, and rollback create a new Release.
+- Deploy and promote create a new Release. Rollback disables an existing
+  Release and increments its revision.
 - New IDs use a monotonic UUIDv7 allocator constrained to be lexically greater
   than the latest Release in every affected scope. Random UUIDv7 generation
   alone is not strictly ordered for same-millisecond writes; a CAS retry
   regenerates against the new floor.
 
-### Rollback becomes a forward Release
+### Rollback follows Release chronology
 
-Artifact order no longer authorizes movement. A newer Release can intentionally
-reference older bytes:
+Release order authorizes movement. Disabling an active Release reveals the
+newest compatible enabled Release below it; when none exists, the device uses
+the local built-in bytes. The selected predecessor deliberately ignores rollout
+and target cohorts, matching v0. A newer eligible Release still wins first.
 
-```text
-R100 -> Bundle C
-R101 -> Bundle B  // forward policy operation, older artifact
-```
-
-`releaseId` controls policy order, rollout seed, and audit intent.
+`releaseId` controls policy chronology, rollout seed, and audit intent.
 `bundleId` controls bytes, patches, manifests, signing, and crash identity.
 They must never be conflated.
 
-### BUILTIN and EMBEDDED are different
+### BUILTIN is local fallback
 
-There are three locally persisted desired-state kinds:
+New catalogs persist two desired-state kinds:
 
 ```ts
-type SelectionKind = "BUNDLE" | "EMBEDDED" | "BUILTIN";
+type SelectionKind = "BUNDLE" | "BUILTIN";
 ```
 
 - `BUNDLE`: a real Release references an OTA Bundle.
-- `EMBEDDED`: a real, auditable operator-authored Release selects the native
-  built-in bytes and retains its Release ID.
 - `BUILTIN`: a local fallback with `releaseId=null`, authorized only by an
   authenticated complete catalog's explicit fallback policy.
+
+Native and schema readers may accept `EMBEDDED` receipts/rows created by
+pre-1.0 development builds, but new compilers and management paths do not emit
+them.
 
 An always-materialized baseline Release is rejected because the server does
 not know each native binary's built-in Bundle identity or floor, and because
@@ -502,24 +528,23 @@ Conceptual stored app-version IR:
     {
       "lower": { "version": "1.4.0", "inclusive": true },
       "upper": { "version": "2.0.0", "inclusive": false },
-      "releaseIndexes": [0, 1]
+      "releaseIndexes": [0, 1],
+      "rollbackReleaseIndexes": [0, 1]
     }
   ]
 }
 ```
 
 A cold app-version GET exact-reads this row, binary-searches one segment, and
-serializes only its referenced descriptors plus the envelope. A fingerprint
-row stores one `releaseIndexes` list instead of segments. No Release range is
-parsed and no Release row is read on GET.
+serializes its update and rollback descriptors plus the envelope. A fingerprint
+row stores `releaseIndexes` and `rollbackReleaseIndexes` lists instead of
+segments. No Release range is parsed and no Release row is read on GET.
 
 ### Candidate frontier
 
 Returning only one Release is incorrect because up to ten distinct Bundle IDs
-can be in native crash history. For every representable selector class, retain:
-
-- the first 11 distinct eligible Bundle artifacts; and
-- the first eligible explicit `EMBEDDED` Release.
+can be in native crash history. For every representable selector class, retain
+the first 11 distinct eligible Bundle artifacts as the update frontier.
 
 Selector classes include numeric cohorts 1..1000, each normalized named target
 cohort, default/no cohort, and an arbitrary non-targeted named cohort. The
@@ -530,13 +555,19 @@ Native crash-history capacity is a non-configurable protocol constant of 10.
 Metadata migration clamps corrupt or legacy larger histories to the newest ten
 distinct Bundle IDs. The 11-candidate proof depends on this invariant.
 
-The optimized frontier must be equivalent to the unoptimized selector over:
+Rollback is a separate predecessor problem. For each compatibility segment,
+retain every enabled compatible `BUNDLE` Release in newest-first order,
+regardless of rollout or target cohorts. This full rollback spine is required
+to answer predecessor(activeReleaseId) for arbitrarily old active devices.
+
+The optimized update frontier and full rollback spine must be equivalent to the
+unoptimized selector over:
 
 - all numeric cohorts;
 - every explicit and non-explicit named cohort class;
 - every crash subset up to ten distinct Bundle IDs;
 - app-version/fingerprint eligibility;
-- `BUNDLE`, `EMBEDDED`, and local `BUILTIN` fallback.
+- `BUNDLE` and local `BUILTIN` fallback.
 
 ### Explicit fallback directive
 
@@ -582,12 +613,9 @@ projected bytes, Release/segment/cohort counts, and the rejected mutation.
 Migration preflight lists each incompatible scope and offending Releases before
 schema cutover.
 
-The test corpus contains both:
-
-- a representative 100,000-Release full/overlapping-rollout history that must
-  compile within the cap and time budget; and
-- adversarial unique rollout seeds/targets that must deterministically exceed
-  the cap and fail the whole mutation atomically.
+The test corpus contains both compact long histories and full rollback spines
+that deterministically exceed the cap. Oversize always fails the whole mutation
+atomically; no candidate is silently dropped.
 
 ### Wire representation
 
@@ -633,15 +661,17 @@ Expected complete response:
       "targetCohorts": ["qa"],
       "shouldForceUpdate": false,
       "message": "Production update"
-    },
+    }
+  ],
+  "rollbackReleases": [
     {
-      "releaseId": "018...",
-      "bundleId": null,
-      "kind": "EMBEDDED",
-      "rolloutCohortCount": 1000,
-      "targetCohorts": [],
-      "shouldForceUpdate": true,
-      "message": "Return to built-in"
+      "releaseId": "019...",
+      "bundleId": "019...",
+      "kind": "BUNDLE",
+      "rolloutCohortCount": 300,
+      "targetCohorts": ["qa"],
+      "shouldForceUpdate": false,
+      "message": "Production update"
     }
   ]
 }
@@ -769,19 +799,20 @@ artifact work. A failed download can retry the same generation because
 The build-time `MIN_BUNDLE_ID` is not a server-known built-in manifest and is
 not promoted to one. It is reinterpreted locally as `minimumReleaseId`: a
 UUIDv7 timestamp floor generated with the native build. Backfilled Releases
-keep old Bundle IDs, and every post-build deploy/rollback receives a newer
-Release ID, even when it references an older Bundle. This preserves native
+keep old Bundle IDs, and every post-build deploy receives a newer Release ID.
+Rollback disables a Release and reveals its predecessor. This preserves native
 compatibility without requiring the server to know the built-in Bundle ID.
 `getMinBundleId()` and native configuration names remain deprecated aliases;
 new selector/API language uses `getMinimumReleaseId()`.
 
-The JavaScript selector evaluates Release descriptors newest first:
+The JavaScript selector evaluates Release descriptors in v0 order:
 
-1. reject below `minimumReleaseId`;
-2. reject numeric/named cohort ineligibility;
-3. reject `BUNDLE` when its Bundle is in crash history;
-4. choose the first eligible Release;
-5. if none remains, evaluate the explicit catalog fallback directive.
+1. choose the first safe newer Release that is cohort-eligible;
+2. retain the current Release when it remains enabled, compatible, safe, and
+   cohort-eligible;
+3. otherwise choose the newest safe compatible Release below the active
+   Release, ignoring rollout and target cohorts;
+4. if none remains, evaluate the explicit catalog fallback directive.
 
 Selection and permission to move backward are separate:
 
@@ -807,7 +838,6 @@ The selected desired state maps to device work as follows:
 | Same Release/Bundle, fresher generation or context       | Refresh owning receipt; no download/reload                        |
 | New Release, same Bundle                                 | `ADOPT_RELEASE`; no artifact request/reload                       |
 | New Release, different Bundle                            | Resolve artifact, stage full receipt, verify on launch            |
-| `EMBEDDED` Release                                       | Use native bytes and persist the real Release receipt             |
 | Catalog-authorized `BUILTIN`                             | Use native bytes and persist null-Release fallback receipt        |
 | Candidate Bundle appears in crash history                | Skip it and continue through the compiled frontier                |
 | Force flag on a metadata-only same-Bundle desired result | Adopt metadata only; force does not manufacture a byte transition |
@@ -820,8 +850,7 @@ channel, and high-water. It is never treated as migration-null.
 
 If an already-adopted beta scope later becomes empty, BUILTIN preserves beta so
 future beta Releases are received. Only explicit `resetChannel()` returns to
-the default channel. An operator-authored `EMBEDDED` Release also preserves its
-scope/channel and its real Release ID.
+the default channel.
 
 ### Commit-time stale-action CAS
 
@@ -964,7 +993,7 @@ updateBundle(result)
   -> revalidateReleaseTransition
   -> resolver.resolveArtifact only when Bundle differs
   -> native.commitSelectionIfCurrent (generation/context CAS)
-  -> install/adopt/useEmbedded/useBuiltin
+  -> install/adopt/useBuiltin
 ```
 
 The same pure selector is exported internally for compiler equivalence,
@@ -972,13 +1001,14 @@ Console preview, legacy bridging, and deterministic tests. Only the app passes
 live device inputs; provider database plugins never call it.
 
 `CheckForUpdateResult` exposes `releaseId`, `bundleId`, and transition kind:
-`INSTALL`, `ADOPT_RELEASE`, `USE_EMBEDDED`, `USE_BUILTIN`, or `NO_UPDATE`.
+`INSTALL`, `ADOPT_RELEASE`, `USE_BUILTIN`, or `NO_UPDATE`.
 `updateBundle` receives the full selection receipt. Legacy manual/custom calls
 without a receipt continue with null Release identity until a v2 check adopts
 one.
 
-`shouldForceUpdate` reloads only when changed bytes or an EMBEDDED/BUILTIN byte
-transition is applied. A same-Bundle metadata adoption must not reload.
+`shouldForceUpdate` reloads only when changed bytes or a `BUILTIN` byte
+transition is applied. Every lower-Release/BUILTIN rollback is forced. A
+same-Bundle metadata adoption must not reload.
 
 The public launch statuses from #1141 remain exactly
 `UNCHANGED | UPDATE_APPLIED | RECOVERED`. “Stable” is a test phase, not a new
@@ -1011,17 +1041,18 @@ of new force/message metadata does not fabricate a byte update or reload.
 ### Disable and enable
 
 Disable removes a Release from the eligible compiled frontier. Existing clients
-converge to the next eligible Release or the explicit local BUILTIN fallback.
-Re-enable retains the original Release ID and rollout seed. Console warns when
-disabling the last eligible Release can return already-active clients to native
-bytes.
+converge to the previous compatible enabled Release or the explicit local
+BUILTIN fallback. Re-enable retains the original Release ID and rollout seed.
+Console warns when disabling the last compatible enabled Release can return
+already-active clients to native bytes.
 
 ### Rollback
 
-Rollback creates a newer Release. It either references an earlier Bundle or
-creates an explicit `EMBEDDED` Release. It records operation/provenance and is
-independent of Bundle UUID direction. Default selection is full rollout and
-force update, with explicitly requested targeting allowed.
+Rollback updates the selected current Release to `enabled=false` through the
+same revision/catalog-generation CAS as any policy edit. It creates no Release,
+retains the disabled row's ID and provenance, and reveals the previous
+compatible enabled Release. If none exists, the authenticated complete catalog
+authorizes local `BUILTIN`. A byte rollback is always forced.
 
 ### Promote
 
@@ -1036,7 +1067,7 @@ disables the source. The new Release has an independent rollout seed and
 - Channel deletion is rejected while Releases reference it; catalog tombstone
   generation remains even after cleanup.
 - First explicit check of an empty target channel is unapplied.
-- A target scope is persisted only after install/adopt/explicit EMBEDDED.
+- A target scope is persisted only after install/adopt.
 - An already-adopted scope that later empties uses BUILTIN while retaining its
   channel.
 - Only `resetChannel()` returns to the default channel.
@@ -1113,7 +1144,7 @@ stay top-level.
 Columns:
 
 ```text
-Release ID | Bundle ID / Embedded | Channel | Platform | Target
+Release ID | Bundle ID | Channel | Platform | Target
 Enabled | Force | Rollout | Operation | Message | Created
 ```
 
@@ -1131,9 +1162,10 @@ Policy-specific UI requirements:
   already-adopted empty channel retains the channel on BUILTIN;
 - force-update copy says it does not reload for metadata-only same-Bundle
   adoption;
-- rollback dialog distinguishes old-Bundle Release from explicit EMBEDDED;
+- disabling explains previous-enabled-or-BUILTIN rollback and warns when the
+  final enabled Release is being disabled;
 - promote removes all “copy Storage” wording;
-- hard delete is visually separate from disable and rollback.
+- hard delete is visually separate from disable.
 
 ### Compiler preflight and diagnostics
 
@@ -1162,7 +1194,7 @@ Release RPCs replace Bundle policy RPCs:
 
 ```text
 getReleases, getRelease, updateRelease, enableRelease, disableRelease
-rollbackRelease, promoteRelease, deleteRelease
+promoteRelease, deleteRelease
 preflightReleaseMutation, getReleaseCatalogDiagnostics
 ```
 
@@ -1322,8 +1354,8 @@ nullable.
 ### 1. Freeze RED and correctness contracts
 
 - Run the controlled #1141 RED load profile and capture provider counters.
-- Add failing domain/native tests for Release/Bundle identity, forward rollback,
-  same-Bundle adoption, BUILTIN vs EMBEDDED, high-water/context, slow stale
+- Add failing domain/native tests for Release/Bundle identity, disabled-Release
+  rollback, same-Bundle adoption, BUILTIN fallback, high-water/context, slow stale
   commit, crash recovery, and atomic metadata.
 - Add a type/runtime assertion that final `DatabasePlugin` has no `queries`.
 - Freeze the existing 14 Detox scenario intent before changing fixtures.
@@ -1360,7 +1392,7 @@ nullable.
 
 - Add authority/scope high-water, context hash, stable/staging receipts, atomic
   files, commit-time CAS, channel-in-receipt, and v1 migration.
-- Add same-Bundle adoption, explicit EMBEDDED, catalog-authorized BUILTIN, and
+- Add same-Bundle adoption, catalog-authorized BUILTIN, and
   Bundle-keyed crash recovery.
 - Expose Release identity/state APIs and preserve #1141 launch statuses.
 
@@ -1441,9 +1473,10 @@ Required:
 Generate:
 
 - 1,680 Releases matching the reported long-history case;
-- a representative 100,000-Release overlapping-range history that must fit;
-- repeated Bundle references, full/partial/zero rollout, named targets,
-  EMBEDDED, ten crashes and an 11th safe artifact;
+- a representative 100,000-Release overlapping-range history that must fail
+  the 256 KiB cap atomically rather than truncate its rollback spine;
+- repeated Bundle references, full/partial/zero rollout, named targets, ten
+  crashes and an 11th safe artifact;
 - adversarial distinct target/rollout histories that must exceed the cap.
 
 Measure compile time and peak memory against explicit thresholds chosen from
@@ -1454,7 +1487,7 @@ equivalence is a property test; oversize fails atomically.
 ### Mutation under load
 
 While load runs, mutate rollout up/down, targets, enable, compatibility,
-promote, old-Bundle rollback, and EMBEDDED rollback. Poll the observed catalog
+promote, disable-to-previous rollback, and disable-to-BUILTIN. Poll the observed catalog
 generation rather than sleeping for TTL, then assert each response is either
 the complete old generation or complete new generation.
 
@@ -1540,8 +1573,7 @@ uses `UNCHANGED | UPDATE_APPLIED | RECOVERED` plus directional Bundle IDs.
 - delayed stale catalog after newer generation;
 - slow old artifact completion after newer install;
 - failed download followed by same-generation retry;
-- forward Release rollback to old Bundle;
-- explicit EMBEDDED receipt persistence;
+- disabled Release rollback to an older enabled Bundle;
 - local BUILTIN receipt persistence;
 - republished crashed Bundle skipped;
 - crash then next safe update;

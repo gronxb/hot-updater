@@ -1,4 +1,11 @@
+import { isUUIDv7 } from "@hot-updater/core";
+
+export { isUUIDv7 } from "@hot-updater/core";
+
 export const extractTimestampFromUUIDv7 = (uuid: string) => {
+  if (!isUUIDv7(uuid)) {
+    throw new TypeError("Expected a canonical lowercase UUIDv7");
+  }
   const timestampHex = uuid.split("-").join("").slice(0, 12);
 
   const timestamp = Number.parseInt(timestampHex, 16);

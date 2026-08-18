@@ -64,14 +64,14 @@ const createNodeSqliteV031DatabaseWithPatch = (): DatabaseSync => {
       id, platform, should_force_update, enabled, file_hash, channel,
       storage_uri, target_app_version
     ) values
-      ('bundle-1', 'ios', 0, 1, 'hash-1', 'production', 's3://bundle-1', '1.0.0'),
-      ('bundle-2', 'ios', 0, 1, 'hash-2', 'production', 's3://bundle-2', '1.0.0'),
-      ('bundle-3', 'android', 0, 1, 'hash-3', 'Production', 's3://bundle-3', '1.0.0');
+      ('00000000-0000-7000-8000-000000000001', 'ios', 0, 1, 'hash-1', 'production', 's3://bundle-1', '1.0.0'),
+      ('00000000-0000-7000-8000-000000000002', 'ios', 0, 1, 'hash-2', 'production', 's3://bundle-2', '1.0.0'),
+      ('00000000-0000-7000-8000-000000000003', 'android', 0, 1, 'hash-3', 'Production', 's3://bundle-3', '1.0.0');
     insert into bundle_patches (
       id, bundle_id, base_bundle_id, base_file_hash, patch_file_hash,
       patch_storage_uri
     ) values (
-      'patch-1', 'bundle-2', 'bundle-1', 'hash-1', 'patch-hash',
+      'patch-1', '00000000-0000-7000-8000-000000000002', '00000000-0000-7000-8000-000000000001', 'hash-1', 'patch-hash',
       's3://patch-1'
     );
     insert into private_hot_updater_settings (key, value)
@@ -94,8 +94,8 @@ const createNodeSqliteV031DatabaseWithPatch = (): DatabaseSync => {
 
 const sqlitePatchRow = {
   id: "patch-1",
-  bundle_id: "bundle-2",
-  base_bundle_id: "bundle-1",
+  bundle_id: "00000000-0000-7000-8000-000000000002",
+  base_bundle_id: "00000000-0000-7000-8000-000000000001",
   base_file_hash: "hash-1",
   patch_file_hash: "patch-hash",
   patch_storage_uri: "s3://patch-1",
@@ -455,9 +455,12 @@ describe("createKyselyMigrator", () => {
       ]);
       database
         .prepare("update bundles set storage_uri = ? where id = ?")
-        .run("s3://migrated", "bundle-1");
+        .run("s3://migrated", "00000000-0000-7000-8000-000000000001");
       expect(database.prepare("select * from bundle_audit").all()).toEqual([
-        { bundle_id: "bundle-1", storage_uri: "s3://migrated" },
+        {
+          bundle_id: "00000000-0000-7000-8000-000000000001",
+          storage_uri: "s3://migrated",
+        },
       ]);
     },
   );
@@ -479,13 +482,13 @@ describe("createKyselyMigrator", () => {
         id, platform, should_force_update, enabled, file_hash, channel,
         storage_uri, target_app_version
       ) values
-        ('00000000-0000-0000-0000-000000000001', 'ios', false, true,
+        ('00000000-0000-7000-8000-000000000001', 'ios', false, true,
          'hash-1', 'production', 's3://bundle-1', '1.0.0'),
-        ('00000000-0000-0000-0000-000000000002', 'ios', false, true,
+        ('00000000-0000-7000-8000-000000000002', 'ios', false, true,
          'hash-2', 'production', 's3://bundle-2', '1.0.0'),
-        ('00000000-0000-0000-0000-000000000003', 'android', false, true,
+        ('00000000-0000-7000-8000-000000000003', 'android', false, true,
          'hash-3', 'beta', 's3://bundle-3', '1.0.0'),
-        ('00000000-0000-0000-0000-000000000004', 'android', false, true,
+        ('00000000-0000-7000-8000-000000000004', 'android', false, true,
          'hash-4', 'Production', 's3://bundle-4', '1.0.0');
       insert into private_hot_updater_settings (key, value)
       values ('schema.core', '0.37.0');
@@ -547,12 +550,12 @@ describe("createKyselyMigrator", () => {
     );
     await expect(
       database.exec(
-        "update releases set channel_id = null where id = '00000000-0000-0000-0000-000000000001'",
+        "update releases set channel_id = null where id = '00000000-0000-7000-8000-000000000001'",
       ),
     ).rejects.toThrow();
     await expect(
       database.exec(
-        "update releases set channel_id = 'missing' where id = '00000000-0000-0000-0000-000000000001'",
+        "update releases set channel_id = 'missing' where id = '00000000-0000-7000-8000-000000000001'",
       ),
     ).rejects.toThrow();
     const production = channels.rows.find(({ name }) => name === "production")!;
@@ -589,7 +592,7 @@ describe("createKyselyMigrator", () => {
           id, platform, should_force_update, enabled, file_hash, channel,
           storage_uri, target_app_version
         ) values (
-          '00000000-0000-0000-0000-000000000001', 'ios', false, true,
+          '00000000-0000-7000-8000-000000000001', 'ios', false, true,
           'hash', $1, 's3://bundle', '1.0.0'
         )`,
         [name],

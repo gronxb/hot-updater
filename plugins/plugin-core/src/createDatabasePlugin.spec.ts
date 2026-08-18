@@ -73,6 +73,28 @@ const patchRow = {
   order_index: 0,
 } as const;
 
+const releaseRow = {
+  id: "00000000-0000-7000-8000-000000000001",
+  revision: 1,
+  scope_key: "v1:app-version:project-a:ios:cHJvZHVjdGlvbg",
+  channel_id: channelRow.id,
+  platform: "ios" as const,
+  kind: "BUNDLE" as const,
+  bundle_id: bundleRow.id,
+  strategy: "APP_VERSION" as const,
+  target_app_version: ">=1.0.0",
+  fingerprint_hash: null,
+  enabled: true,
+  should_force_update: false,
+  message: null,
+  rollout_cohort_count: 1000,
+  target_cohorts: [],
+  operation: "DEPLOY" as const,
+  source_release_id: null,
+  created_at_ms: 0,
+  updated_at_ms: 0,
+};
+
 describe("createDatabasePlugin", () => {
   it("exposes only models, commit, and lifecycle", () => {
     const plugin = createTestPlugin("memory", createMethods());
@@ -522,6 +544,34 @@ describe("createDatabasePlugin", () => {
     );
     expect(commit).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["id", "00000000-0000-4000-8000-000000000001"],
+    ["id", "00000000-0000-7000-8000-00000000000A"],
+    ["source_release_id", "00000000-0000-4000-8000-000000000001"],
+  ] as const)(
+    "rejects a non-canonical UUIDv7 Release %s before calling the provider",
+    async (field, value) => {
+      const commit = vi.fn(async () => ({ committed: true as const }));
+      const plugin = createTestPlugin("native", {
+        ...createMethods(),
+        commit,
+      });
+
+      await expect(
+        plugin.commit({
+          changes: [
+            {
+              model: "releases",
+              operation: "insert",
+              row: { ...releaseRow, [field]: value },
+            },
+          ],
+        }),
+      ).rejects.toEqual(new DatabasePluginInputError("invalid-data"));
+      expect(commit).not.toHaveBeenCalled();
+    },
+  );
 
   it("rejects an invalid native Channel delete identity before calling the provider", async () => {
     const commit = vi.fn(async () => ({ committed: true as const }));

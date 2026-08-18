@@ -56,25 +56,37 @@ setupDatabaseClientTestSuite({
   dispose: () => undefined,
 });
 
-const legacyRow = (id: string, channel = "production") => ({
-  id,
-  platform: "ios",
-  should_force_update: false,
-  enabled: true,
-  file_hash: `hash-${id}`,
-  git_commit_hash: null,
-  message: null,
-  channel,
-  storage_uri: `gs://bucket/${id}.zip`,
-  target_app_version: "1.0.0",
-  fingerprint_hash: null,
-  metadata: {},
-  rollout_cohort_count: 1000,
-  target_cohorts: null,
-  manifest_storage_uri: null,
-  manifest_file_hash: null,
-  asset_base_storage_uri: null,
-});
+const legacyIds = new Map<string, string>();
+
+const legacyRow = (fixtureName: string, channel = "production") => {
+  let id = legacyIds.get(fixtureName);
+  if (id === undefined) {
+    id = `0198a5b0-0000-7000-8000-${(legacyIds.size + 1)
+      .toString(16)
+      .padStart(12, "0")}`;
+    legacyIds.set(fixtureName, id);
+  }
+
+  return {
+    id,
+    platform: "ios",
+    should_force_update: false,
+    enabled: true,
+    file_hash: `hash-${fixtureName}`,
+    git_commit_hash: null,
+    message: null,
+    channel,
+    storage_uri: `gs://bucket/${fixtureName}.zip`,
+    target_app_version: "1.0.0",
+    fingerprint_hash: null,
+    metadata: {},
+    rollout_cohort_count: 1000,
+    target_cohorts: null,
+    manifest_storage_uri: null,
+    manifest_file_hash: null,
+    asset_base_storage_uri: null,
+  };
+};
 
 const bundleFixture = (suffix: string) => ({
   id: `00000000-0000-0000-0000-${suffix.padStart(12, "0")}`,

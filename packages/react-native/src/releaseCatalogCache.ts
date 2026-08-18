@@ -3,13 +3,14 @@ import {
   MAX_COMPILED_CATALOG_BYTES,
   MAX_DISTINCT_TARGET_COHORTS_PER_SCOPE,
   NUMERIC_COHORT_SIZE,
+  isUUIDv7,
   type ReleaseCatalog,
 } from "@hot-updater/core";
 
 const CACHE_FORMAT_VERSION = "1";
 const MAX_ETAG_BYTES = 1024;
 export const MAX_RELEASE_CATALOG_WIRE_BYTES =
-  MAX_COMPILED_CATALOG_BYTES + 4 * 1024;
+  MAX_COMPILED_CATALOG_BYTES * 2 + 4 * 1024;
 export const MAX_RELEASE_CATALOG_CACHE_ENTRY_BYTES =
   MAX_RELEASE_CATALOG_WIRE_BYTES + MAX_ETAG_BYTES + 3;
 
@@ -86,7 +87,7 @@ const isValidReleaseDescriptor = (value: unknown): boolean => {
   const descriptor = value as Record<string, unknown>;
 
   return (
-    typeof descriptor.releaseId === "string" &&
+    isUUIDv7(descriptor.releaseId) &&
     (descriptor.kind === "BUNDLE" || descriptor.kind === "EMBEDDED") &&
     ((descriptor.kind === "BUNDLE" &&
       typeof descriptor.bundleId === "string") ||
@@ -120,12 +121,17 @@ const parseValidatedCatalog = (
       !/^sha256:[0-9a-f]{64}$/.test(catalog.catalogHash) ||
       catalog.fallbackPolicy !== "BUILTIN_IF_ACTIVE_INELIGIBLE" ||
       !Array.isArray(catalog.releases) ||
-      !catalog.releases.every(isValidReleaseDescriptor)
+      !catalog.releases.every(isValidReleaseDescriptor) ||
+      (catalog.rollbackReleases !== undefined &&
+        (!Array.isArray(catalog.rollbackReleases) ||
+          !catalog.rollbackReleases.every(isValidReleaseDescriptor)))
     ) {
       return null;
     }
     const distinctTargetCohorts = new Set(
-      catalog.releases.flatMap((release) => release.targetCohorts),
+      [...catalog.releases, ...(catalog.rollbackReleases ?? [])].flatMap(
+        (release) => release.targetCohorts,
+      ),
     );
     if (distinctTargetCohorts.size > MAX_DISTINCT_TARGET_COHORTS_PER_SCOPE) {
       return null;

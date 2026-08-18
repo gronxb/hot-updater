@@ -2,6 +2,7 @@ import { isDatabaseMetadataObject } from "./databaseJsonValue";
 import { DatabasePluginInputError } from "./databasePluginCrudValidationErrors";
 import { databaseFields } from "./types/databaseFields";
 import type { DatabaseModel } from "./types/internal";
+import { isUUIDv7 } from "./uuidv7";
 
 export type ValidatorMap = Record<
   DatabaseModel,
@@ -69,7 +70,7 @@ export const modelValidators: ValidatorMap = {
       typeof value === "number" && Number.isInteger(value) && value >= 0,
   },
   releases: {
-    id: (value) => typeof value === "string" && value.length > 0,
+    id: isUUIDv7,
     revision: (value) =>
       typeof value === "number" && Number.isSafeInteger(value) && value >= 1,
     scope_key: (value) => typeof value === "string" && value.length > 0,
@@ -92,7 +93,7 @@ export const modelValidators: ValidatorMap = {
       Array.isArray(value) && value.every((item) => typeof item === "string"),
     operation: (value) =>
       value === "DEPLOY" || value === "PROMOTE" || value === "ROLLBACK",
-    source_release_id: (value) => value === null || typeof value === "string",
+    source_release_id: (value) => value === null || isUUIDv7(value),
     created_at_ms: (value) =>
       typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
     updated_at_ms: (value) =>

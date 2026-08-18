@@ -9,11 +9,9 @@ import { catalogOnlyNoUpdateScenario } from "./scenarios/catalog-only-no-update.
 import { crashThenNextSafeUpdateScenario } from "./scenarios/crash-then-next-safe-update.ts";
 import { disabledBundleRollbackToBuiltinScenario } from "./scenarios/disabled-bundle-rollback-to-builtin.ts";
 import { disabledBundleRollbackToPreviousOtaScenario } from "./scenarios/disabled-bundle-rollback-to-previous-ota.ts";
-import { explicitEmbeddedReceiptScenario } from "./scenarios/explicit-embedded-receipt.ts";
 import { failedDownloadSameGenerationRetryScenario } from "./scenarios/failed-download-same-generation-retry.ts";
 import { fingerprintInitialInstallScenario } from "./scenarios/fingerprint-initial-install.ts";
 import { forceUpdateAutoReloadScenario } from "./scenarios/force-update-auto-reload.ts";
-import { forwardReleaseRollbackOldBundleScenario } from "./scenarios/forward-release-rollback-old-bundle.ts";
 import { metadataV1MigrationScenario } from "./scenarios/metadata-v1-migration.ts";
 import { multiAssetReplacementScenario } from "./scenarios/multi-asset-replacement.ts";
 import { numericCohortRolloutScenario } from "./scenarios/numeric-cohort-rollout.ts";
@@ -56,8 +54,6 @@ const registeredDetoxScenarios: readonly DetoxScenarioDefinition[] = [
   staleCatalogAfterNewerGenerationScenario,
   slowOldArtifactAfterNewerInstallScenario,
   failedDownloadSameGenerationRetryScenario,
-  forwardReleaseRollbackOldBundleScenario,
-  explicitEmbeddedReceiptScenario,
   republishedCrashedBundleSkippedScenario,
   crashThenNextSafeUpdateScenario,
   runtimeChannelCrashRestoreScenario,

@@ -16,13 +16,13 @@ const scope = {
 } as const;
 
 const release: ReleaseRow = {
-  bundle_id: null,
+  bundle_id: "00000000-0000-7001-8000-000000000001",
   channel_id: scope.channelId,
   created_at_ms: 1,
   enabled: true,
   fingerprint_hash: null,
   id: "00000000-0000-7000-8000-000000000001",
-  kind: "EMBEDDED",
+  kind: "BUNDLE",
   message: null,
   operation: "DEPLOY",
   platform: "ios",
@@ -43,6 +43,25 @@ describe("commitReleaseCatalogMutation", () => {
     await database.models.channels.insert({
       onConflict: "returnExisting",
       row: { id: scope.channelId, name: scope.channelName },
+    });
+    await database.commit({
+      changes: [
+        {
+          model: "bundles",
+          operation: "insert",
+          row: {
+            asset_base_storage_uri: null,
+            file_hash: "bundle-hash",
+            git_commit_hash: null,
+            id: release.bundle_id!,
+            manifest_file_hash: null,
+            manifest_storage_uri: null,
+            metadata: {},
+            platform: "ios",
+            storage_uri: "storage://bundle.zip",
+          },
+        },
+      ],
     });
 
     const inserted = await commitReleaseCatalogMutation({

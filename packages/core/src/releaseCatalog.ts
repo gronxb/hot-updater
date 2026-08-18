@@ -59,6 +59,8 @@ export interface ReleaseCatalog {
   readonly fallbackPolicy: typeof RELEASE_CATALOG_FALLBACK_POLICY;
   /** Release descriptors ordered newest first. */
   readonly releases: readonly ReleaseCatalogDescriptor[];
+  /** Enabled compatible Releases ordered newest first for v0-style rollback. */
+  readonly rollbackReleases?: readonly ReleaseCatalogDescriptor[];
 }
 
 export interface CatalogHighWater {
@@ -80,12 +82,16 @@ export interface PersistedSelectionReceipt {
 
 export interface ReleaseSelectionInput {
   readonly builtInBundleId: string;
+  readonly currentBundleId: string;
+  readonly activeReleaseId?: string | null;
   readonly minimumReleaseId: string;
   readonly cohort: string | null | undefined;
   readonly crashedBundleIds: readonly string[];
 }
 
 export interface ReleaseSelectionContextInput {
+  readonly activeBundleId?: string | null;
+  readonly activeReleaseId?: string | null;
   readonly cohort: string | null | undefined;
   readonly minimumReleaseId: string;
   readonly strategy: ReleaseStrategy;
@@ -115,6 +121,8 @@ export function createReleaseSelectionContextHash(
     .sort()
     .slice(0, MAX_CRASHED_BUNDLES);
   const canonical = JSON.stringify({
+    activeBundleId: input.activeBundleId ?? null,
+    activeReleaseId: input.activeReleaseId ?? null,
     cohort: normalizeCohortValue(input.cohort ?? ""),
     crashedBundleIds,
     minimumReleaseId: input.minimumReleaseId,
@@ -130,6 +138,7 @@ export type DesiredRelease = {
   readonly releaseId: string | null;
   readonly bundleId: string;
   readonly release: ReleaseCatalogDescriptor | null;
+  readonly status: "UPDATE" | "ROLLBACK";
 };
 
 export function isReleaseEligibleForCohort(
@@ -164,30 +173,51 @@ export function selectDesiredRelease(
   input: ReleaseSelectionInput,
 ): DesiredRelease | null {
   const crashedBundleIds = new Set(input.crashedBundleIds);
+  const activeReleaseId = input.activeReleaseId ?? null;
+  const hasActiveBundle = input.currentBundleId !== input.builtInBundleId;
+
+  const isSafeBundleRelease = (
+    release: ReleaseCatalogDescriptor,
+  ): release is ReleaseCatalogDescriptor & {
+    readonly kind: "BUNDLE";
+    readonly bundleId: string;
+  } =>
+    release.kind === "BUNDLE" &&
+    release.bundleId !== null &&
+    !crashedBundleIds.has(release.bundleId) &&
+    release.bundleId >= input.minimumReleaseId;
+
+  const desiredBundle = (
+    release: ReleaseCatalogDescriptor & {
+      readonly kind: "BUNDLE";
+      readonly bundleId: string;
+    },
+    status: "UPDATE" | "ROLLBACK",
+  ): DesiredRelease => ({
+    bundleId: release.bundleId,
+    kind: "BUNDLE",
+    release,
+    releaseId: release.releaseId,
+    status,
+  });
 
   for (const release of catalog.releases) {
-    if (release.releaseId < input.minimumReleaseId) {
-      continue;
-    }
-
     if (!isReleaseEligibleForCohort(release, input.cohort)) {
       continue;
     }
 
-    if (release.kind === "BUNDLE") {
-      if (release.bundleId === null) {
-        continue;
-      }
-      if (crashedBundleIds.has(release.bundleId)) {
-        continue;
-      }
+    if (
+      (activeReleaseId !== null && release.releaseId <= activeReleaseId) ||
+      (activeReleaseId === null &&
+        hasActiveBundle &&
+        (release.bundleId === null ||
+          release.bundleId <= input.currentBundleId))
+    ) {
+      continue;
+    }
 
-      return {
-        bundleId: release.bundleId,
-        kind: "BUNDLE",
-        release,
-        releaseId: release.releaseId,
-      };
+    if (isSafeBundleRelease(release)) {
+      return desiredBundle(release, "UPDATE");
     }
 
     if (release.bundleId !== null) {
@@ -199,7 +229,40 @@ export function selectDesiredRelease(
       kind: "EMBEDDED",
       release,
       releaseId: release.releaseId,
+      status: "ROLLBACK",
     };
+  }
+
+  if (activeReleaseId !== null || hasActiveBundle) {
+    const rollbackReleases = catalog.rollbackReleases ?? catalog.releases;
+    const current = rollbackReleases.find(
+      (release) =>
+        release.releaseId === activeReleaseId ||
+        (activeReleaseId === null &&
+          release.bundleId === input.currentBundleId),
+    );
+    if (
+      current !== undefined &&
+      isSafeBundleRelease(current) &&
+      isReleaseEligibleForCohort(current, input.cohort)
+    ) {
+      return desiredBundle(current, "UPDATE");
+    }
+
+    const rollback = rollbackReleases.find(
+      (release) =>
+        isSafeBundleRelease(release) &&
+        (activeReleaseId !== null
+          ? release.releaseId < activeReleaseId
+          : release.bundleId < input.currentBundleId),
+    );
+    if (rollback !== undefined && isSafeBundleRelease(rollback)) {
+      return desiredBundle(rollback, "ROLLBACK");
+    }
+
+    if (input.currentBundleId <= input.minimumReleaseId) {
+      return null;
+    }
   }
 
   if (catalog.fallbackPolicy !== RELEASE_CATALOG_FALLBACK_POLICY) {
@@ -211,6 +274,7 @@ export function selectDesiredRelease(
     kind: "BUILTIN",
     release: null,
     releaseId: null,
+    status: "ROLLBACK",
   };
 }
 

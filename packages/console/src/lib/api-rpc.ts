@@ -1,14 +1,12 @@
 import {
   DatabasePluginInputError,
   type Bundle,
-  type ReleaseRow,
   type ChannelDeleteInput,
   type ChannelInsertInput,
   type DatabaseBundleQueryOptions,
   deleteRelease as deleteReleaseMutation,
   preflightReleasePolicy,
   promoteRelease as promoteReleaseMutation,
-  rollbackRelease as rollbackReleaseMutation,
   type ReleasePolicyPatch,
   updateReleasePolicy,
 } from "@hot-updater/plugin-core";
@@ -143,55 +141,6 @@ export const promoteRelease = createServerFn({ method: "POST" })
     const { prepareConfig } = await import("./server/config.server");
     const { config } = await prepareConfig();
     return promoteReleaseMutation({ database: config.database, ...data });
-  });
-
-export const rollbackRelease = createServerFn({ method: "POST" })
-  .inputValidator(
-    (input: {
-      expectedRevision?: number;
-      releaseId: string;
-      toBundleId?: string | null;
-      toReleaseId?: string;
-    }) => input,
-  )
-  .handler(async ({ data }) => {
-    const { prepareConfig } = await import("./server/config.server");
-    const { config } = await prepareConfig();
-    return rollbackReleaseMutation({ database: config.database, ...data });
-  });
-
-export const getReleaseRollbackCandidates = createServerFn({ method: "GET" })
-  .inputValidator((input: { releaseId: string }) => input)
-  .handler(async ({ data }) => {
-    const { prepareConfig } = await import("./server/config.server");
-    const { config } = await prepareConfig();
-    const release = await config.database.models.releases.findById(
-      data.releaseId,
-    );
-    if (release === null) return [];
-
-    const candidates: ReleaseRow[] = [];
-    let afterReleaseId: string | undefined;
-    for (;;) {
-      const page = await config.database.models.releases.findManyByScope({
-        ...(afterReleaseId === undefined ? {} : { afterReleaseId }),
-        consistency: "strong",
-        limit: 100,
-        scopeKey: release.scope_key,
-      });
-      for (const candidate of page) {
-        if (candidate.id >= release.id) {
-          return candidates.slice(-20).reverse();
-        }
-        candidates.push(candidate);
-      }
-      if (page.length < 100) return candidates.slice(-20).reverse();
-      const nextCursor = page.at(-1)?.id;
-      if (nextCursor === undefined || nextCursor === afterReleaseId) {
-        return candidates.slice(-20).reverse();
-      }
-      afterReleaseId = nextCursor;
-    }
   });
 
 export const getReleaseCatalogDiagnostics = createServerFn({ method: "GET" })

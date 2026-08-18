@@ -12,7 +12,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReleaseEditorSheet } from "./ReleaseEditorSheet";
 
 const preflight = vi.fn();
-const rollback = vi.fn();
 const update = vi.fn();
 
 const release = {
@@ -94,11 +93,6 @@ vi.mock("@/lib/api", () => ({
   }),
   useReleaseCatalogDiagnosticsQuery: () => ({ data: null }),
   useReleaseQuery: () => ({ data: releaseValue, isError: false }),
-  useReleaseRollbackCandidatesQuery: () => ({ data: [] }),
-  useRollbackReleaseMutation: () => ({
-    isPending: false,
-    mutateAsync: rollback,
-  }),
   useUpdateReleaseMutation: () => ({ isPending: false, mutateAsync: update }),
 }));
 
@@ -109,8 +103,6 @@ describe("ReleaseEditorSheet", () => {
     releaseValue = release;
     preflight.mockReset();
     preflight.mockResolvedValue({});
-    rollback.mockReset();
-    rollback.mockResolvedValue({});
     update.mockReset();
     update.mockResolvedValue({});
   });
@@ -196,7 +188,7 @@ describe("ReleaseEditorSheet", () => {
     expect(screen.getByText("Selected cohorts")).toBeDefined();
   });
 
-  it("distinguishes stopping new installs from rolling back installed devices", async () => {
+  it("uses disabling as the only rollback action", async () => {
     render(
       <ReleaseEditorSheet
         channels={[{ id: "channel-1", name: "production" }]}
@@ -206,31 +198,22 @@ describe("ReleaseEditorSheet", () => {
       />,
     );
 
-    expect(screen.getByText("Enabled for new installs")).toBeDefined();
-    expect(screen.getByText("Installed devices")).toBeDefined();
-
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Roll back…",
-      }),
-    );
-
-    expect(
-      screen.getByRole("heading", { name: "Roll back installed devices" }),
-    ).toBeDefined();
     expect(
       screen.getByText(
-        "Move installed devices to a previous Bundle or the built-in app.",
+        "Disabling rolls devices back to the previous enabled Release on their next check, or to the built-in app when none remains.",
       ),
     ).toBeDefined();
+    expect(screen.queryByRole("button", { name: /roll back/i })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Roll back devices" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Enabled" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
-    await waitFor(() =>
-      expect(rollback).toHaveBeenCalledWith({
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    expect(preflight).toHaveBeenCalledWith(
+      expect.objectContaining({
         expectedRevision: 2,
+        patch: expect.objectContaining({ enabled: false }),
         releaseId: "release-1",
-        toBundleId: null,
       }),
     );
   });

@@ -68,38 +68,24 @@ describe("handleRollback", () => {
     loadConfig.mockResolvedValue({ database: databaseHarness.plugin });
   });
 
-  it("uses --to-release as an unambiguous target", async () => {
+  it("disables the newest enabled Release without inserting a row", async () => {
     const { handleRollback } = await import("./rollback");
 
     await handleRollback("production", {
-      platform: "ios",
-      toRelease: first.id,
-      yes: true,
-    });
-
-    expect(await latestRelease()).toMatchObject({
-      bundle_id: first.id,
-      operation: "ROLLBACK",
-      should_force_update: true,
-      rollout_cohort_count: 1_000,
-      source_release_id: first.id,
-    });
-  });
-
-  it("creates a newer EMBEDDED Release explicitly", async () => {
-    const { handleRollback } = await import("./rollback");
-
-    await handleRollback("production", {
-      embedded: true,
       platform: "ios",
       yes: true,
     });
 
     expect(await latestRelease()).toMatchObject({
-      bundle_id: null,
-      kind: "EMBEDDED",
-      operation: "ROLLBACK",
+      bundle_id: second.id,
+      enabled: false,
+      id: second.id,
+      operation: "DEPLOY",
+      revision: 2,
     });
+    expect(
+      await databaseHarness.plugin.models.releases.findMany({ limit: 100 }),
+    ).toHaveLength(2);
   });
 
   it("a repeated rollback moves farther back instead of bouncing forward", async () => {
@@ -109,29 +95,39 @@ describe("handleRollback", () => {
     const { handleRollback } = await import("./rollback");
 
     await handleRollback("production", { platform: "ios", yes: true });
-    const firstRollback = await latestRelease();
-    expect(firstRollback?.bundle_id).toBe(second.id);
+    expect(await latestRelease()).toMatchObject({
+      enabled: false,
+      id: third.id,
+    });
 
     await handleRollback("production", { platform: "ios", yes: true });
-    expect(await latestRelease()).toMatchObject({
-      bundle_id: first.id,
-      operation: "ROLLBACK",
-    });
+    expect(
+      await databaseHarness.plugin.models.releases.findById(second.id),
+    ).toMatchObject({ enabled: false, revision: 2 });
+    expect(
+      await databaseHarness.plugin.models.releases.findById(first.id),
+    ).toMatchObject({ enabled: true, revision: 1 });
+    expect(
+      await databaseHarness.plugin.models.releases.findMany({ limit: 100 }),
+    ).toHaveLength(3);
+    expect(log.success).toHaveBeenLastCalledWith(
+      expect.stringContaining(second.id),
+    );
   });
 
-  it("rejects mutually ambiguous rollback targets before mutating", async () => {
+  it("retries exactly the source Bundle selected with --target", async () => {
     const { handleRollback } = await import("./rollback");
 
-    await expect(
-      handleRollback("production", {
-        embedded: true,
-        toRelease: first.id,
-        yes: true,
-      }),
-    ).rejects.toThrow();
-    expect(log.error).toHaveBeenCalledWith(
-      "Choose only one of --to-release, --to-bundle, or --embedded.",
-    );
-    expect(databaseHarness.commit).not.toHaveBeenCalled();
+    await handleRollback("production", {
+      target: first.id,
+      yes: true,
+    });
+
+    expect(
+      await databaseHarness.plugin.models.releases.findById(first.id),
+    ).toMatchObject({ enabled: false, revision: 2 });
+    expect(
+      await databaseHarness.plugin.models.releases.findById(second.id),
+    ).toMatchObject({ enabled: true, revision: 1 });
   });
 });

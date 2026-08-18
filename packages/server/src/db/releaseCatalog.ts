@@ -14,6 +14,7 @@ import {
   canonicalizeAppVersion,
   createDatabaseClient,
   projectCompiledCatalog,
+  projectCompiledRollbackCatalog,
   type CompiledReleaseCatalog,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
@@ -106,12 +107,17 @@ export const createReleaseCatalogReader =
       compiled,
       input.strategy === "APP_VERSION" ? input.appVersion : undefined,
     );
+    const rollbackReleases = projectCompiledRollbackCatalog(
+      compiled,
+      input.strategy === "APP_VERSION" ? input.appVersion : undefined,
+    );
     return {
       authorityId,
       catalogHash: row.catalog_hash,
       fallbackPolicy: RELEASE_CATALOG_FALLBACK_POLICY,
       generation: row.generation,
       releases,
+      rollbackReleases,
       schemaVersion: RELEASE_CATALOG_SCHEMA_VERSION,
       scopeKey,
     };
@@ -191,7 +197,7 @@ export const createLegacyCatalogResolver =
           });
     if (catalog === null) return null;
     const descriptorsByBundleId = new Map<string, ReleaseCatalogDescriptor>();
-    for (const release of catalog.releases) {
+    for (const release of catalog.rollbackReleases ?? catalog.releases) {
       if (release.kind === "BUNDLE" && release.bundleId !== null) {
         // Catalog descriptors are newest-first. Legacy Bundle semantics cannot
         // represent multiple Releases for one artifact, so retain the newest
