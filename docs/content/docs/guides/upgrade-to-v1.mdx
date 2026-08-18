@@ -73,6 +73,31 @@ Address these v1 configuration changes before migration:
   compatibility alias, but generated origin-only configuration uses the new
   name.
 
+### Update CLI automation to use Release IDs
+
+v1 separates immutable Bundle artifacts from mutable Release policy. Update
+scripts before writers resume:
+
+| v0 command or assumption | v1 command or meaning |
+| --- | --- |
+| `bundle list --channel ... --target-app-version ...` | Use `release list --channel ... --platform ...` for delivery policy. `bundle list` is an artifact inventory. |
+| `bundle show <bundle-id>` for rollout or enabled state | Use `release show <release-id>`. `bundle show` reports artifact data and Release references. |
+| `bundle update <bundle-id>` | `release update <release-id>` |
+| `bundle enable <bundle-id>` | `release enable <release-id>` |
+| `bundle disable <bundle-id>` | `release disable <release-id>` |
+| `bundle promote <bundle-id>` | `release promote <source-release-id> --target <channel>` |
+| top-level `rollback <channel>` or `--target <bundle-id>` | Identify the exact Release and run `release disable <release-id>`. The Bundle-targeted rollback command is removed. |
+| Delete an old Bundle directly | Disable and hard-delete every referencing Release, then run `bundle delete` and preview `storage prune`. |
+
+Backfilled v0 rows may initially have matching Release and Bundle IDs. Do not
+build automation around that coincidence: deploy and promote create independent
+Release IDs, and multiple Releases can reference one Bundle.
+
+Promotion reuses Bundle bytes and never copies Storage objects. Its target
+Release is enabled with a 100% numeric rollout, no target cohorts, and a new
+Release-ID rollout seed. Review that policy in the command preview before
+confirming, especially when the source Release had a partial or QA-only rollout.
+
 ### 3. Migrate the database
 
 Use the path that owns your database schema:

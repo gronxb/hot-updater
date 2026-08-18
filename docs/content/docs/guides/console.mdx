@@ -1,20 +1,21 @@
 ---
-title: "Console (Rollback & Force Update)"
+title: "Console (Releases & Artifacts)"
 description: "Opens a localhost server based on plugins configured in `hot-updater.config.ts`. For security reasons, only localhost server is supported at the moment."
 icon: Terminal
 ---
 
 **The console provides the following features:**
 
-- Rollback
-- Force update flag
+- Release delivery-policy management
+- Release disable and force-update controls
+- Immutable Bundle artifact inspection
 - Quick access to git history for updates
 
 <video src={"/docs/console/console.mp4"} controls autoPlay loop muted />
 
 ## Configuration (Optional)
 
-This is a console configuration that does not affect the bundle.
+Console configuration does not change Release policy or Bundle artifacts.
 
 You can configure additional console settings in the `hot-updater.config.ts` file.
 
@@ -47,20 +48,27 @@ Execute the following command:
 npx hot-updater console
 ```
 
-You can also use the bundle CLI for automation and CI scripts:
+Use the Release CLI for delivery-policy automation and CI scripts:
 
 ```package-install
-npx hot-updater bundle list -p ios
-npx hot-updater bundle show <bundle-id>
-npx hot-updater bundle disable <bundle-id> -y
-npx hot-updater bundle enable <bundle-id> -y
-npx hot-updater bundle update <bundle-id> --force-update true -y
-npx hot-updater bundle update <bundle-id> --rollout-cohort-count 500 -y
-npx hot-updater bundle update <bundle-id> --target-cohorts qa,dogfood -y
+npx hot-updater release list --platform ios
+npx hot-updater release list --bundle-id <bundle-id>
+npx hot-updater release show <release-id>
+npx hot-updater release disable <release-id> -y
+npx hot-updater release enable <release-id> -y
+npx hot-updater release update <release-id> --force-update true -y
+npx hot-updater release update <release-id> --rollout-cohort-count 500 -y
+npx hot-updater release update <release-id> --target-cohorts qa,dogfood -y
 ```
 
-Add `--json` to `bundle list`, `bundle show`, or `bundle update` when another
-tool needs to read the raw bundle data.
+Add `--json` to `release list`, `release show`, or `release update` when
+another tool needs to read Release policy. Bundle commands remain available
+for immutable artifact inspection and reference-safe deletion:
+
+```package-install
+npx hot-updater bundle list --platform ios
+npx hot-updater bundle show <bundle-id>
+```
 
 After deleting bundle records, use the [Storage Cleanup](/docs/guides/storage-cleanup)
 workflow to preview and reclaim bundle objects and shared assets that are no
@@ -68,15 +76,35 @@ longer referenced.
 
 ## Rollback
 
-When you set a bundle's `enabled` status to `false` in the console, users who have that bundle will immediately force update to the **previous bundle**.
+Disabling a Release removes it from delivery selection. Affected installations
+move to the previous compatible enabled Release or to the app's built-in
+Bundle when no compatible Release remains. The result can vary by app version,
+fingerprint, and cohort, so verify the scope shown by the Console before
+confirming.
 
 <img src={"/docs/console/enabled.png"} />
 
 ## Force Update
 
-When you set a bundle's `shouldForceUpdate` status to `true` in the console, users who have that bundle will immediately force update to the **latest bundle**.
+Setting a Release's `shouldForceUpdate` policy to `true` tells eligible
+installations to apply that Release immediately when it is selected. The flag
+belongs to the Release, not to its Bundle artifact.
 
 <img src={"/docs/console/force_update.png"} />
+
+## Promote
+
+Promotion creates a new Release in the target channel while reusing the source
+Release's Bundle:
+
+```package-install
+npx hot-updater release promote <source-release-id> --target <channel>
+```
+
+No Storage object is uploaded or copied. The target Release has a new Release
+ID and rollout seed, is enabled, starts at a 100% numeric rollout, and has no
+target cohorts. The command previews those defaults before confirmation. A
+`--action move` promotion also disables the source Release atomically.
 
 ## Git URL
 

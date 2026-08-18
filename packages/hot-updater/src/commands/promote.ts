@@ -37,6 +37,14 @@ const summarizePlan = (
     ui.kv("From", ui.channel(sourceChannel)),
     ui.kv("To", ui.channel(targetChannel)),
     ui.kv("Storage", ui.muted("reused; no upload or copy")),
+    ui.kv("Target enabled", "yes"),
+    ui.kv("Target rollout", "100%"),
+    ui.kv("Target cohorts", ui.muted("(none)")),
+    ui.kv("Rollout seed", ui.muted("new Release ID")),
+    ui.kv(
+      "Source Release",
+      action === "move" ? "disabled atomically" : "remains unchanged",
+    ),
   ]);
 
 export const handlePromote = async (
@@ -84,6 +92,7 @@ export const handlePromote = async (
     const result = await promoteRelease({
       action,
       database,
+      expectedRevision: source.revision,
       releaseId: source.id,
       targetChannel,
     });

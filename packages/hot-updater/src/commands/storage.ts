@@ -144,21 +144,43 @@ function isLegacyBundleArtifactPath(segments: readonly string[]) {
   );
 }
 
-function getBundleIdFromStorageKey(key: string): string | null {
+interface BundleStorageKey {
+  readonly bundleId: string;
+  readonly isPatch: boolean;
+}
+
+function isSupportedPatchArtifactPath(segments: readonly string[]) {
+  return (
+    segments[0] === "patches" &&
+    segments.length >= 3 &&
+    UUID_V7_RE.test(segments[1] ?? "")
+  );
+}
+
+function parseBundleStorageKey(key: string): BundleStorageKey | null {
   const segments = key.split("/").filter(Boolean);
   if (segments[0] === BUNDLE_STORAGE_PREFIX) {
     const bundleId = segments[1];
-    return bundleId && UUID_V7_RE.test(bundleId)
-      ? bundleId.toLowerCase()
-      : null;
+    if (!bundleId || !UUID_V7_RE.test(bundleId)) return null;
+    return {
+      bundleId: bundleId.toLowerCase(),
+      isPatch: isSupportedPatchArtifactPath(segments.slice(2)),
+    };
   }
 
   const bundleId = segments[0];
-  return bundleId &&
-    UUID_V7_RE.test(bundleId) &&
-    isLegacyBundleArtifactPath(segments.slice(1))
-    ? bundleId.toLowerCase()
-    : null;
+  const artifactPath = segments.slice(1);
+  if (
+    !bundleId ||
+    !UUID_V7_RE.test(bundleId) ||
+    !isLegacyBundleArtifactPath(artifactPath)
+  ) {
+    return null;
+  }
+  return {
+    bundleId: bundleId.toLowerCase(),
+    isPatch: isSupportedPatchArtifactPath(artifactPath),
+  };
 }
 
 function isBundleManifest(
@@ -428,8 +450,12 @@ function getPruneCandidates({
       continue;
     }
 
-    const bundleId = getBundleIdFromStorageKey(object.key);
-    if (bundleId && !liveBundleIds.has(bundleId)) {
+    const bundleStorageKey = parseBundleStorageKey(object.key);
+    if (
+      bundleStorageKey &&
+      (bundleStorageKey.isPatch ||
+        !liveBundleIds.has(bundleStorageKey.bundleId))
+    ) {
       candidates.push({ ...object, reason: "bundle" });
       continue;
     }
@@ -492,7 +518,7 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
     }
     if (options.yes) {
       p.log.warn(
-        "Storage prune requires exclusive access. Stop deploy and promote operations first.",
+        "Storage prune requires exclusive access. Stop deploy and patch operations first.",
       );
       p.log.warn(
         "The current database must own every object under this storage prefix. Use a separate storage basePath for each database or environment.",

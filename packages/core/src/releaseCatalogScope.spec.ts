@@ -5,6 +5,7 @@ import {
   decodeChannelKey,
   encodeChannelKey,
   normalizeChannelName,
+  parseReleaseCatalogScopeKey,
 } from "./releaseCatalogScope";
 
 describe("Release catalog scope identity", () => {
@@ -46,6 +47,45 @@ describe("Release catalog scope identity", () => {
         strategy: "FINGERPRINT",
       }),
     ).toBe(`v1:fingerprint:project-a:android:${channelKey}:sha256-deadbeef`);
+  });
+
+  it("parses canonical scope keys back to their exact inputs", () => {
+    const channelKey = encodeChannelKey("프로덕션/β");
+    const inputs = [
+      {
+        authorityId: "project-a",
+        channelKey,
+        platform: "ios",
+        strategy: "APP_VERSION",
+      },
+      {
+        authorityId: "project-a",
+        channelKey,
+        fingerprintHash: "sha256-deadbeef",
+        platform: "android",
+        strategy: "FINGERPRINT",
+      },
+    ] as const;
+
+    for (const input of inputs) {
+      expect(
+        parseReleaseCatalogScopeKey(createReleaseCatalogScopeKey(input)),
+      ).toEqual(input);
+    }
+  });
+
+  it.each([
+    "",
+    "v2:app-version:project-a:ios:cHJvZHVjdGlvbg",
+    "v1:app-version:project-a:web:cHJvZHVjdGlvbg",
+    "v1:app-version:project-a:ios",
+    "v1:app-version:project-a:ios:cHJvZHVjdGlvbg:extra",
+    "v1:fingerprint:project-a:ios:cHJvZHVjdGlvbg",
+    "v1:fingerprint:project-a:ios:cHJvZHVjdGlvbg:",
+    "v1:fingerprint:project:a:ios:cHJvZHVjdGlvbg:hash",
+    "v1:app-version:project-a:ios:cHJvZHVjdGlvbg==",
+  ])("rejects a malformed or non-canonical scope key: %s", (scopeKey) => {
+    expect(() => parseReleaseCatalogScopeKey(scopeKey)).toThrow();
   });
 
   it("bounds scope segments to printable ASCII that fits provider keys", () => {
