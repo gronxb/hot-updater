@@ -1,195 +1,157 @@
 ---
 title: "Hot Updater 1.0: The Read Path Should Be Boring"
-description: "Why Hot Updater 1.0 moves decisions out of the request path—and adds the feedback needed to trust the result."
+description: "Release Catalogs replace per-installation decisions with shared reads, while Analytics shows the latest Bundle reported by each installation."
 date: "2026-08-19"
 author: "Hot Updater Team"
 image: "/blog/release-catalog.webp"
 ---
 
-An update check looks like a read, but it used to be a decision.
+Introducing Hot Updater 1.0.
 
-The server received an installation's current Bundle, minimum Bundle, cohort,
-platform, channel, and compatibility target. It then asked the configured
-database provider which update that particular installation should receive.
-The answer was correct, but it was also difficult to share.
+We rebuilt the path every installation uses around one idea: an update check
+should be a boring read, not a fresh decision for every device.
 
-At small scale, that distinction is easy to ignore. At scale, it becomes the
-shape of the bill: more app launches produce more origin executions and more
-database decision queries—even when thousands of installations are asking
-about the same Release policy.
+Before 1.0, each check sent installation-specific state to the server. The
+server combined the current Bundle, rollout cohort, platform, channel, and
+compatibility target, then asked the configured database provider what that
+installation should receive. It worked, but the answer was difficult to share.
 
-Hot Updater 1.0 changes when that work happens, where it happens, and how we
-observe the result.
+Hot Updater 1.0 moves that decision to the moment Release policy changes. The
+result is compiled into a **Release Catalog** that can be cached and shared.
+The device applies its local state after receiving the Catalog, and built-in
+Analytics reports what happened after the app is ready.
 
-## The hidden cost of a precise question
+## What changed in 1.0
 
-The old update-check URL included installation-specific state such as the
-current Bundle and cohort. Two devices in the same channel and app version
-could therefore produce different cache keys.
+- **Update checks are shared reads.** Installations on the same platform,
+  channel, and compatibility scope request the same Release Catalog.
+- **Policy is separate from bytes.** Bundles remain immutable artifacts;
+  Releases own rollout, targeting, promotion, and rollback.
+- **The result is observable.** Analytics shows the latest Bundle reported by
+  each installation and whether updates were applied or recovered.
 
-That created several recurring costs:
+Together, these changes remove installation-specific selection from the
+server's hot path without giving up installation-specific behavior on the
+device.
 
-- **Infrastructure cost.** A burst of update checks could run the origin and
-  database decision path almost once per request instead of sharing a cached
-  response.
-- **Provider cost.** SQL, Firestore, DynamoDB, D1, MongoDB, and custom providers
-  each needed their own form of update-selection query. Moving the query
-  changed where the work was billed, but not how it scaled.
-- **Correctness cost.** Policy and installation state were read while requests
-  were in flight. A slow response or artifact download needed additional
-  protection to avoid committing a decision older than one the device had
-  already accepted.
-- **Operational cost.** Bundle bytes and delivery policy appeared to be one
-  object. Promotion, rollback, policy edits, and deletion all had to work
-  around that blurred ownership boundary.
+## From 20,000 candidates to a cached Catalog
 
-We did not want a faster version of the same per-installation query. We wanted
-routine update checks to stop asking installation-specific questions at the
-origin.
+The repository includes a local synthetic benchmark for the server-side work
+performed during an update check. The pre-Catalog baseline runs the generic
+database selector over 20,000 matching Bundle rows. The 1.0 fixture serves an
+empty, already compiled Catalog from a warm in-process cache. This intentionally
+compares the old selector's work with the minimum warm-serving overhead, not
+two equal payloads.
 
-## Pay for the decision when policy changes
+|                               | Pre-Catalog selector | 1.0 warm Catalog |
+| ----------------------------- | -------------------: | ---------------: |
+| Database adapter reads        |                  203 |                0 |
+| Mean benchmark operation time |            981.25 ms |        0.0209 ms |
 
-Version 1.0 separates the system into three parts:
+The warmed 1.0 fixture used **99.9979% less operation time in this harness**.
+This is a measurement of application work removed from the request path, not
+an end-to-end device latency result or a production cloud-bill estimate.
+Network latency, provider latency, cache locations, TTL, and traffic shape
+still depend on the deployment. The command, environment, and baseline commit
+are recorded in the
+[checked-in verification evidence](https://github.com/gronxb/hot-updater/blob/c8e24cdec1ddfd184a866df30a82f1c05b525ef5/docs/architecture/release-catalog-verification.md).
 
-- A **Bundle** is immutable, installable content: archives, assets, patches,
-  hashes, manifests, and signing identity.
-- A **Release** references a Bundle and owns mutable delivery policy: channel,
-  compatibility, rollout, cohorts, enablement, force update, and message.
-- A **Release Catalog** is a deterministic desired-state projection compiled
-  from Releases for one authority, platform, channel, and compatibility scope.
+A separate integration test measures cold-request concurrency. One hundred
+simultaneous requests for the same uncached Catalog produce **one exact
+Catalog-row read**; the other 99 requests join the same in-flight load. Once
+that Catalog is cached, a warm request and an ETag revalidation add no database
+read. This coalescing is scoped to one process and one canonical Catalog key,
+not a promise that requests across every region share one global read.
 
-Deploying a Release or changing its policy compiles the affected Catalog ahead
-of time. The Release mutation and Catalog generation commit atomically, so a
-client cannot observe new policy without its matching projection.
+The durable change is the scaling model:
 
-This makes the read path intentionally boring. A cold origin request performs
-one exact Catalog-row read. On providers with a shared cache, warm requests can
-perform zero database reads and zero decision-origin work. Origin work grows
-with cache fills per location and TTL instead of with individual installations.
-
-Supabase's supported origin-only mode still invokes its Edge Function for each
-check, but it serves an already compiled Catalog instead of running a
-per-installation Postgres decision query.
-
-The device evaluates its own current state, rollout bucket, cohort, and crash
-history against the shared Catalog. It requests an artifact only when the
-selected Bundle bytes differ. Generation high-water marks and atomic local
-receipts prevent an older response or slower download from overwriting a newer
-accepted decision.
-
-The bet is simple: policy changes happen far less often than update checks. We
-choose to spend more work on the uncommon write so the common read can be
-shared, cached, and predictable.
-
-## Fewer copies, fewer meanings
-
-Separating Release policy from Bundle bytes reduces more than request cost.
-
-Promotion creates a new Release for another channel while reusing the same
-Bundle objects. Changing rollout or cohort targeting recompiles policy without
-rewriting an artifact. Disabling a specific Release rolls affected devices
-back to their previous compatible enabled Release—or to the built-in Bundle—
-without inventing another copy of the bytes.
-
-The CLI now makes that ownership visible:
-
-```bash
-# Inspect delivery policy
-npx hot-updater release list --channel production --platform ios
-
-# Promote without copying Bundle bytes
-npx hot-updater release promote <release-id> --target production
-
-# Roll back an exact Release
-npx hot-updater release disable <release-id>
+```text
+before 1.0: origin decisions grow with update checks
+after 1.0:  origin reads grow with Catalog cache fills across scopes and locations
 ```
 
-Bundle commands manage artifacts and report their Release references. Release
-commands manage delivery. The ambiguous top-level, Bundle-targeted `rollback`
-command is gone, and storage pruning can reason about live references before
-reclaiming objects.
+On managed AWS, Cloudflare, and Firebase deployments, a shared cache can serve
+warm checks without running the decision origin. Supabase remains origin-only,
+so every check still invokes its Edge Function, but the function serves a
+compiled Catalog instead of running the old per-installation Postgres
+selector.
 
-Database providers also become smaller in responsibility. They persist the
-official Bundle, Release, Catalog, Channel, Analytics, and access-key domains
-and provide conditional atomic commits. They no longer implement their own
-desired-state selector. That removes a class of provider-specific behavior we
-otherwise had to implement, optimize, and verify repeatedly.
+## Compile policy once, share the result
 
-## A cheaper read still needs a feedback loop
+Hot Updater 1.0 gives three concepts one job each:
 
-Moving installation-specific selection to the device removes it from the
-server's request path. It does not remove the operator's need to know what
-happened.
+- A **Bundle** is immutable installable content: archives, assets, patches,
+  hashes, manifests, and signing identity.
+- A **Release** points to a Bundle and owns delivery policy: channel,
+  compatibility, rollout, cohort targeting, enablement, force update, and
+  message.
+- A **Release Catalog** is the deterministic projection of those Releases for
+  a platform, channel, and compatibility scope.
 
-That is why Analytics is a built-in server domain in 1.0 rather than a separate
-plugin. With `HotUpdater.init({ analytics: true })`, an app reports its outcome
-after it is ready. Reporting is best-effort: an Analytics failure is a warning
-and never blocks startup or rolls back device state.
+Deploying a Release or changing its policy compiles the affected Catalog. The
+Release mutation and Catalog generation commit together, so a client cannot
+observe new policy without its matching projection.
 
-The Console can use those reports to answer practical questions:
+The request path is then deliberately small:
 
-- **How many installations are reporting?** View active installations over
-  24 hours, 7 days, or 30 days.
-- **Which Bundle are they actually on?** See the latest reported Bundle
-  distribution and how that distribution moves over time.
-- **Is a rollout behaving as expected?** Compare the configured rollout with
-  the observed share among reporting installations.
-- **Did the update stick?** Separate successful `UPDATE_APPLIED` transitions
-  from `RECOVERED` transitions that moved away from a Bundle after recovery.
-- **Did policy change without new bytes?** `RELEASE_ADOPTED` distinguishes
-  adopting a new Release that references the same Bundle from downloading and
-  installing an update.
-- **What happened to one installation?** Search by installation ID, user ID, or
-  username and inspect its latest platform, app version, channel, cohort,
-  Bundle, status, and transition history.
+1. Read one Catalog for the client's platform, channel, and compatibility
+   scope.
+2. Reuse the cached response across installations.
+3. Let the device evaluate its current Bundle, rollout bucket, cohort, and
+   crash history.
+4. Download an artifact only when the selected Bundle bytes differ.
 
-Release and Bundle IDs are recorded directionally, so Analytics can describe a
-movement from one policy and artifact identity to another instead of guessing
-a Release from a Bundle ID.
+The server answers **what can be released**. The device answers **what applies
+to me**.
 
-These numbers are operational evidence, not an analytics warehouse. They cover
-devices that opted in and successfully reported, not every installed copy of
-the app. An observed Bundle share is therefore not proof of the exact global
-rollout percentage, and a missing event is not proof that an installation
-failed. Built-in aggregation is deliberately bounded so observability cannot
-become an unbounded database workload of its own.
+This separation also makes promotion and rollback easier to reason about. A
+Bundle can be reused by multiple Releases. Promoting to another channel creates
+policy that references the same bytes instead of copying them. Changing a
+rollout recompiles the Catalog without rewriting the artifact. Disabling a
+Release moves affected devices to the previous compatible enabled Release—or
+back to the built-in Bundle.
 
-## The cost we chose to keep
+## Analytics closes the loop
 
-This architecture is not free.
+Moving installation-specific selection to the device makes the read path
+cheaper, but operators still need to know what devices actually did.
 
-The write path is more demanding: it strongly reads affected Releases,
-compiles a deterministic Catalog, and conditionally commits Release revisions
-and Catalog generations together. Catalogs retain the history needed for safe
-rollback and reject a mutation rather than silently truncating when the
-canonical payload exceeds 256 KiB.
+After enabling Analytics on the server, set
+`HotUpdater.init({ analytics: true })` in the app. It then reports its outcome
+after it is ready. Reporting is best-effort: a reporting failure never blocks
+startup or triggers a rollback.
 
-The protocol boundary is also intentionally clean. Managed v0 infrastructure
-cannot be upgraded in place. Supporting every mixed generation would keep the
-old routes, schemas, cache keys, and migration behavior alive indefinitely—and
-put that compatibility cost back into the request path we are simplifying.
+The Console answers three kinds of questions:
 
-The supported migration is a parallel cutover:
+- **Fleet:** How many unique installations successfully reported during the
+  last 24 hours, 7 days, or 30 days? Which Bundle did each installation most
+  recently report?
+- **Adoption:** How is the latest reported Bundle distribution changing among
+  reporting installations? Did installations report `UPDATE_APPLIED` or move
+  away from a Bundle with `RECOVERED`?
+- **Diagnosis:** Search by installation ID, user ID, or username, then inspect
+  the last reported Bundle and recorded apply or recovery history.
 
-1. Keep the v0 endpoint running for installed v0 binaries.
-2. Upgrade all `hot-updater` and `@hot-updater/*` packages together.
-3. Run `npx hot-updater init` with fresh v1 provider resources.
-4. Update automation from Bundle policy commands to Release commands.
-5. Verify the new endpoint with `npx hot-updater doctor`.
-6. Publish a new native build with the v1 SDK and endpoint.
+These numbers are operational evidence, not a claim about every installed copy
+of an app. They cover installations that opted in and successfully reached the
+server. An observed Bundle share is therefore a signal for investigating a
+rollout, not proof that its configured eligibility exactly matches global
+adoption.
+
+## Upgrading to 1.0
+
+Version 1.0 establishes a clean protocol boundary. Existing v0 installations
+continue using their v0 endpoint while you provision fresh v1 resources,
+upgrade the Hot Updater packages together, verify the new endpoint, and ship a
+native build with the v1 SDK.
 
 Do not deliver v1 `@hot-updater/react-native` JavaScript to a v0 native binary
 through OTA. The v1 receipt and rollback model requires the v1 native module.
 
-Read the [v1 upgrade guide](/docs/guides/upgrade-to-v1) before provisioning, or
-explore [how Release Catalogs work](/docs/concepts/how-it-works) in detail.
+Read the [v1 upgrade guide](/docs/guides/upgrade-to-v1) for the migration
+sequence, or explore [how Release Catalogs work](/docs/concepts/how-it-works)
+in detail.
 
-## Do less, know more
-
-Hot Updater 1.0 moves cost away from the operation performed on every launch.
-Policy is compiled when it changes, shared when it is read, selected with local
-installation context, and measured after the app becomes ready.
-
-The server does less work per check. Providers own fewer decisions. Operators
-get better evidence about what devices actually did. That is the trade we
-wanted 1.0 to make.
+Hot Updater 1.0 does less work on the path every installation uses and gives
+you better evidence about the result. The read path is boring now. That is the
+point.
