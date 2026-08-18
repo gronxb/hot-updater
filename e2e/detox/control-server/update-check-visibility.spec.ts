@@ -17,7 +17,7 @@ describe("update-check visibility probing", () => {
   it("skips remote provider probes and lets the app exercise the real update check", () => {
     expect(
       shouldProbeUpdateCheckVisibility({
-        appBaseUrl: "https://d30mjvh5w5yleu.cloudfront.net/api/check-update",
+        appBaseUrl: "https://d30mjvh5w5yleu.cloudfront.net",
         disabled: false,
         rollout: undefined,
         targetCohorts: undefined,

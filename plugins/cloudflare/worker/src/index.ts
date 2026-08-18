@@ -15,7 +15,7 @@ export type CloudflareWorkerEnv = {
   STORAGE_DOWNLOAD_URL_SIGNING_KEY: string;
 };
 
-export const HOT_UPDATER_BASE_PATH = "/api/check-update";
+export const HOT_UPDATER_BASE_PATH = "/";
 
 const hotUpdater = createHotUpdater({
   authorityId: env.AUTHORITY_ID,

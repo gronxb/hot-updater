@@ -132,13 +132,15 @@ cannot be overridden in `checkForUpdate`.
 
 ## How It Works
 
-When you call `checkForUpdate`, the function uses the configured `baseURL` and
-the provided `updateStrategy` to construct the appropriate endpoint URL:
+The default resolver fetches a shared Release Catalog, evaluates it on the
+device, and resolves the selected artifact:
 
-* For `updateStrategy: "appVersion"`: `GET {baseURL}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
-* For `updateStrategy: "fingerprint"`: `GET {baseURL}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
+* App version catalog: `GET {baseURL}/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`
+* Fingerprint catalog: `GET {baseURL}/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash`
+* Artifact resolution: `GET {baseURL}/artifacts/:targetBundleId/from/:currentBundleId`
 
-For example, if you configured `baseURL: "https://your-update-server.com/api/update-check"` in `wrap`, the function automatically appends the correct path and parameters.
+`:channelKey` is the base64url-encoded channel name. The default authority is
+`default` unless the resolver is configured with another stable authority.
 
 ## Return Value
 

@@ -24,9 +24,9 @@ revision/catalog generation expectations, and no longer expose provider update
 decision queries.
 
 Add canonical v2 Release-catalog and Bundle-artifact routes, short-lived
-authenticated shared caching, the legacy response bridge, Release management
-commands, catalog preflight/rebuild tooling, and a familiar Bundle management
-view backed by Releases. The Console keeps Bundle content, delivery settings,
+authenticated shared caching, a v1-only device protocol boundary, Release
+management commands, catalog preflight/rebuild tooling, and a familiar Bundle
+management view backed by Releases. The Console keeps Bundle content, delivery settings,
 promote, and download actions in one workflow while Release identity stays
 secondary. Deploy and promote create Releases; rollback disables the current
 Release so clients select the previous compatible enabled Release or the

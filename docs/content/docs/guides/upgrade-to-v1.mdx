@@ -1,79 +1,58 @@
 ---
-title: "Upgrade from v0 to v1"
-description: "Move an existing Hot Updater installation to Release Catalogs without stranding installed v0 apps."
+title: "Move from v0 to v1"
+description: "Create v1 infrastructure alongside v0, then move new native builds to it."
 icon: BetweenHorizontalStart
 ---
 
-Hot Updater v1 separates immutable Bundle artifacts from mutable Release
-policy and serves compiled Release Catalogs to mobile clients. The database
-migration is forward-only, but the v1 server keeps the v0 mobile update-check
-protocol so already-installed v0 apps can continue receiving updates.
+Hot Updater v1 is a new infrastructure generation. It separates immutable
+Bundle artifacts from mutable Release policy and serves compiled Release
+Catalogs. The v0 update-check protocol and database layout are not compatible
+with this model.
 
 <Callout type="warn">
-  Upgrade the database and backend before shipping the v1 mobile SDK. Do not
-  deliver v1 `@hot-updater/react-native` JavaScript to a v0 native binary by
-  OTA: Release Catalog selection requires new native receipt and rollback APIs.
+  There is no in-place v0 to v1 infrastructure upgrade. Do not point v1 init at
+  v0 resources. Create new provider resources and ship their endpoint in a new
+  native app build.
 </Callout>
 
 ## Compatibility boundary
 
-| Combination | Supported | Meaning |
-| --- | --- | --- |
-| Installed v0 mobile app → v1 server | Yes | The v1 server keeps the v0 app-version and fingerprint selector routes and translates Release Catalog policy into the legacy response. |
-| v0 CLI, Console, or server writer → schema 1.0.0 | No | A v0 writer does not maintain Release rows, catalog generations, or atomic catalog commits. Stop it before migration. |
-| v1 React Native JS → v0 native SDK | No | Rebuild and publish a new native app version with the v1 SDK. |
-| v1 server → unmigrated v0 database | No | Apply the provider migration before starting the v1 server or writer. |
-| v0 server → migrated schema 1.0.0 | No | Restore the pre-migration database backup together with the complete v0 backend if a rollback is required. |
+| Combination                           | Supported | Action                                                               |
+| ------------------------------------- | --------- | -------------------------------------------------------------------- |
+| v0 native app → v0 infrastructure     | Yes       | Keep the old endpoint running while those binaries need OTA updates. |
+| v0 native app → v1 infrastructure     | No        | v1 does not expose the v0 app-version or fingerprint routes.         |
+| v1 native app → v0 infrastructure     | No        | Release Catalog and artifact routes are required.                    |
+| v1 init → existing v0 resources       | No        | Init stops before changing detected v0 resources.                    |
+| v1 native app → new v1 infrastructure | Yes       | This is the supported target.                                        |
 
-The self-hosted SQL and MongoDB migrators accept schema markers `0.21.0`,
-`0.29.0`, `0.31.0`, `0.36.0`, `0.37.0`, and `0.38.0`. If your database has a
-different or missing history, do not relabel it. Upgrade through a supported v0
-release or reconcile the schema from a backup first.
+Do not deliver v1 `@hot-updater/react-native` JavaScript to a v0 native binary
+by OTA. Receipt and rollback behavior requires the v1 native module.
 
-## Upgrade order
+## Cutover procedure
 
-### 1. Freeze writers and take a backup
+### 1. Preserve v0
 
-Stop `hot-updater deploy`, Console mutations, CI deployment jobs, and every v0
-server process that can write metadata. Back up the database using the
-provider's native backup mechanism. Record the current package versions,
-`hot-updater.config.ts`, `.env.hotupdater`, public update URL, and storage
-bucket before changing anything.
+Record the v0 public endpoint, provider resource identifiers, configuration,
+and credentials. Back up its metadata database. Do not delete or repurpose the
+old resources: installed v0 binaries may still call that endpoint.
 
-The migration preserves existing Bundle IDs and backfills one Release per
-legacy Bundle with the same ID. It does not rewrite immutable bundle archives.
+### 2. Scaffold v1 with new resources
 
-### 2. Upgrade the package set together
-
-Upgrade `hot-updater`, `@hot-updater/react-native`, and every
-`@hot-updater/*` provider, build, server, and Console package in the project to
-the same compatible v1 release. Do not mix a v0 provider or writer with the v1
-server schema.
-
-Run the local package and native configuration checks after installing:
+Upgrade all `hot-updater` and `@hot-updater/*` packages together, then run:
 
 ```bash
-npx hot-updater doctor
+npx hot-updater init
 ```
 
-Address these v1 configuration changes before migration:
+Choose new database, storage, function/worker, and CDN resources. If init
+detects a v0 D1 database, Firestore database, Supabase schema, or AWS endpoint,
+it exits without modifying that infrastructure. Select or create different
+resources and rerun init.
 
-- `s3Database` is removed. Keep S3 as `s3Storage`, and choose a real database
-  provider such as DynamoDB, PostgreSQL, MySQL, SQLite, MongoDB, D1, Firestore,
-  or Supabase for metadata.
-- Keep one stable `authorityId` for every endpoint that serves the same
-  project. Changing it creates a different receipt and catalog namespace.
-- A custom React Native resolver may keep `checkUpdate` temporarily in legacy
-  mode. To use Release Catalogs, implement both `fetchReleaseCatalog` and
-  `resolveArtifact`.
-- Supabase is supported in `origin-only` mode. A CDN is not a prerequisite for
-  initialization or correctness.
-- Rename Supabase database configuration `supabaseAnonKey` to
-  `supabaseServiceRoleKey`. v1 keeps the old property as a temporary source
-  compatibility alias, but generated origin-only configuration uses the new
-  name.
+The v1 scaffold starts with an empty Release history. Redeploy the releases you
+want to serve from their source artifacts; v0 policy is not backfilled.
 
-### Update CLI automation to use Release IDs
+### 3. Update CLI automation to use Release IDs
 
 v1 separates immutable Bundle artifacts from mutable Release policy. Update
 scripts before writers resume:
@@ -98,69 +77,37 @@ Release is enabled with a 100% numeric rollout, no target cohorts, and a new
 Release-ID rollout seed. Review that policy in the command preview before
 confirming, especially when the source Release had a partial or QA-only rollout.
 
-### 3. Migrate the database
+### 4. Verify the v1 endpoint
 
-Use the path that owns your database schema:
-
-| Provider | Migration path |
-| --- | --- |
-| Managed AWS | Rerun `npx hot-updater init`, select the existing DynamoDB table, and let init preflight and backfill Release Catalog state. |
-| Managed Cloudflare | Back up D1, then rerun init to apply the checked-in Wrangler migrations before deploying the Worker. See [Cloudflare upgrade and rollback](/docs/managed/cloudflare#upgrade-and-rollback). |
-| Managed Firebase | Back up Firestore, then rerun init. The provider migration is forward-only. See [Firebase upgrade and rollback](/docs/managed/firebase#upgrade-and-rollback). |
-| Managed Supabase | Back up Postgres, then rerun init so all Supabase migrations are applied before the Edge Function is deployed. See [Supabase upgrade and rollback](/docs/managed/supabase#upgrade-and-rollback). |
-| Kysely | Review with `npx hot-updater db generate <server-config> --yes`, then apply with `npx hot-updater db migrate <server-config>`. |
-| MongoDB | Run `npx hot-updater db migrate <server-config>` against the intended database. |
-| Drizzle | Run `npx hot-updater db generate <server-config> --yes`, review the generated schema, and apply it through the project's Drizzle migration workflow. |
-| Prisma | Run `npx hot-updater db generate <server-config> --yes`, review the merged Prisma schema, run the project's Prisma migration, and regenerate the client. |
-| Custom provider | Implement the v2 models and atomic `commit` contract, then follow the [custom database migration](/docs/database-plugins/custom-database#migrate-a-1141-provider). |
-
-For a self-hosted Standalone installation, the server owns the migration.
-Upgrade and migrate that server first; then upgrade the CLI-side
-`standaloneRepository`. Do not point a v1 Standalone writer at a v0 server.
-
-### 4. Deploy and verify the v1 backend
-
-Start the v1 backend while writers are still frozen. Verify the public base URL
-and the compiled projections:
+Run doctor against the generated public base URL:
 
 ```bash
-npx hot-updater doctor --server-base-url https://updates.example.com/hot-updater
-npx hot-updater db catalog preflight
-npx hot-updater release list --limit 20
-npx hot-updater bundle list --limit 20
+npx hot-updater doctor --server-base-url https://updates.example.com
 ```
 
-For managed providers, use the URL generated by init. In particular, use the
-direct Supabase Edge Function URL; its healthy mode is `origin-only`.
+A v1 endpoint reports `infrastructureGeneration: 1` from `/version`. If the
+marker is missing, doctor reports that in-place upgrade is blocked and directs
+you back to init with new resources.
 
-Confirm both client generations before resuming writes:
+### 5. Publish a new native build
 
-1. A released v0 app can call its existing update-check URL and receive an
-   update, rollback, or no-update response.
-2. A v1 native build can fetch a catalog, resolve an artifact, install it, and
-   recover to its last safe receipt after a crash.
+Build and release the app with the v1 native SDK and the new v1 endpoint. Test
+catalog fetch, artifact resolution, install, restart, and rollback before
+making the release broadly available.
 
-### 5. Publish the v1 native app, then resume v1 writers
+The endpoints remain parallel during adoption:
 
-Release a store build containing the v1 React Native native module. Existing
-v0 app binaries can remain in the field and use the compatibility routes while
-users upgrade. After backend and mobile smoke tests pass, resume only v1 CLI,
-Console, and server writers and make the first v1 deployment.
+- Existing v0 binaries continue using the v0 endpoint.
+- New v1 binaries use the v1 endpoint.
+
+There is no server-side compatibility bridge between them.
 
 ## Rollback
 
-Prefer rolling forward the v1 backend. Once a v1 mobile build is distributed,
-rolling the public backend back to v0 removes the catalog endpoints that build
-expects, even though the app can still launch its embedded or last safe bundle.
+To roll back a v1 mobile release, publish another native build or restore the
+previous v1 deployment while keeping its endpoint and database generation.
+Do not point v1 binaries at v0 infrastructure.
 
-If the schema migration itself must be undone:
-
-1. Stop every v1 writer and backend process.
-2. Restore the pre-migration database backup.
-3. Restore the complete matching v0 server, CLI, provider, and Console package
-   set.
-4. Keep the public endpoint on v1 if any v1 mobile build has already shipped,
-   or accept that OTA checks from those builds will fail until v1 is restored.
-
-Do not manually delete Release or Release Catalog rows to imitate a downgrade;
-that leaves schema and writer semantics inconsistent.
+Removing the old v0 infrastructure is an operational decision based on your
+remaining installed v0 population. Once removed, those binaries lose OTA
+service but continue to launch their embedded or last installed bundle.

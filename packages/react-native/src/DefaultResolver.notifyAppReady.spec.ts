@@ -72,6 +72,7 @@ describe("createDefaultResolver.notifyAppReady", () => {
           fromBundleId: "bundle-a",
           installId: "install-id",
           platform: "ios",
+          sdkVersion: HOT_UPDATER_SDK_VERSION,
           toBundleId: "bundle-b",
           type: "RECOVERED",
           updateStrategy: "fingerprint",
@@ -81,7 +82,6 @@ describe("createDefaultResolver.notifyAppReady", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: "Bearer token",
-          "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
         },
         method: "POST",
         signal: expect.any(AbortSignal),
@@ -121,6 +121,7 @@ describe("createDefaultResolver.notifyAppReady", () => {
           fromBundleId: null,
           installId: "install-id",
           platform: "ios",
+          sdkVersion: HOT_UPDATER_SDK_VERSION,
           toBundleId: "bundle-id",
           type: "UNCHANGED",
           updateStrategy: null,

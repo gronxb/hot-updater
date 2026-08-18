@@ -8,7 +8,7 @@ import type {
 
 // We intentionally avoid the AWS-managed UseOriginCacheControlHeaders policy here.
 // That managed policy forwards the viewer Host header and all cookies to the origin,
-// which breaks S3 origins and bloats the cache key beyond the SDK compatibility header.
+// which breaks S3 origins and bloats the cache key beyond the client key.
 export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
   Name: "HotUpdaterOriginCacheControlV2",
   Comment:
@@ -22,8 +22,8 @@ export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
     HeadersConfig: {
       HeaderBehavior: "whitelist",
       Headers: {
-        Quantity: 3,
-        Items: ["authorization", "hot-updater-sdk-version", "x-api-key"],
+        Quantity: 1,
+        Items: ["x-api-key"],
       },
     },
     CookiesConfig: {
@@ -61,12 +61,12 @@ export const HOT_UPDATER_RELEASE_CATALOG_CACHE_POLICY_CONFIG: CachePolicyConfig 
 export const HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG: OriginRequestPolicyConfig =
   {
     Name: "HotUpdaterManagedApiOriginRequestV2",
-    Comment: "Forward managed API bodies, query strings, and API-key headers",
+    Comment: "Forward managed API bodies, query strings, and the client key",
     HeadersConfig: {
       HeaderBehavior: "whitelist",
       Headers: {
-        Quantity: 3,
-        Items: ["content-type", "hot-updater-sdk-version", "x-api-key"],
+        Quantity: 2,
+        Items: ["content-type", "x-api-key"],
       },
     },
     CookiesConfig: { CookieBehavior: "none" },
@@ -117,12 +117,13 @@ const HOT_UPDATER_BEHAVIOR_BASE = {
 } as const;
 
 export const HOT_UPDATER_CACHE_BEHAVIOR_PATHS = [
-  "/api/check-update",
-  "/api/check-update/*",
+  "/events",
+  "/artifacts/*",
+  "/version",
 ] as const;
 
 export const HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS = [
-  "/api/check-update/v2/release-catalogs/*",
+  "/release-catalogs/*",
 ] as const;
 
 const omitLegacyCacheFields = <

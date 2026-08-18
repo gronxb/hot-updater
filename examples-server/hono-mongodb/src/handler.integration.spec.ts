@@ -6,12 +6,10 @@ import type { HotUpdaterAPI } from "@hot-updater/server";
 import {
   deleteLegacyBundle,
   setupBundleMethodsTestSuite,
-  setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
 import {
   assertDockerComposeAvailable,
   cleanupServer,
-  createGetUpdateInfo,
   killPort,
   spawnServerProcess,
   waitForServer,
@@ -32,7 +30,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
   let baseUrl: string;
   let testDbName: string;
   let hotUpdater: HotUpdaterAPI;
-  let resetDecisionFixtures: () => Promise<void>;
   const port = 13585;
 
   beforeAll(async () => {
@@ -80,7 +77,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
 
     const db = await import("./db.js");
     hotUpdater = db.hotUpdater;
-    resetDecisionFixtures = db.resetDecisionFixtures;
   }, 120000);
 
   afterAll(async () => {
@@ -91,20 +87,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
       cwd: projectRoot,
     });
   }, 60000);
-
-  const getUpdateInfo: ReturnType<typeof createGetUpdateInfo> = (
-    bundles,
-    options,
-  ) => {
-    return createGetUpdateInfo({
-      baseUrl: `${baseUrl}/hot-updater`,
-      resetDecisionFixtures,
-    })(bundles, options);
-  };
-
-  setupGetUpdateInfoTestSuite({
-    getUpdateInfo,
-  });
 
   setupBundleMethodsTestSuite({
     getBundleById: (id: string) => hotUpdater.getBundleById(id),

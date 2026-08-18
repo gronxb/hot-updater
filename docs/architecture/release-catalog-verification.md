@@ -66,8 +66,8 @@ both canonical Releases and the prior compiled catalog.
 The checked-in provider contract tests inspect the effective deployment
 configuration rather than treating `Cache-Control` as proof:
 
-- AWS: `plugins/aws/iac/cloudfront.spec.ts` verifies a distinct canonical v2
-  behavior and cache policy keyed by `x-api-key` and encoding.
+- AWS: `plugins/aws/iac/cloudfront.spec.ts` verifies a distinct canonical
+  Release Catalog behavior and cache policy keyed by `x-api-key` and encoding.
 - Cloudflare: `plugins/cloudflare/iac/releaseCatalogCacheConfig.spec.ts`
   verifies the supported Wrangler version/date and pre-Worker cache switch.
 - Firebase: `plugins/firebase/iac/releaseCatalogHosting.spec.ts` verifies the
@@ -96,10 +96,7 @@ test:integration  passed (25 files, 1,429 tests)
 
 The architecture-valid standalone verification profiles are
 `standalone-dynamodb`, `standalone-drizzle`, `standalone-prisma`,
-`standalone-kysely`, and `standalone-mongodb`. The legacy `standalone-s3`
-profile is excluded because #1141 removed `s3Database`; replacing its database
-with process-local mock state would test S3 artifact storage, not a standalone
-database provider.
+`standalone-kysely`, and `standalone-mongodb`.
 
 Each full-profile verification discovers the canonical default suite from
 `e2e/detox/default-scenario-names.json` at the exact PR head. The manifest

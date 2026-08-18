@@ -14,7 +14,6 @@ The CLI infers the current PR with `gh pr view`; there is no `-pr` flag.
 
 Valid profiles:
 
-- `standalone-s3`
 - `standalone-dynamodb`
 - `standalone-drizzle`
 - `standalone-prisma`
@@ -25,7 +24,8 @@ Valid profiles:
 - `firebase`
 - `aws`
 
-Use the user-mentioned profile. If none is mentioned, use `standalone-s3`.
+Use the user-mentioned profile. If none is mentioned, use
+`standalone-dynamodb`.
 
 ## Commands
 

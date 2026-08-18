@@ -123,21 +123,19 @@ export default defineConfig({
 
 ### Upgrade and rollback
 
-Back up Firestore before the schema `1.0.0` migration. It creates Release and
-Release-catalog collections, backfills one Release for each legacy Bundle,
-compiles every scope, and removes policy from final Bundle documents. Managed
-Firebase records its provider migration state separately from the generic SQL
-server migrator. The migration is forward-only.
-
-Roll back only to a complete Hot Updater package set documented as compatible
-with schema `1.0.0`. Otherwise, stop writers and restore the pre-migration
-backup.
+Managed Firebase does not upgrade v0 Firestore data in place. Init inspects the
+adapter marker and Hot Updater collections before deploying. A v0 marker or an
+unversioned database containing Hot Updater data is rejected without mutation.
+Use a new Firebase project for v1 and ship its Hosting endpoint in a new native
+build. Keep the v0 project available for installed v0 binaries that still need
+OTA service.
 
 ### Release catalog cache
 
-Init deploys a Firebase Hosting rewrite for
-`/api/check-update{,/**}` in front of the `hot-updater` Function. Use the
-Hosting domain so successful catalog responses can be served by Firebase's
+Init deploys Firebase Hosting rewrites for `/version`, `/release-catalogs/**`,
+`/artifacts/**`, and `/events`
+in front of the `hot-updater` Function. Use the Hosting domain as the base URL
+so successful catalog responses can be served by Firebase's
 global CDN without invoking the Function or reading Firestore. The response's
 five-second `s-maxage` and `Vary: Accept-Encoding, x-api-key` define freshness
 and authentication partitioning. Errors are `private, no-store`.
@@ -161,7 +159,7 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  baseURL: "https://<project-id>.web.app/api/check-update", // [!code ++]
+  baseURL: "https://<project-id>.web.app", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
     // if you want to use the request headers, you can add them here

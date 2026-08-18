@@ -7,12 +7,10 @@ import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
 import {
   deleteLegacyBundle,
   setupBundleMethodsTestSuite,
-  setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
 import {
   assertDockerComposeAvailable,
   cleanupServer,
-  createGetUpdateInfo,
   killPort,
   spawnServerProcess,
   waitForServer,
@@ -90,7 +88,6 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
   const port = 13583;
   let hotUpdater: HotUpdaterAPI;
   let prisma: typeof import("./prisma.js").prisma;
-  let resetDecisionFixtures: () => Promise<void>;
 
   beforeAll(async () => {
     // Kill any process using the port before starting
@@ -172,7 +169,6 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
 
     const db = await import("./db.js");
     hotUpdater = db.hotUpdater;
-    resetDecisionFixtures = db.resetDecisionFixtures;
     prisma = (await import("./prisma.js")).prisma;
   }, 120000);
 
@@ -207,20 +203,6 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
       cwd: projectRoot,
     });
   }, 60000);
-
-  const getUpdateInfo: ReturnType<typeof createGetUpdateInfo> = (
-    bundles,
-    options,
-  ) => {
-    return createGetUpdateInfo({
-      baseUrl: `${baseUrl}/hot-updater`,
-      resetDecisionFixtures,
-    })(bundles, options);
-  };
-
-  setupGetUpdateInfoTestSuite({
-    getUpdateInfo,
-  });
 
   setupBundleMethodsTestSuite({
     getBundleById: (id: string) => hotUpdater.getBundleById(id),

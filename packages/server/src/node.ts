@@ -24,6 +24,7 @@ type HandlerHotUpdaterAPI = {
 };
 
 export { HOT_UPDATER_SERVER_VERSION } from "./version";
+export { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "./handlerVersionRoutes";
 
 /**
  * Converts a Hot Updater handler to a Node.js-compatible middleware

@@ -20,18 +20,7 @@ declare global {
   };
 }
 
-export const ONE_YEAR_IN_SECONDS = 60 * 60 * 24 * 365;
-export const SHARED_EDGE_CACHE_CONTROL = `public, max-age=0, s-maxage=${ONE_YEAR_IN_SECONDS}, must-revalidate`;
-export const HOT_UPDATER_BASE_PATH = "/api/check-update";
-
-const isCanonicalUpdateRoute = (path: string) => {
-  return (
-    path.startsWith("/app-version/") ||
-    path.startsWith("/fingerprint/") ||
-    path.startsWith(`${HOT_UPDATER_BASE_PATH}/app-version/`) ||
-    path.startsWith(`${HOT_UPDATER_BASE_PATH}/fingerprint/`)
-  );
-};
+export const HOT_UPDATER_BASE_PATH = "/";
 
 const CLOUDFRONT_KEY_PAIR_ID = HotUpdater.CLOUDFRONT_KEY_PAIR_ID;
 const AUTHORITY_ID = HotUpdater.AUTHORITY_ID;
@@ -95,18 +84,7 @@ const app = new Hono<{ Bindings: Bindings }>();
 app.mount(
   HOT_UPDATER_BASE_PATH,
   async (request: Request, distributionDomainName: string) => {
-    const response = await getHotUpdater(distributionDomainName).handler(
-      request,
-    );
-
-    if (
-      request.method === "GET" &&
-      isCanonicalUpdateRoute(new URL(request.url).pathname)
-    ) {
-      response.headers.set("Cache-Control", SHARED_EDGE_CACHE_CONTROL);
-    }
-
-    return response;
+    return getHotUpdater(distributionDomainName).handler(request);
   },
   {
     optionHandler: (c) => [c.env.config.distributionDomainName],

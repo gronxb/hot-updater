@@ -25,7 +25,7 @@ describe("Release catalog request URL", () => {
     ];
 
     expect(url).toBe(
-      "https://updates.example.com/hot-updater/v2/release-catalogs/app-version/project-a/ios/cHJvZHVjdGlvbg/1.0.0",
+      "https://updates.example.com/hot-updater/release-catalogs/app-version/project-a/ios/cHJvZHVjdGlvbg/1.0.0",
     );
     expect(() =>
       assertCatalogUrlHasNoDeviceState(url, deviceState),
@@ -57,7 +57,7 @@ describe("Release catalog request URL", () => {
     });
 
     expect(url).toBe(
-      "https://updates.example.com/hot-updater/v2/release-catalogs/fingerprint/project-a/android/cHJvZHVjdGlvbg/sha256-native-state",
+      "https://updates.example.com/hot-updater/release-catalogs/fingerprint/project-a/android/cHJvZHVjdGlvbg/sha256-native-state",
     );
   });
 

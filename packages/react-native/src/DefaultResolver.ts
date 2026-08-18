@@ -2,18 +2,16 @@ import {
   createReleaseCatalogScopeKey,
   encodeChannelKey,
   type AppUpdateAvailableInfo,
-  type AppUpdateInfo,
   type ReleaseCatalog,
 } from "@hot-updater/core";
 import { canonicalizeAppVersion } from "@hot-updater/plugin-core";
 
-import { fetchJSON, fetchUpdateInfo } from "./fetchUpdateInfo";
+import { fetchJSON } from "./fetchUpdateInfo";
 import { fetchReleaseCatalogWithCache } from "./releaseCatalogCache";
 import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
 import type {
   HotUpdaterBaseURL,
   HotUpdaterResolver,
-  ResolverCheckUpdateParams,
   ResolverNotifyAppReadyParams,
 } from "./types";
 
@@ -63,11 +61,7 @@ export function createDefaultResolver(
       }
       const strategyPath =
         params.updateStrategy === "fingerprint" ? "fingerprint" : "app-version";
-      const requestHeaders = {
-        ...params.requestHeaders,
-        "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
-      };
-      const url = `${resolvedBaseURL}/v2/release-catalogs/${strategyPath}/${encodeURIComponent(
+      const url = `${resolvedBaseURL}/release-catalogs/${strategyPath}/${encodeURIComponent(
         authorityId,
       )}/${params.platform}/${channelKey}/${encodeURIComponent(strategyValue)}`;
       const scopeKey = createReleaseCatalogScopeKey(
@@ -89,7 +83,7 @@ export function createDefaultResolver(
       return fetchReleaseCatalogWithCache({
         authorityId,
         baseURL: resolvedBaseURL,
-        requestHeaders,
+        requestHeaders: params.requestHeaders,
         requestTimeout: params.requestTimeout,
         scopeKey,
         url,
@@ -101,42 +95,11 @@ export function createDefaultResolver(
         "",
       );
       return fetchJSON<AppUpdateAvailableInfo>({
-        requestHeaders: {
-          ...params.requestHeaders,
-          "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
-        },
+        requestHeaders: params.requestHeaders,
         requestTimeout: params.requestTimeout,
-        url: `${resolvedBaseURL}/v2/artifacts/${encodeURIComponent(
+        url: `${resolvedBaseURL}/artifacts/${encodeURIComponent(
           params.targetBundleId,
         )}/from/${encodeURIComponent(params.currentBundleId)}`,
-      });
-    },
-    checkUpdate: async (
-      params: ResolverCheckUpdateParams,
-    ): Promise<AppUpdateInfo | null> => {
-      const resolvedBaseURL = (await resolveBaseURL(baseURL)).replace(
-        /\/+$/,
-        "",
-      );
-      let url: string;
-      const cohortPath = `/${encodeURIComponent(params.cohort)}`;
-
-      if (params.updateStrategy === "fingerprint") {
-        if (!params.fingerprintHash) {
-          throw new Error("Fingerprint hash is required");
-        }
-        url = `${resolvedBaseURL}/fingerprint/${params.platform}/${params.fingerprintHash}/${params.channel}/${params.minBundleId}/${params.bundleId}${cohortPath}`;
-      } else {
-        url = `${resolvedBaseURL}/app-version/${params.platform}/${params.appVersion}/${params.channel}/${params.minBundleId}/${params.bundleId}${cohortPath}`;
-      }
-
-      return fetchUpdateInfo({
-        url,
-        requestHeaders: {
-          ...params.requestHeaders,
-          "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
-        },
-        requestTimeout: params.requestTimeout,
       });
     },
     notifyAppReady: async (
@@ -164,6 +127,7 @@ export function createDefaultResolver(
               : { fromReleaseId: params.fromReleaseId }),
             installId: params.installId,
             platform: params.platform,
+            sdkVersion: HOT_UPDATER_SDK_VERSION,
             toBundleId: params.toBundleId,
             ...(params.toReleaseId === undefined
               ? {}
@@ -176,7 +140,6 @@ export function createDefaultResolver(
           headers: {
             "Content-Type": "application/json",
             ...params.requestHeaders,
-            "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
           },
           method: "POST",
           signal: controller.signal,

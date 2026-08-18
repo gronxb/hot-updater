@@ -19,7 +19,28 @@
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
       {
-        "source": "/api/check-update{,/**}",
+        "source": "/version",
+        "function": {
+          "functionId": "hot-updater",
+          "pinTag": true
+        }
+      },
+      {
+        "source": "/release-catalogs/**",
+        "function": {
+          "functionId": "hot-updater",
+          "pinTag": true
+        }
+      },
+      {
+        "source": "/artifacts/**",
+        "function": {
+          "functionId": "hot-updater",
+          "pinTag": true
+        }
+      },
+      {
+        "source": "/events",
         "function": {
           "functionId": "hot-updater",
           "pinTag": true

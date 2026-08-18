@@ -304,7 +304,7 @@ describe("selectBucket", () => {
     // Given
     const api: SupabaseApi = {
       createBucket: vi.fn(),
-      listLegacyBundlePolicies: vi.fn().mockResolvedValue([]),
+      getInfrastructureState: vi.fn().mockResolvedValue("v1"),
       listBuckets: vi.fn().mockResolvedValue([
         {
           createdAt: "2026-07-26",
@@ -338,7 +338,7 @@ describe("selectBucket", () => {
     // Given
     const api: SupabaseApi = {
       createBucket: vi.fn(),
-      listLegacyBundlePolicies: vi.fn().mockResolvedValue([]),
+      getInfrastructureState: vi.fn().mockResolvedValue("v1"),
       listBuckets: vi.fn().mockResolvedValue([
         {
           createdAt: "2026-07-26",
@@ -366,7 +366,7 @@ describe("selectBucket", () => {
   it("plans a missing saved bucket before creating it", async () => {
     const api: SupabaseApi = {
       createBucket: vi.fn().mockResolvedValue({ name: "saved-bucket" }),
-      listLegacyBundlePolicies: vi.fn().mockResolvedValue([]),
+      getInfrastructureState: vi.fn().mockResolvedValue("v1"),
       listBuckets: vi
         .fn()
         .mockResolvedValueOnce([])
@@ -893,9 +893,6 @@ describe("resolveEdgeFunctionDenoConfig", () => {
           searchFrom: path.resolve("packages/server"),
         })}`,
         mime: `npm:mime@${resolvePackageVersion("mime", {
-          searchFrom: path.resolve("plugins/plugin-core"),
-        })}`,
-        verkit: `npm:verkit@${resolvePackageVersion("verkit", {
           searchFrom: path.resolve("plugins/plugin-core"),
         })}`,
       });

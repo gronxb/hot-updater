@@ -14,7 +14,6 @@ import {
   HeadBucketCommand,
   ListBucketsCommand,
   ListObjectsV2Command,
-  PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import { PutParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
@@ -24,16 +23,8 @@ import {
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { transformEnv } from "@hot-updater/cli-tools";
-import {
-  type GetBundlesArgs,
-  type LegacyBundle as Bundle,
-  NIL_UUID,
-} from "@hot-updater/core";
+import type { LegacyBundle as Bundle } from "@hot-updater/core";
 import { createClientAccessKey, createHotUpdater } from "@hot-updater/server";
-import {
-  setupBsdiffManifestUpdateInfoTestSuite,
-  setupGetUpdateInfoTestSuite,
-} from "@hot-updater/test-utils";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -64,9 +55,7 @@ const CLOUDFRONT_KEY_PAIR_ID = "KTEST";
 const AUTHORITY_ID = "aws.runtime-acceptance";
 const LOCALSTACK_IMAGE = "localstack/localstack:3";
 const LAMBDA_IMAGE = "public.ecr.aws/lambda/nodejs:22";
-const HOT_UPDATER_BASE_PATH = "/api/check-update";
-const SHARED_EDGE_CACHE_CONTROL =
-  "public, max-age=0, s-maxage=31536000, must-revalidate";
+const HOT_UPDATER_BASE_PATH = "/";
 const ORIGIN_HOST = `${S3_BUCKET_NAME}.s3.${REGION}.amazonaws.com`;
 const REQUIRED_BUILD_ARTIFACTS = [
   {
@@ -91,20 +80,6 @@ const ensureBuiltArtifacts = async (
       );
     }
   }
-};
-
-const createCanonicalPath = (args: GetBundlesArgs) => {
-  const channel = args.channel ?? "production";
-  const minBundleId = args.minBundleId ?? NIL_UUID;
-  const cohortSegment = args.cohort
-    ? `/${encodeURIComponent(args.cohort)}`
-    : "";
-
-  if (args._updateStrategy === "appVersion") {
-    return `${HOT_UPDATER_BASE_PATH}/app-version/${encodeURIComponent(args.platform)}/${encodeURIComponent(args.appVersion)}/${encodeURIComponent(channel)}/${encodeURIComponent(minBundleId)}/${encodeURIComponent(args.bundleId)}${cohortSegment}`;
-  }
-
-  return `${HOT_UPDATER_BASE_PATH}/fingerprint/${encodeURIComponent(args.platform)}/${encodeURIComponent(args.fingerprintHash)}/${encodeURIComponent(channel)}/${encodeURIComponent(minBundleId)}/${encodeURIComponent(args.bundleId)}${cohortSegment}`;
 };
 
 const toCloudFrontHeaders = (headers: Headers) => {
@@ -430,156 +405,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     }
   });
 
-  const seedRuntimeBundles = async (bundles: Bundle[]) => {
-    for (const bundle of bundles.map(toRuntimeBundle)) {
-      const existing = await seedHotUpdater.getBundleById(bundle.id);
-      if (existing) {
-        await seedHotUpdater.updateBundleById(bundle.id, bundle);
-      } else {
-        await seedHotUpdater.insertBundle(bundle);
-      }
-    }
-  };
-
-  const requestUpdateInfo = async (args: GetBundlesArgs) => {
-    const response = await invokeLambda(
-      lambdaPort,
-      createCloudFrontEvent({
-        path: createCanonicalPath(args),
-        headers: new Headers({ "x-api-key": rawApiKey }),
-      }),
-    );
-    expect(response.ok).toBe(true);
-
-    const payload = (await response.json()) as {
-      body?: string;
-      headers?: Record<string, { key: string; value: string }[]>;
-    };
-
-    return (await readLambdaJson(payload)) as any;
-  };
-
-  const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
-    await seedRuntimeBundles(bundles);
-    return requestUpdateInfo(args);
-  };
-
-  setupGetUpdateInfoTestSuite({
-    getUpdateInfo,
-    manifestArtifacts: {
-      prepareArtifacts: async (fixture) => {
-        const currentManifestKey = `releases/${fixture.currentBundleId}/manifest.json`;
-        const nextManifestKey = `releases/${fixture.nextBundleId}/manifest.json`;
-
-        await Promise.all([
-          putS3Object(
-            s3Client,
-            currentManifestKey,
-            JSON.stringify(fixture.currentManifest),
-            "application/json",
-          ),
-          putS3Object(
-            s3Client,
-            nextManifestKey,
-            JSON.stringify(fixture.nextManifest),
-            "application/json",
-          ),
-        ]);
-
-        return {
-          currentArtifacts: {
-            assetBaseStorageUri: `s3://${S3_BUCKET_NAME}/releases/${fixture.currentBundleId}/files`,
-            manifestFileHash: "sig:manifest-current",
-            manifestStorageUri: `s3://${S3_BUCKET_NAME}/${currentManifestKey}`,
-          },
-          nextArtifacts: {
-            assetBaseStorageUri: `s3://${S3_BUCKET_NAME}/releases/${fixture.nextBundleId}/files`,
-            manifestFileHash: "sig:manifest-next",
-            manifestStorageUri: `s3://${S3_BUCKET_NAME}/${nextManifestKey}`,
-          },
-        };
-      },
-      expectFileUrl: (fileUrl, fixture) => {
-        expect(fileUrl).toContain(
-          `/releases/${fixture.nextBundleId}/files/${fixture.changedAssetPath}`,
-        );
-      },
-      expectManifestUrl: (manifestUrl, fixture) => {
-        expect(manifestUrl).toContain(
-          `/releases/${fixture.nextBundleId}/manifest.json`,
-        );
-      },
-    },
-  });
-
-  setupBsdiffManifestUpdateInfoTestSuite({
-    seedBundles: seedRuntimeBundles,
-    getUpdateInfo: requestUpdateInfo,
-    prepareArtifacts: async (fixture) => {
-      const currentManifestKey = `releases/${fixture.currentBundleId}/manifest.json`;
-      const nextManifestKey = `releases/${fixture.nextBundleId}/manifest.json`;
-      const patchKey = `releases/${fixture.patchPath}`;
-
-      await Promise.all([
-        putS3Object(
-          s3Client,
-          currentManifestKey,
-          JSON.stringify(fixture.currentManifest),
-          "application/json",
-        ),
-        putS3Object(
-          s3Client,
-          nextManifestKey,
-          JSON.stringify(fixture.nextManifest),
-          "application/json",
-        ),
-        putS3Object(
-          s3Client,
-          patchKey,
-          "patch-bytes",
-          "application/octet-stream",
-        ),
-        putS3Object(
-          s3Client,
-          `bundles/${fixture.currentBundleId}/bundle.zip`,
-          "zip",
-          "application/zip",
-        ),
-        putS3Object(
-          s3Client,
-          `bundles/${fixture.nextBundleId}/bundle.zip`,
-          "zip",
-          "application/zip",
-        ),
-      ]);
-
-      return {
-        currentArtifacts: {
-          assetBaseStorageUri: `s3://${S3_BUCKET_NAME}/releases/${fixture.currentBundleId}/files`,
-          manifestFileHash: "sig:manifest-current",
-          manifestStorageUri: `s3://${S3_BUCKET_NAME}/${currentManifestKey}`,
-        },
-        nextArtifacts: {
-          assetBaseStorageUri: `s3://${S3_BUCKET_NAME}/releases/${fixture.nextBundleId}/files`,
-          manifestFileHash: "sig:manifest-next",
-          manifestStorageUri: `s3://${S3_BUCKET_NAME}/${nextManifestKey}`,
-          patches: [
-            {
-              baseBundleId: fixture.currentBundleId,
-              baseFileHash: "hash-old-bundle",
-              patchFileHash: "hash-bsdiff",
-              patchStorageUri: `s3://${S3_BUCKET_NAME}/${patchKey}`,
-            },
-          ],
-        },
-      };
-    },
-    expectPatchUrl: (patchUrl, fixture) => {
-      expect(patchUrl).toContain(`/releases/${fixture.patchPath}`);
-    },
-  });
-
-  it("serves canonical routes from the packaged lambda entrypoint", async () => {
+  it("serves unversioned Release Catalog routes from the packaged lambda entrypoint", async () => {
     await seedHotUpdater.insertBundle(
       toRuntimeBundle({
         id: "00000000-0000-0000-0000-000000000001",
@@ -596,12 +422,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       }),
     );
 
-    const updatePath = createCanonicalPath({
-      appVersion: "1.0",
-      bundleId: NIL_UUID,
-      platform: "ios",
-      _updateStrategy: "appVersion",
-    });
+    const updatePath = `/release-catalogs/app-version/${encodeURIComponent(AUTHORITY_ID)}/ios/cHJvZHVjdGlvbg/1.0.0`;
     const unauthorizedResponse = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
@@ -625,30 +446,20 @@ describe.sequential("aws lambda runtime acceptance", () => {
     };
 
     expect(unauthorizedPayload.status).toBe("401");
-    expect(payload.headers?.["cache-control"]?.[0]?.value).toBe(
-      SHARED_EDGE_CACHE_CONTROL,
-    );
     const body = (await readLambdaJson(payload)) as {
-      fileUrl?: string;
-      id?: string;
-      status?: string;
-    } | null;
+      releases?: { bundleId?: string }[];
+    };
 
     expect(body).toMatchObject({
-      id: "00000000-0000-0000-0000-000000000001",
-      status: "UPDATE",
+      releases: [{ bundleId: "00000000-0000-0000-0000-000000000001" }],
     });
-    expect(body?.fileUrl).toBeTypeOf("string");
-    expect(new URL(body?.fileUrl ?? "").host).toBe(
-      new URL(PUBLIC_BASE_URL).host,
-    );
   });
 
   it("does not support the legacy exact path", async () => {
     const response = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
-        path: HOT_UPDATER_BASE_PATH,
+        path: "/api/check-update",
         headers: new Headers(),
       }),
     );
@@ -665,7 +476,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     const response = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
-        path: `${HOT_UPDATER_BASE_PATH}/api/bundles`,
+        path: "/api/bundles",
         headers: new Headers(),
       }),
     );
@@ -694,7 +505,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     const unauthorizedIngestionResponse = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
-        path: `${HOT_UPDATER_BASE_PATH}/events`,
+        path: "/events",
         headers: new Headers({ "content-type": "application/json" }),
         method: "POST",
         body: JSON.stringify(event),
@@ -705,7 +516,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     const ingestionResponse = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
-        path: `${HOT_UPDATER_BASE_PATH}/events`,
+        path: "/events",
         headers: new Headers({
           "content-type": "application/json",
           "x-api-key": rawApiKey,
@@ -721,7 +532,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     expect(unauthorizedIngestionPayload.status).toBe("401");
     expect(ingestionPayload.status).toBe("204");
 
-    const protectedPath = `${HOT_UPDATER_BASE_PATH}/api/installations/overview`;
+    const protectedPath = "/api/installations/overview";
     const unauthorizedResponse = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
@@ -845,22 +656,6 @@ const clearDynamoDBTable = async (client: DynamoDBDocumentClient) => {
   }
 };
 
-const putS3Object = async (
-  client: S3Client,
-  key: string,
-  body: string,
-  contentType: string,
-) => {
-  await client.send(
-    new PutObjectCommand({
-      Body: body,
-      Bucket: S3_BUCKET_NAME,
-      ContentType: contentType,
-      Key: key,
-    }),
-  );
-};
-
 const waitForLocalstackReady = async ({
   client,
   child,
@@ -905,7 +700,7 @@ const waitForLambdaReady = async ({
 }) => {
   const deadline = Date.now() + timeoutMs;
   const warmupEvent = createCloudFrontEvent({
-    path: HOT_UPDATER_BASE_PATH,
+    path: "/version",
     headers: new Headers({
       "x-app-platform": "ios",
       "x-app-version": "1.0.0",

@@ -16,15 +16,13 @@ const event = {
   toBundleId: "bundle-1",
   type: "UNCHANGED",
   updateStrategy: null,
+  sdkVersion: "2.0.0",
 } as const;
 
 const eventRequest = (body: unknown = event) =>
   new Request("https://example.com/api/events", {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "hot-updater-sdk-version": "2.0.0",
-    },
+    headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
 

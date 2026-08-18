@@ -22,7 +22,19 @@ describe("managed Firebase Release catalog caching", () => {
         rewrites: [
           {
             function: { functionId: "hot-updater", pinTag: true },
-            source: "/api/check-update{,/**}",
+            source: "/version",
+          },
+          {
+            function: { functionId: "hot-updater", pinTag: true },
+            source: "/release-catalogs/**",
+          },
+          {
+            function: { functionId: "hot-updater", pinTag: true },
+            source: "/artifacts/**",
+          },
+          {
+            function: { functionId: "hot-updater", pinTag: true },
+            source: "/events",
           },
         ],
       }),

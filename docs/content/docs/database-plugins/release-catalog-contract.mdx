@@ -20,7 +20,7 @@ Bundle          immutable artifact identity and storage metadata
 Release         rollout, compatibility, Channel, operation, and message policy
 ReleaseCatalog  deterministic desired-state projection for one canonical scope
 Database        canonical rows, strong reads, and atomic conditional commits
-Server          catalog compiler, v2 routes, and legacy response bridge
+Server          catalog compiler and unversioned client routes
 Device          catalog acceptance and local desired-state selection
 ```
 
@@ -244,19 +244,18 @@ Migration from `0.38.0` performs preflight before recording the new version:
 6. Remove policy columns from final Bundle mappings.
 7. Record `schema.core = 1.0.0` only after the complete cutover succeeds.
 
-Managed migration scripts materialize authority-specific scope keys before
-execution. Re-running an interrupted migration must either resume from a
-validated boundary or fail on incompatible drift; it must not invent a second
-identity.
+Managed provider init does not apply this migration to selected v0 resources.
+AWS, Cloudflare, Firebase, and Supabase require newly scaffolded v1 resources;
+their generation checks fail before mutating detected v0 infrastructure.
 
 ## Runtime route boundary
 
 The shared device endpoints are:
 
 ```text
-GET /v2/release-catalogs/app-version/:authorityId/:platform/:channelKey/:canonicalAppVersion
-GET /v2/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash
-GET /v2/artifacts/:targetBundleId/from/:currentBundleId
+GET /release-catalogs/app-version/:authorityId/:platform/:channelKey/:canonicalAppVersion
+GET /release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash
+GET /artifacts/:targetBundleId/from/:currentBundleId
 ```
 
 Catalog URLs contain no installation state. Successful catalog responses are
@@ -269,8 +268,9 @@ declaring a stable `catalogCachePartition` and using that same partition in
 its cache key. Omit the declaration when arbitrary headers or request context
 make the response private; those responses must remain `private, no-store`.
 
-Legacy update-check routes evaluate the same catalog with the reference
-selector. They never call a removed provider decision query.
+The v0 app-version and fingerprint update-check routes are not exposed. Old
+native binaries must continue using a separate v0 endpoint during a parallel
+cutover.
 
 ## Standalone boundary
 
@@ -293,5 +293,5 @@ The contract is complete only when:
 - empty-scope generations persist as tombstones;
 - schema migration backfills deterministic Release identity and blocks partial
   cutover;
-- public conformance, provider integration, legacy bridge, managed runtime,
-  and standalone verification suites pass.
+- public conformance, provider integration, v0 generation guards, managed
+  runtime, and standalone verification suites pass.
