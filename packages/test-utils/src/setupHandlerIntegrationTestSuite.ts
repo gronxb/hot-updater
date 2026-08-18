@@ -1,14 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 
-import type {
-  AppUpdateInfo,
-  Bundle,
-  GetBundlesArgs,
-  LegacyBundle,
-  Platform,
-} from "@hot-updater/core";
-import { NIL_UUID } from "@hot-updater/core";
+import type { Bundle, LegacyBundle, Platform } from "@hot-updater/core";
 import type {
   ChannelRow,
   ReleaseCatalogMutationResult,
@@ -19,7 +12,6 @@ import { execa } from "execa";
 export interface TestApiConfig {
   baseUrl: string;
   authToken?: string;
-  resetDecisionFixtures?: () => Promise<void>;
 }
 
 export const TEST_MANAGEMENT_AUTH_TOKEN = "hot-updater-test-token";
@@ -125,92 +117,6 @@ async function fetchWithRetry(
   }
 
   throw lastError;
-}
-
-/**
- * Creates getUpdateInfo function for integration tests
- * This is used with setupGetUpdateInfoTestSuite from @hot-updater/test-utils
- */
-export function createGetUpdateInfo(
-  config: TestApiConfig,
-): (
-  bundles: Bundle[],
-  options: GetBundlesArgs,
-) => Promise<AppUpdateInfo | null> {
-  // Single source URL builder
-  const buildUrl = (path: string) => `${config.baseUrl}${path}`;
-  const managementHeaders = createManagementHeaders(config);
-
-  return async (bundles, options) => {
-    try {
-      // Step 1: Create bundles via POST
-      for (const bundle of bundles) {
-        const createResponse = await fetchWithRetry(buildUrl("/api/bundles"), {
-          method: "POST",
-          headers: {
-            ...managementHeaders,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(bundle),
-        });
-
-        if (!createResponse.ok) {
-          throw new Error(
-            `Failed to create bundle: ${createResponse.statusText}`,
-          );
-        }
-      }
-
-      // Step 2: List bundles via GET
-      const listResponse = await fetchWithRetry(buildUrl("/api/bundles"), {
-        headers: {
-          ...managementHeaders,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!listResponse.ok) {
-        throw new Error(`Failed to list bundle: ${listResponse.statusText}`);
-      }
-
-      // Step 3: Construct GET URL based on updateStrategy
-      const channel = options.channel || "production";
-      const minBundleId = options.minBundleId || NIL_UUID;
-      const cohort = encodeURIComponent(options.cohort ?? "1");
-
-      let url: string;
-      if (options._updateStrategy === "appVersion") {
-        url = buildUrl(
-          `/app-version/${options.platform}/${options.appVersion}/${channel}/${minBundleId}/${options.bundleId}/${cohort}`,
-        );
-      } else {
-        url = buildUrl(
-          `/fingerprint/${options.platform}/${options.fingerprintHash}/${channel}/${minBundleId}/${options.bundleId}/${cohort}`,
-        );
-      }
-
-      // Step 4: Check for updates via GET
-      const response = await fetchWithRetry(url);
-      if (!response.ok) {
-        throw new Error(`Failed to check for updates: ${response.statusText}`);
-      }
-
-      const data = (await response.json()) as AppUpdateInfo | null;
-
-      return data;
-    } catch (error) {
-      console.error("getUpdateInfo error:", error);
-      throw error;
-    } finally {
-      if (config.resetDecisionFixtures) {
-        await config.resetDecisionFixtures();
-      } else {
-        for (const bundle of bundles) {
-          await deleteLegacyBundleFromServer(config, bundle.id);
-        }
-      }
-    }
-  };
 }
 
 export function createBundleMethodsFromServer(config: TestApiConfig) {

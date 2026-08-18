@@ -123,15 +123,12 @@ export default defineConfig({
 
 ### Upgrade and rollback
 
-Back up Firestore before the schema `1.0.0` migration. It creates Release and
-Release-catalog collections, backfills one Release for each legacy Bundle,
-compiles every scope, and removes policy from final Bundle documents. Managed
-Firebase records its provider migration state separately from the generic SQL
-server migrator. The migration is forward-only.
-
-Roll back only to a complete Hot Updater package set documented as compatible
-with schema `1.0.0`. Otherwise, stop writers and restore the pre-migration
-backup.
+Managed Firebase does not upgrade v0 Firestore data in place. Init inspects the
+adapter marker and Hot Updater collections before deploying. A v0 marker or an
+unversioned database containing Hot Updater data is rejected without mutation.
+Use a new Firebase project for v1 and ship its Hosting endpoint in a new native
+build. Keep the v0 project available for installed v0 binaries that still need
+OTA service.
 
 ### Release catalog cache
 

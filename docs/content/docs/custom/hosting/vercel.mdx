@@ -80,8 +80,8 @@ export default app;
 ```
 
 <Callout type="warn">
-With Hono `mount()`, update-check routes such as `/hot-updater/app-version/*`
-and `/hot-updater/fingerprint/*` are usually exposed for React Native clients,
+With Hono `mount()`, client routes such as `/hot-updater/v2/release-catalogs/*` and
+`/hot-updater/v2/artifacts/*` are usually exposed for React Native clients,
 but that is a deployment choice. `/hot-updater/version` is always mounted for
 diagnostics. Always protect `/hot-updater/api/*` when `features.bundles: true`.
 </Callout>

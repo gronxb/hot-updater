@@ -1,4 +1,3 @@
-import { NIL_UUID } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
@@ -7,8 +6,8 @@ import { CLIENT_ACCESS_KEY_HEADER_NAME, createHotUpdater } from "./index";
 
 const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 const updateUrl =
-  "https://example.com/api/app-version/ios/1.0.0/production/" +
-  `${NIL_UUID}/${NIL_UUID}`;
+  "https://example.com/api/v2/release-catalogs/app-version/default/ios/" +
+  "cHJvZHVjdGlvbg/1.0.0";
 
 const withApiKey = (url: string, init?: RequestInit) =>
   new Request(url, {
@@ -42,7 +41,7 @@ describe("createHotUpdater client access keys", () => {
     });
 
     expect((await hotUpdater.handler(new Request(updateUrl))).status).toBe(401);
-    expect((await hotUpdater.handler(withApiKey(updateUrl))).status).toBe(200);
+    expect((await hotUpdater.handler(withApiKey(updateUrl))).status).toBe(404);
     expect(
       (await hotUpdater.handler(new Request("https://example.com/api/version")))
         .status,
@@ -121,7 +120,7 @@ describe("createHotUpdater client access keys", () => {
       });
 
       expect((await hotUpdater.handler(new Request(updateUrl))).status).toBe(
-        200,
+        404,
       );
     },
   );

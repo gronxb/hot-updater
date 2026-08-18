@@ -113,16 +113,12 @@ export default defineConfig({
 
 ### Upgrade and rollback
 
-Schema `1.0.0` adds Release and Release-catalog rows, backfills legacy Bundle
-policy, and removes desired-state decisions from D1 GET paths. Managed
-Cloudflare deployments track applied changes through Wrangler's D1 migration
-history; they do not write or consume the generic server migrator's
-`schema.core` setting. Keep existing migration files immutable, and back up D1
-before applying any pending provider migration.
-
-Roll back to an older Hot Updater package set only when it is documented as
-compatible with the upgraded schema. Otherwise, stop writers and restore the
-pre-migration backup.
+Managed Cloudflare does not upgrade a v0 D1 database in place. Init checks for
+the v1 Release Catalog schema before applying migrations or deploying the
+Worker. When it detects v0 Bundle policy, it stops without changing D1. Create
+a new D1 database, R2 bucket, and Worker for v1, then ship the new endpoint in a
+new native build. Keep the v0 Worker and database available for installed v0
+binaries that still need OTA service.
 
 ### Release catalog cache
 

@@ -145,10 +145,14 @@ export default HotUpdater.wrap({
 })(App);
 ```
 
-The client automatically constructs this endpoint:
+The client fetches the fingerprint Release Catalog:
+
 ```
-GET {baseUrl}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId
+GET {baseUrl}/v2/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash
 ```
+
+It evaluates the catalog locally, then resolves the selected artifact through
+`/v2/artifacts/:targetBundleId/from/:currentBundleId`.
 
 ## How It Works
 
@@ -227,7 +231,7 @@ export default defineConfig({
 Test your update endpoint with curl:
 
 ```bash
-curl "https://your-update-endpoint.com/check-update/fingerprint/ios/11142b9062165fa48665f5efa095dd94e9e45eb0/production/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000001"
+curl "https://your-update-endpoint.com/check-update/v2/release-catalogs/fingerprint/default/ios/cHJvZHVjdGlvbg/11142b9062165fa48665f5efa095dd94e9e45eb0"
 ```
 
 Parameters:

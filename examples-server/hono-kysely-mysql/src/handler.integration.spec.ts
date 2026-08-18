@@ -8,12 +8,10 @@ import { createMigrator } from "@hot-updater/server/db";
 import {
   deleteLegacyBundle,
   setupBundleMethodsTestSuite,
-  setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
 import {
   assertDockerComposeAvailable,
   cleanupServer,
-  createGetUpdateInfo,
   killPort,
   spawnServerProcess,
   waitForServer,
@@ -37,7 +35,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
   let baseUrl: string;
   let hotUpdater: HotUpdaterAPI;
   let closeDatabase: (() => Promise<void>) | null = null;
-  let resetDecisionFixtures: () => Promise<void>;
   const port = 13579;
 
   beforeAll(async () => {
@@ -65,7 +62,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
     hotUpdater = db.hotUpdater;
     closeDatabase = db.closeDatabase;
-    resetDecisionFixtures = db.resetDecisionFixtures;
 
     serverProcess = spawnServerProcess({
       serverCommand: ["npx", "tsx", "src/index.ts"],
@@ -85,18 +81,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     console.log("Cleaning up test database...");
     await cleanupMySQLDatabase(projectRoot);
   }, 60000);
-
-  const getUpdateInfo: ReturnType<typeof createGetUpdateInfo> = (
-    bundles,
-    options,
-  ) => {
-    return createGetUpdateInfo({
-      baseUrl: `${baseUrl}/hot-updater`,
-      resetDecisionFixtures,
-    })(bundles, options);
-  };
-
-  setupGetUpdateInfoTestSuite({ getUpdateInfo });
 
   setupBundleMethodsTestSuite({
     getBundleById: (id: string) => hotUpdater.getBundleById(id),

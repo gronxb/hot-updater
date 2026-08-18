@@ -22,6 +22,7 @@ import { execa } from "execa";
 
 import { dynamoDB } from "../src/dynamoDB";
 import { resolveAwsAuth } from "./awsAuth";
+import { assertAwsInfrastructureGeneration } from "./awsInfrastructureState";
 import {
   assertAwsNonInteractiveInputs,
   resolveAwsInitInputs,
@@ -278,6 +279,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     distributionId: savedInputs.distributionId,
     nonInteractive,
   });
+  if (selectedDistribution?.DomainName) {
+    await assertAwsInfrastructureGeneration({
+      domainName: selectedDistribution.DomainName,
+    });
+  }
   const resolvedInputs = {
     ...resolvedAuthInputs,
     bucketName,

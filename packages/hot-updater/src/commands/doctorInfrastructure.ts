@@ -1,6 +1,7 @@
 import {
   getRequiredUpdateTarget,
   isInfrastructureUpdateRequired,
+  isV1InfrastructureRequired,
   type RequiredUpdateTarget,
 } from "./doctorInfrastructureTargets";
 
@@ -9,6 +10,7 @@ export {
   getRequiredServerVersion,
   getRequiredUpdateTarget,
   isInfrastructureUpdateRequired,
+  isV1InfrastructureRequired,
 } from "./doctorInfrastructureTargets";
 
 export interface InfrastructureStatus {
@@ -17,14 +19,17 @@ export interface InfrastructureStatus {
   catalogModeNote?: string;
   versionEndpoint: string;
   serverVersion?: string;
+  infrastructureGeneration?: number;
   requiredVersion: string;
   needsUpdate?: boolean;
+  upgradeBlocked?: boolean;
   updateReason?: string;
   error?: string;
   remediation?: InfrastructureRemediation;
 }
 
 interface ServerVersionResponse {
+  infrastructureGeneration?: unknown;
   version?: unknown;
 }
 
@@ -68,15 +73,26 @@ const getCatalogMode = (
   return {};
 };
 
-export const createInfrastructureRemediation =
-  (): InfrastructureRemediation => {
+export const createInfrastructureRemediation = ({
+  upgradeBlocked = false,
+}: {
+  upgradeBlocked?: boolean;
+} = {}): InfrastructureRemediation => {
+  if (upgradeBlocked) {
     return {
       fixability: "blocked",
       reason:
-        "Server infrastructure changes usually need provider credentials, environment variables, and redeploy access.",
-      commands: [...INFRASTRUCTURE_RECOVERY_COMMANDS],
+        "Hot Updater v0 infrastructure cannot be upgraded in place. Run init with new provider resources and ship the new endpoint in a new native build. Existing resources are left unchanged.",
+      commands: ["hot-updater init"],
     };
+  }
+  return {
+    fixability: "blocked",
+    reason:
+      "Server infrastructure changes usually need provider credentials, environment variables, and redeploy access.",
+    commands: [...INFRASTRUCTURE_RECOVERY_COMMANDS],
   };
+};
 
 export async function checkInfrastructureStatus({
   serverBaseUrl,
@@ -91,6 +107,7 @@ export async function checkInfrastructureStatus({
   const baseUrl = serverBaseUrl.trim();
   const catalogMode = getCatalogMode(baseUrl);
   const requiredVersion = requiredTarget.version;
+  const requiresV1 = isV1InfrastructureRequired(requiredVersion);
 
   try {
     const response = await fetchImpl(versionEndpoint, {
@@ -106,8 +123,16 @@ export async function checkInfrastructureStatus({
           ...catalogMode,
           versionEndpoint,
           requiredVersion,
-          needsUpdate: true,
-          updateReason: "Version endpoint not found",
+          ...(requiresV1
+            ? {
+                upgradeBlocked: true,
+                updateReason:
+                  "v1 infrastructure marker not found at the existing endpoint",
+              }
+            : {
+                needsUpdate: true,
+                updateReason: "Version endpoint not found",
+              }),
         };
       }
 
@@ -131,8 +156,37 @@ export async function checkInfrastructureStatus({
       };
     }
 
+    if (requiresV1 && data.infrastructureGeneration !== 1) {
+      return {
+        baseUrl,
+        ...catalogMode,
+        versionEndpoint,
+        serverVersion: data.version,
+        requiredVersion,
+        upgradeBlocked: true,
+        updateReason: "Existing infrastructure does not declare generation 1",
+      };
+    }
+
+    if (
+      data.infrastructureGeneration !== undefined &&
+      data.infrastructureGeneration !== 1
+    ) {
+      return {
+        baseUrl,
+        ...catalogMode,
+        versionEndpoint,
+        serverVersion: data.version,
+        requiredVersion,
+        error: `Unsupported infrastructure generation: ${String(data.infrastructureGeneration)}`,
+      };
+    }
+
     const needsUpdate = isInfrastructureUpdateRequired({
       serverVersion: data.version,
+      ...(data.infrastructureGeneration === 1
+        ? { infrastructureGeneration: 1 }
+        : {}),
       requiredVersion,
     });
 
@@ -141,6 +195,9 @@ export async function checkInfrastructureStatus({
       ...catalogMode,
       versionEndpoint,
       serverVersion: data.version,
+      ...(data.infrastructureGeneration === 1
+        ? { infrastructureGeneration: 1 }
+        : {}),
       requiredVersion,
       needsUpdate,
       updateReason: needsUpdate ? requiredTarget.note : undefined,

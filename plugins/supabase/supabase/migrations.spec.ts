@@ -4,8 +4,6 @@ import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { describe, expect, it } from "vitest";
 
-import { materializeReleaseCatalogMigration } from "../iac/supabaseReleaseCatalogMigration";
-
 const rlsMigrationPath = path.resolve(
   "plugins/supabase/supabase/migrations/20260520014100_hot-updater_rls.sql",
 );
@@ -640,108 +638,6 @@ describe("Supabase Release Catalog migration", () => {
     return database;
   };
 
-  it("preflights legacy policy into Releases and canonical catalogs before dropping it from Bundles", async () => {
-    const database = await createDatabaseThroughV038();
-    try {
-      const bundleIds = [
-        "00000000-0000-7000-8000-000000000041",
-        "00000000-0000-7000-8000-000000000042",
-      ];
-      await database.exec(`
-        INSERT INTO public.channels (id, name)
-        VALUES ('channel-production', 'production');
-        INSERT INTO public.bundles (
-          id, platform, target_app_version, should_force_update, enabled,
-          file_hash, channel, channel_id, storage_uri, metadata,
-          rollout_cohort_count, target_cohorts
-        ) VALUES (
-          '${bundleIds[0]}', 'ios', '^1.0.0', false, true,
-          'hash-1', 'production', 'channel-production', 'storage://bundle-1',
-          '{}', 1000, ARRAY[]::text[]
-        ), (
-          '${bundleIds[1]}', 'ios', '^1.0.0', true, true,
-          'hash-2', 'production', 'channel-production', 'storage://bundle-2',
-          '{}', 500, ARRAY['qa']::text[]
-        );
-      `);
-      const legacy = await database.query<{
-        id: unknown;
-        platform: unknown;
-        channel: unknown;
-        enabled: unknown;
-        should_force_update: unknown;
-        message: unknown;
-        target_app_version: unknown;
-        fingerprint_hash: unknown;
-        rollout_cohort_count: unknown;
-        target_cohorts: unknown;
-      }>(`
-        SELECT id, platform, channel, enabled, should_force_update, message,
-          target_app_version, fingerprint_hash, rollout_cohort_count,
-          target_cohorts
-        FROM public.bundles
-        ORDER BY id
-      `);
-      const migration = (await readMigrations()).find(({ file }) =>
-        file.includes("1.0.0"),
-      );
-      if (!migration) throw new Error("v1 migration was not found");
-      const sql = await materializeReleaseCatalogMigration({
-        authorityId: "project-ref",
-        legacyBundles: legacy.rows,
-        migrationSql: migration.sql,
-      });
-
-      await database.exec(sql);
-
-      const bundleColumns = await database.query<{ column_name: string }>(`
-        SELECT column_name
-        FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'bundles'
-        ORDER BY ordinal_position
-      `);
-      expect(bundleColumns.rows.map(({ column_name }) => column_name)).toEqual([
-        "id",
-        "platform",
-        "file_hash",
-        "git_commit_hash",
-        "metadata",
-        "storage_uri",
-        "manifest_storage_uri",
-        "manifest_file_hash",
-        "asset_base_storage_uri",
-      ]);
-      const releases = await database.query<{
-        bundle_id: string;
-        id: string;
-        revision: number;
-      }>("SELECT id, bundle_id, revision FROM public.releases ORDER BY id");
-      expect(releases.rows).toEqual(
-        bundleIds.map((id) => ({ bundle_id: id, id, revision: 1 })),
-      );
-      const catalogs = await database.query<{
-        authority_id: string;
-        catalog_hash: string;
-        generation: number;
-        payload: string;
-      }>(
-        "SELECT authority_id, catalog_hash, generation, payload FROM public.release_catalogs",
-      );
-      expect(catalogs.rows).toHaveLength(1);
-      expect(catalogs.rows[0]).toMatchObject({
-        authority_id: "project-ref",
-        generation: 1,
-      });
-      expect(catalogs.rows[0]?.catalog_hash).toMatch(/^sha256:[0-9a-f]{64}$/);
-      expect(JSON.parse(catalogs.rows[0]?.payload ?? "")).toMatchObject({
-        schemaVersion: 1,
-        strategy: "APP_VERSION",
-      });
-    } finally {
-      await database.close();
-    }
-  });
-
   it("blocks a manual legacy cutover that did not run the deterministic preflight", async () => {
     const database = await createDatabaseThroughV038();
     try {
@@ -781,13 +677,7 @@ describe("Supabase Release Catalog migration", () => {
       const migration = (await readMigrations()).find(({ file }) =>
         file.includes("1.0.0"),
       );
-      await database.exec(
-        await materializeReleaseCatalogMigration({
-          authorityId: "project-ref",
-          legacyBundles: [],
-          migrationSql: migration?.sql ?? "",
-        }),
-      );
+      await database.exec(migration?.sql ?? "");
       const bundleId = "00000000-0000-7000-8000-000000000061";
       const releaseId = "00000000-0000-7000-8000-000000000062";
       const scopeKey = "v1:app-version:project-ref:ios:cHJvZHVjdGlvbg";

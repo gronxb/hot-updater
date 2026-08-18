@@ -7,7 +7,6 @@ import {
   AnalyticsPayloadTooLargeError,
 } from "./errors";
 
-const SDK_VERSION_HEADER = "Hot-Updater-SDK-Version";
 const MAX_EVENT_STRING_LENGTH = 1_024;
 export const EVENT_BODY_MAX_BYTES = 16 * 1_024;
 
@@ -26,6 +25,7 @@ const eventKeys = new Set([
   "fromReleaseId",
   "toReleaseId",
   "updateStrategy",
+  "sdkVersion",
 ]);
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -95,10 +95,7 @@ async function parseJson(request: Request): Promise<unknown> {
   }
 }
 
-function requireEvent(
-  payload: unknown,
-  sdkVersion: string | null,
-): CreateBundleEventRequest {
+function requireEvent(payload: unknown): CreateBundleEventRequest {
   if (
     !isRecord(payload) ||
     Object.keys(payload).some((key) => !eventKeys.has(key))
@@ -123,7 +120,10 @@ function requireEvent(
     channel: requireStringField(payload, "channel"),
     cohort: requireStringField(payload, "cohort"),
     fingerprintHash: requireNullableStringField(payload, "fingerprintHash"),
-    sdkVersion,
+    sdkVersion:
+      payload.sdkVersion === undefined
+        ? null
+        : requireNullableStringField(payload, "sdkVersion"),
     fromReleaseId:
       payload.fromReleaseId === undefined
         ? null
@@ -170,12 +170,5 @@ export async function parseBundleEventRequest(
   request: Request,
 ): Promise<CreateBundleEventRequest> {
   const payload = await parseJson(request);
-  const sdkVersion = request.headers.get(SDK_VERSION_HEADER)?.trim() ?? null;
-  if (
-    sdkVersion !== null &&
-    (sdkVersion.length === 0 || sdkVersion.length > MAX_EVENT_STRING_LENGTH)
-  ) {
-    throw new AnalyticsBadRequestError("Invalid SDK version header");
-  }
-  return requireEvent(payload, sdkVersion);
+  return requireEvent(payload);
 }

@@ -179,9 +179,8 @@ change deletion protection on an operator-owned reused table.
 New distributions use `PriceClass_All` to preserve worldwide OTA latency. The
 Release-catalog behavior honors the server's five-second shared TTL. Catalog
 authentication failures, missing rows, and server errors are private and are
-not cached. Legacy update-check behaviors retain their existing compatibility
-cache partition, while `/api/check-update/v2/release-catalogs/*` uses the
-smaller Release-catalog policy.
+not cached. Cache identity uses only the client access key and content encoding;
+the removed v0 SDK-version header is not forwarded.
 
 If regional reach matters less than transfer price, change the distribution price
 class in AWS after init; later init runs preserve that setting. Init invalidates
@@ -194,6 +193,13 @@ bucket-policy statements. Lambda roles are isolated by Lambda name and grant
 access only to the selected bucket, SSM parameter, DynamoDB table, and update
 index. Init provisions these resources through AWS APIs rather than a
 CloudFormation stack, so deletion and rollback remain operator-managed.
+
+Init does not upgrade a v0 CloudFront endpoint in place. It checks the selected
+distribution's `/version` response before writing env files or changing AWS
+resources. If the generation-1 marker is missing, use new S3, DynamoDB, Lambda,
+and CloudFront resources and ship the new endpoint in a new native build. Keep
+the v0 distribution available for installed v0 binaries that still need OTA
+service.
 
 ## Step 3: Generated Configurations
 

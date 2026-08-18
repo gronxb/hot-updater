@@ -2,12 +2,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import {
-  type AttributeValue,
-  BatchWriteItemCommand,
   CreateTableCommand,
   DynamoDBClient,
   ListTablesCommand,
-  ScanCommand,
   waitUntilTableExists,
 } from "@aws-sdk/client-dynamodb";
 import {
@@ -16,20 +13,13 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { DYNAMODB_UPDATE_INDEX_NAME } from "@hot-updater/aws";
-import {
-  type AppUpdateInfo,
-  type Bundle,
-  type GetBundlesArgs,
-  type LegacyBundle,
-  NIL_UUID,
-} from "@hot-updater/core";
+import { type Bundle, type LegacyBundle } from "@hot-updater/core";
 import { updateReleasePolicy } from "@hot-updater/plugin-core";
 import { createClientAccessKey, type HotUpdaterAPI } from "@hot-updater/server";
 import { standaloneRepository } from "@hot-updater/standalone";
 import {
   deleteLegacyBundle,
   setupBundleMethodsTestSuite,
-  setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
 import {
   assertDockerComposeAvailable,
@@ -141,58 +131,6 @@ async function createBucket() {
   throw new Error(`Could not create local S3 bucket ${bucketName}`);
 }
 
-async function resetDecisionFixtures() {
-  const client = new DynamoDBClient({
-    region,
-    endpoint: dynamodbEndpoint,
-    credentials,
-  });
-  const keys: { pk: { S: string }; sk: { S: string } }[] = [];
-  let exclusiveStartKey: Record<string, AttributeValue> | undefined;
-
-  do {
-    const page = await client.send(
-      new ScanCommand({
-        TableName: tableName,
-        ProjectionExpression: "#pk, #sk",
-        ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
-        ExclusiveStartKey: exclusiveStartKey,
-      }),
-    );
-    for (const item of page.Items ?? []) {
-      const pk = item.pk?.S;
-      const sk = item.sk?.S;
-      if (
-        pk &&
-        sk &&
-        (pk === "bundles" ||
-          pk === "bundle_patches" ||
-          pk === "channels" ||
-          pk === "release_catalogs" ||
-          pk === "_hot-updater#channel-names" ||
-          pk === "_hot-updater#release-scope-by-id" ||
-          pk.startsWith("release-scope#"))
-      ) {
-        keys.push({ pk: { S: pk }, sk: { S: sk } });
-      }
-    }
-    exclusiveStartKey = page.LastEvaluatedKey;
-  } while (exclusiveStartKey);
-
-  for (let index = 0; index < keys.length; index += 25) {
-    await client.send(
-      new BatchWriteItemCommand({
-        RequestItems: {
-          [tableName]: keys.slice(index, index + 25).map((key) => ({
-            DeleteRequest: { Key: key },
-          })),
-        },
-      }),
-    );
-  }
-  client.destroy();
-}
-
 describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
@@ -260,36 +198,6 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     });
   }, 60000);
 
-  const getUpdateInfo = async (
-    bundles: LegacyBundle[],
-    options: GetBundlesArgs,
-  ): Promise<AppUpdateInfo | null> => {
-    for (const bundle of bundles) {
-      await hotUpdater.insertBundle(bundle);
-    }
-
-    const channel = options.channel ?? "production";
-    const minBundleId = options.minBundleId ?? NIL_UUID;
-    const cohort = encodeURIComponent(options.cohort ?? "1");
-    const path =
-      options._updateStrategy === "appVersion"
-        ? `/app-version/${options.platform}/${options.appVersion}/${channel}/${minBundleId}/${options.bundleId}/${cohort}`
-        : `/fingerprint/${options.platform}/${options.fingerprintHash}/${channel}/${minBundleId}/${options.bundleId}/${cohort}`;
-    try {
-      const response = await fetch(`${baseUrl}/hot-updater${path}`, {
-        headers: { "x-api-key": rawApiKey },
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to check for updates: ${response.statusText}`);
-      }
-      return (await response.json()) as AppUpdateInfo | null;
-    } finally {
-      await resetDecisionFixtures();
-    }
-  };
-
-  setupGetUpdateInfoTestSuite({ getUpdateInfo });
-
   setupBundleMethodsTestSuite({
     getBundleById: (id: string) => hotUpdater.getBundleById(id),
     getChannels: () => hotUpdater.getChannels(),
@@ -346,15 +254,16 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     expect(managementQuery.status).toBe(200);
   });
 
-  it("requires a client key for update checks", async () => {
-    const path = `/hot-updater/app-version/ios/1.0.0/production/${NIL_UUID}/${NIL_UUID}/default`;
+  it("requires a client key for v1 catalog routes", async () => {
+    const path =
+      "/hot-updater/v2/release-catalogs/app-version/default/ios/cHJvZHVjdGlvbg/1.0.0";
     const unauthorized = await fetch(`${baseUrl}${path}`);
     const authorized = await fetch(`${baseUrl}${path}`, {
       headers: { "x-api-key": rawApiKey },
     });
 
     expect(unauthorized.status).toBe(401);
-    expect(authorized.status).toBe(200);
+    expect(authorized.status).toBe(404);
   });
 
   it("updates Release policy through the authenticated standalone repository", async () => {

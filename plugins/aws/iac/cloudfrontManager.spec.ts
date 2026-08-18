@@ -173,14 +173,7 @@ describe("CloudFrontManager", () => {
           ParametersInCacheKeyAndForwardedToOrigin: expect.objectContaining({
             HeadersConfig: {
               HeaderBehavior: "whitelist",
-              Headers: {
-                Quantity: 3,
-                Items: [
-                  "authorization",
-                  "hot-updater-sdk-version",
-                  "x-api-key",
-                ],
-              },
+              Headers: { Quantity: 1, Items: ["x-api-key"] },
             },
           }),
         }),

@@ -13,7 +13,7 @@ import type {
   HandlerOptions,
   RouteHandler,
 } from "./handlerTypes";
-import { createUpdateRouteHandlers } from "./handlerUpdateRoutes";
+import { createVersionRouteHandlers } from "./handlerVersionRoutes";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 
 export type {
@@ -49,7 +49,7 @@ export function createHotUpdaterHandler(
   } satisfies HandlerFeatures;
   const router = createRouter<string>();
   const routeHandlers: Record<string, RouteHandler> = {
-    ...createUpdateRouteHandlers(),
+    ...createVersionRouteHandlers(),
     ...createReleaseCatalogRouteHandlers(authorityId),
     ...createReleaseManagementRouteHandlers(),
     ...createBundleRouteHandlers(),
@@ -111,30 +111,6 @@ export function createHotUpdaterHandler(
       "/v2/artifacts/:targetBundleId/from/:currentBundleId",
       "artifact",
     );
-    addRoute(
-      router,
-      "GET",
-      "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
-      "fingerprintUpdateWithCohort",
-    );
-    addRoute(
-      router,
-      "GET",
-      "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort",
-      "fingerprintUpdateWithCohort",
-    );
-    addRoute(
-      router,
-      "GET",
-      "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId",
-      "appVersionUpdateWithCohort",
-    );
-    addRoute(
-      router,
-      "GET",
-      "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort",
-      "appVersionUpdateWithCohort",
-    );
   }
 
   if (features.bundles) {
@@ -176,14 +152,19 @@ export function createHotUpdaterHandler(
   return async (request): Promise<Response> => {
     try {
       const path = new URL(request.url).pathname;
-      const routePath = path.startsWith(basePath)
-        ? path.slice(basePath.length)
-        : path;
+      const routePath =
+        basePath === "/"
+          ? path
+          : path === basePath
+            ? "/"
+            : path.startsWith(`${basePath}/`)
+              ? path.slice(basePath.length)
+              : null;
       const match =
-        findRoute(router, request.method, routePath) ??
-        (routePath === path
+        (routePath === null
           ? undefined
-          : findRoute(router, request.method, path));
+          : findRoute(router, request.method, routePath)) ??
+        findRoute(router, request.method, path);
       if (!match) {
         return new Response(JSON.stringify({ error: "Not found" }), {
           status: 404,
@@ -195,9 +176,7 @@ export function createHotUpdaterHandler(
       }
       if (
         clientAccessKeys !== undefined &&
-        (match.data === "fingerprintUpdateWithCohort" ||
-          match.data === "appVersionUpdateWithCohort" ||
-          match.data === "appVersionReleaseCatalog" ||
+        (match.data === "appVersionReleaseCatalog" ||
           match.data === "fingerprintReleaseCatalog" ||
           match.data === "artifact" ||
           match.data === "appendBundleEvent")

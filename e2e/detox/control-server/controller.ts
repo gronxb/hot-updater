@@ -26,11 +26,9 @@ import { createAnalyticsProvider } from "../../../packages/server/dist/index.mjs
 import {
   type AnalyticsModel,
   type BundleRepository,
-  createDatabaseClient,
   createUUIDv7After,
   commitReleaseCatalogMutation,
   deleteRelease,
-  type DatabaseClient,
   type BundleRow,
   type ReleaseCatalogRow,
   type ReleaseRow,
@@ -214,7 +212,6 @@ const BARE_BUILD_CACHE_INPUT_PATHS = [
   "packages/hot-updater/src/utils/bundleManifest.ts",
   "packages/react-native",
 ];
-const E2E_MIN_BUNDLE_ID = "00000000-0000-7000-8000-000000000000";
 const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
 const SIGNING_PRIVATE_KEY_RELATIVE_PATH = "keys/private-key.pem";
 const EMPTY_CRASH_HISTORY = {
@@ -1358,14 +1355,6 @@ async function withConfiguredDatabase<T>(
   } finally {
     process.chdir(originalCwd);
   }
-}
-
-async function withDatabaseClient<T>(
-  callback: (databaseClient: DatabaseClient) => Promise<T>,
-): Promise<T> {
-  return withConfiguredDatabase((database) =>
-    callback(createDatabaseClient(database)),
-  );
 }
 
 function readAnalyticsModel(database: BundleRepository): AnalyticsModel | null {
@@ -3178,9 +3167,7 @@ function readHotUpdaterApiKey() {
 }
 
 export function getHotUpdaterClientRequestHeaders() {
-  const headers = new Headers({
-    "Hot-Updater-SDK-Version": "e2e",
-  });
+  const headers = new Headers();
   const apiKey = readHotUpdaterApiKey();
   if (apiKey) headers.set("x-api-key", apiKey);
   return headers;

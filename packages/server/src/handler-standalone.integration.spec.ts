@@ -103,7 +103,6 @@ describe("Handler <-> Standalone Repository Integration", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "hot-updater-sdk-version": "2.0.0",
         },
         body: JSON.stringify({
           appVersion: "1.0.0",
@@ -113,6 +112,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
           fromBundleId: NIL_UUID,
           installId,
           platform: "ios",
+          sdkVersion: "2.0.0",
           toBundleId: bundleId,
           type: "UPDATE_APPLIED",
           updateStrategy: "appVersion",
@@ -237,7 +237,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     await client.insertBundle(createTestBundle({ id: bundleId }));
     const updateCheck = await protectedApi.handler(
       new Request(
-        `${baseUrl}/protected-hot-updater/app-version/ios/1.0.0/production/${NIL_UUID}/${NIL_UUID}`,
+        `${baseUrl}/protected-hot-updater/v2/release-catalogs/app-version/default/ios/${encodeChannelKey("production")}/1.0.0`,
       ),
     );
 

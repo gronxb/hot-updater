@@ -8,11 +8,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
 import {
   areVersionsCompatible,
+  checkInfrastructureStatus,
+  createInfrastructureRemediation,
   doctor,
   getRequiredInfrastructureVersion,
   getRequiredServerVersion,
   handleDoctor,
   isInfrastructureUpdateRequired,
+  isV1InfrastructureRequired,
   resolveVersionEndpoint,
 } from "./doctor";
 
@@ -212,6 +215,58 @@ describe("infrastructure version helpers", () => {
     expect(
       resolveVersionEndpoint("https://example.com/api/check-update/"),
     ).toBe("https://example.com/api/check-update/version");
+  });
+
+  it("requires generation 1 for v1 packages", () => {
+    expect(isV1InfrastructureRequired("0.38.0")).toBe(false);
+    expect(isV1InfrastructureRequired("1.0.0")).toBe(true);
+  });
+
+  it("blocks a v0 endpoint instead of suggesting an in-place update", async () => {
+    const status = await checkInfrastructureStatus({
+      serverBaseUrl: "https://updates.example.com/api/check-update",
+      fetchImpl: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(Response.json({ version: "0.38.0" })),
+      requiredTarget: {
+        version: "1.0.0",
+        note: "Release Catalog infrastructure generation",
+      },
+    });
+
+    expect(status).toMatchObject({
+      serverVersion: "0.38.0",
+      upgradeBlocked: true,
+      updateReason: "Existing infrastructure does not declare generation 1",
+    });
+    expect(status.needsUpdate).toBeUndefined();
+    expect(createInfrastructureRemediation(status)).toEqual({
+      fixability: "blocked",
+      reason: expect.stringContaining("cannot be upgraded in place"),
+      commands: ["hot-updater init"],
+    });
+  });
+
+  it("accepts a v1 infrastructure generation marker", async () => {
+    const status = await checkInfrastructureStatus({
+      serverBaseUrl: "https://updates.example.com/api/check-update",
+      fetchImpl: vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json({
+          infrastructureGeneration: 1,
+          version: "1.0.0",
+        }),
+      ),
+      requiredTarget: {
+        version: "1.0.0",
+        note: "Release Catalog infrastructure generation",
+      },
+    });
+
+    expect(status).toMatchObject({
+      infrastructureGeneration: 1,
+      needsUpdate: false,
+    });
+    expect(status.upgradeBlocked).toBeUndefined();
   });
 });
 

@@ -2,14 +2,10 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 
-import {
-  setupBundleMethodsTestSuite,
-  setupGetUpdateInfoTestSuite,
-} from "@hot-updater/test-utils";
+import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
   cleanupServer,
   createBundleMethodsFromServer,
-  createGetUpdateInfo,
   createTestDbPath,
   killPort,
   spawnServerProcess,
@@ -28,7 +24,6 @@ describe("Hot Updater Handler Integration Tests (Hono)", () => {
   let baseUrl: string;
   let testDbPath: string;
   let bundleMethods: ReturnType<typeof createBundleMethodsFromServer>;
-  let resetDecisionFixtures: () => Promise<void>;
   const port = 13579;
 
   beforeAll(async () => {
@@ -71,29 +66,11 @@ describe("Hot Updater Handler Integration Tests (Hono)", () => {
     bundleMethods = createBundleMethodsFromServer({
       baseUrl: `${baseUrl}/hot-updater`,
     });
-    resetDecisionFixtures = async () => {
-      const response = await fetch(`${baseUrl}/reset-decision-fixtures`, {
-        method: "POST",
-      });
-      if (!response.ok) throw new Error("Failed to reset decision fixtures.");
-    };
   }, 120000);
 
   afterAll(async () => {
     await cleanupServer(baseUrl, serverProcess, testDbPath);
   }, 60000);
-
-  const getUpdateInfo: ReturnType<typeof createGetUpdateInfo> = (
-    bundles,
-    options,
-  ) => {
-    return createGetUpdateInfo({
-      baseUrl: `${baseUrl}/hot-updater`,
-      resetDecisionFixtures,
-    })(bundles, options);
-  };
-
-  setupGetUpdateInfoTestSuite({ getUpdateInfo });
 
   setupBundleMethodsTestSuite({
     getBundleById: (id) => bundleMethods.getBundleById(id),

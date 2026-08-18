@@ -322,12 +322,15 @@ export default HotUpdater.wrap({
 
 ## How It Works
 
-When you use `HotUpdater.wrap` with automatic updates, it constructs the appropriate endpoint URL based on the `updateStrategy`:
+The default resolver fetches a shared Release Catalog, evaluates it on the
+device, and resolves the selected artifact:
 
-* For `updateStrategy: "appVersion"`: `GET {baseURL}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
-* For `updateStrategy: "fingerprint"`: `GET {baseURL}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
+* App version catalog: `GET {baseURL}/v2/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`
+* Fingerprint catalog: `GET {baseURL}/v2/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash`
+* Artifact resolution: `GET {baseURL}/v2/artifacts/:targetBundleId/from/:currentBundleId`
 
-The function automatically appends the correct path and parameters to your `baseURL`.
+`:channelKey` is the base64url-encoded channel name. The default authority is
+`default` unless the resolver is configured with another stable authority.
 
 ## Advanced: Custom Resolver
 

@@ -106,8 +106,8 @@ routes before mounting the handler.
 Update-check routes are usually exposed for React Native clients, but that is a
 deployment choice:
 
-- `/hot-updater/app-version/*`
-- `/hot-updater/fingerprint/*`
+- `/hot-updater/v2/release-catalogs/*`
+- `/hot-updater/v2/artifacts/*`
 
 The bundle management routes under `/hot-updater/api/*` are used by the CLI.
 They are mounted only when `features.bundles: true`, and your framework

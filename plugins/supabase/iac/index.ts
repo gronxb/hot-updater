@@ -40,6 +40,7 @@ import {
   linkSupabase,
   pushDB,
 } from "./supabaseCli";
+import { assertSupabaseInfrastructureCanInitialize } from "./supabaseInfrastructureState";
 import {
   assertSupabaseNonInteractiveInputs,
   inputSupabaseDatabasePassword,
@@ -52,7 +53,6 @@ import {
   type SupabaseManagementApi,
   type SupabaseProject,
 } from "./supabaseManagementApi";
-import { materializeReleaseCatalogMigration } from "./supabaseReleaseCatalogMigration";
 
 const require = createRequire(import.meta.url);
 const EDGE_VENDOR_DIR = "_hot-updater";
@@ -909,6 +909,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     throw new Error("Failed to plan the Supabase storage bucket.");
   }
   if (projectAccess) {
+    await assertSupabaseInfrastructureCanInitialize(
+      projectAccess.api,
+      project!.id,
+    );
     await ensureSupabaseBucketPrivate({
       api: projectAccess.api,
       nonInteractive,
@@ -1012,18 +1016,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   const migrationPath = await path.join(tmpDir, "supabase", "migrations");
   const migrationFiles = await fs.readdir(migrationPath);
-  const legacyBundles = await projectAccess.api.listLegacyBundlePolicies();
   for (const file of migrationFiles) {
     if (file.endsWith(".sql")) {
       const filePath = path.join(migrationPath, file);
-      let content = await fs.readFile(filePath, "utf-8");
-      if (file.includes("1.0.0")) {
-        content = await materializeReleaseCatalogMigration({
-          authorityId: project.id,
-          legacyBundles,
-          migrationSql: content,
-        });
-      }
+      const content = await fs.readFile(filePath, "utf-8");
       await fs.writeFile(
         filePath,
         transformTemplate(content, {

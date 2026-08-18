@@ -1,9 +1,7 @@
 import type {
   AppUpdateAvailableInfo,
-  AppVersionGetBundlesArgs,
   Bundle,
   LegacyBundle,
-  FingerprintGetBundlesArgs,
   ReleaseCatalog,
 } from "@hot-updater/core";
 import type {
@@ -27,9 +25,6 @@ import type { ReleaseCatalogRequest } from "./db/releaseCatalog";
 import type { PaginatedResult } from "./types";
 
 export interface HandlerAPI {
-  getAppUpdateInfo: (
-    args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
-  ) => Promise<AppUpdateAvailableInfo | null>;
   getReleaseCatalog?: (
     input: ReleaseCatalogRequest,
   ) => Promise<ReleaseCatalog | null>;
@@ -103,12 +98,11 @@ export interface HandlerOptions {
 
 export interface HandlerFeatures {
   /**
-   * Mounts the React Native update-check endpoints:
+   * Mounts the React Native v1 update-check endpoints:
    *
-   * - `GET /fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
-   * - `GET /fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort`
-   * - `GET /app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
-   * - `GET /app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort`
+   * - `GET /v2/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`
+   * - `GET /v2/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash`
+   * - `GET /v2/artifacts/:targetBundleId/from/:currentBundleId`
    *
    * @default true
    *

@@ -20,6 +20,7 @@ import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
 import { inputFirebaseApplicationCredentials } from "./firebaseApplicationCredentials";
+import { assertFirebaseInfrastructureCanInitialize } from "./firebaseInfrastructureState";
 import {
   assertFirebaseNonInteractiveInputs,
   type FirebaseCliEnv,
@@ -388,6 +389,13 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       return cliEnv;
     },
   );
+
+  if (initializeVariable.status === "ready") {
+    await assertFirebaseInfrastructureCanInitialize({
+      applicationCredentials,
+      projectId: initializeVariable.projectId,
+    });
+  }
 
   const currentRegion = await resolveFirebaseRegion({
     cwd: tmpDir,

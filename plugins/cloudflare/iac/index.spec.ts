@@ -311,6 +311,25 @@ describe("Cloudflare init discovery", () => {
     );
   });
 
+  it("blocks a selected v0 D1 database before changing infrastructure", async () => {
+    mocks.api.d1.database.list.mockResolvedValue({
+      result: [{ name: "ota", uuid: "database-id" }],
+    });
+    mocks.api.d1.database.query.mockResolvedValue({
+      async *iterPages() {
+        yield { result: [{ results: [{ name: "bundles" }] }] };
+      },
+    });
+
+    await expect(runInit({ build: "bare" })).rejects.toThrow(
+      "Cloudflare v0 infrastructure was detected at D1 database ota",
+    );
+
+    expect(mocks.makeEnv).not.toHaveBeenCalled();
+    expect(mocks.api.workers.subdomains.get).not.toHaveBeenCalled();
+    expect(mocks.createWrangler).not.toHaveBeenCalled();
+  });
+
   it("prompts for saved interactive choices with those choices selected by default", async () => {
     // Given
     mocks.readHotUpdaterInitEnv.mockResolvedValue({

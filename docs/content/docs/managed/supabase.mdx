@@ -109,22 +109,12 @@ the CLI and deployed Edge Function.
 
 ### Upgrade and rollback
 
-Schema `1.0.0` adds Releases, Release catalogs, ordered compiler indexes, and
-atomic revision/generation checks. It removes the legacy desired-state RPCs.
-Managed Supabase deployments track applied changes through Supabase migration
-history; they do not write or consume the generic server migrator's
-`schema.core` setting. Keep existing migration files immutable, and back up the
-database before applying any pending provider migration.
-
-Apply all pending Supabase migrations before upgrading the CLI writer or
-redeploying the Edge Function. Patch-bearing bundle inserts and patch
-replacements use service-role-only database functions so each bundle mutation
-commits atomically; if those functions are not installed, the operation fails
-instead of falling back to sequential writes.
-
-Roll back to an older Hot Updater package set only when it is documented as
-compatible with the upgraded schema. Otherwise, stop writers and restore the
-pre-migration backup.
+Managed Supabase does not upgrade a v0 schema in place. Init checks for the v1
+Release Catalog schema before changing bucket privacy, applying migrations, or
+deploying the Edge Function. A schema with v0 Bundles but no Release Catalogs
+is rejected without mutation. Create a new Supabase project for v1 and ship its
+Edge Function endpoint in a new native build. Keep the v0 project available
+for installed v0 binaries that still need OTA service.
 
 ### Release catalog cache
 

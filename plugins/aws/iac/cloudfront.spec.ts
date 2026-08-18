@@ -30,10 +30,7 @@ describe("buildDistributionConfigOverrides", () => {
       ParametersInCacheKeyAndForwardedToOrigin: {
         HeadersConfig: {
           HeaderBehavior: "whitelist",
-          Headers: {
-            Quantity: 3,
-            Items: ["authorization", "hot-updater-sdk-version", "x-api-key"],
-          },
+          Headers: { Quantity: 1, Items: ["x-api-key"] },
         },
         CookiesConfig: { CookieBehavior: "none" },
         QueryStringsConfig: { QueryStringBehavior: "none" },
@@ -41,13 +38,13 @@ describe("buildDistributionConfigOverrides", () => {
     });
   });
 
-  it("forwards the SDK version and authentication headers to Lambda", () => {
+  it("forwards content type and the client key to Lambda", () => {
     expect(HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG).toMatchObject({
       HeadersConfig: {
         HeaderBehavior: "whitelist",
         Headers: {
-          Quantity: 3,
-          Items: ["content-type", "hot-updater-sdk-version", "x-api-key"],
+          Quantity: 2,
+          Items: ["content-type", "x-api-key"],
         },
       },
     });

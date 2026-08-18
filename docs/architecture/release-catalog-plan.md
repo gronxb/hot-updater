@@ -45,8 +45,7 @@ The #1141 update-check URL contains `minBundleId`, current `bundleId`, and
 `cohort`:
 
 ```text
-/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort
-/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort
+
 ```
 
 These are installation-specific decision inputs. Two devices in the same
@@ -1345,9 +1344,9 @@ Bundle ID, the first v2 selection can adopt exact identity without bytes.
 Stable and staging Bundle slots migrate independently. Crash history is
 deduplicated/clamped to ten.
 
-New SDK uses v2; old SDK routes remain. Runtime startup/doctor rejects a schema
-with missing/inconsistent catalog projections. Analytics columns remain
-nullable.
+The v1 SDK uses v2 routes only. Existing v0 binaries remain on a separate v0
+endpoint during cutover. Runtime startup/doctor rejects a schema with
+missing/inconsistent catalog projections. Analytics columns remain nullable.
 
 ## Implementation sequence inside the single PR
 
@@ -1381,12 +1380,12 @@ nullable.
 - Integrate strong snapshot plus short CAS transaction in every provider.
 - Prove deterministic rebuild and atomic oversize/conflict failure.
 
-### 5. Implement v2 server, CDN, and legacy bridge
+### 5. Implement the v1-only v2 server and CDN boundary
 
 - Add canonical catalog/artifact routes, auth, ETag, no-cache errors, LRU, and
   singleflight.
 - Configure provider cache layers and counters.
-- Rebuild legacy results from catalog/reference selector without DB queries.
+- Remove v0 update-check routes and their SDK-version header contract.
 
 ### 6. Implement local selector and native metadata-v2
 
@@ -1413,8 +1412,8 @@ nullable.
 
 ### 9. Prove GREEN on every provider
 
-- Run unit/property, native, provider integration, Device E2E, Console, legacy,
-  and controlled load suites.
+- Run unit/property, native, provider integration, Device E2E, Console,
+  infrastructure-generation, and controlled load suites.
 - Attach cache/origin/DB evidence for AWS, Cloudflare, and Firebase, plus
   distinct origin-only Edge/Postgres evidence for Supabase.
 - Add changesets and compatibility documentation only after the gates pass.

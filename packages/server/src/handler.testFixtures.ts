@@ -1,4 +1,4 @@
-import { type LegacyBundle, NIL_UUID } from "@hot-updater/core";
+import type { LegacyBundle } from "@hot-updater/core";
 import { vi } from "vitest";
 
 import {
@@ -6,9 +6,6 @@ import {
   type HandlerAPI,
   type HandlerFeatures,
 } from "./handler";
-
-export const NEXT_SDK_VERSION_FOR_TEST = "0.31.0";
-export const CURRENT_PACKAGE_SDK_VERSION = "0.30.10";
 
 export const testBundle: LegacyBundle = {
   id: "bundle-1",
@@ -26,16 +23,6 @@ export const testBundle: LegacyBundle = {
 
 export const createApi = () =>
   ({
-    getAppUpdateInfo: vi
-      .fn<HandlerAPI["getAppUpdateInfo"]>()
-      .mockResolvedValue({
-        fileHash: null,
-        fileUrl: null,
-        id: NIL_UUID,
-        message: null,
-        shouldForceUpdate: true,
-        status: "ROLLBACK",
-      }),
     getBundleById: vi.fn<HandlerAPI["getBundleById"]>(),
     getBundles: vi.fn<HandlerAPI["getBundles"]>(),
     getChannels: vi

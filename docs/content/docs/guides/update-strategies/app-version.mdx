@@ -72,17 +72,22 @@ export default HotUpdater.wrap({
 })(App);
 ```
 
-The client automatically constructs this endpoint:
+The client fetches the app-version Release Catalog:
+
 ```
-GET {baseUrl}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId
+GET {baseUrl}/v2/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion
 ```
+
+It evaluates the catalog locally, then resolves the selected artifact through
+`/v2/artifacts/:targetBundleId/from/:currentBundleId`. `:channelKey` is the
+base64url-encoded channel name.
 
 ## Testing the Endpoint
 
 Test your update endpoint using curl:
 
 ```bash
-curl "https://your-update-endpoint.com/check-update/app-version/ios/1.0.0/production/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000001"
+curl "https://your-update-endpoint.com/check-update/v2/release-catalogs/app-version/default/ios/cHJvZHVjdGlvbg/1.0.0"
 ```
 
 Parameters:

@@ -40,6 +40,10 @@ export const UPDATE_TARGETS = [
     version: "0.33.0",
     note: "provider update checks reuse selected bundles",
   },
+  {
+    version: "1.0.0",
+    note: "Release Catalog infrastructure generation",
+  },
 ] as const satisfies readonly [UpdateTarget, ...UpdateTarget[]];
 
 const getTargetAt = ({
@@ -144,4 +148,12 @@ export function isInfrastructureUpdateRequired({
   }
 
   return isLess(normalizedServerVersion, normalizedRequiredVersion);
+}
+
+export function isV1InfrastructureRequired(requiredVersion: string): boolean {
+  const normalizedRequiredVersion = normalize(requiredVersion);
+  if (!normalizedRequiredVersion) {
+    throw new Error("Invalid infrastructure version");
+  }
+  return !isLess(normalizedRequiredVersion, "1.0.0");
 }

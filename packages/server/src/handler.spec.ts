@@ -1,137 +1,34 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { createHandler } from "./handler";
-import {
-  createApi,
-  CURRENT_PACKAGE_SDK_VERSION,
-  NEXT_SDK_VERSION_FOR_TEST,
-} from "./handler.testFixtures";
+import { createApi } from "./handler.testFixtures";
+import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "./handlerVersionRoutes";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
-describe("createHandler update routes", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("supports the app-version route without a cohort segment", async () => {
-    const api = createApi();
-    const handler = createHandler(api, { basePath: "/hot-updater" });
-    const response = await handler(
-      new Request(
-        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
-      ),
-    );
-
-    expect(response.status).toBe(200);
-    expect(api.getAppUpdateInfo).toHaveBeenCalledWith({
-      _updateStrategy: "appVersion",
-      appVersion: "1.0.0",
-      bundleId: "default",
-      channel: "production",
-      cohort: undefined,
-      minBundleId: "default",
-      platform: "ios",
-    });
-  });
-
-  it("keeps legacy no-update responses as null when SDK version is missing", async () => {
-    const api = createApi();
-    api.getAppUpdateInfo.mockResolvedValueOnce(null);
-    const handler = createHandler(api, { basePath: "/hot-updater" });
-    const response = await handler(
-      new Request(
-        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
-      ),
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toBeNull();
-  });
-
-  it("returns UP_TO_DATE for no-update responses from SDK-versioned clients", async () => {
-    const api = createApi();
-    api.getAppUpdateInfo.mockResolvedValueOnce(null);
-    const handler = createHandler(api, { basePath: "/hot-updater" });
-    const response = await handler(
-      new Request(
-        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
-        { headers: { "Hot-Updater-SDK-Version": NEXT_SDK_VERSION_FOR_TEST } },
-      ),
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ status: "UP_TO_DATE" });
-  });
-
-  it("keeps no-update responses as null for unsupported SDK versions", async () => {
-    const api = createApi();
-    api.getAppUpdateInfo.mockResolvedValueOnce(null);
-    const handler = createHandler(api, { basePath: "/hot-updater" });
-    const response = await handler(
-      new Request(
-        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
-        {
-          headers: {
-            "Hot-Updater-SDK-Version": CURRENT_PACKAGE_SDK_VERSION,
-          },
-        },
-      ),
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toBeNull();
-  });
-
-  it("supports the fingerprint route without a cohort segment", async () => {
-    const api = createApi();
-    const handler = createHandler(api, { basePath: "/hot-updater" });
-    const response = await handler(
-      new Request(
-        "http://localhost/hot-updater/fingerprint/android/fingerprint-123/production/default/default",
-      ),
-    );
-
-    expect(response.status).toBe(200);
-    expect(api.getAppUpdateInfo).toHaveBeenCalledWith({
-      _updateStrategy: "fingerprint",
-      bundleId: "default",
-      channel: "production",
-      cohort: undefined,
-      fingerprintHash: "fingerprint-123",
-      minBundleId: "default",
-      platform: "android",
-    });
-  });
-
-  it("supports the version route", async () => {
-    const api = createApi();
-    const handler = createHandler(api, { basePath: "/hot-updater" });
+describe("createHandler version routes", () => {
+  it("reports the v1 infrastructure generation", async () => {
+    const handler = createHandler(createApi(), { basePath: "/hot-updater" });
     const response = await handler(
       new Request("http://localhost/hot-updater/version"),
     );
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
+      infrastructureGeneration: HOT_UPDATER_INFRASTRUCTURE_GENERATION,
       version: HOT_UPDATER_SERVER_VERSION,
     });
   });
 
-  it("returns the error message for unexpected failures", async () => {
-    const api = createApi();
-    api.getAppUpdateInfo.mockRejectedValueOnce(new Error("Database failed"));
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const handler = createHandler(api, { basePath: "/hot-updater" });
+  it.each([
+    "/app-version/ios/1.0.0/production/default/default",
+    "/fingerprint/android/fingerprint-123/production/default/default",
+  ])("does not expose the v0 route %s", async (path) => {
+    const handler = createHandler(createApi(), { basePath: "/hot-updater" });
 
     const response = await handler(
-      new Request(
-        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
-      ),
+      new Request(`http://localhost/hot-updater${path}`),
     );
 
-    expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toEqual({
-      error: "Internal server error",
-      message: "Database failed",
-    });
+    expect(response.status).toBe(404);
   });
 });
