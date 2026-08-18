@@ -310,8 +310,11 @@ export function ReleaseEditorSheet({
   const availableChannels = channels.filter(
     (channel) => channel.id !== release?.channel_id,
   );
+  const availableChannelItems = availableChannels.map((channel) => ({
+    label: channel.name,
+    value: channel.name,
+  }));
   const normalizedTargetChannel = targetChannel.trim();
-  const isSameTargetChannel = normalizedTargetChannel === channelName;
   const isCopyPromotion = promoteAction === "copy";
   const normalizedTargetAppVersion = draft
     ? normalizeRange(draft.targetAppVersion.trim())
@@ -801,45 +804,25 @@ export function ReleaseEditorSheet({
 
             <div className="space-y-2">
               <Label htmlFor="target-channel">Target Channel</Label>
-              <Input
-                aria-invalid={isSameTargetChannel}
+              <Select
                 disabled={promote.isPending}
-                id="target-channel"
-                list="available-channels"
-                onChange={(event) => setTargetChannel(event.target.value)}
-                placeholder="Enter a channel name"
-                value={targetChannel}
-              />
-              <datalist id="available-channels">
-                {availableChannels.map((channel) => (
-                  <option key={channel.id} value={channel.name} />
-                ))}
-              </datalist>
-              {availableChannels.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {availableChannels.map((channel) => (
-                    <Button
-                      aria-label={`Use ${channel.name} as target channel`}
-                      disabled={promote.isPending}
-                      key={channel.id}
-                      onClick={() => setTargetChannel(channel.name)}
-                      size="xs"
-                      type="button"
-                      variant="outline"
-                    >
-                      {channel.name}
-                    </Button>
-                  ))}
-                </div>
-              ) : null}
-              <p className="text-xs text-muted-foreground">
-                Choose an existing channel or enter a new one.
-              </p>
-              {isSameTargetChannel ? (
-                <p className="text-xs text-destructive" role="alert">
-                  Target channel must be different from the current channel.
-                </p>
-              ) : null}
+                items={availableChannelItems}
+                onValueChange={(value) => setTargetChannel(value ?? "")}
+                value={targetChannel || null}
+              >
+                <SelectTrigger className="w-full" id="target-channel">
+                  <SelectValue placeholder="Select a channel" />
+                </SelectTrigger>
+                <SelectContent className="max-h-64">
+                  <SelectGroup>
+                    {availableChannels.map((channel) => (
+                      <SelectItem key={channel.id} value={channel.name}>
+                        {channel.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -852,11 +835,7 @@ export function ReleaseEditorSheet({
               Cancel
             </Button>
             <Button
-              disabled={
-                !normalizedTargetChannel ||
-                isSameTargetChannel ||
-                promote.isPending
-              }
+              disabled={!normalizedTargetChannel || promote.isPending}
               onClick={async () => {
                 if (!release) return;
                 try {

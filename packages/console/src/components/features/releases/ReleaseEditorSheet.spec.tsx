@@ -248,7 +248,7 @@ describe("ReleaseEditorSheet", () => {
     ).toBeDefined();
   });
 
-  it("keeps the v0 move model and accepts a brand-new target channel", async () => {
+  it("keeps the v0 move model and selects the target from a listbox", async () => {
     render(
       <ReleaseEditorSheet
         channels={[
@@ -276,9 +276,17 @@ describe("ReleaseEditorSheet", () => {
       ),
     ).toBeDefined();
 
-    fireEvent.change(within(dialog).getByLabelText("Target Channel"), {
-      target: { value: "nightly" },
-    });
+    fireEvent.click(
+      within(dialog).getByRole("combobox", { name: "Target Channel" }),
+    );
+    const betaOption = screen.getByRole("option", { name: "beta" });
+    fireEvent.pointerDown(betaOption);
+    fireEvent.click(betaOption);
+    expect(
+      within(dialog).queryByRole("button", {
+        name: "Use beta as target channel",
+      }),
+    ).toBeNull();
     fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
 
     await waitFor(() => {
@@ -286,7 +294,7 @@ describe("ReleaseEditorSheet", () => {
         action: "move",
         expectedRevision: 2,
         releaseId: "release-1",
-        targetChannel: "nightly",
+        targetChannel: "beta",
       });
     });
   });
@@ -321,10 +329,11 @@ describe("ReleaseEditorSheet", () => {
       ),
     ).toBeDefined();
     fireEvent.click(
-      within(dialog).getByRole("button", {
-        name: "Use beta as target channel",
-      }),
+      within(dialog).getByRole("combobox", { name: "Target Channel" }),
     );
+    const betaOption = screen.getByRole("option", { name: "beta" });
+    fireEvent.pointerDown(betaOption);
+    fireEvent.click(betaOption);
     fireEvent.click(within(dialog).getByRole("button", { name: "Copy" }));
 
     await waitFor(() => {
