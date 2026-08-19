@@ -1178,7 +1178,8 @@ async function applyDeployConfig({
   const deployBaseUrl = getControllerReachableAppBaseUrl();
   const sourceWithDeployBaseUrl = sourceWithWarmMetroCache.replace(
     STANDALONE_REPOSITORY_BASE_URL_PATTERN,
-    (_match, prefix: string) => `${prefix}${JSON.stringify(deployBaseUrl)}`,
+    (_match, prefix: string) =>
+      `${prefix}${JSON.stringify(`${deployBaseUrl}/admin`)}`,
   );
 
   await fsPromises.writeFile(
