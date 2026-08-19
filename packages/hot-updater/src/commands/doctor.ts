@@ -410,24 +410,16 @@ const checkAndroidNativeStatus = async ({
 }): Promise<{ status?: NativePlatformStatus; issues: NativeCheckIssue[] }> => {
   const configuredManifestPaths =
     config.platform.android.androidManifestPaths ?? [];
-  const configuredStringPaths =
-    config.platform.android.stringResourcePaths ?? [];
-  const configuredPaths = [
-    ...configuredManifestPaths,
-    ...configuredStringPaths,
-  ];
   const androidDetected =
-    fs.existsSync(path.join(cwd, "android")) || configuredPaths.length > 0;
+    fs.existsSync(path.join(cwd, "android")) ||
+    configuredManifestPaths.length > 0;
 
   if (!androidDetected) {
     return { issues: [] };
   }
 
-  const androidParser = new AndroidConfigParser(
-    configuredStringPaths,
-    configuredManifestPaths,
-  );
-  const files = configuredPaths.filter((filePath) =>
+  const androidParser = new AndroidConfigParser(configuredManifestPaths);
+  const files = configuredManifestPaths.filter((filePath) =>
     fs.existsSync(resolveProjectPath(cwd, filePath)),
   );
   const issues: NativeCheckIssue[] = [];
@@ -441,7 +433,7 @@ const checkAndroidNativeStatus = async ({
       resolution:
         "Check platform.android.androidManifestPaths in hot-updater.config.ts or run Android prebuild first.",
       fixability: "auto",
-      paths: configuredPaths,
+      paths: configuredManifestPaths,
     });
   }
 

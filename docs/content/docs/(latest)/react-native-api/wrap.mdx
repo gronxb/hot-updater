@@ -11,8 +11,9 @@ icon: Package
 > This enables automatic crash detection and rollback. Update methods will
 > throw an error if neither API is used.
 
-`HotUpdater.wrap` configures automatic updates. The automatic mode is the
-default, so `updateMode` is no longer needed.
+`HotUpdater.wrap` always runs the automatic update flow. `updateMode` is not
+accepted. For a manual flow, use
+[`HotUpdater.init`](/docs/react-native-api/init).
 
 ### Automatic Updates
 

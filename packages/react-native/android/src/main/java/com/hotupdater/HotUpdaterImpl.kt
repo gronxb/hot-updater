@@ -154,7 +154,6 @@ class HotUpdaterImpl {
             NativeConfigUtils.getString(
                 context,
                 NativeConfigUtils.CHANNEL_META_DATA_KEY,
-                "hot_updater_channel",
             ) ?: DEFAULT_CHANNEL
 
         /**
@@ -226,7 +225,6 @@ class HotUpdaterImpl {
             NativeConfigUtils.getString(
                 context,
                 NativeConfigUtils.FINGERPRINT_HASH_META_DATA_KEY,
-                "hot_updater_fingerprint_hash",
             )
     }
 
@@ -238,7 +236,6 @@ class HotUpdaterImpl {
         NativeConfigUtils.getString(
             context,
             NativeConfigUtils.FINGERPRINT_HASH_META_DATA_KEY,
-            "hot_updater_fingerprint_hash",
         )
 
     /**
@@ -259,7 +256,6 @@ class HotUpdaterImpl {
         return NativeConfigUtils.getString(
             context,
             NativeConfigUtils.CHANNEL_META_DATA_KEY,
-            "hot_updater_channel",
         ) ?: DEFAULT_CHANNEL
     }
 

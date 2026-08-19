@@ -281,17 +281,6 @@ export interface PlatformConfig {
      * @example ["android/app/src/main/AndroidManifest.xml"]
      */
     androidManifestPaths?: string[];
-
-    /**
-     * Android string resource paths.
-     *
-     * @deprecated Android Hot Updater config is stored in AndroidManifest.xml.
-     * This remains supported as a legacy read fallback.
-     *
-     * @default all strings.xml files in the android directory
-     * @example ["android/app/src/main/res/values/strings.xml"]
-     */
-    stringResourcePaths?: string[];
   };
 
   /**
@@ -473,13 +462,6 @@ export type ConfigInput = {
    * @default "node_modules/.hot-updater"
    */
   cacheDir?: string | null;
-  /**
-   * The channel used when building the native app.
-   * Used to replace __HOT_UPDATER_CHANNEL at build time.
-   *
-   * @deprecated Use the `hot-updater channel create` command to create a channel.
-   */
-  releaseChannel?: string;
   /**
    * The strategy used to update the app.
    *

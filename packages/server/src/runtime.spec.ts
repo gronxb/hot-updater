@@ -127,7 +127,7 @@ describe("runtime createHotUpdater", () => {
     const result = hotUpdater.getChannels();
 
     await expect(result).rejects.toThrow(
-      "Hot Updater database schema version 0.21.0 is not supported by mongodb.",
+      "Hot Updater v1 cannot migrate schema 0.21.0 in place.",
     );
   });
 

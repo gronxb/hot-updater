@@ -92,7 +92,7 @@ object SignatureVerifier {
     private const val TAG = "SignatureVerifier"
 
     /**
-     * Reads public key from Android string resources.
+     * Reads public key from AndroidManifest metadata.
      * @param context Application context
      * @return Public key PEM string or null if not configured
      */
@@ -101,7 +101,6 @@ object SignatureVerifier {
             NativeConfigUtils.getString(
                 context,
                 NativeConfigUtils.PUBLIC_KEY_META_DATA_KEY,
-                "hot_updater_public_key",
             )
 
         if (publicKeyPEM.isNullOrEmpty()) {

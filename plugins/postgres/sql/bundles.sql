@@ -1,3 +1,5 @@
+-- HotUpdater.schema
+
 create table channels (
   id varchar(255) primary key not null,
   name varchar(255) not null
@@ -166,3 +168,7 @@ alter table releases add constraint releases_source_release_id_fk
   foreign key (source_release_id) references releases(id) on update restrict on delete set null;
 alter table release_catalogs add constraint release_catalogs_channel_id_fk
   foreign key (channel_id) references channels(id) on update restrict on delete restrict;
+
+insert into private_hot_updater_settings (key, value)
+values ('schema.core', '1.0.0')
+on conflict (key) do update set value = excluded.value;

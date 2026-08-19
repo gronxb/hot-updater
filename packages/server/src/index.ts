@@ -16,12 +16,6 @@ export {
 } from "./clientAccessKeys";
 export type { CreatedClientAccessKey } from "./clientAccessKeys";
 export { createHotUpdater } from "./createHotUpdaterCore";
-export {
-  compileLegacyReleaseCatalogBackfill,
-  createReleaseCatalogBackfillInsertSql,
-  type LegacyBundlePolicyRow,
-  type ReleaseCatalogBackfillResult,
-} from "./db/releaseCatalogBackfill";
 export type {
   CreateHotUpdaterFeatures,
   CreateHotUpdaterOptions,

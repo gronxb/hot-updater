@@ -128,7 +128,7 @@ export const queryStandaloneRows = <TModel extends DatabaseModel>(
   rows: readonly DatabaseRow<TModel>[],
   input: {
     readonly where?: readonly DatabaseWhere<TModel>[];
-    readonly sortBy?: {
+    readonly orderBy?: {
       readonly field: keyof DatabaseRow<TModel>;
       readonly direction: "asc" | "desc";
     };
@@ -139,13 +139,13 @@ export const queryStandaloneRows = <TModel extends DatabaseModel>(
   const filtered = rows.filter((row) =>
     matchesStandaloneWhere(row, input.where),
   );
-  if (input.sortBy) {
-    const direction = input.sortBy.direction === "asc" ? 1 : -1;
+  if (input.orderBy) {
+    const direction = input.orderBy.direction === "asc" ? 1 : -1;
     filtered.sort(
       (left, right) =>
         compare(
-          Reflect.get(left, input.sortBy?.field ?? "id"),
-          Reflect.get(right, input.sortBy?.field ?? "id"),
+          Reflect.get(left, input.orderBy?.field ?? "id"),
+          Reflect.get(right, input.orderBy?.field ?? "id"),
         ) * direction,
     );
   }

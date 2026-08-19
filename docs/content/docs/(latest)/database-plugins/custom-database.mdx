@@ -215,27 +215,23 @@ source `changeIndex`. All other validation, constraint, and provider failures
 reject. A provider without an atomic conditional primitive must reject before
 its first write; there is no Release-now/catalog-later fallback.
 
-## Migrate a #1141 provider
+## Implement the 1.0.0 schema
 
-The migration is intentionally breaking:
+v1 does not upgrade a populated v0 database. Create empty 1.0.0 storage and
+redeploy Releases from source artifacts.
 
 1. Remove `queries`, `getUpdateInfo`, provider decision SQL/RPCs, and any
    desired-state cache owned by the provider.
-2. Remove rollout and compatibility policy from final Bundle mappings.
-3. Add Release and Release-catalog storage, indexes, references, and schema
-   backfill.
+2. Keep Bundle rows as immutable artifacts. Store rollout and compatibility
+   policy on Releases.
+3. Add Channel, Release, and Release-catalog storage, indexes, and references.
 4. Implement exact catalog reads and strongly consistent, keyset-paged Release
    scope reads.
 5. Extend the atomic commit with Release revision and catalog generation
    expectations.
-6. Run catalog preflight before recording the new schema version. An invalid or
-   oversized scope blocks the migration without a partial cutover.
+6. Record `schema.core = 1.0.0` only on an empty database. Reject any other
+   source schema instead of backfilling it.
 7. Run the public conformance and integration suites against the real backend.
-
-For each legacy Bundle, backfill a Release with the same ID and Bundle ID,
-revision `1`, operation `DEPLOY`, and its former policy. Compile all scopes,
-compare the optimized and reference selectors, then remove the old Bundle
-policy columns.
 
 Provider-specific consistency requirements:
 

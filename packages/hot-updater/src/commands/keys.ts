@@ -94,14 +94,10 @@ interface WriteResult {
 
 async function writePublicKeyToAndroid(
   publicKey: string,
-  customPaths: string[],
   androidManifestPaths: string[],
 ): Promise<WriteResult> {
   try {
-    const androidParser = new AndroidConfigParser(
-      customPaths,
-      androidManifestPaths,
-    );
+    const androidParser = new AndroidConfigParser(androidManifestPaths);
 
     if (!(await androidParser.exists())) {
       return {
@@ -222,16 +218,11 @@ export const keysExportPublic = async (
       return;
     }
 
-    const androidStringPaths =
-      config.platform.android.stringResourcePaths ?? [];
     const androidManifestPaths =
       config.platform.android.androidManifestPaths ?? [];
 
     // Check which files exist (config already loaded above)
-    const androidParser = new AndroidConfigParser(
-      androidStringPaths,
-      androidManifestPaths,
-    );
+    const androidParser = new AndroidConfigParser(androidManifestPaths);
     const iosParser = new IosConfigParser(config.platform.ios.infoPlistPaths);
 
     const androidExists = await androidParser.exists();
@@ -275,7 +266,6 @@ export const keysExportPublic = async (
       results.push(
         await writePublicKeyToAndroid(
           publicKeyPEM.trim(),
-          androidStringPaths,
           androidManifestPaths,
         ),
       );
@@ -331,14 +321,10 @@ interface RemoveResult {
 }
 
 async function removePublicKeyFromAndroid(
-  customPaths: string[],
   androidManifestPaths: string[],
 ): Promise<RemoveResult> {
   try {
-    const androidParser = new AndroidConfigParser(
-      customPaths,
-      androidManifestPaths,
-    );
+    const androidParser = new AndroidConfigParser(androidManifestPaths);
 
     if (!(await androidParser.exists())) {
       return {
@@ -430,14 +416,10 @@ async function removePublicKeyFromIos(
  */
 export const keysRemove = async (options: KeysRemoveOptions = {}) => {
   const config = await loadConfig(null);
-  const androidStringPaths = config.platform.android.stringResourcePaths ?? [];
   const androidManifestPaths =
     config.platform.android.androidManifestPaths ?? [];
 
-  const androidParser = new AndroidConfigParser(
-    androidStringPaths,
-    androidManifestPaths,
-  );
+  const androidParser = new AndroidConfigParser(androidManifestPaths);
   const iosParser = new IosConfigParser(config.platform.ios.infoPlistPaths);
 
   // Check what exists
@@ -508,12 +490,7 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
     );
   }
   if (androidKey.value) {
-    results.push(
-      await removePublicKeyFromAndroid(
-        androidStringPaths,
-        androidManifestPaths,
-      ),
-    );
+    results.push(await removePublicKeyFromAndroid(androidManifestPaths));
   }
 
   for (const result of results) {

@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 
 import {
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+} from "@hot-updater/core";
+import {
   createMockDatabaseData,
   mockDatabase,
   mockStorage,
@@ -8,11 +12,15 @@ import {
 import {
   bundleToPatchRows,
   bundleToRow,
+  compileReleaseCatalog,
+  extractTimestampFromUUIDv7,
+  releaseRowToRelease,
   type Bundle,
   type BundleEventRow,
   type LegacyBundle,
+  type ReleaseCatalogRow,
+  type ReleaseRow,
 } from "@hot-updater/plugin-core";
-import { compileLegacyReleaseCatalogBackfill } from "@hot-updater/server";
 
 type BundleSeed = Omit<LegacyBundle, "storageUri"> &
   Partial<
@@ -52,7 +60,7 @@ const createManifestUri = (bundleId: string) =>
   `${createReleaseRootUri(bundleId)}/manifest.json`;
 
 const createAssetBaseUri = (bundleId: string) =>
-  `${createReleaseRootUri(bundleId)}/files`;
+  `${createReleaseRootUri(bundleId)}/assets`;
 
 const createPatchArtifact = (
   bundleId: string,
@@ -664,29 +672,127 @@ for (const bundle of bundles) {
   }
 }
 
-const backfill = await compileLegacyReleaseCatalogBackfill({
-  authorityId: "console-demo",
-  rows: bundles.map((bundle) => ({
+const compiledReleases: {
+  readonly channelName: string;
+  readonly row: ReleaseRow;
+}[] = [];
+const compiledCatalogs: {
+  readonly channelName: string;
+  readonly row: ReleaseCatalogRow;
+}[] = [];
+const scopes = new Map<
+  string,
+  {
+    readonly channelName: string;
+    readonly fingerprintHash: string | null;
+    readonly platform: LegacyBundle["platform"];
+    readonly releases: ReleaseRow[];
+    readonly strategy: "APP_VERSION" | "FINGERPRINT";
+  }
+>();
+for (const bundle of bundles) {
+  const strategy =
+    bundle.fingerprintHash === null ? "APP_VERSION" : "FINGERPRINT";
+  const channelKey = encodeChannelKey(bundle.channel);
+  const scopeKey =
+    strategy === "APP_VERSION"
+      ? createReleaseCatalogScopeKey({
+          authorityId: "console-demo",
+          channelKey,
+          platform: bundle.platform,
+          strategy,
+        })
+      : createReleaseCatalogScopeKey({
+          authorityId: "console-demo",
+          channelKey,
+          fingerprintHash: bundle.fingerprintHash ?? "",
+          platform: bundle.platform,
+          strategy,
+        });
+  let createdAtMs = 0;
+  try {
+    const timestamp = extractTimestampFromUUIDv7(bundle.id);
+    createdAtMs = Number.isSafeInteger(timestamp) ? timestamp : 0;
+  } catch {
+    createdAtMs = 0;
+  }
+  const release: ReleaseRow = {
     id: bundle.id,
+    revision: 1,
+    scope_key: scopeKey,
+    channel_id: bundle.channel,
     platform: bundle.platform,
-    channel: bundle.channel,
+    kind: "BUNDLE",
+    bundle_id: bundle.id,
+    strategy,
+    target_app_version: bundle.targetAppVersion,
+    fingerprint_hash: bundle.fingerprintHash,
     enabled: bundle.enabled,
     should_force_update: bundle.shouldForceUpdate,
     message: bundle.message,
-    target_app_version: bundle.targetAppVersion,
-    fingerprint_hash: bundle.fingerprintHash,
-    rollout_cohort_count: bundle.rolloutCohortCount,
-    target_cohorts: bundle.targetCohorts,
-  })),
-});
-for (const release of backfill.releases) {
+    rollout_cohort_count: bundle.rolloutCohortCount ?? 1000,
+    target_cohorts: bundle.targetCohorts ?? [],
+    operation: "DEPLOY",
+    source_release_id: null,
+    created_at_ms: createdAtMs,
+    updated_at_ms: createdAtMs,
+  };
+  const scope = scopes.get(scopeKey);
+  if (scope === undefined) {
+    scopes.set(scopeKey, {
+      channelName: bundle.channel,
+      fingerprintHash: bundle.fingerprintHash,
+      platform: bundle.platform,
+      releases: [release],
+      strategy,
+    });
+  } else {
+    scope.releases.push(release);
+  }
+}
+for (const [scopeKey, scope] of [...scopes].sort(([left], [right]) =>
+  left.localeCompare(right),
+)) {
+  scope.releases.sort((left, right) => left.id.localeCompare(right.id));
+  compiledReleases.push(
+    ...scope.releases.map((row) => ({
+      channelName: scope.channelName,
+      row,
+    })),
+  );
+  const compilation = await compileReleaseCatalog({
+    releases: scope.releases.map(releaseRowToRelease),
+    strategy: scope.strategy,
+  });
+  compiledCatalogs.push({
+    channelName: scope.channelName,
+    row: {
+      scope_key: scopeKey,
+      authority_id: "console-demo",
+      strategy: scope.strategy,
+      channel_id: scope.channelName,
+      channel_key: encodeChannelKey(scope.channelName),
+      platform: scope.platform,
+      fingerprint_hash: scope.fingerprintHash,
+      generation: 1,
+      payload: compilation.canonicalPayload,
+      catalog_hash: compilation.catalogHash,
+      byte_size: compilation.byteSize,
+      is_tombstone: compilation.payload.releaseDescriptors.length === 0,
+      updated_at_ms: Math.max(
+        ...scope.releases.map(({ updated_at_ms }) => updated_at_ms),
+      ),
+    },
+  });
+}
+for (const release of compiledReleases) {
   const channelId = `channel-${release.channelName}`;
   databaseData.releases.set(release.row.id, {
     ...release.row,
     channel_id: channelId,
   });
 }
-for (const catalog of backfill.catalogs) {
+for (const catalog of compiledCatalogs) {
   const channelId = `channel-${catalog.channelName}`;
   databaseData.releaseCatalogs.set(catalog.row.scope_key, {
     ...catalog.row,

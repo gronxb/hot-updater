@@ -269,29 +269,19 @@ describe("HotUpdater client initialization", () => {
 
     expect(mocks.wrap).toHaveBeenCalledWith({
       resolver,
-      updateMode: "auto",
       updateStrategy: "appVersion",
     });
   });
 
-  it("keeps deprecated manual wrap calls working", async () => {
-    const resolver = {
-      checkUpdate: vi.fn(),
-      notifyAppReady: vi.fn(),
-    };
-    mocks.createDefaultResolver.mockReturnValue(resolver);
-
+  it("rejects removed manual wrap options", async () => {
     const HotUpdater = await importHotUpdater();
 
-    HotUpdater.wrap({
-      baseURL: "https://updates.example.com",
-      updateMode: "manual",
-    });
-
-    expect(mocks.wrap).toHaveBeenCalledWith({
-      resolver,
-      updateMode: "manual",
-    });
+    expect(() =>
+      HotUpdater.wrap({
+        baseURL: "https://updates.example.com",
+        updateMode: "manual",
+      } as never),
+    ).toThrow('HotUpdater.wrap({ updateMode: "manual" }) was removed');
   });
 
   it("types public wrap to accept pre-typed option unions", () => {

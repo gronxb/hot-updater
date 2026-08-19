@@ -4,7 +4,6 @@ import type {
   DatabaseDistinctOn,
   DatabaseOrderBy,
   DatabaseSelect,
-  DatabaseSortBy,
   DatabaseWhere,
   SelectedDatabaseRow,
 } from "./databaseQuery";
@@ -194,7 +193,6 @@ export type FindManyDatabaseInput<
   readonly limit?: number;
   readonly offset?: number;
   readonly orderBy?: DatabaseOrderBy<TModel>;
-  readonly sortBy?: DatabaseSortBy<TModel>;
   readonly distinctOn?: DatabaseDistinctOn<TModel>;
   readonly select?: TSelect;
 };

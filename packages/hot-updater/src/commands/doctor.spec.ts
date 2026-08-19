@@ -38,7 +38,7 @@ const createConfig = (overrides: Record<string, unknown> = {}) => ({
       infoPlistPaths: [],
     },
     android: {
-      stringResourcePaths: [],
+      androidManifestPaths: [],
     },
   },
   signing: {
@@ -74,16 +74,19 @@ ${body}
   );
 };
 
-const writeStringsXml = async (
+const writeAndroidManifest = async (
   cwd: string,
-  body: string,
-  filePath = "android/app/src/main/res/values/strings.xml",
+  metaData: string,
+  filePath = "android/app/src/main/AndroidManifest.xml",
 ) => {
   await writeFile(
     path.join(cwd, filePath),
-    `<resources>
-${body}
-</resources>
+    `<?xml version="1.0" encoding="utf-8"?>
+<manifest>
+  <application>
+${metaData}
+  </application>
+</manifest>
 `,
   );
 };
@@ -161,21 +164,15 @@ describe("areVersionsCompatible", () => {
 });
 
 describe("infrastructure version helpers", () => {
-  it("resolves the latest infrastructure target required by a package version", () => {
-    expect(getRequiredInfrastructureVersion("0.28.0")).toBe("0.21.0");
-    expect(getRequiredInfrastructureVersion("0.29.8")).toBe("0.29.0");
-    expect(getRequiredInfrastructureVersion("0.30.0")).toBe("0.30.0");
-    expect(getRequiredInfrastructureVersion("0.30.1")).toBe("0.30.0");
-    expect(getRequiredInfrastructureVersion("0.31.0")).toBe("0.31.0");
-    expect(getRequiredInfrastructureVersion("0.31.9")).toBe("0.31.0");
-    expect(getRequiredInfrastructureVersion("0.32.0")).toBe("0.32.0");
-    expect(getRequiredInfrastructureVersion("0.33.0")).toBe("0.33.0");
+  it("resolves generation 1 as the only infrastructure target", () => {
+    expect(getRequiredInfrastructureVersion("0.36.0")).toBe("1.0.0");
+    expect(getRequiredInfrastructureVersion("1.0.0")).toBe("1.0.0");
+    expect(getRequiredInfrastructureVersion("1.2.0")).toBe("1.0.0");
   });
 
-  it("resolves the latest server runtime target required by a package version", () => {
-    expect(getRequiredServerVersion("0.32.0")).toBe("0.32.0");
-    expect(getRequiredServerVersion("0.33.0")).toBe("0.33.0");
-    expect(getRequiredServerVersion("0.32.9")).toBe("0.32.0");
+  it("resolves generation 1 as the only server runtime target", () => {
+    expect(getRequiredServerVersion("0.36.0")).toBe("1.0.0");
+    expect(getRequiredServerVersion("1.0.0")).toBe("1.0.0");
   });
 
   it("does not require an update just because the server package version is newer", () => {
@@ -557,20 +554,26 @@ describe("doctor", () => {
     });
   });
 
-  it("should pass when server infrastructure is on the required target", async () => {
+  it("should pass when the endpoint declares infrastructure generation 1", async () => {
     mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
-          "hot-updater": "0.30.0",
+          "hot-updater": "1.0.0",
         },
       },
       path: "/mock/cwd/package.json",
     });
     const fetchImpl = vi.fn<typeof fetch>(async () => {
-      return new Response(JSON.stringify({ version: "0.30.0" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          infrastructureGeneration: 1,
+          version: "1.0.0",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     });
 
     const result = await doctor({
@@ -586,14 +589,15 @@ describe("doctor", () => {
     expect(result).toEqual({
       success: true,
       details: {
-        hotUpdaterVersion: "0.30.0",
+        hotUpdaterVersion: "1.0.0",
         installedHotUpdaterPackages: [],
         packageJsonPath: "/mock/cwd/package.json",
         infrastructure: {
           baseUrl: "https://example.com",
           versionEndpoint: "https://example.com/version",
-          serverVersion: "0.30.0",
-          requiredVersion: "0.30.0",
+          serverVersion: "1.0.0",
+          infrastructureGeneration: 1,
+          requiredVersion: "1.0.0",
           needsUpdate: false,
         },
       },
@@ -602,11 +606,11 @@ describe("doctor", () => {
 
   it("accepts a direct Supabase Edge URL as origin-only mode", async () => {
     mockReadPackageUp.mockResolvedValue({
-      packageJson: { dependencies: { "hot-updater": "0.30.0" } },
+      packageJson: { dependencies: { "hot-updater": "1.0.0" } },
       path: "/mock/cwd/package.json",
     });
     const fetchImpl = vi.fn<typeof fetch>(async () =>
-      Response.json({ version: "0.30.0" }),
+      Response.json({ infrastructureGeneration: 1, version: "1.0.0" }),
     );
 
     const result = await doctor({
@@ -631,50 +635,17 @@ describe("doctor", () => {
     });
   });
 
-  it("should pass when server version is newer than the required infrastructure target", async () => {
+  it("blocks a v0 endpoint instead of suggesting an in-place update", async () => {
     mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
-          "hot-updater": "0.30.0",
+          "hot-updater": "1.0.0",
         },
       },
       path: "/mock/cwd/package.json",
     });
     const fetchImpl = vi.fn<typeof fetch>(async () => {
-      return new Response(JSON.stringify({ version: "0.30.1" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    });
-
-    const result = await doctor({
-      serverBaseUrl: "https://example.com",
-      fetch: fetchImpl,
-    });
-
-    expect(result).toMatchObject({
-      success: true,
-      details: {
-        infrastructure: {
-          serverVersion: "0.30.1",
-          requiredVersion: "0.30.0",
-          needsUpdate: false,
-        },
-      },
-    });
-  });
-
-  it("should fail when server infrastructure is below the required target", async () => {
-    mockReadPackageUp.mockResolvedValue({
-      packageJson: {
-        dependencies: {
-          "hot-updater": "0.30.0",
-        },
-      },
-      path: "/mock/cwd/package.json",
-    });
-    const fetchImpl = vi.fn<typeof fetch>(async () => {
-      return new Response(JSON.stringify({ version: "0.29.8" }), {
+      return new Response(JSON.stringify({ version: "0.36.0" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
@@ -689,107 +660,24 @@ describe("doctor", () => {
       success: false,
       details: {
         infrastructure: {
-          serverVersion: "0.29.8",
-          requiredVersion: "0.30.0",
-          needsUpdate: true,
+          serverVersion: "0.36.0",
+          requiredVersion: "1.0.0",
+          upgradeBlocked: true,
+          updateReason: "Existing infrastructure does not declare generation 1",
           remediation: {
             fixability: "blocked",
-            commands: [
-              "hot-updater init",
-              "hot-updater db migrate",
-              "hot-updater db generate",
-            ],
+            commands: ["hot-updater init"],
           },
         },
       },
     });
   });
 
-  it("should require 0.32.0 server infrastructure for 0.32.x packages", async () => {
+  it("blocks a missing version endpoint as an in-place upgrade", async () => {
     mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
-          "hot-updater": "0.32.0",
-        },
-      },
-      path: "/mock/cwd/package.json",
-    });
-    const fetchImpl = vi.fn<typeof fetch>(async () => {
-      return new Response(JSON.stringify({ version: "0.31.9" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    });
-
-    const result = await doctor({
-      serverBaseUrl: "https://example.com",
-      fetch: fetchImpl,
-    });
-
-    expect(result).toMatchObject({
-      success: false,
-      details: {
-        hotUpdaterVersion: "0.32.0",
-        infrastructure: {
-          serverVersion: "0.31.9",
-          requiredVersion: "0.32.0",
-          needsUpdate: true,
-          remediation: {
-            fixability: "blocked",
-          },
-        },
-      },
-    });
-  });
-
-  it("should require an infrastructure update when the server runtime is below the required target", async () => {
-    mockReadPackageUp.mockResolvedValue({
-      packageJson: {
-        dependencies: {
-          "hot-updater": "0.33.0",
-        },
-      },
-      path: "/mock/cwd/package.json",
-    });
-    const fetchImpl = vi.fn<typeof fetch>(async () => {
-      return new Response(JSON.stringify({ version: "0.32.0" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    });
-
-    const result = await doctor({
-      serverBaseUrl: "https://example.com",
-      fetch: fetchImpl,
-    });
-
-    expect(result).toMatchObject({
-      success: false,
-      details: {
-        hotUpdaterVersion: "0.33.0",
-        infrastructure: {
-          serverVersion: "0.32.0",
-          requiredVersion: "0.33.0",
-          needsUpdate: true,
-          updateReason: "provider update checks reuse selected bundles",
-          remediation: {
-            fixability: "blocked",
-            commands: [
-              "hot-updater init",
-              "hot-updater db migrate",
-              "hot-updater db generate",
-            ],
-          },
-        },
-      },
-    });
-  });
-
-  it("should require an update when server version endpoint is unavailable", async () => {
-    mockReadPackageUp.mockResolvedValue({
-      packageJson: {
-        dependencies: {
-          "hot-updater": "0.30.0",
+          "hot-updater": "1.0.0",
         },
       },
       path: "/mock/cwd/package.json",
@@ -808,16 +696,13 @@ describe("doctor", () => {
       details: {
         infrastructure: {
           versionEndpoint: "https://example.com/version",
-          requiredVersion: "0.30.0",
-          needsUpdate: true,
-          updateReason: "Version endpoint not found",
+          requiredVersion: "1.0.0",
+          upgradeBlocked: true,
+          updateReason:
+            "v1 infrastructure marker not found at the existing endpoint",
           remediation: {
             fixability: "blocked",
-            commands: [
-              "hot-updater init",
-              "hot-updater db migrate",
-              "hot-updater db generate",
-            ],
+            commands: ["hot-updater init"],
           },
         },
       },
@@ -844,9 +729,7 @@ describe("doctor", () => {
             infoPlistPaths: ["ios/App/Info.plist"],
           },
           android: {
-            stringResourcePaths: [
-              "android/app/src/main/res/values/strings.xml",
-            ],
+            androidManifestPaths: ["android/app/src/main/AndroidManifest.xml"],
           },
         },
       }),
@@ -857,7 +740,7 @@ describe("doctor", () => {
       path.join(cwd, "ios/App/AppDelegate.swift"),
       'import UIKit\nfunc bundleURL() { Bundle.main.url(forResource: "main", withExtension: "jsbundle") }\n',
     );
-    await writeStringsXml(cwd, "");
+    await writeAndroidManifest(cwd, "");
     await writeFile(
       path.join(
         cwd,
@@ -918,9 +801,7 @@ describe("doctor", () => {
             infoPlistPaths: ["ios/App/Info.plist"],
           },
           android: {
-            stringResourcePaths: [
-              "android/app/src/main/res/values/strings.xml",
-            ],
+            androidManifestPaths: ["android/app/src/main/AndroidManifest.xml"],
           },
         },
       }),
@@ -934,9 +815,9 @@ describe("doctor", () => {
       path.join(cwd, "ios/App/AppDelegate.swift"),
       "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
     );
-    await writeStringsXml(
+    await writeAndroidManifest(
       cwd,
-      '<string name="hot_updater_channel" moduleConfig="true">production</string>',
+      '    <meta-data android:name="com.hotupdater.CHANNEL" android:value="production" />',
     );
     await writeFile(
       path.join(
@@ -986,9 +867,7 @@ describe("doctor", () => {
             infoPlistPaths: ["ios/App/Info.plist"],
           },
           android: {
-            stringResourcePaths: [
-              "android/app/src/main/res/values/strings.xml",
-            ],
+            androidManifestPaths: ["android/app/src/main/AndroidManifest.xml"],
           },
         },
       }),
@@ -1002,9 +881,9 @@ describe("doctor", () => {
       path.join(cwd, "ios/App/AppDelegate.swift"),
       "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
     );
-    await writeStringsXml(
+    await writeAndroidManifest(
       cwd,
-      '<string name="hot_updater_channel" moduleConfig="true">production</string>',
+      '    <meta-data android:name="com.hotupdater.CHANNEL" android:value="production" />',
     );
     await writeFile(
       path.join(
@@ -1058,9 +937,7 @@ describe("doctor", () => {
             infoPlistPaths: ["ios/App/Info.plist"],
           },
           android: {
-            stringResourcePaths: [
-              "android/app/src/main/res/values/strings.xml",
-            ],
+            androidManifestPaths: ["android/app/src/main/AndroidManifest.xml"],
           },
         },
       }),
@@ -1086,11 +963,11 @@ describe("doctor", () => {
       path.join(cwd, "ios/App/AppDelegate.swift"),
       "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
     );
-    await writeStringsXml(
+    await writeAndroidManifest(
       cwd,
       [
-        '<string name="hot_updater_channel" moduleConfig="true">production</string>',
-        '<string name="hot_updater_fingerprint_hash" moduleConfig="true">stale-android-fingerprint</string>',
+        '    <meta-data android:name="com.hotupdater.CHANNEL" android:value="production" />',
+        '    <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="stale-android-fingerprint" />',
       ].join("\n"),
     );
     await writeFile(
@@ -1135,9 +1012,7 @@ describe("doctor", () => {
             infoPlistPaths: ["ios/App/Info.plist"],
           },
           android: {
-            stringResourcePaths: [
-              "android/app/src/main/res/values/strings.xml",
-            ],
+            androidManifestPaths: ["android/app/src/main/AndroidManifest.xml"],
           },
         },
       }),
@@ -1151,9 +1026,9 @@ describe("doctor", () => {
       path.join(cwd, "ios/App/AppDelegate.swift"),
       "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
     );
-    await writeStringsXml(
+    await writeAndroidManifest(
       cwd,
-      '<string name="hot_updater_channel" moduleConfig="true">production</string>',
+      '    <meta-data android:name="com.hotupdater.CHANNEL" android:value="production" />',
     );
     await writeFile(
       path.join(
@@ -1208,9 +1083,7 @@ describe("doctor", () => {
             infoPlistPaths: ["ios/App/Info.plist"],
           },
           android: {
-            stringResourcePaths: [
-              "android/app/src/main/res/values/strings.xml",
-            ],
+            androidManifestPaths: ["android/app/src/main/AndroidManifest.xml"],
           },
         },
       }),
@@ -1231,9 +1104,9 @@ describe("doctor", () => {
       path.join(cwd, "ios/App/AppDelegate.swift"),
       "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
     );
-    await writeStringsXml(
+    await writeAndroidManifest(
       cwd,
-      '<string name="hot_updater_channel" moduleConfig="true">production</string>',
+      '    <meta-data android:name="com.hotupdater.CHANNEL" android:value="production" />',
     );
     await writeFile(
       path.join(

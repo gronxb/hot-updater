@@ -7,9 +7,7 @@ const setAndroidFingerprintHash = async (
   hash: string,
 ): Promise<{ paths: string[] }> => {
   const config = await loadConfig(null);
-  const customPaths = config.platform.android.stringResourcePaths ?? [];
   const androidParser = new AndroidConfigParser(
-    customPaths,
     config.platform.android.androidManifestPaths ?? [],
   );
   return await androidParser.set("hot_updater_fingerprint_hash", hash);
@@ -20,9 +18,7 @@ const getAndroidFingerprintHash = async (): Promise<{
   paths: string[];
 }> => {
   const config = await loadConfig(null);
-  const customPaths = config.platform.android.stringResourcePaths ?? [];
   const androidParser = new AndroidConfigParser(
-    customPaths,
     config.platform.android.androidManifestPaths ?? [],
   );
   if (!(await androidParser.exists())) {

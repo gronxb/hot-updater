@@ -1,42 +1,13 @@
--- HotUpdater Release Catalog v1
+-- HotUpdater schema 1.0.0
 
--- hot-updater:release-catalog-preflight-start
-CREATE TABLE private_hot_updater_release_catalog_preflight (
-  invalid_count INTEGER NOT NULL CHECK (invalid_count = 0)
-);
-INSERT INTO private_hot_updater_release_catalog_preflight (invalid_count)
-SELECT count(*) FROM bundles;
-DROP TABLE private_hot_updater_release_catalog_preflight;
--- hot-updater:release-catalog-preflight-end
-
-PRAGMA foreign_keys = OFF;
-
-DROP TRIGGER IF EXISTS bundles_channel_insert_guard;
-DROP TRIGGER IF EXISTS bundles_channel_update_guard;
-DROP TRIGGER IF EXISTS channels_name_update_guard;
-
-DROP TABLE IF EXISTS bundle_patches_v100;
-CREATE TABLE bundle_patches_v100 (
+CREATE TABLE channels (
   id TEXT PRIMARY KEY NOT NULL,
-  bundle_id TEXT NOT NULL,
-  base_bundle_id TEXT NOT NULL,
-  base_file_hash TEXT NOT NULL,
-  patch_file_hash TEXT NOT NULL,
-  patch_storage_uri TEXT NOT NULL,
-  order_index INTEGER NOT NULL DEFAULT 0
+  name TEXT NOT NULL,
+  CONSTRAINT channels_id_length_check CHECK (length(id) BETWEEN 1 AND 255),
+  CONSTRAINT channels_name_length_check CHECK (length(name) BETWEEN 1 AND 255)
 );
-INSERT INTO bundle_patches_v100 (
-  id, bundle_id, base_bundle_id, base_file_hash, patch_file_hash,
-  patch_storage_uri, order_index
-)
-SELECT
-  id, bundle_id, base_bundle_id, base_file_hash, patch_file_hash,
-  patch_storage_uri, order_index
-FROM bundle_patches;
-DROP TABLE bundle_patches;
 
-DROP TABLE IF EXISTS bundles_v100;
-CREATE TABLE bundles_v100 (
+CREATE TABLE bundles (
   id TEXT PRIMARY KEY NOT NULL,
   platform TEXT NOT NULL,
   file_hash TEXT NOT NULL,
@@ -47,16 +18,6 @@ CREATE TABLE bundles_v100 (
   manifest_file_hash TEXT,
   asset_base_storage_uri TEXT
 );
-INSERT INTO bundles_v100 (
-  id, platform, file_hash, git_commit_hash, storage_uri, metadata,
-  manifest_storage_uri, manifest_file_hash, asset_base_storage_uri
-)
-SELECT
-  id, platform, file_hash, git_commit_hash, storage_uri, metadata,
-  manifest_storage_uri, manifest_file_hash, asset_base_storage_uri
-FROM bundles;
-DROP TABLE bundles;
-ALTER TABLE bundles_v100 RENAME TO bundles;
 
 CREATE TABLE bundle_patches (
   id TEXT PRIMARY KEY NOT NULL,
@@ -71,67 +32,6 @@ CREATE TABLE bundle_patches (
   CONSTRAINT bundle_patches_base_bundle_id_fk FOREIGN KEY (base_bundle_id)
     REFERENCES bundles(id) ON UPDATE RESTRICT ON DELETE CASCADE
 );
-INSERT INTO bundle_patches (
-  id, bundle_id, base_bundle_id, base_file_hash, patch_file_hash,
-  patch_storage_uri, order_index
-)
-SELECT
-  id, bundle_id, base_bundle_id, base_file_hash, patch_file_hash,
-  patch_storage_uri, order_index
-FROM bundle_patches_v100;
-DROP TABLE bundle_patches_v100;
-CREATE INDEX bundle_patches_bundle_id_idx ON bundle_patches(bundle_id);
-CREATE INDEX bundle_patches_base_bundle_id_idx
-  ON bundle_patches(base_bundle_id);
-
-DROP TABLE IF EXISTS bundle_events_v100;
-CREATE TABLE bundle_events_v100 (
-  id TEXT PRIMARY KEY NOT NULL,
-  type TEXT NOT NULL,
-  install_id TEXT NOT NULL,
-  user_id TEXT,
-  username TEXT,
-  from_release_id TEXT,
-  from_bundle_id TEXT,
-  to_release_id TEXT,
-  to_bundle_id TEXT,
-  platform TEXT NOT NULL,
-  app_version TEXT NOT NULL,
-  channel TEXT NOT NULL,
-  cohort TEXT NOT NULL,
-  update_strategy TEXT,
-  fingerprint_hash TEXT,
-  sdk_version TEXT,
-  received_at_ms REAL NOT NULL,
-  CONSTRAINT bundle_events_type_check CHECK (
-    type IN ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED', 'UNCHANGED')
-  ),
-  CONSTRAINT bundle_events_platform_check CHECK (
-    platform IN ('ios', 'android')
-  ),
-  CONSTRAINT bundle_events_shape_check CHECK (
-    (
-      type IN ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')
-      AND update_strategy IN ('fingerprint', 'appVersion')
-    ) OR (
-      type = 'UNCHANGED'
-      AND update_strategy IS NULL
-    )
-  ),
-  CONSTRAINT bundle_events_received_at_check CHECK (received_at_ms >= 0)
-);
-INSERT INTO bundle_events_v100 (
-  id, type, install_id, user_id, username, from_release_id, from_bundle_id,
-  to_release_id, to_bundle_id, platform, app_version, channel, cohort,
-  update_strategy, fingerprint_hash, sdk_version, received_at_ms
-)
-SELECT
-  id, type, install_id, user_id, username, NULL, from_bundle_id, NULL,
-  to_bundle_id, platform, app_version, channel, cohort, update_strategy,
-  fingerprint_hash, sdk_version, received_at_ms
-FROM bundle_events;
-DROP TABLE bundle_events;
-ALTER TABLE bundle_events_v100 RENAME TO bundle_events;
 
 CREATE TABLE releases (
   id TEXT PRIMARY KEY NOT NULL,
@@ -204,10 +104,64 @@ CREATE TABLE release_catalogs (
     REFERENCES channels(id) ON UPDATE RESTRICT ON DELETE RESTRICT
 );
 
--- hot-updater:release-catalog-backfill-start
--- No backfill is required for an empty database.
--- hot-updater:release-catalog-backfill-end
+CREATE TABLE bundle_events (
+  id TEXT PRIMARY KEY NOT NULL,
+  type TEXT NOT NULL,
+  install_id TEXT NOT NULL,
+  user_id TEXT,
+  username TEXT,
+  from_release_id TEXT,
+  from_bundle_id TEXT,
+  to_release_id TEXT,
+  to_bundle_id TEXT,
+  platform TEXT NOT NULL,
+  app_version TEXT NOT NULL,
+  channel TEXT NOT NULL,
+  cohort TEXT NOT NULL,
+  update_strategy TEXT,
+  fingerprint_hash TEXT,
+  sdk_version TEXT,
+  received_at_ms REAL NOT NULL,
+  CONSTRAINT bundle_events_type_check CHECK (
+    type IN ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED', 'UNCHANGED')
+  ),
+  CONSTRAINT bundle_events_platform_check CHECK (
+    platform IN ('ios', 'android')
+  ),
+  CONSTRAINT bundle_events_shape_check CHECK (
+    (
+      type IN ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')
+      AND update_strategy IN ('fingerprint', 'appVersion')
+    ) OR (
+      type = 'UNCHANGED'
+      AND update_strategy IS NULL
+    )
+  ),
+  CONSTRAINT bundle_events_received_at_check CHECK (received_at_ms >= 0)
+);
 
+CREATE TABLE client_access_keys (
+  id TEXT PRIMARY KEY NOT NULL,
+  hash TEXT NOT NULL,
+  name TEXT NOT NULL,
+  prefix TEXT NOT NULL,
+  role TEXT NOT NULL,
+  created_at_ms REAL NOT NULL,
+  revoked_at_ms REAL,
+  CONSTRAINT client_access_keys_role_check CHECK (role = 'client'),
+  CONSTRAINT client_access_keys_created_at_check CHECK (created_at_ms >= 0),
+  CONSTRAINT client_access_keys_revoked_at_check
+    CHECK (revoked_at_ms IS NULL OR revoked_at_ms >= 0)
+);
+
+CREATE TABLE private_hot_updater_settings (
+  key TEXT PRIMARY KEY NOT NULL,
+  value TEXT NOT NULL DEFAULT '1.0.0'
+);
+
+CREATE UNIQUE INDEX channels_name_key ON channels(name);
+CREATE INDEX bundle_patches_bundle_id_idx ON bundle_patches(bundle_id);
+CREATE INDEX bundle_patches_base_bundle_id_idx ON bundle_patches(base_bundle_id);
 CREATE INDEX releases_scope_order_idx ON releases(scope_key, id);
 CREATE INDEX releases_channel_platform_order_idx
   ON releases(channel_id, platform, id);
@@ -233,18 +187,10 @@ CREATE INDEX bundle_events_to_release_idx
   ON bundle_events(type, to_release_id, received_at_ms, id);
 CREATE INDEX bundle_events_from_release_idx
   ON bundle_events(type, from_release_id, received_at_ms, id);
-
--- hot-updater:restore-bundles-user-schema-start
--- User Bundle indexes and triggers are materialized by Hot Updater init.
--- hot-updater:restore-bundles-user-schema-end
-
-PRAGMA foreign_key_check;
-PRAGMA foreign_keys = ON;
+CREATE UNIQUE INDEX client_access_keys_hash_key ON client_access_keys(hash);
+CREATE INDEX client_access_keys_created_at_idx
+  ON client_access_keys(created_at_ms, id);
 
 INSERT INTO private_hot_updater_settings (key, value)
 VALUES ('schema.core', '1.0.0')
-ON CONFLICT(key) DO UPDATE SET value = CASE
-  WHEN private_hot_updater_settings.value IN ('0.38.0', '1.0.0')
-    THEN excluded.value
-  ELSE NULL
-END;
+ON CONFLICT(key) DO UPDATE SET value = excluded.value;
