@@ -68,9 +68,8 @@ scripts before writers resume:
 | top-level `rollback <channel>` or `--target <bundle-id>` | Identify the exact Release and run `release disable <release-id>`. The Bundle-targeted rollback command is removed. |
 | Delete an old Bundle directly | Disable and hard-delete every referencing Release, then run `bundle delete` and preview `storage prune`. |
 
-Backfilled v0 rows may initially have matching Release and Bundle IDs. Do not
-build automation around that coincidence: deploy and promote create independent
-Release IDs, and multiple Releases can reference one Bundle.
+Deploy and promote create independent Release IDs. Multiple Releases can
+reference one Bundle.
 
 Promotion reuses Bundle bytes and never copies Storage objects. Its target
 Release is enabled with a 100% numeric rollout, no target cohorts, and a new

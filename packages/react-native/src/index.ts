@@ -40,7 +40,6 @@ import {
   init,
   type InternalInitOptions,
   type InternalWrapOptions,
-  type ManualUpdateOptions,
   wrap,
 } from "./wrap";
 
@@ -72,7 +71,6 @@ export type {
   HotUpdaterFallbackComponentProps,
   HotUpdaterInitOptions,
   HotUpdaterOptions,
-  ManualUpdateOptions,
   RunUpdateProcessResponse,
 } from "./wrap";
 
@@ -96,30 +94,8 @@ registerGlobalGetBaseURL();
 
 type HotUpdaterWrap = {
   (options: AutoUpdateOptions): ReturnType<typeof wrap>;
-  /**
-   * @deprecated Replace manual `HotUpdater.wrap` with `HotUpdater.init`.
-   *
-   * ```tsx
-   * import { HotUpdater } from "@hot-updater/react-native";
-   *
-   * HotUpdater.init({
-   *   baseURL: "<your-update-server-url>",
-   * });
-   *
-   * export default App;
-   * ```
-   *
-   * Then call `HotUpdater.checkForUpdate(...)` from your manual update flow.
-   * See https://hot-updater.dev/docs/guides/custom-update
-   */
-  (options: ManualUpdateOptions): ReturnType<typeof wrap>;
   (options: HotUpdaterOptions): ReturnType<typeof wrap>;
 };
-
-const isManualWrapOptions = (
-  options: HotUpdaterOptions,
-): options is ManualUpdateOptions =>
-  "updateMode" in options && options.updateMode === "manual";
 
 const createConfiguredDefaultResolver = (
   baseURL: Parameters<typeof createDefaultResolver>[0],
@@ -174,40 +150,30 @@ function createHotUpdaterClient() {
   const normalizeOptions = (
     options: HotUpdaterOptions,
   ): InternalWrapOptions => {
-    if (isManualWrapOptions(options)) {
-      if ("baseURL" in options && options.baseURL) {
-        const { authorityId, baseURL, ...rest } = options;
-        return {
-          ...rest,
-          resolver: createConfiguredDefaultResolver(baseURL, authorityId),
-          updateMode: "manual",
-        };
-      }
-
-      if ("resolver" in options && options.resolver) {
-        return {
-          ...options,
-          updateMode: "manual",
-        };
-      }
+    const incoming = options as HotUpdaterOptions & {
+      updateMode?: unknown;
+    };
+    if (incoming.updateMode === "manual") {
+      throw new Error(
+        '[HotUpdater] HotUpdater.wrap({ updateMode: "manual" }) was removed. ' +
+          "Call HotUpdater.init({ ... }) instead, export your root component " +
+          "directly, and use HotUpdater.checkForUpdate(...) for the manual " +
+          "update flow. See https://hot-updater.dev/docs/guides/custom-update",
+      );
     }
 
-    const autoOptions = options as AutoUpdateOptions;
+    const autoOptions = incoming as AutoUpdateOptions;
 
     if ("baseURL" in autoOptions && autoOptions.baseURL) {
       const { authorityId, baseURL, ...rest } = autoOptions;
       return {
         ...rest,
         resolver: createConfiguredDefaultResolver(baseURL, authorityId),
-        updateMode: "auto",
       };
     }
 
     if ("resolver" in autoOptions && autoOptions.resolver) {
-      return {
-        ...autoOptions,
-        updateMode: "auto",
-      };
+      return autoOptions;
     }
 
     throw createMissingNetworkConfigError("wrap");
@@ -301,8 +267,7 @@ function createHotUpdaterClient() {
      * Initializes HotUpdater without wrapping a React component.
      *
      * Use this for manual update flows in runtimes where a root component HOC
-     * is not convenient. Replace deprecated manual
-     * `HotUpdater.wrap({ updateMode: "manual" })(App)` usage with this API.
+     * is not convenient. Use this instead of wrapping the root component.
      *
      * @example
      * ```tsx

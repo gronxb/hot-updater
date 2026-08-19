@@ -138,15 +138,11 @@ export const createDatabasePluginCrud = (
     validateWhere(input.model, input.where);
     validatePagination(input.limit, input.offset);
     validateSelect(input.model, input.select);
-    const explicitOrderBy = input.orderBy;
-    const legacySortBy = input.sortBy;
-    const normalizedOrderBy =
-      explicitOrderBy ?? (legacySortBy ? [legacySortBy] : undefined);
-    const validatedOrderBy = validateOrderBy(input.model, normalizedOrderBy);
+    const validatedOrderBy = validateOrderBy(input.model, input.orderBy);
     validateDistinctOn(input.model, input.distinctOn, validatedOrderBy);
     const normalizedInput = {
       ...input,
-      orderBy: normalizedOrderBy,
+      orderBy: input.orderBy,
       limit: input.limit ?? 100,
       offset: input.offset ?? 0,
     };

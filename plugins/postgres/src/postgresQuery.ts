@@ -77,8 +77,7 @@ export const findManyPostgresRows = async (
       if (input.distinctOn !== undefined) {
         query = query.distinctOn(input.distinctOn.fields);
       }
-      for (const clause of input.orderBy ??
-        (input.sortBy ? [input.sortBy] : [])) {
+      for (const clause of input.orderBy ?? []) {
         query = query.orderBy(clause.field, (order) =>
           applyOrder(order, clause),
         );
@@ -88,8 +87,7 @@ export const findManyPostgresRows = async (
     case "release_catalogs": {
       let query = db.selectFrom("release_catalogs").selectAll();
       if (where !== undefined) query = query.where(where);
-      for (const clause of input.orderBy ??
-        (input.sortBy ? [input.sortBy] : [])) {
+      for (const clause of input.orderBy ?? []) {
         query = query.orderBy(clause.field, (order) =>
           applyOrder(order, clause),
         );
@@ -102,8 +100,7 @@ export const findManyPostgresRows = async (
       if (input.distinctOn !== undefined) {
         query = query.distinctOn(input.distinctOn.fields);
       }
-      for (const clause of input.orderBy ??
-        (input.sortBy ? [input.sortBy] : [])) {
+      for (const clause of input.orderBy ?? []) {
         query = query.orderBy(clause.field, (order) =>
           applyOrder(order, clause),
         );
@@ -113,8 +110,7 @@ export const findManyPostgresRows = async (
     case "channels": {
       let query = db.selectFrom("channels").selectAll();
       if (where !== undefined) query = query.where(where);
-      for (const clause of input.orderBy ??
-        (input.sortBy ? [input.sortBy] : [])) {
+      for (const clause of input.orderBy ?? []) {
         query = query.orderBy(clause.field, (order) =>
           applyOrder(order, clause),
         );
@@ -127,8 +123,7 @@ export const findManyPostgresRows = async (
       if (input.distinctOn !== undefined) {
         query = query.distinctOn(input.distinctOn.fields);
       }
-      for (const clause of input.orderBy ??
-        (input.sortBy ? [input.sortBy] : [])) {
+      for (const clause of input.orderBy ?? []) {
         query = query.orderBy(clause.field, (order) =>
           applyOrder(order, clause),
         );
@@ -141,8 +136,7 @@ export const findManyPostgresRows = async (
       if (input.distinctOn !== undefined) {
         query = query.distinctOn(input.distinctOn.fields);
       }
-      for (const clause of input.orderBy ??
-        (input.sortBy ? [input.sortBy] : [])) {
+      for (const clause of input.orderBy ?? []) {
         query = query.orderBy(clause.field, (order) =>
           applyOrder(order, clause),
         );
@@ -152,8 +146,7 @@ export const findManyPostgresRows = async (
     case "releases": {
       let query = db.selectFrom("releases").selectAll();
       if (where !== undefined) query = query.where(where);
-      for (const clause of input.orderBy ??
-        (input.sortBy ? [input.sortBy] : [])) {
+      for (const clause of input.orderBy ?? []) {
         query = query.orderBy(clause.field, (order) =>
           applyOrder(order, clause),
         );

@@ -21,7 +21,7 @@ break atomic Release and catalog commits.
 | Legacy per-bundle asset layout      | `plugins/plugin-core/src/assetStorageLayout.ts`, `legacyAssetStorageLayout.ts`, and `packages/console/src/lib/server/legacyBundleAssetCleanup.ts`                                                                                                                 | v0 manifests can reference mutable per-bundle files instead of content-addressed assets. Reads and deletion must continue to address the original objects.                                                                                                         | All retained bundles have been deleted or migrated to content-addressed storage.                                                              |
 | Analytics rows without Release IDs  | `plugins/plugin-core/src/databasePluginCrudValidationRows.ts`, provider row parsers, and `packages/server/src/analytics/bounded/persistence.ts`                                                                                                                   | Events emitted before Releases existed have no `from_release_id` or `to_release_id`. Providers accept omitted legacy fields and normalize new events to nullable values so historical analytics remain readable.                                                   | All retained analytics events were written by Release-aware clients and every supported provider has completed the nullable-column migration. |
 | Versioned database migration        | Removed. `fixedMigrator*` creates schema `1.0.0` from empty storage and rejects any other marker.                                                                                                                                                                 | v1 is a new infrastructure generation. Existing v0 databases stay on their v0 endpoint.                                                                                                                                                                            | Do not reintroduce v0 schema upgrades.                                                                                                        |
-| Deprecated configuration/API inputs | Android `stringResourcePaths`, `releaseChannel`, `getMinBundleId`/`MIN_BUNDLE_ID`, the old `updateBundle(id, url)` overload, manual `HotUpdater.wrap({ updateMode: "manual" })`, database `sortBy`, Supabase `supabaseAnonKey`, and Cloudflare Wrangler R2 config | These let v0 projects compile while users move to the v1 configuration. They are shims, not architecture dependencies.                                                                                                                                             | Remove only on a documented major boundary after replacements and warnings have shipped for the support window.                               |
+| Deprecated configuration/API inputs | Android `stringResourcePaths`, `releaseChannel`, `getMinBundleId`/`MIN_BUNDLE_ID`, the old `updateBundle(id, url)` overload, and Cloudflare Wrangler R2 config | These remain live configuration or SDK surfaces, not architecture dependencies.                                                                                                                                                  | Remove only on a documented major boundary after replacements and warnings have shipped for the support window.                               |
 
 ## Boundaries intentionally not preserved
 
@@ -41,16 +41,9 @@ break atomic Release and catalog commits.
   v1 resources.
 - Authentication, network, or server errors do not fall back to a cached
   catalog. Only a validated `304 Not Modified` may reuse the matching cache.
-
-## Cleanup candidate found during the audit
-
-`plugins/standalone/src/standaloneLegacyTransaction.ts` exports
-`runLegacyAggregateTransaction`, but no production or test module imports it.
-It is not part of the required compatibility path: current Standalone v1 writes
-use `/api/database/commit`, while Bundle reads use
-`createLegacyCompatibilityImplementation`. Remove the orphan in a separate,
-focused cleanup after confirming it is not an undocumented deep import; do not
-confuse it with the still-required Bundle management bridge.
+- `HotUpdater.wrap({ updateMode })`, findMany `sortBy`, and Supabase
+  `supabaseAnonKey` are not accepted inputs. Managed init still detects leftover
+  `supabaseAnonKey` so skipped v0 configs fail closed.
 
 ## Governance
 

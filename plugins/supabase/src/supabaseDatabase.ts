@@ -289,7 +289,7 @@ const createSupabaseImplementation = (
       if (input.limit === 0) return [];
       const filter = buildSupabaseFilter(input.where);
       const rangeEnd = input.offset + input.limit - 1;
-      const orderBy = input.orderBy ?? (input.sortBy ? [input.sortBy] : []);
+      const orderBy = input.orderBy ?? [];
       switch (input.model) {
         case "bundles": {
           let query = supabase.from("bundles").select("*");

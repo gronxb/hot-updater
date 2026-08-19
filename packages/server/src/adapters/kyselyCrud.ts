@@ -59,16 +59,10 @@ const orderClause = (
           readonly field: string;
           readonly nulls?: "first" | "last";
         }[];
-        readonly sortBy?: {
-          readonly direction: "asc" | "desc";
-          readonly field: string;
-          readonly nulls?: "first" | "last";
-        };
       }
     | undefined,
 ): RawBuilder<unknown> => {
-  const clauses =
-    input?.orderBy ?? (input?.sortBy ? [input.sortBy] : undefined);
+  const clauses = input?.orderBy;
   if (clauses === undefined || clauses.length === 0) return empty;
   return sql` order by ${sql.join(
     clauses.map((clause) => {

@@ -58,7 +58,7 @@ export const findManyD1Rows = async (
   input: FindManyDatabaseImplementationInput,
 ): Promise<readonly DatabaseImplementationResult[]> => {
   const where = buildD1Where(input.where);
-  const orderBy = input.orderBy ?? (input.sortBy ? [input.sortBy] : undefined);
+  const orderBy = input.orderBy;
   const order = buildD1Order(orderBy);
   const table = d1TableNames[input.model];
   const source =

@@ -3,7 +3,6 @@ import type {
   DatabaseModel,
   DatabaseOrderBy,
   DatabaseRow,
-  DatabaseSortBy,
   DatabaseWhere,
 } from "@hot-updater/plugin-core/internal";
 
@@ -114,7 +113,6 @@ export const queryFirebaseDatabaseRows = <TModel extends DatabaseModel>(
     readonly model: TModel;
     readonly where?: readonly DatabaseWhere<TModel>[];
     readonly orderBy?: DatabaseOrderBy<TModel>;
-    readonly sortBy?: DatabaseSortBy<TModel>;
     readonly distinctOn?: DatabaseDistinctOn<TModel>;
     readonly offset: number;
     readonly limit: number;
@@ -123,7 +121,7 @@ export const queryFirebaseDatabaseRows = <TModel extends DatabaseModel>(
   const filtered = rows.filter((row) =>
     matchesFirebaseDatabaseWhere(row, input.where),
   );
-  const orderBy = input.orderBy ?? (input.sortBy ? [input.sortBy] : undefined);
+  const orderBy = input.orderBy;
   if (orderBy !== undefined) {
     filtered.sort((left, right) => {
       for (const clause of orderBy) {

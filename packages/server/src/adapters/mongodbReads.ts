@@ -31,12 +31,7 @@ const findMongoRows = async (
   session?: ClientSession,
 ): Promise<readonly DatabaseImplementationResult[]> => {
   if (input.limit === 0) return [];
-  const rawOrderBy =
-    "orderBy" in input && input.orderBy
-      ? input.orderBy
-      : "sortBy" in input && input.sortBy
-        ? [input.sortBy]
-        : undefined;
+  const rawOrderBy = input.orderBy;
   const needsInMemoryOrder = hasNullOrderOverrides(rawOrderBy);
   switch (input.model) {
     case "bundles": {

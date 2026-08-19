@@ -28,7 +28,7 @@ describe("supabaseStorage", () => {
   const createStorage = () =>
     supabaseStorage({
       bucketName: "updates",
-      supabaseAnonKey: "anon-key",
+      supabaseServiceRoleKey: "service-role-key",
       supabaseUrl: "https://example.supabase.co",
     });
 

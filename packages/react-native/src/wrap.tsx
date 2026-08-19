@@ -18,26 +18,8 @@ export type {
   HotUpdaterOptions,
   InternalInitOptions,
   InternalWrapOptions,
-  ManualUpdateOptions,
   RunUpdateProcessResponse,
 } from "./wrap.types";
-
-let didWarnManualWrapDeprecation = false;
-
-const warnManualWrapDeprecation = () => {
-  if (didWarnManualWrapDeprecation) {
-    return;
-  }
-
-  didWarnManualWrapDeprecation = true;
-  console.warn(
-    '[HotUpdater] HotUpdater.wrap({ updateMode: "manual" }) is deprecated. ' +
-      "Move the same baseURL/resolver options to HotUpdater.init({ ... }), " +
-      "export your root component directly, and call " +
-      "HotUpdater.checkForUpdate(...) from your manual update flow. " +
-      "See https://hot-updater.dev/docs/guides/custom-update",
-  );
-};
 
 export function init(options: InternalInitOptions): void {
   void handleNotifyAppReady(options);
@@ -48,22 +30,6 @@ export function wrap(
 ): <P extends object>(
   WrappedComponent: React.ComponentType<P>,
 ) => React.ComponentType<P> {
-  if (options.updateMode === "manual") {
-    warnManualWrapDeprecation();
-
-    return <P extends object>(WrappedComponent: React.ComponentType<P>) => {
-      const ManualHOC: React.FC<P> = (props: P) => {
-        useEffect(() => {
-          void handleNotifyAppReady(options);
-        }, []);
-
-        return <WrappedComponent {...props} />;
-      };
-
-      return ManualHOC as React.ComponentType<P>;
-    };
-  }
-
   const { reloadOnForceUpdate = true, ...restOptions } = options;
 
   return <P extends object>(WrappedComponent: React.ComponentType<P>) => {
