@@ -10,7 +10,11 @@ version: "v0.22.0"
 Install Drizzle ORM and SQLite driver.
 
 ```package-install
-npm install drizzle-orm better-sqlite3 @types/better-sqlite3 --save-dev
+npm install @hot-updater/server @hot-updater/aws drizzle-orm better-sqlite3
+```
+
+```package-install
+npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater drizzle-kit @types/better-sqlite3
 ```
 
 For other databases, see [Drizzle's adapter documentation](https://orm.drizzle.team/docs/get-started).
@@ -22,9 +26,10 @@ Create a database connection file:
 ```typescript title="src/drizzle.ts"
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
+import * as schema from "../hot-updater-schema";
 
 const sqlite = new Database("./data/database.db");
-export const db = drizzle(sqlite);
+export const db = drizzle(sqlite, { schema });
 ```
 
 ## Hot Updater Configuration
@@ -52,6 +57,10 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
+  features: {
+    updateCheck: true,
+    bundles: true,
+  },
 });
 ```
 
@@ -60,10 +69,33 @@ export const hotUpdater = createHotUpdater({
 Generate the Drizzle schema for Hot Updater tables.
 
 ```bash
+mkdir -p data
 npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
-This command targets the `src/hotUpdater.ts` file and adds the necessary table definitions.
+This command writes `hot-updater-schema.ts` at the project root. The generator
+can bootstrap the missing import shown above on its first run.
+
+Point Drizzle Kit at the generated file and the same SQLite database:
+
+```typescript title="drizzle.config.ts"
+import { defineConfig } from "drizzle-kit";
+
+export default defineConfig({
+  schema: "./hot-updater-schema.ts",
+  out: "./drizzle",
+  dialect: "sqlite",
+  dbCredentials: {
+    url: "./data/database.db",
+  },
+});
+```
+
+Apply the schema before starting the server:
+
+```bash
+npx drizzle-kit push
+```
 
 <Callout>
   Need to generate SQL without config? See [SQL
@@ -76,13 +108,18 @@ This command targets the `src/hotUpdater.ts` file and adds the necessary table d
 Configure your CLI to use this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 export default defineConfig({
-  build: bare(),
+  build: bare({ enableHermes: true }),
   storage: s3Storage({
     region: "auto",
     endpoint: process.env.R2_ENDPOINT,
@@ -94,29 +131,36 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${managementToken}`,
+    },
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
 <Callout type="warn">
   The CLI `storage` plugin must match a plugin in your server's
   `createHotUpdater({storage})` array. Both use `s3Storage` in this example.
+  Because `features.bundles` enables management routes, protect
+  `/hot-updater/api/*` with fail-closed authentication before mounting the
+  handler. The CLI header above assumes the Bearer middleware from the Quick
+  Start.
 </Callout>
 
 ## API Endpoints
 
-The server automatically creates these endpoints:
+The configuration above enables the update-check routes:
 
-| Method | Endpoint                                                                              | Description                                                         |
-| ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| GET    | `/hot-updater/version`                                                                | Get server version                                                  |
-| GET    | `/hot-updater/release-catalogs/:strategy/:authorityId/:platform/:channelKey/:value` | Fetch a Release Catalog |
-| GET    | `/hot-updater/artifacts/:targetBundleId/from/:currentBundleId` | Resolve an artifact |
-| GET    | `/hot-updater/api/bundles`                                                            | List bundles (query: channel, platform, limit, page, after, before) |
-| GET    | `/hot-updater/api/bundles/:id`                                                        | Get bundle by ID                                                    |
-| POST   | `/hot-updater/api/bundles`                                                            | Create bundles                                                      |
-| PATCH  | `/hot-updater/api/bundles/:id`                                                        | Update a bundle                                                     |
-| DELETE | `/hot-updater/api/bundles/:id`                                                        | Delete bundle                                                       |
-| GET    | `/hot-updater/api/channels`                                                           | List all channels                                                   |
-| POST   | `/hot-updater/api/channels`                                                           | Insert or resolve a channel                                         |
-| DELETE | `/hot-updater/api/channels/:id`                                                       | Delete an empty channel                                             |
+| Method | Endpoint                                                                                        | Description                            |
+| ------ | ----------------------------------------------------------------------------------------------- | -------------------------------------- |
+| GET    | `/hot-updater/version`                                                                          | Get the server version                 |
+| GET    | `/hot-updater/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`      | Resolve an app-version Release Catalog |
+| GET    | `/hot-updater/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash` | Resolve a fingerprint Release Catalog  |
+| GET    | `/hot-updater/artifacts/:targetBundleId/from/:currentBundleId`                                  | Resolve an artifact                    |
+
+`features.bundles: true` also mounts the Bundle, Channel, Release, Release
+Catalog, and database-commit management routes under `/hot-updater/api/*`.
+See [CLI Configuration](../cli-configuration#api-endpoints) for their complete
+request and response contract. These management routes do not authenticate
+themselves; keep the fail-closed framework middleware described above.

@@ -10,7 +10,11 @@ version: "v0.22.0"
 Install Kysely and SQLite driver.
 
 ```package-install
-npm install kysely better-sqlite3 @types/better-sqlite3 --save-dev
+npm install @hot-updater/server @hot-updater/aws kysely better-sqlite3
+```
+
+```package-install
+npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater @types/better-sqlite3
 ```
 
 For other databases, see [Kysely's dialect documentation](https://kysely.dev/docs/dialects).
@@ -54,6 +58,10 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
+  routes: {
+    updateCheck: true,
+    bundles: true,
+  },
 });
 ```
 
@@ -62,6 +70,7 @@ export const hotUpdater = createHotUpdater({
 Generate SQL migration files for Hot Updater tables:
 
 ```bash
+mkdir -p data
 npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
@@ -87,13 +96,18 @@ Need to generate SQL without config? See [SQL Export](/docs/v0/custom/database/s
 Configure your CLI to use this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 export default defineConfig({
-  build: bare(),
+  build: bare({ enableHermes: true }),
   storage: s3Storage({
     region: "auto",
     endpoint: process.env.R2_ENDPOINT,
@@ -105,12 +119,16 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${managementToken}`,
+    },
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
 <Callout type="warn">
-The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
+The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example. Because `routes.bundles` enables management routes, protect `/hot-updater/api/*` with fail-closed authentication before mounting the handler.
 </Callout>
 
 ## API Endpoints

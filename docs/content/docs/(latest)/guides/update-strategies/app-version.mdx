@@ -8,7 +8,8 @@ icon: Hash
 
 The App Version strategy gives you manual control over which app versions receive updates. You specify exact versions or ranges when deploying, rather than relying on automatic fingerprint detection.
 
-**When to use it**: Choose this if you prefer explicit version targeting over automated compatibility checks.
+**When to use it**: This is the default strategy. Keep it when you prefer
+explicit version targeting over automated native compatibility checks.
 
 ## Setup
 
@@ -93,8 +94,9 @@ curl "https://your-update-endpoint.com/release-catalogs/app-version/default/ios/
 
 Parameters:
 
+- `:authorityId` - Authority that owns the Release Catalog (defaults to
+  `default` unless configured)
 - `:platform` - `ios` or `android`
+- `:channelKey` - Canonical base64url encoding of the channel name (for example,
+  `production` becomes `cHJvZHVjdGlvbg`)
 - `:appVersion` - Current app version (e.g., `1.0.0`)
-- `:channel` - Channel name (e.g., `production`, `staging`)
-- `:minBundleId` - Minimum supported bundle ID
-- `:bundleId` - Current bundle ID

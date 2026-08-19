@@ -1,9 +1,8 @@
 import { QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
 import { setupRouterSsrQueryIntegration } from "@tanstack/react-router-ssr-query";
-
-// Import the generated route tree
-import { routeTree } from "./routeTree.gen";
+// Import the route tree selected by the local or hosted Vite integration.
+import { routeTree } from "virtual:hot-updater-console/route-tree";
 
 // Create a new router instance
 export const getRouter = () => {

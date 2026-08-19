@@ -10,7 +10,11 @@ version: "v0.22.0"
 Install Kysely and SQLite driver.
 
 ```package-install
-npm install kysely better-sqlite3 @types/better-sqlite3 --save-dev
+npm install @hot-updater/server @hot-updater/aws kysely better-sqlite3
+```
+
+```package-install
+npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater @types/better-sqlite3
 ```
 
 For other databases, see [Kysely's dialect documentation](https://kysely.dev/docs/dialects).
@@ -55,6 +59,10 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
+  features: {
+    updateCheck: true,
+    bundles: true,
+  },
 });
 ```
 
@@ -63,6 +71,7 @@ export const hotUpdater = createHotUpdater({
 Generate SQL migration files for Hot Updater tables:
 
 ```bash
+mkdir -p data
 npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
@@ -91,13 +100,18 @@ npx hot-updater db migrate src/hotUpdater.ts
 Configure your CLI to use this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 export default defineConfig({
-  build: bare(),
+  build: bare({ enableHermes: true }),
   storage: s3Storage({
     region: "auto",
     endpoint: process.env.R2_ENDPOINT,
@@ -109,29 +123,36 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${managementToken}`,
+    },
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
 <Callout type="warn">
   The CLI `storage` plugin must match one entry in the server's
   `createHotUpdater({storage})` array. Both use `s3Storage` here.
+  Because `features.bundles` enables management routes, protect
+  `/hot-updater/api/*` with fail-closed authentication before mounting the
+  handler. The CLI header above assumes the Bearer middleware from the Quick
+  Start.
 </Callout>
 
 ## API Endpoints
 
-The server automatically creates these endpoints:
+The configuration above enables the update-check routes:
 
-| Method | Endpoint                                                                              | Description                                                         |
-| ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| GET    | `/hot-updater/version`                                                                | Get server version                                                  |
-| GET    | `/hot-updater/release-catalogs/:strategy/:authorityId/:platform/:channelKey/:value` | Fetch a Release Catalog |
-| GET    | `/hot-updater/artifacts/:targetBundleId/from/:currentBundleId` | Resolve an artifact |
-| GET    | `/hot-updater/api/bundles`                                                            | List bundles (query: channel, platform, limit, page, after, before) |
-| GET    | `/hot-updater/api/bundles/:id`                                                        | Get bundle by ID                                                    |
-| POST   | `/hot-updater/api/bundles`                                                            | Create bundles                                                      |
-| PATCH  | `/hot-updater/api/bundles/:id`                                                        | Update a bundle                                                     |
-| DELETE | `/hot-updater/api/bundles/:id`                                                        | Delete bundle                                                       |
-| GET    | `/hot-updater/api/channels`                                                           | List all channels                                                   |
-| POST   | `/hot-updater/api/channels`                                                           | Insert or resolve a channel                                         |
-| DELETE | `/hot-updater/api/channels/:id`                                                       | Delete an empty channel                                             |
+| Method | Endpoint                                                                                        | Description                            |
+| ------ | ----------------------------------------------------------------------------------------------- | -------------------------------------- |
+| GET    | `/hot-updater/version`                                                                          | Get the server version                 |
+| GET    | `/hot-updater/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`      | Resolve an app-version Release Catalog |
+| GET    | `/hot-updater/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash` | Resolve a fingerprint Release Catalog  |
+| GET    | `/hot-updater/artifacts/:targetBundleId/from/:currentBundleId`                                  | Resolve an artifact                    |
+
+`features.bundles: true` also mounts the Bundle, Channel, Release, Release
+Catalog, and database-commit management routes under `/hot-updater/api/*`.
+See [CLI Configuration](../cli-configuration#api-endpoints) for their complete
+request and response contract. These management routes do not authenticate
+themselves; keep the fail-closed framework middleware described above.

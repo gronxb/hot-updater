@@ -7,10 +7,15 @@ version: "v0.22.0"
 
 ## Installation
 
-Install the server package and standalone plugin.
+Install the server and storage packages in the deployed server project. Install
+the CLI packages in the React Native project.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/standalone --save-dev
+npm install @hot-updater/server @hot-updater/aws
+```
+
+```package-install
+npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater
 ```
 
 ## Architecture
@@ -29,13 +34,18 @@ This approach gives you full control over metadata while leveraging reliable clo
 Configure your Hot Updater CLI to use the self-hosted database.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 export default defineConfig({
-  build: bare(),
+  build: bare({ enableHermes: true }),
   storage: s3Storage({
     region: "auto",
     endpoint: process.env.R2_ENDPOINT,
@@ -47,7 +57,11 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${managementToken}`,
+    },
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
@@ -165,6 +179,11 @@ Start by setting up your database adapter. Choose the ORM that fits your project
 - [MongoDB](./database/mongodb) - Native MongoDB driver
 - [S3](./database/s3) - S3-compatible object storage for bundle metadata
 
+Generate and apply the adapter's schema before serving requests. Kysely and
+MongoDB use `hot-updater db migrate`, Drizzle applies the generated schema with
+Drizzle Kit, and Prisma applies the merged schema with `prisma db push`. S3 does
+not require a schema.
+
 ## Server Frameworks
 
 After configuring your database, choose the framework that fits your stack:
@@ -180,4 +199,4 @@ After configuring your database, choose the framework that fits your stack:
 - **Database control**: PostgreSQL, SQLite, or MongoDB on your infrastructure
 - **Cloud storage**: Leverage existing AWS S3, Cloudflare R2, Supabase, or Firebase storage
 - **Type safety**: Full TypeScript support across all adapters
-- **Production ready**: Built-in graceful shutdown and error handling
+- **Operational control**: Add framework-specific lifecycle and error handling for your deployment

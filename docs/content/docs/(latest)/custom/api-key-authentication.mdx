@@ -27,8 +27,9 @@ Analytics queries, bundle management, or key management.
 ## Create a key
 
 When its database configuration exposes the official domain directly, the Hot
-Updater Console creates, lists, and revokes keys through that domain. The
-bundle-only `standaloneRepository` does not proxy key management. A self-hosted
+Updater Console creates, lists, and revokes keys through that domain.
+`standaloneRepository` proxies bundle, Release, Release Catalog, Channel, and
+commit operations, but it does not proxy key management. A self-hosted
 management surface can use the server helper:
 
 ```ts

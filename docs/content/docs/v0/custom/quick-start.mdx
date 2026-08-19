@@ -10,9 +10,11 @@ version: "v0.22.0"
 Install all required dependencies at once.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/aws
-npm install hono @hono/node-server
-npm install kysely better-sqlite3 @types/better-sqlite3 --save-dev
+npm install @hot-updater/server @hot-updater/aws hono @hono/node-server kysely better-sqlite3 dotenv
+```
+
+```package-install
+npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater @types/better-sqlite3 tsx
 ```
 
 ## Database Setup
@@ -23,6 +25,7 @@ Create the database connection file.
 import { Kysely, SqliteDialect } from "kysely";
 import Database from "better-sqlite3";
 
+// Create this directory before starting the server: mkdir -p data
 export const db = new Kysely({
   dialect: new SqliteDialect({
     database: new Database("./data/database.db"),
@@ -38,7 +41,10 @@ Create the Hot Updater instance with your database adapter and storage plugin (s
 import { createHotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { s3Storage } from "@hot-updater/aws";
+import { config } from "dotenv";
 import { db } from "./kysely";
+
+config({ path: ".env.hotupdater" });
 
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
@@ -79,9 +85,14 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
 
+const authToken = process.env.HOT_UPDATER_AUTH_TOKEN; // [!code ++]
+if (!authToken) { // [!code ++]
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required"); // [!code ++]
+} // [!code ++]
+
 app.use( // [!code ++]
   "/hot-updater/api/*", // [!code ++]
-  bearerAuth({ token: process.env.HOT_UPDATER_AUTH_TOKEN ?? "" }), // [!code ++]
+  bearerAuth({ token: authToken }), // [!code ++]
 ); // [!code ++]
 app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
 
@@ -106,18 +117,26 @@ They are mounted only when `routes.bundles: true`, and your framework
 middleware must protect each management request before mounting the handler.
 The server example above uses Bearer authentication for `/hot-updater/api/*`.
 
-Set your auth token in environment variables:
+Create `.env.hotupdater` with the management token and R2 credentials used by
+the examples:
 
-```bash
-HOT_UPDATER_AUTH_TOKEN=your-secret-auth-token
+```bash title=".env.hotupdater"
+HOT_UPDATER_AUTH_TOKEN=replace-with-a-long-random-token
+R2_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=your-r2-access-key-id
+R2_SECRET_ACCESS_KEY=your-r2-secret-access-key
+R2_BUCKET_NAME=your-r2-bucket
 ```
 
-## Schema Generation
+## Schema Migration
 
-Generate the database schema.
+Create the data directory, generate the Kysely migration, and apply it before
+starting the server.
 
 ```bash
+mkdir -p data
 npx hot-updater db generate src/hotUpdater.ts --yes
+npx hot-updater db migrate src/hotUpdater.ts
 ```
 
 ## Run Server
@@ -125,7 +144,7 @@ npx hot-updater db generate src/hotUpdater.ts --yes
 Start your server.
 
 ```bash
-node src/index.ts
+npx tsx src/index.ts
 ```
 
 Your Hot Updater server is now running at `http://localhost:3000/hot-updater`!
@@ -135,13 +154,21 @@ Your Hot Updater server is now running at `http://localhost:3000/hot-updater`!
 Configure your Hot Updater CLI to connect to this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { config } from "dotenv";
+import { defineConfig } from "hot-updater";
+
+config({ path: ".env.hotupdater" });
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 export default defineConfig({
-  build: bare(),
+  build: bare({ enableHermes: true }),
   storage: s3Storage({
     region: "auto",
     endpoint: process.env.R2_ENDPOINT,
@@ -154,9 +181,10 @@ export default defineConfig({
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
     commonHeaders: {
-      Authorization: `Bearer ${process.env.HOT_UPDATER_AUTH_TOKEN}`,
+      Authorization: `Bearer ${managementToken}`,
     },
   }),
+  updateStrategy: "appVersion",
 });
 ```
 

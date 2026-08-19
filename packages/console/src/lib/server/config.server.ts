@@ -1,12 +1,21 @@
-import { type ConfigResponse, loadConfig } from "@hot-updater/cli-tools";
 import {
   assertStorageOperations,
   createDatabaseClient,
   type DatabaseClient,
   type StoragePluginWith,
 } from "@hot-updater/plugin-core";
+import { getRequest } from "@tanstack/react-start/server";
 
-let configPromise: Promise<ConfigResponse> | null = null;
+import type { HotUpdaterConsoleConfig } from "../../index";
+import { requireConsoleAccess } from "./auth.server";
+import { resolveConsoleConfig } from "./console-runtime.server";
+
+type ResolvedConsoleConfig = HotUpdaterConsoleConfig & {
+  readonly authorityId: string;
+  readonly console: NonNullable<HotUpdaterConsoleConfig["console"]>;
+};
+
+let configPromise: Promise<ResolvedConsoleConfig> | null = null;
 let databaseClient: DatabaseClient | null = null;
 let hotUpdater: ReturnType<
   typeof import("./runtime.server").createRuntimeHotUpdater
@@ -19,18 +28,24 @@ let storagePluginPromise: Promise<
   StoragePluginWith<"get" | "put" | "exists" | "delete">
 > | null = null;
 
-const loadCachedConfig = async () => {
+const loadCachedConfig = async (request: Request) => {
   if (!configPromise) {
-    configPromise = loadConfig(null).catch((error) => {
-      configPromise = null;
-      throw error;
-    });
+    configPromise = resolveConsoleConfig(request)
+      .then((config) => ({
+        ...config,
+        authorityId: config.authorityId ?? "default",
+        console: config.console ?? {},
+      }))
+      .catch((error) => {
+        configPromise = null;
+        throw error;
+      });
   }
 
   return configPromise;
 };
 
-const loadCachedStoragePlugin = async (config: ConfigResponse) => {
+const loadCachedStoragePlugin = async (config: ResolvedConsoleConfig) => {
   if (!storagePluginPromise) {
     storagePluginPromise = Promise.resolve(config.storage)
       .then((storagePlugin) => {
@@ -51,9 +66,10 @@ const loadCachedStoragePlugin = async (config: ConfigResponse) => {
   return storagePluginPromise;
 };
 
-export const prepareConfig = async () => {
+export const prepareConfig = async (request: Request = getRequest()) => {
   try {
-    const config = await loadCachedConfig();
+    await requireConsoleAccess(request);
+    const config = await loadCachedConfig(request);
 
     if (!databaseClient) {
       databaseClient = createDatabaseClient(config.database);
@@ -80,7 +96,14 @@ export const prepareConfig = async () => {
       storagePlugin,
     };
   } catch (error) {
-    console.error("Error during configuration initialization:", error);
+    if (
+      !(
+        error instanceof Response &&
+        (error.status === 401 || error.status === 403)
+      )
+    ) {
+      console.error("Error during configuration initialization:", error);
+    }
     throw error;
   }
 };

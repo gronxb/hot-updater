@@ -118,6 +118,7 @@ describe("Supabase React Native init output", () => {
     expect(source).toContain(
       'baseURL: "https://project-ref.supabase.co/functions/v1/update-server"',
     );
+    expect(source).toContain("return null; // Replace with your app root");
     expect(source).not.toContain("HOT_UPDATER_SUPABASE_CATALOG_CDN_URL");
   });
 

@@ -7,7 +7,7 @@ icon: Hammer
 ## Installation
 
 ```package-install
-npm install @hot-updater/plugin-core --save-dev
+npm install @hot-updater/plugin-core
 ```
 
 ## Overview
@@ -47,12 +47,9 @@ Your factory function must return an object with these methods:
   getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;
 
   // Fetch paginated bundles with optional filtering
-  getBundles: (options: {
-    where?: { channel?: string; platform?: string };
-    limit: number;
-    page?: number;
-    cursor?: { after?: string; before?: string };
-  }) => Promise<Paginated<Bundle[]>>;
+  getBundles: (
+    options: DatabaseBundleQueryOptions & { offset?: number },
+  ) => Promise<Paginated<Bundle[]>>;
 
   // Get all available channels
   getChannels: () => Promise<string[]>;
@@ -84,6 +81,7 @@ Here's a complete custom database plugin using a REST API:
 ```typescript title="customDatabase.ts"
 import {
   type Bundle,
+  type DatabaseBundleQueryOptions,
   type Paginated,
   createDatabasePlugin,
 } from "@hot-updater/plugin-core";
@@ -116,26 +114,21 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
         return response.json();
       },
 
-      async getBundles(options): Promise<Paginated<Bundle[]>> {
+      async getBundles(
+        options: DatabaseBundleQueryOptions & { offset?: number },
+      ): Promise<Paginated<Bundle[]>> {
         const params = new URLSearchParams({
           limit: String(options.limit),
         });
 
-        if (options.page !== undefined) {
-          params.set("page", String(options.page));
+        if (options.offset !== undefined) {
+          params.set("offset", String(options.offset));
         }
-        if (options.cursor?.after) {
-          params.set("after", options.cursor.after);
+        if (options.where !== undefined) {
+          params.set("where", JSON.stringify(options.where));
         }
-        if (options.cursor?.before) {
-          params.set("before", options.cursor.before);
-        }
-
-        if (options.where?.channel) {
-          params.set("channel", options.where.channel);
-        }
-        if (options.where?.platform) {
-          params.set("platform", options.where.platform);
+        if (options.orderBy !== undefined) {
+          params.set("orderBy", JSON.stringify(options.orderBy));
         }
 
         const response = await fetch(
@@ -193,8 +186,10 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
 });
 ```
 
-Use cursor pagination as the contract for bundle-management queries. The
-`offset` query parameter has been removed from the public API.
+The `createDatabasePlugin` fallback resolves cursor requests into `where.id`,
+`orderBy`, and the internal `offset` before calling the provider. The REST
+service must parse `where` and `orderBy`, apply all filters and ordering, and
+only then apply `offset` and `limit`.
 
 ## Helper Utilities
 
@@ -202,16 +197,16 @@ The `@hot-updater/plugin-core` package provides helper functions:
 
 ### calculatePagination
 
-Generates pagination metadata after your implementation resolves a cursor into
-an internal start index:
+Generates pagination metadata for the internal offset window passed to your
+provider:
 
 ```typescript
 import { calculatePagination } from "@hot-updater/plugin-core";
 
-const startIndex = resolvedCursorStartIndex;
+const offset = options.offset ?? 0;
 const pagination = calculatePagination(totalCount, {
   limit: 10,
-  offset: startIndex,
+  offset,
 });
 // Result: { total, hasNextPage, hasPreviousPage, currentPage, totalPages }
 ```
@@ -221,7 +216,7 @@ const pagination = calculatePagination(totalCount, {
 Use your custom plugin in `hot-updater.config.ts`:
 
 ```typescript
-import { defineConfig } from "@hot-updater/core";
+import { defineConfig } from "hot-updater";
 import { customDatabase } from "./customDatabase";
 
 export default defineConfig({

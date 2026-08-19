@@ -24,9 +24,9 @@ npm install @hot-updater/standalone --save-dev
 
 Configure your CLI to connect to your self-hosted server:
 
-```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
+```typescript title="hot-updater.config.ts (excerpt)"
 import { standaloneRepository } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   build: /* your build plugin */,
@@ -34,6 +34,7 @@ export default defineConfig({
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
@@ -78,12 +79,17 @@ database: standaloneRepository({
 ### With Authentication
 
 ```typescript
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
+
 database: standaloneRepository({
   baseUrl: process.env.HOT_UPDATER_SERVER_URL!,
   commonHeaders: {
-    "Authorization": `Bearer ${process.env.API_TOKEN}`
-  }
-})
+    Authorization: `Bearer ${managementToken}`,
+  },
+});
 ```
 
 ### With Custom Routes

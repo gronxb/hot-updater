@@ -122,7 +122,7 @@ The following options are available in automatic mode:
 | `updateStrategy` | `"appVersion" \| "fingerprint"` | Yes | Update detection strategy |
 | `requestHeaders` | `Record<string, string>` | No | Custom HTTP headers for update requests |
 | `requestTimeout` | `number` | No | Request timeout in milliseconds (default: 5000) |
-| `fallbackComponent` | `React.FC<{status, progress, message}>` | No | UI component shown during updates |
+| `fallbackComponent` | `React.FC<HotUpdaterFallbackComponentProps>` | No | UI component shown during updates |
 | `onProgress` | `(progress: number) => void` | No | Callback fired during bundle download (0-1) |
 | `reloadOnForceUpdate` | `boolean` | No | Auto-reload on force updates (default: true) |
 | `onUpdateProcessCompleted` | `(response) => void` | No | Callback when update process completes |
@@ -140,7 +140,7 @@ Without a `fallbackComponent`, the bundle downloads without blocking the screen.
 **Props:**
 - `progress`: Download progress (0-1, e.g., for a progress bar)
 - `status`: Update state (`CHECK_FOR_UPDATE` or `UPDATING`)
-- `message`: Optional message from the server
+- `message`: Message from the server, or `null`
 
 **Example:**
 ```tsx
@@ -242,7 +242,7 @@ export default HotUpdater.wrap({
     "Authorization": "Bearer <your-access-token>",
   },
   reloadOnForceUpdate: false, // The app won't reload on force updates // [!code hl:7]
-  onUpdateProcessCompleted: ({ status, shouldForceUpdate, id, message }) => {
+  onUpdateProcessCompleted: async ({ status, shouldForceUpdate, id, message }) => {
     console.log("Bundle updated:", status, shouldForceUpdate, id, message);
     if (shouldForceUpdate) {
       await HotUpdater.reload();
@@ -262,7 +262,7 @@ Allows you to perform additional actions after the update process is completed.
 | `status` | "ROLLBACK" \| "UPDATE" \| "UP_TO_DATE" | The status of the update process |
 | `shouldForceUpdate` | boolean | Whether the update process is forced |
 | `id` | string | The ID of the bundle to update |
-| `message` | string | The message of the update process |
+| `message` | string \| null | The message of the update process |
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";

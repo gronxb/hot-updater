@@ -44,10 +44,10 @@ The default channel is the release channel embedded in your native app at build 
 
       <Tab value="Android">
       ```xml title="android/app/src/main/AndroidManifest.xml"
-      <application>
+      <application android:name=".MainApplication">
           <meta-data
               android:name="com.hotupdater.CHANNEL"
-              android:value="your_set_channel" /> // [!code ++]
+              android:value="your_set_channel" />
       </application>
       ```
       </Tab>
@@ -62,7 +62,7 @@ The default channel is the release channel embedded in your native app at build 
       "expo": {
         "plugins": [
           [
-            "@hot-updater/react-native",
+            "@hot-updater/expo",
             {
               "channel": "<your-channel-name>"
             }
@@ -106,7 +106,7 @@ export default defineConfig({
     android: {
       androidManifestPaths: [
         "android/app/src/main/AndroidManifest.xml",
-        "android/app/src/debug/AndroidManifest.xml",
+        "android/app/src/debug/AndroidManifest.xml", // Include additional manifests
       ],
     },
   },
@@ -116,7 +116,7 @@ export default defineConfig({
 This is useful when:
 
 - Your iOS project has app extensions such as widgets or notification services
-- You have multiple Android build variants with different resource paths
+- You have multiple Android build variants with different manifest paths
 - Your project does not follow the standard React Native file structure
 
 **Important**: Configure these custom paths before running
@@ -154,7 +154,7 @@ After setting the channel, rebuild your app in Release mode:
   <Tab value="Expo">
     **iOS:**
     ```sh
-    npx expo run:ios --variant release
+    npx expo run:ios --configuration Release
     ```
 
     **Android:**

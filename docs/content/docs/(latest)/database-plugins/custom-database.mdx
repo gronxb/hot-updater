@@ -7,7 +7,7 @@ icon: Hammer
 ## Installation
 
 ```package-install
-npm install @hot-updater/plugin-core --save-dev
+npm install @hot-updater/plugin-core
 ```
 
 Install the public conformance suites in the project that tests your provider:
@@ -321,6 +321,8 @@ Analytics ordering, and the absence of a public `queries` surface.
 Use the same provider in the CLI and self-hosted server:
 
 ```ts title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
 export default defineConfig({
   authorityId: "project-01",
   database: myDatabase({ db }),

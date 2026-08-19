@@ -29,7 +29,10 @@ function App() {
   );
 }
 
-export default HotUpdater.wrap(App);
+export default HotUpdater.wrap({
+  baseURL: "<your-update-server-url>",
+  updateStrategy: "appVersion",
+})(App);
 ```
 
 ## Return Value

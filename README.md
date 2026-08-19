@@ -91,6 +91,7 @@
 
   export default defineConfig({
     build: bare({ enableHermes: true }),
+    updateStrategy: "appVersion",
     storage: supabaseStorage({
       supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
       supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
@@ -114,6 +115,7 @@ config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
+  updateStrategy: "appVersion",
   storage: r2Storage({
     bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
@@ -149,6 +151,7 @@ const awsOptions = {
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
+  updateStrategy: "appVersion",
   storage: s3Storage({
     ...awsOptions,
     bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
@@ -171,7 +174,7 @@ import { defineConfig } from "hot-updater";
 config({ path: ".env.hotupdater" });
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Check your .env file and add the credentials
+// Check your .env.hotupdater file and add the credentials
 // Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
 // Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
 const credential = applicationDefault();
@@ -180,6 +183,7 @@ export default defineConfig({
   build: bare({
     enableHermes: true,
   }),
+  updateStrategy: "appVersion",
   storage: firebaseStorage({
     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
     storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,

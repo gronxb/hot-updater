@@ -8,6 +8,7 @@ import {
 import { useEffect, useState } from "react";
 
 import { AppSidebar } from "@/components/AppSidebar";
+import { ConsoleAccessPage } from "@/components/ConsoleAccessPage";
 import { AnalyticsCapabilityProvider } from "@/components/features/analytics/AnalyticsCapabilityContext";
 import { NotFoundPage } from "@/components/NotFoundPage";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -18,6 +19,10 @@ import {
   getAnalyticsCapabilityState,
   useAnalyticsCapabilitiesQuery,
 } from "@/lib/analytics-api";
+import {
+  getConsoleAccessRpc,
+  getConsoleAuthProvidersRpc,
+} from "@/lib/auth-rpc";
 
 import appCss from "../styles.css?url";
 
@@ -59,6 +64,14 @@ export const Route = createRootRouteWithContext<{
       },
     ],
   }),
+
+  loader: async () => {
+    const [access, providers] = await Promise.all([
+      getConsoleAccessRpc(),
+      getConsoleAuthProvidersRpc(),
+    ]);
+    return { access, providers };
+  },
 
   component: RootLayout,
   notFoundComponent: NotFoundPage,
@@ -126,6 +139,16 @@ export function RootDocument({ children }: { children: React.ReactNode }) {
 }
 
 function RootLayout() {
+  const { access, providers } = Route.useLoaderData();
+
+  if (access.status !== "authorized") {
+    return <ConsoleAccessPage access={access} providers={providers} />;
+  }
+
+  return <AuthorizedConsole />;
+}
+
+function AuthorizedConsole() {
   const capabilityQuery = useAnalyticsCapabilitiesQuery();
   const capability = getAnalyticsCapabilityState(capabilityQuery);
 

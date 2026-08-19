@@ -34,26 +34,10 @@ async function checkForAppUpdate() {
       };
     }
 
-    /**
-     * You can apply updates using one of two methods:
-     *
-     * Method 1: Use the updateBundle() method from the updateInfo object
-     * - A convenience method built into the return value from checkForUpdate
-     * - Performs the same function as HotUpdater.updateBundle with all required arguments pre-filled
-     */
-    await updateInfo.updateBundle();
+    // The returned helper includes all required update arguments.
+    const didUpdate = await updateInfo.updateBundle();
 
-    /**
-     * Method 2: Call HotUpdater.updateBundle() directly
-     * - Explicitly pass the necessary values extracted from updateInfo
-     */
-    // await HotUpdater.updateBundle({
-    //   bundleId: updateInfo.id,
-    //   fileUrl: updateInfo.fileUrl,
-    //   status: updateInfo.status,
-    // });
-
-    if (updateInfo.shouldForceUpdate) {
+    if (didUpdate && updateInfo.shouldForceUpdate) {
       await HotUpdater.reload();
     }
     return updateInfo;
@@ -84,8 +68,8 @@ function App() {
       },
     }).then(async (updateInfo) => {
       if (updateInfo) {
-        await updateInfo.updateBundle();
-        if (updateInfo.shouldForceUpdate) {
+        const didUpdate = await updateInfo.updateBundle();
+        if (didUpdate && updateInfo.shouldForceUpdate) {
           await HotUpdater.reload();
         }
       }
@@ -118,17 +102,22 @@ instructions on how to fix it.
 
 ## Parameters
 
-The `checkForUpdate` function accepts the following optional parameters:
+The `checkForUpdate` function accepts the following parameters:
 
 | Parameter         | Type                           | Required | Description                                                                      |
 |-------------------|--------------------------------|----------|----------------------------------------------------------------------------------|
 | `updateStrategy`  | `"appVersion"` \| `"fingerprint"` | ✅        | Update detection strategy for this check. |
+| `channel`         | `string`                       | ❌        | Channel to check. Defaults to the currently active channel.                      |
 | `requestHeaders`  | `Record<string, string>`       | ❌        | Optional headers to include in the update request.                               |
 | `requestTimeout`  | `number`                       | ❌        | Request timeout in milliseconds (default: 5000).                                 |
 | `onError`         | `(error: Error) => void`       | ❌        | Error callback.                                                                  |
 
 The update source is always from `HotUpdater.wrap()` or `HotUpdater.init()`; it
 cannot be overridden in `checkForUpdate`.
+
+A requested channel switch is persisted only after the returned update applies
+successfully. If a different runtime channel is already active, call
+`resetChannel()` first; that conflict rejects instead of returning `null`.
 
 ## How It Works
 
@@ -142,28 +131,6 @@ For example, if you configured `baseURL: "https://your-update-server.com/api/upd
 
 ## Return Value
 
-The function returns an object of type `UpdateInfo` or `null` if the app is up to date.
-
-```ts
-export type UpdateStatus = "ROLLBACK" | "UPDATE";
-
-export interface UpdateInfo {
-  id: string;
-  shouldForceUpdate: boolean;
-  fileUrl: string | null;
-  message: string | null;
-  status: UpdateStatus;
-}
-```
-
-### Example Return Value
-
-```json
-{
-  "id": "01952bbd-e7b2-7931-aee8-2e2187caa0ce",
-  "shouldForceUpdate": true,
-  "status": "UPDATE",
-  "fileUrl": "https://example.com/bundles/update.bundle",
-  "message": "This is a test message",
-}
-```
+The function returns `null` when the app is up to date. Otherwise, it returns
+the selected bundle ID, status, message, nullable download URL and hash, and a
+pre-filled `updateBundle()` helper.

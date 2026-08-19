@@ -86,7 +86,8 @@ npx hot-updater keys export-public [--print-only] [--yes]
 
 Writes public key to:
 - iOS: `Info.plist` → `HOT_UPDATER_PUBLIC_KEY`
-- Android: `AndroidManifest.xml` → `com.hotupdater.PUBLIC_KEY`
+- Android: application metadata in `AndroidManifest.xml` →
+  `com.hotupdater.PUBLIC_KEY`
 
 The command auto-detects native files. For custom paths, configure `platform` in your config:
 
@@ -96,7 +97,7 @@ export default defineConfig({
     android: {
       androidManifestPaths: [
         "android/app/src/main/AndroidManifest.xml",
-        "android/app/src/prod/AndroidManifest.xml",
+        "android/app/src/prod/AndroidManifest.xml", // production flavor
       ],
     },
     ios: {
@@ -123,11 +124,11 @@ npx hot-updater keys remove [--yes]
 <string>-----BEGIN PUBLIC KEY-----\nMIIB...your-key...\n-----END PUBLIC KEY-----</string>
 ```
 
-**Android** (`AndroidManifest.xml`):
+**Android** (`AndroidManifest.xml`, inside `<application>`):
 ```xml
 <meta-data
     android:name="com.hotupdater.PUBLIC_KEY"
-    android:value="-----BEGIN PUBLIC KEY-----\nMIIB...your-key...\n-----END PUBLIC KEY-----" />
+    android:value="-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkq...your-key...\n-----END PUBLIC KEY-----" />
 ```
 
 ## Expo Integration
@@ -136,7 +137,7 @@ Expo projects automatically embed the public key during `expo prebuild` when sig
 
 ### How It Works
 
-The Expo config plugin (`@hot-updater/react-native`) reads your `hot-updater.config.ts`:
+The Expo config plugin (`@hot-updater/expo`) reads your `hot-updater.config.ts`:
 
 ```ts title="hot-updater.config.ts"
 export default defineConfig({

@@ -10,7 +10,11 @@ version: "v0.22.0"
 Install the MongoDB native driver.
 
 ```package-install
-npm install mongodb --save-dev
+npm install @hot-updater/server @hot-updater/aws mongodb
+```
+
+```package-install
+npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater
 ```
 
 ## Setup
@@ -50,6 +54,10 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
+  routes: {
+    updateCheck: true,
+    bundles: true,
+  },
 });
 ```
 
@@ -61,20 +69,26 @@ Run the database migration to create the MongoDB collection and indexes.
 npx hot-updater db migrate src/hotUpdater.ts
 ```
 
-This command targets the `src/hotUpdater.ts` file and creates the `bundles` collection with necessary indexes.
+This command targets `src/hotUpdater.ts` and creates all Hot Updater
+collections and indexes required by the active database schema.
 
 ## CLI Configuration
 
 Configure your CLI to use this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 export default defineConfig({
-  build: bare(),
+  build: bare({ enableHermes: true }),
   storage: s3Storage({
     region: "auto",
     endpoint: process.env.R2_ENDPOINT,
@@ -86,12 +100,16 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${managementToken}`,
+    },
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
 <Callout type="warn">
-The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
+The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example. Because `routes.bundles` enables management routes, protect `/hot-updater/api/*` with fail-closed authentication before mounting the handler.
 </Callout>
 
 ## API Endpoints

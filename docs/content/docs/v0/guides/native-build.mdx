@@ -6,14 +6,16 @@ icon: Hammer
 
 ## Overview
 
-Hot Updater ships dedicated native helpers so you can create store-ready artifacts or boot the app on a device without leaving the CLI. `build:android`, `build:ios`, `run:android`, and `run:ios` reuse the same configuration defined in `hot-updater.config.ts`, respect your update strategy, and copy every artifact into a predictable output directory for further automation.
+Hot Updater ships dedicated native helpers so you can create store-ready artifacts or boot the app on a device without leaving the CLI. `build:android`, `build:ios`, `run:android`, and `run:ios` reuse the same configuration defined in `hot-updater.config.ts` and respect your update strategy. The `build:*` commands copy artifacts into a predictable output directory, while the `run:*` commands build, install, and launch directly.
+
+`build:android` is available normally. `build:ios`, `run:android`, and `run:ios` are experimental and are registered only when `EXPERIMENTAL=1` is set.
 
 ## Prerequisites
 
 - React Native project with both `android/` and `ios/` directories tracked.
 - `hot-updater.config.ts` defines at least one scheme under `nativeBuild.android` and/or `nativeBuild.ios`.
 - Platform toolchains are installed locally (`gradlew`, `xcodebuild`, CocoaPods (or Bundler), `devicectl`/`simctl`).
-- Run `hot-updater channel set <channel>` so `HOT_UPDATER_CHANNEL` exists in Info.plist/strings.xml.
+- Run `hot-updater channel set <channel>` so `HOT_UPDATER_CHANNEL` exists in Info.plist and `com.hotupdater.CHANNEL` exists in AndroidManifest.xml.
 - Decide on an update strategy (`appVersion` or `fingerprint`); the CLI follows it automatically.
 
 ## Configure nativeBuild schemes
@@ -78,24 +80,24 @@ export default defineConfig({
 | `platform` | Apple platform for build & archive. | `ios` |
 | `scheme` | The Xcode scheme to build. | Required |
 | `configuration` | The build configuration to use. | `Release` |
+| `simulator` | Build for an iOS simulator. Applies to `build:ios` only and must not be combined with `destination`. | `false` |
 | `destination` | The destination for the build. | `['generic/platform=iOS']` |
 | `exportOptionsPlist` | Path to a plist file that specifies options for exporting the archive. | `undefined` |
 | `exportExtraParams` | Additional parameters for `exportArchive`. | `[]` |
 | `xcconfig` | Path to an `.xcconfig` file to include additional build settings. | `undefined` |
-| `installPods` | Automatically install CocoaPods dependencies before building. | `true` |
+| `installPods` | Automatically install CocoaPods dependencies before building. | `false` |
 | `extraParams` | Additional parameters passed to `xcodebuild`. | `[]` |
 
 
 ## CLI commands
 
-All commands support the shared options below (unless noted). `-s/--scheme` is required unless `-i/--interactive` is used.
+All commands support the shared options below (unless noted). `-s/--scheme` is required unless `-i/--interactive` is used. `-o/--output-path` affects only `build:*` commands.
 
 ```
 Options:
   -s, --scheme <scheme>           predefined scheme for the native build configuration
   -o, --output-path <outputPath>  the path where the artifacts will be generated (default: .hot-updater/output/build/<platform>/<scheme>)
   -i, --interactive               interactive mode (default: false)
-  -m, --message <message>         specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message
   -h, --help                      display help for command
 ```
 
@@ -114,7 +116,7 @@ npx hot-updater build:android -s releaseApk
 Archives (and optionally exports) the selected scheme using `xcodebuild`, then copies the `.xcarchive`, `.app`, or `.ipa`.
 
 ```package-install
-npx hot-updater build:ios -s release
+EXPERIMENTAL=1 npx hot-updater build:ios -s release
 ```
 
 - If `exportOptionsPlist` is present, an IPA export is performed; otherwise the `.xcarchive` and extracted `.app` are stored.
@@ -131,12 +133,12 @@ Options:
 ```
 
 ```package-install
-npx hot-updater run:android -s debugApk -d "Pixel_6_Pro_API_35" --port 8082
+EXPERIMENTAL=1 npx hot-updater run:android -s debugApk -d "Pixel_6_Pro_API_35" --port 8082
 ```
 
 - `-d` selects a specific device; otherwise all connected devices receive the build (or the CLI launches the first emulator).
 - `--port` forwards the Metro port before the app starts.
-- Uses `mainActivity` override when present; otherwise derives it from the package name.
+- The CLI derives the main activity from the package name.
 
 ### `hot-updater run:ios`
 
@@ -144,11 +146,11 @@ Builds for simulator or device, installs the app, and launches it.
 
 ```
 Options:
-  -d, --device [deviceName | deviceId]  specify the ADB device name or use default
+  -d, --device [deviceName | deviceId]  select an Apple device or simulator by name or identifier
 ```
 
 ```package-install
-npx hot-updater run:ios -s simulatorDebug -d "iPhone 15 (iOS 17.5)"
+EXPERIMENTAL=1 npx hot-updater run:ios -s simulatorDebug -d "iPhone 15 (iOS 17.5)"
 ```
 
 - Works with `devicectl` (physical devices) and `simctl` (simulators); interactive mode lists everything discovered.
@@ -156,7 +158,7 @@ npx hot-updater run:ios -s simulatorDebug -d "iPhone 15 (iOS 17.5)"
 
 ## Artifact storage
 
-Artifacts default to `.hot-updater/output/build/<platform>/<scheme>`. The directory is recreated on every run, so point `-o` to a temporary path if you need to keep older artifacts. Copying happens after build plugin hooks complete, giving CI pipelines a stable handoff point.
+Artifacts from `build:android` and `build:ios` default to `.hot-updater/output/build/<platform>/<scheme>`. The directory is recreated on every build, so point `-o` to a temporary path if you need to keep older artifacts. Copying happens after build plugin hooks complete. The `run:*` commands do not copy persistent artifacts or invoke build plugin hooks.
 
 ## Fingerprint and version awareness
 

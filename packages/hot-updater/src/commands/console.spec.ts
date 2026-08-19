@@ -19,9 +19,9 @@ describe("getConsoleServerEnv", () => {
       expectedHost: "127.0.0.1",
     },
     {
-      name: "preserves an explicit host",
+      name: "overrides an explicit public host",
       processEnv: { NITRO_HOST: "0.0.0.0" },
-      expectedHost: "0.0.0.0",
+      expectedHost: "127.0.0.1",
     },
   ])("$name", ({ processEnv, expectedHost }) => {
     const env = getConsoleServerEnv(4_321, processEnv);

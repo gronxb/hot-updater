@@ -1,0 +1,157 @@
+---
+title: "Hot Updater 1.0: The Read Path Should Be Boring"
+description: "Release Catalogs replace per-installation decisions with shared reads, while Analytics shows the latest Bundle reported by each installation."
+date: "2026-08-19"
+author: "Hot Updater Team"
+image: "/blog/release-catalog.webp"
+---
+
+Introducing Hot Updater 1.0.
+
+We rebuilt the path every installation uses around one idea: an update check
+should be a boring read, not a fresh decision for every device.
+
+Before 1.0, each check sent installation-specific state to the server. The
+server combined the current Bundle, rollout cohort, platform, channel, and
+compatibility target, then asked the configured database provider what that
+installation should receive. It worked, but the answer was difficult to share.
+
+Hot Updater 1.0 moves that decision to the moment Release policy changes. The
+result is compiled into a **Release Catalog** that can be cached and shared.
+The device applies its local state after receiving the Catalog, and built-in
+Analytics reports what happened after the app is ready.
+
+## What changed in 1.0
+
+- **Update checks are shared reads.** Installations on the same platform,
+  channel, and compatibility scope request the same Release Catalog.
+- **Policy is separate from bytes.** Bundles remain immutable artifacts;
+  Releases own rollout, targeting, promotion, and rollback.
+- **The result is observable.** Analytics shows the latest Bundle reported by
+  each installation and whether updates were applied or recovered.
+
+Together, these changes remove installation-specific selection from the
+server's hot path without giving up installation-specific behavior on the
+device.
+
+## From 20,000 candidates to a cached Catalog
+
+The repository includes a local synthetic benchmark for the server-side work
+performed during an update check. The pre-Catalog baseline runs the generic
+database selector over 20,000 matching Bundle rows. The 1.0 fixture serves an
+empty, already compiled Catalog from a warm in-process cache. This intentionally
+compares the old selector's work with the minimum warm-serving overhead, not
+two equal payloads.
+
+|                               | Pre-Catalog selector | 1.0 warm Catalog |
+| ----------------------------- | -------------------: | ---------------: |
+| Database adapter reads        |                  203 |                0 |
+| Mean benchmark operation time |            981.25 ms |        0.0209 ms |
+
+The warmed 1.0 fixture used **99.9979% less operation time in this harness**.
+This is a measurement of application work removed from the request path, not
+an end-to-end device latency result or a production cloud-bill estimate.
+Network latency, provider latency, cache locations, TTL, and traffic shape
+still depend on the deployment. The command, environment, and baseline commit
+are recorded in the
+[checked-in verification evidence](https://github.com/gronxb/hot-updater/blob/c8e24cdec1ddfd184a866df30a82f1c05b525ef5/docs/architecture/release-catalog-verification.md).
+
+A separate integration test measures cold-request concurrency. One hundred
+simultaneous requests for the same uncached Catalog produce **one exact
+Catalog-row read**; the other 99 requests join the same in-flight load. Once
+that Catalog is cached, a warm request and an ETag revalidation add no database
+read. This coalescing is scoped to one process and one canonical Catalog key,
+not a promise that requests across every region share one global read.
+
+The durable change is the scaling model:
+
+```text
+before 1.0: origin decisions grow with update checks
+after 1.0:  origin reads grow with Catalog cache fills across scopes and locations
+```
+
+On managed AWS, Cloudflare, and Firebase deployments, a shared cache can serve
+warm checks without running the decision origin. Supabase remains origin-only,
+so every check still invokes its Edge Function, but the function serves a
+compiled Catalog instead of running the old per-installation Postgres
+selector.
+
+## Compile policy once, share the result
+
+Hot Updater 1.0 gives three concepts one job each:
+
+- A **Bundle** is immutable installable content: archives, assets, patches,
+  hashes, manifests, and signing identity.
+- A **Release** points to a Bundle and owns delivery policy: channel,
+  compatibility, rollout, cohort targeting, enablement, force update, and
+  message.
+- A **Release Catalog** is the deterministic projection of those Releases for
+  a platform, channel, and compatibility scope.
+
+Deploying a Release or changing its policy compiles the affected Catalog. The
+Release mutation and Catalog generation commit together, so a client cannot
+observe new policy without its matching projection.
+
+The request path is then deliberately small:
+
+1. Read one Catalog for the client's platform, channel, and compatibility
+   scope.
+2. Reuse the cached response across installations.
+3. Let the device evaluate its current Bundle, rollout bucket, cohort, and
+   crash history.
+4. Download an artifact only when the selected Bundle bytes differ.
+
+The server answers **what can be released**. The device answers **what applies
+to me**.
+
+This separation also makes promotion and rollback easier to reason about. A
+Bundle can be reused by multiple Releases. Promoting to another channel creates
+policy that references the same bytes instead of copying them. Changing a
+rollout recompiles the Catalog without rewriting the artifact. Disabling a
+Release moves affected devices to the previous compatible enabled Release—or
+back to the built-in Bundle.
+
+## Analytics closes the loop
+
+Moving installation-specific selection to the device makes the read path
+cheaper, but operators still need to know what devices actually did.
+
+After enabling Analytics on the server, set
+`HotUpdater.init({ analytics: true })` in the app. It then reports its outcome
+after it is ready. Reporting is best-effort: a reporting failure never blocks
+startup or triggers a rollback.
+
+The Console answers three kinds of questions:
+
+- **Fleet:** How many unique installations successfully reported during the
+  last 24 hours, 7 days, or 30 days? Which Bundle did each installation most
+  recently report?
+- **Adoption:** How is the latest reported Bundle distribution changing among
+  reporting installations? Did installations report `UPDATE_APPLIED` or move
+  away from a Bundle with `RECOVERED`?
+- **Diagnosis:** Search by installation ID, user ID, or username, then inspect
+  the last reported Bundle and recorded apply or recovery history.
+
+These numbers are operational evidence, not a claim about every installed copy
+of an app. They cover installations that opted in and successfully reached the
+server. An observed Bundle share is therefore a signal for investigating a
+rollout, not proof that its configured eligibility exactly matches global
+adoption.
+
+## Upgrading to 1.0
+
+Version 1.0 establishes a clean protocol boundary. Existing v0 installations
+continue using their v0 endpoint while you provision fresh v1 resources,
+upgrade the Hot Updater packages together, verify the new endpoint, and ship a
+native build with the v1 SDK.
+
+Do not deliver v1 `@hot-updater/react-native` JavaScript to a v0 native binary
+through OTA. The v1 receipt and rollback model requires the v1 native module.
+
+Read the [v1 upgrade guide](/docs/guides/upgrade-to-v1) for the migration
+sequence, or explore [how Release Catalogs work](/docs/concepts/how-it-works)
+in detail.
+
+Hot Updater 1.0 does less work on the path every installation uses and gives
+you better evidence about the result. The read path is boring now. That is the
+point.

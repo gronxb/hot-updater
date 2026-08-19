@@ -29,7 +29,10 @@ function AdminPanel() {
   );
 }
 
-export default HotUpdater.wrap(AdminPanel);
+export default HotUpdater.wrap({
+  baseURL: "<your-update-server-url>",
+  updateStrategy: "appVersion",
+})(AdminPanel);
 ```
 
 ## Return Value

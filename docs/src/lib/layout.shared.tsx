@@ -15,6 +15,10 @@ export function baseOptions(): BaseLayoutProps {
     },
     links: [
       {
+        text: "Blog",
+        url: "/blog",
+      },
+      {
         text: "Docs",
         url: "/docs/get-started/introduction",
       },

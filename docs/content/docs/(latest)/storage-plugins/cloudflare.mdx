@@ -7,7 +7,7 @@ icon: cloudflare
 ## Installation
 
 ```package-install
-npm install @hot-updater/cloudflare --save-dev
+npm install @hot-updater/cloudflare
 ```
 
 ## Setup
@@ -28,17 +28,20 @@ follow the [Cloudflare R2 API token guide](https://developers.cloudflare.com/r2/
 ## Configuration
 
 ```typescript
-interface R2StorageConfig {
-  accountId: string; // Cloudflare account ID
-  bucketName: string; // R2 bucket name
+interface R2S3StorageConfig {
+  accountId: string;
+  bucketName: string;
   credentials: {
-    accessKeyId: string; // R2 S3 Access Key ID
-    secretAccessKey: string; // R2 S3 Secret Access Key
+    accessKeyId: string;
+    secretAccessKey: string;
   };
-  basePath?: string; // Optional base path within bucket
-  downloadUrlSigningKey?: string; // Server-side download URL signing
+  basePath?: string;
+  downloadUrlSigningKey?: string;
 }
 ```
+
+`r2Storage` requires S3-compatible credentials. The Wrangler object-storage
+fallback is removed.
 
 ## Usage
 
@@ -61,41 +64,11 @@ export default defineConfig({
 
 ## Runtime Usage
 
-The root `r2Storage` implementation uses the R2 S3-compatible API.
-Add `downloadUrlSigningKey` when the root plugin is also used by a
-self-hosted `createHotUpdater` server.
-
-Cloudflare Workers should use the Worker runtime export instead:
-
-```typescript
-import { r2Storage } from "@hot-updater/cloudflare/worker";
-import { createHotUpdater } from "@hot-updater/server";
-import { env } from "cloudflare:workers";
-
-export const hotUpdater = createHotUpdater({
-  storage: [
-    r2Storage({
-      bucket: env.BUCKET,
-      bucketName: env.BUCKET_NAME,
-      downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
-    }),
-  ],
-  // ... other options
-});
-```
-
-The Worker subpath exports the same `r2Storage` name with an R2-binding
-implementation. It captures its binding at construction and returns streaming
-Web responses. Its `getDownloadUrl` operation returns a signed URL handled by
-`createHotUpdater`, without exposing Worker types or delivery policy in
-`@hot-updater/plugin-core`.
-
-## Limitations
-
-- Legacy `r2Storage` configs without `credentials` use Wrangler and are slower
-  than the S3-compatible API path.
-- Worker code must import `r2Storage` from
-  `@hot-updater/cloudflare/worker`, not the root package.
+The root `r2Storage` plugin implements upload, read, existence-check, and
+exact-delete operations. When the same plugin is passed to a self-hosted
+`createHotUpdater` server, also provide `downloadUrlSigningKey`; it enables
+the signed download location required by the server while `get` reads the
+stored object.
 
 ## Protocol
 

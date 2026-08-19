@@ -8,7 +8,7 @@ icon: cloudflare
 ## Installation
 
 ```package-install
-npm install @hot-updater/cloudflare --save-dev
+npm install @hot-updater/cloudflare @hot-updater/aws --save-dev
 ```
 
 ## Setup
@@ -38,14 +38,18 @@ interface D1DatabaseConfig {
 ```typescript
 import { d1Database } from '@hot-updater/cloudflare';
 import { defineConfig } from 'hot-updater';
+import { build } from './build';
+import { storage } from './storage';
 
 export default defineConfig({
+  build,
   database: d1Database({
-    databaseId: process.env.D1_DATABASE_ID,
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
-    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN
+    databaseId: process.env.D1_DATABASE_ID!,
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN!
   }),
-  // ... other config
+  storage,
+  updateStrategy: 'appVersion'
 });
 ```
 
@@ -57,22 +61,24 @@ Combined R2 storage and D1 database:
 import { d1Database } from '@hot-updater/cloudflare';
 import { s3Storage } from '@hot-updater/aws';
 import { defineConfig } from 'hot-updater';
+import { build } from './build';
 
 export default defineConfig({
+  build,
   storage: s3Storage({
     region: 'auto',
-    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID!}.r2.cloudflarestorage.com`,
     credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!
     },
     bucketName: 'my-r2-bucket'
   }),
   database: d1Database({
-    databaseId: process.env.D1_DATABASE_ID,
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
-    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN
+    databaseId: process.env.D1_DATABASE_ID!,
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN!
   }),
-  // ... other config
+  updateStrategy: 'appVersion'
 });
 ```
