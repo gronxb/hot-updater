@@ -1,6 +1,6 @@
 ---
 title: "Expo Plugin"
-description: Build plugin for Expo projects. Bundles your Expo app using Expo's native export command.
+description: Build and config plugin for Expo projects. Bundles your app and configures native projects through Expo Prebuild.
 icon: expo
 ---
 
@@ -37,14 +37,15 @@ export default defineConfig({
 
 ## Expo Configuration
 
-Add the plugin to your `app.json` file as shown below:
+The `@hot-updater/expo` package also provides the Expo config plugin. Add it to
+your `app.json` file as shown below:
 
 ```json title="app.json"
 {
   "expo": {
     "plugins": [
       [
-        "@hot-updater/react-native", // [!code ++]
+        "@hot-updater/expo", // [!code ++]
         { // [!code ++]
           "channel": "production" // [!code ++]
         } // [!code ++]
