@@ -893,9 +893,6 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         mime: `npm:mime@${resolvePackageVersion("mime", {
           searchFrom: path.resolve("plugins/plugin-core"),
         })}`,
-        kysely: `npm:kysely@${resolvePackageVersion("kysely", {
-          searchFrom: path.resolve("packages/server"),
-        })}`,
       });
 
       await expect(
