@@ -72,7 +72,6 @@ describe("loadConfig", () => {
 
     const config = await loadConfig(null);
 
-    expect(config.releaseChannel).toBe("production");
     expect(config.authorityId).toBe("default");
     expect(config.cacheDir).toBe(path.join("node_modules", ".hot-updater"));
     expect(config.updateStrategy).toBe("appVersion");
@@ -157,7 +156,7 @@ describe("loadConfig", () => {
       "hot-updater.config.ts",
       [
         "export default (options) => ({",
-        "  releaseChannel: options === null ? 'from-null-context' : 'wrong',",
+        "  authorityId: options === null ? 'from-null-context' : 'wrong',",
         "});",
         "",
       ].join("\n"),
@@ -166,7 +165,7 @@ describe("loadConfig", () => {
     const { loadConfig } = await import("./loadConfig");
     const config = await loadConfig(null);
 
-    expect(config.releaseChannel).toBe("from-null-context");
+    expect(config.authorityId).toBe("from-null-context");
   });
 
   it("preserves legacy merge semantics for arrays in user config", async () => {
@@ -185,7 +184,7 @@ describe("loadConfig", () => {
       "hot-updater.config.ts",
       [
         "export default (options) => ({",
-        "  releaseChannel: options?.channel ?? 'staging',",
+        "  authorityId: options?.channel ?? 'staging',",
         "  updateStrategy: 'fingerprint',",
         "  console: {",
         "    port: 3001,",
@@ -210,7 +209,7 @@ describe("loadConfig", () => {
     const { loadConfig } = await import("./loadConfig");
     const config = await loadConfig({ platform: "android", channel: "beta" });
 
-    expect(config.releaseChannel).toBe("beta");
+    expect(config.authorityId).toBe("beta");
     expect(config.updateStrategy).toBe("fingerprint");
     expect(config.console.port).toBe(3001);
     expect(config.fingerprint.extraSources).toEqual(["src/custom.ts"]);

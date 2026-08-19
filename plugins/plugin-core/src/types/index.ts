@@ -474,13 +474,6 @@ export type ConfigInput = {
    */
   cacheDir?: string | null;
   /**
-   * The channel used when building the native app.
-   * Used to replace __HOT_UPDATER_CHANNEL at build time.
-   *
-   * @deprecated Use the `hot-updater channel create` command to create a channel.
-   */
-  releaseChannel?: string;
-  /**
    * The strategy used to update the app.
    *
    * If `fingerprint`, the bundle will be updated if the fingerprint of the app is changed.

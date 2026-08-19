@@ -189,7 +189,6 @@ const getDefaultConfig = (): ConfigInput => {
   return {
     authorityId: "default",
     cacheDir: path.join("node_modules", ".hot-updater"),
-    releaseChannel: "production",
     updateStrategy: "appVersion",
     compressStrategy: "zip",
     // `extraSources` is intentionally absent: the deep merge would let this
