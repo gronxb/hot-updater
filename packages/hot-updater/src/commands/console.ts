@@ -32,9 +32,7 @@ export const getConsoleServerEnv = (
   ...processEnv,
   PORT: port.toString(),
   NITRO_PORT: port.toString(),
-  NITRO_HOST: processEnv["NITRO_HOST"]?.trim()
-    ? processEnv["NITRO_HOST"]
-    : "127.0.0.1",
+  NITRO_HOST: "127.0.0.1",
 });
 
 export const isConsoleServerReady = async (port: number) => {
