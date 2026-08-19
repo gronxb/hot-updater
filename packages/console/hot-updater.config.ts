@@ -730,7 +730,7 @@ for (const bundle of bundles) {
     enabled: bundle.enabled,
     should_force_update: bundle.shouldForceUpdate,
     message: bundle.message,
-    rollout_cohort_count: bundle.rolloutCohortCount,
+    rollout_cohort_count: bundle.rolloutCohortCount ?? 1000,
     target_cohorts: bundle.targetCohorts ?? [],
     operation: "DEPLOY",
     source_release_id: null,
