@@ -3066,7 +3066,7 @@ function getControllerReachableProviderReadinessUrl({
 }: {
   readonly limit: number;
 }) {
-  const url = new URL(`${getControllerReachableAppBaseUrl()}/api/bundles`);
+  const url = new URL(`${getControllerReachableAppBaseUrl()}/admin/bundles`);
   if (!isLoopbackHost(url.hostname)) {
     return null;
   }
