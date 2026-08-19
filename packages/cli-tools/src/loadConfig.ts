@@ -155,29 +155,9 @@ const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
     // Keep fallback value if glob fails
   }
 
-  // Find actual strings.xml files in the android directory
-  let stringResourcePaths: string[] = []; // fallback
-  try {
-    const stringsFiles = fg.sync(path.join("**", "strings.xml"), {
-      cwd: path.join(getCwd(), "android"),
-      absolute: false,
-      onlyFiles: true,
-    });
-
-    if (stringsFiles.length > 0) {
-      // Convert to relative paths from project root
-      stringResourcePaths = stringsFiles.map((file: string) =>
-        path.join("android", file),
-      );
-    }
-  } catch {
-    // Keep fallback value if glob fails
-  }
-
   return {
     android: {
       androidManifestPaths,
-      stringResourcePaths,
     },
     ios: {
       infoPlistPaths,

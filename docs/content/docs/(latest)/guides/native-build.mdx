@@ -13,7 +13,7 @@ Hot Updater ships dedicated native helpers so you can create store-ready artifac
 - React Native project with both `android/` and `ios/` directories tracked.
 - `hot-updater.config.ts` defines at least one scheme under `nativeBuild.android` and/or `nativeBuild.ios`.
 - Platform toolchains are installed locally (`gradlew`, `xcodebuild`, CocoaPods (or Bundler), `devicectl`/`simctl`).
-- Run `hot-updater channel set <channel>` so `HOT_UPDATER_CHANNEL` exists in Info.plist/strings.xml.
+- Run `hot-updater channel set <channel>` so `HOT_UPDATER_CHANNEL` exists in Info.plist / AndroidManifest.xml.
 - Decide on an update strategy (`appVersion` or `fingerprint`); the CLI follows it automatically.
 
 ## Configure nativeBuild schemes

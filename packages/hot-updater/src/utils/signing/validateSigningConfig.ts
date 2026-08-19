@@ -35,7 +35,6 @@ export async function validateSigningConfig(
 
   const iosParser = new IosConfigParser(config.platform.ios.infoPlistPaths);
   const androidParser = new AndroidConfigParser(
-    config.platform.android.stringResourcePaths ?? [],
     config.platform.android.androidManifestPaths ?? [],
   );
 

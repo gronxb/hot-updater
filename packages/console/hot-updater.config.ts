@@ -60,7 +60,7 @@ const createManifestUri = (bundleId: string) =>
   `${createReleaseRootUri(bundleId)}/manifest.json`;
 
 const createAssetBaseUri = (bundleId: string) =>
-  `${createReleaseRootUri(bundleId)}/files`;
+  `${createReleaseRootUri(bundleId)}/assets`;
 
 const createPatchArtifact = (
   bundleId: string,

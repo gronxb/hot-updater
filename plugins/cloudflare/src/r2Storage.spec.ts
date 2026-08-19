@@ -1,5 +1,4 @@
 import { Buffer } from "buffer";
-import fs from "fs/promises";
 
 import {
   DeleteObjectCommand,
@@ -7,14 +6,9 @@ import {
   HeadObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { ExecaError } from "execa";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { r2Storage } from "./r2Storage";
-
-const { wrangler } = vi.hoisted(() => ({
-  wrangler: vi.fn(),
-}));
 
 let fakeStore: Record<string, Buffer> = {};
 let deletedKeys: string[] = [];
@@ -70,24 +64,11 @@ vi.mock("@aws-sdk/lib-storage", () => ({
   },
 }));
 
-vi.mock("./utils/createWrangler", () => ({
-  createWrangler: vi.fn(() => wrangler),
-}));
-
-const createExecaError = (message: string) =>
-  Object.assign(Object.create(ExecaError.prototype), {
-    message,
-    shortMessage: message,
-    stderr: message,
-    stdout: "",
-  }) as ExecaError;
-
 describe("r2Storage", () => {
   beforeEach(() => {
     fakeStore = {};
     deletedKeys = [];
     uploadedParams = undefined;
-    wrangler.mockReset();
   });
 
   afterEach(() => {
@@ -167,7 +148,6 @@ describe("r2Storage", () => {
       ContentLength: 8,
       ContentType: "text/plain",
     });
-    expect(wrangler).not.toHaveBeenCalled();
   });
 
   it("round-trips spaces, Unicode, fragments, and percent signs in S3 keys", async () => {
@@ -224,7 +204,6 @@ describe("r2Storage", () => {
       assets: {},
       bundleId: "bundle-1",
     });
-    expect(wrangler).not.toHaveBeenCalled();
   });
 
   it("checks R2 object existence through the S3 API", async () => {
@@ -271,83 +250,6 @@ describe("r2Storage", () => {
 
     expect(deletedKeys).toEqual(["releases/logo.png"]);
     expect(fakeStore["releases/logo.png"]).toBeUndefined();
-    expect(wrangler).not.toHaveBeenCalled();
-  });
-
-  it("deletes exactly one R2 object through the Wrangler fallback", async () => {
-    wrangler.mockResolvedValue({ exitCode: 0, stderr: "" });
-    const storage = r2Storage({
-      accountId: "account-id",
-      bucketName: "test-bucket",
-      cloudflareApiToken: "api-token",
-    });
-
-    await expect(
-      storage.delete?.({
-        storageUri: "r2://test-bucket/releases/logo.png",
-      }),
-    ).resolves.toEqual({
-      deleted: true,
-    });
-
-    expect(wrangler).toHaveBeenCalledWith(
-      "r2",
-      "object",
-      "delete",
-      "test-bucket/releases/logo.png",
-      "--remote",
-    );
-  });
-
-  it("round-trips reserved characters through Wrangler object arguments", async () => {
-    let uploadedBody = "";
-    wrangler.mockImplementation(async (...args: string[]) => {
-      if (args[2] === "put") {
-        uploadedBody = await fs.readFile(
-          args[args.indexOf("--file") + 1],
-          "utf8",
-        );
-      }
-      return { exitCode: 0, stderr: "" };
-    });
-    const storage = r2Storage({
-      accountId: "account-id",
-      bucketName: "test-bucket",
-      cloudflareApiToken: "api-token",
-    });
-    const key = "릴리스 folder/#100%/bundle.zip";
-
-    const uploaded = await storage.put?.({
-      key,
-      body: createBody("bundle"),
-      contentLength: 6,
-      contentType: "application/zip",
-    });
-    await storage.delete?.({ storageUri: uploaded!.storageUri });
-
-    expect(wrangler).toHaveBeenLastCalledWith(
-      "r2",
-      "object",
-      "delete",
-      `test-bucket/${key}`,
-      "--remote",
-    );
-    expect(uploadedBody).toBe("bundle");
-  });
-
-  it("treats a missing Wrangler object as an idempotent delete", async () => {
-    wrangler.mockRejectedValue(createExecaError("object not found"));
-    const storage = r2Storage({
-      accountId: "account-id",
-      bucketName: "test-bucket",
-      cloudflareApiToken: "api-token",
-    });
-    const input = {
-      storageUri: "r2://test-bucket/releases/missing.zip",
-    };
-
-    await expect(storage.delete?.(input)).resolves.toEqual({ deleted: true });
-    await expect(storage.delete?.(input)).resolves.toEqual({ deleted: true });
   });
 
   it("reads R2 text through the runtime S3 API when credentials are provided", async () => {
@@ -379,55 +281,23 @@ describe("r2Storage", () => {
     ).resolves.toEqual({ response: null });
   });
 
-  it("falls back to wrangler without S3 credentials", async () => {
-    wrangler.mockImplementation(async (...args: string[]) => {
-      const fileIndex = args.indexOf("--file");
-      const downloadPath = args[fileIndex + 1];
-
-      await fs.writeFile(
-        downloadPath,
-        JSON.stringify({
-          bundleId: "bundle-1",
-          assets: {},
-        }),
-      );
-
-      return {
-        exitCode: 0,
-        stderr: "",
-      };
-    });
-
-    const storage = r2Storage({
-      accountId: "account-id",
-      bucketName: "test-bucket",
-      cloudflareApiToken: "api-token",
-    });
-
-    const { response } = (await storage.get?.({
-      storageUri: "r2://test-bucket/releases/bundle-1/manifest.json",
-    })) ?? { response: null };
-
-    expect(JSON.parse((await response?.text()) ?? "")).toEqual({
-      bundleId: "bundle-1",
-      assets: {},
-    });
-    expect(wrangler).toHaveBeenCalledWith(
-      "r2",
-      "object",
-      "get",
-      "test-bucket/releases/bundle-1/manifest.json",
-      "--file",
-      expect.any(String),
-      "--remote",
-    );
+  it("rejects configs without S3 credentials", () => {
+    expect(() =>
+      r2Storage({
+        accountId: "account-id",
+        bucketName: "test-bucket",
+      } as never),
+    ).toThrow("r2Storage requires S3-compatible credentials");
   });
 
   it("does not add getDownloadUrl to a deploy-only configuration", () => {
     const storage = r2Storage({
       accountId: "account-id",
       bucketName: "test-bucket",
-      cloudflareApiToken: "api-token",
+      credentials: {
+        accessKeyId: "access-key-id",
+        secretAccessKey: "secret-access-key",
+      },
     });
 
     expect(Reflect.has(storage, "getDownloadUrl")).toBe(false);
@@ -458,7 +328,10 @@ describe("r2Storage", () => {
     const storage = r2Storage({
       accountId: "account-id",
       bucketName: "test-bucket",
-      cloudflareApiToken: "api-token",
+      credentials: {
+        accessKeyId: "access-key-id",
+        secretAccessKey: "secret-access-key",
+      },
     });
 
     await expect(
@@ -468,44 +341,5 @@ describe("r2Storage", () => {
     ).rejects.toThrow(
       'Bucket name mismatch: expected "test-bucket", but found "other-bucket".',
     );
-    expect(wrangler).not.toHaveBeenCalled();
-  });
-
-  it("returns false when the R2 object does not exist", async () => {
-    wrangler.mockRejectedValueOnce(createExecaError("object not found"));
-
-    const storage = r2Storage({
-      accountId: "account-id",
-      bucketName: "test-bucket",
-      cloudflareApiToken: "api-token",
-    });
-
-    await expect(
-      storage.exists?.({ storageUri: "r2://test-bucket/releases/logo.png" }),
-    ).resolves.toEqual({ exists: false });
-    expect(wrangler).toHaveBeenCalledWith(
-      "r2",
-      "object",
-      "get",
-      "test-bucket/releases/logo.png",
-      "--file",
-      expect.any(String),
-      "--remote",
-    );
-  });
-
-  it("rethrows non-missing R2 existence errors", async () => {
-    const error = createExecaError("Authentication failed");
-    wrangler.mockRejectedValueOnce(error);
-
-    const storage = r2Storage({
-      accountId: "account-id",
-      bucketName: "test-bucket",
-      cloudflareApiToken: "api-token",
-    });
-
-    await expect(
-      storage.exists?.({ storageUri: "r2://test-bucket/releases/logo.png" }),
-    ).rejects.toBe(error);
   });
 });

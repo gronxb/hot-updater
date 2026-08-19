@@ -79,7 +79,6 @@ describe("loadConfig", () => {
     expect(config.patch.enabled).toBe(true);
     expect(config.patch.maxBaseBundles).toBe(3);
     expect(config.platform.android.androidManifestPaths).toEqual([]);
-    expect(config.platform.android.stringResourcePaths).toEqual([]);
     expect(config.platform.ios.infoPlistPaths).toEqual([]);
     expect(config.console.port).toBe(1422);
     expect(typeof config.database).toBe("object");
@@ -122,12 +121,6 @@ describe("loadConfig", () => {
       "android/app/src/main/AndroidManifest.xml",
       "<manifest />",
     );
-    await writeProjectFile(
-      projectRoot,
-      "android/app/src/main/res/values/strings.xml",
-      "<resources />",
-    );
-
     const { loadConfig } = await import("./loadConfig");
     const config = await loadConfig(null);
 
@@ -136,17 +129,6 @@ describe("loadConfig", () => {
     ]);
     expect(config.platform.android.androidManifestPaths).toEqual([
       path.join("android", "app", "src", "main", "AndroidManifest.xml"),
-    ]);
-    expect(config.platform.android.stringResourcePaths).toEqual([
-      path.join(
-        "android",
-        "app",
-        "src",
-        "main",
-        "res",
-        "values",
-        "strings.xml",
-      ),
     ]);
   });
 
@@ -198,7 +180,7 @@ describe("loadConfig", () => {
         "  },",
         "  platform: {",
         "    android: {",
-        "      stringResourcePaths: ['android/custom/strings.xml'],",
+        "      androidManifestPaths: ['android/custom/AndroidManifest.xml'],",
         "    },",
         "  },",
         "});",
@@ -217,8 +199,8 @@ describe("loadConfig", () => {
       enabled: true,
       maxBaseBundles: 3,
     });
-    expect(config.platform.android.stringResourcePaths).toEqual([
-      "android/custom/strings.xml",
+    expect(config.platform.android.androidManifestPaths).toEqual([
+      "android/custom/AndroidManifest.xml",
     ]);
     expect(config.platform.ios.infoPlistPaths).toEqual([
       "ios/HotUpdaterExample/Info.plist",

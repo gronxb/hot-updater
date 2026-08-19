@@ -31,11 +31,10 @@ follow the [Cloudflare R2 API token guide](https://developers.cloudflare.com/r2/
 interface R2StorageConfig {
   accountId: string; // Cloudflare account ID
   bucketName: string; // R2 bucket name
-  credentials?: {
+  credentials: {
     accessKeyId: string; // R2 S3 Access Key ID
     secretAccessKey: string; // R2 S3 Secret Access Key
   };
-  cloudflareApiToken?: string; // Legacy Wrangler fallback
   basePath?: string; // Optional base path within bucket
   downloadUrlSigningKey?: string; // Server-side download URL signing
 }
@@ -62,10 +61,9 @@ export default defineConfig({
 
 ## Runtime Usage
 
-The root `r2Storage` implementation uses the R2 S3-compatible API when
-`credentials` are provided. Configs without `credentials` fall back to Wrangler
-for backward compatibility. Add `downloadUrlSigningKey` when the root plugin is
-also used by a self-hosted `createHotUpdater` server.
+The root `r2Storage` implementation uses the R2 S3-compatible API.
+Add `downloadUrlSigningKey` when the root plugin is also used by a
+self-hosted `createHotUpdater` server.
 
 Cloudflare Workers should use the Worker runtime export instead:
 

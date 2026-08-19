@@ -43,12 +43,12 @@ The default channel is the release channel embedded in your native app at build 
       </Tab>
 
       <Tab value="Android">
-      ```xml title="android/app/src/main/res/values/strings.xml"
-      <resources>
-          <string name="app_name">HotUpdaterExample</string>
-           // [!code ++]
-          <string name="hot_updater_channel" moduleConfig="true">your_set_channel</string>
-      </resources>
+      ```xml title="android/app/src/main/AndroidManifest.xml"
+      <application>
+          <meta-data
+              android:name="com.hotupdater.CHANNEL"
+              android:value="your_set_channel" /> // [!code ++]
+      </application>
       ```
       </Tab>
     </Tabs>
@@ -104,9 +104,9 @@ export default defineConfig({
       ],
     },
     android: {
-      stringResourcePaths: [
-        "android/app/src/main/res/values/strings.xml",
-        "android/app/src/debug/res/values/strings.xml", // Include additional resource files
+      androidManifestPaths: [
+        "android/app/src/main/AndroidManifest.xml",
+        "android/app/src/debug/AndroidManifest.xml",
       ],
     },
   },

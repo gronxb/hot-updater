@@ -281,17 +281,6 @@ export interface PlatformConfig {
      * @example ["android/app/src/main/AndroidManifest.xml"]
      */
     androidManifestPaths?: string[];
-
-    /**
-     * Android string resource paths.
-     *
-     * @deprecated Android Hot Updater config is stored in AndroidManifest.xml.
-     * This remains supported as a legacy read fallback.
-     *
-     * @default all strings.xml files in the android directory
-     * @example ["android/app/src/main/res/values/strings.xml"]
-     */
-    stringResourcePaths?: string[];
   };
 
   /**

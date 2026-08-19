@@ -21,7 +21,7 @@ break atomic Release and catalog commits.
 | Legacy per-bundle asset layout      | `plugins/plugin-core/src/assetStorageLayout.ts`, `legacyAssetStorageLayout.ts`, and `packages/console/src/lib/server/legacyBundleAssetCleanup.ts`                                                                                                                 | v0 manifests can reference mutable per-bundle files instead of content-addressed assets. Reads and deletion must continue to address the original objects.                                                                                                         | All retained bundles have been deleted or migrated to content-addressed storage.                                                              |
 | Analytics rows without Release IDs  | `plugins/plugin-core/src/databasePluginCrudValidationRows.ts`, provider row parsers, and `packages/server/src/analytics/bounded/persistence.ts`                                                                                                                   | Events emitted before Releases existed have no `from_release_id` or `to_release_id`. Providers accept omitted legacy fields and normalize new events to nullable values so historical analytics remain readable.                                                   | All retained analytics events were written by Release-aware clients and every supported provider has completed the nullable-column migration. |
 | Versioned database migration        | Removed. `fixedMigrator*` creates schema `1.0.0` from empty storage and rejects any other marker.                                                                                                                                                                 | v1 is a new infrastructure generation. Existing v0 databases stay on their v0 endpoint.                                                                                                                                                                            | Do not reintroduce v0 schema upgrades.                                                                                                        |
-| Deprecated configuration/API inputs | Android `stringResourcePaths`, `getMinBundleId`/`MIN_BUNDLE_ID`, the old `updateBundle(id, url)` overload, and Cloudflare Wrangler R2 config | These remain live configuration or SDK surfaces, not architecture dependencies.                                                                                                                                                  | Remove only on a documented major boundary after replacements and warnings have shipped for the support window.                               |
+| Deprecated configuration/API inputs | `getMinBundleId`/`MIN_BUNDLE_ID` and the old `updateBundle(id, url)` overload | These remain live SDK surfaces, not architecture dependencies.                                                                                                                                                                  | Remove only on a documented major boundary after replacements and warnings have shipped for the support window.                               |
 
 ## Boundaries intentionally not preserved
 
@@ -42,9 +42,11 @@ break atomic Release and catalog commits.
 - Authentication, network, or server errors do not fall back to a cached
   catalog. Only a validated `304 Not Modified` may reuse the matching cache.
 - `HotUpdater.wrap({ updateMode })`, findMany `sortBy`, Supabase
-  `supabaseAnonKey`, and config `releaseChannel` are not accepted inputs.
-  Managed init still detects leftover `supabaseAnonKey` so skipped v0 configs
-  fail closed. The build-time channel is `hot-updater channel set`.
+  `supabaseAnonKey`, config `releaseChannel`, Wrangler `r2Storage`, and
+  Android `stringResourcePaths` are not accepted inputs. Managed init still
+  detects leftover `supabaseAnonKey` so skipped v0 configs fail closed. The
+  build-time channel is `hot-updater channel set` into AndroidManifest.xml /
+  Info.plist.
 
 ## Governance
 

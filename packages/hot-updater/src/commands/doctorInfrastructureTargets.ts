@@ -9,38 +9,6 @@ export type RequiredUpdateTarget = UpdateTarget;
 
 export const UPDATE_TARGETS = [
   {
-    version: "0.13.0",
-    note: "Initial provider infrastructure migrations",
-  },
-  {
-    version: "0.18.0",
-    note: "Provider infrastructure migration",
-  },
-  {
-    version: "0.21.0",
-    note: "ORM schema version target",
-  },
-  {
-    version: "0.29.0",
-    note: "Rollout infrastructure fields",
-  },
-  {
-    version: "0.30.0",
-    note: "Target cohort rollout behavior",
-  },
-  {
-    version: "0.31.0",
-    note: "Bundle artifact storage fields",
-  },
-  {
-    version: "0.32.0",
-    note: "Content-addressed manifest asset routing",
-  },
-  {
-    version: "0.33.0",
-    note: "provider update checks reuse selected bundles",
-  },
-  {
     version: "1.0.0",
     note: "Release Catalog infrastructure generation",
   },
