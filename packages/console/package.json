@@ -4,14 +4,27 @@
   "version": "0.36.0",
   "files": [
     ".output",
+    "lib",
+    "public",
+    "src",
+    "!src/**/*.spec.ts",
+    "!src/**/*.spec.tsx",
     "package.json"
   ],
   "exports": {
+    ".": {
+      "types": "./lib/index.d.mts",
+      "import": "./lib/index.mjs"
+    },
+    "./vite": {
+      "types": "./lib/vite.d.mts",
+      "import": "./lib/vite.mjs"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
     "dev": "vite dev --port 3000",
-    "build": "vite build && node copy-assets.mjs",
+    "build": "NODE_ENV=production vite build && tsdown",
     "check": "oxfmt --write \"**/*.{ts,tsx}\" && oxlint --fix --fix-suggestions --fix-dangerously .",
     "format": "oxfmt --write \"**/*.{ts,tsx}\"",
     "preview": "vite preview",
@@ -19,29 +32,51 @@
     "test:type": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@hot-updater/cli-tools": "*"
+    "@hot-updater/cli-tools": "*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "vite": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@hot-updater/cli-tools": {
+      "optional": true
+    }
   },
   "dependencies": {
-    "@hot-updater/bsdiff": "workspace:*",
-    "@hot-updater/server": "workspace:*",
-    "recharts": "3.8.0"
-  },
-  "devDependencies": {
     "@base-ui/react": "^1.3.0",
     "@fontsource-variable/inter": "^5.2.8",
-    "@hot-updater/cli-tools": "workspace:*",
+    "@hot-updater/bsdiff": "workspace:*",
     "@hot-updater/core": "workspace:*",
-    "@hot-updater/mock": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/server": "workspace:*",
     "@tailwindcss/vite": "^4.2.1",
-    "@tanstack/devtools-vite": "^0.6.0",
     "@tanstack/react-devtools": "^0.10.0",
-    "@tanstack/react-form": "^1.28.5",
     "@tanstack/react-query": "^5.90.21",
     "@tanstack/react-router": "^1.167.0",
     "@tanstack/react-router-devtools": "^1.166.7",
     "@tanstack/react-router-ssr-query": "^1.166.7",
     "@tanstack/react-start": "^1.166.11",
+    "@vitejs/plugin-react": "^6.0.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "dayjs": "^1.11.20",
+    "lucide-react": "^0.577.0",
+    "next-themes": "^0.4.6",
+    "nitro": "3.0.260610-beta",
+    "react-grab": "^0.1.28",
+    "recharts": "3.8.0",
+    "shadcn": "^4.0.8",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.5.0",
+    "tailwindcss": "^4.2.1",
+    "tw-animate-css": "^1.4.0",
+    "verkit": "0.3.2"
+  },
+  "devDependencies": {
+    "@hot-updater/cli-tools": "workspace:*",
+    "@hot-updater/mock": "workspace:*",
+    "@tanstack/devtools-vite": "^0.6.0",
+    "@tanstack/react-form": "^1.28.5",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/router-plugin": "^1.166.9",
     "@testing-library/dom": "^10.4.0",
@@ -50,27 +85,14 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.0",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "@vitejs/plugin-react": "^6.0.1",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "dayjs": "^1.11.20",
     "jsdom": "^29.0.0",
     "jszip": "^3.10.1",
-    "lucide-react": "^0.577.0",
-    "next-themes": "^0.4.6",
-    "nitro": "latest",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "react-grab": "^0.1.28",
-    "shadcn": "^4.0.8",
-    "sonner": "^2.0.7",
-    "tailwind-merge": "^3.5.0",
-    "tailwindcss": "^4.2.1",
     "tar": "^7.5.16",
+    "tsdown": "catalog:tools",
     "tslib": "^2.8.1",
-    "tw-animate-css": "^1.4.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "verkit": "0.3.2",
     "vite": "8.0.8",
     "vite-tsconfig-paths": "^6.1.1",
     "vitest": "catalog:",

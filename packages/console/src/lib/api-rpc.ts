@@ -226,6 +226,11 @@ export const deleteChannel = createServerFn({ method: "POST" })
 // GET /api/config-loaded
 export const getConfigLoaded = createServerFn().handler(async () => {
   try {
+    const [{ getRequest }, { requireConsoleAccess }] = await Promise.all([
+      import("@tanstack/react-start/server"),
+      import("./server/auth.server"),
+    ]);
+    await requireConsoleAccess(getRequest());
     const { isConfigLoaded } = await import("./server/config.server");
     const configLoaded = isConfigLoaded();
     return { configLoaded };

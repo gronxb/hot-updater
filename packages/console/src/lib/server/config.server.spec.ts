@@ -4,13 +4,24 @@ import {
   createDatabasePlugin,
   createStoragePlugin,
 } from "@hot-updater/plugin-core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { loadConfigMock } = vi.hoisted(() => ({ loadConfigMock: vi.fn() }));
+const { requireConsoleAccessMock, resolveConsoleConfigMock } = vi.hoisted(
+  () => ({
+    requireConsoleAccessMock: vi.fn(),
+    resolveConsoleConfigMock: vi.fn(),
+  }),
+);
 
-vi.mock("@hot-updater/cli-tools", () => ({
-  loadConfig: loadConfigMock,
+vi.mock("./auth.server", () => ({
+  requireConsoleAccess: requireConsoleAccessMock,
 }));
+
+vi.mock("./console-runtime.server", () => ({
+  resolveConsoleConfig: resolveConsoleConfigMock,
+}));
+
+const request = new Request("https://console.example.com/");
 
 const createTestDatabasePlugin = (name: string) =>
   createDatabasePlugin({
@@ -66,7 +77,14 @@ function createTestStoragePlugin() {
 afterEach(() => {
   vi.resetModules();
   vi.restoreAllMocks();
-  loadConfigMock.mockReset();
+  requireConsoleAccessMock.mockReset();
+  resolveConsoleConfigMock.mockReset();
+});
+
+beforeEach(() => {
+  requireConsoleAccessMock.mockResolvedValue({
+    email: "admin@example.com",
+  });
 });
 
 describe("config.server", () => {
@@ -74,7 +92,7 @@ describe("config.server", () => {
     const database = createTestDatabasePlugin("db");
     const storagePlugin = createTestStoragePlugin();
 
-    loadConfigMock.mockResolvedValue({
+    resolveConsoleConfigMock.mockResolvedValue({
       console: { port: 1422 },
       database,
       storage: storagePlugin,
@@ -84,10 +102,11 @@ describe("config.server", () => {
 
     expect(isConfigLoaded()).toBe(false);
 
-    const first = await prepareConfig();
-    const second = await prepareConfig();
+    const first = await prepareConfig(request);
+    const second = await prepareConfig(request);
 
-    expect(loadConfigMock).toHaveBeenCalledTimes(1);
+    expect(requireConsoleAccessMock).toHaveBeenCalledTimes(2);
+    expect(resolveConsoleConfigMock).toHaveBeenCalledTimes(1);
     expect(first.databaseClient).toBe(second.databaseClient);
     expect(first.config.database).toBe(database);
     expect(first.clientAccessKeyStore).toBe(database.models.clientAccessKeys);
@@ -104,7 +123,7 @@ describe("config.server", () => {
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
 
-    loadConfigMock
+    resolveConsoleConfigMock
       .mockRejectedValueOnce(new Error("load failed"))
       .mockResolvedValueOnce({
         console: { port: 1422 },
@@ -114,11 +133,11 @@ describe("config.server", () => {
 
     const { prepareConfig } = await import("./config.server");
 
-    await expect(prepareConfig()).rejects.toThrow("load failed");
+    await expect(prepareConfig(request)).rejects.toThrow("load failed");
 
-    const recovered = await prepareConfig();
+    const recovered = await prepareConfig(request);
 
-    expect(loadConfigMock).toHaveBeenCalledTimes(2);
+    expect(resolveConsoleConfigMock).toHaveBeenCalledTimes(2);
     expect(recovered.config.database).toBe(database);
     expect(recovered.storagePlugin).toBe(storagePlugin);
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
@@ -135,7 +154,7 @@ describe("config.server", () => {
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
 
-    loadConfigMock.mockResolvedValue({
+    resolveConsoleConfigMock.mockResolvedValue({
       console: { port: 1422 },
       database,
       storage,
@@ -143,9 +162,24 @@ describe("config.server", () => {
 
     const { prepareConfig } = await import("./config.server");
 
-    await expect(prepareConfig()).rejects.toThrow(
+    await expect(prepareConfig(request)).rejects.toThrow(
       'Storage plugin "runtimeOnlyStorage" does not implement put.',
     );
     expect(consoleErrorSpy).toHaveBeenCalledOnce();
+  });
+
+  it("rejects unauthorized requests before resolving runtime config", async () => {
+    requireConsoleAccessMock.mockRejectedValueOnce(
+      new Response("Unauthorized", { status: 401 }),
+    );
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const { prepareConfig } = await import("./config.server");
+
+    await expect(prepareConfig(request)).rejects.toMatchObject({ status: 401 });
+
+    expect(resolveConsoleConfigMock).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 });

@@ -4,7 +4,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("react-grab", () => ({}));
 
 vi.mock("@tanstack/react-router", () => ({
-  createRootRouteWithContext: () => (options: unknown) => ({ options }),
+  createRootRouteWithContext: () => (options: unknown) => ({
+    options,
+    useLoaderData: () => ({
+      access: {
+        status: "authorized",
+        principal: { email: "local@hot-updater.dev" },
+      },
+      providers: [],
+    }),
+  }),
   HeadContent: () => null,
   Outlet: () => <div>Current route</div>,
   Scripts: () => null,
@@ -34,6 +43,10 @@ vi.mock("@/components/ui/sidebar", () => ({
 vi.mock("@/lib/analytics-api", () => ({
   getAnalyticsCapabilityState: () => ({ status: "unsupported" }),
   useAnalyticsCapabilitiesQuery: () => ({ status: "success" }),
+}));
+vi.mock("@/lib/auth-rpc", () => ({
+  getConsoleAccessRpc: vi.fn(),
+  getConsoleAuthProvidersRpc: vi.fn(),
 }));
 
 import { Route } from "./__root";
