@@ -21,8 +21,7 @@ export default defineConfig({
   fingerprint: {
     debug: true,
   },
-  // Bundle signing (optional)
-  // Uncomment to enable signed bundles for security
+  // Bundle signing is enabled for this example.
   // Run: npx hot-updater keys generate
   signing: {
     enabled: true,

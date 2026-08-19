@@ -75,6 +75,7 @@ export default defineConfig({
     supabaseServiceRoleKey:
       process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
@@ -83,7 +84,7 @@ For detailed provider-specific setup instructions, see the [Self-Hosting (Manage
 </Callout>
 
 <Callout type="warn">
-The environment variables in `.env` are used only during deployment, not in your app bundle. However, if you're using `react-native-dotenv`, review the [Security guidelines](/docs/policy/security#plugin-token-protection).
+The environment variables in `.env.hotupdater` are used only during deployment, not in your app bundle. However, if you're using `react-native-dotenv`, review the [Security guidelines](/docs/policy/security#plugin-token-protection).
 </Callout>
 
 ### Step 4: Wrap Your Application
@@ -92,6 +93,7 @@ Add the HotUpdater wrapper to your main application component:
 
 ```tsx title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
+import { Text, View } from "react-native";
 
 function App() {
   return (
@@ -541,7 +543,8 @@ npx hot-updater console
 
 Learn more about advanced capabilities:
 
-- [Update Strategies](/docs/guides/update-strategies) - Choose between app version and fingerprint strategies
+- [App Version Strategy](/docs/guides/update-strategies/app-version) - Target updates by native app version
+- [Fingerprint Strategy](/docs/guides/update-strategies/fingerprint) - Target updates by native fingerprint
 - [Default Channel Setup](/docs/guides/channel-management) - Configure the app's default release channel
 - [Runtime Channel Switch](/docs/guides/runtime-channel-switch) - Temporarily move a device to another channel without rebuilding
 - [Simulator Testing](/docs/guides/simulator-test) - Test updates in release mode before production

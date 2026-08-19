@@ -25,8 +25,8 @@ npm install @hot-updater/standalone --save-dev
 Configure your CLI to connect to your self-hosted server:
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   build: /* your build plugin */,
@@ -34,6 +34,7 @@ export default defineConfig({
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
@@ -209,10 +210,20 @@ Supported query params:
 |-------------|------|-------|
 | `channel` | `string` | Exact match |
 | `platform` | `"ios" \| "android"` | Exact match |
+| `enabled` | `boolean` | Exact match |
+| `idEq`, `idGt`, `idGte`, `idLt`, `idLte` | `string` | Bundle ID filters |
+| `idIn` | `string[]` | Repeated parameter |
+| `targetAppVersion` | `string \| null` | Exact match, or literal `null` |
+| `targetAppVersionIn` | `string[]` | Repeated parameter |
+| `targetAppVersionNotNull` | `boolean` | Exact match |
+| `fingerprintHash` | `string \| null` | Exact match, or literal `null` |
 | `limit` | `number` | Window size |
 | `page` | `number` | Optional positive page number for stable page-aligned requests |
 | `after` | `string` | Fetch the next window after this bundle ID |
 | `before` | `string` | Fetch the previous window before this bundle ID |
+
+Array filters use repeated query parameters. Boolean values must be exactly
+`true` or `false`, and nullable string filters use the literal `null`.
 
 Expected response:
 

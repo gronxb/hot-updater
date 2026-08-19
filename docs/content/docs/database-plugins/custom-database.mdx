@@ -7,7 +7,7 @@ icon: Hammer
 ## Installation
 
 ```package-install
-npm install @hot-updater/plugin-core --save-dev
+npm install @hot-updater/plugin-core
 ```
 
 ## Overview
@@ -47,12 +47,9 @@ Your factory function must return an object with these methods:
   getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;
 
   // Fetch paginated bundles with optional filtering
-  getBundles: (options: {
-    where?: { channel?: string; platform?: string };
-    limit: number;
-    page?: number;
-    cursor?: { after?: string; before?: string };
-  }) => Promise<Paginated<Bundle[]>>;
+  getBundles: (
+    options: DatabaseBundleQueryOptions & { offset?: number }
+  ) => Promise<Paginated<Bundle[]>>;
 
   // Get all available channels
   getChannels: () => Promise<string[]>;
@@ -84,6 +81,7 @@ Here's a complete custom database plugin using a REST API:
 ```typescript title="customDatabase.ts"
 import {
   type Bundle,
+  type DatabaseBundleQueryOptions,
   type Paginated,
   createDatabasePlugin,
 } from "@hot-updater/plugin-core";
@@ -116,19 +114,15 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
         return response.json();
       },
 
-      async getBundles(options): Promise<Paginated<Bundle[]>> {
+      async getBundles(
+        options: DatabaseBundleQueryOptions & { offset?: number },
+      ): Promise<Paginated<Bundle[]>> {
         const params = new URLSearchParams({
           limit: String(options.limit),
         });
 
-        if (options.page !== undefined) {
-          params.set("page", String(options.page));
-        }
-        if (options.cursor?.after) {
-          params.set("after", options.cursor.after);
-        }
-        if (options.cursor?.before) {
-          params.set("before", options.cursor.before);
+        if (options.offset !== undefined) {
+          params.set("offset", String(options.offset));
         }
 
         if (options.where?.channel) {
@@ -136,6 +130,42 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
         }
         if (options.where?.platform) {
           params.set("platform", options.where.platform);
+        }
+        if (options.where?.enabled !== undefined) {
+          params.set("enabled", String(options.where.enabled));
+        }
+        if (options.where?.id?.eq) params.set("idEq", options.where.id.eq);
+        if (options.where?.id?.gt) params.set("idGt", options.where.id.gt);
+        if (options.where?.id?.gte) params.set("idGte", options.where.id.gte);
+        if (options.where?.id?.lt) params.set("idLt", options.where.id.lt);
+        if (options.where?.id?.lte) params.set("idLte", options.where.id.lte);
+        for (const id of options.where?.id?.in ?? []) {
+          params.append("idIn", id);
+        }
+        if (options.where?.targetAppVersion !== undefined) {
+          params.set(
+            "targetAppVersion",
+            options.where.targetAppVersion ?? "null",
+          );
+        }
+        for (const version of options.where?.targetAppVersionIn ?? []) {
+          params.append("targetAppVersionIn", version);
+        }
+        if (options.where?.targetAppVersionNotNull !== undefined) {
+          params.set(
+            "targetAppVersionNotNull",
+            String(options.where.targetAppVersionNotNull),
+          );
+        }
+        if (options.where?.fingerprintHash !== undefined) {
+          params.set(
+            "fingerprintHash",
+            options.where.fingerprintHash ?? "null",
+          );
+        }
+        if (options.orderBy) {
+          params.set("orderBy", options.orderBy.field);
+          params.set("orderDirection", options.orderBy.direction);
         }
 
         const response = await fetch(
@@ -193,8 +223,9 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
 });
 ```
 
-Use cursor pagination as the contract for bundle-management queries. The
-`offset` query parameter has been removed from the public API.
+The wrapper translates public page and cursor requests into internal offset,
+ID-bound, and ordering queries. Your backend must honor `offset`, every `where`
+filter, and `orderBy` so that fallback pagination remains correct.
 
 ## Helper Utilities
 
@@ -202,13 +233,13 @@ The `@hot-updater/plugin-core` package provides helper functions:
 
 ### calculatePagination
 
-Generates pagination metadata after your implementation resolves a cursor into
-an internal start index:
+Generates pagination metadata from the internal offset window handled by your
+implementation:
 
 ```typescript
 import { calculatePagination } from "@hot-updater/plugin-core";
 
-const startIndex = resolvedCursorStartIndex;
+const startIndex = options.offset ?? 0;
 const pagination = calculatePagination(totalCount, {
   limit: 10,
   offset: startIndex,
@@ -218,10 +249,10 @@ const pagination = calculatePagination(totalCount, {
 
 ## CLI Configuration
 
-Use your custom plugin in `hot-updater.config.ts`:
+Use your custom plugin as the `database` field in `hot-updater.config.ts`:
 
 ```typescript
-import { defineConfig } from "@hot-updater/core";
+import { defineConfig } from "hot-updater";
 import { customDatabase } from "./customDatabase";
 
 export default defineConfig({

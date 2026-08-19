@@ -10,7 +10,8 @@ version: "v0.22.0"
 Install Hono.
 
 ```package-install
-npm install hono --save-dev
+npm install @hot-updater/server hono
+npm install @hot-updater/standalone hot-updater --save-dev
 ```
 
 ## Setup and Security
@@ -36,9 +37,14 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
 
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN; // [!code ++]
+if (!managementToken) { // [!code ++]
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required"); // [!code ++]
+} // [!code ++]
+
 app.use( // [!code ++]
   "/hot-updater/api/*", // [!code ++]
-  bearerAuth({ token: process.env.HOT_UPDATER_AUTH_TOKEN ?? "" }), // [!code ++]
+  bearerAuth({ token: managementToken }), // [!code ++]
 ); // [!code ++]
 
 app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
@@ -60,19 +66,23 @@ HOT_UPDATER_AUTH_TOKEN=your-secret-auth-token
 
 Configure the CLI to include the auth token when deploying bundles:
 
-```typescript title="hot-updater.config.ts"
+```typescript title="hot-updater.config.ts (database excerpt)"
 import { standaloneRepository } from "@hot-updater/standalone";
 
-export default defineConfig({
-  // ...
-  database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater",
-    commonHeaders: {
-      Authorization: `Bearer ${process.env.HOT_UPDATER_AUTH_TOKEN}`,
-    },
-  }),
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
+
+const database = standaloneRepository({
+  baseUrl: "http://localhost:3000/hot-updater",
+  commonHeaders: {
+    Authorization: `Bearer ${managementToken}`,
+  },
 });
 ```
+
+Use this value as the `database` field in `hot-updater.config.ts`.
 
 ## API Endpoints
 
@@ -83,7 +93,7 @@ under `/hot-updater/api/*` are mounted only when `routes.bundles` is enabled:
 |--------|----------|-------------|
 | GET | `/hot-updater/version` | Get server version |
 | GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
-| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
+| GET | `/hot-updater/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId` | Check for updates by app version |
 | GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
 | GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
 | POST | `/hot-updater/api/bundles` | Create bundles |

@@ -126,7 +126,7 @@ Configure Hot Updater in `hot-updater.config.ts`:
 import { mockDatabase, mockStorage } from "@hot-updater/mock";
 
 export default {
-  storage: mockStorage(),
+  storage: mockStorage({}),
   database: mockDatabase({
     latency: { min: 500, max: 700 },
     initialBundles: [

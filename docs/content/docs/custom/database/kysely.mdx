@@ -10,7 +10,8 @@ version: "v0.22.0"
 Install Kysely and SQLite driver.
 
 ```package-install
-npm install kysely better-sqlite3 @types/better-sqlite3 --save-dev
+npm install @hot-updater/server @hot-updater/aws kysely better-sqlite3
+npm install @hot-updater/bare @hot-updater/standalone hot-updater @types/better-sqlite3 --save-dev
 ```
 
 For other databases, see [Kysely's dialect documentation](https://kysely.dev/docs/dialects).
@@ -45,7 +46,7 @@ export const hotUpdater = createHotUpdater({
   storages: [
     s3Storage({
       region: "auto",
-      endpoint: process.env.R2_ENDPOINT,
+      endpoint: process.env.R2_ENDPOINT!,
       credentials: {
         accessKeyId: process.env.R2_ACCESS_KEY_ID!,
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -54,8 +55,12 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
+  routes: { updateCheck: true, bundles: true },
 });
 ```
+
+Protect `/hot-updater/api/*` with fail-closed authentication before mounting
+the management routes. See [Security Settings](../quick-start#security-settings).
 
 ## Schema Management
 
@@ -74,8 +79,8 @@ npx hot-updater db migrate src/hotUpdater.ts
 <Callout>
 **Generate vs Migrate**
 
-- `generate` - Creates SQL migration files for manual review before applying to database
-- `migrate` - Runs Kysely migrator to directly apply migrations to the database
+- `generate` - Creates SQL migration files for manual review without changing the database
+- `migrate` - Independently computes the current schema changes and applies them directly with Kysely; it does not read the generated SQL files
 </Callout>
 
 <Callout>
@@ -87,16 +92,21 @@ Need to generate SQL without config? See [SQL Export](/docs/custom/database/sql-
 Configure your CLI to use this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 export default defineConfig({
-  build: bare(),
+  build: bare({ enableHermes: true }),
   storage: s3Storage({
     region: "auto",
-    endpoint: process.env.R2_ENDPOINT,
+    endpoint: process.env.R2_ENDPOINT!,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -105,7 +115,9 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: { Authorization: `Bearer ${managementToken}` },
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
@@ -115,7 +127,7 @@ The `storage` plugin must match the `storages` in your server's `createHotUpdate
 
 ## API Endpoints
 
-The server automatically creates these endpoints:
+With the route groups enabled above, the server creates these endpoints:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|

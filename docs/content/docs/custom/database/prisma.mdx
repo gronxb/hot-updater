@@ -10,13 +10,19 @@ version: "v0.22.0"
 Install Prisma and initialize your project.
 
 ```package-install
-npm install prisma @prisma/client --save-dev
+npm install @hot-updater/server @hot-updater/aws @prisma/client@6
+npm install @hot-updater/bare @hot-updater/standalone hot-updater prisma@6 --save-dev
 ```
 
 Initialize Prisma:
 ```bash
-npx prisma init
+npx prisma init --datasource-provider sqlite --generator-provider prisma-client-js
+npx prisma generate
 ```
+
+Keep the Prisma CLI, `@prisma/client`, and generated client on the same major
+version. The initial generate step is required before `src/hotUpdater.ts`
+imports the client.
 
 For other databases, see [Prisma's database documentation](https://www.prisma.io/docs/orm/overview/databases).
 
@@ -45,7 +51,7 @@ export const hotUpdater = createHotUpdater({
   storages: [
     s3Storage({
       region: "auto",
-      endpoint: process.env.R2_ENDPOINT,
+      endpoint: process.env.R2_ENDPOINT!,
       credentials: {
         accessKeyId: process.env.R2_ACCESS_KEY_ID!,
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -54,8 +60,12 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
+  routes: { updateCheck: true, bundles: true },
 });
 ```
+
+Protect `/hot-updater/api/*` with fail-closed authentication before mounting
+the management routes. See [Security Settings](../quick-start#security-settings).
 
 ## Schema Generation
 
@@ -65,64 +75,48 @@ Generate the Prisma schema for Hot Updater tables.
 npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
-This command generates the schema. Copy it into your `prisma/schema.prisma` file.
+This command merges or replaces the Hot Updater-managed block in
+`prisma/schema.prisma` while preserving your datasource, generator, and app
+models.
 
 <Callout>
 Need to generate SQL without config? See [SQL Export](/docs/custom/database/sql-export) for standalone SQL generation with the `--sql` flag.
 </Callout>
-
-**Example schema.prisma:**
-```prisma
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
-}
-
-model Bundle {
-  id String @db.Uuid @id
-  platform String
-  should_force_update Boolean
-  enabled Boolean
-  file_hash String
-  git_commit_hash String?
-  message String?
-  channel String
-  storage_uri String
-  target_app_version String?
-  fingerprint_hash String?
-  metadata Json
-}
-```
-
-Run migrations:
-```bash
-npx prisma migrate dev --name init
-```
 
 Generate Prisma Client:
 ```bash
 npx prisma generate
 ```
 
+Apply the schema to the development database:
+
+```bash
+npx prisma db push
+```
+
+For production, create and deploy a reviewed Prisma migration instead of using
+`db push`.
+
 ## CLI Configuration
 
 Configure your CLI to use this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 export default defineConfig({
-  build: bare(),
+  build: bare({ enableHermes: true }),
   storage: s3Storage({
     region: "auto",
-    endpoint: process.env.R2_ENDPOINT,
+    endpoint: process.env.R2_ENDPOINT!,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -131,7 +125,9 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: { Authorization: `Bearer ${managementToken}` },
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
@@ -141,7 +137,7 @@ The `storage` plugin must match the `storages` in your server's `createHotUpdate
 
 ## API Endpoints
 
-The server automatically creates these endpoints:
+With the route groups enabled above, the server creates these endpoints:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|

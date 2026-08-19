@@ -50,6 +50,7 @@ async function checkForAppUpdate() {
     // await HotUpdater.updateBundle({
     //   bundleId: updateInfo.id,
     //   fileUrl: updateInfo.fileUrl,
+    //   fileHash: updateInfo.fileHash,
     //   status: updateInfo.status,
     // });
 
@@ -74,6 +75,7 @@ detection and rollback functionality.
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 import { useEffect } from "react";
+import YourApp from "./YourApp";
 
 function App() {
   useEffect(() => {
@@ -118,45 +120,51 @@ instructions on how to fix it.
 
 ## Parameters
 
-The `checkForUpdate` function accepts the following optional parameters:
+The `checkForUpdate` function accepts the following parameters:
 
 | Parameter         | Type                           | Required | Description                                                                      |
 |-------------------|--------------------------------|----------|----------------------------------------------------------------------------------|
 | `updateStrategy`  | `"appVersion"` \| `"fingerprint"` | ✅        | Update detection strategy for this check. |
+| `channel`         | `string`                       | ❌        | Channel to check. The switch is persisted only after the returned update is applied. |
 | `requestHeaders`  | `Record<string, string>`       | ❌        | Optional headers to include in the update request.                               |
 | `requestTimeout`  | `number`                       | ❌        | Request timeout in milliseconds (default: 5000).                                 |
 | `onError`         | `(error: Error) => void`       | ❌        | Error callback.                                                                  |
 
-The update source is always from `HotUpdater.wrap()` or `HotUpdater.init()`; it
-cannot be overridden in `checkForUpdate`.
+The update source is always the `baseURL` or `resolver` configured by
+`HotUpdater.wrap()` or `HotUpdater.init()`; it cannot be overridden in
+`checkForUpdate`.
 
 ## How It Works
 
 When you call `checkForUpdate`, the function uses the configured `baseURL` and
 the provided `updateStrategy` to construct the appropriate endpoint URL:
 
-* For `updateStrategy: "appVersion"`: `GET {baseURL}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
-* For `updateStrategy: "fingerprint"`: `GET {baseURL}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
+* For `updateStrategy: "appVersion"`: `GET {baseURL}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort`
+* For `updateStrategy: "fingerprint"`: `GET {baseURL}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort`
 
 For example, if you configured `baseURL: "https://your-update-server.com/api/update-check"` in `wrap`, the function automatically appends the correct path and parameters.
 
 ## Return Value
 
-The function returns an object of type `UpdateInfo` or `null` if the app is up to date.
+The function returns an update object or `null` if the app is up to date.
 
-```ts
-export type UpdateStatus = "ROLLBACK" | "UPDATE";
+| Property | Type | Description |
+|----------|------|-------------|
+| `id` | `string` | Bundle identifier. |
+| `shouldForceUpdate` | `boolean` | Whether the app should reload immediately after download. |
+| `fileUrl` | `string \| null` | Bundle archive URL, or `null` for a rollback without an archive. |
+| `fileHash` | `string \| null` | Bundle hash or signature used by native verification. |
+| `message` | `string \| null` | Optional update message. |
+| `status` | `"ROLLBACK" \| "UPDATE"` | Update operation. |
+| `updateBundle` | `() => Promise<boolean>` | Applies this result with the required values pre-filled. |
 
-export interface UpdateInfo {
-  id: string;
-  shouldForceUpdate: boolean;
-  fileUrl: string | null;
-  message: string | null;
-  status: UpdateStatus;
-}
-```
+Prefer the returned `updateBundle()` helper so the values from that update
+check are applied together.
 
 ### Example Return Value
+
+The JSON response provides the data fields; the client adds the callable
+`updateBundle()` helper.
 
 ```json
 {
@@ -164,6 +172,7 @@ export interface UpdateInfo {
   "shouldForceUpdate": true,
   "status": "UPDATE",
   "fileUrl": "https://example.com/bundles/update.bundle",
-  "message": "This is a test message",
+  "fileHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "message": "This is a test message"
 }
 ```

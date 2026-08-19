@@ -10,7 +10,8 @@ version: "v0.22.0"
 Install Express and required dependencies.
 
 ```package-install
-npm install express @types/express --save-dev
+npm install @hot-updater/server express
+npm install @hot-updater/standalone hot-updater @types/express --save-dev
 ```
 
 ## Setup and Security
@@ -30,15 +31,22 @@ This example uses Express middleware to protect `/api/*` before mounting the Hot
 Updater handler:
 
 ```typescript
-import express from "express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import { toNodeHandler } from "@hot-updater/server/node";
 import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = express();
 const handler = toNodeHandler(hotUpdater); // [!code ++]
 
-const authMiddleware = (req, res, next) => { // [!code ++]
-  if (req.get("Authorization") !== `Bearer ${process.env.HOT_UPDATER_AUTH_TOKEN}`) { // [!code ++]
+app.use(express.json()); // [!code ++]
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN; // [!code ++]
+if (!managementToken) { // [!code ++]
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required"); // [!code ++]
+} // [!code ++]
+
+const authMiddleware = (req: Request, res: Response, next: NextFunction) => { // [!code ++]
+  if (req.get("Authorization") !== `Bearer ${managementToken}`) { // [!code ++]
     return res.status(401).json({ error: "Unauthorized" }); // [!code ++]
   } // [!code ++]
   next(); // [!code ++]
@@ -46,7 +54,7 @@ const authMiddleware = (req, res, next) => { // [!code ++]
 
 app.use("/hot-updater/api", authMiddleware); // [!code ++]
 
-app.all("/hot-updater/*", handler); // [!code ++]
+app.use("/hot-updater", handler); // [!code ++]
 
 app.listen(3000);
 ```
@@ -59,19 +67,23 @@ HOT_UPDATER_AUTH_TOKEN=your-secret-auth-token
 
 Configure the CLI to include the auth token when deploying bundles:
 
-```typescript title="hot-updater.config.ts"
+```typescript title="hot-updater.config.ts (database excerpt)"
 import { standaloneRepository } from "@hot-updater/standalone";
 
-export default defineConfig({
-  // ...
-  database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater",
-    commonHeaders: {
-      Authorization: `Bearer ${process.env.HOT_UPDATER_AUTH_TOKEN}`,
-    },
-  }),
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
+
+const database = standaloneRepository({
+  baseUrl: "http://localhost:3000/hot-updater",
+  commonHeaders: {
+    Authorization: `Bearer ${managementToken}`,
+  },
 });
 ```
+
+Use this value as the `database` field in `hot-updater.config.ts`.
 
 ## API Endpoints
 
@@ -82,7 +94,7 @@ under `/hot-updater/api/*` are mounted only when `routes.bundles` is enabled:
 |--------|----------|-------------|
 | GET | `/hot-updater/version` | Get server version |
 | GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
-| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
+| GET | `/hot-updater/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId` | Check for updates by app version |
 | GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
 | GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
 | POST | `/hot-updater/api/bundles` | Create bundles |

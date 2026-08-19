@@ -10,7 +10,8 @@ version: "v0.22.0"
 Install the server package and standalone plugin.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/standalone --save-dev
+npm install @hot-updater/server @hot-updater/aws
+npm install @hot-updater/bare @hot-updater/standalone hot-updater --save-dev
 ```
 
 ## Architecture
@@ -29,16 +30,16 @@ This approach gives you full control over metadata while leveraging reliable clo
 Configure your Hot Updater CLI to use the self-hosted database.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  build: bare(),
+  build: bare({ enableHermes: true }),
   storage: s3Storage({
     region: "auto",
-    endpoint: process.env.R2_ENDPOINT,
+    endpoint: process.env.R2_ENDPOINT!,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -48,6 +49,7 @@ export default defineConfig({
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
@@ -101,7 +103,7 @@ The server automatically uses the correct plugin to decode each `storageUri` bas
 
 `updateCheck` is mounted by default. `bundles` is disabled by default and must
 be enabled explicitly when the CLI needs bundle-management APIs. When
-`bundles: true`, protect `/api/bundles*` with framework middleware. The
+`bundles: true`, protect `/hot-updater/api/*` with framework middleware. The
 `/version` endpoint is always mounted for diagnostics. If you provide `routes`,
 specify both configurable route groups.
 
@@ -151,7 +153,8 @@ This ensures consistency and simplifies configuration. Only use multiple plugins
 </Callout>
 
 **Available official plugins:**
-- [s3Storage](../storage-plugins/aws) - AWS S3 and Cloudflare R2
+- [s3Storage](../storage-plugins/aws) - AWS S3 and S3-compatible storage
+- [r2Storage](../storage-plugins/cloudflare) - Cloudflare R2
 - [supabaseStorage](../storage-plugins/supabase) - Supabase Storage
 - [firebaseStorage](../storage-plugins/firebase) - Firebase Cloud Storage
 
@@ -180,4 +183,5 @@ After configuring your database, choose the framework that fits your stack:
 - **Database control**: PostgreSQL, SQLite, or MongoDB on your infrastructure
 - **Cloud storage**: Leverage existing AWS S3, Cloudflare R2, Supabase, or Firebase storage
 - **Type safety**: Full TypeScript support across all adapters
-- **Production ready**: Built-in graceful shutdown and error handling
+- **Lifecycle ownership**: Handle authentication, close database clients, and
+  implement graceful shutdown and error handling in your hosting framework

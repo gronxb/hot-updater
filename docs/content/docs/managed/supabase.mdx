@@ -12,10 +12,11 @@ import { Accordion, Accordions } from 'fumadocs-ui/components/accordion';
 ## Prerequisites
 
 Before you begin, make sure the following are ready:
-- **Docker Or OrbStack**: Install it via [Docker](https://docs.docker.com/get-docker/) or [OrbStack](https://orbstack.dev/).
-- **Node.js**: Version 20 or later is recommended.
+- **Node.js**: Version 22 is recommended (20.19 or later is required).
 - **Supabase CLI**: Install it via `npx supabase`.
 - **Supabase Account**: Sign up at [Supabase](https://supabase.com) if you don't have one.
+
+Docker or OrbStack is needed only for a local Supabase stack. It is not required for the managed setup in this guide.
 
 
 ## Step 1: Install Required Packages
@@ -42,10 +43,10 @@ npx hot-updater init
 2. **Select a Provider**: Select Supabase as the provider for handling updates.
 
 During the setup, you will be prompted to:
-1. **Create or Select a Supabase Organization**: Choose an existing organization or create a new one.
-2. **Create or Select a Project**: Choose an existing project or create a new one within your organization.
-3. **Configure Storage**: Select an existing storage bucket or create a new public bucket to store updates.
-4. **Database Migration**: create a new one to store updates.
+1. **Select a Supabase Organization**: Choose an existing organization. If your account has none, create one in the Supabase Dashboard before running init.
+2. **Create or Select a Project**: Choose an existing project or create a new one within the selected organization.
+3. **Configure Storage**: Select an existing bucket or create a new private bucket. If the selected bucket is public, init asks for confirmation before making it private.
+4. **Database Migration**: Apply the Hot Updater schema to the selected project.
 5. **Deploy Edge Function**: Deploy a Supabase Edge Function called `update-server`.
 
   </Accordion>
@@ -63,7 +64,7 @@ HOT_UPDATER_SUPABASE_URL=https://your-project-id.supabase.co
 
 <Callout type="warn">
 
-If you're **not** using the `react-native-dotenv` solution, the tokens from your `.env` file will not be included in your app bundle and are therefore not exposed to risks. However, if you're still concerned,
+If you're **not** using the `react-native-dotenv` solution, the tokens from your `.env.hotupdater` file will not be included in your app bundle and are therefore not exposed to risks. However, if you're still concerned,
 
 please refer to the article below for more details:
 [Security](/docs/policy/security#plugin-token-protection)
@@ -96,6 +97,7 @@ export default defineConfig({
     supabaseServiceRoleKey:
       process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
@@ -109,6 +111,7 @@ The HotUpdater component wraps your application, enabling seamless delivery of u
 
 ```tsx title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
+import { Text, View } from "react-native";
 
 function App() {
   return (

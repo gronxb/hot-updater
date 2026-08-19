@@ -10,7 +10,7 @@ A production-ready Hot Updater server example using:
 
 - ✅ No PostgreSQL server needed (uses PGlite)
 - ✅ File-based persistence
-- ✅ Automatic schema migration
+- ✅ Explicit schema migration
 - ✅ RESTful API endpoints
 - ✅ CORS enabled
 - ✅ Request logging
@@ -23,13 +23,20 @@ A production-ready Hot Updater server example using:
 pnpm install
 ```
 
-2. Configure environment variables (optional):
+2. Configure environment variables:
 ```bash
-cp .env.example .env
-# Edit .env with your AWS credentials
+cp .env.example src/.env.hotupdater
+# Edit src/.env.hotupdater with your auth and storage credentials
 ```
 
-3. Start development server:
+3. Apply the Hot Updater schema:
+```bash
+pnpm exec hot-updater db migrate src/db.ts --yes
+```
+
+The server does not apply migrations on startup.
+
+4. Start development server:
 ```bash
 pnpm dev
 ```
@@ -45,25 +52,20 @@ GET /
 
 ### Check for Updates
 ```bash
-POST /api/update
-Content-Type: application/json
-
-{
-  "platform": "ios",
-  "appVersion": "1.0.0",
-  "bundleId": "00000000-0000-0000-0000-000000000000",
-  "_updateStrategy": "appVersion"
-}
+GET /hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId
+GET /hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId
 ```
 
 ### List Bundles
 ```bash
-GET /api/bundles?channel=production&platform=ios&limit=50
+GET /hot-updater/api/bundles?channel=production&platform=ios&limit=50
+Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>
 ```
 
 ### Create Bundle
 ```bash
-POST /api/bundles
+POST /hot-updater/api/bundles
+Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>
 Content-Type: application/json
 
 {
@@ -83,12 +85,14 @@ Content-Type: application/json
 
 ### Delete Bundle
 ```bash
-DELETE /api/bundles/:id
+DELETE /hot-updater/api/bundles/:id
+Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>
 ```
 
 ### List Channels
 ```bash
-GET /api/channels
+GET /hot-updater/api/bundles/channels
+Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>
 ```
 
 ## Project Structure
@@ -97,7 +101,7 @@ GET /api/channels
 hono-server/
 ├── src/
 │   ├── index.ts      # Main server entry point
-│   ├── db.ts         # Database setup (PGlite + Kysely + Hot Updater schema)
+│   ├── db.ts         # Database setup (PGlite + Kysely + Hot Updater)
 │   └── routes.ts     # API routes
 ├── data/             # PGlite database files (gitignored)
 ├── package.json
@@ -106,21 +110,20 @@ hono-server/
 
 ## Database
 
-The server uses PGlite with file-based storage at `./data/hot-updater.db`.
+The server uses PGlite with file-based storage in `./data`.
 The database schema is generated from Hot Updater's versioned schema and
 migrated through the Hot Updater CLI.
 
-On first run, the schema will be initialized automatically.
-
 ## Storage Configuration
 
-By default, the example uses AWS S3 for bundle storage. Configure credentials via environment variables:
+The example uses Cloudflare R2 through its S3-compatible endpoint. Configure
+the `s3Storage` credentials with:
 
 ```env
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-AWS_BUCKET_NAME=your-bucket-name
+R2_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=your-access-key
+R2_SECRET_ACCESS_KEY=your-secret-key
+R2_BUCKET_NAME=your-bucket-name
 ```
 
 You can also use other storage providers by modifying `src/db.ts`.
@@ -131,5 +134,13 @@ Build and run in production:
 
 ```bash
 pnpm build
-pnpm start
+set -a
+. src/.env.hotupdater
+set +a
+node dist/src/index.js
 ```
+
+The compiled entry resolves its dotenv path under `dist/src`, so production
+must inject the environment externally as shown above. The checked-in
+`pnpm start` command still points to `dist/index.js`; use the emitted entry
+point above.

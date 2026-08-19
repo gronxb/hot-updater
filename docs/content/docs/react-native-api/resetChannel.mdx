@@ -6,30 +6,39 @@ icon: RotateCcw
 
 ## Usage
 
-Use `HotUpdater.resetChannel()` when you want to leave a runtime channel switch and go back to the app's original build-time channel.
+Use `HotUpdater.resetChannel()` to discard downloaded OTA state and restore the
+bundle selection embedded in the native app. The reset runs even when no
+runtime channel override is active.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
 async function handleResetChannel() {
-  await HotUpdater.resetChannel();
-  await HotUpdater.reload();
+  const didReset = await HotUpdater.resetChannel();
+  if (didReset) {
+    await HotUpdater.reload();
+  }
 }
 ```
 
 ## Behavior
 
-- Clears the runtime channel switch
-- Restores the original bundle selection
-- Makes the build-time default channel active again after reload
-- Returns `true` even when no runtime channel switch is active
-- Performs no work when `HotUpdater.isChannelSwitched()` is already `false`
+- Clears any runtime channel override and makes the build-time default channel
+  active again.
+- Clears downloaded OTA bundle metadata, launch state, and downloaded bundle
+  directories. Crash history is preserved.
+- Restores built-in bundle selection. Call `HotUpdater.reload()` to load that
+  bundle in the current app session.
+- Runs the native reset regardless of the value returned by
+  `HotUpdater.isChannelSwitched()`.
+- Resolves to `true` when the reset succeeds. A native reset failure can resolve
+  to `false` or reject with an error.
 
 ## Example
 
 ```tsx
-if (HotUpdater.isChannelSwitched()) {
-  await HotUpdater.resetChannel();
+const didReset = await HotUpdater.resetChannel();
+if (didReset) {
   await HotUpdater.reload();
 }
 ```

@@ -6,12 +6,12 @@ icon: Download
 
 ## Usage
 
-Use `updateBundle` to download and apply an available update by providing the bundle's unique identifier and the URL to the bundle file.
+Use `updateBundle` to download and apply an available update by providing the bundle information returned by `checkForUpdate`.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
-async function applyAppUpdate(updateInfo: UpdateInfo) {
+async function applyAppUpdate() {
   try {
     const updateInfo = await HotUpdater.checkForUpdate({
       updateStrategy: "appVersion", // or "fingerprint"
@@ -62,45 +62,39 @@ async function applyAppUpdate(updateInfo: UpdateInfo) {
 
 ## Parameters
 
-The `updateBundle` function accepts the following parameters:
+The object form of `HotUpdater.updateBundle()` accepts the following required parameters:
 
-| Parameter | Type      | Required | Description                             |
-|-----------|-----------|----------|-----------------------------------------|
-| `id`      | `string`  | ✅        | Unique identifier of the update bundle. |
-| `fileUrl` | `string`  | ✅        | URL from which the update bundle will be downloaded. |
-| `fileHash` | `string \| null`  | ⚠️ Optional but recommended | SHA256 hash of the bundle file for integrity verification. If provided, the downloaded file will be verified before extraction. |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `bundleId` | `string` | ✅ | Unique identifier of the update bundle. |
+| `fileUrl` | `string \| null` | ✅ | Bundle archive URL, or `null` for a rollback without an archive. |
+| `fileHash` | `string \| null` | ✅ | SHA-256 hash or `sig:<base64_signature>` verification value; `null` when verification is not provided. |
+| `status` | `"ROLLBACK" \| "UPDATE"` | ✅ | Operation represented by the update. |
 
 ### Behavior
 
-- Downloads the specified bundle from the provided `fileUrl`.
-- **If `fileHash` is provided**: Verifies the downloaded file's SHA256 hash before extraction. If verification fails, the update is aborted and the downloaded file is deleted.
-- **If `fileHash` is not provided**: Proceeds with extraction without hash verification (not recommended for production).
+- Downloads the specified bundle when `fileUrl` is not `null`.
+- If `fileHash` contains a SHA-256 hash, verifies the downloaded file before extraction.
+- If `fileHash` starts with `sig:`, verifies the bundle signature.
+- If `fileHash` is `null`, proceeds without archive verification.
 - Applies the downloaded bundle as the active bundle for the application.
 - Requires an explicit call to `HotUpdater.reload()` if you want to immediately reload the application after updating, particularly when `shouldForceUpdate` is true.
 
 ### Security Recommendation
 
-**Always provide `fileHash` in production environments.** Hash verification protects against:
-- Man-in-the-middle attacks
-- Corrupted downloads
-- Tampered bundle files
+**Always preserve a non-null `fileHash` returned by `checkForUpdate()`.** Native verification rejects corrupted archives and bundles that fail signature verification.
 
 #### Recommended Approach
 
-**Use `updateInfo.updateBundle()` instead of `HotUpdater.updateBundle()`** whenever possible. The `updateInfo.updateBundle()` method automatically includes the `fileHash` from the `checkForUpdate()` response, ensuring secure verification without manual parameter passing.
+**Use `updateInfo.updateBundle()` instead of `HotUpdater.updateBundle()`** whenever possible. It passes the required values from the corresponding update check automatically.
 
 ```tsx
-// ✅ Recommended: fileHash is automatically included
-const updateInfo = await checkForUpdate(/* ... */);
-await updateInfo.updateBundle();
-
-// ⚠️ Less safe: you must remember to include fileHash manually
-await HotUpdater.updateBundle({
-  bundleId: updateInfo.id,
-  fileUrl: updateInfo.fileUrl,
-  fileHash: updateInfo.fileHash, // Easy to forget!
-  status: updateInfo.status,
+// Recommended: required values are automatically included.
+const updateInfo = await HotUpdater.checkForUpdate({
+  updateStrategy: "appVersion",
 });
-```
 
-The `fileHash` is automatically included in the response from `checkForUpdate()` when your update server provides it.
+if (updateInfo) {
+  await updateInfo.updateBundle();
+}
+```

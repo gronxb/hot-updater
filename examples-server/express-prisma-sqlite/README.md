@@ -28,6 +28,9 @@ app.all("/hot-updater/*", toNodeHandler(hotUpdater));
 
 The `toNodeHandler` adapter automatically converts between Express's req/res and Web Standard Request/Response.
 
+The checked-in server fails closed when `HOT_UPDATER_AUTH_TOKEN` is missing and
+requires its Bearer token for `/hot-updater/api/*` management requests.
+
 ## Setup
 
 1. Install dependencies:
@@ -39,8 +42,8 @@ pnpm install
 2. Configure environment variables:
 
 ```bash
-cp .env.example .env
-# Edit .env with your database and storage credentials
+cp .env.example src/.env.hotupdater
+# Edit src/.env.hotupdater with your database, auth, and storage credentials
 ```
 
 3. Generate Prisma schema from Hot Updater:
@@ -49,19 +52,25 @@ cp .env.example .env
 pnpm db:generate
 ```
 
-This will create a `hot-updater-schema.ts` file with the Prisma schema definitions.
+This merges or replaces the Hot Updater-managed block in
+`prisma/schema.prisma` while preserving its generator, datasource, and app
+models. Regenerate the Prisma client afterward:
+
+```bash
+DATABASE_URL="file:../data/prisma.db" pnpm exec prisma generate
+```
 
 4. Apply the schema to the database:
 
 ```bash
-pnpm db:push
+DATABASE_URL="file:../data/prisma.db" pnpm db:push
 ```
 
 For production, use Prisma migrations:
 
 ```bash
-npx prisma migrate dev    # Create migration
-npx prisma migrate deploy # Apply migration
+DATABASE_URL="file:../data/prisma.db" npx prisma migrate dev    # Create migration
+DATABASE_URL="file:../data/prisma.db" npx prisma migrate deploy # Apply migration
 ```
 
 ## Development
@@ -74,14 +83,17 @@ pnpm dev
 
 The server will run on `http://localhost:3002`.
 
-## Production
+## Build Verification
 
-Build and run:
+Verify the TypeScript build with the same explicit Prisma URL:
 
 ```bash
-pnpm build
-pnpm start
+DATABASE_URL="file:../data/prisma.db" pnpm build
 ```
+
+The checked-in production start target is currently non-runnable because the TypeScript build preserves
+extensionless ESM imports. Use `pnpm dev` until the production build target is
+corrected.
 
 ## Testing
 
@@ -97,68 +109,43 @@ pnpm test
 
 Prisma uses a different workflow compared to Drizzle or Kysely adapters. The process involves integrating generated models into your Prisma schema file:
 
+The workspace pins the Prisma CLI and `@prisma/client` to `6.19.3`. Keep the
+CLI, package, and generated client versions aligned when upgrading.
+
 **Step 1: Generate Hot Updater Models**
 
 ```bash
 pnpm db:generate
 ```
 
-This command:
-1. Reads your Hot Updater configuration from `src/db.ts`
-2. Generates `hot-updater-schema.ts` with Prisma model definitions
-3. The file contains model schemas for `bundles` and `private_hot_updater_settings`
+This command reads `src/db.ts` and updates only the managed block in
+`prisma/schema.prisma`.
 
-**Step 2: Integrate Models into `prisma/schema.prisma`**
-
-The generated models need to be added to your `prisma/schema.prisma` file. This example already includes them:
-
-```prisma
-model bundles {
-  id                  String  @id
-  platform            String
-  should_force_update Boolean
-  enabled             Boolean
-  file_hash           String
-  git_commit_hash     String?
-  message             String?
-  channel             String
-  storage_uri         String
-  target_app_version  String?
-  fingerprint_hash    String?
-  metadata            Json
-}
-
-model private_hot_updater_settings {
-  key   String @id
-  value String @default("0.29.0")
-}
-```
-
-**Step 3: Generate Prisma Client**
+**Step 2: Generate Prisma Client**
 
 ```bash
-npx prisma generate
+DATABASE_URL="file:../data/prisma.db" npx prisma generate
 ```
 
-**Step 4: Apply Schema to Database**
+**Step 3: Apply Schema to Database**
 
 For development (quick sync without migration files):
 
 ```bash
-pnpm db:push
+DATABASE_URL="file:../data/prisma.db" pnpm db:push
 ```
 
 For production (with migration history):
 
 ```bash
-npx prisma migrate dev --name init
-npx prisma migrate deploy
+DATABASE_URL="file:../data/prisma.db" npx prisma migrate dev --name init
+DATABASE_URL="file:../data/prisma.db" npx prisma migrate deploy
 ```
 
 ### Why This Workflow?
 
-Unlike Drizzle (which generates complete TypeScript schema files) or Kysely (which uses SQL migrations), Prisma requires:
-1. **Schema file integration**: Models must be in `prisma/schema.prisma`
+Unlike Drizzle or Kysely, Prisma requires:
+1. **Schema merge**: Hot Updater manages a delimited block in `prisma/schema.prisma`
 2. **Client generation**: Prisma Client must be generated from the schema
 3. **Database sync**: Use `db push` (dev) or `migrate` (production) to apply changes
 

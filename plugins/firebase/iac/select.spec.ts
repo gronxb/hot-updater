@@ -1,4 +1,8 @@
-import { makeEnv, writeHotUpdaterConfig } from "@hot-updater/cli-tools";
+import {
+  createHotUpdaterConfigScaffoldFromBuilder,
+  makeEnv,
+  writeHotUpdaterConfig,
+} from "@hot-updater/cli-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -77,6 +81,15 @@ describe("setEnv", () => {
       },
     );
     expect(vi.mocked(writeHotUpdaterConfig)).toHaveBeenCalledOnce();
+    const scaffoldOptions = vi.mocked(createHotUpdaterConfigScaffoldFromBuilder)
+      .mock.calls[0]?.[1];
+    const credentialHelper = scaffoldOptions?.helperStatements?.find(
+      (statement) => statement.name === "credential",
+    );
+    expect(credentialHelper?.code).toContain(
+      "Check your .env.hotupdater file and add the credentials",
+    );
+    expect(credentialHelper?.code).not.toContain("Check your .env file");
   });
 });
 

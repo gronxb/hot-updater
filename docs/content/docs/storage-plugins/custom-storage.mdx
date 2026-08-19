@@ -7,7 +7,7 @@ icon: Hammer
 ## Installation
 
 ```package-install
-npm install @hot-updater/plugin-core --save-dev
+npm install @hot-updater/plugin-core
 ```
 
 ## Overview
@@ -25,7 +25,7 @@ where Hot Updater executes the storage code:
 
 | Profile   | Executed by                                                                                                           | Must implement                                                |
 | --------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| `node`    | `hot-updater deploy`, `hot-updater bundle promote --action copy`, bundle diff generation, and console server actions  | Local file upload, local file download, and delete            |
+| `node`    | `hot-updater deploy`, `hot-updater bundle promote --action copy`, bundle diff generation, and console server actions  | Upload, existence check, local download, and delete           |
 | `runtime` | `@hot-updater/server` when `createHotUpdater` handles update checks in a server, serverless function, or edge runtime | Client HTTP(S) bundle URLs and direct text reads for metadata |
 
 Use the helper that matches where the plugin will run:
@@ -35,10 +35,6 @@ Use the helper that matches where the plugin will run:
 | `createNodeStoragePlugin`      | The plugin is configured in `hot-updater.config.ts` and runs from CLI/Node workflows such as `hot-updater deploy`.             |
 | `createRuntimeStoragePlugin`   | The plugin is passed to `createHotUpdater({ storages })` from `@hot-updater/server` for update-check runtime reads.            |
 | `createUniversalStoragePlugin` | The same plugin should work in both places: `hot-updater.config.ts` for CLI commands and `createHotUpdater` for update checks. |
-
-Most providers should use `createUniversalStoragePlugin`. Split providers, such
-as Cloudflare R2, can expose one `node` plugin for Wrangler-based upload and
-download, and a separate `runtime` plugin for Worker bindings.
 
 ## What Universal Means
 
@@ -86,6 +82,10 @@ export const myStorage = createUniversalStoragePlugin<MyStorageConfig>({
       async upload(key, filePath) {
         return { storageUri: "custom://bucket/path/bundle.zip" };
       },
+      async exists(storageUri) {
+        // Replace this with the provider's HEAD/stat operation.
+        throw new Error("Implement the backend existence check");
+      },
       async delete(storageUri) {
         // Delete the object referenced by storageUri.
       },
@@ -132,6 +132,17 @@ return {
   storageUri: `custom-s3://${bucketName}/${storageKey}`,
 };
 ```
+
+### `node.exists`
+
+Checks whether an object can be reused safely during deploy and copy workflows.
+
+```typescript
+exists: (storageUri: string) => Promise<boolean>;
+```
+
+Return `false` only when the object is missing. Throw for permission errors,
+invalid storage URIs, provider outages, and other failures.
 
 ### `node.downloadFile`
 
@@ -195,6 +206,12 @@ invalid storage URIs, provider outages, and malformed provider responses.
 This example implements a universal S3-compatible storage plugin. The same
 shape works for other object storage providers if you replace the SDK calls.
 
+Install the SDK packages used by this example as direct dependencies:
+
+```package-install
+npm install @aws-sdk/client-s3 @aws-sdk/lib-storage @aws-sdk/s3-request-presigner
+```
+
 ```typescript title="customStorage.ts"
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -202,6 +219,7 @@ import path from "node:path";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   S3Client,
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
@@ -226,6 +244,10 @@ export const customStorage = createUniversalStoragePlugin<CustomStorageConfig>({
     const { bucketName, basePath, ...clientConfig } = config;
     const client = new S3Client(clientConfig);
     const getStorageKey = createStorageKeyBuilder(basePath);
+
+    const isNotFoundError = (error: unknown) =>
+      error instanceof Error &&
+      (error.name === "NotFound" || error.name === "NoSuchKey");
 
     const parseAndValidateStorageUri = (storageUri: string) => {
       const parsed = parseStorageUri(storageUri, "custom-s3");
@@ -259,6 +281,26 @@ export const customStorage = createUniversalStoragePlugin<CustomStorageConfig>({
           return {
             storageUri: `custom-s3://${bucketName}/${storageKey}`,
           };
+        },
+
+        async exists(storageUri) {
+          const { key } = parseAndValidateStorageUri(storageUri);
+
+          try {
+            await client.send(
+              new HeadObjectCommand({
+                Bucket: bucketName,
+                Key: key,
+              }),
+            );
+            return true;
+          } catch (error) {
+            if (isNotFoundError(error)) {
+              return false;
+            }
+
+            throw error;
+          }
         },
 
         async delete(storageUri) {
@@ -308,14 +350,29 @@ export const customStorage = createUniversalStoragePlugin<CustomStorageConfig>({
 
         async readText(storageUri) {
           const { key } = parseAndValidateStorageUri(storageUri);
-          const response = await client.send(
-            new GetObjectCommand({
-              Bucket: bucketName,
-              Key: key,
-            }),
-          );
 
-          return response.Body?.transformToString() ?? null;
+          try {
+            const response = await client.send(
+              new GetObjectCommand({
+                Bucket: bucketName,
+                Key: key,
+              }),
+            );
+
+            if (!response.Body) {
+              throw new Error(
+                "S3 returned a successful response without a body",
+              );
+            }
+
+            return response.Body.transformToString();
+          } catch (error) {
+            if (isNotFoundError(error)) {
+              return null;
+            }
+
+            throw error;
+          }
         },
       },
     };
@@ -339,6 +396,10 @@ export const nodeOnlyStorage = createNodeStoragePlugin<NodeOnlyConfig>({
   factory: (config) => ({
     async upload(key, filePath) {
       return { storageUri: "node-only://bucket/path/bundle.zip" };
+    },
+    async exists(storageUri) {
+      // Replace this with the provider's HEAD/stat operation.
+      throw new Error("Implement the backend existence check");
     },
     async delete(storageUri) {},
     async downloadFile(storageUri, filePath) {},
@@ -412,28 +473,26 @@ const contentType = getContentType("bundle.js");
 
 ## CLI Configuration
 
-Use your custom plugin in `hot-updater.config.ts`.
+Create the storage value used by your complete `hot-updater.config.ts`:
 
-```typescript
-import { defineConfig } from "@hot-updater/core";
-
+```typescript title="hot-updater.config.ts (excerpt)"
 import { customStorage } from "./customStorage";
 
-export default defineConfig({
-  storage: customStorage({
-    region: "us-east-1",
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-    },
-    bucketName: process.env.BUCKET_NAME!,
-    basePath: "releases",
-  }),
+const storage = customStorage({
+  region: "us-east-1",
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+  },
+  bucketName: process.env.BUCKET_NAME!,
+  basePath: "releases",
 });
 ```
 
-The configured plugin must implement the `node` profile because `hot-updater`
-CLI commands upload, download, and delete local files.
+Assign this value to the required `storage` field alongside your config's
+`build`, `database`, and `updateStrategy` fields. The configured plugin must
+implement the `node` profile because CLI commands upload, check, download, and
+delete local files.
 
 ## Custom Server Usage
 
@@ -442,12 +501,14 @@ Use the same universal plugin with `createHotUpdater` from
 `runtime` profile because update checks need download URLs and direct metadata
 reads.
 
-```typescript
+```typescript title="src/hotUpdater.ts (excerpt)"
 import { createHotUpdater } from "@hot-updater/server";
 
 import { customStorage } from "./customStorage";
+import { database } from "./database";
 
 const hotUpdater = createHotUpdater({
+  database,
   storages: [
     customStorage({
       region: "us-east-1",
@@ -482,6 +543,8 @@ decide how to expose a temporary or public HTTP(S) URL to clients.
 At minimum, cover these cases with unit tests:
 
 - `upload` returns a `storageUri` using the configured protocol and bucket.
+- `exists` returns `true` for an existing object, `false` for a missing object,
+  and rethrows permission or provider errors.
 - `downloadFile` creates the destination file.
 - `delete` rejects storage URIs from a different bucket or namespace.
 - `getDownloadUrl` returns an HTTP(S) URL.

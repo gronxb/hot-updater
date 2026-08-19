@@ -147,8 +147,8 @@ Notes:
 - Hot Updater also matches by fingerprint when fingerprinting is used, or by
   target app version when fingerprinting is not used.
 - Higher values increase the range of OTA versions covered by patches, but can
-  make deployment time grow exponentially because more patch artifacts must be
-  generated.
+  make deployment time and storage work grow roughly with the number of
+  selected base bundles because more patch artifacts must be generated.
 
 If a patch cannot be created, Hot Updater still deploys the normal OTA update.
 Patch generation is an optimization, not a requirement for delivery.

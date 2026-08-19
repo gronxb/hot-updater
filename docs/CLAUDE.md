@@ -18,7 +18,6 @@ docs/
 │       ├── database-plugins/   # Database plugin documentation
 │       ├── react-native-api/   # Client-side API reference
 │       ├── guides/             # Advanced topics and guides
-│       ├── cli-reference/      # CLI command documentation
 │       └── policy/             # Security and best practices
 ├── src/                        # Documentation site source
 ├── public/                     # Static assets
@@ -215,10 +214,10 @@ Located in `content/docs/build-plugins/`
 ### Storage Plugins
 Located in `content/docs/storage-plugins/`
 - supabase.mdx - Supabase Storage
-- aws.mdx - AWS S3 (also covers Cloudflare R2)
-- cloudflare.mdx - Cloudflare R2 via Wrangler
+- aws.mdx - AWS S3 and S3-compatible object storage
+- cloudflare.mdx - Cloudflare R2 storage
 - firebase.mdx - Firebase Cloud Storage
-- standalone.mdx - Custom self-hosted storage
+- custom-storage.mdx - Custom self-hosted storage
 
 ### Database Plugins
 Located in `content/docs/database-plugins/`
@@ -234,11 +233,7 @@ Located in `content/docs/database-plugins/`
 Include a "Complete Example" section showing both storage and database combined.
 
 ### When documenting alternatives:
-If one plugin has limitations (e.g., Cloudflare R2 storage), recommend the better alternative upfront with a warning box:
-
-```mdx
-> **⚠️ Recommendation**: Use alternative plugin instead...
-```
+Describe each option's capabilities and tradeoffs without recommending a provider by default.
 
 ### When documenting peer dependencies:
 Show both in installation and include a separate Dependencies section at the end.
@@ -298,7 +293,7 @@ When referencing documentation in code, comments, or other docs, use these patte
 - **Database plugins**: `/docs/database-plugins/{provider}` (e.g., `/docs/database-plugins/cloudflare`)
 - **Build plugins**: `/docs/build-plugins/{bundler}` (e.g., `/docs/build-plugins/expo`)
 - **React Native API**: `/docs/react-native-api/{topic}` (e.g., `/docs/react-native-api/wrap`)
-- **Guides**: `/docs/guides/{topic}` (e.g., `/docs/guides/update-strategies`)
+- **Guides**: `/docs/guides/{topic}` (e.g., `/docs/guides/update-strategies/app-version`)
 
 ## Notes for Claude
 

@@ -31,6 +31,7 @@ export default defineConfig({
     supabaseServiceRoleKey:
       process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
+  updateStrategy: "appVersion",
 });
 
 ```
@@ -41,7 +42,7 @@ The `hot-updater.config.ts` file is not included in the app’s build. Instead, 
 
 What is actually included in the app’s build is as follows:
 ```ts
-import { HotUpdater } from "hot-updater";
+import { HotUpdater } from "@hot-updater/react-native";
 
 export default HotUpdater.wrap({
   baseURL: "https://<your-update-server-url>",

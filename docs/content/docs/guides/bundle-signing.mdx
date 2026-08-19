@@ -86,7 +86,7 @@ npx hot-updater keys export-public [--print-only] [--yes]
 
 Writes public key to:
 - iOS: `Info.plist` → `HOT_UPDATER_PUBLIC_KEY`
-- Android: `strings.xml` → `hot_updater_public_key`
+- Android: application-level `AndroidManifest.xml` metadata → `com.hotupdater.PUBLIC_KEY`
 
 The command auto-detects native files. For custom paths, configure `platform` in your config:
 
@@ -94,9 +94,9 @@ The command auto-detects native files. For custom paths, configure `platform` in
 export default defineConfig({
   platform: {
     android: {
-      stringResourcePaths: [
-        "android/app/src/main/res/values/strings.xml",
-        "android/app/src/prod/res/values/strings.xml", // production flavor
+      androidManifestPaths: [
+        "android/app/src/main/AndroidManifest.xml",
+        "android/app/src/prod/AndroidManifest.xml", // production flavor
       ],
     },
     ios: {
@@ -123,12 +123,14 @@ npx hot-updater keys remove [--yes]
 <string>-----BEGIN PUBLIC KEY-----\nMIIB...your-key...\n-----END PUBLIC KEY-----</string>
 ```
 
-**Android** (`res/values/strings.xml`):
+**Android** (`AndroidManifest.xml`, inside `<application>`):
 ```xml
-<string name="hot_updater_public_key">-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkq...your-key...
------END PUBLIC KEY-----</string>
+<meta-data
+  android:name="com.hotupdater.PUBLIC_KEY"
+  android:value="-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkq...your-key...\n-----END PUBLIC KEY-----" />
 ```
+
+The CLI can still read `hot_updater_public_key` from configured `stringResourcePaths` as a deprecated fallback for older projects.
 
 ## Expo Integration
 

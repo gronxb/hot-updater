@@ -10,7 +10,8 @@ version: "v0.22.0"
 Install the MongoDB native driver.
 
 ```package-install
-npm install mongodb --save-dev
+npm install @hot-updater/server @hot-updater/aws mongodb
+npm install @hot-updater/bare @hot-updater/standalone hot-updater --save-dev
 ```
 
 ## Setup
@@ -41,7 +42,7 @@ export const hotUpdater = createHotUpdater({
   storages: [
     s3Storage({
       region: "auto",
-      endpoint: process.env.R2_ENDPOINT,
+      endpoint: process.env.R2_ENDPOINT!,
       credentials: {
         accessKeyId: process.env.R2_ACCESS_KEY_ID!,
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -50,34 +51,44 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
+  routes: { updateCheck: true, bundles: true },
 });
 ```
 
+Protect `/hot-updater/api/*` with fail-closed authentication before mounting
+the management routes. See [Security Settings](../quick-start#security-settings).
+
 ## Schema Generation
 
-Run the database migration to create the MongoDB collection and indexes.
+Run the database migration to create the Hot Updater collections and indexes.
 
 ```bash
 npx hot-updater db migrate src/hotUpdater.ts
 ```
 
-This command targets the `src/hotUpdater.ts` file and creates the `bundles` collection with necessary indexes.
+This command targets `src/hotUpdater.ts` and creates every collection and index
+required by the current Hot Updater schema.
 
 ## CLI Configuration
 
 Configure your CLI to use this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 export default defineConfig({
-  build: bare(),
+  build: bare({ enableHermes: true }),
   storage: s3Storage({
     region: "auto",
-    endpoint: process.env.R2_ENDPOINT,
+    endpoint: process.env.R2_ENDPOINT!,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
@@ -86,7 +97,9 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: { Authorization: `Bearer ${managementToken}` },
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
@@ -96,7 +109,7 @@ The `storage` plugin must match the `storages` in your server's `createHotUpdate
 
 ## API Endpoints
 
-The server automatically creates these endpoints:
+With the route groups enabled above, the server creates these endpoints:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
