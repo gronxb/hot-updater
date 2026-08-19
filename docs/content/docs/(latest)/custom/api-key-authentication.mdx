@@ -22,7 +22,7 @@ export const hotUpdater = createHotUpdater({
 
 When enabled, `x-api-key` is required for update-check routes and
 `POST /events`. `/version` stays public. Client keys do not grant access to
-Analytics queries, bundle management, or key management.
+Analytics queries, admin routes, or key management.
 
 ## Create a key
 
@@ -30,7 +30,7 @@ When its database configuration exposes the official domain directly, the Hot
 Updater Console creates, lists, and revokes keys through that domain.
 `standaloneRepository` proxies bundle, Release, Release Catalog, Channel, and
 commit operations, but it does not proxy key management. A self-hosted
-management surface can use the server helper:
+admin surface can use the server helper:
 
 ```ts
 import { createClientAccessKey } from "@hot-updater/server";
@@ -48,15 +48,15 @@ your client configuration and send it as `x-api-key`.
 ## Security boundary
 
 A key embedded in a mobile binary can be extracted. Treat this feature as an
-abuse-control boundary for OTA reads and Analytics writes, not as a management
-credential. Protect bundle management, Analytics reads, Console access, and key
-management with your application or framework authentication.
+abuse-control boundary for OTA reads and Analytics writes, not as an admin
+credential. Protect `handlers.admin`, Console access, and key management with
+your application or framework authentication.
 
 Missing, malformed, unknown, and revoked keys return `401`. A database failure
 during credential lookup returns `503` and does not fall back to public access.
 
-`features.updateCheck` and `features.bundles` control the core route groups.
-`features.analytics` mounts Analytics routes, while
+`features.updateCheck` controls client update routes. `features.analytics`
+mounts event ingestion on the client handler and queries on the admin handler,
+while
 `features.clientAccessKeys` applies authentication to update checks and
-Analytics ingestion. Neither feature makes bundle management or Analytics
-queries public.
+Analytics ingestion. Neither feature authenticates the admin handler.

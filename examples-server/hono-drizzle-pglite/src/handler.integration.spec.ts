@@ -9,7 +9,7 @@ import {
   createTestDbPath,
   killPort,
   spawnServerProcess,
-  TEST_MANAGEMENT_AUTH_TOKEN,
+  TEST_ADMIN_AUTH_TOKEN,
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
@@ -71,7 +71,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
     await waitForServer(baseUrl, 180); // 180 attempts * 200ms = 36 seconds
 
     bundleMethods = createBundleMethodsFromServer({
-      baseUrl: `${baseUrl}/hot-updater`,
+      baseUrl: `${baseUrl}/hot-updater/admin`,
     });
   }, 120000);
 
@@ -91,13 +91,13 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
 
   it("protects bundle management routes without hiding public catalog routes", async () => {
     const unauthorizedBundles = await fetch(
-      `${baseUrl}/hot-updater/api/bundles`,
+      `${baseUrl}/hot-updater/admin/bundles`,
     );
     const authorizedBundles = await fetch(
-      `${baseUrl}/hot-updater/api/bundles`,
+      `${baseUrl}/hot-updater/admin/bundles`,
       {
         headers: {
-          Authorization: `Bearer ${TEST_MANAGEMENT_AUTH_TOKEN}`,
+          Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}`,
         },
       },
     );

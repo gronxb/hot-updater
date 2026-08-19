@@ -58,10 +58,9 @@ export const hotUpdater = createHotUpdater({
       downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
     }),
   ],
-  basePath: "/hot-updater",
+  clientBasePath: "/hot-updater",
   features: {
     updateCheck: true,
-    bundles: true,
   },
 });
 ```
@@ -105,9 +104,9 @@ import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
-const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
-if (!managementToken) {
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) {
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
 }
 
 export default defineConfig({
@@ -122,9 +121,9 @@ export default defineConfig({
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
   database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater",
+    baseUrl: "http://localhost:3000/hot-updater/admin",
     commonHeaders: {
-      Authorization: `Bearer ${managementToken}`,
+      Authorization: `Bearer ${adminToken}`,
     },
   }),
   updateStrategy: "appVersion",
@@ -134,9 +133,8 @@ export default defineConfig({
 <Callout type="warn">
   The CLI `storage` plugin must match one entry in the server's
   `createHotUpdater({storage})` array. Both use `s3Storage` here.
-  Because `features.bundles` enables management routes, protect
-  `/hot-updater/api/*` with fail-closed authentication before mounting the
-  handler. The CLI header above assumes the Bearer middleware from the Quick
+  Mount `handlers.admin` only behind fail-closed framework authentication at
+  `/hot-updater/admin/*`. The CLI header above assumes the Bearer middleware from the Quick
   Start.
 </Callout>
 
@@ -151,8 +149,7 @@ The configuration above enables the update-check routes:
 | GET    | `/hot-updater/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash` | Resolve a fingerprint Release Catalog  |
 | GET    | `/hot-updater/artifacts/:targetBundleId/from/:currentBundleId`                                  | Resolve an artifact                    |
 
-`features.bundles: true` also mounts the Bundle, Channel, Release, Release
-Catalog, and database-commit management routes under `/hot-updater/api/*`.
-See [CLI Configuration](../cli-configuration#api-endpoints) for their complete
-request and response contract. These management routes do not authenticate
-themselves; keep the fail-closed framework middleware described above.
+`handlers.admin` owns the Bundle, Channel, Release, Release Catalog, and
+database-commit admin routes under `/hot-updater/admin/*`. See [CLI Configuration](../cli-configuration#api-endpoints) for their complete
+request and response contract. These admin routes do not authenticate themselves; keep the fail-closed
+framework middleware described above.

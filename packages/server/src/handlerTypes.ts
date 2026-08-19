@@ -90,9 +90,7 @@ export interface HandlerAPI {
 export interface HandlerOptions {
   /** Authority accepted by Release Catalog client paths. */
   readonly authorityId?: string;
-  /** Base path for all routes. @default "/api" */
-  readonly basePath?: string;
-  /** Runtime features to mount. `GET /version` is always available. */
+  /** Client runtime features to mount. `GET /version` is always available. */
   readonly features?: HandlerFeatures;
 }
 
@@ -110,24 +108,13 @@ export interface HandlerFeatures {
    * these routes is configured through `features.clientAccessKeys`.
    */
   readonly updateCheck?: boolean;
-  /**
-   * Mounts the bundle management endpoints used by `standaloneRepository`:
-   *
-   * - `GET /api/channels`
-   * - `POST /api/channels`
-   * - `DELETE /api/channels/:id`
-   * - `GET /api/bundles/:id`
-   * - `GET /api/bundles`
-   * - `POST /api/bundles`
-   * - `PATCH /api/bundles/:id`
-   * - `DELETE /api/bundles/:id`
-   *
-   * @default false
-   *
-   * Analytics and client access-key behavior are not route groups. Configure
-   * them through `features.analytics` and `features.clientAccessKeys`.
-   */
-  readonly bundles?: boolean;
+}
+
+export type HotUpdaterHandler = (request: Request) => Promise<Response>;
+
+export interface HotUpdaterHandlers {
+  readonly client: HotUpdaterHandler;
+  readonly admin: HotUpdaterHandler;
 }
 
 export type RouteHandler = (

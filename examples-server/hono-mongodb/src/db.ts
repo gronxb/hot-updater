@@ -50,11 +50,10 @@ export const hotUpdater = createHotUpdater({
     //   bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
     // }),
   ],
-  basePath: "/hot-updater",
+  clientBasePath: "/hot-updater",
   features: {
     updateCheck: true,
-    bundles: true,
-    analytics: { queryAccess: "public" },
+    analytics: true,
   },
 });
 

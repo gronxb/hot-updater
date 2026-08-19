@@ -30,10 +30,9 @@ export const hotUpdater = createHotUpdater({
         "development-storage-download-url-key",
     }),
   ],
-  basePath: "/hot-updater",
+  clientBasePath: "/hot-updater",
   features: {
     updateCheck: true,
-    bundles: true,
   },
 });
 

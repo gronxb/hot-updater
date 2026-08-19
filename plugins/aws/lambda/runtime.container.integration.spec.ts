@@ -306,8 +306,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       database,
       features: {
         updateCheck: true,
-        bundles: false,
-        analytics: {},
+        analytics: true,
         clientAccessKeys: true,
       },
       storage: [
@@ -328,7 +327,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
           }),
         }),
       ],
-      basePath: HOT_UPDATER_BASE_PATH,
+      clientBasePath: HOT_UPDATER_BASE_PATH,
     });
 
     runtimeDir = await mkdtemp(
@@ -476,7 +475,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     const response = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
-        path: "/api/bundles",
+        path: "/admin/bundles",
         headers: new Headers(),
       }),
     );
@@ -532,7 +531,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     expect(unauthorizedIngestionPayload.status).toBe("401");
     expect(ingestionPayload.status).toBe("204");
 
-    const protectedPath = "/api/installations/overview";
+    const protectedPath = "/admin/installations/overview";
     const unauthorizedResponse = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
@@ -544,7 +543,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       status?: string;
     };
 
-    expect(unauthorizedPayload.status).toBe("401");
+    expect(unauthorizedPayload.status).toBe("404");
 
     const authorizedResponse = await invokeLambda(
       lambdaPort,
@@ -558,9 +557,9 @@ describe.sequential("aws lambda runtime acceptance", () => {
       status?: string;
     };
 
-    expect(authorizedPayload.status).toBe("401");
+    expect(authorizedPayload.status).toBe("404");
     await expect(readLambdaJson(authorizedPayload)).resolves.toEqual({
-      error: "Unauthorized",
+      error: "Not found",
     });
 
     await expect(

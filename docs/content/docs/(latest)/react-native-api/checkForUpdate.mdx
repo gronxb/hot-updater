@@ -24,7 +24,7 @@ async function checkForAppUpdate() {
     const updateInfo = await HotUpdater.checkForUpdate({
       updateStrategy: "appVersion",
       requestHeaders: {
-        Authorization: "Bearer <your-access-token>",
+        "x-api-key": "<your-client-access-key>",
       },
     });
 
@@ -64,7 +64,7 @@ function App() {
     HotUpdater.checkForUpdate({
       updateStrategy: "appVersion",
       requestHeaders: {
-        Authorization: "Bearer <your-access-token>",
+        "x-api-key": "<your-client-access-key>",
       },
     }).then(async (updateInfo) => {
       if (updateInfo) {

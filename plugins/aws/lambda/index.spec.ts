@@ -37,8 +37,11 @@ vi.mock("@hot-updater/server", async () => {
   return {
     ...actual,
     createHotUpdater: serverMocks.createHotUpdater.mockReturnValue({
-      basePath: "/",
-      handler: fakeHotUpdaterHandler,
+      clientBasePath: "/",
+      handlers: {
+        admin: vi.fn(),
+        client: fakeHotUpdaterHandler,
+      },
     }),
   };
 });
@@ -143,8 +146,7 @@ describe("aws lambda entrypoint", () => {
         authorityId: "aws.test-authority",
         features: {
           updateCheck: true,
-          bundles: false,
-          analytics: {},
+          analytics: true,
           clientAccessKeys: true,
         },
       }),

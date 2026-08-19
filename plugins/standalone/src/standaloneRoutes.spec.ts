@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createStandaloneBundleRemote } from "./standaloneBundleRemote";
+import { createStandaloneHttp } from "./standaloneHttp";
 
 const SPECIAL_BUNDLE_IDS = [
   {
@@ -40,6 +41,16 @@ afterEach(() => {
 });
 
 describe("standalone management routes", () => {
+  it("normalizes a trailing slash on the admin base URL", () => {
+    const http = createStandaloneHttp({
+      baseUrl: "https://example.test/hot-updater/admin/",
+    });
+
+    expect(http.buildUrl("/bundles")).toBe(
+      "https://example.test/hot-updater/admin/bundles",
+    );
+  });
+
   it.each([
     ["retrieve", "GET"],
     ["update", "PATCH"],
@@ -65,9 +76,7 @@ describe("standalone management routes", () => {
         if (operation === "delete") await remote.deleteBundle(id);
 
         const [input, init] = fetch.mock.calls.at(-1) ?? [];
-        expect(String(input)).toBe(
-          `https://example.test/api/bundles/${encoded}`,
-        );
+        expect(String(input)).toBe(`https://example.test/bundles/${encoded}`);
         expect(init?.method).toBe(method);
       }
     },

@@ -51,7 +51,7 @@ read followed by local selection on the device.
 | `GET /fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId[/:cohort]` | `GET /release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash`                    |
 | Update response includes the selected Bundle artifact                                   | `GET /artifacts/:targetBundleId/from/:currentBundleId` resolves the artifact after local Release selection |
 | `Hot-Updater-SDK-Version` request header participates in compatibility behavior         | The legacy SDK-version header contract is removed                                                          |
-| `GET /api/bundles/channels` returns channel strings                                     | `GET`, `POST`, and `DELETE /api/channels[/:id]` manage persistent Channel rows                             |
+| `GET /api/bundles/channels` returns channel strings                                     | `GET`, `POST`, and `DELETE /hot-updater/admin/channels[/:id]` manage persistent Channel rows               |
 
 Additional route and handler changes:
 
@@ -60,14 +60,57 @@ Additional route and handler changes:
 - `authorityId` is part of Release Catalog identity. A non-default value must be
   stable and match across the CLI, server, and React Native client.
 - `HandlerOptions.routes` is replaced by `HandlerOptions.features`.
-- `standaloneRepository({ routes })` no longer accepts a custom `channels`
-  route. Channel management uses the canonical `/api/channels` endpoint.
-- `createHandler` and `createHotUpdater().handler` no longer accept a
-  provider-specific request context as a second argument. Runtime bindings and
-  credentials must be captured when constructing the database or storage
-  plugin.
+- The unified `createHandler` and `createHotUpdater().handler` surfaces are
+  replaced by `createHandlers(...).client/admin` and
+  `createHotUpdater().handlers.client/admin`. The client handler owns
+  `/version`, Release Catalog, artifact, storage-download, and Analytics-event
+  routes. The admin handler owns Bundle, Release, Release Catalog row, Channel,
+  database-commit, and Analytics-query routes. Neither handler matches the
+  other surface.
+- Handlers match mount-relative paths, and `HandlerOptions.basePath` is removed.
+  The framework owns the external mount path. `createHotUpdater({
+  clientBasePath })` declares where the client handler is mounted so generated
+  storage URLs use that same path; its default is `/`.
+- The admin handler has no built-in authentication callback. Protect its mount
+  with framework middleware, register that middleware and the specific admin
+  mount before the broader client mount, and fail startup when its credential
+  is missing.
+- `features.bundles` is removed. Explicitly mounting `handlers.admin` is the
+  opt-in for admin routes. `features.analytics` is now boolean; Analytics
+  ingestion is on the client handler and queries are on the admin handler, so
+  `queryAccess` is removed.
+- `standaloneRepository.baseUrl` now identifies the exact admin root, such as
+  `https://example.com/hot-updater/admin`. Its default and fixed request paths
+  are relative (`/bundles`, `/releases`, `/release-catalogs`, `/channels`, and
+  `/database/commit`) rather than appending `/api` to a shared client root.
+  `standaloneRepository({ routes })` no longer accepts a custom `channels`
+  route.
+- `toNodeHandler` now accepts one handler function, for example
+  `toNodeHandler(hotUpdater.handlers.admin)`, rather than the whole Hot Updater
+  object.
+- Runtime bindings and credentials must be captured when constructing the
+  database or storage plugin; handlers no longer accept a provider-specific
+  request context as a second argument.
 - `/version` reports the v1 infrastructure generation. Use `hot-updater doctor`
   against the generated public base URL before shipping the native build.
+
+The recommended same-host composition is:
+
+```ts
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
+
+app.use("/hot-updater/admin/*", bearerAuth({ token: adminToken }));
+app.mount("/hot-updater/admin", hotUpdater.handlers.admin);
+app.mount("/hot-updater", hotUpdater.handlers.client);
+```
+
+`HotUpdater.init` and `HotUpdater.wrap` continue to use the client base URL
+(`https://example.com/hot-updater`). Never embed the admin bearer token in the
+React Native app; optional client authentication uses `x-api-key`. Local or
+direct-database Console operation is unchanged. A Console configured with
+`standaloneRepository` must use the admin root and keep its bearer header on
+the server side; hosted Console user authentication remains a separate layer.
 
 ## Bundle and Release ownership
 
@@ -152,9 +195,8 @@ createHotUpdater({
   storage: [storagePlugin],
   features: {
     updateCheck: true,
-    bundles: true,
   },
-  basePath,
+  clientBasePath,
 });
 ```
 
@@ -162,6 +204,8 @@ The following v0 options are removed or renamed:
 
 - `storages` and deprecated `storagePlugins` become `storage`.
 - `routes` becomes `features`.
+- `basePath` becomes `clientBasePath` and defaults to `/`; set it to the exact
+  external mount path when the client handler is mounted under a prefix.
 - `cwd` is removed.
 - Database and storage factory thunks are not accepted.
 - Runtime request contexts are removed from database, storage, handler, and
@@ -325,8 +369,6 @@ deprecated migration shims:
 - Manual `HotUpdater.wrap({ updateMode: "manual" })`
 - `releaseChannel`, Android `stringResourcePaths`, database `sortBy`, Supabase
   `supabaseAnonKey`, and Cloudflare Wrangler R2 configuration
-- Legacy Bundle management requests other than the removed
-  `/api/bundles/channels` route
 - Reads of retained v0 Bundle artifacts and supported self-hosted database
   migrations
 

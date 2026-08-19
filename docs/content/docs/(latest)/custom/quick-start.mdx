@@ -63,18 +63,16 @@ export const hotUpdater = createHotUpdater({
       downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
     }),
   ],
-  basePath: "/hot-updater",
+  clientBasePath: "/hot-updater",
   features: {
     updateCheck: true,
-    bundles: true,
   },
 });
 ```
 
 By default, `createHotUpdater` mounts update-check routes and `/version`.
-Bundle management routes used by the CLI `standaloneRepository` must be
-enabled explicitly and protected by framework middleware before mounting the
-handler.
+Admin routes used by the CLI `standaloneRepository` live on a separate handler.
+Mount that handler only behind framework authentication.
 
 The same `features` object controls the core route groups. Add optional
 Analytics or client access-key features only after configuring their intended
@@ -92,18 +90,19 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
 
-const authToken = process.env.HOT_UPDATER_AUTH_TOKEN; // [!code ++]
-if (!authToken) {
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN; // [!code ++]
+if (!adminToken) {
   // [!code ++]
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required"); // [!code ++]
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required"); // [!code ++]
 } // [!code ++]
 
 app.use(
   // [!code ++]
-  "/hot-updater/api/*", // [!code ++]
-  bearerAuth({ token: authToken }), // [!code ++]
+  "/hot-updater/admin/*", // [!code ++]
+  bearerAuth({ token: adminToken }), // [!code ++]
 ); // [!code ++]
-app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
+app.mount("/hot-updater/admin", hotUpdater.handlers.admin); // [!code ++]
+app.mount("/hot-updater", hotUpdater.handlers.client); // [!code ++]
 
 serve({ fetch: app.fetch, port: 3000 }, (info) => {
   console.log(`Server running at http://localhost:${info.port}`);
@@ -113,8 +112,8 @@ serve({ fetch: app.fetch, port: 3000 }, (info) => {
 ## Security Settings
 
 Built-in client access-key authentication is opt-in and protects only
-update-check and Analytics ingestion routes. Always protect bundle management
-routes before mounting the handler.
+update-check and Analytics ingestion routes. Always protect admin routes before
+mounting `handlers.admin`.
 
 Update-check routes are usually exposed for React Native clients, but that is a
 deployment choice:
@@ -122,12 +121,12 @@ deployment choice:
 - `/hot-updater/release-catalogs/*`
 - `/hot-updater/artifacts/*`
 
-The bundle management routes under `/hot-updater/api/*` are used by the CLI.
-They are mounted only when `features.bundles: true`, and your framework
-middleware must protect each management request before mounting the handler.
-The server example above uses Bearer authentication for `/hot-updater/api/*`.
+The admin routes under `/hot-updater/admin/*` are used by the CLI. They exist
+only where `handlers.admin` is explicitly mounted, and your framework
+middleware must protect every request before that mount. The server example
+above uses Bearer authentication for `/hot-updater/admin/*`.
 Create `.env.hotupdater` with the storage credentials, download URL signing
-key, and management token used by this example:
+key, and admin token used by this example:
 
 ```bash
 R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
@@ -135,7 +134,7 @@ R2_ACCESS_KEY_ID=your-access-key-id
 R2_SECRET_ACCESS_KEY=your-secret-access-key
 R2_BUCKET_NAME=your-bucket-name
 HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY=your-download-url-signing-key
-HOT_UPDATER_AUTH_TOKEN=your-secret-auth-token
+HOT_UPDATER_ADMIN_TOKEN=your-secret-auth-token
 ```
 
 ## Schema Generation
@@ -167,9 +166,9 @@ import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
-const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
-if (!managementToken) {
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) {
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
 }
 
 export default defineConfig({
@@ -184,9 +183,9 @@ export default defineConfig({
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
   database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater",
+    baseUrl: "http://localhost:3000/hot-updater/admin",
     commonHeaders: {
-      Authorization: `Bearer ${managementToken}`,
+      Authorization: `Bearer ${adminToken}`,
     },
   }),
   updateStrategy: "appVersion",
@@ -216,6 +215,10 @@ export default HotUpdater.wrap({
   },
 })(App);
 ```
+
+The React Native `baseURL` always points to the client root. Never put the
+admin bearer token in the app; use a client `x-api-key` only when client access
+keys are enabled.
 
 ## Next Steps
 

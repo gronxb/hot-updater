@@ -26,7 +26,7 @@ import {
   cleanupServer,
   killPort,
   spawnServerProcess,
-  TEST_MANAGEMENT_AUTH_TOKEN,
+  TEST_ADMIN_AUTH_TOKEN,
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
@@ -236,14 +236,14 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
       body: JSON.stringify(event),
     });
     const clientQuery = await fetch(
-      `${baseUrl}/hot-updater/api/installations/overview`,
+      `${baseUrl}/hot-updater/admin/installations/overview`,
       { headers: { "x-api-key": rawApiKey } },
     );
-    const managementQuery = await fetch(
-      `${baseUrl}/hot-updater/api/installations/overview`,
+    const adminQuery = await fetch(
+      `${baseUrl}/hot-updater/admin/installations/overview`,
       {
         headers: {
-          Authorization: `Bearer ${TEST_MANAGEMENT_AUTH_TOKEN}`,
+          Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}`,
         },
       },
     );
@@ -251,7 +251,7 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     expect(unauthorized.status).toBe(401);
     expect(accepted.status).toBe(204);
     expect(clientQuery.status).toBe(401);
-    expect(managementQuery.status).toBe(200);
+    expect(adminQuery.status).toBe(200);
   });
 
   it("requires a client key for unversioned catalog routes", async () => {
@@ -271,9 +271,9 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
 
   it("updates Release policy through the authenticated standalone repository", async () => {
     const database = standaloneRepository({
-      baseUrl: `${baseUrl}/hot-updater`,
+      baseUrl: `${baseUrl}/hot-updater/admin`,
       commonHeaders: {
-        Authorization: `Bearer ${TEST_MANAGEMENT_AUTH_TOKEN}`,
+        Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}`,
       },
     });
     const bundleId = "hono-dynamodb-update-target-app-version";

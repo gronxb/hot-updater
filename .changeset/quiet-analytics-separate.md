@@ -15,8 +15,9 @@ the former top-level `analytics` and `routes` options are removed.
 
 Database providers own the physical `bundle_events` table through the shared
 database contract and schema version.
-`createHotUpdater({ features: { analytics: { queryAccess } } })` opts into the
-routes, with queries failing closed by default.
+`createHotUpdater({ features: { analytics: true } })` opts into the routes.
+Event ingestion lives on `handlers.client`; queries live on
+`handlers.admin` and rely on the framework middleware protecting that mount.
 
 React Native clients can enable automatic OTA transition reporting with
 `HotUpdater.init({ analytics: true })`. App-ready transitions retain stable

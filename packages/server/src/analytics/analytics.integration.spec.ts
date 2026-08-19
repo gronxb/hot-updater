@@ -20,7 +20,7 @@ const event = {
 } as const;
 
 const eventRequest = (body: unknown = event) =>
-  new Request("https://example.com/api/events", {
+  new Request("https://example.com/events", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -40,7 +40,16 @@ describe("createHotUpdater Analytics", () => {
       });
 
       expect(hotUpdater.analytics).toBeUndefined();
-      expect((await hotUpdater.handler(eventRequest())).status).toBe(404);
+      expect((await hotUpdater.handlers.client(eventRequest())).status).toBe(
+        404,
+      );
+      expect(
+        (
+          await hotUpdater.handlers.admin(
+            new Request("https://example.com/installations/overview"),
+          )
+        ).status,
+      ).toBe(404);
     },
   );
 
@@ -50,14 +59,14 @@ describe("createHotUpdater Analytics", () => {
     const database = createInMemoryDatabasePlugin();
     const append = vi.spyOn(database.models.analytics, "append");
     const hotUpdater = createHotUpdater({
-      features: { analytics: { queryAccess: "public" } },
+      features: { analytics: true },
       database,
     });
 
-    const ingestion = await hotUpdater.handler(eventRequest());
+    const ingestion = await hotUpdater.handlers.client(eventRequest());
     vi.advanceTimersByTime(1);
-    const overview = await hotUpdater.handler(
-      new Request("https://example.com/api/installations/overview"),
+    const overview = await hotUpdater.handlers.admin(
+      new Request("https://example.com/installations/overview"),
     );
 
     expect(ingestion.status).toBe(204);
@@ -87,38 +96,44 @@ describe("createHotUpdater Analytics", () => {
     );
     const createMigrator = vi.spyOn(database, "createMigrator");
     const hotUpdater = createHotUpdater({
-      features: { analytics: { queryAccess: "public" } },
+      features: { analytics: true },
       database,
     });
 
-    expect((await hotUpdater.handler(eventRequest())).status).toBe(204);
+    expect((await hotUpdater.handlers.client(eventRequest())).status).toBe(204);
     await hotUpdater.analytics?.getBundleEventOverview();
 
     expect(createMigrator).toHaveBeenCalledOnce();
   });
 
-  it("keeps ingestion public while protected queries fail closed", async () => {
+  it("keeps ingestion and queries on separate handler surfaces", async () => {
     const hotUpdater = createHotUpdater({
       features: { analytics: true },
       database: createInMemoryDatabasePlugin(),
     });
 
-    expect((await hotUpdater.handler(eventRequest())).status).toBe(204);
-    const query = await hotUpdater.handler(
-      new Request("https://example.com/api/installations/overview"),
+    expect((await hotUpdater.handlers.client(eventRequest())).status).toBe(204);
+    const clientQuery = await hotUpdater.handlers.client(
+      new Request("https://example.com/installations/overview"),
+    );
+    const adminIngestion = await hotUpdater.handlers.admin(eventRequest());
+    const adminQuery = await hotUpdater.handlers.admin(
+      new Request("https://example.com/installations/overview"),
     );
 
-    expect(query.status).toBe(401);
-    expect(query.headers.get("cache-control")).toBe("private, no-store");
+    expect(clientQuery.status).toBe(404);
+    expect(adminIngestion.status).toBe(404);
+    expect(adminQuery.status).toBe(200);
+    expect(adminQuery.headers.get("cache-control")).toBe("private, no-store");
   });
 
   it("returns a stable client error for malformed event payloads", async () => {
     const hotUpdater = createHotUpdater({
-      features: { analytics: { queryAccess: "public" } },
+      features: { analytics: true },
       database: createInMemoryDatabasePlugin(),
     });
 
-    const response = await hotUpdater.handler(
+    const response = await hotUpdater.handlers.client(
       eventRequest({ ...event, platform: "web" }),
     );
 
@@ -128,12 +143,12 @@ describe("createHotUpdater Analytics", () => {
     });
   });
 
-  it("rejects an invalid query access value instead of exposing queries", () => {
+  it("rejects a non-boolean Analytics feature", () => {
     expect(() =>
       createHotUpdater({
-        features: { analytics: { queryAccess: "invalid" as "public" } },
+        features: { analytics: "enabled" as unknown as boolean },
         database: createInMemoryDatabasePlugin(),
       }),
-    ).toThrow("Invalid Analytics queryAccess option.");
+    ).toThrow("Analytics feature must be a boolean.");
   });
 });

@@ -34,7 +34,6 @@ const hotUpdater = createHotUpdater({
   }),
   features: {
     updateCheck: true,
-    bundles: false,
     analytics: true,
   },
   storage: [
@@ -44,7 +43,7 @@ const hotUpdater = createHotUpdater({
       cdnUrl,
     }),
   ],
-  basePath: HOT_UPDATER_BASE_PATH,
+  clientBasePath: HOT_UPDATER_BASE_PATH,
 });
 
 const app = new Hono();
@@ -53,7 +52,7 @@ app.get("/ping", (c) => {
   return c.text("pong");
 });
 
-app.mount(HOT_UPDATER_BASE_PATH, hotUpdater.handler);
+app.mount(HOT_UPDATER_BASE_PATH, hotUpdater.handlers.client);
 
 const handler = onRequest(
   {

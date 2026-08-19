@@ -29,7 +29,7 @@ import { HotUpdater } from "@hot-updater/react-native";
 HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: {
-    Authorization: "Bearer <your-access-token>",
+    "x-api-key": "<your-client-access-key>",
   },
   onError: error => {
     console.error("Hot Updater failed", error);

@@ -12,30 +12,31 @@ export interface Routes {
 }
 
 export interface StandaloneRepositoryConfig {
+  /** Base URL of the Hot Updater admin handler. */
   readonly baseUrl: string;
   readonly commonHeaders?: Readonly<Record<string, string>>;
   readonly routes?: Routes;
 }
 
 function bundlePath(bundleId: string): string {
-  return `/api/bundles/${encodeURIComponent(bundleId)}`;
+  return `/bundles/${encodeURIComponent(bundleId)}`;
 }
 
 function channelPath(channelId: string): string {
-  return `/api/channels/${encodeURIComponent(channelId)}`;
+  return `/channels/${encodeURIComponent(channelId)}`;
 }
 
 export const defaultRoutes = {
-  create: () => ({ path: "/api/bundles" }),
+  create: () => ({ path: "/bundles" }),
   update: (bundleId: string) => ({
     path: bundlePath(bundleId),
   }),
   list: () => ({
-    path: "/api/bundles",
+    path: "/bundles",
     headers: { "Cache-Control": "no-cache" },
   }),
   channels: () => ({
-    path: "/api/channels",
+    path: "/channels",
     headers: { "Cache-Control": "no-cache" },
   }),
   deleteChannel: (channelId: string) => ({

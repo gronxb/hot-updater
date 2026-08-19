@@ -13,10 +13,11 @@ import {
   createTestDbPath,
   killPort,
   spawnServerProcess,
+  TEST_ADMIN_AUTH_TOKEN,
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
-import { afterAll, beforeAll, describe } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);
@@ -90,5 +91,33 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
       hotUpdater.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId: string) =>
       deleteLegacyBundle(hotUpdater, bundleId),
+  });
+
+  it("keeps the client handler reachable without admin credentials", async () => {
+    const response = await fetch(`${baseUrl}/hot-updater/version`);
+
+    expect(response.status).toBe(200);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["incorrect", "Bearer incorrect-token"],
+  ])("rejects %s admin credentials", async (_label, authorization) => {
+    const response = await fetch(`${baseUrl}/hot-updater/admin/channels`, {
+      headers: authorization ? { Authorization: authorization } : undefined,
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  it("allows authenticated admin requests without caching", async () => {
+    const response = await fetch(`${baseUrl}/hot-updater/admin/channels`, {
+      headers: {
+        Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}`,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
 });

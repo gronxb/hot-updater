@@ -27,7 +27,6 @@ const hotUpdater = createHotUpdater({
   }),
   features: {
     updateCheck: true,
-    bundles: false,
     analytics: true,
   },
   storage: [
@@ -37,12 +36,12 @@ const hotUpdater = createHotUpdater({
       bucketName,
     }),
   ],
-  basePath: hotUpdaterBasePath,
+  clientBasePath: hotUpdaterBasePath,
 });
 
 const app = new Hono().basePath(functionBasePath);
 
 app.get("/ping", (c) => c.text("pong"));
-app.mount(hotUpdaterBasePath, hotUpdater.handler);
+app.mount(hotUpdaterBasePath, hotUpdater.handlers.client);
 
 Deno.serve(app.fetch);

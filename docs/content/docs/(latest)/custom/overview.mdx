@@ -40,9 +40,9 @@ import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
-const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
-if (!managementToken) {
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) {
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
 }
 
 export default defineConfig({
@@ -57,9 +57,9 @@ export default defineConfig({
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
   database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater",
+    baseUrl: "http://localhost:3000/hot-updater/admin",
     commonHeaders: {
-      Authorization: `Bearer ${managementToken}`,
+      Authorization: `Bearer ${adminToken}`,
     },
   }),
   updateStrategy: "appVersion",
@@ -115,10 +115,9 @@ export const hotUpdater = createHotUpdater({
       /* My Custom Storage */
     }),
   ],
-  basePath: "/hot-updater",
+  clientBasePath: "/hot-updater",
   features: {
     updateCheck: true,
-    bundles: false,
   },
 });
 ```
@@ -137,17 +136,15 @@ URL; an unowned non-HTTP scheme is unsupported.
 one `features` object:
 
 - `updateCheck`: update-check endpoints used by React Native clients
-- `bundles`: Bundle, Release, Release Catalog, and Channel management endpoints
-  used by the CLI and Console
-- `analytics`: event ingestion and query routes backed by
+- `analytics`: client event ingestion and admin query routes backed by
   `database.models.analytics`
 - `clientAccessKeys`: authentication for update checks and Analytics ingestion
   backed by `database.models.clientAccessKeys`
 
-`updateCheck` is mounted by default. `bundles` is disabled by default and must
-be enabled explicitly when the CLI needs management APIs. When `bundles: true`,
-protect every route under `/api/*` with framework middleware. The `/version`
-endpoint is always mounted for diagnostics.
+`updateCheck` is enabled by default, and `/version` is always available on
+`handlers.client`. Bundle, Release, Release Catalog, Channel, database-commit,
+and Analytics-query routes live exclusively on `handlers.admin`. Expose that
+handler only through an authenticated framework mount.
 
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
@@ -157,19 +154,19 @@ export const hotUpdater = createHotUpdater({
       /* storage config */
     }),
   ],
-  basePath: "/hot-updater",
+  clientBasePath: "/hot-updater",
   features: {
     updateCheck: true,
-    bundles: true,
     analytics: true,
     clientAccessKeys: true,
   },
 });
 ```
 
-Use `analytics: { queryAccess: "public" }` only when Analytics query routes
-are intentionally public, such as a local fixture. `analytics: true` keeps
-queries protected. `false` or an omitted feature disables it.
+`analytics: true` enables ingestion on `handlers.client` and queries on
+`handlers.admin`. The server does not authenticate admin queries itself; the
+framework middleware protecting the admin mount owns that decision. `false`
+or an omitted feature disables Analytics routes.
 
 <Callout type="warn">
 **Recommendation: Match Your CLI Configuration**

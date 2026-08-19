@@ -25,26 +25,29 @@ describe("Detox Analytics HTTP client", () => {
     expect(result.status).toBe(0);
   });
 
-  it("queries the deployed server when config only has a standalone management client", async () => {
-    // Given: the CLI config database is an HTTP management carrier. It must not
+  it("queries the deployed server when config only has a standalone admin client", async () => {
+    // Given: the CLI config database is an HTTP admin carrier. It must not
     // be treated as the deployed server's component-data adapter.
     const standaloneRepositoryLike = {
       findMany: vi.fn(() => {
-        throw new Error("management database must not serve Analytics");
+        throw new Error("admin database must not serve Analytics");
       }),
       name: "standaloneRepository",
     };
     const serverDatabase = createInMemoryDatabasePlugin();
     const deployedServer = createHotUpdater({
-      features: { analytics: { queryAccess: "public" } },
-      basePath: "/hot-updater",
+      features: { analytics: true },
+      clientBasePath: "/hot-updater",
       database: serverDatabase,
     });
-    const fetch = vi.fn<typeof globalThis.fetch>((input, init) =>
-      deployedServer.handler(new Request(input, init)),
-    );
+    const fetch = vi.fn<typeof globalThis.fetch>((input, init) => {
+      const request = new Request(input, init);
+      const url = new URL(request.url);
+      url.pathname = url.pathname.replace("/hot-updater/admin", "") || "/";
+      return deployedServer.handlers.admin(new Request(url, request));
+    });
     const client = createConsoleAnalyticsHttpClient({
-      baseUrl: "http://127.0.0.1:3007/hot-updater/",
+      baseUrl: "http://127.0.0.1:3007/hot-updater/admin/",
       fetch,
       headers: { Authorization: "Bearer test-token" },
     });
@@ -56,7 +59,7 @@ describe("Detox Analytics HTTP client", () => {
     expect(overview.trackedInstallations).toBe(0);
     expect(standaloneRepositoryLike.findMany).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledWith(
-      "http://127.0.0.1:3007/hot-updater/api/installations/overview",
+      "http://127.0.0.1:3007/hot-updater/admin/installations/overview",
       expect.objectContaining({
         headers: expect.any(Headers),
       }),
@@ -71,7 +74,7 @@ describe("Detox Analytics HTTP client", () => {
     "fails an Analytics-required profile when the server returns HTTP %s",
     async (status) => {
       const client = createConsoleAnalyticsHttpClient({
-        baseUrl: "http://127.0.0.1:3007/hot-updater",
+        baseUrl: "http://127.0.0.1:3007/hot-updater/admin",
         fetch: vi.fn(async () => new Response(null, { status })),
       });
 
@@ -91,7 +94,7 @@ describe("Detox Analytics HTTP client", () => {
       }),
     );
     const client = createConsoleAnalyticsHttpClient({
-      baseUrl: "https://example.com/hot-updater",
+      baseUrl: "https://example.com/hot-updater/admin",
       fetch,
     });
 
@@ -99,8 +102,8 @@ describe("Detox Analytics HTTP client", () => {
     await client.getHistory("install/a b");
 
     expect(fetch.mock.calls.map(([url]) => url)).toEqual([
-      "https://example.com/hot-updater/api/installations?query=alias%2Fa%20b&limit=50&offset=0",
-      "https://example.com/hot-updater/api/installations/install%2Fa%20b/events?limit=50&offset=0",
+      "https://example.com/hot-updater/admin/installations?query=alias%2Fa%20b&limit=50&offset=0",
+      "https://example.com/hot-updater/admin/installations/install%2Fa%20b/events?limit=50&offset=0",
     ]);
   });
 });

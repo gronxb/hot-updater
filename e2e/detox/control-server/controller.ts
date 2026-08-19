@@ -1380,8 +1380,8 @@ async function verifyConfiguredConsoleAnalytics(args: {
     const client = analytics
       ? createConsoleAnalyticsProviderClient(createAnalyticsProvider(analytics))
       : createConsoleAnalyticsHttpClient({
-          baseUrl: getControllerReachableAppBaseUrl(),
-          headers: getHotUpdaterManagementHeaders(),
+          baseUrl: `${getControllerReachableAppBaseUrl()}/admin`,
+          headers: getHotUpdaterAdminHeaders(),
         });
     for (let attempt = 1; attempt <= 30; attempt += 1) {
       try {
@@ -3153,13 +3153,13 @@ async function patchEnvRuntimeConfigUrl() {
   });
 }
 
-function getHotUpdaterManagementHeaders() {
-  const authToken = readHotUpdaterAuthToken();
-  return authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
+function getHotUpdaterAdminHeaders() {
+  const adminToken = readHotUpdaterAdminToken();
+  return adminToken ? { Authorization: `Bearer ${adminToken}` } : undefined;
 }
 
-function readHotUpdaterAuthToken() {
-  return readHotUpdaterEnvValue("HOT_UPDATER_AUTH_TOKEN");
+function readHotUpdaterAdminToken() {
+  return readHotUpdaterEnvValue("HOT_UPDATER_ADMIN_TOKEN");
 }
 
 function readHotUpdaterApiKey() {
@@ -3174,7 +3174,7 @@ export function getHotUpdaterClientRequestHeaders() {
 }
 
 function readHotUpdaterEnvValue(
-  key: "HOT_UPDATER_API_KEY" | "HOT_UPDATER_AUTH_TOKEN",
+  key: "HOT_UPDATER_API_KEY" | "HOT_UPDATER_ADMIN_TOKEN",
 ) {
   const envValue = process.env[key]?.trim();
   if (envValue) return envValue;
@@ -3223,7 +3223,7 @@ async function waitForLocalProviderReady() {
     for (const url of urls) {
       try {
         const response = await fetch(url, {
-          headers: getHotUpdaterManagementHeaders(),
+          headers: getHotUpdaterAdminHeaders(),
           signal: AbortSignal.timeout(PROVIDER_READY_HTTP_TIMEOUT_MS),
         });
         if (!response.ok) {

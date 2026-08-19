@@ -30,7 +30,7 @@ import {
   type Routes,
 } from "./standaloneRepository";
 
-const BASE_URL = "http://localhost/hot-updater";
+const BASE_URL = "http://localhost/hot-updater/admin";
 const bundles = new Map<string, Bundle>();
 const channels = new Set<string>();
 const referencedChannels = new Set<string>();
@@ -51,7 +51,7 @@ const bundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => {
 };
 
 const server = setupServer(
-  http.get(`${BASE_URL}/api/channels`, ({ request }) => {
+  http.get(`${BASE_URL}/channels`, ({ request }) => {
     requestPaths.push(new URL(request.url).pathname);
     return HttpResponse.json({
       data: {
@@ -62,7 +62,7 @@ const server = setupServer(
       },
     });
   }),
-  http.post(`${BASE_URL}/api/channels`, async ({ request }) => {
+  http.post(`${BASE_URL}/channels`, async ({ request }) => {
     requestPaths.push(new URL(request.url).pathname);
     const input = (await request.json()) as {
       row: { id: string; name: string };
@@ -84,7 +84,7 @@ const server = setupServer(
       { status: inserted ? 201 : 200 },
     );
   }),
-  http.delete(`${BASE_URL}/api/channels/:id`, ({ params, request }) => {
+  http.delete(`${BASE_URL}/channels/:id`, ({ params, request }) => {
     requestPaths.push(new URL(request.url).pathname);
     const id = String(params.id);
     const name = id.replace(/^channel-/, "");
@@ -104,14 +104,14 @@ const server = setupServer(
     channelIds.delete(name);
     return new HttpResponse(null, { status: 204 });
   }),
-  http.get(`${BASE_URL}/api/bundles/:id`, ({ params, request }) => {
+  http.get(`${BASE_URL}/bundles/:id`, ({ params, request }) => {
     requestPaths.push(new URL(request.url).pathname);
     const value = bundles.get(String(params.id));
     return value
       ? HttpResponse.json(value)
       : HttpResponse.json({ error: "Not found" }, { status: 404 });
   }),
-  http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
+  http.get(`${BASE_URL}/bundles`, ({ request }) => {
     requestPaths.push(new URL(request.url).pathname);
     const url = new URL(request.url);
     const limit = Number(url.searchParams.get("limit") ?? 100);
@@ -130,7 +130,7 @@ const server = setupServer(
       },
     });
   }),
-  http.post(`${BASE_URL}/api/database/commit`, async ({ request }) => {
+  http.post(`${BASE_URL}/database/commit`, async ({ request }) => {
     requestPaths.push(new URL(request.url).pathname);
     const input = (await request.json()) as DatabaseCommit;
     createRequestBodies.push(input);
@@ -190,7 +190,7 @@ const server = setupServer(
     for (const [id, value] of staged) bundles.set(id, value);
     return HttpResponse.json({ data: { committed: true } });
   }),
-  http.post(`${BASE_URL}/api/bundles`, async ({ request }) => {
+  http.post(`${BASE_URL}/bundles`, async ({ request }) => {
     requestPaths.push(new URL(request.url).pathname);
     const body: unknown = await request.json();
     createRequestBodies.push(body);
@@ -203,7 +203,7 @@ const server = setupServer(
     }
     return HttpResponse.json({ success: true }, { status: 201 });
   }),
-  http.patch(`${BASE_URL}/api/bundles/:id`, async ({ params, request }) => {
+  http.patch(`${BASE_URL}/bundles/:id`, async ({ params, request }) => {
     requestPaths.push(new URL(request.url).pathname);
     const id = String(params.id);
     const current = bundles.get(id);
@@ -215,7 +215,7 @@ const server = setupServer(
     bundles.set(id, next);
     return HttpResponse.json({ success: true });
   }),
-  http.delete(`${BASE_URL}/api/bundles/:id`, ({ params, request }) => {
+  http.delete(`${BASE_URL}/bundles/:id`, ({ params, request }) => {
     requestPaths.push(new URL(request.url).pathname);
     bundles.delete(String(params.id));
     return HttpResponse.json({ success: true });
@@ -277,13 +277,13 @@ describe("standaloneRepository", () => {
       id: target.id,
       patches: target.patches,
     });
-    expect(requestPaths).toContain("/hot-updater/api/database/commit");
+    expect(requestPaths).toContain("/hot-updater/admin/database/commit");
     expect(
       requestPaths.every(
         (path) =>
-          path.startsWith("/hot-updater/api/bundles") ||
-          path === "/hot-updater/api/channels" ||
-          path === "/hot-updater/api/database/commit",
+          path.startsWith("/hot-updater/admin/bundles") ||
+          path === "/hot-updater/admin/channels" ||
+          path === "/hot-updater/admin/database/commit",
       ),
     ).toBe(true);
   });
@@ -378,7 +378,7 @@ describe("standaloneRepository", () => {
     const second = bundle("00000000-0000-0000-0000-000000000002");
     const client = createDatabaseClient(createRepository());
     server.use(
-      http.post(`${BASE_URL}/api/database/commit`, async ({ request }) => {
+      http.post(`${BASE_URL}/database/commit`, async ({ request }) => {
         createRequestBodies.push(await request.json());
         return HttpResponse.json(
           { error: "response lost after commit" },
@@ -416,7 +416,7 @@ describe("standaloneRepository", () => {
       channels: [{ id: "channel-preview", name: "preview" }],
     });
     expect(bundles.size).toBe(0);
-    expect(requestPaths).toContain("/hot-updater/api/channels");
+    expect(requestPaths).toContain("/hot-updater/admin/channels");
   });
 
   it("inserts a Channel and returns the server's canonical row", async () => {
@@ -444,7 +444,7 @@ describe("standaloneRepository", () => {
 
   it("rejects an inserted Channel response with a different id", async () => {
     server.use(
-      http.post(`${BASE_URL}/api/channels`, () =>
+      http.post(`${BASE_URL}/channels`, () =>
         HttpResponse.json({
           data: {
             row: { id: "unexpected-id", name: "preview" },
@@ -507,7 +507,7 @@ describe("standaloneRepository", () => {
         retrieveCalls += 1;
         return HttpResponse.json(value);
       }),
-      http.get("http://localhost/api/channels", () =>
+      http.get("http://localhost/channels", () =>
         HttpResponse.json({
           data: {
             channels: [{ id: "channel-production", name: "production" }],
@@ -534,7 +534,7 @@ describe("standaloneRepository", () => {
   it("forwards supported bundle filters and page-aligned offsets", async () => {
     let requestedUrl: URL | undefined;
     server.use(
-      http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
+      http.get(`${BASE_URL}/bundles`, ({ request }) => {
         requestedUrl = new URL(request.url);
         return HttpResponse.json({
           data: [],
@@ -571,7 +571,7 @@ describe("standaloneRepository", () => {
   it("forwards bounded ascending bundle order to the aggregate endpoint", async () => {
     let requestedUrl: URL | undefined;
     server.use(
-      http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
+      http.get(`${BASE_URL}/bundles`, ({ request }) => {
         requestedUrl = new URL(request.url);
         return HttpResponse.json({
           data: [bundle("00000000-0000-0000-0000-000000000031")],
@@ -611,7 +611,7 @@ describe("standaloneRepository", () => {
     bundles.set(preview.id, preview);
     let requestedUrl: URL | undefined;
     server.use(
-      http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
+      http.get(`${BASE_URL}/bundles`, ({ request }) => {
         requestedUrl = new URL(request.url);
         return HttpResponse.json({
           data: [first],
@@ -687,7 +687,7 @@ describe("standaloneRepository", () => {
     bundles.set(previewHigh.id, previewHigh);
     let requestedUrl: URL | undefined;
     server.use(
-      http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
+      http.get(`${BASE_URL}/bundles`, ({ request }) => {
         requestedUrl = new URL(request.url);
         return HttpResponse.json({
           data: [previewHigh],
@@ -733,7 +733,7 @@ describe("standaloneRepository", () => {
     bundles.set(value.id, value);
     let requestedUrl: URL | undefined;
     server.use(
-      http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
+      http.get(`${BASE_URL}/bundles`, ({ request }) => {
         requestedUrl = new URL(request.url);
         return HttpResponse.json({
           data: [...bundles.values()],
@@ -764,7 +764,7 @@ describe("standaloneRepository", () => {
     bundles.set(value.id, value);
     let requestedUrl: URL | undefined;
     server.use(
-      http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
+      http.get(`${BASE_URL}/bundles`, ({ request }) => {
         requestedUrl = new URL(request.url);
         const platform = requestedUrl.searchParams.get("platform");
         const filtered = [...bundles.values()].filter(
@@ -829,7 +829,7 @@ describe("standaloneRepository", () => {
   it("preserves common headers on the canonical Channel route", async () => {
     let authorization: string | null = null;
     server.use(
-      http.get("http://localhost/api/channels", ({ request }) => {
+      http.get("http://localhost/channels", ({ request }) => {
         authorization = request.headers.get("Authorization");
         return HttpResponse.json({
           data: {
@@ -851,7 +851,7 @@ describe("standaloneRepository", () => {
 
   it("rejects malformed existing-route responses", async () => {
     server.use(
-      http.get(`${BASE_URL}/api/bundles`, () =>
+      http.get(`${BASE_URL}/bundles`, () =>
         HttpResponse.json({ data: "invalid" }),
       ),
     );
@@ -873,7 +873,7 @@ describe("standaloneRepository", () => {
 
   it("rejects incomplete pagination metadata", async () => {
     server.use(
-      http.get(`${BASE_URL}/api/bundles`, () =>
+      http.get(`${BASE_URL}/bundles`, () =>
         HttpResponse.json({ data: [], pagination: {} }),
       ),
     );

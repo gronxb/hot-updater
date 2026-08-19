@@ -230,10 +230,9 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
           cdnUrl: cdnBaseUrl,
         }),
       ],
-      basePath: HOT_UPDATER_BASE_PATH,
+      clientBasePath: HOT_UPDATER_BASE_PATH,
       features: {
         updateCheck: true,
-        bundles: false,
       },
     });
 
@@ -343,7 +342,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
   });
 
   it("does not expose management routes from the emulator entrypoint", async () => {
-    const response = await invokeHandler("/api/bundles");
+    const response = await invokeHandler("/admin/bundles");
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({

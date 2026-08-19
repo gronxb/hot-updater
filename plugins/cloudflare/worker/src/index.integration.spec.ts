@@ -103,7 +103,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
 
   it("does not expose management routes from the worker entrypoint", async () => {
     const response = await worker.fetch(
-      new Request(`${PUBLIC_BASE_URL}/api/bundles`),
+      new Request(`${PUBLIC_BASE_URL}/admin/bundles`),
       env,
     );
 

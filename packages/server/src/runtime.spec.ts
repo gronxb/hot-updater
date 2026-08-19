@@ -36,17 +36,16 @@ describe("runtime createHotUpdater", () => {
     expectTypeOf<HandlerAPI>().toHaveProperty("getBundles");
     expectTypeOf<HandlerOptions>().toHaveProperty("features");
     expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<
-      "authorityId" | "basePath" | "features"
+      "authorityId" | "features"
     >();
     expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
-      "authorityId" | "database" | "features" | "storage" | "basePath"
+      "authorityId" | "clientBasePath" | "database" | "features" | "storage"
     >();
     expectTypeOf<keyof CreateHotUpdaterFeatures>().toEqualTypeOf<
-      "updateCheck" | "bundles" | "analytics" | "clientAccessKeys"
+      "updateCheck" | "analytics" | "clientAccessKeys"
     >();
     expectTypeOf<HandlerFeatures>().toEqualTypeOf<{
       readonly updateCheck?: boolean;
-      readonly bundles?: boolean;
     }>();
     expectTypeOf<
       NonNullable<CreateHotUpdaterOptions["features"]>
@@ -75,14 +74,17 @@ describe("runtime createHotUpdater", () => {
       storage: [storage],
     });
 
-    expect(hotUpdater.basePath).toBe("/api");
+    expect(hotUpdater.clientBasePath).toBe("/");
     expect(hotUpdater.adapterName).toBe("contextlessTestDatabase");
-    expect(hotUpdater.handler).toEqual(expect.any(Function));
+    expect(hotUpdater.handlers.client).toEqual(expect.any(Function));
+    expect(hotUpdater.handlers.admin).toEqual(expect.any(Function));
     expect("createMigrator" in hotUpdater).toBe(false);
     expect("generateSchema" in hotUpdater).toBe(false);
     expectTypeOf(hotUpdater).not.toHaveProperty("createMigrator");
     expectTypeOf(hotUpdater).not.toHaveProperty("generateSchema");
-    expectTypeOf(hotUpdater.handler).parameter(0).toEqualTypeOf<Request>();
+    expectTypeOf(hotUpdater.handlers.client)
+      .parameter(0)
+      .toEqualTypeOf<Request>();
   });
 
   it("rejects access when a managed schema is not initialized", async () => {
@@ -143,20 +145,17 @@ describe("runtime createHotUpdater", () => {
     expect(createMigrator).toHaveBeenCalledOnce();
   });
 
-  it.each([
-    { updateCheck: true, bundles: false },
-    { updateCheck: false, bundles: false },
-  ])(
-    "keeps the version route mounted for $updateCheck/$bundles",
+  it.each([{ updateCheck: true }, { updateCheck: false }])(
+    "keeps the version route mounted for updateCheck=$updateCheck",
     async (features) => {
       const hotUpdater = createHotUpdater({
         database: createRuntimeDatabase(),
-        basePath: "/api/check-update",
+        clientBasePath: "/api/check-update",
         features,
       });
 
-      const response = await hotUpdater.handler(
-        new Request("https://updates.example.com/api/check-update/version"),
+      const response = await hotUpdater.handlers.client(
+        new Request("https://updates.example.com/version"),
       );
 
       expect(response.status).toBe(200);
@@ -169,7 +168,7 @@ describe("runtime createHotUpdater", () => {
 
   it.each([
     ["updateCheck", "Update-check"],
-    ["bundles", "Bundles"],
+    ["analytics", "Analytics"],
   ] as const)("rejects a non-boolean %s feature", (feature, label) => {
     expect(() =>
       createHotUpdater({

@@ -56,9 +56,10 @@ the new version. Kysely, Drizzle, Prisma, MongoDB, Cloudflare D1, PostgreSQL,
 Supabase, Firebase, and Mock implement the same logical contract and migration
 semantics.
 
-Add canonical Channel management routes: `GET /api/channels`,
-`POST /api/channels`, and empty-only `DELETE /api/channels/:id`. Remove the
-legacy `/api/bundles/channels` route. Standalone remains a narrower remote
+Add mount-relative Channel admin routes: `GET /channels`, `POST /channels`, and
+empty-only `DELETE /channels/:id`. With the recommended mount these are exposed
+under `/hot-updater/admin/channels`. Remove the legacy
+`/api/bundles/channels` route. Standalone remains a narrower remote
 `BundleRepository`, while self-hosted `createHotUpdater` owns the full database
 contract. The Console can create Channels and request safe deletion; a concurrent
 bundle reference is reported as `not_empty` without losing data.
@@ -88,8 +89,8 @@ Self-hosted runtimes configure all route groups and optional behavior through
 `createHotUpdater({ features })`. `features.analytics` mounts Analytics
 ingestion and query routes backed by `database.models.analytics`, while
 `features.clientAccessKeys` protects update checks and Analytics ingestion
-through `database.models.clientAccessKeys`. `features.updateCheck` and
-`features.bundles` control the core route groups in the same object. The
-CLI-only `standaloneRepository` stays a bundle repository; the physical
-database passed to the self-hosted `createHotUpdater` instance owns the full
-official contract.
+through `database.models.clientAccessKeys`. `features.updateCheck` controls the
+client update routes. Admin routes are exposed only by explicitly mounting
+`handlers.admin`. The CLI-only `standaloneRepository` stays a bundle
+repository; the physical database passed to the self-hosted `createHotUpdater`
+instance owns the full official contract.

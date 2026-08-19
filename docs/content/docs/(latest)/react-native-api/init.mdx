@@ -17,13 +17,18 @@ import { HotUpdater } from "@hot-updater/react-native";
 HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: {
-    Authorization: "Bearer <your-access-token>",
+    "x-api-key": "<your-client-access-key>",
   },
   onError: error => {
     console.error("Hot Updater failed", error);
   },
 });
 ```
+
+Point `baseURL` at the client handler root, for example
+`https://example.com/hot-updater`. Never embed the admin bearer token in a
+React Native app. If client access keys are enabled, send only the scoped
+`x-api-key` shown above.
 
 `baseURL` can also be resolved at runtime. The function may return a string or
 a promise, and Hot Updater calls it before each update check.

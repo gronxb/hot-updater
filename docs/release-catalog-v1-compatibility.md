@@ -34,8 +34,8 @@ break atomic Release and catalog commits.
   binaries must keep using their unchanged v0 endpoint.
 - v1 Release Catalog JS does not run on a v0 native binary. Missing receipt,
   high-water, and selection-guard methods fail with a rebuild instruction.
-- The removed `/api/bundles/channels` route is not aliased; the canonical
-  Channel-row API is `/api/channels`.
+- The removed `/api/bundles/channels` route is not aliased; the canonical admin
+  Channel-row path is `/channels` relative to the admin handler mount.
 - Managed AWS, Cloudflare, Firebase, and Supabase init does not migrate selected
   v0 resources. Detection fails before mutation and requires newly scaffolded
   v1 resources.
@@ -47,7 +47,7 @@ break atomic Release and catalog commits.
 `plugins/standalone/src/standaloneLegacyTransaction.ts` exports
 `runLegacyAggregateTransaction`, but no production or test module imports it.
 It is not part of the required compatibility path: current Standalone v1 writes
-use `/api/database/commit`, while Bundle reads use
+use `/database/commit` relative to the admin root, while Bundle reads use
 `createLegacyCompatibilityImplementation`. Remove the orphan in a separate,
 focused cleanup after confirming it is not an undocumented deep import; do not
 confuse it with the still-required Bundle management bridge.

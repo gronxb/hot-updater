@@ -85,10 +85,10 @@ describe("Release catalog routes", () => {
       "findByScopeKey",
     );
     const url =
-      `https://updates.example.com/api/release-catalogs/app-version/` +
+      `https://updates.example.com/release-catalogs/app-version/` +
       `${authorityId}/ios/${channelKey}/1.5.0`;
 
-    const response = await hotUpdater.handler(new Request(url));
+    const response = await hotUpdater.handlers.client(new Request(url));
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe(
       "public, max-age=0, s-maxage=5",
@@ -120,14 +120,14 @@ describe("Release catalog routes", () => {
 
     const etag = response.headers.get("etag");
     expect(etag).toMatch(/^"sha256:[0-9a-f]{64}"$/);
-    const revalidated = await hotUpdater.handler(
+    const revalidated = await hotUpdater.handlers.client(
       new Request(url, { headers: { "if-none-match": etag! } }),
     );
     expect(revalidated.status).toBe(304);
     expect(await revalidated.text()).toBe("");
     expect(catalogRead).toHaveBeenCalledOnce();
 
-    const nonCanonicalVersion = await hotUpdater.handler(
+    const nonCanonicalVersion = await hotUpdater.handlers.client(
       new Request(url.replace("/1.5.0", "/v1.5")),
     );
     expect(nonCanonicalVersion.status).toBe(400);
@@ -136,7 +136,7 @@ describe("Release catalog routes", () => {
     );
     expect(catalogRead).toHaveBeenCalledOnce();
 
-    const wrongAuthority = await hotUpdater.handler(
+    const wrongAuthority = await hotUpdater.handlers.client(
       new Request(url.replace(authorityId, "project-b")),
     );
     expect(wrongAuthority.status).toBe(404);
@@ -153,11 +153,13 @@ describe("Release catalog routes", () => {
     );
     const hotUpdater = createHotUpdater({ authorityId, database });
     const url =
-      `https://updates.example.com/api/release-catalogs/app-version/` +
+      `https://updates.example.com/release-catalogs/app-version/` +
       `${authorityId}/ios/${channelKey}/1.5.0`;
 
     const responses = await Promise.all(
-      Array.from({ length: 100 }, () => hotUpdater.handler(new Request(url))),
+      Array.from({ length: 100 }, () =>
+        hotUpdater.handlers.client(new Request(url)),
+      ),
     );
 
     expect(responses.every(({ status }) => status === 200)).toBe(true);

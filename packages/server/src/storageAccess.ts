@@ -27,8 +27,8 @@ const resolveDownloadPath = (value: string, storageUri: string) => {
   return value;
 };
 
-const withBasePath = (basePath: string, downloadPath: string) => {
-  const handlerPath = basePath === "/" ? "" : basePath;
+const withClientBasePath = (clientBasePath: string, downloadPath: string) => {
+  const handlerPath = clientBasePath === "/" ? "" : clientBasePath;
   return `${handlerPath}${downloadPath}`;
 };
 
@@ -45,7 +45,7 @@ const tokensEqual = (left: string, right: string) => {
 
 export const createStorageAccess = (
   storagePlugins: StoragePluginWith<"get">[],
-  options: { readonly basePath: string },
+  options: { readonly clientBasePath: string },
 ) => {
   const protocols = new Set<string>();
   for (const storage of storagePlugins) {
@@ -97,8 +97,8 @@ export const createStorageAccess = (
     } catch (error) {
       if (/^[a-z][a-z\d+.-]*:/i.test(downloadUrl)) throw error;
     }
-    return withBasePath(
-      options.basePath,
+    return withClientBasePath(
+      options.clientBasePath,
       resolveDownloadPath(downloadUrl, storageUri),
     );
   };

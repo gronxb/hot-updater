@@ -10,14 +10,15 @@ import type {
 import { execa } from "execa";
 
 export interface TestApiConfig {
+  /** Base URL of the Hot Updater admin handler. */
   baseUrl: string;
   authToken?: string;
 }
 
-export const TEST_MANAGEMENT_AUTH_TOKEN = "hot-updater-test-token";
+export const TEST_ADMIN_AUTH_TOKEN = "hot-updater-test-token";
 
-const createManagementHeaders = (config: TestApiConfig) => ({
-  Authorization: `Bearer ${config.authToken ?? TEST_MANAGEMENT_AUTH_TOKEN}`,
+const createAdminHeaders = (config: TestApiConfig) => ({
+  Authorization: `Bearer ${config.authToken ?? TEST_ADMIN_AUTH_TOKEN}`,
 });
 
 const requireOk = async (response: Response, operation: string) => {
@@ -38,10 +39,10 @@ export async function deleteLegacyBundleFromServer(
   bundleId: string,
 ): Promise<void> {
   const buildUrl = (path: string) => `${config.baseUrl}${path}`;
-  const headers = createManagementHeaders(config);
+  const headers = createAdminHeaders(config);
 
   for (;;) {
-    const releasesUrl = new URL(buildUrl("/api/releases"));
+    const releasesUrl = new URL(buildUrl("/releases"));
     releasesUrl.searchParams.set("bundleId", bundleId);
     releasesUrl.searchParams.set("limit", "1000");
     const releases = await readData<readonly ReleaseRow[]>(
@@ -58,7 +59,7 @@ export async function deleteLegacyBundleFromServer(
         const result = await readData<ReleaseCatalogMutationResult>(
           await requireOk(
             await fetchWithRetry(
-              buildUrl(`/api/releases/${encodeURIComponent(release.id)}`),
+              buildUrl(`/releases/${encodeURIComponent(release.id)}`),
               {
                 body: JSON.stringify({
                   expectedRevision: revision,
@@ -78,7 +79,7 @@ export async function deleteLegacyBundleFromServer(
       }
 
       const deleteUrl = new URL(
-        buildUrl(`/api/releases/${encodeURIComponent(release.id)}`),
+        buildUrl(`/releases/${encodeURIComponent(release.id)}`),
       );
       deleteUrl.searchParams.set("confirm", release.id);
       deleteUrl.searchParams.set("expectedRevision", String(revision));
@@ -90,10 +91,10 @@ export async function deleteLegacyBundleFromServer(
   }
 
   await requireOk(
-    await fetchWithRetry(
-      buildUrl(`/api/bundles/${encodeURIComponent(bundleId)}`),
-      { headers, method: "DELETE" },
-    ),
+    await fetchWithRetry(buildUrl(`/bundles/${encodeURIComponent(bundleId)}`), {
+      headers,
+      method: "DELETE",
+    }),
     "Failed to delete Bundle",
   );
 }
@@ -121,12 +122,12 @@ async function fetchWithRetry(
 
 export function createBundleMethodsFromServer(config: TestApiConfig) {
   const buildUrl = (path: string) => `${config.baseUrl}${path}`;
-  const headers = createManagementHeaders(config);
+  const headers = createAdminHeaders(config);
 
   return {
     getBundleById: async (id: string): Promise<Bundle | null> => {
       const response = await fetchWithRetry(
-        buildUrl(`/api/bundles/${encodeURIComponent(id)}`),
+        buildUrl(`/bundles/${encodeURIComponent(id)}`),
         { headers },
       );
       if (response.status === 404) return null;
@@ -135,7 +136,7 @@ export function createBundleMethodsFromServer(config: TestApiConfig) {
     },
     getChannels: async (): Promise<readonly ChannelRow[]> => {
       const response = await requireOk(
-        await fetchWithRetry(buildUrl("/api/channels"), { headers }),
+        await fetchWithRetry(buildUrl("/channels"), { headers }),
         "Failed to get Channels",
       );
       const body = (await response.json()) as {
@@ -145,7 +146,7 @@ export function createBundleMethodsFromServer(config: TestApiConfig) {
     },
     insertBundle: async (bundle: LegacyBundle): Promise<void> => {
       await requireOk(
-        await fetchWithRetry(buildUrl("/api/bundles"), {
+        await fetchWithRetry(buildUrl("/bundles"), {
           body: JSON.stringify(bundle),
           headers: { ...headers, "Content-Type": "application/json" },
           method: "POST",
@@ -165,7 +166,7 @@ export function createBundleMethodsFromServer(config: TestApiConfig) {
         readonly direction: "asc" | "desc";
       };
     }) => {
-      const url = new URL(buildUrl("/api/bundles"));
+      const url = new URL(buildUrl("/bundles"));
       url.searchParams.set("limit", String(Math.min(options.limit, 100)));
       if (options.where?.platform) {
         url.searchParams.set("platform", options.where.platform);
@@ -204,7 +205,7 @@ export function createBundleMethodsFromServer(config: TestApiConfig) {
     ): Promise<void> => {
       await requireOk(
         await fetchWithRetry(
-          buildUrl(`/api/bundles/${encodeURIComponent(bundleId)}`),
+          buildUrl(`/bundles/${encodeURIComponent(bundleId)}`),
           {
             body: JSON.stringify(patch),
             headers: { ...headers, "Content-Type": "application/json" },
@@ -289,7 +290,7 @@ export function spawnServerProcess(options: {
       PORT: String(port),
       TEST_DB_PATH: testDbPath,
       NODE_ENV: "test",
-      HOT_UPDATER_AUTH_TOKEN: TEST_MANAGEMENT_AUTH_TOKEN,
+      HOT_UPDATER_ADMIN_TOKEN: TEST_ADMIN_AUTH_TOKEN,
       // Use test credentials for AWS
       AWS_REGION: "us-east-1",
       AWS_ACCESS_KEY_ID: "test-access-key",

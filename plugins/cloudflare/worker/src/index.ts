@@ -22,7 +22,6 @@ const hotUpdater = createHotUpdater({
   database: d1Database(env.DB),
   features: {
     updateCheck: true,
-    bundles: false,
     analytics: true,
   },
   storage: [
@@ -32,13 +31,13 @@ const hotUpdater = createHotUpdater({
       downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
     }),
   ],
-  basePath: HOT_UPDATER_BASE_PATH,
+  clientBasePath: HOT_UPDATER_BASE_PATH,
 });
 
 const app = new Hono<{ Bindings: CloudflareWorkerEnv }>();
 
 app.mount(HOT_UPDATER_BASE_PATH, (request: Request) =>
-  hotUpdater.handler(request),
+  hotUpdater.handlers.client(request),
 );
 
 export default app;

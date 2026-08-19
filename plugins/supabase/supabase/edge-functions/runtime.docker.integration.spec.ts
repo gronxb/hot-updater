@@ -258,10 +258,9 @@ describe.sequential("supabase edge runtime acceptance", () => {
           bucketName: BUCKET_NAME,
         }),
       ],
-      basePath: HOT_UPDATER_BASE_PATH,
+      clientBasePath: HOT_UPDATER_BASE_PATH,
       features: {
         updateCheck: true,
-        bundles: false,
       },
     });
 
@@ -666,7 +665,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
   it("does not expose management routes from the edge function entrypoint", async () => {
     const response = await fetch(
-      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/api/bundles`,
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/admin/bundles`,
     );
 
     expect(response.status).toBe(404);

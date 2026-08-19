@@ -6,7 +6,7 @@ import { CLIENT_ACCESS_KEY_HEADER_NAME, createHotUpdater } from "./index";
 
 const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 const updateUrl =
-  "https://example.com/api/release-catalogs/app-version/default/ios/" +
+  "https://example.com/release-catalogs/app-version/default/ios/" +
   "cHJvZHVjdGlvbg/1.0.0";
 
 const withApiKey = (url: string, init?: RequestInit) =>
@@ -40,19 +40,26 @@ describe("createHotUpdater client access keys", () => {
       features: { analytics: true, clientAccessKeys: true },
     });
 
-    expect((await hotUpdater.handler(new Request(updateUrl))).status).toBe(401);
-    expect((await hotUpdater.handler(withApiKey(updateUrl))).status).toBe(404);
     expect(
-      (await hotUpdater.handler(new Request("https://example.com/api/version")))
-        .status,
+      (await hotUpdater.handlers.client(new Request(updateUrl))).status,
+    ).toBe(401);
+    expect(
+      (await hotUpdater.handlers.client(withApiKey(updateUrl))).status,
+    ).toBe(404);
+    expect(
+      (
+        await hotUpdater.handlers.client(
+          new Request("https://example.com/version"),
+        )
+      ).status,
     ).toBe(200);
     expect(
       (
-        await hotUpdater.handler(
-          withApiKey("https://example.com/api/installations/overview"),
+        await hotUpdater.handlers.admin(
+          withApiKey("https://example.com/installations/overview"),
         )
       ).status,
-    ).toBe(401);
+    ).toBe(200);
   });
 
   it("authenticates before parsing Analytics event bodies", async () => {
@@ -65,7 +72,7 @@ describe("createHotUpdater client access keys", () => {
     const hotUpdater = createHotUpdater({
       database,
       features: {
-        analytics: { queryAccess: "public" },
+        analytics: true,
         clientAccessKeys: true,
       },
     });
@@ -77,15 +84,15 @@ describe("createHotUpdater client access keys", () => {
 
     expect(
       (
-        await hotUpdater.handler(
-          new Request("https://example.com/api/events", invalidBody),
+        await hotUpdater.handlers.client(
+          new Request("https://example.com/events", invalidBody),
         )
       ).status,
     ).toBe(401);
     expect(
       (
-        await hotUpdater.handler(
-          withApiKey("https://example.com/api/events", invalidBody),
+        await hotUpdater.handlers.client(
+          withApiKey("https://example.com/events", invalidBody),
         )
       ).status,
     ).toBe(400);
@@ -101,7 +108,7 @@ describe("createHotUpdater client access keys", () => {
       features: { clientAccessKeys: true },
     });
 
-    const response = await hotUpdater.handler(withApiKey(updateUrl));
+    const response = await hotUpdater.handlers.client(withApiKey(updateUrl));
 
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toEqual({
@@ -119,9 +126,9 @@ describe("createHotUpdater client access keys", () => {
           : { features: { clientAccessKeys } }),
       });
 
-      expect((await hotUpdater.handler(new Request(updateUrl))).status).toBe(
-        404,
-      );
+      expect(
+        (await hotUpdater.handlers.client(new Request(updateUrl))).status,
+      ).toBe(404);
     },
   );
 });

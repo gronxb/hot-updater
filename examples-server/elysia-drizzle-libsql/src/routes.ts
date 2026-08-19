@@ -1,14 +1,11 @@
 import { Elysia } from "elysia";
+
 import { hotUpdater } from "./db.js";
 
 const app = new Elysia();
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 
-const isAuthorizedManagementRequest = (request: Request) => {
-  const token = process.env.HOT_UPDATER_AUTH_TOKEN;
-  return (
-    Boolean(token) && request.headers.get("Authorization") === `Bearer ${token}`
-  );
-};
+if (!adminToken) throw new Error("HOT_UPDATER_ADMIN_TOKEN is required.");
 
 const unauthorizedResponse = () =>
   new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -16,13 +13,16 @@ const unauthorizedResponse = () =>
     headers: { "Content-Type": "application/json" },
   });
 
-// Mount Hot Updater handler for all /api/* routes
-app.all("/api/*", ({ request }) => {
-  if (!isAuthorizedManagementRequest(request)) {
-    return unauthorizedResponse();
-  }
+const adminApp = new Elysia()
+  .onBeforeHandle(({ request }) => {
+    if (request.headers.get("Authorization") !== `Bearer ${adminToken}`) {
+      return unauthorizedResponse();
+    }
+  })
+  .mount("/", hotUpdater.handlers.admin);
 
-  return hotUpdater.handler(request);
-});
+app
+  .mount("/hot-updater/admin", adminApp)
+  .mount("/hot-updater", hotUpdater.handlers.client);
 
 export default app;

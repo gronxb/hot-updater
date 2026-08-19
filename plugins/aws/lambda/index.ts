@@ -57,8 +57,7 @@ const getHotUpdater = (distributionDomainName: string) => {
     database,
     features: {
       updateCheck: true,
-      bundles: false,
-      analytics: {},
+      analytics: true,
       clientAccessKeys: true,
     },
     storage: [
@@ -73,7 +72,7 @@ const getHotUpdater = (distributionDomainName: string) => {
         }),
       }),
     ],
-    basePath: HOT_UPDATER_BASE_PATH,
+    clientBasePath: HOT_UPDATER_BASE_PATH,
   });
   hotUpdaterByDistribution.set(distributionDomainName, hotUpdater);
   return hotUpdater;
@@ -84,7 +83,7 @@ const app = new Hono<{ Bindings: Bindings }>();
 app.mount(
   HOT_UPDATER_BASE_PATH,
   async (request: Request, distributionDomainName: string) => {
-    return getHotUpdater(distributionDomainName).handler(request);
+    return getHotUpdater(distributionDomainName).handlers.client(request);
   },
   {
     optionHandler: (c) => [c.env.config.distributionDomainName],

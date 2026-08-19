@@ -285,7 +285,7 @@ function createHotUpdaterClient() {
      *   baseURL: "<your-update-server-url>",
      *   updateStrategy: "appVersion",
      *   requestHeaders: {
-     *     "Authorization": "Bearer <your-access-token>",
+     *     "x-api-key": "<your-client-access-key>",
      *   },
      * })(App);
      * ```
@@ -467,7 +467,7 @@ function createHotUpdaterClient() {
      * const updateInfo = await HotUpdater.checkForUpdate({
      *   source: "<your-update-server-url>",
      *   requestHeaders: {
-     *     Authorization: "Bearer <your-access-token>",
+     *     "x-api-key": "<your-client-access-key>",
      *   },
      * });
      *
@@ -513,7 +513,7 @@ function createHotUpdaterClient() {
      * const updateInfo = await HotUpdater.checkForUpdate({
      *   source: "<your-update-server-url>",
      *   requestHeaders: {
-     *     Authorization: "Bearer <your-access-token>",
+     *     "x-api-key": "<your-client-access-key>",
      *   },
      * });
      *

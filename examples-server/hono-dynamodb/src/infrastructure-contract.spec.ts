@@ -28,7 +28,7 @@ describe("standalone-dynamodb local infrastructure contract", () => {
     expect(dbSource).toContain("export const database = dynamoDB({");
     expect(dbSource).toContain("s3Storage({");
     expect(dbSource).toContain("features: {");
-    expect(dbSource).toContain('analytics: { queryAccess: "public" }');
+    expect(dbSource).toContain("analytics: true");
     expect(dbSource).toContain("clientAccessKeys: true");
     expect(dbSource).not.toContain("routes:");
     expect(dbSource).not.toContain("plugins:");

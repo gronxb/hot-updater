@@ -35,7 +35,7 @@ export default HotUpdater.wrap({ // [!code hl:8]
   updateStrategy: "appVersion", // or "fingerprint"
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
-    "Authorization": "Bearer <your-access-token>",
+    "x-api-key": "<your-client-access-key>",
   },
 })(App);
 ```
@@ -66,7 +66,7 @@ function App() {
       const updateInfo = await HotUpdater.checkForUpdate({
         updateStrategy: "appVersion", // Required: specify update strategy
         requestHeaders: {
-          Authorization: "Bearer <your-access-token>",
+          "x-api-key": "<your-client-access-key>",
         },
       });
 
@@ -90,7 +90,7 @@ function App() {
 HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: {
-    "Authorization": "Bearer <your-access-token>",
+    "x-api-key": "<your-client-access-key>",
   },
 });
 
@@ -220,7 +220,7 @@ export default HotUpdater.wrap({
   updateStrategy: "appVersion", // or "fingerprint"
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
-    "Authorization": "Bearer <your-access-token>",
+    "x-api-key": "<your-client-access-key>",
   },
   reloadOnForceUpdate: true, // Automatically reload the app on force updates // [!code hl]
 })(App);
@@ -245,7 +245,7 @@ export default HotUpdater.wrap({
   updateStrategy: "appVersion", // or "fingerprint"
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
-    "Authorization": "Bearer <your-access-token>",
+    "x-api-key": "<your-client-access-key>",
   },
   reloadOnForceUpdate: false, // The app won't reload on force updates // [!code hl:7]
   onUpdateProcessCompleted: async ({ status, shouldForceUpdate, id, message }) => {
@@ -287,7 +287,7 @@ export default HotUpdater.wrap({
   updateStrategy: "appVersion", // or "fingerprint"
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
-    "Authorization": "Bearer <your-access-token>",
+    "x-api-key": "<your-client-access-key>",
   },
   onUpdateProcessCompleted: ({ status, shouldForceUpdate, id, message }) => {
     console.log("Bundle updated:", status, shouldForceUpdate, id, message);

@@ -21,23 +21,33 @@ import { standaloneRepository } from "../../../plugins/standalone/src";
 import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
 import { kyselyAdapter } from "./adapters/kysely";
 import { createMigrator } from "./db";
-import { createHotUpdater } from "./index";
+import { createHotUpdater, type RuntimeHotUpdaterAPI } from "./index";
 
 const db = new PGlite();
 const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
 const api = createHotUpdater({
   database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
-  basePath: "/hot-updater",
+  clientBasePath: "/hot-updater",
   features: {
     updateCheck: true,
-    bundles: true,
-    analytics: { queryAccess: "public" },
+    analytics: true,
   },
 });
 const baseUrl = "http://localhost:3000";
 const server = setupServer();
-const handleRequest = async (request: Request) => {
-  const response = await api.handler(request);
+const invokeHandler = async (
+  hotUpdater: RuntimeHotUpdaterAPI,
+  request: Request,
+) => {
+  const url = new URL(request.url);
+  const adminBasePath = `${hotUpdater.clientBasePath}/admin`;
+  const isAdmin = url.pathname.startsWith(`${adminBasePath}/`);
+  const mountPath = isAdmin ? adminBasePath : hotUpdater.clientBasePath;
+  url.pathname = url.pathname.slice(mountPath.length) || "/";
+  const handler = isAdmin
+    ? hotUpdater.handlers.admin
+    : hotUpdater.handlers.client;
+  const response = await handler(new Request(url, request));
   return new HttpResponse(await response.text(), {
     status: response.status,
     headers: response.headers,
@@ -53,7 +63,7 @@ beforeAll(async () => {
   server.listen({ onUnhandledRequest: "error" });
   server.use(
     http.all(`${baseUrl}/hot-updater/*`, ({ request }) =>
-      handleRequest(request),
+      invokeHandler(api, request),
     ),
   );
 });
@@ -87,7 +97,7 @@ const createTestBundle = (overrides?: Partial<LegacyBundle>): LegacyBundle => ({
   ...overrides,
 });
 
-const createStandaloneClient = (base = `${baseUrl}/hot-updater`) =>
+const createStandaloneClient = (base = `${baseUrl}/hot-updater/admin`) =>
   createDatabaseClient(standaloneRepository({ baseUrl: base }));
 
 describe("Handler <-> Standalone Repository Integration", () => {
@@ -98,8 +108,8 @@ describe("Handler <-> Standalone Repository Integration", () => {
       createTestBundle({ id: bundleId }),
     );
 
-    const ingestion = await api.handler(
-      new Request(`${baseUrl}/hot-updater/events`, {
+    const ingestion = await api.handlers.client(
+      new Request(`${baseUrl}/events`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -119,8 +129,8 @@ describe("Handler <-> Standalone Repository Integration", () => {
         }),
       }),
     );
-    const overview = await api.handler(
-      new Request(`${baseUrl}/hot-updater/api/installations/overview`),
+    const overview = await api.handlers.admin(
+      new Request(`${baseUrl}/installations/overview`),
     );
 
     expect(ingestion.status).toBe(204);
@@ -133,7 +143,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
   it("atomically commits and reads Release catalogs through standalone management routes", async () => {
     const repository = standaloneRepository({
-      baseUrl: `${baseUrl}/hot-updater`,
+      baseUrl: `${baseUrl}/hot-updater/admin`,
     });
     const channel = await repository.models.channels.insert({
       onConflict: "returnExisting",
@@ -201,9 +211,9 @@ describe("Handler <-> Standalone Repository Integration", () => {
     await expect(
       repository.models.releaseCatalogs.findByScopeKey(scopeKey),
     ).resolves.toMatchObject({ generation: committed.catalog.generation });
-    const response = await api.handler(
+    const response = await api.handlers.client(
       new Request(
-        `${baseUrl}/hot-updater/release-catalogs/app-version/default/ios/${encodeChannelKey("production")}/1.0.0`,
+        `${baseUrl}/release-catalogs/app-version/default/ios/${encodeChannelKey("production")}/1.0.0`,
       ),
     );
     expect(response.status).toBe(200);
@@ -215,29 +225,26 @@ describe("Handler <-> Standalone Repository Integration", () => {
   it("keeps Standalone management routes separate from client access-key protection", async () => {
     const protectedApi = createHotUpdater({
       database: createInMemoryDatabasePlugin(),
-      basePath: "/protected-hot-updater",
+      clientBasePath: "/protected-hot-updater",
       features: {
         updateCheck: true,
-        bundles: true,
         clientAccessKeys: true,
       },
     });
     server.use(
       http.all(`${baseUrl}/protected-hot-updater/*`, async ({ request }) => {
-        const response = await protectedApi.handler(request);
-        return new HttpResponse(await response.text(), {
-          status: response.status,
-          headers: response.headers,
-        });
+        return invokeHandler(protectedApi, request);
       }),
     );
     const bundleId = uuidv7();
-    const client = createStandaloneClient(`${baseUrl}/protected-hot-updater`);
+    const client = createStandaloneClient(
+      `${baseUrl}/protected-hot-updater/admin`,
+    );
 
     await client.insertBundle(createTestBundle({ id: bundleId }));
-    const updateCheck = await protectedApi.handler(
+    const updateCheck = await protectedApi.handlers.client(
       new Request(
-        `${baseUrl}/protected-hot-updater/release-catalogs/app-version/default/ios/${encodeChannelKey("production")}/1.0.0`,
+        `${baseUrl}/release-catalogs/app-version/default/ios/${encodeChannelKey("production")}/1.0.0`,
       ),
     );
 
@@ -255,8 +262,8 @@ describe("Handler <-> Standalone Repository Integration", () => {
       createTestBundle({ id: bundleId, fileHash: "integration-hash-1" }),
     );
 
-    const response = await api.handler(
-      new Request(`${baseUrl}/hot-updater/api/bundles/${bundleId}`),
+    const response = await api.handlers.admin(
+      new Request(`${baseUrl}/bundles/${bundleId}`),
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -408,8 +415,8 @@ describe("Handler <-> Standalone Repository Integration", () => {
     const newId = uuidv7();
     await api.insertBundle(createTestBundle({ id: existingId }));
 
-    const response = await api.handler(
-      new Request(`${baseUrl}/hot-updater/api/bundles`, {
+    const response = await api.handlers.admin(
+      new Request(`${baseUrl}/bundles`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify([
@@ -423,23 +430,19 @@ describe("Handler <-> Standalone Repository Integration", () => {
     await expect(api.getBundleById(newId)).resolves.toBeNull();
   });
 
-  it("works with a custom basePath", async () => {
+  it("works with a custom clientBasePath", async () => {
     const customApi = createHotUpdater({
       database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
-      basePath: "/api/v2",
-      features: { updateCheck: true, bundles: true },
+      clientBasePath: "/api/v2",
+      features: { updateCheck: true },
     });
     server.use(
       http.all(`${baseUrl}/api/v2/*`, async ({ request }) => {
-        const response = await customApi.handler(request);
-        return new HttpResponse(await response.text(), {
-          status: response.status,
-          headers: response.headers,
-        });
+        return invokeHandler(customApi, request);
       }),
     );
     const bundleId = uuidv7();
-    const client = createStandaloneClient(`${baseUrl}/api/v2`);
+    const client = createStandaloneClient(`${baseUrl}/api/v2/admin`);
 
     await client.insertBundle(
       createTestBundle({ id: bundleId, fileHash: "custom-hash" }),
@@ -459,19 +462,17 @@ describe("Handler <-> Standalone Repository Integration", () => {
   it("updates a bundle without creating a duplicate row", async () => {
     const memoryApi = createHotUpdater({
       database: createInMemoryDatabasePlugin(),
-      basePath: "/memory-hot-updater",
-      features: { updateCheck: true, bundles: true },
+      clientBasePath: "/memory-hot-updater",
+      features: { updateCheck: true },
     });
     server.use(
       http.all(`${baseUrl}/memory-hot-updater/*`, async ({ request }) => {
-        const response = await memoryApi.handler(request);
-        return new HttpResponse(await response.text(), {
-          status: response.status,
-          headers: response.headers,
-        });
+        return invokeHandler(memoryApi, request);
       }),
     );
-    const client = createStandaloneClient(`${baseUrl}/memory-hot-updater`);
+    const client = createStandaloneClient(
+      `${baseUrl}/memory-hot-updater/admin`,
+    );
     const bundleId = uuidv7();
     await client.insertBundle(
       createTestBundle({

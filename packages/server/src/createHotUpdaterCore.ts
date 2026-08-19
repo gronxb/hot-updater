@@ -4,7 +4,6 @@ import {
 } from "@hot-updater/plugin-core";
 
 import { createAnalyticsProvider } from "./analytics/bounded/provider";
-import type { AnalyticsQueryAccess } from "./analytics/routes";
 import type { AnalyticsProvider } from "./analytics/types";
 import { authenticateClientAccessKey } from "./clientAccessKeys";
 import { createDatabasePluginCore } from "./db/databasePluginCore";
@@ -15,14 +14,18 @@ import {
   type DatabasePlugin,
   isDatabasePlugin,
 } from "./db/types";
-import { createHotUpdaterHandler, type HandlerFeatures } from "./handler";
+import {
+  createHotUpdaterHandlers,
+  type HandlerFeatures,
+  type HotUpdaterHandlers,
+} from "./handler";
 import { normalizeBasePath } from "./route";
 import { createStorageAccess } from "./storageAccess";
 
 export type RuntimeHotUpdaterAPI = DatabaseAPI & {
   readonly authorityId: string;
-  readonly basePath: string;
-  readonly handler: (request: Request) => Promise<Response>;
+  readonly clientBasePath: string;
+  readonly handlers: HotUpdaterHandlers;
   readonly adapterName: string;
   readonly analytics?: AnalyticsProvider;
 };
@@ -30,16 +33,8 @@ export type RuntimeHotUpdaterAPI = DatabaseAPI & {
 export type HotUpdaterAPI = RuntimeHotUpdaterAPI;
 
 export interface CreateHotUpdaterFeatures extends HandlerFeatures {
-  /**
-   * Mount Analytics ingestion and query routes backed by
-   * `database.models.analytics`. Protected queries are the default.
-   */
-  readonly analytics?:
-    | boolean
-    | {
-        /** Query routes deny access by default; client access keys never grant query access. */
-        readonly queryAccess?: AnalyticsQueryAccess;
-      };
+  /** Mount Analytics ingestion on the client handler and queries on admin. */
+  readonly analytics?: boolean;
   /** Protect update-check and Analytics ingestion routes with `x-api-key`. */
   readonly clientAccessKeys?: boolean;
 }
@@ -52,23 +47,9 @@ export interface CreateHotUpdaterOptions {
   readonly features?: CreateHotUpdaterFeatures;
   /** Storage implementations used to read provider-specific storage URIs. */
   readonly storage?: readonly StoragePlugin[];
-  readonly basePath?: string;
+  /** External path where `handlers.client` is mounted, used in storage URLs. */
+  readonly clientBasePath?: string;
 }
-
-const normalizeAnalyticsQueryAccess = (
-  analytics: CreateHotUpdaterFeatures["analytics"],
-): AnalyticsQueryAccess | undefined => {
-  if (analytics === undefined || analytics === false) return undefined;
-  if (analytics === true) return "protected";
-  if (typeof analytics !== "object" || analytics === null) {
-    throw new TypeError("Analytics options must be an object.");
-  }
-  const queryAccess = analytics.queryAccess ?? "protected";
-  if (queryAccess !== "protected" && queryAccess !== "public") {
-    throw new TypeError("Invalid Analytics queryAccess option.");
-  }
-  return queryAccess;
-};
 
 const normalizeClientAccessKeys = (
   clientAccessKeys: CreateHotUpdaterFeatures["clientAccessKeys"],
@@ -139,13 +120,13 @@ export function createHotUpdaterCore(
 ): HotUpdaterCore {
   const database = options.database;
   const authorityId = options.authorityId ?? "default";
-  const basePath = normalizeBasePath(options.basePath ?? "/api");
+  const clientBasePath = normalizeBasePath(options.clientBasePath ?? "/");
   const storagePlugins = (options.storage ?? []).map((storage) => {
     assertStorageOperations(storage, ["get", "getDownloadUrl"]);
     return storage;
   });
   const { downloadStorageObject, readStorageText, resolveFileUrl } =
-    createStorageAccess(storagePlugins, { basePath });
+    createStorageAccess(storagePlugins, { clientBasePath });
   const adapterCapabilities: DatabaseAdapterCapabilities = database;
 
   if (!isDatabasePlugin(database)) {
@@ -169,47 +150,36 @@ export function createHotUpdaterCore(
     "Update-check",
     true,
   );
-  const bundlesEnabled = normalizeBooleanFeature(
-    features.bundles,
-    "Bundles",
-    false,
-  );
-  const analyticsQueryAccess = normalizeAnalyticsQueryAccess(
+  const analyticsEnabled = normalizeBooleanFeature(
     features.analytics,
+    "Analytics",
+    false,
   );
   const clientAccessKeysEnabled = normalizeClientAccessKeys(
     features.clientAccessKeys,
   );
-  const analytics =
-    analyticsQueryAccess === undefined
-      ? undefined
-      : createAnalyticsProvider({
-          async append(row) {
-            await assertSchemaReady();
-            return plugin.models.analytics.append(row);
-          },
-          async scan(input) {
-            await assertSchemaReady();
-            return plugin.models.analytics.scan(input);
-          },
-        });
+  const analytics = !analyticsEnabled
+    ? undefined
+    : createAnalyticsProvider({
+        async append(row) {
+          await assertSchemaReady();
+          return plugin.models.analytics.append(row);
+        },
+        async scan(input) {
+          await assertSchemaReady();
+          return plugin.models.analytics.scan(input);
+        },
+      });
 
-  const internalHandler = createHotUpdaterHandler(
+  const handlers = createHotUpdaterHandlers(
     core.api,
     {
       authorityId,
-      basePath,
       features: {
         updateCheck: updateCheckEnabled,
-        bundles: bundlesEnabled,
       },
     },
-    analytics === undefined
-      ? undefined
-      : {
-          provider: analytics,
-          queryAccess: analyticsQueryAccess ?? "protected",
-        },
+    analytics,
     clientAccessKeysEnabled
       ? {
           authenticate: (request) =>
@@ -223,16 +193,13 @@ export function createHotUpdaterCore(
     downloadStorageObject,
   );
 
-  const handler: RuntimeHotUpdaterAPI["handler"] = (request) =>
-    internalHandler(request);
-
   const api: RuntimeHotUpdaterAPI = Object.assign(
     {
       authorityId,
-      basePath,
+      clientBasePath,
       adapterName: adapterCapabilities.adapterName ?? core.adapterName,
       ...(analytics === undefined ? {} : { analytics }),
-      handler,
+      handlers,
     },
     core.api,
   );

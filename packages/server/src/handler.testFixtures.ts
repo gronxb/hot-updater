@@ -1,11 +1,7 @@
 import type { LegacyBundle } from "@hot-updater/core";
 import { vi } from "vitest";
 
-import {
-  createHandler,
-  type HandlerAPI,
-  type HandlerFeatures,
-} from "./handler";
+import { createHandlers, type HandlerAPI } from "./handler";
 
 export const testBundle: LegacyBundle = {
   id: "bundle-1",
@@ -35,15 +31,5 @@ export const createApi = () =>
     deleteBundleById: vi.fn<HandlerAPI["deleteBundleById"]>(),
   }) satisfies HandlerAPI;
 
-export const createManagementHandler = (
-  api: HandlerAPI,
-  features: Partial<HandlerFeatures> = {},
-) =>
-  createHandler(api, {
-    basePath: "/hot-updater",
-    features: {
-      updateCheck: true,
-      bundles: true,
-      ...features,
-    },
-  });
+export const createAdminHandler = (api: HandlerAPI) =>
+  createHandlers(api).admin;

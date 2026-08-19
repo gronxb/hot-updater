@@ -25,8 +25,7 @@ export const hotUpdater = createHotUpdater({
   database,
   features: {
     updateCheck: true,
-    bundles: true,
-    analytics: { queryAccess: "public" },
+    analytics: true,
     clientAccessKeys: true,
   },
   storage: [
@@ -43,5 +42,5 @@ export const hotUpdater = createHotUpdater({
         "development-storage-download-url-key",
     }),
   ],
-  basePath: "/hot-updater",
+  clientBasePath: "/hot-updater",
 });
