@@ -1,6 +1,6 @@
 ---
 title: "Bare (CLI) Plugin"
-description: Build plugin for React Native CLI projects (non-Expo). Bundles your React Native app using the Metro bundler.
+description: Build plugin for React Native CLI projects (non-Expo). Runs the React Native CLI bundle command provided by Metro or Re.Pack.
 icon: react
 ---
 
@@ -40,7 +40,7 @@ export default defineConfig({
 
 ## Key Features
 
-- Uses React Native CLI's Metro bundler
+- Runs React Native CLI's `bundle` command, provided by Metro or Re.Pack
 - Automatic Hermes bytecode compilation when enabled
 - Minification handled by Hermes (disabled when Hermes is enabled)
 - Supports custom entry files and output directories
