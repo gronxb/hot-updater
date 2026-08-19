@@ -252,11 +252,15 @@ const pagination = calculatePagination(totalCount, {
 Use your custom plugin as the `database` field in `hot-updater.config.ts`:
 
 ```typescript
+import { defineConfig } from "hot-updater";
 import { customDatabase } from "./customDatabase";
 
-const database = customDatabase({
-  baseUrl: process.env.DATABASE_BASE_URL!,
-  apiKey: process.env.DATABASE_API_KEY!,
+export default defineConfig({
+  database: customDatabase({
+    baseUrl: process.env.DATABASE_BASE_URL!,
+    apiKey: process.env.DATABASE_API_KEY!,
+  }),
+  // ... other config
 });
 ```
 
