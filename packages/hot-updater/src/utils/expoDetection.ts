@@ -61,7 +61,7 @@ export function warnIfExpoCNG(): void {
   p.log.warn("Expo CNG project detected:");
   p.log.info("Configure in app.json or app.config.js:");
   p.log.info(
-    '  "plugins": [["@hot-updater/react-native", { "channel": "production" }]]',
+    '  "plugins": [["@hot-updater/expo", { "channel": "production" }]]',
   );
   p.log.info("  Instead run `npx expo prebuild`.");
   console.log("");

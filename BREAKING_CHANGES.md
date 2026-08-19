@@ -167,6 +167,28 @@ The following v0 options are removed or renamed:
 - Runtime request contexts are removed from database, storage, handler, and
   server API signatures.
 
+## Expo config plugin package
+
+The Expo config plugin moves from `@hot-updater/react-native` to
+`@hot-updater/expo`. Expo projects must install `@hot-updater/expo` and update
+the plugin entry before running Expo Prebuild or creating the next native
+build:
+
+```json
+{
+  "expo": {
+    "plugins": [
+      ["@hot-updater/expo", { "channel": "production" }]
+    ]
+  }
+}
+```
+
+`@hot-updater/react-native` no longer publishes `app.plugin.js` or declares the
+Expo config plugin's peer dependencies. Runtime imports remain in
+`@hot-updater/react-native`; only the `app.json` or `app.config.js` plugin entry
+moves.
+
 ## Database plugin contract and schema
 
 The aggregate Bundle database API is replaced by a fixed official-domain

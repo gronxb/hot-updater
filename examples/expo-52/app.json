@@ -25,7 +25,7 @@
     },
     "plugins": [
       [
-        "@hot-updater/react-native",
+        "@hot-updater/expo",
         {
           "channel": "production"
         }

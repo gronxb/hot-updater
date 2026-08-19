@@ -1,8 +1,7 @@
 {
   "name": "@hot-updater/expo",
-  "type": "module",
   "version": "0.36.0",
-  "description": "React Native OTA solution for self-hosted",
+  "description": "Hot Updater build and config plugin for Expo",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.cts",
@@ -18,10 +17,12 @@
   },
   "files": [
     "dist",
+    "app.plugin.js",
+    "plugin/build",
     "package.json"
   ],
   "scripts": {
-    "build": "tsdown",
+    "build": "tsdown && tsc -p plugin/tsconfig.build.json",
     "test": "vitest run",
     "test:type": "tsc --noEmit"
   },
@@ -35,7 +36,9 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "expo": "^50.0.0",
     "execa": "catalog:tools",
+    "hot-updater": "workspace:*",
     "vitest": "catalog:"
   },
   "exports": {
@@ -47,7 +50,20 @@
       "import": "./dist/babel-plugin.mjs",
       "require": "./dist/babel-plugin.cjs"
     },
+    "./app.plugin.js": "./app.plugin.js",
     "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "expo": ">=50.0.0",
+    "hot-updater": "*"
+  },
+  "peerDependenciesMeta": {
+    "expo": {
+      "optional": true
+    },
+    "hot-updater": {
+      "optional": true
+    }
   },
   "inlinedDependencies": {
     "@sec-ant/readable-stream": "0.4.1",
