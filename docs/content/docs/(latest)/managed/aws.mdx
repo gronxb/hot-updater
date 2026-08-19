@@ -13,7 +13,7 @@ import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
 Before you begin, make sure the following are ready:
 
-- **Node.js**: Version 20 or later is recommended.
+- **Node.js**: Version 20.19 or later is required; Node 22 is recommended.
 - **AWS Account**: Sign up at [AWS](https://aws.amazon.com) if you don't have one.
 - **AWS CLI**: Install the AWS CLI and sign in or configure a profile.
 
@@ -30,7 +30,7 @@ Used for `hot-updater init`:
 - `AWSLambda_FullAccess`: Create and update Lambda functions.
 - `CloudFrontFullAccess`: Manage CloudFront distributions.
 - `IAMFullAccess`: Create IAM roles for Lambda@Edge.
-- `SSMFullAccess`: Create Access to SSM Parameters for storing CloudFront key pairs.
+- `AmazonSSMFullAccess`: Access SSM Parameters used for CloudFront key pairs.
 
 ### 2. Ongoing Usage
 
@@ -44,9 +44,14 @@ For ongoing usage, create a separate access token with limited permissions. Here
 
 ```json
 {
-  "Effect": "Allow",
-  "Action": ["cloudfront:CreateInvalidation"],
-  "Resource": "arn:aws:cloudfront::<ACCOUNT_ID>:distribution/<DISTRIBUTION_ID>"
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["cloudfront:CreateInvalidation"],
+      "Resource": "arn:aws:cloudfront::<ACCOUNT_ID>:distribution/<DISTRIBUTION_ID>"
+    }
+  ]
 }
 ```
 
@@ -78,8 +83,8 @@ npx hot-updater init
 1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Bare (React Native CLI) for React Native).
 2. **Select a Provider**: Select AWS + Lambda@Edge as the provider for handling updates.
    During the setup, you will be prompted to:
-3. **Choose AWS Login Method**: Select between current AWS CLI/default session, shared AWS profile, AWS Access Key, or SSO login
-4. **Enter AWS Credentials**: Provide your profile name or AWS credentials when the selected mode requires it
+3. **Choose AWS Login Method**: Select current AWS CLI/default session, a shared AWS profile, account access keys, or an AWS SSO profile
+4. **Enter AWS Credentials**: Provide a profile name for shared-profile or SSO mode, or credentials for account/access-key mode
 5. **Select Region**: Choose an AWS region for S3 and DynamoDB
 6. **Select S3 Bucket**: Choose an existing bucket or create a new one
 7. **Create DynamoDB Table**: Enter a table name; init creates it or validates its schema
@@ -90,25 +95,27 @@ npx hot-updater init
   </Accordion>
 </Accordions>
 
-Once setup is complete, `.env.hotupdater` contains the DynamoDB table, S3
-bucket, region, and CloudFront distribution ID. Client access keys are an
-official database domain rather than init-time provider configuration. Start
-`hot-updater console`, open **Access Keys**, and create a key for protected OTA
-selectors and Analytics event ingestion. Copy the plaintext when it is shown;
-only its SHA-256 digest and metadata are stored in DynamoDB.
+Once setup is complete, `.env.hotupdater` may include the following values.
+Resource selections and the authentication mode are persisted for deterministic
+reruns. AWS credentials are included only for account/access-key mode and only
+when you consent to storing them.
 
 ```
 HOT_UPDATER_DYNAMODB_TABLE_NAME=hot-updater
+HOT_UPDATER_AWS_AUTH_MODE=local-session
+HOT_UPDATER_AWS_LAMBDA_NAME=hot-updater-edge
 HOT_UPDATER_S3_BUCKET_NAME=your-s3-bucket-name
 HOT_UPDATER_S3_REGION=your-region
 HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID=your-distribution-id
+HOT_UPDATER_API_KEY=your-client-access-key
 ```
 
-Add the copied value to the environment used to configure your app, for
-example `HOT_UPDATER_API_KEY=your-client-access-key`. Init does not generate or
-persist this value.
+Init reuses `HOT_UPDATER_API_KEY` when supplied or creates a client access key,
+registers it in DynamoDB, and persists the plaintext value locally. Bundle this
+client key in the app's `x-api-key` request header. It does not authorize
+management or Analytics-query routes.
 
-If you choose a shared AWS profile, the generated env file will also include:
+If you choose a shared AWS profile or SSO, the generated env file also includes:
 
 ```bash
 HOT_UPDATER_AWS_PROFILE=your-profile-name
@@ -118,7 +125,8 @@ If you choose the current AWS CLI/default session mode, no extra credential env
 variables are written. The generated config uses the AWS SDK default provider
 chain directly.
 
-If you choose access keys, the generated env file will instead include:
+If you choose account/access-key mode and consent to persistence, the generated
+env file also includes:
 
 ```bash
 # The generated key may be over-privileged or temporary depending on how you authenticated during init.
@@ -128,7 +136,7 @@ HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
 
 <Callout type="warn">
 
-If you're **not** using the `react-native-dotenv` solution, the tokens from your `.env` file will not be included in your app bundle and are therefore not exposed to risks. However, if you're still concerned,
+If you're **not** using the `react-native-dotenv` solution, provider credentials from `.env.hotupdater` will not be included in your app bundle. The client access key is the exception: add it explicitly to the app as shown below.
 
 please refer to the article below for more details:
 [Security](/docs/policy/security#plugin-token-protection)
@@ -231,7 +239,9 @@ const storageOptions = {
 };
 
 export default defineConfig({
+  authorityId: "aws.<generated-authority-id>",
   build: bare({ enableHermes: true }),
+  updateStrategy: "appVersion",
   storage: s3Storage(storageOptions),
   database: dynamoDB({
     ...awsOptions,
@@ -243,18 +253,22 @@ export default defineConfig({
 ```
 
 If you choose **shared AWS profile**, `fromNodeProviderChain()` is replaced with
-`fromIni({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })`. If you choose
-access keys or SSO, the generated credential block matches that mode instead.
+`fromIni({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })`. SSO uses
+`fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })`; only
+account/access-key mode emits a literal access-key credential block. Keep the
+generated `authorityId`: it is derived from the selected DynamoDB table.
 
-## Step 4: Change `.env` file (Optional)
+## Step 4: Replace Account Access Keys (Optional)
 
-By this point, the .env file should already be created. The token inside was generated when you ran the `hot-updater init` command.
+By this point, `.env.hotupdater` already contains the settings selected during
+`hot-updater init`.
 
-This step only applies if you selected **access key** or **SSO** during `init`.
-If you selected **current AWS CLI/default session** or **shared AWS profile**,
-you can keep using the generated credential-provider setup and skip this section.
+This step applies only if you selected **account/access-key mode** during
+`init`. Current AWS CLI/default session, shared-profile, and SSO modes use their
+generated credential providers and do not read these two variables.
 
-The token may have excessive permissions due to infrastructure setup or expire if SSO was used.
+The account-mode credentials entered during infrastructure setup may have
+broader permissions than ongoing deployment requires.
 
 To avoid issues, replace it with a permanent least-privilege identity that can
 write bundle artifacts to S3, read and write the selected DynamoDB table, and
@@ -271,6 +285,7 @@ The HotUpdater component wraps your application, enabling seamless delivery of u
 
 ```tsx title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
+import { Text, View } from "react-native";
 
 function App() {
   return (
@@ -282,9 +297,10 @@ function App() {
 
 export default HotUpdater.wrap({
   baseURL: "https://<your-cloudfront-distribution-url>", // [!code ++]
+  authorityId: "aws.<generated-authority-id>", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
-    // if you want to use the request headers, you can add them here
+    "x-api-key": "<HOT_UPDATER_API_KEY from .env.hotupdater>", // [!code ++]
   },
   fallbackComponent: ({ progress, status }) => (
     <View

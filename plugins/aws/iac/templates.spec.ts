@@ -2,10 +2,13 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { writeHotUpdaterConfig } from "@hot-updater/cli-tools";
+import {
+  transformTemplate,
+  writeHotUpdaterConfig,
+} from "@hot-updater/cli-tools";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { getConfigScaffold } from "./templates";
+import { getConfigScaffold, SOURCE_TEMPLATE } from "./templates";
 
 const tempDirs: string[] = [];
 
@@ -18,6 +21,20 @@ afterEach(async () => {
 });
 
 describe("AWS managed config scaffold", () => {
+  it("renders the authority and client access key in the app bootstrap", () => {
+    const source = transformTemplate(SOURCE_TEMPLATE, {
+      apiKey: JSON.stringify("client-key"),
+      authorityId: JSON.stringify("aws.test-authority"),
+      source: JSON.stringify("https://example.cloudfront.net"),
+    });
+
+    expect(source).toContain('baseURL: "https://example.cloudfront.net"');
+    expect(source).toContain('authorityId: "aws.test-authority"');
+    expect(source).toContain('"x-api-key": "client-key"');
+    expect(source).toContain("return null; // Replace with your app root.");
+    expect(source).not.toContain("YourApp");
+  });
+
   it("renders DynamoDB as the managed metadata database", () => {
     const scaffold = getConfigScaffold(
       "bare",

@@ -36,7 +36,7 @@ const SOURCE_TEMPLATE = `// add this to your App.tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
 function App() {
-  return ...
+  return null; // Replace with your app root
 }
 
 export default HotUpdater.wrap({
@@ -583,7 +583,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   );
   if (!applicationCredentials) {
     p.log.message(
-      "Next step: Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env file",
+      "Next step: Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env.hotupdater",
     );
   }
   p.log.success("Done! 🎉");

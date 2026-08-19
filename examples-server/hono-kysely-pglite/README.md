@@ -10,7 +10,7 @@ A production-ready Hot Updater server example using:
 
 - ✅ No PostgreSQL server needed (uses PGlite)
 - ✅ File-based persistence
-- ✅ Automatic schema migration
+- ✅ Versioned schema migrations through the CLI
 - ✅ RESTful API endpoints
 - ✅ CORS enabled
 - ✅ Request logging
@@ -18,18 +18,24 @@ A production-ready Hot Updater server example using:
 
 ## Setup
 
-1. Install dependencies:
+1. Install the workspace dependencies and enter this package:
 ```bash
 pnpm install
+cd examples-server/hono-kysely-pglite
 ```
 
-2. Configure environment variables (optional):
+2. Copy the environment template to the path loaded by `src/db.ts` and replace
+   its authentication, signing, and R2 credential placeholders:
 ```bash
-cp .env.example .env
-# Edit .env with your AWS credentials
+cp .env.example src/.env.hotupdater
 ```
 
-3. Start development server:
+3. Apply the Hot Updater schema. Startup does not run migrations automatically:
+```bash
+pnpm exec hot-updater db migrate src/db.ts --yes
+```
+
+4. Start the development server:
 ```bash
 pnpm dev
 ```
@@ -45,50 +51,34 @@ GET /
 
 ### Check for Updates
 ```bash
-POST /api/update
-Content-Type: application/json
-
-{
-  "platform": "ios",
-  "appVersion": "1.0.0",
-  "bundleId": "00000000-0000-0000-0000-000000000000",
-  "_updateStrategy": "appVersion"
-}
+GET /hot-updater/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion
+GET /hot-updater/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash
 ```
+
+`channelKey` is the base64url-encoded channel key produced by the client.
+
+Management routes under `/hot-updater/api/*` require
+`Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>`. Missing or mismatched
+credentials are rejected.
 
 ### List Bundles
 ```bash
-GET /api/bundles?channel=production&platform=ios&limit=50
+GET /hot-updater/api/bundles?limit=50
 ```
 
 ### Create Bundle
 ```bash
-POST /api/bundles
-Content-Type: application/json
-
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "platform": "ios",
-  "targetAppVersion": "1.0.0",
-  "channel": "production",
-  "enabled": true,
-  "shouldForceUpdate": false,
-  "fileHash": "abc123",
-  "storageUri": "s3://bucket/bundles/bundle.zip",
-  "message": "Initial release",
-  "gitCommitHash": null,
-  "fingerprintHash": null
-}
+POST /hot-updater/api/bundles
 ```
 
 ### Delete Bundle
 ```bash
-DELETE /api/bundles/:id
+DELETE /hot-updater/api/bundles/:id
 ```
 
 ### List Channels
 ```bash
-GET /api/channels
+GET /hot-updater/api/channels
 ```
 
 ## Project Structure
@@ -106,30 +96,39 @@ hono-server/
 
 ## Database
 
-The server uses PGlite with file-based storage at `./data/hot-updater.db`.
+The server uses PGlite with file-based storage in `./data`.
 The database schema is generated from Hot Updater's versioned schema and
 migrated through the Hot Updater CLI.
 
-On first run, the schema will be initialized automatically.
+Run `pnpm exec hot-updater db migrate src/db.ts --yes` before first use and
+whenever the checked-in schema changes.
 
 ## Storage Configuration
 
-By default, the example uses AWS S3 for bundle storage. Configure credentials via environment variables:
+The example uses the AWS plugin against Cloudflare R2's S3-compatible endpoint.
+Configure these values in `src/.env.hotupdater`:
 
 ```env
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-AWS_BUCKET_NAME=your-bucket-name
+R2_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=your-r2-access-key-id
+R2_SECRET_ACCESS_KEY=your-r2-secret-access-key
+R2_BUCKET_NAME=your-r2-bucket-name
+HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY=replace-with-a-long-random-signing-key
+HOT_UPDATER_AUTH_TOKEN=replace-with-a-long-random-token
 ```
 
 You can also use other storage providers by modifying `src/db.ts`.
 
 ## Production
 
-Build and run in production:
+Apply migrations as a release step, then build and start the emitted entry:
 
 ```bash
+pnpm exec hot-updater db migrate src/db.ts --yes
 pnpm build
-pnpm start
+node dist/src/index.js
 ```
+
+The compiled module does not load the source-tree `src/.env.hotupdater` file.
+Supply the port, authentication token, signing key, and R2 credentials through
+the deployment environment or process manager.

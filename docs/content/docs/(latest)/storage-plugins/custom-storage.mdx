@@ -7,7 +7,7 @@ icon: Hammer
 ## Installation
 
 ```package-install
-npm install @hot-updater/plugin-core --save-dev
+npm install @hot-updater/plugin-core
 ```
 
 ## Contract
@@ -75,7 +75,7 @@ export const customStorage = createStoragePlugin({
 });
 ```
 
-The full interface is:
+The core object operations are:
 
 ```typescript
 interface StoragePlugin {
@@ -140,9 +140,9 @@ different object key.
 Operations are optional because a runtime-specific implementation may support
 only the capabilities its consumer needs. Hot Updater validates required
 operations at each boundary and reports the missing operation by name.
-Every operation receives one input object and returns one result object so new
-fields can be added without introducing positional parameters or changing the
-result shape.
+Each core object operation receives one input object and returns one result
+object so new fields can be added without introducing positional parameters or
+changing the result shape.
 
 | Consumer                                          | Required operations              |
 | ------------------------------------------------- | -------------------------------- |
@@ -179,51 +179,22 @@ duplicate owners are rejected because routing would be ambiguous.
 ## Configuration and runtime implementations
 
 Pass plugin objects directly; there is no plugin factory thunk or runtime
-profile:
+profile. This excerpt shows only the storage value used by a complete
+`hot-updater.config.ts`:
 
-```typescript
-// hot-updater.config.ts: deploy-time provider client
-import { r2Storage } from "@hot-updater/cloudflare";
+```typescript title="hot-updater.config.ts (storage excerpt)"
+import { customStorage } from "./customStorage";
 
-export default defineConfig({
-  storage: r2Storage({
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
-    bucketName: process.env.CLOUDFLARE_R2_BUCKET_NAME!,
-    credentials: {
-      accessKeyId: process.env.CLOUDFLARE_R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
-    },
-  }),
-});
+const storage = customStorage;
 ```
 
-The same public name can be exported from a runtime subpath with a different
-implementation. For example, the Cloudflare Worker version captures an R2
-binding instead of Node.js credentials:
-
-```typescript
-import { createHotUpdater } from "@hot-updater/server";
-import { d1Database, r2Storage } from "@hot-updater/cloudflare/worker";
-import { env } from "cloudflare:workers";
-
-const hotUpdater = createHotUpdater({
-  database: d1Database(env.DB),
-  storage: [
-    r2Storage({
-      bucket: env.BUCKET,
-      bucketName: env.BUCKET_NAME,
-      downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
-    }),
-  ],
-});
-```
+Assign this value to the required `storage` field alongside the configuration's
+`build`, `database`, and `updateStrategy` fields.
 
 `getDownloadUrl` is the storage plugin's public URL boundary. A provider can
 return its CDN URL, a provider-signed URL, or a signed URL handled by the same
 server. The contract exposes only the resulting URL; the delivery mechanism is
-an implementation detail. For example, AWS passes
-`cloudFrontDownloadUrl(...)` to `s3Storage`, while a private R2 Worker returns a
-signed handler-relative URL.
+an implementation detail.
 
 ## File-system consumers
 

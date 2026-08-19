@@ -63,7 +63,9 @@ import { config } from "dotenv";
 config({ path: ".env.hotupdater" });
 
 export default defineConfig({
+  authorityId: "your-project-id",
   build: bare({ enableHermes: true }),
+  updateStrategy: "appVersion",
   storage: supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
@@ -82,7 +84,7 @@ export default defineConfig({
 </Callout>
 
 <Callout type="warn">
-  The environment variables in `.env` are used only during deployment, not in
+  The environment variables in `.env.hotupdater` are used only during deployment, not in
   your app bundle. However, if you're using `react-native-dotenv`, review the
   [Security guidelines](/docs/policy/security#plugin-token-protection).
 </Callout>
@@ -93,6 +95,7 @@ Add the HotUpdater wrapper to your main application component:
 
 ```tsx title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
+import { Text, View } from "react-native";
 
 function App() {
   return (
@@ -104,6 +107,7 @@ function App() {
 
 export default HotUpdater.wrap({
   baseURL: "https://your-update-server-url", // [!code ++]
+  authorityId: "your-project-id", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
     // Optional: Add custom headers if needed
@@ -135,6 +139,11 @@ export default HotUpdater.wrap({
 <Callout type="info">
   The update server URL will be provided after running `npx hot-updater init`.
   Check your terminal output or provider console for the correct URL.
+</Callout>
+
+<Callout type="info">
+  Keep the client `authorityId` identical to the generated config value. In v1,
+  it scopes the Release Catalog used for update resolution.
 </Callout>
 
 ## Build Configuration
@@ -550,7 +559,8 @@ npx hot-updater console
 
 Learn more about advanced capabilities:
 
-- [Update Strategies](/docs/guides/update-strategies) - Choose between app version and fingerprint strategies
+- [App Version Strategy](/docs/guides/update-strategies/app-version) - Match updates to the native app version
+- [Fingerprint Strategy](/docs/guides/update-strategies/fingerprint) - Opt in to native dependency fingerprints
 - [Default Channel Setup](/docs/guides/channel-management) - Configure the app's default release channel
 - [Runtime Channel Switch](/docs/guides/runtime-channel-switch) - Temporarily move a device to another channel without rebuilding
 - [Simulator Testing](/docs/guides/simulator-test) - Test updates in release mode before production

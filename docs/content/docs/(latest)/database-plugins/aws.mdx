@@ -49,10 +49,10 @@ aws dynamodb create-table \
   ]'
 ```
 
-The same table stores every official database domain: bundles, bundle patches,
-Analytics events, and client access keys. `dynamoDB()` provides all four ports
-directly; there is no component registry or feature migration to compose before
-serving traffic:
+The same table stores all seven official database domains: Bundles, Bundle
+patches, Releases, Release Catalogs, Channels, Analytics events, and client
+access keys. `dynamoDB()` provides all seven models directly; there is no
+component registry or feature migration to compose before serving traffic:
 
 ```typescript
 import { dynamoDB } from "@hot-updater/aws";
@@ -97,11 +97,14 @@ If `credentials` is omitted, the AWS SDK default credential chain is used. This
 lets you rely on local AWS CLI sessions, `AWS_PROFILE`, shared config files, or
 other standard AWS credential sources.
 
-When `cloudfrontDistributionId` is set, metadata mutations submit an
-invalidation for `/release-catalogs/*` by default. Override `apiBasePath`
-only when a custom deployment mounts the catalog routes elsewhere.
-Set `shouldWaitForInvalidation: true` when a deployment or E2E flow must wait
-for CloudFront propagation; it defaults to `false`.
+When `cloudfrontDistributionId` is set, a successful database commit containing
+a Bundle or Bundle-patch change submits an invalidation for
+`/release-catalogs/*` by default. Commits that change only Releases, Release
+Catalogs, Channels, Analytics, or client access keys do not trigger this
+adapter-level invalidation. Override `apiBasePath` only when a custom deployment
+mounts the catalog routes elsewhere. Set `shouldWaitForInvalidation: true` when
+a deployment or E2E flow must wait for CloudFront propagation; it defaults to
+`false`.
 
 ## Usage
 

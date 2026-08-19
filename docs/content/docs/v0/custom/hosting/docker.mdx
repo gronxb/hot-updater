@@ -31,6 +31,37 @@ npm install drizzle-orm postgres
 npm install -D drizzle-kit tsx typescript @types/node
 ```
 
+## Build Configuration
+
+The Dockerfile below expects a CommonJS TypeScript build that preserves the
+project-root layout under `dist`:
+
+```json title="package.json (excerpt)"
+{
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc"
+  }
+}
+```
+
+```json title="tsconfig.json"
+{
+  "compilerOptions": {
+    "esModuleInterop": true,
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "outDir": "dist",
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022"
+  },
+  "include": ["src", "hot-updater-schema.ts"]
+}
+```
+
+With this layout, `src/index.ts` is emitted as `dist/src/index.js`.
+
 ## Database Setup
 
 Create the database connection file.
@@ -38,9 +69,10 @@ Create the database connection file.
 ```typescript title="src/drizzle.ts"
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import * as schema from "../hot-updater-schema";
 
 const client = postgres(process.env.DATABASE_URL!);
-export const db = drizzle(client);
+export const db = drizzle(client, { schema });
 ```
 
 ## Hot Updater Configuration
@@ -50,18 +82,27 @@ Create the Hot Updater instance.
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { s3Storage } from "@hot-updater/aws";
 import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
-  database: drizzleAdapter({ db, provider: "postgres" }),
+  database: drizzleAdapter({ db, provider: "postgresql" }),
   storages: [
-    // Configure your storage plugin - examples:
-    // s3Storage({ /* S3 or R2 config */ }),
-    // supabaseStorage({ /* Supabase config */ }),
-    // firebaseStorage({ /* Firebase config */ }),
-    // myCustomStorage({ /* custom config */ }),
+    s3Storage({
+      region: "auto",
+      endpoint: process.env.R2_ENDPOINT,
+      credentials: {
+        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      },
+      bucketName: process.env.R2_BUCKET_NAME!,
+    }),
   ],
   basePath: "/hot-updater",
+  routes: {
+    updateCheck: true,
+    bundles: true,
+  },
 });
 ```
 
@@ -72,10 +113,17 @@ Create the server entry point.
 ```typescript title="src/index.ts"
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
+import { bearerAuth } from "hono/bearer-auth";
 import { hotUpdater } from "./hotUpdater";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 const app = new Hono();
 
+app.use("/hot-updater/api/*", bearerAuth({ token: managementToken }));
 app.mount("/hot-updater", hotUpdater.handler);
 
 const port = Number(process.env.PORT) || 3000;
@@ -99,6 +147,26 @@ Generate the Drizzle schema for Hot Updater tables.
 
 ```bash
 npx hot-updater db generate src/hotUpdater.ts --yes
+```
+
+The command generates source code; it does not change PostgreSQL. Point
+Drizzle Kit at that schema and apply it before starting the server:
+
+```typescript title="drizzle.config.ts"
+import { defineConfig } from "drizzle-kit";
+
+export default defineConfig({
+  schema: "./hot-updater-schema.ts",
+  out: "./drizzle",
+  dialect: "postgresql",
+  dbCredentials: {
+    url: process.env.DATABASE_URL!,
+  },
+});
+```
+
+```bash
+npx drizzle-kit push
 ```
 
 ## Dockerfile
@@ -127,7 +195,7 @@ COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000
 
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/src/index.js"]
 ```
 
 Create `.dockerignore`:
@@ -136,7 +204,7 @@ Create `.dockerignore`:
 node_modules
 dist
 .git
-.env
+.env*
 *.log
 ```
 
@@ -153,6 +221,11 @@ Run the container with environment variables.
 ```bash
 docker run -p 3000:3000 \
   -e DATABASE_URL="postgresql://user:password@host:5432/dbname" \
+  -e HOT_UPDATER_AUTH_TOKEN="replace-with-a-secret" \
+  -e R2_ENDPOINT="https://<account-id>.r2.cloudflarestorage.com" \
+  -e R2_ACCESS_KEY_ID="<access-key-id>" \
+  -e R2_SECRET_ACCESS_KEY="<secret-access-key>" \
+  -e R2_BUCKET_NAME="<bucket-name>" \
   hot-updater-server
 ```
 
@@ -186,6 +259,11 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/hot_updater
+      HOT_UPDATER_AUTH_TOKEN: replace-with-a-secret
+      R2_ENDPOINT: https://<account-id>.r2.cloudflarestorage.com
+      R2_ACCESS_KEY_ID: <access-key-id>
+      R2_SECRET_ACCESS_KEY: <secret-access-key>
+      R2_BUCKET_NAME: <bucket-name>
       PORT: 3000
     depends_on:
       postgres:
@@ -198,16 +276,13 @@ volumes:
 
 ## Run with Docker Compose
 
-Start all services.
+Start PostgreSQL, apply the generated schema from the project directory, and
+then start the server.
 
 ```bash
-docker-compose up -d
-```
-
-Run database migrations.
-
-```bash
-docker-compose exec hot-updater npx hot-updater db generate src/hotUpdater.ts --yes
+docker-compose up -d postgres
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/hot_updater npx drizzle-kit push
+docker-compose up -d hot-updater
 ```
 
 View logs.
@@ -227,22 +302,34 @@ docker-compose down
 Configure your CLI to use this server.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
+import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 export default defineConfig({
-  build: bare(),
-  storage: {
-    // Configure your storage plugin - examples:
-    // s3Storage({ /* S3 or R2 config */ }),
-    // supabaseStorage({ /* Supabase config */ }),
-    // firebaseStorage({ /* Firebase config */ }),
-    // myCustomStorage({ /* custom config */ }),
-  },
+  build: bare({ enableHermes: true }),
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.R2_BUCKET_NAME!,
+  }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${managementToken}`,
+    },
   }),
+  updateStrategy: "appVersion",
 });
 ```
 

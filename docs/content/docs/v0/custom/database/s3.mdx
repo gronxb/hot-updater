@@ -10,18 +10,24 @@ version: "v0.22.0"
 Install the AWS plugin.
 
 ```package-install
-npm install @hot-updater/aws --save-dev
+npm install @hot-updater/server @hot-updater/aws dotenv
+```
+
+```package-install
+npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater
 ```
 
 ## Setup
 
-Create a `.env.hot-updater` file with your S3 credentials.
+Create a `.env.hotupdater` file with your S3 credentials and management
+secrets.
 
-```bash title=".env.hot-updater"
+```bash title=".env.hotupdater"
 S3_REGION=us-east-1
 S3_ACCESS_KEY_ID=your-access-key
 S3_SECRET_ACCESS_KEY=your-secret-key
 S3_BUCKET_NAME=hot-updater
+HOT_UPDATER_AUTH_TOKEN=replace-with-a-long-random-token
 ```
 
 <Callout>
@@ -36,6 +42,9 @@ Create the Hot Updater instance:
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { s3Database, s3Storage } from "@hot-updater/aws";
+import { config } from "dotenv";
+
+config({ path: ".env.hotupdater" });
 
 const s3Config = {
   region: process.env.S3_REGION ?? "auto",
@@ -51,6 +60,10 @@ export const hotUpdater = createHotUpdater({
   database: s3Database(s3Config),
   storages: [s3Storage(s3Config)],
   basePath: "/hot-updater",
+  routes: {
+    updateCheck: true,
+    bundles: true,
+  },
 });
 ```
 
@@ -69,13 +82,21 @@ the metadata bucket.
 Configure your CLI to use this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { config } from "dotenv";
+import { defineConfig } from "hot-updater";
+
+config({ path: ".env.hotupdater" });
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 export default defineConfig({
-  build: bare(),
+  build: bare({ enableHermes: true }),
   storage: s3Storage({
     region: process.env.S3_REGION ?? "auto",
     endpoint: process.env.S3_ENDPOINT,
@@ -87,12 +108,16 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${managementToken}`,
+    },
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
 <Callout type="warn">
-The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
+The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example. Because `routes.bundles` enables management routes, protect `/hot-updater/api/*` with fail-closed authentication before mounting the handler.
 </Callout>
 
 ## API Endpoints

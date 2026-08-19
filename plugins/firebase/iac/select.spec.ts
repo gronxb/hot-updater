@@ -23,7 +23,6 @@ vi.mock("@hot-updater/cli-tools", async () => {
   return {
     ...actual,
     createHotUpdaterConfigScaffold: vi.fn().mockReturnValue({}),
-    createHotUpdaterConfigScaffoldFromBuilder: vi.fn().mockReturnValue({}),
     makeEnv: vi.fn().mockResolvedValue(""),
     p: {
       ...actual.p,
@@ -77,6 +76,10 @@ describe("setEnv", () => {
       },
     );
     expect(vi.mocked(writeHotUpdaterConfig)).toHaveBeenCalledOnce();
+    const scaffold = vi.mocked(writeHotUpdaterConfig).mock.calls[0]?.[0];
+    expect(scaffold?.text).toContain(
+      "// Check your .env.hotupdater file and add the credentials",
+    );
   });
 });
 

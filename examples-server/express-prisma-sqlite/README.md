@@ -18,15 +18,32 @@ import { toNodeHandler } from "@hot-updater/server/node";
 import { hotUpdater } from "./db";
 
 const app = express();
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
 
 // Mount middleware
 app.use(express.json());
+
+// Protect management routes. Update-check routes remain public.
+app.use("/hot-updater/api", (req, res, next) => {
+  if (
+    !managementToken ||
+    req.get("Authorization") !== `Bearer ${managementToken}`
+  ) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  next();
+});
 
 // Mount Hot Updater handler
 app.all("/hot-updater/*", toNodeHandler(hotUpdater));
 ```
 
-The `toNodeHandler` adapter automatically converts between Express's req/res and Web Standard Request/Response.
+The `toNodeHandler` adapter automatically converts between Express's req/res
+and Web Standard Request/Response. Send
+`Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>` to management routes under
+`/hot-updater/api/*`; missing or mismatched credentials are rejected.
 
 ## Setup
 
@@ -34,13 +51,14 @@ The `toNodeHandler` adapter automatically converts between Express's req/res and
 
 ```bash
 pnpm install
+cd examples-server/express-prisma-sqlite
 ```
 
 2. Configure environment variables:
 
 ```bash
-cp .env.example .env
-# Edit .env with your database and storage credentials
+cp .env.example src/.env.hotupdater
+# Edit src/.env.hotupdater with your authentication and storage credentials
 ```
 
 3. Generate Prisma schema from Hot Updater:
@@ -55,14 +73,16 @@ This merges the fixed Hot Updater models directly into
 4. Apply the schema to the database:
 
 ```bash
-pnpm db:push
+mkdir -p data
+touch data/prisma.db
+DATABASE_URL=file:../data/prisma.db pnpm db:push
 ```
 
 For production, use Prisma migrations:
 
 ```bash
-npx prisma migrate dev    # Create migration
-npx prisma migrate deploy # Apply migration
+DATABASE_URL=file:../data/prisma.db npx prisma migrate dev --name init
+DATABASE_URL=file:../data/prisma.db npx prisma migrate deploy
 ```
 
 ## Development
@@ -77,12 +97,17 @@ The server will run on `http://localhost:3002`.
 
 ## Production
 
-Build and run:
+Build verification:
 
 ```bash
 pnpm build
-pnpm start
 ```
+
+The emitted ESM is not directly launchable by Node.js because its relative
+imports omit file extensions. Use `pnpm dev` until that build issue is fixed.
+A deployed adaptation must inject `PORT`, `HOT_UPDATER_AUTH_TOKEN`, the signing
+key, and R2 credentials through its deployment environment instead of relying
+on the source-tree env file.
 
 ## Testing
 
@@ -108,9 +133,9 @@ pnpm db:generate
 This command:
 
 1. Reads your Hot Updater configuration from `src/db.ts`
-2. Merges the fixed `bundles`, `bundle_patches`, `bundle_events`,
-   `client_access_keys`, and `private_hot_updater_settings` models into
-   `prisma/schema.prisma`
+2. Merges the fixed `channels`, `bundles`, `bundle_patches`, `releases`,
+   `release_catalogs`, `bundle_events`, `client_access_keys`, and
+   `private_hot_updater_settings` models into `prisma/schema.prisma`
 3. Preserves application models outside the generated block
 
 **Step 2: Generate Prisma Client**
@@ -124,14 +149,14 @@ npx prisma generate
 For development (quick sync without migration files):
 
 ```bash
-pnpm db:push
+DATABASE_URL=file:../data/prisma.db pnpm db:push
 ```
 
 For production (with migration history):
 
 ```bash
-npx prisma migrate dev --name init
-npx prisma migrate deploy
+DATABASE_URL=file:../data/prisma.db npx prisma migrate dev --name init
+DATABASE_URL=file:../data/prisma.db npx prisma migrate deploy
 ```
 
 ### Why This Workflow?

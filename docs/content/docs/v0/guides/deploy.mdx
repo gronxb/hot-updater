@@ -20,6 +20,7 @@ If you haven't completed these steps, refer to the [Supabase Provider](/docs/v0/
 Options:
   -p, --platform <platform>                    specify the platform (choices: "ios", "android")
   -t, --target-app-version <targetAppVersion>  specify the target app version (semver format e.g. 1.0.0, 1.x.x)
+  -d, --disabled                               create the update disabled (default: false)
   -f, --force-update                           force update the app (default: false)
   -o, --bundle-output-path <bundleOutputPath>  the directory where bundle archives will be generated
   -r, --rollout <percentage>                   specify the rollout percentage for the deployed bundle (0-100) (default: 100)
@@ -54,10 +55,11 @@ alongside the archive bundle. When the app runtime supports manifest-based
 diffing, unchanged files can be reused locally and only changed files are
 downloaded. No deploy flag is required for this behavior.
 
-If `patch.enabled: true` is set in `hot-updater.config.ts`, deploy also tries
-to prepare compatible `bsdiff` patches for the Hermes bundle. This optimization
-is disabled by default. Patch generation is best-effort; a skipped patch does
-not fail the deployment because the normal archive update remains available.
+Hermes binary patch generation is enabled by default (`patch.enabled: true`).
+Deploy therefore also tries to prepare compatible `bsdiff` patches. Set
+`patch.enabled: false` only when you want to disable this optimization. Patch
+generation is best-effort; a skipped patch does not fail the deployment because
+the normal archive update remains available.
 
 See [Bundle Diffing](/docs/v0/guides/bundle-diffing) for the runtime behavior and
 fallback rules.

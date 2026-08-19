@@ -10,13 +10,21 @@ version: "v0.22.0"
 Install Prisma and initialize your project.
 
 ```package-install
-npm install prisma @prisma/client --save-dev
+npm install @hot-updater/server @hot-updater/aws @prisma/client@6.19.3
+```
+
+```package-install
+npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater prisma@6.19.3
 ```
 
 Initialize Prisma:
 ```bash
-npx prisma init
+npx prisma@6.19.3 init --datasource-provider sqlite --generator-provider prisma-client-js
+npx prisma generate
 ```
+
+This guide uses Prisma 6. Generate the initial client before creating
+`src/prisma.ts`; the Hot Updater schema command loads that module.
 
 For other databases, see [Prisma's database documentation](https://www.prisma.io/docs/orm/overview/databases).
 
@@ -54,6 +62,10 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
+  routes: {
+    updateCheck: true,
+    bundles: true,
+  },
 });
 ```
 
@@ -65,47 +77,18 @@ Generate the Prisma schema for Hot Updater tables.
 npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
-This command generates the schema. Copy it into your `prisma/schema.prisma` file.
+Because `prisma init` created `prisma/schema.prisma`, this command merges the
+current Hot Updater models into that file while preserving application models.
 
 <Callout>
 Need to generate SQL without config? See [SQL Export](/docs/v0/custom/database/sql-export) for standalone SQL generation with the `--sql` flag.
 </Callout>
 
-**Example schema.prisma:**
-```prisma
-generator client {
-  provider = "prisma-client-js"
-}
+Regenerate Prisma Client from the merged schema, then apply it:
 
-datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
-}
-
-model Bundle {
-  id String @db.Uuid @id
-  platform String
-  should_force_update Boolean
-  enabled Boolean
-  file_hash String
-  git_commit_hash String?
-  message String?
-  channel String
-  storage_uri String
-  target_app_version String?
-  fingerprint_hash String?
-  metadata Json
-}
-```
-
-Run migrations:
-```bash
-npx prisma migrate dev --name init
-```
-
-Generate Prisma Client:
 ```bash
 npx prisma generate
+npx prisma db push
 ```
 
 ## CLI Configuration
@@ -113,13 +96,18 @@ npx prisma generate
 Configure your CLI to use this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 export default defineConfig({
-  build: bare(),
+  build: bare({ enableHermes: true }),
   storage: s3Storage({
     region: "auto",
     endpoint: process.env.R2_ENDPOINT,
@@ -131,12 +119,16 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${managementToken}`,
+    },
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
 <Callout type="warn">
-The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
+The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example. Because `routes.bundles` enables management routes, protect `/hot-updater/api/*` with fail-closed authentication before mounting the handler.
 </Callout>
 
 ## API Endpoints

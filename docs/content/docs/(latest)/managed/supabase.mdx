@@ -19,10 +19,12 @@ import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
 Before you begin, make sure the following are ready:
 
-- **Docker Or OrbStack**: Install it via [Docker](https://docs.docker.com/get-docker/) or [OrbStack](https://orbstack.dev/).
-- **Node.js**: Version 20 or later is recommended.
+- **Node.js**: Version 20.19 or later is required; Node 22 is recommended.
 - **Supabase CLI**: Install it via `npx supabase`.
 - **Supabase Account**: Sign up at [Supabase](https://supabase.com) if you don't have one.
+
+Docker or OrbStack is needed only when you choose to run Supabase locally; the
+managed remote init flow does not require a local container runtime.
 
 ## Step 1: Install Required Packages
 
@@ -49,26 +51,38 @@ npx hot-updater init
 
 During the setup, you will be prompted to:
 
-1. **Create or Select a Supabase Organization**: Choose an existing organization or create a new one.
-2. **Create or Select a Project**: Choose an existing project or create a new one within your organization.
-3. **Configure Storage**: Select an existing storage bucket or create a new public bucket to store updates.
-4. **Database Migration**: create a new one to store updates.
+1. **Select a Supabase Organization**: Select an existing organization. If none exists, create one in the Supabase Dashboard before running init.
+2. **Create or Select a Project**: Choose an existing project or create a new one within the selected organization.
+3. **Configure Storage**: Select a bucket or create a new private bucket. Init asks before converting a selected public bucket to private.
+4. **Database Migration**: Apply the generated migrations to the selected project.
 5. **Deploy Edge Function**: Deploy a Supabase Edge Function called `update-server`.
 
   </Accordion>
 </Accordions>
 
-Once the setup is complete, a `.env.hotupdater` file will be generated containing the following keys:
+Once setup is complete, `.env.hotupdater` may include the following values.
+Project and function selections are persisted for deterministic reruns.
+Personal access tokens and database passwords are included only when needed and
+when you consent to persistence; project-creation inputs appear only when a
+project is created.
 
 ```
+HOT_UPDATER_SUPABASE_PROJECT_ID=your-project-id
+HOT_UPDATER_SUPABASE_FUNCTION_NAME=update-server
 HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY=your-service-role-or-secret-key
 HOT_UPDATER_SUPABASE_BUCKET_NAME=your-bucket-name
 HOT_UPDATER_SUPABASE_URL=https://your-project-id.supabase.co
+# Conditional credentials/create-only values may include:
+SUPABASE_ACCESS_TOKEN=your-personal-access-token
+HOT_UPDATER_SUPABASE_DB_PASSWORD=your-database-password
+HOT_UPDATER_SUPABASE_PROJECT_NAME=your-new-project-name
+HOT_UPDATER_SUPABASE_ORGANIZATION_SLUG=your-organization-slug
+HOT_UPDATER_SUPABASE_REGION=your-region
 ```
 
 <Callout type="warn">
 
-If you're **not** using the `react-native-dotenv` solution, the tokens from your `.env` file will not be included in your app bundle and are therefore not exposed to risks. However, if you're still concerned,
+If you're **not** using the `react-native-dotenv` solution, provider credentials from `.env.hotupdater` will not be included in your app bundle. However, if you're still concerned,
 
 please refer to the article below for more details:
 [Security](/docs/policy/security#plugin-token-protection)
@@ -90,7 +104,9 @@ import { config } from "dotenv";
 config({ path: ".env.hotupdater" });
 
 export default defineConfig({
+  authorityId: "your-project-id",
   build: bare({ enableHermes: true }),
+  updateStrategy: "appVersion",
   storage: supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
@@ -102,6 +118,9 @@ export default defineConfig({
   }),
 });
 ```
+
+Keep the generated `authorityId` unchanged. Managed Supabase uses the project
+reference as the Release Catalog authority.
 
 The generated Supabase migrations enable Row Level Security on Hot Updater
 tables and keep direct table/function access limited to the service role used by
@@ -138,6 +157,7 @@ The HotUpdater component wraps your application, enabling seamless delivery of u
 
 ```tsx title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
+import { Text, View } from "react-native";
 
 function App() {
   return (
@@ -149,6 +169,7 @@ function App() {
 
 export default HotUpdater.wrap({
   baseURL: "https://<project-ref>.supabase.co/functions/v1/<function-name>", // [!code ++]
+  authorityId: "your-project-id", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
     // if you want to use the request headers, you can add them here
@@ -184,7 +205,7 @@ The managed Supabase runtime exposes public update checks, Analytics event
 ingestion, and `/version`. Internally, it enables
 `features: { updateCheck: true, bundles: false, analytics: true }`.
 Analytics query routes stay protected, and bundle management routes are not
-mounted on the public CDN URL.
+  mounted on the public Edge Function URL.
 </Callout>
 
 ## Step 5: If You Use Expo, Add the Config Plugin

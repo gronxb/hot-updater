@@ -75,10 +75,11 @@ alongside the archive bundle. When the app runtime supports manifest-based
 diffing, unchanged files can be reused locally and only changed files are
 downloaded. No deploy flag is required for this behavior.
 
-If `patch.enabled: true` is set in `hot-updater.config.ts`, deploy also tries
-to prepare compatible `bsdiff` patches for the Hermes bundle. This optimization
-is disabled by default. Patch generation is best-effort; a skipped patch does
-not fail the deployment because the normal archive update remains available.
+Hermes binary patch generation is enabled by default (`patch.enabled: true`).
+Deploy therefore also tries to prepare compatible `bsdiff` patches. Set
+`patch.enabled: false` only when you want to disable this optimization. Patch
+generation is best-effort; a skipped patch does not fail the deployment because
+the normal archive update remains available.
 
 See [Bundle Diffing](/docs/guides/bundle-diffing) for the runtime behavior and
 fallback rules.

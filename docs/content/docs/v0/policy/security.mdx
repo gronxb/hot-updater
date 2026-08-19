@@ -19,6 +19,7 @@ import { config } from "dotenv";
 config({ path: ".env.hotupdater" });
 
 export default defineConfig({
+  updateStrategy: "appVersion",
   build: bare({ enableHermes: true }),
   storage: supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
@@ -41,7 +42,7 @@ The `hot-updater.config.ts` file is not included in the app’s build. Instead, 
 
 What is actually included in the app’s build is as follows:
 ```ts
-import { HotUpdater } from "hot-updater";
+import { HotUpdater } from "@hot-updater/react-native";
 
 export default HotUpdater.wrap({
   baseURL: "https://<your-update-server-url>",

@@ -8,7 +8,7 @@ version: "v0.22.0"
 ## Prerequisites
 
 - Vercel account at [vercel.com](https://vercel.com)
-- PostgreSQL database (Vercel Postgres, Supabase, or Neon)
+- A PostgreSQL integration from the [Vercel Marketplace](https://vercel.com/docs/postgres), such as Neon
 - Cloud storage (S3, R2, Supabase, Firebase, or custom)
 
 ## Installation
@@ -24,22 +24,44 @@ Install your chosen storage plugin separately (e.g., `@hot-updater/aws`, `@hot-u
 Install Drizzle ORM with PostgreSQL driver.
 
 ```package-install
-npm install drizzle-orm @vercel/postgres
+npm install drizzle-orm pg
 ```
 
 ```package-install
-npm install -D drizzle-kit
+npm install -D drizzle-kit @types/pg dotenv
 ```
 
 ## Database Setup
 
-Create the database connection file.
+Vercel Postgres is no longer available for new projects. Install a current
+Postgres integration from the Marketplace and connect it to the project. This
+example assumes the integration exposes `DATABASE_URL`.
+
+Add the Hot Updater management and storage values to `.env.local` for local
+development, and configure the same names for the Production environment in
+your Vercel project settings:
+
+```dotenv title=".env.local"
+HOT_UPDATER_AUTH_TOKEN=replace-with-a-secret
+R2_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=your-access-key-id
+R2_SECRET_ACCESS_KEY=your-secret-access-key
+R2_BUCKET_NAME=your-bucket-name
+```
+
+Create the database connection file with Drizzle's transaction-capable
+`node-postgres` driver.
 
 ```typescript title="src/drizzle.ts"
-import { drizzle } from "drizzle-orm/vercel-postgres";
-import { sql } from "@vercel/postgres";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+import * as schema from "../hot-updater-schema";
 
-export const db = drizzle(sql);
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL!,
+});
+
+export const db = drizzle({ client: pool, schema });
 ```
 
 ## Hot Updater Configuration
@@ -49,18 +71,27 @@ Create the Hot Updater instance.
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { s3Storage } from "@hot-updater/aws";
 import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
-  database: drizzleAdapter({ db, provider: "postgres" }),
+  database: drizzleAdapter({ db, provider: "postgresql" }),
   storage: [
-    // Configure a plugin with getDownloadUrl support - examples:
-    // s3Storage({ /* S3 or R2 config */ }),
-    // supabaseStorage({ /* Supabase config */ }),
-    // firebaseStorage({ /* Firebase config */ }),
-    // myCustomStorage({ /* custom config */ }),
+    s3Storage({
+      region: "auto",
+      endpoint: process.env.R2_ENDPOINT,
+      credentials: {
+        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      },
+      bucketName: process.env.R2_BUCKET_NAME!,
+    }),
   ],
   basePath: "/hot-updater",
+  features: {
+    updateCheck: true,
+    bundles: true,
+  },
 });
 ```
 
@@ -70,10 +101,17 @@ Create Vercel serverless function with Hono.
 
 ```typescript title="src/index.ts"
 import { Hono } from "hono";
+import { bearerAuth } from "hono/bearer-auth";
 import { hotUpdater } from "./hotUpdater";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 const app = new Hono();
 
+app.use("/hot-updater/api/*", bearerAuth({ token: managementToken }));
 app.mount("/hot-updater", hotUpdater.handler);
 
 export default app;
@@ -94,6 +132,30 @@ Generate the Drizzle schema for Hot Updater tables.
 npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
+The command writes `hot-updater-schema.ts` at the project root. Configure
+Drizzle Kit to load Vercel's local environment and apply that schema:
+
+```typescript title="drizzle.config.ts"
+import { config } from "dotenv";
+import { defineConfig } from "drizzle-kit";
+
+config({ path: ".env.local" });
+
+export default defineConfig({
+  schema: "./hot-updater-schema.ts",
+  out: "./drizzle",
+  dialect: "postgresql",
+  dbCredentials: {
+    url: process.env.DATABASE_URL!,
+  },
+});
+```
+
+```bash
+npx vercel env pull .env.local
+npx drizzle-kit push
+```
+
 ## Development
 
 Run the development server locally.
@@ -105,6 +167,9 @@ npx vercel dev
 Server runs at `http://localhost:3000`.
 
 ## Deploy
+
+Set `HOT_UPDATER_AUTH_TOKEN`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`,
+`R2_SECRET_ACCESS_KEY`, and `R2_BUCKET_NAME` in the target Vercel environment.
 
 Deploy to Vercel.
 
@@ -119,23 +184,40 @@ Your Hot Updater server will be available at `https://your-project.vercel.app/ho
 Configure your CLI to use this deployed server.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
+
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+if (!managementToken) {
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+}
 
 export default defineConfig({
-  build: bare(),
+  build: bare({ enableHermes: true }),
   storage: s3Storage({
-    /* your config */
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.R2_BUCKET_NAME!,
   }),
   database: standaloneRepository({
     baseUrl: "https://your-project.vercel.app/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${managementToken}`,
+    },
   }),
+  updateStrategy: "appVersion",
 });
 ```
 
 <Callout type="warn">
 The CLI `storage` plugin must match one entry in the server's
 `createHotUpdater({ storage })` array.
+Configure `HOT_UPDATER_AUTH_TOKEN` in every Vercel environment and in the CLI
+environment.
 </Callout>

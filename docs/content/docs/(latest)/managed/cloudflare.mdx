@@ -19,7 +19,7 @@ import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
 Before you begin, make sure the following are ready:
 
-- **Node.js**: Version 20 or later is recommended.
+- **Node.js**: Version 20.19 or later is required; Node 22 is recommended.
 - **Cloudflare Account**: Sign up at [Cloudflare](https://cloudflare.com) if you don't have one.
 - **Cloudflare D1 API Token**: Create an API Token at https://dash.cloudflare.com/{your-account-id}/api-tokens with **D1 Edit** permission.
 
@@ -50,29 +50,35 @@ During the setup, you will be prompted to:
 1. **Login to Cloudflare**: Sign in to your Cloudflare account with wrangler
 2. **Enter D1 API Token**: Input your API token with D1 Edit permission.
 3. **Select R2 Bucket**: Choose an existing R2 bucket or create a new one
-4. **Set Up R2 API Credentials**: Enter existing Access Key ID and Secret Access Key values
-5. **Select D1 Database**: Choose an existing D1 database or create a new one
-6. **Run D1 Migration**: Execute database migrations for D1
-7. **Deploy Worker**: Deploy the Cloudflare Worker for update management
+4. **Choose R2 Privacy**: Decide whether the managed R2 domain is private (the default) or public
+5. **Set Up R2 API Credentials**: Enter existing Access Key ID and Secret Access Key values
+6. **Select D1 Database**: Choose an existing D1 database or create a new one
+7. **Run D1 Migration**: Execute database migrations for D1
+8. **Deploy Worker**: Deploy the Cloudflare Worker for update management
 
   </Accordion>
 </Accordions>
 
-Once the setup is complete, a `.env.hotupdater` file will be generated containing the following keys:
+Once setup is complete, `.env.hotupdater` may include the following values.
+Resource names, IDs, and R2 privacy are persisted for deterministic reruns. API
+and R2 credentials are persisted only when you consent.
 
 ```
 HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID=your-account-id
 HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME=your-r2-bucket-name
+HOT_UPDATER_CLOUDFLARE_R2_PRIVATE=true
+HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID=your-d1-database-id
+HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME=your-d1-database-name
+HOT_UPDATER_CLOUDFLARE_WORKER_NAME=your-worker-name
+# Included only when credential persistence is approved:
+HOT_UPDATER_CLOUDFLARE_API_TOKEN=your-api-token
 HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID=your-r2-access-key-id
 HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY=your-r2-secret-access-key
-HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID=your-d1-database-id
-HOT_UPDATER_CLOUDFLARE_API_TOKEN=your-api-token
-HOT_UPDATER_CLOUDFLARE_WORKER_NAME=your-worker-name
 ```
 
 <Callout type="warn">
 
-If you're **not** using the `react-native-dotenv` solution, the tokens from your `.env` file will not be included in your app bundle and are therefore not exposed to risks. However, if you're still concerned,
+If you're **not** using the `react-native-dotenv` solution, provider credentials from `.env.hotupdater` will not be included in your app bundle. However, if you're still concerned,
 
 please refer to the article below for more details:
 [Security](/docs/policy/security#plugin-token-protection)
@@ -94,7 +100,9 @@ import { config } from "dotenv";
 config({ path: ".env.hotupdater" });
 
 export default defineConfig({
+  authorityId: "your-d1-database-id",
   build: bare({ enableHermes: true }),
+  updateStrategy: "appVersion",
   storage: r2Storage({
     bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
@@ -110,6 +118,11 @@ export default defineConfig({
   }),
 });
 ```
+
+Keep the generated `authorityId` unchanged. Managed Cloudflare uses the D1
+database ID as the Release Catalog authority. The persisted
+`HOT_UPDATER_CLOUDFLARE_R2_PRIVATE` value replays the privacy choice on later
+init runs.
 
 ### Upgrade and rollback
 
@@ -143,6 +156,7 @@ The HotUpdater component wraps your application, enabling seamless delivery of u
 
 ```tsx title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
+import { Text, View } from "react-native";
 
 function App() {
   return (
@@ -154,6 +168,7 @@ function App() {
 
 export default HotUpdater.wrap({
   baseURL: "https://<your-worker-name>.<your-subdomain>.workers.dev", // [!code ++]
+  authorityId: "your-d1-database-id", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
     // if you want to use the request headers, you can add them here

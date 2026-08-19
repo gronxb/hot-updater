@@ -19,9 +19,10 @@ import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
 Before you begin, make sure the following are ready:
 
-- **Node.js**: Version 20 or later is recommended.
+- **Node.js**: Version 20.19 or later is required; Node 22 is recommended.
 - **Firebase Project**: Create a new project at [Firebase](https://firebase.google.com) if you don’t have one.
-- **Firebase Storage**: Create a new storage bucket at [Firebase](https://firebase.google.com) if you don’t have one.
+- **Google Cloud CLI**: Install `gcloud` and authenticate the account that owns the Firebase project.
+- **Firebase Storage**: Enable Storage so the project has its canonical default `.firebasestorage.app` or `.appspot.com` bucket.
 - **Firestore**: Create a new firestore database at [Firebase](https://firebase.google.com) if you don’t have one.
 
 ## Step 1: Install Required Packages
@@ -49,18 +50,22 @@ npx hot-updater init
 During the setup, you will be prompted to:
 
 1. **Create or Select a Firebase Project**: Choose an existing project or create a new one.
-2. **Configure Storage**: Select an existing storage bucket or create a new public bucket to store updates.
-3. **Deploy Firestore Indexes**: create a new one to store updates.
+2. **Verify Storage**: Init locates the selected project's canonical default bucket and stops if Storage has not been enabled.
+3. **Deploy Firestore Indexes**: Deploy the indexes used to store and query updates.
 4. **Deploy Functions**: Deploy a Firebase Function v2 called `hot-updater`.
 5. **Add IAM Policy**: Add a new IAM policy to the service account of the function.
 
   </Accordion>
 </Accordions>
 
-Once the setup is complete, a `.env` file will be generated containing the following keys:
+Once setup is complete, `.env.hotupdater` may include the following values. The
+project, region, and canonical bucket are persisted for deterministic reruns.
+The service-account path is included only when configured and approved for
+persistence.
 
 ```
 HOT_UPDATER_FIREBASE_PROJECT_ID=your-project-id
+HOT_UPDATER_FIREBASE_REGION=your-functions-region
 HOT_UPDATER_FIREBASE_STORAGE_BUCKET=your-bucket-name
 # Project Settings > Service Accounts > New Private Key > Download JSON
 GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json
@@ -68,7 +73,7 @@ GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json
 
 <Callout type="warn">
 
-If you're **not** using the `react-native-dotenv` solution, the tokens from your `.env` file will not be included in your app bundle and are therefore not exposed to risks. However, if you're still concerned,
+If you're **not** using the `react-native-dotenv` solution, the tokens from your `.env.hotupdater` file will not be included in your app bundle and are therefore not exposed to risks. However, if you're still concerned,
 
 please refer to the article below for more details:
 [Security](/docs/policy/security#plugin-token-protection)
@@ -80,13 +85,14 @@ please refer to the article below for more details:
 During the initialization process, the following file is automatically generated:
 
 - `hot-updater.config.ts`: This file contains the configuration settings for integrating Firebase with your project.
-- `.env`: **IMPORTANT**:
+- `.env.hotupdater`: **IMPORTANT**:
   Make sure to set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the path of your downloaded Firebase credentials JSON file.
   This is critical for Firebase authentication to work properly.
   For more details, see: https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
 
 ```bash title=".env.hotupdater"
 HOT_UPDATER_FIREBASE_PROJECT_ID=your-project-id
+HOT_UPDATER_FIREBASE_REGION=your-functions-region
 HOT_UPDATER_FIREBASE_STORAGE_BUCKET=your-bucket-name
 # Project Settings > Service Accounts > New Private Key > Download JSON
 GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json
@@ -97,18 +103,22 @@ import { bare } from "@hot-updater/bare";
 import { firebaseStorage, firebaseDatabase } from "@hot-updater/firebase";
 import { applicationDefault } from "firebase-admin/app";
 import { defineConfig } from "hot-updater";
-import "dotenv/config";
+import { config } from "dotenv";
+
+config({ path: ".env.hotupdater" });
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Check your .env file and add the credentials
+// Check your .env.hotupdater file and add the credentials
 // Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
 // Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
 const credential = applicationDefault();
 
 export default defineConfig({
+  authorityId: "your-project-id",
   build: bare({
     enableHermes: true,
   }),
+  updateStrategy: "appVersion",
   storage: firebaseStorage({
     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
     storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
@@ -120,6 +130,9 @@ export default defineConfig({
   }),
 });
 ```
+
+Keep the generated `authorityId` unchanged. Managed Firebase uses the Firebase
+project ID as the Release Catalog authority.
 
 ### Upgrade and rollback
 
@@ -149,6 +162,7 @@ The HotUpdater component wraps your application, enabling seamless delivery of u
 
 ```tsx title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
+import { Text, View } from "react-native";
 
 function App() {
   return (
@@ -160,6 +174,7 @@ function App() {
 
 export default HotUpdater.wrap({
   baseURL: "https://<project-id>.web.app", // [!code ++]
+  authorityId: "your-project-id", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
     // if you want to use the request headers, you can add them here
