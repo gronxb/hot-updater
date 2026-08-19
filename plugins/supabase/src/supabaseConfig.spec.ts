@@ -3,22 +3,21 @@ import { describe, expect, it } from "vitest";
 import { resolveSupabaseServiceRoleKey } from "./supabaseConfig";
 
 describe("resolveSupabaseServiceRoleKey", () => {
-  it("prefers the explicit service role key", () => {
+  it("returns the service role key", () => {
     expect(
       resolveSupabaseServiceRoleKey({
         supabaseUrl: "https://test.supabase.invalid",
         supabaseServiceRoleKey: "service-role-key",
-        supabaseAnonKey: "legacy-key",
       }),
     ).toBe("service-role-key");
   });
 
-  it("keeps legacy supabaseAnonKey config working", () => {
-    expect(
+  it("rejects a missing service role key", () => {
+    expect(() =>
       resolveSupabaseServiceRoleKey({
         supabaseUrl: "https://test.supabase.invalid",
-        supabaseAnonKey: "legacy-key",
+        supabaseServiceRoleKey: "",
       }),
-    ).toBe("legacy-key");
+    ).toThrow("Supabase service role key is required");
   });
 });

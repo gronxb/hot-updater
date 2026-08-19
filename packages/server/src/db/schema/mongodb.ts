@@ -4,39 +4,8 @@ import { hotUpdaterCreateTableOperations } from "./sql";
 
 export const createMongoMigrationOperations = (
   settingsOperation?: MigrationOperation,
-  options: {
-    readonly backfillReleaseCatalog?: boolean;
-    readonly normalizeChannels?: boolean;
-  } = {},
 ): MigrationOperation[] => [
   ...hotUpdaterCreateTableOperations,
-  ...(options.normalizeChannels
-    ? [
-        {
-          description:
-            "Backfill persistent MongoDB channels for legacy Bundle policy",
-          type: "custom" as const,
-        },
-        {
-          description:
-            "Validate MongoDB Channel references before Release backfill",
-          type: "custom" as const,
-        },
-      ]
-    : []),
-  ...(options.backfillReleaseCatalog
-    ? [
-        {
-          description:
-            "Backfill MongoDB Releases and compiled Release catalogs from Bundle policy",
-          type: "custom" as const,
-        },
-        {
-          description: "Remove policy fields from MongoDB Bundle documents",
-          type: "custom" as const,
-        },
-      ]
-    : []),
   ...hotUpdaterSchema.tables
     .filter((table) => !table.internal)
     .map((table): MigrationOperation => {

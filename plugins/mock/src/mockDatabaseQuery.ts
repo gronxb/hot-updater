@@ -3,7 +3,6 @@ import type {
   DatabaseModel,
   DatabaseOrderBy,
   DatabaseRow,
-  DatabaseSortBy,
   DatabaseWhere,
 } from "@hot-updater/plugin-core/internal";
 
@@ -113,7 +112,6 @@ export const queryMockDatabaseRows = <TModel extends DatabaseModel>(
   input: {
     readonly where?: readonly DatabaseWhere<TModel>[];
     readonly orderBy?: DatabaseOrderBy<TModel>;
-    readonly sortBy?: DatabaseSortBy<TModel>;
     readonly distinctOn?: DatabaseDistinctOn<TModel>;
     readonly offset: number;
     readonly limit: number;
@@ -122,7 +120,7 @@ export const queryMockDatabaseRows = <TModel extends DatabaseModel>(
   const filtered = rows.filter((row) =>
     matchesMockDatabaseWhere(row, input.where),
   );
-  const orderBy = input.orderBy ?? (input.sortBy ? [input.sortBy] : undefined);
+  const orderBy = input.orderBy;
   if (orderBy) {
     filtered.sort((left, right) => {
       for (const clause of orderBy) {

@@ -29,11 +29,7 @@ import { mongoAdapter } from "../adapters/mongodb";
 import { prismaAdapter } from "../adapters/prisma";
 import { createHotUpdater } from "../index";
 import { bundleToRow } from "./bundleRows";
-import {
-  createSchemaMigrationSql,
-  createTableSql,
-  hotUpdaterSchemaVersions,
-} from "./hotUpdaterSchema";
+import { createTableSql, hotUpdaterSchemaVersions } from "./hotUpdaterSchema";
 import { createMigrator, generateSchema } from "./index";
 import { generateDrizzleSchema } from "./schemaGenerators";
 import type { DatabasePlugin, ORMProvider } from "./types";
@@ -378,12 +374,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(code).not.toContain('metadata Json @default("{}")');
     });
 
-    it("generates ORM schema from the requested version snapshot", () => {
-      const code = generateSchema(prismaSchemaHotUpdater, "0.21.0").code;
-
-      expect(code).toContain('value String @default("0.21.0")');
-      expect(code).not.toContain("rollout_cohort_count");
-      expect(code).not.toContain("bundle_patches");
+    it("rejects generating a retired schema snapshot", () => {
+      expect(() => generateSchema(prismaSchemaHotUpdater, "0.21.0")).toThrow(
+        "Unsupported Hot Updater schema version: 0.21.0",
+      );
     });
 
     it("includes foreign keys and indexes in Drizzle output", () => {
@@ -436,51 +430,16 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   });
 
   describe("migrator enhancements", () => {
-    it("derives incremental migrations from versioned schemas", () => {
+    it("registers only schema 1.0.0", () => {
       expect(hotUpdaterSchemaVersions.map((schema) => schema.version)).toEqual([
-        "0.21.0",
-        "0.29.0",
-        "0.31.0",
-        "0.36.0",
-        "0.37.0",
-        "0.38.0",
         "1.0.0",
       ]);
-
-      const v029Sql = createSchemaMigrationSql(
-        "0.21.0",
-        "0.29.0",
-        "postgresql",
-      ).join("\n");
-      const v031Sql = createSchemaMigrationSql(
-        "0.29.0",
-        "0.31.0",
-        "postgresql",
-      ).join("\n");
-      const v036Sql = createSchemaMigrationSql(
-        "0.31.0",
-        "0.36.0",
-        "postgresql",
-      ).join("\n");
-
-      expect(v029Sql).toContain(
-        "alter table bundles add column rollout_cohort_count",
-      );
-      expect(v029Sql).not.toContain("bundle_patches");
-      expect(v031Sql).toContain(
-        "alter table bundles add column manifest_storage_uri",
-      );
-      expect(v031Sql).toContain("create table bundle_patches");
-      expect(v031Sql).toContain(
-        "add constraint bundle_patches_bundle_id_fk foreign key",
-      );
-      expect(v036Sql).toBe("");
     });
 
     it("omits MySQL defaults for text and JSON columns", () => {
       const sql = createTableSql("mysql").join("\n");
 
-      expect(sql).toContain("channel text not null");
+      expect(sql).toContain("create table channels");
       expect(sql).toContain("metadata json not null");
       expect(sql).not.toContain("metadata json not null default");
       expect(sql).toContain("`key` varchar(255) primary key");
@@ -543,7 +502,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       }
     });
 
-    it("migrates existing 0.21.0 Kysely schemas incrementally", async () => {
+    it("rejects an existing v0 Kysely schema instead of upgrading it", async () => {
       const migrationDb = new PGlite();
       const migrationKysely = new Kysely<object>({
         dialect: new PGliteDialect(migrationDb),
@@ -557,20 +516,6 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
       try {
         await migrationDb.exec(`
-          create table bundles (
-            id uuid primary key,
-            platform text not null,
-            should_force_update boolean not null,
-            enabled boolean not null,
-            file_hash text not null,
-            git_commit_hash text,
-            message text,
-            channel text not null default 'production',
-            storage_uri text not null,
-            target_app_version text,
-            fingerprint_hash text,
-            metadata json not null default '{}'::json
-          );
           create table private_hot_updater_settings (
             key varchar(255) primary key,
             value text not null
@@ -580,38 +525,12 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         `);
 
         const migrator = createMigrator(migrationHotUpdater);
-        const result = await migrator.migrateToLatest({
-          mode: "from-schema",
-          updateSettings: true,
-        });
-        const sql = result.getSQL?.() ?? "";
-
-        expect(sql).toContain(
-          "alter table bundles add column rollout_cohort_count",
-        );
-        expect(sql).toContain(
-          "alter table bundles add column manifest_storage_uri",
-        );
-        expect(sql).toContain("create table bundle_patches");
-        expect(sql).not.toContain("create table bundles");
-
-        await result.execute();
-
-        const versions = await migrationDb.query<{
-          key: string;
-          value: string;
-        }>("select key, value from private_hot_updater_settings order by key");
-        expect(versions.rows).toEqual([
-          { key: "schema.core", value: "1.0.0" },
-          { key: "version", value: "0.21.0" },
-        ]);
-        await migrationDb.query(
-          "select platform, file_hash, manifest_storage_uri from bundles limit 0",
-        );
-        await migrationDb.query("select * from bundle_patches limit 0");
-        await migrationDb.query("select id, name from channels limit 0");
-        await migrationDb.query("select * from releases limit 0");
-        await migrationDb.query("select * from release_catalogs limit 0");
+        await expect(
+          migrator.migrateToLatest({
+            mode: "from-schema",
+            updateSettings: true,
+          }),
+        ).rejects.toThrow("Hot Updater v1 cannot migrate schema 0.21.0");
       } finally {
         await migrationKysely.destroy();
         await migrationDb.close();
@@ -806,7 +725,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         `);
 
         await expect(migrationHotUpdater.getChannels()).rejects.toThrow(
-          "Hot Updater database schema version 0.21.0 is not supported by kysely.",
+          "Hot Updater v1 cannot migrate schema 0.21.0 in place.",
         );
       } finally {
         await migrationKysely.destroy();
@@ -845,7 +764,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       });
 
       await expect(mongoHotUpdater.getBundles({ limit: 10 })).rejects.toThrow(
-        "Hot Updater database schema version 0.21.0 is not supported by mongodb.",
+        "Hot Updater v1 cannot migrate schema 0.21.0 in place.",
       );
       expect(bundles.countDocuments).not.toHaveBeenCalled();
     });

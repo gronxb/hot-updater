@@ -111,12 +111,7 @@ const findMany = async (
   if (input.distinctOn !== undefined) {
     throw new DatabasePluginInputError("invalid-operation");
   }
-  const rawOrderBy =
-    "orderBy" in input && input.orderBy
-      ? input.orderBy
-      : "sortBy" in input && input.sortBy
-        ? [input.sortBy]
-        : undefined;
+  const rawOrderBy = input.orderBy;
   const orderBy = createPrismaOrderBy(rawOrderBy);
   const shouldSortInMemory =
     rawOrderBy !== undefined && hasNullOrderOverrides(rawOrderBy);

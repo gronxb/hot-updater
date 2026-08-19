@@ -51,7 +51,6 @@ type NetworkConfig = BaseURLConfig | ResolverConfig;
 
 export type AutoUpdateOptions = CommonHotUpdaterOptions &
   NetworkConfig & {
-    updateMode?: "auto";
     updateStrategy: "fingerprint" | "appVersion";
     fallbackComponent?: React.FC<HotUpdaterFallbackComponentProps>;
     onProgress?: (progress: number) => void;
@@ -59,17 +58,12 @@ export type AutoUpdateOptions = CommonHotUpdaterOptions &
     onUpdateProcessCompleted?: (response: RunUpdateProcessResponse) => void;
   };
 
-export type ManualUpdateOptions = CommonHotUpdaterOptions &
-  NetworkConfig & {
-    updateMode: "manual";
-  };
-
 export type HotUpdaterInitOptions = CommonHotUpdaterOptions &
   NetworkConfig & {
     analytics?: boolean;
   };
 
-export type HotUpdaterOptions = AutoUpdateOptions | ManualUpdateOptions;
+export type HotUpdaterOptions = AutoUpdateOptions;
 
 type InternalCommonOptions = {
   resolver: HotUpdaterResolver;
@@ -81,21 +75,14 @@ type InternalCommonOptions = {
 
 type InternalAutoUpdateOptions = InternalCommonOptions & {
   updateStrategy: "fingerprint" | "appVersion";
-  updateMode: "auto";
   fallbackComponent?: React.FC<HotUpdaterFallbackComponentProps>;
   onProgress?: (progress: number) => void;
   reloadOnForceUpdate?: boolean;
   onUpdateProcessCompleted?: (response: RunUpdateProcessResponse) => void;
 };
 
-type InternalManualUpdateOptions = InternalCommonOptions & {
-  updateMode: "manual";
-};
-
 export type InternalInitOptions = InternalCommonOptions & {
   analytics?: boolean;
 };
 
-export type InternalWrapOptions =
-  | InternalAutoUpdateOptions
-  | InternalManualUpdateOptions;
+export type InternalWrapOptions = InternalAutoUpdateOptions;

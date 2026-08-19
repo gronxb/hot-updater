@@ -12,10 +12,9 @@ object NativeConfigUtils {
     fun getString(
         context: Context,
         metaDataKey: String,
-        stringResourceName: String,
     ): String? {
-        // Programmatic overrides take priority over manifest metadata and string
-        // resources (brownfield/AAR setups, see HotUpdaterConfig).
+        // Programmatic overrides take priority over manifest metadata
+        // (brownfield/AAR setups, see HotUpdaterConfig).
         val override =
             when (metaDataKey) {
                 FINGERPRINT_HASH_META_DATA_KEY -> HotUpdaterConfig.fingerprintHash
@@ -26,7 +25,6 @@ object NativeConfigUtils {
         override?.takeIf { it.isNotEmpty() }?.let { return it }
 
         return getManifestMetaDataString(context, metaDataKey)
-            ?: getStringResource(context, stringResourceName)
     }
 
     private fun getManifestMetaDataString(
@@ -59,16 +57,4 @@ object NativeConfigUtils {
         value
             ?.toString()
             ?.takeIf { it.isNotEmpty() }
-
-    private fun getStringResource(
-        context: Context,
-        name: String,
-    ): String? {
-        val id = StringResourceUtils.getIdentifier(context, name)
-        return if (id != 0) {
-            context.getString(id).takeIf { it.isNotEmpty() }
-        } else {
-            null
-        }
-    }
 }

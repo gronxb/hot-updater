@@ -72,7 +72,6 @@ describe("loadConfig", () => {
 
     const config = await loadConfig(null);
 
-    expect(config.releaseChannel).toBe("production");
     expect(config.authorityId).toBe("default");
     expect(config.cacheDir).toBe(path.join("node_modules", ".hot-updater"));
     expect(config.updateStrategy).toBe("appVersion");
@@ -80,7 +79,6 @@ describe("loadConfig", () => {
     expect(config.patch.enabled).toBe(true);
     expect(config.patch.maxBaseBundles).toBe(3);
     expect(config.platform.android.androidManifestPaths).toEqual([]);
-    expect(config.platform.android.stringResourcePaths).toEqual([]);
     expect(config.platform.ios.infoPlistPaths).toEqual([]);
     expect(config.console.port).toBe(1422);
     expect(typeof config.database).toBe("object");
@@ -123,12 +121,6 @@ describe("loadConfig", () => {
       "android/app/src/main/AndroidManifest.xml",
       "<manifest />",
     );
-    await writeProjectFile(
-      projectRoot,
-      "android/app/src/main/res/values/strings.xml",
-      "<resources />",
-    );
-
     const { loadConfig } = await import("./loadConfig");
     const config = await loadConfig(null);
 
@@ -138,17 +130,6 @@ describe("loadConfig", () => {
     expect(config.platform.android.androidManifestPaths).toEqual([
       path.join("android", "app", "src", "main", "AndroidManifest.xml"),
     ]);
-    expect(config.platform.android.stringResourcePaths).toEqual([
-      path.join(
-        "android",
-        "app",
-        "src",
-        "main",
-        "res",
-        "values",
-        "strings.xml",
-      ),
-    ]);
   });
 
   it("passes null context through to function configs", async () => {
@@ -157,7 +138,7 @@ describe("loadConfig", () => {
       "hot-updater.config.ts",
       [
         "export default (options) => ({",
-        "  releaseChannel: options === null ? 'from-null-context' : 'wrong',",
+        "  authorityId: options === null ? 'from-null-context' : 'wrong',",
         "});",
         "",
       ].join("\n"),
@@ -166,7 +147,7 @@ describe("loadConfig", () => {
     const { loadConfig } = await import("./loadConfig");
     const config = await loadConfig(null);
 
-    expect(config.releaseChannel).toBe("from-null-context");
+    expect(config.authorityId).toBe("from-null-context");
   });
 
   it("preserves legacy merge semantics for arrays in user config", async () => {
@@ -185,7 +166,7 @@ describe("loadConfig", () => {
       "hot-updater.config.ts",
       [
         "export default (options) => ({",
-        "  releaseChannel: options?.channel ?? 'staging',",
+        "  authorityId: options?.channel ?? 'staging',",
         "  updateStrategy: 'fingerprint',",
         "  console: {",
         "    port: 3001,",
@@ -199,7 +180,7 @@ describe("loadConfig", () => {
         "  },",
         "  platform: {",
         "    android: {",
-        "      stringResourcePaths: ['android/custom/strings.xml'],",
+        "      androidManifestPaths: ['android/custom/AndroidManifest.xml'],",
         "    },",
         "  },",
         "});",
@@ -210,7 +191,7 @@ describe("loadConfig", () => {
     const { loadConfig } = await import("./loadConfig");
     const config = await loadConfig({ platform: "android", channel: "beta" });
 
-    expect(config.releaseChannel).toBe("beta");
+    expect(config.authorityId).toBe("beta");
     expect(config.updateStrategy).toBe("fingerprint");
     expect(config.console.port).toBe(3001);
     expect(config.fingerprint.extraSources).toEqual(["src/custom.ts"]);
@@ -218,8 +199,8 @@ describe("loadConfig", () => {
       enabled: true,
       maxBaseBundles: 3,
     });
-    expect(config.platform.android.stringResourcePaths).toEqual([
-      "android/custom/strings.xml",
+    expect(config.platform.android.androidManifestPaths).toEqual([
+      "android/custom/AndroidManifest.xml",
     ]);
     expect(config.platform.ios.infoPlistPaths).toEqual([
       "ios/HotUpdaterExample/Info.plist",

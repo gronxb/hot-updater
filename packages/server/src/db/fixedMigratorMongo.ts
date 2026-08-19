@@ -1,4 +1,4 @@
-import { ObjectId, type MongoClient } from "mongodb";
+import type { MongoClient } from "mongodb";
 
 import {
   HOT_UPDATER_CORE_SCHEMA_KEY,
@@ -6,23 +6,15 @@ import {
   HOT_UPDATER_SETTINGS_TABLE,
 } from "../schema/types";
 import {
+  assertCurrentOrEmptySchemaVersion,
   assertSupportedMigrationMode,
-  assertSupportedSchemaVersion,
   getEmptyMigrationResult,
   inferLegacyCoreSchemaVersion,
   isCurrentSchemaVersion,
 } from "./fixedMigratorShared";
 import { executeMongoMigration } from "./mongoMigrationExecution";
-import {
-  applyMongoReleaseCatalogBackfill,
-  legacyMongoBundlePolicyFields,
-  prepareMongoReleaseCatalogBackfill,
-  type PreparedMongoReleaseCatalogBackfill,
-  validateMongoReleaseCatalogBackfill,
-} from "./releaseCatalogBackfillMongo";
 import { createMongoMigrationOperations } from "./schema/mongodb";
 import {
-  getSchemaVersionIndex,
   hotUpdaterSchema,
   schemaIndexAppliesToProvider,
 } from "./schema/registry";
@@ -51,28 +43,6 @@ const ignoreExistingCollection = (error: unknown): undefined => {
   }
   throw error;
 };
-
-const isMongoDuplicateKeyError = (error: unknown): boolean => {
-  if (!(error instanceof Error)) return false;
-  return (error as { code?: unknown }).code === 11000;
-};
-
-type MongoChannelRow = {
-  readonly id: string;
-  readonly name: string;
-};
-
-type MongoBundleChannelRow = {
-  readonly channel: string;
-  readonly channel_id?: string | null;
-};
-
-const legacyMongoBundleIndexNames = new Set([
-  "bundles_channel_idx",
-  "bundles_fingerprint_hash_idx",
-  "bundles_rollout_idx",
-  "bundles_target_app_version_idx",
-]);
 
 const mongoNullableString = { bsonType: ["string", "null"] } as const;
 
@@ -105,9 +75,6 @@ const mongoBundleValidator = {
         ],
       },
     },
-    ...legacyMongoBundlePolicyFields.map((field) => ({
-      [field]: { $exists: false },
-    })),
   ],
 } as const;
 
@@ -195,11 +162,6 @@ const mongoReleaseCatalogValidator = {
   },
 } as const;
 
-const isValidChannelIdentifier = (value: string): boolean => {
-  const length = [...value].length;
-  return length >= 1 && length <= 255;
-};
-
 const createSettingsKeyIndexOperation = (): MigrationOperation => ({
   description: `Ensure unique MongoDB index: ${HOT_UPDATER_SETTINGS_TABLE}(key)`,
   type: "custom",
@@ -231,10 +193,6 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
     const legacyCoreVersion = inferLegacyCoreSchemaVersion(
       await getSetting("version"),
     );
-    if (coreVersion !== undefined) {
-      assertSupportedSchemaVersion(coreVersion);
-      assertSupportedSchemaVersion(legacyCoreVersion);
-    }
     return { coreVersion, legacyCoreVersion };
   };
   const getVersion = async (): Promise<string | undefined> => {
@@ -295,12 +253,7 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
         operations: [createSettingsKeyIndexOperation()],
       };
     }
-    assertSupportedSchemaVersion(coreVersion ?? legacyCoreVersion);
-    const currentVersion = coreVersion ?? legacyCoreVersion;
-    const normalizeChannels =
-      currentVersion !== undefined &&
-      getSchemaVersionIndex(currentVersion) < getSchemaVersionIndex("0.38.0");
-    const backfillReleaseCatalog = currentVersion !== undefined;
+    assertCurrentOrEmptySchemaVersion(coreVersion ?? legacyCoreVersion);
     const settingsOperation =
       options.updateSettings === false
         ? undefined
@@ -312,14 +265,10 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
     return {
       operations: [
         createSettingsKeyIndexOperation(),
-        ...createMongoMigrationOperations(settingsOperation, {
-          backfillReleaseCatalog,
-          normalizeChannels,
-        }),
+        ...createMongoMigrationOperations(settingsOperation),
       ],
       execute: async () => {
         const db = client.db();
-        let preparedBackfill: PreparedMongoReleaseCatalogBackfill | undefined;
         await executeMongoMigration({
           updateSettings: options.updateSettings !== false,
           backend: {
@@ -331,127 +280,6 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
                   .catch(ignoreExistingCollection);
               }
             },
-            ...(backfillReleaseCatalog
-              ? {
-                  backfillData: async () => {
-                    preparedBackfill = await prepareMongoReleaseCatalogBackfill(
-                      {
-                        authorityId: options.authorityId,
-                        db,
-                      },
-                    );
-                    const bundles =
-                      db.collection<MongoBundleChannelRow>("bundles");
-                    const channels = db.collection<MongoChannelRow>("channels");
-                    const channelNames = new Set(
-                      preparedBackfill.backfill?.releases.map(
-                        ({ channelName }) => channelName,
-                      ) ?? [],
-                    );
-                    for (const name of channelNames) {
-                      if (
-                        typeof name !== "string" ||
-                        !isValidChannelIdentifier(name)
-                      ) {
-                        throw new Error(
-                          "MongoDB legacy bundle channel must contain 1 to 255 Unicode code points for 0.38.0 migration.",
-                        );
-                      }
-                      const existing = await channels
-                        .find({ name })
-                        .limit(2)
-                        .toArray();
-                      if (existing.length > 1) {
-                        throw new Error(
-                          `Duplicate MongoDB Channel name before 0.38.0 constraints: ${name}`,
-                        );
-                      }
-                      let canonical: MongoChannelRow | undefined = existing[0];
-                      if (
-                        canonical &&
-                        (typeof canonical.id !== "string" ||
-                          canonical.name !== name)
-                      ) {
-                        throw new Error(
-                          `Invalid MongoDB Channel row before 0.38.0 backfill: ${name}`,
-                        );
-                      }
-                      if (!canonical && normalizeChannels) {
-                        const candidate = {
-                          id: new ObjectId().toHexString(),
-                          name,
-                        } satisfies MongoChannelRow;
-                        try {
-                          await channels.insertOne(candidate);
-                          canonical = candidate;
-                        } catch (error) {
-                          if (!isMongoDuplicateKeyError(error)) throw error;
-                          const raced = await channels.findOne({ name });
-                          if (!raced) throw error;
-                          canonical = raced;
-                        }
-                      }
-                      if (!canonical) {
-                        throw new Error(
-                          `MongoDB Channel is missing before Release backfill: ${name}`,
-                        );
-                      }
-                    }
-                    const storedChannels = await channels.find({}).toArray();
-                    const channelsById = new Map<string, MongoChannelRow>();
-                    const channelsByName = new Map<string, MongoChannelRow>();
-                    const storedChannelNames = new Set<string>();
-                    for (const channel of storedChannels) {
-                      if (
-                        typeof channel.id !== "string" ||
-                        typeof channel.name !== "string" ||
-                        !isValidChannelIdentifier(channel.id) ||
-                        !isValidChannelIdentifier(channel.name) ||
-                        channelsById.has(channel.id) ||
-                        storedChannelNames.has(channel.name)
-                      ) {
-                        throw new Error(
-                          "Invalid or duplicate MongoDB Channel row before 0.38.0 constraints.",
-                        );
-                      }
-                      channelsById.set(channel.id, channel);
-                      channelsByName.set(channel.name, channel);
-                      storedChannelNames.add(channel.name);
-                    }
-                    const legacyBundles = await bundles.find({}).toArray();
-                    for (const bundle of legacyBundles) {
-                      if (
-                        typeof bundle.channel_id === "string" &&
-                        channelsById.get(bundle.channel_id)?.name !==
-                          bundle.channel
-                      ) {
-                        throw new Error(
-                          "MongoDB Channel backfill is incomplete; bundle channel and channel_id do not match.",
-                        );
-                      }
-                    }
-                    await applyMongoReleaseCatalogBackfill({
-                      db,
-                      prepared: preparedBackfill,
-                      resolveChannelId: (channelName) => {
-                        const channel = channelsByName.get(channelName);
-                        if (!channel) {
-                          throw new Error(
-                            `MongoDB Channel is missing before Release backfill: ${channelName}`,
-                          );
-                        }
-                        return channel.id;
-                      },
-                    });
-                  },
-                  validateData: async () => {
-                    await validateMongoReleaseCatalogBackfill({
-                      authorityId: options.authorityId,
-                      db,
-                    });
-                  },
-                }
-              : {}),
             ensureIndexes: async () => {
               await ensureSettingsKeyIndex();
               for (const table of hotUpdaterSchema.tables) {
@@ -474,16 +302,6 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
                 );
                 if (existingIdIndex && existingIdIndex.unique !== true) {
                   await collection.dropIndex(idIndexName);
-                }
-                if (table.ormName === "bundles") {
-                  for (const index of existingIndexes) {
-                    if (
-                      typeof index.name === "string" &&
-                      legacyMongoBundleIndexNames.has(index.name)
-                    ) {
-                      await collection.dropIndex(index.name);
-                    }
-                  }
                 }
                 await collection.createIndex(
                   { [primaryKey.ormName]: 1 },

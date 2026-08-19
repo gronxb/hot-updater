@@ -29,7 +29,7 @@ export interface BundleWindowInput {
   readonly where?: readonly DatabaseWhere<"bundles">[];
   readonly limit: number;
   readonly offset: number;
-  readonly sortBy?: DatabaseSortBy<"bundles">;
+  readonly orderBy?: DatabaseSortBy<"bundles">;
 }
 
 export const createStandaloneBundleRemote = (
@@ -112,14 +112,14 @@ export const createStandaloneBundleRemote = (
 
   const loadBundleWindow = async (input: BundleWindowInput) => {
     if (input.limit === 0) return { rows: [] as BundleRow[], total: 0 };
-    if (input.sortBy && input.sortBy.field !== "id") {
+    if (input.orderBy && input.orderBy.field !== "id") {
       return null;
     }
     const route = routes.list();
     const url = new URL(http.buildUrl(route.path));
     if (!appendBundleWhere(url, input.where)) return null;
-    if (input.sortBy !== undefined) {
-      url.searchParams.set("orderDirection", input.sortBy.direction);
+    if (input.orderBy !== undefined) {
+      url.searchParams.set("orderDirection", input.orderBy.direction);
     }
     const pageAligned = input.limit > 0 && input.offset % input.limit === 0;
     const remoteLimit = pageAligned ? input.limit : input.offset + input.limit;

@@ -93,8 +93,8 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       deleteLegacyBundle(hotUpdater, bundleId),
   });
 
-  it("normalizes bundle channels while migrating from v0.31", async () => {
-    const database = `hot_updater_retry_${process.pid}`;
+  it("rejects in-place upgrade from a v0 MySQL schema", async () => {
+    const database = `hot_updater_v0_${process.pid}`;
     const admin = createPool({
       host: process.env.MYSQL_HOST || "localhost",
       port: Number(process.env.MYSQL_PORT) || 3307,
@@ -122,48 +122,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     });
 
     try {
-      for (const statement of [
-        `create table bundles (
-          id char(36) primary key not null,
-          platform text not null,
-          should_force_update boolean not null,
-          enabled boolean not null,
-          file_hash text not null,
-          git_commit_hash text,
-          message text,
-          channel text not null,
-          storage_uri text not null,
-          target_app_version text,
-          fingerprint_hash text,
-          metadata json not null,
-          rollout_cohort_count integer not null default 1000,
-          target_cohorts json,
-          manifest_storage_uri text,
-          manifest_file_hash text,
-          asset_base_storage_uri text
-        )`,
-        "create index bundles_target_app_version_idx on bundles(target_app_version(255))",
-        "create index bundles_fingerprint_hash_idx on bundles(fingerprint_hash(255))",
-        "create index bundles_channel_idx on bundles(channel(255))",
-        "create index bundles_rollout_idx on bundles(rollout_cohort_count)",
-        "alter table bundles add constraint check_version_or_fingerprint check ((target_app_version is not null) or (fingerprint_hash is not null))",
-        "alter table bundles add constraint bundles_rollout_cohort_count_check check (rollout_cohort_count >= 0 and rollout_cohort_count <= 1000)",
-        `create table bundle_patches (
-          id varchar(255) primary key not null,
-          bundle_id char(36) not null,
-          base_bundle_id char(36) not null,
-          base_file_hash text not null,
-          patch_file_hash text not null,
-          patch_storage_uri text not null,
-          order_index integer not null default 0
-        )`,
-        "create index bundle_patches_bundle_id_idx on bundle_patches(bundle_id)",
-        "create index bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id)",
-        "alter table bundle_patches add constraint bundle_patches_bundle_id_fk foreign key (bundle_id) references bundles(id) on update restrict on delete cascade",
-        "alter table bundle_patches add constraint bundle_patches_base_bundle_id_fk foreign key (base_bundle_id) references bundles(id) on update restrict on delete cascade",
-      ]) {
-        await sql.raw(statement).execute(db);
-      }
       await sql
         .raw(`
         create table private_hot_updater_settings (
@@ -171,17 +129,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
           value varchar(255) not null
         )
       `)
-        .execute(db);
-      await sql
-        .raw(
-          `insert into bundles (
-            id, platform, should_force_update, enabled, file_hash, channel,
-            storage_uri, target_app_version, metadata
-          ) values (
-            '0198a5b0-0000-7000-8000-000000000001', 'ios', false, true,
-            'bundle-hash', 'production', 'storage://bundle-1', '1.0.0', '{}'
-          )`,
-        )
         .execute(db);
       await sql
         .raw(
@@ -193,240 +140,13 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
         database: kyselyAdapter({ db, provider: "mysql" }),
       });
       const migrator = createMigrator(migrationHotUpdater);
-      const migration = await migrator.migrateToLatest({
-        mode: "from-schema",
-        updateSettings: true,
-      });
-      await migration.execute();
 
-      expect(await migrator.getVersion()).toBe("1.0.0");
-      const releases = await sql<{
-        readonly bundle_id: string;
-        readonly channel_id: string;
-        readonly target_app_version: string;
-      }>`
-        select bundle_id, channel_id, target_app_version from releases
-      `.execute(db);
-      expect(releases.rows).toEqual([
-        {
-          bundle_id: "0198a5b0-0000-7000-8000-000000000001",
-          channel_id: expect.any(String),
-          target_app_version: "1.0.0",
-        },
-      ]);
-      const channels = await sql<{
-        readonly id: string;
-        readonly name: string;
-      }>`select id, name from channels`.execute(db);
-      expect(channels.rows).toEqual([
-        { id: releases.rows[0]?.channel_id, name: "production" },
-      ]);
-      const catalogs = await sql<{
-        readonly generation: number;
-      }>`select generation from release_catalogs`.execute(db);
-      expect(catalogs.rows).toEqual([{ generation: 1 }]);
-      const finalColumns = await sql<{ readonly name: string }>`
-        select column_name as name
-        from information_schema.columns
-        where table_schema = ${database} and table_name = 'bundles'
-      `.execute(db);
-      expect(finalColumns.rows.map(({ name }) => name)).not.toContain(
-        "channel",
-      );
-      expect(finalColumns.rows.map(({ name }) => name)).not.toContain(
-        "channel_id",
-      );
-    } finally {
-      await db.destroy();
-      await admin.query(`drop database if exists \`${database}\``);
-      await admin.end();
-    }
-  });
-
-  it("rejects an existing MySQL migration column instead of approving schema drift", async () => {
-    const database = `hot_updater_drift_${process.pid}`;
-    const admin = createPool({
-      host: process.env.MYSQL_HOST || "localhost",
-      port: Number(process.env.MYSQL_PORT) || 3307,
-      user: "root",
-      password: process.env.MYSQL_ROOT_PASSWORD || "hot_updater_root",
-    }).promise();
-    await admin.query(`drop database if exists \`${database}\``);
-    await admin.query(`create database \`${database}\``);
-    await admin.query(
-      `grant all privileges on \`${database}\`.* to 'hot_updater'@'%'`,
-    );
-
-    const pool = createPool({
-      host: process.env.MYSQL_HOST || "localhost",
-      port: Number(process.env.MYSQL_PORT) || 3307,
-      user: process.env.MYSQL_USER || "hot_updater",
-      password: process.env.MYSQL_PASSWORD || "hot_updater_dev",
-      database,
-    });
-    const dialectPool = pool as unknown as ConstructorParameters<
-      typeof MysqlDialect
-    >[0]["pool"];
-    const db = new Kysely<SettingsDatabase>({
-      dialect: new MysqlDialect({ pool: dialectPool }),
-    });
-
-    try {
-      await sql
-        .raw(`
-        create table bundles (
-          id varchar(255) primary key,
-          platform text not null,
-          should_force_update boolean not null,
-          enabled boolean not null,
-          file_hash text not null,
-          git_commit_hash text,
-          message text,
-          channel text not null,
-          storage_uri text not null,
-          target_app_version text,
-          fingerprint_hash text,
-          metadata json not null,
-          rollout_cohort_count integer not null default 1000,
-          target_cohorts json,
-          manifest_storage_uri integer
-        )
-      `)
-        .execute(db);
-      await sql
-        .raw(`
-        create table private_hot_updater_settings (
-          \`key\` varchar(255) primary key,
-          value varchar(255) not null
-        )
-      `)
-        .execute(db);
-      await sql
-        .raw(
-          "insert into private_hot_updater_settings (`key`, value) values ('version', '0.29.0')",
-        )
-        .execute(db);
-
-      const migrationHotUpdater = createHotUpdater({
-        database: kyselyAdapter({ db, provider: "mysql" }),
-      });
-      const migrator = createMigrator(migrationHotUpdater);
-      const migration = await migrator.migrateToLatest({
-        mode: "from-schema",
-        updateSettings: true,
-      });
-
-      await expect(migration.execute()).rejects.toMatchObject({
-        name: "MysqlMigrationObjectConflictError",
-        objectType: "column",
-        table: "bundles",
-        objectName: "manifest_storage_uri",
-      });
-      const coreVersion = await sql<{ readonly value: string }>`
-        select value from private_hot_updater_settings
-        where \`key\` = 'schema.core'
-      `.execute(db);
-      expect(coreVersion.rows).toEqual([]);
-    } finally {
-      await db.destroy();
-      await admin.query(`drop database if exists \`${database}\``);
-      await admin.end();
-    }
-  });
-
-  it("rejects an existing MySQL migration table instead of approving schema drift", async () => {
-    const database = `hot_updater_table_drift_${process.pid}`;
-    const admin = createPool({
-      host: process.env.MYSQL_HOST || "localhost",
-      port: Number(process.env.MYSQL_PORT) || 3307,
-      user: "root",
-      password: process.env.MYSQL_ROOT_PASSWORD || "hot_updater_root",
-    }).promise();
-    await admin.query(`drop database if exists \`${database}\``);
-    await admin.query(`create database \`${database}\``);
-    await admin.query(
-      `grant all privileges on \`${database}\`.* to 'hot_updater'@'%'`,
-    );
-
-    const pool = createPool({
-      host: process.env.MYSQL_HOST || "localhost",
-      port: Number(process.env.MYSQL_PORT) || 3307,
-      user: process.env.MYSQL_USER || "hot_updater",
-      password: process.env.MYSQL_PASSWORD || "hot_updater_dev",
-      database,
-    });
-    const dialectPool = pool as unknown as ConstructorParameters<
-      typeof MysqlDialect
-    >[0]["pool"];
-    const db = new Kysely<SettingsDatabase>({
-      dialect: new MysqlDialect({ pool: dialectPool }),
-    });
-
-    try {
-      await sql
-        .raw(`
-        create table bundles (
-          id varchar(255) primary key,
-          platform text not null,
-          should_force_update boolean not null,
-          enabled boolean not null,
-          file_hash text not null,
-          git_commit_hash text,
-          message text,
-          channel text not null,
-          storage_uri text not null,
-          target_app_version text,
-          fingerprint_hash text,
-          metadata json not null,
-          rollout_cohort_count integer not null default 1000,
-          target_cohorts json
-        )
-      `)
-        .execute(db);
-      await sql
-        .raw(`
-        create table bundle_patches (
-          id varchar(255) primary key,
-          bundle_id varchar(255) not null,
-          base_bundle_id varchar(255) not null,
-          base_file_hash bigint not null,
-          patch_file_hash text not null,
-          patch_storage_uri text not null,
-          order_index integer not null
-        )
-      `)
-        .execute(db);
-      await sql
-        .raw(`
-        create table private_hot_updater_settings (
-          \`key\` varchar(255) primary key,
-          value varchar(255) not null
-        )
-      `)
-        .execute(db);
-      await sql
-        .raw(
-          "insert into private_hot_updater_settings (`key`, value) values ('version', '0.29.0')",
-        )
-        .execute(db);
-
-      const migrationHotUpdater = createHotUpdater({
-        database: kyselyAdapter({ db, provider: "mysql" }),
-      });
-      const migrator = createMigrator(migrationHotUpdater);
-      const migration = await migrator.migrateToLatest({
-        mode: "from-schema",
-        updateSettings: true,
-      });
-
-      await expect(migration.execute()).rejects.toMatchObject({
-        code: "ER_TABLE_EXISTS_ERROR",
-      });
-      const coreVersion = await sql<{ readonly value: string }>`
-        select value from private_hot_updater_settings
-        where \`key\` = 'schema.core'
-      `.execute(db);
-      expect(coreVersion.rows).toEqual([]);
+      await expect(
+        migrator.migrateToLatest({
+          mode: "from-schema",
+          updateSettings: true,
+        }),
+      ).rejects.toThrow("Hot Updater v1 cannot migrate schema 0.31.0");
     } finally {
       await db.destroy();
       await admin.query(`drop database if exists \`${database}\``);

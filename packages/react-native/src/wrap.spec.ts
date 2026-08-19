@@ -335,8 +335,7 @@ describe("HotUpdater wrap initialization", () => {
     warn.mockRestore();
   });
 
-  it("warns when the deprecated manual wrap HOC is used", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("does not accept a manual wrap HOC", async () => {
     const { wrap } = await import("./wrap");
 
     wrap({
@@ -344,15 +343,8 @@ describe("HotUpdater wrap initialization", () => {
         checkUpdate: vi.fn(),
         notifyAppReady: vi.fn(),
       },
-      updateMode: "manual",
+      updateStrategy: "appVersion",
     });
-
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining(
-        'HotUpdater.wrap({ updateMode: "manual" }) is deprecated',
-      ),
-    );
-    warn.mockRestore();
   });
 
   it("preserves wrapped component prop inference", async () => {
@@ -364,7 +356,6 @@ describe("HotUpdater wrap initialization", () => {
         checkUpdate: vi.fn(),
         notifyAppReady: vi.fn(),
       },
-      updateMode: "auto",
       updateStrategy: "appVersion",
     })(Component);
 
@@ -378,18 +369,7 @@ describe("HotUpdater wrap initialization", () => {
       baseURL: "https://updates.example.com",
       updateStrategy: "appVersion",
     } satisfies HotUpdaterOptions;
-    const explicitAutoOptions = {
-      baseURL: "https://updates.example.com",
-      updateMode: "auto",
-      updateStrategy: "appVersion",
-    } satisfies HotUpdaterOptions;
-    const manualOptions = {
-      baseURL: "https://updates.example.com",
-      updateMode: "manual",
-    } satisfies HotUpdaterOptions;
 
     expect(autoOptions.updateStrategy).toBe("appVersion");
-    expect(explicitAutoOptions.updateMode).toBe("auto");
-    expect(manualOptions.updateMode).toBe("manual");
   });
 });

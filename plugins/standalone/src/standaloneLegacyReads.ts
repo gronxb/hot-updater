@@ -4,7 +4,6 @@ import type {
   DatabaseModel,
   DatabaseOrderBy,
   DatabaseRow,
-  DatabaseSortBy,
   DatabaseWhere,
 } from "@hot-updater/plugin-core/internal";
 
@@ -26,7 +25,6 @@ type LegacyQuery<TModel extends DatabaseModel> = {
   readonly limit: number;
   readonly offset: number;
   readonly orderBy?: DatabaseOrderBy<TModel>;
-  readonly sortBy?: DatabaseSortBy<TModel>;
   readonly where?: readonly DatabaseWhere<TModel>[];
 };
 
@@ -42,7 +40,7 @@ const queryLegacyRows = <TModel extends DatabaseModel>(
   input: LegacyQuery<TModel>,
 ): DatabaseRow<TModel>[] => {
   const filtered = queryStandaloneRows(rows, { where: input.where });
-  const orderBy = input.orderBy ?? (input.sortBy ? [input.sortBy] : undefined);
+  const orderBy = input.orderBy;
   if (orderBy !== undefined) {
     filtered.sort((left, right) => {
       for (const clause of orderBy) {
@@ -166,8 +164,7 @@ export const createLegacyReads = (
         const where = input.where as
           | readonly DatabaseWhere<"bundles">[]
           | undefined;
-        const orderBy =
-          input.orderBy ?? (input.sortBy ? [input.sortBy] : undefined);
+        const orderBy = input.orderBy;
         const remoteSort =
           orderBy?.length === 1 && orderBy[0]?.field === "id"
             ? orderBy[0]
@@ -180,7 +177,7 @@ export const createLegacyReads = (
             where,
             limit: input.limit,
             offset: input.offset,
-            sortBy: remoteSort,
+            orderBy: remoteSort,
           });
           if (remoteWindow) return remoteWindow.rows;
         }
@@ -190,7 +187,6 @@ export const createLegacyReads = (
           limit: input.limit,
           offset: input.offset,
           orderBy: input.orderBy,
-          sortBy: input.sortBy,
         });
       }
       case "bundle_patches":
@@ -202,7 +198,6 @@ export const createLegacyReads = (
           limit: input.limit,
           offset: input.offset,
           orderBy: input.orderBy,
-          sortBy: input.sortBy,
         });
     }
   },

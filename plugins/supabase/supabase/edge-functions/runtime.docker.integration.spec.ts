@@ -249,12 +249,12 @@ describe.sequential("supabase edge runtime acceptance", () => {
       authorityId: AUTHORITY_ID,
       database: supabaseDatabase({
         supabaseUrl: gatewayBaseUrl,
-        supabaseAnonKey: SERVICE_ROLE_KEY,
+        supabaseServiceRoleKey: SERVICE_ROLE_KEY,
       }),
       storage: [
         supabaseStorage({
           supabaseUrl: gatewayBaseUrl,
-          supabaseAnonKey: SERVICE_ROLE_KEY,
+          supabaseServiceRoleKey: SERVICE_ROLE_KEY,
           bucketName: BUCKET_NAME,
         }),
       ],
@@ -364,7 +364,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
   it("returns one canonical Channel row under concurrent inserts", async () => {
     const database = supabaseDatabase({
       supabaseUrl: gatewayBaseUrl,
-      supabaseAnonKey: SERVICE_ROLE_KEY,
+      supabaseServiceRoleKey: SERVICE_ROLE_KEY,
     });
     const channelName = "concurrent-channel";
     const results = await Promise.all([
@@ -883,7 +883,6 @@ ${storageMigrations.join("\n\n")}
 SET search_path TO public;
 
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
-GRANT USAGE ON TYPE platforms TO anon, authenticated, service_role;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon, authenticated;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO service_role;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;

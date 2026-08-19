@@ -38,18 +38,10 @@ interface R2S3StorageConfig {
   basePath?: string;
   downloadUrlSigningKey?: string;
 }
-
-interface R2WranglerStorageConfig {
-  accountId: string;
-  bucketName: string;
-  cloudflareApiToken: string;
-  basePath?: string;
-  credentials?: never;
-}
 ```
 
-S3-compatible credentials enable the root runtime profile. The
-`cloudflareApiToken` form remains the legacy Wrangler-based CLI configuration.
+`r2Storage` requires S3-compatible credentials. The Wrangler object-storage
+fallback is removed.
 
 ## Usage
 
@@ -72,20 +64,11 @@ export default defineConfig({
 
 ## Runtime Usage
 
-With S3-compatible credentials, the root `r2Storage` plugin implements upload,
-read, existence-check, and exact-delete operations. When the same plugin is
-passed to a self-hosted `createHotUpdater` server, also provide
-`downloadUrlSigningKey`; it enables the signed download location required by
-the server while `get` reads the stored object.
-
-The legacy `cloudflareApiToken` configuration runs object operations through
-Wrangler. It is retained for existing CLI configurations, but it does not
-provide the signed download operation required by `createHotUpdater`.
-
-## Limitations
-
-- Legacy `r2Storage` configs without `credentials` use Wrangler and are slower
-  than the S3-compatible API path.
+The root `r2Storage` plugin implements upload, read, existence-check, and
+exact-delete operations. When the same plugin is passed to a self-hosted
+`createHotUpdater` server, also provide `downloadUrlSigningKey`; it enables
+the signed download location required by the server while `get` reads the
+stored object.
 
 ## Protocol
 

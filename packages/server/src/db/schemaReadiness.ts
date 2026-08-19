@@ -1,4 +1,5 @@
 import { HOT_UPDATER_SCHEMA_VERSION } from "../schema/types";
+import { unsupportedSchemaUpgradeMessage } from "./fixedMigratorShared";
 import type { Migrator } from "./types";
 
 export class HotUpdaterSchemaMigrationRequiredError extends Error {
@@ -9,7 +10,7 @@ export class HotUpdaterSchemaMigrationRequiredError extends Error {
     super(
       currentVersion === undefined
         ? `Hot Updater database schema is not initialized for ${adapterName}. Run \`hot-updater db migrate\` before using this adapter.`
-        : `Hot Updater database schema version ${currentVersion} is not supported by ${adapterName}. Run \`hot-updater db migrate\` to upgrade to ${HOT_UPDATER_SCHEMA_VERSION}.`,
+        : unsupportedSchemaUpgradeMessage(currentVersion),
     );
     this.name = "HotUpdaterSchemaMigrationRequiredError";
   }

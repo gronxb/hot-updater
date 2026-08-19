@@ -20,14 +20,14 @@ const createSupabaseScaffold = () =>
       imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
       configString: `supabaseStorage({
   supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-  supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+  supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
 })`,
     },
     database: {
       imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseDatabase"] }],
       configString: `supabaseDatabase({
   supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-  supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+  supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
 })`,
     },
   });

@@ -202,10 +202,6 @@ export const createMongoSort = (
   input:
     | {
         readonly orderBy?: AnyDatabaseOrderBy;
-        readonly sortBy?: {
-          readonly field: string;
-          readonly direction: "asc" | "desc";
-        };
       }
     | AnyDatabaseOrderBy
     | undefined,
@@ -219,9 +215,7 @@ export const createMongoSort = (
           field: string;
           direction: "asc" | "desc";
         }[])
-      : input && "sortBy" in input && input.sortBy
-        ? [input.sortBy]
-        : undefined;
+      : undefined;
   if (clauses === undefined || clauses.length === 0) return undefined;
   return Object.fromEntries(
     clauses.map((clause) => [

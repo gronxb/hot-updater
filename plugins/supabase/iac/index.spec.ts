@@ -890,9 +890,6 @@ describe("resolveEdgeFunctionDenoConfig", () => {
             searchFrom: path.resolve("plugins/supabase"),
           },
         )}`,
-        kysely: `npm:kysely@${resolvePackageVersion("kysely", {
-          searchFrom: path.resolve("packages/server"),
-        })}`,
         mime: `npm:mime@${resolvePackageVersion("mime", {
           searchFrom: path.resolve("plugins/plugin-core"),
         })}`,

@@ -65,7 +65,7 @@ const getSupabaseConfigTemplate = (build: BuildType) => {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
     configString: `supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
     bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
   })`,
   };
@@ -73,7 +73,7 @@ const getSupabaseConfigTemplate = (build: BuildType) => {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseDatabase"] }],
     configString: `supabaseDatabase({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   })`,
   };
 
@@ -231,12 +231,12 @@ export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
     bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
   }),
   database: supabaseDatabase({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
   updateStrategy: "appVersion", // or "fingerprint"
 });`;

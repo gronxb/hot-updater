@@ -86,14 +86,9 @@ const toOrderBy = (
       direction: "asc" | "desc";
       nulls?: "first" | "last";
     }[];
-    sortBy?: {
-      field: string;
-      direction: "asc" | "desc";
-      nulls?: "first" | "last";
-    };
   },
 ) => {
-  const clauses = input.orderBy ?? (input.sortBy ? [input.sortBy] : undefined);
+  const clauses = input.orderBy;
   return clauses?.flatMap((clause) => {
     const column = getDrizzleColumn(table, clause.field);
     const nulls =
