@@ -13,6 +13,6 @@
                 <data android:scheme="hotupdaterexample"/>
             </intent-filter>
         </activity>
-        <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="65ad6911327b1654a183c63c89abf6ca13e71781"/>
+        <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="900623dddfab81f0942cd1b08ceac51d40c14937"/>
     </application>
 </manifest>
