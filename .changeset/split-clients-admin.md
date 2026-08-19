@@ -7,6 +7,7 @@
 "@hot-updater/firebase": minor
 "@hot-updater/supabase": minor
 "@hot-updater/react-native": patch
+"hot-updater": patch
 ---
 
 Split the self-hosted HTTP runtime into mount-relative
@@ -25,3 +26,6 @@ stays on the client surface while Analytics queries move to the admin surface.
 client `baseURL` and documents `x-api-key` rather than an admin bearer token.
 Rename the server's generated-URL option from `basePath` to `clientBasePath`
 and default it to `/`, matching a root-mounted client handler.
+
+Resolve Expo fingerprint mode from the target app's dependencies so bare React
+Native fingerprints stay stable across monorepo and isolated installs.
