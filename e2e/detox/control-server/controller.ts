@@ -59,7 +59,10 @@ import {
   readE2eScreenStateSnapshot,
   resetE2eScreenState,
 } from "./screen-state.ts";
-import { shouldProbeUpdateCheckVisibility } from "./update-check-visibility.ts";
+import {
+  shouldProbeUpdateCheckVisibility,
+  validateArtifactInfoVisibility,
+} from "./update-check-visibility.ts";
 
 type Platform = "ios" | "android";
 type BundleProfile = "archive300mb" | "default" | "multiAssetReplacement";
@@ -3991,6 +3994,7 @@ async function waitForReleaseCatalogVisibility(args: {
   bundleId: string | null;
   catalog: ReleaseCatalogRow;
   channel: string;
+  expectedFileHash: string | null;
   releaseId: string;
   signal?: AbortSignal;
 }) {
@@ -4037,6 +4041,7 @@ async function waitForReleaseCatalogVisibility(args: {
           if (args.bundleId !== null) {
             await waitForArtifactResolution({
               bundleId: args.bundleId,
+              expectedFileHash: args.expectedFileHash,
               signal: args.signal,
             });
           }
@@ -4098,6 +4103,7 @@ async function waitForReleaseCatalogVisibility(args: {
 
 async function waitForArtifactResolution(args: {
   bundleId: string;
+  expectedFileHash: string | null;
   signal?: AbortSignal;
 }) {
   const url = `${getControllerReachableAppBaseUrl()}/artifacts/${encodeURIComponent(
@@ -4114,13 +4120,24 @@ async function waitForArtifactResolution(args: {
       { body: truncateForLog(body), bundleId: args.bundleId, url },
     );
   }
-  const payload = JSON.parse(body) as { id?: unknown };
-  if (payload.id !== args.bundleId) {
-    throw createEndpointError("Artifact resolution returned another Bundle", {
-      bundleId: args.bundleId,
-      payload,
-      url,
-    });
+  const payload: unknown = JSON.parse(body);
+  const validation = validateArtifactInfoVisibility(
+    payload,
+    args.expectedFileHash,
+  );
+  if (!validation.ok) {
+    throw createEndpointError(
+      validation.reason === "file-hash-mismatch"
+        ? "Artifact resolution returned another file hash"
+        : "Artifact resolution returned invalid ArtifactInfo",
+      {
+        bundleId: args.bundleId,
+        expectedFileHash: args.expectedFileHash,
+        payload,
+        validation,
+        url,
+      },
+    );
   }
 }
 
@@ -5478,6 +5495,7 @@ async function deployFixtureBundle(
       bundleId,
       catalog: deployed.catalog,
       channel: remoteChannel,
+      expectedFileHash: bundle.fileHash,
       releaseId: deployed.release.id,
       signal,
     });
@@ -5664,6 +5682,10 @@ async function createFixtureRepublishedRelease(input: {
     bundleId: created.release.bundle_id,
     catalog: created.catalog,
     channel: created.channel.name,
+    expectedFileHash:
+      created.release.bundle_id === null
+        ? null
+        : (await fetchProviderBundleById(created.release.bundle_id)).fileHash,
     releaseId: created.release.id,
   });
 
