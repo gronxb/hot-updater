@@ -1,5 +1,16 @@
 # @hot-updater/supabase
 
+## 0.36.2
+
+### Patch Changes
+
+- be04a41: Decode percent-encoded storage URI keys before passing them to object storage providers. This fixes legacy assets such as `logo@2x.png` across S3, R2, Firebase, and Supabase while preserving encoded HTTP paths for CloudFront and CDN downloads.
+- Updated dependencies [be04a41]
+  - @hot-updater/plugin-core@0.36.2
+  - @hot-updater/cli-tools@0.36.2
+  - @hot-updater/server@0.36.2
+  - @hot-updater/core@0.36.2
+
 ## 0.36.1
 
 ### Patch Changes
