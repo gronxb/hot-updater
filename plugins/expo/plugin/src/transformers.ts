@@ -84,6 +84,26 @@ function transformAndroidReactHost(contents: string): string {
   }
 
   const callContents = result.slice(callStartIndex, closeParenIndex + 1);
+  const kotlinLegacyBundlePathRegex =
+    /^([ \t]*)jsBundleFilePath = HotUpdater\.getJSBundleFile\(applicationContext\),[ \t]*\r?$/m;
+  const legacyBundlePathMatch = callContents.match(kotlinLegacyBundlePathRegex);
+
+  if (legacyBundlePathMatch) {
+    const paramIndent = legacyBundlePathMatch[1];
+    const jsBundleLines = [
+      `${paramIndent}jsBundleFilePath = if (BuildConfig.DEBUG) {`,
+      `${paramIndent}  null`,
+      `${paramIndent}} else {`,
+      `${paramIndent}  HotUpdater.getJSBundleFile(applicationContext)`,
+      `${paramIndent}},`,
+    ];
+    const migratedCallContents = callContents.replace(
+      kotlinLegacyBundlePathRegex,
+      jsBundleLines.join("\n"),
+    );
+    return `${result.slice(0, callStartIndex)}${migratedCallContents}${result.slice(closeParenIndex + 1)}`;
+  }
+
   if (callContents.includes("jsBundleFilePath")) {
     return result;
   }
@@ -136,8 +156,14 @@ function transformAndroidReactHost(contents: string): string {
     )}`;
   }
 
-  const jsBundleLine = `${paramIndent}jsBundleFilePath = HotUpdater.getJSBundleFile(applicationContext),`;
-  return `${prefix}${jsBundleLine}\n${suffix}`;
+  const jsBundleLines = [
+    `${paramIndent}jsBundleFilePath = if (BuildConfig.DEBUG) {`,
+    `${paramIndent}  null`,
+    `${paramIndent}} else {`,
+    `${paramIndent}  HotUpdater.getJSBundleFile(applicationContext)`,
+    `${paramIndent}},`,
+  ];
+  return `${prefix}${jsBundleLines.join("\n")}\n${suffix}`;
 }
 
 /**
@@ -149,6 +175,8 @@ function transformAndroidDefaultHost(contents: string): string {
   const kotlinImportAnchor = "import com.facebook.react.ReactApplication";
   const kotlinReactNativeHostAnchor = "object : DefaultReactNativeHost(this) {";
   const kotlinMethodCheck = "HotUpdater.getJSBundleFile(applicationContext)";
+  const kotlinLegacyMethodRegex =
+    /^([ \t]*)override fun getJSBundleFile\(\): String\? \{[ \t]*\r?\n([ \t]*)return HotUpdater\.getJSBundleFile\(applicationContext\)[ \t]*\r?\n\1\}[ \t]*$/m;
   const kotlinExistingMethodRegex =
     /^\s*override fun getJSBundleFile\(\): String\?\s*\{[\s\S]*?^\s*\}/gm;
   const kotlinHermesAnchor =
@@ -163,6 +191,22 @@ function transformAndroidDefaultHost(contents: string): string {
 
   // 1. Add import if missing
   let result = addLinesOnce(contents, kotlinImportAnchor, [kotlinImport]);
+
+  const legacyMethodMatch = result.match(kotlinLegacyMethodRegex);
+  if (legacyMethodMatch) {
+    const methodIndent = legacyMethodMatch[1];
+    const bodyIndent = legacyMethodMatch[2];
+    const methodLines = [
+      `${methodIndent}override fun getJSBundleFile(): String? {`,
+      `${bodyIndent}return if (BuildConfig.DEBUG) {`,
+      `${bodyIndent}  null`,
+      `${bodyIndent}} else {`,
+      `${bodyIndent}  HotUpdater.getJSBundleFile(applicationContext)`,
+      `${bodyIndent}}`,
+      `${methodIndent}}`,
+    ];
+    result = result.replace(kotlinLegacyMethodRegex, methodLines.join("\n"));
+  }
 
   // 2. Add/Replace getJSBundleFile method if needed
   if (!result.includes(kotlinMethodCheck)) {
@@ -208,7 +252,11 @@ function transformAndroidDefaultHost(contents: string): string {
       const methodLines = [
         "", // blank line
         `${indent}override fun getJSBundleFile(): String? {`,
-        `${bodyIndent}return HotUpdater.getJSBundleFile(applicationContext)`,
+        `${bodyIndent}return if (BuildConfig.DEBUG) {`,
+        `${bodyIndent}  null`,
+        `${bodyIndent}} else {`,
+        `${bodyIndent}  HotUpdater.getJSBundleFile(applicationContext)`,
+        `${bodyIndent}}`,
         `${indent}}`,
       ];
 
@@ -247,7 +295,11 @@ function transformAndroidDefaultHost(contents: string): string {
 
       const methodLines = [
         `${indent}override fun getJSBundleFile(): String? {`,
-        `${bodyIndent}return HotUpdater.getJSBundleFile(applicationContext)`,
+        `${bodyIndent}return if (BuildConfig.DEBUG) {`,
+        `${bodyIndent}  null`,
+        `${bodyIndent}} else {`,
+        `${bodyIndent}  HotUpdater.getJSBundleFile(applicationContext)`,
+        `${bodyIndent}}`,
         `${indent}}`,
       ];
 
