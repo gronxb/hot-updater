@@ -136,8 +136,14 @@ function transformAndroidReactHost(contents: string): string {
     )}`;
   }
 
-  const jsBundleLine = `${paramIndent}jsBundleFilePath = HotUpdater.getJSBundleFile(applicationContext),`;
-  return `${prefix}${jsBundleLine}\n${suffix}`;
+  const jsBundleLines = [
+    `${paramIndent}jsBundleFilePath = if (BuildConfig.DEBUG) {`,
+    `${paramIndent}  null`,
+    `${paramIndent}} else {`,
+    `${paramIndent}  HotUpdater.getJSBundleFile(applicationContext)`,
+    `${paramIndent}},`,
+  ];
+  return `${prefix}${jsBundleLines.join("\n")}\n${suffix}`;
 }
 
 /**
@@ -208,7 +214,11 @@ function transformAndroidDefaultHost(contents: string): string {
       const methodLines = [
         "", // blank line
         `${indent}override fun getJSBundleFile(): String? {`,
-        `${bodyIndent}return HotUpdater.getJSBundleFile(applicationContext)`,
+        `${bodyIndent}return if (BuildConfig.DEBUG) {`,
+        `${bodyIndent}  null`,
+        `${bodyIndent}} else {`,
+        `${bodyIndent}  HotUpdater.getJSBundleFile(applicationContext)`,
+        `${bodyIndent}}`,
         `${indent}}`,
       ];
 
@@ -247,7 +257,11 @@ function transformAndroidDefaultHost(contents: string): string {
 
       const methodLines = [
         `${indent}override fun getJSBundleFile(): String? {`,
-        `${bodyIndent}return HotUpdater.getJSBundleFile(applicationContext)`,
+        `${bodyIndent}return if (BuildConfig.DEBUG) {`,
+        `${bodyIndent}  null`,
+        `${bodyIndent}} else {`,
+        `${bodyIndent}  HotUpdater.getJSBundleFile(applicationContext)`,
+        `${bodyIndent}}`,
         `${indent}}`,
       ];
 

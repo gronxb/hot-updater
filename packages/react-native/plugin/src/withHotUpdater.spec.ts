@@ -144,7 +144,11 @@ class MainApplication : Application(), ReactApplication {
           // Packages that cannot be autolinked yet can be added manually here, for example:
           // add(MyReactNativePackage())
         },
-      jsBundleFilePath = HotUpdater.getJSBundleFile(applicationContext),
+      jsBundleFilePath = if (BuildConfig.DEBUG) {
+        null
+      } else {
+        HotUpdater.getJSBundleFile(applicationContext)
+      },
     )
   }
 
@@ -232,7 +236,11 @@ class MainApplication : Application(), ReactApplication {
         override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
 
         override fun getJSBundleFile(): String? {
-          return HotUpdater.getJSBundleFile(applicationContext)
+          return if (BuildConfig.DEBUG) {
+            null
+          } else {
+            HotUpdater.getJSBundleFile(applicationContext)
+          }
         }
       }
 
@@ -346,7 +354,11 @@ class MainApplication : Application(), ReactApplication {
           override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
 
           override fun getJSBundleFile(): String? {
-              return HotUpdater.getJSBundleFile(applicationContext)
+              return if (BuildConfig.DEBUG) {
+                null
+              } else {
+                HotUpdater.getJSBundleFile(applicationContext)
+              }
           }
       }
   )
@@ -417,7 +429,11 @@ class MainApplication : Application(), ReactApplication {
           // Packages that cannot be autolinked yet can be added manually here, for example:
           // add(MyReactNativePackage())
         },
-      jsBundleFilePath = HotUpdater.getJSBundleFile(applicationContext),
+      jsBundleFilePath = if (BuildConfig.DEBUG) {
+        null
+      } else {
+        HotUpdater.getJSBundleFile(applicationContext)
+      },
     )
   }
 }`;
@@ -473,7 +489,11 @@ class MainApplication : Application(), ReactApplication {
           PackageList(this).packages.apply {
             // add(MyReactNativePackage())
           },
-        jsBundleFilePath = HotUpdater.getJSBundleFile(applicationContext),
+        jsBundleFilePath = if (BuildConfig.DEBUG) {
+          null
+        } else {
+          HotUpdater.getJSBundleFile(applicationContext)
+        },
       ),
     )
   }
