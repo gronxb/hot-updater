@@ -27,7 +27,7 @@ describe("supabaseEdgeFunctionStorage", () => {
     });
 
     const { response } = await storage.get({
-      storageUri: "supabase-storage://updates/manifest.json",
+      storageUri: "supabase-storage://updates/logo%402x.json",
     });
 
     await expect(response?.text()).resolves.toBe("manifest");
@@ -35,5 +35,6 @@ describe("supabaseEdgeFunctionStorage", () => {
       "https://example.supabase.co",
       "service-role-key",
     );
+    expect(bucket.download).toHaveBeenCalledWith("logo@2x.json");
   });
 });

@@ -71,7 +71,7 @@ describe("s3Storage", () => {
     vi.spyOn(S3Client.prototype, "send").mockImplementation(async (command) => {
       expect(command).toBeInstanceOf(GetObjectCommand);
       expect(command).toMatchObject({
-        input: { Bucket: "updates", Key: "bundles/한글 #%.zip" },
+        input: { Bucket: "updates", Key: "bundles/한글@2x #%.zip" },
       });
       return {
         Body: {
@@ -84,7 +84,7 @@ describe("s3Storage", () => {
     const storage = s3Storage({ bucketName: "updates", region: "us-east-1" });
 
     const { response } = await storage.get({
-      storageUri: "s3://updates/bundles/%ED%95%9C%EA%B8%80%20%23%25.zip",
+      storageUri: "s3://updates/bundles/%ED%95%9C%EA%B8%80%402x%20%23%25.zip",
     });
 
     expect(response?.headers.get("content-type")).toBe("application/zip");
