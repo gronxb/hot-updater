@@ -3446,11 +3446,21 @@ function toAppReachableProxyUrl(url: string) {
 }
 
 function rewriteRemoteAssetUrl(value: unknown): unknown {
-  if (typeof value !== "string" || !/^https?:\/\//.test(value)) {
+  if (typeof value !== "string") {
     return value;
   }
 
-  return toAppReachableProxyUrl(value);
+  if (/^https?:\/\//.test(value)) {
+    return toAppReachableProxyUrl(value);
+  }
+
+  if (value.startsWith("/storage/")) {
+    return toAppReachableProxyUrl(
+      `${getControllerReachableAppBaseUrl()}/${value.slice(1)}`,
+    );
+  }
+
+  return value;
 }
 
 function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
