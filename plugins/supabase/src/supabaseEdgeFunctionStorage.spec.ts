@@ -222,4 +222,59 @@ describe("supabaseEdgeFunctionStorage", () => {
 
     expect(bucket.createSignedUrls).toHaveBeenCalledTimes(1);
   });
+  it("decodes percent-encoded object keys before signing", async () => {
+    bucket.createSignedUrls.mockImplementation(async (paths: string[]) => ({
+      data: paths.map((path) => ({
+        error: null,
+        path,
+        signedUrl: `https://example.supabase.co/${path}`,
+      })),
+      error: null,
+    }));
+
+    const storage = supabaseEdgeFunctionStorage({
+      supabaseServiceRoleKey: "service-role-key",
+      supabaseUrl: "https://example.supabase.co",
+    })();
+
+    await expect(
+      storage.profiles.runtime.getDownloadUrl(
+        "supabase-storage://updates/assets/bootsplash/logo-ios%402x.png",
+        {},
+      ),
+    ).resolves.toEqual({
+      fileUrl: "https://example.supabase.co/assets/bootsplash/logo-ios@2x.png",
+    });
+
+    expect(bucket.createSignedUrls).toHaveBeenCalledWith(
+      ["assets/bootsplash/logo-ios@2x.png"],
+      3600,
+    );
+  });
+
+  it("leaves keys with invalid percent sequences untouched", async () => {
+    bucket.createSignedUrls.mockImplementation(async (paths: string[]) => ({
+      data: paths.map((path) => ({
+        error: null,
+        path,
+        signedUrl: `https://example.supabase.co/${path}`,
+      })),
+      error: null,
+    }));
+
+    const storage = supabaseEdgeFunctionStorage({
+      supabaseServiceRoleKey: "service-role-key",
+      supabaseUrl: "https://example.supabase.co",
+    })();
+
+    await storage.profiles.runtime.getDownloadUrl(
+      "supabase-storage://updates/assets/100%-off.png",
+      {},
+    );
+
+    expect(bucket.createSignedUrls).toHaveBeenCalledWith(
+      ["assets/100%-off.png"],
+      3600,
+    );
+  });
 });

@@ -2,6 +2,7 @@ import { createRuntimeStoragePlugin } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 
 import { createSupabaseSignedUrlBatcher } from "./supabaseSignedUrlBatcher";
+import { decodeStorageObjectKey } from "./supabaseStorageKey";
 import type { Database } from "./types";
 
 export interface SupabaseEdgeFunctionStorageConfig {
@@ -18,7 +19,7 @@ const parseSupabaseStorageUri = (storageUri: string) => {
   }
 
   const bucketName = storageUrl.host;
-  const key = storageUrl.pathname.replace(/^\/+/, "");
+  const key = decodeStorageObjectKey(storageUrl.pathname.replace(/^\/+/, ""));
 
   if (!bucketName || !key) {
     throw new Error("Invalid Supabase storage URI");

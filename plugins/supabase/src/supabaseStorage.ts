@@ -14,6 +14,7 @@ import {
   type SupabaseServiceRoleConfig,
 } from "./supabaseConfig";
 import { createSupabaseSignedUrlBatcher } from "./supabaseSignedUrlBatcher";
+import { decodeStorageObjectKey } from "./supabaseStorageKey";
 import type { Database } from "./types";
 
 type SupabaseStorageBucket = {
@@ -83,6 +84,12 @@ async function verifyObjectCanBeSignedForRuntime({
   });
 }
 
+const parseSupabaseStorageUri = (storageUri: string) => {
+  const { bucket, key } = parseStorageUri(storageUri, "supabase-storage");
+
+  return { bucket, key: decodeStorageObjectKey(key) };
+};
+
 export type SupabaseStorageConfig = SupabaseServiceRoleConfig & {
   bucketName: string;
   /**
@@ -113,10 +120,8 @@ export const supabaseStorage =
       return {
         node: {
           async delete(storageUri) {
-            const { key, bucket: bucketName } = parseStorageUri(
-              storageUri,
-              "supabase-storage",
-            );
+            const { key, bucket: bucketName } =
+              parseSupabaseStorageUri(storageUri);
             if (bucketName !== config.bucketName) {
               throw new Error(
                 `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
@@ -162,10 +167,8 @@ export const supabaseStorage =
             };
           },
           async exists(storageUri: string) {
-            const { key, bucket: bucketName } = parseStorageUri(
-              storageUri,
-              "supabase-storage",
-            );
+            const { key, bucket: bucketName } =
+              parseSupabaseStorageUri(storageUri);
             if (bucketName !== config.bucketName) {
               throw new Error(
                 `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
@@ -188,10 +191,8 @@ export const supabaseStorage =
             return data;
           },
           async downloadFile(storageUri: string, filePath: string) {
-            const { key, bucket: bucketName } = parseStorageUri(
-              storageUri,
-              "supabase-storage",
-            );
+            const { key, bucket: bucketName } =
+              parseSupabaseStorageUri(storageUri);
             if (bucketName !== config.bucketName) {
               throw new Error(
                 `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
@@ -215,10 +216,8 @@ export const supabaseStorage =
         },
         runtime: {
           async readText(storageUri: string) {
-            const { key, bucket: bucketName } = parseStorageUri(
-              storageUri,
-              "supabase-storage",
-            );
+            const { key, bucket: bucketName } =
+              parseSupabaseStorageUri(storageUri);
             if (bucketName !== config.bucketName) {
               throw new Error(
                 `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
@@ -246,7 +245,9 @@ export const supabaseStorage =
               throw new Error("Invalid Supabase storage URI protocol");
             }
             // Extract key without bucket prefix if present
-            let key = `${u.host}${u.pathname}`.replace(/^\//, "");
+            let key = decodeStorageObjectKey(
+              `${u.host}${u.pathname}`.replace(/^\//, ""),
+            );
             if (!key) {
               throw new Error("Invalid Supabase storage URI: missing key");
             }
