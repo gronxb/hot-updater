@@ -162,6 +162,65 @@ class MainApplication : Application(), ReactApplication {
       expect(result).toBe(_expected);
     });
 
+    it("RN 0.82+ Kotlin: migrates the previous HotUpdater bundle path", () => {
+      const input = `package com.rndiffapp
+
+import com.facebook.react.ReactApplication
+import com.hotupdater.HotUpdater
+
+class MainApplication : Application(), ReactApplication {
+  override val reactHost: ReactHost by lazy {
+    getDefaultReactHost(
+      context = applicationContext,
+      packageList = emptyList(),
+      jsBundleFilePath = HotUpdater.getJSBundleFile(applicationContext),
+    )
+  }
+}`;
+
+      const expected = `package com.rndiffapp
+
+import com.facebook.react.ReactApplication
+import com.hotupdater.HotUpdater
+
+class MainApplication : Application(), ReactApplication {
+  override val reactHost: ReactHost by lazy {
+    getDefaultReactHost(
+      context = applicationContext,
+      packageList = emptyList(),
+      jsBundleFilePath = if (BuildConfig.DEBUG) {
+        null
+      } else {
+        HotUpdater.getJSBundleFile(applicationContext)
+      },
+    )
+  }
+}`;
+
+      const result = transformAndroid(input);
+      expect(result).toBe(expected);
+      expect(transformAndroid(result)).toBe(result);
+    });
+
+    it("RN 0.82+ Kotlin: keeps a custom bundle path", () => {
+      const input = `package com.rndiffapp
+
+import com.facebook.react.ReactApplication
+import com.hotupdater.HotUpdater
+
+class MainApplication : Application(), ReactApplication {
+  override val reactHost: ReactHost by lazy {
+    getDefaultReactHost(
+      context = applicationContext,
+      packageList = emptyList(),
+      jsBundleFilePath = customBundlePath,
+    )
+  }
+}`;
+
+      expect(transformAndroid(input)).toBe(input);
+    });
+
     it("RN 0.81 Kotlin: input -> output", () => {
       // Input: RN 0.81 template with old pattern
       const _input = `package com.hotupdaterexample
@@ -255,6 +314,50 @@ class MainApplication : Application(), ReactApplication {
 
       const result = transformAndroid(_input);
       expect(result).toBe(_expected);
+    });
+
+    it("RN 0.81 Kotlin: migrates the previous HotUpdater bundle path", () => {
+      const input = `package com.hotupdaterexample
+
+import com.facebook.react.ReactApplication
+import com.facebook.react.defaults.DefaultReactNativeHost
+import com.hotupdater.HotUpdater
+
+class MainApplication : Application(), ReactApplication {
+  override val reactNativeHost: ReactNativeHost =
+    object : DefaultReactNativeHost(this) {
+      override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
+
+      override fun getJSBundleFile(): String? {
+        return HotUpdater.getJSBundleFile(applicationContext)
+      }
+    }
+}`;
+
+      const expected = `package com.hotupdaterexample
+
+import com.facebook.react.ReactApplication
+import com.facebook.react.defaults.DefaultReactNativeHost
+import com.hotupdater.HotUpdater
+
+class MainApplication : Application(), ReactApplication {
+  override val reactNativeHost: ReactNativeHost =
+    object : DefaultReactNativeHost(this) {
+      override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
+
+      override fun getJSBundleFile(): String? {
+        return if (BuildConfig.DEBUG) {
+          null
+        } else {
+          HotUpdater.getJSBundleFile(applicationContext)
+        }
+      }
+    }
+}`;
+
+      const result = transformAndroid(input);
+      expect(result).toBe(expected);
+      expect(transformAndroid(result)).toBe(result);
     });
 
     it("Expo 54 Kotlin: input -> output", () => {

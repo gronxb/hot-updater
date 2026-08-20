@@ -229,7 +229,11 @@ To complete the integration of `hot-updater`, you'll need to add native code mod
             // Packages that cannot be autolinked yet can be added manually here, for example:
             // add(MyReactNativePackage())
           },
-        jsBundleFilePath = HotUpdater.getJSBundleFile(applicationContext), // [!code ++]
+        jsBundleFilePath = if (BuildConfig.DEBUG) { // [!code ++]
+          null // [!code ++]
+        } else { // [!code ++]
+          HotUpdater.getJSBundleFile(applicationContext) // [!code ++]
+        }, // [!code ++]
       )
 
     }
@@ -277,7 +281,11 @@ PackageList(this).packages.apply {
         override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
 
         override fun getJSBundleFile(): String? {  // [!code ++]
-          return HotUpdater.getJSBundleFile(applicationContext)  // [!code ++]
+          return if (BuildConfig.DEBUG) {  // [!code ++]
+            null  // [!code ++]
+          } else {  // [!code ++]
+            HotUpdater.getJSBundleFile(applicationContext)  // [!code ++]
+          }  // [!code ++]
         }  // [!code ++]
       }
 
@@ -336,7 +344,9 @@ public class MainApplication extends Application implements ReactApplication {
 
         @Override // [!code ++]
         protected String getJSBundleFile() {  // [!code ++]
-            return HotUpdater.Companion.getJSBundleFile(this.getApplication().getApplicationContext());  // [!code ++]
+            return BuildConfig.DEBUG  // [!code ++]
+                ? null  // [!code ++]
+                : HotUpdater.Companion.getJSBundleFile(this.getApplication().getApplicationContext());  // [!code ++]
         }  // [!code ++]
 
         @Override
