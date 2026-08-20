@@ -7,6 +7,7 @@ import { client, db } from "./drizzle";
 
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
+  analytics: true,
   database: drizzleAdapter({
     db,
     provider: "sqlite",
@@ -26,11 +27,6 @@ export const hotUpdater = createHotUpdater({
         "development-storage-download-url-key",
     }),
   ],
-  clientBasePath: "/hot-updater",
-  features: {
-    updateCheck: true,
-    analytics: true,
-  },
 });
 
 // Cleanup function for graceful shutdown

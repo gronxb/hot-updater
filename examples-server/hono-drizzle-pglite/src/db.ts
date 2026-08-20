@@ -30,10 +30,6 @@ export const hotUpdater = createHotUpdater({
         "development-storage-download-url-key",
     }),
   ],
-  clientBasePath: "/hot-updater",
-  features: {
-    updateCheck: true,
-  },
 });
 
 // Cleanup function for graceful shutdown

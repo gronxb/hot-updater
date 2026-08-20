@@ -58,7 +58,9 @@ const analyticsEvent = (index: number): BundleEventRow => ({
   install_id: `install-${index}`,
   user_id: null,
   username: null,
+  from_release_id: null,
   from_bundle_id: bundleRow.id,
+  to_release_id: null,
   to_bundle_id: bundleRow.id,
   platform: "ios",
   app_version: "1.0.0",
@@ -220,6 +222,65 @@ describe("dynamoDB CloudFront lifecycle", () => {
       actionCount: 101,
     });
     expect(documentClient.commandCalls(TransactWriteCommand)).toHaveLength(0);
+    await plugin.dispose?.();
+  });
+
+  it.each([
+    { from_release_id: undefined },
+    { to_release_id: undefined },
+    { from_bundle_id: null },
+    { to_bundle_id: null },
+    { type: "UNCHANGED", from_bundle_id: bundleRow.id, update_strategy: null },
+  ])("rejects an invalid stored Analytics row", async (overrides) => {
+    documentClient.on(QueryCommand).resolves({
+      Items: [
+        {
+          pk: "bundle_events",
+          sk: "0000000000000001#event",
+          version: 1,
+          row: { ...analyticsEvent(1), ...overrides },
+        },
+      ],
+    });
+    const plugin = dynamoDB({
+      region: "us-east-1",
+      tableName: "hot-updater-metadata",
+    });
+
+    await expect(
+      plugin.models.analytics.scan({
+        beforeReceivedAtMs: 2,
+        limit: 1,
+      }),
+    ).rejects.toMatchObject({ name: "DynamoDBStoredItemError" });
+
+    await plugin.dispose?.();
+  });
+
+  it("preserves explicit null Release ids on a stored Analytics row", async () => {
+    const row = analyticsEvent(1);
+    documentClient.on(QueryCommand).resolves({
+      Items: [
+        {
+          pk: "bundle_events",
+          sk: "0000000000000001#event",
+          version: 1,
+          row,
+        },
+      ],
+    });
+    const plugin = dynamoDB({
+      region: "us-east-1",
+      tableName: "hot-updater-metadata",
+    });
+
+    await expect(
+      plugin.models.analytics.scan({
+        beforeReceivedAtMs: 2,
+        limit: 1,
+      }),
+    ).resolves.toEqual([row]);
+
     await plugin.dispose?.();
   });
 });

@@ -98,7 +98,8 @@ describe("HotUpdater wrap initialization", () => {
     vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
 
     const resolver = {
-      checkUpdate: vi.fn(),
+      fetchReleaseCatalog: vi.fn(),
+      resolveArtifact: vi.fn(),
       notifyAppReady: vi.fn().mockResolvedValue(undefined),
     };
     const { init } = await import("./wrap");
@@ -153,7 +154,8 @@ describe("HotUpdater wrap initialization", () => {
       );
 
     const resolver = {
-      checkUpdate: vi.fn(),
+      fetchReleaseCatalog: vi.fn(),
+      resolveArtifact: vi.fn(),
       notifyAppReady: vi.fn().mockResolvedValue(undefined),
     };
     const { init } = await import("./wrap");
@@ -199,7 +201,8 @@ describe("HotUpdater wrap initialization", () => {
     });
 
     const resolver = {
-      checkUpdate: vi.fn(),
+      fetchReleaseCatalog: vi.fn(),
+      resolveArtifact: vi.fn(),
       notifyAppReady: vi.fn().mockResolvedValue(undefined),
     };
     const { init } = await import("./wrap");
@@ -265,7 +268,8 @@ describe("HotUpdater wrap initialization", () => {
     );
 
     const resolver = {
-      checkUpdate: vi.fn(),
+      fetchReleaseCatalog: vi.fn(),
+      resolveArtifact: vi.fn(),
       notifyAppReady: vi.fn().mockResolvedValue(undefined),
     };
     const { init } = await import("./wrap");
@@ -308,7 +312,8 @@ describe("HotUpdater wrap initialization", () => {
       ),
     );
     const resolver = {
-      checkUpdate: vi.fn(),
+      fetchReleaseCatalog: vi.fn(),
+      resolveArtifact: vi.fn(),
       notifyAppReady: vi.fn().mockRejectedValue(error),
     };
     const { init } = await import("./wrap");
@@ -340,7 +345,8 @@ describe("HotUpdater wrap initialization", () => {
 
     wrap({
       resolver: {
-        checkUpdate: vi.fn(),
+        fetchReleaseCatalog: vi.fn(),
+        resolveArtifact: vi.fn(),
         notifyAppReady: vi.fn(),
       },
       updateStrategy: "appVersion",
@@ -353,7 +359,8 @@ describe("HotUpdater wrap initialization", () => {
 
     const WrappedComponent = wrap({
       resolver: {
-        checkUpdate: vi.fn(),
+        fetchReleaseCatalog: vi.fn(),
+        resolveArtifact: vi.fn(),
         notifyAppReady: vi.fn(),
       },
       updateStrategy: "appVersion",

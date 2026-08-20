@@ -87,7 +87,7 @@ export const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   highWater: "{}",
   isChannelSwitched: HotUpdater.isChannelSwitched(),
   manifest: HotUpdater.getManifest(),
-  minBundleId: HotUpdater.getMinBundleId(),
+  minBundleId: HotUpdater.getMinimumReleaseId(),
   scopeKey: null,
   selectionContextHash: null,
   selectionKind: null,

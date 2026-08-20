@@ -16,6 +16,7 @@ config({ path: path.join(__dirname, ".env.hotupdater") });
 // Create Hot Updater instance for CLI
 // Note: MongoDB connection must be established before using this instance
 export const hotUpdater = createHotUpdater({
+  analytics: true,
   database: mongoAdapter({
     client,
     transactions: true,
@@ -53,11 +54,6 @@ export const hotUpdater = createHotUpdater({
     //   bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
     // }),
   ],
-  clientBasePath: "/hot-updater",
-  features: {
-    updateCheck: true,
-    analytics: true,
-  },
 });
 
 // Cleanup function for graceful shutdown

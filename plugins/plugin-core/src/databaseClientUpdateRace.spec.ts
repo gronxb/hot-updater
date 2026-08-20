@@ -1,4 +1,4 @@
-import type { LegacyBundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,22 +9,16 @@ import { createDatabaseClient } from "./databaseClient";
 import { bundleToRow } from "./databaseRows";
 import type { BundleRow, BundleRowUpdate } from "./types";
 
-const createBundle = (): LegacyBundle => ({
+const createBundle = (): Bundle => ({
   id: "bundle-1",
   platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
   fileHash: "hash-1",
   gitCommitHash: null,
-  message: null,
-  channel: "production",
   storageUri: "storage://bundle-1",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
 });
 
 const createFixture = (expectedUpdates: number) => {
-  let row = bundleToRow(createBundle(), "channel-production");
+  let row = bundleToRow(createBundle());
   let updateCount = 0;
   let releaseUpdates = (): void => undefined;
   const updatesReady = new Promise<void>((resolve) => {

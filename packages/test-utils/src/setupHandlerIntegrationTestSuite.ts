@@ -1,12 +1,8 @@
 import fs from "fs/promises";
 import path from "path";
 
-import type { Bundle, LegacyBundle, Platform } from "@hot-updater/core";
-import type {
-  ChannelRow,
-  ReleaseCatalogMutationResult,
-  ReleaseRow,
-} from "@hot-updater/plugin-core";
+import type { Bundle, Platform } from "@hot-updater/core";
+import type { ChannelRow } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 
 export interface TestApiConfig {
@@ -27,77 +23,6 @@ const requireOk = async (response: Response, operation: string) => {
   }
   return response;
 };
-
-const readData = async <T>(response: Response): Promise<T> => {
-  const value = (await response.json()) as { data?: T };
-  if (!("data" in value)) throw new Error("Missing response data.");
-  return value.data as T;
-};
-
-export async function deleteLegacyBundleFromServer(
-  config: TestApiConfig,
-  bundleId: string,
-): Promise<void> {
-  const buildUrl = (path: string) => `${config.baseUrl}${path}`;
-  const headers = createAdminHeaders(config);
-
-  for (;;) {
-    const releasesUrl = new URL(buildUrl("/releases"));
-    releasesUrl.searchParams.set("bundleId", bundleId);
-    releasesUrl.searchParams.set("limit", "1000");
-    const releases = await readData<readonly ReleaseRow[]>(
-      await requireOk(
-        await fetchWithRetry(releasesUrl, { headers }),
-        "Failed to list Releases",
-      ),
-    );
-    if (releases.length === 0) break;
-
-    for (const release of releases) {
-      let revision = release.revision;
-      if (release.enabled) {
-        const result = await readData<ReleaseCatalogMutationResult>(
-          await requireOk(
-            await fetchWithRetry(
-              buildUrl(`/releases/${encodeURIComponent(release.id)}`),
-              {
-                body: JSON.stringify({
-                  expectedRevision: revision,
-                  patch: { enabled: false },
-                }),
-                headers: { ...headers, "Content-Type": "application/json" },
-                method: "PATCH",
-              },
-            ),
-            "Failed to disable Release",
-          ),
-        );
-        if (result.release === null) {
-          throw new Error(`Release "${release.id}" was not updated.`);
-        }
-        revision = result.release.revision;
-      }
-
-      const deleteUrl = new URL(
-        buildUrl(`/releases/${encodeURIComponent(release.id)}`),
-      );
-      deleteUrl.searchParams.set("confirm", release.id);
-      deleteUrl.searchParams.set("expectedRevision", String(revision));
-      await requireOk(
-        await fetchWithRetry(deleteUrl, { headers, method: "DELETE" }),
-        "Failed to delete Release",
-      );
-    }
-  }
-
-  await requireOk(
-    await fetchWithRetry(buildUrl(`/bundles/${encodeURIComponent(bundleId)}`), {
-      headers,
-      method: "DELETE",
-    }),
-    "Failed to delete Bundle",
-  );
-}
 
 async function fetchWithRetry(
   input: Parameters<typeof fetch>[0],
@@ -144,7 +69,7 @@ export function createBundleMethodsFromServer(config: TestApiConfig) {
       };
       return body.data.channels;
     },
-    insertBundle: async (bundle: LegacyBundle): Promise<void> => {
+    insertBundle: async (bundle: Bundle): Promise<void> => {
       await requireOk(
         await fetchWithRetry(buildUrl("/bundles"), {
           body: JSON.stringify(bundle),
@@ -215,8 +140,15 @@ export function createBundleMethodsFromServer(config: TestApiConfig) {
         "Failed to update Bundle",
       );
     },
-    deleteBundleById: (bundleId: string) =>
-      deleteLegacyBundleFromServer(config, bundleId),
+    deleteBundleById: async (bundleId: string): Promise<void> => {
+      await requireOk(
+        await fetchWithRetry(
+          buildUrl(`/bundles/${encodeURIComponent(bundleId)}`),
+          { headers, method: "DELETE" },
+        ),
+        "Failed to delete Bundle",
+      );
+    },
   };
 }
 

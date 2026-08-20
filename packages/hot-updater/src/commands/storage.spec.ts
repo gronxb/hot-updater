@@ -90,9 +90,9 @@ const liveBundle: Bundle = {
   fileHash: "archive-hash",
   gitCommitHash: null,
   id: LIVE_BUNDLE_ID,
-  manifestStorageUri: `s3://bucket/${LIVE_BUNDLE_ID}/manifest.json`,
+  manifestStorageUri: `s3://bucket/bundles/${LIVE_BUNDLE_ID}/manifest.json`,
   platform: "ios",
-  storageUri: `s3://bucket/${LIVE_BUNDLE_ID}/bundle.zip`,
+  storageUri: `s3://bucket/bundles/${LIVE_BUNDLE_ID}/bundle.zip`,
 };
 
 const object = (
@@ -191,9 +191,8 @@ describe("handleStoragePrune", () => {
         `assets/sha256/${YOUNG_ORPHAN_HASH.slice(0, 2)}/${YOUNG_ORPHAN_HASH}.png`,
         young,
       ),
-      object(`${LIVE_BUNDLE_ID}/bundle.zip`, old),
-      object(`${DEAD_BUNDLE_ID}/bundle.zip`, old, 40),
-      object(`${DEAD_BUNDLE_ID}/files/logo.png`, old, 20),
+      object(`bundles/${LIVE_BUNDLE_ID}/bundle.zip`, old),
+      object(`bundles/${DEAD_BUNDLE_ID}/bundle.zip`, old, 40),
       object(`bundles/${LIVE_BUNDLE_ID}/manifest.json`, old),
       object(`bundles/${DEAD_BUNDLE_ID}/manifest.json`, old, 50),
       object("production/ios/1.0.0/update.json", old),
@@ -214,12 +213,11 @@ describe("handleStoragePrune", () => {
     expect(mockStorageNode.deleteObjects).toHaveBeenCalledOnce();
     expect(mockStorageNode.deleteObjects).toHaveBeenCalledWith([
       `assets/sha256/${ORPHAN_HASH.slice(0, 2)}/${ORPHAN_HASH}.png`,
-      `${DEAD_BUNDLE_ID}/bundle.zip`,
-      `${DEAD_BUNDLE_ID}/files/logo.png`,
+      `bundles/${DEAD_BUNDLE_ID}/bundle.zip`,
       `bundles/${DEAD_BUNDLE_ID}/manifest.json`,
     ]);
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
-      "Pruned 4 objects (140 B).",
+      "Pruned 3 objects (120 B).",
     );
     expect(mockCli.p.log.warn).toHaveBeenCalledWith(
       expect.stringContaining("requires exclusive access"),
@@ -303,15 +301,14 @@ describe("handleStoragePrune", () => {
     expect(output).toContain(
       `assets/sha256/${ORPHAN_HASH.slice(0, 2)}/${ORPHAN_HASH}.png`,
     );
-    expect(output).toContain(`${DEAD_BUNDLE_ID}/bundle.zip`);
-    expect(output).toContain(`${DEAD_BUNDLE_ID}/files/logo.png`);
+    expect(output).toContain(`bundles/${DEAD_BUNDLE_ID}/bundle.zip`);
     expect(output).toContain(`bundles/${DEAD_BUNDLE_ID}/manifest.json`);
     expect(output).toContain("shared asset");
     expect(output).toContain("bundle data");
     expect(output).toContain("30 B");
     expect(output).toContain(old.toISOString());
     expect(output).not.toContain(YOUNG_ORPHAN_HASH);
-    expect(output).not.toContain(`${LIVE_BUNDLE_ID}/bundle.zip`);
+    expect(output).not.toContain(`bundles/${LIVE_BUNDLE_ID}/bundle.zip`);
     expect(mockCli.p.log.info).toHaveBeenCalledWith(
       expect.stringContaining("Dry run only"),
     );
@@ -380,8 +377,7 @@ describe("handleStoragePrune", () => {
     await handleStoragePrune({ yes: true });
 
     expect(mockStorageNode.deleteObjects).toHaveBeenCalledWith([
-      `${DEAD_BUNDLE_ID}/bundle.zip`,
-      `${DEAD_BUNDLE_ID}/files/logo.png`,
+      `bundles/${DEAD_BUNDLE_ID}/bundle.zip`,
       `bundles/${DEAD_BUNDLE_ID}/manifest.json`,
     ]);
   });
@@ -413,7 +409,7 @@ describe("handleStoragePrune", () => {
     expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
   });
 
-  it("protects metadata stored below a UUID-shaped channel", async () => {
+  it("does not traverse UUID-shaped root namespaces", async () => {
     const uuidChannelMetadata = `${DEAD_BUNDLE_ID}/ios/1.0.0/update.json`;
     mockStorageNode.listObjects.mockResolvedValue([
       object(uuidChannelMetadata, old),
@@ -423,11 +419,9 @@ describe("handleStoragePrune", () => {
 
     await handleStoragePrune({ yes: true });
 
-    expect(mockStorageNode.deleteObjects).toHaveBeenCalledWith([
-      `${DEAD_BUNDLE_ID}/bundle.zip`,
-    ]);
-    expect(mockStorageNode.deleteObjects).not.toHaveBeenCalledWith(
-      expect.arrayContaining([uuidChannelMetadata]),
+    expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
+    expect(mockCli.p.log.success).toHaveBeenCalledWith(
+      "No objects are eligible for pruning.",
     );
   });
 
@@ -594,38 +588,6 @@ describe("handleStoragePrune", () => {
         limit: 100,
       }),
     );
-  });
-
-  it("protects exact and legacy-prefix URIs referenced by live bundles", async () => {
-    const referencedLegacyId = DEAD_BUNDLE_ID;
-    mockDatabasePlugin.getBundles.mockResolvedValue({
-      data: [
-        {
-          ...liveBundle,
-          assetBaseStorageUri: `s3://bucket/${referencedLegacyId}/files`,
-          manifestStorageUri: `s3://bucket/${referencedLegacyId}/manifest.json`,
-          storageUri: `s3://bucket/${referencedLegacyId}/bundle.zip`,
-        },
-      ],
-      pagination: {
-        currentPage: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        total: 1,
-        totalPages: 1,
-      },
-    });
-    mockStorageNode.listObjects.mockResolvedValue([
-      object(`${referencedLegacyId}/bundle.zip`, old),
-      object(`${referencedLegacyId}/manifest.json`, old),
-      object(`${referencedLegacyId}/files/logo.png`, old),
-    ]);
-    const { handleStoragePrune } = await import("./storage");
-
-    await handleStoragePrune({ yes: true });
-
-    expect(mockStorageNode.get).not.toHaveBeenCalled();
-    expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
   });
 
   it("aborts before listing or deletion when a live manifest cannot be read", async () => {

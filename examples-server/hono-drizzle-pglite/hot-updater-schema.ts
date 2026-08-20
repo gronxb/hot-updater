@@ -183,7 +183,7 @@ export const bundle_events = pgTable("bundle_events", {
   from_release_id: uuid("from_release_id"),
   from_bundle_id: uuid("from_bundle_id"),
   to_release_id: uuid("to_release_id"),
-  to_bundle_id: uuid("to_bundle_id"),
+  to_bundle_id: uuid("to_bundle_id").notNull(),
   platform: text("platform").notNull(),
   app_version: text("app_version").notNull(),
   channel: text("channel").notNull(),

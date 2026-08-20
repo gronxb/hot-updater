@@ -28,6 +28,7 @@ const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
 
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
+  analytics: true,
   database: kyselyAdapter({
     db: kysely,
     provider: "postgresql",
@@ -47,11 +48,6 @@ export const hotUpdater = createHotUpdater({
         "development-storage-download-url-key",
     }),
   ],
-  clientBasePath: "/hot-updater",
-  features: {
-    updateCheck: true,
-    analytics: true,
-  },
 });
 
 // Cleanup function for graceful shutdown

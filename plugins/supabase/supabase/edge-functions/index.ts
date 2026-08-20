@@ -20,15 +20,12 @@ const functionBasePath = `/${functionName}`;
 const hotUpdaterBasePath = "/";
 
 const hotUpdater = createHotUpdater({
+  analytics: true,
   authorityId,
   database: supabaseDatabase({
     supabaseUrl,
     supabaseServiceRoleKey,
   }),
-  features: {
-    updateCheck: true,
-    analytics: true,
-  },
   storage: [
     supabaseStorage({
       supabaseUrl,
@@ -36,7 +33,6 @@ const hotUpdater = createHotUpdater({
       bucketName,
     }),
   ],
-  clientBasePath: hotUpdaterBasePath,
 });
 
 const app = new Hono().basePath(functionBasePath);

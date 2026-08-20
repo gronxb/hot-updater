@@ -27,15 +27,12 @@ if (!storageBucket) {
 }
 
 const hotUpdater = createHotUpdater({
+  analytics: true,
   authorityId: HotUpdater.AUTHORITY_ID,
   database: firebaseDatabase({
     ...adminOptions,
     authorityId: HotUpdater.AUTHORITY_ID,
   }),
-  features: {
-    updateCheck: true,
-    analytics: true,
-  },
   storage: [
     firebaseStorage({
       ...adminOptions,
@@ -43,7 +40,6 @@ const hotUpdater = createHotUpdater({
       cdnUrl,
     }),
   ],
-  clientBasePath: HOT_UPDATER_BASE_PATH,
 });
 
 const app = new Hono();

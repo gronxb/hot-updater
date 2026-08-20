@@ -1,6 +1,7 @@
+import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 
-import { createHandlers } from "./handler";
+import { createHandlers, createHotUpdaterHandlers } from "./handler";
 import { createApi } from "./handler.testFixtures";
 import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "./handlerVersionRoutes";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
@@ -47,6 +48,70 @@ describe("createHandlers client routes", () => {
     );
 
     expect(response.status).toBe(404);
+  });
+
+  it("serves client-relative storage paths under a framework mount", async () => {
+    const api = {
+      ...createApi(),
+      getArtifactInfo: vi.fn().mockResolvedValue({
+        changedAssets: {
+          "index.bundle": {
+            file: {
+              url: "/storage/asset-token/asset-signature",
+            },
+            fileHash: "asset-hash",
+            patch: {
+              algorithm: "bsdiff",
+              baseBundleId: "bundle-1",
+              baseFileHash: "base-hash",
+              patchFileHash: "patch-hash",
+              patchUrl: "/storage/patch-token/patch-signature",
+            },
+          },
+        },
+        fileHash: "archive-hash",
+        fileUrl: "/storage/archive-token/archive-signature",
+        manifestFileHash: "manifest-hash",
+        manifestUrl: "/storage/manifest-token/manifest-signature",
+      }),
+    };
+    const handlers = createHotUpdaterHandlers(
+      api,
+      {},
+      undefined,
+      undefined,
+      async () => new Response("bundle archive"),
+    );
+    const app = new Hono();
+    app.mount("/hot-updater", handlers.client);
+
+    const response = await app.request(
+      "/hot-updater/artifacts/bundle-2/from/bundle-1",
+    );
+
+    expect(response.status).toBe(200);
+    const info = (await response.json()) as {
+      changedAssets: Record<
+        string,
+        { file: { url: string }; patch: { patchUrl: string } }
+      >;
+      fileUrl: string;
+      manifestUrl: string;
+    };
+    expect(info).toMatchObject({
+      changedAssets: {
+        "index.bundle": {
+          file: { url: "/storage/asset-token/asset-signature" },
+          patch: { patchUrl: "/storage/patch-token/patch-signature" },
+        },
+      },
+      fileUrl: "/storage/archive-token/archive-signature",
+      manifestUrl: "/storage/manifest-token/manifest-signature",
+    });
+
+    const download = await app.request(`/hot-updater${info.fileUrl}`);
+    expect(download.status).toBe(200);
+    await expect(download.text()).resolves.toBe("bundle archive");
   });
 
   it("does not expose provider errors from the public client handler", async () => {

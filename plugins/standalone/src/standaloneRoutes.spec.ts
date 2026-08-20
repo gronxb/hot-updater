@@ -25,15 +25,9 @@ const SPECIAL_BUNDLE_IDS = [
 const createBundle = (id: string) => ({
   id,
   platform: "ios" as const,
-  shouldForceUpdate: false,
-  enabled: true,
   fileHash: "hash",
   gitCommitHash: null,
-  message: "message",
-  channel: "production",
   storageUri: "storage://bundle",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
 });
 
 afterEach(() => {

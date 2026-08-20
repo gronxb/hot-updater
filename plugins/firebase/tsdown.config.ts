@@ -21,7 +21,6 @@ export default defineConfig([
       neverBundle: ["firebase-functions", "firebase-admin"],
       alwaysBundle: [
         "@hot-updater/core",
-        "@hot-updater/js",
         "@hot-updater/plugin-core",
         "@hot-updater/server",
       ],

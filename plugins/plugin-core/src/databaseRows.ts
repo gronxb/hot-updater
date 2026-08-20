@@ -87,7 +87,7 @@ export class BundleRowHydrationError extends Error {
   }
 }
 
-export const bundleToRow = (bundle: Bundle, _channelId?: string): BundleRow => {
+export const bundleToRow = (bundle: Bundle): BundleRow => {
   const metadata = bundleMetadataToRow(bundle.metadata);
   return {
     id: bundle.id,
@@ -131,7 +131,6 @@ export const rowToBundle = (
     .slice()
     .sort(comparePatchRows)
     .map(patchRowToArtifact);
-  const primaryPatch = patches[0] ?? null;
   return {
     id: row.id,
     platform: row.platform,
@@ -143,10 +142,6 @@ export const rowToBundle = (
     manifestFileHash: row.manifest_file_hash,
     assetBaseStorageUri: row.asset_base_storage_uri,
     patches,
-    patchBaseBundleId: primaryPatch?.baseBundleId ?? null,
-    patchBaseFileHash: primaryPatch?.baseFileHash ?? null,
-    patchFileHash: primaryPatch?.patchFileHash ?? null,
-    patchStorageUri: primaryPatch?.patchStorageUri ?? null,
   };
 };
 

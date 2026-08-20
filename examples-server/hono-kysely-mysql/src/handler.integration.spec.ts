@@ -1,14 +1,11 @@
 import path from "path";
 import { fileURLToPath } from "url";
 
-import type { Bundle, LegacyBundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 import { createHotUpdater, type HotUpdaterAPI } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { createMigrator } from "@hot-updater/server/db";
-import {
-  deleteLegacyBundle,
-  setupBundleMethodsTestSuite,
-} from "@hot-updater/test-utils";
+import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
   assertDockerComposeAvailable,
   cleanupServer,
@@ -84,13 +81,12 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
   setupBundleMethodsTestSuite({
     getBundleById: (id: string) => hotUpdater.getBundleById(id),
-    getChannels: () => hotUpdater.getChannels(),
-    insertBundle: (bundle: LegacyBundle) => hotUpdater.insertBundle(bundle),
+    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
     getBundles: (options) => hotUpdater.getBundles(options),
     updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
       hotUpdater.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId: string) =>
-      deleteLegacyBundle(hotUpdater, bundleId),
+      hotUpdater.deleteBundleById(bundleId),
   });
 
   it("rejects in-place upgrade from a v0 MySQL schema", async () => {

@@ -1017,9 +1017,7 @@ const deployPlatform = async ({
 
             // /assets is a shared content-addressed root, not a per-bundle
             // directory. The server uses this suffix to derive asset object keys
-            // from manifest fileHash values. LEGACY: existing /files bundles
-            // still resolve through the server fallback until that layout is
-            // intentionally removed.
+            // from manifest fileHash values.
             taskRef.assetBaseStorageUri = createStorageRootUriWithPath(
               storageUri,
               bundleId,
@@ -1094,22 +1092,24 @@ const deployPlatform = async ({
             await persistDeployment({
               authorityId: config.authorityId ?? "default",
               bundle: {
-                shouldForceUpdate: options.forceUpdate,
                 platform,
                 fileHash,
                 gitCommitHash,
-                message: options?.message ?? gitMessage,
                 id: bundleId,
-                enabled: !options.disabled,
-                channel,
-                targetAppVersion: target.appVersion,
-                fingerprintHash: target.fingerprintHash,
                 storageUri: taskRef.storageUri,
                 metadata: appVersion ? { app_version: appVersion } : {},
                 assetBaseStorageUri: taskRef.assetBaseStorageUri,
                 manifestFileHash,
                 manifestStorageUri: taskRef.manifestStorageUri,
+              },
+              release: {
+                channel,
+                enabled: !options.disabled,
+                fingerprintHash: target.fingerprintHash,
+                message: options?.message ?? gitMessage,
                 rolloutCohortCount,
+                shouldForceUpdate: options.forceUpdate,
+                targetAppVersion: target.appVersion,
               },
             });
           } catch (e) {

@@ -1,8 +1,4 @@
-import type {
-  AppUpdateAvailableInfo,
-  AppUpdateInfo,
-  ReleaseCatalog,
-} from "@hot-updater/core";
+import type { ArtifactInfo, ReleaseCatalog } from "@hot-updater/core";
 
 export type HotUpdaterBaseURL = string | (() => string | Promise<string>);
 
@@ -22,61 +18,6 @@ export interface ArtifactRequest {
   readonly currentBundleId: string;
   readonly requestHeaders?: Record<string, string>;
   readonly requestTimeout?: number;
-}
-
-/**
- * Parameters passed to resolver.checkUpdate method
- */
-export interface ResolverCheckUpdateParams {
-  /**
-   * The platform the app is running on
-   */
-  platform: "ios" | "android";
-
-  /**
-   * The current app version
-   */
-  appVersion: string;
-
-  /**
-   * The current bundle ID
-   */
-  bundleId: string;
-
-  /**
-   * Minimum bundle ID from build time
-   */
-  minBundleId: string;
-
-  /**
-   * The channel name (e.g., "production", "staging")
-   */
-  channel: string;
-
-  /**
-   * Cohort identifier used for server-side rollout decisions.
-   */
-  cohort: string;
-
-  /**
-   * Update strategy being used
-   */
-  updateStrategy: "fingerprint" | "appVersion";
-
-  /**
-   * The fingerprint hash (only present when using fingerprint strategy)
-   */
-  fingerprintHash: string | null;
-
-  /**
-   * Request headers from global config (for optional use)
-   */
-  requestHeaders?: Record<string, string>;
-
-  /**
-   * Request timeout from global config (for optional use)
-   */
-  requestTimeout?: number;
 }
 
 /** Parameters shared by all resolver.notifyAppReady event variants. */
@@ -222,39 +163,17 @@ export interface HotUpdaterResolver {
    * Fetches shared Release policy without installation-state inputs.
    * Implement this together with `resolveArtifact` to use Release Catalogs.
    */
-  fetchReleaseCatalog?: (
+  fetchReleaseCatalog: (
     params: ReleaseCatalogRequest,
   ) => Promise<ReleaseCatalog>;
 
-  /** Resolves Bundle-keyed artifacts after local Release selection. */
-  resolveArtifact?: (
-    params: ArtifactRequest,
-  ) => Promise<AppUpdateAvailableInfo>;
-
   /**
-   * Legacy custom implementation for checking updates.
-   * When provided, this completely replaces the default fetchUpdateInfo flow.
+   * Resolves Bundle-keyed artifacts after local Release selection.
    *
-   * @param params - All parameters needed to check for updates
-   * @returns Update information or null if up to date
-   *
-   * @example
-   * ```typescript
-   * checkUpdate: async (params) => {
-   *   const response = await fetch(`https://api.custom.com/check`, {
-   *     method: 'POST',
-   *     body: JSON.stringify(params),
-   *     headers: params.requestHeaders,
-   *   });
-   *
-   *   if (!response.ok) return null;
-   *   return response.json();
-   * }
-   * ```
+   * Custom resolvers must return absolute HTTP(S) URLs for every artifact URL,
+   * including `fileUrl`, `manifestUrl`, changed-asset file URLs, and patch URLs.
    */
-  checkUpdate?: (
-    params: ResolverCheckUpdateParams,
-  ) => Promise<AppUpdateInfo | null>;
+  resolveArtifact: (params: ArtifactRequest) => Promise<ArtifactInfo>;
 
   /**
    * Custom implementation for notifying app ready.

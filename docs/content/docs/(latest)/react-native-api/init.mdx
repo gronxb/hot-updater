@@ -73,11 +73,16 @@ if (updateInfo.shouldForceUpdate) {
 
 \*Either `baseURL` or `resolver` must be provided (mutually exclusive).
 
-Release Catalog custom resolvers implement `fetchReleaseCatalog` and
-`resolveArtifact`. Declare `catalogCachePartition` only when the catalog
+Release Catalog custom resolvers must implement both `fetchReleaseCatalog` and
+`resolveArtifact`; the legacy direct-update `checkUpdate` hook is not accepted.
+Declare `catalogCachePartition` only when the catalog
 transport uses a stable shared-cache partition; otherwise keep catalog
 responses private/no-store. The default resolver partitions shared catalog
-responses by `x-api-key`.
+responses by `x-api-key`. A custom resolver must return absolute HTTP(S) URLs
+for archive, manifest, changed-asset file, and patch artifacts; only the default
+resolver expands server-relative storage paths against `baseURL`.
+`resolveArtifact` returns artifact data only; the selected Release determines
+status, force-update behavior, and message fields.
 
 `HotUpdater.checkForUpdate({ onError })` overrides the `onError` handler from
 `HotUpdater.init` for that specific update check.

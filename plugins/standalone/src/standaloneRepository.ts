@@ -6,8 +6,8 @@ import type {
 } from "@hot-updater/plugin-core";
 import type { DatabaseWhere } from "@hot-updater/plugin-core/internal";
 
+import { createStandaloneBundleReader } from "./standaloneBundleReader";
 import { createStandaloneBundleRemote } from "./standaloneBundleRemote";
-import { createLegacyCompatibilityImplementation } from "./standaloneLegacyImplementation";
 import { createStandaloneReleaseRemote } from "./standaloneReleaseRemote";
 import type { StandaloneRepositoryConfig } from "./standaloneRoutes";
 
@@ -58,20 +58,20 @@ export const standaloneRepository = (
 ): BundleRepository => {
   const remote = createStandaloneBundleRemote(config);
   const releaseRemote = createStandaloneReleaseRemote(config);
-  const database = createLegacyCompatibilityImplementation(remote);
+  const bundleReader = createStandaloneBundleReader(remote);
 
   const repository: BundleRepository = {
     name: "standalone-repository",
     models: {
       bundles: {
         async findById(id): Promise<BundleRow | null> {
-          return (await database.findOne({
+          return (await bundleReader.findOne({
             model: "bundles",
             where: [{ field: "id", value: id }],
           })) as BundleRow | null;
         },
         async findMany(query): Promise<readonly BundleRow[]> {
-          return (await database.findMany({
+          return (await bundleReader.findMany({
             model: "bundles",
             where: toBundleWhere(query.where),
             limit: query.limit,
@@ -80,12 +80,15 @@ export const standaloneRepository = (
           })) as readonly BundleRow[];
         },
         count: (where) =>
-          database.count({ model: "bundles", where: toBundleWhere(where) }),
+          bundleReader.count({
+            model: "bundles",
+            where: toBundleWhere(where),
+          }),
       },
       bundlePatches: {
         async findByBundleIds(bundleIds): Promise<readonly BundlePatchRow[]> {
           if (bundleIds.length === 0) return [];
-          return (await database.findMany({
+          return (await bundleReader.findMany({
             model: "bundle_patches",
             where: [{ field: "bundle_id", operator: "in", value: bundleIds }],
             orderBy: [{ field: "id", direction: "asc" }],

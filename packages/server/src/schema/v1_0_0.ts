@@ -366,7 +366,7 @@ export const bundleEventsV100 = table(
     from_release_id: uuid("from_release_id").nullable(),
     from_bundle_id: uuid("from_bundle_id").nullable(),
     to_release_id: uuid("to_release_id").nullable(),
-    to_bundle_id: uuid("to_bundle_id").nullable(),
+    to_bundle_id: uuid("to_bundle_id"),
     platform: stringColumn("platform"),
     app_version: stringColumn("app_version"),
     channel: stringColumn("channel"),
@@ -426,7 +426,7 @@ export const bundleEventsV100 = table(
       check({
         name: "bundle_events_shape_check",
         expression:
-          "((type in ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')) and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and update_strategy is null)",
+          "((type in ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')) and from_bundle_id is not null and update_strategy is not null and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and from_bundle_id is null and update_strategy is null)",
         sqliteInline: true,
       }),
       check({

@@ -46,5 +46,5 @@ storage plugin for each scheme.
 Update every built-in storage provider, CLI and Console consumer, managed
 runtime, package entrypoint, and custom-hosting guide to the new contract.
 Remove the storage-only JWT URL helpers and obsolete runtime-specific storage
-creators. Route-group flags now live beside Analytics and client access keys in
-the single `createHotUpdater({ features })` object.
+creators. Route-group flags are removed; optional Analytics and client access
+keys use top-level `createHotUpdater` options.

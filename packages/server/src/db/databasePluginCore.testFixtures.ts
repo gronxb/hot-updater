@@ -1,50 +1,41 @@
-import type { GetBundlesArgs, LegacyBundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 import {
   createDatabaseClient,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 
-export const currentBundle: LegacyBundle = {
+export const currentBundle: Bundle = {
   id: "00000000-0000-0000-0000-000000000001",
-  channel: "production",
-  enabled: true,
   fileHash: "current-archive-hash",
-  fingerprintHash: null,
   gitCommitHash: null,
-  message: "current",
   platform: "ios",
-  shouldForceUpdate: false,
-  storageUri: "r2://bucket/current/archive.zip",
-  targetAppVersion: "1.0.0",
-  manifestStorageUri: "r2://bucket/current/manifest.json",
+  storageUri:
+    "r2://bucket/bundles/00000000-0000-0000-0000-000000000001/archive.zip",
+  manifestStorageUri:
+    "r2://bucket/bundles/00000000-0000-0000-0000-000000000001/manifest.json",
   manifestFileHash: "sig:current-manifest",
-  assetBaseStorageUri: "r2://bucket/current/files",
+  assetBaseStorageUri: "r2://bucket/assets",
 };
 
-export const targetBundle: LegacyBundle = {
+export const targetBundle: Bundle = {
   ...currentBundle,
   id: "00000000-0000-0000-0000-000000000002",
   fileHash: "target-archive-hash",
-  message: "target",
-  storageUri: "r2://bucket/target/archive.zip",
-  manifestStorageUri: "r2://bucket/target/manifest.json",
+  storageUri:
+    "r2://bucket/bundles/00000000-0000-0000-0000-000000000002/archive.zip",
+  manifestStorageUri:
+    "r2://bucket/bundles/00000000-0000-0000-0000-000000000002/manifest.json",
   manifestFileHash: "sig:target-manifest",
-  assetBaseStorageUri: "r2://bucket/target/files",
+  assetBaseStorageUri: "r2://bucket/assets",
   patches: [
     {
       baseBundleId: currentBundle.id,
       baseFileHash: "current-bundle-hash",
       patchFileHash: "patch-hash",
-      patchStorageUri: "r2://bucket/target/patch.bsdiff",
+      patchStorageUri:
+        "r2://bucket/bundles/00000000-0000-0000-0000-000000000002/patches/00000000-0000-0000-0000-000000000001/index.ios.bundle.bsdiff",
     },
   ],
-};
-
-export const updateArgs: GetBundlesArgs = {
-  _updateStrategy: "appVersion",
-  appVersion: "1.0.0",
-  bundleId: currentBundle.id,
-  platform: "ios",
 };
 
 export const resolveFileUrl = async (storageUri: string | null) => {

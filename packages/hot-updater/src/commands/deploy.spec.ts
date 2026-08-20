@@ -214,7 +214,7 @@ vi.mock("./console", () => ({
 
 import fs from "fs";
 
-import type { DatabasePlugin, LegacyBundle } from "@hot-updater/plugin-core";
+import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createStorageUri,
   DatabaseAtomicCommitUnsupportedError,
@@ -237,34 +237,43 @@ import {
   normalizePatchMaxBaseBundles,
   normalizeRolloutPercentage,
 } from "./deploy";
+import type { DeployReleasePolicy } from "./deployTransaction";
 
-type BundleFixture = Pick<LegacyBundle, "id"> & Partial<LegacyBundle>;
+interface DeploymentFixture {
+  readonly bundle: Pick<Bundle, "id"> & Partial<Bundle>;
+  readonly release?: Partial<DeployReleasePolicy>;
+}
 
 const fixtureBundleId = (sequence: number): string =>
   `01900000-0000-7000-8000-${String(sequence).padStart(12, "0")}`;
 const DEPLOY_BUNDLE_ID = fixtureBundleId(123);
 
-const mockGetBundlesWithFixtures = (fixtures: BundleFixture[]) => {
+const mockGetBundlesWithFixtures = (fixtures: DeploymentFixture[]) => {
   mockBuildPlugin.build.mockResolvedValue({
     buildPath: "/mock/build",
     bundleId: DEPLOY_BUNDLE_ID,
     stdout: null,
   });
   mockServer.createBundleDiff.mockResolvedValue({ id: DEPLOY_BUNDLE_ID });
-  return databaseHarness.seedLegacyBundles(
+  return databaseHarness.seedDeployments(
     fixtures.map((fixture) => ({
-      channel: "production",
-      enabled: true,
-      fileHash: "fixture-hash",
-      fingerprintHash: null,
-      gitCommitHash: null,
-      message: null,
-      platform: "ios",
-      rolloutCohortCount: 1000,
-      shouldForceUpdate: false,
-      storageUri: `storage://${fixture.id}`,
-      targetAppVersion: null,
-      ...fixture,
+      bundle: {
+        fileHash: "fixture-hash",
+        gitCommitHash: null,
+        platform: "ios",
+        storageUri: `storage://${fixture.bundle.id}`,
+        ...fixture.bundle,
+      },
+      release: {
+        channel: "production",
+        enabled: true,
+        fingerprintHash: null,
+        message: null,
+        rolloutCohortCount: 1000,
+        shouldForceUpdate: false,
+        targetAppVersion: null,
+        ...fixture.release,
+      },
     })),
   );
 };
@@ -1032,7 +1041,9 @@ describe("deploy rollout wiring", () => {
         throw new Error("asset upload failed");
       }
 
-      return { storageUri: "s3://bundles/bundle-123/bundle.tar.br" };
+      return {
+        storageUri: "s3://bundles/bundles/bundle-123/bundle.tar.br",
+      };
     });
     vi.mocked(getBundleZipTargets).mockResolvedValue([
       {
@@ -1194,8 +1205,14 @@ describe("deploy rollout wiring", () => {
       updateStrategy: "appVersion",
     });
     await mockGetBundlesWithFixtures([
-      { id: fixtureBundleId(122), targetAppVersion: "1.0.x" },
-      { id: fixtureBundleId(121), targetAppVersion: "1.0.x" },
+      {
+        bundle: { id: fixtureBundleId(122) },
+        release: { targetAppVersion: "1.0.x" },
+      },
+      {
+        bundle: { id: fixtureBundleId(121) },
+        release: { targetAppVersion: "1.0.x" },
+      },
     ]);
 
     await deploy({
@@ -1252,8 +1269,8 @@ describe("deploy rollout wiring", () => {
     });
     await mockGetBundlesWithFixtures([
       {
-        id: fixtureBundleId(122),
-        targetAppVersion: "1.1.0",
+        bundle: { id: fixtureBundleId(122) },
+        release: { targetAppVersion: "1.1.0" },
       },
     ]);
 
@@ -1296,8 +1313,8 @@ describe("deploy rollout wiring", () => {
     });
     await mockGetBundlesWithFixtures([
       {
-        id: fixtureBundleId(122),
-        targetAppVersion: "1.x",
+        bundle: { id: fixtureBundleId(122) },
+        release: { targetAppVersion: "1.x" },
       },
     ]);
 
@@ -1328,12 +1345,12 @@ describe("deploy rollout wiring", () => {
     });
     await mockGetBundlesWithFixtures([
       ...Array.from({ length: 10 }, (_, index) => ({
-        id: fixtureBundleId(122 - index),
-        targetAppVersion: "1.0.0",
+        bundle: { id: fixtureBundleId(122 - index) },
+        release: { targetAppVersion: "1.0.0" },
       })),
       {
-        id: fixtureBundleId(112),
-        targetAppVersion: "1.1.0",
+        bundle: { id: fixtureBundleId(112) },
+        release: { targetAppVersion: "1.1.0" },
       },
     ]);
 
@@ -1375,7 +1392,10 @@ describe("deploy rollout wiring", () => {
       updateStrategy: "appVersion",
     });
     await mockGetBundlesWithFixtures([
-      { id: fixtureBundleId(122), targetAppVersion: "1.0.x" },
+      {
+        bundle: { id: fixtureBundleId(122) },
+        release: { targetAppVersion: "1.0.x" },
+      },
     ]);
     mockServer.createBundleDiff.mockRejectedValueOnce(
       new Error("storage unavailable"),

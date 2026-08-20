@@ -37,7 +37,6 @@ vi.mock("@hot-updater/server", async () => {
   return {
     ...actual,
     createHotUpdater: serverMocks.createHotUpdater.mockReturnValue({
-      clientBasePath: "/",
       handlers: {
         admin: vi.fn(),
         client: fakeHotUpdaterHandler,
@@ -143,12 +142,9 @@ describe("aws lambda entrypoint", () => {
     });
     expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
       expect.objectContaining({
+        analytics: true,
         authorityId: "aws.test-authority",
-        features: {
-          updateCheck: true,
-          analytics: true,
-          clientAccessKeys: true,
-        },
+        clientAccessKeys: true,
       }),
     );
   });

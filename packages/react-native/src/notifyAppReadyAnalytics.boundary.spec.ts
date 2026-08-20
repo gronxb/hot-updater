@@ -78,7 +78,8 @@ vi.mock("./specs/NativeHotUpdater", () => ({
 }));
 
 const createResolver = () => ({
-  checkUpdate: vi.fn(),
+  fetchReleaseCatalog: vi.fn(),
+  resolveArtifact: vi.fn(),
   notifyAppReady: vi.fn().mockResolvedValue(undefined),
 });
 
@@ -118,7 +119,10 @@ describe("automatic notifyAppReady analytics boundaries", () => {
       analytics: true,
       onError,
       onNotifyAppReady,
-      resolver: { checkUpdate: vi.fn() },
+      resolver: {
+        fetchReleaseCatalog: vi.fn(),
+        resolveArtifact: vi.fn(),
+      },
     });
     await vi.runOnlyPendingTimersAsync();
 

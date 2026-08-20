@@ -221,12 +221,8 @@ function buildNextPatchState({
   const orderedPatches = makePrimary
     ? [nextPatch, ...existingPatches]
     : [...existingPatches, nextPatch];
-  const primaryPatch = orderedPatches[0] ?? nextPatch;
 
-  return {
-    patches: orderedPatches,
-    primaryPatch,
-  };
+  return orderedPatches;
 }
 
 export async function createBundleDiff(
@@ -330,7 +326,7 @@ export async function createBundleDiff(
     patchFileHash,
     patchStorageUri: patchUpload.storageUri,
   };
-  const nextState = buildNextPatchState({
+  const patches = buildNextPatchState({
     currentBundle: targetBundle,
     nextPatch,
     makePrimary: options.makePrimary ?? true,
@@ -338,11 +334,7 @@ export async function createBundleDiff(
 
   const updatedBundle: Bundle = {
     ...targetBundle,
-    patches: nextState.patches,
-    patchBaseBundleId: nextState.primaryPatch.baseBundleId,
-    patchBaseFileHash: nextState.primaryPatch.baseFileHash,
-    patchFileHash: nextState.primaryPatch.patchFileHash,
-    patchStorageUri: nextState.primaryPatch.patchStorageUri,
+    patches,
   };
   await database.updateBundleById(targetBundle.id, updatedBundle);
 

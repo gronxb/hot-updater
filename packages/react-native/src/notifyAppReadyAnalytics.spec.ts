@@ -94,7 +94,8 @@ describe("automatic notifyAppReady analytics", () => {
     );
 
     const resolver = {
-      checkUpdate: vi.fn(),
+      fetchReleaseCatalog: vi.fn(),
+      resolveArtifact: vi.fn(),
       notifyAppReady: vi.fn().mockResolvedValue(undefined),
     };
     const onNotifyAppReady = vi.fn();
@@ -152,7 +153,8 @@ describe("automatic notifyAppReady analytics", () => {
       ),
     );
     const resolver = {
-      checkUpdate: vi.fn(),
+      fetchReleaseCatalog: vi.fn(),
+      resolveArtifact: vi.fn(),
       notifyAppReady: vi.fn().mockResolvedValue(undefined),
     };
     const onNotifyAppReady = vi.fn();
@@ -187,7 +189,8 @@ describe("automatic notifyAppReady analytics", () => {
   it("sends one UNCHANGED event for repeated init calls", async () => {
     stubNotifyFrame();
     const resolver = {
-      checkUpdate: vi.fn(),
+      fetchReleaseCatalog: vi.fn(),
+      resolveArtifact: vi.fn(),
       notifyAppReady: vi.fn().mockResolvedValue(undefined),
     };
     const onNotifyAppReady = vi.fn();
@@ -226,7 +229,8 @@ describe("automatic notifyAppReady analytics", () => {
   it("skips automatic analytics when disabled while preserving readiness", async () => {
     stubNotifyFrame();
     const resolver = {
-      checkUpdate: vi.fn(),
+      fetchReleaseCatalog: vi.fn(),
+      resolveArtifact: vi.fn(),
       notifyAppReady: vi.fn().mockResolvedValue(undefined),
     };
     const onNotifyAppReady = vi.fn();

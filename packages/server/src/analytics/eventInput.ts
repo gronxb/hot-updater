@@ -124,14 +124,8 @@ function requireEvent(payload: unknown): CreateBundleEventRequest {
       payload.sdkVersion === undefined
         ? null
         : requireNullableStringField(payload, "sdkVersion"),
-    fromReleaseId:
-      payload.fromReleaseId === undefined
-        ? null
-        : requireNullableStringField(payload, "fromReleaseId"),
-    toReleaseId:
-      payload.toReleaseId === undefined
-        ? null
-        : requireNullableStringField(payload, "toReleaseId"),
+    fromReleaseId: requireNullableStringField(payload, "fromReleaseId"),
+    toReleaseId: requireNullableStringField(payload, "toReleaseId"),
   };
   const type = requireStringField(payload, "type");
   switch (type) {

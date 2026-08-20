@@ -57,11 +57,10 @@ const platform = (value: unknown, source: string): "android" | "ios" => {
 };
 
 const metadata = (value: unknown, source: string) => {
-  const normalized = value === undefined ? {} : value;
-  if (!isDatabaseMetadataObject(normalized)) {
+  if (!isDatabaseMetadataObject(value)) {
     throw new MongoAdapterDataError(source);
   }
-  return normalized;
+  return value;
 };
 
 export const parseMongoBundleRow = (

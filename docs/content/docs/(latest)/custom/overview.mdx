@@ -115,10 +115,6 @@ export const hotUpdater = createHotUpdater({
       /* My Custom Storage */
     }),
   ],
-  clientBasePath: "/hot-updater",
-  features: {
-    updateCheck: true,
-  },
 });
 ```
 
@@ -130,21 +126,21 @@ plugin owns reads, URL generation, and exact deletion even for `http` or
 `https`. Only when no plugin owns an HTTP(S) URI does Hot Updater use the direct
 URL; an unowned non-HTTP scheme is unsupported.
 
-## Features
+## Optional runtime policy
 
-`createHotUpdater` exposes runtime route groups and optional behavior through
-one `features` object:
+`createHotUpdater` exposes two independent top-level opt-in policies. Both
+default to `false`:
 
-- `updateCheck`: update-check endpoints used by React Native clients
 - `analytics`: client event ingestion and admin query routes backed by
   `database.models.analytics`
 - `clientAccessKeys`: authentication for update checks and Analytics ingestion
   backed by `database.models.clientAccessKeys`
 
-`updateCheck` is enabled by default, and `/version` is always available on
-`handlers.client`. Bundle, Release, Release Catalog, Channel, database-commit,
-and Analytics-query routes live exclusively on `handlers.admin`. Expose that
-handler only through an authenticated framework mount.
+Release Catalog, artifact, storage-download, and `/version` routes are always
+available on `handlers.client`. Bundle, Release, Release Catalog row, Channel,
+database-commit, and Analytics-query routes live exclusively on
+`handlers.admin`. Expose that handler only through an authenticated framework
+mount.
 
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
@@ -154,19 +150,15 @@ export const hotUpdater = createHotUpdater({
       /* storage config */
     }),
   ],
-  clientBasePath: "/hot-updater",
-  features: {
-    updateCheck: true,
-    analytics: true,
-    clientAccessKeys: true,
-  },
+  analytics: true,
+  clientAccessKeys: true,
 });
 ```
 
 `analytics: true` enables ingestion on `handlers.client` and queries on
 `handlers.admin`. The server does not authenticate admin queries itself; the
 framework middleware protecting the admin mount owns that decision. `false`
-or an omitted feature disables Analytics routes.
+or an omitted `analytics` option disables Analytics routes.
 
 <Callout type="warn">
 **Recommendation: Match Your CLI Configuration**

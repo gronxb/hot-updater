@@ -50,7 +50,6 @@ describe("database client", () => {
 
     await expect(client.getBundleById(target.id)).resolves.toMatchObject({
       patches: target.patches,
-      patchBaseBundleId: firstBase.id,
     });
   });
 

@@ -10,10 +10,6 @@ import { fileURLToPath } from "url";
 import {
   getBundlePatch,
   getBundlePatches,
-  getPatchBaseBundleId,
-  getPatchBaseFileHash,
-  getPatchFileHash,
-  getPatchStorageUri,
 } from "../../../packages/core/src/bundleArtifacts.ts";
 import {
   createReleaseCatalogScopeKey,
@@ -1549,13 +1545,6 @@ async function patchProviderRelease(
   return result;
 }
 
-function readLegacyPatchAssetPath(bundle: Bundle | null | undefined) {
-  const patchAssetPath = bundle?.metadata?.hbc_patch_asset_path;
-  return typeof patchAssetPath === "string" && patchAssetPath.length > 0
-    ? patchAssetPath
-    : null;
-}
-
 function inferPatchAssetPathFromStorageUri({
   baseBundleId,
   patchStorageUri,
@@ -1599,17 +1588,11 @@ function resolvePatchAssetPath(
   baseBundleId: string,
 ) {
   const patchStorageUri = bundle
-    ? (getBundlePatch(bundle, baseBundleId)?.patchStorageUri ??
-      getPatchStorageUri(bundle))
+    ? getBundlePatch(bundle, baseBundleId)?.patchStorageUri
     : null;
-  if (!patchStorageUri) {
-    return readLegacyPatchAssetPath(bundle);
-  }
-
-  return (
-    readLegacyPatchAssetPath(bundle) ??
-    inferPatchAssetPathFromStorageUri({ baseBundleId, patchStorageUri })
-  );
+  return patchStorageUri
+    ? inferPatchAssetPathFromStorageUri({ baseBundleId, patchStorageUri })
+    : null;
 }
 
 function getBundlePatchBaseBundleIds(bundle: Bundle | null | undefined) {
@@ -1634,14 +1617,10 @@ async function resolveAutoPatchBundleDiff(
     const bundle = await fetchProviderBundleById(bundleId);
     const patchAssetPath = resolvePatchAssetPath(bundle, baseBundleId);
     const matchingPatch = getBundlePatch(bundle, baseBundleId);
-    const patchBaseBundleId =
-      matchingPatch?.baseBundleId ?? getPatchBaseBundleId(bundle);
-    const patchBaseFileHash =
-      matchingPatch?.baseFileHash ?? getPatchBaseFileHash(bundle);
-    const patchFileHash =
-      matchingPatch?.patchFileHash ?? getPatchFileHash(bundle);
-    const patchStorageUri =
-      matchingPatch?.patchStorageUri ?? getPatchStorageUri(bundle);
+    const patchBaseBundleId = matchingPatch?.baseBundleId ?? null;
+    const patchBaseFileHash = matchingPatch?.baseFileHash ?? null;
+    const patchFileHash = matchingPatch?.patchFileHash ?? null;
+    const patchStorageUri = matchingPatch?.patchStorageUri ?? null;
 
     observed = {
       bundleId: bundle.id,

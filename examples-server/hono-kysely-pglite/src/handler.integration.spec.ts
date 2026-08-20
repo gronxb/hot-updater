@@ -74,7 +74,6 @@ describe("Hot Updater Handler Integration Tests (Hono)", () => {
 
   setupBundleMethodsTestSuite({
     getBundleById: (id) => bundleMethods.getBundleById(id),
-    getChannels: () => bundleMethods.getChannels(),
     insertBundle: (bundle) => bundleMethods.insertBundle(bundle),
     getBundles: (options) => bundleMethods.getBundles(options),
     updateBundleById: (bundleId, newBundle) =>

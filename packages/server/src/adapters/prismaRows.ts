@@ -89,12 +89,6 @@ const readNullableString = (
   return value;
 };
 
-const readOptionalNullableString = (
-  row: Record<string, unknown>,
-  field: string,
-): string | null =>
-  row[field] === undefined ? null : readNullableString(row, field);
-
 export const parsePrismaBundleRow = (value: unknown): BundleRow => {
   if (!isRecord(value)) throw new PrismaAdapterError("invalid bundle row");
   const platform = value["platform"];
@@ -163,9 +157,10 @@ export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
       ((type === "UPDATE_APPLIED" ||
         type === "RECOVERED" ||
         type === "RELEASE_ADOPTED") &&
+        typeof fromBundleId === "string" &&
         (updateStrategy === "fingerprint" ||
           updateStrategy === "appVersion")) ||
-      (type === "UNCHANGED" && updateStrategy === null)
+      (type === "UNCHANGED" && fromBundleId === null && updateStrategy === null)
     )
   ) {
     throw new PrismaAdapterError("invalid event shape");
@@ -176,10 +171,10 @@ export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
     install_id: readString(value, "install_id"),
     user_id: readNullableString(value, "user_id"),
     username: readNullableString(value, "username"),
-    from_release_id: readOptionalNullableString(value, "from_release_id"),
+    from_release_id: readNullableString(value, "from_release_id"),
     from_bundle_id: fromBundleId,
-    to_release_id: readOptionalNullableString(value, "to_release_id"),
-    to_bundle_id: readNullableString(value, "to_bundle_id"),
+    to_release_id: readNullableString(value, "to_release_id"),
+    to_bundle_id: readString(value, "to_bundle_id"),
     platform,
     app_version: readString(value, "app_version"),
     channel: readString(value, "channel"),

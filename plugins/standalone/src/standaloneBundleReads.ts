@@ -7,20 +7,20 @@ import type {
   DatabaseWhere,
 } from "@hot-updater/plugin-core/internal";
 
+import type { StandaloneBundleReader } from "./standaloneBundleReader";
 import type { StandaloneBundleRemote } from "./standaloneBundleRemote";
+import { loadRows } from "./standaloneBundleRows";
 import {
   matchesStandaloneWhere,
   queryStandaloneRows,
 } from "./standaloneDatabaseQuery";
-import { loadRows } from "./standaloneLegacyData";
-import type { StandaloneLegacyImplementation } from "./standaloneLegacyImplementation";
 
-type LegacyReads = Pick<
-  StandaloneLegacyImplementation,
+type BundleReads = Pick<
+  StandaloneBundleReader,
   "count" | "findOne" | "findMany"
 >;
 
-type LegacyQuery<TModel extends DatabaseModel> = {
+type BundleQuery<TModel extends DatabaseModel> = {
   readonly distinctOn?: DatabaseDistinctOn<TModel>;
   readonly limit: number;
   readonly offset: number;
@@ -35,9 +35,9 @@ const compare = (left: unknown, right: unknown): number => {
   return String(left).localeCompare(String(right));
 };
 
-const queryLegacyRows = <TModel extends DatabaseModel>(
+const queryBundleRows = <TModel extends DatabaseModel>(
   rows: readonly DatabaseRow<TModel>[],
-  input: LegacyQuery<TModel>,
+  input: BundleQuery<TModel>,
 ): DatabaseRow<TModel>[] => {
   const filtered = queryStandaloneRows(rows, { where: input.where });
   const orderBy = input.orderBy;
@@ -100,9 +100,9 @@ const countDistinctRows = <TModel extends DatabaseModel>(
         ),
       ).size;
 
-export const createLegacyReads = (
+export const createBundleReads = (
   remote: StandaloneBundleRemote,
-): LegacyReads => ({
+): BundleReads => ({
   async count(input) {
     switch (input.model) {
       case "bundles": {
@@ -181,7 +181,7 @@ export const createLegacyReads = (
           });
           if (remoteWindow) return remoteWindow.rows;
         }
-        return queryLegacyRows(await loadRows(remote, "bundles"), {
+        return queryBundleRows(await loadRows(remote, "bundles"), {
           distinctOn: input.distinctOn,
           where,
           limit: input.limit,
@@ -190,7 +190,7 @@ export const createLegacyReads = (
         });
       }
       case "bundle_patches":
-        return queryLegacyRows(await loadRows(remote, "bundle_patches"), {
+        return queryBundleRows(await loadRows(remote, "bundle_patches"), {
           distinctOn: input.distinctOn,
           where: input.where as
             | readonly DatabaseWhere<"bundle_patches">[]

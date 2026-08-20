@@ -4,8 +4,7 @@ import {
   createReleaseSelectionContextHash,
   encodeChannelKey,
   selectDesiredRelease,
-  type AppUpdateAvailableInfo,
-  type AppUpdateInfo,
+  type ArtifactInfo,
   type PersistedSelectionReceipt,
   type ReleaseCatalog,
 } from "@hot-updater/core";
@@ -24,18 +23,15 @@ import {
   getDefaultChannel,
   getFingerprintHash,
   getInstallId,
-  getMinBundleId,
+  getMinimumReleaseId,
   getCrashHistory,
   getPersistedUserIdentity,
   isReleaseSelectionCurrent,
   isChannelSwitched,
-  resetChannel,
   updateBundle,
 } from "./native";
 import { hotUpdaterStore } from "./store";
 import type { HotUpdaterResolver } from "./types";
-
-const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 export interface CheckForUpdateOptions {
   /**
@@ -61,7 +57,13 @@ export interface CheckForUpdateOptions {
   requestTimeout?: number;
 }
 
-export type CheckForUpdateResult = AppUpdateAvailableInfo & {
+export type CheckForUpdateResult = ArtifactInfo & {
+  readonly id: string;
+  readonly message: string | null;
+  readonly rolloutCohortCount: number;
+  readonly shouldForceUpdate: boolean;
+  readonly status: "ROLLBACK" | "UPDATE";
+  readonly targetCohorts: string[];
   readonly releaseId?: string | null;
   readonly transitionKind?: ReleaseTransitionKind;
   /**
@@ -81,23 +83,6 @@ export type ReleaseTransitionKind =
 export interface InternalCheckForUpdateOptions extends CheckForUpdateOptions {
   resolver: HotUpdaterResolver;
 }
-
-const isResetToBuiltInResponse = (updateInfo: AppUpdateInfo): boolean => {
-  return (
-    updateInfo.status === "ROLLBACK" &&
-    updateInfo.id === NIL_UUID &&
-    updateInfo.fileUrl === null
-  );
-};
-
-const isV2Resolver = (
-  resolver: HotUpdaterResolver,
-): resolver is HotUpdaterResolver &
-  Required<
-    Pick<HotUpdaterResolver, "fetchReleaseCatalog" | "resolveArtifact">
-  > =>
-  typeof resolver.fetchReleaseCatalog === "function" &&
-  typeof resolver.resolveArtifact === "function";
 
 const sameReceipt = (
   first: PersistedSelectionReceipt | null,
@@ -195,10 +180,7 @@ async function checkForReleaseCatalogUpdate(input: {
   readonly fingerprintHash: string | null;
 }): Promise<CheckForUpdateResult | null> {
   const { options } = input;
-  const resolver = options.resolver as HotUpdaterResolver &
-    Required<
-      Pick<HotUpdaterResolver, "fetchReleaseCatalog" | "resolveArtifact">
-    >;
+  const resolver = options.resolver;
   const authorityId = resolver.authorityId ?? "default";
   const channelKey = encodeChannelKey(input.targetChannel);
   const strategy =
@@ -431,20 +413,12 @@ export async function checkForUpdate(
   const currentAppVersion = getAppVersion();
   const platform = Platform.OS as "ios" | "android";
   const currentBundleId = getBundleId();
-  const minBundleId = getMinBundleId();
+  const minimumReleaseId = getMinimumReleaseId();
   const defaultChannel = getDefaultChannel();
   const isSwitched = isChannelSwitched();
   const currentChannel = isSwitched ? getChannel() : defaultChannel;
   const explicitChannel = options.channel || undefined;
   const targetChannel = explicitChannel || currentChannel;
-  const isFirstRuntimeChannelSwitchAttempt =
-    !isSwitched &&
-    explicitChannel !== undefined &&
-    explicitChannel !== defaultChannel;
-  const requestBundleId = isFirstRuntimeChannelSwitchAttempt
-    ? minBundleId
-    : currentBundleId;
-
   const cohort = getCohort();
 
   if (!currentAppVersion) {
@@ -462,99 +436,23 @@ export async function checkForUpdate(
 
   const fingerprintHash = getFingerprintHash();
 
-  if (isV2Resolver(options.resolver)) {
-    try {
-      return await checkForReleaseCatalogUpdate({
-        cohort,
-        currentAppVersion,
-        currentBundleId,
-        currentChannel,
-        defaultChannel,
-        explicitChannel,
-        fingerprintHash,
-        isSwitched,
-        minimumReleaseId: minBundleId,
-        options,
-        platform,
-        targetChannel,
-      });
-    } catch (error) {
-      options.onError?.(error as Error);
-      return null;
-    }
-  }
-
-  if (!options.resolver?.checkUpdate) {
-    options.onError?.(
-      new HotUpdaterError("Resolver is required but not configured"),
-    );
-    return null;
-  }
-
-  let updateInfo: AppUpdateInfo | null = null;
-
   try {
-    updateInfo = await options.resolver.checkUpdate({
-      platform,
-      appVersion: currentAppVersion,
-      bundleId: requestBundleId,
-      minBundleId,
+    return await checkForReleaseCatalogUpdate({
       cohort,
-      channel: targetChannel,
-      updateStrategy: options.updateStrategy,
+      currentAppVersion,
+      currentBundleId,
+      currentChannel,
+      defaultChannel,
+      explicitChannel,
       fingerprintHash,
-      requestHeaders: options.requestHeaders,
-      requestTimeout: options.requestTimeout,
+      isSwitched,
+      minimumReleaseId,
+      options,
+      platform,
+      targetChannel,
     });
   } catch (error) {
     options.onError?.(error as Error);
     return null;
   }
-
-  if (!updateInfo) {
-    return null;
-  }
-
-  if (updateInfo.status === "UP_TO_DATE") {
-    return null;
-  }
-
-  if (
-    explicitChannel &&
-    explicitChannel !== defaultChannel &&
-    !isSwitched &&
-    updateInfo.status === "ROLLBACK"
-  ) {
-    return null;
-  }
-
-  return {
-    ...updateInfo,
-    updateBundle: async () => {
-      if (
-        explicitChannel &&
-        isSwitched &&
-        isResetToBuiltInResponse(updateInfo)
-      ) {
-        return resetChannel();
-      }
-
-      const runtimeChannel =
-        updateInfo.fileUrl !== null ? targetChannel : undefined;
-
-      resetProgress();
-
-      return updateBundle({
-        bundleId: updateInfo.id,
-        channel: runtimeChannel,
-        changedAssets: updateInfo.changedAssets ?? null,
-        fileUrl: updateInfo.fileUrl,
-        fileHash: updateInfo.fileHash,
-        manifestFileHash: updateInfo.manifestFileHash ?? null,
-        manifestUrl: updateInfo.manifestUrl ?? null,
-        status: updateInfo.status,
-        shouldSkipCurrentBundleIdCheck: isFirstRuntimeChannelSwitchAttempt,
-      });
-    },
-  };
 }

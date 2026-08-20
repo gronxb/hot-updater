@@ -2944,20 +2944,32 @@ export const DYNAMODB_CLIENT_ACCESS_KEY_PARTITION = "client_access_keys";
 export const DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION =
   "_hot-updater#client-access-key-hashes";
 
+const hasValidBundleEventShape = (value: object): boolean => {
+  const type = field(value, "type");
+  const fromBundleId = field(value, "from_bundle_id");
+  const updateStrategy = field(value, "update_strategy");
+  return (
+    ((type === "UPDATE_APPLIED" ||
+      type === "RECOVERED" ||
+      type === "RELEASE_ADOPTED") &&
+      typeof fromBundleId === "string" &&
+      (updateStrategy === "fingerprint" || updateStrategy === "appVersion")) ||
+    (type === "UNCHANGED" && fromBundleId === null && updateStrategy === null)
+  );
+};
+
 const isBundleEventRow = (value: unknown): value is BundleEventRow =>
   typeof value === "object" &&
   value !== null &&
   typeof field(value, "id") === "string" &&
   typeof field(value, "install_id") === "string" &&
-  (field(value, "to_bundle_id") === null ||
-    typeof field(value, "to_bundle_id") === "string") &&
+  isNullableString(field(value, "from_release_id")) &&
+  isNullableString(field(value, "to_release_id")) &&
+  typeof field(value, "to_bundle_id") === "string" &&
   (field(value, "platform") === "ios" ||
     field(value, "platform") === "android") &&
   typeof field(value, "received_at_ms") === "number" &&
-  (field(value, "type") === "UPDATE_APPLIED" ||
-    field(value, "type") === "RECOVERED" ||
-    field(value, "type") === "RELEASE_ADOPTED" ||
-    field(value, "type") === "UNCHANGED");
+  hasValidBundleEventShape(value);
 
 const isClientAccessKeyRow = (value: unknown): value is ClientAccessKeyRow =>
   typeof value === "object" &&

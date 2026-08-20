@@ -114,11 +114,16 @@ export default App;
 
 \*Either `baseURL` or `resolver` must be provided (mutually exclusive)
 
-Release Catalog custom resolvers implement `fetchReleaseCatalog` and
-`resolveArtifact`. Declare `catalogCachePartition` only when the catalog
+Release Catalog custom resolvers must implement both `fetchReleaseCatalog` and
+`resolveArtifact`; the legacy direct-update `checkUpdate` hook is not accepted.
+Declare `catalogCachePartition` only when the catalog
 transport uses a stable shared-cache partition; otherwise keep catalog
 responses private/no-store. The default resolver partitions shared catalog
-responses by `x-api-key`.
+responses by `x-api-key`. A custom resolver must return absolute HTTP(S) URLs
+for archive, manifest, changed-asset file, and patch artifacts; only the default
+resolver expands server-relative storage paths against `baseURL`.
+`resolveArtifact` returns artifact data only; the selected Release determines
+status, force-update behavior, and message fields.
 
 ### Automatic Mode Options
 
@@ -333,64 +338,55 @@ device, and resolves the selected artifact:
 `:channelKey` is the base64url-encoded channel name. The default authority is
 `default` unless the resolver is configured with another stable authority.
 
-## Advanced: Legacy Custom Resolver
+## Advanced: Custom Release Catalog Resolver
 
-For advanced use cases where you need full control over network operations - such as implementing a custom server, using GraphQL, or complex authentication flows - you can use a custom `resolver` instead of `baseURL`.
-
-This API keeps the legacy direct-update resolver contract. New integrations
-should prefer `baseURL` and the default Release Catalog resolver.
+For advanced use cases where you need full control over network operations,
+such as GraphQL, RPC, or custom authentication, use a custom `resolver` instead
+of `baseURL`. A v1 resolver implements both Release Catalog fetch and artifact
+resolution; the legacy direct-update `checkUpdate` hook is not accepted.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
-import { useEffect } from "react";
+import { HotUpdater, type HotUpdaterResolver } from "@hot-updater/react-native";
+import App from "./App";
 
-function App() {
-  useEffect(() => {
-    const checkUpdate = async () => {
-      // When you call HotUpdater.checkForUpdate(),
-      // it will use the resolver.checkUpdate() defined below
-      const updateInfo = await HotUpdater.checkForUpdate({
-        updateStrategy: "appVersion",
-      });
-
-      if (updateInfo) {
-        await updateInfo.updateBundle();
-        if (updateInfo.shouldForceUpdate) {
-          await HotUpdater.reload();
-        }
-      }
-    };
-
-    checkUpdate();
-  }, []);
- 
-  return ...
-}
+const resolver: HotUpdaterResolver = {
+  authorityId: "custom-api",
+  fetchReleaseCatalog: async (params) => {
+    const response = await fetch("https://custom-api.com/release-catalog", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...params.requestHeaders,
+      },
+      body: JSON.stringify(params),
+    });
+    if (!response.ok) {
+      throw new Error(`Catalog request failed: ${response.status}`);
+    }
+    return response.json();
+  },
+  resolveArtifact: async (params) => {
+    const response = await fetch("https://custom-api.com/artifact", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(params),
+    });
+    if (!response.ok) {
+      throw new Error(`Artifact request failed: ${response.status}`);
+    }
+    return response.json();
+  },
+};
 
 export default HotUpdater.wrap({
-  resolver: { // [!code ++] 
-    // Override the default update check logic // [!code ++]
-    checkUpdate: async (params) => { // [!code ++]
-      // Custom network logic - GraphQL, custom API, etc. // [!code ++]
-      const response = await fetch(`https://custom-api.com/check`, { // [!code ++]
-        method: 'POST', // [!code ++]
-        body: JSON.stringify({ // [!code ++]
-          platform: params.platform, // [!code ++]
-          appVersion: params.appVersion, // [!code ++]
-          bundleId: params.bundleId, // [!code ++]
-        }), // [!code ++]
-        headers: params.requestHeaders, // [!code ++]
-      }); // [!code ++]
-// [!code ++]
-      if (!response.ok) return null; // [!code ++]
-      return response.json(); // [!code ++]
-    }, // [!code ++]
-  }, // [!code ++]
+  resolver,
   updateStrategy: "appVersion",
 })(App);
 ```
 
-> **Note**: The `resolver` option is mutually exclusive with `baseURL`. Using `resolver.checkUpdate()` overrides the default update check implementation.
+> **Note**: The `resolver` option is mutually exclusive with `baseURL`. Both
+> resolver methods are required. `resolveArtifact` must return absolute HTTP(S)
+> URLs that native code can download directly.
 
 ## Flag Behavior
 

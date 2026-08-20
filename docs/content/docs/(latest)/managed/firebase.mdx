@@ -206,11 +206,10 @@ export default HotUpdater.wrap({
 ```
 
 <Callout type="info">
-The managed Firebase runtime exposes public update checks, Analytics event
-ingestion, and `/version`. Internally, it enables
-`features: { updateCheck: true, analytics: true }` and mounts only
-`handlers.client`. Admin routes, including Analytics queries, are not mounted
-on the public Hosting URL.
+  The managed Firebase runtime exposes public update checks, Analytics event
+  ingestion, and `/version`. Internally, it enables `analytics` and mounts only
+  `handlers.client`. Admin routes, including Analytics queries, are not mounted
+  on the public Hosting URL.
 </Callout>
 
 ## Step 5: If You Use Expo, Add the Config Plugin

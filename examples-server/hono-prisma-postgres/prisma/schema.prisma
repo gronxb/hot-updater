@@ -105,7 +105,7 @@ model bundle_events {
   from_release_id String? @db.Uuid
   from_bundle_id String? @db.Uuid
   to_release_id String? @db.Uuid
-  to_bundle_id String? @db.Uuid
+  to_bundle_id String @db.Uuid
   platform String
   app_version String
   channel String

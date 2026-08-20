@@ -13,10 +13,8 @@ import { createHotUpdater } from "@hot-updater/server";
 
 export const hotUpdater = createHotUpdater({
   database,
-  features: {
-    analytics: true,
-    clientAccessKeys: true,
-  },
+  analytics: true,
+  clientAccessKeys: true,
 });
 ```
 
@@ -55,8 +53,8 @@ your application or framework authentication.
 Missing, malformed, unknown, and revoked keys return `401`. A database failure
 during credential lookup returns `503` and does not fall back to public access.
 
-`features.updateCheck` controls client update routes. `features.analytics`
-mounts event ingestion on the client handler and queries on the admin handler,
-while
-`features.clientAccessKeys` applies authentication to update checks and
-Analytics ingestion. Neither feature authenticates the admin handler.
+Client update routes are always available on `handlers.client`.
+The top-level `analytics` option mounts event ingestion on the client handler
+and queries on the admin handler, while `clientAccessKeys` applies
+authentication to update checks and Analytics ingestion. Both default to
+`false`. Neither option authenticates the admin handler.

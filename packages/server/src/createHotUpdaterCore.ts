@@ -14,17 +14,11 @@ import {
   type DatabasePlugin,
   isDatabasePlugin,
 } from "./db/types";
-import {
-  createHotUpdaterHandlers,
-  type HandlerFeatures,
-  type HotUpdaterHandlers,
-} from "./handler";
-import { normalizeBasePath } from "./route";
+import { createHotUpdaterHandlers, type HotUpdaterHandlers } from "./handler";
 import { createStorageAccess } from "./storageAccess";
 
 export type RuntimeHotUpdaterAPI = DatabaseAPI & {
   readonly authorityId: string;
-  readonly clientBasePath: string;
   readonly handlers: HotUpdaterHandlers;
   readonly adapterName: string;
   readonly analytics?: AnalyticsProvider;
@@ -32,55 +26,27 @@ export type RuntimeHotUpdaterAPI = DatabaseAPI & {
 
 export type HotUpdaterAPI = RuntimeHotUpdaterAPI;
 
-export interface CreateHotUpdaterFeatures extends HandlerFeatures {
-  /** Mount Analytics ingestion on the client handler and queries on admin. */
-  readonly analytics?: boolean;
-  /** Protect update-check and Analytics ingestion routes with `x-api-key`. */
-  readonly clientAccessKeys?: boolean;
-}
-
 export interface CreateHotUpdaterOptions {
   /** Stable project/server identity used to isolate Release catalog history. */
   readonly authorityId?: string;
+  /** Mount Analytics ingestion on the client handler and queries on admin. */
+  readonly analytics?: boolean;
+  /** Protect catalog, artifact, and Analytics ingestion routes with `x-api-key`. */
+  readonly clientAccessKeys?: boolean;
   readonly database: DatabasePlugin;
-  /** Optional route and domain features. */
-  readonly features?: CreateHotUpdaterFeatures;
   /** Storage implementations used to read provider-specific storage URIs. */
   readonly storage?: readonly StoragePlugin[];
-  /** External path where `handlers.client` is mounted, used in storage URLs. */
-  readonly clientBasePath?: string;
 }
 
-const normalizeClientAccessKeys = (
-  clientAccessKeys: CreateHotUpdaterFeatures["clientAccessKeys"],
-): boolean => {
-  if (clientAccessKeys === undefined) return false;
-  if (typeof clientAccessKeys !== "boolean") {
-    throw new TypeError("Client access-keys feature must be a boolean.");
-  }
-  return clientAccessKeys;
-};
-
-const normalizeBooleanFeature = (
+const normalizeBooleanOption = (
   value: boolean | undefined,
   name: string,
-  defaultValue: boolean,
 ): boolean => {
-  if (value === undefined) return defaultValue;
+  if (value === undefined) return false;
   if (typeof value !== "boolean") {
-    throw new TypeError(`${name} feature must be a boolean.`);
+    throw new TypeError(`${name} must be a boolean.`);
   }
   return value;
-};
-
-const normalizeFeatures = (
-  features: CreateHotUpdaterOptions["features"],
-): CreateHotUpdaterFeatures => {
-  if (features === undefined) return {};
-  if (typeof features !== "object" || features === null) {
-    throw new TypeError("Features must be an object.");
-  }
-  return features;
 };
 
 type DatabasePluginCore = {
@@ -120,13 +86,12 @@ export function createHotUpdaterCore(
 ): HotUpdaterCore {
   const database = options.database;
   const authorityId = options.authorityId ?? "default";
-  const clientBasePath = normalizeBasePath(options.clientBasePath ?? "/");
   const storagePlugins = (options.storage ?? []).map((storage) => {
     assertStorageOperations(storage, ["get", "getDownloadUrl"]);
     return storage;
   });
   const { downloadStorageObject, readStorageText, resolveFileUrl } =
-    createStorageAccess(storagePlugins, { clientBasePath });
+    createStorageAccess(storagePlugins);
   const adapterCapabilities: DatabaseAdapterCapabilities = database;
 
   if (!isDatabasePlugin(database)) {
@@ -144,19 +109,13 @@ export function createHotUpdaterCore(
     beforeOperation: assertSchemaReady,
     readStorageText,
   });
-  const features = normalizeFeatures(options.features);
-  const updateCheckEnabled = normalizeBooleanFeature(
-    features.updateCheck,
-    "Update-check",
-    true,
+  const analyticsEnabled = normalizeBooleanOption(
+    options.analytics,
+    "analytics",
   );
-  const analyticsEnabled = normalizeBooleanFeature(
-    features.analytics,
-    "Analytics",
-    false,
-  );
-  const clientAccessKeysEnabled = normalizeClientAccessKeys(
-    features.clientAccessKeys,
+  const clientAccessKeysEnabled = normalizeBooleanOption(
+    options.clientAccessKeys,
+    "clientAccessKeys",
   );
   const analytics = !analyticsEnabled
     ? undefined
@@ -175,9 +134,6 @@ export function createHotUpdaterCore(
     core.api,
     {
       authorityId,
-      features: {
-        updateCheck: updateCheckEnabled,
-      },
     },
     analytics,
     clientAccessKeysEnabled
@@ -196,7 +152,6 @@ export function createHotUpdaterCore(
   const api: RuntimeHotUpdaterAPI = Object.assign(
     {
       authorityId,
-      clientBasePath,
       adapterName: adapterCapabilities.adapterName ?? core.adapterName,
       ...(analytics === undefined ? {} : { analytics }),
       handlers,

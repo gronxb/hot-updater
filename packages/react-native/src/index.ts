@@ -18,7 +18,6 @@ import {
   getFingerprintHash,
   getInstallId,
   getManifest,
-  getMinBundleId,
   getMinimumReleaseId,
   getReleaseId,
   isChannelSwitched,
@@ -63,7 +62,6 @@ export {
   type HotUpdaterBaseURL,
   type HotUpdaterResolver,
   isSignatureVerificationError,
-  type ResolverCheckUpdateParams,
   type ResolverNotifyAppReadyParams,
   type SignatureVerificationFailure,
 } from "./types";
@@ -335,11 +333,6 @@ function createHotUpdaterClient() {
      */
     getBundleId,
 
-    /**
-     * Retrieves the initial bundle ID based on the build time of the native app.
-     */
-    getMinBundleId,
-
     /** Preferred Release-catalog name for the build-time UUIDv7 floor. */
     getMinimumReleaseId,
 
@@ -421,16 +414,15 @@ function createHotUpdaterClient() {
      * Manually checks for updates.
      *
      * @param {Object} config - Update check configuration
-     * @param {string} config.source - Update server URL
      * @param {string} [config.channel] - Optional channel override for this update check
      * @param {Record<string, string>} [config.requestHeaders] - Request headers
      *
-     * @returns {Promise<UpdateInfo | null>} Update information or null if up to date
+     * @returns {Promise<CheckForUpdateResult | null>} Update information or null if up to date
      *
      * @example
      * ```ts
      * const updateInfo = await HotUpdater.checkForUpdate({
-     *   source: "<your-update-server-url>",
+     *   updateStrategy: "appVersion",
      *   requestHeaders: {
      *     "x-api-key": "<your-client-access-key>",
      *   },
@@ -441,7 +433,7 @@ function createHotUpdaterClient() {
      *   return;
      * }
      *
-     * await HotUpdater.updateBundle(updateInfo.id, updateInfo.fileUrl);
+     * await updateInfo.updateBundle();
      * if (updateInfo.shouldForceUpdate) {
      *   await HotUpdater.reload();
      * }
@@ -476,7 +468,7 @@ function createHotUpdaterClient() {
      * @example
      * ```ts
      * const updateInfo = await HotUpdater.checkForUpdate({
-     *   source: "<your-update-server-url>",
+     *   updateStrategy: "appVersion",
      *   requestHeaders: {
      *     "x-api-key": "<your-client-access-key>",
      *   },
@@ -488,10 +480,7 @@ function createHotUpdaterClient() {
      *   };
      * }
      *
-     * await HotUpdater.updateBundle({
-     *   bundleId: updateInfo.id,
-     *   fileUrl: updateInfo.fileUrl
-     * });
+     * await updateInfo.updateBundle();
      * if (updateInfo.shouldForceUpdate) {
      *   await HotUpdater.reload();
      * }

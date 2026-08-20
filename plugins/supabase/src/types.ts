@@ -1,7 +1,7 @@
 import type {
   BundlePatchRow,
   BundleRow,
-  BundleEventRowBase,
+  BundleEventRow,
   ChannelRow,
   ChannelDeleteResult,
   ClientAccessKeyRow,
@@ -19,15 +19,7 @@ export type SupabaseBundlePatchRow = {
   [TField in keyof BundlePatchRow]: BundlePatchRow[TField];
 };
 
-export type SupabaseBundleEventRow = BundleEventRowBase & {
-  readonly type:
-    | "UPDATE_APPLIED"
-    | "RECOVERED"
-    | "RELEASE_ADOPTED"
-    | "UNCHANGED";
-  readonly from_bundle_id: string | null;
-  readonly update_strategy: "fingerprint" | "appVersion" | null;
-};
+export type SupabaseBundleEventRow = BundleEventRow;
 
 export type SupabaseClientAccessKeyRow = {
   [TField in keyof ClientAccessKeyRow]: ClientAccessKeyRow[TField];

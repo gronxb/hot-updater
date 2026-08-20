@@ -68,7 +68,7 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     from_release_id text,
     from_bundle_id text,
     to_release_id text,
-    to_bundle_id text,
+    to_bundle_id text not null,
     platform text not null,
     app_version text not null,
     channel text not null,

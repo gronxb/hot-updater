@@ -40,7 +40,7 @@ const mocks = vi.hoisted(() => ({
   getCrashHistory: vi.fn(() => []),
   getDefaultChannel: vi.fn(() => CHANNEL),
   getFingerprintHash: vi.fn(() => null),
-  getMinBundleId: vi.fn(() => MINIMUM_RELEASE_ID),
+  getMinimumReleaseId: vi.fn(() => MINIMUM_RELEASE_ID),
   isChannelSwitched: vi.fn(() => false),
   isReleaseSelectionCurrent: vi.fn(() => true),
   resetChannel: vi.fn(),
@@ -79,10 +79,6 @@ const createResolver = (catalog = createCatalog()) => {
   const resolveArtifact = vi.fn(async () => ({
     fileHash: "bundle-hash",
     fileUrl: "https://updates.example.com/bundle.zip",
-    id: TARGET_BUNDLE_ID,
-    message: null,
-    shouldForceUpdate: false,
-    status: "UPDATE" as const,
   }));
   const resolver: HotUpdaterResolver = {
     authorityId: AUTHORITY_ID,

@@ -1,20 +1,14 @@
-import type { LegacyBundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 import { vi } from "vitest";
 
 import { createHandlers, type HandlerAPI } from "./handler";
 
-export const testBundle: LegacyBundle = {
+export const testBundle: Bundle = {
   id: "bundle-1",
   platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
   fileHash: "hash123",
   gitCommitHash: null,
-  message: "Test bundle",
-  channel: "production",
   storageUri: "s3://test-bucket/bundles/bundle-1.zip",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
 };
 
 export const createApi = () =>

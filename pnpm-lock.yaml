@@ -651,6 +651,9 @@ importers:
       '@hot-updater/mock':
         specifier: workspace:*
         version: link:../../plugins/mock
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../../plugins/plugin-core
       '@hot-updater/server':
         specifier: workspace:*
         version: link:../../packages/server
@@ -1730,9 +1733,6 @@ importers:
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../core
-      '@hot-updater/js':
-        specifier: workspace:*
-        version: link:../../plugins/js
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
@@ -1797,9 +1797,6 @@ importers:
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../core
-      '@hot-updater/js':
-        specifier: workspace:*
-        version: link:../../plugins/js
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
@@ -2147,9 +2144,6 @@ importers:
         specifier: catalog:hono
         version: 4.12.9
     devDependencies:
-      '@hot-updater/js':
-        specifier: workspace:*
-        version: link:../js
       '@hot-updater/mock':
         specifier: workspace:*
         version: link:../mock
@@ -2185,10 +2179,6 @@ importers:
         version: 4.1.0
 
   plugins/js:
-    dependencies:
-      '@hot-updater/core':
-        specifier: workspace:*
-        version: link:../../packages/core
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -2218,9 +2208,6 @@ importers:
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@hot-updater/js':
-        specifier: workspace:*
-        version: link:../js
       es-toolkit:
         specifier: ^1.32.0
         version: 1.47.0
@@ -2259,9 +2246,6 @@ importers:
       '@electric-sql/pglite':
         specifier: catalog:db
         version: 0.4.1
-      '@hot-updater/js':
-        specifier: workspace:*
-        version: link:../js
       '@hot-updater/test-utils':
         specifier: workspace:*
         version: link:../../packages/test-utils
@@ -2374,9 +2358,6 @@ importers:
       '@electric-sql/pglite':
         specifier: catalog:db
         version: 0.4.1
-      '@hot-updater/js':
-        specifier: workspace:*
-        version: link:../js
       '@hot-updater/mock':
         specifier: workspace:*
         version: link:../mock
@@ -23307,7 +23288,6 @@ snapshots:
   '@hot-updater/react-native@file:packages/react-native(react-native@0.80.1(@babel/core@7.26.0)(@react-native-community/cli@20.1.0(@typescript/typescript6@6.0.2))(@types/react@19.2.15)(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@hot-updater/core': link:packages/core
-      '@hot-updater/js': link:plugins/js
       '@hot-updater/plugin-core': link:plugins/plugin-core
       react: 19.1.0
       react-native: 0.80.1(@babel/core@7.26.0)(@react-native-community/cli@20.1.0(@typescript/typescript6@6.0.2))(@types/react@19.2.15)(react@19.1.0)

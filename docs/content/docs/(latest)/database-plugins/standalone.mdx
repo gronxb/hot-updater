@@ -246,21 +246,21 @@ These are the routes used by `standaloneRepository`. The `routes` option can
 remap only the five Bundle rows marked **remappable**. All other rows use fixed
 paths relative to `baseUrl`.
 
-| Method | Default route                     | Mapping    | Success response                         |
-| ------ | --------------------------------- | ---------- | ---------------------------------------- |
-| POST   | `/bundles`                    | remappable | `{ "success": true }`                    |
-| PATCH  | `/bundles/:id`                | remappable | `{ "success": true }`                    |
-| GET    | `/bundles`                    | remappable | `Paginated<Bundle[]>`                    |
-| GET    | `/bundles/:id`                | remappable | `Bundle`                                 |
-| DELETE | `/bundles/:id`                | remappable | `{ "success": true }`                    |
-| GET    | `/releases/:id`               | fixed      | `DataResponse<ReleaseRow>`               |
-| GET    | `/releases`                   | fixed      | `DataResponse<ReleaseRow[]>`             |
-| GET    | `/release-catalogs/:scopeKey` | fixed      | `DataResponse<ReleaseCatalogRow>`        |
-| GET    | `/release-catalogs`           | fixed      | `DataResponse<ReleaseCatalogRow[]>`      |
-| POST   | `/database/commit`            | fixed      | `DataResponse<DatabaseCommitResult>`     |
-| GET    | `/channels`                   | fixed      | `ChannelsResponse`                       |
-| POST   | `/channels`                   | fixed      | `DataResponse<ChannelInsertResult>`      |
-| DELETE | `/channels/:id`               | fixed      | `204 No Content`                         |
+| Method | Default route                 | Mapping    | Success response                     |
+| ------ | ----------------------------- | ---------- | ------------------------------------ |
+| POST   | `/bundles`                    | remappable | `{ "success": true }`                |
+| PATCH  | `/bundles/:id`                | remappable | `{ "success": true }`                |
+| GET    | `/bundles`                    | remappable | `Paginated<Bundle[]>`                |
+| GET    | `/bundles/:id`                | remappable | `Bundle`                             |
+| DELETE | `/bundles/:id`                | remappable | `{ "success": true }`                |
+| GET    | `/releases/:id`               | fixed      | `DataResponse<ReleaseRow>`           |
+| GET    | `/releases`                   | fixed      | `DataResponse<ReleaseRow[]>`         |
+| GET    | `/release-catalogs/:scopeKey` | fixed      | `DataResponse<ReleaseCatalogRow>`    |
+| GET    | `/release-catalogs`           | fixed      | `DataResponse<ReleaseCatalogRow[]>`  |
+| POST   | `/database/commit`            | fixed      | `DataResponse<DatabaseCommitResult>` |
+| GET    | `/channels`                   | fixed      | `ChannelsResponse`                   |
+| POST   | `/channels`                   | fixed      | `DataResponse<ChannelInsertResult>`  |
+| DELETE | `/channels/:id`               | fixed      | `204 No Content`                     |
 
 ### Bundle Shape
 
@@ -383,12 +383,8 @@ const hotUpdater = createHotUpdater({
   authorityId: "project-01",
   database,
   storage: [storage],
-  clientBasePath: "/hot-updater",
-  features: {
-    updateCheck: true,
-    analytics: true,
-    clientAccessKeys: true,
-  },
+  analytics: true,
+  clientAccessKeys: true,
 });
 ```
 
@@ -403,15 +399,16 @@ opt-in; there is no built-in admin authenticator.
 patches, Releases, Release Catalogs, Channels, and the conditional commit that
 keeps those records consistent. It does not expose Analytics or client
 access-key administration. The server-side `database` passed to
-`createHotUpdater` owns those additional official domains, and `features`
-decides whether the self-host runtime exposes them.
+`createHotUpdater` owns those additional official domains, and the top-level
+`analytics` and `clientAccessKeys` booleans decide whether the self-host runtime
+exposes them. Both options default to `false`.
 
 <Callout type="warn">
   The Console cannot read Analytics or manage client access keys through
-  `standaloneRepository`. Local/direct-provider Console access is unaffected.
-  A hosted Console must protect its browser session separately and keep the
-  admin bearer token in server-side `commonHeaders`. Do not put that token in
-  browser or React Native code, and do not pass `standaloneRepository` to
+  `standaloneRepository`. Local/direct-provider Console access is unaffected. A
+  hosted Console must protect its browser session separately and keep the admin
+  bearer token in server-side `commonHeaders`. Do not put that token in browser
+  or React Native code, and do not pass `standaloneRepository` to
   `createHotUpdater`.
 </Callout>
 

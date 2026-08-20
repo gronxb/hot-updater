@@ -74,7 +74,7 @@ create table bundle_events (
   from_release_id uuid,
   from_bundle_id uuid,
   to_release_id uuid,
-  to_bundle_id uuid,
+  to_bundle_id uuid not null,
   platform text not null,
   app_version text not null,
   channel text not null,
@@ -146,7 +146,7 @@ alter table bundle_events add constraint bundle_events_type_check
 alter table bundle_events add constraint bundle_events_platform_check
   check (platform in ('ios', 'android'));
 alter table bundle_events add constraint bundle_events_shape_check
-  check (((type in ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')) and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and update_strategy is null));
+  check (((type in ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')) and from_bundle_id is not null and update_strategy is not null and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and from_bundle_id is null and update_strategy is null));
 alter table bundle_events add constraint bundle_events_received_at_check
   check (received_at_ms >= 0);
 alter table client_access_keys add constraint client_access_keys_role_check

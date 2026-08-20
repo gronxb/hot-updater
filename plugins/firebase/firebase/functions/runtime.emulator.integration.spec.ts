@@ -14,7 +14,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { transformEnv } from "@hot-updater/cli-tools";
-import type { LegacyBundle as Bundle } from "@hot-updater/core";
+import {
+  type Bundle,
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+} from "@hot-updater/core";
+import {
+  commitReleaseCatalogMutations,
+  createUUIDv7,
+} from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
@@ -36,7 +44,6 @@ const __dirname = path.dirname(__filename);
 const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
 const REGION = "us-central1";
 const FUNCTION_NAME = "hot-updater";
-const HOT_UPDATER_BASE_PATH = "/";
 const FIREBASE_CLI_VERSION_ARGS = [
   "--filter",
   "@hot-updater/firebase",
@@ -102,6 +109,73 @@ const toRuntimeBundle = (bundle: Bundle, storageBucket: string): Bundle => {
   };
 };
 
+const seedProductionRelease = async ({
+  authorityId,
+  bundle,
+  database,
+}: {
+  readonly authorityId: string;
+  readonly bundle: Bundle;
+  readonly database: ReturnType<typeof firebaseDatabase>;
+}) => {
+  const channelName = "production";
+  const channelKey = encodeChannelKey(channelName);
+  const channel = (
+    await database.models.channels.insert({
+      row: { id: `channel:${channelKey}`, name: channelName },
+      onConflict: "returnExisting",
+    })
+  ).row;
+  const scopeKey = createReleaseCatalogScopeKey({
+    authorityId,
+    channelKey,
+    platform: bundle.platform,
+    strategy: "APP_VERSION",
+  });
+  const now = Date.now();
+  await commitReleaseCatalogMutations({
+    database,
+    mutations: [
+      {
+        mutation: {
+          operation: "insert",
+          row: {
+            bundle_id: bundle.id,
+            channel_id: channel.id,
+            created_at_ms: now,
+            enabled: true,
+            fingerprint_hash: null,
+            id: createUUIDv7(),
+            kind: "BUNDLE",
+            message: "hello",
+            operation: "DEPLOY",
+            platform: bundle.platform,
+            revision: 1,
+            rollout_cohort_count: 1_000,
+            scope_key: scopeKey,
+            should_force_update: false,
+            source_release_id: null,
+            strategy: "APP_VERSION",
+            target_app_version: "1.0",
+            target_cohorts: [],
+            updated_at_ms: now,
+          },
+        },
+        scope: {
+          authorityId,
+          channelId: channel.id,
+          channelName,
+          fingerprintHash: null,
+          platform: bundle.platform,
+          scopeKey,
+          strategy: "APP_VERSION",
+        },
+        updatedAtMs: now,
+      },
+    ],
+  });
+};
+
 describe.sequential("firebase functions runtime acceptance", () => {
   const cdnObjects = new Map<string, { body: string; contentType: string }>();
   let cdnBaseUrl = "";
@@ -109,6 +183,7 @@ describe.sequential("firebase functions runtime acceptance", () => {
   let tempRoot: string | undefined;
   let functionsPort = 0;
   let functionsRuntime: ReturnType<typeof spawnRuntime> | undefined;
+  let database: ReturnType<typeof firebaseDatabase>;
   let seedHotUpdater: ReturnType<typeof createHotUpdater>;
   const projectId = process.env.GCLOUD_PROJECT ?? "";
   const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST ?? "";
@@ -221,19 +296,16 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       storageBucket,
     };
 
+    database = firebaseDatabase({ ...adminOptions, authorityId: projectId });
     seedHotUpdater = createHotUpdater({
       authorityId: projectId,
-      database: firebaseDatabase({ ...adminOptions, authorityId: projectId }),
+      database,
       storage: [
         firebaseStorage({
           ...adminOptions,
           cdnUrl: cdnBaseUrl,
         }),
       ],
-      clientBasePath: HOT_UPDATER_BASE_PATH,
-      features: {
-        updateCheck: true,
-      },
     });
 
     functionsRuntime = spawnRuntime({
@@ -307,24 +379,22 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
   };
 
   it("serves unversioned Release Catalog routes from the emulator entrypoint", async () => {
-    await seedHotUpdater.insertBundle(
-      toRuntimeBundle(
-        {
-          id: "00000000-0000-0000-0000-000000000001",
-          platform: "ios",
-          targetAppVersion: "1.0",
-          shouldForceUpdate: false,
-          enabled: true,
-          fileHash: "hash",
-          gitCommitHash: null,
-          message: "hello",
-          channel: "production",
-          storageUri: "storage://unused",
-          fingerprintHash: null,
-        },
-        storageBucket,
-      ),
+    const bundle = toRuntimeBundle(
+      {
+        id: "00000000-0000-0000-0000-000000000001",
+        platform: "ios",
+        fileHash: "hash",
+        gitCommitHash: null,
+        storageUri: "storage://unused",
+      },
+      storageBucket,
     );
+    await seedHotUpdater.insertBundle(bundle);
+    await seedProductionRelease({
+      authorityId: projectId,
+      bundle,
+      database,
+    });
 
     const response = await invokeHandler(
       `/release-catalogs/app-version/${encodeURIComponent(projectId)}/ios/cHJvZHVjdGlvbg/1.0.0`,

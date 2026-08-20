@@ -81,7 +81,6 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
 
   setupBundleMethodsTestSuite({
     getBundleById: (id) => bundleMethods.getBundleById(id),
-    getChannels: () => bundleMethods.getChannels(),
     insertBundle: (bundle) => bundleMethods.insertBundle(bundle),
     getBundles: (options) => bundleMethods.getBundles(options),
     updateBundleById: (bundleId, newBundle) =>
@@ -89,7 +88,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
     deleteBundleById: (bundleId) => bundleMethods.deleteBundleById(bundleId),
   });
 
-  it("protects bundle management routes without hiding public catalog routes", async () => {
+  it("protects bundle management routes while keeping catalog routes public", async () => {
     const unauthorizedBundles = await fetch(
       `${baseUrl}/hot-updater/admin/bundles`,
     );
@@ -109,9 +108,8 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
     expect(unauthorizedBundles.status).toBe(401);
     expect(authorizedBundles.status).toBe(200);
     expect(version.status).toBe(200);
-    expect(updateCheck.status).toBe(200);
-    expect(updateCheck.headers.get("content-type")).toContain(
-      "application/vnd.hot-updater.release-catalog+json",
-    );
+    expect(updateCheck.status).toBe(404);
+    expect(updateCheck.headers.get("cache-control")).toBe("private, no-store");
+    await expect(updateCheck.json()).resolves.toEqual({ error: "Not found" });
   });
 });

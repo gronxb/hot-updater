@@ -36,8 +36,7 @@ describe("Detox Analytics HTTP client", () => {
     };
     const serverDatabase = createInMemoryDatabasePlugin();
     const deployedServer = createHotUpdater({
-      features: { analytics: true },
-      clientBasePath: "/hot-updater",
+      analytics: true,
       database: serverDatabase,
     });
     const fetch = vi.fn<typeof globalThis.fetch>((input, init) => {

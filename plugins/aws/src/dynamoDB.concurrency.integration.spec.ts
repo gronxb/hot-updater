@@ -41,10 +41,7 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
   it("retries concurrent idempotent channel inserts without dropping either bundle", async () => {
     const plugin = fixture.createPlugin();
     const channel = { id: productionChannelId, name: "production" } as const;
-    const rows = [
-      bundleToRow(bundle(901), channel.id),
-      bundleToRow(bundle(902), channel.id),
-    ];
+    const rows = [bundleToRow(bundle(901)), bundleToRow(bundle(902))];
 
     await expect(
       Promise.all(
@@ -140,7 +137,7 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
         client: fixture.client,
         tableName: fixture.tableName,
       }).insertBundleWithPatches({
-        bundle: bundleToRow(bundle(200), productionChannelId),
+        bundle: bundleToRow(bundle(200)),
         patches: Array.from({ length: 101 }, (_, index) =>
           patchRow(bundle(200), bundle(index + 300)),
         ),

@@ -23,9 +23,9 @@ describe("createHotUpdater client access keys", () => {
     expect(() =>
       createHotUpdater({
         database: createInMemoryDatabasePlugin(),
-        features: { clientAccessKeys: "yes" as unknown as boolean },
+        clientAccessKeys: "yes" as unknown as boolean,
       }),
-    ).toThrow("Client access-keys feature must be a boolean.");
+    ).toThrow("clientAccessKeys must be a boolean.");
   });
 
   it("protects only client OTA and Analytics write routes", async () => {
@@ -37,7 +37,8 @@ describe("createHotUpdater client access keys", () => {
     });
     const hotUpdater = createHotUpdater({
       database,
-      features: { analytics: true, clientAccessKeys: true },
+      analytics: true,
+      clientAccessKeys: true,
     });
 
     expect(
@@ -71,10 +72,8 @@ describe("createHotUpdater client access keys", () => {
     });
     const hotUpdater = createHotUpdater({
       database,
-      features: {
-        analytics: true,
-        clientAccessKeys: true,
-      },
+      analytics: true,
+      clientAccessKeys: true,
     });
     const invalidBody = {
       method: "POST",
@@ -105,7 +104,7 @@ describe("createHotUpdater client access keys", () => {
     );
     const hotUpdater = createHotUpdater({
       database,
-      features: { clientAccessKeys: true },
+      clientAccessKeys: true,
     });
 
     const response = await hotUpdater.handlers.client(withApiKey(updateUrl));
@@ -121,9 +120,7 @@ describe("createHotUpdater client access keys", () => {
     async (clientAccessKeys) => {
       const hotUpdater = createHotUpdater({
         database: createInMemoryDatabasePlugin(),
-        ...(clientAccessKeys === undefined
-          ? {}
-          : { features: { clientAccessKeys } }),
+        ...(clientAccessKeys === undefined ? {} : { clientAccessKeys }),
       });
 
       expect(

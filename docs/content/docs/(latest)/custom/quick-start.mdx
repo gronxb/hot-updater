@@ -63,10 +63,6 @@ export const hotUpdater = createHotUpdater({
       downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
     }),
   ],
-  clientBasePath: "/hot-updater",
-  features: {
-    updateCheck: true,
-  },
 });
 ```
 
@@ -74,9 +70,9 @@ By default, `createHotUpdater` mounts update-check routes and `/version`.
 Admin routes used by the CLI `standaloneRepository` live on a separate handler.
 Mount that handler only behind framework authentication.
 
-The same `features` object controls the core route groups. Add optional
-Analytics or client access-key features only after configuring their intended
-access model.
+The top-level `analytics` and `clientAccessKeys` options control optional
+runtime policy and default to `false`. Enable them only after configuring their
+intended access model.
 
 ## Server Setup
 

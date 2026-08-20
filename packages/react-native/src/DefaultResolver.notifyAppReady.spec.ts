@@ -11,11 +11,11 @@ const mocks = vi.hoisted(() => {
     }
   ).HotUpdater = { SDK_VERSION: "test-sdk-version" };
 
-  return { fetchUpdateInfo: vi.fn() };
+  return { fetchJSON: vi.fn() };
 });
 
-vi.mock("./fetchUpdateInfo", () => ({
-  fetchUpdateInfo: mocks.fetchUpdateInfo,
+vi.mock("./fetchJSON", () => ({
+  fetchJSON: mocks.fetchJSON,
 }));
 
 const createNotifyParams = (
@@ -47,7 +47,7 @@ const createNotifyParams = (
 
 describe("createDefaultResolver.notifyAppReady", () => {
   beforeEach(() => {
-    mocks.fetchUpdateInfo.mockReset();
+    mocks.fetchJSON.mockReset();
     vi.unstubAllGlobals();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 204 }));
   });

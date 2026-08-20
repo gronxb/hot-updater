@@ -10,7 +10,6 @@ import { createReleaseCatalogRouteHandlers } from "./handlerReleaseCatalogRoutes
 import { createReleaseManagementRouteHandlers } from "./handlerReleaseManagementRoutes";
 import type {
   HandlerAPI,
-  HandlerFeatures,
   HandlerOptions,
   HotUpdaterHandler,
   HotUpdaterHandlers,
@@ -21,7 +20,6 @@ import { addRoute, createRouter, findRoute } from "./internalRouter";
 
 export type {
   HandlerAPI,
-  HandlerFeatures,
   HandlerOptions,
   HotUpdaterHandler,
   HotUpdaterHandlers,
@@ -163,9 +161,6 @@ export function createHotUpdaterHandlers(
   ) => Promise<Response | null>,
 ): HotUpdaterHandlers {
   const authorityId = options.authorityId ?? "default";
-  const features = {
-    updateCheck: options.features?.updateCheck ?? true,
-  } satisfies HandlerFeatures;
   const routeHandlers: Record<string, RouteHandler> = {
     ...createVersionRouteHandlers(),
     ...createReleaseCatalogRouteHandlers(authorityId),
@@ -195,23 +190,21 @@ export function createHotUpdaterHandlers(
       "downloadStorageObject",
     );
   }
-  if (features.updateCheck) {
-    addClientRoute(
-      "GET",
-      "/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion",
-      "appVersionReleaseCatalog",
-    );
-    addClientRoute(
-      "GET",
-      "/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash",
-      "fingerprintReleaseCatalog",
-    );
-    addClientRoute(
-      "GET",
-      "/artifacts/:targetBundleId/from/:currentBundleId",
-      "artifact",
-    );
-  }
+  addClientRoute(
+    "GET",
+    "/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion",
+    "appVersionReleaseCatalog",
+  );
+  addClientRoute(
+    "GET",
+    "/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash",
+    "fingerprintReleaseCatalog",
+  );
+  addClientRoute(
+    "GET",
+    "/artifacts/:targetBundleId/from/:currentBundleId",
+    "artifact",
+  );
   if (analytics !== undefined) {
     registerAnalyticsClientRoutes(addClientRoute);
   }

@@ -47,13 +47,6 @@ const nullableString = (
   return value;
 };
 
-const optionalNullableString = (
-  row: Record<string, unknown>,
-  field: string,
-  model: DatabaseModel,
-): string | null =>
-  row[field] === undefined ? null : nullableString(row, field, model);
-
 const numberValue = (
   row: Record<string, unknown>,
   field: string,
@@ -149,9 +142,10 @@ const eventRow = (row: Record<string, unknown>): BundleEventRow => {
       ((type === "UPDATE_APPLIED" ||
         type === "RECOVERED" ||
         type === "RELEASE_ADOPTED") &&
+        typeof fromBundleId === "string" &&
         (updateStrategy === "fingerprint" ||
           updateStrategy === "appVersion")) ||
-      (type === "UNCHANGED" && updateStrategy === null)
+      (type === "UNCHANGED" && fromBundleId === null && updateStrategy === null)
     )
   ) {
     throw new InvalidD1RowError("bundle_events");
@@ -162,18 +156,10 @@ const eventRow = (row: Record<string, unknown>): BundleEventRow => {
     install_id: stringValue(row, "install_id", "bundle_events"),
     user_id: nullableString(row, "user_id", "bundle_events"),
     username: nullableString(row, "username", "bundle_events"),
-    from_release_id: optionalNullableString(
-      row,
-      "from_release_id",
-      "bundle_events",
-    ),
+    from_release_id: nullableString(row, "from_release_id", "bundle_events"),
     from_bundle_id: fromBundleId,
-    to_release_id: optionalNullableString(
-      row,
-      "to_release_id",
-      "bundle_events",
-    ),
-    to_bundle_id: nullableString(row, "to_bundle_id", "bundle_events"),
+    to_release_id: nullableString(row, "to_release_id", "bundle_events"),
+    to_bundle_id: stringValue(row, "to_bundle_id", "bundle_events"),
     platform,
     app_version: stringValue(row, "app_version", "bundle_events"),
     channel: stringValue(row, "channel", "bundle_events"),

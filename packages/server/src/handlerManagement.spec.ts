@@ -196,6 +196,25 @@ describe("createHandlers admin routes", () => {
     });
   });
 
+  it("does not treat Release policy query parameters as Bundle filters", async () => {
+    const api = createApi();
+    const handler = createAdminHandler(api);
+
+    const response = await handler(
+      new Request(
+        "http://localhost/bundles?channel=production&enabled=true&targetAppVersion=1.0.0&fingerprintHash=abc",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(api.getBundles).toHaveBeenCalledWith({
+      cursor: undefined,
+      limit: 50,
+      page: undefined,
+      where: {},
+    });
+  });
+
   it("rejects an invalid bundle id order direction", async () => {
     const api = createApi();
     const handler = createAdminHandler(api);

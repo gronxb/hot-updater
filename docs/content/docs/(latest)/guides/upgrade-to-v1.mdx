@@ -90,9 +90,30 @@ you back to init with new resources.
 
 ### 5. Publish a new native build
 
+Refresh the native project before building. v1 requires its complete native
+source set and does not support a stale v0 CocoaPods project.
+
+For Expo projects, run:
+
+```bash
+npx expo prebuild
+```
+
+For bare React Native iOS projects, run:
+
+```bash
+cd ios && pod install && cd ..
+```
+
 Build and release the app with the v1 native SDK and the new v1 endpoint. Test
 catalog fetch, artifact resolution, install, restart, and rollback before
 making the release broadly available.
+
+A store-delivered native upgrade can preserve the app's local sandbox even
+though its server generation is fresh. The v1 native SDK therefore migrates
+Bundle-ID-only metadata, reads retained local `BUNDLE_ID` artifacts, and keeps
+the existing cohort identity. This on-device bridge does not read or migrate
+the v0 server database or remote storage.
 
 The endpoints remain parallel during adoption:
 

@@ -11,9 +11,11 @@ const event = {
   cohort: "default",
   fingerprintHash: null,
   fromBundleId: null,
+  fromReleaseId: null,
   installId: "install-1",
   platform: "ios",
   toBundleId: "bundle-1",
+  toReleaseId: null,
   type: "UNCHANGED",
   updateStrategy: null,
   sdkVersion: "2.0.0",
@@ -36,7 +38,7 @@ describe("createHotUpdater Analytics", () => {
     async (analytics) => {
       const hotUpdater = createHotUpdater({
         database: createInMemoryDatabasePlugin(),
-        ...(analytics === undefined ? {} : { features: { analytics } }),
+        ...(analytics === undefined ? {} : { analytics }),
       });
 
       expect(hotUpdater.analytics).toBeUndefined();
@@ -59,7 +61,7 @@ describe("createHotUpdater Analytics", () => {
     const database = createInMemoryDatabasePlugin();
     const append = vi.spyOn(database.models.analytics, "append");
     const hotUpdater = createHotUpdater({
-      features: { analytics: true },
+      analytics: true,
       database,
     });
 
@@ -96,7 +98,7 @@ describe("createHotUpdater Analytics", () => {
     );
     const createMigrator = vi.spyOn(database, "createMigrator");
     const hotUpdater = createHotUpdater({
-      features: { analytics: true },
+      analytics: true,
       database,
     });
 
@@ -108,7 +110,7 @@ describe("createHotUpdater Analytics", () => {
 
   it("keeps ingestion and queries on separate handler surfaces", async () => {
     const hotUpdater = createHotUpdater({
-      features: { analytics: true },
+      analytics: true,
       database: createInMemoryDatabasePlugin(),
     });
 
@@ -129,7 +131,7 @@ describe("createHotUpdater Analytics", () => {
 
   it("returns a stable client error for malformed event payloads", async () => {
     const hotUpdater = createHotUpdater({
-      features: { analytics: true },
+      analytics: true,
       database: createInMemoryDatabasePlugin(),
     });
 
@@ -143,12 +145,31 @@ describe("createHotUpdater Analytics", () => {
     });
   });
 
+  it.each(["fromReleaseId", "toReleaseId"] as const)(
+    "rejects an omitted %s instead of treating it as null",
+    async (field) => {
+      const hotUpdater = createHotUpdater({
+        analytics: true,
+        database: createInMemoryDatabasePlugin(),
+      });
+      const payload: Record<string, unknown> = { ...event };
+      delete payload[field];
+
+      const response = await hotUpdater.handlers.client(eventRequest(payload));
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: `Invalid event field: ${field}`,
+      });
+    },
+  );
+
   it("rejects a non-boolean Analytics feature", () => {
     expect(() =>
       createHotUpdater({
-        features: { analytics: "enabled" as unknown as boolean },
+        analytics: "enabled" as unknown as boolean,
         database: createInMemoryDatabasePlugin(),
       }),
-    ).toThrow("Analytics feature must be a boolean.");
+    ).toThrow("analytics must be a boolean.");
   });
 });

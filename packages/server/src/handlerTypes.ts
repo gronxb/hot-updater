@@ -1,9 +1,4 @@
-import type {
-  AppUpdateAvailableInfo,
-  Bundle,
-  LegacyBundle,
-  ReleaseCatalog,
-} from "@hot-updater/core";
+import type { ArtifactInfo, Bundle, ReleaseCatalog } from "@hot-updater/core";
 import type {
   ChannelDeleteInput,
   ChannelDeleteResult,
@@ -31,7 +26,7 @@ export interface HandlerAPI {
   getArtifactInfo?: (
     targetBundleId: string,
     currentBundleId: string,
-  ) => Promise<AppUpdateAvailableInfo | null>;
+  ) => Promise<ArtifactInfo | null>;
   getReleaseById?: (id: string) => Promise<ReleaseRow | null>;
   getReleasesByScope?: (input: {
     readonly scopeKey: string;
@@ -75,11 +70,11 @@ export interface HandlerAPI {
   commitDatabase?: (input: DatabaseCommit) => Promise<DatabaseCommitResult>;
   getBundleById: (id: string) => Promise<Bundle | null>;
   getBundles: (options: DatabaseBundleQueryOptions) => Promise<PaginatedResult>;
-  insertBundle: (bundle: LegacyBundle) => Promise<void>;
-  insertBundles?: (bundles: readonly LegacyBundle[]) => Promise<void>;
+  insertBundle: (bundle: Bundle) => Promise<void>;
+  insertBundles?: (bundles: readonly Bundle[]) => Promise<void>;
   updateBundleById: (
     bundleId: string,
-    bundle: Partial<LegacyBundle>,
+    bundle: Partial<Bundle>,
   ) => Promise<void>;
   deleteBundleById: (bundleId: string) => Promise<void>;
   getChannels: () => Promise<readonly ChannelRow[]>;
@@ -90,24 +85,6 @@ export interface HandlerAPI {
 export interface HandlerOptions {
   /** Authority accepted by Release Catalog client paths. */
   readonly authorityId?: string;
-  /** Client runtime features to mount. `GET /version` is always available. */
-  readonly features?: HandlerFeatures;
-}
-
-export interface HandlerFeatures {
-  /**
-   * Mounts the React Native v1 update-check endpoints:
-   *
-   * - `GET /release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`
-   * - `GET /release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash`
-   * - `GET /artifacts/:targetBundleId/from/:currentBundleId`
-   *
-   * @default true
-   *
-   * This only controls the core route group. Optional authentication for
-   * these routes is configured through `features.clientAccessKeys`.
-   */
-  readonly updateCheck?: boolean;
 }
 
 export type HotUpdaterHandler = (request: Request) => Promise<Response>;

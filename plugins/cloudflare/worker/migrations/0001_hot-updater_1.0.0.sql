@@ -113,7 +113,7 @@ CREATE TABLE bundle_events (
   from_release_id TEXT,
   from_bundle_id TEXT,
   to_release_id TEXT,
-  to_bundle_id TEXT,
+  to_bundle_id TEXT NOT NULL,
   platform TEXT NOT NULL,
   app_version TEXT NOT NULL,
   channel TEXT NOT NULL,
@@ -131,9 +131,12 @@ CREATE TABLE bundle_events (
   CONSTRAINT bundle_events_shape_check CHECK (
     (
       type IN ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')
+      AND from_bundle_id IS NOT NULL
+      AND update_strategy IS NOT NULL
       AND update_strategy IN ('fingerprint', 'appVersion')
     ) OR (
       type = 'UNCHANGED'
+      AND from_bundle_id IS NULL
       AND update_strategy IS NULL
     )
   ),

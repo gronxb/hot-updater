@@ -27,29 +27,29 @@ For manual configuration, use the settings below.
 
 ```typescript
 interface D1DatabaseConfig {
-  databaseId: string;           // D1 database ID
-  accountId: string;            // Cloudflare account ID
-  cloudflareApiToken: string;   // Cloudflare API token
+  databaseId: string; // D1 database ID
+  accountId: string; // Cloudflare account ID
+  cloudflareApiToken: string; // Cloudflare API token
 }
 ```
 
 ## Usage
 
 ```typescript
-import { d1Database } from '@hot-updater/cloudflare';
-import { defineConfig } from 'hot-updater';
-import { build } from './build';
-import { storage } from './storage';
+import { d1Database } from "@hot-updater/cloudflare";
+import { defineConfig } from "hot-updater";
+import { build } from "./build";
+import { storage } from "./storage";
 
 export default defineConfig({
   build,
   database: d1Database({
     databaseId: process.env.D1_DATABASE_ID!,
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
-    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN!
+    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN!,
   }),
   storage,
-  updateStrategy: 'appVersion'
+  updateStrategy: "appVersion",
 });
 ```
 
@@ -67,7 +67,7 @@ import { env } from "cloudflare:workers";
 
 export const hotUpdater = createHotUpdater({
   database: d1Database(env.DB),
-  features: { analytics: true },
+  analytics: true,
   // ... other options
 });
 ```
@@ -77,27 +77,27 @@ export const hotUpdater = createHotUpdater({
 Combined R2 storage and D1 database:
 
 ```typescript
-import { d1Database } from '@hot-updater/cloudflare';
-import { s3Storage } from '@hot-updater/aws';
-import { defineConfig } from 'hot-updater';
-import { build } from './build';
+import { d1Database } from "@hot-updater/cloudflare";
+import { s3Storage } from "@hot-updater/aws";
+import { defineConfig } from "hot-updater";
+import { build } from "./build";
 
 export default defineConfig({
   build,
   storage: s3Storage({
-    region: 'auto',
+    region: "auto",
     endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID!}.r2.cloudflarestorage.com`,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
     },
-    bucketName: 'my-r2-bucket'
+    bucketName: "my-r2-bucket",
   }),
   database: d1Database({
     databaseId: process.env.D1_DATABASE_ID!,
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
-    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN!
+    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN!,
   }),
-  updateStrategy: 'appVersion'
+  updateStrategy: "appVersion",
 });
 ```

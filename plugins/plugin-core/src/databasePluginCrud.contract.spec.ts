@@ -37,6 +37,26 @@ const bundleRow = {
   asset_base_storage_uri: null,
 };
 
+const bundleEventRow = {
+  id: "event-1",
+  type: "UPDATE_APPLIED" as const,
+  install_id: "install-1",
+  user_id: null,
+  username: null,
+  from_release_id: null,
+  from_bundle_id: "bundle-old",
+  to_release_id: null,
+  to_bundle_id: "bundle-new",
+  platform: "ios" as const,
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "default",
+  update_strategy: "fingerprint" as const,
+  fingerprint_hash: null,
+  sdk_version: null,
+  received_at_ms: 1,
+};
+
 const invoke = (
   plugin: object,
   operation: string,
@@ -150,6 +170,69 @@ describe("database plugin CRUD runtime contract", () => {
     });
 
     await expect(result).rejects.toMatchObject({ code: "invalid-field" });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("accepts explicit null Release ids on an Analytics event", async () => {
+    const create = vi.fn(async ({ data }) => data);
+    const plugin = createValidatedCrud({
+      name: "analytics-create-contract",
+      plugin: () => ({ ...createMethods(), create }),
+    });
+
+    await expect(
+      invoke(plugin, "create", {
+        model: "bundle_events",
+        data: bundleEventRow,
+      }),
+    ).resolves.toMatchObject({
+      from_release_id: null,
+      to_release_id: null,
+    });
+  });
+
+  it.each(["from_release_id", "to_release_id"])(
+    "rejects an omitted Analytics create field: %s",
+    async (field) => {
+      const create = vi.fn(async ({ data }) => data);
+      const plugin = createValidatedCrud({
+        name: "analytics-create-contract",
+        plugin: () => ({ ...createMethods(), create }),
+      });
+      const data: Record<string, unknown> = { ...bundleEventRow };
+      delete data[field];
+
+      const result = invoke(plugin, "create", {
+        model: "bundle_events",
+        data,
+      });
+
+      await expect(result).rejects.toMatchObject({ code: "invalid-data" });
+      expect(create).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { from_bundle_id: null },
+    { to_bundle_id: null },
+    {
+      type: "UNCHANGED",
+      from_bundle_id: "bundle-old",
+      update_strategy: null,
+    },
+  ])("rejects an invalid Analytics direction shape", async (overrides) => {
+    const create = vi.fn(async ({ data }) => data);
+    const plugin = createValidatedCrud({
+      name: "analytics-direction-contract",
+      plugin: () => ({ ...createMethods(), create }),
+    });
+
+    const result = invoke(plugin, "create", {
+      model: "bundle_events",
+      data: { ...bundleEventRow, ...overrides },
+    });
+
+    await expect(result).rejects.toMatchObject({ code: "invalid-data" });
     expect(create).not.toHaveBeenCalled();
   });
 
@@ -358,6 +441,28 @@ describe("database plugin CRUD runtime contract", () => {
         model: "bundles",
         where: [{ field: "id", value: bundleRow.id }],
         select: ["metadata"],
+      });
+
+      await expect(result).rejects.toMatchObject({ code: "invalid-result" });
+    },
+  );
+
+  it.each(["from_release_id", "to_release_id"])(
+    "rejects an omitted Analytics provider result field: %s",
+    async (field) => {
+      const row: Record<string, unknown> = { ...bundleEventRow };
+      delete row[field];
+      const plugin = createValidatedCrud({
+        name: "analytics-result-contract",
+        plugin: () => ({
+          ...createMethods(),
+          findOne: async () => row,
+        }),
+      });
+
+      const result = invoke(plugin, "findOne", {
+        model: "bundle_events",
+        where: [{ field: "id", value: bundleEventRow.id }],
       });
 
       await expect(result).rejects.toMatchObject({ code: "invalid-result" });

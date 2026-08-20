@@ -183,7 +183,7 @@ export const bundle_events = sqliteTable("bundle_events", {
   from_release_id: text("from_release_id"),
   from_bundle_id: text("from_bundle_id"),
   to_release_id: text("to_release_id"),
-  to_bundle_id: text("to_bundle_id"),
+  to_bundle_id: text("to_bundle_id").notNull(),
   platform: text("platform").notNull(),
   app_version: text("app_version").notNull(),
   channel: text("channel").notNull(),

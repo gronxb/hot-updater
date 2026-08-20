@@ -86,9 +86,9 @@ export type BundleEventRowBase = {
   readonly install_id: string;
   readonly user_id: string | null;
   readonly username: string | null;
-  readonly from_release_id?: string | null;
-  readonly to_release_id?: string | null;
-  readonly to_bundle_id: string | null;
+  readonly from_release_id: string | null;
+  readonly to_release_id: string | null;
+  readonly to_bundle_id: string;
   readonly platform: Platform;
   readonly app_version: string;
   readonly channel: string;
@@ -101,7 +101,7 @@ export type BundleEventRowBase = {
 export type BundleEventRow =
   | (BundleEventRowBase & {
       readonly type: "UPDATE_APPLIED" | "RECOVERED" | "RELEASE_ADOPTED";
-      readonly from_bundle_id: string | null;
+      readonly from_bundle_id: string;
       readonly update_strategy: "fingerprint" | "appVersion";
     })
   | (BundleEventRowBase & {

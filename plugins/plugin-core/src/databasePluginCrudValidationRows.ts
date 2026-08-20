@@ -31,12 +31,18 @@ const hasValidReleaseInvariants = (
   );
 };
 
-const isOptionalLegacyAnalyticsField = (
-  model: DatabaseModel,
-  field: string,
+const hasValidBundleEventInvariants = (
+  data: Readonly<Record<string, unknown>>,
 ): boolean =>
-  model === "bundle_events" &&
-  (field === "from_release_id" || field === "to_release_id");
+  ((data.type === "UPDATE_APPLIED" ||
+    data.type === "RECOVERED" ||
+    data.type === "RELEASE_ADOPTED") &&
+    typeof data.from_bundle_id === "string" &&
+    (data.update_strategy === "fingerprint" ||
+      data.update_strategy === "appVersion")) ||
+  (data.type === "UNCHANGED" &&
+    data.from_bundle_id === null &&
+    data.update_strategy === null);
 
 export const validateCreateData = (
   model: DatabaseModel,
@@ -45,12 +51,6 @@ export const validateCreateData = (
   if (!isRecord(data)) throw new DatabasePluginInputError("invalid-data");
   validateFields(model, Object.keys(data));
   for (const field of databaseFields[model]) {
-    if (
-      !Object.hasOwn(data, field) &&
-      isOptionalLegacyAnalyticsField(model, field)
-    ) {
-      continue;
-    }
     const validator = modelValidators[model][field];
     if (
       !Object.hasOwn(data, field) ||
@@ -76,6 +76,9 @@ export const validateCreateData = (
       (data.strategy === "FINGERPRINT" &&
         typeof data.fingerprint_hash !== "string"))
   ) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+  if (model === "bundle_events" && !hasValidBundleEventInvariants(data)) {
     throw new DatabasePluginInputError("invalid-data");
   }
 };
@@ -104,12 +107,6 @@ export const validateResult = (
   if (!isRecord(row)) throw new DatabasePluginInputError("invalid-result");
   const fields = select ?? databaseFields[model];
   for (const field of fields) {
-    if (
-      !Object.hasOwn(row, field) &&
-      isOptionalLegacyAnalyticsField(model, field)
-    ) {
-      continue;
-    }
     const validator = modelValidators[model][field];
     if (
       !Object.hasOwn(row, field) ||
@@ -138,6 +135,15 @@ export const validateResult = (
       "fingerprint_hash",
     ].every((field) => Object.hasOwn(row, field)) &&
     !hasValidReleaseInvariants(row)
+  ) {
+    throw new DatabasePluginInputError("invalid-result");
+  }
+  if (
+    model === "bundle_events" &&
+    ["type", "from_bundle_id", "update_strategy"].every((field) =>
+      Object.hasOwn(row, field),
+    ) &&
+    !hasValidBundleEventInvariants(row)
   ) {
     throw new DatabasePluginInputError("invalid-result");
   }

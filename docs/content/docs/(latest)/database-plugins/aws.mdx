@@ -64,17 +64,15 @@ const database = dynamoDB({
 });
 const hotUpdater = createHotUpdater({
   database,
-  features: {
-    analytics: true,
-    clientAccessKeys: true,
-  },
+  analytics: true,
+  clientAccessKeys: true,
 });
 ```
 
-`features.analytics` enables the built-in event and query routes.
-`features.clientAccessKeys` protects update checks and event ingestion with
-keys stored through the database's official access-key port. Neither option
-installs a server plugin.
+The top-level `analytics` option enables the built-in event and query routes.
+`clientAccessKeys` protects update checks and event ingestion with keys stored
+through the database's official access-key port. Both default to `false` and
+neither installs a server plugin.
 
 ## Configuration
 
@@ -168,10 +166,8 @@ const hotUpdater = createHotUpdater({
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
     },
   }),
-  features: {
-    analytics: true,
-    clientAccessKeys: true,
-  },
+  analytics: true,
+  clientAccessKeys: true,
 });
 ```
 

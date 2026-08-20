@@ -1,4 +1,4 @@
-import type { AppUpdateAvailableInfo, ReleaseCatalog } from "@hot-updater/core";
+import type { ReleaseCatalog } from "@hot-updater/core";
 import { canonicalizeAppVersion } from "@hot-updater/plugin-core";
 
 import { requirePlatformParam, requireRouteParam } from "./handlerParameters";
@@ -17,45 +17,6 @@ const privateNotFound = (): Response =>
       headers: { "cache-control": "private, no-store" },
     },
   );
-
-const serializeArtifactInfo = (
-  info: AppUpdateAvailableInfo,
-  request: Request,
-): string => {
-  const resolveUrl = (url: string) => new URL(url, request.url).toString();
-  const changedAssets = info.changedAssets
-    ? Object.fromEntries(
-        Object.entries(info.changedAssets).map(([path, asset]) => [
-          path,
-          {
-            ...asset,
-            ...(asset.file
-              ? { file: { ...asset.file, url: resolveUrl(asset.file.url) } }
-              : {}),
-            ...(asset.patch
-              ? {
-                  patch: {
-                    ...asset.patch,
-                    patchUrl: resolveUrl(asset.patch.patchUrl),
-                  },
-                }
-              : {}),
-          },
-        ]),
-      )
-    : info.changedAssets;
-  return JSON.stringify({
-    ...info,
-    fileUrl: info.fileUrl === null ? null : resolveUrl(info.fileUrl),
-    ...(info.manifestUrl === undefined
-      ? {}
-      : {
-          manifestUrl:
-            info.manifestUrl === null ? null : resolveUrl(info.manifestUrl),
-        }),
-    ...(changedAssets === undefined ? {} : { changedAssets }),
-  } satisfies AppUpdateAvailableInfo);
-};
 
 const responseHash = async (body: string): Promise<string> => {
   const digest = await crypto.subtle.digest(
@@ -179,14 +140,14 @@ export const createReleaseCatalogRouteHandlers = (
       );
     },
 
-    artifact: async (params, request, api) => {
+    artifact: async (params, _request, api) => {
       if (api.getArtifactInfo === undefined) return privateNotFound();
       const info = await api.getArtifactInfo(
         requireRouteParam(params, "targetBundleId"),
         requireRouteParam(params, "currentBundleId"),
       );
       if (info === null) return privateNotFound();
-      return new Response(serializeArtifactInfo(info, request), {
+      return new Response(JSON.stringify(info), {
         status: 200,
         headers: {
           "cache-control": "private, no-store",

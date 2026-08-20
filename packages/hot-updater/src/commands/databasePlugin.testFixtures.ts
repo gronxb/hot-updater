@@ -3,7 +3,7 @@ import {
   encodeChannelKey,
 } from "@hot-updater/core";
 import { createMockDatabaseData, mockDatabase } from "@hot-updater/mock";
-import type { Bundle, LegacyBundle } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/plugin-core";
 import {
   bundleToPatchRows,
   bundleToRow,
@@ -17,6 +17,10 @@ import {
 } from "@hot-updater/plugin-core";
 import { vi } from "vitest";
 
+import type { DeploymentWrite } from "./deployTransaction";
+
+export type DeploymentSeed = Omit<DeploymentWrite, "authorityId">;
+
 const createdAtMsFromId = (id: string): number => {
   try {
     const timestamp = extractTimestampFromUUIDv7(id);
@@ -28,7 +32,7 @@ const createdAtMsFromId = (id: string): number => {
 
 const compileSeedCatalogs = async (
   authorityId: string,
-  bundles: readonly LegacyBundle[],
+  deployments: readonly DeploymentSeed[],
 ): Promise<{
   readonly catalogs: readonly {
     readonly channelName: string;
@@ -39,23 +43,23 @@ const compileSeedCatalogs = async (
     readonly row: ReleaseRow;
   }[];
 }> => {
-  if (bundles.length === 0) return { catalogs: [], releases: [] };
+  if (deployments.length === 0) return { catalogs: [], releases: [] };
 
   const scopes = new Map<
     string,
     {
       readonly channelName: string;
       readonly fingerprintHash: string | null;
-      readonly platform: LegacyBundle["platform"];
+      readonly platform: Bundle["platform"];
       readonly releases: ReleaseRow[];
       readonly strategy: "APP_VERSION" | "FINGERPRINT";
     }
   >();
 
-  for (const bundle of bundles) {
+  for (const { bundle, release: policy } of deployments) {
     const strategy =
-      bundle.fingerprintHash === null ? "APP_VERSION" : "FINGERPRINT";
-    const channelKey = encodeChannelKey(bundle.channel);
+      policy.fingerprintHash === null ? "APP_VERSION" : "FINGERPRINT";
+    const channelKey = encodeChannelKey(policy.channel);
     const scopeKey =
       strategy === "APP_VERSION"
         ? createReleaseCatalogScopeKey({
@@ -67,7 +71,7 @@ const compileSeedCatalogs = async (
         : createReleaseCatalogScopeKey({
             authorityId,
             channelKey,
-            fingerprintHash: bundle.fingerprintHash ?? "",
+            fingerprintHash: policy.fingerprintHash ?? "",
             platform: bundle.platform,
             strategy,
           });
@@ -76,18 +80,18 @@ const compileSeedCatalogs = async (
       id: bundle.id,
       revision: 1,
       scope_key: scopeKey,
-      channel_id: bundle.channel,
+      channel_id: policy.channel,
       platform: bundle.platform,
       kind: "BUNDLE",
       bundle_id: bundle.id,
       strategy,
-      target_app_version: bundle.targetAppVersion,
-      fingerprint_hash: bundle.fingerprintHash,
-      enabled: bundle.enabled,
-      should_force_update: bundle.shouldForceUpdate,
-      message: bundle.message,
-      rollout_cohort_count: bundle.rolloutCohortCount ?? 1000,
-      target_cohorts: bundle.targetCohorts ?? [],
+      target_app_version: policy.targetAppVersion,
+      fingerprint_hash: policy.fingerprintHash,
+      enabled: policy.enabled,
+      should_force_update: policy.shouldForceUpdate,
+      message: policy.message,
+      rollout_cohort_count: policy.rolloutCohortCount ?? 1000,
+      target_cohorts: policy.targetCohorts ?? [],
       operation: "DEPLOY",
       source_release_id: null,
       created_at_ms: createdAtMs,
@@ -96,8 +100,8 @@ const compileSeedCatalogs = async (
     const scope = scopes.get(scopeKey);
     if (scope === undefined) {
       scopes.set(scopeKey, {
-        channelName: bundle.channel,
-        fingerprintHash: bundle.fingerprintHash,
+        channelName: policy.channel,
+        fingerprintHash: policy.fingerprintHash,
         platform: bundle.platform,
         releases: [release],
         strategy,
@@ -221,16 +225,12 @@ export const createDatabasePluginHarness = () => {
     dispose,
   };
 
-  const setBundles = (bundles: readonly LegacyBundle[]): void => {
+  const setBundles = (bundles: readonly Bundle[]): void => {
     data.bundles.clear();
     data.bundlePatches.clear();
     data.channels.clear();
     data.releaseCatalogs.clear();
     data.releases.clear();
-    const channels = [...new Set(bundles.map(({ channel }) => channel))].map(
-      (name) => ({ id: `channel-${name}`, name }),
-    );
-    for (const channel of channels) data.channels.set(channel.id, channel);
     for (const bundle of bundles) {
       data.bundles.set(bundle.id, bundleToRow(bundle));
       for (const patch of bundleToPatchRows(bundle)) {
@@ -269,15 +269,19 @@ export const createDatabasePluginHarness = () => {
         .mockImplementation((input) => basePlugin.commit(input));
     },
     setBundles,
-    seedLegacyBundles: async (
-      bundles: readonly LegacyBundle[],
+    seedDeployments: async (
+      deployments: readonly DeploymentSeed[],
       authorityId = "default",
     ): Promise<void> => {
-      setBundles(bundles);
+      setBundles(deployments.map(({ bundle }) => bundle));
+      const channels = [
+        ...new Set(deployments.map(({ release }) => release.channel)),
+      ].map((name) => ({ id: `channel-${name}`, name }));
+      for (const channel of channels) data.channels.set(channel.id, channel);
       const channelIds = new Map(
         [...data.channels.values()].map(({ id, name }) => [name, id]),
       );
-      const compiled = await compileSeedCatalogs(authorityId, bundles);
+      const compiled = await compileSeedCatalogs(authorityId, deployments);
       for (const release of compiled.releases) {
         data.releases.set(release.row.id, {
           ...release.row,

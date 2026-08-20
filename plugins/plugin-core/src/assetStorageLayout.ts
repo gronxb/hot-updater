@@ -1,9 +1,6 @@
 import { getContentAddressedAssetStoragePath } from "./contentAddressedAssets";
 import { createStorageKeyBuilder } from "./createStorageKeyBuilder";
-import { getLegacyManifestAssetStoragePath } from "./legacyAssetStorageLayout";
 import { createStorageUri, parseStorageUri } from "./parseStorageUri";
-
-export type AssetStorageLayout = "content-addressed" | "legacy-files";
 
 export const isBrotliManifestAssetPath = (assetPath: string) =>
   /(^|\/)index\.[^/]+\.bundle$/.test(assetPath.replace(/\\/g, "/"));
@@ -68,39 +65,17 @@ export const replaceStorageUriKeySuffix = ({
   });
 };
 
-export const getAssetStorageLayout = (
-  assetBaseStorageUri: string,
-): AssetStorageLayout => {
-  const pathname = new URL(assetBaseStorageUri).pathname.replace(/\/+$/, "");
-  return pathname.endsWith("/assets") || pathname === "/assets"
-    ? "content-addressed"
-    : "legacy-files";
-};
-
-export const isContentAddressedAssetBaseStorageUri = (
-  assetBaseStorageUri: string,
-) => getAssetStorageLayout(assetBaseStorageUri) === "content-addressed";
-
 export const getManifestAssetStoragePath = ({
-  assetBaseStorageUri,
   assetPath,
   fileHash,
 }: {
-  assetBaseStorageUri: string;
   assetPath: string;
   fileHash: string;
-}) => {
-  const layout = getAssetStorageLayout(assetBaseStorageUri);
-
-  if (layout === "content-addressed") {
-    return getContentAddressedAssetStoragePath({
-      assetPath,
-      fileHash,
-    });
-  }
-
-  return getLegacyManifestAssetStoragePath({ assetPath });
-};
+}) =>
+  getContentAddressedAssetStoragePath({
+    assetPath,
+    fileHash,
+  });
 
 export const resolveManifestAssetStorageUri = ({
   assetBaseStorageUri,
@@ -114,7 +89,6 @@ export const resolveManifestAssetStorageUri = ({
   createStorageUriWithRelativePath({
     baseStorageUri: assetBaseStorageUri,
     relativePath: getManifestAssetStoragePath({
-      assetBaseStorageUri,
       assetPath,
       fileHash,
     }),

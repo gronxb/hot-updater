@@ -8,10 +8,8 @@ import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryData
 import packageJson from "../package.json" with { type: "json" };
 import { createHotUpdater } from "./index";
 import type {
-  CreateHotUpdaterFeatures,
   CreateHotUpdaterOptions,
   HandlerAPI,
-  HandlerFeatures,
   HandlerOptions,
 } from "./index";
 import {
@@ -34,25 +32,12 @@ describe("runtime createHotUpdater", () => {
 
   it("exports runtime-safe handler types from the root entry", () => {
     expectTypeOf<HandlerAPI>().toHaveProperty("getBundles");
-    expectTypeOf<HandlerOptions>().toHaveProperty("features");
-    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<
-      "authorityId" | "features"
-    >();
+    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<"authorityId">();
     expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
-      "authorityId" | "clientBasePath" | "database" | "features" | "storage"
+      "analytics" | "authorityId" | "clientAccessKeys" | "database" | "storage"
     >();
-    expectTypeOf<keyof CreateHotUpdaterFeatures>().toEqualTypeOf<
-      "updateCheck" | "analytics" | "clientAccessKeys"
-    >();
-    expectTypeOf<HandlerFeatures>().toEqualTypeOf<{
-      readonly updateCheck?: boolean;
-    }>();
-    expectTypeOf<
-      NonNullable<CreateHotUpdaterOptions["features"]>
-    >().toHaveProperty("analytics");
-    expectTypeOf<
-      NonNullable<CreateHotUpdaterOptions["features"]>
-    >().toHaveProperty("clientAccessKeys");
+    expectTypeOf<CreateHotUpdaterOptions>().toHaveProperty("analytics");
+    expectTypeOf<CreateHotUpdaterOptions>().toHaveProperty("clientAccessKeys");
   });
 
   it("accepts a direct v2 plugin object without exposing maintenance methods", () => {
@@ -74,7 +59,6 @@ describe("runtime createHotUpdater", () => {
       storage: [storage],
     });
 
-    expect(hotUpdater.clientBasePath).toBe("/");
     expect(hotUpdater.adapterName).toBe("contextlessTestDatabase");
     expect(hotUpdater.handlers.client).toEqual(expect.any(Function));
     expect(hotUpdater.handlers.admin).toEqual(expect.any(Function));
@@ -145,36 +129,31 @@ describe("runtime createHotUpdater", () => {
     expect(createMigrator).toHaveBeenCalledOnce();
   });
 
-  it.each([{ updateCheck: true }, { updateCheck: false }])(
-    "keeps the version route mounted for updateCheck=$updateCheck",
-    async (features) => {
-      const hotUpdater = createHotUpdater({
-        database: createRuntimeDatabase(),
-        clientBasePath: "/api/check-update",
-        features,
-      });
+  it("keeps the version route mounted on the client handler", async () => {
+    const hotUpdater = createHotUpdater({
+      database: createRuntimeDatabase(),
+    });
 
-      const response = await hotUpdater.handlers.client(
-        new Request("https://updates.example.com/version"),
-      );
+    const response = await hotUpdater.handlers.client(
+      new Request("https://updates.example.com/version"),
+    );
 
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({
-        infrastructureGeneration: 1,
-        version: HOT_UPDATER_SERVER_VERSION,
-      });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      infrastructureGeneration: 1,
+      version: HOT_UPDATER_SERVER_VERSION,
+    });
+  });
+
+  it.each(["analytics", "clientAccessKeys"] as const)(
+    "rejects a non-boolean %s option",
+    (option) => {
+      expect(() =>
+        createHotUpdater({
+          database: createRuntimeDatabase(),
+          [option]: "enabled" as unknown as boolean,
+        }),
+      ).toThrow(`${option} must be a boolean.`);
     },
   );
-
-  it.each([
-    ["updateCheck", "Update-check"],
-    ["analytics", "Analytics"],
-  ] as const)("rejects a non-boolean %s feature", (feature, label) => {
-    expect(() =>
-      createHotUpdater({
-        database: createRuntimeDatabase(),
-        features: { [feature]: "enabled" } as never,
-      }),
-    ).toThrow(`${label} feature must be a boolean.`);
-  });
 });

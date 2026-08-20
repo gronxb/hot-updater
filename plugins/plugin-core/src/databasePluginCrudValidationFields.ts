@@ -134,7 +134,7 @@ export const modelValidators: ValidatorMap = {
     from_bundle_id: (value) => value === null || typeof value === "string",
     from_release_id: (value) => value === null || typeof value === "string",
     to_release_id: (value) => value === null || typeof value === "string",
-    to_bundle_id: (value) => value === null || typeof value === "string",
+    to_bundle_id: (value) => typeof value === "string",
     platform: (value) => value === "ios" || value === "android",
     app_version: (value) => typeof value === "string",
     channel: (value) => typeof value === "string",

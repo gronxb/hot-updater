@@ -1,12 +1,12 @@
 import {
   createReleaseCatalogScopeKey,
   encodeChannelKey,
-  type AppUpdateAvailableInfo,
+  type ArtifactInfo,
   type ReleaseCatalog,
 } from "@hot-updater/core";
 import { canonicalizeAppVersion } from "@hot-updater/plugin-core";
 
-import { fetchJSON } from "./fetchUpdateInfo";
+import { fetchJSON } from "./fetchJSON";
 import { fetchReleaseCatalogWithCache } from "./releaseCatalogCache";
 import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
 import type {
@@ -25,6 +25,70 @@ const resolveBaseURL = async (baseURL: HotUpdaterBaseURL): Promise<string> => {
 
   return resolvedBaseURL;
 };
+
+const resolveArtifactUrl = (baseURL: string, value: string): string => {
+  if (/^https?:\/\//i.test(value)) {
+    new URL(value);
+    return value;
+  }
+  if (!value.startsWith("/storage/")) {
+    throw new Error(
+      "Artifact URLs must be absolute HTTP(S) URLs or client-relative storage paths.",
+    );
+  }
+  return `${baseURL}/${value.slice(1)}`;
+};
+
+const resolveArtifactUrls = (
+  baseURL: string,
+  info: ArtifactInfo,
+): ArtifactInfo => ({
+  ...info,
+  fileUrl:
+    info.fileUrl === null ? null : resolveArtifactUrl(baseURL, info.fileUrl),
+  ...(info.manifestUrl === undefined
+    ? {}
+    : {
+        manifestUrl:
+          info.manifestUrl === null
+            ? null
+            : resolveArtifactUrl(baseURL, info.manifestUrl),
+      }),
+  ...(info.changedAssets === undefined
+    ? {}
+    : {
+        changedAssets:
+          info.changedAssets === null
+            ? null
+            : Object.fromEntries(
+                Object.entries(info.changedAssets).map(([path, asset]) => [
+                  path,
+                  {
+                    ...asset,
+                    ...(asset.file
+                      ? {
+                          file: {
+                            ...asset.file,
+                            url: resolveArtifactUrl(baseURL, asset.file.url),
+                          },
+                        }
+                      : {}),
+                    ...(asset.patch
+                      ? {
+                          patch: {
+                            ...asset.patch,
+                            patchUrl: resolveArtifactUrl(
+                              baseURL,
+                              asset.patch.patchUrl,
+                            ),
+                          },
+                        }
+                      : {}),
+                  },
+                ]),
+              ),
+      }),
+});
 
 /**
  * Creates a default resolver that uses baseURL for network operations.
@@ -89,18 +153,19 @@ export function createDefaultResolver(
         url,
       });
     },
-    resolveArtifact: async (params): Promise<AppUpdateAvailableInfo> => {
+    resolveArtifact: async (params): Promise<ArtifactInfo> => {
       const resolvedBaseURL = (await resolveBaseURL(baseURL)).replace(
         /\/+$/,
         "",
       );
-      return fetchJSON<AppUpdateAvailableInfo>({
+      const info = await fetchJSON<ArtifactInfo>({
         requestHeaders: params.requestHeaders,
         requestTimeout: params.requestTimeout,
         url: `${resolvedBaseURL}/artifacts/${encodeURIComponent(
           params.targetBundleId,
         )}/from/${encodeURIComponent(params.currentBundleId)}`,
       });
+      return resolveArtifactUrls(resolvedBaseURL, info);
     },
     notifyAppReady: async (
       params: ResolverNotifyAppReadyParams,

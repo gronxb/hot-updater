@@ -53,13 +53,10 @@ const getHotUpdater = (distributionDomainName: string) => {
   if (cached) return cached;
 
   const hotUpdater = createHotUpdater({
+    analytics: true,
     authorityId: AUTHORITY_ID,
+    clientAccessKeys: true,
     database,
-    features: {
-      updateCheck: true,
-      analytics: true,
-      clientAccessKeys: true,
-    },
     storage: [
       s3Storage({
         bucketName: S3_BUCKET_NAME,
@@ -72,7 +69,6 @@ const getHotUpdater = (distributionDomainName: string) => {
         }),
       }),
     ],
-    clientBasePath: HOT_UPDATER_BASE_PATH,
   });
   hotUpdaterByDistribution.set(distributionDomainName, hotUpdater);
   return hotUpdater;

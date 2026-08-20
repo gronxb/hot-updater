@@ -18,12 +18,9 @@ export type CloudflareWorkerEnv = {
 export const HOT_UPDATER_BASE_PATH = "/";
 
 const hotUpdater = createHotUpdater({
+  analytics: true,
   authorityId: env.AUTHORITY_ID,
   database: d1Database(env.DB),
-  features: {
-    updateCheck: true,
-    analytics: true,
-  },
   storage: [
     r2Storage({
       bucket: env.BUCKET,
@@ -31,7 +28,6 @@ const hotUpdater = createHotUpdater({
       downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
     }),
   ],
-  clientBasePath: HOT_UPDATER_BASE_PATH,
 });
 
 const app = new Hono<{ Bindings: CloudflareWorkerEnv }>();

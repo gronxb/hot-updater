@@ -331,10 +331,10 @@ export default HotUpdater.wrap({
 <Callout type="info">
   The managed AWS runtime exposes `/version` publicly. OTA update checks and
   Analytics ingestion require `x-api-key: $HOT_UPDATER_API_KEY`, using a key
-  created from the Console. Internally, it enables `updateCheck`, `analytics`,
-  and `clientAccessKeys`, while disabling `bundles`. Client access keys do not
-  authorize Analytics query routes, and bundle management endpoints are not
-  mounted on the public function URL.
+  created from the Console. Internally, it enables the top-level `analytics` and
+  `clientAccessKeys` options and mounts only `handlers.client`. Client access
+  keys do not authorize Analytics query routes, and bundle management endpoints
+  are not mounted on the public function URL.
 </Callout>
 
 ## Step 6: If You Use Expo, Add the Config Plugin

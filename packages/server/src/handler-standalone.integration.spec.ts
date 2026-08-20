@@ -1,5 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
-import type { LegacyBundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 import {
   createReleaseCatalogScopeKey,
   encodeChannelKey,
@@ -25,24 +25,22 @@ import { createHotUpdater, type RuntimeHotUpdaterAPI } from "./index";
 
 const db = new PGlite();
 const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
+const clientMountPath = "/hot-updater";
 const api = createHotUpdater({
+  analytics: true,
   database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
-  clientBasePath: "/hot-updater",
-  features: {
-    updateCheck: true,
-    analytics: true,
-  },
 });
 const baseUrl = "http://localhost:3000";
 const server = setupServer();
 const invokeHandler = async (
   hotUpdater: RuntimeHotUpdaterAPI,
   request: Request,
+  clientPath: string,
 ) => {
   const url = new URL(request.url);
-  const adminBasePath = `${hotUpdater.clientBasePath}/admin`;
+  const adminBasePath = `${clientPath}/admin`;
   const isAdmin = url.pathname.startsWith(`${adminBasePath}/`);
-  const mountPath = isAdmin ? adminBasePath : hotUpdater.clientBasePath;
+  const mountPath = isAdmin ? adminBasePath : clientPath;
   url.pathname = url.pathname.slice(mountPath.length) || "/";
   const handler = isAdmin
     ? hotUpdater.handlers.admin
@@ -63,7 +61,7 @@ beforeAll(async () => {
   server.listen({ onUnhandledRequest: "error" });
   server.use(
     http.all(`${baseUrl}/hot-updater/*`, ({ request }) =>
-      invokeHandler(api, request),
+      invokeHandler(api, request, clientMountPath),
     ),
   );
 });
@@ -82,23 +80,81 @@ afterAll(async () => {
   await db.close();
 });
 
-const createTestBundle = (overrides?: Partial<LegacyBundle>): LegacyBundle => ({
+const createTestBundle = (overrides?: Partial<Bundle>): Bundle => ({
   id: NIL_UUID,
   platform: "ios",
-  channel: "production",
-  enabled: true,
-  shouldForceUpdate: false,
   fileHash: "test-hash",
   gitCommitHash: null,
-  message: null,
-  targetAppVersion: "*",
   storageUri: "test://storage",
-  fingerprintHash: null,
   ...overrides,
 });
 
 const createStandaloneClient = (base = `${baseUrl}/hot-updater/admin`) =>
   createDatabaseClient(standaloneRepository({ baseUrl: base }));
+
+const commitTestRelease = async (
+  bundle: Bundle,
+  channelName = "production",
+) => {
+  const repository = standaloneRepository({
+    baseUrl: `${baseUrl}/hot-updater/admin`,
+  });
+  const channel = await repository.models.channels.insert({
+    onConflict: "returnExisting",
+    row: { id: uuidv7(), name: channelName },
+  });
+  const scopeKey = createReleaseCatalogScopeKey({
+    authorityId: "default",
+    channelKey: encodeChannelKey(channelName),
+    platform: bundle.platform,
+    strategy: "APP_VERSION",
+  });
+  const releaseId = uuidv7();
+  const committed = await commitReleaseCatalogMutation({
+    companionChanges: [
+      {
+        model: "bundles",
+        operation: "insert",
+        row: bundleToRow(bundle),
+      },
+    ],
+    database: repository,
+    mutation: {
+      operation: "insert",
+      row: {
+        bundle_id: bundle.id,
+        channel_id: channel.row.id,
+        created_at_ms: 1,
+        enabled: true,
+        fingerprint_hash: null,
+        id: releaseId,
+        kind: "BUNDLE",
+        message: null,
+        operation: "DEPLOY",
+        platform: bundle.platform,
+        revision: 1,
+        rollout_cohort_count: 1_000,
+        scope_key: scopeKey,
+        should_force_update: false,
+        source_release_id: null,
+        strategy: "APP_VERSION",
+        target_app_version: "*",
+        target_cohorts: [],
+        updated_at_ms: 1,
+      },
+    },
+    scope: {
+      authorityId: "default",
+      channelId: channel.row.id,
+      channelName,
+      fingerprintHash: null,
+      platform: bundle.platform,
+      scopeKey,
+      strategy: "APP_VERSION",
+    },
+  });
+  return { channel: channel.row, committed, releaseId, repository, scopeKey };
+};
 
 describe("Handler <-> Standalone Repository Integration", () => {
   it("uses Standalone for bundle management and the server database for Analytics", async () => {
@@ -120,10 +176,12 @@ describe("Handler <-> Standalone Repository Integration", () => {
           cohort: "default",
           fingerprintHash: null,
           fromBundleId: NIL_UUID,
+          fromReleaseId: null,
           installId,
           platform: "ios",
           sdkVersion: "2.0.0",
           toBundleId: bundleId,
+          toReleaseId: null,
           type: "UPDATE_APPLIED",
           updateStrategy: "appVersion",
         }),
@@ -142,65 +200,9 @@ describe("Handler <-> Standalone Repository Integration", () => {
   });
 
   it("atomically commits and reads Release catalogs through standalone management routes", async () => {
-    const repository = standaloneRepository({
-      baseUrl: `${baseUrl}/hot-updater/admin`,
-    });
-    const channel = await repository.models.channels.insert({
-      onConflict: "returnExisting",
-      row: { id: uuidv7(), name: "production" },
-    });
     const bundle = createTestBundle({ id: uuidv7() });
-    const scopeKey = createReleaseCatalogScopeKey({
-      authorityId: "default",
-      channelKey: encodeChannelKey("production"),
-      platform: "ios",
-      strategy: "APP_VERSION",
-    });
-    const releaseId = uuidv7();
-
-    const committed = await commitReleaseCatalogMutation({
-      companionChanges: [
-        {
-          model: "bundles",
-          operation: "insert",
-          row: bundleToRow(bundle, channel.row.id),
-        },
-      ],
-      database: repository,
-      mutation: {
-        operation: "insert",
-        row: {
-          bundle_id: bundle.id,
-          channel_id: channel.row.id,
-          created_at_ms: 1,
-          enabled: true,
-          fingerprint_hash: null,
-          id: releaseId,
-          kind: "BUNDLE",
-          message: null,
-          operation: "DEPLOY",
-          platform: "ios",
-          revision: 1,
-          rollout_cohort_count: 1000,
-          scope_key: scopeKey,
-          should_force_update: false,
-          source_release_id: null,
-          strategy: "APP_VERSION",
-          target_app_version: "*",
-          target_cohorts: [],
-          updated_at_ms: 1,
-        },
-      },
-      scope: {
-        authorityId: "default",
-        channelId: channel.row.id,
-        channelName: channel.row.name,
-        fingerprintHash: null,
-        platform: "ios",
-        scopeKey,
-        strategy: "APP_VERSION",
-      },
-    });
+    const { committed, releaseId, repository, scopeKey } =
+      await commitTestRelease(bundle);
 
     await expect(
       repository.models.releases.findById(releaseId),
@@ -224,16 +226,12 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
   it("keeps Standalone management routes separate from client access-key protection", async () => {
     const protectedApi = createHotUpdater({
+      clientAccessKeys: true,
       database: createInMemoryDatabasePlugin(),
-      clientBasePath: "/protected-hot-updater",
-      features: {
-        updateCheck: true,
-        clientAccessKeys: true,
-      },
     });
     server.use(
       http.all(`${baseUrl}/protected-hot-updater/*`, async ({ request }) => {
-        return invokeHandler(protectedApi, request);
+        return invokeHandler(protectedApi, request, "/protected-hot-updater");
       }),
     );
     const bundleId = uuidv7();
@@ -255,21 +253,30 @@ describe("Handler <-> Standalone Repository Integration", () => {
   });
 
   it("creates a bundle through handler POST /bundles", async () => {
-    const client = createStandaloneClient();
     const bundleId = uuidv7();
-
-    await client.insertBundle(
-      createTestBundle({ id: bundleId, fileHash: "integration-hash-1" }),
+    const response = await api.handlers.admin(
+      new Request(`${baseUrl}/bundles`, {
+        body: JSON.stringify(
+          createTestBundle({
+            id: bundleId,
+            fileHash: "integration-hash-1",
+          }),
+        ),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }),
     );
 
-    const response = await api.handlers.admin(
+    const retrieved = await api.handlers.admin(
       new Request(`${baseUrl}/bundles/${bundleId}`),
     );
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    expect(response.status).toBe(201);
+    expect(retrieved.status).toBe(200);
+    await expect(retrieved.json()).resolves.toMatchObject({
       id: bundleId,
       fileHash: "integration-hash-1",
     });
+    await expect(api.getReleases({ bundleId, limit: 10 })).resolves.toEqual([]);
   });
 
   it("retrieves a bundle through handler GET /bundles/:id", async () => {
@@ -286,7 +293,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
   it("refuses to delete an artifact referenced by a Release", async () => {
     const bundleId = uuidv7();
     const bundle = createTestBundle({ id: bundleId });
-    await api.insertBundle(bundle);
+    await commitTestRelease(bundle);
     const client = createStandaloneClient();
 
     await expect(client.deleteBundleById(bundleId)).rejects.toThrow(
@@ -299,15 +306,9 @@ describe("Handler <-> Standalone Repository Integration", () => {
   });
 
   it("lists and filters artifacts through handler GET /bundles", async () => {
-    await api.insertBundle(
-      createTestBundle({ id: uuidv7(), channel: "production" }),
-    );
-    await api.insertBundle(
-      createTestBundle({ id: uuidv7(), channel: "production" }),
-    );
-    await api.insertBundle(
-      createTestBundle({ id: uuidv7(), channel: "staging" }),
-    );
+    await api.insertBundle(createTestBundle({ id: uuidv7() }));
+    await api.insertBundle(createTestBundle({ id: uuidv7() }));
+    await api.insertBundle(createTestBundle({ id: uuidv7() }));
     const client = createStandaloneClient();
 
     const all = await client.getBundles({ limit: 50 });
@@ -322,10 +323,14 @@ describe("Handler <-> Standalone Repository Integration", () => {
   });
 
   it("lists Channel rows through handler GET /channels", async () => {
-    await api.insertBundle(
-      createTestBundle({ id: uuidv7(), channel: "production" }),
-    );
-    await api.insertBundle(createTestBundle({ id: uuidv7(), channel: "beta" }));
+    await api.insertChannel({
+      onConflict: "returnExisting",
+      row: { id: uuidv7(), name: "production" },
+    });
+    await api.insertChannel({
+      onConflict: "returnExisting",
+      row: { id: uuidv7(), name: "beta" },
+    });
 
     const channels = await createStandaloneClient().getChannels();
 
@@ -363,9 +368,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
   it("refuses to delete a Channel referenced by a Release", async () => {
     const client = createStandaloneClient();
     const bundleId = uuidv7();
-    await api.insertBundle(
-      createTestBundle({ id: bundleId, channel: "preview" }),
-    );
+    await commitTestRelease(createTestBundle({ id: bundleId }), "preview");
     const channel = (await client.getChannels()).find(
       ({ name }) => name === "preview",
     );
@@ -379,6 +382,28 @@ describe("Handler <-> Standalone Repository Integration", () => {
     await expect(client.getBundleById(bundleId)).resolves.toMatchObject({
       id: bundleId,
     });
+  });
+
+  it("updates an artifact without changing its Release or catalog", async () => {
+    const bundle = createTestBundle({ id: uuidv7() });
+    const { releaseId, repository, scopeKey } = await commitTestRelease(bundle);
+    const releaseBefore = await repository.models.releases.findById(releaseId);
+    const catalogBefore =
+      await repository.models.releaseCatalogs.findByScopeKey(scopeKey);
+
+    await createStandaloneClient().updateBundleById(bundle.id, {
+      storageUri: "test://updated-artifact",
+    });
+
+    await expect(api.getBundleById(bundle.id)).resolves.toMatchObject({
+      storageUri: "test://updated-artifact",
+    });
+    await expect(
+      repository.models.releases.findById(releaseId),
+    ).resolves.toEqual(releaseBefore);
+    await expect(
+      repository.models.releaseCatalogs.findByScopeKey(scopeKey),
+    ).resolves.toEqual(catalogBefore);
   });
 
   it("creates, retrieves, updates, and deletes through existing routes", async () => {
@@ -399,12 +424,18 @@ describe("Handler <-> Standalone Repository Integration", () => {
     await expect(client.getBundleById(bundleId)).resolves.toBeNull();
   });
 
-  it("creates multiple bundles through the existing create endpoint", async () => {
-    const client = createStandaloneClient();
+  it("creates multiple artifacts atomically through POST /bundles", async () => {
     const ids = [uuidv7(), uuidv7(), uuidv7()];
 
-    for (const id of ids) await client.insertBundle(createTestBundle({ id }));
+    const response = await api.handlers.admin(
+      new Request(`${baseUrl}/bundles`, {
+        body: JSON.stringify(ids.map((id) => createTestBundle({ id }))),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }),
+    );
 
+    expect(response.status).toBe(201);
     for (const id of ids) {
       await expect(api.getBundleById(id)).resolves.toMatchObject({ id });
     }
@@ -430,15 +461,13 @@ describe("Handler <-> Standalone Repository Integration", () => {
     await expect(api.getBundleById(newId)).resolves.toBeNull();
   });
 
-  it("works with a custom clientBasePath", async () => {
+  it("works when handlers are mounted under a custom client path", async () => {
     const customApi = createHotUpdater({
       database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
-      clientBasePath: "/api/v2",
-      features: { updateCheck: true },
     });
     server.use(
       http.all(`${baseUrl}/api/v2/*`, async ({ request }) => {
-        return invokeHandler(customApi, request);
+        return invokeHandler(customApi, request, "/api/v2");
       }),
     );
     const bundleId = uuidv7();
@@ -462,12 +491,10 @@ describe("Handler <-> Standalone Repository Integration", () => {
   it("updates a bundle without creating a duplicate row", async () => {
     const memoryApi = createHotUpdater({
       database: createInMemoryDatabasePlugin(),
-      clientBasePath: "/memory-hot-updater",
-      features: { updateCheck: true },
     });
     server.use(
       http.all(`${baseUrl}/memory-hot-updater/*`, async ({ request }) => {
-        return invokeHandler(memoryApi, request);
+        return invokeHandler(memoryApi, request, "/memory-hot-updater");
       }),
     );
     const client = createStandaloneClient(
@@ -477,7 +504,6 @@ describe("Handler <-> Standalone Repository Integration", () => {
     await client.insertBundle(
       createTestBundle({
         id: bundleId,
-        targetAppVersion: "1.x.x",
         storageUri: "s3://test-bucket/original.zip",
       }),
     );
