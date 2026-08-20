@@ -1,5 +1,15 @@
 # @hot-updater/server
 
+## 0.36.2
+
+### Patch Changes
+
+- Updated dependencies [be04a41]
+  - @hot-updater/plugin-core@0.36.2
+  - @hot-updater/bsdiff@0.36.2
+  - @hot-updater/core@0.36.2
+  - @hot-updater/js@0.36.2
+
 ## 0.36.1
 
 ### Patch Changes

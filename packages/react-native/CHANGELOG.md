@@ -1,5 +1,16 @@
 # @hot-updater/react-native
 
+## 0.36.2
+
+### Patch Changes
+
+- b50d2dc: Preserve Metro as the JavaScript bundle source for Android debug builds, migrate previously generated config-plugin output, and continue using Hot Updater bundles for release builds.
+- Updated dependencies [be04a41]
+  - @hot-updater/plugin-core@0.36.2
+  - @hot-updater/cli-tools@0.36.2
+  - @hot-updater/core@0.36.2
+  - @hot-updater/js@0.36.2
+
 ## 0.36.1
 
 ### Patch Changes
