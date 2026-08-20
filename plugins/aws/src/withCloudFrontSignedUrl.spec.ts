@@ -69,4 +69,25 @@ describe("withCloudFrontSignedUrl", () => {
       }),
     );
   });
+
+  it("keeps object keys encoded in CloudFront HTTP URLs", async () => {
+    const storage = withCloudFrontSignedUrl<TestContext>(
+      () => createBaseStorage(),
+      {
+        keyPairId: "K123",
+        getPrivateKey: async () => "private-key",
+        publicBaseUrl: "https://d2zkxggbe748dg.cloudfront.net",
+      },
+    )();
+
+    await storage.profiles.runtime.getDownloadUrl(
+      "s3://test-bucket/releases/logo%402x.png",
+    );
+
+    expect(getSignedUrl).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        url: "https://d2zkxggbe748dg.cloudfront.net/releases/logo%402x.png",
+      }),
+    );
+  });
 });

@@ -4,6 +4,7 @@ import {
   type GetBundlesArgs,
   NIL_UUID,
 } from "@hot-updater/core";
+import { signToken } from "@hot-updater/js";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -335,6 +336,24 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
       id: "00000000-0000-0000-0000-000000000001",
       status: "UPDATE",
     });
+  });
+
+  it("serves signed R2 URLs for percent-encoded object keys", async () => {
+    const encodedKey = "bundles/assets/bootsplash/logo-ios%402x.png";
+    await putR2Object(
+      "assets/bootsplash/logo-ios@2x.png",
+      "asset",
+      "text/plain",
+    );
+    const token = await signToken(encodedKey, env.JWT_SECRET);
+
+    const response = await worker.fetch(
+      new Request(`${PUBLIC_BASE_URL}/${encodedKey}?token=${token}`),
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe("asset");
   });
 
   it("does not support the legacy exact path", async () => {

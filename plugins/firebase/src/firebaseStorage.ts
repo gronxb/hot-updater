@@ -139,12 +139,7 @@ export const firebaseStorage =
             }
           },
           async getDownloadUrl(storageUri: string) {
-            // Simple validation: supported protocol must match
-            const u = new URL(storageUri);
-            if (u.protocol.replace(":", "") !== "gs") {
-              throw new Error("Invalid Firebase storage URI protocol");
-            }
-            const key = u.pathname.slice(1);
+            const { key } = parseStorageUri(storageUri, "gs");
             if (!key) {
               throw new Error("Invalid Firebase storage URI: missing key");
             }

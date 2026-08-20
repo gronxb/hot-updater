@@ -14,7 +14,6 @@ import {
   type SupabaseServiceRoleConfig,
 } from "./supabaseConfig";
 import { createSupabaseSignedUrlBatcher } from "./supabaseSignedUrlBatcher";
-import { decodeStorageObjectKey } from "./supabaseStorageKey";
 import type { Database } from "./types";
 
 type SupabaseStorageBucket = {
@@ -85,9 +84,7 @@ async function verifyObjectCanBeSignedForRuntime({
 }
 
 const parseSupabaseStorageUri = (storageUri: string) => {
-  const { bucket, key } = parseStorageUri(storageUri, "supabase-storage");
-
-  return { bucket, key: decodeStorageObjectKey(key) };
+  return parseStorageUri(storageUri, "supabase-storage");
 };
 
 export type SupabaseStorageConfig = SupabaseServiceRoleConfig & {
@@ -239,20 +236,12 @@ export const supabaseStorage =
             return data.text();
           },
           async getDownloadUrl(storageUri: string) {
-            // Simple validation: supported protocol must match
-            const u = new URL(storageUri);
-            if (u.protocol.replace(":", "") !== "supabase-storage") {
-              throw new Error("Invalid Supabase storage URI protocol");
-            }
-            // Extract key without bucket prefix if present
-            let key = decodeStorageObjectKey(
-              `${u.host}${u.pathname}`.replace(/^\//, ""),
-            );
-            if (!key) {
-              throw new Error("Invalid Supabase storage URI: missing key");
-            }
-            if (key.startsWith(`${config.bucketName}/`)) {
-              key = key.substring(`${config.bucketName}/`.length);
+            const { bucket: bucketName, key } =
+              parseSupabaseStorageUri(storageUri);
+            if (bucketName !== config.bucketName) {
+              throw new Error(
+                `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
+              );
             }
 
             const signedUrl = await resolveSignedUrl(config.bucketName, key);

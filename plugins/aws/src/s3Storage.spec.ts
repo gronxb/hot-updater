@@ -132,4 +132,21 @@ describe("s3Storage object management", () => {
       "releases/legacy/files/한글 100%.png",
     ]);
   });
+
+  it("decodes percent-encoded object keys before signing", async () => {
+    const storage = s3Storage({
+      bucketName: "bucket",
+      credentials: {
+        accessKeyId: "access-key-id",
+        secretAccessKey: "secret-access-key",
+      },
+      region: "us-east-1",
+    })();
+
+    const { fileUrl } = await storage.profiles.runtime.getDownloadUrl(
+      "s3://bucket/releases/logo%402x.png",
+    );
+
+    expect(new URL(fileUrl).pathname).toBe("/releases/logo%402x.png");
+  });
 });
