@@ -1,13 +1,15 @@
 ---
 title: "updateBundle"
-description: "The `updateBundle` function applies a bundle transition selected by `checkForUpdate` to your React Native application."
+description: "Stage a selected transition without reloading the current React Native runtime."
 icon: Download
 ---
 
 ## Usage
 
-Use `updateBundle` to apply an available update. Normally, call the pre-filled
-helper returned by `checkForUpdate()`.
+Use `updateBundle` to stage the selected transition, downloading and verifying
+a bundle when needed. Normally, call the pre-filled helper returned by
+`checkForUpdate()`. The function does not reload the React Native runtime
+currently in use.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -16,7 +18,7 @@ HotUpdater.init({
   baseURL: "<your-update-server-url>",
 });
 
-async function applyAppUpdate() {
+async function stageAppUpdate() {
   try {
     const updateInfo = await HotUpdater.checkForUpdate({
       updateStrategy: "appVersion", // or "fingerprint"
@@ -34,13 +36,18 @@ async function applyAppUpdate() {
     // Recommended: use the helper with all update arguments pre-filled.
     const didUpdate = await updateInfo.updateBundle();
 
-    if (didUpdate && updateInfo.shouldForceUpdate) {
-      await HotUpdater.reload();
+    if (!didUpdate) {
+      console.warn("Update transition was not staged");
+      return;
     }
 
-    console.log("Update applied successfully");
+    console.log("Bundle transition staged successfully");
+
+    if (updateInfo.shouldForceUpdate) {
+      await HotUpdater.reload();
+    }
   } catch (error) {
-    console.error("Failed to apply update:", error);
+    console.error("Failed to stage update:", error);
   }
 }
 ```
@@ -76,8 +83,13 @@ await HotUpdater.updateBundle({
   public key. A failed verification aborts the update and deletes the download.
 - A `null` URL or hash represents a transition that does not use that archive
   value; the properties must still be present in the object.
-- Applies the selected bundle transition for the application.
-- Requires an explicit call to `HotUpdater.reload()` if you want to immediately reload the application after updating, particularly when `shouldForceUpdate` is true.
+- Stages the selected bundle transition for the next React Native runtime start
+  without replacing the code already running.
+- Never reloads the app by itself. Call `HotUpdater.reload()` explicitly to
+  start the staged transition immediately; the automatic `HotUpdater.wrap` flow
+  handles force updates separately.
+- An in-progress download is not guaranteed to finish after the app is
+  force-quit.
 
 ### Security Recommendation
 
