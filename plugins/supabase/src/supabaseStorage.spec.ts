@@ -11,6 +11,7 @@ const { bucket, createClient } = vi.hoisted(() => {
     createSignedUrl: vi.fn(),
     createSignedUrls: vi.fn(),
     exists: vi.fn(),
+    remove: vi.fn(),
     upload: vi.fn(),
   };
 
@@ -33,6 +34,7 @@ describe("supabaseStorage", () => {
     bucket.createSignedUrl.mockReset();
     bucket.createSignedUrls.mockReset();
     bucket.exists.mockReset();
+    bucket.remove.mockReset();
     bucket.upload.mockReset();
     createClient.mockClear();
   });
@@ -299,5 +301,40 @@ describe("supabaseStorage", () => {
     );
 
     expect(bucket.createSignedUrls).toHaveBeenCalledTimes(1);
+  });
+
+  it("decodes percent-encoded object keys before signing and removing", async () => {
+    bucket.createSignedUrls.mockImplementation(async (paths: string[]) => ({
+      data: paths.map((path) => ({
+        error: null,
+        path,
+        signedUrl: `https://example.supabase.co/${path}`,
+      })),
+      error: null,
+    }));
+    bucket.remove.mockResolvedValueOnce({ data: [], error: null });
+
+    const storage = supabaseStorage({
+      bucketName: "updates",
+      supabaseAnonKey: "anon-key",
+      supabaseUrl: "https://example.supabase.co",
+    })();
+    const storageUri =
+      "supabase-storage://updates/assets/bootsplash/logo-ios%402x.png";
+
+    await expect(
+      storage.profiles.runtime.getDownloadUrl(storageUri),
+    ).resolves.toEqual({
+      fileUrl: "https://example.supabase.co/assets/bootsplash/logo-ios@2x.png",
+    });
+    expect(bucket.createSignedUrls).toHaveBeenCalledWith(
+      ["assets/bootsplash/logo-ios@2x.png"],
+      3600,
+    );
+
+    await storage.profiles.node.delete(storageUri);
+    expect(bucket.remove).toHaveBeenCalledWith([
+      "assets/bootsplash/logo-ios@2x.png",
+    ]);
   });
 });
