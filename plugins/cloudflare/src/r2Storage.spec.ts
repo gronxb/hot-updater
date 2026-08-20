@@ -279,6 +279,28 @@ describe("r2Storage", () => {
     );
   });
 
+  it("decodes percent-encoded keys before signing through the S3 API", async () => {
+    mockS3Client();
+    const storage = r2Storage({
+      accountId: "account-id",
+      bucketName: "test-bucket",
+      credentials: {
+        accessKeyId: "access-key-id",
+        secretAccessKey: "secret-access-key",
+      },
+    })();
+
+    await storage.profiles.runtime.getDownloadUrl(
+      "r2://test-bucket/releases/logo%402x.png",
+    );
+
+    const command = vi.mocked(getSignedUrl).mock.calls.at(-1)?.[1];
+    expect(command).toBeInstanceOf(GetObjectCommand);
+    expect((command as GetObjectCommand).input.Key).toBe(
+      "releases/logo@2x.png",
+    );
+  });
+
   it("falls back to wrangler without S3 credentials", async () => {
     wrangler.mockImplementation(async (...args: string[]) => {
       const fileIndex = args.indexOf("--file");
@@ -376,6 +398,29 @@ describe("r2Storage", () => {
       "object",
       "get",
       "test-bucket/releases/logo.png",
+      "--file",
+      expect.any(String),
+      "--remote",
+    );
+  });
+
+  it("decodes percent-encoded keys before using Wrangler", async () => {
+    wrangler.mockResolvedValueOnce({ exitCode: 0, stderr: "" });
+    const storage = r2Storage({
+      accountId: "account-id",
+      bucketName: "test-bucket",
+      cloudflareApiToken: "api-token",
+    })();
+
+    await storage.profiles.node.exists(
+      "r2://test-bucket/releases/logo%402x.png",
+    );
+
+    expect(wrangler).toHaveBeenCalledWith(
+      "r2",
+      "object",
+      "get",
+      "test-bucket/releases/logo@2x.png",
       "--file",
       expect.any(String),
       "--remote",

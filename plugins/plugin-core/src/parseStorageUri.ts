@@ -4,6 +4,14 @@ export interface ParsedStorageUri {
   key: string;
 }
 
+export const decodeStorageObjectKey = (key: string): string => {
+  try {
+    return decodeURIComponent(key);
+  } catch {
+    return key;
+  }
+};
+
 /**
  * Parses a storage URI and validates the protocol.
  *
@@ -36,7 +44,7 @@ export function parseStorageUri(
     return {
       protocol,
       bucket: url.hostname,
-      key: url.pathname.slice(1), // Remove leading '/'
+      key: decodeStorageObjectKey(url.pathname.slice(1)),
     };
   } catch (error) {
     if (error instanceof TypeError) {

@@ -30,6 +30,29 @@ describe("r2WorkerStorage", () => {
     expect(get).toHaveBeenCalledWith("app/manifest.json");
   });
 
+  it("decodes percent-encoded object keys before reading from R2", async () => {
+    const get = vi.fn(async (key: string) => ({
+      text: async () => `text:${key}`,
+    }));
+    const storage = r2WorkerStorage({
+      jwtSecret: "secret",
+      publicBaseUrl: "https://assets.example.com",
+    })();
+
+    await storage.profiles.runtime.readText(
+      "r2://bundles/assets/bootsplash/logo-ios%402x.png",
+      {
+        env: {
+          BUCKET: { get },
+          JWT_SECRET: "secret",
+        },
+        request: new Request("https://updates.example.com"),
+      } satisfies TestContext,
+    );
+
+    expect(get).toHaveBeenCalledWith("assets/bootsplash/logo-ios@2x.png");
+  });
+
   it("fails fast when the R2 binding is missing", async () => {
     const storage = r2WorkerStorage({
       jwtSecret: "secret",

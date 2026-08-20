@@ -1,3 +1,4 @@
+import { decodeStorageObjectKey } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import { Hono } from "hono";
 
@@ -61,11 +62,11 @@ app.mount(
 
 app.get("*", async (c) => {
   const result = await verifyJwtSignedUrl({
-    path: c.req.path,
+    path: new URL(c.req.url).pathname,
     token: c.req.query("token"),
     jwtSecret: c.env.JWT_SECRET,
     handler: async (storageUri) => {
-      const [, ...key] = storageUri.split("/");
+      const [, ...key] = decodeStorageObjectKey(storageUri).split("/");
       const object = await c.env.BUCKET.get(key.join("/"));
       if (!object) {
         return null;

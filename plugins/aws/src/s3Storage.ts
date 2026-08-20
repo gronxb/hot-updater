@@ -248,13 +248,7 @@ export const s3Storage = createUniversalStoragePlugin<S3StorageConfig>({
           }
         },
         async getDownloadUrl(storageUri: string) {
-          // Simple validation: supported protocol must match
-          const u = new URL(storageUri);
-          if (u.protocol.replace(":", "") !== "s3") {
-            throw new Error("Invalid S3 storage URI protocol");
-          }
-          const bucket = u.host;
-          const key = u.pathname.slice(1);
+          const { bucket, key } = parseStorageUri(storageUri, "s3");
           if (!bucket || !key) {
             throw new Error("Invalid S3 storage URI: missing bucket or key");
           }

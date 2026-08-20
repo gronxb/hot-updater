@@ -1,8 +1,10 @@
-import { createRuntimeStoragePlugin } from "@hot-updater/plugin-core";
+import {
+  createRuntimeStoragePlugin,
+  parseStorageUri,
+} from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 
 import { createSupabaseSignedUrlBatcher } from "./supabaseSignedUrlBatcher";
-import { decodeStorageObjectKey } from "./supabaseStorageKey";
 import type { Database } from "./types";
 
 export interface SupabaseEdgeFunctionStorageConfig {
@@ -12,14 +14,10 @@ export interface SupabaseEdgeFunctionStorageConfig {
 }
 
 const parseSupabaseStorageUri = (storageUri: string) => {
-  const storageUrl = new URL(storageUri);
-
-  if (storageUrl.protocol !== "supabase-storage:") {
-    throw new Error("Invalid Supabase storage URI protocol");
-  }
-
-  const bucketName = storageUrl.host;
-  const key = decodeStorageObjectKey(storageUrl.pathname.replace(/^\/+/, ""));
+  const { bucket: bucketName, key } = parseStorageUri(
+    storageUri,
+    "supabase-storage",
+  );
 
   if (!bucketName || !key) {
     throw new Error("Invalid Supabase storage URI");

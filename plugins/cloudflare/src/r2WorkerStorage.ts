@@ -1,6 +1,7 @@
 import { signToken } from "@hot-updater/js";
 import {
   createRuntimeStoragePlugin,
+  decodeStorageObjectKey,
   type HotUpdaterContext,
   type RequestEnvContext,
 } from "@hot-updater/plugin-core";
@@ -64,7 +65,7 @@ const createPublicObjectPath = (storageUrl: URL) =>
   `${storageUrl.host}${storageUrl.pathname}`;
 
 const createR2ObjectKey = (storageUrl: URL) =>
-  storageUrl.pathname.replace(/^\/+/, "");
+  decodeStorageObjectKey(storageUrl.pathname.replace(/^\/+/, ""));
 
 export const r2WorkerStorage = <
   TContext extends RequestEnvContext<CloudflareWorkerStorageEnv> =
