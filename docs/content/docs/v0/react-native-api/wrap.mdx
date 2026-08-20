@@ -1,6 +1,6 @@
 ---
 title: "wrap"
-description: "`HotUpdater.wrap` checks for updates at the entry point, and if there is a bundle to update, it downloads the bundle and applies the update strategy."
+description: "`HotUpdater.wrap` stages standard updates for the next app start and reloads force updates by default."
 icon: Package
 ---
 
@@ -13,6 +13,14 @@ icon: Package
 
 `HotUpdater.wrap` configures automatic updates. The automatic mode is the
 default, so `updateMode` is no longer needed.
+
+A standard update is prepared and staged without reloading the React Native
+runtime currently in use. Once staging finishes successfully, it becomes active
+the next time that runtime starts, normally on the next cold app launch. In the
+automatic `HotUpdater.wrap` flow, responses with `shouldForceUpdate: true`,
+including bundle-changing server-directed rollbacks, prepare the selected
+transition and then reload by default. Set `reloadOnForceUpdate: false` when the
+current session must remain uninterrupted.
 
 ### Automatic Updates
 
@@ -191,7 +199,15 @@ export default HotUpdater.wrap({ // [!code hl:25]
 
 #### `reloadOnForceUpdate`
 
-When a force update bundle is downloaded, the app will automatically reload. If `false`, `shouldForceUpdate` will be returned as `true` in `onUpdateProcessCompleted` but the app won't reload. Default is `true`.
+When the automatic `HotUpdater.wrap` flow receives an update with
+`shouldForceUpdate: true`, it prepares the selected transition and reloads the
+app by default. Bundle-changing server-directed rollbacks also use this path.
+If set to `false`, the current React Native runtime keeps running and the staged
+update becomes active on the next runtime start or after a later explicit
+`HotUpdater.reload()` call.
+
+This option only controls the automatic `HotUpdater.wrap` flow.
+`updateBundle()` never reloads the app by itself.
 
 The actual reload behavior follows [`HotUpdater.setReloadBehavior()`](/docs/v0/react-native-api/setReloadBehavior).
 
@@ -241,19 +257,18 @@ export default HotUpdater.wrap({
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
   },
-  reloadOnForceUpdate: false, // The app won't reload on force updates // [!code hl:7]
-  onUpdateProcessCompleted: async ({ status, shouldForceUpdate, id, message }) => {
-    console.log("Bundle updated:", status, shouldForceUpdate, id, message);
-    if (shouldForceUpdate) {
-      await HotUpdater.reload();
-    }
-  },
+  reloadOnForceUpdate: false, // Keep the current session running // [!code hl]
 })(App);
 ```
 
 #### `onUpdateProcessCompleted`
 
-Allows you to perform additional actions after the update process is completed.
+Reports when automatic update handling has finished from the wrapper's
+perspective.
+
+For a non-force update, the automatic flow invokes this callback after starting
+the non-blocking download, not after the download finishes. Do not use it as a
+download-readiness signal.
 
 **Callback Arguments:**
 
@@ -381,7 +396,7 @@ export default HotUpdater.wrap({
 
 ## Flag Behavior
 
-| Update Type   | When Applied                                              | How to Enable                              |
-|---------------|----------------------------------------------------------|-------------------------------------------|
-| Default       | Downloads the update bundle in the background and applies it when the user restarts the app. | Default setting                           |
-| Force Update  | Downloads the update bundle and applies it immediately.   | Use the `--force-update` flag or console. |
+| Update Response                  | Runtime Behavior                                                                                                            | How to Enable                                                     |
+|----------------------------------|-----------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------|
+| `shouldForceUpdate: false`       | Stages the selected bundle without reloading the current runtime; it becomes active on the next runtime start.              | Default setting                                                   |
+| `shouldForceUpdate: true`        | `HotUpdater.wrap` reloads after preparing the selected transition; `reloadOnForceUpdate: false` defers it to a later start. | Use `--force-update` or the console; bundle-changing rollbacks also return it. |
