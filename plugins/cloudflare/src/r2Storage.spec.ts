@@ -160,7 +160,7 @@ describe("r2Storage", () => {
         secretAccessKey: "secret-access-key",
       },
     });
-    const key = "릴리스 folder/#100%/bundle.zip";
+    const key = "릴리스 folder/logo@2x #100%/bundle.zip";
 
     const uploaded = await storage.put?.({
       key,
@@ -168,6 +168,7 @@ describe("r2Storage", () => {
       contentLength: 6,
       contentType: "application/zip",
     });
+    expect(uploaded?.storageUri).toContain("logo%402x");
     expect(uploaded?.storageUri).not.toContain("#100%");
     await expect(
       storage.get?.({ storageUri: uploaded!.storageUri }),

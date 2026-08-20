@@ -57,15 +57,15 @@ describe("firebaseStorage", () => {
 
     await expect(
       createStorage().put({
-        key: "releases/한글 #%.zip",
+        key: "releases/한글@2x #%.zip",
         body: stream("bundle"),
         contentLength: 6,
         contentType: "application/zip",
       }),
     ).resolves.toEqual({
-      storageUri: "gs://updates/releases/%ED%95%9C%EA%B8%80%20%23%25.zip",
+      storageUri: "gs://updates/releases/%ED%95%9C%EA%B8%80%402x%20%23%25.zip",
     });
-    expect(bucket.file).toHaveBeenCalledWith("releases/한글 #%.zip");
+    expect(bucket.file).toHaveBeenCalledWith("releases/한글@2x #%.zip");
     expect(file.save).toHaveBeenCalledWith(new TextEncoder().encode("bundle"), {
       metadata: {
         cacheControl: "public, max-age=31536000, immutable",
@@ -126,10 +126,10 @@ describe("firebaseStorage", () => {
 
     await expect(
       storage.getDownloadUrl({
-        storageUri: "gs://updates/releases/%ED%95%9C%EA%B8%80%20%23%25.zip",
+        storageUri: "gs://updates/releases/logo%402x.png",
       }),
     ).resolves.toEqual({
-      url: "https://cdn.example.com/downloads/releases/%ED%95%9C%EA%B8%80%20%23%25.zip",
+      url: "https://cdn.example.com/downloads/releases/logo%402x.png",
     });
     expect(file.getSignedUrl).not.toHaveBeenCalled();
   });
