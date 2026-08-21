@@ -170,7 +170,7 @@ function App() {
   );
 }
 
-export default HotUpdater.wrap({ // [!code hl:25]
+export default HotUpdater.wrap({ // [!code hl:32]
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion", // or "fingerprint"
   fallbackComponent: ({ progress, status, message }) => (
@@ -329,7 +329,7 @@ import { Alert } from "react-native";
 export default HotUpdater.wrap({
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion",
-  onError: (error) => { // [!code hl:18]
+  onError: (error) => { // [!code hl:5]
     // Handle other errors
     console.error("Update error:", error);
   },
@@ -396,7 +396,6 @@ export default HotUpdater.wrap({
         }), // [!code ++]
         headers: params.requestHeaders, // [!code ++]
       }); // [!code ++]
-// [!code ++]
       if (!response.ok) return null; // [!code ++]
       return response.json(); // [!code ++]
     }, // [!code ++]

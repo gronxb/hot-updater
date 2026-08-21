@@ -46,7 +46,6 @@ if (!authToken) {
 }
 
 app.use(
-  // [!code ++]
   "/hot-updater/api/*", // [!code ++]
   bearerAuth({ token: authToken }), // [!code ++]
 ); // [!code ++]

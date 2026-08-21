@@ -94,12 +94,10 @@ const app = new Hono();
 
 const authToken = process.env.HOT_UPDATER_AUTH_TOKEN; // [!code ++]
 if (!authToken) {
-  // [!code ++]
   throw new Error("HOT_UPDATER_AUTH_TOKEN is required"); // [!code ++]
 } // [!code ++]
 
 app.use(
-  // [!code ++]
   "/hot-updater/api/*", // [!code ++]
   bearerAuth({ token: authToken }), // [!code ++]
 ); // [!code ++]
