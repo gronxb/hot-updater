@@ -79,9 +79,10 @@ Additional route and handler changes:
 - `features`, including `features.bundles` and `features.updateCheck`, is
   removed. Explicitly mounting `handlers.admin` is the opt-in for admin routes,
   while mounting `handlers.client` exposes the complete client protocol.
-  `analytics` and `clientAccessKeys` are top-level booleans that default to
-  `false`. Analytics ingestion is on the client handler and queries are on the
-  admin handler, so `queryAccess` is removed.
+  Analytics ingestion is always available on the client handler and queries
+  are always available on the admin handler, so the server-side Analytics flag
+  and `queryAccess` are removed. Client authentication moves to the required
+  top-level `clientAccess` policy.
 - `standaloneRepository.baseUrl` now identifies the exact admin root, such as
   `https://example.com/hot-updater/admin`. Its default and fixed request paths
   are relative (`/bundles`, `/releases`, `/release-catalogs`, `/channels`, and
@@ -110,8 +111,9 @@ app.mount("/hot-updater", hotUpdater.handlers.client);
 
 `HotUpdater.init` and `HotUpdater.wrap` continue to use the client base URL
 (`https://example.com/hot-updater`). Never embed the admin bearer token in the
-React Native app; optional client authentication uses `x-api-key`. Local or
-direct-database Console operation is unchanged. A Console configured with
+React Native app; the `api-key` client policy uses `x-api-key` by default or
+the explicitly configured `headerName`. Local or direct-database Console
+operation is unchanged. A Console configured with
 `standaloneRepository` must use the admin root and keep its bearer header on
 the server side; hosted Console user authentication remains a separate layer.
 
@@ -207,9 +209,17 @@ The following v0 options are removed or renamed:
 - Analytics ingestion and query routes are always available. React Native
   clients independently control automatic event reporting with
   `HotUpdater.init({ analytics })`.
-- `features` is required and contains the explicit
-  `clientAccessKeys: boolean` authentication policy. Update routes are always
-  present on `handlers.client`.
+- `features.clientAccessKeys: false` becomes
+  `clientAccess: { type: "public" }`.
+- `features.clientAccessKeys: true` becomes
+  `clientAccess: { type: "api-key" }`. API-key mode reads `x-api-key` by
+  default. Set `headerName` to use another valid HTTP header; clients must send
+  the same header and Release Catalog responses include it in `Vary`.
+- `clientAccess` is required. There is no implicit public or authenticated
+  default. It applies to Release Catalog, artifact, and Analytics ingestion
+  routes; `/version`, signed storage downloads, and admin routes are
+  unaffected.
+- Update routes are always present on `handlers.client`.
 - `basePath` is removed. The framework mount and React Native `baseURL` define
   the external client path without duplicating it in `createHotUpdater`.
 - `cwd` is removed.
