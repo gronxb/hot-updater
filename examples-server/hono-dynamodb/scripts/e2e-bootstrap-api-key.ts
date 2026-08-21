@@ -1,6 +1,12 @@
 import { registerApiKey } from "@hot-updater/server";
+import { config } from "dotenv";
 
-import { database } from "../src/db";
+const envTargetPath = process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH;
+if (envTargetPath) {
+  config({ path: envTargetPath });
+}
+
+const { database } = await import("../src/db");
 
 const apiKey = process.env.HOT_UPDATER_API_KEY?.trim();
 if (!apiKey) {
