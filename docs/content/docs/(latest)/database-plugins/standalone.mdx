@@ -397,13 +397,13 @@ opt-in; there is no built-in admin authenticator.
 `hot-updater.config.ts`. Its Bundle-management boundary includes Bundles,
 patches, Releases, Release Catalogs, Channels, and the conditional commit that
 keeps those records consistent. It does not expose Analytics or client
-access-key administration. The server-side `database` passed to
+API key administration. The server-side `database` passed to
 `createHotUpdater` owns those additional official domains. Analytics is always
 available, while the required `clientAccess` policy decides whether client
 routes are public or require an API key.
 
 <Callout type="warn">
-  The Console cannot read Analytics or manage client access keys through
+  The Console cannot read Analytics or manage API keys through
   `standaloneRepository`. Local/direct-provider Console access is unaffected. A
   hosted Console must protect its browser session separately and keep the admin
   bearer token in server-side `commonHeaders`. Do not put that token in browser

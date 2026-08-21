@@ -32,7 +32,7 @@ import {
   commitReleaseCatalogMutations,
   createUUIDv7,
 } from "@hot-updater/plugin-core";
-import { createClientAccessKey, createHotUpdater } from "@hot-updater/server";
+import { createApiKey, createHotUpdater } from "@hot-updater/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -433,8 +433,8 @@ describe.sequential("aws lambda runtime acceptance", () => {
       clearBucket(s3Client, S3_BUCKET_NAME),
       clearDynamoDBTable(dynamodbClient),
     ]);
-    const created = await createClientAccessKey({
-      clientAccessKeys: database.models.clientAccessKeys,
+    const created = await createApiKey({
+      apiKeys: database.models.apiKeys,
       name: "Runtime test",
     });
     rawApiKey = created.apiKey;

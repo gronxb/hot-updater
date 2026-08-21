@@ -254,7 +254,7 @@ const databaseBinding = {
 const database = runtime.d1Database(databaseBinding);
 if (database.name !== "d1Database") throw new Error("invalid d1Database name");
 if (typeof database.models.analytics.append !== "function") throw new Error("missing analytics model");
-if (typeof database.models.clientAccessKeys.create !== "function") throw new Error("missing clientAccessKeys model");
+if (typeof database.models.apiKeys.create !== "function") throw new Error("missing apiKeys model");
 if (typeof database.models.channels.list !== "function") throw new Error("missing channels model");
 if ("d1WorkerDatabase" in runtime) throw new Error("unexpected d1WorkerDatabase");
 const storage = runtime.r2Storage({
@@ -283,7 +283,7 @@ for (const operation of ["put", "get", "getDownloadUrl", "exists", "delete"]) {
       rootSpecifier,
     )};\nimport { d1Database, r2Storage } from ${JSON.stringify(
       moduleSpecifier,
-    )};\ndeclare const binding: Parameters<typeof d1Database>[0];\ndeclare const rootStorageConfig: Parameters<typeof rootStorage>[0];\ndeclare const storageConfig: Parameters<typeof r2Storage>[0];\nconst database = d1Database(binding);\nconst nodeStorage = rootStorage(rootStorageConfig);\nconst workerStorage = r2Storage(storageConfig);\nvoid database.models.bundles;\nvoid database.models.bundlePatches;\nvoid database.models.channels;\nvoid database.models.releaseCatalogs;\nvoid database.models.releases;\nvoid database.models.analytics;\nvoid database.models.clientAccessKeys;\nvoid database.commit;\nvoid nodeStorage.put;\nvoid nodeStorage.get;\nvoid nodeStorage.exists;\nvoid nodeStorage.delete;\nvoid workerStorage.put;\nvoid workerStorage.get;\nvoid workerStorage.getDownloadUrl;\nvoid workerStorage.exists;\nvoid workerStorage.delete;\n`;
+    )};\ndeclare const binding: Parameters<typeof d1Database>[0];\ndeclare const rootStorageConfig: Parameters<typeof rootStorage>[0];\ndeclare const storageConfig: Parameters<typeof r2Storage>[0];\nconst database = d1Database(binding);\nconst nodeStorage = rootStorage(rootStorageConfig);\nconst workerStorage = r2Storage(storageConfig);\nvoid database.models.bundles;\nvoid database.models.bundlePatches;\nvoid database.models.channels;\nvoid database.models.releaseCatalogs;\nvoid database.models.releases;\nvoid database.models.analytics;\nvoid database.models.apiKeys;\nvoid database.commit;\nvoid nodeStorage.put;\nvoid nodeStorage.get;\nvoid nodeStorage.exists;\nvoid nodeStorage.delete;\nvoid workerStorage.put;\nvoid workerStorage.get;\nvoid workerStorage.getDownloadUrl;\nvoid workerStorage.exists;\nvoid workerStorage.delete;\n`;
     await writeFile(moduleConsumer, consumerSource);
     await writeFile(commonJsConsumer, consumerSource);
 

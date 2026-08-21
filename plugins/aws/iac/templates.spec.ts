@@ -23,12 +23,12 @@ afterEach(async () => {
 describe("AWS managed config scaffold", () => {
   it("renders only client-owned network options in the app bootstrap", () => {
     const source = transformTemplate(SOURCE_TEMPLATE, {
-      apiKey: JSON.stringify("client-key"),
+      apiKey: JSON.stringify("api-key"),
       source: JSON.stringify("https://example.cloudfront.net"),
     });
 
     expect(source).toContain('baseURL: "https://example.cloudfront.net"');
-    expect(source).toContain('"x-api-key": "client-key"');
+    expect(source).toContain('"x-api-key": "api-key"');
     expect(source).toContain("return null; // Replace with your app root.");
     expect(source).not.toContain("authorityId");
     expect(source).not.toContain("YourApp");

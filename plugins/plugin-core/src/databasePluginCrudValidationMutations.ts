@@ -18,7 +18,7 @@ export const validateMutationWhere = (where: readonly unknown[]): void => {
 };
 
 export const validateUpdateWhere = (
-  model: "bundles" | "releases" | "release_catalogs" | "client_access_keys",
+  model: "bundles" | "releases" | "release_catalogs" | "api_keys",
   where: readonly unknown[],
 ): void => {
   const selector = where[0];
@@ -50,12 +50,12 @@ export const validateBundleUpdateData = (update: unknown): void => {
   }
 };
 
-export const validateClientAccessKeyUpdateData = (update: unknown): void => {
+export const validateApiKeyUpdateData = (update: unknown): void => {
   if (
     !isRecord(update) ||
     Reflect.ownKeys(update).length !== 1 ||
     !Object.hasOwn(update, "revoked_at_ms") ||
-    !modelValidators.client_access_keys.revoked_at_ms(
+    !modelValidators.api_keys.revoked_at_ms(
       Reflect.get(update, "revoked_at_ms"),
     )
   ) {

@@ -126,7 +126,7 @@ describe("aws lambda entrypoint", () => {
     };
   });
 
-  it("uses DynamoDB metadata with built-in Analytics and client keys", async () => {
+  it("uses DynamoDB metadata with built-in Analytics and API keys", async () => {
     const { handler } = await import("./index");
     await handler(
       createCloudFrontRequest(

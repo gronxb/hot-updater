@@ -60,8 +60,8 @@ Additional route and handler changes:
   Catalog compilation and persistence. React Native clients neither configure
   it nor include it in Catalog paths.
 - `HandlerOptions.routes` is removed. The client handler always owns the v1
-  update protocol and Analytics ingestion. Client access-key authentication is
-  configured explicitly through the required `clientAccess` policy.
+  update protocol and Analytics ingestion. API key authentication is configured
+  explicitly through the required `clientAccess` policy.
 - The unified `createHandler` and `createHotUpdater().handler` surfaces are
   replaced by `createHandlers(...).client/admin` and
   `createHotUpdater().handlers.client/admin`. The client handler owns
@@ -177,6 +177,25 @@ The top-level `rollback` command is removed. Release mutations now support
 revision preconditions and Catalog preflight. `db catalog preflight` and
 `db catalog rebuild` verify or repair compiled projections.
 
+Self-hosted deployments manage API keys through the same official database
+domain used by managed init and Console:
+
+```bash
+hot-updater db migrate src/hotUpdater.ts
+hot-updater api-key create src/hotUpdater.ts --name "Mobile app"
+hot-updater api-key list src/hotUpdater.ts
+hot-updater api-key revoke <api-key-id> src/hotUpdater.ts
+```
+
+`create` prints the plaintext API key exactly once. Only its SHA-256 hash and
+non-secret metadata are persisted. The recommended self-hosted bootstrap sets
+`clientAccess: { type: "api-key" }`, applies the schema, creates the API key,
+and passes the printed value to `HotUpdater.init` in
+`requestHeaders: { "x-api-key": apiKey }`. Use
+`clientAccess: { type: "public" }` only as an explicit unauthenticated
+alternative. Rotate a deployed credential by creating a replacement, shipping
+clients with the replacement, and revoking the old API key after the rollout.
+
 ## Configuration and server composition
 
 CLI configuration now receives direct plugin objects:
@@ -201,10 +220,15 @@ plugin object directly.
 createHotUpdater({
   authorityId,
   database,
-  clientAccess: { type: "public" },
+  clientAccess: { type: "api-key" },
   storage: [storagePlugin],
 });
 ```
+
+The returned object exposes in-process API key management through
+`hotUpdater.apiKeys.create`, `hotUpdater.apiKeys.list`, and
+`hotUpdater.apiKeys.revoke`. These operations use the configured direct
+database plugin and are not HTTP routes on either handler.
 
 The following v0 options are removed or renamed:
 
@@ -213,12 +237,12 @@ The following v0 options are removed or renamed:
   clients independently enable automatic event reporting by setting
   `analytics: true` in either `HotUpdater.init` or `HotUpdater.wrap`. Omission
   or `false` sends no events.
-- `features.clientAccessKeys: false` becomes
-  `clientAccess: { type: "public" }`.
 - `features.clientAccessKeys: true` becomes
   `clientAccess: { type: "api-key" }`. API-key mode reads `x-api-key` by
   default. Set `headerName` to use another valid HTTP header; clients must send
   the same header and Release Catalog responses include it in `Vary`.
+- `features.clientAccessKeys: false` becomes the explicit unauthenticated
+  alternative, `clientAccess: { type: "public" }`.
 - `clientAccess` is required. There is no implicit public or authenticated
   default. It applies to Release Catalog, artifact, and Analytics ingestion
   routes; `/version`, signed storage downloads, and admin routes are
@@ -266,7 +290,7 @@ createDatabasePlugin({
     releaseCatalogs,
     channels,
     analytics,
-    clientAccessKeys,
+    apiKeys,
   },
   commit,
   dispose,
@@ -290,7 +314,7 @@ This breaks custom database providers in the following ways:
   channel. Compatibility writes resolve the legacy `channel` value into the
   Release row.
 - Schema `1.0.0` adds Releases, Release Catalogs, normalized Channels,
-  Analytics events, client access keys, and Bundle patch relations.
+  Analytics events, API keys, and Bundle patch relations.
 
 `createBlobDatabasePlugin` is removed. Object storage cannot satisfy the atomic
 Release/Catalog contract.

@@ -290,9 +290,9 @@ describe("Detox remote asset proxy URLs", () => {
     }
   });
 
-  it("uses the client access key for direct and proxied update requests", async () => {
+  it("uses the API key for direct and proxied update requests", async () => {
     const resultsDir = await fs.mkdtemp(
-      path.join(os.tmpdir(), "hot-updater-client-key-proxy-"),
+      path.join(os.tmpdir(), "hot-updater-api-key-proxy-"),
     );
     const observedKeys: Array<string | null> = [];
     const fetchMock = vi.fn(
@@ -303,7 +303,7 @@ describe("Detox remote asset proxy URLs", () => {
     );
 
     vi.resetModules();
-    vi.stubEnv("HOT_UPDATER_API_KEY", "client-access-key");
+    vi.stubEnv("HOT_UPDATER_API_KEY", "api-key");
     vi.stubEnv(
       "HOT_UPDATER_E2E_APP_BASE_URL",
       "https://provider.example.com/hot-updater",
@@ -322,14 +322,14 @@ describe("Detox remote asset proxy URLs", () => {
 
       expect(
         controller.getHotUpdaterClientRequestHeaders().get("x-api-key"),
-      ).toBe("client-access-key");
+      ).toBe("api-key");
 
       await controller.handleProxyUpdateRequest(new Request(url));
       await controller.handleProxyUpdateRequest(
         new Request(url, { headers: { "x-api-key": "app-provided-key" } }),
       );
 
-      expect(observedKeys).toEqual(["client-access-key", "app-provided-key"]);
+      expect(observedKeys).toEqual(["api-key", "app-provided-key"]);
     } finally {
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();

@@ -78,7 +78,7 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     sdk_version text,
     received_at_ms integer not null
   );
-  create table client_access_keys (
+  create table api_keys (
     id text primary key,
     hash text not null unique,
     name text not null,
@@ -91,7 +91,7 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
 
 export const DATABASE_PLUGIN_TEST_RESET_SQL = `
   delete from bundle_events;
-  delete from client_access_keys;
+  delete from api_keys;
   delete from bundle_patches;
   delete from release_catalogs;
   delete from releases;

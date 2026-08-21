@@ -123,7 +123,7 @@ model bundle_events {
   @@index([type, to_release_id, received_at_ms, id], map: "bundle_events_to_release_idx")
   @@index([type, from_release_id, received_at_ms, id], map: "bundle_events_from_release_idx")
 }
-model client_access_keys {
+model api_keys {
   id String @db.VarChar(255) @id
   hash String
   name String
@@ -131,8 +131,8 @@ model client_access_keys {
   role String
   created_at_ms Float
   revoked_at_ms Float?
-  @@unique([hash], map: "client_access_keys_hash_key")
-  @@index([created_at_ms, id], map: "client_access_keys_created_at_idx")
+  @@unique([hash], map: "api_keys_hash_key")
+  @@index([created_at_ms, id], map: "api_keys_created_at_idx")
 }
 model private_hot_updater_settings {
   key String @db.VarChar(255) @id

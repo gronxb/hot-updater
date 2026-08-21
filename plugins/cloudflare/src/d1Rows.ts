@@ -3,7 +3,7 @@ import type {
   BundleRow,
   BundleEventRow,
   ChannelRow,
-  ClientAccessKeyRow,
+  ApiKeyRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -171,23 +171,19 @@ const eventRow = (row: Record<string, unknown>): BundleEventRow => {
   } as BundleEventRow;
 };
 
-const clientAccessKeyRow = (
-  row: Record<string, unknown>,
-): ClientAccessKeyRow => {
-  const role = stringValue(row, "role", "client_access_keys");
-  if (role !== "client") throw new InvalidD1RowError("client_access_keys");
+const apiKeyRow = (row: Record<string, unknown>): ApiKeyRow => {
+  const role = stringValue(row, "role", "api_keys");
+  if (role !== "client") throw new InvalidD1RowError("api_keys");
   const revokedAt = row["revoked_at_ms"];
   return {
-    id: stringValue(row, "id", "client_access_keys"),
-    hash: stringValue(row, "hash", "client_access_keys"),
-    name: stringValue(row, "name", "client_access_keys"),
-    prefix: stringValue(row, "prefix", "client_access_keys"),
+    id: stringValue(row, "id", "api_keys"),
+    hash: stringValue(row, "hash", "api_keys"),
+    name: stringValue(row, "name", "api_keys"),
+    prefix: stringValue(row, "prefix", "api_keys"),
     role,
-    created_at_ms: numberValue(row, "created_at_ms", "client_access_keys"),
+    created_at_ms: numberValue(row, "created_at_ms", "api_keys"),
     revoked_at_ms:
-      revokedAt === null
-        ? null
-        : numberValue(row, "revoked_at_ms", "client_access_keys"),
+      revokedAt === null ? null : numberValue(row, "revoked_at_ms", "api_keys"),
   };
 };
 
@@ -279,10 +275,7 @@ export function parseD1Row(
   model: "bundle_events",
   value: unknown,
 ): BundleEventRow;
-export function parseD1Row(
-  model: "client_access_keys",
-  value: unknown,
-): ClientAccessKeyRow;
+export function parseD1Row(model: "api_keys", value: unknown): ApiKeyRow;
 export function parseD1Row(model: "releases", value: unknown): ReleaseRow;
 export function parseD1Row(
   model: "release_catalogs",
@@ -306,8 +299,8 @@ export function parseD1Row(
       return channelRow(value);
     case "bundle_events":
       return eventRow(value);
-    case "client_access_keys":
-      return clientAccessKeyRow(value);
+    case "api_keys":
+      return apiKeyRow(value);
     case "releases":
       return releaseRow(value);
     case "release_catalogs":

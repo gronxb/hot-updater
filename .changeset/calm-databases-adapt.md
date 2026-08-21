@@ -27,7 +27,7 @@ createDatabasePlugin({
     releaseCatalogs,
     channels,
     analytics,
-    clientAccessKeys,
+    apiKeys,
   },
   commit,
   dispose,
@@ -51,7 +51,7 @@ Release is removed and can be deleted explicitly only when no Release references
 them.
 
 Schema `1.0.0` creates Channel, Bundle, Bundle patch, Release, Release Catalog,
-Analytics, and client-access-key storage on an empty database. It rejects v0
+Analytics, and API key storage on an empty database. It rejects v0
 schema markers and does not backfill Bundle policy. Kysely, Drizzle, Prisma,
 MongoDB, Cloudflare D1, PostgreSQL, Supabase, Firebase, DynamoDB, and Mock
 implement the same logical contract.
@@ -90,7 +90,7 @@ Self-hosted runtimes always expose Analytics ingestion and query capabilities
 backed by `database.models.analytics`. Every `createHotUpdater` call explicitly
 sets the required `clientAccess` policy, which can protect update checks and
 Analytics ingestion through
-`database.models.clientAccessKeys`. Client update routes are always available
+`database.models.apiKeys`. Client update routes are always available
 on `handlers.client`, while admin routes are exposed only by explicitly
 mounting `handlers.admin`. The CLI-only
 `standaloneRepository` stays a bundle repository; the physical database passed

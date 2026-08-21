@@ -13,7 +13,7 @@ type Tables = {
   bundles: MongoTestRow[];
   bundle_events: MongoTestRow[];
   channels: MongoTestRow[];
-  client_access_keys: MongoTestRow[];
+  api_keys: MongoTestRow[];
   releases: MongoTestRow[];
   release_catalogs: MongoTestRow[];
 };
@@ -168,9 +168,9 @@ const createCollection = (
       throw new MongoTestConstraintError("duplicate channel name");
     }
     if (
-      model === "client_access_keys" &&
+      model === "api_keys" &&
       "hash" in row &&
-      tables.client_access_keys.some(
+      tables.api_keys.some(
         (candidate) => "hash" in candidate && candidate.hash === row.hash,
       )
     ) {
@@ -239,8 +239,8 @@ const createDatabase = (tables: Tables, hooks: MongoTestHooks) => ({
         return createCollection(tables, "bundle_events", hooks);
       case "channels":
         return createCollection(tables, "channels", hooks);
-      case "client_access_keys":
-        return createCollection(tables, "client_access_keys", hooks);
+      case "api_keys":
+        return createCollection(tables, "api_keys", hooks);
       case "releases":
         return createCollection(tables, "releases", hooks);
       case "release_catalogs":
@@ -257,7 +257,7 @@ export const createMongoTestHarness = () => {
     bundles: [],
     bundle_events: [],
     channels: [],
-    client_access_keys: [],
+    api_keys: [],
     releases: [],
     release_catalogs: [],
   };
@@ -291,7 +291,7 @@ export const createMongoTestHarness = () => {
             tables.bundles = staged.bundles;
             tables.bundle_events = staged.bundle_events;
             tables.channels = staged.channels;
-            tables.client_access_keys = staged.client_access_keys;
+            tables.api_keys = staged.api_keys;
             tables.releases = staged.releases;
             tables.release_catalogs = staged.release_catalogs;
             return result;
@@ -315,7 +315,7 @@ export const createMongoTestHarness = () => {
       tables.bundles = [];
       tables.bundle_events = [];
       tables.channels = [];
-      tables.client_access_keys = [];
+      tables.api_keys = [];
       tables.releases = [];
       tables.release_catalogs = [];
     },

@@ -161,13 +161,13 @@ describe("dynamoDB CloudFront lifecycle", () => {
     expect(plugin.models.bundlePatches).toBeDefined();
     expect(plugin.models.channels).toBeDefined();
     expect(plugin.models.analytics).toBeDefined();
-    expect(plugin.models.clientAccessKeys).toBeDefined();
+    expect(plugin.models.apiKeys).toBeDefined();
     expect(plugin).not.toHaveProperty("queries");
     expect(typeof plugin.commit).toBe("function");
     expect(plugin).not.toHaveProperty("bundles");
     expect(plugin).not.toHaveProperty("bundlePatches");
     expect(plugin).not.toHaveProperty("analytics");
-    expect(plugin).not.toHaveProperty("clientAccessKeys");
+    expect(plugin).not.toHaveProperty("apiKeys");
     expect(plugin).not.toHaveProperty("getUpdateInfo");
     expect(plugin).not.toHaveProperty("componentData");
     expect(plugin).not.toHaveProperty("create");

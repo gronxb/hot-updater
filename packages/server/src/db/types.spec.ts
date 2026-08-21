@@ -33,12 +33,12 @@ describe("isDatabasePlugin", () => {
         channels: { ...plugin.models.channels, delete: null },
       },
     };
-    const malformedClientAccessKeys = {
+    const malformedApiKeys = {
       ...plugin,
       models: {
         ...plugin.models,
-        clientAccessKeys: {
-          ...plugin.models.clientAccessKeys,
+        apiKeys: {
+          ...plugin.models.apiKeys,
           revoke: null,
         },
       },
@@ -49,7 +49,7 @@ describe("isDatabasePlugin", () => {
     expect(isDatabasePlugin(malformedBundles)).toBe(false);
     expect(isDatabasePlugin(missingAnalytics)).toBe(false);
     expect(isDatabasePlugin(malformedChannels)).toBe(false);
-    expect(isDatabasePlugin(malformedClientAccessKeys)).toBe(false);
+    expect(isDatabasePlugin(malformedApiKeys)).toBe(false);
     expect(isDatabasePlugin(malformedDispose)).toBe(false);
   });
 });

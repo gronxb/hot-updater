@@ -141,7 +141,7 @@ CREATE TABLE bundle_events (
   CONSTRAINT bundle_events_received_at_check CHECK (received_at_ms >= 0)
 );
 
-CREATE TABLE client_access_keys (
+CREATE TABLE api_keys (
   id TEXT PRIMARY KEY NOT NULL,
   hash TEXT NOT NULL,
   name TEXT NOT NULL,
@@ -149,9 +149,9 @@ CREATE TABLE client_access_keys (
   role TEXT NOT NULL,
   created_at_ms REAL NOT NULL,
   revoked_at_ms REAL,
-  CONSTRAINT client_access_keys_role_check CHECK (role = 'client'),
-  CONSTRAINT client_access_keys_created_at_check CHECK (created_at_ms >= 0),
-  CONSTRAINT client_access_keys_revoked_at_check CHECK (
+  CONSTRAINT api_keys_role_check CHECK (role = 'client'),
+  CONSTRAINT api_keys_created_at_check CHECK (created_at_ms >= 0),
+  CONSTRAINT api_keys_revoked_at_check CHECK (
     revoked_at_ms IS NULL OR revoked_at_ms >= 0
   )
 );
@@ -179,5 +179,5 @@ CREATE INDEX bundle_events_to_bundle_idx ON bundle_events(type, to_bundle_id, re
 CREATE INDEX bundle_events_from_bundle_idx ON bundle_events(type, from_bundle_id, received_at_ms, id);
 CREATE INDEX bundle_events_to_release_idx ON bundle_events(type, to_release_id, received_at_ms, id);
 CREATE INDEX bundle_events_from_release_idx ON bundle_events(type, from_release_id, received_at_ms, id);
-CREATE UNIQUE INDEX client_access_keys_hash_key ON client_access_keys(hash);
-CREATE INDEX client_access_keys_created_at_idx ON client_access_keys(created_at_ms, id);
+CREATE UNIQUE INDEX api_keys_hash_key ON api_keys(hash);
+CREATE INDEX api_keys_created_at_idx ON api_keys(created_at_ms, id);

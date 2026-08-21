@@ -128,7 +128,7 @@ CREATE TABLE public.bundle_events (
   CONSTRAINT bundle_events_received_at_check CHECK (received_at_ms >= 0)
 );
 
-CREATE TABLE public.client_access_keys (
+CREATE TABLE public.api_keys (
   id text PRIMARY KEY NOT NULL,
   hash text NOT NULL,
   name text NOT NULL,
@@ -173,10 +173,10 @@ CREATE INDEX bundle_events_to_release_idx
   ON public.bundle_events(type, to_release_id, received_at_ms, id);
 CREATE INDEX bundle_events_from_release_idx
   ON public.bundle_events(type, from_release_id, received_at_ms, id);
-CREATE UNIQUE INDEX client_access_keys_hash_key
-  ON public.client_access_keys(hash);
-CREATE INDEX client_access_keys_created_at_idx
-  ON public.client_access_keys(created_at_ms, id);
+CREATE UNIQUE INDEX api_keys_hash_key
+  ON public.api_keys(hash);
+CREATE INDEX api_keys_created_at_idx
+  ON public.api_keys(created_at_ms, id);
 
 ALTER TABLE public.channels ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bundles ENABLE ROW LEVEL SECURITY;
@@ -184,7 +184,7 @@ ALTER TABLE public.bundle_patches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.releases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.release_catalogs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bundle_events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.client_access_keys ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.api_keys ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.private_hot_updater_settings ENABLE ROW LEVEL SECURITY;
 
 INSERT INTO public.private_hot_updater_settings (key, value)
@@ -209,7 +209,7 @@ DECLARE
   v_catalog public.release_catalogs;
   v_channel public.channels;
   v_event public.bundle_events;
-  v_access_key public.client_access_keys;
+  v_api_key public.api_keys;
 BEGIN
   IF pg_catalog.jsonb_typeof(p_commit) IS DISTINCT FROM 'object'
     OR pg_catalog.jsonb_typeof(p_commit->'changes') IS DISTINCT FROM 'array'
@@ -475,34 +475,34 @@ BEGIN
             v_event.sdk_version, v_event.received_at_ms
           );
 
-        WHEN 'clientAccessKeys' THEN
+        WHEN 'apiKeys' THEN
           CASE v_change->>'operation'
             WHEN 'insert' THEN
               IF v_change->>'onConflict' <> 'ignore' THEN
                 RAISE EXCEPTION
-                  'Client access-key insert requires onConflict ignore'
+                  'API key insert requires onConflict ignore'
                   USING ERRCODE = '22023';
               END IF;
-              v_access_key := pg_catalog.jsonb_populate_record(
-                NULL::public.client_access_keys,
+              v_api_key := pg_catalog.jsonb_populate_record(
+                NULL::public.api_keys,
                 v_change->'row'
               );
-              INSERT INTO public.client_access_keys (
+              INSERT INTO public.api_keys (
                 id, hash, name, prefix, role, created_at_ms, revoked_at_ms
               ) VALUES (
-                v_access_key.id, v_access_key.hash, v_access_key.name,
-                v_access_key.prefix, v_access_key.role,
-                v_access_key.created_at_ms, v_access_key.revoked_at_ms
+                v_api_key.id, v_api_key.hash, v_api_key.name,
+                v_api_key.prefix, v_api_key.role,
+                v_api_key.created_at_ms, v_api_key.revoked_at_ms
               ) ON CONFLICT (hash) DO NOTHING;
             WHEN 'update' THEN
-              UPDATE public.client_access_keys
+              UPDATE public.api_keys
               SET revoked_at_ms = (
                 v_change->'update'->>'revokedAtMs'
               )::double precision
               WHERE id = v_change->'where'->>'id';
               IF NOT FOUND THEN RAISE no_data_found; END IF;
             ELSE
-              RAISE EXCEPTION 'Unsupported Client access-key change'
+              RAISE EXCEPTION 'Unsupported API key change'
                 USING ERRCODE = '22023';
           END CASE;
 

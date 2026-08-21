@@ -1,13 +1,13 @@
-import type { ClientAccessKeyRow } from "@hot-updater/plugin-core";
-import { createClientAccessKey } from "@hot-updater/server";
+import type { ApiKeyRow } from "@hot-updater/plugin-core";
+import { createApiKey } from "@hot-updater/server";
 import { createServerFn } from "@tanstack/react-start";
 
-export type ClientAccessKeyView = Omit<ClientAccessKeyRow, "hash">;
+export type ApiKeyView = Omit<ApiKeyRow, "hash">;
 
-export const toClientAccessKeyView = ({
+export const toApiKeyView = ({
   hash: _hash,
   ...record
-}: ClientAccessKeyRow): ClientAccessKeyView => record;
+}: ApiKeyRow): ApiKeyView => record;
 
 const parseName = (input: unknown): { readonly name: string } => {
   const name =
@@ -15,7 +15,7 @@ const parseName = (input: unknown): { readonly name: string } => {
       ? Reflect.get(input, "name")
       : undefined;
   if (typeof name !== "string") {
-    throw new TypeError("Access-key name must be a string.");
+    throw new TypeError("API key name must be a string.");
   }
   return { name };
 };
@@ -25,56 +25,56 @@ const parseId = (input: unknown): { readonly id: string } => {
     typeof input === "object" && input !== null
       ? Reflect.get(input, "id")
       : undefined;
-  if (typeof id !== "string" || !/^client-[A-Za-z0-9_-]{43}$/u.test(id)) {
-    throw new TypeError("Invalid client access-key id.");
+  if (typeof id !== "string" || !/^api-[A-Za-z0-9_-]{43}$/u.test(id)) {
+    throw new TypeError("Invalid API key id.");
   }
   return { id };
 };
 
 const requireStore = async () => {
   const { prepareConfig } = await import("./server/config.server");
-  const { clientAccessKeyStore } = await prepareConfig();
-  if (clientAccessKeyStore === null) {
+  const { apiKeyStore } = await prepareConfig();
+  if (apiKeyStore === null) {
     throw new Error(
-      "Access keys are not supported by the configured database plugin.",
+      "API keys are not supported by the configured database plugin.",
     );
   }
-  return clientAccessKeyStore;
+  return apiKeyStore;
 };
 
-export const getClientAccessKeyCapabilityRpc = createServerFn({
+export const getApiKeyCapabilityRpc = createServerFn({
   method: "GET",
 }).handler(async () => {
   const { prepareConfig } = await import("./server/config.server");
-  const { clientAccessKeyStore } = await prepareConfig();
-  return { accessKeys: clientAccessKeyStore !== null } as const;
+  const { apiKeyStore } = await prepareConfig();
+  return { apiKeys: apiKeyStore !== null } as const;
 });
 
-export const listClientAccessKeysRpc = createServerFn({
+export const listApiKeysRpc = createServerFn({
   method: "GET",
 }).handler(async () => {
   const store = await requireStore();
   const records = await store.list();
   return [...records]
     .sort((left, right) => right.created_at_ms - left.created_at_ms)
-    .map(toClientAccessKeyView);
+    .map(toApiKeyView);
 });
 
-export const createClientAccessKeyRpc = createServerFn({ method: "POST" })
+export const createApiKeyRpc = createServerFn({ method: "POST" })
   .validator(parseName)
   .handler(async ({ data }) => {
     const store = await requireStore();
-    const created = await createClientAccessKey({
-      clientAccessKeys: store,
+    const created = await createApiKey({
+      apiKeys: store,
       name: data.name,
     });
     return {
       apiKey: created.apiKey,
-      record: toClientAccessKeyView(created.record),
+      record: created.record,
     };
   });
 
-export const revokeClientAccessKeyRpc = createServerFn({ method: "POST" })
+export const revokeApiKeyRpc = createServerFn({ method: "POST" })
   .validator(parseId)
   .handler(async ({ data }) => {
     const store = await requireStore();
@@ -82,6 +82,6 @@ export const revokeClientAccessKeyRpc = createServerFn({ method: "POST" })
       id: data.id,
       revokedAtMs: Date.now(),
     });
-    if (revoked === null) throw new Error("Access key not found.");
-    return toClientAccessKeyView(revoked);
+    if (revoked === null) throw new Error("API key not found.");
+    return toApiKeyView(revoked);
   });

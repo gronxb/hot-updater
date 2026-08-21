@@ -4,7 +4,7 @@ import type {
   BundleEventRow,
   ChannelRow,
   ChannelDeleteResult,
-  ClientAccessKeyRow,
+  ApiKeyRow,
   DatabaseCommit,
   DatabaseCommitResult,
   ReleaseCatalogRow,
@@ -21,8 +21,8 @@ export type SupabaseBundlePatchRow = {
 
 export type SupabaseBundleEventRow = BundleEventRow;
 
-export type SupabaseClientAccessKeyRow = {
-  [TField in keyof ClientAccessKeyRow]: ClientAccessKeyRow[TField];
+export type SupabaseApiKeyRow = {
+  [TField in keyof ApiKeyRow]: ApiKeyRow[TField];
 };
 
 export type SupabaseChannelRow = {
@@ -51,7 +51,7 @@ export type Database = {
       bundle_patches: Table<SupabaseBundlePatchRow>;
       channels: Table<SupabaseChannelRow>;
       bundle_events: Table<SupabaseBundleEventRow>;
-      client_access_keys: Table<SupabaseClientAccessKeyRow>;
+      api_keys: Table<SupabaseApiKeyRow>;
       release_catalogs: Table<SupabaseReleaseCatalogRow>;
       releases: Table<SupabaseReleaseRow>;
     };

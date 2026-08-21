@@ -58,20 +58,20 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  useCreateClientAccessKeyMutation,
-  useClientAccessKeysQuery,
-  useRevokeClientAccessKeyMutation,
-} from "@/lib/access-keys-api";
-import type { ClientAccessKeyView } from "@/lib/access-keys-rpc";
+  useApiKeysQuery,
+  useCreateApiKeyMutation,
+  useRevokeApiKeyMutation,
+} from "@/lib/api-keys-api";
+import type { ApiKeyView } from "@/lib/api-keys-rpc";
 
 const formatCreatedAt = (createdAt: number): string =>
   new Date(createdAt).toISOString().slice(0, 10);
 
-function CreateAccessKeyDialog() {
+function CreateApiKeyDialog() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [apiKey, setApiKey] = useState<string | null>(null);
-  const create = useCreateClientAccessKeyMutation();
+  const create = useCreateApiKeyMutation();
   const normalizedName = name.trim();
   const nameError =
     normalizedName.length > 64 ? "Name must be 64 characters or fewer." : null;
@@ -93,10 +93,10 @@ function CreateAccessKeyDialog() {
     try {
       const result = await create.mutateAsync(normalizedName);
       setApiKey(result.apiKey);
-      toast.success("Access key created");
+      toast.success("API key created");
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Unable to create key",
+        error instanceof Error ? error.message : "Unable to create API key",
       );
     }
   };
@@ -105,9 +105,9 @@ function CreateAccessKeyDialog() {
     if (apiKey === null) return;
     try {
       await navigator.clipboard.writeText(apiKey);
-      toast.success("Access key copied");
+      toast.success("API key copied");
     } catch {
-      toast.error("Unable to copy access key");
+      toast.error("Unable to copy API key");
     }
   };
 
@@ -115,13 +115,13 @@ function CreateAccessKeyDialog() {
     <>
       <Button onClick={() => setOpen(true)}>
         <Plus data-icon="inline-start" />
-        Create key
+        Create API key
       </Button>
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent showCloseButton={apiKey === null}>
           <DialogHeader>
             <DialogTitle>
-              {apiKey === null ? "Create access key" : "Save your access key"}
+              {apiKey === null ? "Create API key" : "Save your API key"}
             </DialogTitle>
             <DialogDescription>
               {apiKey === null
@@ -133,9 +133,9 @@ function CreateAccessKeyDialog() {
             <form onSubmit={handleSubmit}>
               <FieldGroup>
                 <Field data-invalid={nameError !== null || undefined}>
-                  <FieldLabel htmlFor="access-key-name">Name</FieldLabel>
+                  <FieldLabel htmlFor="api-key-name">Name</FieldLabel>
                   <Input
-                    id="access-key-name"
+                    id="api-key-name"
                     autoComplete="off"
                     maxLength={65}
                     onChange={(event) => setName(event.target.value)}
@@ -165,17 +165,17 @@ function CreateAccessKeyDialog() {
                   ) : (
                     <KeyRound data-icon="inline-start" />
                   )}
-                  Create key
+                  Create API key
                 </Button>
               </DialogFooter>
             </form>
           ) : (
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="created-access-key">Access key</FieldLabel>
+                <FieldLabel htmlFor="created-api-key">API key</FieldLabel>
                 <div className="flex gap-2">
                   <Input
-                    id="created-access-key"
+                    id="created-api-key"
                     className="font-mono"
                     readOnly
                     value={apiKey}
@@ -200,19 +200,19 @@ function CreateAccessKeyDialog() {
   );
 }
 
-function RevokeAccessKeyDialog({ record }: { record: ClientAccessKeyView }) {
+function RevokeApiKeyDialog({ record }: { record: ApiKeyView }) {
   const [open, setOpen] = useState(false);
-  const revoke = useRevokeClientAccessKeyMutation();
+  const revoke = useRevokeApiKeyMutation();
 
   const handleRevoke = async (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     try {
       await revoke.mutateAsync(record.id);
       setOpen(false);
-      toast.success("Access key revoked");
+      toast.success("API key revoked");
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Unable to revoke key",
+        error instanceof Error ? error.message : "Unable to revoke API key",
       );
     }
   };
@@ -248,7 +248,7 @@ function RevokeAccessKeyDialog({ record }: { record: ClientAccessKeyView }) {
             onClick={(event) => void handleRevoke(event)}
             variant="destructive"
           >
-            Revoke key
+            Revoke API key
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -256,29 +256,29 @@ function RevokeAccessKeyDialog({ record }: { record: ClientAccessKeyView }) {
   );
 }
 
-export function AccessKeysPage() {
-  const accessKeys = useClientAccessKeysQuery();
+export function ApiKeysPage() {
+  const apiKeys = useApiKeysQuery();
 
   return (
     <Card className="overflow-hidden shadow-sm">
       <CardHeader className="flex-row items-center justify-between space-y-0 border-b px-4 py-3">
         <CardTitle className="text-sm">
-          <h2>Keys</h2>
+          <h2>API keys</h2>
         </CardTitle>
-        <CreateAccessKeyDialog />
+        <CreateApiKeyDialog />
       </CardHeader>
       <CardContent className="p-0">
-        {accessKeys.isError ? (
+        {apiKeys.isError ? (
           <div className="p-4">
             <Alert variant="destructive">
               <AlertTriangle />
-              <AlertTitle>Access keys couldn't be loaded</AlertTitle>
+              <AlertTitle>API keys couldn't be loaded</AlertTitle>
               <AlertDescription>
                 Check your connection and try again.
               </AlertDescription>
               <AlertAction>
                 <Button
-                  onClick={() => void accessKeys.refetch()}
+                  onClick={() => void apiKeys.refetch()}
                   size="xs"
                   variant="outline"
                 >
@@ -289,7 +289,7 @@ export function AccessKeysPage() {
             </Alert>
           </div>
         ) : (
-          <Table aria-label="Client access keys" className="table-fixed">
+          <Table aria-label="API keys" className="table-fixed">
             <TableHeader>
               <TableRow>
                 <TableHead>Key</TableHead>
@@ -300,12 +300,12 @@ export function AccessKeysPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {accessKeys.isLoading ? (
+              {apiKeys.isLoading ? (
                 Array.from({ length: 3 }, (_, index) => (
                   <TableRow key={index}>
                     <TableCell className="space-y-2 py-3">
                       {index === 0 ? (
-                        <span className="sr-only">Loading access keys</span>
+                        <span className="sr-only">Loading API keys</span>
                       ) : null}
                       <Skeleton className="h-3.5 w-32" />
                       <Skeleton className="h-3 w-20" />
@@ -318,7 +318,7 @@ export function AccessKeysPage() {
                     </TableCell>
                   </TableRow>
                 ))
-              ) : accessKeys.data?.length === 0 ? (
+              ) : apiKeys.data?.length === 0 ? (
                 <TableRow>
                   <TableCell
                     colSpan={3}
@@ -326,45 +326,41 @@ export function AccessKeysPage() {
                   >
                     <div className="mx-auto flex max-w-xs flex-col items-center gap-2">
                       <KeyRound className="size-5" />
-                      <p className="font-medium text-foreground">
-                        No client keys
-                      </p>
-                      <p>Create a key to connect an app.</p>
+                      <p className="font-medium text-foreground">No API keys</p>
+                      <p>Create an API key to connect an app.</p>
                     </div>
                   </TableCell>
                 </TableRow>
               ) : (
-                accessKeys.data?.map((accessKey) => (
+                apiKeys.data?.map((apiKey) => (
                   <TableRow
                     className={
-                      accessKey.revoked_at_ms === null
+                      apiKey.revoked_at_ms === null
                         ? undefined
                         : "text-muted-foreground"
                     }
-                    key={accessKey.id}
+                    key={apiKey.id}
                   >
                     <TableCell className="whitespace-normal py-3">
                       <div className="min-w-0 space-y-1">
                         <p className="break-words font-medium text-foreground">
-                          {accessKey.name}
+                          {apiKey.name}
                         </p>
                         <p className="font-mono text-xs text-muted-foreground">
-                          {accessKey.prefix}…
+                          {apiKey.prefix}…
                         </p>
                       </div>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       <time
-                        dateTime={new Date(
-                          accessKey.created_at_ms,
-                        ).toISOString()}
+                        dateTime={new Date(apiKey.created_at_ms).toISOString()}
                       >
-                        {formatCreatedAt(accessKey.created_at_ms)}
+                        {formatCreatedAt(apiKey.created_at_ms)}
                       </time>
                     </TableCell>
                     <TableCell className="text-right">
-                      {accessKey.revoked_at_ms === null ? (
-                        <RevokeAccessKeyDialog record={accessKey} />
+                      {apiKey.revoked_at_ms === null ? (
+                        <RevokeApiKeyDialog record={apiKey} />
                       ) : (
                         <Badge variant="outline">Revoked</Badge>
                       )}

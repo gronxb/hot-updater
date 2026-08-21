@@ -97,7 +97,7 @@ const bundleEvents = pgTable("bundle_events", {
   sdk_version: text("sdk_version"),
   received_at_ms: integer("received_at_ms").notNull(),
 });
-const clientAccessKeys = pgTable("client_access_keys", {
+const apiKeys = pgTable("api_keys", {
   id: text("id").primaryKey(),
   hash: text("hash").notNull().unique(),
   name: text("name").notNull(),
@@ -111,7 +111,7 @@ const schema = {
   bundle_patches: bundlePatches,
   bundles,
   channels,
-  client_access_keys: clientAccessKeys,
+  api_keys: apiKeys,
   release_catalogs: releaseCatalogs,
   releases,
 };

@@ -2,7 +2,7 @@ import {
   DatabasePluginInputError,
   selectRow,
   validateBundleUpdateData,
-  validateClientAccessKeyUpdateData,
+  validateApiKeyUpdateData,
   validateReleaseCatalogUpdateData,
   validateReleaseTargetUpdate,
   validateReleaseUpdateData,
@@ -49,7 +49,7 @@ export const createDatabasePluginCrud = (
       input.onConflict !== undefined &&
       !(
         input.onConflict === "ignore" &&
-        (input.model === "channels" || input.model === "client_access_keys")
+        (input.model === "channels" || input.model === "api_keys")
       )
     ) {
       throw new DatabasePluginInputError("invalid-operation");
@@ -73,8 +73,8 @@ export const createDatabasePluginCrud = (
       validateReleaseUpdateData(input.update);
     } else if (input.model === "release_catalogs") {
       validateReleaseCatalogUpdateData(input.update);
-    } else if (input.model === "client_access_keys") {
-      validateClientAccessKeyUpdateData(input.update);
+    } else if (input.model === "api_keys") {
+      validateApiKeyUpdateData(input.update);
     } else {
       throw new DatabasePluginInputError("invalid-operation");
     }

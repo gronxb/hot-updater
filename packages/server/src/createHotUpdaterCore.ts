@@ -6,9 +6,11 @@ import {
 import { createAnalyticsProvider } from "./analytics/bounded/provider";
 import type { AnalyticsProvider } from "./analytics/types";
 import {
-  authenticateClientAccessKey,
-  normalizeClientAccessKeyHeaderName,
-} from "./clientAccessKeys";
+  authenticateApiKey,
+  createApiKeyManagement,
+  normalizeApiKeyHeaderName,
+} from "./apiKeys";
+import type { ApiKeyManagementAPI } from "./apiKeys";
 import { createDatabasePluginCore } from "./db/databasePluginCore";
 import { createSchemaReadinessChecker } from "./db/schemaReadiness";
 import {
@@ -30,6 +32,12 @@ export type RuntimeHotUpdaterAPI = DatabaseAPI & {
    * reporting with `HotUpdater.init({ analytics: true })`.
    */
   readonly analytics: AnalyticsProvider;
+  /**
+   * In-process API key lifecycle operations for trusted server tooling.
+   * Creation returns the plaintext once; list and revoke expose only metadata.
+   * This capability is never mounted on the client or admin HTTP handlers.
+   */
+  readonly apiKeys: ApiKeyManagementAPI;
 };
 
 export type HotUpdaterAPI = RuntimeHotUpdaterAPI;
@@ -44,12 +52,12 @@ export type ClientAccessPolicy =
     }
   | {
       /**
-       * Requires a key registered in `database.models.clientAccessKeys` for
+       * Requires a key registered in `database.models.apiKeys` for
        * Release Catalog, artifact, and Analytics ingestion requests.
        */
       readonly type: "api-key";
       /**
-       * Request header containing the client access key. Defaults to
+       * Request header containing the API key. Defaults to
        * `x-api-key`. Clients must send the same header; Release Catalog
        * responses include it in `Vary` to preserve cache isolation.
        */
@@ -88,7 +96,7 @@ const normalizeClientAccess = (
   if (policy.type === "public") return { type: "public" };
   if (policy.type === "api-key") {
     return {
-      headerName: normalizeClientAccessKeyHeaderName(policy.headerName),
+      headerName: normalizeApiKeyHeaderName(policy.headerName),
       type: "api-key",
     };
   }
@@ -168,6 +176,10 @@ export function createHotUpdaterCore(
       return plugin.models.analytics.scan(input);
     },
   });
+  const apiKeys = createApiKeyManagement({
+    apiKeys: plugin.models.apiKeys,
+    beforeOperation: assertSchemaReady,
+  });
 
   const handlers = createHotUpdaterHandlers(
     core.api,
@@ -178,9 +190,9 @@ export function createHotUpdaterCore(
     clientAccess.type === "api-key"
       ? {
           authenticate: (request) =>
-            authenticateClientAccessKey({
+            authenticateApiKey({
+              apiKeys: plugin.models.apiKeys,
               beforeLookup: assertSchemaReady,
-              clientAccessKeys: plugin.models.clientAccessKeys,
               headerName: clientAccess.headerName,
               request,
             }),
@@ -195,6 +207,7 @@ export function createHotUpdaterCore(
       authorityId,
       adapterName: adapterCapabilities.adapterName ?? core.adapterName,
       analytics,
+      apiKeys,
       handlers,
     },
     core.api,

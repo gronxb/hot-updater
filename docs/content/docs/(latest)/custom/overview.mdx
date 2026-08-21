@@ -104,7 +104,7 @@ subpath with the same public plugin name.
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
-  clientAccess: { type: "public" },
+  clientAccess: { type: "api-key" },
   storage: [
     s3Storage({
       /* AWS S3 config with download URL support */
@@ -135,7 +135,7 @@ with `HotUpdater.init({ analytics })`.
 
 Every server must explicitly set `clientAccess`. Use `{ type: "api-key" }` to
 require authentication for update checks and Analytics ingestion through
-`database.models.clientAccessKeys`, or `{ type: "public" }` to keep those
+`database.models.apiKeys`, or `{ type: "public" }` to keep those
 client routes public.
 
 Release Catalog, artifact, storage-download, and `/version` routes are always

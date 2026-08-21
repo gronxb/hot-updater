@@ -131,17 +131,17 @@ export function isDatabasePlugin(plugin: unknown): plugin is DatabasePlugin {
     typeof plugin.models.analytics.append === "function" &&
     "scan" in plugin.models.analytics &&
     typeof plugin.models.analytics.scan === "function" &&
-    "clientAccessKeys" in plugin.models &&
-    typeof plugin.models.clientAccessKeys === "object" &&
-    plugin.models.clientAccessKeys !== null &&
-    "create" in plugin.models.clientAccessKeys &&
-    typeof plugin.models.clientAccessKeys.create === "function" &&
-    "findByHash" in plugin.models.clientAccessKeys &&
-    typeof plugin.models.clientAccessKeys.findByHash === "function" &&
-    "list" in plugin.models.clientAccessKeys &&
-    typeof plugin.models.clientAccessKeys.list === "function" &&
-    "revoke" in plugin.models.clientAccessKeys &&
-    typeof plugin.models.clientAccessKeys.revoke === "function" &&
+    "apiKeys" in plugin.models &&
+    typeof plugin.models.apiKeys === "object" &&
+    plugin.models.apiKeys !== null &&
+    "create" in plugin.models.apiKeys &&
+    typeof plugin.models.apiKeys.create === "function" &&
+    "findByHash" in plugin.models.apiKeys &&
+    typeof plugin.models.apiKeys.findByHash === "function" &&
+    "list" in plugin.models.apiKeys &&
+    typeof plugin.models.apiKeys.list === "function" &&
+    "revoke" in plugin.models.apiKeys &&
+    typeof plugin.models.apiKeys.revoke === "function" &&
     "commit" in plugin &&
     typeof plugin.commit === "function" &&
     (!("dispose" in plugin) ||

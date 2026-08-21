@@ -247,7 +247,7 @@ describe("standaloneRepository", () => {
     );
     expect(repository.commit).toBeTypeOf("function");
     expect(Reflect.has(repository, "analytics")).toBe(false);
-    expect(Reflect.has(repository, "clientAccessKeys")).toBe(false);
+    expect(Reflect.has(repository, "apiKeys")).toBe(false);
   });
 
   it("keeps Channel routing canonical instead of exposing an override", () => {

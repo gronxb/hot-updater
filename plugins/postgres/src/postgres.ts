@@ -192,21 +192,21 @@ const createPostgresImplementation = (
             .executeTakeFirstOrThrow())
         );
       }
-      case "client_access_keys":
+      case "api_keys":
         const row = await (
           input.onConflict === "ignore"
             ? db
-                .insertInto("client_access_keys")
+                .insertInto("api_keys")
                 .values(input.data)
                 .onConflict((conflict) => conflict.column("hash").doNothing())
-            : db.insertInto("client_access_keys").values(input.data)
+            : db.insertInto("api_keys").values(input.data)
         )
           .returningAll()
           .executeTakeFirst();
         return (
           row ??
           (await db
-            .selectFrom("client_access_keys")
+            .selectFrom("api_keys")
             .selectAll()
             .where("hash", "=", input.data.hash)
             .executeTakeFirstOrThrow())
@@ -215,8 +215,8 @@ const createPostgresImplementation = (
   },
   async update(input: UpdateDatabaseImplementationInput) {
     const where = buildWhere(input.where);
-    if (input.model === "client_access_keys") {
-      let query = db.updateTable("client_access_keys").set(input.update);
+    if (input.model === "api_keys") {
+      let query = db.updateTable("api_keys").set(input.update);
       if (where !== undefined) query = query.where(where);
       return (await query.returningAll().executeTakeFirst()) ?? null;
     }
@@ -279,8 +279,8 @@ const createPostgresImplementation = (
         if (where !== undefined) query = query.where(where);
         return (await query.executeTakeFirst()) ?? null;
       }
-      case "client_access_keys": {
-        let query = db.selectFrom("client_access_keys").selectAll();
+      case "api_keys": {
+        let query = db.selectFrom("api_keys").selectAll();
         if (where !== undefined) query = query.where(where);
         return (await query.executeTakeFirst()) ?? null;
       }

@@ -13,7 +13,7 @@ describe("database model fields", () => {
       "release_catalogs",
       "channels",
       "bundle_events",
-      "client_access_keys",
+      "api_keys",
     ]);
   });
 });

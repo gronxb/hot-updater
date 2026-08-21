@@ -11,6 +11,18 @@ not want to, wrap your root component with `HotUpdater.wrap`. Call it once when
 your runtime considers the app ready. This API exists for apps that only need
 Hot Updater initialization without a React HOC.
 
+For a self-hosted server created with
+`clientAccess: { type: "api-key" }`, apply the database schema and create an API
+key before configuring the app:
+
+```bash
+npx hot-updater db migrate src/hotUpdater.ts
+npx hot-updater api-key create src/hotUpdater.ts --name "Mobile app"
+```
+
+The command displays the plaintext API key once. Pass that exact value in the
+default `x-api-key` header:
+
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
@@ -18,9 +30,9 @@ HotUpdater.init({
   baseURL: "<your-update-server-url>",
   analytics: true,
   requestHeaders: {
-    "x-api-key": "<your-client-access-key>",
+    "x-api-key": "<your-api-key>",
   },
-  onError: error => {
+  onError: (error) => {
     console.error("Hot Updater failed", error);
   },
 });
@@ -28,8 +40,12 @@ HotUpdater.init({
 
 Point `baseURL` at the client handler root, for example
 `https://example.com/hot-updater`. Never embed the admin bearer token in a
-React Native app. If client access keys are enabled, send only the scoped
-`x-api-key` shown above.
+React Native app. If `clientAccess` uses the `api-key` policy, send only the
+API key using `x-api-key` as shown above.
+
+If the server intentionally uses the unauthenticated
+`clientAccess: { type: "public" }` alternative, omit `x-api-key` from
+`requestHeaders`.
 
 Set `analytics: true` to send automatic app-ready transition and Release
 adoption events. Omitting it or setting it to `false` sends no Analytics

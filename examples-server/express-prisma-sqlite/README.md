@@ -136,7 +136,7 @@ This command:
 
 1. Reads your Hot Updater configuration from `src/db.ts`
 2. Merges the fixed `channels`, `bundles`, `bundle_patches`, `releases`,
-   `release_catalogs`, `bundle_events`, `client_access_keys`, and
+   `release_catalogs`, `bundle_events`, `api_keys`, and
    `private_hot_updater_settings` models into `prisma/schema.prisma`
 3. Preserves application models outside the generated block
 

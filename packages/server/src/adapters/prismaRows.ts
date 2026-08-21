@@ -3,7 +3,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   ChannelRow,
-  ClientAccessKeyRow,
+  ApiKeyRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -49,7 +49,7 @@ const modelDelegates = {
   bundle_patches: "bundle_patches",
   bundle_events: "bundle_events",
   channels: "channels",
-  client_access_keys: "client_access_keys",
+  api_keys: "api_keys",
   releases: "releases",
   release_catalogs: "release_catalogs",
 } as const satisfies Record<DatabaseModel, string>;
@@ -186,15 +186,13 @@ export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
   } as BundleEventRow;
 };
 
-export const parsePrismaClientAccessKeyRow = (
-  value: unknown,
-): ClientAccessKeyRow => {
+export const parsePrismaApiKeyRow = (value: unknown): ApiKeyRow => {
   if (!isRecord(value)) {
-    throw new PrismaAdapterError("invalid client access-key row");
+    throw new PrismaAdapterError("invalid API key row");
   }
   const role = readString(value, "role");
   if (role !== "client") {
-    throw new PrismaAdapterError("invalid client access-key role");
+    throw new PrismaAdapterError("invalid API key role");
   }
   const revokedAt = value["revoked_at_ms"];
   return {

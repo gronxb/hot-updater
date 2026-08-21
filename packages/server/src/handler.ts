@@ -44,7 +44,7 @@ const errorResponse = (error: string, status: number): Response =>
     },
   );
 
-const requiresClientAccessKey = (handlerName: string): boolean =>
+const requiresApiKey = (handlerName: string): boolean =>
   handlerName === "appVersionReleaseCatalog" ||
   handlerName === "fingerprintReleaseCatalog" ||
   handlerName === "artifact" ||
@@ -53,13 +53,13 @@ const requiresClientAccessKey = (handlerName: string): boolean =>
 const createRequestHandler =
   ({
     api,
-    clientAccessKeys,
+    apiKeyAuth,
     privateResponses = false,
     routeHandlers,
     router,
   }: {
     readonly api: HandlerAPI;
-    readonly clientAccessKeys?: {
+    readonly apiKeyAuth?: {
       readonly authenticate: (request: Request) => Promise<boolean>;
     };
     readonly privateResponses?: boolean;
@@ -77,13 +77,10 @@ const createRequestHandler =
         return errorResponse("Not found", 404);
       }
 
-      if (
-        clientAccessKeys !== undefined &&
-        requiresClientAccessKey(match.data)
-      ) {
+      if (apiKeyAuth !== undefined && requiresApiKey(match.data)) {
         let authenticated: boolean;
         try {
-          authenticated = await clientAccessKeys.authenticate(request);
+          authenticated = await apiKeyAuth.authenticate(request);
         } catch {
           return errorResponse("Service unavailable", 503);
         }
@@ -152,7 +149,7 @@ export function createHotUpdaterHandlers(
   api: HandlerAPI,
   options: HandlerOptions = {},
   analytics?: AnalyticsProvider,
-  clientAccessKeys?: {
+  apiKeyAuth?: {
     readonly authenticate: (request: Request) => Promise<boolean>;
     readonly headerName: string;
   },
@@ -164,10 +161,7 @@ export function createHotUpdaterHandlers(
   const authorityId = options.authorityId ?? "default";
   const routeHandlers: Record<string, RouteHandler> = {
     ...createVersionRouteHandlers(),
-    ...createReleaseCatalogRouteHandlers(
-      authorityId,
-      clientAccessKeys?.headerName,
-    ),
+    ...createReleaseCatalogRouteHandlers(authorityId, apiKeyAuth?.headerName),
     ...createReleaseManagementRouteHandlers(),
     ...createBundleRouteHandlers(),
     ...(analytics === undefined ? {} : createAnalyticsRouteHandlers(analytics)),
@@ -244,7 +238,7 @@ export function createHotUpdaterHandlers(
   return Object.freeze({
     client: createRequestHandler({
       api,
-      clientAccessKeys,
+      apiKeyAuth,
       routeHandlers,
       router: clientRouter,
     }),

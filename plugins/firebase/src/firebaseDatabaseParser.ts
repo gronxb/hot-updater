@@ -4,7 +4,7 @@ import {
   type BundleRow,
   type BundleEventRow,
   type ChannelRow,
-  type ClientAccessKeyRow,
+  type ApiKeyRow,
   type ReleaseCatalogRow,
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -145,10 +145,10 @@ export const parseFirebaseBundleEventRow = (
   } as BundleEventRow;
 };
 
-export const parseFirebaseClientAccessKeyRow = (
+export const parseFirebaseApiKeyRow = (
   value: unknown,
   source: string,
-): ClientAccessKeyRow => {
+): ApiKeyRow => {
   const input = record(value, source);
   const role = string(property(input, "role"), source);
   if (role !== "client") throw new FirebaseDatabaseDataError(source);

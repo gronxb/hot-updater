@@ -71,7 +71,7 @@ const input = (
 ) => ({
   baseURL: "https://updates.example.com",
   expectedScope: EXPECTED_SCOPE,
-  requestHeaders: { "X-API-Key": "client-key-a" },
+  requestHeaders: { "X-API-Key": "api-key-a" },
   url: URL,
   ...overrides,
 });
@@ -161,10 +161,10 @@ describe("Release Catalog persistent cache", () => {
 
     await fetchReleaseCatalogWithCache(input());
     await fetchReleaseCatalogWithCache(
-      input({ requestHeaders: { "x-api-key": "client-key-a" } }),
+      input({ requestHeaders: { "x-api-key": "api-key-a" } }),
     );
     await fetchReleaseCatalogWithCache(
-      input({ requestHeaders: { "x-api-key": "client-key-b" } }),
+      input({ requestHeaders: { "x-api-key": "api-key-b" } }),
     );
     await fetchReleaseCatalogWithCache(
       input({

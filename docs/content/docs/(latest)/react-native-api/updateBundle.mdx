@@ -23,7 +23,7 @@ async function stageAppUpdate() {
     const updateInfo = await HotUpdater.checkForUpdate({
       updateStrategy: "appVersion", // or "fingerprint"
       requestHeaders: {
-        "x-api-key": "<your-client-access-key>",
+        "x-api-key": "<your-api-key>",
       },
     });
 
@@ -56,12 +56,12 @@ async function stageAppUpdate() {
 
 The `updateBundle` function accepts the following parameters:
 
-| Parameter  | Type                     | Required | Description                                      |
-|------------|--------------------------|----------|--------------------------------------------------|
-| `bundleId` | `string`                 | ✅        | Unique identifier of the update bundle.          |
-| `fileUrl`  | `string \| null`         | ✅        | Bundle archive URL, or `null` when none is used. |
-| `fileHash` | `string \| null`         | ✅        | SHA256 hash, `sig:<base64_signature>`, or `null`. |
-| `status`   | `"UPDATE" \| "ROLLBACK"` | ✅        | Update transition to apply.                      |
+| Parameter  | Type                     | Required | Description                                       |
+| ---------- | ------------------------ | -------- | ------------------------------------------------- |
+| `bundleId` | `string`                 | ✅       | Unique identifier of the update bundle.           |
+| `fileUrl`  | `string \| null`         | ✅       | Bundle archive URL, or `null` when none is used.  |
+| `fileHash` | `string \| null`         | ✅       | SHA256 hash, `sig:<base64_signature>`, or `null`. |
+| `status`   | `"UPDATE" \| "ROLLBACK"` | ✅       | Update transition to apply.                       |
 
 For a direct rollback transition with no archive, pass the required nullable
 properties explicitly:

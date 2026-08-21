@@ -9,12 +9,12 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AccessKeysPage } from "./AccessKeysPage";
+import { ApiKeysPage } from "./ApiKeysPage";
 
 const {
   createMutation,
   revokeMutation,
-  accessKeysQuery,
+  apiKeysQuery,
   toastError,
   toastSuccess,
 } = vi.hoisted(() => ({
@@ -27,7 +27,7 @@ const {
     isPending: false,
     mutateAsync: vi.fn(),
   },
-  accessKeysQuery: {
+  apiKeysQuery: {
     data: [] as Array<Record<string, unknown>>,
     error: null as Error | null,
     isError: false,
@@ -42,10 +42,10 @@ vi.mock("sonner", () => ({
   toast: { error: toastError, success: toastSuccess },
 }));
 
-vi.mock("@/lib/access-keys-api", () => ({
-  useCreateClientAccessKeyMutation: () => createMutation,
-  useClientAccessKeysQuery: () => accessKeysQuery,
-  useRevokeClientAccessKeyMutation: () => revokeMutation,
+vi.mock("@/lib/api-keys-api", () => ({
+  useApiKeysQuery: () => apiKeysQuery,
+  useCreateApiKeyMutation: () => createMutation,
+  useRevokeApiKeyMutation: () => revokeMutation,
 }));
 
 vi.mock("@/components/ui/dialog", async () => {
@@ -154,13 +154,13 @@ vi.mock("@/components/ui/alert-dialog", async () => {
   };
 });
 
-describe("AccessKeysPage", () => {
+describe("ApiKeysPage", () => {
   beforeEach(() => {
-    accessKeysQuery.data = [];
-    accessKeysQuery.error = null;
-    accessKeysQuery.isError = false;
-    accessKeysQuery.isLoading = false;
-    accessKeysQuery.refetch.mockReset();
+    apiKeysQuery.data = [];
+    apiKeysQuery.error = null;
+    apiKeysQuery.isError = false;
+    apiKeysQuery.isLoading = false;
+    apiKeysQuery.refetch.mockReset();
     createMutation.isPending = false;
     createMutation.mutateAsync.mockReset();
     createMutation.reset.mockReset();
@@ -175,20 +175,22 @@ describe("AccessKeysPage", () => {
   it("shows a newly created plaintext key once and clears it on close", async () => {
     const apiKey = "a".repeat(43);
     createMutation.mutateAsync.mockResolvedValue({ apiKey });
-    render(<AccessKeysPage />);
+    render(<ApiKeysPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Create key" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create API key" }));
     fireEvent.change(screen.getByLabelText("Name"), {
       target: { value: " Production app " },
     });
-    fireEvent.click(screen.getAllByRole("button", { name: "Create key" })[1]!);
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Create API key" })[1]!,
+    );
 
     expect(await screen.findByDisplayValue(apiKey)).toBeDefined();
     expect(createMutation.mutateAsync).toHaveBeenCalledWith("Production app");
     expect(screen.getByText(/shown once/i)).toBeDefined();
 
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
-    fireEvent.click(screen.getByRole("button", { name: "Create key" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create API key" }));
 
     expect(screen.queryByDisplayValue(apiKey)).toBeNull();
     expect(screen.getByLabelText("Name")).toBeDefined();
@@ -202,23 +204,23 @@ describe("AccessKeysPage", () => {
           resolveRevoke = resolve;
         }),
     );
-    accessKeysQuery.data = [
+    apiKeysQuery.data = [
       {
         created_at_ms: 1_700_000_000_000,
-        id: `client-${"b".repeat(43)}`,
+        id: `api-${"b".repeat(43)}`,
         name: "Production app",
         prefix: "abcdef",
         revoked_at_ms: null,
         role: "client",
       },
     ];
-    render(<AccessKeysPage />);
+    render(<ApiKeysPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
-    fireEvent.click(screen.getByRole("button", { name: "Revoke key" }));
+    fireEvent.click(screen.getByRole("button", { name: "Revoke API key" }));
 
     expect(revokeMutation.mutateAsync).toHaveBeenCalledWith(
-      `client-${"b".repeat(43)}`,
+      `api-${"b".repeat(43)}`,
     );
     expect(screen.getByRole("alertdialog")).toBeDefined();
 
@@ -226,14 +228,14 @@ describe("AccessKeysPage", () => {
     await waitFor(() => {
       expect(screen.queryByRole("alertdialog")).toBeNull();
     });
-    expect(toastSuccess).toHaveBeenCalledWith("Access key revoked");
+    expect(toastSuccess).toHaveBeenCalledWith("API key revoked");
   });
 
   it("presents a key as one compact identity without repeated permissions", () => {
-    accessKeysQuery.data = [
+    apiKeysQuery.data = [
       {
         created_at_ms: 1_700_000_000_000,
-        id: `client-${"b".repeat(43)}`,
+        id: `api-${"b".repeat(43)}`,
         name: "Production app",
         prefix: "abcdef",
         revoked_at_ms: null,
@@ -241,7 +243,7 @@ describe("AccessKeysPage", () => {
       },
     ];
 
-    render(<AccessKeysPage />);
+    render(<ApiKeysPage />);
     const row = screen.getByRole("row", { name: /Production app/ });
 
     expect(within(row).getByText("Production app")).toBeDefined();
@@ -251,18 +253,20 @@ describe("AccessKeysPage", () => {
   });
 
   it("offers a useful empty state and a retryable error state", () => {
-    const { rerender } = render(<AccessKeysPage />);
+    const { rerender } = render(<ApiKeysPage />);
 
-    expect(screen.getByText("No client keys")).toBeDefined();
-    expect(screen.getByText("Create a key to connect an app.")).toBeDefined();
+    expect(screen.getByText("No API keys")).toBeDefined();
+    expect(
+      screen.getByText("Create an API key to connect an app."),
+    ).toBeDefined();
 
-    accessKeysQuery.error = new Error("database relation is missing");
-    accessKeysQuery.isError = true;
-    rerender(<AccessKeysPage />);
+    apiKeysQuery.error = new Error("database relation is missing");
+    apiKeysQuery.isError = true;
+    rerender(<ApiKeysPage />);
 
-    expect(screen.getByText("Access keys couldn't be loaded")).toBeDefined();
+    expect(screen.getByText("API keys couldn't be loaded")).toBeDefined();
     expect(screen.queryByText("database relation is missing")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(accessKeysQuery.refetch).toHaveBeenCalledOnce();
+    expect(apiKeysQuery.refetch).toHaveBeenCalledOnce();
   });
 });

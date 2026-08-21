@@ -2,14 +2,14 @@
 
 import { describe, expect, it } from "vitest";
 
-import { toClientAccessKeyView } from "./access-keys-rpc";
+import { toApiKeyView } from "./api-keys-rpc";
 
-describe("client access-key RPC output", () => {
+describe("API-key RPC output", () => {
   it("never serializes the provider lookup hash", () => {
-    const view = toClientAccessKeyView({
+    const view = toApiKeyView({
       created_at_ms: 1,
       hash: "provider-lookup-hash",
-      id: `client-${"a".repeat(43)}`,
+      id: `api-${"a".repeat(43)}`,
       name: "Production app",
       prefix: "abcdef",
       revoked_at_ms: null,
@@ -18,7 +18,7 @@ describe("client access-key RPC output", () => {
 
     expect(view).toEqual({
       created_at_ms: 1,
-      id: `client-${"a".repeat(43)}`,
+      id: `api-${"a".repeat(43)}`,
       name: "Production app",
       prefix: "abcdef",
       revoked_at_ms: null,

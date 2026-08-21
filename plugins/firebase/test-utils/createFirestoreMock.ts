@@ -8,7 +8,7 @@ export function createFirestoreMock(projectId: string) {
   const bundlePatchesCollection = firestore.collection("bundle_patches");
   const bundleEventsCollection = firestore.collection("bundle_events");
   const channelsCollection = firestore.collection("channels");
-  const clientAccessKeysCollection = firestore.collection("client_access_keys");
+  const apiKeysCollection = firestore.collection("api_keys");
   const releasesCollection = firestore.collection("releases");
   const releaseCatalogsCollection = firestore.collection("release_catalogs");
   const settingsCollection = firestore.collection(
@@ -21,7 +21,7 @@ export function createFirestoreMock(projectId: string) {
       bundlePatchesCollection,
       bundleEventsCollection,
       channelsCollection,
-      clientAccessKeysCollection,
+      apiKeysCollection,
       releasesCollection,
       releaseCatalogsCollection,
       settingsCollection,
@@ -42,7 +42,7 @@ export function createFirestoreMock(projectId: string) {
     bundlePatchesCollection,
     bundleEventsCollection,
     channelsCollection,
-    clientAccessKeysCollection,
+    apiKeysCollection,
     releasesCollection,
     releaseCatalogsCollection,
     settingsCollection,

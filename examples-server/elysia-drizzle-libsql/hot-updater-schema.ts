@@ -203,7 +203,7 @@ export const bundle_events = sqliteTable("bundle_events", {
   index("bundle_events_from_release_idx").on(table.type, table.from_release_id, table.received_at_ms, table.id)
 ])
 
-export const client_access_keys = sqliteTable("client_access_keys", {
+export const api_keys = sqliteTable("api_keys", {
   id: text("id", { length: 255 }).primaryKey().notNull(),
   hash: text("hash").notNull(),
   name: text("name").notNull(),
@@ -212,8 +212,8 @@ export const client_access_keys = sqliteTable("client_access_keys", {
   created_at_ms: real("created_at_ms").notNull(),
   revoked_at_ms: real("revoked_at_ms")
 }, (table) => [
-  uniqueIndex("client_access_keys_hash_key").on(table.hash),
-  index("client_access_keys_created_at_idx").on(table.created_at_ms, table.id)
+  uniqueIndex("api_keys_hash_key").on(table.hash),
+  index("api_keys_created_at_idx").on(table.created_at_ms, table.id)
 ])
 
 export const private_hot_updater_settings = sqliteTable("private_hot_updater_settings", {

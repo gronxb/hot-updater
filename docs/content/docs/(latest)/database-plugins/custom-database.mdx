@@ -31,7 +31,7 @@ createDatabasePlugin({
     releaseCatalogs,
     channels,
     analytics,
-    clientAccessKeys,
+    apiKeys,
   },
   commit,
   dispose,
@@ -52,7 +52,7 @@ The fixed domains are:
 - `release_catalogs`: deterministic, rebuildable projections keyed by scope.
 - `channels`: persistent deployment-channel identity.
 - `bundle_events`: Release- and Bundle-aware Analytics transitions.
-- `client_access_keys`: hashed client access-key records.
+- `api_keys`: hashed API key records.
 
 `private_hot_updater_settings` remains the schema-version marker managed by
 the server database tooling.
@@ -67,7 +67,7 @@ import type {
   BundleModel,
   BundlePatchModel,
   ChannelModel,
-  ClientAccessKeyModel,
+  ApiKeyModel,
   DatabaseCommit,
   DatabaseCommitResult,
   ReleaseCatalogModel,
@@ -150,7 +150,7 @@ the JSON payload. Only an atomic commit may write `releaseCatalogs`.
 Never delete the last catalog for a scope. Removing the last eligible Release
 writes a tombstone catalog with a higher generation.
 
-### Channels, Analytics, and client keys
+### Channels, Analytics, and API keys
 
 Channel names are exact and case-sensitive. Concurrent insert returns the
 canonical stored row. Empty Channels persist until explicit deletion, and the
@@ -158,7 +158,7 @@ reference check plus deletion must be atomic.
 
 Analytics scans return rows in ascending `(received_at_ms, id)` order, start
 strictly after the optional cursor, and exclude rows at or after the requested
-upper bound. Client key creation is idempotent by hash; revocation updates only
+upper bound. API key creation is idempotent by hash; revocation updates only
 `revoked_at_ms`.
 
 ## Atomic commit and optimistic CAS
@@ -266,7 +266,7 @@ export const myDatabase = ({ db }: { db: MyDatabaseClient }) => {
       releaseCatalogs: createReleaseCatalogModel(db),
       channels: createChannelModel(db),
       analytics: createAnalyticsModel(db),
-      clientAccessKeys: createClientAccessKeyModel(db),
+      apiKeys: createApiKeyModel(db),
     },
     commit,
     dispose: () => db.close(),
@@ -309,7 +309,10 @@ const lifecycle = {
 };
 
 setupDatabasePluginTestSuite(lifecycle);
-setupDatabaseClientTestSuite({ ...lifecycle, createClient: createDatabaseClient });
+setupDatabaseClientTestSuite({
+  ...lifecycle,
+  createClient: createDatabaseClient,
+});
 ```
 
 The suites verify exact model semantics, strong Release paging, catalog point
@@ -335,7 +338,7 @@ export default defineConfig({
 export const hotUpdater = createHotUpdater({
   authorityId: "project-01",
   database: myDatabase({ db }),
-  clientAccess: { type: "public" },
+  clientAccess: { type: "api-key" },
   storage,
 });
 ```
@@ -347,5 +350,5 @@ Every endpoint serving the same catalogs must use the same stable
 
 A Standalone management repository exposes Bundle, patch, Release, catalog,
 and Channel models through the canonical server routes. It is not a complete
-database plugin because the server owns Analytics, client keys, compilation,
+database plugin because the server owns Analytics, API keys, compilation,
 and the actual atomic transaction.

@@ -8,7 +8,7 @@ import type {
 
 // We intentionally avoid the AWS-managed UseOriginCacheControlHeaders policy here.
 // That managed policy forwards the viewer Host header and all cookies to the origin,
-// which breaks S3 origins and bloats the cache key beyond the client key.
+// which breaks S3 origins and bloats the cache key beyond the API key.
 export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
   Name: "HotUpdaterOriginCacheControlV2",
   Comment:
@@ -38,8 +38,7 @@ export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
 export const HOT_UPDATER_RELEASE_CATALOG_CACHE_POLICY_CONFIG: CachePolicyConfig =
   {
     Name: "HotUpdaterReleaseCatalogV1",
-    Comment:
-      "Cache Release catalogs by canonical path, client key, and encoding",
+    Comment: "Cache Release catalogs by canonical path, API key, and encoding",
     DefaultTTL: 0,
     MaxTTL: 5,
     MinTTL: 0,
@@ -61,7 +60,7 @@ export const HOT_UPDATER_RELEASE_CATALOG_CACHE_POLICY_CONFIG: CachePolicyConfig 
 export const HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG: OriginRequestPolicyConfig =
   {
     Name: "HotUpdaterManagedApiOriginRequestV2",
-    Comment: "Forward managed API bodies, query strings, and the client key",
+    Comment: "Forward managed API bodies, query strings, and the API key",
     HeadersConfig: {
       HeaderBehavior: "whitelist",
       Headers: {

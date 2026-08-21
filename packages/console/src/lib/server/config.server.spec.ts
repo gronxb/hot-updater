@@ -53,7 +53,7 @@ const createTestDatabasePlugin = (name: string) =>
         append: vi.fn(async () => undefined),
         scan: vi.fn(async () => []),
       },
-      clientAccessKeys: {
+      apiKeys: {
         create: vi.fn(async () => "created" as const),
         findByHash: vi.fn(async () => null),
         list: vi.fn(async () => []),
@@ -109,8 +109,8 @@ describe("config.server", () => {
     expect(resolveConsoleConfigMock).toHaveBeenCalledTimes(1);
     expect(first.databaseClient).toBe(second.databaseClient);
     expect(first.config.database).toBe(database);
-    expect(first.clientAccessKeyStore).toBe(database.models.clientAccessKeys);
-    expect(second.clientAccessKeyStore).toBe(first.clientAccessKeyStore);
+    expect(first.apiKeyStore).toBe(database.models.apiKeys);
+    expect(second.apiKeyStore).toBe(first.apiKeyStore);
     expect(first.storagePlugin).toBe(storagePlugin);
     expect(second.storagePlugin).toBe(storagePlugin);
     expect(isConfigLoaded()).toBe(true);

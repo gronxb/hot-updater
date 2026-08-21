@@ -29,9 +29,9 @@ import { HotUpdater } from "@hot-updater/react-native";
 HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: {
-    "x-api-key": "<your-client-access-key>",
+    "x-api-key": "<your-api-key>",
   },
-  onError: error => {
+  onError: (error) => {
     console.error("Hot Updater failed", error);
   },
 });
@@ -51,6 +51,7 @@ export default App;
 
 This configures Hot Updater and notifies the update server that the current app
 launch is ready.
+
 </Callout>
 
 ## Check on Your Schedule
@@ -122,7 +123,13 @@ import { Pressable, Text, View } from "react-native";
 type AppUpdateInfo = Awaited<ReturnType<typeof HotUpdater.checkForUpdate>>;
 
 type AppUpdateState = {
-  status: "checking" | "current" | "downloading" | "ready" | "updating" | "error";
+  status:
+    | "checking"
+    | "current"
+    | "downloading"
+    | "ready"
+    | "updating"
+    | "error";
   updateInfo: AppUpdateInfo;
 };
 
@@ -217,12 +224,16 @@ function SettingsUpdateRow() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
-            appUpdate.status === "ready" ? "Restart app" : "Preparing app update"
+            appUpdate.status === "ready"
+              ? "Restart app"
+              : "Preparing app update"
           }
           disabled={appUpdate.status !== "ready"}
           onPress={() => void applyUpdate()}
         >
-          <Text>{appUpdate.status === "updating" ? "Restarting" : "Restart"}</Text>
+          <Text>
+            {appUpdate.status === "updating" ? "Restarting" : "Restart"}
+          </Text>
         </Pressable>
       ) : null}
       {appUpdate.status === "ready" && appUpdate.updateInfo?.message ? (

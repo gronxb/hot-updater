@@ -63,8 +63,8 @@ A deployed Console has two independent boundaries: its Console auth adapter
 authenticates browser users, while the framework middleware in front of
 `handlers.admin` authenticates Console-to-server requests. The Console's own
 `/api/*` routes belong to the Console application and are not the Hot Updater
-admin API. The standalone repository does not currently proxy Analytics or
-client access-key models, so those Console views require a direct database
+admin API. The standalone repository does not currently proxy Analytics or API
+key models, so those Console views require a direct database
 plugin.
 
 Use the Release CLI for delivery-policy automation and CI scripts:

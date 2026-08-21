@@ -85,7 +85,7 @@ create table bundle_events (
   received_at_ms double precision not null
 );
 
-create table client_access_keys (
+create table api_keys (
   id varchar(255) primary key not null,
   hash text not null,
   name text not null,
@@ -118,8 +118,8 @@ create index bundle_events_to_bundle_idx on bundle_events(type, to_bundle_id, re
 create index bundle_events_from_bundle_idx on bundle_events(type, from_bundle_id, received_at_ms, id);
 create index bundle_events_to_release_idx on bundle_events(type, to_release_id, received_at_ms, id);
 create index bundle_events_from_release_idx on bundle_events(type, from_release_id, received_at_ms, id);
-create unique index client_access_keys_hash_key on client_access_keys(hash);
-create index client_access_keys_created_at_idx on client_access_keys(created_at_ms, id);
+create unique index api_keys_hash_key on api_keys(hash);
+create index api_keys_created_at_idx on api_keys(created_at_ms, id);
 
 alter table channels add constraint channels_id_length_check
   check (char_length(id) between 1 and 255);
@@ -149,11 +149,11 @@ alter table bundle_events add constraint bundle_events_shape_check
   check (((type in ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')) and from_bundle_id is not null and update_strategy is not null and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and from_bundle_id is null and update_strategy is null));
 alter table bundle_events add constraint bundle_events_received_at_check
   check (received_at_ms >= 0);
-alter table client_access_keys add constraint client_access_keys_role_check
+alter table api_keys add constraint api_keys_role_check
   check (role = 'client');
-alter table client_access_keys add constraint client_access_keys_created_at_check
+alter table api_keys add constraint api_keys_created_at_check
   check (created_at_ms >= 0);
-alter table client_access_keys add constraint client_access_keys_revoked_at_check
+alter table api_keys add constraint api_keys_revoked_at_check
   check (revoked_at_ms is null or revoked_at_ms >= 0);
 
 alter table bundle_patches add constraint bundle_patches_bundle_id_fk

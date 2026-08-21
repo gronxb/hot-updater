@@ -50,8 +50,8 @@ aws dynamodb create-table \
 ```
 
 The same table stores all seven official database domains: Bundles, Bundle
-patches, Releases, Release Catalogs, Channels, Analytics events, and client
-access keys. `dynamoDB()` provides all seven models directly; there is no
+patches, Releases, Release Catalogs, Channels, Analytics events, and API keys.
+`dynamoDB()` provides all seven models directly; there is no
 component registry or feature migration to compose before serving traffic:
 
 ```typescript
@@ -70,8 +70,7 @@ const hotUpdater = createHotUpdater({
 
 The built-in Analytics event and query routes are always available.
 `clientAccess` is required. The `api-key` policy protects update checks and
-event ingestion with keys stored through the database's official access-key
-port.
+event ingestion with keys stored through the database's official API key model.
 
 ## Configuration
 
@@ -97,7 +96,7 @@ other standard AWS credential sources.
 When `cloudfrontDistributionId` is set, a successful database commit containing
 a Bundle or Bundle-patch change submits an invalidation for
 `/release-catalogs/*` by default. Commits that change only Releases, Release
-Catalogs, Channels, Analytics, or client access keys do not trigger this
+Catalogs, Channels, Analytics, or API keys do not trigger this
 adapter-level invalidation. Override `apiBasePath` only when a custom deployment
 mounts the catalog routes elsewhere. Set `shouldWaitForInvalidation: true` when
 a deployment or E2E flow must wait for CloudFront propagation; it defaults to
@@ -170,10 +169,10 @@ const hotUpdater = createHotUpdater({
 ```
 
 The Lambda or server role needs `Query` access to the update index,
-`BatchGetItem`/`GetItem` access to bundle, patch, and access-key partitions,
+`BatchGetItem`/`GetItem` access to Bundle, patch, and API key partitions,
 and `PutItem`/`Query` access to the Analytics event partition. CLI and Console
-writers need the transaction and write permissions required to manage bundle
-metadata and client access keys. The AWS adapter does not impose an Analytics
+writers need the transaction and write permissions required to manage Bundle
+metadata and API keys. The AWS adapter does not impose an Analytics
 retention period.
 
 The provider does not impose a total bundle, patch, or patch-relationship count

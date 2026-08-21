@@ -429,11 +429,9 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       expect(sql).toContain("`key` varchar(255) primary key");
       expect(sql).not.toContain("\nkey varchar(255) primary key");
       expect(sql).toContain(
-        "create table client_access_keys (\nid varchar(255) primary key not null",
+        "create table api_keys (\nid varchar(255) primary key not null",
       );
-      expect(sql).not.toContain(
-        "create table client_access_keys (\nid text primary key",
-      );
+      expect(sql).not.toContain("create table api_keys (\nid text primary key");
       expect(sql).toContain(
         "create index bundle_patches_bundle_id_idx on bundle_patches(bundle_id)",
       );
@@ -850,7 +848,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
           id: sql.raw("channel_id"),
           name: sql.raw("channel_name"),
         },
-        client_access_keys: {
+        api_keys: {
           id: "access_key_id",
         },
         release_catalogs: {
@@ -894,7 +892,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
             })),
             findMany: vi.fn(),
           },
-          client_access_keys: {
+          api_keys: {
             findFirst: vi.fn(),
             findMany: vi.fn(),
           },

@@ -224,7 +224,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     });
   });
 
-  it("keeps Standalone management routes separate from client access-key protection", async () => {
+  it("keeps Standalone management routes separate from API key protection", async () => {
     const protectedApi = createHotUpdater({
       database: createInMemoryDatabasePlugin(),
       clientAccess: { type: "api-key" },

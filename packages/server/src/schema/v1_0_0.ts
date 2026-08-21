@@ -115,8 +115,8 @@ export const bundlePatchesV100 = table(
   },
 );
 
-export const clientAccessKeysV100 = table(
-  "client_access_keys",
+export const apiKeysV100 = table(
+  "api_keys",
   {
     id: idColumn("id", varchar(255)),
     hash: stringColumn("hash"),
@@ -128,22 +128,22 @@ export const clientAccessKeysV100 = table(
   },
   {
     indexes: [
-      uniqueIndex("client_access_keys_hash_key", ["hash"]),
-      index("client_access_keys_created_at_idx", ["created_at_ms", "id"]),
+      uniqueIndex("api_keys_hash_key", ["hash"]),
+      index("api_keys_created_at_idx", ["created_at_ms", "id"]),
     ],
     checks: [
       check({
-        name: "client_access_keys_role_check",
+        name: "api_keys_role_check",
         expression: "role = 'client'",
         sqliteInline: true,
       }),
       check({
-        name: "client_access_keys_created_at_check",
+        name: "api_keys_created_at_check",
         expression: "created_at_ms >= 0",
         sqliteInline: true,
       }),
       check({
-        name: "client_access_keys_revoked_at_check",
+        name: "api_keys_revoked_at_check",
         expression: "revoked_at_ms is null or revoked_at_ms >= 0",
         sqliteInline: true,
       }),
@@ -448,7 +448,7 @@ export const v1_0_0 = schema({
     releasesV100,
     releaseCatalogsV100,
     bundleEventsV100,
-    clientAccessKeysV100,
+    apiKeysV100,
     createSettingsTable("1.0.0"),
   ],
 });

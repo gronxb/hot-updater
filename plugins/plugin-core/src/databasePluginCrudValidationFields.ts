@@ -146,7 +146,7 @@ export const modelValidators: ValidatorMap = {
     received_at_ms: (value) =>
       typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
   },
-  client_access_keys: {
+  api_keys: {
     id: (value) => typeof value === "string",
     hash: (value) => typeof value === "string",
     name: (value) => typeof value === "string",
@@ -300,7 +300,7 @@ export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
     "sdk_version",
     "received_at_ms",
   ]),
-  client_access_keys: new Set([
+  api_keys: new Set([
     "id",
     "hash",
     "name",

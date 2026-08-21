@@ -51,7 +51,7 @@ import { prisma } from "./prisma";
 
 export const hotUpdater = createHotUpdater({
   database: prismaAdapter({ prisma, provider: "sqlite" }),
-  clientAccess: { type: "public" },
+  clientAccess: { type: "api-key" },
   storage: [
     s3Storage({
       region: "auto",

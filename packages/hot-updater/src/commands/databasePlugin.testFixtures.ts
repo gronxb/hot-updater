@@ -219,7 +219,7 @@ export const createDatabasePluginHarness = () => {
         delete: (input) => basePlugin.models.channels.delete(input),
       },
       analytics: basePlugin.models.analytics,
-      clientAccessKeys: basePlugin.models.clientAccessKeys,
+      apiKeys: basePlugin.models.apiKeys,
     },
     commit,
     dispose,
@@ -260,7 +260,7 @@ export const createDatabasePluginHarness = () => {
       data.bundlePatches.clear();
       data.bundleEvents.clear();
       data.channels.clear();
-      data.clientAccessKeys.clear();
+      data.apiKeys.clear();
       data.releaseCatalogs.clear();
       data.releases.clear();
       read.mockReset().mockResolvedValue(undefined);

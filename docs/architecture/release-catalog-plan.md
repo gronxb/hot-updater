@@ -387,7 +387,7 @@ interface DatabaseModels {
   readonly releaseCatalogs: ReleaseCatalogModel;
   readonly channels: ChannelModel;
   readonly analytics: AnalyticsModel;
-  readonly clientAccessKeys: ClientAccessKeyModel;
+  readonly apiKeys: ApiKeyModel;
 }
 
 interface ReleaseModel {
@@ -407,6 +407,11 @@ interface ReleaseCatalogModel {
 
 The public catalog model is read-only. The compiler mutation envelope is the
 only writer.
+
+API key management is local to the server process. `createHotUpdater` exposes
+`apiKeys.create`, `apiKeys.list`, and `apiKeys.revoke` against the configured
+direct database plugin. Neither handler exposes an API key management route;
+the CLI and direct-database Console use the same local domain.
 
 ### Optimistic AoT mutation and CAS
 
@@ -1109,7 +1114,7 @@ a v0 native binary.
 ### Navigation and responsibility
 
 `Releases` becomes the operational default. `Artifacts` contains immutable
-Bundle, manifest, Storage, and patch information. Analytics and Access Keys
+Bundle, manifest, Storage, and patch information. Analytics and API Keys
 stay top-level.
 
 ### Releases table and detail
@@ -1471,7 +1476,7 @@ Also inject:
 - failed purge;
 - delayed old catalog;
 - delayed old artifact completion;
-- invalid/random access keys.
+- invalid/random API keys.
 
 Required: no partial canonical/projection state, old actions fail native CAS,
 same-generation failed download is retryable, failed purge converges at TTL,

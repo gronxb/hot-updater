@@ -51,7 +51,7 @@ config({ path: ".env.hotupdater" });
 
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
-  clientAccess: { type: "public" },
+  clientAccess: { type: "api-key" },
   storage: [
     s3Storage({
       region: "auto",
@@ -67,9 +67,10 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-By default, `createHotUpdater` mounts update-check routes and `/version`.
-Admin routes used by the CLI `standaloneRepository` live on a separate handler.
-Mount that handler only behind framework authentication.
+`createHotUpdater` mounts update-check routes and `/version`. This example uses
+the recommended `api-key` policy for update checks and Analytics ingestion.
+Admin routes used by the CLI `standaloneRepository` live on a separate handler;
+mount that handler only behind framework authentication.
 
 Server Analytics routes are always available. React Native clients decide
 whether to send lifecycle events with `HotUpdater.init({ analytics })`.
@@ -107,8 +108,8 @@ serve({ fetch: app.fetch, port: 3000 }, (info) => {
 
 ## Security Settings
 
-Built-in client access-key authentication is opt-in and protects only
-update-check and Analytics ingestion routes. Always protect admin routes before
+The recommended self-hosted policy requires an API key for update-check and
+Analytics ingestion routes. Always protect admin routes separately before
 mounting `handlers.admin`.
 
 Update-check routes are usually exposed for React Native clients, but that is a
@@ -133,14 +134,24 @@ HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY=your-download-url-signing-key
 HOT_UPDATER_ADMIN_TOKEN=your-secret-auth-token
 ```
 
-## Schema Generation
+## Bootstrap the Schema and API Key
 
-Generate the database schema.
+Generate and apply the database schema first:
 
 ```bash
 npx hot-updater db generate src/hotUpdater.ts --yes
 npx hot-updater db migrate src/hotUpdater.ts
 ```
+
+Then create the API key for your mobile app from the same direct
+`createHotUpdater` configuration:
+
+```bash
+npx hot-updater api-key create src/hotUpdater.ts --name "Mobile app"
+```
+
+Copy the plaintext API key from the command output now. Hot Updater persists
+only its hash and cannot show the plaintext again.
 
 ## Run Server
 
@@ -195,26 +206,37 @@ export default defineConfig({
 
 ## React Native Setup
 
-Configure your React Native app to connect to this server.
+Configure your React Native app to connect to this server. Use the API key
+printed by the bootstrap command above.
 
 ```typescript title="App.tsx"
-import { HotUpdater } from '@hot-updater/react-native';
+import { HotUpdater } from "@hot-updater/react-native";
 
-export default HotUpdater.wrap({
-  baseURL: 'http://localhost:3000/hot-updater', // [!code ++]
-  updateStrategy: 'appVersion', // or "fingerprint" // [!code ++]
-  fallbackComponent: ({ progress, status }) => (
-    // ... Custom loading UI
-  ),
-  onError: error => {
-    // ... Error handling
+HotUpdater.init({
+  baseURL: "http://localhost:3000/hot-updater", // [!code ++]
+  requestHeaders: {
+    "x-api-key": "<API key printed by api-key create>", // [!code ++]
   },
-})(App);
+  analytics: true,
+});
 ```
 
 The React Native `baseURL` always points to the client root. Never put the
-admin bearer token in the app; use a client `x-api-key` only when client access
-keys are enabled.
+admin bearer token in the app. The API key is scoped to client update and
+Analytics ingestion routes and is sent using `x-api-key`.
+
+`HotUpdater.init` initializes the client but does not start an update check.
+Call `HotUpdater.checkForUpdate()` when your app is ready; see the
+[Custom Update guide](/docs/guides/custom-update) for the complete manual flow.
+For automatic HOC-managed checks, pass the same `baseURL` and `requestHeaders`
+to `HotUpdater.wrap` together with an `updateStrategy`.
+
+## Unauthenticated Alternative
+
+If you intentionally want client update and Analytics ingestion routes to be
+unauthenticated, set `clientAccess: { type: "public" }` and omit `x-api-key`
+from React Native `requestHeaders`. This does not make the admin handler public;
+its framework authentication remains required.
 
 ## Next Steps
 

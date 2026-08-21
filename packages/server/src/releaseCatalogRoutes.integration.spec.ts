@@ -3,7 +3,7 @@ import { commitReleaseCatalogMutation } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
-import { registerClientAccessKey } from "./clientAccessKeys";
+import { registerApiKey } from "./apiKeys";
 import { createHotUpdater } from "./index";
 
 const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
@@ -197,9 +197,9 @@ describe("Release catalog routes", () => {
 
   it("varies authenticated catalog responses by the configured header", async () => {
     const database = await createCatalogDatabase();
-    await registerClientAccessKey({
+    await registerApiKey({
+      apiKeys: database.models.apiKeys,
       apiKey: API_KEY,
-      clientAccessKeys: database.models.clientAccessKeys,
       name: "App",
     });
     const hotUpdater = createHotUpdater({

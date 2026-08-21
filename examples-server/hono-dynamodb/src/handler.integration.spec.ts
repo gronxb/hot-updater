@@ -23,7 +23,7 @@ import {
   createUUIDv7,
   updateReleasePolicy,
 } from "@hot-updater/plugin-core";
-import { createClientAccessKey, type HotUpdaterAPI } from "@hot-updater/server";
+import { createApiKey, type HotUpdaterAPI } from "@hot-updater/server";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
@@ -181,8 +181,8 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     await waitForServer(baseUrl, 180);
 
     const db = await import("./db.js");
-    const created = await createClientAccessKey({
-      clientAccessKeys: db.database.models.clientAccessKeys,
+    const created = await createApiKey({
+      apiKeys: db.database.models.apiKeys,
       name: "Standalone integration test",
     });
     rawApiKey = created.apiKey;
@@ -260,7 +260,7 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     expect(adminQuery.status).toBe(200);
   });
 
-  it("requires a client key before reporting a missing catalog", async () => {
+  it("requires an API key before reporting a missing catalog", async () => {
     const path =
       "/hot-updater/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0";
     const unauthorized = await fetch(`${baseUrl}${path}`);
