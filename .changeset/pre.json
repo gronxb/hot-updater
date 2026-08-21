@@ -35,5 +35,25 @@
     "@hot-updater/standalone": "0.36.0",
     "@hot-updater/supabase": "0.36.0"
   },
-  "changesets": []
+  "changesets": [
+    "calm-bundles-reach",
+    "calm-consoles-deploy",
+    "calm-databases-adapt",
+    "clean-blob-database",
+    "clear-releases-guide",
+    "client-access-keys-built-in",
+    "drop-release-channel",
+    "drop-wrangler-r2-and-strings",
+    "fresh-release-catalogs",
+    "hot-updater-v1-rc",
+    "metal-debug-bundle-next",
+    "quiet-analytics-separate",
+    "quiet-otters-rescaffold",
+    "runtime-neutral-storage",
+    "slow-s3-fast-dynamodb",
+    "tidy-bundles-return",
+    "v1-safe-shim-cleanup",
+    "v1-schema-only",
+    "warm-expos-relocate"
+  ]
 }

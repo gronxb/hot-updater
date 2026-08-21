@@ -1,5 +1,33 @@
 # @hot-updater/expo
 
+## 1.0.0-rc.0
+
+### Minor Changes
+
+- f5f7de7: Move the Expo config plugin from `@hot-updater/react-native` to
+  `@hot-updater/expo`. Configure Expo apps with `@hot-updater/expo` in the
+  `plugins` array of `app.json` or `app.config.js`.
+
+### Patch Changes
+
+- a5ac9e0: Preserve Metro as the JavaScript bundle source for Android debug builds, migrate previously generated config-plugin output, and continue using Hot Updater bundles for release builds.
+- Updated dependencies [353e1ca]
+- Updated dependencies [b424d47]
+- Updated dependencies [9650748]
+- Updated dependencies [88c163a]
+- Updated dependencies [a9ffb2a]
+- Updated dependencies [a9ffb2a]
+- Updated dependencies [5a2e1cd]
+- Updated dependencies [adb0e40]
+- Updated dependencies [c8e24cd]
+- Updated dependencies [25af6ef]
+- Updated dependencies [a9ffb2a]
+- Updated dependencies [a9ffb2a]
+  - hot-updater@1.0.0-rc.0
+  - @hot-updater/plugin-core@1.0.0-rc.0
+  - @hot-updater/cli-tools@1.0.0-rc.0
+  - @hot-updater/bare@1.0.0-rc.0
+
 ## 0.36.0
 
 ### Patch Changes

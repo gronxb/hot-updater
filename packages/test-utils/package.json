@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/test-utils",
-  "version": "0.36.0",
+  "version": "1.0.0-rc.0",
   "type": "module",
   "description": "Test utilities for Hot Updater packages",
   "sideEffects": false,
