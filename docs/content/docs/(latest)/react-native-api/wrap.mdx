@@ -39,15 +39,20 @@ function App() {
   );
 }
 
-export default HotUpdater.wrap({ // [!code hl:8]
+export default HotUpdater.wrap({ // [!code hl:9]
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion", // or "fingerprint"
+  analytics: true,
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "x-api-key": "<your-client-access-key>",
   },
 })(App);
 ```
+
+Set `analytics: true` to send automatic app-ready transition and Release
+adoption events. Omitting it or setting it to `false` sends no Analytics
+events. The server routes remain available either way.
 
 ### Manual Updates
 
@@ -114,24 +119,15 @@ export default App;
 
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
-| `baseURL` | `string \| () => string \| Promise<string>` | Yes* | Your update server URL (standard approach) |
-| `resolver` | `HotUpdaterResolver` | Yes* | Custom network operations (advanced) |
+| `baseURL` | `string \| () => string \| Promise<string>` | Yes | Your v1 client handler URL |
+| `analytics` | `boolean` | No | Send app-ready and Release adoption events (default: false) |
 | `requestHeaders` | `Record<string, string>` | No | Custom HTTP headers for update requests |
 | `requestTimeout` | `number` | No | Request timeout in milliseconds (default: 5000) |
 | `onNotifyAppReady` | `(result) => void` | No | Callback invoked after native app-ready state is read |
 
-\*Either `baseURL` or `resolver` must be provided (mutually exclusive)
-
-Release Catalog custom resolvers must implement both `fetchReleaseCatalog` and
-`resolveArtifact`; the legacy direct-update `checkUpdate` hook is not accepted.
-Declare `catalogCachePartition` only when the catalog
-transport uses a stable shared-cache partition; otherwise keep catalog
-responses private/no-store. The default resolver partitions shared catalog
-responses by `x-api-key`. A custom resolver must return absolute HTTP(S) URLs
-for archive, manifest, changed-asset file, and patch artifacts; only the default
-resolver expands server-relative storage paths against `baseURL`.
-`resolveArtifact` returns artifact data only; the selected Release determines
-status, force-update behavior, and message fields.
+`baseURL` is the only React Native transport configuration. It may resolve at
+runtime, but every resolved URL must expose the v1 HTTP protocol. Hot Updater
+expands handler-relative artifact paths against this URL.
 
 ### Automatic Mode Options
 
@@ -343,65 +339,25 @@ export default HotUpdater.wrap({
 
 ## How It Works
 
-The default resolver fetches a shared Release Catalog, evaluates it on the
-device, and resolves the selected artifact:
+The client fetches a shared Release Catalog, evaluates it on the device, and
+resolves the selected artifact:
 
-* App version catalog: `GET {baseURL}/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`
-* Fingerprint catalog: `GET {baseURL}/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash`
+* App version catalog: `GET {baseURL}/release-catalogs/app-version/:platform/:channelKey/:appVersion`
+* Fingerprint catalog: `GET {baseURL}/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash`
 * Artifact resolution: `GET {baseURL}/artifacts/:targetBundleId/from/:currentBundleId`
 
-`:channelKey` is the base64url-encoded channel name. The default authority is
-`default` unless the resolver is configured with another stable authority.
+`:channelKey` is the base64url-encoded channel name. Catalog authority is
+server-owned and is not part of the React Native configuration or client URL.
 
-## Advanced: Custom Release Catalog Resolver
+## Custom Backends
 
 For advanced use cases where you need full control over network operations,
-such as GraphQL, RPC, or custom authentication, use a custom `resolver` instead
-of `baseURL`. A v1 resolver implements both Release Catalog fetch and artifact
-resolution; the legacy direct-update `checkUpdate` hook is not accepted.
-
-```tsx
-import { HotUpdater, type HotUpdaterResolver } from "@hot-updater/react-native";
-import App from "./App";
-
-const resolver: HotUpdaterResolver = {
-  authorityId: "custom-api",
-  fetchReleaseCatalog: async (params) => {
-    const response = await fetch("https://custom-api.com/release-catalog", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...params.requestHeaders,
-      },
-      body: JSON.stringify(params),
-    });
-    if (!response.ok) {
-      throw new Error(`Catalog request failed: ${response.status}`);
-    }
-    return response.json();
-  },
-  resolveArtifact: async (params) => {
-    const response = await fetch("https://custom-api.com/artifact", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(params),
-    });
-    if (!response.ok) {
-      throw new Error(`Artifact request failed: ${response.status}`);
-    }
-    return response.json();
-  },
-};
-
-export default HotUpdater.wrap({
-  resolver,
-  updateStrategy: "appVersion",
-})(App);
-```
-
-> **Note**: The `resolver` option is mutually exclusive with `baseURL`. Both
-> resolver methods are required. `resolveArtifact` must return absolute HTTP(S)
-> URLs that native code can download directly.
+such as GraphQL, RPC, or custom authentication, expose the v1 HTTP protocol
+through an adapter or proxy and point `baseURL` at that endpoint. The adapter
+may use any upstream protocol internally, but the React Native client always
+uses the standard Release Catalog, artifact, Analytics-event, and `/version`
+routes. This keeps catalog selection and native transition guards on one
+transport contract.
 
 ## Flag Behavior
 

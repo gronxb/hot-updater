@@ -248,8 +248,8 @@ infrastructure.
 The shared device endpoints are:
 
 ```text
-GET /release-catalogs/app-version/:authorityId/:platform/:channelKey/:canonicalAppVersion
-GET /release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash
+GET /release-catalogs/app-version/:platform/:channelKey/:canonicalAppVersion
+GET /release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash
 GET /artifacts/:targetBundleId/from/:currentBundleId
 ```
 
@@ -258,10 +258,12 @@ short-lived shared-cacheable and vary by content encoding and `x-api-key`.
 Authentication errors, missing/incomplete catalogs, and server errors are
 `private, no-store`. Artifact resolution remains Bundle-keyed and private.
 
-A custom `HotUpdaterResolver` opts into shared catalog transport only by
-declaring a stable `catalogCachePartition` and using that same partition in
-its cache key. Omit the declaration when arbitrary headers or request context
-make the response private; those responses must remain `private, no-store`.
+Catalog authority remains server-owned compiler and persistence state. It is
+not supplied by React Native clients and does not appear in client route paths.
+Custom GraphQL, RPC, or other transports must sit behind an HTTP adapter or
+proxy that exposes these v1 routes. Successful shared responses must keep a
+stable cache partition; responses affected by arbitrary request context must
+remain `private, no-store`.
 
 The v0 app-version and fingerprint update-check routes are not exposed. Old
 native binaries must continue using a separate v0 endpoint during a parallel

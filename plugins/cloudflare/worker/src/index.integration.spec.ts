@@ -140,12 +140,13 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
 
     const response = await worker.fetch(
       new Request(
-        `${PUBLIC_BASE_URL}/release-catalogs/app-version/${encodeURIComponent(env.AUTHORITY_ID)}/ios/cHJvZHVjdGlvbg/1.0.0`,
+        `${PUBLIC_BASE_URL}/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0`,
       ),
       env,
     );
 
     await expect(response.json()).resolves.toMatchObject({
+      authorityId: env.AUTHORITY_ID,
       releases: [{ bundleId: "00000000-0000-0000-0000-000000000001" }],
     });
   });

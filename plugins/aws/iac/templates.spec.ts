@@ -21,17 +21,16 @@ afterEach(async () => {
 });
 
 describe("AWS managed config scaffold", () => {
-  it("renders the authority and client access key in the app bootstrap", () => {
+  it("renders only client-owned network options in the app bootstrap", () => {
     const source = transformTemplate(SOURCE_TEMPLATE, {
       apiKey: JSON.stringify("client-key"),
-      authorityId: JSON.stringify("aws.test-authority"),
       source: JSON.stringify("https://example.cloudfront.net"),
     });
 
     expect(source).toContain('baseURL: "https://example.cloudfront.net"');
-    expect(source).toContain('authorityId: "aws.test-authority"');
     expect(source).toContain('"x-api-key": "client-key"');
     expect(source).toContain("return null; // Replace with your app root.");
+    expect(source).not.toContain("authorityId");
     expect(source).not.toContain("YourApp");
   });
 

@@ -356,13 +356,13 @@ describe("Detox remote asset proxy URLs", () => {
         }
         return new Response(
           JSON.stringify({
-            authorityId: "default",
+            authorityId: "provider-project",
             catalogHash: `sha256:${generation.toString().padStart(64, "0")}`,
             fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
             generation,
             releases: [],
             schemaVersion: 1,
-            scopeKey: "v1:app-version:default:ios:am9iLXByb2R1Y3Rpb24",
+            scopeKey: "v1:app-version:provider-project:ios:am9iLXByb2R1Y3Rpb24",
           }),
           {
             headers: {
@@ -390,14 +390,14 @@ describe("Detox remote asset proxy URLs", () => {
     try {
       const controller = await import("./control-server/controller.ts");
       const url =
-        "http://localhost:3107/hot-updater/release-catalogs/app-version/default/ios/cHJvZHVjdGlvbg/1.0.0";
+        "http://localhost:3107/hot-updater/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0";
       expect(
         await (
           await controller.handleProxyUpdateRequest(new Request(url))
         ).json(),
       ).toMatchObject({
         generation: 1,
-        scopeKey: "v1:app-version:default:ios:cHJvZHVjdGlvbg",
+        scopeKey: "v1:app-version:provider-project:ios:cHJvZHVjdGlvbg",
       });
       generation = 2;
       expect(
@@ -406,7 +406,7 @@ describe("Detox remote asset proxy URLs", () => {
         ).json(),
       ).toMatchObject({
         generation: 2,
-        scopeKey: "v1:app-version:default:ios:cHJvZHVjdGlvbg",
+        scopeKey: "v1:app-version:provider-project:ios:cHJvZHVjdGlvbg",
       });
       const notModifiedResponse = await controller.handleProxyUpdateRequest(
         new Request(url, {
@@ -426,7 +426,7 @@ describe("Detox remote asset proxy URLs", () => {
         ).json(),
       ).toMatchObject({
         generation: 1,
-        scopeKey: "v1:app-version:default:ios:cHJvZHVjdGlvbg",
+        scopeKey: "v1:app-version:provider-project:ios:cHJvZHVjdGlvbg",
       });
       expect(
         controller.handleAssertProxy({ artifactRequests: 0 }),
@@ -435,8 +435,8 @@ describe("Detox remote asset proxy URLs", () => {
         requestCounts: { artifact: 0, catalog: 4, legacy: 0 },
       });
       expect(fetchMock).toHaveBeenCalledTimes(3);
-      expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
-        "/am9iLXByb2R1Y3Rpb24/",
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+        "https://provider.example.com/hot-updater/release-catalogs/app-version/ios/am9iLXByb2R1Y3Rpb24/1.0.0",
       );
     } finally {
       vi.unstubAllEnvs();

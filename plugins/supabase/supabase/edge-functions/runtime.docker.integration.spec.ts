@@ -702,11 +702,12 @@ describe.sequential("supabase edge runtime acceptance", () => {
     await seedProductionRelease({ bundle, database });
 
     const response = await fetch(
-      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/release-catalogs/app-version/${encodeURIComponent(AUTHORITY_ID)}/ios/cHJvZHVjdGlvbg/1.0.0`,
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0`,
     );
 
     expect(response.ok).toBe(true);
     await expect(response.json()).resolves.toMatchObject({
+      authorityId: AUTHORITY_ID,
       releases: [{ bundleId: "00000000-0000-0000-0000-000000000001" }],
     });
   });

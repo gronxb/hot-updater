@@ -130,7 +130,7 @@ describe("aws lambda entrypoint", () => {
     const { handler } = await import("./index");
     await handler(
       createCloudFrontRequest(
-        "/release-catalogs/app-version/aws.test-authority/ios/cHJvZHVjdGlvbg/1.0.0",
+        "/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0",
       ),
       {} as never,
       () => undefined,
@@ -153,7 +153,7 @@ describe("aws lambda entrypoint", () => {
 
     const response = await handler(
       createCloudFrontRequest(
-        "/release-catalogs/app-version/aws.test-authority/ios/cHJvZHVjdGlvbg/1.0.0",
+        "/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0",
       ),
       {} as never,
       () => undefined,

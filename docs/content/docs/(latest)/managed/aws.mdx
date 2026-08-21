@@ -297,7 +297,6 @@ function App() {
 
 export default HotUpdater.wrap({
   baseURL: "https://<your-cloudfront-distribution-url>", // [!code ++]
-  authorityId: "aws.<generated-authority-id>", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
     "x-api-key": "<HOT_UPDATER_API_KEY from .env.hotupdater>", // [!code ++]

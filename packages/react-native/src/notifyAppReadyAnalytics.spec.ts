@@ -50,6 +50,20 @@ vi.mock("./native", () => ({
   reload: mocks.reload,
 }));
 
+const createClient = () => {
+  const sendAnalyticsEvent = vi.fn().mockResolvedValue(undefined);
+  return {
+    client: {
+      createSession: vi.fn(async () => ({
+        fetchReleaseCatalog: vi.fn(),
+        resolveArtifact: vi.fn(),
+        sendAnalyticsEvent,
+      })),
+    },
+    sendAnalyticsEvent,
+  };
+};
+
 describe("automatic notifyAppReady analytics", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -93,11 +107,7 @@ describe("automatic notifyAppReady analytics", () => {
       ),
     );
 
-    const resolver = {
-      fetchReleaseCatalog: vi.fn(),
-      resolveArtifact: vi.fn(),
-      notifyAppReady: vi.fn().mockResolvedValue(undefined),
-    };
+    const { client, sendAnalyticsEvent } = createClient();
     const onNotifyAppReady = vi.fn();
     const { init } = await import("./wrap");
 
@@ -106,11 +116,11 @@ describe("automatic notifyAppReady analytics", () => {
       onNotifyAppReady,
       requestHeaders: { Authorization: "Bearer token" },
       requestTimeout: 1000,
-      resolver,
+      client,
     });
     await vi.runOnlyPendingTimersAsync();
 
-    expect(resolver.notifyAppReady).toHaveBeenCalledWith({
+    expect(sendAnalyticsEvent).toHaveBeenCalledWith({
       appVersion: "1.0.0",
       channel: "production",
       cohort: "123",
@@ -152,18 +162,14 @@ describe("automatic notifyAppReady analytics", () => {
         },
       ),
     );
-    const resolver = {
-      fetchReleaseCatalog: vi.fn(),
-      resolveArtifact: vi.fn(),
-      notifyAppReady: vi.fn().mockResolvedValue(undefined),
-    };
+    const { client, sendAnalyticsEvent } = createClient();
     const onNotifyAppReady = vi.fn();
     const { init } = await import("./wrap");
 
-    init({ analytics: true, onNotifyAppReady, resolver });
+    init({ analytics: true, client, onNotifyAppReady });
     await vi.runOnlyPendingTimersAsync();
 
-    expect(resolver.notifyAppReady).toHaveBeenCalledWith({
+    expect(sendAnalyticsEvent).toHaveBeenCalledWith({
       appVersion: "1.0.0",
       channel: "production",
       cohort: "123",
@@ -188,20 +194,16 @@ describe("automatic notifyAppReady analytics", () => {
 
   it("sends one UNCHANGED event for repeated init calls", async () => {
     stubNotifyFrame();
-    const resolver = {
-      fetchReleaseCatalog: vi.fn(),
-      resolveArtifact: vi.fn(),
-      notifyAppReady: vi.fn().mockResolvedValue(undefined),
-    };
+    const { client, sendAnalyticsEvent } = createClient();
     const onNotifyAppReady = vi.fn();
     const { init } = await import("./wrap");
 
-    init({ analytics: true, onNotifyAppReady, resolver });
-    init({ analytics: true, onNotifyAppReady, resolver });
+    init({ analytics: true, client, onNotifyAppReady });
+    init({ analytics: true, client, onNotifyAppReady });
     await vi.runOnlyPendingTimersAsync();
 
-    expect(resolver.notifyAppReady).toHaveBeenCalledTimes(1);
-    expect(resolver.notifyAppReady).toHaveBeenCalledWith({
+    expect(sendAnalyticsEvent).toHaveBeenCalledTimes(1);
+    expect(sendAnalyticsEvent).toHaveBeenCalledWith({
       appVersion: "1.0.0",
       channel: "production",
       cohort: "123",
@@ -228,18 +230,14 @@ describe("automatic notifyAppReady analytics", () => {
 
   it("skips automatic analytics when disabled while preserving readiness", async () => {
     stubNotifyFrame();
-    const resolver = {
-      fetchReleaseCatalog: vi.fn(),
-      resolveArtifact: vi.fn(),
-      notifyAppReady: vi.fn().mockResolvedValue(undefined),
-    };
+    const { client, sendAnalyticsEvent } = createClient();
     const onNotifyAppReady = vi.fn();
     const { init } = await import("./wrap");
 
-    init({ analytics: false, onNotifyAppReady, resolver });
+    init({ analytics: false, client, onNotifyAppReady });
     await vi.runOnlyPendingTimersAsync();
 
-    expect(resolver.notifyAppReady).not.toHaveBeenCalled();
+    expect(sendAnalyticsEvent).not.toHaveBeenCalled();
     expect(onNotifyAppReady).toHaveBeenCalledWith({ status: "UNCHANGED" });
   });
 });

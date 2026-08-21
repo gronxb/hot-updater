@@ -83,7 +83,7 @@ describe("automatic notifyAppReady transport failures", () => {
   });
 
   it.each(failureCases)(
-    "warns and preserves UNCHANGED readiness for a real resolver $label failure",
+    "warns and preserves UNCHANGED readiness for a real HTTP client $label failure",
     async (failureCase) => {
       stubNotifyFrame();
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -102,15 +102,15 @@ describe("automatic notifyAppReady transport failures", () => {
       });
 
       try {
-        const [{ createDefaultResolver }, { init }] = await Promise.all([
-          import("./DefaultResolver"),
+        const [{ createHttpClient }, { init }] = await Promise.all([
+          import("./httpClient"),
           import("./wrap"),
         ]);
-        const resolver = createDefaultResolver(
+        const client = createHttpClient(
           "https://updates.example.test/hot-updater",
         );
 
-        init({ analytics: true, onError, onNotifyAppReady, resolver });
+        init({ analytics: true, client, onError, onNotifyAppReady });
         await vi.runOnlyPendingTimersAsync();
 
         expect(fetchMock).toHaveBeenCalledTimes(1);

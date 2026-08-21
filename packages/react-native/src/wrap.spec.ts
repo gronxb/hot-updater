@@ -64,6 +64,19 @@ vi.mock("./native", () => ({
   reload: mocks.reload,
 }));
 
+const createClient = (
+  sendAnalyticsEvent = vi.fn().mockResolvedValue(undefined),
+) => ({
+  client: {
+    createSession: vi.fn(async () => ({
+      fetchReleaseCatalog: vi.fn(),
+      resolveArtifact: vi.fn(),
+      sendAnalyticsEvent,
+    })),
+  },
+  sendAnalyticsEvent,
+});
+
 describe("HotUpdater wrap initialization", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -97,15 +110,11 @@ describe("HotUpdater wrap initialization", () => {
     );
     vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
 
-    const resolver = {
-      fetchReleaseCatalog: vi.fn(),
-      resolveArtifact: vi.fn(),
-      notifyAppReady: vi.fn().mockResolvedValue(undefined),
-    };
+    const { client, sendAnalyticsEvent } = createClient();
     const { init } = await import("./wrap");
 
     const result = init({
-      resolver,
+      client,
       requestHeaders: {
         Authorization: "Bearer token",
       },
@@ -114,14 +123,14 @@ describe("HotUpdater wrap initialization", () => {
 
     expect(result).toBeUndefined();
     expect(mocks.readNotifyAppReady).not.toHaveBeenCalled();
-    expect(resolver.notifyAppReady).not.toHaveBeenCalled();
+    expect(sendAnalyticsEvent).not.toHaveBeenCalled();
 
     expect(requestAnimationFrame).toHaveBeenCalled();
 
     await vi.runOnlyPendingTimersAsync();
 
     expect(mocks.readNotifyAppReady).toHaveBeenCalledWith();
-    expect(resolver.notifyAppReady).not.toHaveBeenCalled();
+    expect(sendAnalyticsEvent).not.toHaveBeenCalled();
   });
 
   it("waits for native launch verification before sending analytics", async () => {
@@ -153,19 +162,15 @@ describe("HotUpdater wrap initialization", () => {
         ),
       );
 
-    const resolver = {
-      fetchReleaseCatalog: vi.fn(),
-      resolveArtifact: vi.fn(),
-      notifyAppReady: vi.fn().mockResolvedValue(undefined),
-    };
+    const { client, sendAnalyticsEvent } = createClient();
     const { init } = await import("./wrap");
 
-    init({ analytics: true, resolver });
+    init({ analytics: true, client });
 
     await vi.runAllTimersAsync();
 
     expect(mocks.readNotifyAppReady).toHaveBeenCalledTimes(2);
-    expect(resolver.notifyAppReady).toHaveBeenCalledTimes(1);
+    expect(sendAnalyticsEvent).toHaveBeenCalledTimes(1);
   });
 
   it("sends automatic analytics only from init when enabled", async () => {
@@ -200,11 +205,7 @@ describe("HotUpdater wrap initialization", () => {
       username: "alice",
     });
 
-    const resolver = {
-      fetchReleaseCatalog: vi.fn(),
-      resolveArtifact: vi.fn(),
-      notifyAppReady: vi.fn().mockResolvedValue(undefined),
-    };
+    const { client, sendAnalyticsEvent } = createClient();
     const { init } = await import("./wrap");
 
     init({
@@ -213,12 +214,12 @@ describe("HotUpdater wrap initialization", () => {
         Authorization: "Bearer token",
       },
       requestTimeout: 1000,
-      resolver,
+      client,
     });
 
     await vi.runOnlyPendingTimersAsync();
 
-    expect(resolver.notifyAppReady).toHaveBeenCalledWith({
+    expect(sendAnalyticsEvent).toHaveBeenCalledWith({
       appVersion: "1.0.0",
       channel: "production",
       cohort: "123",
@@ -267,19 +268,15 @@ describe("HotUpdater wrap initialization", () => {
       ),
     );
 
-    const resolver = {
-      fetchReleaseCatalog: vi.fn(),
-      resolveArtifact: vi.fn(),
-      notifyAppReady: vi.fn().mockResolvedValue(undefined),
-    };
+    const { client, sendAnalyticsEvent } = createClient();
     const { init } = await import("./wrap");
 
-    init({ analytics: true, resolver });
-    init({ analytics: true, resolver });
+    init({ analytics: true, client });
+    init({ analytics: true, client });
 
     await vi.runOnlyPendingTimersAsync();
 
-    expect(resolver.notifyAppReady).toHaveBeenCalledTimes(1);
+    expect(sendAnalyticsEvent).toHaveBeenCalledTimes(1);
   });
 
   it("warns without interrupting app readiness when analytics transport fails", async () => {
@@ -311,18 +308,14 @@ describe("HotUpdater wrap initialization", () => {
         },
       ),
     );
-    const resolver = {
-      fetchReleaseCatalog: vi.fn(),
-      resolveArtifact: vi.fn(),
-      notifyAppReady: vi.fn().mockRejectedValue(error),
-    };
+    const { client } = createClient(vi.fn().mockRejectedValue(error));
     const { init } = await import("./wrap");
 
     init({
       analytics: true,
       onError,
       onNotifyAppReady,
-      resolver,
+      client,
     });
 
     await vi.runOnlyPendingTimersAsync();
@@ -344,11 +337,7 @@ describe("HotUpdater wrap initialization", () => {
     const { wrap } = await import("./wrap");
 
     wrap({
-      resolver: {
-        fetchReleaseCatalog: vi.fn(),
-        resolveArtifact: vi.fn(),
-        notifyAppReady: vi.fn(),
-      },
+      client: createClient().client,
       updateStrategy: "appVersion",
     });
   });
@@ -358,11 +347,7 @@ describe("HotUpdater wrap initialization", () => {
     const Component: React.ComponentType<{ title: string }> = () => null;
 
     const WrappedComponent = wrap({
-      resolver: {
-        fetchReleaseCatalog: vi.fn(),
-        resolveArtifact: vi.fn(),
-        notifyAppReady: vi.fn(),
-      },
+      client: createClient().client,
       updateStrategy: "appVersion",
     })(Component);
 

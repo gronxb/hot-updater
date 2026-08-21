@@ -1,6 +1,5 @@
 import {
   authorizeReleaseTransition,
-  createReleaseCatalogScopeKey,
   createReleaseSelectionContextHash,
   encodeChannelKey,
   selectDesiredRelease,
@@ -12,6 +11,7 @@ import { canonicalizeAppVersion } from "@hot-updater/plugin-core";
 import { Platform } from "react-native";
 
 import { HotUpdaterError, StaleReleaseCatalogError } from "./error";
+import type { HotUpdaterHttpClient, HotUpdaterHttpSession } from "./httpClient";
 import {
   acceptReleaseCatalog,
   commitReleaseSelection,
@@ -30,8 +30,11 @@ import {
   isChannelSwitched,
   updateBundle,
 } from "./native";
+import {
+  hasExpectedReleaseCatalogScope,
+  type ExpectedReleaseCatalogScope,
+} from "./releaseCatalogCache";
 import { hotUpdaterStore } from "./store";
-import type { HotUpdaterResolver } from "./types";
 
 export interface CheckForUpdateOptions {
   /**
@@ -79,9 +82,9 @@ export type ReleaseTransitionKind =
   | "USE_EMBEDDED"
   | "USE_BUILTIN";
 
-// Internal type that includes resolver for use within index.ts
 export interface InternalCheckForUpdateOptions extends CheckForUpdateOptions {
-  resolver: HotUpdaterResolver;
+  analytics?: boolean;
+  client: HotUpdaterHttpClient;
 }
 
 const sameReceipt = (
@@ -101,16 +104,14 @@ const sameReceipt = (
 
 const validateCatalog = (
   catalog: ReleaseCatalog,
-  authorityId: string,
-  scopeKey: string,
+  expectedScope: ExpectedReleaseCatalogScope,
 ) => {
   if (
     catalog.schemaVersion !== 1 ||
-    catalog.authorityId !== authorityId ||
-    catalog.scopeKey !== scopeKey ||
     !Number.isSafeInteger(catalog.generation) ||
     catalog.generation < 1 ||
-    !catalog.catalogHash.startsWith("sha256:")
+    !/^sha256:[0-9a-f]{64}$/.test(catalog.catalogHash) ||
+    !hasExpectedReleaseCatalogScope(catalog, expectedScope)
   ) {
     throw new HotUpdaterError("Received an invalid Release catalog");
   }
@@ -134,15 +135,14 @@ const notifyReleaseAdoption = async (input: {
   readonly cohort: string;
   readonly fingerprintHash: string | null;
   readonly platform: "ios" | "android";
-  readonly resolver: HotUpdaterResolver;
+  readonly session: HotUpdaterHttpSession;
   readonly requestHeaders?: Record<string, string>;
   readonly requestTimeout?: number;
   readonly updateStrategy: "appVersion" | "fingerprint";
 }): Promise<void> => {
-  if (!input.resolver.notifyAppReady) return;
   const { userId, username } = getPersistedUserIdentity();
   try {
-    await input.resolver.notifyAppReady({
+    await input.session.sendAnalyticsEvent({
       appVersion: input.appVersion,
       channel: input.desired.channel,
       cohort: input.cohort,
@@ -180,8 +180,7 @@ async function checkForReleaseCatalogUpdate(input: {
   readonly fingerprintHash: string | null;
 }): Promise<CheckForUpdateResult | null> {
   const { options } = input;
-  const resolver = options.resolver;
-  const authorityId = resolver.authorityId ?? "default";
+  const session = await options.client.createSession();
   const channelKey = encodeChannelKey(input.targetChannel);
   const strategy =
     options.updateStrategy === "appVersion" ? "APP_VERSION" : "FINGERPRINT";
@@ -192,25 +191,21 @@ async function checkForReleaseCatalogUpdate(input: {
   if (strategy === "FINGERPRINT" && !input.fingerprintHash) {
     throw new HotUpdaterError("Fingerprint hash is required");
   }
-  const scopeKey = createReleaseCatalogScopeKey(
+  const expectedScope: ExpectedReleaseCatalogScope =
     strategy === "APP_VERSION"
       ? {
-          authorityId,
           channelKey,
           platform: input.platform,
           strategy,
         }
       : {
-          authorityId,
           channelKey,
           fingerprintHash: input.fingerprintHash!,
           platform: input.platform,
           strategy,
-        },
-  );
-  const catalog = await resolver.fetchReleaseCatalog({
+        };
+  const catalog = await session.fetchReleaseCatalog({
     appVersion: canonicalAppVersion ?? input.currentAppVersion,
-    authorityId,
     channel: input.targetChannel,
     fingerprintHash: input.fingerprintHash,
     platform: input.platform,
@@ -218,7 +213,9 @@ async function checkForReleaseCatalogUpdate(input: {
     requestTimeout: options.requestTimeout,
     updateStrategy: options.updateStrategy,
   });
-  validateCatalog(catalog, authorityId, scopeKey);
+  validateCatalog(catalog, expectedScope);
+  const authorityId = catalog.authorityId;
+  const scopeKey = catalog.scopeKey;
 
   const crashedBundleIds = getCrashHistory();
   const active = getActiveUpdateState().activeSelection;
@@ -234,6 +231,13 @@ async function checkForReleaseCatalogUpdate(input: {
     active.authorityId !== null &&
     active.scopeKey !== null &&
     active.generation !== null;
+  if (
+    hasAuthenticatedActive &&
+    activeInTargetScope === null &&
+    !explicitScopeSwitch
+  ) {
+    throw new HotUpdaterError("Release transition rejected: UNSOLICITED_SCOPE");
+  }
   const selectorCurrentBundleId =
     activeInTargetScope !== null ||
     (!hasAuthenticatedActive && !explicitScopeSwitch)
@@ -336,7 +340,11 @@ async function checkForReleaseCatalogUpdate(input: {
         guard,
         selection: receipt,
       });
-      if (committed && transitionKind === "ADOPT_RELEASE") {
+      if (
+        committed &&
+        transitionKind === "ADOPT_RELEASE" &&
+        options.analytics
+      ) {
         await notifyReleaseAdoption({
           active,
           appVersion: input.currentAppVersion,
@@ -346,14 +354,14 @@ async function checkForReleaseCatalogUpdate(input: {
           platform: input.platform,
           requestHeaders: options.requestHeaders,
           requestTimeout: options.requestTimeout,
-          resolver,
+          session,
           updateStrategy: options.updateStrategy,
         });
       }
       return committed;
     }
 
-    const artifact = await resolver.resolveArtifact({
+    const artifact = await session.resolveArtifact({
       currentBundleId: input.currentBundleId,
       requestHeaders: options.requestHeaders,
       requestTimeout: options.requestTimeout,

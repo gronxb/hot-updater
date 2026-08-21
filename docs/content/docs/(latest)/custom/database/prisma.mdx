@@ -151,8 +151,8 @@ The configuration above enables the update-check routes:
 | Method | Endpoint                                                                                        | Description                            |
 | ------ | ----------------------------------------------------------------------------------------------- | -------------------------------------- |
 | GET    | `/hot-updater/version`                                                                          | Get the server version                 |
-| GET    | `/hot-updater/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`      | Resolve an app-version Release Catalog |
-| GET    | `/hot-updater/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash` | Resolve a fingerprint Release Catalog  |
+| GET    | `/hot-updater/release-catalogs/app-version/:platform/:channelKey/:appVersion`                   | Resolve an app-version Release Catalog |
+| GET    | `/hot-updater/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash`              | Resolve a fingerprint Release Catalog  |
 | GET    | `/hot-updater/artifacts/:targetBundleId/from/:currentBundleId`                                  | Resolve an artifact                    |
 
 `handlers.admin` owns the Bundle, Channel, Release, Release Catalog, and

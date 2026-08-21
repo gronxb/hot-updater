@@ -80,7 +80,7 @@ const createCatalogDatabase = async () => {
 };
 
 describe("Release catalog routes", () => {
-  it("serves the compiled app-version projection with cache identity and ETag revalidation", async () => {
+  it("serves the configured authority on the authority-free app-version path with cache identity and ETag revalidation", async () => {
     const database = await createCatalogDatabase();
     const hotUpdater = createHotUpdater({
       authorityId,
@@ -93,7 +93,7 @@ describe("Release catalog routes", () => {
     );
     const url =
       `https://updates.example.com/release-catalogs/app-version/` +
-      `${authorityId}/ios/${channelKey}/1.5.0`;
+      `ios/${channelKey}/1.5.0`;
 
     const response = await hotUpdater.handlers.client(new Request(url));
     expect(response.status).toBe(200);
@@ -143,13 +143,31 @@ describe("Release catalog routes", () => {
     );
     expect(catalogRead).toHaveBeenCalledOnce();
 
-    const wrongAuthority = await hotUpdater.handlers.client(
-      new Request(url.replace(authorityId, "project-b")),
+    const invalidPlatform = await hotUpdater.handlers.client(
+      new Request(url.replace("/ios/", "/windows/")),
     );
-    expect(wrongAuthority.status).toBe(404);
-    expect(wrongAuthority.headers.get("cache-control")).toBe(
+    expect(invalidPlatform.status).toBe(400);
+    expect(catalogRead).toHaveBeenCalledOnce();
+
+    const otherChannel = await hotUpdater.handlers.client(
+      new Request(
+        url.replace(`/${channelKey}/`, `/${encodeChannelKey("beta")}/`),
+      ),
+    );
+    expect(otherChannel.status).toBe(404);
+    expect(catalogRead).toHaveBeenCalledTimes(2);
+
+    const legacyAuthorityPath = await hotUpdater.handlers.client(
+      new Request(
+        `https://updates.example.com/release-catalogs/app-version/` +
+          `${authorityId}/ios/${channelKey}/1.5.0`,
+      ),
+    );
+    expect(legacyAuthorityPath.status).toBe(404);
+    expect(legacyAuthorityPath.headers.get("cache-control")).toBe(
       "private, no-store",
     );
+    expect(catalogRead).toHaveBeenCalledTimes(2);
   });
 
   it("singleflights concurrent cold requests into one exact catalog read", async () => {
@@ -165,7 +183,7 @@ describe("Release catalog routes", () => {
     });
     const url =
       `https://updates.example.com/release-catalogs/app-version/` +
-      `${authorityId}/ios/${channelKey}/1.5.0`;
+      `ios/${channelKey}/1.5.0`;
 
     const responses = await Promise.all(
       Array.from({ length: 100 }, () =>
@@ -194,7 +212,7 @@ describe("Release catalog routes", () => {
     });
     const url =
       `https://updates.example.com/release-catalogs/app-version/` +
-      `${authorityId}/ios/${channelKey}/1.5.0`;
+      `ios/${channelKey}/1.5.0`;
 
     const unauthorized = await hotUpdater.handlers.client(
       new Request(url, { headers: { "x-api-key": API_KEY } }),

@@ -482,7 +482,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     await seedHotUpdater.insertBundle(bundle);
     await seedProductionRelease({ bundle, database });
 
-    const updatePath = `/release-catalogs/app-version/${encodeURIComponent(AUTHORITY_ID)}/ios/cHJvZHVjdGlvbg/1.0.0`;
+    const updatePath = "/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0";
     const unauthorizedResponse = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
@@ -507,10 +507,12 @@ describe.sequential("aws lambda runtime acceptance", () => {
 
     expect(unauthorizedPayload.status).toBe("401");
     const body = (await readLambdaJson(payload)) as {
+      authorityId?: string;
       releases?: { bundleId?: string }[];
     };
 
     expect(body).toMatchObject({
+      authorityId: AUTHORITY_ID,
       releases: [{ bundleId: "00000000-0000-0000-0000-000000000001" }],
     });
   });

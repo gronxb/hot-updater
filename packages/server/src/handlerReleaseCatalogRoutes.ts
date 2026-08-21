@@ -96,9 +96,6 @@ export const createReleaseCatalogRouteHandlers = (
   return {
     appVersionReleaseCatalog: async (params, request, api) => {
       if (api.getReleaseCatalog === undefined) return privateNotFound();
-      if (requireRouteParam(params, "authorityId") !== authorityId) {
-        return privateNotFound();
-      }
       const rawAppVersion = requireRouteParam(params, "appVersion");
       const appVersion = canonicalizeAppVersion(rawAppVersion);
       if (appVersion === null || appVersion !== rawAppVersion) {
@@ -125,9 +122,6 @@ export const createReleaseCatalogRouteHandlers = (
 
     fingerprintReleaseCatalog: async (params, request, api) => {
       if (api.getReleaseCatalog === undefined) return privateNotFound();
-      if (requireRouteParam(params, "authorityId") !== authorityId) {
-        return privateNotFound();
-      }
       const input = {
         authorityId,
         channelKey: requireRouteParam(params, "channelKey"),

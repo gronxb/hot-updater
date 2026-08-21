@@ -3417,10 +3417,10 @@ function rewriteProxiedUpdatePath(pathname: string) {
   if (
     segments[0] === "release-catalogs" &&
     (segments[1] === "app-version" || segments[1] === "fingerprint") &&
-    segments[4]
+    segments[3]
   ) {
-    const channel = decodeChannelKey(decodeURIComponent(segments[4]));
-    segments[4] = encodeChannelKey(
+    const channel = decodeChannelKey(decodeURIComponent(segments[3]));
+    segments[3] = encodeChannelKey(
       !channelNamespace || channel.startsWith(`${channelNamespace}-`)
         ? channel
         : getFixtureChannel(channel),
@@ -3528,28 +3528,32 @@ function rewriteReleaseCatalogScope(
     segments[0] !== "hot-updater" ||
     segments[1] !== "release-catalogs" ||
     (segments[2] !== "app-version" && segments[2] !== "fingerprint") ||
-    !segments[3] ||
-    (segments[4] !== "ios" && segments[4] !== "android") ||
+    (segments[3] !== "ios" && segments[3] !== "android") ||
+    !segments[4] ||
     !segments[5]
   ) {
     return payload;
   }
 
-  const authorityId = decodeURIComponent(segments[3]);
-  const channelKey = decodeURIComponent(segments[5]);
+  const authorityId = Reflect.get(payload, "authorityId");
+  if (typeof authorityId !== "string" || authorityId.length === 0) {
+    return payload;
+  }
+
+  const channelKey = decodeURIComponent(segments[4]);
   const scopeKey = createReleaseCatalogScopeKey(
     segments[2] === "app-version"
       ? {
           authorityId,
           channelKey,
-          platform: segments[4],
+          platform: segments[3],
           strategy: "APP_VERSION",
         }
       : {
           authorityId,
           channelKey,
-          fingerprintHash: decodeURIComponent(segments[6] ?? ""),
-          platform: segments[4],
+          fingerprintHash: decodeURIComponent(segments[5]),
+          platform: segments[3],
           strategy: "FINGERPRINT",
         },
   );
@@ -3960,14 +3964,10 @@ function getRemoteAssetProxyTarget(requestUrl: URL) {
 }
 
 function buildCatalogUrl(args: {
-  catalog: Pick<
-    ReleaseCatalogRow,
-    "authority_id" | "fingerprint_hash" | "strategy"
-  >;
+  catalog: Pick<ReleaseCatalogRow, "fingerprint_hash" | "strategy">;
   channel: string;
 }) {
   const base = {
-    authorityId: args.catalog.authority_id,
     baseUrl: getControllerReachableAppBaseUrl(),
     channel: args.channel,
     platform: fixtureSession.platform,

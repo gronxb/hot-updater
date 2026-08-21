@@ -18,7 +18,9 @@ database contract and schema version.
 Event ingestion lives on `handlers.client`; queries live on
 `handlers.admin` and rely on the framework middleware protecting that mount.
 
-React Native clients can enable automatic OTA transition reporting with
-`HotUpdater.init({ analytics: true })`. App-ready transitions retain stable
-installation and optional user identity across launches, and analytics
-delivery failures remain warning-only so they never block application startup.
+React Native clients can enable automatic OTA transition and Release adoption
+reporting by setting `analytics: true` in either `HotUpdater.init` or
+`HotUpdater.wrap`. Omitting the option or setting it to `false` sends no events.
+App-ready transitions retain stable installation and optional user identity
+across launches, and analytics delivery failures remain warning-only so they
+never block application startup.

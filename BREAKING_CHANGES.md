@@ -46,8 +46,8 @@ read followed by local selection on the device.
 
 | `main`                                                                                  | `next`                                                                                                     |
 | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `GET /app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId[/:cohort]`      | `GET /release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`                         |
-| `GET /fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId[/:cohort]` | `GET /release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash`                    |
+| `GET /app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId[/:cohort]`      | `GET /release-catalogs/app-version/:platform/:channelKey/:appVersion`                                      |
+| `GET /fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId[/:cohort]` | `GET /release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash`                                 |
 | Update response includes the selected Bundle artifact                                   | `GET /artifacts/:targetBundleId/from/:currentBundleId` resolves the artifact after local Release selection |
 | `Hot-Updater-SDK-Version` request header participates in compatibility behavior         | The legacy SDK-version header contract is removed                                                          |
 | `GET /api/bundles/channels` returns channel strings                                     | `GET`, `POST`, and `DELETE /hot-updater/admin/channels[/:id]` manage persistent Channel rows               |
@@ -56,8 +56,9 @@ Additional route and handler changes:
 
 - Client routes are unversioned. Managed provider base URLs now point at the
   public deployment root; incompatible generations use different base URLs.
-- `authorityId` is part of Release Catalog identity. A non-default value must be
-  stable and match across the CLI, server, and React Native client.
+- `authorityId` remains stable server and deployment configuration for Release
+  Catalog compilation and persistence. React Native clients neither configure
+  it nor include it in Catalog paths.
 - `HandlerOptions.routes` is removed. The client handler always owns the v1
   update protocol and Analytics ingestion. Client access-key authentication is
   configured explicitly through the required `clientAccess` policy.
@@ -70,8 +71,8 @@ Additional route and handler changes:
   other surface.
 - Handlers match mount-relative paths, and `basePath` is removed. The framework
   owns the external mount path. Built-in storage paths are relative to the
-  client handler and the default React Native resolver resolves them against
-  its configured `baseURL`.
+  client handler and React Native resolves them against its configured
+  `baseURL`.
 - The admin handler has no built-in authentication callback. Protect its mount
   with framework middleware, register that middleware and the specific admin
   mount before the broader client mount, and fail startup when its credential
@@ -81,8 +82,10 @@ Additional route and handler changes:
   while mounting `handlers.client` exposes the complete client protocol.
   Analytics ingestion is always available on the client handler and queries
   are always available on the admin handler, so the server-side Analytics flag
-  and `queryAccess` are removed. Client authentication moves to the required
-  top-level `clientAccess` policy.
+  and `queryAccess` are removed. React Native reporting remains opt-in by
+  setting `analytics: true` in either `HotUpdater.init` or `HotUpdater.wrap`;
+  omission or `false` sends no events. Client authentication moves to the
+  required top-level `clientAccess` policy.
 - `standaloneRepository.baseUrl` now identifies the exact admin root, such as
   `https://example.com/hot-updater/admin`. Its default and fixed request paths
   are relative (`/bundles`, `/releases`, `/release-catalogs`, `/channels`, and
@@ -207,8 +210,9 @@ The following v0 options are removed or renamed:
 
 - `storages` and deprecated `storagePlugins` become `storage`.
 - Analytics ingestion and query routes are always available. React Native
-  clients independently control automatic event reporting with
-  `HotUpdater.init({ analytics })`.
+  clients independently enable automatic event reporting by setting
+  `analytics: true` in either `HotUpdater.init` or `HotUpdater.wrap`. Omission
+  or `false` sends no events.
 - `features.clientAccessKeys: false` becomes
   `clientAccess: { type: "public" }`.
 - `features.clientAccessKeys: true` becomes
@@ -332,10 +336,18 @@ for the complete operation requirements.
 
 ## React Native API changes
 
-The default resolver now fetches Release Catalogs and resolves artifacts from
-the new routes. Existing `baseURL` configuration remains valid only when it
-points to a v1 endpoint, and `authorityId` must match that endpoint when a
-non-default identity is used.
+`HotUpdater.init` and `HotUpdater.wrap` now accept `baseURL` as their only
+network source. The `resolver` and client-side `authorityId` options,
+`HotUpdaterResolver`, its parameter/result helper types, and
+`createDefaultResolver` are removed. Existing `baseURL` configuration remains
+valid only when it points to a v1 client handler. Catalog client paths no longer
+contain authority; authority remains server-owned deployment and persistence
+state.
+
+Custom GraphQL, RPC, and other transports must expose the v1 Release Catalog,
+artifact, Analytics-event, and `/version` HTTP protocol through an adapter or
+proxy, then pass that endpoint as `baseURL`. There is no React Native callback
+escape hatch for replacing only part of the protocol.
 
 `NotifyAppReadyResult` changes shape:
 
@@ -347,13 +359,10 @@ toBundleId, ... }`.
 - `onNotifyAppReady` consumers and direct `HotUpdater.notifyAppReady()` callers
   must handle the new discriminated union.
 
-For a custom resolver, `notifyAppReady` now receives a directional Analytics
-event shape and returns `Promise<void>`. The legacy `checkUpdate` hook is
-removed. Every v1 custom resolver must implement both `fetchReleaseCatalog` and
-`resolveArtifact`; partial resolver objects are rejected by the type contract.
-`resolveArtifact` returns `ArtifactInfo`, which contains only downloadable
-Bundle artifacts. Release status, force-update behavior, and messages belong to
-the locally selected `CheckForUpdateResult` instead of the artifact transport.
+App-ready transition and Release adoption reporting use the configured
+`baseURL`. `analytics: true` enables both event paths for `HotUpdater.init` and
+`HotUpdater.wrap`; omission or `false` sends nothing. The server routes and
+backing model remain available regardless.
 
 The v0 `HotUpdater.getMinBundleId()` alias is removed; use
 `HotUpdater.getMinimumReleaseId()`. The deprecated positional
@@ -394,8 +403,8 @@ native build is installed over a v0 app:
   same rollout bucket
 
 This does not extend to server databases, storage objects, HTTP routes, custom
-resolver selection semantics, or management write shapes. Those boundaries are
-fresh in v1.
+transport callbacks, or management write shapes. Those boundaries are fresh in
+v1.
 
 The detailed retention rules are in the
 [v1 compatibility inventory](./docs/release-catalog-v1-compatibility.md).

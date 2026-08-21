@@ -51,8 +51,8 @@ GET /
 
 ### Check for Updates
 ```bash
-GET /hot-updater/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion
-GET /hot-updater/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash
+GET /hot-updater/release-catalogs/app-version/:platform/:channelKey/:appVersion
+GET /hot-updater/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash
 ```
 
 `channelKey` is the base64url-encoded channel key produced by the client.

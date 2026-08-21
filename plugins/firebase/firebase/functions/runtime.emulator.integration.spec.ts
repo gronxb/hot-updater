@@ -398,10 +398,11 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     });
 
     const response = await invokeHandler(
-      `/release-catalogs/app-version/${encodeURIComponent(projectId)}/ios/cHJvZHVjdGlvbg/1.0.0`,
+      "/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0",
     );
 
     await expect(response.json()).resolves.toMatchObject({
+      authorityId: projectId,
       releases: [{ bundleId: "00000000-0000-0000-0000-000000000001" }],
     });
   });

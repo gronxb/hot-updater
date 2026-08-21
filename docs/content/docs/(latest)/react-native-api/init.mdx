@@ -16,6 +16,7 @@ import { HotUpdater } from "@hot-updater/react-native";
 
 HotUpdater.init({
   baseURL: "<your-update-server-url>",
+  analytics: true,
   requestHeaders: {
     "x-api-key": "<your-client-access-key>",
   },
@@ -29,6 +30,10 @@ Point `baseURL` at the client handler root, for example
 `https://example.com/hot-updater`. Never embed the admin bearer token in a
 React Native app. If client access keys are enabled, send only the scoped
 `x-api-key` shown above.
+
+Set `analytics: true` to send automatic app-ready transition and Release
+adoption events. Omitting it or setting it to `false` sends no Analytics
+events. The server routes remain available either way.
 
 `baseURL` can also be resolved at runtime. The function may return a string or
 a promise, and Hot Updater calls it before each update check.
@@ -64,25 +69,16 @@ if (updateInfo.shouldForceUpdate) {
 
 | Option             | Type                                        | Required | Description                                                      |
 | ------------------ | ------------------------------------------- | -------- | ---------------------------------------------------------------- |
-| `baseURL`          | `string \| () => string \| Promise<string>` | Yes*     | Your update server URL or runtime URL resolver                   |
-| `resolver`         | `HotUpdaterResolver`                        | Yes*     | Custom network operations                                        |
+| `baseURL`          | `string \| () => string \| Promise<string>` | Yes      | Your v1 client handler URL or runtime URL function               |
+| `analytics`        | `boolean`                                   | No       | Send app-ready and Release adoption events (default: false)      |
 | `requestHeaders`   | `Record<string, string>`                    | No       | Shared headers used by update checks and app-ready notifications |
 | `requestTimeout`   | `number`                                    | No       | Request timeout in milliseconds (default: 5000)                  |
 | `onNotifyAppReady` | `(result) => void`                          | No       | Callback invoked after native app-ready state is read            |
 | `onError`          | `(error) => void`                           | No       | Default error handler for initialization and update checks       |
 
-\*Either `baseURL` or `resolver` must be provided (mutually exclusive).
-
-Release Catalog custom resolvers must implement both `fetchReleaseCatalog` and
-`resolveArtifact`; the legacy direct-update `checkUpdate` hook is not accepted.
-Declare `catalogCachePartition` only when the catalog
-transport uses a stable shared-cache partition; otherwise keep catalog
-responses private/no-store. The default resolver partitions shared catalog
-responses by `x-api-key`. A custom resolver must return absolute HTTP(S) URLs
-for archive, manifest, changed-asset file, and patch artifacts; only the default
-resolver expands server-relative storage paths against `baseURL`.
-`resolveArtifact` returns artifact data only; the selected Release determines
-status, force-update behavior, and message fields.
+`baseURL` is the only React Native transport configuration. A GraphQL, RPC,
+or other custom backend must expose the v1 HTTP protocol through an adapter or
+proxy and use that endpoint as `baseURL`.
 
 `HotUpdater.checkForUpdate({ onError })` overrides the `onError` handler from
 `HotUpdater.init` for that specific update check.

@@ -107,7 +107,6 @@ function App() {
 
 export default HotUpdater.wrap({
   baseURL: "https://your-update-server-url", // [!code ++]
-  authorityId: "your-project-id", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
     // Optional: Add custom headers if needed
@@ -141,10 +140,8 @@ export default HotUpdater.wrap({
   Check your terminal output or provider console for the correct URL.
 </Callout>
 
-<Callout type="info">
-  Keep the client `authorityId` identical to the generated config value. In v1,
-  it scopes the Release Catalog used for update resolution.
-</Callout>
+The generated `authorityId` remains private deployment configuration. React
+Native clients identify the client handler only through `baseURL`.
 
 ## Build Configuration
 

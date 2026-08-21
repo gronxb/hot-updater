@@ -447,7 +447,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   p.note(
     transformTemplate(SOURCE_TEMPLATE, {
       apiKey: JSON.stringify(apiKey),
-      authorityId: JSON.stringify(authorityId),
       source: JSON.stringify(sourceUrl),
     }),
   );

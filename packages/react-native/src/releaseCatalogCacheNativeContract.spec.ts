@@ -21,10 +21,13 @@ const scopeKey = createReleaseCatalogScopeKey({
   strategy: "APP_VERSION",
 });
 const input = {
-  authorityId,
   baseURL: "https://updates.example.com",
+  expectedScope: {
+    channelKey: encodeChannelKey("production"),
+    platform: "ios",
+    strategy: "APP_VERSION",
+  } as const,
   requestHeaders: { "x-api-key": "key" },
-  scopeKey,
   url: "https://updates.example.com/catalog",
 };
 const catalog: ReleaseCatalog = {

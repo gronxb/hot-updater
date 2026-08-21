@@ -262,7 +262,7 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
 
   it("requires a client key before reporting a missing catalog", async () => {
     const path =
-      "/hot-updater/release-catalogs/app-version/default/ios/cHJvZHVjdGlvbg/1.0.0";
+      "/hot-updater/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0";
     const unauthorized = await fetch(`${baseUrl}${path}`);
     const authorized = await fetch(`${baseUrl}${path}`, {
       headers: { "x-api-key": rawApiKey },

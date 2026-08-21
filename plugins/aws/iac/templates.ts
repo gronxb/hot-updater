@@ -133,7 +133,6 @@ function App() {
 
 export default HotUpdater.wrap({
   baseURL: %%source%%,
-  authorityId: %%authorityId%%,
   updateStrategy: "appVersion", // or "fingerprint"
   requestHeaders: {
     "x-api-key": %%apiKey%%,

@@ -39,7 +39,12 @@ const SCOPE_KEY = createReleaseCatalogScopeKey({
   platform: "ios",
   strategy: "APP_VERSION",
 });
-const URL = `https://updates.example.com/release-catalogs/app-version/${AUTHORITY_ID}/ios/${CHANNEL_KEY}/1.0.0`;
+const URL = `https://updates.example.com/release-catalogs/app-version/ios/${CHANNEL_KEY}/1.0.0`;
+const EXPECTED_SCOPE = {
+  channelKey: CHANNEL_KEY,
+  platform: "ios",
+  strategy: "APP_VERSION",
+} as const;
 
 const catalog: ReleaseCatalog = {
   authorityId: AUTHORITY_ID,
@@ -64,10 +69,9 @@ const catalog: ReleaseCatalog = {
 const input = (
   overrides: Partial<Parameters<typeof fetchReleaseCatalogWithCache>[0]> = {},
 ) => ({
-  authorityId: AUTHORITY_ID,
   baseURL: "https://updates.example.com",
+  expectedScope: EXPECTED_SCOPE,
   requestHeaders: { "X-API-Key": "client-key-a" },
-  scopeKey: SCOPE_KEY,
   url: URL,
   ...overrides,
 });
@@ -165,8 +169,12 @@ describe("Release Catalog persistent cache", () => {
     await fetchReleaseCatalogWithCache(
       input({
         baseURL: "https://other.example.com",
-        scopeKey: betaScope,
-        url: "https://other.example.com/release-catalogs/app-version/project-a/ios/YmV0YQ/1.0.0",
+        expectedScope: {
+          channelKey: encodeChannelKey("beta"),
+          platform: "ios",
+          strategy: "APP_VERSION",
+        },
+        url: "https://other.example.com/release-catalogs/app-version/ios/YmV0YQ/1.0.0",
       }),
     );
 
@@ -215,6 +223,24 @@ describe("Release Catalog persistent cache", () => {
           200,
           JSON.stringify({ ...catalog, scopeKey: "wrong-scope" }),
           '"wrong"',
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchReleaseCatalogWithCache(input())).rejects.toThrow(
+      "invalid Release catalog",
+    );
+    expect(nativeMocks.write).not.toHaveBeenCalled();
+  });
+
+  it("rejects a catalog whose authority does not own its scope key", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        response(
+          200,
+          JSON.stringify({ ...catalog, authorityId: "tampered-project" }),
+          '"wrong-authority"',
         ),
       );
     vi.stubGlobal("fetch", fetchMock);

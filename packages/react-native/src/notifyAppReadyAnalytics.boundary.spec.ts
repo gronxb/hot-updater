@@ -77,11 +77,19 @@ vi.mock("./specs/NativeHotUpdater", () => ({
   default: nativePersistence,
 }));
 
-const createResolver = () => ({
-  fetchReleaseCatalog: vi.fn(),
-  resolveArtifact: vi.fn(),
-  notifyAppReady: vi.fn().mockResolvedValue(undefined),
-});
+const createClient = () => {
+  const sendAnalyticsEvent = vi.fn().mockResolvedValue(undefined);
+  return {
+    client: {
+      createSession: vi.fn(async () => ({
+        fetchReleaseCatalog: vi.fn(),
+        resolveArtifact: vi.fn(),
+        sendAnalyticsEvent,
+      })),
+    },
+    sendAnalyticsEvent,
+  };
+};
 
 describe("automatic notifyAppReady analytics boundaries", () => {
   beforeEach(() => {
@@ -108,7 +116,7 @@ describe("automatic notifyAppReady analytics boundaries", () => {
     nativePersistence.setPersistedInstallId("install-persisted");
   });
 
-  it("warns when resolver.notifyAppReady is missing and preserves readiness", async () => {
+  it("warns when the private HTTP session fails and preserves readiness", async () => {
     stubNotifyFrame();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const onError = vi.fn();
@@ -117,12 +125,13 @@ describe("automatic notifyAppReady analytics boundaries", () => {
 
     init({
       analytics: true,
+      client: {
+        createSession: vi.fn(async () => {
+          throw new Error("baseURL unavailable");
+        }),
+      },
       onError,
       onNotifyAppReady,
-      resolver: {
-        fetchReleaseCatalog: vi.fn(),
-        resolveArtifact: vi.fn(),
-      },
     });
     await vi.runOnlyPendingTimersAsync();
 
@@ -131,8 +140,7 @@ describe("automatic notifyAppReady analytics boundaries", () => {
     expect(warn).toHaveBeenCalledWith(
       "[HotUpdater] Automatic notifyAppReady analytics failed:",
       expect.objectContaining({
-        message:
-          "[HotUpdater] Automatic analytics requires resolver.notifyAppReady().",
+        message: "baseURL unavailable",
       }),
     );
     warn.mockRestore();
@@ -155,13 +163,13 @@ describe("automatic notifyAppReady analytics boundaries", () => {
       } else {
         mocks.getInstallId.mockReturnValue(value);
       }
-      const resolver = createResolver();
+      const { client, sendAnalyticsEvent } = createClient();
       const { init } = await import("./wrap");
 
-      init({ analytics: true, onError, onNotifyAppReady, resolver });
+      init({ analytics: true, client, onError, onNotifyAppReady });
       await vi.runOnlyPendingTimersAsync();
 
-      expect(resolver.notifyAppReady).not.toHaveBeenCalled();
+      expect(sendAnalyticsEvent).not.toHaveBeenCalled();
       expect(onError).not.toHaveBeenCalled();
       expect(onNotifyAppReady).toHaveBeenCalledWith({ status: "UNCHANGED" });
       expect(warn).toHaveBeenCalledWith(
@@ -189,13 +197,13 @@ describe("automatic notifyAppReady analytics boundaries", () => {
       } else {
         mocks.getBundleId.mockReturnValue(value);
       }
-      const resolver = createResolver();
+      const { client, sendAnalyticsEvent } = createClient();
       const { init } = await import("./wrap");
 
-      init({ analytics: true, onError, onNotifyAppReady, resolver });
+      init({ analytics: true, client, onError, onNotifyAppReady });
       await vi.runOnlyPendingTimersAsync();
 
-      expect(resolver.notifyAppReady).not.toHaveBeenCalled();
+      expect(sendAnalyticsEvent).not.toHaveBeenCalled();
       expect(onError).not.toHaveBeenCalled();
       expect(onNotifyAppReady).toHaveBeenCalledWith({ status: "UNCHANGED" });
       expect(warn).toHaveBeenCalledWith(

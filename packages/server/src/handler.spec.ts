@@ -1,7 +1,12 @@
+import type { ReleaseCatalog } from "@hot-updater/core";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 
-import { createHandlers, createHotUpdaterHandlers } from "./handler";
+import {
+  createHandlers,
+  createHotUpdaterHandlers,
+  type HandlerAPI,
+} from "./handler";
 import { createApi } from "./handler.testFixtures";
 import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "./handlerVersionRoutes";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
@@ -30,7 +35,7 @@ describe("createHandlers client routes", () => {
   });
 
   it.each([
-    "/v2/release-catalogs/app-version/default/ios/cHJvZHVjdGlvbg/1.0.0",
+    "/v2/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0",
     "/v2/artifacts/target-bundle/from/current-bundle",
   ])("does not expose the version-prefixed route %s", async (path) => {
     const handler = createHandlers(createApi()).client;
@@ -48,6 +53,49 @@ describe("createHandlers client routes", () => {
     );
 
     expect(response.status).toBe(404);
+  });
+
+  it("uses the configured authority for an authority-free fingerprint path", async () => {
+    const catalog = {
+      authorityId: "project-a",
+      catalogHash: "sha256:catalog",
+      fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
+      generation: 1,
+      releases: [],
+      schemaVersion: 1,
+      scopeKey:
+        "v1:fingerprint:project-a:android:cHJvZHVjdGlvbg:fingerprint-123",
+    } satisfies ReleaseCatalog;
+    const getReleaseCatalog = vi
+      .fn<NonNullable<HandlerAPI["getReleaseCatalog"]>>()
+      .mockResolvedValue(catalog);
+    const handler = createHandlers(
+      { ...createApi(), getReleaseCatalog },
+      { authorityId: "project-a" },
+    ).client;
+    const url =
+      "http://localhost/release-catalogs/fingerprint/android/" +
+      "cHJvZHVjdGlvbg/fingerprint-123";
+
+    const response = await handler(new Request(url));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      authorityId: "project-a",
+    });
+    expect(getReleaseCatalog).toHaveBeenCalledWith({
+      authorityId: "project-a",
+      channelKey: "cHJvZHVjdGlvbg",
+      fingerprintHash: "fingerprint-123",
+      platform: "android",
+      strategy: "FINGERPRINT",
+    });
+
+    const legacyAuthorityPath = await handler(
+      new Request(url.replace("/android/", "/project-a/android/")),
+    );
+    expect(legacyAuthorityPath.status).toBe(404);
+    expect(getReleaseCatalog).toHaveBeenCalledOnce();
   });
 
   it("serves client-relative storage paths under a framework mount", async () => {
@@ -128,7 +176,7 @@ describe("createHandlers client routes", () => {
 
     const response = await handler(
       new Request(
-        "http://localhost/release-catalogs/app-version/default/ios/cHJvZHVjdGlvbg/1.0.0",
+        "http://localhost/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0",
       ),
     );
 

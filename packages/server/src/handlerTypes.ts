@@ -83,7 +83,7 @@ export interface HandlerAPI {
 }
 
 export interface HandlerOptions {
-  /** Authority accepted by Release Catalog client paths. */
+  /** Internal authority used to look up and identify Release Catalogs. */
   readonly authorityId?: string;
 }
 

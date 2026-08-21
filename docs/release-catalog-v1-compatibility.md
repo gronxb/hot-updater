@@ -31,8 +31,9 @@ protocols, and management write shapes remain on their unchanged v0 deployment.
   rows contain delivery policy.
 - The scalar Bundle patch fields and mutable per-bundle remote asset layout are
   removed. v1 uses `Bundle.patches` and content-addressed remote assets.
-- Custom resolver `checkUpdate` is removed. A v1 resolver implements both
-  `fetchReleaseCatalog` and `resolveArtifact`.
+- Custom resolver callbacks are removed. React Native accepts only `baseURL`;
+  GraphQL, RPC, and other backends must expose the v1 HTTP protocol through an
+  adapter or proxy.
 - v1 Release Catalog JS does not run on a v0 native binary. Missing receipt,
   high-water, selection-guard, and Release Catalog cache methods fail with a
   rebuild instruction.

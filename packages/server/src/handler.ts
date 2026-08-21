@@ -196,12 +196,12 @@ export function createHotUpdaterHandlers(
   }
   addClientRoute(
     "GET",
-    "/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion",
+    "/release-catalogs/app-version/:platform/:channelKey/:appVersion",
     "appVersionReleaseCatalog",
   );
   addClientRoute(
     "GET",
-    "/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash",
+    "/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash",
     "fingerprintReleaseCatalog",
   );
   addClientRoute(
