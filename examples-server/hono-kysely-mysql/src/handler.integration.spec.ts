@@ -134,7 +134,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
       const migrationHotUpdater = createHotUpdater({
         database: kyselyAdapter({ db, provider: "mysql" }),
-        features: { clientAccessKeys: false },
+        clientAccess: { type: "public" },
       });
       const migrator = createMigrator(migrationHotUpdater);
 
@@ -195,7 +195,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       const migrator = createMigrator(
         createHotUpdater({
           database: adapter,
-          features: { clientAccessKeys: false },
+          clientAccess: { type: "public" },
         }),
       );
       const migration = await migrator.migrateToLatest({

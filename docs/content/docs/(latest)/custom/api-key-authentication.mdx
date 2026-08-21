@@ -13,13 +13,28 @@ import { createHotUpdater } from "@hot-updater/server";
 
 export const hotUpdater = createHotUpdater({
   database,
-  features: { clientAccessKeys: true },
+  clientAccess: { type: "api-key" },
 });
 ```
 
-When enabled, `x-api-key` is required for update-check routes and
+The `api-key` policy requires `x-api-key` for update-check routes and
 `POST /events`. `/version` stays public. Client keys do not grant access to
-Analytics queries, admin routes, or key management.
+Analytics queries, admin routes, or key management. To keep client routes
+unauthenticated, choose `clientAccess: { type: "public" }` instead.
+
+To use a different header, set it explicitly and send the same header from the
+client:
+
+```ts
+clientAccess: {
+  type: "api-key",
+  headerName: "x-hot-updater-key",
+}
+```
+
+Release Catalog responses include the selected header in `Vary`, so shared
+caches keep authenticated responses partitioned by the configured credential
+header.
 
 ## Create a key
 
@@ -54,5 +69,5 @@ during credential lookup returns `503` and does not fall back to public access.
 
 Client update and Analytics ingestion routes are always available on
 `handlers.client`, while Analytics queries live on `handlers.admin`.
-`features.clientAccessKeys` is required and applies authentication to update
-checks and Analytics ingestion. It does not authenticate the admin handler.
+`clientAccess` is required and applies its policy to update checks and
+Analytics ingestion. It does not authenticate the admin handler.

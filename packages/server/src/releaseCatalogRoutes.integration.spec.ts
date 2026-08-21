@@ -3,7 +3,10 @@ import { commitReleaseCatalogMutation } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
+import { registerClientAccessKey } from "./clientAccessKeys";
 import { createHotUpdater } from "./index";
+
+const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 
 const authorityId = "project-a";
 const channelKey = encodeChannelKey("production");
@@ -82,7 +85,7 @@ describe("Release catalog routes", () => {
     const hotUpdater = createHotUpdater({
       authorityId,
       database,
-      features: { clientAccessKeys: false },
+      clientAccess: { type: "public" },
     });
     const catalogRead = vi.spyOn(
       database.models.releaseCatalogs,
@@ -158,7 +161,7 @@ describe("Release catalog routes", () => {
     const hotUpdater = createHotUpdater({
       authorityId,
       database,
-      features: { clientAccessKeys: false },
+      clientAccess: { type: "public" },
     });
     const url =
       `https://updates.example.com/release-catalogs/app-version/` +
@@ -172,5 +175,38 @@ describe("Release catalog routes", () => {
 
     expect(responses.every(({ status }) => status === 200)).toBe(true);
     expect(catalogRead).toHaveBeenCalledOnce();
+  });
+
+  it("varies authenticated catalog responses by the configured header", async () => {
+    const database = await createCatalogDatabase();
+    await registerClientAccessKey({
+      apiKey: API_KEY,
+      clientAccessKeys: database.models.clientAccessKeys,
+      name: "App",
+    });
+    const hotUpdater = createHotUpdater({
+      authorityId,
+      clientAccess: {
+        headerName: "X-Hot-Updater-Key",
+        type: "api-key",
+      },
+      database,
+    });
+    const url =
+      `https://updates.example.com/release-catalogs/app-version/` +
+      `${authorityId}/ios/${channelKey}/1.5.0`;
+
+    const unauthorized = await hotUpdater.handlers.client(
+      new Request(url, { headers: { "x-api-key": API_KEY } }),
+    );
+    expect(unauthorized.status).toBe(401);
+
+    const response = await hotUpdater.handlers.client(
+      new Request(url, { headers: { "x-hot-updater-key": API_KEY } }),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("vary")).toBe(
+      "Accept-Encoding, x-hot-updater-key",
+    );
   });
 });

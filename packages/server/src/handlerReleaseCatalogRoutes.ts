@@ -31,6 +31,7 @@ const responseHash = async (body: string): Promise<string> => {
 const catalogResponse = async (
   catalog: ReleaseCatalog | null,
   request: Request,
+  clientAccessHeaderName: string,
 ): Promise<Response> => {
   if (catalog === null) return privateNotFound();
   const body = JSON.stringify(catalog);
@@ -39,7 +40,7 @@ const catalogResponse = async (
     "cache-control": "public, max-age=0, s-maxage=5",
     "content-type": CATALOG_CONTENT_TYPE,
     etag,
-    vary: "Accept-Encoding, x-api-key",
+    vary: `Accept-Encoding, ${clientAccessHeaderName}`,
   };
   if (request.headers.get("if-none-match") === etag) {
     return new Response(null, { headers, status: 304 });
@@ -49,6 +50,7 @@ const catalogResponse = async (
 
 export const createReleaseCatalogRouteHandlers = (
   authorityId: string,
+  clientAccessHeaderName = "x-api-key",
 ): Record<string, RouteHandler> => {
   const cache = new Map<
     string,
@@ -117,6 +119,7 @@ export const createReleaseCatalogRouteHandlers = (
           api.getReleaseCatalog!(input),
         ),
         request,
+        clientAccessHeaderName,
       );
     },
 
@@ -137,6 +140,7 @@ export const createReleaseCatalogRouteHandlers = (
           api.getReleaseCatalog!(input),
         ),
         request,
+        clientAccessHeaderName,
       );
     },
 

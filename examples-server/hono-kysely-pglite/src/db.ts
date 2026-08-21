@@ -32,7 +32,7 @@ export const hotUpdater = createHotUpdater({
     db: kysely,
     provider: "postgresql",
   }),
-  features: { clientAccessKeys: false },
+  clientAccess: { type: "public" },
   storage: [
     mockStorage({}),
     s3Storage({

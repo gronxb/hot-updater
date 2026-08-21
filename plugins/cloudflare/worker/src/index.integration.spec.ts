@@ -44,7 +44,7 @@ const seedBundles = async (bundles: Bundle[]) => {
   const seedHotUpdater = createHotUpdater({
     authorityId: env.AUTHORITY_ID,
     database,
-    features: { clientAccessKeys: false },
+    clientAccess: { type: "public" },
   });
   for (const bundle of bundles.map(toRuntimeBundle)) {
     const existing = await seedHotUpdater.getBundleById(bundle.id);

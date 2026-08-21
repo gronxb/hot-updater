@@ -32,7 +32,7 @@ const hotUpdater = createHotUpdater({
     ...adminOptions,
     authorityId: HotUpdater.AUTHORITY_ID,
   }),
-  features: { clientAccessKeys: false },
+  clientAccess: { type: "public" },
   storage: [
     firebaseStorage({
       ...adminOptions,

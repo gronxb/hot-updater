@@ -60,7 +60,7 @@ Additional route and handler changes:
   stable and match across the CLI, server, and React Native client.
 - `HandlerOptions.routes` is removed. The client handler always owns the v1
   update protocol and Analytics ingestion. Client access-key authentication is
-  configured explicitly through required `features.clientAccessKeys`.
+  configured explicitly through the required `clientAccess` policy.
 - The unified `createHandler` and `createHotUpdater().handler` surfaces are
   replaced by `createHandlers(...).client/admin` and
   `createHotUpdater().handlers.client/admin`. The client handler owns
@@ -196,7 +196,7 @@ plugin object directly.
 createHotUpdater({
   authorityId,
   database,
-  features: { clientAccessKeys: false },
+  clientAccess: { type: "public" },
   storage: [storagePlugin],
 });
 ```

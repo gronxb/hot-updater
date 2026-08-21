@@ -7,7 +7,7 @@ own provider, schema lifecycle, or universal component adapter.
 ```ts
 createHotUpdater({
   database,
-  features: { clientAccessKeys: false },
+  clientAccess: { type: "public" },
 });
 ```
 
@@ -21,7 +21,7 @@ The admin handler does not authenticate itself. Mount it only behind framework
 authentication, or use the database-backed Analytics provider directly from an
 authenticated server surface, as the Console does.
 
-`features.clientAccessKeys` is a required, explicit authentication policy.
+`clientAccess` is a required, explicit authentication policy.
 Client update and Analytics ingestion routes are always present on
 `handlers.client`, while mounting `handlers.admin` is the explicit opt-in for
 admin HTTP routes.

@@ -64,13 +64,14 @@ const database = dynamoDB({
 });
 const hotUpdater = createHotUpdater({
   database,
-  features: { clientAccessKeys: true },
+  clientAccess: { type: "api-key" },
 });
 ```
 
 The built-in Analytics event and query routes are always available.
-`features.clientAccessKeys` is required and protects update checks and event
-ingestion with keys stored through the database's official access-key port.
+`clientAccess` is required. The `api-key` policy protects update checks and
+event ingestion with keys stored through the database's official access-key
+port.
 
 ## Configuration
 
@@ -164,7 +165,7 @@ const hotUpdater = createHotUpdater({
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
     },
   }),
-  features: { clientAccessKeys: true },
+  clientAccess: { type: "api-key" },
 });
 ```
 

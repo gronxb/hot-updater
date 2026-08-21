@@ -76,7 +76,7 @@ import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "postgresql" }),
-  features: { clientAccessKeys: false },
+  clientAccess: { type: "public" },
   storage: [
     s3Storage({
       region: "auto",

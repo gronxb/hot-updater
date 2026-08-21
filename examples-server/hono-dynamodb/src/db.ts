@@ -23,7 +23,7 @@ export const database = dynamoDB({
 
 export const hotUpdater = createHotUpdater({
   database,
-  features: { clientAccessKeys: true },
+  clientAccess: { type: "api-key" },
   storage: [
     mockStorage({}),
     s3Storage({

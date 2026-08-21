@@ -32,10 +32,12 @@ import { createMigrator, generateSchema } from "./index";
 import { generateDrizzleSchema } from "./schemaGenerators";
 import type { DatabasePlugin, ORMProvider } from "./types";
 
-const createHotUpdater = (options: Omit<CreateHotUpdaterOptions, "features">) =>
+const createHotUpdater = (
+  options: Omit<CreateHotUpdaterOptions, "clientAccess">,
+) =>
   createRuntimeHotUpdater({
     ...options,
-    features: { clientAccessKeys: false },
+    clientAccess: { type: "public" },
   });
 
 const RAW_PRISMA_SCHEMA = `model bundles {

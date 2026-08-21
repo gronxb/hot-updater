@@ -48,7 +48,7 @@ export const hotUpdater = createHotUpdater({
     db: kysely,
     provider: "mysql",
   }),
-  features: { clientAccessKeys: false },
+  clientAccess: { type: "public" },
   storage: [
     mockStorage({}),
     s3Storage({

@@ -20,7 +20,7 @@ export const HOT_UPDATER_BASE_PATH = "/";
 const hotUpdater = createHotUpdater({
   authorityId: env.AUTHORITY_ID,
   database: d1Database(env.DB),
-  features: { clientAccessKeys: false },
+  clientAccess: { type: "public" },
   storage: [
     r2Storage({
       bucket: env.BUCKET,

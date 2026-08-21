@@ -154,6 +154,7 @@ export function createHotUpdaterHandlers(
   analytics?: AnalyticsProvider,
   clientAccessKeys?: {
     readonly authenticate: (request: Request) => Promise<boolean>;
+    readonly headerName: string;
   },
   downloadStorageObject?: (
     token: string,
@@ -163,7 +164,10 @@ export function createHotUpdaterHandlers(
   const authorityId = options.authorityId ?? "default";
   const routeHandlers: Record<string, RouteHandler> = {
     ...createVersionRouteHandlers(),
-    ...createReleaseCatalogRouteHandlers(authorityId),
+    ...createReleaseCatalogRouteHandlers(
+      authorityId,
+      clientAccessKeys?.headerName,
+    ),
     ...createReleaseManagementRouteHandlers(),
     ...createBundleRouteHandlers(),
     ...(analytics === undefined ? {} : createAnalyticsRouteHandlers(analytics)),

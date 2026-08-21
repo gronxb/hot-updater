@@ -11,7 +11,7 @@ export const hotUpdater = createHotUpdater({
     prisma,
     provider: "sqlite",
   }),
-  features: { clientAccessKeys: false },
+  clientAccess: { type: "public" },
   storage: [
     mockStorage({}),
     s3Storage({

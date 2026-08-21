@@ -300,7 +300,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     seedHotUpdater = createHotUpdater({
       authorityId: projectId,
       database,
-      features: { clientAccessKeys: false },
+      clientAccess: { type: "public" },
       storage: [
         firebaseStorage({
           ...adminOptions,

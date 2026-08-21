@@ -40,7 +40,7 @@ describe("createHotUpdater Analytics", () => {
     const append = vi.spyOn(database.models.analytics, "append");
     const hotUpdater = createHotUpdater({
       database,
-      features: { clientAccessKeys: false },
+      clientAccess: { type: "public" },
     });
 
     const ingestion = await hotUpdater.handlers.client(eventRequest());
@@ -77,7 +77,7 @@ describe("createHotUpdater Analytics", () => {
     const createMigrator = vi.spyOn(database, "createMigrator");
     const hotUpdater = createHotUpdater({
       database,
-      features: { clientAccessKeys: false },
+      clientAccess: { type: "public" },
     });
 
     expect((await hotUpdater.handlers.client(eventRequest())).status).toBe(204);
@@ -89,7 +89,7 @@ describe("createHotUpdater Analytics", () => {
   it("keeps ingestion and queries on separate handler surfaces", async () => {
     const hotUpdater = createHotUpdater({
       database: createInMemoryDatabasePlugin(),
-      features: { clientAccessKeys: false },
+      clientAccess: { type: "public" },
     });
 
     expect((await hotUpdater.handlers.client(eventRequest())).status).toBe(204);
@@ -110,7 +110,7 @@ describe("createHotUpdater Analytics", () => {
   it("returns a stable client error for malformed event payloads", async () => {
     const hotUpdater = createHotUpdater({
       database: createInMemoryDatabasePlugin(),
-      features: { clientAccessKeys: false },
+      clientAccess: { type: "public" },
     });
 
     const response = await hotUpdater.handlers.client(
@@ -128,7 +128,7 @@ describe("createHotUpdater Analytics", () => {
     async (field) => {
       const hotUpdater = createHotUpdater({
         database: createInMemoryDatabasePlugin(),
-        features: { clientAccessKeys: false },
+        clientAccess: { type: "public" },
       });
       const payload: Record<string, unknown> = { ...event };
       delete payload[field];

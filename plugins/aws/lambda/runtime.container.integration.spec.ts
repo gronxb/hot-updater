@@ -376,7 +376,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     seedHotUpdater = createHotUpdater({
       authorityId: AUTHORITY_ID,
       database,
-      features: { clientAccessKeys: true },
+      clientAccess: { type: "api-key" },
       storage: [
         s3Storage({
           bucketName: S3_BUCKET_NAME,

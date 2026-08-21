@@ -88,8 +88,8 @@ entrypoints remain the configuration-time providers.
 
 Self-hosted runtimes always expose Analytics ingestion and query capabilities
 backed by `database.models.analytics`. Every `createHotUpdater` call explicitly
-sets the required `features.clientAccessKeys` authentication policy, which can
-protect update checks and Analytics ingestion through
+sets the required `clientAccess` policy, which can protect update checks and
+Analytics ingestion through
 `database.models.clientAccessKeys`. Client update routes are always available
 on `handlers.client`, while admin routes are exposed only by explicitly
 mounting `handlers.admin`. The CLI-only

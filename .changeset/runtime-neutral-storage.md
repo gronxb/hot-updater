@@ -47,4 +47,4 @@ Update every built-in storage provider, CLI and Console consumer, managed
 runtime, package entrypoint, and custom-hosting guide to the new contract.
 Remove the storage-only JWT URL helpers and obsolete runtime-specific storage
 creators. Route-group flags are removed; Analytics is always available and the
-required `features.clientAccessKeys` policy controls client authentication.
+required `clientAccess` policy controls client authentication.

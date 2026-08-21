@@ -266,10 +266,11 @@ describe("Detox scenario contract", () => {
     );
 
     // When / Then: server Analytics needs no per-profile flag, while every
-    // profile still declares its client authentication policy explicitly.
+    // profile still declares its client access policy explicitly.
     for (const source of sources) {
-      expect(source).toContain("features: { clientAccessKeys:");
+      expect(source).toContain("clientAccess: { type:");
       expect(source).not.toContain("analytics: true");
+      expect(source).not.toContain("features:");
     }
   });
 

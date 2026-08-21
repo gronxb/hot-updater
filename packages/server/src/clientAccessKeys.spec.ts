@@ -6,12 +6,26 @@ import {
   CLIENT_ACCESS_KEY_HEADER_NAME,
   createClientAccessKey,
   hashClientAccessKey,
+  normalizeClientAccessKeyHeaderName,
   registerClientAccessKey,
 } from "./clientAccessKeys";
 
 const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 
 describe("client access keys", () => {
+  it("normalizes valid header names and rejects invalid names", () => {
+    expect(normalizeClientAccessKeyHeaderName()).toBe("x-api-key");
+    expect(normalizeClientAccessKeyHeaderName("X-Hot-Updater-Key")).toBe(
+      "x-hot-updater-key",
+    );
+    expect(() => normalizeClientAccessKeyHeaderName("")).toThrow(
+      "clientAccess.headerName must be a valid header name.",
+    );
+    expect(() => normalizeClientAccessKeyHeaderName("invalid header")).toThrow(
+      "clientAccess.headerName must be a valid header name.",
+    );
+  });
+
   it("persists only the digest and metadata for a registered key", async () => {
     const database = createInMemoryDatabasePlugin();
 

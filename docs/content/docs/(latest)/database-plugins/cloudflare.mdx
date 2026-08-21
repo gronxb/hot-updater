@@ -67,7 +67,7 @@ import { env } from "cloudflare:workers";
 
 export const hotUpdater = createHotUpdater({
   database: d1Database(env.DB),
-  features: { clientAccessKeys: false },
+  clientAccess: { type: "public" },
   // ... other options
 });
 ```

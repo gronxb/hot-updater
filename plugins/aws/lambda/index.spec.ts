@@ -143,7 +143,7 @@ describe("aws lambda entrypoint", () => {
     expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
       expect.objectContaining({
         authorityId: "aws.test-authority",
-        features: { clientAccessKeys: true },
+        clientAccess: { type: "api-key" },
       }),
     );
   });

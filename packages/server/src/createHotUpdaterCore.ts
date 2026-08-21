@@ -5,7 +5,10 @@ import {
 
 import { createAnalyticsProvider } from "./analytics/bounded/provider";
 import type { AnalyticsProvider } from "./analytics/types";
-import { authenticateClientAccessKey } from "./clientAccessKeys";
+import {
+  authenticateClientAccessKey,
+  normalizeClientAccessKeyHeaderName,
+} from "./clientAccessKeys";
 import { createDatabasePluginCore } from "./db/databasePluginCore";
 import { createSchemaReadinessChecker } from "./db/schemaReadiness";
 import {
@@ -31,40 +34,67 @@ export type RuntimeHotUpdaterAPI = DatabaseAPI & {
 
 export type HotUpdaterAPI = RuntimeHotUpdaterAPI;
 
-/**
- * Client-facing server policy that must be selected explicitly because it
- * changes whether public OTA routes require authentication.
- */
-export interface CreateHotUpdaterFeatures {
-  /**
-   * Requires a registered client access key in the `x-api-key` header for
-   * Release Catalog, artifact, and Analytics ingestion requests.
-   *
-   * This is an authentication policy, not merely access-key storage support.
-   * Set this to `false` to keep those client routes public. The `/version`
-   * route and every admin-handler route are unaffected.
-   */
-  readonly clientAccessKeys: boolean;
-}
+export type ClientAccessPolicy =
+  | {
+      /**
+       * Leaves Release Catalog, artifact, and Analytics ingestion routes
+       * publicly accessible without a client credential.
+       */
+      readonly type: "public";
+    }
+  | {
+      /**
+       * Requires a key registered in `database.models.clientAccessKeys` for
+       * Release Catalog, artifact, and Analytics ingestion requests.
+       */
+      readonly type: "api-key";
+      /**
+       * Request header containing the client access key. Defaults to
+       * `x-api-key`. Clients must send the same header; Release Catalog
+       * responses include it in `Vary` to preserve cache isolation.
+       */
+      readonly headerName?: string;
+    };
 
 export interface CreateHotUpdaterOptions {
   /** Stable project/server identity used to isolate Release catalog history. */
   readonly authorityId?: string;
   readonly database: DatabasePlugin;
   /**
-   * Required client-facing security policy. There is no implicit
-   * authentication default.
+   * Required client-route access policy. This choice is explicit so a server
+   * cannot accidentally change between public and authenticated OTA access.
+   * `/version`, storage downloads, and admin-handler routes are unaffected.
    */
-  readonly features: CreateHotUpdaterFeatures;
+  readonly clientAccess: ClientAccessPolicy;
   /** Storage implementations used to read provider-specific storage URIs. */
   readonly storage?: readonly StoragePlugin[];
 }
 
-const normalizeBooleanFeature = (value: unknown, name: string): boolean => {
-  if (typeof value !== "boolean") {
-    throw new TypeError(`${name} must be a boolean.`);
+const normalizeClientAccess = (
+  value: unknown,
+):
+  | { readonly type: "public" }
+  | {
+      readonly type: "api-key";
+      readonly headerName: string;
+    } => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("clientAccess must be an object.");
   }
-  return value;
+  const policy = value as {
+    readonly headerName?: unknown;
+    readonly type?: unknown;
+  };
+  if (policy.type === "public") return { type: "public" };
+  if (policy.type === "api-key") {
+    return {
+      headerName: normalizeClientAccessKeyHeaderName(policy.headerName),
+      type: "api-key",
+    };
+  }
+  throw new TypeError(
+    'clientAccess.type must be either "public" or "api-key".',
+  );
 };
 
 type DatabasePluginCore = {
@@ -127,17 +157,7 @@ export function createHotUpdaterCore(
     beforeOperation: assertSchemaReady,
     readStorageText,
   });
-  if (
-    options.features === null ||
-    typeof options.features !== "object" ||
-    Array.isArray(options.features)
-  ) {
-    throw new TypeError("features must be an object.");
-  }
-  const clientAccessKeysEnabled = normalizeBooleanFeature(
-    options.features.clientAccessKeys,
-    "features.clientAccessKeys",
-  );
+  const clientAccess = normalizeClientAccess(options.clientAccess);
   const analytics = createAnalyticsProvider({
     async append(row) {
       await assertSchemaReady();
@@ -155,14 +175,16 @@ export function createHotUpdaterCore(
       authorityId,
     },
     analytics,
-    clientAccessKeysEnabled
+    clientAccess.type === "api-key"
       ? {
           authenticate: (request) =>
             authenticateClientAccessKey({
               beforeLookup: assertSchemaReady,
               clientAccessKeys: plugin.models.clientAccessKeys,
+              headerName: clientAccess.headerName,
               request,
             }),
+          headerName: clientAccess.headerName,
         }
       : undefined,
     downloadStorageObject,

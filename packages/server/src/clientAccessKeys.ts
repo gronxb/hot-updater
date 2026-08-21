@@ -31,6 +31,22 @@ export const isClientAccessKey = (value: string): boolean => {
   }
 };
 
+export const normalizeClientAccessKeyHeaderName = (
+  value: unknown = CLIENT_ACCESS_KEY_HEADER_NAME,
+): string => {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new TypeError("clientAccess.headerName must be a valid header name.");
+  }
+
+  try {
+    const headers = new Headers();
+    headers.set(value, "");
+    return headers.keys().next().value!;
+  } catch {
+    throw new TypeError("clientAccess.headerName must be a valid header name.");
+  }
+};
+
 export const hashClientAccessKey = async (apiKey: string): Promise<string> => {
   if (!isClientAccessKey(apiKey)) {
     throw new TypeError(
@@ -114,9 +130,12 @@ export const createClientAccessKey = (input: {
 export const authenticateClientAccessKey = async (input: {
   readonly beforeLookup?: () => Promise<void>;
   readonly clientAccessKeys: ClientAccessKeyModel;
+  readonly headerName?: string;
   readonly request: Request;
 }): Promise<boolean> => {
-  const apiKey = input.request.headers.get(CLIENT_ACCESS_KEY_HEADER_NAME);
+  const apiKey = input.request.headers.get(
+    normalizeClientAccessKeyHeaderName(input.headerName),
+  );
   if (apiKey === null || !isClientAccessKey(apiKey)) return false;
   const hash = await hashClientAccessKey(apiKey);
   await input.beforeLookup?.();

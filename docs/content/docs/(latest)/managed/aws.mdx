@@ -332,7 +332,7 @@ export default HotUpdater.wrap({
   The managed AWS runtime exposes `/version` publicly. OTA update checks and
   Analytics ingestion require `x-api-key: $HOT_UPDATER_API_KEY`, using a key
   created from the Console. Internally, Analytics is always available and
-  `features.clientAccessKeys` is set to `true`; only `handlers.client` is
+  `clientAccess` uses the `api-key` policy; only `handlers.client` is
   mounted. Client access keys do not authorize Analytics query routes, and
   bundle management endpoints are not mounted on the public function URL.
 </Callout>

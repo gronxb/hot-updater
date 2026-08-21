@@ -28,9 +28,10 @@ describe("standalone-dynamodb local infrastructure contract", () => {
     expect(dbSource).toContain("export const database = dynamoDB({");
     expect(dbSource).toContain("s3Storage({");
     expect(dbSource).toMatch(
-      /createHotUpdater\(\{\n  database,\n  features: \{ clientAccessKeys: true \},/,
+      /createHotUpdater\(\{\n  database,\n  clientAccess: \{ type: "api-key" \},/,
     );
     expect(dbSource).not.toContain("analytics:");
+    expect(dbSource).not.toContain("features:");
     expect(dbSource).not.toContain("routes:");
     expect(dbSource).not.toContain("plugins:");
     expect(dbSource).toContain(
