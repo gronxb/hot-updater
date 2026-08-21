@@ -1,11 +1,10 @@
 services:
   mongodb:
     image: mongo:7-jammy
-    container_name: hono-mongodb
     restart: unless-stopped
     command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     ports:
-      - "27018:27017"
+      - "${HOT_UPDATER_E2E_MONGODB_PORT:-27018}:27017"
     volumes:
       - mongodb_data:/data/db
     healthcheck:
