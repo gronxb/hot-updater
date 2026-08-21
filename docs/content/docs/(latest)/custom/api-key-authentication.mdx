@@ -15,7 +15,7 @@ required.
 | User-facing credential and database domain   | API key / `apiKeys`   |
 | CLI namespace and `clientAccess` policy type | `api-key`             |
 | Default HTTP request header                  | `x-api-key`           |
-| Managed AWS environment variable             | `HOT_UPDATER_API_KEY` |
+| Managed init environment variable            | `HOT_UPDATER_API_KEY` |
 
 `clientAccess` remains the server setting because it selects how client routes
 are accessed. The credential selected by its `api-key` policy is always called
@@ -58,10 +58,12 @@ npx hot-updater db migrate src/hotUpdater.ts
 npx hot-updater api-key create src/hotUpdater.ts --name "Mobile app"
 ```
 
-The command prints the plaintext API key exactly once. Store it in your client
-configuration and send it using `x-api-key`. Persistence receives only its
-SHA-256 hash and non-secret metadata, including its prefix, name, creation time,
-and revocation time.
+The command prints the plaintext API key exactly once. Store it in your existing
+React Native build-time configuration without committing it to source, and send
+it using `x-api-key`. The server's `.env.hotupdater` file is not loaded into the
+React Native app automatically. Persistence receives only the key's SHA-256 hash
+and non-secret metadata, including its prefix, name, creation time, and revocation
+time.
 
 ```ts
 import { HotUpdater } from "@hot-updater/react-native";
@@ -73,6 +75,9 @@ HotUpdater.init({
   },
 });
 ```
+
+`HotUpdater.init` configures the client but does not start an update check.
+Continue with the [`init + checkForUpdate` flow](/docs/react-native-api/init).
 
 ## Manage API keys
 
@@ -102,9 +107,11 @@ This is an in-process API backed by the configured direct database plugin. It
 does not add API key management routes to `handlers.client` or
 `handlers.admin`.
 
-Managed init uses this same API key domain. For example, AWS init registers an
-existing `HOT_UPDATER_API_KEY` or creates one, then stores the plaintext only in
-the local environment file.
+AWS, Cloudflare, Firebase, and Supabase init use this same API key domain. Init
+registers an existing `HOT_UPDATER_API_KEY` or creates one, then stores the
+plaintext only in the local environment file. Managed users do not run
+`hot-updater api-key create`; that command bootstraps direct self-hosted
+`createHotUpdater` configurations.
 
 ## Rotate an API key
 

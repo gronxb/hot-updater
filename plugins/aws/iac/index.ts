@@ -14,7 +14,7 @@ import {
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
 import type { ApiKeyModel } from "@hot-updater/plugin-core";
-import { createApiKey, registerApiKey } from "@hot-updater/server";
+import { provisionApiKey } from "@hot-updater/server";
 import { execa } from "execa";
 
 import { dynamoDB } from "../src/dynamoDB";
@@ -64,17 +64,11 @@ export const prepareDynamoDBApiKey = async (input: {
   readonly apiKeys: ApiKeyModel;
   readonly existingApiKey?: string;
 }): Promise<string> => {
-  const existingApiKey = input.existingApiKey?.trim();
-  const created = existingApiKey
-    ? await registerApiKey({
-        apiKey: existingApiKey,
-        apiKeys: input.apiKeys,
-        name: "AWS init",
-      })
-    : await createApiKey({
-        apiKeys: input.apiKeys,
-        name: "AWS init",
-      });
+  const created = await provisionApiKey({
+    apiKeys: input.apiKeys,
+    existingApiKey: input.existingApiKey,
+    name: "AWS init",
+  });
   return created.apiKey;
 };
 

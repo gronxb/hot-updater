@@ -196,6 +196,12 @@ and passes the printed value to `HotUpdater.init` in
 alternative. Rotate a deployed credential by creating a replacement, shipping
 clients with the replacement, and revoking the old API key after the rollout.
 
+Managed AWS, Cloudflare, Firebase, and Supabase init create and register the
+first API key automatically. A rerun reuses the existing
+`HOT_UPDATER_API_KEY`, so managed users do not run the self-hosted
+`hot-updater api-key create` command. Managed React Native setup passes that
+value to `HotUpdater.init` through the `x-api-key` request header.
+
 ## Configuration and server composition
 
 CLI configuration now receives direct plugin objects:
@@ -372,6 +378,10 @@ Custom GraphQL, RPC, and other transports must expose the v1 Release Catalog,
 artifact, Analytics-event, and `/version` HTTP protocol through an adapter or
 proxy, then pass that endpoint as `baseURL`. There is no React Native callback
 escape hatch for replacing only part of the protocol.
+
+Do not configure `HotUpdater.init` and `HotUpdater.wrap` in the same app. Mixed
+usage now reports a one-time `console.error`. Use `init + checkForUpdate` for a
+custom or manual flow, or use `wrap` for the automatic HOC flow.
 
 `NotifyAppReadyResult` changes shape:
 

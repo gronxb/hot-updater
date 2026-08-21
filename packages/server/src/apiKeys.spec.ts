@@ -8,6 +8,7 @@ import {
   createApiKeyManagement,
   hashApiKey,
   normalizeApiKeyHeaderName,
+  provisionApiKey,
   registerApiKey,
 } from "./apiKeys";
 
@@ -115,6 +116,23 @@ describe("API keys", () => {
         name: "   ",
       }),
     ).rejects.toThrow("1-64 visible characters");
+  });
+
+  it("provisions a new key once and reuses an existing managed key", async () => {
+    const database = createInMemoryDatabasePlugin();
+
+    const created = await provisionApiKey({
+      apiKeys: database.models.apiKeys,
+      name: "Managed init",
+    });
+    const reused = await provisionApiKey({
+      apiKeys: database.models.apiKeys,
+      existingApiKey: created.apiKey,
+      name: "Managed init rerun",
+    });
+
+    expect(reused).toEqual(created);
+    expect(await database.models.apiKeys.list()).toHaveLength(1);
   });
 
   it("manages keys without exposing stored hashes", async () => {

@@ -1,6 +1,6 @@
 ---
 title: "Quick Start"
-description: Get started with a self-hosted Hot Updater server in 5 minutes.
+description: Set up a self-hosted Hot Updater server and connect a React Native app.
 icon: Rocket
 version: "v0.22.0"
 ---
@@ -15,6 +15,12 @@ npm install @hot-updater/server @hot-updater/aws hono @hono/node-server kysely b
 
 ```package-install
 npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater @types/better-sqlite3 tsx
+```
+
+In your React Native app, install the client package separately:
+
+```package-install
+npm install @hot-updater/react-native
 ```
 
 ## Database Setup
@@ -151,7 +157,10 @@ npx hot-updater api-key create src/hotUpdater.ts --name "Mobile app"
 ```
 
 Copy the plaintext API key from the command output now. Hot Updater persists
-only its hash and cannot show the plaintext again.
+only its hash and cannot show the plaintext again. Store the key in your
+existing React Native build-time configuration, do not commit it to source,
+and do not reuse it as an admin credential. The server's `.env.hotupdater` file
+is not loaded into the React Native app automatically.
 
 ## Run Server
 
@@ -211,6 +220,8 @@ printed by the bootstrap command above.
 
 ```typescript title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
+import { useEffect } from "react";
+import { Text } from "react-native";
 
 HotUpdater.init({
   baseURL: "http://localhost:3000/hot-updater", // [!code ++]
@@ -219,17 +230,38 @@ HotUpdater.init({
   },
   analytics: true,
 });
+
+function App() {
+  useEffect(() => {
+    void HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
+      .then(async (updateInfo) => {
+        if (!updateInfo) return;
+        await updateInfo.updateBundle();
+        if (updateInfo.shouldForceUpdate) await HotUpdater.reload();
+      })
+      .catch(console.error);
+  }, []);
+
+  return <Text>Hello Hot Updater</Text>;
+}
+
+export default App;
 ```
+
+<Callout type="warn">
+  `localhost` works from the iOS Simulator on the same Mac. Use `10.0.2.2` from
+  the Android Emulator, or your development machine's LAN/HTTPS address from a
+  physical device.
+</Callout>
 
 The React Native `baseURL` always points to the client root. Never put the
 admin bearer token in the app. The API key is scoped to client update and
 Analytics ingestion routes and is sent using `x-api-key`.
 
 `HotUpdater.init` initializes the client but does not start an update check.
-Call `HotUpdater.checkForUpdate()` when your app is ready; see the
-[Custom Update guide](/docs/guides/custom-update) for the complete manual flow.
-For automatic HOC-managed checks, pass the same `baseURL` and `requestHeaders`
-to `HotUpdater.wrap` together with an `updateStrategy`.
+The example calls `HotUpdater.checkForUpdate()` when the app mounts. See the
+[Custom Update guide](/docs/guides/custom-update) when you need different
+timing or update UI.
 
 ## Unauthenticated Alternative
 

@@ -21,11 +21,12 @@ query, Bundle management, or API key management access.
 
 Add `hot-updater api-key create`, `list`, and `revoke` for self-hosted
 deployments. Creation returns the plaintext API key exactly once, while the
-database stores only its SHA-256 hash and non-secret metadata. Managed AWS init
-uses the same API key domain and persists the plaintext only in the local
-`HOT_UPDATER_API_KEY` environment entry. Console API key management uses the
-same domain directly. `createHotUpdater(...).apiKeys` exposes the common local
-create, list, and revoke management API without adding an HTTP management route.
+database stores only its SHA-256 hash and non-secret metadata. Managed AWS,
+Cloudflare, Firebase, and Supabase init use the same API key domain and persist
+the plaintext only in the local `HOT_UPDATER_API_KEY` environment entry.
+Console API key management uses the same domain directly.
+`createHotUpdater(...).apiKeys` exposes the common local create, list, and
+revoke management API without adding an HTTP management route.
 Self-hosted setup now recommends the `api-key` client policy: migrate the direct
 database, create a key from the same config, then pass the one-time plaintext to
 React Native through `x-api-key`. The `public` policy remains an explicit

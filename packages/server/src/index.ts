@@ -8,7 +8,12 @@ export type {
 export { createAnalyticsProvider } from "./analytics/bounded/provider";
 export type * from "./analytics/domain";
 export type { AnalyticsProvider } from "./analytics/types";
-export { API_KEY_HEADER_NAME, createApiKey, registerApiKey } from "./apiKeys";
+export {
+  API_KEY_HEADER_NAME,
+  createApiKey,
+  provisionApiKey,
+  registerApiKey,
+} from "./apiKeys";
 export type {
   ApiKeyManagementAPI,
   ApiKeyMetadata,

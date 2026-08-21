@@ -25,7 +25,7 @@ import {
   createDatabaseClient,
   createUUIDv7,
 } from "@hot-updater/plugin-core";
-import { createHotUpdater } from "@hot-updater/server";
+import { createHotUpdater, registerApiKey } from "@hot-updater/server";
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -46,6 +46,7 @@ const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
 const FUNCTION_NAME = "hot-updater-function";
 const FUNCTION_BASE_PATH = `/${FUNCTION_NAME}`;
 const AUTHORITY_ID = "supabase.runtime-acceptance";
+const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 const BUCKET_NAME = "hot-updater-bundles";
 const DENO_DOCKER_IMAGE = "denoland/deno:alpine";
 const DENO_CACHE_VOLUME = "hot-updater-supabase-deno-cache";
@@ -309,6 +310,11 @@ describe.sequential("supabase edge runtime acceptance", () => {
     database = supabaseDatabase({
       supabaseUrl: gatewayBaseUrl,
       supabaseServiceRoleKey: SERVICE_ROLE_KEY,
+    });
+    await registerApiKey({
+      apiKey: API_KEY,
+      apiKeys: database.models.apiKeys,
+      name: "Runtime acceptance",
     });
     databaseClient = createDatabaseClient(database);
 
@@ -701,8 +707,14 @@ describe.sequential("supabase edge runtime acceptance", () => {
     await seedHotUpdater.insertBundle(bundle);
     await seedProductionRelease({ bundle, database });
 
+    const unauthorized = await fetch(
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0`,
+    );
+    expect(unauthorized.status).toBe(401);
+
     const response = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0`,
+      { headers: { "x-api-key": API_KEY } },
     );
 
     expect(response.ok).toBe(true);

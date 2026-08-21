@@ -23,7 +23,7 @@ import {
   commitReleaseCatalogMutations,
   createUUIDv7,
 } from "@hot-updater/plugin-core";
-import { createHotUpdater } from "@hot-updater/server";
+import { createHotUpdater, registerApiKey } from "@hot-updater/server";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
@@ -44,6 +44,7 @@ const __dirname = path.dirname(__filename);
 const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
 const REGION = "us-central1";
 const FUNCTION_NAME = "hot-updater";
+const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 const FIREBASE_CLI_VERSION_ARGS = [
   "--filter",
   "@hot-updater/firebase",
@@ -297,6 +298,11 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     };
 
     database = firebaseDatabase({ ...adminOptions, authorityId: projectId });
+    await registerApiKey({
+      apiKey: API_KEY,
+      apiKeys: database.models.apiKeys,
+      name: "Runtime acceptance",
+    });
     seedHotUpdater = createHotUpdater({
       authorityId: projectId,
       database,
@@ -397,8 +403,14 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       database,
     });
 
+    const unauthorized = await invokeHandler(
+      "/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0",
+    );
+    expect(unauthorized.status).toBe(401);
+
     const response = await invokeHandler(
       "/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0",
+      { headers: { "x-api-key": API_KEY } },
     );
 
     await expect(response.json()).resolves.toMatchObject({

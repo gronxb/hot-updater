@@ -25,7 +25,7 @@ const hotUpdater = createHotUpdater({
     supabaseUrl,
     supabaseServiceRoleKey,
   }),
-  clientAccess: { type: "public" },
+  clientAccess: { type: "api-key" },
   storage: [
     supabaseStorage({
       supabaseUrl,

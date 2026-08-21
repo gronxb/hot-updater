@@ -21,8 +21,10 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
+import { provisionApiKey } from "@hot-updater/server";
 import { Cloudflare } from "cloudflare";
 
+import { d1Database } from "../src/d1Database";
 import { createWrangler } from "../src/utils/createWrangler";
 import {
   validateCloudflareApiToken,
@@ -87,10 +89,16 @@ function App() {
   return null; // Replace with your app root
 }
 
-export default HotUpdater.wrap({
+HotUpdater.init({
   baseURL: "%%source%%",
-  updateStrategy: "appVersion", // or "fingerprint"
-})(App);`;
+  requestHeaders: {
+    "x-api-key": %%apiKey%%,
+  },
+});
+
+// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
+// when your app is ready to check.
+export default App;`;
 
 const deployWorker = async (
   apiToken: string,
@@ -213,9 +221,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile);
   const { managedEnv } = initEnvSources;
-  const existingInputs = resolveCloudflareInitInputs(
-    getHotUpdaterInitInputEnv(initEnvSources, nonInteractive),
+  const initInputEnv = getHotUpdaterInitInputEnv(
+    initEnvSources,
+    nonInteractive,
   );
+  const existingInputs = resolveCloudflareInitInputs(initInputEnv);
   assertCloudflareNonInteractiveInputs(existingInputs, nonInteractive);
   const {
     accessKeyId: existingR2AccessKeyId,
@@ -713,6 +723,25 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     workerName,
   });
 
+  const databasePlugin = d1Database({
+    accountId,
+    cloudflareApiToken: apiToken,
+    databaseId: selectedD1DatabaseId,
+  });
+  let apiKey: string;
+  try {
+    apiKey = (
+      await provisionApiKey({
+        apiKeys: databasePlugin.models.apiKeys,
+        existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
+        name: "Cloudflare init",
+      })
+    ).apiKey;
+    await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
+  } finally {
+    await databasePlugin.dispose?.();
+  }
+
   const configWriteResult = await writeHotUpdaterConfig(
     getConfigScaffold(build, selectedD1DatabaseId),
   );
@@ -735,6 +764,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   if (subdomains.subdomain) {
     p.note(
       transformTemplate(SOURCE_TEMPLATE, {
+        apiKey: JSON.stringify(apiKey),
         source: `https://${workerName}.${subdomains.subdomain}.workers.dev`,
       }),
     );

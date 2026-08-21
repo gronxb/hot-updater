@@ -149,6 +149,28 @@ export const createApiKey = (input: {
   });
 };
 
+/**
+ * Provisions the client API key used by managed init.
+ *
+ * A saved plaintext key is registered idempotently; otherwise a new key is
+ * created. Callers must persist or display the returned plaintext because the
+ * database stores only its hash.
+ */
+export const provisionApiKey = (input: {
+  readonly apiKeys: ApiKeyModel;
+  readonly existingApiKey?: string;
+  readonly name: string;
+}): Promise<CreatedApiKey> => {
+  const existingApiKey = input.existingApiKey?.trim();
+  return existingApiKey
+    ? registerApiKey({
+        apiKey: existingApiKey,
+        apiKeys: input.apiKeys,
+        name: input.name,
+      })
+    : createApiKey({ apiKeys: input.apiKeys, name: input.name });
+};
+
 export const authenticateApiKey = async (input: {
   readonly beforeLookup?: () => Promise<void>;
   readonly apiKeys: ApiKeyModel;

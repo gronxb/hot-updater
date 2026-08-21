@@ -29,6 +29,9 @@ describe("AWS managed config scaffold", () => {
 
     expect(source).toContain('baseURL: "https://example.cloudfront.net"');
     expect(source).toContain('"x-api-key": "api-key"');
+    expect(source).toContain("HotUpdater.init({");
+    expect(source).toContain("HotUpdater.checkForUpdate");
+    expect(source).not.toContain("HotUpdater.wrap");
     expect(source).toContain("return null; // Replace with your app root.");
     expect(source).not.toContain("authorityId");
     expect(source).not.toContain("YourApp");

@@ -16,9 +16,17 @@ import {
   transformEnv,
   transformTemplate,
 } from "@hot-updater/cli-tools";
+import { provisionApiKey } from "@hot-updater/server";
 import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
+import {
+  applicationDefault,
+  cert,
+  deleteApp,
+  getApps,
+} from "firebase-admin/app";
 
+import { firebaseDatabase } from "../src/firebaseDatabase";
 import { inputFirebaseApplicationCredentials } from "./firebaseApplicationCredentials";
 import { assertFirebaseInfrastructureCanInitialize } from "./firebaseInfrastructureState";
 import {
@@ -39,10 +47,16 @@ function App() {
   return null; // Replace with your app root
 }
 
-export default HotUpdater.wrap({
+HotUpdater.init({
   baseURL: "%%source%%",
-  updateStrategy: "appVersion", // or "fingerprint"
-})(App);`;
+  requestHeaders: {
+    "x-api-key": %%apiKey%%,
+  },
+});
+
+// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
+// when your app is ready to check.
+export default App;`;
 
 const getFirebaseRuntimePackageInfo = () => {
   const firebasePackageRoot = path.dirname(
@@ -298,6 +312,7 @@ const deployHosting = async (
 };
 
 const printTemplate = async (
+  apiKey: string,
   projectId: string,
   region: string,
   cliEnv?: FirebaseCliEnv,
@@ -323,6 +338,7 @@ const printTemplate = async (
 
     p.note(
       transformTemplate(SOURCE_TEMPLATE, {
+        apiKey: JSON.stringify(apiKey),
         source: functionUrl,
       }),
     );
@@ -349,9 +365,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
   const { managedEnv } = initEnvSources;
-  const savedInputs = resolveFirebaseInitInputs(
-    getHotUpdaterInitInputEnv(initEnvSources, nonInteractive),
+  const initInputEnv = getHotUpdaterInitInputEnv(
+    initEnvSources,
+    nonInteractive,
   );
+  const savedInputs = resolveFirebaseInitInputs(initInputEnv);
   assertFirebaseNonInteractiveInputs(savedInputs, nonInteractive);
   let applicationCredentials = savedInputs.applicationCredentials;
   const cliEnv = nonInteractive
@@ -477,6 +495,35 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   ]);
 
   await deployFirestore(tmpDir, nonInteractive, cliEnv);
+  const credential = applicationCredentials
+    ? cert(
+        JSON.parse(await fs.promises.readFile(applicationCredentials, "utf-8")),
+      )
+    : applicationDefault();
+  const existingApps = new Set(getApps());
+  const databasePlugin = firebaseDatabase({
+    authorityId: initializeVariable.projectId,
+    credential,
+    projectId: initializeVariable.projectId,
+  });
+  let apiKey: string;
+  try {
+    apiKey = (
+      await provisionApiKey({
+        apiKeys: databasePlugin.models.apiKeys,
+        existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
+        name: "Firebase init",
+      })
+    ).apiKey;
+    await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
+  } finally {
+    await databasePlugin.dispose?.();
+    await Promise.all(
+      getApps()
+        .filter((app) => !existingApps.has(app))
+        .map((app) => deleteApp(app)),
+    );
+  }
   await deployFunctions(tmpDir, nonInteractive, cliEnv);
   await deployHosting(tmpDir, nonInteractive, cliEnv);
 
@@ -573,7 +620,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     await removeTmpDir();
     process.exit(1);
   }
-  await printTemplate(initializeVariable.projectId, currentRegion, cliEnv);
+  await printTemplate(
+    apiKey,
+    initializeVariable.projectId,
+    currentRegion,
+    cliEnv,
+  );
   await removeTmpDir();
 
   p.log.message(
