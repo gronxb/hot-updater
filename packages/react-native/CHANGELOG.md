@@ -1,5 +1,17 @@
 # @hot-updater/react-native
 
+## 0.36.3
+
+### Patch Changes
+
+- 716d6d1: Log a single error when `HotUpdater.init()` and `HotUpdater.wrap()` are used
+  together, with guidance to use `init()` for manual update flows or `wrap()` for
+  the automatic HOC flow.
+  - @hot-updater/cli-tools@0.36.3
+  - @hot-updater/core@0.36.3
+  - @hot-updater/js@0.36.3
+  - @hot-updater/plugin-core@0.36.3
+
 ## 0.36.2
 
 ### Patch Changes

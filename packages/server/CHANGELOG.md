@@ -1,5 +1,14 @@
 # @hot-updater/server
 
+## 0.36.3
+
+### Patch Changes
+
+- @hot-updater/bsdiff@0.36.3
+- @hot-updater/core@0.36.3
+- @hot-updater/js@0.36.3
+- @hot-updater/plugin-core@0.36.3
+
 ## 0.36.2
 
 ### Patch Changes
