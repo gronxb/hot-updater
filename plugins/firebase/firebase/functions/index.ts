@@ -27,12 +27,12 @@ if (!storageBucket) {
 }
 
 const hotUpdater = createHotUpdater({
-  analytics: true,
   authorityId: HotUpdater.AUTHORITY_ID,
   database: firebaseDatabase({
     ...adminOptions,
     authorityId: HotUpdater.AUTHORITY_ID,
   }),
+  features: { clientAccessKeys: false },
   storage: [
     firebaseStorage({
       ...adminOptions,

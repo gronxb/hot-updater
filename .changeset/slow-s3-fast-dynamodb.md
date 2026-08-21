@@ -11,9 +11,10 @@ migration, server kernel, or managed preset dependency.
 Use DynamoDB by default for new AWS `hot-updater init` installations,
 including table provisioning, Lambda@Edge reads, resource-scoped IAM access,
 generated config, and CloudFront invalidation. The packaged DynamoDB runtime
-enables the server's built-in Analytics and client access-key features. Client
-keys are created through the Console and stored by the official access-key
-port; init does not generate or retain plaintext keys. DynamoDB is the only
+uses the always-available server Analytics domain and requires client access
+keys for OTA reads and Analytics ingestion. Client keys are created through the
+Console and stored by the official access-key port; init does not generate or
+retain plaintext keys. DynamoDB is the only
 AWS metadata database; S3 remains available for bundle artifact storage.
 
 Store any number of bundle, patch, Analytics event, and access-key rows while

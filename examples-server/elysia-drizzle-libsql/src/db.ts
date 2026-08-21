@@ -7,11 +7,11 @@ import { client, db } from "./drizzle";
 
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
-  analytics: true,
   database: drizzleAdapter({
     db,
     provider: "sqlite",
   }),
+  features: { clientAccessKeys: false },
   storage: [
     mockStorage({}),
     s3Storage({

@@ -335,6 +335,7 @@ export default defineConfig({
 export const hotUpdater = createHotUpdater({
   authorityId: "project-01",
   database: myDatabase({ db }),
+  features: { clientAccessKeys: false },
   storage,
 });
 ```

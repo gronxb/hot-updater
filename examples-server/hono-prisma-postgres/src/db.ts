@@ -11,6 +11,7 @@ export const hotUpdater = createHotUpdater({
     prisma,
     provider: "postgresql",
   }),
+  features: { clientAccessKeys: false },
   storage: [
     mockStorage({}),
     s3Storage({

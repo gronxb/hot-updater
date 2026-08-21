@@ -22,12 +22,21 @@ import { drizzleAdapter } from "../adapters/drizzle";
 import { kyselyAdapter } from "../adapters/kysely";
 import { mongoAdapter } from "../adapters/mongodb";
 import { prismaAdapter } from "../adapters/prisma";
-import { createHotUpdater } from "../index";
+import {
+  createHotUpdater as createRuntimeHotUpdater,
+  type CreateHotUpdaterOptions,
+} from "../index";
 import { bundleToRow } from "./bundleRows";
 import { createTableSql, hotUpdaterSchemaVersions } from "./hotUpdaterSchema";
 import { createMigrator, generateSchema } from "./index";
 import { generateDrizzleSchema } from "./schemaGenerators";
 import type { DatabasePlugin, ORMProvider } from "./types";
+
+const createHotUpdater = (options: Omit<CreateHotUpdaterOptions, "features">) =>
+  createRuntimeHotUpdater({
+    ...options,
+    features: { clientAccessKeys: false },
+  });
 
 const RAW_PRISMA_SCHEMA = `model bundles {
   id String @id

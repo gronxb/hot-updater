@@ -18,9 +18,9 @@ export type CloudflareWorkerEnv = {
 export const HOT_UPDATER_BASE_PATH = "/";
 
 const hotUpdater = createHotUpdater({
-  analytics: true,
   authorityId: env.AUTHORITY_ID,
   database: d1Database(env.DB),
+  features: { clientAccessKeys: false },
   storage: [
     r2Storage({
       bucket: env.BUCKET,

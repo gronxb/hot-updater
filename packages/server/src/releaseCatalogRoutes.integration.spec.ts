@@ -79,7 +79,11 @@ const createCatalogDatabase = async () => {
 describe("Release catalog routes", () => {
   it("serves the compiled app-version projection with cache identity and ETag revalidation", async () => {
     const database = await createCatalogDatabase();
-    const hotUpdater = createHotUpdater({ authorityId, database });
+    const hotUpdater = createHotUpdater({
+      authorityId,
+      database,
+      features: { clientAccessKeys: false },
+    });
     const catalogRead = vi.spyOn(
       database.models.releaseCatalogs,
       "findByScopeKey",
@@ -151,7 +155,11 @@ describe("Release catalog routes", () => {
       database.models.releaseCatalogs,
       "findByScopeKey",
     );
-    const hotUpdater = createHotUpdater({ authorityId, database });
+    const hotUpdater = createHotUpdater({
+      authorityId,
+      database,
+      features: { clientAccessKeys: false },
+    });
     const url =
       `https://updates.example.com/release-catalogs/app-version/` +
       `${authorityId}/ios/${channelKey}/1.5.0`;

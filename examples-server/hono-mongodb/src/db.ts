@@ -16,11 +16,11 @@ config({ path: path.join(__dirname, ".env.hotupdater") });
 // Create Hot Updater instance for CLI
 // Note: MongoDB connection must be established before using this instance
 export const hotUpdater = createHotUpdater({
-  analytics: true,
   database: mongoAdapter({
     client,
     transactions: true,
   }),
+  features: { clientAccessKeys: false },
   storage: [
     mockStorage({}),
     s3Storage({

@@ -20,11 +20,11 @@ Move the canonical admin root from `/hot-updater/api` to
 that root and sends mount-relative Bundle, Release, Release Catalog, Channel,
 and database-commit requests. Managed runtimes mount only the client handler.
 
-Remove the `features` wrapper, including `features.bundles`,
-`features.updateCheck`, and Analytics `queryAccess`. `analytics` and
-`clientAccessKeys` are top-level opt-in booleans that default to `false`. The
-client handler always owns update routes, Analytics ingestion stays on the
-client surface, and Analytics queries move to the admin surface.
+Remove `features.bundles`, `features.updateCheck`, and Analytics `queryAccess`.
+The required `features` object now contains only the explicit
+`clientAccessKeys: boolean` authentication policy. The client handler always
+owns update routes and Analytics ingestion, while Analytics queries move to the
+admin surface.
 `toNodeHandler` now accepts one handler function. React Native keeps the same
 client `baseURL` and resolves handler-relative storage paths against it,
 removing the server's `basePath` option. Client authentication uses `x-api-key`,

@@ -382,9 +382,8 @@ import { createHotUpdater } from "@hot-updater/server";
 const hotUpdater = createHotUpdater({
   authorityId: "project-01",
   database,
+  features: { clientAccessKeys: true },
   storage: [storage],
-  analytics: true,
-  clientAccessKeys: true,
 });
 ```
 
@@ -399,9 +398,9 @@ opt-in; there is no built-in admin authenticator.
 patches, Releases, Release Catalogs, Channels, and the conditional commit that
 keeps those records consistent. It does not expose Analytics or client
 access-key administration. The server-side `database` passed to
-`createHotUpdater` owns those additional official domains, and the top-level
-`analytics` and `clientAccessKeys` booleans decide whether the self-host runtime
-exposes them. Both options default to `false`.
+`createHotUpdater` owns those additional official domains. Analytics is always
+available, while the required `features.clientAccessKeys` policy decides
+whether client routes require `x-api-key`.
 
 <Callout type="warn">
   The Console cannot read Analytics or manage client access keys through

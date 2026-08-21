@@ -59,8 +59,8 @@ Additional route and handler changes:
 - `authorityId` is part of Release Catalog identity. A non-default value must be
   stable and match across the CLI, server, and React Native client.
 - `HandlerOptions.routes` is removed. The client handler always owns the v1
-  update protocol; optional Analytics and client access-key behavior remains
-  available through the top-level `analytics` and `clientAccessKeys` options.
+  update protocol and Analytics ingestion. Client access-key authentication is
+  configured explicitly through required `features.clientAccessKeys`.
 - The unified `createHandler` and `createHotUpdater().handler` surfaces are
   replaced by `createHandlers(...).client/admin` and
   `createHotUpdater().handlers.client/admin`. The client handler owns
@@ -196,17 +196,20 @@ plugin object directly.
 createHotUpdater({
   authorityId,
   database,
+  features: { clientAccessKeys: false },
   storage: [storagePlugin],
-  analytics: true,
 });
 ```
 
 The following v0 options are removed or renamed:
 
 - `storages` and deprecated `storagePlugins` become `storage`.
-- The optional Analytics and client access-key switches are top-level
-  `analytics` and `clientAccessKeys` booleans; both default to `false`. Update
-  routes are always present on `handlers.client`.
+- Analytics ingestion and query routes are always available. React Native
+  clients independently control automatic event reporting with
+  `HotUpdater.init({ analytics })`.
+- `features` is required and contains the explicit
+  `clientAccessKeys: boolean` authentication policy. Update routes are always
+  present on `handlers.client`.
 - `basePath` is removed. The framework mount and React Native `baseURL` define
   the external client path without duplicating it in `createHotUpdater`.
 - `cwd` is removed.

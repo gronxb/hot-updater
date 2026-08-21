@@ -16,6 +16,7 @@ export {
 export type { CreatedClientAccessKey } from "./clientAccessKeys";
 export { createHotUpdater } from "./createHotUpdaterCore";
 export type {
+  CreateHotUpdaterFeatures,
   CreateHotUpdaterOptions,
   HotUpdaterAPI,
   RuntimeHotUpdaterAPI,

@@ -33,36 +33,14 @@ afterEach(() => {
 });
 
 describe("createHotUpdater Analytics", () => {
-  it.each([undefined, false] as const)(
-    "keeps Analytics routes absent when the feature is %s",
-    async (analytics) => {
-      const hotUpdater = createHotUpdater({
-        database: createInMemoryDatabasePlugin(),
-        ...(analytics === undefined ? {} : { analytics }),
-      });
-
-      expect(hotUpdater.analytics).toBeUndefined();
-      expect((await hotUpdater.handlers.client(eventRequest())).status).toBe(
-        404,
-      );
-      expect(
-        (
-          await hotUpdater.handlers.admin(
-            new Request("https://example.com/installations/overview"),
-          )
-        ).status,
-      ).toBe(404);
-    },
-  );
-
-  it("persists events through the official database domain and serves queries", async () => {
+  it("always persists events and serves queries without a server Analytics flag", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-12T00:00:00.000Z"));
     const database = createInMemoryDatabasePlugin();
     const append = vi.spyOn(database.models.analytics, "append");
     const hotUpdater = createHotUpdater({
-      analytics: true,
       database,
+      features: { clientAccessKeys: false },
     });
 
     const ingestion = await hotUpdater.handlers.client(eventRequest());
@@ -98,8 +76,8 @@ describe("createHotUpdater Analytics", () => {
     );
     const createMigrator = vi.spyOn(database, "createMigrator");
     const hotUpdater = createHotUpdater({
-      analytics: true,
       database,
+      features: { clientAccessKeys: false },
     });
 
     expect((await hotUpdater.handlers.client(eventRequest())).status).toBe(204);
@@ -110,8 +88,8 @@ describe("createHotUpdater Analytics", () => {
 
   it("keeps ingestion and queries on separate handler surfaces", async () => {
     const hotUpdater = createHotUpdater({
-      analytics: true,
       database: createInMemoryDatabasePlugin(),
+      features: { clientAccessKeys: false },
     });
 
     expect((await hotUpdater.handlers.client(eventRequest())).status).toBe(204);
@@ -131,8 +109,8 @@ describe("createHotUpdater Analytics", () => {
 
   it("returns a stable client error for malformed event payloads", async () => {
     const hotUpdater = createHotUpdater({
-      analytics: true,
       database: createInMemoryDatabasePlugin(),
+      features: { clientAccessKeys: false },
     });
 
     const response = await hotUpdater.handlers.client(
@@ -149,8 +127,8 @@ describe("createHotUpdater Analytics", () => {
     "rejects an omitted %s instead of treating it as null",
     async (field) => {
       const hotUpdater = createHotUpdater({
-        analytics: true,
         database: createInMemoryDatabasePlugin(),
+        features: { clientAccessKeys: false },
       });
       const payload: Record<string, unknown> = { ...event };
       delete payload[field];
@@ -163,13 +141,4 @@ describe("createHotUpdater Analytics", () => {
       });
     },
   );
-
-  it("rejects a non-boolean Analytics feature", () => {
-    expect(() =>
-      createHotUpdater({
-        analytics: "enabled" as unknown as boolean,
-        database: createInMemoryDatabasePlugin(),
-      }),
-    ).toThrow("analytics must be a boolean.");
-  });
 });

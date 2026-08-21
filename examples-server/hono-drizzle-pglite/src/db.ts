@@ -15,6 +15,7 @@ export const hotUpdater = createHotUpdater({
     schema,
     transaction: true,
   }),
+  features: { clientAccessKeys: false },
   storage: [
     mockStorage({}),
     s3Storage({

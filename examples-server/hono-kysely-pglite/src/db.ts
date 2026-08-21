@@ -28,11 +28,11 @@ const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
 
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
-  analytics: true,
   database: kyselyAdapter({
     db: kysely,
     provider: "postgresql",
   }),
+  features: { clientAccessKeys: false },
   storage: [
     mockStorage({}),
     s3Storage({

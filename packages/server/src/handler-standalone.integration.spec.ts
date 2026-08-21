@@ -27,8 +27,8 @@ const db = new PGlite();
 const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
 const clientMountPath = "/hot-updater";
 const api = createHotUpdater({
-  analytics: true,
   database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
+  features: { clientAccessKeys: false },
 });
 const baseUrl = "http://localhost:3000";
 const server = setupServer();
@@ -226,8 +226,8 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
   it("keeps Standalone management routes separate from client access-key protection", async () => {
     const protectedApi = createHotUpdater({
-      clientAccessKeys: true,
       database: createInMemoryDatabasePlugin(),
+      features: { clientAccessKeys: true },
     });
     server.use(
       http.all(`${baseUrl}/protected-hot-updater/*`, async ({ request }) => {
@@ -464,6 +464,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
   it("works when handlers are mounted under a custom client path", async () => {
     const customApi = createHotUpdater({
       database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
+      features: { clientAccessKeys: false },
     });
     server.use(
       http.all(`${baseUrl}/api/v2/*`, async ({ request }) => {
@@ -491,6 +492,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
   it("updates a bundle without creating a duplicate row", async () => {
     const memoryApi = createHotUpdater({
       database: createInMemoryDatabasePlugin(),
+      features: { clientAccessKeys: false },
     });
     server.use(
       http.all(`${baseUrl}/memory-hot-updater/*`, async ({ request }) => {

@@ -61,7 +61,7 @@ export const hotUpdater = createHotUpdater({
     supabaseUrl: Deno.env.get("SUPABASE_URL")!,
     supabaseServiceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   }),
-  analytics: true,
+  features: { clientAccessKeys: false },
   // ... other options
 });
 ```

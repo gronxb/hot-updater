@@ -315,6 +315,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
     seedHotUpdater = createHotUpdater({
       authorityId: AUTHORITY_ID,
       database,
+      features: { clientAccessKeys: false },
       storage: [
         supabaseStorage({
           supabaseUrl: gatewayBaseUrl,

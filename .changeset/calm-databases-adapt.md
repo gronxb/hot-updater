@@ -86,12 +86,12 @@ binding through `d1Database(database)`, while `@hot-updater/supabase/edge`
 exports the Edge-compatible `supabaseDatabase` and `supabaseStorage`. Root
 entrypoints remain the configuration-time providers.
 
-Self-hosted runtimes configure optional behavior through the top-level
-`analytics` and `clientAccessKeys` booleans on `createHotUpdater`; both default
-to `false`. `analytics` mounts Analytics ingestion and query routes backed by
-`database.models.analytics`, while `clientAccessKeys` protects update checks
-and Analytics ingestion through `database.models.clientAccessKeys`. Client
-update routes are always available on `handlers.client`, while admin routes are
-exposed only by explicitly mounting `handlers.admin`. The CLI-only
+Self-hosted runtimes always expose Analytics ingestion and query capabilities
+backed by `database.models.analytics`. Every `createHotUpdater` call explicitly
+sets the required `features.clientAccessKeys` authentication policy, which can
+protect update checks and Analytics ingestion through
+`database.models.clientAccessKeys`. Client update routes are always available
+on `handlers.client`, while admin routes are exposed only by explicitly
+mounting `handlers.admin`. The CLI-only
 `standaloneRepository` stays a bundle repository; the physical database passed
 to the self-hosted `createHotUpdater` instance owns the full official contract.

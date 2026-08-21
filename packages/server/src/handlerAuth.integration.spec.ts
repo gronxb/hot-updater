@@ -9,6 +9,7 @@ describe("framework-owned admin authentication", () => {
   it("protects admin without affecting the client handler", async () => {
     const hotUpdater = createHotUpdater({
       database: createInMemoryDatabasePlugin(),
+      features: { clientAccessKeys: false },
     });
     const adminToken = "test-management-token";
     const app = new Hono();

@@ -20,12 +20,12 @@ const functionBasePath = `/${functionName}`;
 const hotUpdaterBasePath = "/";
 
 const hotUpdater = createHotUpdater({
-  analytics: true,
   authorityId,
   database: supabaseDatabase({
     supabaseUrl,
     supabaseServiceRoleKey,
   }),
+  features: { clientAccessKeys: false },
   storage: [
     supabaseStorage({
       supabaseUrl,

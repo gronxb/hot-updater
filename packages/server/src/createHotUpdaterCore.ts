@@ -21,28 +21,46 @@ export type RuntimeHotUpdaterAPI = DatabaseAPI & {
   readonly authorityId: string;
   readonly handlers: HotUpdaterHandlers;
   readonly adapterName: string;
-  readonly analytics?: AnalyticsProvider;
+  /**
+   * Built-in Analytics provider. Client ingestion and admin query routes are
+   * always mounted; React Native clients independently opt into lifecycle
+   * reporting with `HotUpdater.init({ analytics: true })`.
+   */
+  readonly analytics: AnalyticsProvider;
 };
 
 export type HotUpdaterAPI = RuntimeHotUpdaterAPI;
 
+/**
+ * Client-facing server policy that must be selected explicitly because it
+ * changes whether public OTA routes require authentication.
+ */
+export interface CreateHotUpdaterFeatures {
+  /**
+   * Requires a registered client access key in the `x-api-key` header for
+   * Release Catalog, artifact, and Analytics ingestion requests.
+   *
+   * This is an authentication policy, not merely access-key storage support.
+   * Set this to `false` to keep those client routes public. The `/version`
+   * route and every admin-handler route are unaffected.
+   */
+  readonly clientAccessKeys: boolean;
+}
+
 export interface CreateHotUpdaterOptions {
   /** Stable project/server identity used to isolate Release catalog history. */
   readonly authorityId?: string;
-  /** Mount Analytics ingestion on the client handler and queries on admin. */
-  readonly analytics?: boolean;
-  /** Protect catalog, artifact, and Analytics ingestion routes with `x-api-key`. */
-  readonly clientAccessKeys?: boolean;
   readonly database: DatabasePlugin;
+  /**
+   * Required client-facing security policy. There is no implicit
+   * authentication default.
+   */
+  readonly features: CreateHotUpdaterFeatures;
   /** Storage implementations used to read provider-specific storage URIs. */
   readonly storage?: readonly StoragePlugin[];
 }
 
-const normalizeBooleanOption = (
-  value: boolean | undefined,
-  name: string,
-): boolean => {
-  if (value === undefined) return false;
+const normalizeBooleanFeature = (value: unknown, name: string): boolean => {
   if (typeof value !== "boolean") {
     throw new TypeError(`${name} must be a boolean.`);
   }
@@ -109,26 +127,27 @@ export function createHotUpdaterCore(
     beforeOperation: assertSchemaReady,
     readStorageText,
   });
-  const analyticsEnabled = normalizeBooleanOption(
-    options.analytics,
-    "analytics",
+  if (
+    options.features === null ||
+    typeof options.features !== "object" ||
+    Array.isArray(options.features)
+  ) {
+    throw new TypeError("features must be an object.");
+  }
+  const clientAccessKeysEnabled = normalizeBooleanFeature(
+    options.features.clientAccessKeys,
+    "features.clientAccessKeys",
   );
-  const clientAccessKeysEnabled = normalizeBooleanOption(
-    options.clientAccessKeys,
-    "clientAccessKeys",
-  );
-  const analytics = !analyticsEnabled
-    ? undefined
-    : createAnalyticsProvider({
-        async append(row) {
-          await assertSchemaReady();
-          return plugin.models.analytics.append(row);
-        },
-        async scan(input) {
-          await assertSchemaReady();
-          return plugin.models.analytics.scan(input);
-        },
-      });
+  const analytics = createAnalyticsProvider({
+    async append(row) {
+      await assertSchemaReady();
+      return plugin.models.analytics.append(row);
+    },
+    async scan(input) {
+      await assertSchemaReady();
+      return plugin.models.analytics.scan(input);
+    },
+  });
 
   const handlers = createHotUpdaterHandlers(
     core.api,
@@ -153,7 +172,7 @@ export function createHotUpdaterCore(
     {
       authorityId,
       adapterName: adapterCapabilities.adapterName ?? core.adapterName,
-      ...(analytics === undefined ? {} : { analytics }),
+      analytics,
       handlers,
     },
     core.api,

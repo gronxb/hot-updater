@@ -7,11 +7,11 @@ import { prisma } from "./prisma";
 
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
-  analytics: true,
   database: prismaAdapter({
     prisma,
     provider: "sqlite",
   }),
+  features: { clientAccessKeys: false },
   storage: [
     mockStorage({}),
     s3Storage({

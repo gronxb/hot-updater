@@ -8,6 +8,7 @@ import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryData
 import packageJson from "../package.json" with { type: "json" };
 import { createHotUpdater } from "./index";
 import type {
+  CreateHotUpdaterFeatures,
   CreateHotUpdaterOptions,
   HandlerAPI,
   HandlerOptions,
@@ -18,6 +19,10 @@ import {
 } from "./runtime.testFixtures";
 import { HOT_UPDATER_SCHEMA_VERSION } from "./schema/types";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
+
+const disabledFeatures = {
+  clientAccessKeys: false,
+} satisfies CreateHotUpdaterFeatures;
 
 describe("runtime createHotUpdater", () => {
   it("publishes only the supported runtime and database subpaths", () => {
@@ -34,10 +39,15 @@ describe("runtime createHotUpdater", () => {
     expectTypeOf<HandlerAPI>().toHaveProperty("getBundles");
     expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<"authorityId">();
     expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
-      "analytics" | "authorityId" | "clientAccessKeys" | "database" | "storage"
+      "authorityId" | "database" | "features" | "storage"
     >();
-    expectTypeOf<CreateHotUpdaterOptions>().toHaveProperty("analytics");
-    expectTypeOf<CreateHotUpdaterOptions>().toHaveProperty("clientAccessKeys");
+    expectTypeOf<CreateHotUpdaterOptions>().toHaveProperty("features");
+    expectTypeOf<
+      CreateHotUpdaterOptions["features"]
+    >().toEqualTypeOf<CreateHotUpdaterFeatures>();
+    expectTypeOf<
+      keyof CreateHotUpdaterFeatures
+    >().toEqualTypeOf<"clientAccessKeys">();
   });
 
   it("accepts a direct v2 plugin object without exposing maintenance methods", () => {
@@ -56,6 +66,7 @@ describe("runtime createHotUpdater", () => {
 
     const hotUpdater = createHotUpdater({
       database,
+      features: disabledFeatures,
       storage: [storage],
     });
 
@@ -74,6 +85,7 @@ describe("runtime createHotUpdater", () => {
   it("rejects access when a managed schema is not initialized", async () => {
     const hotUpdater = createHotUpdater({
       database: createSchemaManagedDatabase("kysely", undefined),
+      features: disabledFeatures,
     });
 
     const result = hotUpdater.getBundles({ limit: 10 });
@@ -95,6 +107,7 @@ describe("runtime createHotUpdater", () => {
       expect(() =>
         createHotUpdater({
           database: createRuntimeDatabase(),
+          features: disabledFeatures,
           storage: [storage],
         }),
       ).toThrow(
@@ -106,6 +119,7 @@ describe("runtime createHotUpdater", () => {
   it("rejects access when a managed schema is stale", async () => {
     const hotUpdater = createHotUpdater({
       database: createSchemaManagedDatabase("mongodb", "0.21.0"),
+      features: disabledFeatures,
     });
 
     const result = hotUpdater.getChannels();
@@ -121,7 +135,10 @@ describe("runtime createHotUpdater", () => {
       HOT_UPDATER_SCHEMA_VERSION,
     );
     const createMigrator = vi.spyOn(database, "createMigrator");
-    const hotUpdater = createHotUpdater({ database });
+    const hotUpdater = createHotUpdater({
+      database,
+      features: disabledFeatures,
+    });
 
     await hotUpdater.getChannels();
     await hotUpdater.getChannels();
@@ -132,6 +149,7 @@ describe("runtime createHotUpdater", () => {
   it("keeps the version route mounted on the client handler", async () => {
     const hotUpdater = createHotUpdater({
       database: createRuntimeDatabase(),
+      features: disabledFeatures,
     });
 
     const response = await hotUpdater.handlers.client(
@@ -145,15 +163,22 @@ describe("runtime createHotUpdater", () => {
     });
   });
 
-  it.each(["analytics", "clientAccessKeys"] as const)(
-    "rejects a non-boolean %s option",
-    (option) => {
-      expect(() =>
-        createHotUpdater({
-          database: createRuntimeDatabase(),
-          [option]: "enabled" as unknown as boolean,
-        }),
-      ).toThrow(`${option} must be a boolean.`);
-    },
-  );
+  it("rejects a missing features object", () => {
+    expect(() =>
+      createHotUpdater({
+        database: createRuntimeDatabase(),
+      } as unknown as CreateHotUpdaterOptions),
+    ).toThrow("features must be an object.");
+  });
+
+  it("rejects a non-boolean features.clientAccessKeys value", () => {
+    expect(() =>
+      createHotUpdater({
+        database: createRuntimeDatabase(),
+        features: {
+          clientAccessKeys: "enabled" as unknown as boolean,
+        },
+      }),
+    ).toThrow("features.clientAccessKeys must be a boolean.");
+  });
 });

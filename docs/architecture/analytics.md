@@ -7,21 +7,22 @@ own provider, schema lifecycle, or universal component adapter.
 ```ts
 createHotUpdater({
   database,
-  analytics: true,
+  features: { clientAccessKeys: false },
 });
 ```
 
-When `analytics` is enabled, `createHotUpdater` mounts event ingestion on
-`handlers.client` and Analytics queries on `handlers.admin`. Client access keys
-authenticate event ingestion, Release Catalog, and artifact requests, but they
-do not grant Analytics query access.
+`createHotUpdater` always mounts event ingestion on `handlers.client` and
+Analytics queries on `handlers.admin`. React Native clients independently opt
+into automatic lifecycle reporting with `HotUpdater.init({ analytics: true })`.
+Client access keys authenticate event ingestion, Release Catalog, and artifact
+requests, but they do not grant Analytics query access.
 
 The admin handler does not authenticate itself. Mount it only behind framework
 authentication, or use the database-backed Analytics provider directly from an
 authenticated server surface, as the Console does.
 
-The top-level `analytics` and `clientAccessKeys` options are independent opt-in
-policies and both default to `false`. Client update routes are always present on
+`features.clientAccessKeys` is a required, explicit authentication policy.
+Client update and Analytics ingestion routes are always present on
 `handlers.client`, while mounting `handlers.admin` is the explicit opt-in for
 admin HTTP routes.
 

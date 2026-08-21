@@ -88,6 +88,7 @@ const database = createDatabasePlugin({
 const hotUpdater = createHotUpdater({
   authorityId: AUTHORITY_ID,
   database,
+  features: { clientAccessKeys: false },
 });
 const url =
   `https://updates.example.com/release-catalogs/app-version/` +

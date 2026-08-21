@@ -104,6 +104,7 @@ subpath with the same public plugin name.
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
+  features: { clientAccessKeys: false },
   storage: [
     s3Storage({
       /* AWS S3 config with download URL support */
@@ -126,15 +127,16 @@ plugin owns reads, URL generation, and exact deletion even for `http` or
 `https`. Only when no plugin owns an HTTP(S) URI does Hot Updater use the direct
 URL; an unowned non-HTTP scheme is unsupported.
 
-## Optional runtime policy
+## Runtime policy
 
-`createHotUpdater` exposes two independent top-level opt-in policies. Both
-default to `false`:
+`createHotUpdater` always exposes Analytics ingestion and query capabilities.
+React Native clients independently decide whether to send lifecycle events
+with `HotUpdater.init({ analytics })`.
 
-- `analytics`: client event ingestion and admin query routes backed by
-  `database.models.analytics`
-- `clientAccessKeys`: authentication for update checks and Analytics ingestion
-  backed by `database.models.clientAccessKeys`
+Every server must explicitly set `features.clientAccessKeys`. Set it to `true`
+to require authentication for update checks and Analytics ingestion through
+`database.models.clientAccessKeys`, or `false` to keep those client routes
+public.
 
 Release Catalog, artifact, storage-download, and `/version` routes are always
 available on `handlers.client`. Bundle, Release, Release Catalog row, Channel,
@@ -145,20 +147,18 @@ mount.
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
+  features: { clientAccessKeys: true },
   storage: [
     s3Storage({
       /* storage config */
     }),
   ],
-  analytics: true,
-  clientAccessKeys: true,
 });
 ```
 
-`analytics: true` enables ingestion on `handlers.client` and queries on
-`handlers.admin`. The server does not authenticate admin queries itself; the
-framework middleware protecting the admin mount owns that decision. `false`
-or an omitted `analytics` option disables Analytics routes.
+Analytics ingestion is available on `handlers.client` and queries are
+available on `handlers.admin`. The server does not authenticate admin queries
+itself; the framework middleware protecting the admin mount owns that decision.
 
 <Callout type="warn">
 **Recommendation: Match Your CLI Configuration**

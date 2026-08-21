@@ -115,6 +115,8 @@ import { s3Storage } from "@hot-updater/aws";
 import { createHotUpdater } from "@hot-updater/server";
 
 const hotUpdater = createHotUpdater({
+  database,
+  features: { clientAccessKeys: false },
   storage: [
     s3Storage({
       region: process.env.AWS_REGION!,

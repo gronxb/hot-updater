@@ -23,9 +23,11 @@ describe("createHotUpdater client access keys", () => {
     expect(() =>
       createHotUpdater({
         database: createInMemoryDatabasePlugin(),
-        clientAccessKeys: "yes" as unknown as boolean,
+        features: {
+          clientAccessKeys: "yes" as unknown as boolean,
+        },
       }),
-    ).toThrow("clientAccessKeys must be a boolean.");
+    ).toThrow("features.clientAccessKeys must be a boolean.");
   });
 
   it("protects only client OTA and Analytics write routes", async () => {
@@ -37,8 +39,7 @@ describe("createHotUpdater client access keys", () => {
     });
     const hotUpdater = createHotUpdater({
       database,
-      analytics: true,
-      clientAccessKeys: true,
+      features: { clientAccessKeys: true },
     });
 
     expect(
@@ -72,8 +73,7 @@ describe("createHotUpdater client access keys", () => {
     });
     const hotUpdater = createHotUpdater({
       database,
-      analytics: true,
-      clientAccessKeys: true,
+      features: { clientAccessKeys: true },
     });
     const invalidBody = {
       method: "POST",
@@ -104,7 +104,7 @@ describe("createHotUpdater client access keys", () => {
     );
     const hotUpdater = createHotUpdater({
       database,
-      clientAccessKeys: true,
+      features: { clientAccessKeys: true },
     });
 
     const response = await hotUpdater.handlers.client(withApiKey(updateUrl));
@@ -115,17 +115,14 @@ describe("createHotUpdater client access keys", () => {
     });
   });
 
-  it.each([undefined, false])(
-    "keeps client routes public when the access-key feature is %s",
-    async (clientAccessKeys) => {
-      const hotUpdater = createHotUpdater({
-        database: createInMemoryDatabasePlugin(),
-        ...(clientAccessKeys === undefined ? {} : { clientAccessKeys }),
-      });
+  it("keeps client routes public when the access-key feature is false", async () => {
+    const hotUpdater = createHotUpdater({
+      database: createInMemoryDatabasePlugin(),
+      features: { clientAccessKeys: false },
+    });
 
-      expect(
-        (await hotUpdater.handlers.client(new Request(updateUrl))).status,
-      ).toBe(404);
-    },
-  );
+    expect(
+      (await hotUpdater.handlers.client(new Request(updateUrl))).status,
+    ).toBe(404);
+  });
 });
