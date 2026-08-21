@@ -46,7 +46,8 @@ export function wrap(
           setUpdateStatus("CHECK_FOR_UPDATE");
 
           const updateInfo = await checkForUpdate({
-            resolver: restOptions.resolver,
+            analytics: restOptions.analytics,
+            client: restOptions.client,
             updateStrategy: restOptions.updateStrategy,
             requestHeaders: restOptions.requestHeaders,
             requestTimeout: restOptions.requestTimeout,

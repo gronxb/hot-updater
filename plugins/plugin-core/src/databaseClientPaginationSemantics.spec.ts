@@ -1,4 +1,4 @@
-import type { LegacyBundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDatabaseClient } from "./databaseClient";
@@ -7,18 +7,12 @@ import { DatabasePluginInputError } from "./databasePluginCrud";
 import { createMemoryDatabasePlugin } from "./databasePluginMemory.testFixtures";
 import type { DatabasePlugin } from "./types";
 
-const createBundle = (id: string): LegacyBundle => ({
+const createBundle = (id: string): Bundle => ({
   id,
   platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
   fileHash: `hash-${id}`,
   gitCommitHash: null,
-  message: id,
-  channel: "production",
   storageUri: `storage://${id}`,
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
 });
 
 const createFixture = (): {

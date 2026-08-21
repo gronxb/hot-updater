@@ -10,10 +10,6 @@ import { fileURLToPath } from "url";
 import {
   getBundlePatch,
   getBundlePatches,
-  getPatchBaseBundleId,
-  getPatchBaseFileHash,
-  getPatchFileHash,
-  getPatchStorageUri,
 } from "../../../packages/core/src/bundleArtifacts.ts";
 import {
   createReleaseCatalogScopeKey,
@@ -63,7 +59,10 @@ import {
   readE2eScreenStateSnapshot,
   resetE2eScreenState,
 } from "./screen-state.ts";
-import { shouldProbeUpdateCheckVisibility } from "./update-check-visibility.ts";
+import {
+  shouldProbeUpdateCheckVisibility,
+  validateArtifactInfoVisibility,
+} from "./update-check-visibility.ts";
 
 type Platform = "ios" | "android";
 type BundleProfile = "archive300mb" | "default" | "multiAssetReplacement";
@@ -1178,7 +1177,8 @@ async function applyDeployConfig({
   const deployBaseUrl = getControllerReachableAppBaseUrl();
   const sourceWithDeployBaseUrl = sourceWithWarmMetroCache.replace(
     STANDALONE_REPOSITORY_BASE_URL_PATTERN,
-    (_match, prefix: string) => `${prefix}${JSON.stringify(deployBaseUrl)}`,
+    (_match, prefix: string) =>
+      `${prefix}${JSON.stringify(`${deployBaseUrl}/admin`)}`,
   );
 
   await fsPromises.writeFile(
@@ -1380,8 +1380,8 @@ async function verifyConfiguredConsoleAnalytics(args: {
     const client = analytics
       ? createConsoleAnalyticsProviderClient(createAnalyticsProvider(analytics))
       : createConsoleAnalyticsHttpClient({
-          baseUrl: getControllerReachableAppBaseUrl(),
-          headers: getHotUpdaterManagementHeaders(),
+          baseUrl: `${getControllerReachableAppBaseUrl()}/admin`,
+          headers: getHotUpdaterAdminHeaders(),
         });
     for (let attempt = 1; attempt <= 30; attempt += 1) {
       try {
@@ -1548,13 +1548,6 @@ async function patchProviderRelease(
   return result;
 }
 
-function readLegacyPatchAssetPath(bundle: Bundle | null | undefined) {
-  const patchAssetPath = bundle?.metadata?.hbc_patch_asset_path;
-  return typeof patchAssetPath === "string" && patchAssetPath.length > 0
-    ? patchAssetPath
-    : null;
-}
-
 function inferPatchAssetPathFromStorageUri({
   baseBundleId,
   patchStorageUri,
@@ -1598,17 +1591,11 @@ function resolvePatchAssetPath(
   baseBundleId: string,
 ) {
   const patchStorageUri = bundle
-    ? (getBundlePatch(bundle, baseBundleId)?.patchStorageUri ??
-      getPatchStorageUri(bundle))
+    ? getBundlePatch(bundle, baseBundleId)?.patchStorageUri
     : null;
-  if (!patchStorageUri) {
-    return readLegacyPatchAssetPath(bundle);
-  }
-
-  return (
-    readLegacyPatchAssetPath(bundle) ??
-    inferPatchAssetPathFromStorageUri({ baseBundleId, patchStorageUri })
-  );
+  return patchStorageUri
+    ? inferPatchAssetPathFromStorageUri({ baseBundleId, patchStorageUri })
+    : null;
 }
 
 function getBundlePatchBaseBundleIds(bundle: Bundle | null | undefined) {
@@ -1633,14 +1620,10 @@ async function resolveAutoPatchBundleDiff(
     const bundle = await fetchProviderBundleById(bundleId);
     const patchAssetPath = resolvePatchAssetPath(bundle, baseBundleId);
     const matchingPatch = getBundlePatch(bundle, baseBundleId);
-    const patchBaseBundleId =
-      matchingPatch?.baseBundleId ?? getPatchBaseBundleId(bundle);
-    const patchBaseFileHash =
-      matchingPatch?.baseFileHash ?? getPatchBaseFileHash(bundle);
-    const patchFileHash =
-      matchingPatch?.patchFileHash ?? getPatchFileHash(bundle);
-    const patchStorageUri =
-      matchingPatch?.patchStorageUri ?? getPatchStorageUri(bundle);
+    const patchBaseBundleId = matchingPatch?.baseBundleId ?? null;
+    const patchBaseFileHash = matchingPatch?.baseFileHash ?? null;
+    const patchFileHash = matchingPatch?.patchFileHash ?? null;
+    const patchStorageUri = matchingPatch?.patchStorageUri ?? null;
 
     observed = {
       bundleId: bundle.id,
@@ -3066,7 +3049,7 @@ function getControllerReachableProviderReadinessUrl({
 }: {
   readonly limit: number;
 }) {
-  const url = new URL(`${getControllerReachableAppBaseUrl()}/api/bundles`);
+  const url = new URL(`${getControllerReachableAppBaseUrl()}/admin/bundles`);
   if (!isLoopbackHost(url.hostname)) {
     return null;
   }
@@ -3153,13 +3136,13 @@ async function patchEnvRuntimeConfigUrl() {
   });
 }
 
-function getHotUpdaterManagementHeaders() {
-  const authToken = readHotUpdaterAuthToken();
-  return authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
+function getHotUpdaterAdminHeaders() {
+  const adminToken = readHotUpdaterAdminToken();
+  return adminToken ? { Authorization: `Bearer ${adminToken}` } : undefined;
 }
 
-function readHotUpdaterAuthToken() {
-  return readHotUpdaterEnvValue("HOT_UPDATER_AUTH_TOKEN");
+function readHotUpdaterAdminToken() {
+  return readHotUpdaterEnvValue("HOT_UPDATER_ADMIN_TOKEN");
 }
 
 function readHotUpdaterApiKey() {
@@ -3174,7 +3157,7 @@ export function getHotUpdaterClientRequestHeaders() {
 }
 
 function readHotUpdaterEnvValue(
-  key: "HOT_UPDATER_API_KEY" | "HOT_UPDATER_AUTH_TOKEN",
+  key: "HOT_UPDATER_API_KEY" | "HOT_UPDATER_ADMIN_TOKEN",
 ) {
   const envValue = process.env[key]?.trim();
   if (envValue) return envValue;
@@ -3223,7 +3206,7 @@ async function waitForLocalProviderReady() {
     for (const url of urls) {
       try {
         const response = await fetch(url, {
-          headers: getHotUpdaterManagementHeaders(),
+          headers: getHotUpdaterAdminHeaders(),
           signal: AbortSignal.timeout(PROVIDER_READY_HTTP_TIMEOUT_MS),
         });
         if (!response.ok) {
@@ -3434,10 +3417,10 @@ function rewriteProxiedUpdatePath(pathname: string) {
   if (
     segments[0] === "release-catalogs" &&
     (segments[1] === "app-version" || segments[1] === "fingerprint") &&
-    segments[4]
+    segments[3]
   ) {
-    const channel = decodeChannelKey(decodeURIComponent(segments[4]));
-    segments[4] = encodeChannelKey(
+    const channel = decodeChannelKey(decodeURIComponent(segments[3]));
+    segments[3] = encodeChannelKey(
       !channelNamespace || channel.startsWith(`${channelNamespace}-`)
         ? channel
         : getFixtureChannel(channel),
@@ -3463,11 +3446,21 @@ function toAppReachableProxyUrl(url: string) {
 }
 
 function rewriteRemoteAssetUrl(value: unknown): unknown {
-  if (typeof value !== "string" || !/^https?:\/\//.test(value)) {
+  if (typeof value !== "string") {
     return value;
   }
 
-  return toAppReachableProxyUrl(value);
+  if (/^https?:\/\//.test(value)) {
+    return toAppReachableProxyUrl(value);
+  }
+
+  if (value.startsWith("/storage/")) {
+    return toAppReachableProxyUrl(
+      `${getControllerReachableAppBaseUrl()}/${value.slice(1)}`,
+    );
+  }
+
+  return value;
 }
 
 function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
@@ -3535,28 +3528,32 @@ function rewriteReleaseCatalogScope(
     segments[0] !== "hot-updater" ||
     segments[1] !== "release-catalogs" ||
     (segments[2] !== "app-version" && segments[2] !== "fingerprint") ||
-    !segments[3] ||
-    (segments[4] !== "ios" && segments[4] !== "android") ||
+    (segments[3] !== "ios" && segments[3] !== "android") ||
+    !segments[4] ||
     !segments[5]
   ) {
     return payload;
   }
 
-  const authorityId = decodeURIComponent(segments[3]);
-  const channelKey = decodeURIComponent(segments[5]);
+  const authorityId = Reflect.get(payload, "authorityId");
+  if (typeof authorityId !== "string" || authorityId.length === 0) {
+    return payload;
+  }
+
+  const channelKey = decodeURIComponent(segments[4]);
   const scopeKey = createReleaseCatalogScopeKey(
     segments[2] === "app-version"
       ? {
           authorityId,
           channelKey,
-          platform: segments[4],
+          platform: segments[3],
           strategy: "APP_VERSION",
         }
       : {
           authorityId,
           channelKey,
-          fingerprintHash: decodeURIComponent(segments[6] ?? ""),
-          platform: segments[4],
+          fingerprintHash: decodeURIComponent(segments[5]),
+          platform: segments[3],
           strategy: "FINGERPRINT",
         },
   );
@@ -3967,14 +3964,10 @@ function getRemoteAssetProxyTarget(requestUrl: URL) {
 }
 
 function buildCatalogUrl(args: {
-  catalog: Pick<
-    ReleaseCatalogRow,
-    "authority_id" | "fingerprint_hash" | "strategy"
-  >;
+  catalog: Pick<ReleaseCatalogRow, "fingerprint_hash" | "strategy">;
   channel: string;
 }) {
   const base = {
-    authorityId: args.catalog.authority_id,
     baseUrl: getControllerReachableAppBaseUrl(),
     channel: args.channel,
     platform: fixtureSession.platform,
@@ -4011,6 +4004,7 @@ async function waitForReleaseCatalogVisibility(args: {
   bundleId: string | null;
   catalog: ReleaseCatalogRow;
   channel: string;
+  expectedFileHash: string | null;
   releaseId: string;
   signal?: AbortSignal;
 }) {
@@ -4057,6 +4051,7 @@ async function waitForReleaseCatalogVisibility(args: {
           if (args.bundleId !== null) {
             await waitForArtifactResolution({
               bundleId: args.bundleId,
+              expectedFileHash: args.expectedFileHash,
               signal: args.signal,
             });
           }
@@ -4118,6 +4113,7 @@ async function waitForReleaseCatalogVisibility(args: {
 
 async function waitForArtifactResolution(args: {
   bundleId: string;
+  expectedFileHash: string | null;
   signal?: AbortSignal;
 }) {
   const url = `${getControllerReachableAppBaseUrl()}/artifacts/${encodeURIComponent(
@@ -4134,13 +4130,24 @@ async function waitForArtifactResolution(args: {
       { body: truncateForLog(body), bundleId: args.bundleId, url },
     );
   }
-  const payload = JSON.parse(body) as { id?: unknown };
-  if (payload.id !== args.bundleId) {
-    throw createEndpointError("Artifact resolution returned another Bundle", {
-      bundleId: args.bundleId,
-      payload,
-      url,
-    });
+  const payload: unknown = JSON.parse(body);
+  const validation = validateArtifactInfoVisibility(
+    payload,
+    args.expectedFileHash,
+  );
+  if (!validation.ok) {
+    throw createEndpointError(
+      validation.reason === "file-hash-mismatch"
+        ? "Artifact resolution returned another file hash"
+        : "Artifact resolution returned invalid ArtifactInfo",
+      {
+        bundleId: args.bundleId,
+        expectedFileHash: args.expectedFileHash,
+        payload,
+        validation,
+        url,
+      },
+    );
   }
 }
 
@@ -5498,6 +5505,7 @@ async function deployFixtureBundle(
       bundleId,
       catalog: deployed.catalog,
       channel: remoteChannel,
+      expectedFileHash: bundle.fileHash,
       releaseId: deployed.release.id,
       signal,
     });
@@ -5684,6 +5692,10 @@ async function createFixtureRepublishedRelease(input: {
     bundleId: created.release.bundle_id,
     catalog: created.catalog,
     channel: created.channel.name,
+    expectedFileHash:
+      created.release.bundle_id === null
+        ? null
+        : (await fetchProviderBundleById(created.release.bundle_id)).fileHash,
     releaseId: created.release.id,
   });
 

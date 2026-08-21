@@ -3,7 +3,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   ChannelRow,
-  ClientAccessKeyRow,
+  ApiKeyRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -18,7 +18,7 @@ import {
 import {
   parseFirebaseBundleRow,
   parseFirebaseBundleEventRow,
-  parseFirebaseClientAccessKeyRow,
+  parseFirebaseApiKeyRow,
   parseFirebaseChannelRow,
   parseFirebasePatchRow,
   parseFirebaseReleaseCatalogRow,
@@ -32,7 +32,7 @@ export interface FirebaseDatabaseCollections {
   readonly bundlePatches: CollectionReference<DocumentData>;
   readonly bundleEvents: CollectionReference<DocumentData>;
   readonly channels: CollectionReference<DocumentData>;
-  readonly clientAccessKeys: CollectionReference<DocumentData>;
+  readonly apiKeys: CollectionReference<DocumentData>;
   readonly releaseCatalogs: CollectionReference<DocumentData>;
   readonly releases: CollectionReference<DocumentData>;
   readonly settings: CollectionReference<DocumentData>;
@@ -53,7 +53,7 @@ export const createFirebaseDatabaseCollections = (
   bundlePatches: db.collection("bundle_patches"),
   bundleEvents: db.collection("bundle_events"),
   channels: db.collection("channels"),
-  clientAccessKeys: db.collection("client_access_keys"),
+  apiKeys: db.collection("api_keys"),
   releaseCatalogs: db.collection("release_catalogs"),
   releases: db.collection("releases"),
   settings: db.collection("private_hot_updater_settings"),
@@ -64,7 +64,7 @@ type FixedRow =
   | BundlePatchRow
   | BundleRow
   | ChannelRow
-  | ClientAccessKeyRow
+  | ApiKeyRow
   | ReleaseCatalogRow
   | ReleaseRow;
 type FixedModel =
@@ -72,7 +72,7 @@ type FixedModel =
   | "bundle_patches"
   | "bundles"
   | "channels"
-  | "client_access_keys"
+  | "api_keys"
   | "release_catalogs"
   | "releases";
 
@@ -187,17 +187,14 @@ export const loadFirebaseChannels = async (
   ...channelMap(await collections.channels.get()).values(),
 ];
 
-const clientAccessKeyMap = (
+const apiKeyMap = (
   snapshot: QuerySnapshot<DocumentData>,
-): Map<string, ClientAccessKeyRow> =>
+): Map<string, ApiKeyRow> =>
   documentMap(
-    "client_access_keys",
+    "api_keys",
     snapshot.docs.map((document) => ({
       document,
-      row: parseFirebaseClientAccessKeyRow(
-        document.data(),
-        `client_access_keys/${document.id}`,
-      ),
+      row: parseFirebaseApiKeyRow(document.data(), `api_keys/${document.id}`),
     })),
   );
 
@@ -244,7 +241,7 @@ const toSnapshot = (
     bundlePatches: patchMap(documents[1]),
     bundleEvents: eventMap(documents[2]),
     channels: channelMap(documents[3]),
-    clientAccessKeys: clientAccessKeyMap(documents[4]),
+    apiKeys: apiKeyMap(documents[4]),
     releases: releaseMap(documents[5]),
     releaseCatalogs: releaseCatalogMap(documents[6]),
   };
@@ -259,7 +256,7 @@ export const loadFirebaseDatabaseSnapshot = async (
     patches,
     events,
     channels,
-    clientAccessKeys,
+    apiKeys,
     releases,
     releaseCatalogs,
   ] = await Promise.all([
@@ -267,7 +264,7 @@ export const loadFirebaseDatabaseSnapshot = async (
     collections.bundlePatches.get(),
     collections.bundleEvents.get(),
     collections.channels.get(),
-    collections.clientAccessKeys.get(),
+    collections.apiKeys.get(),
     collections.releases.get(),
     collections.releaseCatalogs.get(),
   ]);
@@ -276,7 +273,7 @@ export const loadFirebaseDatabaseSnapshot = async (
     patches,
     events,
     channels,
-    clientAccessKeys,
+    apiKeys,
     releases,
     releaseCatalogs,
   ]);
@@ -291,7 +288,7 @@ export const loadFirebaseTransactionSnapshot = async (
     patches,
     events,
     channels,
-    clientAccessKeys,
+    apiKeys,
     releases,
     releaseCatalogs,
   ] = await Promise.all([
@@ -299,7 +296,7 @@ export const loadFirebaseTransactionSnapshot = async (
     transaction.get(collections.bundlePatches),
     transaction.get(collections.bundleEvents),
     transaction.get(collections.channels),
-    transaction.get(collections.clientAccessKeys),
+    transaction.get(collections.apiKeys),
     transaction.get(collections.releases),
     transaction.get(collections.releaseCatalogs),
   ]);
@@ -308,7 +305,7 @@ export const loadFirebaseTransactionSnapshot = async (
     patches,
     events,
     channels,
-    clientAccessKeys,
+    apiKeys,
     releases,
     releaseCatalogs,
   ]);
@@ -397,9 +394,9 @@ export const persistFirebaseDatabaseSnapshot = ({
   }
   persistCollection({
     transaction,
-    collection: collections.clientAccessKeys,
-    before: before.clientAccessKeys,
-    after: after.clientAccessKeys,
+    collection: collections.apiKeys,
+    before: before.apiKeys,
+    after: after.apiKeys,
     documentId: (row) => row.id,
   });
   persistCollection({

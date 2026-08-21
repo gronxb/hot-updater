@@ -1,13 +1,15 @@
 import path from "path";
 import { fileURLToPath } from "url";
 
-import type { Bundle, LegacyBundle } from "@hot-updater/core";
+import {
+  type Bundle,
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+} from "@hot-updater/core";
+import { commitReleaseCatalogMutations } from "@hot-updater/plugin-core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
 import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
-import {
-  deleteLegacyBundle,
-  setupBundleMethodsTestSuite,
-} from "@hot-updater/test-utils";
+import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
   assertDockerComposeAvailable,
   cleanupServer,
@@ -206,33 +208,82 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
 
   setupBundleMethodsTestSuite({
     getBundleById: (id: string) => hotUpdater.getBundleById(id),
-    getChannels: () => hotUpdater.getChannels(),
-    insertBundle: (bundle: LegacyBundle) => hotUpdater.insertBundle(bundle),
+    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
     getBundles: (options) => hotUpdater.getBundles(options),
     updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
       hotUpdater.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId: string) =>
-      deleteLegacyBundle(hotUpdater, bundleId),
+      hotUpdater.deleteBundleById(bundleId),
   });
 
   it("allows exactly one concurrent Release/catalog CAS writer", async () => {
     const database = prismaAdapter({ prisma, provider: "postgresql" });
     const id = "0198a5b0-0000-7000-8000-000000000001";
+    const channelName = "prisma-concurrency";
+    const channelKey = encodeChannelKey(channelName);
+    const scopeKey = createReleaseCatalogScopeKey({
+      authorityId: hotUpdater.authorityId,
+      channelKey,
+      platform: "ios",
+      strategy: "APP_VERSION",
+    });
+    const channel = (
+      await database.models.channels.insert({
+        row: { id: `channel:${channelKey}`, name: channelName },
+        onConflict: "returnExisting",
+      })
+    ).row;
     await hotUpdater.insertBundle({
       id,
       platform: "ios",
-      shouldForceUpdate: false,
-      enabled: true,
       fileHash: "concurrent-target-hash",
       gitCommitHash: null,
-      message: null,
-      channel: "prisma-concurrency",
       storageUri: "storage://concurrent-target",
-      targetAppVersion: "1.0.0",
-      fingerprintHash: null,
+    });
+    const now = Date.now();
+    await commitReleaseCatalogMutations({
+      database,
+      mutations: [
+        {
+          mutation: {
+            operation: "insert",
+            row: {
+              bundle_id: id,
+              channel_id: channel.id,
+              created_at_ms: now,
+              enabled: true,
+              fingerprint_hash: null,
+              id,
+              kind: "BUNDLE",
+              message: null,
+              operation: "DEPLOY",
+              platform: "ios",
+              revision: 1,
+              rollout_cohort_count: 1_000,
+              scope_key: scopeKey,
+              should_force_update: false,
+              source_release_id: null,
+              strategy: "APP_VERSION",
+              target_app_version: "1.0.0",
+              target_cohorts: [],
+              updated_at_ms: now,
+            },
+          },
+          scope: {
+            authorityId: hotUpdater.authorityId,
+            channelId: channel.id,
+            channelName,
+            fingerprintHash: null,
+            platform: "ios",
+            scopeKey,
+            strategy: "APP_VERSION",
+          },
+          updatedAtMs: now,
+        },
+      ],
     });
     const release = await database.models.releases.findById(id);
-    if (release === null) throw new Error("Expected the legacy Release");
+    if (release === null) throw new Error("Expected the seeded Release");
     const catalog = await database.models.releaseCatalogs.findByScopeKey(
       release.scope_key,
     );
@@ -266,8 +317,22 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
 
     expect(results.filter(({ committed }) => committed)).toHaveLength(1);
     expect(results.filter(({ committed }) => !committed)).toHaveLength(1);
-    expect(await database.models.releases.findById(id)).toMatchObject({
+    const updated = await database.models.releases.findById(id);
+    expect(updated).toMatchObject({
       revision: release.revision + 1,
+    });
+    if (updated === null) throw new Error("Expected the updated Release");
+    const disabled = await hotUpdater.updateReleasePolicy({
+      expectedRevision: updated.revision,
+      patch: { enabled: false },
+      releaseId: updated.id,
+    });
+    if (disabled.release === null) {
+      throw new Error("Expected the disabled Release");
+    }
+    await hotUpdater.deleteRelease({
+      expectedRevision: disabled.release.revision,
+      releaseId: disabled.release.id,
     });
   });
 

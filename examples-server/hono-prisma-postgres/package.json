@@ -18,6 +18,7 @@
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/mock": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@prisma/client": "catalog:db",

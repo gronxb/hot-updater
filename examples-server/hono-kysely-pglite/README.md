@@ -51,34 +51,34 @@ GET /
 
 ### Check for Updates
 ```bash
-GET /hot-updater/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion
-GET /hot-updater/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash
+GET /hot-updater/release-catalogs/app-version/:platform/:channelKey/:appVersion
+GET /hot-updater/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash
 ```
 
 `channelKey` is the base64url-encoded channel key produced by the client.
 
-Management routes under `/hot-updater/api/*` require
-`Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>`. Missing or mismatched
+Admin routes under `/hot-updater/admin/*` require
+`Authorization: Bearer <HOT_UPDATER_ADMIN_TOKEN>`. Missing or mismatched
 credentials are rejected.
 
 ### List Bundles
 ```bash
-GET /hot-updater/api/bundles?limit=50
+GET /hot-updater/admin/bundles?limit=50
 ```
 
 ### Create Bundle
 ```bash
-POST /hot-updater/api/bundles
+POST /hot-updater/admin/bundles
 ```
 
 ### Delete Bundle
 ```bash
-DELETE /hot-updater/api/bundles/:id
+DELETE /hot-updater/admin/bundles/:id
 ```
 
 ### List Channels
 ```bash
-GET /hot-updater/api/channels
+GET /hot-updater/admin/channels
 ```
 
 ## Project Structure
@@ -114,7 +114,7 @@ R2_ACCESS_KEY_ID=your-r2-access-key-id
 R2_SECRET_ACCESS_KEY=your-r2-secret-access-key
 R2_BUCKET_NAME=your-r2-bucket-name
 HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY=replace-with-a-long-random-signing-key
-HOT_UPDATER_AUTH_TOKEN=replace-with-a-long-random-token
+HOT_UPDATER_ADMIN_TOKEN=replace-with-a-long-random-token
 ```
 
 You can also use other storage providers by modifying `src/db.ts`.

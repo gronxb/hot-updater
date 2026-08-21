@@ -3,7 +3,7 @@ import { DatabasePluginInputError } from "./databasePluginCrudValidation";
 import { isChannelText, isRecord } from "./databasePluginCrudValidationFields";
 import {
   validateBundleUpdateData,
-  validateClientAccessKeyUpdateData,
+  validateApiKeyUpdateData,
   validateReleaseUpdateData,
 } from "./databasePluginCrudValidationMutations";
 import {
@@ -18,7 +18,7 @@ import type {
   ChannelInsertInput,
   ChannelInsertResult,
   ChannelRow,
-  ClientAccessKeyRow,
+  ApiKeyRow,
   DatabaseBundleQueryWhere,
   DatabaseChange,
   DatabaseCommit,
@@ -268,18 +268,18 @@ const applyChange = async (
     case "analytics":
       await database.create({ model: "bundle_events", data: change.row });
       return;
-    case "clientAccessKeys":
+    case "apiKeys":
       switch (change.operation) {
         case "insert":
           await database.create({
-            model: "client_access_keys",
+            model: "api_keys",
             data: change.row,
             onConflict: change.onConflict,
           });
           return;
         case "update": {
           const row = await database.update({
-            model: "client_access_keys",
+            model: "api_keys",
             where: [{ field: "id", value: change.where.id }],
             update: { revoked_at_ms: change.update.revokedAtMs },
           });
@@ -489,7 +489,7 @@ const validateDatabaseChange = (change: unknown): void => {
       }
       validateCreateData("bundle_events", change.row);
       return;
-    case "clientAccessKeys":
+    case "apiKeys":
       switch (change.operation) {
         case "insert":
           if (
@@ -498,7 +498,7 @@ const validateDatabaseChange = (change: unknown): void => {
           ) {
             throw new DatabasePluginInputError("invalid-operation");
           }
-          validateCreateData("client_access_keys", change.row);
+          validateCreateData("api_keys", change.row);
           return;
         case "update":
           if (!hasOnlyKeys(change, ["model", "operation", "where", "update"])) {
@@ -511,7 +511,7 @@ const validateDatabaseChange = (change: unknown): void => {
           if (!hasOnlyKeys(change.update, ["revokedAtMs"])) {
             throw new DatabasePluginInputError("invalid-data");
           }
-          validateClientAccessKeyUpdateData({
+          validateApiKeyUpdateData({
             revoked_at_ms: change.update.revokedAtMs,
           });
           return;
@@ -647,12 +647,12 @@ export const createDatabasePluginAdapter = (
     return executeCommit(input);
   };
 
-  const findClientAccessKeyByHash = (
+  const findApiKeyByHash = (
     database: DatabasePluginCrud,
     hash: string,
-  ): Promise<ClientAccessKeyRow | null> =>
+  ): Promise<ApiKeyRow | null> =>
     database.findOne({
-      model: "client_access_keys",
+      model: "api_keys",
       where: [{ field: "hash", value: hash }],
     });
 
@@ -893,15 +893,13 @@ export const createDatabasePluginAdapter = (
           return rows.slice(0, input.limit);
         },
       },
-      clientAccessKeys: {
+      apiKeys: {
         async create(row) {
           const run = async (database: DatabasePluginCrud) => {
-            if (
-              (await findClientAccessKeyByHash(database, row.hash)) !== null
-            ) {
+            if ((await findApiKeyByHash(database, row.hash)) !== null) {
               return "existing" as const;
             }
-            await database.create({ model: "client_access_keys", data: row });
+            await database.create({ model: "api_keys", data: row });
             return "created" as const;
           };
           return transaction
@@ -910,10 +908,10 @@ export const createDatabasePluginAdapter = (
               )
             : run(crud);
         },
-        findByHash: (hash) => findClientAccessKeyByHash(crud, hash),
+        findByHash: (hash) => findApiKeyByHash(crud, hash),
         list: () =>
           crud.findMany({
-            model: "client_access_keys",
+            model: "api_keys",
             orderBy: [
               { field: "created_at_ms", direction: "desc" },
               { field: "id", direction: "asc" },
@@ -923,7 +921,7 @@ export const createDatabasePluginAdapter = (
           }),
         async revoke({ id, revokedAtMs }) {
           return crud.update({
-            model: "client_access_keys",
+            model: "api_keys",
             where: [{ field: "id", value: id }],
             update: { revoked_at_ms: revokedAtMs },
           });

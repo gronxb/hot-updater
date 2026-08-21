@@ -15,7 +15,7 @@ Follow these steps to run [Elysia.js](https://elysiajs.com) under [Node.js](http
 
    ```env
    PORT=3001
-   HOT_UPDATER_AUTH_TOKEN=replace-with-a-long-random-token
+   HOT_UPDATER_ADMIN_TOKEN=replace-with-a-long-random-token
    R2_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
    R2_ACCESS_KEY_ID=your-r2-access-key-id
    R2_SECRET_ACCESS_KEY=your-r2-secret-access-key

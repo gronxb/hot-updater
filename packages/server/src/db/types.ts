@@ -1,11 +1,4 @@
-import type {
-  AppUpdateAvailableInfo,
-  AppVersionGetBundlesArgs,
-  Bundle,
-  FingerprintGetBundlesArgs,
-  LegacyBundle,
-  UpdateInfo,
-} from "@hot-updater/core";
+import type { ArtifactInfo, Bundle } from "@hot-updater/core";
 import type {
   ChannelDeleteInput,
   ChannelDeleteResult,
@@ -138,17 +131,17 @@ export function isDatabasePlugin(plugin: unknown): plugin is DatabasePlugin {
     typeof plugin.models.analytics.append === "function" &&
     "scan" in plugin.models.analytics &&
     typeof plugin.models.analytics.scan === "function" &&
-    "clientAccessKeys" in plugin.models &&
-    typeof plugin.models.clientAccessKeys === "object" &&
-    plugin.models.clientAccessKeys !== null &&
-    "create" in plugin.models.clientAccessKeys &&
-    typeof plugin.models.clientAccessKeys.create === "function" &&
-    "findByHash" in plugin.models.clientAccessKeys &&
-    typeof plugin.models.clientAccessKeys.findByHash === "function" &&
-    "list" in plugin.models.clientAccessKeys &&
-    typeof plugin.models.clientAccessKeys.list === "function" &&
-    "revoke" in plugin.models.clientAccessKeys &&
-    typeof plugin.models.clientAccessKeys.revoke === "function" &&
+    "apiKeys" in plugin.models &&
+    typeof plugin.models.apiKeys === "object" &&
+    plugin.models.apiKeys !== null &&
+    "create" in plugin.models.apiKeys &&
+    typeof plugin.models.apiKeys.create === "function" &&
+    "findByHash" in plugin.models.apiKeys &&
+    typeof plugin.models.apiKeys.findByHash === "function" &&
+    "list" in plugin.models.apiKeys &&
+    typeof plugin.models.apiKeys.list === "function" &&
+    "revoke" in plugin.models.apiKeys &&
+    typeof plugin.models.apiKeys.revoke === "function" &&
     "commit" in plugin &&
     typeof plugin.commit === "function" &&
     (!("dispose" in plugin) ||
@@ -170,9 +163,6 @@ export function getSQLProvider(
 }
 
 export interface DatabaseAPI {
-  getAppUpdateInfo: (
-    args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
-  ) => Promise<AppUpdateAvailableInfo | null>;
   getBundleById(id: string): Promise<Bundle | null>;
   getReleaseCatalog(
     input: import("./releaseCatalog").ReleaseCatalogRequest,
@@ -180,7 +170,7 @@ export interface DatabaseAPI {
   getArtifactInfo(
     targetBundleId: string,
     currentBundleId: string,
-  ): Promise<AppUpdateAvailableInfo | null>;
+  ): Promise<ArtifactInfo | null>;
   getReleaseById(id: string): Promise<ReleaseRow | null>;
   getReleasesByScope(input: {
     readonly scopeKey: string;
@@ -220,20 +210,14 @@ export interface DatabaseAPI {
   }): Promise<ReleaseCatalogMutationResult>;
   rebuildReleaseCatalog(scopeKey: string): Promise<ReleaseCatalogRebuildResult>;
   commitDatabase(input: DatabaseCommit): Promise<DatabaseCommitResult>;
-  getUpdateInfo(
-    args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
-  ): Promise<UpdateInfo | null>;
   getChannels(): Promise<readonly ChannelRow[]>;
   insertChannel(input: ChannelInsertInput): Promise<ChannelInsertResult>;
   deleteChannel(input: ChannelDeleteInput): Promise<ChannelDeleteResult>;
   getBundles(
     options: import("@hot-updater/plugin-core").DatabaseBundleQueryOptions,
   ): Promise<PaginatedResult>;
-  insertBundle(bundle: LegacyBundle): Promise<void>;
-  insertBundles(bundles: readonly LegacyBundle[]): Promise<void>;
-  updateBundleById(
-    bundleId: string,
-    newBundle: Partial<LegacyBundle>,
-  ): Promise<void>;
+  insertBundle(bundle: Bundle): Promise<void>;
+  insertBundles(bundles: readonly Bundle[]): Promise<void>;
+  updateBundleById(bundleId: string, newBundle: Partial<Bundle>): Promise<void>;
   deleteBundleById(bundleId: string): Promise<void>;
 }

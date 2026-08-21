@@ -119,7 +119,7 @@ const getAnalyticsSummaries = async (
   for (const row of rows) {
     const bundleId =
       row.type === "UPDATE_APPLIED" ? row.to_bundle_id : row.from_bundle_id;
-    if (bundleId === null || !requestedBundleIds.has(bundleId)) continue;
+    if (!requestedBundleIds.has(bundleId)) continue;
 
     const counts =
       row.type === "UPDATE_APPLIED" ? installedByBundleId : recoveredByBundleId;
@@ -177,7 +177,6 @@ export const createAnalyticsProvider = (
       }
       const counts = new Map<string, number>();
       for (const row of latestByInstall.values()) {
-        if (row.to_bundle_id === null) continue;
         counts.set(row.to_bundle_id, (counts.get(row.to_bundle_id) ?? 0) + 1);
       }
       return {

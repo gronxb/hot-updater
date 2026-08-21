@@ -215,7 +215,7 @@ const getNativeBundleId = (): string | null => {
 };
 
 const resolveBundleId = (bundleId: string | null): string => {
-  return !bundleId || bundleId === NIL_UUID ? getMinBundleId() : bundleId;
+  return !bundleId || bundleId === NIL_UUID ? getMinimumReleaseId() : bundleId;
 };
 
 const getFreshBundleId = (): string => {
@@ -400,30 +400,10 @@ export const commitReleaseSelection = async (input: {
  * @returns {Promise<boolean>} Resolves with true if download was successful
  * @throws {Error} Rejects with error.code from HotUpdaterErrorCode enum and error.message
  */
-export async function updateBundle(params: UpdateParams): Promise<boolean>;
-/**
- * @deprecated Use updateBundle(params: UpdateBundleParamsWithStatus) instead
- */
-export async function updateBundle(
-  bundleId: string,
-  fileUrl: string | null,
-): Promise<boolean>;
-export async function updateBundle(
-  paramsOrBundleId: UpdateParams | string,
-  fileUrl?: string | null,
-): Promise<boolean> {
-  const updateBundleId =
-    typeof paramsOrBundleId === "string"
-      ? paramsOrBundleId
-      : paramsOrBundleId.bundleId;
-
-  const status =
-    typeof paramsOrBundleId === "string" ? "UPDATE" : paramsOrBundleId.status;
-
-  const targetFileUrl =
-    typeof paramsOrBundleId === "string"
-      ? (fileUrl ?? null)
-      : paramsOrBundleId.fileUrl;
+export async function updateBundle(params: UpdateParams): Promise<boolean> {
+  const updateBundleId = params.bundleId;
+  const status = params.status;
+  const targetFileUrl = params.fileUrl;
 
   const currentBundleId = status === "UPDATE" ? getFreshBundleId() : undefined;
 
@@ -439,9 +419,7 @@ export async function updateBundle(
   }
 
   const shouldSkipCurrentBundleIdCheck =
-    typeof paramsOrBundleId === "string"
-      ? false
-      : paramsOrBundleId.shouldSkipCurrentBundleIdCheck === true;
+    params.shouldSkipCurrentBundleIdCheck === true;
 
   if (
     !shouldSkipCurrentBundleIdCheck &&
@@ -458,32 +436,15 @@ export async function updateBundle(
   const existing = sessionState.getInflightUpdate(updateBundleId);
   if (existing) return existing;
 
-  const targetFileHash =
-    typeof paramsOrBundleId === "string"
-      ? undefined
-      : paramsOrBundleId.fileHash;
-
-  const targetChannel =
-    typeof paramsOrBundleId === "string" ? undefined : paramsOrBundleId.channel;
-  const targetManifestUrl =
-    typeof paramsOrBundleId === "string"
-      ? undefined
-      : paramsOrBundleId.manifestUrl;
-  const targetManifestFileHash =
-    typeof paramsOrBundleId === "string"
-      ? undefined
-      : paramsOrBundleId.manifestFileHash;
-  const targetChangedAssets =
-    typeof paramsOrBundleId === "string"
-      ? undefined
-      : paramsOrBundleId.changedAssets;
+  const targetFileHash = params.fileHash;
+  const targetChannel = params.channel;
+  const targetManifestUrl = params.manifestUrl;
+  const targetManifestFileHash = params.manifestFileHash;
+  const targetChangedAssets = params.changedAssets;
 
   const promise = (async () => {
     try {
-      const selection =
-        typeof paramsOrBundleId === "string"
-          ? undefined
-          : paramsOrBundleId.selection;
+      const selection = params.selection;
       const ok = await HotUpdaterNative.updateBundle({
         bundleId: updateBundleId,
         channel: targetChannel,
@@ -596,18 +557,14 @@ export function setReloadBehavior(
 }
 
 /**
- * Fetches the minimum bundle id, which represents the initial bundle of the app
- * since it is created at build time.
+ * Fetches the build-time minimum Release id.
  *
- * @returns {string} Resolves with the minimum bundle id or null if not available.
+ * @returns {string} The minimum Release id.
  */
-export const getMinBundleId = (): string => {
+export const getMinimumReleaseId = (): string => {
   const constants = HotUpdaterNative.getConstants();
   return constants.MIN_BUNDLE_ID;
 };
-
-/** Preferred Release-catalog name for the build-time UUIDv7 floor. */
-export const getMinimumReleaseId = getMinBundleId;
 
 export const getReleaseId = async (): Promise<string | null> =>
   getActiveUpdateState().activeSelection?.releaseId ?? null;

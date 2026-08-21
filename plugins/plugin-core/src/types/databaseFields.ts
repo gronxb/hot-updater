@@ -75,7 +75,7 @@ export const databaseFields = {
     "sdk_version",
     "received_at_ms",
   ],
-  client_access_keys: [
+  api_keys: [
     "id",
     "hash",
     "name",

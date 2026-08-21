@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import {
   createReleaseCatalogScopeKey,
   encodeChannelKey,
+  type Bundle,
+  type Release,
 } from "@hot-updater/core";
 import {
   createMockDatabaseData,
@@ -15,23 +17,30 @@ import {
   compileReleaseCatalog,
   extractTimestampFromUUIDv7,
   releaseRowToRelease,
-  type Bundle,
   type BundleEventRow,
-  type LegacyBundle,
   type ReleaseCatalogRow,
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
 
-type BundleSeed = Omit<LegacyBundle, "storageUri"> &
-  Partial<
-    Pick<
-      Bundle,
-      | "storageUri"
-      | "manifestStorageUri"
-      | "manifestFileHash"
-      | "assetBaseStorageUri"
-    >
-  >;
+type DemoReleaseFields = Pick<
+  Release,
+  | "enabled"
+  | "fingerprintHash"
+  | "message"
+  | "rolloutCohortCount"
+  | "shouldForceUpdate"
+  | "targetAppVersion"
+  | "targetCohorts"
+> & {
+  readonly channel: string;
+};
+
+type DemoDeployment = Bundle & DemoReleaseFields;
+
+type DemoDeploymentSeed = Omit<Bundle, "storageUri"> &
+  Partial<Pick<Bundle, "storageUri">> &
+  Omit<DemoReleaseFields, "rolloutCohortCount" | "targetCohorts"> &
+  Partial<Pick<DemoReleaseFields, "rolloutCohortCount" | "targetCohorts">>;
 
 const SHA256_HEX_RE = /^[a-f0-9]{64}$/i;
 
@@ -83,14 +92,13 @@ const normalizePatchArtifact = (
   patchFileHash: toSeedHash("patch", patch.patchFileHash),
 });
 
-const createBundle = (bundle: BundleSeed): LegacyBundle => {
+const createBundle = (bundle: DemoDeploymentSeed): DemoDeployment => {
   const fileHash = toSeedHash("file", bundle.fileHash);
   const patches = bundle.patches?.map(normalizePatchArtifact) ?? null;
-  const primaryPatch = patches?.[0] ?? null;
 
   return {
     rolloutCohortCount: 1000,
-    targetCohorts: null,
+    targetCohorts: [],
     metadata: undefined,
     ...bundle,
     storageUri: bundle.storageUri ?? createBundleUri(bundle.id),
@@ -99,16 +107,6 @@ const createBundle = (bundle: BundleSeed): LegacyBundle => {
     assetBaseStorageUri:
       bundle.assetBaseStorageUri ?? createAssetBaseUri(bundle.id),
     patches,
-    patchBaseBundleId:
-      bundle.patchBaseBundleId ?? primaryPatch?.baseBundleId ?? null,
-    patchBaseFileHash: bundle.patchBaseFileHash
-      ? toSeedHash("file", bundle.patchBaseFileHash)
-      : (primaryPatch?.baseFileHash ?? null),
-    patchFileHash: bundle.patchFileHash
-      ? toSeedHash("patch", bundle.patchFileHash)
-      : (primaryPatch?.patchFileHash ?? null),
-    patchStorageUri:
-      bundle.patchStorageUri ?? primaryPatch?.patchStorageUri ?? null,
     fileHash,
     manifestFileHash: bundle.manifestFileHash
       ? toSeedHash("manifest", bundle.manifestFileHash)
@@ -630,7 +628,7 @@ const iosCanaryPatchA = createBundle({
 
 // Seed lineages so filters, pagination, detail sheets, and patch tables all
 // have enough variety to be useful during local development.
-const bundles: LegacyBundle[] = [
+const bundles: DemoDeployment[] = [
   iosCanaryPatchA,
   androidBetaPatchA,
   androidDevPatchA,
@@ -666,7 +664,7 @@ for (const bundle of bundles) {
     id: channelId,
     name: bundle.channel,
   });
-  databaseData.bundles.set(bundle.id, bundleToRow(bundle, channelId));
+  databaseData.bundles.set(bundle.id, bundleToRow(bundle));
   for (const patch of bundleToPatchRows(bundle)) {
     databaseData.bundlePatches.set(patch.id, patch);
   }
@@ -685,7 +683,7 @@ const scopes = new Map<
   {
     readonly channelName: string;
     readonly fingerprintHash: string | null;
-    readonly platform: LegacyBundle["platform"];
+    readonly platform: Bundle["platform"];
     readonly releases: ReleaseRow[];
     readonly strategy: "APP_VERSION" | "FINGERPRINT";
   }
@@ -807,7 +805,9 @@ const bundleEvents: readonly BundleEventRow[] = [
     install_id: "019f635d-0001-7000-8000-000000000001",
     user_id: "detox-e2e",
     username: "hot-updater-e2e",
+    from_release_id: null,
     from_bundle_id: iosProdCorePatchA.id,
+    to_release_id: null,
     to_bundle_id: iosProdCorePatchB.id,
     platform: "ios",
     app_version: "1.4.2",
@@ -824,7 +824,9 @@ const bundleEvents: readonly BundleEventRow[] = [
     install_id: "019f635d-0001-7000-8000-000000000001",
     user_id: "detox-e2e",
     username: "hot-updater-e2e",
+    from_release_id: null,
     from_bundle_id: iosProdCorePatchB.id,
+    to_release_id: null,
     to_bundle_id: iosProdCorePatchA.id,
     platform: "ios",
     app_version: "1.4.2",
@@ -841,7 +843,9 @@ const bundleEvents: readonly BundleEventRow[] = [
     install_id: "019f635d-0002-7000-8000-000000000002",
     user_id: "detox-e2e-beta",
     username: "hot-updater-e2e-beta",
+    from_release_id: null,
     from_bundle_id: iosProdCorePatchA.id,
+    to_release_id: null,
     to_bundle_id: iosProdCorePatchB.id,
     platform: "ios",
     app_version: "1.4.2",
@@ -858,7 +862,9 @@ const bundleEvents: readonly BundleEventRow[] = [
     install_id: "019f635d-0002-7000-8000-000000000002",
     user_id: "detox-e2e-beta",
     username: "hot-updater-e2e-beta",
+    from_release_id: null,
     from_bundle_id: iosProdCorePatchB.id,
+    to_release_id: null,
     to_bundle_id: iosProdCoreHotfix.id,
     platform: "ios",
     app_version: "1.4.2",
@@ -1008,6 +1014,8 @@ const bundleEvents: readonly BundleEventRow[] = [
         install_id: `019f635d-${installSuffix}-7000-8000-00000000${installSuffix}`,
         user_id: userId,
         username: userId,
+        from_release_id: null,
+        to_release_id: null,
         to_bundle_id: toBundleId,
         platform: "ios",
         app_version: "1.4.2",

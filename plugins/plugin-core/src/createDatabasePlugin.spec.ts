@@ -105,7 +105,7 @@ describe("createDatabasePlugin", () => {
     expect(plugin.models.channels.insert).toBeTypeOf("function");
     expect(plugin.models.channels.delete).toBeTypeOf("function");
     expect(plugin.models.analytics.append).toBeTypeOf("function");
-    expect(plugin.models.clientAccessKeys.findByHash).toBeTypeOf("function");
+    expect(plugin.models.apiKeys.findByHash).toBeTypeOf("function");
     expect(plugin.commit).toBeTypeOf("function");
     expect(Object.keys(plugin).sort()).toEqual(["commit", "models", "name"]);
     expect(Reflect.has(plugin, "queries")).toBe(false);

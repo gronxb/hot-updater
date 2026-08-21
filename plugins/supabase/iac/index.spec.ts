@@ -111,6 +111,7 @@ describe("Supabase React Native init output", () => {
 
   it("uses the direct Edge Function URL for origin-only catalogs", () => {
     const source = getSupabaseReactNativeSource({
+      apiKey: "api-key",
       functionName: "update-server",
       projectId: "project-ref",
     });
@@ -118,6 +119,9 @@ describe("Supabase React Native init output", () => {
     expect(source).toContain(
       'baseURL: "https://project-ref.supabase.co/functions/v1/update-server"',
     );
+    expect(source).toContain('"x-api-key": "api-key"');
+    expect(source).toContain("HotUpdater.init({");
+    expect(source).not.toContain("HotUpdater.wrap");
     expect(source).toContain("return null; // Replace with your app root");
     expect(source).not.toContain("HOT_UPDATER_SUPABASE_CATALOG_CDN_URL");
   });
@@ -879,7 +883,6 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         "@hot-updater/supabase/edge":
           "./_hot-updater/hot-updater-supabase/dist/edge.mjs",
         "@hot-updater/core": "./_hot-updater/hot-updater-core/dist/index.mjs",
-        "@hot-updater/js": "./_hot-updater/hot-updater-js/dist/index.mjs",
         "@hot-updater/plugin-core":
           "./_hot-updater/hot-updater-plugin-core/dist/index.mjs",
         "@hot-updater/plugin-core/internal":

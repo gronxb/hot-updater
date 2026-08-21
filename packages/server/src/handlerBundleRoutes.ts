@@ -1,12 +1,10 @@
-import type { LegacyBundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 import type { ChannelInsertInput } from "@hot-updater/plugin-core";
 
 import { HandlerBadRequestError } from "./handlerErrors";
 import {
   decodeMaybe,
   isPlatform,
-  parseBooleanSearchParam,
-  parseNullableStringSearchParam,
   parsePositiveIntegerSearchParam,
   parseStringArraySearchParam,
   requireRouteParam,
@@ -50,12 +48,12 @@ const requireChannelInsertInput = (value: unknown): ChannelInsertInput => {
   };
 };
 
-type BundlePatchPayload = Partial<LegacyBundle> & { readonly id?: string };
+type BundlePatchPayload = Partial<Bundle> & { readonly id?: string };
 
 const requireBundlePatchPayload = (
   payload: unknown,
   bundleId: string,
-): Partial<LegacyBundle> => {
+): Partial<Bundle> => {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new HandlerBadRequestError("Invalid bundle payload");
   }
@@ -84,7 +82,6 @@ export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
 
   getBundles: async (_params, request, api) => {
     const url = new URL(request.url);
-    const channel = url.searchParams.get("channel") ?? undefined;
     const platform = url.searchParams.get("platform");
     const limit = parsePositiveIntegerSearchParam(
       url,
@@ -96,23 +93,6 @@ export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
     const after = url.searchParams.get("after") ?? undefined;
     const before = url.searchParams.get("before") ?? undefined;
     const orderDirection = url.searchParams.get("orderDirection");
-    const enabled = parseBooleanSearchParam(url, "enabled");
-    const targetAppVersion = parseNullableStringSearchParam(
-      url,
-      "targetAppVersion",
-    );
-    const targetAppVersionIn = parseStringArraySearchParam(
-      url,
-      "targetAppVersionIn",
-    );
-    const targetAppVersionNotNull = parseBooleanSearchParam(
-      url,
-      "targetAppVersionNotNull",
-    );
-    const fingerprintHash = parseNullableStringSearchParam(
-      url,
-      "fingerprintHash",
-    );
     const idEq = url.searchParams.get("idEq") ?? undefined;
     const idGt = url.searchParams.get("idGt") ?? undefined;
     const idGte = url.searchParams.get("idGte") ?? undefined;
@@ -173,9 +153,7 @@ export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
         : { cursor: undefined, page };
     const result = await api.getBundles({
       where: {
-        ...(channel && { channel }),
         ...(platform && { platform }),
-        ...(enabled !== undefined && { enabled }),
         ...(idEq || idGt || idGte || idLt || idLte || idIn?.length
           ? {
               id: {
@@ -188,12 +166,6 @@ export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
               },
             }
           : {}),
-        ...(targetAppVersion !== undefined && { targetAppVersion }),
-        ...(targetAppVersionIn && { targetAppVersionIn }),
-        ...(targetAppVersionNotNull !== undefined && {
-          targetAppVersionNotNull,
-        }),
-        ...(fingerprintHash !== undefined && { fingerprintHash }),
       },
       limit,
       ...pagination,
@@ -211,7 +183,7 @@ export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
     const body = await request.json();
     const bundles = Array.isArray(body) ? body : [body];
     if (api.insertBundles) {
-      await api.insertBundles(bundles as LegacyBundle[]);
+      await api.insertBundles(bundles as Bundle[]);
     } else {
       if (bundles.length > 1) {
         throw new HandlerBadRequestError(
@@ -220,7 +192,7 @@ export const createBundleRouteHandlers = (): Record<string, RouteHandler> => ({
       }
       const bundle = bundles[0];
       if (bundle !== undefined) {
-        await api.insertBundle(bundle as LegacyBundle);
+        await api.insertBundle(bundle as Bundle);
       }
     }
     return new Response(JSON.stringify({ success: true }), {

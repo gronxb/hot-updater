@@ -11,6 +11,7 @@ export const hotUpdater = createHotUpdater({
     prisma,
     provider: "postgresql",
   }),
+  clientAccess: { type: "public" },
   storage: [
     mockStorage({}),
     s3Storage({
@@ -26,11 +27,6 @@ export const hotUpdater = createHotUpdater({
         "development-storage-download-url-key",
     }),
   ],
-  basePath: "/hot-updater",
-  features: {
-    updateCheck: true,
-    bundles: true,
-  },
 });
 
 // Cleanup function for graceful shutdown

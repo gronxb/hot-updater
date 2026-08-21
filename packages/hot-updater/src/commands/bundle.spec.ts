@@ -1,7 +1,8 @@
-import type { LegacyBundle, ReleaseRow } from "@hot-updater/plugin-core";
+import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
+import type { DeployReleasePolicy } from "./deployTransaction";
 
 const { loadConfig, log } = vi.hoisted(() => ({
   loadConfig: vi.fn(),
@@ -30,13 +31,16 @@ const databaseHarness = createDatabasePluginHarness();
 
 const artifact = (
   id: string,
-  platform: LegacyBundle["platform"] = "ios",
-): LegacyBundle => ({
+  platform: Bundle["platform"] = "ios",
+): Bundle => ({
   id,
   platform,
   fileHash: `hash-${id}`,
   storageUri: `storage://artifacts/${id}.zip`,
   gitCommitHash: "1234567890abcdef",
+});
+
+const releasePolicy = (): DeployReleasePolicy => ({
   channel: "production",
   enabled: true,
   fingerprintHash: null,
@@ -46,6 +50,8 @@ const artifact = (
   rolloutCohortCount: 1_000,
   targetCohorts: [],
 });
+
+const deployment = (bundle: Bundle) => ({ bundle, release: releasePolicy() });
 
 const releaseReference = (id: string, bundleId: string): ReleaseRow => ({
   bundle_id: bundleId,
@@ -123,7 +129,7 @@ describe("Bundle artifact commands", () => {
 
   it("shows referencing Release ids in human and JSON output", async () => {
     const bundleId = "00000000-0000-7000-8000-000000000001";
-    await databaseHarness.seedLegacyBundles([artifact(bundleId)]);
+    await databaseHarness.seedDeployments([deployment(artifact(bundleId))]);
     const existingRelease = (await databaseHarness.releases())[0]!;
     const secondRelease = {
       ...existingRelease,
@@ -198,7 +204,7 @@ describe("Bundle artifact commands", () => {
 
   it("preserves an artifact referenced by a Release", async () => {
     const bundleId = "00000000-0000-7000-8000-000000000001";
-    await databaseHarness.seedLegacyBundles([artifact(bundleId)]);
+    await databaseHarness.seedDeployments([deployment(artifact(bundleId))]);
     const [release] = await databaseHarness.releases();
     databaseHarness.commit.mockClear();
     const { handleBundleDelete } = await import("./bundle");

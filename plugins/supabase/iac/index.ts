@@ -24,9 +24,11 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
+import { provisionApiKey } from "@hot-updater/server";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
+import { supabaseDatabase } from "../src/supabaseDatabase";
 import {
   initProvider as SUPABASE_INIT_PROVIDER,
   isSupabaseFunctionName,
@@ -150,19 +152,28 @@ function App() {
   return null; // Replace with your app root
 }
 
-export default HotUpdater.wrap({
+HotUpdater.init({
   baseURL: "%%source%%",
-  updateStrategy: "appVersion", // or "fingerprint"
-})(App);`;
+  requestHeaders: {
+    "x-api-key": %%apiKey%%,
+  },
+});
+
+// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
+// when your app is ready to check.
+export default App;`;
 
 export const getSupabaseReactNativeSource = ({
+  apiKey,
   functionName,
   projectId,
 }: {
+  readonly apiKey: string;
   readonly functionName: string;
   readonly projectId: string;
 }): string =>
   transformTemplate(SOURCE_TEMPLATE, {
+    apiKey: JSON.stringify(apiKey),
     source: `https://${projectId}.supabase.co/functions/v1/${functionName}`,
   });
 
@@ -847,13 +858,14 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
   const { inputEnv, managedEnv } = initEnvSources;
-  const savedInputs = resolveSupabaseInitInputs(
-    getHotUpdaterInitInputEnv(initEnvSources, nonInteractive),
-    {
-      inputEnv,
-      managedEnv,
-    },
+  const initInputEnv = getHotUpdaterInitInputEnv(
+    initEnvSources,
+    nonInteractive,
   );
+  const savedInputs = resolveSupabaseInitInputs(initInputEnv, {
+    inputEnv,
+    managedEnv,
+  });
   await assertSupabaseNonInteractiveInputs(savedInputs, nonInteractive);
   const initInputs = await inputSupabaseDeploymentInputs({
     ...savedInputs,
@@ -1036,6 +1048,23 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   });
 
   await pushDB(tmpDir, { accessToken, dbPassword });
+  const databasePlugin = supabaseDatabase({
+    supabaseServiceRoleKey: projectAccess.serviceRoleApiKey,
+    supabaseUrl: `https://${project.id}.supabase.co`,
+  });
+  let apiKey: string;
+  try {
+    apiKey = (
+      await provisionApiKey({
+        apiKeys: databasePlugin.models.apiKeys,
+        existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
+        name: "Supabase init",
+      })
+    ).apiKey;
+    await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
+  } finally {
+    await databasePlugin.dispose?.();
+  }
   await deployEdgeFunction(
     accessToken,
     tmpDir,
@@ -1068,6 +1097,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   p.note(
     getSupabaseReactNativeSource({
+      apiKey,
       functionName,
       projectId: project.id,
     }),

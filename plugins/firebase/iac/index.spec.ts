@@ -10,8 +10,41 @@ const mocks = vi.hoisted(() => ({
   existingProject: false,
   functionsDir: "",
   assertInfrastructure: vi.fn(),
+  provisionApiKey: vi.fn(async () => ({
+    apiKey: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+  })),
   tmpDir: "",
 }));
+
+vi.mock("@hot-updater/server", async () => {
+  const actual = await vi.importActual<typeof import("@hot-updater/server")>(
+    "@hot-updater/server",
+  );
+  return {
+    ...actual,
+    provisionApiKey: mocks.provisionApiKey,
+  };
+});
+
+vi.mock("../src/firebaseDatabase", () => ({
+  firebaseDatabase: vi.fn(() => ({
+    models: { apiKeys: {} },
+  })),
+}));
+
+vi.mock("firebase-admin/app", async () => {
+  const actual =
+    await vi.importActual<typeof import("firebase-admin/app")>(
+      "firebase-admin/app",
+    );
+  return {
+    ...actual,
+    applicationDefault: vi.fn(() => ({})),
+    cert: vi.fn(() => ({})),
+    deleteApp: vi.fn(),
+    getApps: vi.fn(() => []),
+  };
+});
 
 vi.mock("execa", async () => {
   const actual = await vi.importActual<typeof import("execa")>("execa");
@@ -144,6 +177,8 @@ import { execa } from "execa";
 import { runInit } from "./index";
 import { initFirebaseUser } from "./select";
 
+const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
+
 describe("Firebase project creation", () => {
   beforeEach(async () => {
     mocks.existingEnv = {};
@@ -203,8 +238,11 @@ describe("Firebase project creation", () => {
   it("uses active gcloud authentication when describing the deployed function", async () => {
     // Given
     mocks.existingProject = true;
+    const credentialsPath = path.join(mocks.tmpDir, "credentials.json");
+    await fs.writeFile(credentialsPath, "{}");
     mocks.existingEnv = {
-      GOOGLE_APPLICATION_CREDENTIALS: "/tmp/firebase-credentials.json",
+      GOOGLE_APPLICATION_CREDENTIALS: credentialsPath,
+      HOT_UPDATER_API_KEY: API_KEY,
       HOT_UPDATER_FIREBASE_PROJECT_ID: "existing-project",
       HOT_UPDATER_FIREBASE_REGION: "asia-northeast3",
     };
@@ -230,9 +268,12 @@ describe("Firebase project creation", () => {
       ],
       {
         env: {
-          GOOGLE_APPLICATION_CREDENTIALS: "/tmp/firebase-credentials.json",
+          GOOGLE_APPLICATION_CREDENTIALS: credentialsPath,
         },
       },
+    );
+    expect(mocks.provisionApiKey).toHaveBeenCalledWith(
+      expect.objectContaining({ existingApiKey: API_KEY }),
     );
   });
 
@@ -253,6 +294,12 @@ describe("Firebase project creation", () => {
     );
     expect(p.note).toHaveBeenCalledWith(
       expect.stringContaining("return null; // Replace with your app root"),
+    );
+    expect(p.note).toHaveBeenCalledWith(
+      expect.stringContaining(`"x-api-key": "${API_KEY}"`),
+    );
+    expect(p.note).toHaveBeenCalledWith(
+      expect.stringContaining("HotUpdater.checkForUpdate"),
     );
   });
 

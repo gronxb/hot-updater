@@ -283,8 +283,7 @@ describe("createCopiedBundleArchive", () => {
           assetBaseStorageUri: "s3://bucket/assets",
           manifestStorageUri:
             "s3://bucket/bundles/bundle-copy-id/manifest.json",
-          patchBaseBundleId: null,
-          patchStorageUri: null,
+          patches: [],
         });
         expect(copiedBundle.manifestFileHash).toMatch(/^[a-f0-9]{64}$/);
         expect(copiedBundle.metadata ?? {}).not.toHaveProperty(

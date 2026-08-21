@@ -4,14 +4,12 @@ import { toNodeHandler } from "./node";
 
 describe("server node entry", () => {
   it("converts a Web Request handler to Node middleware", async () => {
-    const hotUpdater = {
-      handler: async (request: Request) =>
-        Response.json({
-          method: request.method,
-          pathname: new URL(request.url).pathname,
-        }),
-    };
-    const middleware = toNodeHandler(hotUpdater);
+    const middleware = toNodeHandler(async (request: Request) =>
+      Response.json({
+        method: request.method,
+        pathname: new URL(request.url).pathname,
+      }),
+    );
     const headers = new Map<string, string | string[]>();
     const response = {
       body: "",
@@ -48,14 +46,48 @@ describe("server node entry", () => {
     });
   });
 
+  it("uses the mount-relative URL supplied by Express", async () => {
+    const middleware = toNodeHandler(async (request: Request) =>
+      Response.json({ pathname: new URL(request.url).pathname }),
+    );
+    const response = {
+      body: "",
+      statusCode: 0,
+      status(code: number) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader() {},
+      send(body: Uint8Array) {
+        this.body = new TextDecoder().decode(body);
+      },
+      end() {},
+    };
+
+    await middleware(
+      {
+        method: "GET",
+        url: "/channels",
+        headers: { host: "example.com" },
+        protocol: "https",
+        get: (name: string) => (name === "host" ? "example.com" : undefined),
+      },
+      response,
+    );
+
+    expect(JSON.parse(response.body)).toEqual({
+      pathname: "/channels",
+    });
+  });
+
   it("preserves binary response bytes", async () => {
     const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0xfe, 0x00]);
-    const middleware = toNodeHandler({
-      handler: async () =>
+    const middleware = toNodeHandler(
+      async () =>
         new Response(bytes, {
           headers: { "content-type": "application/zip" },
         }),
-    });
+    );
     const response = {
       body: new Uint8Array(),
       statusCode: 0,

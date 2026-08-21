@@ -2,17 +2,15 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 
-import type { Bundle, LegacyBundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
-import {
-  deleteLegacyBundle,
-  setupBundleMethodsTestSuite,
-} from "@hot-updater/test-utils";
+import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
   cleanupServer,
   createTestDbPath,
   killPort,
   spawnServerProcess,
+  TEST_ADMIN_AUTH_TOKEN,
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
@@ -115,13 +113,40 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
 
   setupBundleMethodsTestSuite({
     getBundleById: (id: string) => hotUpdater.getBundleById(id),
-    getChannels: () => hotUpdater.getChannels(),
-    insertBundle: (bundle: LegacyBundle) => hotUpdater.insertBundle(bundle),
+    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
     getBundles: (options) => hotUpdater.getBundles(options),
     updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
       hotUpdater.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId: string) =>
-      deleteLegacyBundle(hotUpdater, bundleId),
+      hotUpdater.deleteBundleById(bundleId),
+  });
+
+  it("keeps the client handler reachable without admin credentials", async () => {
+    const response = await fetch(`${baseUrl}/hot-updater/version`);
+
+    expect(response.status).toBe(200);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["incorrect", "Bearer incorrect-token"],
+  ])("rejects %s admin credentials", async (_label, authorization) => {
+    const response = await fetch(`${baseUrl}/hot-updater/admin/channels`, {
+      headers: authorization ? { Authorization: authorization } : undefined,
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  it("allows authenticated admin requests without caching", async () => {
+    const response = await fetch(`${baseUrl}/hot-updater/admin/channels`, {
+      headers: {
+        Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}`,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
 
   it("should preserve User model and add hot-updater models in schema.prisma", async () => {

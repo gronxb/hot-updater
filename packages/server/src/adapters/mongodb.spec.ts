@@ -65,15 +65,9 @@ describe("mongoAdapter capabilities", () => {
     const bundle = {
       id: "bundle-retry",
       platform: "ios" as const,
-      shouldForceUpdate: false,
-      enabled: true,
       fileHash: "bundle-retry-hash",
       gitCommitHash: null,
-      message: null,
-      channel: "production",
       storageUri: "storage://bundle-retry",
-      targetAppVersion: "1.0.0",
-      fingerprintHash: null,
     };
     await client.insertBundle(bundle);
 

@@ -1,4 +1,4 @@
-import type { LegacyBundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -10,18 +10,12 @@ import { loadBundleRows } from "./databaseClientReads";
 import { createMemoryDatabasePlugin } from "./databasePluginMemory.testFixtures";
 import type { BundleRow } from "./types";
 
-const createBundle = (id: string): LegacyBundle => ({
+const createBundle = (id: string): Bundle => ({
   id,
   platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
   fileHash: `hash-${id}`,
   gitCommitHash: null,
-  message: id,
-  channel: "production",
   storageUri: `storage://${id}`,
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
 });
 
 describe("database client pagination", () => {
@@ -196,7 +190,7 @@ describe("database client pagination", () => {
   });
 });
 
-const bundlesRow = (bundle: LegacyBundle): BundleRow => ({
+const bundlesRow = (bundle: Bundle): BundleRow => ({
   id: bundle.id,
   platform: bundle.platform,
   file_hash: bundle.fileHash,

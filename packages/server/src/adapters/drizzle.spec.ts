@@ -87,7 +87,7 @@ const bundleEvents = pgTable("bundle_events", {
   from_release_id: text("from_release_id"),
   from_bundle_id: text("from_bundle_id"),
   to_release_id: text("to_release_id"),
-  to_bundle_id: text("to_bundle_id"),
+  to_bundle_id: text("to_bundle_id").notNull(),
   platform: text("platform").notNull(),
   app_version: text("app_version").notNull(),
   channel: text("channel").notNull(),
@@ -97,7 +97,7 @@ const bundleEvents = pgTable("bundle_events", {
   sdk_version: text("sdk_version"),
   received_at_ms: integer("received_at_ms").notNull(),
 });
-const clientAccessKeys = pgTable("client_access_keys", {
+const apiKeys = pgTable("api_keys", {
   id: text("id").primaryKey(),
   hash: text("hash").notNull().unique(),
   name: text("name").notNull(),
@@ -111,7 +111,7 @@ const schema = {
   bundle_patches: bundlePatches,
   bundles,
   channels,
-  client_access_keys: clientAccessKeys,
+  api_keys: apiKeys,
   release_catalogs: releaseCatalogs,
   releases,
 };

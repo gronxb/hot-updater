@@ -3,8 +3,8 @@ import {
   encodeChannelKey,
 } from "@hot-updater/core";
 import type {
+  Bundle,
   BundleRepository,
-  LegacyBundle,
   ReleaseCatalogMutationInput,
   ReleaseCatalogMutationResult,
   ReleaseRow,
@@ -23,7 +23,19 @@ const MAX_RELEASE_ID_ATTEMPTS = 3;
 
 export interface DeploymentWrite {
   readonly authorityId: string;
-  readonly bundle: LegacyBundle;
+  readonly bundle: Bundle;
+  readonly release: DeployReleasePolicy;
+}
+
+export interface DeployReleasePolicy {
+  readonly channel: string;
+  readonly enabled: boolean;
+  readonly fingerprintHash: string | null;
+  readonly message: string | null;
+  readonly rolloutCohortCount?: number;
+  readonly shouldForceUpdate: boolean;
+  readonly targetAppVersion: string | null;
+  readonly targetCohorts?: string[];
 }
 
 const findLatestReleaseId = async (
@@ -46,21 +58,21 @@ const findLatestReleaseId = async (
 
 const prepareDeploymentMutation = async (
   database: BundleRepository,
-  { authorityId, bundle }: DeploymentWrite,
+  { authorityId, bundle, release: policy }: DeploymentWrite,
 ): Promise<ReleaseCatalogMutationInput> => {
-  const channelKey = encodeChannelKey(bundle.channel);
+  const channelKey = encodeChannelKey(policy.channel);
   const existingChannel = (
     await database.models.channels.list({})
-  ).channels.find(({ name }) => name === bundle.channel);
+  ).channels.find(({ name }) => name === policy.channel);
   const channel =
     existingChannel ??
     (
       await database.models.channels.insert({
-        row: { id: `channel:${channelKey}`, name: bundle.channel },
+        row: { id: `channel:${channelKey}`, name: policy.channel },
         onConflict: "returnExisting",
       })
     ).row;
-  const fingerprintHash = bundle.fingerprintHash;
+  const fingerprintHash = policy.fingerprintHash;
   const strategy = fingerprintHash === null ? "APP_VERSION" : "FINGERPRINT";
   const scopeKey =
     fingerprintHash === null
@@ -87,21 +99,21 @@ const prepareDeploymentMutation = async (
     bundle_id: bundle.id,
     channel_id: channel.id,
     created_at_ms: now,
-    enabled: bundle.enabled,
+    enabled: policy.enabled,
     fingerprint_hash: fingerprintHash,
     id: createUUIDv7After(floor ?? null),
     kind: "BUNDLE",
-    message: bundle.message,
+    message: policy.message,
     operation: "DEPLOY",
     platform: bundle.platform,
     revision: 1,
-    rollout_cohort_count: bundle.rolloutCohortCount ?? 1_000,
+    rollout_cohort_count: policy.rolloutCohortCount ?? 1_000,
     scope_key: scopeKey,
-    should_force_update: bundle.shouldForceUpdate,
+    should_force_update: policy.shouldForceUpdate,
     source_release_id: null,
     strategy,
-    target_app_version: bundle.targetAppVersion,
-    target_cohorts: bundle.targetCohorts ?? [],
+    target_app_version: policy.targetAppVersion,
+    target_cohorts: policy.targetCohorts ?? [],
     updated_at_ms: now,
   };
 

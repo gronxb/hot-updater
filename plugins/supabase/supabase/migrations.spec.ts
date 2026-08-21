@@ -39,7 +39,7 @@ describe("Supabase v1 schema", () => {
     expect(sql).toContain("CREATE TABLE public.releases");
     expect(sql).toContain("CREATE TABLE public.release_catalogs");
     expect(sql).toContain("CREATE TABLE public.bundle_events");
-    expect(sql).toContain("CREATE TABLE public.client_access_keys");
+    expect(sql).toContain("CREATE TABLE public.api_keys");
     expect(sql).toContain(
       "ALTER TABLE public.bundles ENABLE ROW LEVEL SECURITY",
     );
@@ -76,7 +76,7 @@ describe("Supabase v1 schema", () => {
           "bundle_events",
           "bundle_patches",
           "channels",
-          "client_access_keys",
+          "api_keys",
           "private_hot_updater_settings",
           "release_catalogs",
           "releases",

@@ -1,26 +1,15 @@
 import { Hono } from "hono";
+import { bearerAuth } from "hono/bearer-auth";
 
 import { hotUpdater } from "./db.js";
 
 const app = new Hono();
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 
-const isAuthorizedManagementRequest = (request: Request) => {
-  const token = process.env.HOT_UPDATER_AUTH_TOKEN;
-  return (
-    Boolean(token) && request.headers.get("Authorization") === `Bearer ${token}`
-  );
-};
+if (!adminToken) throw new Error("HOT_UPDATER_ADMIN_TOKEN is required.");
 
-app.use("/hot-updater/api/*", async (c, next) => {
-  if (!isAuthorizedManagementRequest(c.req.raw)) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
-
-  await next();
-});
-
-app.on(["GET", "POST", "PATCH", "DELETE"], "/hot-updater/*", async (c) => {
-  return hotUpdater.handler(c.req.raw);
-});
+app.use("/hot-updater/admin/*", bearerAuth({ token: adminToken }));
+app.mount("/hot-updater/admin", hotUpdater.handlers.admin);
+app.mount("/hot-updater", hotUpdater.handlers.client);
 
 export default app;

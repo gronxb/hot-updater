@@ -23,7 +23,7 @@ const resetData = (): void => {
   data.bundlePatches.clear();
   data.bundleEvents.clear();
   data.channels.clear();
-  data.clientAccessKeys.clear();
+  data.apiKeys.clear();
   data.releaseCatalogs.clear();
   data.releases.clear();
 };

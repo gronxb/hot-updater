@@ -9,7 +9,7 @@ import type {
 } from "./databaseQuery";
 import type {
   BundleRow,
-  ClientAccessKeyRow,
+  ApiKeyRow,
   DatabaseModel,
   DatabaseRow,
   ReleaseCatalogRow,
@@ -73,7 +73,7 @@ export type DatabaseModelCapabilities = {
     readonly findOne: false;
     readonly findMany: true;
   };
-  readonly client_access_keys: {
+  readonly api_keys: {
     readonly create: true;
     readonly update: true;
     readonly delete: false;
@@ -113,7 +113,7 @@ export type CreateDatabaseInput<
   TModel extends CreateDatabaseModel,
   TSelect extends DatabaseSelect<TModel> | undefined = undefined,
 > = CreateDatabaseInputBase<TModel, TSelect> &
-  (TModel extends "channels" | "client_access_keys"
+  (TModel extends "channels" | "api_keys"
     ? { readonly onConflict?: "ignore" }
     : { readonly onConflict?: never });
 
@@ -138,16 +138,13 @@ export type ReleaseRowUpdate = Partial<
 export type ReleaseCatalogRowUpdate = Omit<ReleaseCatalogRow, "scope_key">;
 
 export type BundleRowUpdate = BundleRowUpdateFields;
-export type ClientAccessKeyRowUpdate = Pick<
-  ClientAccessKeyRow,
-  "revoked_at_ms"
->;
+export type ApiKeyRowUpdate = Pick<ApiKeyRow, "revoked_at_ms">;
 
 export type DatabaseRowUpdate<TModel extends UpdateDatabaseModel> = {
   readonly bundles: BundleRowUpdate;
   readonly releases: ReleaseRowUpdate;
   readonly release_catalogs: ReleaseCatalogRowUpdate;
-  readonly client_access_keys: ClientAccessKeyRowUpdate;
+  readonly api_keys: ApiKeyRowUpdate;
 }[TModel];
 
 export type UpdateDatabaseInput<

@@ -265,10 +265,12 @@ describe("Detox scenario contract", () => {
       ),
     );
 
-    // When / Then: every profile server mounts public analytics routes so the
-    // provider-backed checkpoint can verify Release and Bundle identities.
+    // When / Then: server Analytics needs no per-profile flag, while every
+    // profile still declares its client access policy explicitly.
     for (const source of sources) {
-      expect(source).toContain('analytics: { queryAccess: "public" }');
+      expect(source).toContain("clientAccess: { type:");
+      expect(source).not.toContain("analytics: true");
+      expect(source).not.toContain("features:");
     }
   });
 

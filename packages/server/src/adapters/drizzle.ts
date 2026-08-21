@@ -119,12 +119,11 @@ export const drizzleAdapter = (
         append: (row) => getAdapter().models.analytics.append(row),
         scan: (input) => getAdapter().models.analytics.scan(input),
       },
-      clientAccessKeys: {
-        create: (row) => getAdapter().models.clientAccessKeys.create(row),
-        findByHash: (hash) =>
-          getAdapter().models.clientAccessKeys.findByHash(hash),
-        list: () => getAdapter().models.clientAccessKeys.list(),
-        revoke: (input) => getAdapter().models.clientAccessKeys.revoke(input),
+      apiKeys: {
+        create: (row) => getAdapter().models.apiKeys.create(row),
+        findByHash: (hash) => getAdapter().models.apiKeys.findByHash(hash),
+        list: () => getAdapter().models.apiKeys.list(),
+        revoke: (input) => getAdapter().models.apiKeys.revoke(input),
       },
     },
     commit: (input) => getAdapter().commit(input),

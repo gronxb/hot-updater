@@ -1,21 +1,32 @@
 import { toNodeHandler } from "@hot-updater/server/node";
-import type { Request, Router } from "express";
+import cors from "cors";
+import express from "express";
+import type { Router } from "express";
+
 import { hotUpdater } from "./db";
 
-const isAuthorizedManagementRequest = (req: Request) => {
-  const token = process.env.HOT_UPDATER_AUTH_TOKEN;
-  return Boolean(token) && req.get("Authorization") === `Bearer ${token}`;
-};
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+
+if (!adminToken) throw new Error("HOT_UPDATER_ADMIN_TOKEN is required.");
 
 export function setupRoutes(router: Router) {
-  // Mount Hot Updater handler using toNodeHandler adapter
-  router.use("/hot-updater/api", (req, res, next) => {
-    if (!isAuthorizedManagementRequest(req)) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
+  router.use(
+    "/hot-updater/admin",
+    (req, res, next) => {
+      if (req.get("Authorization") !== `Bearer ${adminToken}`) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
 
-    next();
-  });
-  router.all("/hot-updater/*", toNodeHandler(hotUpdater));
+      next();
+    },
+    express.json({ limit: "1mb" }),
+    toNodeHandler(hotUpdater.handlers.admin),
+  );
+  router.use(
+    "/hot-updater",
+    cors(),
+    express.json({ limit: "1mb" }),
+    toNodeHandler(hotUpdater.handlers.client),
+  );
 }

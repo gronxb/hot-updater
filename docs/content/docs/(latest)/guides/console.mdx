@@ -48,6 +48,25 @@ Execute the following command:
 npx hot-updater console
 ```
 
+## Security model
+
+The CLI Console binds to loopback and loads the configured database and storage
+plugins on its server. With a direct database plugin, it does not call the Hot
+Updater HTTP handlers at all.
+
+When the configured database is `standaloneRepository`, point its `baseUrl` at
+the exact admin root (for example, `https://example.com/hot-updater/admin`) and
+put the admin bearer token in server-side `commonHeaders`. Never expose that
+token to Console browser code or a React Native app.
+
+A deployed Console has two independent boundaries: its Console auth adapter
+authenticates browser users, while the framework middleware in front of
+`handlers.admin` authenticates Console-to-server requests. The Console's own
+`/api/*` routes belong to the Console application and are not the Hot Updater
+admin API. The standalone repository does not currently proxy Analytics or API
+key models, so those Console views require a direct database
+plugin.
+
 Use the Release CLI for delivery-policy automation and CI scripts:
 
 ```package-install

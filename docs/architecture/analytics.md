@@ -7,30 +7,24 @@ own provider, schema lifecycle, or universal component adapter.
 ```ts
 createHotUpdater({
   database,
-  features: {
-    analytics: {
-      queryAccess: "protected",
-    },
-  },
+  clientAccess: { type: "api-key" },
 });
 ```
 
-When `features.analytics` is enabled, `createHotUpdater` mounts the event
-ingestion route and the Analytics query routes. `queryAccess` defaults to
-`"protected"`; in this mode every HTTP query route returns `401` by design.
-Client access keys authenticate event ingestion, Release Catalog, and artifact
+`createHotUpdater` always mounts event ingestion on `handlers.client` and
+Analytics queries on `handlers.admin`. React Native clients independently opt
+into automatic lifecycle reporting with `HotUpdater.init({ analytics: true })`.
+API keys authenticate event ingestion, Release Catalog, and artifact
 requests, but they do not grant Analytics query access.
 
-To read Analytics without making the built-in query routes public, use the
-database-backed Analytics provider directly from an authenticated server
-surface, as the Console does, or expose your own authenticated API. Set
-`queryAccess: "public"` only for an intentionally public deployment or a local
-test fixture.
+The admin handler does not authenticate itself. Mount it only behind framework
+authentication, or use the database-backed Analytics provider directly from an
+authenticated server surface, as the Console does.
 
-`features.updateCheck`, `features.bundles`, `features.analytics`, and
-`features.clientAccessKeys` are configured through the same feature boundary.
-Analytics owns its event and query routes and is enabled only by
-`features.analytics`.
+`clientAccess` is a required, explicit authentication policy.
+Client update and Analytics ingestion routes are always present on
+`handlers.client`, while mounting `handlers.admin` is the explicit opt-in for
+admin HTTP routes.
 
 The database plugin owns physical storage and migration for `bundle_events`.
 The server owns event input validation, bounded scans, aggregation, installation

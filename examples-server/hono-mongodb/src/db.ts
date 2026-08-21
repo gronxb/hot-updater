@@ -20,6 +20,7 @@ export const hotUpdater = createHotUpdater({
     client,
     transactions: true,
   }),
+  clientAccess: { type: "public" },
   storage: [
     mockStorage({}),
     s3Storage({
@@ -53,12 +54,6 @@ export const hotUpdater = createHotUpdater({
     //   bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
     // }),
   ],
-  basePath: "/hot-updater",
-  features: {
-    updateCheck: true,
-    bundles: true,
-    analytics: { queryAccess: "public" },
-  },
 });
 
 // Cleanup function for graceful shutdown

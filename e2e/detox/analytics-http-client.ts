@@ -42,19 +42,19 @@ export const createConsoleAnalyticsHttpClient = ({
 
   const getOverview = () =>
     requestJson<Awaited<ReturnType<ConsoleAnalyticsQaClient["getOverview"]>>>(
-      "/api/installations/overview",
+      "/installations/overview",
     );
 
   return {
     getActiveOverview: () =>
       requestJson<
         Awaited<ReturnType<ConsoleAnalyticsQaClient["getActiveOverview"]>>
-      >("/api/installations/active?window=24h"),
+      >("/installations/active?window=24h"),
     getBundleAnalytics: (bundleId) =>
       requestJson<
         Awaited<ReturnType<ConsoleAnalyticsQaClient["getBundleAnalytics"]>>
       >(
-        `/api/bundles/${encodeURIComponent(bundleId)}/events/analytics?window=30d&limit=50&offset=0`,
+        `/bundles/${encodeURIComponent(bundleId)}/events/analytics?window=30d&limit=50&offset=0`,
       ),
     getCapabilities: async () => {
       await getOverview();
@@ -62,18 +62,16 @@ export const createConsoleAnalyticsHttpClient = ({
     },
     getHistory: (installId) =>
       requestJson<Awaited<ReturnType<ConsoleAnalyticsQaClient["getHistory"]>>>(
-        `/api/installations/${encodeURIComponent(installId)}/events?limit=50&offset=0`,
+        `/installations/${encodeURIComponent(installId)}/events?limit=50&offset=0`,
       ),
     getOverview,
     getSummary: (bundleId) =>
       requestJson<Awaited<ReturnType<ConsoleAnalyticsQaClient["getSummary"]>>>(
-        `/api/bundles/${encodeURIComponent(bundleId)}/events/summary`,
+        `/bundles/${encodeURIComponent(bundleId)}/events/summary`,
       ),
     searchInstallations: (query) =>
       requestJson<
         Awaited<ReturnType<ConsoleAnalyticsQaClient["searchInstallations"]>>
-      >(
-        `/api/installations?query=${encodeURIComponent(query)}&limit=50&offset=0`,
-      ),
+      >(`/installations?query=${encodeURIComponent(query)}&limit=50&offset=0`),
   };
 };

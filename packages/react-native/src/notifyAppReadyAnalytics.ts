@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 
 import type { HotUpdaterError } from "./error";
+import type { AnalyticsEventParams, HotUpdaterHttpClient } from "./httpClient";
 import {
   getAppVersion,
   getBundleId,
@@ -13,11 +14,10 @@ import {
   type NotifyAppReadyResult,
   readNotifyAppReady,
 } from "./native";
-import type { HotUpdaterResolver, ResolverNotifyAppReadyParams } from "./types";
 
 export type NotifyAppReadyOptions = {
   analytics?: boolean;
-  resolver?: HotUpdaterResolver;
+  client: HotUpdaterHttpClient;
   requestHeaders?: Record<string, string>;
   requestTimeout?: number;
   onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
@@ -52,7 +52,7 @@ const buildNotifyAppReadyAnalyticsParams = (
   nativeResult: NotifyAppReadyResult,
   analyticsEvent: NotifyAppReadyAnalyticsEvent | null,
   options: Pick<NotifyAppReadyOptions, "requestHeaders" | "requestTimeout">,
-): ResolverNotifyAppReadyParams => {
+): AnalyticsEventParams => {
   const appVersion = getAppVersion();
 
   if (!appVersion) {
@@ -150,19 +150,14 @@ const maybeSendAutomaticAnalytics = async (
 
   didAttemptAutomaticAnalytics = true;
 
-  if (!options.resolver?.notifyAppReady) {
-    throw new Error(
-      "[HotUpdater] Automatic analytics requires resolver.notifyAppReady().",
-    );
-  }
-
   if (nativeResult.status !== "UNCHANGED" && !analyticsEvent) {
     throw new Error(
       "[HotUpdater] Native launch report is missing persisted metadata required for automatic analytics.",
     );
   }
 
-  await options.resolver.notifyAppReady(
+  const session = await options.client.createSession();
+  await session.sendAnalyticsEvent(
     buildNotifyAppReadyAnalyticsParams(nativeResult, analyticsEvent, options),
   );
 };

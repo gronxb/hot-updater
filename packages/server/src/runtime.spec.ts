@@ -8,10 +8,9 @@ import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryData
 import packageJson from "../package.json" with { type: "json" };
 import { createHotUpdater } from "./index";
 import type {
-  CreateHotUpdaterFeatures,
+  ClientAccessPolicy,
   CreateHotUpdaterOptions,
   HandlerAPI,
-  HandlerFeatures,
   HandlerOptions,
 } from "./index";
 import {
@@ -20,6 +19,10 @@ import {
 } from "./runtime.testFixtures";
 import { HOT_UPDATER_SCHEMA_VERSION } from "./schema/types";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
+
+const publicClientAccess = {
+  type: "public",
+} satisfies ClientAccessPolicy;
 
 describe("runtime createHotUpdater", () => {
   it("publishes only the supported runtime and database subpaths", () => {
@@ -34,26 +37,14 @@ describe("runtime createHotUpdater", () => {
 
   it("exports runtime-safe handler types from the root entry", () => {
     expectTypeOf<HandlerAPI>().toHaveProperty("getBundles");
-    expectTypeOf<HandlerOptions>().toHaveProperty("features");
-    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<
-      "authorityId" | "basePath" | "features"
-    >();
+    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<"authorityId">();
     expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
-      "authorityId" | "database" | "features" | "storage" | "basePath"
+      "authorityId" | "clientAccess" | "database" | "storage"
     >();
-    expectTypeOf<keyof CreateHotUpdaterFeatures>().toEqualTypeOf<
-      "updateCheck" | "bundles" | "analytics" | "clientAccessKeys"
-    >();
-    expectTypeOf<HandlerFeatures>().toEqualTypeOf<{
-      readonly updateCheck?: boolean;
-      readonly bundles?: boolean;
-    }>();
+    expectTypeOf<CreateHotUpdaterOptions>().toHaveProperty("clientAccess");
     expectTypeOf<
-      NonNullable<CreateHotUpdaterOptions["features"]>
-    >().toHaveProperty("analytics");
-    expectTypeOf<
-      NonNullable<CreateHotUpdaterOptions["features"]>
-    >().toHaveProperty("clientAccessKeys");
+      CreateHotUpdaterOptions["clientAccess"]
+    >().toEqualTypeOf<ClientAccessPolicy>();
   });
 
   it("accepts a direct v2 plugin object without exposing maintenance methods", () => {
@@ -71,22 +62,26 @@ describe("runtime createHotUpdater", () => {
     });
 
     const hotUpdater = createHotUpdater({
+      clientAccess: publicClientAccess,
       database,
       storage: [storage],
     });
 
-    expect(hotUpdater.basePath).toBe("/api");
     expect(hotUpdater.adapterName).toBe("contextlessTestDatabase");
-    expect(hotUpdater.handler).toEqual(expect.any(Function));
+    expect(hotUpdater.handlers.client).toEqual(expect.any(Function));
+    expect(hotUpdater.handlers.admin).toEqual(expect.any(Function));
     expect("createMigrator" in hotUpdater).toBe(false);
     expect("generateSchema" in hotUpdater).toBe(false);
     expectTypeOf(hotUpdater).not.toHaveProperty("createMigrator");
     expectTypeOf(hotUpdater).not.toHaveProperty("generateSchema");
-    expectTypeOf(hotUpdater.handler).parameter(0).toEqualTypeOf<Request>();
+    expectTypeOf(hotUpdater.handlers.client)
+      .parameter(0)
+      .toEqualTypeOf<Request>();
   });
 
   it("rejects access when a managed schema is not initialized", async () => {
     const hotUpdater = createHotUpdater({
+      clientAccess: publicClientAccess,
       database: createSchemaManagedDatabase("kysely", undefined),
     });
 
@@ -108,6 +103,7 @@ describe("runtime createHotUpdater", () => {
 
       expect(() =>
         createHotUpdater({
+          clientAccess: publicClientAccess,
           database: createRuntimeDatabase(),
           storage: [storage],
         }),
@@ -119,6 +115,7 @@ describe("runtime createHotUpdater", () => {
 
   it("rejects access when a managed schema is stale", async () => {
     const hotUpdater = createHotUpdater({
+      clientAccess: publicClientAccess,
       database: createSchemaManagedDatabase("mongodb", "0.21.0"),
     });
 
@@ -135,7 +132,10 @@ describe("runtime createHotUpdater", () => {
       HOT_UPDATER_SCHEMA_VERSION,
     );
     const createMigrator = vi.spyOn(database, "createMigrator");
-    const hotUpdater = createHotUpdater({ database });
+    const hotUpdater = createHotUpdater({
+      clientAccess: publicClientAccess,
+      database,
+    });
 
     await hotUpdater.getChannels();
     await hotUpdater.getChannels();
@@ -143,39 +143,39 @@ describe("runtime createHotUpdater", () => {
     expect(createMigrator).toHaveBeenCalledOnce();
   });
 
-  it.each([
-    { updateCheck: true, bundles: false },
-    { updateCheck: false, bundles: false },
-  ])(
-    "keeps the version route mounted for $updateCheck/$bundles",
-    async (features) => {
-      const hotUpdater = createHotUpdater({
-        database: createRuntimeDatabase(),
-        basePath: "/api/check-update",
-        features,
-      });
+  it("keeps the version route mounted on the client handler", async () => {
+    const hotUpdater = createHotUpdater({
+      clientAccess: publicClientAccess,
+      database: createRuntimeDatabase(),
+    });
 
-      const response = await hotUpdater.handler(
-        new Request("https://updates.example.com/api/check-update/version"),
-      );
+    const response = await hotUpdater.handlers.client(
+      new Request("https://updates.example.com/version"),
+    );
 
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({
-        infrastructureGeneration: 1,
-        version: HOT_UPDATER_SERVER_VERSION,
-      });
-    },
-  );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      infrastructureGeneration: 1,
+      version: HOT_UPDATER_SERVER_VERSION,
+    });
+  });
 
-  it.each([
-    ["updateCheck", "Update-check"],
-    ["bundles", "Bundles"],
-  ] as const)("rejects a non-boolean %s feature", (feature, label) => {
+  it("rejects a missing client access policy", () => {
     expect(() =>
       createHotUpdater({
         database: createRuntimeDatabase(),
-        features: { [feature]: "enabled" } as never,
+      } as unknown as CreateHotUpdaterOptions),
+    ).toThrow("clientAccess must be an object.");
+  });
+
+  it("rejects an unsupported client access policy", () => {
+    expect(() =>
+      createHotUpdater({
+        clientAccess: {
+          type: "private" as unknown as "public",
+        },
+        database: createRuntimeDatabase(),
       }),
-    ).toThrow(`${label} feature must be a boolean.`);
+    ).toThrow('clientAccess.type must be either "public" or "api-key".');
   });
 });

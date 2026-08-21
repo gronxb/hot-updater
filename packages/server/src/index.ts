@@ -1,18 +1,27 @@
-export { createHandler } from "./handler";
-export type { HandlerAPI, HandlerFeatures, HandlerOptions } from "./handler";
+export { createHandlers } from "./handler";
+export type {
+  HandlerAPI,
+  HandlerOptions,
+  HotUpdaterHandler,
+  HotUpdaterHandlers,
+} from "./handler";
 export { createAnalyticsProvider } from "./analytics/bounded/provider";
 export type * from "./analytics/domain";
-export type { AnalyticsQueryAccess } from "./analytics/routes";
 export type { AnalyticsProvider } from "./analytics/types";
 export {
-  CLIENT_ACCESS_KEY_HEADER_NAME,
-  createClientAccessKey,
-  registerClientAccessKey,
-} from "./clientAccessKeys";
-export type { CreatedClientAccessKey } from "./clientAccessKeys";
+  API_KEY_HEADER_NAME,
+  createApiKey,
+  provisionApiKey,
+  registerApiKey,
+} from "./apiKeys";
+export type {
+  ApiKeyManagementAPI,
+  ApiKeyMetadata,
+  CreatedApiKey,
+} from "./apiKeys";
 export { createHotUpdater } from "./createHotUpdaterCore";
 export type {
-  CreateHotUpdaterFeatures,
+  ClientAccessPolicy,
   CreateHotUpdaterOptions,
   HotUpdaterAPI,
   RuntimeHotUpdaterAPI,

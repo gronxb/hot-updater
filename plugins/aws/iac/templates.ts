@@ -131,11 +131,13 @@ function App() {
   return null; // Replace with your app root.
 }
 
-export default HotUpdater.wrap({
+HotUpdater.init({
   baseURL: %%source%%,
-  authorityId: %%authorityId%%,
-  updateStrategy: "appVersion", // or "fingerprint"
   requestHeaders: {
     "x-api-key": %%apiKey%%,
   },
-})(App);`;
+});
+
+// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
+// when your app is ready to check.
+export default App;`;

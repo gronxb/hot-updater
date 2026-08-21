@@ -1,62 +1,144 @@
 ---
-title: "Client access-key authentication"
-description: Protect OTA reads and Analytics writes with the built-in client access-key domain.
+title: "API key authentication"
+description: Protect OTA reads and Analytics writes with the built-in API key domain.
 icon: KeyRound
 ---
 
-Client access-key authentication is built into `createHotUpdater` and uses the
-official `database.models.clientAccessKeys` domain. No authentication package
-or server plugin is required.
+API key authentication is built into `createHotUpdater` and uses the official
+`database.models.apiKeys` domain. No authentication package or server plugin is
+required.
+
+## Terminology
+
+| Surface                                      | Canonical name        |
+| -------------------------------------------- | --------------------- |
+| User-facing credential and database domain   | API key / `apiKeys`   |
+| CLI namespace and `clientAccess` policy type | `api-key`             |
+| Default HTTP request header                  | `x-api-key`           |
+| Managed init environment variable            | `HOT_UPDATER_API_KEY` |
+
+`clientAccess` remains the server setting because it selects how client routes
+are accessed. The credential selected by its `api-key` policy is always called
+an API key.
 
 ```ts
 import { createHotUpdater } from "@hot-updater/server";
 
 export const hotUpdater = createHotUpdater({
   database,
-  features: {
-    analytics: true,
-    clientAccessKeys: true,
+  clientAccess: { type: "api-key" },
+});
+```
+
+The `api-key` policy requires `x-api-key` for update-check routes and
+`POST /events`. `/version` stays public. API keys do not grant access to
+Analytics queries, admin routes, or API key management.
+
+To use a different header, set it explicitly and send the same header from the
+client:
+
+```ts
+clientAccess: {
+  type: "api-key",
+  headerName: "x-hot-updater-key",
+}
+```
+
+Release Catalog responses include the selected header in `Vary`, so shared
+caches keep authenticated responses partitioned by the configured credential
+header.
+
+## Bootstrap a self-hosted client
+
+After configuring `createHotUpdater` with the `api-key` policy, apply its schema
+and create an API key from the same direct configuration:
+
+```bash
+npx hot-updater db migrate src/hotUpdater.ts
+npx hot-updater api-key create src/hotUpdater.ts --name "Mobile app"
+```
+
+The command prints the plaintext API key exactly once. Store it in your existing
+React Native build-time configuration without committing it to source, and send
+it using `x-api-key`. The server's `.env.hotupdater` file is not loaded into the
+React Native app automatically. Persistence receives only the key's SHA-256 hash
+and non-secret metadata, including its prefix, name, creation time, and revocation
+time.
+
+```ts
+import { HotUpdater } from "@hot-updater/react-native";
+
+HotUpdater.init({
+  baseURL: "https://example.com/hot-updater",
+  requestHeaders: {
+    "x-api-key": "<API key printed by api-key create>",
   },
 });
 ```
 
-When enabled, `x-api-key` is required for update-check routes and
-`POST /events`. `/version` stays public. Client keys do not grant access to
-Analytics queries, bundle management, or key management.
+`HotUpdater.init` configures the client but does not start an update check.
+Continue with the [`init + checkForUpdate` flow](/docs/react-native-api/init).
 
-## Create a key
+## Manage API keys
 
-When its database configuration exposes the official domain directly, the Hot
-Updater Console creates, lists, and revokes keys through that domain.
-`standaloneRepository` proxies bundle, Release, Release Catalog, Channel, and
-commit operations, but it does not proxy key management. A self-hosted
-management surface can use the server helper:
+List metadata and revoke a key by ID with:
 
-```ts
-import { createClientAccessKey } from "@hot-updater/server";
-
-const { apiKey, record } = await createClientAccessKey({
-  clientAccessKeys: database.models.clientAccessKeys,
-  name: "Production app",
-});
+```bash
+npx hot-updater api-key list src/hotUpdater.ts
+npx hot-updater api-key revoke <api-key-id> src/hotUpdater.ts
 ```
 
-The plaintext `apiKey` is returned only once. Persistence receives its SHA-256
-digest, prefix, role, creation time, and revocation time. Store the plaintext in
-your client configuration and send it as `x-api-key`.
+The Console uses the same official domain to create, list, and revoke API keys.
+`standaloneRepository` proxies Bundle, Release, Release Catalog, Channel, and
+commit operations, but it does not proxy API key management.
+
+`createHotUpdater` exposes the same local management API used by the CLI:
+
+```ts
+const { apiKey, record } = await hotUpdater.apiKeys.create({
+  name: "Mobile app",
+});
+
+const records = await hotUpdater.apiKeys.list();
+await hotUpdater.apiKeys.revoke({ id: record.id });
+```
+
+This is an in-process API backed by the configured direct database plugin. It
+does not add API key management routes to `handlers.client` or
+`handlers.admin`.
+
+AWS, Cloudflare, Firebase, and Supabase init use this same API key domain. Init
+registers an existing `HOT_UPDATER_API_KEY` or creates one, then stores the
+plaintext only in the local environment file. Managed users do not run
+`hot-updater api-key create`; that command bootstraps direct self-hosted
+`createHotUpdater` configurations.
+
+## Rotate an API key
+
+Create a replacement, ship clients configured with the replacement, verify the
+rollout, and then revoke the old API key. Revocation takes effect immediately at
+the origin; a shared Release Catalog cache can retain an authenticated response
+for its configured short TTL.
 
 ## Security boundary
 
-A key embedded in a mobile binary can be extracted. Treat this feature as an
-abuse-control boundary for OTA reads and Analytics writes, not as a management
-credential. Protect bundle management, Analytics reads, Console access, and key
-management with your application or framework authentication.
+An API key embedded in a mobile binary can be extracted. Treat this feature as
+an abuse-control boundary for OTA reads and Analytics writes, not as an admin
+credential. Protect `handlers.admin`, Console access, and API key management
+with your application or framework authentication.
 
-Missing, malformed, unknown, and revoked keys return `401`. A database failure
-during credential lookup returns `503` and does not fall back to public access.
+Missing, malformed, unknown, and revoked API keys return `401`. A database
+failure during credential lookup returns `503` and does not fall back to public
+access.
 
-`features.updateCheck` and `features.bundles` control the core route groups.
-`features.analytics` mounts Analytics routes, while
-`features.clientAccessKeys` applies authentication to update checks and
-Analytics ingestion. Neither feature makes bundle management or Analytics
-queries public.
+Client update and Analytics ingestion routes are always available on
+`handlers.client`, while Analytics queries live on `handlers.admin`.
+`clientAccess` is required and applies its policy to update checks and
+Analytics ingestion. It does not authenticate the admin handler.
+
+## Unauthenticated alternative
+
+If you intentionally want client update and Analytics ingestion routes to be
+public, use `clientAccess: { type: "public" }` and omit `x-api-key` from the
+React Native request headers. Admin handler authentication remains a separate,
+required framework boundary.

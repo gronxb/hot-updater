@@ -12,7 +12,7 @@ const supabaseMock = vi.hoisted(() => {
     | "bundle_patches"
     | "bundles"
     | "channels"
-    | "client_access_keys"
+    | "api_keys"
     | "release_catalogs"
     | "releases";
   type QueryError = { readonly message: string };
@@ -27,7 +27,7 @@ const supabaseMock = vi.hoisted(() => {
     bundle_patches: new Map(),
     bundles: new Map(),
     channels: new Map(),
-    client_access_keys: new Map(),
+    api_keys: new Map(),
     release_catalogs: new Map(),
     releases: new Map(),
   };
@@ -36,7 +36,7 @@ const supabaseMock = vi.hoisted(() => {
     bundle_patches: 0,
     bundles: 0,
     channels: 0,
-    client_access_keys: 0,
+    api_keys: 0,
     release_catalogs: 0,
     releases: 0,
   };
@@ -355,7 +355,7 @@ const supabaseMock = vi.hoisted(() => {
         conflictField ??
         (this.table === "channels"
           ? "name"
-          : this.table === "client_access_keys"
+          : this.table === "api_keys"
             ? "hash"
             : undefined);
       const conflictingEntry =
@@ -443,7 +443,7 @@ const supabaseMock = vi.hoisted(() => {
             bundle_patches: new Map(rows.bundle_patches),
             bundles: new Map(rows.bundles),
             channels: new Map(rows.channels),
-            client_access_keys: new Map(rows.client_access_keys),
+            api_keys: new Map(rows.api_keys),
             release_catalogs: new Map(rows.release_catalogs),
             releases: new Map(rows.releases),
           };
@@ -652,18 +652,18 @@ const supabaseMock = vi.hoisted(() => {
               staged.bundle_events.set(String(event.id), event);
               continue;
             }
-            if (model === "clientAccessKeys") {
+            if (model === "apiKeys") {
               const key = change.row as Row | undefined;
               if (operation === "insert" && key !== undefined) {
-                const existing = [...staged.client_access_keys.values()].find(
+                const existing = [...staged.api_keys.values()].find(
                   (row) => row.hash === key.hash,
                 );
                 if (existing === undefined) {
-                  staged.client_access_keys.set(String(key.id), key);
+                  staged.api_keys.set(String(key.id), key);
                 }
               } else if (operation === "update") {
                 const where = change.where as Row;
-                const current = staged.client_access_keys.get(String(where.id));
+                const current = staged.api_keys.get(String(where.id));
                 if (current === undefined) {
                   return {
                     data: {
@@ -682,7 +682,7 @@ const supabaseMock = vi.hoisted(() => {
           rows.bundles = staged.bundles;
           rows.bundle_patches = staged.bundle_patches;
           rows.channels = staged.channels;
-          rows.client_access_keys = staged.client_access_keys;
+          rows.api_keys = staged.api_keys;
           rows.release_catalogs = staged.release_catalogs;
           rows.releases = staged.releases;
           return { data: { committed: true }, error: null };
@@ -722,7 +722,7 @@ const supabaseMock = vi.hoisted(() => {
       rows.bundle_patches.clear();
       rows.bundles.clear();
       rows.channels.clear();
-      rows.client_access_keys.clear();
+      rows.api_keys.clear();
       rows.release_catalogs.clear();
       rows.releases.clear();
       for (const table of Object.keys(tableReadCounts) as TableName[]) {
@@ -759,10 +759,10 @@ describe("supabase edge database", () => {
     expect(Object.keys(database).sort()).toEqual(["commit", "models", "name"]);
     expect(Object.keys(database.models).sort()).toEqual([
       "analytics",
+      "apiKeys",
       "bundlePatches",
       "bundles",
       "channels",
-      "clientAccessKeys",
       "releaseCatalogs",
       "releases",
     ]);

@@ -52,9 +52,7 @@ describe("Detox remote asset proxy URLs", () => {
               },
             },
             fileUrl: signedBundleUrl,
-            id: "019ea44b-1360-7be6-b475-d67441755828",
             manifestUrl: signedManifestUrl,
-            status: "UPDATE",
           }),
           {
             headers: { "content-type": "application/json" },
@@ -153,9 +151,148 @@ describe("Detox remote asset proxy URLs", () => {
     }
   });
 
-  it("uses the client access key for direct and proxied update requests", async () => {
+  it("proxies client-relative storage URLs without rewriting manifest bytes", async () => {
     const resultsDir = await fs.mkdtemp(
-      path.join(os.tmpdir(), "hot-updater-client-key-proxy-"),
+      path.join(os.tmpdir(), "hot-updater-relative-proxy-url-"),
+    );
+    const baseUrl = "https://provider.example.com/hot-updater";
+    const bundlePath = "/storage/bundles/bundle.zip?token=bundle";
+    const manifestPath = "/storage/bundles/manifest.json?token=manifest";
+    const assetPath = "/storage/assets/sha256/asset?token=asset";
+    const patchPath = "/storage/bundles/bundle.bsdiff?token=patch";
+    const manifestBytes =
+      '{\n  "bundleId": "target",\n  "signature": "signed"\n}\n';
+    const fetchTargets: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url =
+        input instanceof Request
+          ? input.url
+          : input instanceof URL
+            ? input.toString()
+            : input;
+      fetchTargets.push(url);
+
+      if (url === `${baseUrl}/artifacts/target/from/current`) {
+        return Response.json({
+          changedAssets: {
+            "assets/example.bmp": {
+              file: { url: assetPath },
+              patch: {
+                algorithm: "bsdiff",
+                baseBundleId: "019ea44a-0000-7000-8000-000000000000",
+                patchUrl: patchPath,
+              },
+            },
+          },
+          fileUrl: bundlePath,
+          manifestUrl: manifestPath,
+        });
+      }
+
+      if (url === `${baseUrl}${manifestPath}`) {
+        return new Response(manifestBytes, {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url === `${baseUrl}${bundlePath}`) {
+        return new Response("bundle-bytes");
+      }
+      if (url === `${baseUrl}${assetPath}`) {
+        return new Response("asset-bytes");
+      }
+      if (url === `${baseUrl}${patchPath}`) {
+        return new Response("patch-bytes");
+      }
+
+      return new Response("unexpected fetch target", { status: 500 });
+    });
+
+    vi.resetModules();
+    vi.stubEnv("HOT_UPDATER_E2E_APP_BASE_URL", baseUrl);
+    vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.example");
+    vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "booted");
+    vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
+    vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", resultsDir);
+    vi.stubEnv("PORT", "3107");
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const controller = await import("./control-server/controller.ts");
+      const updateResponse = await controller.handleProxyUpdateRequest(
+        new Request(
+          "http://localhost:3107/hot-updater/artifacts/target/from/current",
+        ),
+      );
+      const payload = (await updateResponse.json()) as {
+        changedAssets: Record<
+          string,
+          { file: { url: string }; patch: { patchUrl: string } }
+        >;
+        fileUrl: string;
+        manifestUrl: string;
+      };
+      const assetUrl = payload.changedAssets["assets/example.bmp"]!.file.url;
+      const patchUrl =
+        payload.changedAssets["assets/example.bmp"]!.patch.patchUrl;
+      for (const url of [
+        payload.fileUrl,
+        payload.manifestUrl,
+        assetUrl,
+        patchUrl,
+      ]) {
+        expect(url).toMatch(
+          /^http:\/\/localhost:3107\/e2e\/proxy-url\/[-0-9a-f]+$/,
+        );
+      }
+
+      const manifestResponse = await controller.handleProxyRemoteAssetRequest(
+        new Request(payload.manifestUrl),
+      );
+      expect(await manifestResponse.text()).toBe(manifestBytes);
+
+      controller.handleConfigureProxy({ artifactFailures: 1 });
+      const failedBundleResponse =
+        await controller.handleProxyRemoteAssetRequest(
+          new Request(payload.fileUrl),
+        );
+      expect(failedBundleResponse.status).toBe(503);
+      expect(controller.handleProxyState().artifactFailuresRemaining).toBe(0);
+      expect(
+        await (
+          await controller.handleProxyRemoteAssetRequest(
+            new Request(payload.fileUrl),
+          )
+        ).text(),
+      ).toBe("bundle-bytes");
+      expect(
+        await (
+          await controller.handleProxyRemoteAssetRequest(new Request(assetUrl))
+        ).text(),
+      ).toBe("asset-bytes");
+      expect(
+        await (
+          await controller.handleProxyRemoteAssetRequest(new Request(patchUrl))
+        ).text(),
+      ).toBe("patch-bytes");
+
+      expect(fetchTargets).toEqual(
+        expect.arrayContaining([
+          `${baseUrl}${bundlePath}`,
+          `${baseUrl}${manifestPath}`,
+          `${baseUrl}${assetPath}`,
+          `${baseUrl}${patchPath}`,
+        ]),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await fs.rm(resultsDir, { force: true, recursive: true });
+    }
+  });
+
+  it("uses the API key for direct and proxied update requests", async () => {
+    const resultsDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-api-key-proxy-"),
     );
     const observedKeys: Array<string | null> = [];
     const fetchMock = vi.fn(
@@ -166,7 +303,7 @@ describe("Detox remote asset proxy URLs", () => {
     );
 
     vi.resetModules();
-    vi.stubEnv("HOT_UPDATER_API_KEY", "client-access-key");
+    vi.stubEnv("HOT_UPDATER_API_KEY", "api-key");
     vi.stubEnv(
       "HOT_UPDATER_E2E_APP_BASE_URL",
       "https://provider.example.com/hot-updater",
@@ -185,14 +322,14 @@ describe("Detox remote asset proxy URLs", () => {
 
       expect(
         controller.getHotUpdaterClientRequestHeaders().get("x-api-key"),
-      ).toBe("client-access-key");
+      ).toBe("api-key");
 
       await controller.handleProxyUpdateRequest(new Request(url));
       await controller.handleProxyUpdateRequest(
         new Request(url, { headers: { "x-api-key": "app-provided-key" } }),
       );
 
-      expect(observedKeys).toEqual(["client-access-key", "app-provided-key"]);
+      expect(observedKeys).toEqual(["api-key", "app-provided-key"]);
     } finally {
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
@@ -219,13 +356,13 @@ describe("Detox remote asset proxy URLs", () => {
         }
         return new Response(
           JSON.stringify({
-            authorityId: "default",
+            authorityId: "provider-project",
             catalogHash: `sha256:${generation.toString().padStart(64, "0")}`,
             fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
             generation,
             releases: [],
             schemaVersion: 1,
-            scopeKey: "v1:app-version:default:ios:am9iLXByb2R1Y3Rpb24",
+            scopeKey: "v1:app-version:provider-project:ios:am9iLXByb2R1Y3Rpb24",
           }),
           {
             headers: {
@@ -253,14 +390,14 @@ describe("Detox remote asset proxy URLs", () => {
     try {
       const controller = await import("./control-server/controller.ts");
       const url =
-        "http://localhost:3107/hot-updater/release-catalogs/app-version/default/ios/cHJvZHVjdGlvbg/1.0.0";
+        "http://localhost:3107/hot-updater/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0";
       expect(
         await (
           await controller.handleProxyUpdateRequest(new Request(url))
         ).json(),
       ).toMatchObject({
         generation: 1,
-        scopeKey: "v1:app-version:default:ios:cHJvZHVjdGlvbg",
+        scopeKey: "v1:app-version:provider-project:ios:cHJvZHVjdGlvbg",
       });
       generation = 2;
       expect(
@@ -269,7 +406,7 @@ describe("Detox remote asset proxy URLs", () => {
         ).json(),
       ).toMatchObject({
         generation: 2,
-        scopeKey: "v1:app-version:default:ios:cHJvZHVjdGlvbg",
+        scopeKey: "v1:app-version:provider-project:ios:cHJvZHVjdGlvbg",
       });
       const notModifiedResponse = await controller.handleProxyUpdateRequest(
         new Request(url, {
@@ -289,7 +426,7 @@ describe("Detox remote asset proxy URLs", () => {
         ).json(),
       ).toMatchObject({
         generation: 1,
-        scopeKey: "v1:app-version:default:ios:cHJvZHVjdGlvbg",
+        scopeKey: "v1:app-version:provider-project:ios:cHJvZHVjdGlvbg",
       });
       expect(
         controller.handleAssertProxy({ artifactRequests: 0 }),
@@ -298,8 +435,8 @@ describe("Detox remote asset proxy URLs", () => {
         requestCounts: { artifact: 0, catalog: 4, legacy: 0 },
       });
       expect(fetchMock).toHaveBeenCalledTimes(3);
-      expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
-        "/am9iLXByb2R1Y3Rpb24/",
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+        "https://provider.example.com/hot-updater/release-catalogs/app-version/ios/am9iLXByb2R1Y3Rpb24/1.0.0",
       );
     } finally {
       vi.unstubAllEnvs();

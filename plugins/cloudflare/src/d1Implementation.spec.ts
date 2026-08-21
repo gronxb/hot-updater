@@ -23,7 +23,7 @@ it("guards every write and reports the missing change index", async () => {
         update: { metadata: { app_version: "1.0.0" } },
       },
       {
-        model: "clientAccessKeys",
+        model: "apiKeys",
         operation: "update",
         where: { id: "missing-key" },
         update: { revokedAtMs: 1 },
@@ -37,7 +37,7 @@ it("guards every write and reports the missing change index", async () => {
   });
   expect(recorded.slice(0, 2).map(({ sql }) => sql)).toEqual([
     "SELECT id FROM bundles WHERE id = json_extract(?, '$') LIMIT 1",
-    "SELECT id FROM client_access_keys WHERE id = json_extract(?, '$') LIMIT 1",
+    "SELECT id FROM api_keys WHERE id = json_extract(?, '$') LIMIT 1",
   ]);
   expect(recorded.slice(2)).toHaveLength(2);
   for (const statement of recorded.slice(2)) {
@@ -45,7 +45,7 @@ it("guards every write and reports the missing change index", async () => {
     expect(statement.params).toContain(
       JSON.stringify([
         { model: "bundles", id: "bundle-1" },
-        { model: "client_access_keys", id: "missing-key" },
+        { model: "api_keys", id: "missing-key" },
       ]),
     );
   }
