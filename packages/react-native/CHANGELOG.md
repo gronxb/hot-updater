@@ -1,5 +1,101 @@
 # @hot-updater/react-native
 
+## 1.0.0-rc.0
+
+### Minor Changes
+
+- a9ffb2a: Require R2 S3 credentials, drop Wrangler `r2Storage` and Android `stringResourcePaths`. Doctor only targets infrastructure generation 1.0.0. Channel, fingerprint, and signing keys live in AndroidManifest.xml.
+- 5a2e1cd: Separate immutable Bundle artifacts from mutable Release policy and compile
+  policy changes ahead of time into deterministic Release catalogs.
+  Database plugins now expose Release and catalog models plus atomic Release
+  revision/catalog generation expectations, and no longer expose provider update
+  decision queries.
+
+  Add canonical v2 Release-catalog and Bundle-artifact routes, short-lived
+  authenticated shared caching, a v1-only device protocol boundary, Release
+  management commands, catalog preflight/rebuild tooling, and a familiar Bundle
+  management view backed by Releases. The Console keeps Bundle content, delivery settings,
+  promote, and download actions in one workflow while Release identity stays
+  secondary. Deploy and promote create Releases; rollback disables the current
+  Release so clients select the previous compatible enabled Release or the
+  built-in app. Rollout, targeting, enablement, and messages mutate Releases
+  while patch, manifest, signing, and storage behavior remain Bundle-keyed.
+  Release IDs are canonical UUIDv7 values. Console shadcn primitives now use Base
+  UI instead of Radix while preserving the existing management flow and visual
+  density.
+
+  React Native clients select desired Releases locally, persist authority/scope
+  generation high-water and full Release/Bundle receipts, support same-Bundle
+  adoption and authenticated BUILTIN fallback, and use generation/context CAS so
+  stale artifact work cannot commit. New catalogs retain an 11-artifact update
+  frontier plus the complete compatible enabled rollback spine, so rollback keeps
+  v0 predecessor semantics even for old active clients. The 256 KiB catalog cap
+  remains atomic: an oversized history rejects the Release mutation instead of
+  silently truncating rollback candidates. Analytics events now carry directional
+  Release identity alongside Bundle identity.
+
+  Migrate SQL, DynamoDB, D1, Firestore, Supabase, MongoDB, Drizzle, Kysely,
+  Prisma, Standalone, mock, and in-memory implementations to schema `1.0.0`.
+  Managed AWS, Cloudflare, and Firebase deployments place Release catalogs behind
+  their supported pre-origin cache, while Supabase uses its direct Edge Function
+  URL as a supported origin-only mode and reports Edge invocations separately
+  from Postgres catalog reads.
+
+- ebe1f64: Add Analytics as a built-in `createHotUpdater` domain backed directly by the
+  official `database.models.analytics` port. Event ingestion, bounded aggregation,
+  installation search, HTTP routes, and Console views now live with the server;
+  there is no Analytics plugin, provider override, universal component schema, or
+  separate `@hot-updater/analytics` package.
+
+  Runtime feature switches now share `createHotUpdater({ features: { ... } })`;
+  the former top-level `analytics` and `routes` options are removed.
+
+  Database providers own the physical `bundle_events` table through the shared
+  database contract and schema version.
+  `createHotUpdater({ features: { analytics: { queryAccess } } })` opts into the
+  routes, with queries failing closed by default.
+
+  React Native clients can enable automatic OTA transition reporting with
+  `HotUpdater.init({ analytics: true })`. App-ready transitions retain stable
+  installation and optional user identity across launches, and analytics
+  delivery failures remain warning-only so they never block application startup.
+
+- c8e24cd: Make Hot Updater v1 infrastructure a clean generation boundary. Managed init
+  now rejects selected v0 resources before mutation and requires newly
+  scaffolded resources, while doctor identifies missing v1 generation markers
+  and gives the parallel-cutover remediation.
+
+  Remove the v0 app-version and fingerprint HTTP routes, the legacy SDK-version
+  header contract, CDN forwarding and cache paths for those routes, and managed
+  provider Release Catalog backfills. Existing v0 native binaries must remain on
+  their unchanged v0 endpoint; new v1 native builds use the unversioned catalog
+  and artifact routes on fresh v1 infrastructure.
+
+  Normalize managed provider base URLs to their public deployment roots. AWS,
+  Cloudflare, and Firebase now serve `/version`, `/release-catalogs/*`,
+  `/artifacts/*`, and `/events` directly; Supabase retains only its
+  provider-owned Edge Function prefix. Client routes do not carry a library or
+  protocol version prefix because incompatible generations use a fresh base URL.
+
+- a9ffb2a: Remove leftover v0 aliases that are not field compatibility. `HotUpdater.wrap({ updateMode: "manual" })` throws, findMany accepts only `orderBy`, and Supabase plugins require `supabaseServiceRoleKey`. Managed init still detects leftover `supabaseAnonKey` so skipped v0 configs fail closed.
+- f5f7de7: Move the Expo config plugin from `@hot-updater/react-native` to
+  `@hot-updater/expo`. Configure Expo apps with `@hot-updater/expo` in the
+  `plugins` array of `app.json` or `app.config.js`.
+
+### Patch Changes
+
+- Updated dependencies [b424d47]
+- Updated dependencies [9650748]
+- Updated dependencies [88c163a]
+- Updated dependencies [a9ffb2a]
+- Updated dependencies [a9ffb2a]
+- Updated dependencies [5a2e1cd]
+- Updated dependencies [25af6ef]
+- Updated dependencies [a9ffb2a]
+  - @hot-updater/plugin-core@1.0.0-rc.0
+  - @hot-updater/core@1.0.0-rc.0
+  - @hot-updater/js@1.0.0-rc.0
+
 ## 0.36.0
 
 ### Patch Changes

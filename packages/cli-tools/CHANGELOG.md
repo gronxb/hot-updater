@@ -1,5 +1,193 @@
 # @hot-updater/cli-tools
 
+## 1.0.0-rc.0
+
+### Minor Changes
+
+- b424d47: Replace the legacy database plugin API with the fixed official-domain contract:
+
+  ```ts
+  createDatabasePlugin({
+    name,
+    models: {
+      bundles,
+      bundlePatches,
+      channels,
+      analytics,
+      clientAccessKeys,
+    },
+    queries: { getUpdateInfo },
+    commit,
+    dispose,
+  });
+  ```
+
+  Provider callback transactions, generic CRUD, factories, runtime contexts,
+  capability registries, `commitBatch`, and the former top-level model and query
+  members are no longer public. `commit({ changes })` is now a declarative,
+  ordered, atomic write boundary across every official model. Expected missing-row
+  and live-reference conflicts identify the original change index; failed commits
+  roll back all earlier changes. Providers without a suitable atomic primitive
+  reject a multi-change commit before its first write.
+
+  Add Channels as a normalized, persistent model with opaque `id` and exact,
+  case-sensitive `name`. Channel IDs and names are non-empty and limited to 255
+  Unicode code points. Bundle rows retain `channel` for compatibility and add the
+  required `channel_id`; new writes validate both values against the same Channel.
+  Channel listing reads the Channel model directly instead of scanning or applying
+  `DISTINCT` to bundles. Channels remain after their last bundle is removed and
+  can be deleted explicitly only when no bundle references them.
+
+  Core schema `0.38.0` creates Channel storage, backfills one Channel for each
+  legacy bundle channel, fills `bundles.channel_id`, validates the dual values,
+  and applies the non-null, uniqueness, and reference constraints before recording
+  the new version. Kysely, Drizzle, Prisma, MongoDB, Cloudflare D1, PostgreSQL,
+  Supabase, Firebase, and Mock implement the same logical contract and migration
+  semantics.
+
+  Add canonical Channel management routes: `GET /api/channels`,
+  `POST /api/channels`, and empty-only `DELETE /api/channels/:id`. Remove the
+  legacy `/api/bundles/channels` route. Standalone remains a narrower remote
+  `BundleRepository`, while self-hosted `createHotUpdater` owns the full database
+  contract. The Console can create Channels and request safe deletion; a concurrent
+  bundle reference is reported as `not_empty` without losing data.
+
+  Official providers implement the fixed bundle access patterns used by the
+  shared client: exact domain filters, id ordering, bounded pagination, row
+  counts, patch lookup by owner ids, and atomic ordered changes across official
+  models. Arbitrary
+  distinct, projection, connector, and string-comparison query DSL operations are
+  no longer part of the public database plugin contract. Cloudflare D1 rejects
+  malformed count results instead of returning zero.
+
+  The shared database client resolves the canonical Channel row before bundle
+  writes, keeps `channel` and `channel_id` synchronized on moves, and uses the
+  optional `queries.getUpdateInfo` optimization without exposing provider query
+  languages. `@hot-updater/test-utils` now publishes conformance coverage for
+  all-model commits, rollback, Channel persistence, canonical concurrent inserts,
+  safe deletion, and the absence of bundle-scan channel reads.
+
+  Runtime-specific composition entrypoints keep the same provider names behind
+  explicit package subpaths. `@hot-updater/cloudflare/worker` accepts a native D1
+  binding through `d1Database(database)`, while `@hot-updater/supabase/edge`
+  exports the Edge-compatible `supabaseDatabase` and `supabaseStorage`. Root
+  entrypoints remain the configuration-time providers.
+
+  Self-hosted runtimes configure all route groups and optional behavior through
+  `createHotUpdater({ features })`. `features.analytics` mounts Analytics
+  ingestion and query routes backed by `database.models.analytics`, while
+  `features.clientAccessKeys` protects update checks and Analytics ingestion
+  through `database.models.clientAccessKeys`. `features.updateCheck` and
+  `features.bundles` control the core route groups in the same object. The
+  CLI-only `standaloneRepository` stays a bundle repository; the physical
+  database passed to the self-hosted `createHotUpdater` instance owns the full
+  official contract.
+
+- 5a2e1cd: Separate immutable Bundle artifacts from mutable Release policy and compile
+  policy changes ahead of time into deterministic Release catalogs.
+  Database plugins now expose Release and catalog models plus atomic Release
+  revision/catalog generation expectations, and no longer expose provider update
+  decision queries.
+
+  Add canonical v2 Release-catalog and Bundle-artifact routes, short-lived
+  authenticated shared caching, a v1-only device protocol boundary, Release
+  management commands, catalog preflight/rebuild tooling, and a familiar Bundle
+  management view backed by Releases. The Console keeps Bundle content, delivery settings,
+  promote, and download actions in one workflow while Release identity stays
+  secondary. Deploy and promote create Releases; rollback disables the current
+  Release so clients select the previous compatible enabled Release or the
+  built-in app. Rollout, targeting, enablement, and messages mutate Releases
+  while patch, manifest, signing, and storage behavior remain Bundle-keyed.
+  Release IDs are canonical UUIDv7 values. Console shadcn primitives now use Base
+  UI instead of Radix while preserving the existing management flow and visual
+  density.
+
+  React Native clients select desired Releases locally, persist authority/scope
+  generation high-water and full Release/Bundle receipts, support same-Bundle
+  adoption and authenticated BUILTIN fallback, and use generation/context CAS so
+  stale artifact work cannot commit. New catalogs retain an 11-artifact update
+  frontier plus the complete compatible enabled rollback spine, so rollback keeps
+  v0 predecessor semantics even for old active clients. The 256 KiB catalog cap
+  remains atomic: an oversized history rejects the Release mutation instead of
+  silently truncating rollback candidates. Analytics events now carry directional
+  Release identity alongside Bundle identity.
+
+  Migrate SQL, DynamoDB, D1, Firestore, Supabase, MongoDB, Drizzle, Kysely,
+  Prisma, Standalone, mock, and in-memory implementations to schema `1.0.0`.
+  Managed AWS, Cloudflare, and Firebase deployments place Release catalogs behind
+  their supported pre-origin cache, while Supabase uses its direct Edge Function
+  URL as a supported origin-only mode and reports Edge invocations separately
+  from Postgres catalog reads.
+
+- c8e24cd: Make Hot Updater v1 infrastructure a clean generation boundary. Managed init
+  now rejects selected v0 resources before mutation and requires newly
+  scaffolded resources, while doctor identifies missing v1 generation markers
+  and gives the parallel-cutover remediation.
+
+  Remove the v0 app-version and fingerprint HTTP routes, the legacy SDK-version
+  header contract, CDN forwarding and cache paths for those routes, and managed
+  provider Release Catalog backfills. Existing v0 native binaries must remain on
+  their unchanged v0 endpoint; new v1 native builds use the unversioned catalog
+  and artifact routes on fresh v1 infrastructure.
+
+  Normalize managed provider base URLs to their public deployment roots. AWS,
+  Cloudflare, and Firebase now serve `/version`, `/release-catalogs/*`,
+  `/artifacts/*`, and `/events` directly; Supabase retains only its
+  provider-owned Edge Function prefix. Client routes do not carry a library or
+  protocol version prefix because incompatible generations use a fresh base URL.
+
+- 25af6ef: Replace runtime-profiled storage plugins with the flat, runtime-independent
+  `createStoragePlugin({ name, protocol, put, get, getDownloadUrl, exists, delete
+})` contract. Every operation uses an object input and object result. `put`
+  accepts a complete object key and a one-shot Web stream, `get` returns a Web
+  `Response`,
+  `getDownloadUrl` returns the URL sent to update clients, and `delete` always
+  targets exactly one object and resolves to the idempotent `{ deleted: true }`
+  postcondition. Remove file paths, factory thunks, runtime contexts, prefix
+  deletion, and lifecycle hooks from the core storage boundary.
+
+  Standardize persisted locations as hierarchical
+  `protocol://bucket/encoded/slash/key` URIs. `createStorageUri` encodes each key
+  segment without flattening slash hierarchy, while `parseStorageUri` performs
+  the matching validation and decoding. Empty and dot segments, query strings,
+  and fragments are rejected.
+
+  Pass server storage implementations directly through
+  `createHotUpdater({ storage: [...] })`. URL policy belongs to each storage
+  implementation: AWS S3 can use its CloudFront resolver or a server-signed URL,
+  Firebase and Supabase generate provider URLs, and private Cloudflare R2 returns
+  a signed handler-relative URL. Remove `storageDelivery`, public base-URL and
+  top-level signing-key configuration, and the separate provider delivery
+  helpers. Cloudflare Worker storage uses the same `r2Storage` export name from
+  the `/worker` subpath and captures its native R2 binding at construction.
+
+  Resolve persisted URIs by registered scheme ownership first, including `http`
+  and `https`. Only an HTTP(S) URI without an owner uses direct fetch or redirect;
+  other unowned schemes are unsupported. Runtime composition accepts at most one
+  storage plugin for each scheme.
+
+  Update every built-in storage provider, CLI and Console consumer, managed
+  runtime, package entrypoint, and custom-hosting guide to the new contract.
+  Remove the storage-only JWT URL helpers and obsolete runtime-specific storage
+  creators. Route-group flags now live beside Analytics and client access keys in
+  the single `createHotUpdater({ features })` object.
+
+### Patch Changes
+
+- a9ffb2a: Remove unused `releaseChannel` from `hot-updater.config.ts`. The build-time channel is set with `hot-updater channel set`.
+- a9ffb2a: Require R2 S3 credentials, drop Wrangler `r2Storage` and Android `stringResourcePaths`. Doctor only targets infrastructure generation 1.0.0. Channel, fingerprint, and signing keys live in AndroidManifest.xml.
+- a9ffb2a: Remove leftover v0 aliases that are not field compatibility. `HotUpdater.wrap({ updateMode: "manual" })` throws, findMany accepts only `orderBy`, and Supabase plugins require `supabaseServiceRoleKey`. Managed init still detects leftover `supabaseAnonKey` so skipped v0 configs fail closed.
+- Updated dependencies [b424d47]
+- Updated dependencies [9650748]
+- Updated dependencies [88c163a]
+- Updated dependencies [a9ffb2a]
+- Updated dependencies [a9ffb2a]
+- Updated dependencies [5a2e1cd]
+- Updated dependencies [25af6ef]
+- Updated dependencies [a9ffb2a]
+  - @hot-updater/plugin-core@1.0.0-rc.0
+  - @hot-updater/core@1.0.0-rc.0
+
 ## 0.36.0
 
 ### Patch Changes

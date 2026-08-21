@@ -1,5 +1,88 @@
 # @hot-updater/js
 
+## 1.0.0-rc.0
+
+### Minor Changes
+
+- 5a2e1cd: Separate immutable Bundle artifacts from mutable Release policy and compile
+  policy changes ahead of time into deterministic Release catalogs.
+  Database plugins now expose Release and catalog models plus atomic Release
+  revision/catalog generation expectations, and no longer expose provider update
+  decision queries.
+
+  Add canonical v2 Release-catalog and Bundle-artifact routes, short-lived
+  authenticated shared caching, a v1-only device protocol boundary, Release
+  management commands, catalog preflight/rebuild tooling, and a familiar Bundle
+  management view backed by Releases. The Console keeps Bundle content, delivery settings,
+  promote, and download actions in one workflow while Release identity stays
+  secondary. Deploy and promote create Releases; rollback disables the current
+  Release so clients select the previous compatible enabled Release or the
+  built-in app. Rollout, targeting, enablement, and messages mutate Releases
+  while patch, manifest, signing, and storage behavior remain Bundle-keyed.
+  Release IDs are canonical UUIDv7 values. Console shadcn primitives now use Base
+  UI instead of Radix while preserving the existing management flow and visual
+  density.
+
+  React Native clients select desired Releases locally, persist authority/scope
+  generation high-water and full Release/Bundle receipts, support same-Bundle
+  adoption and authenticated BUILTIN fallback, and use generation/context CAS so
+  stale artifact work cannot commit. New catalogs retain an 11-artifact update
+  frontier plus the complete compatible enabled rollback spine, so rollback keeps
+  v0 predecessor semantics even for old active clients. The 256 KiB catalog cap
+  remains atomic: an oversized history rejects the Release mutation instead of
+  silently truncating rollback candidates. Analytics events now carry directional
+  Release identity alongside Bundle identity.
+
+  Migrate SQL, DynamoDB, D1, Firestore, Supabase, MongoDB, Drizzle, Kysely,
+  Prisma, Standalone, mock, and in-memory implementations to schema `1.0.0`.
+  Managed AWS, Cloudflare, and Firebase deployments place Release catalogs behind
+  their supported pre-origin cache, while Supabase uses its direct Edge Function
+  URL as a supported origin-only mode and reports Edge invocations separately
+  from Postgres catalog reads.
+
+- 25af6ef: Replace runtime-profiled storage plugins with the flat, runtime-independent
+  `createStoragePlugin({ name, protocol, put, get, getDownloadUrl, exists, delete
+})` contract. Every operation uses an object input and object result. `put`
+  accepts a complete object key and a one-shot Web stream, `get` returns a Web
+  `Response`,
+  `getDownloadUrl` returns the URL sent to update clients, and `delete` always
+  targets exactly one object and resolves to the idempotent `{ deleted: true }`
+  postcondition. Remove file paths, factory thunks, runtime contexts, prefix
+  deletion, and lifecycle hooks from the core storage boundary.
+
+  Standardize persisted locations as hierarchical
+  `protocol://bucket/encoded/slash/key` URIs. `createStorageUri` encodes each key
+  segment without flattening slash hierarchy, while `parseStorageUri` performs
+  the matching validation and decoding. Empty and dot segments, query strings,
+  and fragments are rejected.
+
+  Pass server storage implementations directly through
+  `createHotUpdater({ storage: [...] })`. URL policy belongs to each storage
+  implementation: AWS S3 can use its CloudFront resolver or a server-signed URL,
+  Firebase and Supabase generate provider URLs, and private Cloudflare R2 returns
+  a signed handler-relative URL. Remove `storageDelivery`, public base-URL and
+  top-level signing-key configuration, and the separate provider delivery
+  helpers. Cloudflare Worker storage uses the same `r2Storage` export name from
+  the `/worker` subpath and captures its native R2 binding at construction.
+
+  Resolve persisted URIs by registered scheme ownership first, including `http`
+  and `https`. Only an HTTP(S) URI without an owner uses direct fetch or redirect;
+  other unowned schemes are unsupported. Runtime composition accepts at most one
+  storage plugin for each scheme.
+
+  Update every built-in storage provider, CLI and Console consumer, managed
+  runtime, package entrypoint, and custom-hosting guide to the new contract.
+  Remove the storage-only JWT URL helpers and obsolete runtime-specific storage
+  creators. Route-group flags now live beside Analytics and client access keys in
+  the single `createHotUpdater({ features })` object.
+
+### Patch Changes
+
+- Updated dependencies [b424d47]
+- Updated dependencies [88c163a]
+- Updated dependencies [5a2e1cd]
+  - @hot-updater/core@1.0.0-rc.0
+
 ## 0.36.0
 
 ### Patch Changes
