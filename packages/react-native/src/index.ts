@@ -118,6 +118,9 @@ const isManualWrapOptions = (
  * This function is called once on module initialization to create a singleton instance.
  */
 function createHotUpdaterClient() {
+  let configurationAPI: "init" | "wrap" | null = null;
+  let mixedConfigurationReported = false;
+
   // Global configuration stored from wrap
   const globalConfig: {
     resolver: HotUpdaterResolver | null;
@@ -230,6 +233,23 @@ function createHotUpdaterClient() {
     globalConfig.onError = options.onError;
   };
 
+  const reportMixedConfiguration = (nextAPI: "init" | "wrap") => {
+    if (
+      configurationAPI !== null &&
+      configurationAPI !== nextAPI &&
+      !mixedConfigurationReported
+    ) {
+      mixedConfigurationReported = true;
+      console.error(
+        "[HotUpdater] HotUpdater.init() and HotUpdater.wrap() must not be used together. " +
+          "For custom or manual update flows, use HotUpdater.init() with " +
+          "HotUpdater.checkForUpdate(). For the automatic HOC flow, use " +
+          "HotUpdater.wrap().",
+      );
+    }
+    configurationAPI ??= nextAPI;
+  };
+
   const ensureGlobalResolver = (methodName: string) => {
     if (!globalConfig.resolver) {
       throw new Error(
@@ -276,6 +296,7 @@ function createHotUpdaterClient() {
      */
     wrap: (options: HotUpdaterOptions) => {
       const normalizedOptions = normalizeOptions(options);
+      reportMixedConfiguration("wrap");
       configureGlobal(normalizedOptions, options);
 
       return wrap(normalizedOptions);
@@ -300,6 +321,7 @@ function createHotUpdaterClient() {
     init: (options: HotUpdaterInitOptions): void => {
       const normalizedOptions = normalizeInitOptions(options);
 
+      reportMixedConfiguration("init");
       configureGlobal(normalizedOptions, options);
 
       init(normalizedOptions);

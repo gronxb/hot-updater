@@ -252,6 +252,46 @@ describe("HotUpdater client initialization", () => {
     });
   });
 
+  it.each([
+    ["init", "wrap"],
+    ["wrap", "init"],
+  ] as const)(
+    "reports %s and %s mixed usage exactly once",
+    async (first, second) => {
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
+      const HotUpdater = await importHotUpdater();
+      const configure = (api: "init" | "wrap") => {
+        if (api === "init") {
+          HotUpdater.init({ baseURL: "https://updates.example.com" });
+          return;
+        }
+        HotUpdater.wrap({
+          baseURL: "https://updates.example.com",
+          updateStrategy: "appVersion",
+        });
+      };
+
+      configure(first);
+      configure(second);
+      configure(second);
+
+      expect(consoleError).toHaveBeenCalledOnce();
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "HotUpdater.init() and HotUpdater.wrap() must not be used together",
+        ),
+      );
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "use HotUpdater.init() with HotUpdater.checkForUpdate()",
+        ),
+      );
+      consoleError.mockRestore();
+    },
+  );
+
   it("keeps deprecated manual wrap calls working", async () => {
     const resolver = {
       checkUpdate: vi.fn(),
