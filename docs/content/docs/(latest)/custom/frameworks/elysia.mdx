@@ -46,7 +46,6 @@ if (!authToken) {
 new Elysia()
   .use(bearer()) // [!code ++]
   .onBeforeHandle(({ bearer, request }) => {
-    // [!code ++]
     const pathname = new URL(request.url).pathname; // [!code ++]
     if (
       pathname === "/hot-updater/api" ||
@@ -54,7 +53,6 @@ new Elysia()
     ) {
       // [!code ++]
       if (bearer !== authToken) {
-        // [!code ++]
         return new Response("Unauthorized", { status: 401 }); // [!code ++]
       } // [!code ++]
     } // [!code ++]
