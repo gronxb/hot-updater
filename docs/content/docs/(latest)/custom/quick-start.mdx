@@ -90,12 +90,10 @@ const app = new Hono();
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN; // [!code ++]
 if (!adminToken) {
-  // [!code ++]
   throw new Error("HOT_UPDATER_ADMIN_TOKEN is required"); // [!code ++]
 } // [!code ++]
 
 app.use(
-  // [!code ++]
   "/hot-updater/admin/*", // [!code ++]
   bearerAuth({ token: adminToken }), // [!code ++]
 ); // [!code ++]

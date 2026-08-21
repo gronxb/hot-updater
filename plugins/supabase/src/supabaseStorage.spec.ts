@@ -99,7 +99,7 @@ describe("supabaseStorage", () => {
   });
 
   it("round-trips reserved characters through exact Supabase object keys", async () => {
-    const key = "릴리스 folder/#100%/bundle.zip";
+    const key = "릴리스 folder/logo@2x #100%/bundle.zip";
     bucket.upload.mockResolvedValue({
       data: { fullPath: `updates/${key}` },
       error: null,
@@ -112,6 +112,7 @@ describe("supabaseStorage", () => {
       contentLength: 6,
       contentType: "application/zip",
     });
+    expect(uploaded.storageUri).toContain("logo%402x");
     expect(uploaded.storageUri).not.toContain("#100%");
     await createStorage().delete({ storageUri: uploaded.storageUri });
 
@@ -159,7 +160,7 @@ describe("supabaseStorage", () => {
       data: [
         {
           error: null,
-          path: "assets/file-hash.png",
+          path: "assets/logo@2x.png",
           signedUrl: "https://example.supabase.co/signed",
         },
       ],
@@ -168,11 +169,11 @@ describe("supabaseStorage", () => {
 
     await expect(
       createStorage().getDownloadUrl({
-        storageUri: "supabase-storage://updates/assets/file-hash.png",
+        storageUri: "supabase-storage://updates/assets/logo%402x.png",
       }),
     ).resolves.toEqual({ url: "https://example.supabase.co/signed" });
     expect(bucket.createSignedUrls).toHaveBeenCalledWith(
-      ["assets/file-hash.png"],
+      ["assets/logo@2x.png"],
       3600,
     );
   });

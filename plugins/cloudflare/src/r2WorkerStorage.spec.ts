@@ -106,13 +106,14 @@ describe("r2WorkerStorage", () => {
       bucketName: "bundles",
       downloadUrlSigningKey: "test-signing-key",
     });
-    const key = "릴리스 folder/#100%/bundle.zip";
+    const key = "릴리스 folder/logo@2x #100%/bundle.zip";
 
     const uploaded = await storage.put({
       key,
       body: new Response("bundle").body!,
       contentType: "application/zip",
     });
+    expect(uploaded.storageUri).toContain("logo%402x");
     await storage.delete({ storageUri: uploaded.storageUri });
     await storage.delete({ storageUri: uploaded.storageUri });
 

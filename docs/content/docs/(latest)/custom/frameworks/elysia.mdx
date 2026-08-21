@@ -45,7 +45,6 @@ if (!adminToken) {
 const adminApp = new Elysia()
   .use(bearer()) // [!code ++]
   .onBeforeHandle(({ bearer }) => {
-    // [!code ++]
     if (bearer !== adminToken) { // [!code ++]
       return new Response("Unauthorized", { status: 401 }); // [!code ++]
     } // [!code ++]

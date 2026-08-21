@@ -45,7 +45,6 @@ if (!adminToken) {
 }
 
 app.use(
-  // [!code ++]
   "/hot-updater/admin/*", // [!code ++]
   bearerAuth({ token: adminToken }), // [!code ++]
 ); // [!code ++]

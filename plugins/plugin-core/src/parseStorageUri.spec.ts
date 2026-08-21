@@ -7,13 +7,13 @@ describe("storage URI", () => {
     const input = {
       protocol: "r2",
       bucket: "updates",
-      key: "releases/한글 bundle #100%/bundle.zip",
+      key: "releases/한글 logo@2x #100%/bundle.zip",
     } as const;
 
     const storageUri = createStorageUri(input);
 
     expect(storageUri).toBe(
-      "r2://updates/releases/%ED%95%9C%EA%B8%80%20bundle%20%23100%25/bundle.zip",
+      "r2://updates/releases/%ED%95%9C%EA%B8%80%20logo%402x%20%23100%25/bundle.zip",
     );
     expect(parseStorageUri(storageUri, "r2")).toEqual(input);
   });
