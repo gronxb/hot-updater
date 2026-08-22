@@ -422,6 +422,144 @@ describe("createPluginDatabaseCore", () => {
     expect(getBundleById).toHaveBeenCalledWith(targetBundle.id, undefined);
   });
 
+  it("skips database resolution for unknown built-in baseline bundle ids", async () => {
+    const baselineBundleId = "019e37fe-bd30-7000-8000-000000000000";
+    const targetBundle = {
+      ...baseBundle,
+      id: "019e3f00-90cc-70c9-bb2b-b7cf2acecf60",
+      fileHash: "hash-2",
+      manifestStorageUri: "s3://bucket/target/manifest.json",
+      manifestFileHash: "sig:target-manifest",
+      assetBaseStorageUri: "s3://bucket/target/files",
+    };
+    const manifests = new Map([
+      [
+        targetBundle.manifestStorageUri,
+        JSON.stringify({
+          bundleId: targetBundle.id,
+          assets: {
+            "index.ios.bundle": {
+              fileHash: "target-bundle-hash",
+            },
+          },
+        }),
+      ],
+    ]);
+    const getBundleById = vi.fn<DatabasePlugin<TestContext>["getBundleById"]>(
+      async (bundleId) => (bundleId === targetBundle.id ? targetBundle : null),
+    );
+    const getUpdateInfo = vi.fn<
+      NonNullable<DatabasePlugin<TestContext>["getUpdateInfo"]>
+    >(async () => ({
+      fileHash: targetBundle.fileHash,
+      id: targetBundle.id,
+      message: targetBundle.message,
+      shouldForceUpdate: targetBundle.shouldForceUpdate,
+      status: "UPDATE",
+      storageUri: targetBundle.storageUri,
+    }));
+
+    const plugin: DatabasePlugin<TestContext> = {
+      name: "baseline-id-plugin",
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      getBundleById,
+      getUpdateInfo,
+      async getBundles() {
+        return {
+          data: [targetBundle],
+          pagination: {
+            currentPage: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            total: 1,
+            totalPages: 1,
+          },
+        };
+      },
+      async getChannels() {
+        return ["production"];
+      },
+      async updateBundle() {},
+    };
+
+    const core = createPluginDatabaseCore(
+      () => plugin,
+      async (storageUri) => {
+        if (!storageUri) return null;
+        const url = new URL(storageUri);
+        return `https://assets.example.com/${url.host}${url.pathname}`;
+      },
+      {
+        readStorageText: async (storageUri) =>
+          manifests.get(storageUri) ?? null,
+      },
+    );
+
+    const updateInfo = await core.api.getAppUpdateInfo({
+      ...updateArgs,
+      bundleId: baselineBundleId,
+    });
+
+    expect(updateInfo).toMatchObject({
+      id: targetBundle.id,
+      status: "UPDATE",
+    });
+    expect(getBundleById).toHaveBeenCalledOnce();
+    expect(getBundleById).toHaveBeenCalledWith(targetBundle.id, undefined);
+    expect(getBundleById).not.toHaveBeenCalledWith(baselineBundleId, undefined);
+  });
+
+  it("treats unknown built-in baseline bundle ids as the nil baseline when scanning", async () => {
+    const baselineBundleId = "019e37fe-bd30-7000-8000-000000000000";
+    const olderBundle = {
+      ...baseBundle,
+      id: "019e2f00-1111-7abc-8123-456789abcdef",
+    };
+
+    const plugin: DatabasePlugin<TestContext> = {
+      name: "scanning-plugin",
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      async getBundleById(bundleId) {
+        return bundleId === olderBundle.id ? olderBundle : null;
+      },
+      async getBundles() {
+        return {
+          data: [olderBundle],
+          pagination: {
+            currentPage: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            total: 1,
+            totalPages: 1,
+          },
+        };
+      },
+      async getChannels() {
+        return ["production"];
+      },
+      async updateBundle() {},
+    };
+
+    const core = createPluginDatabaseCore(
+      () => plugin,
+      async () => null,
+    );
+
+    await expect(
+      core.api.getUpdateInfo({
+        ...updateArgs,
+        bundleId: baselineBundleId,
+      }),
+    ).resolves.toMatchObject({
+      id: olderBundle.id,
+      status: "UPDATE",
+    });
+  });
+
   it("seeds request bundle identity map from provider update lookups", async () => {
     const targetBundle = {
       ...baseBundle,

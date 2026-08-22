@@ -469,6 +469,65 @@ describe("s3Database plugin", () => {
     ]);
   });
 
+  it("returns the latest OTA when a fresh install reports an unknown built-in baseline bundle id", async () => {
+    // Reproduces #1015: a fresh install reports the build-time generated
+    // baseline bundle id, which has no database record.
+    const baselineBundleId = "019e37fe-bd30-7000-8000-000000000000";
+    const otaBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.2.0",
+      "019e3f00-90cc-70c9-bb2b-b7cf2acecf60",
+    );
+
+    seedUpdateManifests([otaBundle]);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.2.0",
+        bundleId: baselineBundleId,
+        minBundleId: baselineBundleId,
+        platform: "ios",
+      }),
+    ).resolves.toMatchObject({
+      id: otaBundle.id,
+      status: "UPDATE",
+    });
+
+    expect(listedObjectPrefixes).toEqual([]);
+  });
+
+  it("treats an unknown built-in baseline bundle id as the nil baseline for stale bundles", async () => {
+    const baselineBundleId = "019e37fe-bd30-7000-8000-000000000000";
+    const staleOtaBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.2.0",
+      "019e2f00-1111-7abc-8123-456789abcdef",
+    );
+
+    seedUpdateManifests([staleOtaBundle]);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.2.0",
+        bundleId: baselineBundleId,
+        platform: "ios",
+      }),
+    ).resolves.toMatchObject({
+      id: staleOtaBundle.id,
+      status: "UPDATE",
+    });
+
+    expect(listedObjectPrefixes).toEqual([]);
+  });
+
   it("uses direct fingerprint manifests for update checks without listing S3 objects", async () => {
     const fingerprintBundle = createBundleJsonFingerprint(
       "production",
