@@ -19,28 +19,7 @@
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
       {
-        "source": "/version",
-        "function": {
-          "functionId": "hot-updater",
-          "pinTag": true
-        }
-      },
-      {
-        "source": "/release-catalogs/**",
-        "function": {
-          "functionId": "hot-updater",
-          "pinTag": true
-        }
-      },
-      {
-        "source": "/artifacts/**",
-        "function": {
-          "functionId": "hot-updater",
-          "pinTag": true
-        }
-      },
-      {
-        "source": "/events",
+        "regex": "^/(?:version|release-catalogs/.*|artifacts/.*|events)$",
         "function": {
           "functionId": "hot-updater",
           "pinTag": true

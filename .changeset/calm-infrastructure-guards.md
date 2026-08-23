@@ -12,5 +12,7 @@ creation while a newly created execution role propagates. Show the issued API
 key separately after the React Native setup example so it can be stored safely.
 Enable the Cloud Functions API before checking an existing Firebase function
 and report function discovery failures without an unhandled command stack.
+Bundle Firebase Functions' internal plugin dependency and pin its managed API
+routes with one Hosting rewrite to avoid concurrent Cloud Run updates.
 Wait for a newly provisioned Supabase Storage tenant before creating the
 selected bucket.
