@@ -8,9 +8,10 @@ type RecordedQuery = {
 };
 
 const state = vi.hoisted<{
+  batches: RecordedQuery[][];
   queries: RecordedQuery[];
   results: unknown[];
-}>(() => ({ queries: [], results: [] }));
+}>(() => ({ batches: [], queries: [], results: [] }));
 
 const bundleD1Row = {
   id: "bundle-1",
@@ -30,15 +31,36 @@ vi.mock("cloudflare", () => ({
       database: {
         query: async (
           _databaseId: string,
-          input: { readonly sql: string; readonly params?: readonly string[] },
+          input:
+            | { readonly sql: string; readonly params?: readonly string[] }
+            | {
+                readonly batch: readonly {
+                  readonly sql: string;
+                  readonly params?: readonly string[];
+                }[];
+              },
         ) => {
-          state.queries.push({
-            sql: input.sql,
-            params: input.params ?? [],
-          });
+          if ("batch" in input) {
+            state.batches.push(
+              input.batch.map(({ sql, params }) => ({
+                sql,
+                params: params ?? [],
+              })),
+            );
+          } else {
+            state.queries.push({
+              sql: input.sql,
+              params: input.params ?? [],
+            });
+          }
           return {
             async *iterPages() {
-              yield { result: [{ results: state.results }] };
+              yield {
+                result:
+                  "batch" in input
+                    ? input.batch.map(() => ({ results: [] }))
+                    : [{ results: state.results }],
+              };
             },
           };
         },
@@ -48,6 +70,7 @@ vi.mock("cloudflare", () => ({
 }));
 
 beforeEach(() => {
+  state.batches.length = 0;
   state.queries.length = 0;
   state.results.length = 0;
 });
@@ -113,4 +136,42 @@ it("counts domain-filtered bundle rows in SQL", async () => {
     "SELECT COUNT(*) AS count FROM bundles",
   );
   expect(state.queries[0]?.sql).toContain("platform = json_extract(?, '$')");
+});
+
+it("sends parameterized commits through the D1 batch body", async () => {
+  const plugin = d1Database({
+    accountId: "account",
+    cloudflareApiToken: "token",
+    databaseId: "database",
+  });
+
+  await expect(
+    plugin.commit({
+      changes: [
+        {
+          model: "channels",
+          operation: "insert",
+          row: {
+            id: "00000000-0000-0000-0000-000000000001",
+            name: "production",
+          },
+          onConflict: "ignore",
+        },
+        {
+          model: "channels",
+          operation: "insert",
+          row: {
+            id: "00000000-0000-0000-0000-000000000002",
+            name: "beta",
+          },
+          onConflict: "ignore",
+        },
+      ],
+    }),
+  ).resolves.toEqual({ committed: true });
+
+  expect(state.batches).toHaveLength(1);
+  expect(state.batches[0]).toHaveLength(2);
+  expect(state.batches[0]?.[0]?.params.length).toBeGreaterThan(0);
+  expect(state.batches[0]?.[1]?.params.length).toBeGreaterThan(0);
 });
