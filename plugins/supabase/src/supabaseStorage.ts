@@ -17,6 +17,24 @@ import type { Database } from "./types";
 const isNotFoundError = (error: { message?: string } | null | undefined) =>
   error?.message?.toLowerCase().includes("not found") === true;
 
+const isMissingExistsError = (error: unknown) => {
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    Reflect.get(error, "name") !== "StorageUnknownError"
+  ) {
+    return false;
+  }
+
+  const originalError = Reflect.get(error, "originalError");
+  if (typeof originalError !== "object" || originalError === null) {
+    return false;
+  }
+
+  const status = Reflect.get(originalError, "status");
+  return status === 400 || status === 404;
+};
+
 export type SupabaseStorageConfig = SupabaseServiceRoleConfig & {
   bucketName: string;
   /** Base path where bundles will be stored in the bucket. */
@@ -91,7 +109,10 @@ export const supabaseStorage = (
     async exists({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       const { data, error } = await bucket.exists(key);
-      if (error) throw error;
+      if (error) {
+        if (isMissingExistsError(error)) return { exists: false };
+        throw error;
+      }
       return { exists: data };
     },
     async delete({ storageUri }) {
