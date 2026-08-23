@@ -12,6 +12,43 @@ import {
 
 const LAMBDA_MEMORY_SIZE = 256;
 const LAMBDA_TIMEOUT_SECONDS = 10;
+const LAMBDA_ROLE_PROPAGATION_MAX_ATTEMPTS = 10;
+const LAMBDA_ROLE_PROPAGATION_RETRY_DELAY_MS = 2000;
+
+const isLambdaRolePropagationError = (error: unknown): error is Error =>
+  error instanceof Error &&
+  error.name === "InvalidParameterValueException" &&
+  /role defined for the function cannot be assumed by Lambda/i.test(
+    error.message,
+  );
+
+const createFunctionWithRolePropagationRetry = async <Result>(
+  createFunction: () => Promise<Result>,
+  message: (value: string) => void,
+): Promise<Result> => {
+  for (
+    let attempt = 1;
+    attempt <= LAMBDA_ROLE_PROPAGATION_MAX_ATTEMPTS;
+    attempt++
+  ) {
+    try {
+      return await createFunction();
+    } catch (error) {
+      if (
+        !isLambdaRolePropagationError(error) ||
+        attempt === LAMBDA_ROLE_PROPAGATION_MAX_ATTEMPTS
+      ) {
+        throw error;
+      }
+      message("Waiting for IAM role to become assumable by Lambda...");
+      await new Promise((resolve) =>
+        setTimeout(resolve, LAMBDA_ROLE_PROPAGATION_RETRY_DELAY_MS),
+      );
+    }
+  }
+
+  throw new Error("Failed to create Lambda function");
+};
 
 export class LambdaEdgeDeployer {
   private credentials: { accessKeyId: string; secretAccessKey: string };
@@ -107,17 +144,22 @@ export class LambdaEdgeDeployer {
         title: "Creating or Updating Lambda function",
         task: async (message) => {
           try {
-            const createResp = await lambdaClient.createFunction({
-              FunctionName: lambdaName,
-              Runtime: "nodejs22.x",
-              Role: lambdaRoleArn,
-              Handler: "index.handler",
-              Code: { ZipFile: await fs.readFile(zipFilePath) },
-              Description: "Hot Updater Lambda@Edge function",
-              MemorySize: LAMBDA_MEMORY_SIZE,
-              Publish: true,
-              Timeout: LAMBDA_TIMEOUT_SECONDS,
-            });
+            const zipFile = await fs.readFile(zipFilePath);
+            const createResp = await createFunctionWithRolePropagationRetry(
+              () =>
+                lambdaClient.createFunction({
+                  FunctionName: lambdaName,
+                  Runtime: "nodejs22.x",
+                  Role: lambdaRoleArn,
+                  Handler: "index.handler",
+                  Code: { ZipFile: zipFile },
+                  Description: "Hot Updater Lambda@Edge function",
+                  MemorySize: LAMBDA_MEMORY_SIZE,
+                  Publish: true,
+                  Timeout: LAMBDA_TIMEOUT_SECONDS,
+                }),
+              message,
+            );
             functionArn.arn = createResp.FunctionArn || null;
             functionArn.version = createResp.Version || "1";
             return `Created Lambda "${lambdaName}" function`;

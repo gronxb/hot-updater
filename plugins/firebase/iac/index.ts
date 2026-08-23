@@ -3,9 +3,11 @@ import path from "path";
 
 import {
   confirmInitInputPersistence,
+  formatApiKeyNote,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
+  InitError,
   link,
   makeEnv,
   p,
@@ -28,7 +30,10 @@ import {
 
 import { firebaseDatabase } from "../src/firebaseDatabase";
 import { inputFirebaseApplicationCredentials } from "./firebaseApplicationCredentials";
-import { assertFirebaseInfrastructureCanInitialize } from "./firebaseInfrastructureState";
+import {
+  assertFirebaseFunctionCanInitialize,
+  assertFirebaseInfrastructureCanInitialize,
+} from "./firebaseInfrastructureState";
 import {
   assertFirebaseNonInteractiveInputs,
   type FirebaseCliEnv,
@@ -123,6 +128,102 @@ interface FirebaseFunction {
   codebase: string;
   hash: string;
 }
+
+const commandErrorMessage = (error: unknown): string => {
+  if (error instanceof ExecaError) {
+    const output = error.stderr || error.stdout;
+    if (output !== undefined && output !== null) {
+      const text = String(output).trim();
+      if (!text) return error.message;
+      try {
+        const parsed: unknown = JSON.parse(text);
+        if (typeof parsed === "object" && parsed !== null) {
+          const message = Reflect.get(parsed, "error");
+          if (typeof message === "string") return message;
+        }
+      } catch {
+        return text;
+      }
+      return text;
+    }
+  }
+  return error instanceof Error ? error.message : String(error);
+};
+
+const ensureCloudFunctionsApiEnabled = async (
+  projectId: string,
+  cliEnv?: FirebaseCliEnv,
+): Promise<void> => {
+  await p.tasks([
+    {
+      title: "Checking Cloud Functions API",
+      task: async () => {
+        try {
+          await execa(
+            "gcloud",
+            [
+              "services",
+              "enable",
+              "cloudfunctions.googleapis.com",
+              `--project=${projectId}`,
+              "--quiet",
+            ],
+            { env: cliEnv },
+          );
+        } catch (error) {
+          throw new InitError(
+            `Could not enable the Cloud Functions API for Firebase project ${projectId}: ${commandErrorMessage(error)}`,
+          );
+        }
+        return "Cloud Functions API is enabled";
+      },
+    },
+  ]);
+};
+
+const listFirebaseFunctions = async (
+  cwd: string,
+  projectId: string,
+  nonInteractive: boolean,
+  cliEnv?: FirebaseCliEnv,
+): Promise<FirebaseFunction[]> => {
+  let functionsList: { readonly stdout: string };
+  try {
+    functionsList = await execa(
+      "npx",
+      [
+        "firebase",
+        "functions:list",
+        "--json",
+        "--project",
+        projectId,
+        ...(nonInteractive ? ["--non-interactive"] : []),
+      ],
+      {
+        cwd,
+        env: cliEnv,
+      },
+    );
+  } catch (error) {
+    throw new InitError(
+      `Could not list Firebase Functions for project ${projectId}: ${commandErrorMessage(error)}. Run npx firebase functions:list --project ${projectId} --debug for details.`,
+    );
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(functionsList.stdout);
+  } catch {
+    throw new InitError("Firebase functions list response was invalid.");
+  }
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !Array.isArray(Reflect.get(body, "result"))
+  ) {
+    throw new InitError("Firebase functions list response was invalid.");
+  }
+  return Reflect.get(body, "result") as FirebaseFunction[];
+};
 
 type FirebaseIndex = {
   collectionGroup: string;
@@ -342,6 +443,7 @@ const printTemplate = async (
         source: functionUrl,
       }),
     );
+    p.note(formatApiKeyNote(apiKey), "API Key");
   } catch (error) {
     if (error instanceof ExecaError) {
       p.log.error(error.stderr || error.stdout || error.message);
@@ -412,6 +514,15 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     await assertFirebaseInfrastructureCanInitialize({
       applicationCredentials,
       projectId: initializeVariable.projectId,
+    });
+    await ensureCloudFunctionsApiEnabled(initializeVariable.projectId, cliEnv);
+    await assertFirebaseFunctionCanInitialize({
+      functions: await listFirebaseFunctions(
+        tmpDir,
+        initializeVariable.projectId,
+        nonInteractive,
+        cliEnv,
+      ),
     });
   }
 
@@ -531,21 +642,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     {
       title: "Check IAM policy",
       async task(message) {
-        const functionsList = await execa(
-          "npx",
-          [
-            "firebase",
-            "functions:list",
-            "--json",
-            ...(nonInteractive ? ["--non-interactive"] : []),
-          ],
-          {
-            cwd: tmpDir,
-            env: cliEnv,
-          },
+        const functionsData = await listFirebaseFunctions(
+          tmpDir,
+          initializeVariable.projectId,
+          nonInteractive,
+          cliEnv,
         );
-        const functionsListJson = JSON.parse(functionsList.stdout);
-        const functionsData = functionsListJson.result || [];
         const hotUpdater = functionsData.find(
           (fn: FirebaseFunction) => fn.id === "hot-updater",
         );

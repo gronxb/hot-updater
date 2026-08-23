@@ -7,6 +7,7 @@ import {
   confirmInitInputPersistence,
   copyDirToTmp,
   createHotUpdaterConfigScaffoldFromBuilder,
+  formatApiKeyNote,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -32,7 +33,10 @@ import {
 } from "./cloudflareApiToken";
 import { resolveCloudflareReplayD1Database } from "./cloudflareD1Selection";
 import { resolveCloudflareInfrastructureApiToken } from "./cloudflareInfrastructureAuth";
-import { assertCloudflareInfrastructureCanInitialize } from "./cloudflareInfrastructureState";
+import {
+  assertCloudflareInfrastructureCanInitialize,
+  assertCloudflareWorkerCanInitialize,
+} from "./cloudflareInfrastructureState";
 import {
   CLOUDFLARE_INIT_PERMISSION,
   type CloudflareCredentialSource,
@@ -600,6 +604,33 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     );
   }
 
+  const workerScripts = await runCloudflareApiRequest({
+    request: () =>
+      cf.workers.scripts.list({
+        account_id: accountId,
+      }),
+    source: infrastructureCredentialSource,
+  });
+  const subdomains = await runCloudflareApiRequest({
+    request: () =>
+      cf.workers.subdomains.get({
+        account_id: accountId,
+      }),
+    source: infrastructureCredentialSource,
+  });
+  if (!subdomains.subdomain) {
+    throw new Error(
+      "Cloudflare Workers subdomain is required to configure the storage download URL.",
+    );
+  }
+  await assertCloudflareWorkerCanInitialize({
+    scriptNames: workerScripts.result.flatMap(({ id }) =>
+      typeof id === "string" ? [id] : [],
+    ),
+    workerName,
+    workersSubdomain: subdomains.subdomain,
+  });
+
   const resolvedInputs = {
     ...existingInputs,
     accessKeyId,
@@ -701,19 +732,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseName.envKey]: d1DatabaseName,
   });
 
-  const subdomains = await runCloudflareApiRequest({
-    request: () =>
-      cf.workers.subdomains.get({
-        account_id: accountId,
-      }),
-    source: infrastructureCredentialSource,
-  });
-  if (!subdomains.subdomain) {
-    throw new Error(
-      "Cloudflare Workers subdomain is required to configure the storage download URL.",
-    );
-  }
-
   await deployWorker(infrastructureApiToken, accountId, {
     credentialSource: infrastructureCredentialSource,
     d1DatabaseId: selectedD1DatabaseId,
@@ -769,6 +787,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       }),
     );
   }
+  p.note(formatApiKeyNote(apiKey), "API Key");
 
   p.log.message(
     `Next step: ${link(

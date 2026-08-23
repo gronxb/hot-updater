@@ -1,4 +1,9 @@
-import { LegacyInfrastructureError } from "@hot-updater/cli-tools";
+import {
+  assertInfrastructureGenerationAtUrl,
+  LegacyInfrastructureError,
+} from "@hot-updater/cli-tools";
+
+type Fetch = typeof fetch;
 
 export type CloudflareInfrastructureState = "fresh" | "v0" | "v1";
 
@@ -20,4 +25,25 @@ export const assertCloudflareInfrastructureCanInitialize = (
       `D1 database ${databaseName}`,
     );
   }
+};
+
+export const assertCloudflareWorkerCanInitialize = async ({
+  fetchImpl,
+  scriptNames,
+  workerName,
+  workersSubdomain,
+}: {
+  readonly fetchImpl?: Fetch;
+  readonly scriptNames: readonly string[];
+  readonly workerName: string;
+  readonly workersSubdomain: string;
+}): Promise<void> => {
+  if (!scriptNames.includes(workerName)) return;
+
+  await assertInfrastructureGenerationAtUrl({
+    fetchImpl,
+    provider: "Cloudflare",
+    resource: `Worker ${workerName}`,
+    versionUrl: `https://${workerName}.${workersSubdomain}.workers.dev/version`,
+  });
 };

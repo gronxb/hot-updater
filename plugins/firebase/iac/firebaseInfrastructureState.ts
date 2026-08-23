@@ -1,6 +1,10 @@
 import fs from "fs/promises";
 
-import { InitError, LegacyInfrastructureError } from "@hot-updater/cli-tools";
+import {
+  assertInfrastructureGenerationAtUrl,
+  InitError,
+  LegacyInfrastructureError,
+} from "@hot-updater/cli-tools";
 import {
   applicationDefault,
   cert,
@@ -65,5 +69,35 @@ export const assertFirebaseInfrastructureCanInitialize = async ({
     throw error;
   } finally {
     await deleteApp(app);
+  }
+};
+
+export const assertFirebaseFunctionCanInitialize = async ({
+  fetchImpl,
+  functions,
+}: {
+  readonly fetchImpl?: typeof fetch;
+  readonly functions: readonly {
+    readonly id: string;
+    readonly uri?: string;
+  }[];
+}): Promise<void> => {
+  const existingFunctions = functions.filter(({ id }) => id === "hot-updater");
+  for (const existingFunction of existingFunctions) {
+    if (!existingFunction.uri) {
+      throw new InitError(
+        "Could not verify the Firebase infrastructure generation at Function hot-updater: endpoint URL was not reported.",
+      );
+    }
+    const versionUrl = new URL(
+      "version",
+      `${existingFunction.uri.replace(/\/$/u, "")}/`,
+    ).toString();
+    await assertInfrastructureGenerationAtUrl({
+      fetchImpl,
+      provider: "Firebase",
+      resource: "Function hot-updater",
+      versionUrl,
+    });
   }
 };

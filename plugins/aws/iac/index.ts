@@ -2,6 +2,7 @@ import {
   colors,
   confirmInitInputPersistence,
   ensureInstallPackages,
+  formatApiKeyNote,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -19,7 +20,10 @@ import { execa } from "execa";
 
 import { dynamoDB } from "../src/dynamoDB";
 import { resolveAwsAuth } from "./awsAuth";
-import { assertAwsInfrastructureGeneration } from "./awsInfrastructureState";
+import {
+  assertAwsInfrastructureGeneration,
+  assertAwsLambdaCanInitialize,
+} from "./awsInfrastructureState";
 import {
   assertAwsNonInteractiveInputs,
   resolveAwsInitInputs,
@@ -264,6 +268,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     p.log.error("AWS DynamoDB table name is required.");
     process.exit(1);
   }
+  await assertAwsLambdaCanInitialize({
+    credentials,
+    lambdaName,
+  });
   const cloudFrontManager = new CloudFrontManager(bucketRegion, credentials);
   const selectedDistribution = await cloudFrontManager.selectDistribution({
     bucketName,
@@ -441,6 +449,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       source: JSON.stringify(sourceUrl),
     }),
   );
+  p.note(formatApiKeyNote(apiKey), "API Key");
   p.log.message(
     `Next step: ${link("https://hot-updater.dev/docs/managed/aws#step-4-changeenv-file-optional")}`,
   );

@@ -8,6 +8,7 @@ import {
   confirmInitInputPersistence,
   copyDirToTmp,
   createHotUpdaterConfigScaffoldFromBuilder,
+  formatApiKeyNote,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -42,7 +43,10 @@ import {
   linkSupabase,
   pushDB,
 } from "./supabaseCli";
-import { assertSupabaseInfrastructureCanInitialize } from "./supabaseInfrastructureState";
+import {
+  assertSupabaseFunctionCanInitialize,
+  assertSupabaseInfrastructureCanInitialize,
+} from "./supabaseInfrastructureState";
 import {
   assertSupabaseNonInteractiveInputs,
   inputSupabaseDatabasePassword,
@@ -63,6 +67,8 @@ const SUPABASE_PROJECT_READY_STATUS = "ACTIVE_HEALTHY";
 const SUPABASE_PROJECT_PROVISIONING_STATUS = "COMING_UP";
 const SUPABASE_PROJECT_READINESS_MAX_ATTEMPTS = 60 * 5;
 const SUPABASE_PROJECT_READINESS_POLL_INTERVAL_MS = 1000;
+const SUPABASE_STORAGE_READINESS_MAX_ATTEMPTS = 60 * 5;
+const SUPABASE_STORAGE_READINESS_POLL_INTERVAL_MS = 1000;
 const LEGACY_SUPABASE_CATALOG_CDN_URL_ENV_KEY =
   "HOT_UPDATER_SUPABASE_CATALOG_CDN_URL";
 const STATIC_IMPORT_SPECIFIER_PATTERN =
@@ -545,6 +551,39 @@ export type SupabaseBucketSelection =
       readonly name: string;
     };
 
+const isMissingSupabaseStorageTenantError = (error: unknown): boolean =>
+  error instanceof Error &&
+  /Missing tenant config for tenant/u.test(error.message) &&
+  (Reflect.get(error, "status") === 400 ||
+    Reflect.get(error, "statusCode") === "400");
+
+const retryWhileSupabaseStorageTenantIsProvisioning = async <Result>(
+  operation: () => Promise<Result>,
+): Promise<Result> => {
+  for (
+    let attempt = 1;
+    attempt <= SUPABASE_STORAGE_READINESS_MAX_ATTEMPTS;
+    attempt++
+  ) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (
+        !isMissingSupabaseStorageTenantError(error) ||
+        attempt === SUPABASE_STORAGE_READINESS_MAX_ATTEMPTS
+      ) {
+        throw error;
+      }
+      if (attempt === 1) {
+        p.log.info("Waiting for Supabase Storage to become ready...");
+      }
+      await delay(SUPABASE_STORAGE_READINESS_POLL_INTERVAL_MS);
+    }
+  }
+
+  throw new Error("Supabase Storage did not become ready.");
+};
+
 export const selectBucket = async (
   api: SupabaseApi,
   preferredBucketName?: string,
@@ -659,9 +698,13 @@ export const createSelectedBucket = async (
     return selection;
   }
 
-  await api.createBucket(selection.name, { public: false });
+  await retryWhileSupabaseStorageTenantIsProvisioning(() =>
+    api.createBucket(selection.name, { public: false }),
+  );
   p.log.success(`Bucket "${selection.name}" created successfully.`);
-  const buckets = await api.listBuckets();
+  const buckets = await retryWhileSupabaseStorageTenantIsProvisioning(() =>
+    api.listBuckets(),
+  );
   const bucket = buckets.find((item) => item.name === selection.name);
   if (!bucket) {
     throw new Error("Failed to create and select new bucket");
@@ -925,6 +968,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       projectAccess.api,
       project!.id,
     );
+    await assertSupabaseFunctionCanInitialize({
+      functionName,
+      functionSlugs: await managementApi.listFunctions(project!.id),
+      projectId: project!.id,
+    });
     await ensureSupabaseBucketPrivate({
       api: projectAccess.api,
       nonInteractive,
@@ -1102,6 +1150,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       projectId: project.id,
     }),
   );
+  p.note(formatApiKeyNote(apiKey), "API Key");
   reportSupabaseOriginCatalogReady();
 
   p.log.message(

@@ -8,11 +8,14 @@ const mocks = vi.hoisted(() => ({
   existingEnv: {} as Record<string, string>,
   events: [] as string[],
   existingProject: false,
+  functionsListError: undefined as Error | undefined,
   functionsDir: "",
+  assertFunction: vi.fn(),
   assertInfrastructure: vi.fn(),
   provisionApiKey: vi.fn(async () => ({
     apiKey: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
   })),
+  serviceEnableError: undefined as Error | undefined,
   tmpDir: "",
 }));
 
@@ -52,16 +55,22 @@ vi.mock("execa", async () => {
     ...actual,
     execa: vi.fn(async (command: string, args: readonly string[] = []) => {
       if (command === "npx" && args.includes("functions:list")) {
+        if (mocks.functionsListError) throw mocks.functionsListError;
         return {
           stdout: JSON.stringify({
             result: [
               {
                 id: "hot-updater",
                 serviceAccount: "hot-updater@example.iam.gserviceaccount.com",
+                uri: "https://hot-updater.example.com",
               },
             ],
           }),
         };
+      }
+      if (command === "gcloud" && args.includes("services")) {
+        if (mocks.serviceEnableError) throw mocks.serviceEnableError;
+        return { stdout: "" };
       }
       if (command === "gcloud" && args.includes("get-iam-policy")) {
         return {
@@ -137,6 +146,7 @@ vi.mock("./firebaseRegion", () => ({
 }));
 
 vi.mock("./firebaseInfrastructureState", () => ({
+  assertFirebaseFunctionCanInitialize: mocks.assertFunction,
   assertFirebaseInfrastructureCanInitialize: mocks.assertInfrastructure,
 }));
 
@@ -184,6 +194,9 @@ describe("Firebase project creation", () => {
     mocks.existingEnv = {};
     mocks.events.length = 0;
     mocks.existingProject = false;
+    mocks.functionsListError = undefined;
+    mocks.serviceEnableError = undefined;
+    mocks.assertFunction.mockResolvedValue(undefined);
     mocks.assertInfrastructure.mockResolvedValue(undefined);
     mocks.tmpDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-firebase-init-"),
@@ -301,6 +314,10 @@ describe("Firebase project creation", () => {
     expect(p.note).toHaveBeenCalledWith(
       expect.stringContaining("HotUpdater.checkForUpdate"),
     );
+    expect(p.note).toHaveBeenCalledWith(
+      `${API_KEY}\n\nStore this API key separately in a secure place.`,
+      "API Key",
+    );
   });
 
   it("blocks an existing v0 project before deployment", async () => {
@@ -316,5 +333,65 @@ describe("Firebase project creation", () => {
     expect(mocks.events).toEqual(["project"]);
     expect(execa).toHaveBeenCalledOnce();
     expect(execa).toHaveBeenCalledWith("gcloud", ["--version"]);
+  });
+
+  it("blocks an existing v0 function before deployment", async () => {
+    mocks.existingProject = true;
+    mocks.assertFunction.mockRejectedValueOnce(
+      new Error(
+        "Firebase v0 infrastructure was detected at Function hot-updater",
+      ),
+    );
+
+    await expect(runInit({ build: "bare" })).rejects.toThrow(
+      "Firebase v0 infrastructure was detected at Function hot-updater",
+    );
+
+    expect(mocks.events).toEqual(["project"]);
+    expect(execa).toHaveBeenCalledWith(
+      "gcloud",
+      [
+        "services",
+        "enable",
+        "cloudfunctions.googleapis.com",
+        "--project=existing-project",
+        "--quiet",
+      ],
+      { env: undefined },
+    );
+    expect(execa).toHaveBeenCalledWith(
+      "npx",
+      ["firebase", "functions:list", "--json", "--project", "existing-project"],
+      { cwd: mocks.tmpDir, env: undefined },
+    );
+    const serviceEnableCall = vi
+      .mocked(execa)
+      .mock.calls.findIndex(
+        ([, args]) => Array.isArray(args) && args.includes("services"),
+      );
+    const functionsListCall = vi
+      .mocked(execa)
+      .mock.calls.findIndex(
+        ([, args]) => Array.isArray(args) && args.includes("functions:list"),
+      );
+    expect(serviceEnableCall).toBeLessThan(functionsListCall);
+    expect(mocks.assertFunction).toHaveBeenCalledWith({
+      functions: expect.arrayContaining([
+        expect.objectContaining({ id: "hot-updater" }),
+      ]),
+    });
+    expect(mocks.provisionApiKey).not.toHaveBeenCalled();
+  });
+
+  it("reports an actionable error when Firebase still cannot list functions", async () => {
+    mocks.existingProject = true;
+    mocks.functionsListError = new Error("Failed to list functions");
+
+    await expect(runInit({ build: "bare" })).rejects.toThrow(
+      "Could not list Firebase Functions for project existing-project: Failed to list functions. Run npx firebase functions:list --project existing-project --debug for details.",
+    );
+
+    expect(mocks.assertFunction).not.toHaveBeenCalled();
+    expect(mocks.provisionApiKey).not.toHaveBeenCalled();
   });
 });
