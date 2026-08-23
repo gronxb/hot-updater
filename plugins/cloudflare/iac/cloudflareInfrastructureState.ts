@@ -42,6 +42,7 @@ export const assertCloudflareWorkerCanInitialize = async ({
 
   await assertInfrastructureGenerationAtUrl({
     fetchImpl,
+    legacyStatuses: [400, 404],
     provider: "Cloudflare",
     resource: `Worker ${workerName}`,
     versionUrl: `https://${workerName}.${workersSubdomain}.workers.dev/version`,

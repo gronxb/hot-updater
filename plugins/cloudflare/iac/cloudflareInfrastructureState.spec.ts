@@ -38,25 +38,28 @@ describe("Cloudflare infrastructure generation", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("blocks an existing v0 Worker with the selected name", async () => {
-    const fetchImpl = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(new Response(null, { status: 404 }));
+  it.each([400, 404])(
+    "blocks an existing v0 Worker returning HTTP %i with the selected name",
+    async (status) => {
+      const fetchImpl = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response(null, { status }));
 
-    await expect(
-      assertCloudflareWorkerCanInitialize({
-        fetchImpl,
-        scriptNames: ["hot-updater"],
-        workerName: "hot-updater",
-        workersSubdomain: "example",
-      }),
-    ).rejects.toThrow(
-      "Cloudflare v0 infrastructure was detected at Worker hot-updater",
-    );
-    expect(fetchImpl).toHaveBeenCalledWith(
-      "https://hot-updater.example.workers.dev/version",
-    );
-  });
+      await expect(
+        assertCloudflareWorkerCanInitialize({
+          fetchImpl,
+          scriptNames: ["hot-updater"],
+          workerName: "hot-updater",
+          workersSubdomain: "example",
+        }),
+      ).rejects.toThrow(
+        "Cloudflare v0 infrastructure was detected at Worker hot-updater",
+      );
+      expect(fetchImpl).toHaveBeenCalledWith(
+        "https://hot-updater.example.workers.dev/version",
+      );
+    },
+  );
 
   it("allows an existing v1 Worker with the selected name", async () => {
     const fetchImpl = vi

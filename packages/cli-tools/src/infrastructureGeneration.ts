@@ -23,11 +23,13 @@ export const assertInfrastructureGenerationPayload = ({
 
 export const assertInfrastructureGenerationAtUrl = async ({
   fetchImpl = fetch,
+  legacyStatuses = [404],
   provider,
   resource,
   versionUrl,
 }: {
   readonly fetchImpl?: Fetch;
+  readonly legacyStatuses?: readonly number[];
   readonly provider: string;
   readonly resource: string;
   readonly versionUrl: string;
@@ -41,7 +43,7 @@ export const assertInfrastructureGenerationAtUrl = async ({
     );
   }
 
-  if (response.status === 404) {
+  if (legacyStatuses.includes(response.status)) {
     throw new LegacyInfrastructureError(provider, resource);
   }
   if (!response.ok) {
