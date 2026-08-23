@@ -40,22 +40,43 @@ vi.mock("cloudflare", () => ({
       database: {
         query: async (
           _databaseId: string,
-          input: { readonly sql: string; readonly params?: readonly string[] },
+          input:
+            | { readonly sql: string; readonly params?: readonly string[] }
+            | {
+                readonly batch: readonly {
+                  readonly sql: string;
+                  readonly params?: readonly string[];
+                }[];
+              },
         ) => {
-          const params = input.params ?? [];
-          let paramOffset = 0;
-          const statements = input.sql
-            .split(";")
-            .map((sql) => sql.trim())
-            .filter(Boolean)
-            .map((sql) => {
-              const paramCount = sql.match(/\?/g)?.length ?? 0;
-              const statement = getDb()
-                .prepare(sql)
-                .bind(...params.slice(paramOffset, paramOffset + paramCount));
-              paramOffset += paramCount;
-              return statement;
-            });
+          const statements =
+            "batch" in input
+              ? input.batch.map(({ sql, params }) =>
+                  getDb()
+                    .prepare(sql)
+                    .bind(...(params ?? [])),
+                )
+              : (() => {
+                  const params = input.params ?? [];
+                  let paramOffset = 0;
+                  return input.sql
+                    .split(";")
+                    .map((sql) => sql.trim())
+                    .filter(Boolean)
+                    .map((sql) => {
+                      const paramCount = sql.match(/\?/g)?.length ?? 0;
+                      const statement = getDb()
+                        .prepare(sql)
+                        .bind(
+                          ...params.slice(
+                            paramOffset,
+                            paramOffset + paramCount,
+                          ),
+                        );
+                      paramOffset += paramCount;
+                      return statement;
+                    });
+                })();
           const results = await getDb().batch(statements);
           return {
             async *iterPages() {
