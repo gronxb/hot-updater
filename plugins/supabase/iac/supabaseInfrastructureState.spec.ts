@@ -6,7 +6,7 @@ import {
   assertSupabaseInfrastructureCanInitialize,
 } from "./supabaseInfrastructureState";
 
-const api = (state: "fresh" | "v0" | "v1") =>
+const api = (state: "fresh" | "incompatible" | "v1") =>
   ({
     getInfrastructureState: vi.fn().mockResolvedValue(state),
   }) as unknown as SupabaseApi;
@@ -18,11 +18,14 @@ describe("Supabase infrastructure generation", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("blocks a v0 project", async () => {
+  it("blocks an incompatible v1 namespace", async () => {
     await expect(
-      assertSupabaseInfrastructureCanInitialize(api("v0"), "project-ref"),
+      assertSupabaseInfrastructureCanInitialize(
+        api("incompatible"),
+        "project-ref",
+      ),
     ).rejects.toThrow(
-      "Supabase v0 infrastructure was detected at project project-ref",
+      "Supabase v1 infrastructure in project project-ref is incomplete or uses an unsupported database version.",
     );
   });
 

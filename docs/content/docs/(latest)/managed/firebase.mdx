@@ -54,7 +54,7 @@ During the setup, you will be prompted to:
 2. **Verify Storage**: Init locates the selected project's canonical default bucket and stops if Storage has not been enabled.
 3. **Deploy Firestore Indexes**: Deploy the indexes used to store and query updates.
 4. **Provision API Key**: Create the first client API key or reuse the saved key.
-5. **Deploy Functions**: Deploy a Firebase Function v2 called `hot-updater`.
+5. **Deploy Functions**: Deploy a Firebase Function v2 called `hot-updater-v1`.
 6. **Add IAM Policy**: Add a new IAM policy to the service account of the function.
 
   </Accordion>
@@ -103,7 +103,7 @@ import { useEffect } from "react";
 import { Text, View } from "react-native";
 
 HotUpdater.init({
-  baseURL: "https://<project-id>.web.app", // [!code ++]
+  baseURL: "<function URL printed by hot-updater init>", // [!code ++]
   requestHeaders: {
     "x-api-key": "<HOT_UPDATER_API_KEY from .env.hotupdater>", // [!code ++]
   },
@@ -134,7 +134,7 @@ export default App;
   The managed Firebase runtime exposes `/version` publicly. OTA update checks
   and Analytics ingestion require `x-api-key: $HOT_UPDATER_API_KEY`. Internally,
   it enables Analytics and mounts only `handlers.client`. Admin routes,
-  including Analytics queries, are not mounted on the public Hosting URL.
+  including Analytics queries, are not mounted on the public Function URL.
 </Callout>
 
 ## Generated Configuration and Operations
@@ -194,25 +194,21 @@ project ID as the Release Catalog authority.
 
 ### Upgrade and rollback
 
-Managed Firebase does not upgrade v0 Firestore data in place. Init inspects the
-adapter marker and Hot Updater collections before deploying. A v0 marker or an
-unversioned database containing Hot Updater data is rejected without mutation.
-Use a new Firebase project for v1 and ship its Hosting endpoint in a new native
-build. Keep the v0 project available for installed v0 binaries that still need
-OTA service.
+Managed Firebase keeps v0 and v1 infrastructure isolated inside the same
+project. V1 Firestore collections use the fixed `hot_updater_v1_*` namespace,
+and the managed Function is named `hot-updater-v1`. Existing v0 collections
+and the `hot-updater` Function are not read or modified by v1 init, so installed
+v0 binaries can continue using them while a new native build moves to the v1
+endpoint. Both generations can use the project's canonical Storage bucket;
+bundle object keys remain independent.
 
 ### Release catalog cache
 
-Init deploys Firebase Hosting rewrites for `/version`, `/release-catalogs/**`,
-`/artifacts/**`, and `/events`
-in front of the `hot-updater` Function. Use the Hosting domain as the base URL
-so successful catalog responses can be served by Firebase's
-global CDN without invoking the Function or reading Firestore. The response's
-five-second `s-maxage` and `Vary: Accept-Encoding, x-api-key` define freshness
-and authentication partitioning. Errors are `private, no-store`.
-
-Do not use the direct Cloud Functions URL when validating the shared-cache
-profile; it proves Function correctness but bypasses Firebase Hosting.
+Firebase uses the direct `hot-updater-v1` Function URL in `origin-only` mode.
+Init prints the deployed URL and does not deploy Firebase Hosting, because the
+default Hosting site may already belong to the app or its v0 update endpoint.
+Catalog checks still use the precompiled Release Catalog and the runtime's
+short in-process cache, but every device request invokes the Function.
 
 ## Step 4: If You Use Expo, Add the Config Plugin
 

@@ -11,9 +11,10 @@
 ---
 
 Make Hot Updater v1 infrastructure a clean generation boundary. Managed init
-now rejects selected v0 resources before mutation and requires newly
-scaffolded resources, while doctor identifies missing v1 generation markers
-and gives the parallel-cutover remediation.
+now rejects selected v0 compute resources before mutation. Supabase tables and
+RPCs plus Firebase collections and Functions use fixed v1 namespaces, allowing
+v0 and v1 to coexist in one project while doctor identifies missing generation
+markers and gives the parallel-cutover remediation.
 
 Remove the v0 app-version and fingerprint HTTP routes, the legacy SDK-version
 header contract, CDN forwarding and cache paths for those routes, and managed

@@ -322,7 +322,6 @@ describe("selectBucket", () => {
           name: "public-bucket",
         },
       ]),
-      updateBucket: vi.fn(),
     };
     mockCli.p.select.mockResolvedValue("public-bucket-id");
 
@@ -356,7 +355,6 @@ describe("selectBucket", () => {
           name: "private-bucket",
         },
       ]),
-      updateBucket: vi.fn(),
     };
 
     // When
@@ -387,7 +385,6 @@ describe("selectBucket", () => {
             name: "saved-bucket",
           },
         ]),
-      updateBucket: vi.fn(),
     };
 
     const selection = await selectBucket(api, "saved-bucket", true);
@@ -427,7 +424,6 @@ describe("selectBucket", () => {
           name: "new-bucket",
         },
       ]),
-      updateBucket: vi.fn(),
     };
 
     const creation = createSelectedBucket(api, {
@@ -451,7 +447,6 @@ describe("selectBucket", () => {
       createBucket: vi.fn().mockRejectedValue(new Error("Unauthorized")),
       getInfrastructureState: vi.fn().mockResolvedValue("fresh"),
       listBuckets: vi.fn(),
-      updateBucket: vi.fn(),
     };
 
     await expect(
@@ -699,12 +694,21 @@ describe("Supabase CLI authentication", () => {
     }
   });
 
-  it("uses stored CLI credentials when pushing migrations without an access token", async () => {
+  it("syncs remote migration history before pushing v1 migrations", async () => {
     mockExeca.mockResolvedValue({ stdout: "" });
 
     await pushDB("/tmp/hot-updater-supabase-push", {});
 
-    expect(mockExeca).toHaveBeenCalledWith(
+    expect(mockExeca).toHaveBeenNthCalledWith(
+      1,
+      "npx",
+      ["supabase", "migration", "fetch", "--linked", "--yes"],
+      expect.objectContaining({
+        env: undefined,
+      }),
+    );
+    expect(mockExeca).toHaveBeenNthCalledWith(
+      2,
       "npx",
       ["supabase", "db", "push", "--include-all", "--yes"],
       expect.objectContaining({
@@ -734,7 +738,8 @@ describe("Supabase database password failures", () => {
     });
 
     // Then
-    expect(mockExeca).toHaveBeenCalledWith(
+    expect(mockExeca).toHaveBeenNthCalledWith(
+      2,
       "npx",
       ["supabase", "db", "push", "--include-all", "--yes"],
       expect.anything(),
@@ -839,7 +844,9 @@ describe("Supabase database password failures", () => {
       "--password",
       secret,
     ]);
-    mockExeca.mockRejectedValue(error);
+    mockExeca
+      .mockResolvedValueOnce({ stdout: "" })
+      .mockRejectedValueOnce(error);
     expectExit();
 
     // When
@@ -883,7 +890,9 @@ describe("Supabase database password failures", () => {
       ["node", "-e", "process.exit(1)", "--password", secret],
       stderr,
     );
-    mockExeca.mockRejectedValue(error);
+    mockExeca
+      .mockResolvedValueOnce({ stdout: "" })
+      .mockRejectedValueOnce(error);
     expectExit();
 
     // When
@@ -908,7 +917,9 @@ describe("Supabase database password failures", () => {
       ["node", "-e", "process.exit(1)"],
       "Remote migration failed",
     );
-    mockExeca.mockRejectedValue(error);
+    mockExeca
+      .mockResolvedValueOnce({ stdout: "" })
+      .mockRejectedValueOnce(error);
     expectExit();
 
     // When

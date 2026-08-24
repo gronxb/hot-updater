@@ -43,7 +43,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
 const REGION = "us-central1";
-const FUNCTION_NAME = "hot-updater";
+const FUNCTION_NAME = "hot-updater-v1";
 const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 const FIREBASE_CLI_VERSION_ARGS = [
   "--filter",
@@ -354,12 +354,12 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
   beforeEach(async () => {
     cdnObjects.clear();
     await clearStorageBucket(storageBucket);
-    await clearFirestoreCollection("bundle_patches");
-    await clearFirestoreCollection("release_catalogs");
-    await clearFirestoreCollection("releases");
-    await clearFirestoreCollection("bundles");
-    await clearFirestoreCollection("channels");
-    await clearFirestoreCollection("private_hot_updater_settings", (id) =>
+    await clearFirestoreCollection("hot_updater_v1_bundle_patches");
+    await clearFirestoreCollection("hot_updater_v1_release_catalogs");
+    await clearFirestoreCollection("hot_updater_v1_releases");
+    await clearFirestoreCollection("hot_updater_v1_bundles");
+    await clearFirestoreCollection("hot_updater_v1_channels");
+    await clearFirestoreCollection("hot_updater_v1_private_settings", (id) =>
       id.startsWith("channel_id_"),
     );
   });

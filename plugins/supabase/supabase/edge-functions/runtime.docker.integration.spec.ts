@@ -38,6 +38,7 @@ import {
   waitForHttpOk,
 } from "../../../../packages/test-utils/src/runtimeProcess";
 import { supabaseDatabase } from "../../src/supabaseDatabase";
+import { SUPABASE_V1_TABLE_NAMES } from "../../src/supabaseInfrastructureNames";
 import { supabaseStorage } from "../../src/supabaseStorage";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -386,11 +387,11 @@ describe.sequential("supabase edge runtime acceptance", () => {
     }
 
     for (const [table, key] of [
-      ["release_catalogs", "scope_key"],
-      ["releases", "id"],
-      ["bundle_patches", "id"],
-      ["bundles", "id"],
-      ["channels", "id"],
+      [SUPABASE_V1_TABLE_NAMES.releaseCatalogs, "scope_key"],
+      [SUPABASE_V1_TABLE_NAMES.releases, "id"],
+      [SUPABASE_V1_TABLE_NAMES.bundlePatches, "id"],
+      [SUPABASE_V1_TABLE_NAMES.bundles, "id"],
+      [SUPABASE_V1_TABLE_NAMES.channels, "id"],
     ] as const) {
       const { error } = await supabaseAdmin
         .from(table)
@@ -453,7 +454,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
     expect(new Set(results.map(({ row }) => row.id)).size).toBe(1);
     expect(results.filter(({ inserted }) => inserted)).toHaveLength(1);
     const stored = await supabaseAdmin
-      .from("channels")
+      .from("hot_updater_v1_channels")
       .select("id, name")
       .eq("name", channelName);
     if (stored.error) throw stored.error;
@@ -488,14 +489,14 @@ describe.sequential("supabase edge runtime acceptance", () => {
     ).rejects.toBeDefined();
 
     const ownerResult = await supabaseAdmin
-      .from("bundles")
+      .from("hot_updater_v1_bundles")
       .select("id")
       .eq("id", owner.id)
       .maybeSingle();
     if (ownerResult.error) throw ownerResult.error;
     expect(ownerResult.data).toBeNull();
     const patchResult = await supabaseAdmin
-      .from("bundle_patches")
+      .from("hot_updater_v1_bundle_patches")
       .select("id")
       .eq("bundle_id", owner.id);
     if (patchResult.error) throw patchResult.error;
@@ -505,7 +506,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
   it("preserves extension defaults and generated values during atomic inserts", async () => {
     runDatabaseSql(
       [
-        "ALTER TABLE public.bundles",
+        "ALTER TABLE public.hot_updater_v1_bundles",
         "ADD COLUMN tenant_tag text NOT NULL DEFAULT 'default-tenant',",
         "ADD COLUMN file_hash_upper text GENERATED ALWAYS AS (upper(file_hash)) STORED",
       ].join(" "),
@@ -531,7 +532,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
       await databaseClient.insertBundle(owner);
 
       const result = await supabaseAdmin
-        .from("bundles")
+        .from("hot_updater_v1_bundles")
         .select("tenant_tag, file_hash_upper")
         .eq("id", owner.id)
         .single();
@@ -542,15 +543,15 @@ describe.sequential("supabase edge runtime acceptance", () => {
       });
     } finally {
       runDatabaseSql(
-        "ALTER TABLE public.bundles DROP COLUMN tenant_tag, DROP COLUMN file_hash_upper",
+        "ALTER TABLE public.hot_updater_v1_bundles DROP COLUMN tenant_tag, DROP COLUMN file_hash_upper",
       );
     }
   });
 
   it("does not resolve public-schema JSON function shadows in atomic RPCs", async () => {
     runDatabaseSql(`
-      CREATE FUNCTION public.jsonb_populate_record(public.bundles, jsonb)
-      RETURNS public.bundles
+      CREATE FUNCTION public.jsonb_populate_record(public.hot_updater_v1_bundles, jsonb)
+      RETURNS public.hot_updater_v1_bundles
       LANGUAGE plpgsql
       AS $$
       BEGIN
@@ -583,7 +584,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
       ).resolves.toMatchObject({ id: owner.id, patches: owner.patches });
     } finally {
       runDatabaseSql(
-        "DROP FUNCTION public.jsonb_populate_record(public.bundles, jsonb)",
+        "DROP FUNCTION public.jsonb_populate_record(public.hot_updater_v1_bundles, jsonb)",
       );
     }
   });
@@ -679,7 +680,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
   it("denies the generic commit RPC to the anonymous role", async () => {
     const response = await fetch(
-      `${gatewayBaseUrl}/rest/v1/rpc/hot_updater_commit`,
+      `${gatewayBaseUrl}/rest/v1/rpc/hot_updater_v1_commit`,
       {
         method: "POST",
         headers: {
@@ -801,7 +802,7 @@ const waitForRestApiReady = async (baseUrl: string, timeoutMs = 90_000) => {
   while (Date.now() < deadline) {
     try {
       const response = await fetch(
-        `${baseUrl}/rest/v1/bundles?select=id&limit=1`,
+        `${baseUrl}/rest/v1/${SUPABASE_V1_TABLE_NAMES.bundles}?select=id&limit=1`,
         {
           headers: {
             apikey: SERVICE_ROLE_KEY,
@@ -956,9 +957,9 @@ GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO service_role;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role;
 
-REVOKE EXECUTE ON FUNCTION public.hot_updater_commit(jsonb)
+REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_commit(jsonb)
   FROM anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.hot_updater_delete_channel(text)
+REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_delete_channel(text)
   FROM anon, authenticated;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA public

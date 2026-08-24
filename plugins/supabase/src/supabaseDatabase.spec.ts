@@ -21,6 +21,15 @@ const supabaseMock = vi.hoisted(() => {
     readonly data: Row | readonly Row[] | null;
     readonly error: QueryError | null;
   };
+  const physicalTableNames: Record<string, TableName> = {
+    hot_updater_v1_api_keys: "api_keys",
+    hot_updater_v1_bundle_events: "bundle_events",
+    hot_updater_v1_bundle_patches: "bundle_patches",
+    hot_updater_v1_bundles: "bundles",
+    hot_updater_v1_channels: "channels",
+    hot_updater_v1_release_catalogs: "release_catalogs",
+    hot_updater_v1_releases: "releases",
+  };
 
   const rows: Record<TableName, Map<string, Row>> = {
     bundle_events: new Map(),
@@ -408,12 +417,15 @@ const supabaseMock = vi.hoisted(() => {
 
   return {
     createMockClient: () => ({
-      from: (table: TableName) => {
-        return new QueryBuilder(table);
+      from: (table: string) => {
+        const logicalTable = physicalTableNames[table];
+        if (!logicalTable)
+          throw new Error(`Unexpected Supabase table: ${table}`);
+        return new QueryBuilder(logicalTable);
       },
       rpc: async (name: string, args?: Record<string, unknown>) => {
         const bundles = [...rows.bundles.values()];
-        if (name === "hot_updater_delete_channel") {
+        if (name === "hot_updater_v1_delete_channel") {
           const id = String(args?.p_id);
           if (!rows.channels.has(id)) {
             return {
@@ -437,7 +449,7 @@ const supabaseMock = vi.hoisted(() => {
           rows.channels.delete(id);
           return { data: { deleted: true }, error: null };
         }
-        if (name === "hot_updater_commit") {
+        if (name === "hot_updater_v1_commit") {
           const staged = {
             bundle_events: new Map(rows.bundle_events),
             bundle_patches: new Map(rows.bundle_patches),

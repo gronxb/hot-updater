@@ -37,7 +37,7 @@ import {
 } from "./init/index";
 import { type SupabaseApi, supabaseApi } from "./supabaseApi";
 import { getSupabaseCliEnv } from "./supabaseAuthentication";
-import { ensureSupabaseBucketPrivate } from "./supabaseBucketPrivacy";
+import { preserveSupabaseBucketPrivacy } from "./supabaseBucketPrivacy";
 import {
   confirmSupabaseDatabaseMigrations,
   linkSupabase,
@@ -973,9 +973,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       functionSlugs: await managementApi.listFunctions(project!.id),
       projectId: project!.id,
     });
-    await ensureSupabaseBucketPrivate({
-      api: projectAccess.api,
-      nonInteractive,
+    preserveSupabaseBucketPrivacy({
       selection: bucketSelection,
     });
   }

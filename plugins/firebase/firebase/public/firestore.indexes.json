@@ -1,7 +1,7 @@
 {
   "indexes": [
     {
-      "collectionGroup": "bundles",
+      "collectionGroup": "hot_updater_v1_bundles",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "channel", "order": "ASCENDING" },
@@ -11,7 +11,7 @@
       ]
     },
     {
-      "collectionGroup": "bundles",
+      "collectionGroup": "hot_updater_v1_bundles",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "channel", "order": "ASCENDING" },
@@ -22,7 +22,7 @@
       ]
     },
     {
-      "collectionGroup": "bundles",
+      "collectionGroup": "hot_updater_v1_bundles",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "channel", "order": "ASCENDING" },
@@ -33,7 +33,7 @@
       ]
     },
     {
-      "collectionGroup": "bundles",
+      "collectionGroup": "hot_updater_v1_bundles",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "channel", "order": "ASCENDING" },
@@ -42,7 +42,7 @@
       ]
     },
     {
-      "collectionGroup": "bundles",
+      "collectionGroup": "hot_updater_v1_bundles",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "channel", "order": "ASCENDING" },
@@ -50,7 +50,7 @@
       ]
     },
     {
-      "collectionGroup": "bundles",
+      "collectionGroup": "hot_updater_v1_bundles",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "platform", "order": "ASCENDING" },
@@ -58,7 +58,7 @@
       ]
     },
     {
-      "collectionGroup": "bundles",
+      "collectionGroup": "hot_updater_v1_bundles",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "channel", "order": "ASCENDING" },
@@ -69,7 +69,7 @@
       ]
     },
     {
-      "collectionGroup": "bundles",
+      "collectionGroup": "hot_updater_v1_bundles",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "channel", "order": "ASCENDING" },

@@ -136,7 +136,7 @@ describe("resolveFirebaseRegion", () => {
       stdout: JSON.stringify({
         result: [
           {
-            id: "hot-updater",
+            id: "hot-updater-v1",
             region: "northamerica-northeast1",
           },
         ],

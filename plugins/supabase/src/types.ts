@@ -11,6 +11,11 @@ import type {
   ReleaseRow,
 } from "@hot-updater/plugin-core";
 
+import {
+  SUPABASE_V1_FUNCTION_NAMES,
+  SUPABASE_V1_TABLE_NAMES,
+} from "./supabaseInfrastructureNames";
+
 export type SupabaseBundleRow = {
   [TField in keyof BundleRow]: BundleRow[TField];
 };
@@ -47,23 +52,23 @@ type Table<TRow> = {
 export type Database = {
   public: {
     Tables: {
-      bundles: Table<SupabaseBundleRow>;
-      bundle_patches: Table<SupabaseBundlePatchRow>;
-      channels: Table<SupabaseChannelRow>;
-      bundle_events: Table<SupabaseBundleEventRow>;
-      api_keys: Table<SupabaseApiKeyRow>;
-      release_catalogs: Table<SupabaseReleaseCatalogRow>;
-      releases: Table<SupabaseReleaseRow>;
+      [SUPABASE_V1_TABLE_NAMES.bundles]: Table<SupabaseBundleRow>;
+      [SUPABASE_V1_TABLE_NAMES.bundlePatches]: Table<SupabaseBundlePatchRow>;
+      [SUPABASE_V1_TABLE_NAMES.channels]: Table<SupabaseChannelRow>;
+      [SUPABASE_V1_TABLE_NAMES.bundleEvents]: Table<SupabaseBundleEventRow>;
+      [SUPABASE_V1_TABLE_NAMES.apiKeys]: Table<SupabaseApiKeyRow>;
+      [SUPABASE_V1_TABLE_NAMES.releaseCatalogs]: Table<SupabaseReleaseCatalogRow>;
+      [SUPABASE_V1_TABLE_NAMES.releases]: Table<SupabaseReleaseRow>;
     };
     Views: { [_ in never]: never };
     Functions: {
-      hot_updater_commit: {
+      [SUPABASE_V1_FUNCTION_NAMES.commit]: {
         Args: {
           p_commit: DatabaseCommit;
         };
         Returns: DatabaseCommitResult;
       };
-      hot_updater_delete_channel: {
+      [SUPABASE_V1_FUNCTION_NAMES.deleteChannel]: {
         Args: {
           p_id: string;
         };

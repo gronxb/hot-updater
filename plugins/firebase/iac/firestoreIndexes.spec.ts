@@ -3,6 +3,8 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { FIREBASE_V1_COLLECTION_NAMES } from "../src/firebaseInfrastructureNames";
+
 describe("firebase firestore index template", () => {
   it("includes ascending indexes for update-check fast paths", async () => {
     const indexFilePath = path.resolve(
@@ -21,7 +23,7 @@ describe("firebase firestore index template", () => {
     };
 
     expect(indexFile.indexes).toContainEqual({
-      collectionGroup: "bundles",
+      collectionGroup: FIREBASE_V1_COLLECTION_NAMES.bundles,
       fields: [
         { fieldPath: "channel", order: "ASCENDING" },
         { fieldPath: "enabled", order: "ASCENDING" },
@@ -32,7 +34,7 @@ describe("firebase firestore index template", () => {
     });
 
     expect(indexFile.indexes).toContainEqual({
-      collectionGroup: "bundles",
+      collectionGroup: FIREBASE_V1_COLLECTION_NAMES.bundles,
       fields: [
         { fieldPath: "channel", order: "ASCENDING" },
         { fieldPath: "enabled", order: "ASCENDING" },
@@ -44,7 +46,7 @@ describe("firebase firestore index template", () => {
     });
 
     expect(indexFile.indexes).toContainEqual({
-      collectionGroup: "bundles",
+      collectionGroup: FIREBASE_V1_COLLECTION_NAMES.bundles,
       fields: [
         { fieldPath: "channel", order: "ASCENDING" },
         { fieldPath: "enabled", order: "ASCENDING" },

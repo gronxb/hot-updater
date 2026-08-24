@@ -60,7 +60,7 @@ vi.mock("execa", async () => {
           stdout: JSON.stringify({
             result: [
               {
-                id: "hot-updater",
+                id: "hot-updater-v1",
                 serviceAccount: "hot-updater@example.iam.gserviceaccount.com",
                 uri: "https://hot-updater.example.com",
               },
@@ -272,7 +272,7 @@ describe("Firebase project creation", () => {
       [
         "functions",
         "describe",
-        "hot-updater",
+        "hot-updater-v1",
         "--project",
         "existing-project",
         "--region",
@@ -287,6 +287,21 @@ describe("Firebase project creation", () => {
     );
     expect(mocks.provisionApiKey).toHaveBeenCalledWith(
       expect.objectContaining({ existingApiKey: API_KEY }),
+    );
+    expect(execa).toHaveBeenCalledWith(
+      "npx",
+      expect.arrayContaining([
+        "firebase",
+        "deploy",
+        "--only",
+        "functions:hot-updater-v1",
+      ]),
+      expect.objectContaining({ cwd: mocks.tmpDir }),
+    );
+    expect(execa).not.toHaveBeenCalledWith(
+      "npx",
+      expect.arrayContaining(["firebase", "deploy", "--only", "functions"]),
+      expect.anything(),
     );
   });
 
@@ -335,16 +350,16 @@ describe("Firebase project creation", () => {
     expect(execa).toHaveBeenCalledWith("gcloud", ["--version"]);
   });
 
-  it("blocks an existing v0 function before deployment", async () => {
+  it("blocks an incompatible function occupying the v1 name", async () => {
     mocks.existingProject = true;
     mocks.assertFunction.mockRejectedValueOnce(
       new Error(
-        "Firebase v0 infrastructure was detected at Function hot-updater",
+        "Firebase v0 infrastructure was detected at Function hot-updater-v1",
       ),
     );
 
     await expect(runInit({ build: "bare" })).rejects.toThrow(
-      "Firebase v0 infrastructure was detected at Function hot-updater",
+      "Firebase v0 infrastructure was detected at Function hot-updater-v1",
     );
 
     expect(mocks.events).toEqual(["project"]);
@@ -377,7 +392,7 @@ describe("Firebase project creation", () => {
     expect(serviceEnableCall).toBeLessThan(functionsListCall);
     expect(mocks.assertFunction).toHaveBeenCalledWith({
       functions: expect.arrayContaining([
-        expect.objectContaining({ id: "hot-updater" }),
+        expect.objectContaining({ id: "hot-updater-v1" }),
       ]),
     });
     expect(mocks.provisionApiKey).not.toHaveBeenCalled();

@@ -19,6 +19,8 @@ const {
   bundlesCollection,
   channelsCollection,
   clearCollections,
+  legacyBundlesCollection,
+  legacySettingsCollection,
   settingsCollection,
 } = createFirestoreMock(PROJECT_ID);
 
@@ -119,20 +121,26 @@ describe("firebase infrastructure generation", () => {
     },
   );
 
-  it("rejects an unversioned v0 database without modifying it", async () => {
+  it("initializes v1 without modifying existing v0 collections", async () => {
     const legacy = storedBundleRow("legacy-bundle");
-    await bundlesCollection.doc(legacy.id).set(legacy);
+    await legacyBundlesCollection.doc(legacy.id).set(legacy);
+    await legacySettingsCollection
+      .doc("database_adapter_version")
+      .set({ version: 3 });
 
-    await expect(findAllBundles(createPlugin())).rejects.toThrow(
-      "Unsupported Firebase database adapter version: v0",
-    );
+    await expect(findAllBundles(createPlugin())).resolves.toEqual([]);
 
-    expect(
-      (await settingsCollection.doc("database_adapter_version").get()).exists,
-    ).toBe(false);
-    expect((await bundlesCollection.doc(legacy.id).get()).data()).toEqual(
+    expect((await legacyBundlesCollection.doc(legacy.id).get()).data()).toEqual(
       legacy,
     );
+    expect(
+      (
+        await legacySettingsCollection.doc("database_adapter_version").get()
+      ).data(),
+    ).toEqual({ version: 3 });
+    expect(
+      (await settingsCollection.doc("database_adapter_version").get()).data(),
+    ).toEqual({ version: 4 });
   });
 
   it("initializes an empty database as the v1 adapter", async () => {

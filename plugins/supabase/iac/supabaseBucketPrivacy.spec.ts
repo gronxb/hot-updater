@@ -1,11 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  confirm: vi.fn(),
-  isCancel: vi.fn(() => false),
   log: {
-    info: vi.fn(),
-    success: vi.fn(),
+    warn: vi.fn(),
   },
 }));
 
@@ -18,33 +15,15 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   };
 });
 
-import type { SupabaseApi } from "./supabaseApi";
-import {
-  ensureSupabaseBucketPrivate,
-  PublicSupabaseBucketError,
-} from "./supabaseBucketPrivacy";
+import { preserveSupabaseBucketPrivacy } from "./supabaseBucketPrivacy";
 
-const createApi = (): SupabaseApi => ({
-  createBucket: vi.fn(),
-  getInfrastructureState: vi.fn().mockResolvedValue("v1"),
-  listBuckets: vi.fn(),
-  updateBucket: vi.fn(),
-});
-
-describe("ensureSupabaseBucketPrivate", () => {
+describe("preserveSupabaseBucketPrivacy", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.confirm.mockResolvedValue(true);
   });
 
-  it("makes an existing public bucket private after confirmation", async () => {
-    // Given
-    const api = createApi();
-
-    // When
-    await ensureSupabaseBucketPrivate({
-      api,
-      nonInteractive: false,
+  it("preserves an existing public bucket for v0 apps", () => {
+    preserveSupabaseBucketPrivacy({
       selection: {
         create: false,
         id: "bucket-id",
@@ -53,20 +32,13 @@ describe("ensureSupabaseBucketPrivate", () => {
       },
     });
 
-    // Then
-    expect(api.updateBucket).toHaveBeenCalledWith("bucket-id", {
-      public: false,
-    });
+    expect(mocks.log.warn).toHaveBeenCalledWith(
+      'Bucket "bundles" is public. Its access level will be preserved for existing apps.',
+    );
   });
 
-  it("does not prompt for an existing private bucket", async () => {
-    // Given
-    const api = createApi();
-
-    // When
-    await ensureSupabaseBucketPrivate({
-      api,
-      nonInteractive: false,
+  it("does not warn for an existing private bucket", () => {
+    preserveSupabaseBucketPrivacy({
       selection: {
         create: false,
         id: "bucket-id",
@@ -75,29 +47,6 @@ describe("ensureSupabaseBucketPrivate", () => {
       },
     });
 
-    // Then
-    expect(mocks.confirm).not.toHaveBeenCalled();
-    expect(api.updateBucket).not.toHaveBeenCalled();
-  });
-
-  it("requires an explicit change before replaying a public bucket", async () => {
-    // Given
-    const api = createApi();
-
-    // When
-    const privacy = ensureSupabaseBucketPrivate({
-      api,
-      nonInteractive: true,
-      selection: {
-        create: false,
-        id: "bucket-id",
-        isPublic: true,
-        name: "bundles",
-      },
-    });
-
-    // Then
-    await expect(privacy).rejects.toBeInstanceOf(PublicSupabaseBucketError);
-    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.log.warn).not.toHaveBeenCalled();
   });
 });
