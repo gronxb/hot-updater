@@ -54,7 +54,11 @@ struct BundleFileStorageServiceTests {
             bundleId: "stable-bundle"
         )
         try writeBundle(in: stableDirectory, bundleFileName: "main.jsbundle")
-        try writeManifest(in: stableDirectory, bundleId: "stable-bundle")
+        try writeManifest(
+            in: stableDirectory,
+            bundleId: "stable-bundle",
+            assetPaths: ["main.jsbundle"]
+        )
 
         let stagingDirectory = try createBundleDirectory(
             documentsDirectory: workingDirectory,
@@ -150,7 +154,11 @@ struct BundleFileStorageServiceTests {
             bundleId: "stable-bundle"
         )
         try writeBundle(in: stableDirectory, bundleFileName: "main.jsbundle")
-        try writeManifest(in: stableDirectory, bundleId: "stable-bundle")
+        try writeManifest(
+            in: stableDirectory,
+            bundleId: "stable-bundle",
+            assetPaths: ["main.jsbundle"]
+        )
 
         let stagingDirectory = try createBundleDirectory(
             documentsDirectory: workingDirectory,
@@ -345,6 +353,80 @@ struct BundleFileStorageServiceTests {
         )
 
         #expect(service.canUseManifestDrivenInstall() == false)
+    }
+
+    @Test
+    func prepareLaunchRollsBackBundleWithMissingManifestAsset() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+        let stableDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "stable-bundle"
+        )
+        try writeBundle(in: stableDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stableDirectory, bundleId: "stable-bundle")
+
+        let stagingDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "staging-bundle"
+        )
+        try writeBundle(in: stagingDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(
+            in: stagingDirectory,
+            bundleId: "staging-bundle",
+            assetPaths: ["index.ios.bundle", "assets/missing.png"]
+        )
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stableBundleId: "stable-bundle",
+                stagingBundleId: "staging-bundle",
+                verificationPending: true
+            )
+        )
+
+        let selection = service.prepareLaunch(bundle: .main, pendingRecovery: nil)
+
+        #expect(selection.launchedBundleId == "stable-bundle")
+        #expect(FileManager.default.fileExists(atPath: stagingDirectory.path) == false)
+    }
+
+    @Test
+    func getCachedBundleURLValidatesNestedManifestBundle() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let preferences = InMemoryPreferencesService()
+        let service = makeStorageService(
+            documentsDirectory: workingDirectory,
+            preferences: preferences
+        )
+        let bundleDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "nested-bundle"
+        )
+        let nestedDirectory = bundleDirectory.appendingPathComponent("dist", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: nestedDirectory,
+            withIntermediateDirectories: true
+        )
+        try writeBundle(in: nestedDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(
+            in: bundleDirectory,
+            bundleId: "nested-bundle",
+            assetPaths: ["dist/index.ios.bundle"]
+        )
+        let bundleURL = nestedDirectory.appendingPathComponent("index.ios.bundle")
+        try preferences.setItem(bundleURL.path, forKey: "HotUpdaterBundleURL")
+
+        #expect(service.getCachedBundleURL() == bundleURL)
     }
 
     @Test
