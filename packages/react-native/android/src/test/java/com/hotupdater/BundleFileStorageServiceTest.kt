@@ -48,29 +48,29 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
-    fun `resolveBundleFile falls back to root index when manifest has no android bundle candidate`() {
+    fun `resolveBundleFile rejects a manifest with missing assets even when root index exists`() {
         val rootDir = temporaryFolder.newFolder("no-android-candidate")
         val service = createService(rootDir)
         val bundleDir = createBundleDir(rootDir, "bundle-no-candidate")
-        val fallbackBundleFile = writeFile(bundleDir, "index.android.bundle")
+        writeFile(bundleDir, "index.android.bundle")
 
         writeManifest(bundleDir, listOf("index.ios.bundle", "assets/image.png"))
 
-        assertResolvedBundlePath(service, bundleDir, fallbackBundleFile)
+        assertNull(invokeResolveBundleFile(service, bundleDir))
     }
 
     @Test
-    fun `resolveBundleFile falls back to root index when manifest has multiple android bundle candidates`() {
+    fun `resolveBundleFile rejects a manifest with multiple android bundle candidates`() {
         val rootDir = temporaryFolder.newFolder("multiple-android-candidates")
         val service = createService(rootDir)
         val bundleDir = createBundleDir(rootDir, "bundle-multiple-candidates")
-        val fallbackBundleFile = writeFile(bundleDir, "index.android.bundle")
+        writeFile(bundleDir, "index.android.bundle")
 
         writeFile(bundleDir, "foo.android.bundle")
         writeFile(bundleDir, "dist/bar.android.bundle")
         writeManifest(bundleDir, listOf("foo.android.bundle", "dist/bar.android.bundle"))
 
-        assertResolvedBundlePath(service, bundleDir, fallbackBundleFile)
+        assertNull(invokeResolveBundleFile(service, bundleDir))
     }
 
     @Test
@@ -122,7 +122,14 @@ class BundleFileStorageServiceTest {
         val service = createService(rootDir, preferences)
 
         val stagingDir = createBundleDir(rootDir, "staging-bundle")
-        writeManifest(stagingDir, listOf("dist/missing.android.bundle"))
+        writeFile(stagingDir, "dist/staging.android.bundle")
+        writeManifest(
+            stagingDir,
+            listOf(
+                "dist/staging.android.bundle",
+                "assets/missing.png",
+            ),
+        )
 
         val stableDir = createBundleDir(rootDir, "stable-bundle")
         val stableBundleFile = writeFile(stableDir, "dist/stable.android.bundle")
@@ -141,7 +148,7 @@ class BundleFileStorageServiceTest {
         val selection = service.prepareLaunch(null)
         val report = service.notifyAppReady()
 
-        assertEquals(stableBundleFile.canonicalFile.absolutePath, selection.bundleUrl)
+        assertEquals(stableBundleFile.absolutePath, selection.bundleUrl)
         assertEquals(stableDir.name, selection.launchedBundleId)
         assertFalse(selection.shouldRollbackOnCrash)
         assertFalse(stagingDir.exists())
@@ -153,7 +160,7 @@ class BundleFileStorageServiceTest {
         assertEquals(stableDir.name, metadata?.stagingBundleId)
         assertNull(metadata?.stableBundleId)
         assertFalse(metadata?.verificationPending ?: true)
-        assertEquals(stableBundleFile.canonicalFile.absolutePath, preferences.getItem("HotUpdaterBundleURL"))
+        assertEquals(stableBundleFile.absolutePath, preferences.getItem("HotUpdaterBundleURL"))
     }
 
     @Test
@@ -416,9 +423,10 @@ class BundleFileStorageServiceTest {
             BundleFileStorageService::class.java.getDeclaredMethod(
                 "resolveBundleFile",
                 File::class.java,
+                String::class.java,
             )
         method.isAccessible = true
-        return method.invoke(service, bundleDir) as File?
+        return method.invoke(service, bundleDir, bundleDir.name) as File?
     }
 
     private fun invokeCanUseManifestDrivenInstall(service: BundleFileStorageService): Boolean {

@@ -1141,7 +1141,10 @@ class BundleFileStorageService: BundleStorageService {
         let fallbackBundleId = metadata.stableBundleId.flatMap { candidate in
             if case .success(let storeDir) = bundleStoreDir() {
                 let stableBundleDir = (storeDir as NSString).appendingPathComponent(candidate)
-                if case .success(let bundlePath) = findBundleFile(in: stableBundleDir), bundlePath != nil {
+                if case .success(let bundlePath) = findBundleFile(
+                    in: stableBundleDir,
+                    expectedBundleId: candidate
+                ), bundlePath != nil {
                     return candidate
                 }
             }
@@ -1163,7 +1166,10 @@ class BundleFileStorageService: BundleStorageService {
         if let fallbackBundleId,
            case .success(let storeDir) = bundleStoreDir() {
             let fallbackBundleDir = (storeDir as NSString).appendingPathComponent(fallbackBundleId)
-            if case .success(let bundlePath) = findBundleFile(in: fallbackBundleDir), let bundlePath {
+            if case .success(let bundlePath) = findBundleFile(
+                in: fallbackBundleDir,
+                expectedBundleId: fallbackBundleId
+            ), let bundlePath {
                 let _ = setBundleURL(localPath: bundlePath)
             }
         } else {
@@ -1278,8 +1284,44 @@ class BundleFileStorageService: BundleStorageService {
      * @param directoryPath Directory to search in
      * @return Result with path to bundle file or error
      */
-    func findBundleFile(in directoryPath: String) -> Result<String?, Error> {
+    func findBundleFile(
+        in directoryPath: String,
+        expectedBundleId: String? = nil
+    ) -> Result<String?, Error> {
         NSLog("[BundleStorage] Searching for bundle file in directory: \(directoryPath)")
+
+        let manifestPath = (directoryPath as NSString).appendingPathComponent("manifest.json")
+        if fileSystem.fileExists(atPath: manifestPath) {
+            guard let manifest = readManifest(in: directoryPath),
+                  let parsedManifest = parseBundleManifest(from: manifest),
+                  expectedBundleId == nil || parsedManifest.bundleId == expectedBundleId else {
+                return .success(nil)
+            }
+
+            do {
+                var bundlePaths: [String] = []
+                for assetPath in parsedManifest.assets.keys {
+                    let assetURL = try ArchiveExtractionUtilities.extractionURL(
+                        for: assetPath,
+                        destinationRoot: directoryPath
+                    )
+                    guard fileSystem.fileExists(atPath: assetURL.path),
+                          let attributes = try? fileSystem.attributesOfItem(atPath: assetURL.path),
+                          attributes[.type] as? FileAttributeType == .typeRegular else {
+                        return .success(nil)
+                    }
+
+                    let fileName = assetURL.lastPathComponent
+                    if fileName.hasSuffix(".bundle") || fileName == "main.jsbundle" {
+                        bundlePaths.append(assetURL.path)
+                    }
+                }
+
+                return .success(bundlePaths.count == 1 ? bundlePaths[0] : nil)
+            } catch {
+                return .failure(error)
+            }
+        }
 
         let iosBundlePath = (directoryPath as NSString).appendingPathComponent("index.ios.bundle")
         if self.fileSystem.fileExists(atPath: iosBundlePath) {
@@ -1421,12 +1463,39 @@ class BundleFileStorageService: BundleStorageService {
      */
     func getCachedBundleURL() -> URL? {
         do {
-            guard let savedURLString = try self.preferences.getItem(forKey: "HotUpdaterBundleURL"),
-                  let bundleURL = URL(string: savedURLString),
-                  self.fileSystem.fileExists(atPath: bundleURL.path) else {
+            guard let savedURLString = try self.preferences.getItem(forKey: "HotUpdaterBundleURL") else {
                 return nil
             }
-            return bundleURL
+
+            let savedURL = URL(string: savedURLString)
+            let bundleURL = (
+                (savedURL?.isFileURL == true ? savedURL : nil)
+                    ?? URL(fileURLWithPath: savedURLString)
+            ).standardizedFileURL
+            guard self.fileSystem.fileExists(atPath: bundleURL.path),
+                  case .success(let storeDir) = bundleStoreDir() else {
+                return nil
+            }
+
+            let storeURL = URL(fileURLWithPath: storeDir, isDirectory: true).standardizedFileURL
+            let storePrefix = storeURL.path + "/"
+            guard bundleURL.path.hasPrefix(storePrefix),
+                  let bundleId = bundleURL.path
+                    .dropFirst(storePrefix.count)
+                    .split(separator: "/")
+                    .first
+                    .map(String.init) else {
+                return nil
+            }
+
+            let bundleDirectory = storeURL.appendingPathComponent(bundleId).path
+            guard case .success(let resolvedBundlePath) = findBundleFile(
+                in: bundleDirectory,
+                expectedBundleId: bundleId
+            ), let resolvedBundlePath else {
+                return nil
+            }
+            return URL(fileURLWithPath: resolvedBundlePath)
         } catch {
             NSLog("[BundleStorage] Error getting cached bundle URL: \(error.localizedDescription)")
             return nil
@@ -1454,7 +1523,10 @@ class BundleFileStorageService: BundleStorageService {
         if let stagingId = metadata.stagingBundleId,
            case .success(let storeDir) = bundleStoreDir() {
             let stagingBundleDir = (storeDir as NSString).appendingPathComponent(stagingId)
-            if case .success(let bundlePath) = findBundleFile(in: stagingBundleDir), let bundlePath {
+            if case .success(let bundlePath) = findBundleFile(
+                in: stagingBundleDir,
+                expectedBundleId: stagingId
+            ), let bundlePath {
                 return LaunchSelection(
                     bundleURL: URL(fileURLWithPath: bundlePath),
                     launchedBundleId: stagingId,
@@ -1470,7 +1542,10 @@ class BundleFileStorageService: BundleStorageService {
         if let stableId = metadata.stableBundleId,
            case .success(let storeDir) = bundleStoreDir() {
             let stableBundleDir = (storeDir as NSString).appendingPathComponent(stableId)
-            if case .success(let bundlePath) = findBundleFile(in: stableBundleDir), let bundlePath {
+            if case .success(let bundlePath) = findBundleFile(
+                in: stableBundleDir,
+                expectedBundleId: stableId
+            ), let bundlePath {
                 return LaunchSelection(
                     bundleURL: URL(fileURLWithPath: bundlePath),
                     launchedBundleId: stableId,
@@ -1552,7 +1627,10 @@ class BundleFileStorageService: BundleStorageService {
             let finalBundleDir = (storeDir as NSString).appendingPathComponent(bundleId)
             
             if self.fileSystem.fileExists(atPath: finalBundleDir) {
-                let findResult = self.findBundleFile(in: finalBundleDir)
+                let findResult = self.findBundleFile(
+                    in: finalBundleDir,
+                    expectedBundleId: bundleId
+                )
                 switch findResult {
                 case .success(let existingBundlePath):
                     if let bundlePath = existingBundlePath {
@@ -1969,7 +2047,7 @@ class BundleFileStorageService: BundleStorageService {
             let manifestDestination = (tmpDir as NSString).appendingPathComponent("manifest.json")
             try writeManifestFile(targetManifest, to: manifestDestination)
 
-            switch self.findBundleFile(in: tmpDir) {
+            switch self.findBundleFile(in: tmpDir, expectedBundleId: bundleId) {
             case .success(let maybeBundlePath):
                 guard let bundlePathInTmp = maybeBundlePath else {
                     throw BundleStorageError.invalidBundle
@@ -2289,7 +2367,7 @@ class BundleFileStorageService: BundleStorageService {
                 progressHandler: progressHandler,
                 progress: UpdateProgress.bundleValidation
             )
-            switch self.findBundleFile(in: tmpDir) {
+            switch self.findBundleFile(in: tmpDir, expectedBundleId: bundleId) {
             case .success(let maybeBundlePath):
                 if let bundlePathInTmp = maybeBundlePath {
                     NSLog("[BundleStorage] Found valid bundle in tmpDir: \(bundlePathInTmp)")
