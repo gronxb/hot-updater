@@ -7,6 +7,7 @@ import { transformFileSync } from "@babel/core";
 import { describe, expect, it } from "vitest";
 
 import type { JsonObject } from "./control-client.ts";
+import { PAX_LONG_ASSET_MANIFEST_PATH } from "./pax-long-path-fixture.ts";
 import {
   getDetoxScenarioDefinition,
   listDetoxScenarioNames,
@@ -1887,7 +1888,35 @@ describe("Detox scenario contract", () => {
       "reload second multi-asset update",
       "wait second multi-asset metadata stable",
       "assert multi-assets replaced",
+      "assert multi-asset manifest reuse",
     ]);
+    const firstDeploy = await controlStepBody(
+      "multi-asset-replacement",
+      "deploy first multi-asset bundle",
+    );
+    const secondDeploy = await controlStepBody(
+      "multi-asset-replacement",
+      "deploy second multi-asset bundle",
+    );
+    expect(firstDeploy.compressStrategy).toBe("tar.br");
+    expect(secondDeploy.compressStrategy).toBe("tar.br");
+    expect(
+      (
+        await controlStepBody(
+          "multi-asset-replacement",
+          "assert first multi-assets stored",
+        )
+      ).assetPaths,
+    ).toContain(PAX_LONG_ASSET_MANIFEST_PATH);
+    expect(
+      await controlStepBody(
+        "multi-asset-replacement",
+        "assert multi-asset manifest reuse",
+      ),
+    ).toEqual({
+      bundleId: "$secondBundleId",
+      previousBundleId: "$firstBundleId",
+    });
     expect(
       (
         await controlStepBody(

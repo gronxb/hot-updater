@@ -6,6 +6,7 @@ import os from "os";
 import path from "path";
 import { setTimeout as sleep } from "timers/promises";
 import { fileURLToPath } from "url";
+import { brotliDecompressSync } from "zlib";
 
 import {
   getBundlePatch,
@@ -38,6 +39,12 @@ import {
   verifyConsoleAnalytics,
   type ObservedAnalyticsEvent,
 } from "../console-analytics-qa.ts";
+import {
+  PAX_LONG_ASSET_ANDROID_MANIFEST_PATH,
+  PAX_LONG_ASSET_MANIFEST_PATH,
+  PAX_LONG_ASSET_RELATIVE_PATH,
+  PAX_LONG_ASSET_REQUIRE_PATH,
+} from "../pax-long-path-fixture.ts";
 import { hasActiveInstrumentationForPackage } from "./android-instrumentation.ts";
 import {
   advanceAndroidRestartWait,
@@ -59,6 +66,7 @@ import {
   readE2eScreenStateSnapshot,
   resetE2eScreenState,
 } from "./screen-state.ts";
+import { readPaxPaths } from "./tar-pax.ts";
 import {
   shouldProbeUpdateCheckVisibility,
   validateArtifactInfoVisibility,
@@ -66,6 +74,7 @@ import {
 
 type Platform = "ios" | "android";
 type BundleProfile = "archive300mb" | "default" | "multiAssetReplacement";
+type CompressionStrategy = "tar.br" | "tar.gz" | "zip";
 
 type JobResult = Record<string, unknown>;
 
@@ -125,6 +134,7 @@ type SessionState = {
 type DeployBundleRequest = {
   bundleProfile?: BundleProfile;
   channel: string;
+  compressStrategy?: CompressionStrategy;
   disabled?: boolean;
   diffBaseBundleId?: string;
   forceUpdate?: boolean;
@@ -235,6 +245,10 @@ const STANDALONE_REPOSITORY_BASE_URL_PATTERN =
   /(standaloneRepository\(\{\s*baseUrl:\s*)["'][^"']+["']/;
 const UPDATE_STRATEGY_CONFIG_PATTERN =
   /updateStrategy:\s*["'](?:appVersion|fingerprint)["']/;
+const COMPRESS_STRATEGY_CONFIG_PATTERN =
+  /compressStrategy:\s*["'](?:tar\.br|tar\.gz|zip)["']/;
+const DEFINE_CONFIG_START_PATTERN =
+  /(export\s+default\s+defineConfig\s*\(\s*\{\s*\n)/;
 const MARKER_PATTERN =
   /export\s+const\s+E2E_SCENARIO_MARKER\s*(?::\s*string)?\s*=\s*["'][^"']*["'];/;
 const BUILT_IN_APP_MARKER = "targeted-qa-detox";
@@ -281,6 +295,12 @@ const MULTI_ASSET_FIXTURES = [
     manifestPath: "assets/src/test/_fixture-multi-asset-c.bmp",
     relativePath: "src/test/_fixture-multi-asset-c.bmp",
     requirePath: "../test/_fixture-multi-asset-c.bmp",
+  },
+  {
+    androidManifestPath: PAX_LONG_ASSET_ANDROID_MANIFEST_PATH,
+    manifestPath: PAX_LONG_ASSET_MANIFEST_PATH,
+    relativePath: PAX_LONG_ASSET_RELATIVE_PATH,
+    requirePath: PAX_LONG_ASSET_REQUIRE_PATH,
   },
 ] as const;
 const MULTI_ASSET_BMP_WIDTH = 64;
@@ -1121,10 +1141,12 @@ async function applyAppScenario({
 }
 
 async function applyDeployConfig({
+  compressStrategy,
   patchEnabled,
   patchMaxBaseBundles,
   strategy,
 }: {
+  compressStrategy?: CompressionStrategy;
   patchEnabled: boolean;
   patchMaxBaseBundles?: number;
   strategy: "appVersion" | "fingerprint";
@@ -1156,7 +1178,25 @@ async function applyDeployConfig({
       ].join("\n")
     : `${AUTO_PATCH_CONFIG_GUARD_START}\n  ${AUTO_PATCH_CONFIG_GUARD_END}`;
 
-  const sourceWithUpdateStrategy = source.replace(
+  const sourceWithCompressionStrategy = (() => {
+    if (!compressStrategy) {
+      return source;
+    }
+    if (COMPRESS_STRATEGY_CONFIG_PATTERN.test(source)) {
+      return source.replace(
+        COMPRESS_STRATEGY_CONFIG_PATTERN,
+        `compressStrategy: ${JSON.stringify(compressStrategy)}`,
+      );
+    }
+    if (!DEFINE_CONFIG_START_PATTERN.test(source)) {
+      throw new Error("Failed to locate defineConfig for compressStrategy");
+    }
+    return source.replace(
+      DEFINE_CONFIG_START_PATTERN,
+      `$1  compressStrategy: ${JSON.stringify(compressStrategy)},\n`,
+    );
+  })();
+  const sourceWithUpdateStrategy = sourceWithCompressionStrategy.replace(
     UPDATE_STRATEGY_CONFIG_PATTERN,
     `updateStrategy: ${JSON.stringify(strategy)}`,
   );
@@ -1186,6 +1226,7 @@ async function applyDeployConfig({
     sourceWithDeployBaseUrl.replace(AUTO_PATCH_CONFIG_PATTERN, autoPatchSource),
   );
   logDetoxFixture("deploy config applied", {
+    compressStrategy: compressStrategy ?? null,
     deployBaseUrl,
     patchEnabled,
     patchMaxBaseBundles: patchMaxBaseBundles ?? null,
@@ -5323,6 +5364,7 @@ async function deployFixtureBundle(
 
   throwIfAborted(signal);
   await applyDeployConfig({
+    compressStrategy: request.compressStrategy,
     patchEnabled,
     patchMaxBaseBundles: request.patchMaxBaseBundles,
     strategy: request.strategy ?? "appVersion",
@@ -5450,6 +5492,30 @@ async function deployFixtureBundle(
     try {
       const archivePath = await resolveDeployArchivePath(deployOutputPath);
       const archiveStats = await fsPromises.stat(archivePath);
+
+      if (
+        bundleProfile === "multiAssetReplacement" &&
+        request.compressStrategy === "tar.br"
+      ) {
+        const expectedPaxPath =
+          fixtureSession.platform === "ios"
+            ? PAX_LONG_ASSET_MANIFEST_PATH
+            : PAX_LONG_ASSET_ANDROID_MANIFEST_PATH;
+        const paxPaths = readPaxPaths(
+          brotliDecompressSync(await fsPromises.readFile(archivePath)),
+        );
+        if (!paxPaths.includes(expectedPaxPath)) {
+          throw createEndpointError(
+            "Expected multi-asset archive to contain a POSIX PAX path.",
+            { expectedPaxPath, paxPaths },
+          );
+        }
+        logDetoxFixture("PAX archive path verified", {
+          archivePath: path.relative(REPO_DIR, archivePath),
+          expectedPaxPath,
+          platform: fixtureSession.platform,
+        });
+      }
 
       if (
         bundleProfile === "archive300mb" &&
@@ -6089,6 +6155,7 @@ async function readManifestDiffState(args: {
   const expectedHash = getManifestAssetFileHash(manifest, assetPath);
   const assetFile = readBundleAssetFileHash(args.bundleId, assetPath);
   const archiveLogs = readFirstOtaArchiveInstallLogs();
+  const nativeLogs = readHotUpdaterNativeLogs();
   const bsdiffLogs = readBsdiffPatchLogs();
   const archiveFragments = [
     "Skipping manifest-driven install",
@@ -6100,6 +6167,10 @@ async function readManifestDiffState(args: {
     "HotUpdaterBsdiffPatchApplied",
     `asset=${assetPath}`,
     `baseBundleId=${args.previousBundleId}`,
+  ];
+  const manifestFallbackFragments = [
+    `Manifest-driven install failed for ${args.bundleId}`,
+    "Falling back to archive",
   ];
   const record =
     fixtureSession.deployedBundles.find(
@@ -6117,6 +6188,7 @@ async function readManifestDiffState(args: {
       manifest,
     }) &&
     !includesAllFragments(archiveLogs, archiveFragments) &&
+    !includesAllFragments(nativeLogs, manifestFallbackFragments) &&
     !includesAllFragments(bsdiffLogs, bsdiffFragments);
 
   return {
@@ -6130,7 +6202,9 @@ async function readManifestDiffState(args: {
     diagnostics,
     expectedHash,
     manifest,
+    manifestFallbackFragments,
     metadataState,
+    nativeLogs,
     ok,
     record,
   };
@@ -6272,6 +6346,10 @@ async function assertManifestDiffApplied(args: {
       diagnostics: state.diagnostics,
       expectedHash: state.expectedHash,
       manifest: state.manifest,
+      manifestFallbackLogMatched: includesAllFragments(
+        state.nativeLogs,
+        state.manifestFallbackFragments,
+      ),
       metadataState: state.metadataState,
       platform: fixtureSession.platform,
       previousBundleId: args.previousBundleId,
