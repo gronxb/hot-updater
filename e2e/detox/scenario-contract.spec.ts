@@ -1830,6 +1830,14 @@ describe("Detox scenario contract", () => {
       "assert archive diff marker",
       "assert archive diff stable launch",
     ]);
+    expect(
+      (
+        await controlStepBody(
+          "bspatch-archive-to-diff-ota",
+          "deploy archive base bundle",
+        )
+      ).compressStrategy,
+    ).toBe("tar.gz");
   });
 
   it("keeps bsdiff install phases aligned with Maestro metadata-first assertions", async () => {
