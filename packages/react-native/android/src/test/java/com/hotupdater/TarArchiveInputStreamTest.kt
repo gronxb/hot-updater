@@ -1,6 +1,5 @@
 package com.hotupdater
 
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry as CommonsTarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -9,6 +8,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry as CommonsTarArchiveEntry
 
 class TarArchiveInputStreamTest {
     @Test
