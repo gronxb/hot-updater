@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.36.4
+
+### Patch Changes
+
+- 279011d: Fix Android TAR extraction for long paths stored in POSIX PAX headers.
+  - @hot-updater/cli-tools@0.36.4
+  - @hot-updater/core@0.36.4
+  - @hot-updater/js@0.36.4
+  - @hot-updater/plugin-core@0.36.4
+
 ## 0.36.3
 
 ### Patch Changes
