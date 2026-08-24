@@ -2,7 +2,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   BundleEventRow,
-  ClientAccessKeyRow,
+  ApiKeyRow,
   ChannelRow,
   ReleaseCatalogRow,
   ReleaseRow,
@@ -22,7 +22,7 @@ export interface MockDatabaseData {
   readonly bundlePatches: Map<string, BundlePatchRow>;
   readonly bundleEvents: Map<string, BundleEventRow>;
   readonly channels: Map<string, ChannelRow>;
-  readonly clientAccessKeys: Map<string, ClientAccessKeyRow>;
+  readonly apiKeys: Map<string, ApiKeyRow>;
   readonly releaseCatalogs: Map<string, ReleaseCatalogRow>;
   readonly releases: Map<string, ReleaseRow>;
 }
@@ -40,7 +40,7 @@ export const createMockDatabaseData = (): MockDatabaseData => ({
   bundlePatches: new Map(),
   bundleEvents: new Map(),
   channels: new Map(),
-  clientAccessKeys: new Map(),
+  apiKeys: new Map(),
   releaseCatalogs: new Map(),
   releases: new Map(),
 });
@@ -52,7 +52,7 @@ export const cloneMockDatabaseData = (
   bundlePatches: new Map(data.bundlePatches),
   bundleEvents: new Map(data.bundleEvents),
   channels: new Map(data.channels),
-  clientAccessKeys: new Map(data.clientAccessKeys),
+  apiKeys: new Map(data.apiKeys),
   releaseCatalogs: new Map(data.releaseCatalogs),
   releases: new Map(data.releases),
 });
@@ -65,7 +65,7 @@ export const replaceMockDatabaseData = (
   target.bundlePatches.clear();
   target.bundleEvents.clear();
   target.channels.clear();
-  target.clientAccessKeys.clear();
+  target.apiKeys.clear();
   target.releaseCatalogs.clear();
   target.releases.clear();
   for (const [id, row] of source.bundles) target.bundles.set(id, row);
@@ -78,8 +78,8 @@ export const replaceMockDatabaseData = (
   for (const [id, row] of source.channels) {
     target.channels.set(id, row);
   }
-  for (const [id, row] of source.clientAccessKeys) {
-    target.clientAccessKeys.set(id, row);
+  for (const [id, row] of source.apiKeys) {
+    target.apiKeys.set(id, row);
   }
   for (const [scopeKey, row] of source.releaseCatalogs) {
     target.releaseCatalogs.set(scopeKey, row);
@@ -174,30 +174,28 @@ export const createMockDatabaseState = (
         data.channels.set(input.data.id, input.data);
         return input.data;
       }
-      case "client_access_keys": {
-        const existing = [...data.clientAccessKeys.values()].find(
+      case "api_keys": {
+        const existing = [...data.apiKeys.values()].find(
           ({ hash }) => hash === input.data.hash,
         );
         if (existing && input.onConflict === "ignore") return existing;
-        requireUnique(data.clientAccessKeys, input.data.id, input.model);
+        requireUnique(data.apiKeys, input.data.id, input.model);
         if (existing) {
-          throw new MockDatabaseConstraintError(
-            "client_access_keys.hash.unique",
-          );
+          throw new MockDatabaseConstraintError("api_keys.hash.unique");
         }
-        data.clientAccessKeys.set(input.data.id, input.data);
+        data.apiKeys.set(input.data.id, input.data);
         return input.data;
       }
     }
   },
   async update(input): Promise<DatabaseImplementationResult | null> {
-    if (input.model === "client_access_keys") {
-      const current = [...data.clientAccessKeys.values()].find((row) =>
-        matchesMockDatabaseWhere<"client_access_keys">(row, input.where),
+    if (input.model === "api_keys") {
+      const current = [...data.apiKeys.values()].find((row) =>
+        matchesMockDatabaseWhere<"api_keys">(row, input.where),
       );
       if (!current) return null;
       const updated = { ...current, ...input.update };
-      data.clientAccessKeys.set(current.id, updated);
+      data.apiKeys.set(current.id, updated);
       return updated;
     }
     if (input.model === "releases") {
@@ -299,10 +297,10 @@ export const createMockDatabaseState = (
             matchesMockDatabaseWhere(row, input.where),
           ) ?? null
         );
-      case "client_access_keys":
+      case "api_keys":
         return (
-          [...data.clientAccessKeys.values()].find((row) =>
-            matchesMockDatabaseWhere<"client_access_keys">(row, input.where),
+          [...data.apiKeys.values()].find((row) =>
+            matchesMockDatabaseWhere<"api_keys">(row, input.where),
           ) ?? null
         );
       case "channels":
@@ -347,9 +345,9 @@ export const createMockDatabaseState = (
           [...data.channels.values()],
           input,
         );
-      case "client_access_keys":
-        return queryMockDatabaseRows<"client_access_keys">(
-          [...data.clientAccessKeys.values()],
+      case "api_keys":
+        return queryMockDatabaseRows<"api_keys">(
+          [...data.apiKeys.values()],
           input,
         );
       case "releases":

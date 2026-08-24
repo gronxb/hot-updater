@@ -18,20 +18,19 @@ npm install hono
 Set up a [database adapter](../database/drizzle), generate its Hot Updater
 schema, and apply the schema before starting the server.
 
-Built-in client access-key authentication is opt-in and protects only
-update-check and Analytics ingestion routes. Always protect bundle management
-routes with framework middleware before mounting the handler. Update-check
+The recommended self-hosted client policy uses built-in API key authentication
+for update-check and Analytics ingestion routes. Always protect admin routes with
+framework middleware before mounting the admin handler. Update-check
 routes are usually exposed for React Native clients, but that is a deployment
 choice:
 
 - Client OTA: `/hot-updater/release-catalogs/*`, `/hot-updater/artifacts/*`
 - Optional public diagnostics: `/hot-updater/version`
-- Protected management API: `/hot-updater/api/*`
+- Protected admin API: `/hot-updater/admin/*`
 
-Management routes are disabled by default, so set
-`features: { updateCheck: true, bundles: true }` in your existing
-`createHotUpdater` options. This example uses Hono middleware and requires a
-nonempty token before mounting the handler:
+The handlers are separate by construction. Mounting `handlers.admin` opts the
+server into the admin API; `handlers.client` never serves those routes. This
+example requires a nonempty token before mounting the admin handler:
 
 ```typescript
 import { Hono } from "hono";
@@ -39,32 +38,31 @@ import { bearerAuth } from "hono/bearer-auth"; // [!code ++]
 import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
-const authToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 
-if (!authToken) {
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+if (!adminToken) {
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
 }
 
 app.use(
-  "/hot-updater/api/*", // [!code ++]
-  bearerAuth({ token: authToken }), // [!code ++]
+  "/hot-updater/admin/*", // [!code ++]
+  bearerAuth({ token: adminToken }), // [!code ++]
 ); // [!code ++]
 
-app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
+app.mount("/hot-updater/admin", hotUpdater.handlers.admin); // [!code ++]
+app.mount("/hot-updater", hotUpdater.handlers.client); // [!code ++]
 
 export default app;
 ```
 
-If you set `features: { updateCheck: true, bundles: false }`,
-`/hot-updater/api/*` is not mounted and `/hot-updater/version` stays
-available for diagnostics.
-Set `bundles: true` only when this server accepts bundle-management requests;
-then the `/hot-updater/api/*` middleware above protects those routes.
+Register the middleware first, then the specific admin mount, then the broader
+client mount. To run a client-only server, omit the admin middleware and admin
+mount entirely.
 
 Set your auth token in environment variables:
 
 ```bash
-HOT_UPDATER_AUTH_TOKEN=your-secret-auth-token
+HOT_UPDATER_ADMIN_TOKEN=your-secret-auth-token
 ```
 
 Configure the CLI to include the auth token when deploying bundles:
@@ -73,41 +71,44 @@ Configure the CLI to include the auth token when deploying bundles:
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
-const authToken = process.env.HOT_UPDATER_AUTH_TOKEN;
-if (!authToken) {
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) {
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
 }
 
 export default defineConfig({
   // ...
   database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater",
+    baseUrl: "http://localhost:3000/hot-updater/admin",
     commonHeaders: {
-      Authorization: `Bearer ${authToken}`,
+      Authorization: `Bearer ${adminToken}`,
     },
   }),
 });
 ```
 
-## API Endpoints
+## Handler Boundaries
 
-The server automatically creates these endpoints. Bundle management endpoints
-under `/hot-updater/api/*` are mounted only when `features.bundles` is enabled:
+The handlers own these complete route groups. Optional groups exist only when
+their feature or storage provider is configured:
 
-| Method | Endpoint                                                                              | Description                                                         |
-| ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| GET    | `/hot-updater/version`                                                                | Get server version                                                  |
-| GET    | `/hot-updater/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion` | Fetch an app-version Release Catalog |
-| GET    | `/hot-updater/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash` | Fetch a fingerprint Release Catalog |
-| GET    | `/hot-updater/artifacts/:targetBundleId/from/:currentBundleId` | Resolve an artifact |
-| GET    | `/hot-updater/api/bundles`                                                            | List bundles (query: channel, platform, limit, page, after, before) |
-| GET    | `/hot-updater/api/bundles/:id`                                                        | Get bundle by ID                                                    |
-| POST   | `/hot-updater/api/bundles`                                                            | Create bundles                                                      |
-| PATCH  | `/hot-updater/api/bundles/:id`                                                        | Update a bundle                                                     |
-| DELETE | `/hot-updater/api/bundles/:id`                                                        | Delete bundle                                                       |
-| GET    | `/hot-updater/api/channels`                                                           | List all channels                                                   |
-| POST   | `/hot-updater/api/channels`                                                           | Insert or resolve a channel                                         |
-| DELETE | `/hot-updater/api/channels/:id`                                                       | Delete an empty channel                                             |
+| Handler | External route group                      | Purpose                                          |
+| ------- | ----------------------------------------- | ------------------------------------------------ |
+| Client  | `GET /hot-updater/version`                | Server diagnostics                               |
+| Client  | `GET /hot-updater/release-catalogs/*`     | App-version and fingerprint catalogs             |
+| Client  | `GET /hot-updater/artifacts/*`            | Artifact resolution                              |
+| Client  | `GET /hot-updater/storage/*`              | Optional proxied storage download                |
+| Client  | `POST /hot-updater/events`                | Optional Analytics ingestion                     |
+| Admin   | `/hot-updater/admin/bundles/*`            | Bundle management and optional Analytics queries |
+| Admin   | `/hot-updater/admin/releases/*`           | Release management and preflight                 |
+| Admin   | `/hot-updater/admin/release-catalogs/*`   | Catalog rows and rebuilds                        |
+| Admin   | `/hot-updater/admin/channels/*`           | Channel management                               |
+| Admin   | `POST /hot-updater/admin/database/commit` | Atomic database commit                           |
+| Admin   | `GET /hot-updater/admin/installations/*`  | Optional Analytics queries                       |
+
+Admin route groups exist only where `handlers.admin` is explicitly mounted.
+See the [Standalone Repository server contract](../../database-plugins/standalone#server-contract)
+for the exact admin request and response shapes.
 
 ## React Native Setup
 

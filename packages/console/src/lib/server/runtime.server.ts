@@ -1,7 +1,7 @@
 import type {
   AnalyticsModel,
+  ApiKeyModel,
   BundleRepository,
-  ClientAccessKeyModel,
 } from "@hot-updater/plugin-core";
 import {
   type ActiveInstallationInput,
@@ -44,25 +44,25 @@ export function createRuntimeHotUpdater(config: {
   return createAnalyticsProvider(analytics as AnalyticsModel);
 }
 
-export function createClientAccessKeyStore(config: {
+export function createApiKeyStore(config: {
   readonly database: BundleRepository;
-}): ClientAccessKeyModel | null {
+}): ApiKeyModel | null {
   const models: unknown = Reflect.get(config.database, "models");
-  const clientAccessKeys: unknown =
+  const apiKeys: unknown =
     typeof models === "object" && models !== null
-      ? Reflect.get(models, "clientAccessKeys")
+      ? Reflect.get(models, "apiKeys")
       : undefined;
   if (
-    typeof clientAccessKeys !== "object" ||
-    clientAccessKeys === null ||
-    typeof Reflect.get(clientAccessKeys, "create") !== "function" ||
-    typeof Reflect.get(clientAccessKeys, "findByHash") !== "function" ||
-    typeof Reflect.get(clientAccessKeys, "list") !== "function" ||
-    typeof Reflect.get(clientAccessKeys, "revoke") !== "function"
+    typeof apiKeys !== "object" ||
+    apiKeys === null ||
+    typeof Reflect.get(apiKeys, "create") !== "function" ||
+    typeof Reflect.get(apiKeys, "findByHash") !== "function" ||
+    typeof Reflect.get(apiKeys, "list") !== "function" ||
+    typeof Reflect.get(apiKeys, "revoke") !== "function"
   ) {
     return null;
   }
-  return clientAccessKeys as ClientAccessKeyModel;
+  return apiKeys as ApiKeyModel;
 }
 
 const providerMethods = [

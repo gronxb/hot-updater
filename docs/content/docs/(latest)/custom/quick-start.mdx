@@ -1,6 +1,6 @@
 ---
 title: "Quick Start"
-description: Get started with a self-hosted Hot Updater server in 5 minutes.
+description: Set up a self-hosted Hot Updater server and connect a React Native app.
 icon: Rocket
 version: "v0.22.0"
 ---
@@ -15,6 +15,12 @@ npm install @hot-updater/server @hot-updater/aws hono @hono/node-server kysely b
 
 ```package-install
 npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater @types/better-sqlite3 tsx
+```
+
+In your React Native app, install the client package separately:
+
+```package-install
+npm install @hot-updater/react-native
 ```
 
 ## Database Setup
@@ -51,6 +57,7 @@ config({ path: ".env.hotupdater" });
 
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
+  clientAccess: { type: "api-key" },
   storage: [
     s3Storage({
       region: "auto",
@@ -63,22 +70,18 @@ export const hotUpdater = createHotUpdater({
       downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
     }),
   ],
-  basePath: "/hot-updater",
-  features: {
-    updateCheck: true,
-    bundles: true,
-  },
 });
 ```
 
-By default, `createHotUpdater` mounts update-check routes and `/version`.
-Bundle management routes used by the CLI `standaloneRepository` must be
-enabled explicitly and protected by framework middleware before mounting the
-handler.
+`createHotUpdater` mounts update-check routes and `/version`. This example uses
+the recommended `api-key` policy for update checks and Analytics ingestion.
+Admin routes used by the CLI `standaloneRepository` live on a separate handler;
+mount that handler only behind framework authentication.
 
-The same `features` object controls the core route groups. Add optional
-Analytics or client access-key features only after configuring their intended
-access model.
+Server Analytics routes are always available. React Native clients decide
+whether to send lifecycle events with `HotUpdater.init({ analytics })`.
+`clientAccess` is required so the client authentication policy is never
+selected implicitly.
 
 ## Server Setup
 
@@ -92,16 +95,17 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
 
-const authToken = process.env.HOT_UPDATER_AUTH_TOKEN; // [!code ++]
-if (!authToken) {
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required"); // [!code ++]
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN; // [!code ++]
+if (!adminToken) {
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required"); // [!code ++]
 } // [!code ++]
 
 app.use(
-  "/hot-updater/api/*", // [!code ++]
-  bearerAuth({ token: authToken }), // [!code ++]
+  "/hot-updater/admin/*", // [!code ++]
+  bearerAuth({ token: adminToken }), // [!code ++]
 ); // [!code ++]
-app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
+app.mount("/hot-updater/admin", hotUpdater.handlers.admin); // [!code ++]
+app.mount("/hot-updater", hotUpdater.handlers.client); // [!code ++]
 
 serve({ fetch: app.fetch, port: 3000 }, (info) => {
   console.log(`Server running at http://localhost:${info.port}`);
@@ -110,9 +114,9 @@ serve({ fetch: app.fetch, port: 3000 }, (info) => {
 
 ## Security Settings
 
-Built-in client access-key authentication is opt-in and protects only
-update-check and Analytics ingestion routes. Always protect bundle management
-routes before mounting the handler.
+The recommended self-hosted policy requires an API key for update-check and
+Analytics ingestion routes. Always protect admin routes separately before
+mounting `handlers.admin`.
 
 Update-check routes are usually exposed for React Native clients, but that is a
 deployment choice:
@@ -120,12 +124,12 @@ deployment choice:
 - `/hot-updater/release-catalogs/*`
 - `/hot-updater/artifacts/*`
 
-The bundle management routes under `/hot-updater/api/*` are used by the CLI.
-They are mounted only when `features.bundles: true`, and your framework
-middleware must protect each management request before mounting the handler.
-The server example above uses Bearer authentication for `/hot-updater/api/*`.
+The admin routes under `/hot-updater/admin/*` are used by the CLI. They exist
+only where `handlers.admin` is explicitly mounted, and your framework
+middleware must protect every request before that mount. The server example
+above uses Bearer authentication for `/hot-updater/admin/*`.
 Create `.env.hotupdater` with the storage credentials, download URL signing
-key, and management token used by this example:
+key, and admin token used by this example:
 
 ```bash
 R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
@@ -133,17 +137,30 @@ R2_ACCESS_KEY_ID=your-access-key-id
 R2_SECRET_ACCESS_KEY=your-secret-access-key
 R2_BUCKET_NAME=your-bucket-name
 HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY=your-download-url-signing-key
-HOT_UPDATER_AUTH_TOKEN=your-secret-auth-token
+HOT_UPDATER_ADMIN_TOKEN=your-secret-auth-token
 ```
 
-## Schema Generation
+## Bootstrap the Schema and API Key
 
-Generate the database schema.
+Generate and apply the database schema first:
 
 ```bash
 npx hot-updater db generate src/hotUpdater.ts --yes
 npx hot-updater db migrate src/hotUpdater.ts
 ```
+
+Then create the API key for your mobile app from the same direct
+`createHotUpdater` configuration:
+
+```bash
+npx hot-updater api-key create src/hotUpdater.ts --name "Mobile app"
+```
+
+Copy the plaintext API key from the command output now. Hot Updater persists
+only its hash and cannot show the plaintext again. Store the key in your
+existing React Native build-time configuration, do not commit it to source,
+and do not reuse it as an admin credential. The server's `.env.hotupdater` file
+is not loaded into the React Native app automatically.
 
 ## Run Server
 
@@ -165,9 +182,9 @@ import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
-const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
-if (!managementToken) {
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) {
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
 }
 
 export default defineConfig({
@@ -182,9 +199,9 @@ export default defineConfig({
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
   database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater",
+    baseUrl: "http://localhost:3000/hot-updater/admin",
     commonHeaders: {
-      Authorization: `Bearer ${managementToken}`,
+      Authorization: `Bearer ${adminToken}`,
     },
   }),
   updateStrategy: "appVersion",
@@ -198,22 +215,60 @@ export default defineConfig({
 
 ## React Native Setup
 
-Configure your React Native app to connect to this server.
+Configure your React Native app to connect to this server. Use the API key
+printed by the bootstrap command above.
 
 ```typescript title="App.tsx"
-import { HotUpdater } from '@hot-updater/react-native';
+import { HotUpdater } from "@hot-updater/react-native";
+import { useEffect } from "react";
+import { Text } from "react-native";
 
-export default HotUpdater.wrap({
-  baseURL: 'http://localhost:3000/hot-updater', // [!code ++]
-  updateStrategy: 'appVersion', // or "fingerprint" // [!code ++]
-  fallbackComponent: ({ progress, status }) => (
-    // ... Custom loading UI
-  ),
-  onError: error => {
-    // ... Error handling
+HotUpdater.init({
+  baseURL: "http://localhost:3000/hot-updater", // [!code ++]
+  requestHeaders: {
+    "x-api-key": "<API key printed by api-key create>", // [!code ++]
   },
-})(App);
+  analytics: true,
+});
+
+function App() {
+  useEffect(() => {
+    void HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
+      .then(async (updateInfo) => {
+        if (!updateInfo) return;
+        await updateInfo.updateBundle();
+        if (updateInfo.shouldForceUpdate) await HotUpdater.reload();
+      })
+      .catch(console.error);
+  }, []);
+
+  return <Text>Hello Hot Updater</Text>;
+}
+
+export default App;
 ```
+
+<Callout type="warn">
+  `localhost` works from the iOS Simulator on the same Mac. Use `10.0.2.2` from
+  the Android Emulator, or your development machine's LAN/HTTPS address from a
+  physical device.
+</Callout>
+
+The React Native `baseURL` always points to the client root. Never put the
+admin bearer token in the app. The API key is scoped to client update and
+Analytics ingestion routes and is sent using `x-api-key`.
+
+`HotUpdater.init` initializes the client but does not start an update check.
+The example calls `HotUpdater.checkForUpdate()` when the app mounts. See the
+[Custom Update guide](/docs/guides/custom-update) when you need different
+timing or update UI.
+
+## Unauthenticated Alternative
+
+If you intentionally want client update and Analytics ingestion routes to be
+unauthenticated, set `clientAccess: { type: "public" }` and omit `x-api-key`
+from React Native `requestHeaders`. This does not make the admin handler public;
+its framework authentication remains required.
 
 ## Next Steps
 

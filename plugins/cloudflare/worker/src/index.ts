@@ -20,11 +20,7 @@ export const HOT_UPDATER_BASE_PATH = "/";
 const hotUpdater = createHotUpdater({
   authorityId: env.AUTHORITY_ID,
   database: d1Database(env.DB),
-  features: {
-    updateCheck: true,
-    bundles: false,
-    analytics: true,
-  },
+  clientAccess: { type: "api-key" },
   storage: [
     r2Storage({
       bucket: env.BUCKET,
@@ -32,13 +28,12 @@ const hotUpdater = createHotUpdater({
       downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
     }),
   ],
-  basePath: HOT_UPDATER_BASE_PATH,
 });
 
 const app = new Hono<{ Bindings: CloudflareWorkerEnv }>();
 
 app.mount(HOT_UPDATER_BASE_PATH, (request: Request) =>
-  hotUpdater.handler(request),
+  hotUpdater.handlers.client(request),
 );
 
 export default app;

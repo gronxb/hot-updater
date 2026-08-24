@@ -3,7 +3,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   ChannelRow,
-  ClientAccessKeyRow,
+  ApiKeyRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -13,7 +13,7 @@ type Row =
   | BundlePatchRow
   | BundleRow
   | ChannelRow
-  | ClientAccessKeyRow
+  | ApiKeyRow
   | ReleaseRow
   | ReleaseCatalogRow;
 type Table = Row[];
@@ -22,7 +22,7 @@ type Tables = {
   bundles: Table;
   bundle_events: Table;
   channels: Table;
-  client_access_keys: Table;
+  api_keys: Table;
   releases: Table;
   release_catalogs: Table;
 };
@@ -201,11 +201,9 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
       throw new PrismaTestConstraintError("duplicate channel name");
     }
     if (
-      model === "client_access_keys" &&
+      model === "api_keys" &&
       "hash" in data &&
-      tables.client_access_keys.some(
-        (row) => "hash" in row && row.hash === data.hash,
-      )
+      tables.api_keys.some((row) => "hash" in row && row.hash === data.hash)
     ) {
       throw new PrismaTestConstraintError("duplicate hash");
     }
@@ -309,7 +307,7 @@ const createClient = (tables: Tables, hooks: Hooks) => ({
   bundle_patches: createDelegate(tables, "bundle_patches", hooks),
   bundles: createDelegate(tables, "bundles", hooks),
   channels: createDelegate(tables, "channels", hooks),
-  client_access_keys: createDelegate(tables, "client_access_keys", hooks),
+  api_keys: createDelegate(tables, "api_keys", hooks),
   releases: createDelegate(tables, "releases", hooks),
   release_catalogs: createDelegate(tables, "release_catalogs", hooks),
 });
@@ -320,7 +318,7 @@ export const createPrismaTestHarness = () => {
     bundles: [],
     bundle_events: [],
     channels: [],
-    client_access_keys: [],
+    api_keys: [],
     releases: [],
     release_catalogs: [],
   };
@@ -350,7 +348,7 @@ export const createPrismaTestHarness = () => {
         tables.bundles = transactionTables.bundles;
         tables.bundle_events = transactionTables.bundle_events;
         tables.channels = transactionTables.channels;
-        tables.client_access_keys = transactionTables.client_access_keys;
+        tables.api_keys = transactionTables.api_keys;
         tables.releases = transactionTables.releases;
         tables.release_catalogs = transactionTables.release_catalogs;
         return result;
@@ -390,7 +388,7 @@ export const createPrismaTestHarness = () => {
       tables.bundles = [];
       tables.bundle_events = [];
       tables.channels = [];
-      tables.client_access_keys = [];
+      tables.api_keys = [];
       tables.releases = [];
       tables.release_catalogs = [];
     },

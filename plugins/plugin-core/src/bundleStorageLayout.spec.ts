@@ -13,7 +13,7 @@ describe("bundle storage layout", () => {
     );
   });
 
-  it("derives the shared storage root from new and legacy bundle URIs", () => {
+  it("derives the shared storage root from the canonical bundle namespace", () => {
     expect(
       createStorageRootUriWithPath(
         "s3://bucket/releases/bundles/bundle-id/manifest.json",
@@ -21,23 +21,15 @@ describe("bundle storage layout", () => {
         "assets",
       ),
     ).toBe("s3://bucket/releases/assets");
-    expect(
-      createStorageRootUriWithPath(
-        "s3://bucket/releases/bundle-id/manifest.json",
-        "bundle-id",
-        "assets",
-      ),
-    ).toBe("s3://bucket/releases/assets");
   });
 
-  it("rejects storage URIs that do not contain the bundle id", () => {
+  it.each([
+    "https://uploads.example.com/object",
+    "s3://bucket/releases/bundle-id/manifest.json",
+  ])("rejects a non-canonical bundle storage URI %s", (storageUri) => {
     expect(() =>
-      createStorageRootUriWithPath(
-        "https://uploads.example.com/object",
-        "bundle-id",
-        "assets",
-      ),
-    ).toThrow("Storage URI does not contain bundle id: bundle-id");
+      createStorageRootUriWithPath(storageUri, "bundle-id", "assets"),
+    ).toThrow("does not contain canonical bundle path: bundles/bundle-id");
   });
 
   it("preserves encoded storage root segments", () => {

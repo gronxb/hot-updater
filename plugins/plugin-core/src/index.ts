@@ -24,7 +24,6 @@ export { createRequestBundleResolver } from "./requestBundleCache";
 export * from "./releaseCatalogCompiler";
 export * from "./releaseManagement";
 export * from "./releaseCatalogMutation";
-export * from "./resolveUpdateInfoFromBundles";
 export * from "./semverSatisfies";
 export * from "./storageDownloadPath";
 export * from "./types";

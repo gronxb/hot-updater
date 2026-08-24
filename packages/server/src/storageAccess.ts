@@ -27,11 +27,6 @@ const resolveDownloadPath = (value: string, storageUri: string) => {
   return value;
 };
 
-const withBasePath = (basePath: string, downloadPath: string) => {
-  const handlerPath = basePath === "/" ? "" : basePath;
-  return `${handlerPath}${downloadPath}`;
-};
-
 const tokensEqual = (left: string, right: string) => {
   const leftBytes = new TextEncoder().encode(left);
   const rightBytes = new TextEncoder().encode(right);
@@ -45,7 +40,6 @@ const tokensEqual = (left: string, right: string) => {
 
 export const createStorageAccess = (
   storagePlugins: StoragePluginWith<"get">[],
-  options: { readonly basePath: string },
 ) => {
   const protocols = new Set<string>();
   for (const storage of storagePlugins) {
@@ -97,10 +91,7 @@ export const createStorageAccess = (
     } catch (error) {
       if (/^[a-z][a-z\d+.-]*:/i.test(downloadUrl)) throw error;
     }
-    return withBasePath(
-      options.basePath,
-      resolveDownloadPath(downloadUrl, storageUri),
-    );
+    return resolveDownloadPath(downloadUrl, storageUri);
   };
 
   const readStorageText = async (

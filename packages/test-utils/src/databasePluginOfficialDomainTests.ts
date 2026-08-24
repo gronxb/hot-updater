@@ -6,7 +6,7 @@ import {
   createBundleEventRowFixture,
   createBundleRowFixture,
   createChannelRowFixture,
-  createClientAccessKeyRowFixture,
+  createApiKeyRowFixture,
   createReleaseRowFixture,
 } from "./databaseTestFixtures";
 
@@ -220,29 +220,29 @@ export const registerDatabasePluginOfficialDomainTests = (
       ).resolves.toEqual([second]);
     });
 
-    it("creates, lists, resolves, and revokes client access keys", async () => {
+    it("creates, lists, resolves, and revokes API keys", async () => {
       const plugin = state.getPlugin();
-      const first = createClientAccessKeyRowFixture("801", 100);
-      const second = createClientAccessKeyRowFixture("802", 200);
+      const first = createApiKeyRowFixture("801", 100);
+      const second = createApiKeyRowFixture("802", 200);
 
-      await expect(plugin.models.clientAccessKeys.create(first)).resolves.toBe(
+      await expect(plugin.models.apiKeys.create(first)).resolves.toBe(
         "created",
       );
-      await expect(plugin.models.clientAccessKeys.create(first)).resolves.toBe(
+      await expect(plugin.models.apiKeys.create(first)).resolves.toBe(
         "existing",
       );
-      await expect(plugin.models.clientAccessKeys.create(second)).resolves.toBe(
+      await expect(plugin.models.apiKeys.create(second)).resolves.toBe(
         "created",
       );
       await expect(
-        plugin.models.clientAccessKeys.findByHash(first.hash),
+        plugin.models.apiKeys.findByHash(first.hash),
       ).resolves.toEqual(first);
-      await expect(plugin.models.clientAccessKeys.list()).resolves.toEqual([
+      await expect(plugin.models.apiKeys.list()).resolves.toEqual([
         second,
         first,
       ]);
       await expect(
-        plugin.models.clientAccessKeys.revoke({
+        plugin.models.apiKeys.revoke({
           id: first.id,
           revokedAtMs: 300,
         }),

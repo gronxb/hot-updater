@@ -48,18 +48,21 @@ describe("v1.0.0 Release Catalog schema", () => {
     expect(fields).not.toContain("target_app_version");
   });
 
-  it("keeps all directional analytics identities nullable", () => {
+  it("keeps nullable sources while requiring the reported target Bundle", () => {
     for (const field of [
       "from_release_id",
       "to_release_id",
       "from_bundle_id",
-      "to_bundle_id",
     ]) {
       expect(
         bundleEventsV100.columns.find(({ ormName }) => ormName === field)
           ?.nullable,
       ).toBe(true);
     }
+    expect(
+      bundleEventsV100.columns.find(({ ormName }) => ormName === "to_bundle_id")
+        ?.nullable,
+    ).toBeUndefined();
   });
 
   it("generates nullable source and artifact relations with the intended deletion rules", () => {
@@ -83,6 +86,9 @@ describe("v1.0.0 Release Catalog schema", () => {
     expect(sql).toContain("create table release_catalogs");
     expect(sql).toContain("releases_scope_order_idx");
     expect(sql).toContain("release_catalogs_generation_check");
+    expect(sql).toContain("to_bundle_id uuid not null");
+    expect(sql).toContain("from_bundle_id is not null");
+    expect(sql).toContain("type = 'UNCHANGED' and from_bundle_id is null");
     expect(sql).toContain("on delete set null");
   });
 

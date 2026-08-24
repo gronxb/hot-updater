@@ -20,9 +20,7 @@ describe("createStorageAccess", () => {
       protocol: "r2",
       get: async (input) => ({ response: await get(input.storageUri) }),
     });
-    const { readStorageText } = createStorageAccess([storage], {
-      basePath: "/api",
-    });
+    const { readStorageText } = createStorageAccess([storage]);
 
     await expect(readStorageText("r2://assets/manifest.json")).resolves.toBe(
       "manifest text",
@@ -35,7 +33,7 @@ describe("createStorageAccess", () => {
       async () => new Response("manifest text"),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { readStorageText } = createStorageAccess([], { basePath: "/api" });
+    const { readStorageText } = createStorageAccess([]);
 
     await expect(
       readStorageText("https://assets.example.com/manifest.json"),
@@ -43,7 +41,7 @@ describe("createStorageAccess", () => {
   });
 
   it("uses an unowned HTTPS URI directly as the download URL", async () => {
-    const { resolveFileUrl } = createStorageAccess([], { basePath: "/api" });
+    const { resolveFileUrl } = createStorageAccess([]);
     const storageUri = "https://assets.example.com/bundle.zip";
 
     await expect(resolveFileUrl(storageUri)).resolves.toBe(storageUri);
@@ -60,9 +58,7 @@ describe("createStorageAccess", () => {
       protocol: "https",
       get,
     });
-    const { readStorageText } = createStorageAccess([storage], {
-      basePath: "/api",
-    });
+    const { readStorageText } = createStorageAccess([storage]);
     const storageUri = "https://storage.example.com/manifest.json";
 
     await expect(readStorageText(storageUri)).resolves.toBe("owned manifest");
@@ -80,9 +76,7 @@ describe("createStorageAccess", () => {
       get: async () => ({ response: null }),
       getDownloadUrl,
     });
-    const { resolveFileUrl } = createStorageAccess([storage], {
-      basePath: "/api",
-    });
+    const { resolveFileUrl } = createStorageAccess([storage]);
     const storageUri = "https://storage.example.com/bundle.zip";
 
     await expect(resolveFileUrl(storageUri)).resolves.toBe(
@@ -107,12 +101,10 @@ describe("createStorageAccess", () => {
         url: createStorageDownloadPath(storageUri, "test-signature"),
       }),
     });
-    const access = createStorageAccess([storage], {
-      basePath: "/api/check-update",
-    });
+    const access = createStorageAccess([storage]);
 
     const fileUrl = await access.resolveFileUrl("r2://bucket/bundle.zip");
-    expect(fileUrl).toMatch(/^\/api\/check-update\/storage\//);
+    expect(fileUrl).toMatch(/^\/storage\//);
     const segments = fileUrl!.split("/");
     const token = segments.at(-2)!;
     const signature = segments.at(-1)!;
@@ -133,9 +125,7 @@ describe("createStorageAccess", () => {
       get: async () => ({ response: null }),
       getDownloadUrl: resolveUrl,
     });
-    const access = createStorageAccess([storage], {
-      basePath: "/api",
-    });
+    const access = createStorageAccess([storage]);
 
     await expect(access.resolveFileUrl("s3://bucket/bundle.zip")).resolves.toBe(
       "https://cdn.example.com/bundle.zip",
@@ -155,8 +145,8 @@ describe("createStorageAccess", () => {
       get: async () => ({ response: null }),
     });
 
-    expect(() =>
-      createStorageAccess([first, second], { basePath: "/api" }),
-    ).toThrow("Multiple storage plugins handle protocol: r2");
+    expect(() => createStorageAccess([first, second])).toThrow(
+      "Multiple storage plugins handle protocol: r2",
+    );
   });
 });

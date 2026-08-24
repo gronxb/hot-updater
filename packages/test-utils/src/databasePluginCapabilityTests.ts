@@ -10,7 +10,7 @@ import {
   createBundleEventRowFixture,
   createBundleRowFixture,
   createChannelRowFixture,
-  createClientAccessKeyRowFixture,
+  createApiKeyRowFixture,
   createReleaseRowFixture,
 } from "./databaseTestFixtures";
 
@@ -31,7 +31,7 @@ export const registerDatabasePluginCapabilityTests = (
           "bundlePatches",
           "bundles",
           "channels",
-          "clientAccessKeys",
+          "apiKeys",
           "releaseCatalogs",
           "releases",
         ].sort(),
@@ -43,7 +43,7 @@ export const registerDatabasePluginCapabilityTests = (
         "bundlePatches",
         "channels",
         "analytics",
-        "clientAccessKeys",
+        "apiKeys",
         "getChannels",
         "getUpdateInfo",
       ]) {
@@ -58,7 +58,7 @@ export const registerDatabasePluginCapabilityTests = (
       const bundle = createBundleRowFixture("87");
       const patch = createBundlePatchRowFixture("87", bundle.id, base.id);
       const event = createBundleEventRowFixture("87", 100);
-      const accessKey = createClientAccessKeyRowFixture("87", 100);
+      const apiKey = createApiKeyRowFixture("87", 100);
 
       await expect(
         commit(
@@ -74,9 +74,9 @@ export const registerDatabasePluginCapabilityTests = (
           { model: "bundlePatches", operation: "insert", row: patch },
           { model: "analytics", operation: "insert", row: event },
           {
-            model: "clientAccessKeys",
+            model: "apiKeys",
             operation: "insert",
-            row: accessKey,
+            row: apiKey,
             onConflict: "ignore",
           },
         ),
@@ -94,14 +94,14 @@ export const registerDatabasePluginCapabilityTests = (
         plugin.models.analytics.scan({ beforeReceivedAtMs: 101, limit: 10 }),
       ).resolves.toEqual([event]);
       await expect(
-        plugin.models.clientAccessKeys.findByHash(accessKey.hash),
-      ).resolves.toEqual(accessKey);
+        plugin.models.apiKeys.findByHash(apiKey.hash),
+      ).resolves.toEqual(apiKey);
     });
 
     it("treats supported conflict-ignored inserts as idempotent", async () => {
       const plugin = state.getPlugin();
       const channel = createChannelRowFixture("preview");
-      const accessKey = createClientAccessKeyRowFixture("88", 100);
+      const apiKey = createApiKeyRowFixture("88", 100);
       const changes = [
         {
           model: "channels",
@@ -110,9 +110,9 @@ export const registerDatabasePluginCapabilityTests = (
           onConflict: "ignore",
         },
         {
-          model: "clientAccessKeys",
+          model: "apiKeys",
           operation: "insert",
-          row: accessKey,
+          row: apiKey,
           onConflict: "ignore",
         },
       ] as const satisfies readonly DatabaseChange[];
@@ -126,22 +126,20 @@ export const registerDatabasePluginCapabilityTests = (
       await expect(plugin.models.channels.list({})).resolves.toEqual({
         channels: [channel],
       });
-      await expect(plugin.models.clientAccessKeys.list()).resolves.toEqual([
-        accessKey,
-      ]);
+      await expect(plugin.models.apiKeys.list()).resolves.toEqual([apiKey]);
     });
 
-    it("atomically updates bundle and access-key models", async () => {
+    it("atomically updates bundle and API key models", async () => {
       const plugin = state.getPlugin();
       const bundle = createBundleRowFixture("89");
-      const accessKey = createClientAccessKeyRowFixture("89", 100);
+      const apiKey = createApiKeyRowFixture("89", 100);
       await commit(
         plugin,
         { model: "bundles", operation: "insert", row: bundle },
         {
-          model: "clientAccessKeys",
+          model: "apiKeys",
           operation: "insert",
-          row: accessKey,
+          row: apiKey,
           onConflict: "ignore",
         },
       );
@@ -156,9 +154,9 @@ export const registerDatabasePluginCapabilityTests = (
             update: { storage_uri: "storage://bundles/89-updated.zip" },
           },
           {
-            model: "clientAccessKeys",
+            model: "apiKeys",
             operation: "update",
-            where: { id: accessKey.id },
+            where: { id: apiKey.id },
             update: { revokedAtMs: 200 },
           },
         ),
@@ -169,8 +167,8 @@ export const registerDatabasePluginCapabilityTests = (
         storage_uri: "storage://bundles/89-updated.zip",
       });
       await expect(
-        plugin.models.clientAccessKeys.findByHash(accessKey.hash),
-      ).resolves.toEqual({ ...accessKey, revoked_at_ms: 200 });
+        plugin.models.apiKeys.findByHash(apiKey.hash),
+      ).resolves.toEqual({ ...apiKey, revoked_at_ms: 200 });
     });
 
     it("accepts an empty atomic commit", async () => {
@@ -303,7 +301,7 @@ export const registerDatabasePluginCapabilityTests = (
         "ffffffff-ffff-ffff-ffff-ffffffffffff",
       );
       const event = createBundleEventRowFixture("93", 100);
-      const accessKey = createClientAccessKeyRowFixture("93", 100);
+      const apiKey = createApiKeyRowFixture("93", 100);
 
       await expect(
         plugin.commit({
@@ -318,9 +316,9 @@ export const registerDatabasePluginCapabilityTests = (
             { model: "bundles", operation: "insert", row: second },
             { model: "analytics", operation: "insert", row: event },
             {
-              model: "clientAccessKeys",
+              model: "apiKeys",
               operation: "insert",
-              row: accessKey,
+              row: apiKey,
               onConflict: "ignore",
             },
             {
@@ -344,7 +342,7 @@ export const registerDatabasePluginCapabilityTests = (
         plugin.models.analytics.scan({ beforeReceivedAtMs: 101, limit: 10 }),
       ).resolves.toEqual([]);
       await expect(
-        plugin.models.clientAccessKeys.findByHash(accessKey.hash),
+        plugin.models.apiKeys.findByHash(apiKey.hash),
       ).resolves.toBeNull();
     });
 
@@ -374,14 +372,14 @@ export const registerDatabasePluginCapabilityTests = (
     it("rolls back earlier changes when a later update conflicts", async () => {
       const plugin = state.getPlugin();
       const bundle = createBundleRowFixture("94");
-      const accessKey = createClientAccessKeyRowFixture("94", 100);
+      const apiKey = createApiKeyRowFixture("94", 100);
       await commit(
         plugin,
         { model: "bundles", operation: "insert", row: bundle },
         {
-          model: "clientAccessKeys",
+          model: "apiKeys",
           operation: "insert",
-          row: accessKey,
+          row: apiKey,
           onConflict: "ignore",
         },
       );
@@ -396,7 +394,7 @@ export const registerDatabasePluginCapabilityTests = (
             update: { storage_uri: "storage://bundles/94-updated.zip" },
           },
           {
-            model: "clientAccessKeys",
+            model: "apiKeys",
             operation: "update",
             where: { id: "missing-key" },
             update: { revokedAtMs: 200 },
@@ -410,8 +408,8 @@ export const registerDatabasePluginCapabilityTests = (
         bundle,
       );
       await expect(
-        plugin.models.clientAccessKeys.findByHash(accessKey.hash),
-      ).resolves.toEqual(accessKey);
+        plugin.models.apiKeys.findByHash(apiKey.hash),
+      ).resolves.toEqual(apiKey);
     });
   });
 };

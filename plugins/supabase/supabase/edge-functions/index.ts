@@ -25,11 +25,7 @@ const hotUpdater = createHotUpdater({
     supabaseUrl,
     supabaseServiceRoleKey,
   }),
-  features: {
-    updateCheck: true,
-    bundles: false,
-    analytics: true,
-  },
+  clientAccess: { type: "api-key" },
   storage: [
     supabaseStorage({
       supabaseUrl,
@@ -37,12 +33,11 @@ const hotUpdater = createHotUpdater({
       bucketName,
     }),
   ],
-  basePath: hotUpdaterBasePath,
 });
 
 const app = new Hono().basePath(functionBasePath);
 
 app.get("/ping", (c) => c.text("pong"));
-app.mount(hotUpdaterBasePath, hotUpdater.handler);
+app.mount(hotUpdaterBasePath, hotUpdater.handlers.client);
 
 Deno.serve(app.fetch);

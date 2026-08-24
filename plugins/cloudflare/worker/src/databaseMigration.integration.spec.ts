@@ -33,7 +33,7 @@ it("creates official-domain tables on an empty database", async () => {
       "bundle_patches",
       "bundles",
       "channels",
-      "client_access_keys",
+      "api_keys",
       "private_hot_updater_settings",
       "release_catalogs",
       "releases",

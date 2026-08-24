@@ -25,7 +25,9 @@ jest.mock("@hot-updater/react-native", () => ({
       bundleId: "00000000-0000-0000-0000-000000000000",
     })),
     init: jest.fn(),
-    getMinBundleId: jest.fn(() => "00000000-0000-0000-0000-000000000000"),
+    getMinimumReleaseId: jest.fn(
+      () => "00000000-0000-0000-0000-000000000000",
+    ),
     isChannelSwitched: jest.fn(() => false),
     isUpdateDownloaded: jest.fn(() => false),
     reload: jest.fn(() => Promise.resolve()),

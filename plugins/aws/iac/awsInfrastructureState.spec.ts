@@ -1,7 +1,10 @@
 import { LegacyInfrastructureError } from "@hot-updater/cli-tools";
 import { describe, expect, it, vi } from "vitest";
 
-import { assertAwsInfrastructureGeneration } from "./awsInfrastructureState";
+import {
+  assertAwsInfrastructureGeneration,
+  assertAwsLambdaCanInitialize,
+} from "./awsInfrastructureState";
 
 describe("assertAwsInfrastructureGeneration", () => {
   it("accepts an existing v1 distribution", async () => {
@@ -51,5 +54,76 @@ describe("assertAwsInfrastructureGeneration", () => {
         fetchImpl,
       }),
     ).rejects.toThrow("Could not verify the AWS infrastructure generation");
+  });
+});
+
+describe("assertAwsLambdaCanInitialize", () => {
+  const credentials = {
+    accessKeyId: "access-key-id",
+    secretAccessKey: "secret-access-key",
+  } as const;
+
+  it("allows a new Lambda function name", async () => {
+    const lambdaClient = {
+      getFunctionConfiguration: vi.fn().mockRejectedValue(
+        Object.assign(new Error("not found"), {
+          name: "ResourceNotFoundException",
+        }),
+      ),
+      invoke: vi.fn(),
+    };
+
+    await expect(
+      assertAwsLambdaCanInitialize({
+        credentials,
+        lambdaClient,
+        lambdaName: "hot-updater-edge",
+      }),
+    ).resolves.toBeUndefined();
+    expect(lambdaClient.invoke).not.toHaveBeenCalled();
+  });
+
+  it("accepts an existing v1 Lambda function", async () => {
+    const lambdaClient = {
+      getFunctionConfiguration: vi.fn().mockResolvedValue({}),
+      invoke: vi.fn().mockResolvedValue({
+        Payload: Buffer.from(
+          JSON.stringify({
+            body: JSON.stringify({ infrastructureGeneration: 1 }),
+            status: "200",
+          }),
+        ),
+      }),
+    };
+
+    await expect(
+      assertAwsLambdaCanInitialize({
+        credentials,
+        lambdaClient,
+        lambdaName: "hot-updater-edge",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("blocks an existing v0 Lambda function", async () => {
+    const lambdaClient = {
+      getFunctionConfiguration: vi.fn().mockResolvedValue({}),
+      invoke: vi.fn().mockResolvedValue({
+        Payload: Buffer.from(
+          JSON.stringify({
+            body: JSON.stringify({ error: "Not Found" }),
+            status: "404",
+          }),
+        ),
+      }),
+    };
+
+    await expect(
+      assertAwsLambdaCanInitialize({
+        credentials,
+        lambdaClient,
+        lambdaName: "hot-updater-edge",
+      }),
+    ).rejects.toBeInstanceOf(LegacyInfrastructureError);
   });
 });

@@ -13,13 +13,6 @@ import {
 } from "./queryInput";
 import type { AnalyticsProvider } from "./types";
 
-export type AnalyticsQueryAccess = "protected" | "public";
-
-export interface AnalyticsHandlerOptions {
-  readonly provider: AnalyticsProvider;
-  readonly queryAccess: AnalyticsQueryAccess;
-}
-
 const json = (body: unknown, status: number): Response =>
   Response.json(body, {
     headers: { "cache-control": "private, no-store" },
@@ -62,61 +55,49 @@ const run = async (operation: () => Promise<Response>): Promise<Response> => {
   }
 };
 
-const query = (
-  access: AnalyticsQueryAccess,
-  operation: () => Promise<unknown>,
-): Promise<Response> => {
-  if (access === "protected") {
-    return Promise.resolve(json({ error: "Unauthorized" }, 401));
-  }
-  return run(async () => json(await operation(), 200));
-};
+const query = (operation: () => Promise<unknown>): Promise<Response> =>
+  run(async () => json(await operation(), 200));
 
 export const createAnalyticsRouteHandlers = (
-  options: AnalyticsHandlerOptions,
+  provider: AnalyticsProvider,
 ): Record<string, RouteHandler> => ({
   appendBundleEvent: async (_params, request) =>
     run(async () => {
-      await options.provider.appendBundleEvent(
-        await parseBundleEventRequest(request),
-      );
+      await provider.appendBundleEvent(await parseBundleEventRequest(request));
       return new Response(null, { status: 204 });
     }),
   getBundleEventSummary: (params) =>
-    query(options.queryAccess, () =>
-      options.provider.getBundleEventSummary(requireParam(params, "id")),
-    ),
+    query(() => provider.getBundleEventSummary(requireParam(params, "id"))),
   getBundleEventAnalytics: (params, request) =>
-    query(options.queryAccess, () => {
+    query(() => {
       const input = parseAnalyticsQuery(request);
-      return options.provider.getBundleEventAnalytics(
+      return provider.getBundleEventAnalytics(
         requireParam(params, "id"),
         input.window,
         input.limit,
         input.offset,
       );
     }),
-  getBundleEventOverview: () =>
-    query(options.queryAccess, () => options.provider.getBundleEventOverview()),
+  getBundleEventOverview: () => query(() => provider.getBundleEventOverview()),
   getActiveInstallationOverview: (_params, request) =>
-    query(options.queryAccess, () =>
-      options.provider.getActiveInstallationOverview(
+    query(() =>
+      provider.getActiveInstallationOverview(
         parseActiveInstallationInput(request),
       ),
     ),
   searchInstallations: (_params, request) =>
-    query(options.queryAccess, () => {
+    query(() => {
       const input = parseSearchInput(request);
-      return options.provider.searchInstallations(
+      return provider.searchInstallations(
         input.query,
         input.limit,
         input.offset,
       );
     }),
   getInstallationHistory: (params, request) =>
-    query(options.queryAccess, () => {
+    query(() => {
       const input = parsePagination(request);
-      return options.provider.getInstallationHistory(
+      return provider.getInstallationHistory(
         requireParam(params, "installId"),
         input.limit,
         input.offset,
@@ -124,14 +105,19 @@ export const createAnalyticsRouteHandlers = (
     }),
 });
 
-export const registerAnalyticsRoutes = (
+export const registerAnalyticsClientRoutes = (
   add: (method: string, path: string, handler: string) => void,
 ): void => {
   add("POST", "/events", "appendBundleEvent");
-  add("GET", "/api/bundles/:id/events/summary", "getBundleEventSummary");
-  add("GET", "/api/bundles/:id/events/analytics", "getBundleEventAnalytics");
-  add("GET", "/api/installations/overview", "getBundleEventOverview");
-  add("GET", "/api/installations/active", "getActiveInstallationOverview");
-  add("GET", "/api/installations", "searchInstallations");
-  add("GET", "/api/installations/:installId/events", "getInstallationHistory");
+};
+
+export const registerAnalyticsAdminRoutes = (
+  add: (method: string, path: string, handler: string) => void,
+): void => {
+  add("GET", "/bundles/:id/events/summary", "getBundleEventSummary");
+  add("GET", "/bundles/:id/events/analytics", "getBundleEventAnalytics");
+  add("GET", "/installations/overview", "getBundleEventOverview");
+  add("GET", "/installations/active", "getActiveInstallationOverview");
+  add("GET", "/installations", "searchInstallations");
+  add("GET", "/installations/:installId/events", "getInstallationHistory");
 };

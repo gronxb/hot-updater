@@ -29,8 +29,6 @@ let archiveExcludedFiles = [
     "CohortService.swift",
     "HotUpdater-Bridging-Header.h",
     "HotUpdater.mm",
-    "HotUpdaterCrashHandler.h",
-    "HotUpdaterCrashHandler.mm",
     "HotUpdaterImpl.swift",
 ]
 

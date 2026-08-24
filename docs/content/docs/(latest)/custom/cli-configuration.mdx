@@ -19,9 +19,9 @@ import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
-const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
-if (!managementToken) {
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) {
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
 }
 
 export default defineConfig({
@@ -36,9 +36,9 @@ export default defineConfig({
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
   database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater",
+    baseUrl: "http://localhost:3000/hot-updater/admin",
     commonHeaders: {
-      Authorization: `Bearer ${managementToken}`,
+      Authorization: `Bearer ${adminToken}`,
     },
   }),
   updateStrategy: "appVersion",
@@ -65,8 +65,8 @@ self-hosted server:
 
 ```typescript
 interface StandaloneRepositoryConfig {
-  baseUrl: string; // Your server URL
-  commonHeaders?: Record<string, string>; // Optional headers (e.g., authentication)
+  baseUrl: string; // Exact root where handlers.admin is mounted
+  commonHeaders?: Record<string, string>; // Framework authentication headers
   routes?: Routes; // Optional legacy Bundle-route mapping
 }
 ```
@@ -75,26 +75,33 @@ interface StandaloneRepositoryConfig {
 delete requests. Release, Release Catalog, database commit, and Channel
 requests use the fixed canonical paths summarized below.
 
-### Basic Example
+### Secure Example
 
 ```typescript
-database: standaloneRepository({
-  baseUrl: "http://localhost:3000/hot-updater",
-});
-```
-
-### With Authentication
-
-```typescript
-const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
-if (!managementToken) {
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) {
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
 }
 
 database: standaloneRepository({
-  baseUrl: process.env.HOT_UPDATER_SERVER_URL!,
+  baseUrl: "http://localhost:3000/hot-updater/admin",
   commonHeaders: {
-    Authorization: `Bearer ${managementToken}`,
+    Authorization: `Bearer ${adminToken}`,
+  },
+});
+```
+
+The admin handler does not authenticate requests itself. Keep its credential in
+server-side CLI or Console configuration and match the framework middleware in
+the server setup.
+
+### Alternate Authentication
+
+```typescript
+database: standaloneRepository({
+  baseUrl: process.env.HOT_UPDATER_ADMIN_URL!,
+  commonHeaders: {
+    "X-Internal-Service-Key": process.env.INTERNAL_SERVICE_KEY!,
   },
 });
 ```
@@ -102,25 +109,33 @@ database: standaloneRepository({
 ### With Custom Routes
 
 ```typescript
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) {
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
+}
+
 database: standaloneRepository({
-  baseUrl: "https://api.example.com",
+  baseUrl: "https://api.example.com/hot-updater/admin",
+  commonHeaders: {
+    Authorization: `Bearer ${adminToken}`,
+  },
   routes: {
     create: () => ({
-      path: "/v1/hot-updater/api/bundles",
+      path: "/v1/bundles",
       headers: { "X-Custom-Header": "value" },
     }),
     update: (bundleId) => ({
-      path: `/v1/hot-updater/api/bundles/${bundleId}`,
+      path: `/v1/bundles/${bundleId}`,
       headers: { "X-Custom-Header": "value" },
     }),
     list: () => ({
-      path: "/v1/hot-updater/api/bundles",
+      path: "/v1/bundles",
     }),
     retrieve: (bundleId) => ({
-      path: `/v1/hot-updater/api/bundles/${bundleId}`,
+      path: `/v1/bundles/${bundleId}`,
     }),
     delete: (bundleId) => ({
-      path: `/v1/hot-updater/api/bundles/${bundleId}`,
+      path: `/v1/bundles/${bundleId}`,
     }),
   },
 });
@@ -128,31 +143,30 @@ database: standaloneRepository({
 
 ## API Endpoints
 
-With `features: { updateCheck: true, bundles: true }`,
-`@hot-updater/server` mounts the management contract used by
+Mounting `hotUpdater.handlers.admin` exposes the admin contract used by
 `standaloneRepository`:
 
 | Method | Default endpoint                              | Mapping    | Purpose                              |
 | ------ | --------------------------------------------- | ---------- | ------------------------------------ |
-| POST   | `/hot-updater/api/bundles`                    | remappable | Create Bundles                       |
-| PATCH  | `/hot-updater/api/bundles/:id`                | remappable | Update a Bundle                      |
-| GET    | `/hot-updater/api/bundles`                    | remappable | List Bundles                         |
-| GET    | `/hot-updater/api/bundles/:id`                | remappable | Retrieve a Bundle                    |
-| DELETE | `/hot-updater/api/bundles/:id`                | remappable | Delete a Bundle                      |
-| GET    | `/hot-updater/api/releases/:id`               | fixed      | Retrieve a Release                   |
-| GET    | `/hot-updater/api/releases`                   | fixed      | List Releases                        |
-| GET    | `/hot-updater/api/release-catalogs/:scopeKey` | fixed      | Retrieve a Release Catalog row       |
-| GET    | `/hot-updater/api/release-catalogs`           | fixed      | List Release Catalog rows            |
-| POST   | `/hot-updater/api/database/commit`            | fixed      | Commit database mutations atomically |
-| GET    | `/hot-updater/api/channels`                   | fixed      | List Channels                        |
-| POST   | `/hot-updater/api/channels`                   | fixed      | Insert or resolve a Channel          |
-| DELETE | `/hot-updater/api/channels/:id`               | fixed      | Delete an unreferenced Channel       |
+| POST   | `/hot-updater/admin/bundles`                    | remappable | Create Bundles                       |
+| PATCH  | `/hot-updater/admin/bundles/:id`                | remappable | Update a Bundle                      |
+| GET    | `/hot-updater/admin/bundles`                    | remappable | List Bundles                         |
+| GET    | `/hot-updater/admin/bundles/:id`                | remappable | Retrieve a Bundle                    |
+| DELETE | `/hot-updater/admin/bundles/:id`                | remappable | Delete a Bundle                      |
+| GET    | `/hot-updater/admin/releases/:id`               | fixed      | Retrieve a Release                   |
+| GET    | `/hot-updater/admin/releases`                   | fixed      | List Releases                        |
+| GET    | `/hot-updater/admin/release-catalogs/:scopeKey` | fixed      | Retrieve a Release Catalog row       |
+| GET    | `/hot-updater/admin/release-catalogs`           | fixed      | List Release Catalog rows            |
+| POST   | `/hot-updater/admin/database/commit`            | fixed      | Commit database mutations atomically |
+| GET    | `/hot-updater/admin/channels`                   | fixed      | List Channels                        |
+| POST   | `/hot-updater/admin/channels`                   | fixed      | Insert or resolve a Channel          |
+| DELETE | `/hot-updater/admin/channels/:id`               | fixed      | Delete an unreferenced Channel       |
 
 A Channel referenced by a Release is not empty and cannot be deleted. For the
 complete request and response contract, use the canonical
 [Standalone Repository server contract](../database-plugins/standalone#server-contract).
-The management routes do not authenticate themselves; protect
-`/hot-updater/api/*` before mounting the handler.
+The admin routes do not authenticate themselves; protect
+`/hot-updater/admin/*` before mounting `handlers.admin`.
 
 ## Next Steps
 

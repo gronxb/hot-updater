@@ -6,24 +6,51 @@ icon: Settings2
 
 ## Usage
 
-Use `HotUpdater.init` when you want a fully custom update flow and cannot, or do
-not want to, wrap your root component with `HotUpdater.wrap`. Call it once when
-your runtime considers the app ready. This API exists for apps that only need
-Hot Updater initialization without a React HOC.
+Call `HotUpdater.init` once when your runtime considers the app ready. It
+configures the update server and lifecycle reporting, but it does not start an
+update check. Call `HotUpdater.checkForUpdate()` separately when your app is
+ready to check.
+
+Do not use `HotUpdater.init` and `HotUpdater.wrap` in the same app. Hot Updater
+reports mixed usage with `console.error`. Use `init + checkForUpdate` for a
+custom or manual update flow.
+
+For a self-hosted server created with
+`clientAccess: { type: "api-key" }`, apply the database schema and create an API
+key before configuring the app:
+
+```bash
+npx hot-updater db migrate src/hotUpdater.ts
+npx hot-updater api-key create src/hotUpdater.ts --name "Mobile app"
+```
+
+The command displays the plaintext API key once. Store it in your existing
+React Native build-time configuration without committing it to source, then
+pass that exact value in the default `x-api-key` header:
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
 HotUpdater.init({
   baseURL: "<your-update-server-url>",
+  analytics: true,
   requestHeaders: {
-    Authorization: "Bearer <your-access-token>",
+    "x-api-key": "<your-api-key>",
   },
-  onError: error => {
+  onError: (error) => {
     console.error("Hot Updater failed", error);
   },
 });
 ```
+
+Point `baseURL` at the client handler root, for example
+`https://example.com/hot-updater`. Never embed the admin bearer token in a
+React Native app. If `clientAccess` uses the `api-key` policy, send only the
+API key using `x-api-key` as shown above.
+
+Set `analytics: true` to send automatic app-ready transition and Release
+adoption events. Omitting it or setting it to `false` sends no Analytics
+events. The server routes remain available either way.
 
 `baseURL` can also be resolved at runtime. The function may return a string or
 a promise, and Hot Updater calls it before each update check.
@@ -59,32 +86,29 @@ if (updateInfo.shouldForceUpdate) {
 
 | Option             | Type                                        | Required | Description                                                      |
 | ------------------ | ------------------------------------------- | -------- | ---------------------------------------------------------------- |
-| `baseURL`          | `string \| () => string \| Promise<string>` | Yes*     | Your update server URL or runtime URL resolver                   |
-| `resolver`         | `HotUpdaterResolver`                        | Yes*     | Custom network operations                                        |
+| `baseURL`          | `string \| () => string \| Promise<string>` | Yes      | Your v1 client handler URL or runtime URL function               |
+| `analytics`        | `boolean`                                   | No       | Send app-ready and Release adoption events (default: false)      |
 | `requestHeaders`   | `Record<string, string>`                    | No       | Shared headers used by update checks and app-ready notifications |
 | `requestTimeout`   | `number`                                    | No       | Request timeout in milliseconds (default: 5000)                  |
 | `onNotifyAppReady` | `(result) => void`                          | No       | Callback invoked after native app-ready state is read            |
 | `onError`          | `(error) => void`                           | No       | Default error handler for initialization and update checks       |
 
-\*Either `baseURL` or `resolver` must be provided (mutually exclusive).
-
-Release Catalog custom resolvers implement `fetchReleaseCatalog` and
-`resolveArtifact`. Declare `catalogCachePartition` only when the catalog
-transport uses a stable shared-cache partition; otherwise keep catalog
-responses private/no-store. The default resolver partitions shared catalog
-responses by `x-api-key`.
+`baseURL` is the only React Native transport configuration. A GraphQL, RPC,
+or other custom backend must expose the v1 HTTP protocol through an adapter or
+proxy and use that endpoint as `baseURL`.
 
 `HotUpdater.checkForUpdate({ onError })` overrides the `onError` handler from
 `HotUpdater.init` for that specific update check.
 
-## When to Use init
+If the server intentionally uses the unauthenticated
+`clientAccess: { type: "public" }` alternative, omit `x-api-key` from
+`requestHeaders`.
 
-Use `HotUpdater.init` when another runtime owns the root component, when you
-need to initialize before rendering, or when your app has a custom shell that
-does not make a root HOC convenient.
+## Recommended Flow
 
-Use `HotUpdater.wrap` when you want Hot Updater to manage the root component
-lifecycle directly, especially for automatic update checks with a fallback UI.
+Use `HotUpdater.init` once, then call `HotUpdater.checkForUpdate` from the point
+where your app is ready to check. Keep the check timing and update UI in your
+own application lifecycle.
 
 ## Related
 

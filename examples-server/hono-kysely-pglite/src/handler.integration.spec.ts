@@ -64,7 +64,7 @@ describe("Hot Updater Handler Integration Tests (Hono)", () => {
     await waitForServer(baseUrl, 180); // 180 attempts * 200ms = 36 seconds
 
     bundleMethods = createBundleMethodsFromServer({
-      baseUrl: `${baseUrl}/hot-updater`,
+      baseUrl: `${baseUrl}/hot-updater/admin`,
     });
   }, 120000);
 
@@ -74,7 +74,6 @@ describe("Hot Updater Handler Integration Tests (Hono)", () => {
 
   setupBundleMethodsTestSuite({
     getBundleById: (id) => bundleMethods.getBundleById(id),
-    getChannels: () => bundleMethods.getChannels(),
     insertBundle: (bundle) => bundleMethods.insertBundle(bundle),
     getBundles: (options) => bundleMethods.getBundles(options),
     updateBundleById: (bundleId, newBundle) =>

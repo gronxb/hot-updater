@@ -38,7 +38,7 @@ describe("buildDistributionConfigOverrides", () => {
     });
   });
 
-  it("forwards content type and the client key to Lambda", () => {
+  it("forwards content type and the API key to Lambda", () => {
     expect(HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG).toMatchObject({
       HeadersConfig: {
         HeaderBehavior: "whitelist",
@@ -50,7 +50,7 @@ describe("buildDistributionConfigOverrides", () => {
     });
   });
 
-  it("isolates Release catalogs only by client key and content encoding", () => {
+  it("isolates Release catalogs only by API key and content encoding", () => {
     expect(HOT_UPDATER_RELEASE_CATALOG_CACHE_POLICY_CONFIG).toMatchObject({
       DefaultTTL: 0,
       MaxTTL: 5,

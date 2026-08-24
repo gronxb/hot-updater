@@ -18,11 +18,26 @@ export const d1Database = (config: D1DatabaseConfig) => {
   const execute = async (
     statements: readonly D1Statement[],
   ): Promise<readonly (readonly unknown[])[]> => {
+    const first = statements[0];
+    if (first === undefined) return [];
+    const body =
+      statements.length === 1
+        ? {
+            account_id: config.accountId,
+            sql: first.sql,
+            params: [...first.params],
+          }
+        : {
+            account_id: config.accountId,
+            batch: statements.map(({ sql, params }) => ({
+              sql,
+              params: [...params],
+            })),
+          };
+    // cloudflare@4 predates the D1 REST API's parameterized batch body type.
     const page = await cloudflare.d1.database.query(config.databaseId, {
-      account_id: config.accountId,
-      sql: statements.map(({ sql }) => sql).join("; "),
-      params: statements.flatMap(({ params }) => [...params]),
-    });
+      ...body,
+    } as unknown as Parameters<typeof cloudflare.d1.database.query>[1]);
     const results: unknown[][] = [];
     for await (const resultPage of page.iterPages()) {
       for (const result of resultPage.result) {

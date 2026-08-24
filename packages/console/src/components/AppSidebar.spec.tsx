@@ -9,7 +9,7 @@ import { AppSidebar } from "./AppSidebar";
 
 let pathname = "/";
 let analyticsCapability: AnalyticsCapabilityState = { status: "unresolved" };
-let accessKeysSupported = false;
+let apiKeysSupported = false;
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({
@@ -36,9 +36,9 @@ vi.mock("@/components/features/analytics/AnalyticsCapabilityContext", () => ({
   useAnalyticsCapability: () => analyticsCapability,
 }));
 
-vi.mock("@/lib/access-keys-api", () => ({
-  useClientAccessKeyCapabilityQuery: () => ({
-    data: { accessKeys: accessKeysSupported },
+vi.mock("@/lib/api-keys-api", () => ({
+  useApiKeyCapabilityQuery: () => ({
+    data: { apiKeys: apiKeysSupported },
   }),
 }));
 
@@ -106,7 +106,7 @@ describe("AppSidebar analytics navigation", () => {
   afterEach(() => {
     cleanup();
     pathname = "/";
-    accessKeysSupported = false;
+    apiKeysSupported = false;
   });
 
   it.each(["unresolved", "unsupported", "error"] as const)(
@@ -121,27 +121,27 @@ describe("AppSidebar analytics navigation", () => {
     },
   );
 
-  it("shows Access keys only when the official database domain is available", () => {
+  it("shows API keys only when the official database domain is available", () => {
     const rendered = renderSidebar(capability("supported"));
-    expect(screen.queryByRole("link", { name: /access keys/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /api keys/i })).toBeNull();
 
     rendered.unmount();
-    accessKeysSupported = true;
+    apiKeysSupported = true;
     renderSidebar(capability("supported"));
 
     expect(
-      screen.getByRole("link", { name: /access keys/i }).getAttribute("href"),
-    ).toBe("/access-keys");
+      screen.getByRole("link", { name: /api keys/i }).getAttribute("href"),
+    ).toBe("/api-keys");
   });
 
-  it("marks Access keys active on its route", () => {
-    pathname = "/access-keys";
-    accessKeysSupported = true;
+  it("marks API keys active on its route", () => {
+    pathname = "/api-keys";
+    apiKeysSupported = true;
     renderSidebar(capability("unsupported"));
 
     expect(
       screen
-        .getByRole("link", { name: /access keys/i })
+        .getByRole("link", { name: /api keys/i })
         .getAttribute("data-active"),
     ).toBe("true");
   });

@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { SupabaseApi } from "./supabaseApi";
-import { assertSupabaseInfrastructureCanInitialize } from "./supabaseInfrastructureState";
+import {
+  assertSupabaseFunctionCanInitialize,
+  assertSupabaseInfrastructureCanInitialize,
+} from "./supabaseInfrastructureState";
 
 const api = (state: "fresh" | "v0" | "v1") =>
   ({
@@ -21,5 +24,53 @@ describe("Supabase infrastructure generation", () => {
     ).rejects.toThrow(
       "Supabase v0 infrastructure was detected at project project-ref",
     );
+  });
+
+  it("allows an unused Edge Function name", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+
+    await expect(
+      assertSupabaseFunctionCanInitialize({
+        fetchImpl,
+        functionName: "update-server",
+        functionSlugs: ["unrelated"],
+        projectId: "project-ref",
+      }),
+    ).resolves.toBeUndefined();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("blocks an existing v0 Edge Function", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(null, { status: 404 }));
+
+    await expect(
+      assertSupabaseFunctionCanInitialize({
+        fetchImpl,
+        functionName: "update-server",
+        functionSlugs: ["update-server"],
+        projectId: "project-ref",
+      }),
+    ).rejects.toThrow(
+      "Supabase v0 infrastructure was detected at Edge Function update-server",
+    );
+  });
+
+  it("allows an existing v1 Edge Function", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        Response.json({ infrastructureGeneration: 1, version: "1.0.0" }),
+      );
+
+    await expect(
+      assertSupabaseFunctionCanInitialize({
+        fetchImpl,
+        functionName: "update-server",
+        functionSlugs: ["update-server"],
+        projectId: "project-ref",
+      }),
+    ).resolves.toBeUndefined();
   });
 });

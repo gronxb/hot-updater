@@ -1,16 +1,18 @@
 import {
-  type AnalyticsHandlerOptions,
   createAnalyticsRouteHandlers,
-  registerAnalyticsRoutes,
+  registerAnalyticsAdminRoutes,
+  registerAnalyticsClientRoutes,
 } from "./analytics/routes";
+import type { AnalyticsProvider } from "./analytics/types";
 import { createBundleRouteHandlers } from "./handlerBundleRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
 import { createReleaseCatalogRouteHandlers } from "./handlerReleaseCatalogRoutes";
 import { createReleaseManagementRouteHandlers } from "./handlerReleaseManagementRoutes";
 import type {
   HandlerAPI,
-  HandlerFeatures,
   HandlerOptions,
+  HotUpdaterHandler,
+  HotUpdaterHandlers,
   RouteHandler,
 } from "./handlerTypes";
 import { createVersionRouteHandlers } from "./handlerVersionRoutes";
@@ -18,223 +20,233 @@ import { addRoute, createRouter, findRoute } from "./internalRouter";
 
 export type {
   HandlerAPI,
-  HandlerFeatures,
   HandlerOptions,
+  HotUpdaterHandler,
+  HotUpdaterHandlers,
 } from "./handlerTypes";
 
-export function createHandler(
+const withPrivateNoStore = (response: Response): Response => {
+  const headers = new Headers(response.headers);
+  headers.set("cache-control", "private, no-store");
+  return new Response(response.body, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+};
+
+const errorResponse = (error: string, status: number): Response =>
+  Response.json(
+    { error },
+    {
+      headers: { "cache-control": "private, no-store" },
+      status,
+    },
+  );
+
+const requiresApiKey = (handlerName: string): boolean =>
+  handlerName === "appVersionReleaseCatalog" ||
+  handlerName === "fingerprintReleaseCatalog" ||
+  handlerName === "artifact" ||
+  handlerName === "appendBundleEvent";
+
+const createRequestHandler =
+  ({
+    api,
+    apiKeyAuth,
+    privateResponses = false,
+    routeHandlers,
+    router,
+  }: {
+    readonly api: HandlerAPI;
+    readonly apiKeyAuth?: {
+      readonly authenticate: (request: Request) => Promise<boolean>;
+    };
+    readonly privateResponses?: boolean;
+    readonly routeHandlers: Record<string, RouteHandler>;
+    readonly router: ReturnType<typeof createRouter<string>>;
+  }): HotUpdaterHandler =>
+  async (request): Promise<Response> => {
+    try {
+      const match = findRoute(
+        router,
+        request.method,
+        new URL(request.url).pathname,
+      );
+      if (!match) {
+        return errorResponse("Not found", 404);
+      }
+
+      if (apiKeyAuth !== undefined && requiresApiKey(match.data)) {
+        let authenticated: boolean;
+        try {
+          authenticated = await apiKeyAuth.authenticate(request);
+        } catch {
+          return errorResponse("Service unavailable", 503);
+        }
+        if (!authenticated) {
+          return errorResponse("Unauthorized", 401);
+        }
+      }
+
+      const handler = routeHandlers[match.data];
+      if (!handler) {
+        return errorResponse("Handler not found", 500);
+      }
+      const response = await handler(match.params, request, api);
+      return privateResponses ? withPrivateNoStore(response) : response;
+    } catch (error) {
+      if (error instanceof HandlerBadRequestError) {
+        return errorResponse(error.message, 400);
+      }
+      console.error("Hot Updater handler error:", error);
+      return Response.json(
+        { error: "Internal server error" },
+        {
+          headers: { "cache-control": "private, no-store" },
+          status: 500,
+        },
+      );
+    }
+  };
+
+const createDownloadStorageRouteHandler =
+  (
+    downloadStorageObject: (
+      token: string,
+      signature: string,
+    ) => Promise<Response | null>,
+  ): RouteHandler =>
+  async (params) => {
+    const token = params.token;
+    const signature = params.signature;
+    if (!token || !signature) {
+      return errorResponse("Not found", 404);
+    }
+    const response = await downloadStorageObject(token, signature);
+    if (!response) {
+      return errorResponse("Not found", 404);
+    }
+    const headers = new Headers(response.headers);
+    if (!headers.has("cache-control")) {
+      headers.set("cache-control", "public, max-age=31536000, immutable");
+    }
+    return new Response(response.body, {
+      headers,
+      status: response.status,
+      statusText: response.statusText,
+    });
+  };
+
+export function createHandlers(
   api: HandlerAPI,
   options: HandlerOptions = {},
-): (request: Request) => Promise<Response> {
-  return createHotUpdaterHandler(api, options);
+): HotUpdaterHandlers {
+  return createHotUpdaterHandlers(api, options);
 }
 
-export function createHotUpdaterHandler(
+export function createHotUpdaterHandlers(
   api: HandlerAPI,
   options: HandlerOptions = {},
-  analytics?: AnalyticsHandlerOptions,
-  clientAccessKeys?: {
+  analytics?: AnalyticsProvider,
+  apiKeyAuth?: {
     readonly authenticate: (request: Request) => Promise<boolean>;
+    readonly headerName: string;
   },
   downloadStorageObject?: (
     token: string,
     signature: string,
   ) => Promise<Response | null>,
-): (request: Request) => Promise<Response> {
-  const basePath = options.basePath ?? "/api";
+): HotUpdaterHandlers {
   const authorityId = options.authorityId ?? "default";
-  const features = {
-    updateCheck: options.features?.updateCheck ?? true,
-    bundles: options.features?.bundles ?? false,
-  } satisfies HandlerFeatures;
-  const router = createRouter<string>();
   const routeHandlers: Record<string, RouteHandler> = {
     ...createVersionRouteHandlers(),
-    ...createReleaseCatalogRouteHandlers(authorityId),
+    ...createReleaseCatalogRouteHandlers(authorityId, apiKeyAuth?.headerName),
     ...createReleaseManagementRouteHandlers(),
     ...createBundleRouteHandlers(),
     ...(analytics === undefined ? {} : createAnalyticsRouteHandlers(analytics)),
     ...(downloadStorageObject === undefined
       ? {}
       : {
-          downloadStorageObject: async (params) => {
-            const token = params.token;
-            const signature = params.signature;
-            if (!token || !signature) {
-              return Response.json({ error: "Not found" }, { status: 404 });
-            }
-            const response = await downloadStorageObject(token, signature);
-            if (!response) {
-              return Response.json({ error: "Not found" }, { status: 404 });
-            }
-            const headers = new Headers(response.headers);
-            if (!headers.has("cache-control")) {
-              headers.set(
-                "cache-control",
-                "public, max-age=31536000, immutable",
-              );
-            }
-            return new Response(response.body, {
-              headers,
-              status: response.status,
-              statusText: response.statusText,
-            });
-          },
+          downloadStorageObject: createDownloadStorageRouteHandler(
+            downloadStorageObject,
+          ),
         }),
   };
 
-  addRoute(router, "GET", "/version", "version");
+  const clientRouter = createRouter<string>();
+  const addClientRoute = (
+    method: string,
+    path: string,
+    handler: string,
+  ): void => addRoute(clientRouter, method, path, handler);
+  addClientRoute("GET", "/version", "version");
   if (downloadStorageObject !== undefined) {
-    addRoute(
-      router,
+    addClientRoute(
       "GET",
       "/storage/:token/:signature",
       "downloadStorageObject",
     );
   }
-  if (features.updateCheck) {
-    addRoute(
-      router,
-      "GET",
-      "/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion",
-      "appVersionReleaseCatalog",
-    );
-    addRoute(
-      router,
-      "GET",
-      "/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash",
-      "fingerprintReleaseCatalog",
-    );
-    addRoute(
-      router,
-      "GET",
-      "/artifacts/:targetBundleId/from/:currentBundleId",
-      "artifact",
-    );
-  }
-
-  if (features.bundles) {
-    addRoute(router, "GET", "/api/releases/:id", "getRelease");
-    addRoute(router, "GET", "/api/releases", "getReleases");
-    addRoute(router, "PATCH", "/api/releases/:id", "updateRelease");
-    addRoute(router, "POST", "/api/releases/:id/preflight", "preflightRelease");
-    addRoute(router, "DELETE", "/api/releases/:id", "deleteRelease");
-    addRoute(
-      router,
-      "GET",
-      "/api/release-catalogs/:scopeKey",
-      "getReleaseCatalogRow",
-    );
-    addRoute(router, "GET", "/api/release-catalogs", "getReleaseCatalogs");
-    addRoute(
-      router,
-      "POST",
-      "/api/release-catalogs/:scopeKey/rebuild",
-      "rebuildReleaseCatalog",
-    );
-    addRoute(router, "POST", "/api/database/commit", "commitDatabase");
-    addRoute(router, "GET", "/api/channels", "getChannels");
-    addRoute(router, "POST", "/api/channels", "createChannel");
-    addRoute(router, "DELETE", "/api/channels/:id", "deleteChannel");
-    addRoute(router, "GET", "/api/bundles/:id", "getBundle");
-    addRoute(router, "GET", "/api/bundles", "getBundles");
-    addRoute(router, "POST", "/api/bundles", "createBundles");
-    addRoute(router, "PATCH", "/api/bundles/:id", "updateBundle");
-    addRoute(router, "DELETE", "/api/bundles/:id", "deleteBundle");
-  }
-
+  addClientRoute(
+    "GET",
+    "/release-catalogs/app-version/:platform/:channelKey/:appVersion",
+    "appVersionReleaseCatalog",
+  );
+  addClientRoute(
+    "GET",
+    "/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash",
+    "fingerprintReleaseCatalog",
+  );
+  addClientRoute(
+    "GET",
+    "/artifacts/:targetBundleId/from/:currentBundleId",
+    "artifact",
+  );
   if (analytics !== undefined) {
-    registerAnalyticsRoutes((method, path, handler) =>
-      addRoute(router, method, path, handler),
-    );
+    registerAnalyticsClientRoutes(addClientRoute);
   }
 
-  return async (request): Promise<Response> => {
-    try {
-      const path = new URL(request.url).pathname;
-      const routePath =
-        basePath === "/"
-          ? path
-          : path === basePath
-            ? "/"
-            : path.startsWith(`${basePath}/`)
-              ? path.slice(basePath.length)
-              : null;
-      const match =
-        (routePath === null
-          ? undefined
-          : findRoute(router, request.method, routePath)) ??
-        findRoute(router, request.method, path);
-      if (!match) {
-        return new Response(JSON.stringify({ error: "Not found" }), {
-          status: 404,
-          headers: {
-            "cache-control": "private, no-store",
-            "Content-Type": "application/json",
-          },
-        });
-      }
-      if (
-        clientAccessKeys !== undefined &&
-        (match.data === "appVersionReleaseCatalog" ||
-          match.data === "fingerprintReleaseCatalog" ||
-          match.data === "artifact" ||
-          match.data === "appendBundleEvent")
-      ) {
-        let authenticated: boolean;
-        try {
-          authenticated = await clientAccessKeys.authenticate(request);
-        } catch {
-          return Response.json(
-            { error: "Service unavailable" },
-            {
-              status: 503,
-              headers: { "cache-control": "private, no-store" },
-            },
-          );
-        }
-        if (!authenticated) {
-          return Response.json(
-            { error: "Unauthorized" },
-            {
-              status: 401,
-              headers: { "cache-control": "private, no-store" },
-            },
-          );
-        }
-      }
-      const handler = routeHandlers[match.data];
-      if (!handler) {
-        return new Response(JSON.stringify({ error: "Handler not found" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      return await handler(match.params, request, api);
-    } catch (error) {
-      if (error instanceof HandlerBadRequestError) {
-        return new Response(JSON.stringify({ error: error.message }), {
-          status: 400,
-          headers: {
-            "cache-control": "private, no-store",
-            "Content-Type": "application/json",
-          },
-        });
-      }
-      console.error("Hot Updater handler error:", error);
-      return new Response(
-        JSON.stringify({
-          error: "Internal server error",
-          message: error instanceof Error ? error.message : "Unknown error",
-        }),
-        {
-          status: 500,
-          headers: {
-            "cache-control": "private, no-store",
-            "Content-Type": "application/json",
-          },
-        },
-      );
-    }
-  };
+  const adminRouter = createRouter<string>();
+  const addAdminRoute = (method: string, path: string, handler: string): void =>
+    addRoute(adminRouter, method, path, handler);
+  addAdminRoute("GET", "/releases/:id", "getRelease");
+  addAdminRoute("GET", "/releases", "getReleases");
+  addAdminRoute("PATCH", "/releases/:id", "updateRelease");
+  addAdminRoute("POST", "/releases/:id/preflight", "preflightRelease");
+  addAdminRoute("DELETE", "/releases/:id", "deleteRelease");
+  addAdminRoute("GET", "/release-catalogs/:scopeKey", "getReleaseCatalogRow");
+  addAdminRoute("GET", "/release-catalogs", "getReleaseCatalogs");
+  addAdminRoute(
+    "POST",
+    "/release-catalogs/:scopeKey/rebuild",
+    "rebuildReleaseCatalog",
+  );
+  addAdminRoute("POST", "/database/commit", "commitDatabase");
+  addAdminRoute("GET", "/channels", "getChannels");
+  addAdminRoute("POST", "/channels", "createChannel");
+  addAdminRoute("DELETE", "/channels/:id", "deleteChannel");
+  addAdminRoute("GET", "/bundles/:id", "getBundle");
+  addAdminRoute("GET", "/bundles", "getBundles");
+  addAdminRoute("POST", "/bundles", "createBundles");
+  addAdminRoute("PATCH", "/bundles/:id", "updateBundle");
+  addAdminRoute("DELETE", "/bundles/:id", "deleteBundle");
+  if (analytics !== undefined) {
+    registerAnalyticsAdminRoutes(addAdminRoute);
+  }
+
+  return Object.freeze({
+    client: createRequestHandler({
+      api,
+      apiKeyAuth,
+      routeHandlers,
+      router: clientRouter,
+    }),
+    admin: createRequestHandler({
+      api,
+      privateResponses: true,
+      routeHandlers,
+      router: adminRouter,
+    }),
+  });
 }

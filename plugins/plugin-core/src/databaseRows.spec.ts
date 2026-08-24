@@ -1,4 +1,4 @@
-import type { Bundle, LegacyBundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -10,25 +10,17 @@ import {
   rowsToBundles,
 } from "./databaseRows";
 
-const createBundle = (id: string): LegacyBundle => ({
+const createBundle = (id: string): Bundle => ({
   id,
   platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
   fileHash: `hash-${id}`,
   gitCommitHash: null,
-  message: null,
-  channel: "production",
   storageUri: `storage://${id}`,
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
   metadata: { app_version: "1.0.0" },
-  rolloutCohortCount: 250,
-  targetCohorts: ["qa"],
 });
 
 describe("database rows", () => {
-  const toRow = (bundle: Bundle) => bundleToRow(bundle, "channel-production");
+  const toRow = (bundle: Bundle) => bundleToRow(bundle);
 
   it("defaults missing metadata but rejects explicit null metadata", () => {
     const missingMetadata = createBundle("missing-metadata");
@@ -52,7 +44,7 @@ describe("database rows", () => {
     expect(rowToBundle(row).metadata).toEqual(metadata);
   });
 
-  it("round-trips ordered patches and derives the scalar compatibility view", () => {
+  it("round-trips multiple ordered patch artifacts", () => {
     const firstBase = createBundle("base-a");
     const secondBase = createBundle("base-b");
     const bundle: Bundle = {
@@ -80,8 +72,6 @@ describe("database rows", () => {
     ]);
 
     expect(hydrated?.patches).toEqual(bundle.patches);
-    expect(hydrated?.patchBaseBundleId).toBe(firstBase.id);
-    expect(hydrated?.patchFileHash).toBe("patch-a");
     expect(toRow(bundle)).not.toHaveProperty("target_cohorts");
   });
 

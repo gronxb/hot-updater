@@ -4,7 +4,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   ChannelRow,
-  ClientAccessKeyRow,
+  ApiKeyRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
 
@@ -103,13 +103,13 @@ export const createBundleEventRowFixture = (
   received_at_ms: receivedAtMs,
 });
 
-export const createClientAccessKeyRowFixture = (
+export const createApiKeyRowFixture = (
   suffix: string,
   createdAtMs: number,
-): ClientAccessKeyRow => ({
-  id: `client-key-${suffix}`,
+): ApiKeyRow => ({
+  id: `api-key-${suffix}`,
   hash: `hash-${suffix}`,
-  name: `Client ${suffix}`,
+  name: `API key ${suffix}`,
   prefix: suffix.padStart(6, "0").slice(0, 6),
   role: "client",
   created_at_ms: createdAtMs,

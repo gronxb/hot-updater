@@ -56,6 +56,22 @@ describe("supabaseStorage", () => {
     ).rejects.toBe(error);
   });
 
+  it("maps the Supabase missing-object HEAD response to false", async () => {
+    bucket.exists.mockResolvedValue({
+      data: false,
+      error: Object.assign(new Error("{}"), {
+        name: "StorageUnknownError",
+        originalError: { status: 400 },
+      }),
+    });
+
+    await expect(
+      createStorage().exists({
+        storageUri: "supabase-storage://updates/assets/missing.png",
+      }),
+    ).resolves.toEqual({ exists: false });
+  });
+
   it("returns a Web Response for provider reads", async () => {
     bucket.download.mockResolvedValue({
       data: new Blob(["manifest"]),

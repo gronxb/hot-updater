@@ -44,15 +44,7 @@ const readBundlePatchArray = (
 };
 
 export const getBundlePatches = (
-  bundle: Pick<
-    Bundle,
-    | "patches"
-    | "patchBaseBundleId"
-    | "patchBaseFileHash"
-    | "patchFileHash"
-    | "patchStorageUri"
-    | "metadata"
-  >,
+  bundle: Pick<Bundle, "patches">,
 ): BundlePatchArtifact[] => {
   const patches = readBundlePatchArray(bundle.patches);
 
@@ -69,15 +61,7 @@ export const getBundlePatches = (
 };
 
 export const getBundlePatch = (
-  bundle: Pick<
-    Bundle,
-    | "patches"
-    | "patchBaseBundleId"
-    | "patchBaseFileHash"
-    | "patchFileHash"
-    | "patchStorageUri"
-    | "metadata"
-  >,
+  bundle: Pick<Bundle, "patches">,
   baseBundleId: string,
 ) => {
   return (
@@ -87,64 +71,18 @@ export const getBundlePatch = (
   );
 };
 
-const getPrimaryPatch = (
-  bundle: Pick<
-    Bundle,
-    | "patches"
-    | "patchBaseBundleId"
-    | "patchBaseFileHash"
-    | "patchFileHash"
-    | "patchStorageUri"
-    | "metadata"
-  >,
-) => {
+const getPrimaryPatch = (bundle: Pick<Bundle, "patches">) => {
   return getBundlePatches(bundle)[0] ?? null;
 };
 
-export const getPatchBaseBundleId = (
-  bundle: Pick<
-    Bundle,
-    | "patches"
-    | "patchBaseBundleId"
-    | "patchBaseFileHash"
-    | "patchFileHash"
-    | "patchStorageUri"
-    | "metadata"
-  >,
-) => getPrimaryPatch(bundle)?.baseBundleId ?? bundle.patchBaseBundleId ?? null;
+export const getPatchBaseBundleId = (bundle: Pick<Bundle, "patches">) =>
+  getPrimaryPatch(bundle)?.baseBundleId ?? null;
 
-export const getPatchBaseFileHash = (
-  bundle: Pick<
-    Bundle,
-    | "patches"
-    | "patchBaseBundleId"
-    | "patchBaseFileHash"
-    | "patchFileHash"
-    | "patchStorageUri"
-    | "metadata"
-  >,
-) => getPrimaryPatch(bundle)?.baseFileHash ?? bundle.patchBaseFileHash ?? null;
+export const getPatchBaseFileHash = (bundle: Pick<Bundle, "patches">) =>
+  getPrimaryPatch(bundle)?.baseFileHash ?? null;
 
-export const getPatchFileHash = (
-  bundle: Pick<
-    Bundle,
-    | "patches"
-    | "patchBaseBundleId"
-    | "patchBaseFileHash"
-    | "patchFileHash"
-    | "patchStorageUri"
-    | "metadata"
-  >,
-) => getPrimaryPatch(bundle)?.patchFileHash ?? bundle.patchFileHash ?? null;
+export const getPatchFileHash = (bundle: Pick<Bundle, "patches">) =>
+  getPrimaryPatch(bundle)?.patchFileHash ?? null;
 
-export const getPatchStorageUri = (
-  bundle: Pick<
-    Bundle,
-    | "patches"
-    | "patchBaseBundleId"
-    | "patchBaseFileHash"
-    | "patchFileHash"
-    | "patchStorageUri"
-    | "metadata"
-  >,
-) => getPrimaryPatch(bundle)?.patchStorageUri ?? bundle.patchStorageUri ?? null;
+export const getPatchStorageUri = (bundle: Pick<Bundle, "patches">) =>
+  getPrimaryPatch(bundle)?.patchStorageUri ?? null;

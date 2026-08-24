@@ -88,7 +88,7 @@ describe("Kysely migrator", () => {
         "releases",
         "release_catalogs",
         "bundle_events",
-        "client_access_keys",
+        "api_keys",
         "private_hot_updater_settings",
       ]),
     );

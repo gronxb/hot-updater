@@ -19,7 +19,9 @@ const eventRow = (
   install_id: installId,
   user_id: null,
   username: null,
+  from_release_id: null,
   from_bundle_id: "old",
+  to_release_id: null,
   to_bundle_id: "new",
   platform: "ios",
   app_version: "1.0.0",
@@ -169,27 +171,6 @@ describe("createAnalyticsProvider", () => {
     await expect(provider.getBundleEventOverview()).resolves.toEqual({
       trackedInstallations: 1,
       bundles: [{ bundleId: "new", installations: 1 }],
-    });
-  });
-
-  it("tracks an installation with unknown directional ids without inventing a bundle bucket", async () => {
-    const unknownTarget: BundleEventPersistenceRow = {
-      ...eventRow("unknown-target", 1, "install-unknown"),
-      from_bundle_id: null,
-      to_bundle_id: null,
-    };
-    const provider = createAnalyticsProvider(
-      inMemoryPersistence([unknownTarget]),
-    );
-
-    await expect(provider.getBundleEventOverview()).resolves.toEqual({
-      trackedInstallations: 1,
-      bundles: [],
-    });
-    await expect(
-      provider.getInstallationHistory("install-unknown", 20, 0),
-    ).resolves.toMatchObject({
-      data: [{ fromBundleId: null, toBundleId: null }],
     });
   });
 

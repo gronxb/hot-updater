@@ -24,7 +24,7 @@ async function checkForAppUpdate() {
     const updateInfo = await HotUpdater.checkForUpdate({
       updateStrategy: "appVersion",
       requestHeaders: {
-        Authorization: "Bearer <your-access-token>",
+        "x-api-key": "<your-api-key>",
       },
     });
 
@@ -46,7 +46,6 @@ async function checkForAppUpdate() {
     return null;
   }
 }
-
 ```
 
 ## Important: HotUpdater.wrap or HotUpdater.init Required
@@ -64,18 +63,20 @@ function App() {
     HotUpdater.checkForUpdate({
       updateStrategy: "appVersion",
       requestHeaders: {
-        Authorization: "Bearer <your-access-token>",
+        "x-api-key": "<your-api-key>",
       },
-    }).then(async (updateInfo) => {
-      if (updateInfo) {
-        const didUpdate = await updateInfo.updateBundle();
-        if (didUpdate && updateInfo.shouldForceUpdate) {
-          await HotUpdater.reload();
+    })
+      .then(async (updateInfo) => {
+        if (updateInfo) {
+          const didUpdate = await updateInfo.updateBundle();
+          if (didUpdate && updateInfo.shouldForceUpdate) {
+            await HotUpdater.reload();
+          }
         }
-      }
-    }).catch((error) => {
-      console.error("Failed to check for update:", error);
-    });
+      })
+      .catch((error) => {
+        console.error("Failed to check for update:", error);
+      });
   }, []);
 
   return <YourApp />;
@@ -104,13 +105,13 @@ instructions on how to fix it.
 
 The `checkForUpdate` function accepts the following parameters:
 
-| Parameter         | Type                           | Required | Description                                                                      |
-|-------------------|--------------------------------|----------|----------------------------------------------------------------------------------|
-| `updateStrategy`  | `"appVersion"` \| `"fingerprint"` | ✅        | Update detection strategy for this check. |
-| `channel`         | `string`                       | ❌        | Channel to check. Defaults to the currently active channel.                      |
-| `requestHeaders`  | `Record<string, string>`       | ❌        | Optional headers to include in the update request.                               |
-| `requestTimeout`  | `number`                       | ❌        | Request timeout in milliseconds (default: 5000).                                 |
-| `onError`         | `(error: Error) => void`       | ❌        | Error callback.                                                                  |
+| Parameter        | Type                              | Required | Description                                                 |
+| ---------------- | --------------------------------- | -------- | ----------------------------------------------------------- |
+| `updateStrategy` | `"appVersion"` \| `"fingerprint"` | ✅       | Update detection strategy for this check.                   |
+| `channel`        | `string`                          | ❌       | Channel to check. Defaults to the currently active channel. |
+| `requestHeaders` | `Record<string, string>`          | ❌       | Optional headers to include in the update request.          |
+| `requestTimeout` | `number`                          | ❌       | Request timeout in milliseconds (default: 5000).            |
+| `onError`        | `(error: Error) => void`          | ❌       | Error callback.                                             |
 
 The update source is always from `HotUpdater.wrap()` or `HotUpdater.init()`; it
 cannot be overridden in `checkForUpdate`.
@@ -121,15 +122,15 @@ successfully. If a different runtime channel is already active, call
 
 ## How It Works
 
-The default resolver fetches a shared Release Catalog, evaluates it on the
-device, and resolves the selected artifact:
+The client fetches a shared Release Catalog, evaluates it on the device, and
+resolves the selected artifact:
 
-* App version catalog: `GET {baseURL}/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`
-* Fingerprint catalog: `GET {baseURL}/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash`
-* Artifact resolution: `GET {baseURL}/artifacts/:targetBundleId/from/:currentBundleId`
+- App version catalog: `GET {baseURL}/release-catalogs/app-version/:platform/:channelKey/:appVersion`
+- Fingerprint catalog: `GET {baseURL}/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash`
+- Artifact resolution: `GET {baseURL}/artifacts/:targetBundleId/from/:currentBundleId`
 
-`:channelKey` is the base64url-encoded channel name. The default authority is
-`default` unless the resolver is configured with another stable authority.
+`:channelKey` is the base64url-encoded channel name. Catalog authority is
+server-owned and is not part of the React Native configuration or client URL.
 
 ## Return Value
 

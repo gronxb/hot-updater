@@ -87,6 +87,7 @@ import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "postgresql" }),
+  clientAccess: { type: "api-key" },
   storage: [
     s3Storage({
       region: "auto",
@@ -98,11 +99,6 @@ export const hotUpdater = createHotUpdater({
       bucketName: process.env.R2_BUCKET_NAME!,
     }),
   ],
-  basePath: "/hot-updater",
-  features: {
-    updateCheck: true,
-    bundles: true,
-  },
 });
 ```
 
@@ -116,15 +112,16 @@ import { serve } from "@hono/node-server";
 import { bearerAuth } from "hono/bearer-auth";
 import { hotUpdater } from "./hotUpdater";
 
-const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
-if (!managementToken) {
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) {
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
 }
 
 const app = new Hono();
 
-app.use("/hot-updater/api/*", bearerAuth({ token: managementToken }));
-app.mount("/hot-updater", hotUpdater.handler);
+app.use("/hot-updater/admin/*", bearerAuth({ token: adminToken }));
+app.mount("/hot-updater/admin", hotUpdater.handlers.admin);
+app.mount("/hot-updater", hotUpdater.handlers.client);
 
 const port = Number(process.env.PORT) || 3000;
 
@@ -137,8 +134,9 @@ serve({ fetch: app.fetch, port }, (info) => {
 When using Hono `mount()`, update-check routes such as
 `/hot-updater/release-catalogs/*` and `/hot-updater/artifacts/*` are usually
 exposed for React Native clients, but that is a deployment choice.
-`/hot-updater/version` is always mounted for diagnostics. Always protect
-`/hot-updater/api/*` when `features.bundles: true`.
+`/hot-updater/version` is always mounted for diagnostics. The specific admin
+middleware and mount must be registered before the broader client mount. Omit
+both to deploy a client-only server.
 </Callout>
 
 ## Schema Generation
@@ -221,7 +219,7 @@ Run the container with environment variables.
 ```bash
 docker run -p 3000:3000 \
   -e DATABASE_URL="postgresql://user:password@host:5432/dbname" \
-  -e HOT_UPDATER_AUTH_TOKEN="replace-with-a-secret" \
+  -e HOT_UPDATER_ADMIN_TOKEN="replace-with-a-secret" \
   -e R2_ENDPOINT="https://<account-id>.r2.cloudflarestorage.com" \
   -e R2_ACCESS_KEY_ID="<access-key-id>" \
   -e R2_SECRET_ACCESS_KEY="<secret-access-key>" \
@@ -259,7 +257,7 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/hot_updater
-      HOT_UPDATER_AUTH_TOKEN: replace-with-a-secret
+      HOT_UPDATER_ADMIN_TOKEN: replace-with-a-secret
       R2_ENDPOINT: https://<account-id>.r2.cloudflarestorage.com
       R2_ACCESS_KEY_ID: <access-key-id>
       R2_SECRET_ACCESS_KEY: <secret-access-key>
@@ -313,9 +311,9 @@ import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
-const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
-if (!managementToken) {
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) {
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
 }
 
 export default defineConfig({
@@ -330,9 +328,9 @@ export default defineConfig({
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
   database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater",
+    baseUrl: "http://localhost:3000/hot-updater/admin",
     commonHeaders: {
-      Authorization: `Bearer ${managementToken}`,
+      Authorization: `Bearer ${adminToken}`,
     },
   }),
   updateStrategy: "appVersion",

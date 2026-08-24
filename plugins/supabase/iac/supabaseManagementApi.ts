@@ -24,11 +24,26 @@ export interface SupabaseManagementApi {
     readonly region: SupabaseRegion;
   }) => Promise<SupabaseProject>;
   getProjectStatus: (projectId: string) => Promise<string>;
+  listFunctions: (projectId: string) => Promise<readonly string[]>;
   listOrganizations: () => Promise<readonly SupabaseOrganization[]>;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
+
+export const parseSupabaseFunctionSlugs = (
+  body: unknown,
+): readonly string[] => {
+  if (!Array.isArray(body)) {
+    throw new Error("Supabase functions response was invalid.");
+  }
+  return body.map((item) => {
+    if (!isRecord(item) || typeof item.slug !== "string") {
+      throw new Error("Supabase functions response was invalid.");
+    }
+    return item.slug;
+  });
+};
 
 class SupabaseManagementApiStatusError extends Error {}
 
@@ -124,6 +139,13 @@ export const supabaseManagementApi = (
               : [],
           );
         },
+        listFunctions: async (projectId) =>
+          parseSupabaseFunctionSlugs(
+            await request(
+              accessToken,
+              `/projects/${encodeURIComponent(projectId)}/functions`,
+            ),
+          ),
         createProject: async ({
           databasePassword,
           name,

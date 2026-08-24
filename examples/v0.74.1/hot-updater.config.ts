@@ -6,6 +6,9 @@ import { defineConfig } from "hot-updater";
 
 config({ path: ".env.hotupdater" });
 
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) throw new Error("HOT_UPDATER_ADMIN_TOKEN is required.");
+
 export default defineConfig({
   nativeBuild: {
     android: {
@@ -27,7 +30,10 @@ export default defineConfig({
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
   database: standaloneRepository({
-    baseUrl: "http://localhost:3006/hot-updater",
+    baseUrl: "http://localhost:3006/hot-updater/admin",
+    commonHeaders: {
+      Authorization: `Bearer ${adminToken}`,
+    },
   }),
   fingerprint: {
     debug: true,

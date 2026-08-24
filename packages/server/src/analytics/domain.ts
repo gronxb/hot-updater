@@ -9,8 +9,8 @@ export type CreateBundleEventRequestBase = {
   readonly cohort: string;
   readonly fingerprintHash: string | null;
   readonly sdkVersion?: string | null;
-  readonly fromReleaseId?: string | null;
-  readonly toReleaseId?: string | null;
+  readonly fromReleaseId: string | null;
+  readonly toReleaseId: string | null;
 };
 
 export type CreateBundleEventRequest =
@@ -51,7 +51,7 @@ export type InstallationSearchRow = {
   readonly installId: string;
   readonly username: string | null;
   readonly userId: string | null;
-  readonly lastKnownBundleId: string | null;
+  readonly lastKnownBundleId: string;
   readonly latestStatus:
     | "UPDATE_APPLIED"
     | "RECOVERED"
@@ -67,8 +67,8 @@ export type InstallationSearchRow = {
 export type InstallationHistoryRow = {
   readonly id: string;
   readonly type: "UPDATE_APPLIED" | "RECOVERED";
-  readonly fromBundleId: string | null;
-  readonly toBundleId: string | null;
+  readonly fromBundleId: string;
+  readonly toBundleId: string;
   readonly username: string | null;
   readonly userId: string | null;
   readonly platform: "ios" | "android";

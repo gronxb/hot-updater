@@ -1,10 +1,10 @@
 import type {
   BundlePatchRow,
   BundleRow,
-  BundleEventRowBase,
+  BundleEventRow,
   ChannelRow,
   ChannelDeleteResult,
-  ClientAccessKeyRow,
+  ApiKeyRow,
   DatabaseCommit,
   DatabaseCommitResult,
   ReleaseCatalogRow,
@@ -19,18 +19,10 @@ export type SupabaseBundlePatchRow = {
   [TField in keyof BundlePatchRow]: BundlePatchRow[TField];
 };
 
-export type SupabaseBundleEventRow = BundleEventRowBase & {
-  readonly type:
-    | "UPDATE_APPLIED"
-    | "RECOVERED"
-    | "RELEASE_ADOPTED"
-    | "UNCHANGED";
-  readonly from_bundle_id: string | null;
-  readonly update_strategy: "fingerprint" | "appVersion" | null;
-};
+export type SupabaseBundleEventRow = BundleEventRow;
 
-export type SupabaseClientAccessKeyRow = {
-  [TField in keyof ClientAccessKeyRow]: ClientAccessKeyRow[TField];
+export type SupabaseApiKeyRow = {
+  [TField in keyof ApiKeyRow]: ApiKeyRow[TField];
 };
 
 export type SupabaseChannelRow = {
@@ -59,7 +51,7 @@ export type Database = {
       bundle_patches: Table<SupabaseBundlePatchRow>;
       channels: Table<SupabaseChannelRow>;
       bundle_events: Table<SupabaseBundleEventRow>;
-      client_access_keys: Table<SupabaseClientAccessKeyRow>;
+      api_keys: Table<SupabaseApiKeyRow>;
       release_catalogs: Table<SupabaseReleaseCatalogRow>;
       releases: Table<SupabaseReleaseRow>;
     };

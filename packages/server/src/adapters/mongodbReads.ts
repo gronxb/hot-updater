@@ -17,7 +17,7 @@ import {
 import {
   createMongoBundleWhere,
   createMongoChannelWhere,
-  createMongoClientAccessKeyWhere,
+  createMongoApiKeyWhere,
   createMongoEventWhere,
   createMongoPatchWhere,
   createMongoReleaseCatalogWhere,
@@ -112,9 +112,9 @@ const findMongoRows = async (
         ? cursor.toArray()
         : cursor.sort(sort).toArray();
     }
-    case "client_access_keys": {
-      const cursor = collections.clientAccessKeys
-        .find(createMongoClientAccessKeyWhere(input.where), {
+    case "api_keys": {
+      const cursor = collections.apiKeys
+        .find(createMongoApiKeyWhere(input.where), {
           projection: WITHOUT_MONGO_ID,
           ...mongoSessionOptions(session),
         })
@@ -122,8 +122,8 @@ const findMongoRows = async (
         .limit(input.limit);
       if (rawOrderBy === undefined) return cursor.toArray();
       if (needsInMemoryOrder) {
-        const rows = await collections.clientAccessKeys
-          .find(createMongoClientAccessKeyWhere(input.where), {
+        const rows = await collections.apiKeys
+          .find(createMongoApiKeyWhere(input.where), {
             projection: WITHOUT_MONGO_ID,
             ...mongoSessionOptions(session),
           })
@@ -268,9 +268,9 @@ export const createMongoReads = (
             ...mongoSessionOptions(session),
           },
         );
-      case "client_access_keys":
-        return collections.clientAccessKeys.findOne(
-          createMongoClientAccessKeyWhere(input.where),
+      case "api_keys":
+        return collections.apiKeys.findOne(
+          createMongoApiKeyWhere(input.where),
           {
             projection: WITHOUT_MONGO_ID,
             ...mongoSessionOptions(session),

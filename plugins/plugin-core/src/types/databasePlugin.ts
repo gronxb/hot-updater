@@ -4,7 +4,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   ChannelRow,
-  ClientAccessKeyRow,
+  ApiKeyRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "./databaseRows";
@@ -76,14 +76,14 @@ export interface AnalyticsModel {
   scan(input: AnalyticsScanInput): Promise<readonly BundleEventRow[]>;
 }
 
-export interface ClientAccessKeyModel {
-  create(row: ClientAccessKeyRow): Promise<"created" | "existing">;
-  findByHash(hash: string): Promise<ClientAccessKeyRow | null>;
-  list(): Promise<readonly ClientAccessKeyRow[]>;
+export interface ApiKeyModel {
+  create(row: ApiKeyRow): Promise<"created" | "existing">;
+  findByHash(hash: string): Promise<ApiKeyRow | null>;
+  list(): Promise<readonly ApiKeyRow[]>;
   revoke(input: {
     readonly id: string;
     readonly revokedAtMs: number;
-  }): Promise<ClientAccessKeyRow | null>;
+  }): Promise<ApiKeyRow | null>;
 }
 
 export interface ChannelInsertInput {
@@ -178,13 +178,13 @@ export type DatabaseChange =
       readonly row: BundleEventRow;
     }
   | {
-      readonly model: "clientAccessKeys";
+      readonly model: "apiKeys";
       readonly operation: "insert";
-      readonly row: ClientAccessKeyRow;
+      readonly row: ApiKeyRow;
       readonly onConflict: "ignore";
     }
   | {
-      readonly model: "clientAccessKeys";
+      readonly model: "apiKeys";
       readonly operation: "update";
       readonly where: { readonly id: string };
       readonly update: { readonly revokedAtMs: number };
@@ -258,7 +258,7 @@ export interface DatabaseModels {
   readonly releaseCatalogs: ReleaseCatalogModel;
   readonly channels: ChannelModel;
   readonly analytics: AnalyticsModel;
-  readonly clientAccessKeys: ClientAccessKeyModel;
+  readonly apiKeys: ApiKeyModel;
 }
 
 export interface BundleRepository {

@@ -42,7 +42,7 @@ development, and configure the same names for the Production environment in
 your Vercel project settings:
 
 ```dotenv title=".env.local"
-HOT_UPDATER_AUTH_TOKEN=replace-with-a-secret
+HOT_UPDATER_ADMIN_TOKEN=replace-with-a-secret
 R2_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
 R2_ACCESS_KEY_ID=your-access-key-id
 R2_SECRET_ACCESS_KEY=your-secret-access-key
@@ -76,6 +76,7 @@ import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "postgresql" }),
+  clientAccess: { type: "api-key" },
   storage: [
     s3Storage({
       region: "auto",
@@ -87,11 +88,6 @@ export const hotUpdater = createHotUpdater({
       bucketName: process.env.R2_BUCKET_NAME!,
     }),
   ],
-  basePath: "/hot-updater",
-  features: {
-    updateCheck: true,
-    bundles: true,
-  },
 });
 ```
 
@@ -104,15 +100,16 @@ import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
 import { hotUpdater } from "./hotUpdater";
 
-const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
-if (!managementToken) {
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) {
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
 }
 
 const app = new Hono();
 
-app.use("/hot-updater/api/*", bearerAuth({ token: managementToken }));
-app.mount("/hot-updater", hotUpdater.handler);
+app.use("/hot-updater/admin/*", bearerAuth({ token: adminToken }));
+app.mount("/hot-updater/admin", hotUpdater.handlers.admin);
+app.mount("/hot-updater", hotUpdater.handlers.client);
 
 export default app;
 ```
@@ -121,7 +118,8 @@ export default app;
 With Hono `mount()`, client routes such as `/hot-updater/release-catalogs/*` and
 `/hot-updater/artifacts/*` are usually exposed for React Native clients,
 but that is a deployment choice. `/hot-updater/version` is always mounted for
-diagnostics. Always protect `/hot-updater/api/*` when `features.bundles: true`.
+diagnostics. The specific admin middleware and mount must be registered before
+the broader client mount. Omit both to deploy a client-only server.
 </Callout>
 
 ## Schema Generation
@@ -168,7 +166,7 @@ Server runs at `http://localhost:3000`.
 
 ## Deploy
 
-Set `HOT_UPDATER_AUTH_TOKEN`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`,
+Set `HOT_UPDATER_ADMIN_TOKEN`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`,
 `R2_SECRET_ACCESS_KEY`, and `R2_BUCKET_NAME` in the target Vercel environment.
 
 Deploy to Vercel.
@@ -189,9 +187,9 @@ import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
-const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
-if (!managementToken) {
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) {
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
 }
 
 export default defineConfig({
@@ -206,9 +204,9 @@ export default defineConfig({
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
   database: standaloneRepository({
-    baseUrl: "https://your-project.vercel.app/hot-updater",
+    baseUrl: "https://your-project.vercel.app/hot-updater/admin",
     commonHeaders: {
-      Authorization: `Bearer ${managementToken}`,
+      Authorization: `Bearer ${adminToken}`,
     },
   }),
   updateStrategy: "appVersion",
@@ -218,6 +216,6 @@ export default defineConfig({
 <Callout type="warn">
 The CLI `storage` plugin must match one entry in the server's
 `createHotUpdater({ storage })` array.
-Configure `HOT_UPDATER_AUTH_TOKEN` in every Vercel environment and in the CLI
+Configure `HOT_UPDATER_ADMIN_TOKEN` in every Vercel environment and in the CLI
 environment.
 </Callout>

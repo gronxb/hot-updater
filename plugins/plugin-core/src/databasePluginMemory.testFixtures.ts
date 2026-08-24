@@ -4,7 +4,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   ChannelRow,
-  ClientAccessKeyRow,
+  ApiKeyRow,
   DatabaseBundleQueryWhere,
   DatabaseCommit,
   DatabasePlugin,
@@ -41,7 +41,7 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
   const releases = new Map<string, ReleaseRow>();
   const releaseCatalogs = new Map<string, ReleaseCatalogRow>();
   const channels = new Map<string, ChannelRow>();
-  const accessKeys = new Map<string, ClientAccessKeyRow>();
+  const apiKeys = new Map<string, ApiKeyRow>();
 
   const commit = async (input: DatabaseCommit) => {
     for (const expectation of input.expectations ?? []) {
@@ -76,7 +76,7 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
     const nextReleases = new Map(releases);
     const nextReleaseCatalogs = new Map(releaseCatalogs);
     const nextChannels = new Map(channels);
-    const nextAccessKeys = new Map(accessKeys);
+    const nextApiKeys = new Map(apiKeys);
     for (const [changeIndex, change] of input.changes.entries()) {
       switch (change.model) {
         case "bundles":
@@ -190,23 +190,23 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
         case "analytics":
           nextEvents.set(change.row.id, structuredClone(change.row));
           break;
-        case "clientAccessKeys":
+        case "apiKeys":
           if (change.operation === "insert") {
-            const existing = [...nextAccessKeys.values()].find(
+            const existing = [...nextApiKeys.values()].find(
               ({ hash }) => hash === change.row.hash,
             );
             if (!existing) {
-              nextAccessKeys.set(change.row.id, structuredClone(change.row));
+              nextApiKeys.set(change.row.id, structuredClone(change.row));
             }
           } else {
-            const current = nextAccessKeys.get(change.where.id);
+            const current = nextApiKeys.get(change.where.id);
             if (!current) {
               return {
                 committed: false,
                 conflict: { changeIndex, reason: "not_found" },
               } as const;
             }
-            nextAccessKeys.set(change.where.id, {
+            nextApiKeys.set(change.where.id, {
               ...current,
               revoked_at_ms: change.update.revokedAtMs,
             });
@@ -220,7 +220,7 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
     replaceMap(releases, nextReleases);
     replaceMap(releaseCatalogs, nextReleaseCatalogs);
     replaceMap(channels, nextChannels);
-    replaceMap(accessKeys, nextAccessKeys);
+    replaceMap(apiKeys, nextApiKeys);
     return { committed: true } as const;
   };
 
@@ -384,27 +384,27 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
           );
         },
       },
-      clientAccessKeys: {
+      apiKeys: {
         async create(row) {
-          if ([...accessKeys.values()].some(({ hash }) => hash === row.hash)) {
+          if ([...apiKeys.values()].some(({ hash }) => hash === row.hash)) {
             return "existing";
           }
-          accessKeys.set(row.id, structuredClone(row));
+          apiKeys.set(row.id, structuredClone(row));
           return "created";
         },
         async findByHash(hash) {
           return structuredClone(
-            [...accessKeys.values()].find((row) => row.hash === hash) ?? null,
+            [...apiKeys.values()].find((row) => row.hash === hash) ?? null,
           );
         },
         async list() {
-          return structuredClone([...accessKeys.values()]);
+          return structuredClone([...apiKeys.values()]);
         },
         async revoke(input) {
-          const current = accessKeys.get(input.id);
+          const current = apiKeys.get(input.id);
           if (!current) return null;
           const revoked = { ...current, revoked_at_ms: input.revokedAtMs };
-          accessKeys.set(input.id, revoked);
+          apiKeys.set(input.id, revoked);
           return structuredClone(revoked);
         },
       },

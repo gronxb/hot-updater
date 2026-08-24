@@ -3,7 +3,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   ChannelRow,
-  ClientAccessKeyRow,
+  ApiKeyRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -13,7 +13,7 @@ export type MongoTestRow =
   | BundlePatchRow
   | BundleRow
   | ChannelRow
-  | ClientAccessKeyRow
+  | ApiKeyRow
   | ReleaseRow
   | ReleaseCatalogRow;
 

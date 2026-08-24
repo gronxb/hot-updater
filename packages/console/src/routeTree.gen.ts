@@ -10,8 +10,8 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as InstallationsRouteImport } from './routes/installations'
+import { Route as ApiKeysRouteImport } from './routes/api-keys'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
-import { Route as AccessKeysRouteImport } from './routes/access-keys'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiBundlesBundleIdDownloadRouteImport } from './routes/api/bundles/$bundleId/download'
@@ -21,14 +21,14 @@ const InstallationsRoute = InstallationsRouteImport.update({
   path: '/installations',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiKeysRoute = ApiKeysRouteImport.update({
+  id: '/api-keys',
+  path: '/api-keys',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AnalyticsRoute = AnalyticsRouteImport.update({
   id: '/analytics',
   path: '/analytics',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccessKeysRoute = AccessKeysRouteImport.update({
-  id: '/access-keys',
-  path: '/access-keys',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -50,16 +50,16 @@ const ApiBundlesBundleIdDownloadRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/access-keys': typeof AccessKeysRoute
   '/analytics': typeof AnalyticsRoute
+  '/api-keys': typeof ApiKeysRoute
   '/installations': typeof InstallationsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/access-keys': typeof AccessKeysRoute
   '/analytics': typeof AnalyticsRoute
+  '/api-keys': typeof ApiKeysRoute
   '/installations': typeof InstallationsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
@@ -67,8 +67,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/access-keys': typeof AccessKeysRoute
   '/analytics': typeof AnalyticsRoute
+  '/api-keys': typeof ApiKeysRoute
   '/installations': typeof InstallationsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
@@ -77,24 +77,24 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/access-keys'
     | '/analytics'
+    | '/api-keys'
     | '/installations'
     | '/api/auth/$'
     | '/api/bundles/$bundleId/download'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/access-keys'
     | '/analytics'
+    | '/api-keys'
     | '/installations'
     | '/api/auth/$'
     | '/api/bundles/$bundleId/download'
   id:
     | '__root__'
     | '/'
-    | '/access-keys'
     | '/analytics'
+    | '/api-keys'
     | '/installations'
     | '/api/auth/$'
     | '/api/bundles/$bundleId/download'
@@ -102,8 +102,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AccessKeysRoute: typeof AccessKeysRoute
   AnalyticsRoute: typeof AnalyticsRoute
+  ApiKeysRoute: typeof ApiKeysRoute
   InstallationsRoute: typeof InstallationsRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiBundlesBundleIdDownloadRoute: typeof ApiBundlesBundleIdDownloadRoute
@@ -118,18 +118,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InstallationsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api-keys': {
+      id: '/api-keys'
+      path: '/api-keys'
+      fullPath: '/api-keys'
+      preLoaderRoute: typeof ApiKeysRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/analytics': {
       id: '/analytics'
       path: '/analytics'
       fullPath: '/analytics'
       preLoaderRoute: typeof AnalyticsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/access-keys': {
-      id: '/access-keys'
-      path: '/access-keys'
-      fullPath: '/access-keys'
-      preLoaderRoute: typeof AccessKeysRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -158,8 +158,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AccessKeysRoute: AccessKeysRoute,
   AnalyticsRoute: AnalyticsRoute,
+  ApiKeysRoute: ApiKeysRoute,
   InstallationsRoute: InstallationsRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiBundlesBundleIdDownloadRoute: ApiBundlesBundleIdDownloadRoute,

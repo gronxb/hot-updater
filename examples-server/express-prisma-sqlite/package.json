@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "prisma generate && tsc",
+    "e2e:cleanup": "bash scripts/e2e-cleanup.sh",
+    "e2e:service": "bash scripts/e2e-service.sh",
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:type": "prisma generate && tsc --noEmit",

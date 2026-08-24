@@ -4,11 +4,13 @@ import { createBundleRowFixture } from "../../../test-utils/src/databaseTestFixt
 import { parseMongoBundleRow } from "./mongodbRows";
 
 describe("parseMongoBundleRow", () => {
-  it("keeps compatibility for a missing legacy metadata field", () => {
+  it("rejects a missing metadata field", () => {
     const { metadata: _metadata, ...row } =
       createBundleRowFixture("missing-metadata");
 
-    expect(parseMongoBundleRow(row).metadata).toEqual({});
+    expect(() => parseMongoBundleRow(row)).toThrow(
+      "Invalid MongoDB plugin data",
+    );
   });
 
   it("rejects explicit null metadata", () => {

@@ -1,19 +1,14 @@
+import { toNodeHandler } from "@hot-updater/server/node";
 import cors from "cors";
 import express from "express";
+
 import { closeDatabase, hotUpdater } from "./db";
-import { toNodeHandler } from "@hot-updater/server/node";
 
 const app = express();
 const port = process.env.PORT || 3002;
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 
-const isAuthorizedManagementRequest = (req: express.Request) => {
-  const token = process.env.HOT_UPDATER_AUTH_TOKEN;
-  return Boolean(token) && req.get("Authorization") === `Bearer ${token}`;
-};
-
-// Middleware
-app.use(cors());
-app.use(express.json());
+if (!adminToken) throw new Error("HOT_UPDATER_ADMIN_TOKEN is required.");
 
 // Health check endpoint
 app.get("/", (_req, res) => {
@@ -21,15 +16,25 @@ app.get("/", (_req, res) => {
 });
 
 // Hot Updater routes
-app.use("/hot-updater/api", (req, res, next) => {
-  if (!isAuthorizedManagementRequest(req)) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
+app.use(
+  "/hot-updater/admin",
+  (req, res, next) => {
+    if (req.get("Authorization") !== `Bearer ${adminToken}`) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
 
-  next();
-});
-app.all("/hot-updater/*", toNodeHandler(hotUpdater));
+    next();
+  },
+  express.json({ limit: "1mb" }),
+  toNodeHandler(hotUpdater.handlers.admin),
+);
+app.use(
+  "/hot-updater",
+  cors(),
+  express.json({ limit: "1mb" }),
+  toNodeHandler(hotUpdater.handlers.client),
+);
 
 if (process.env.NODE_ENV === "test") {
   app.post("/shutdown", (_req, res) => {

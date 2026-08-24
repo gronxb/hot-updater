@@ -1,4 +1,4 @@
-import type { Bundle, LegacyBundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -17,18 +17,12 @@ import type { DatabasePluginImplementation } from "./types/internal";
 
 const channelRow = { id: "channel-production", name: "production" } as const;
 
-const createBundle = (id: string): LegacyBundle => ({
+const createBundle = (id: string): Bundle => ({
   id,
   platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
   fileHash: `hash-${id}`,
   gitCommitHash: null,
-  message: null,
-  channel: "production",
   storageUri: `storage://${id}`,
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
 });
 
 const createNativePlugin = (
@@ -112,7 +106,7 @@ describe("database client patch updates", () => {
   });
 
   it("rejects patch replacement before mutating a non-transaction provider", async () => {
-    const row = bundleToRow(createBundle("owner"), channelRow.id);
+    const row = bundleToRow(createBundle("owner"));
     let scalarUpdateCount = 0;
     let patchDeleteCount = 0;
     const name = "non-transaction";
@@ -171,7 +165,7 @@ describe("database client patch updates", () => {
         {
           model: "bundles",
           operation: "insert",
-          row: bundleToRow(owner, channelRow.id),
+          row: bundleToRow(owner),
         },
         {
           model: "bundlePatches",

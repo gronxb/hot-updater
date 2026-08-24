@@ -32,7 +32,7 @@ import {
   parsePrismaBundleEventRow,
   parsePrismaBundleRow,
   parsePrismaChannelRow,
-  parsePrismaClientAccessKeyRow,
+  parsePrismaApiKeyRow,
   parsePrismaPatchRow,
   parsePrismaReleaseCatalogRow,
   parsePrismaReleaseRow,
@@ -137,8 +137,8 @@ const findMany = async (
       return parsePrismaRows(rows, parsePrismaBundleEventRow);
     case "channels":
       return parsePrismaRows(rows, parsePrismaChannelRow);
-    case "client_access_keys":
-      return parsePrismaRows(rows, parsePrismaClientAccessKeyRow);
+    case "api_keys":
+      return parsePrismaRows(rows, parsePrismaApiKeyRow);
     case "releases":
       return parsePrismaRows(rows, parsePrismaReleaseRow);
     case "release_catalogs":
@@ -236,8 +236,8 @@ const createCrudImplementation = (
         return parsePrismaBundleEventRow(row);
       case "channels":
         return parsePrismaChannelRow(row);
-      case "client_access_keys":
-        return parsePrismaClientAccessKeyRow(row);
+      case "api_keys":
+        return parsePrismaApiKeyRow(row);
       case "releases":
         return parsePrismaReleaseRow(row);
       case "release_catalogs":
@@ -251,13 +251,13 @@ const createCrudImplementation = (
         `${input.model} update requires a string id`,
       );
     }
-    if (input.model === "client_access_keys") {
-      const delegate = getPrismaDelegate(client, "client_access_keys");
+    if (input.model === "api_keys") {
+      const delegate = getPrismaDelegate(client, "api_keys");
       const current = await delegate.findFirst({ where: { id } });
       if (current === null) return null;
       await delegate.update({ where: { id }, data: input.update });
       const stored = await delegate.findFirst({ where: { id } });
-      return stored === null ? null : parsePrismaClientAccessKeyRow(stored);
+      return stored === null ? null : parsePrismaApiKeyRow(stored);
     }
     if (input.model === "releases") {
       const delegate = getPrismaDelegate(client, "releases");
@@ -337,8 +337,8 @@ const createCrudImplementation = (
         return parsePrismaPatchRow(row);
       case "channels":
         return parsePrismaChannelRow(row);
-      case "client_access_keys":
-        return parsePrismaClientAccessKeyRow(row);
+      case "api_keys":
+        return parsePrismaApiKeyRow(row);
       case "releases":
         return parsePrismaReleaseRow(row);
       case "release_catalogs":

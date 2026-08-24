@@ -14,36 +14,38 @@ This example demonstrates how to use Hot Updater with Express and Prisma.
 
 ```typescript
 import express from "express";
+import cors from "cors";
 import { toNodeHandler } from "@hot-updater/server/node";
 import { hotUpdater } from "./db";
 
 const app = express();
-const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) throw new Error("HOT_UPDATER_ADMIN_TOKEN is required.");
 
-// Mount middleware
-app.use(express.json());
-
-// Protect management routes. Update-check routes remain public.
-app.use("/hot-updater/api", (req, res, next) => {
-  if (
-    !managementToken ||
-    req.get("Authorization") !== `Bearer ${managementToken}`
-  ) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-
-  next();
-});
-
-// Mount Hot Updater handler
-app.all("/hot-updater/*", toNodeHandler(hotUpdater));
+app.use(
+  "/hot-updater/admin",
+  (req, res, next) => {
+    if (req.get("Authorization") !== `Bearer ${adminToken}`) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    next();
+  },
+  express.json({ limit: "1mb" }),
+  toNodeHandler(hotUpdater.handlers.admin),
+);
+app.use(
+  "/hot-updater",
+  cors(),
+  express.json({ limit: "1mb" }),
+  toNodeHandler(hotUpdater.handlers.client),
+);
 ```
 
 The `toNodeHandler` adapter automatically converts between Express's req/res
 and Web Standard Request/Response. Send
-`Authorization: Bearer <HOT_UPDATER_AUTH_TOKEN>` to management routes under
-`/hot-updater/api/*`; missing or mismatched credentials are rejected.
+`Authorization: Bearer <HOT_UPDATER_ADMIN_TOKEN>` to admin routes under
+`/hot-updater/admin/*`; missing or mismatched credentials are rejected.
 
 ## Setup
 
@@ -105,7 +107,7 @@ pnpm build
 
 The emitted ESM is not directly launchable by Node.js because its relative
 imports omit file extensions. Use `pnpm dev` until that build issue is fixed.
-A deployed adaptation must inject `PORT`, `HOT_UPDATER_AUTH_TOKEN`, the signing
+A deployed adaptation must inject `PORT`, `HOT_UPDATER_ADMIN_TOKEN`, the signing
 key, and R2 credentials through its deployment environment instead of relying
 on the source-tree env file.
 
@@ -134,7 +136,7 @@ This command:
 
 1. Reads your Hot Updater configuration from `src/db.ts`
 2. Merges the fixed `channels`, `bundles`, `bundle_patches`, `releases`,
-   `release_catalogs`, `bundle_events`, `client_access_keys`, and
+   `release_catalogs`, `bundle_events`, `api_keys`, and
    `private_hot_updater_settings` models into `prisma/schema.prisma`
 3. Preserves application models outside the generated block
 
