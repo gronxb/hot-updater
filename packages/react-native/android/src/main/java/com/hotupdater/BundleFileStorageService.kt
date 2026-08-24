@@ -652,7 +652,8 @@ class BundleFileStorageService(
 
             val resolvedAssets =
                 manifest.assets.keys.associateWith { assetPath ->
-                    RelativePathResolver.resolveInside(bundleDir, assetPath)
+                    RelativePathResolver
+                        .resolveInside(bundleDir, assetPath)
                         ?.takeIf { it.isFile }
                         ?: return null
                 }
