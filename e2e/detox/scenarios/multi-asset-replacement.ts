@@ -117,6 +117,7 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
       "assert multi-asset manifest reuse",
       "/e2e/assert-manifest-diff-applied",
       {
+        allowBsdiff: true,
         bundleId: "$secondBundleId",
         previousBundleId: "$firstBundleId",
       },

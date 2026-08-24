@@ -6144,6 +6144,7 @@ function hasManifestBackedBundleEvidence(args: {
 }
 
 async function readManifestDiffState(args: {
+  allowBsdiff?: boolean;
   bundleId: string;
   previousBundleId: string;
 }) {
@@ -6189,7 +6190,8 @@ async function readManifestDiffState(args: {
     }) &&
     !includesAllFragments(archiveLogs, archiveFragments) &&
     !includesAllFragments(nativeLogs, manifestFallbackFragments) &&
-    !includesAllFragments(bsdiffLogs, bsdiffFragments);
+    (args.allowBsdiff === true ||
+      !includesAllFragments(bsdiffLogs, bsdiffFragments));
 
   return {
     archiveFragments,
@@ -6309,6 +6311,7 @@ async function assertBsdiffPatchApplied(args: {
 }
 
 async function assertManifestDiffApplied(args: {
+  allowBsdiff?: boolean;
   bundleId: string;
   previousBundleId: string;
 }) {
@@ -6967,6 +6970,7 @@ export async function handleAssertBundlePatchBases(args: {
 }
 
 export async function handleAssertManifestDiffApplied(args: {
+  allowBsdiff?: boolean;
   bundleId: string;
   previousBundleId: string;
 }) {

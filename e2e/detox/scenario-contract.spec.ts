@@ -1914,6 +1914,7 @@ describe("Detox scenario contract", () => {
         "assert multi-asset manifest reuse",
       ),
     ).toEqual({
+      allowBsdiff: true,
       bundleId: "$secondBundleId",
       previousBundleId: "$firstBundleId",
     });

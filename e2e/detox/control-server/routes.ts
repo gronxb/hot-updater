@@ -492,6 +492,7 @@ app.post("/e2e/assert-bundle-patch-bases", async (c) => {
 
 app.post("/e2e/assert-manifest-diff-applied", async (c) => {
   const payload = (await c.req.json()) as {
+    allowBsdiff?: boolean;
     bundleId?: string;
     previousBundleId?: string;
   };
@@ -501,6 +502,7 @@ app.post("/e2e/assert-manifest-diff-applied", async (c) => {
 
   return c.json(
     await handleAssertManifestDiffApplied({
+      allowBsdiff: payload.allowBsdiff,
       bundleId: payload.bundleId,
       previousBundleId: payload.previousBundleId,
     }),
