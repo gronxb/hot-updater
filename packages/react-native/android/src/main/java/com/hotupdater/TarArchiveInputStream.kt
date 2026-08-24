@@ -13,7 +13,7 @@ class TarArchiveInputStream(
 ) : InputStream() {
     private var currentEntry: TarArchiveEntry? = null
     private var currentEntryBytesRead: Long = 0
-    private var longName: String? = null
+    private var pendingName: String? = null
 
     companion object {
         private const val TAG = "TarInputStream"
@@ -73,14 +73,20 @@ class TarArchiveInputStream(
 
             // Handle GNU long filename extension
             if (entry.typeFlag == 'L') {
-                longName = readLongName(entry.size)
+                pendingName = readLongName(entry.size)
                 continue
             }
 
-            // Apply long name if present
-            if (longName != null) {
-                entry.name = longName!!
-                longName = null
+            // Handle POSIX PAX extended header
+            if (entry.typeFlag == 'x') {
+                readPaxPath(entry.size)?.let { pendingName = it }
+                continue
+            }
+
+            // Apply extended name if present
+            if (pendingName != null) {
+                entry.name = pendingName!!
+                pendingName = null
             }
 
             // Validate entry
@@ -304,6 +310,95 @@ class TarArchiveInputStream(
                 .takeIf { it >= 0 } ?: nameBytes.size
 
         return String(nameBytes, 0, nameLength, Charsets.UTF_8)
+    }
+
+    /**
+     * Read the path attribute from a POSIX PAX extended header.
+     * Record lengths are measured in bytes and include the length itself.
+     */
+    private fun readPaxPath(size: Long): String? {
+        if (size < 0 || size > MAX_FILE_SIZE) {
+            throw SecurityException("Invalid PAX header size: $size")
+        }
+
+        val data = ByteArray(size.toInt())
+        var bytesRead = 0
+        while (bytesRead < data.size) {
+            val count = input.read(data, bytesRead, data.size - bytesRead)
+            if (count < 0) throw EOFException("Unexpected end reading PAX header")
+            bytesRead += count
+        }
+        skipPadding(size)
+
+        var offset = 0
+        var path: String? = null
+        while (offset < data.size) {
+            val space = findByte(data, ' '.code.toByte(), offset, data.size)
+            if (space <= offset) throw IOException("Invalid PAX record length")
+
+            val recordLength = parsePaxRecordLength(data, offset, space)
+            if (recordLength <= 0 || recordLength > data.size - offset) {
+                throw IOException("Invalid PAX record length: $recordLength")
+            }
+
+            val recordEnd = offset + recordLength
+            if (recordEnd <= space + 2 || data[recordEnd - 1] != '\n'.code.toByte()) {
+                throw IOException("Invalid PAX record")
+            }
+
+            val valueEnd = recordEnd - 1
+            val equals = findByte(data, '='.code.toByte(), space + 1, valueEnd)
+            if (equals <= space + 1) throw IOException("Invalid PAX record")
+
+            val key =
+                String(
+                    data,
+                    space + 1,
+                    equals - space - 1,
+                    Charsets.UTF_8,
+                )
+            if (key == "path") {
+                path =
+                    String(
+                        data,
+                        equals + 1,
+                        valueEnd - equals - 1,
+                        Charsets.UTF_8,
+                    )
+            }
+
+            offset = recordEnd
+        }
+
+        return path
+    }
+
+    private fun parsePaxRecordLength(
+        bytes: ByteArray,
+        start: Int,
+        end: Int,
+    ): Int {
+        var result = 0
+        for (index in start until end) {
+            val digit = bytes[index].toInt() - '0'.code
+            if (digit !in 0..9 || result > (Int.MAX_VALUE - digit) / 10) {
+                throw IOException("Invalid PAX record length")
+            }
+            result = result * 10 + digit
+        }
+        return result
+    }
+
+    private fun findByte(
+        bytes: ByteArray,
+        value: Byte,
+        start: Int,
+        end: Int,
+    ): Int {
+        for (index in start until end) {
+            if (bytes[index] == value) return index
+        }
+        return -1
     }
 
     /**
