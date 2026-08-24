@@ -1,3 +1,4 @@
+import { PAX_LONG_ASSET_MANIFEST_PATH } from "../pax-long-path-fixture.ts";
 import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
@@ -9,6 +10,7 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
       {
         bundleProfile: "multiAssetReplacement",
         channel: "production",
+        compressStrategy: "tar.br",
         marker: "multi-assets-a-detox",
         mode: "reset",
         safeBundleIds: [],
@@ -51,6 +53,7 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
           "assets/src/test/_fixture-multi-asset-a.bmp",
           "assets/src/test/_fixture-multi-asset-b.bmp",
           "assets/src/test/_fixture-multi-asset-c.bmp",
+          PAX_LONG_ASSET_MANIFEST_PATH,
         ],
         bundleId: "$firstBundleId",
       },
@@ -61,6 +64,7 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
       {
         bundleProfile: "multiAssetReplacement",
         channel: "production",
+        compressStrategy: "tar.br",
         marker: "multi-assets-b-detox",
         mode: "reset",
         safeBundleIds: ["$firstBundleId"],
@@ -103,7 +107,17 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
           "assets/src/test/_fixture-multi-asset-a.bmp",
           "assets/src/test/_fixture-multi-asset-b.bmp",
           "assets/src/test/_fixture-multi-asset-c.bmp",
+          PAX_LONG_ASSET_MANIFEST_PATH,
         ],
+        bundleId: "$secondBundleId",
+        previousBundleId: "$firstBundleId",
+      },
+    );
+    await app.control(
+      "assert multi-asset manifest reuse",
+      "/e2e/assert-manifest-diff-applied",
+      {
+        allowBsdiff: true,
         bundleId: "$secondBundleId",
         previousBundleId: "$firstBundleId",
       },

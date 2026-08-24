@@ -156,6 +156,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   const payload = (await c.req.json()) as {
     bundleProfile?: "archive300mb" | "default" | "multiAssetReplacement";
     channel?: string;
+    compressStrategy?: "tar.br" | "tar.gz" | "zip";
     disabled?: boolean;
     diffBaseBundleId?: string;
     forceUpdate?: boolean;
@@ -193,6 +194,17 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
       400,
     );
   }
+  if (
+    payload.compressStrategy !== undefined &&
+    payload.compressStrategy !== "tar.br" &&
+    payload.compressStrategy !== "tar.gz" &&
+    payload.compressStrategy !== "zip"
+  ) {
+    return c.json(
+      { error: "compressStrategy must be tar.br, tar.gz, or zip" },
+      400,
+    );
+  }
   if (!payload.targetAppVersion) {
     return c.json({ error: "targetAppVersion is required" }, 400);
   }
@@ -212,6 +224,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     jobId: startDeployBundleJob({
       bundleProfile: payload.bundleProfile,
       channel: payload.channel,
+      compressStrategy: payload.compressStrategy,
       disabled: payload.disabled,
       diffBaseBundleId: payload.diffBaseBundleId,
       forceUpdate: payload.forceUpdate,
@@ -479,6 +492,7 @@ app.post("/e2e/assert-bundle-patch-bases", async (c) => {
 
 app.post("/e2e/assert-manifest-diff-applied", async (c) => {
   const payload = (await c.req.json()) as {
+    allowBsdiff?: boolean;
     bundleId?: string;
     previousBundleId?: string;
   };
@@ -488,6 +502,7 @@ app.post("/e2e/assert-manifest-diff-applied", async (c) => {
 
   return c.json(
     await handleAssertManifestDiffApplied({
+      allowBsdiff: payload.allowBsdiff,
       bundleId: payload.bundleId,
       previousBundleId: payload.previousBundleId,
     }),
