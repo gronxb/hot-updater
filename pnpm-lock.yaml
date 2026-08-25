@@ -61,6 +61,9 @@ catalogs:
     '@hono/node-server':
       specifier: 1.19.17
       version: 1.19.17
+    hono:
+      specifier: 4.12.34
+      version: 4.12.34
   supabase:
     '@supabase/supabase-js':
       specifier: 2.76.1
@@ -75,10 +78,6 @@ catalogs:
     tsdown:
       specifier: 0.21.6
       version: 0.21.6
-
-overrides:
-  '@hono/node-server@1': 1.19.17
-  hono: 4.12.34
 
 importers:
 
@@ -127,7 +126,7 @@ importers:
         specifier: catalog:tools
         version: 9.5.2
       hono:
-        specifier: 4.12.34
+        specifier: catalog:hono
         version: 4.12.34
       jest:
         specifier: ^29.7.0
@@ -404,7 +403,7 @@ importers:
         specifier: catalog:tools
         version: 9.5.2
       hono:
-        specifier: 4.12.34
+        specifier: catalog:hono
         version: 4.12.34
       hot-updater:
         specifier: workspace:*
@@ -437,7 +436,7 @@ importers:
         specifier: ^16.4.7
         version: 16.6.1
       hono:
-        specifier: 4.12.34
+        specifier: catalog:hono
         version: 4.12.34
       kysely:
         specifier: catalog:db
@@ -492,7 +491,7 @@ importers:
         specifier: ^16.4.7
         version: 16.6.1
       hono:
-        specifier: 4.12.34
+        specifier: catalog:hono
         version: 4.12.34
       kysely:
         specifier: catalog:db
@@ -568,7 +567,7 @@ importers:
         specifier: catalog:firebase
         version: 14.2.0
       hono:
-        specifier: 4.12.34
+        specifier: catalog:hono
         version: 4.12.34
       hot-updater:
         specifier: workspace:*
@@ -619,7 +618,7 @@ importers:
         specifier: catalog:tools
         version: 9.5.2
       hono:
-        specifier: 4.12.34
+        specifier: catalog:hono
         version: 4.12.34
       hot-updater:
         specifier: workspace:*
@@ -658,7 +657,7 @@ importers:
         specifier: ^16.6.1
         version: 16.6.1
       hono:
-        specifier: 4.12.34
+        specifier: catalog:hono
         version: 4.12.34
     devDependencies:
       '@aws-sdk/client-s3':
@@ -1920,7 +1919,7 @@ importers:
         specifier: 1.0.7
         version: 1.0.7
       hono:
-        specifier: 4.12.34
+        specifier: catalog:hono
         version: 4.12.34
     devDependencies:
       '@hot-updater/core':
@@ -2022,7 +2021,7 @@ importers:
         specifier: 4.2.0
         version: 4.2.0
       hono:
-        specifier: 4.12.34
+        specifier: catalog:hono
         version: 4.12.34
       uuidv7:
         specifier: 'catalog:'
@@ -2139,7 +2138,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/server
       hono:
-        specifier: 4.12.34
+        specifier: catalog:hono
         version: 4.12.34
     devDependencies:
       '@hot-updater/js':
@@ -2366,7 +2365,7 @@ importers:
         specifier: catalog:supabase
         version: 2.76.1
       hono:
-        specifier: 4.12.34
+        specifier: catalog:hono
         version: 4.12.34
       uuidv7:
         specifier: 'catalog:'
@@ -4993,13 +4992,13 @@ packages:
     resolution: {integrity: sha512-dSneS5qhiauZWGDCeK4o695Xd9nUNjviSZCMQrj10eetr8Uln1ucn6bbphOM6UynAMMtNIzZNSpL9vnASJwrPQ==}
     engines: {node: '>=18.14.1'}
     peerDependencies:
-      hono: 4.12.34
+      hono: ^4
 
   '@hono/node-server@2.0.4':
     resolution: {integrity: sha512-Ut3y0dMMPWy6bZ2kVfx25EOVbZlm15dhF4mOsezMlhpNHy+4MkU1qN9Y6lnruYi4wPmFzimGX2X7LF/FwHli4A==}
     engines: {node: '>=20'}
     peerDependencies:
-      hono: 4.12.34
+      hono: ^4
 
   '@hot-updater/react-native@file:packages/react-native':
     resolution: {directory: packages/react-native, type: directory}

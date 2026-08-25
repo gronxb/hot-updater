@@ -25,10 +25,6 @@ allowBuilds:
   sharp: true
   workerd: true
 
-overrides:
-  "@hono/node-server@1": catalog:hono
-  hono: catalog:hono
-
 catalog:
   "@types/node": ^20
   uuidv7: ^1.0.2
