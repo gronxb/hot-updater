@@ -581,3 +581,5 @@ REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_delete_channel(text)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.hot_updater_v1_delete_channel(text)
   TO service_role;
+
+NOTIFY pgrst, 'reload schema';

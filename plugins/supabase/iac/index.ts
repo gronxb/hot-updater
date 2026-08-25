@@ -69,6 +69,8 @@ const SUPABASE_PROJECT_READINESS_MAX_ATTEMPTS = 60 * 5;
 const SUPABASE_PROJECT_READINESS_POLL_INTERVAL_MS = 1000;
 const SUPABASE_STORAGE_READINESS_MAX_ATTEMPTS = 60 * 5;
 const SUPABASE_STORAGE_READINESS_POLL_INTERVAL_MS = 1000;
+const SUPABASE_SCHEMA_READINESS_MAX_ATTEMPTS = 60;
+const SUPABASE_SCHEMA_READINESS_POLL_INTERVAL_MS = 1000;
 const LEGACY_SUPABASE_CATALOG_CDN_URL_ENV_KEY =
   "HOT_UPDATER_SUPABASE_CATALOG_CDN_URL";
 const STATIC_IMPORT_SPECIFIER_PATTERN =
@@ -839,6 +841,34 @@ export const waitForSupabaseProjectReady = async ({
   );
 };
 
+export const waitForSupabaseSchemaReady = async ({
+  getInfrastructureState,
+  maxAttempts = SUPABASE_SCHEMA_READINESS_MAX_ATTEMPTS,
+  pollIntervalMs = SUPABASE_SCHEMA_READINESS_POLL_INTERVAL_MS,
+}: {
+  readonly getInfrastructureState: SupabaseApi["getInfrastructureState"];
+  readonly maxAttempts?: number;
+  readonly pollIntervalMs?: number;
+}): Promise<void> => {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const state = await getInfrastructureState();
+    if (state === "v1") {
+      return;
+    }
+    if (state === "incompatible") {
+      throw new Error(
+        "Supabase database schema is incompatible after migration.",
+      );
+    }
+    if (attempt < maxAttempts - 1) {
+      await delay(pollIntervalMs);
+    }
+  }
+  throw new Error(
+    "Timed out while waiting for the Supabase database schema cache.",
+  );
+};
+
 export const getSupabaseProjectAccess = async ({
   accessToken,
   managementApi,
@@ -918,7 +948,34 @@ export const getSupabaseProjectAccess = async ({
   };
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const withSupabaseCliMetadataCleanup = async <Result>(
+  cwd: string,
+  operation: () => Promise<Result>,
+): Promise<Result> => {
+  const cliDirectory = path.join(cwd, "supabase");
+  let shouldCleanup = false;
+  try {
+    await fs.access(cliDirectory);
+  } catch (error) {
+    if (!(error instanceof Error) || Reflect.get(error, "code") !== "ENOENT") {
+      throw error;
+    }
+    shouldCleanup = true;
+  }
+
+  try {
+    return await operation();
+  } finally {
+    if (shouldCleanup) {
+      await fs.rm(cliDirectory, { recursive: true, force: true });
+    }
+  }
+};
+
+const runInitWithoutCliMetadata = async ({
+  build,
+  envFile,
+}: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
   const { inputEnv, managedEnv } = initEnvSources;
@@ -1115,6 +1172,9 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   });
 
   await pushDB(tmpDir, { accessToken, dbPassword });
+  await waitForSupabaseSchemaReady({
+    getInfrastructureState: projectAccess.api.getInfrastructureState,
+  });
   const databasePlugin = supabaseDatabase({
     supabaseServiceRoleKey: projectAccess.serviceRoleApiKey,
     supabaseUrl: `https://${project.id}.supabase.co`,
@@ -1179,3 +1239,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   );
   p.log.success("Done! 🎉");
 };
+
+export const runInit = (options: RunInitOptions): Promise<void> =>
+  withSupabaseCliMetadataCleanup(process.cwd(), () =>
+    runInitWithoutCliMetadata(options),
+  );

@@ -137,7 +137,15 @@ export const pushDB = async (
   try {
     await execa(
       "npx",
-      ["supabase", "migration", "fetch", "--linked", "--yes"],
+      [
+        "supabase",
+        "migration",
+        "fetch",
+        "--linked",
+        "--yes",
+        "--workdir",
+        workdir,
+      ],
       {
         cwd: workdir,
         env: getSupabaseCommandEnv(accessToken, dbPassword),
@@ -145,7 +153,15 @@ export const pushDB = async (
     );
     const dbPush = await execa(
       "npx",
-      ["supabase", "db", "push", "--include-all", "--yes"],
+      [
+        "supabase",
+        "db",
+        "push",
+        "--include-all",
+        "--yes",
+        "--workdir",
+        workdir,
+      ],
       {
         cwd: workdir,
         env: getSupabaseCommandEnv(accessToken, dbPassword),

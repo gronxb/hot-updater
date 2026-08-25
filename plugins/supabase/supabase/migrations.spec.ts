@@ -59,6 +59,7 @@ describe("Supabase v1 schema", () => {
     expect(sql).toContain(
       "patch_file_hash, patch_storage_uri, byte_size, order_index",
     );
+    expect(sql).toContain("NOTIFY pgrst, 'reload schema'");
     expect(sql).not.toContain("get_update_info");
     expect(sql).not.toContain("ALTER TABLE public.bundles ADD COLUMN");
   });
