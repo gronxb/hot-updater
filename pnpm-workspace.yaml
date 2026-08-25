@@ -6,9 +6,7 @@ packages:
   - examples-server/*
 
 overrides:
-  '@hono/node-server@1': catalog:hono
   '@smithy/types': 4.16.1
-  hono: catalog:hono
   recharts@3.8.0>es-toolkit: 1.46.0
 
 allowBuilds:
