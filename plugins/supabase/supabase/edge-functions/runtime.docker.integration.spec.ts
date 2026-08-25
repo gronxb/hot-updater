@@ -111,6 +111,7 @@ const runtimeBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle =>
     fileHash: `hash-${id}`,
     gitCommitHash: null,
     storageUri: "storage://unused",
+    archiveByteSize: 3_000_000_001,
     ...overrides,
     id,
   });
@@ -472,12 +473,14 @@ describe.sequential("supabase edge runtime acceptance", () => {
           baseFileHash: base.fileHash,
           patchFileHash: "hash-valid-patch",
           patchStorageUri: "storage://valid-patch",
+          byteSize: 3_000_000_002,
         },
         {
           baseBundleId: "00000000-0000-0000-0000-000000000199",
           baseFileHash: "hash-missing-base",
           patchFileHash: "hash-invalid-patch",
           patchStorageUri: "storage://invalid-patch",
+          byteSize: 3_000_000_003,
         },
       ],
     } satisfies Bundle;
@@ -523,6 +526,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
             baseFileHash: base.fileHash,
             patchFileHash: "hash-patch",
             patchStorageUri: "storage://patch",
+            byteSize: 3_000_000_002,
           },
         ],
       } satisfies Bundle;
@@ -571,6 +575,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
             baseFileHash: base.fileHash,
             patchFileHash: "hash-patch",
             patchStorageUri: "storage://patch",
+            byteSize: 3_000_000_002,
           },
         ],
       } satisfies Bundle;
@@ -601,6 +606,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
           baseFileHash: base.fileHash,
           patchFileHash: "hash-old-patch",
           patchStorageUri: "storage://old-patch",
+          byteSize: 3_000_000_002,
         },
       ],
     } satisfies Bundle;
@@ -617,6 +623,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
               baseFileHash: "hash-missing-base",
               patchFileHash: "hash-invalid-patch",
               patchStorageUri: "storage://invalid-patch",
+              byteSize: 3_000_000_003,
             },
           ],
         }),
@@ -644,6 +651,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
           baseFileHash: base.fileHash,
           patchFileHash: "hash-old-patch",
           patchStorageUri: "storage://old-patch",
+          byteSize: 3_000_000_002,
         },
       ],
     } satisfies Bundle;
@@ -701,6 +709,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
       fileHash: "hash",
       gitCommitHash: null,
       storageUri: "storage://unused",
+      archiveByteSize: 3_000_000_001,
     });
 
     await uploadBundleObject(supabaseAdmin, bundle.id);

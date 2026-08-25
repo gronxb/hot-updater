@@ -11,9 +11,25 @@ export interface Manifest {
 }
 
 export interface ManifestAsset {
+  downloadByteSize?: number;
+  downloadFileHash?: string;
   fileHash: string;
   signature?: string;
 }
+
+export const writeBundleManifestFile = async ({
+  buildPath,
+  manifest,
+}: {
+  buildPath: string;
+  manifest: Manifest;
+}) => {
+  const manifestPath = path.join(buildPath, "manifest.json");
+
+  await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  return manifestPath;
+};
 
 const mapWithConcurrency = async <T, R>(
   items: T[],
@@ -101,9 +117,7 @@ export const writeBundleManifest = async ({
     signFileHash,
     targetFiles,
   });
-  const manifestPath = path.join(buildPath, "manifest.json");
-
-  await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  const manifestPath = await writeBundleManifestFile({ buildPath, manifest });
 
   return {
     manifest,

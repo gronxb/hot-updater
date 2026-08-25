@@ -23,6 +23,7 @@ const createBundle = (id: string): Bundle => ({
   fileHash: `hash-${id}`,
   gitCommitHash: null,
   storageUri: `storage://${id}`,
+  archiveByteSize: 3_000_000_001,
 });
 
 const createNativePlugin = (
@@ -55,6 +56,7 @@ const createMemoryFixture = async () => {
       {
         baseBundleId: base.id,
         baseFileHash: base.fileHash,
+        byteSize: 3_000_000_002,
         patchFileHash: "patch-hash",
         patchStorageUri: "storage://patch",
       },
@@ -89,6 +91,7 @@ describe("database client patch updates", () => {
         {
           baseBundleId: base.id,
           baseFileHash: base.fileHash,
+          byteSize: 3_000_000_002,
           patchFileHash: "patch-hash",
           patchStorageUri: "storage://patch",
         },
@@ -152,6 +155,7 @@ describe("database client patch updates", () => {
         {
           baseBundleId: "base",
           baseFileHash: "base-hash",
+          byteSize: 3_000_000_002,
           patchFileHash: "patch-hash",
           patchStorageUri: "storage://patch",
         },
@@ -176,6 +180,7 @@ describe("database client patch updates", () => {
             bundle_id: "owner",
             id: "owner:base",
             order_index: 0,
+            byte_size: 3_000_000_002,
             patch_file_hash: "patch-hash",
             patch_storage_uri: "storage://patch",
           },
@@ -208,6 +213,7 @@ describe("database client patch updates", () => {
         {
           baseBundleId: "base",
           baseFileHash: "base-hash",
+          byteSize: 3_000_000_002,
           patchFileHash: "patch-hash",
           patchStorageUri: "storage://patch",
         },
@@ -277,6 +283,7 @@ describe("database client patch updates", () => {
         {
           baseBundleId: "base",
           baseFileHash: "base-hash",
+          byteSize: 3_000_000_002,
           patchFileHash: "patch-hash",
           patchStorageUri: "storage://patch",
         },

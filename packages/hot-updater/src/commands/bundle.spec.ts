@@ -33,6 +33,7 @@ const artifact = (
   id: string,
   platform: Bundle["platform"] = "ios",
 ): Bundle => ({
+  archiveByteSize: 1024,
   id,
   platform,
   fileHash: `hash-${id}`,

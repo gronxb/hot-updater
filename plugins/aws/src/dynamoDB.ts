@@ -155,6 +155,9 @@ const field = (value: object, name: string): unknown =>
 const isNullableString = (value: unknown): value is string | null =>
   value === null || typeof value === "string";
 
+const isByteSize = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
 const isBundleRow = (value: unknown): value is BundleRow =>
   typeof value === "object" &&
   value !== null &&
@@ -164,6 +167,7 @@ const isBundleRow = (value: unknown): value is BundleRow =>
   typeof field(value, "file_hash") === "string" &&
   isNullableString(field(value, "git_commit_hash")) &&
   typeof field(value, "storage_uri") === "string" &&
+  isByteSize(field(value, "archive_byte_size")) &&
   isDatabaseMetadataObject(field(value, "metadata")) &&
   isNullableString(field(value, "manifest_storage_uri")) &&
   isNullableString(field(value, "manifest_file_hash")) &&
@@ -178,6 +182,7 @@ const isPatchRow = (value: unknown): value is BundlePatchRow =>
   typeof field(value, "base_file_hash") === "string" &&
   typeof field(value, "patch_file_hash") === "string" &&
   typeof field(value, "patch_storage_uri") === "string" &&
+  isByteSize(field(value, "byte_size")) &&
   typeof field(value, "order_index") === "number";
 
 const isChannelRow = (value: unknown): value is ChannelRow =>

@@ -33,6 +33,7 @@ export const createBundleRowFixture = (
   file_hash: `hash-${suffix}`,
   git_commit_hash: null,
   storage_uri: `storage://bundles/${suffix}.zip`,
+  archive_byte_size: 3_000_000_001,
   metadata: { app_version: suffix },
   manifest_storage_uri: null,
   manifest_file_hash: null,
@@ -51,6 +52,7 @@ export const createBundlePatchRowFixture = (
   base_file_hash: `base-hash-${suffix}`,
   patch_file_hash: `patch-hash-${suffix}`,
   patch_storage_uri: `storage://patches/${suffix}.patch`,
+  byte_size: 3_000_000_002,
   order_index: orderIndex,
 });
 
@@ -125,5 +127,6 @@ export const createBundleFixture = (
   fileHash: `hash-${suffix}`,
   gitCommitHash: null,
   storageUri: `storage://bundles/${suffix}.zip`,
+  archiveByteSize: 3_000_000_001,
   metadata: { app_version: suffix },
 });

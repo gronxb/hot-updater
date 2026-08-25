@@ -1,4 +1,7 @@
-import { getContentAddressedAssetStoragePath } from "./contentAddressedAssets";
+import {
+  getContentAddressedAssetStoragePath,
+  isContentAddressedAssetFileHash,
+} from "./contentAddressedAssets";
 import { createStorageKeyBuilder } from "./createStorageKeyBuilder";
 import { createStorageUri, parseStorageUri } from "./parseStorageUri";
 
@@ -65,31 +68,50 @@ export const replaceStorageUriKeySuffix = ({
   });
 };
 
+export const resolveManifestAssetStorageFileHash = ({
+  downloadFileHash,
+  fileHash,
+}: {
+  downloadFileHash?: unknown;
+  fileHash: string;
+}) =>
+  isContentAddressedAssetFileHash(downloadFileHash)
+    ? downloadFileHash
+    : fileHash;
+
 export const getManifestAssetStoragePath = ({
   assetPath,
+  downloadFileHash,
   fileHash,
 }: {
   assetPath: string;
+  downloadFileHash?: unknown;
   fileHash: string;
 }) =>
   getContentAddressedAssetStoragePath({
     assetPath,
-    fileHash,
+    fileHash: resolveManifestAssetStorageFileHash({
+      downloadFileHash,
+      fileHash,
+    }),
   });
 
 export const resolveManifestAssetStorageUri = ({
   assetBaseStorageUri,
   assetPath,
+  downloadFileHash,
   fileHash,
 }: {
   assetBaseStorageUri: string;
   assetPath: string;
+  downloadFileHash?: unknown;
   fileHash: string;
 }) =>
   createStorageUriWithRelativePath({
     baseStorageUri: assetBaseStorageUri,
     relativePath: getManifestAssetStoragePath({
       assetPath,
+      downloadFileHash,
       fileHash,
     }),
   });

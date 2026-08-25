@@ -60,9 +60,13 @@
   patches for changed Hermes bundles by default.
 
   In practice, a release that would normally ship a 10 MB archive can be
-  delivered as a ~600 KB patch when the Hermes bytecode change is small. If a
-  patch is missing, incompatible, or not worth using, Hot Updater falls back to
-  the normal archive update path.
+  delivered as a ~600 KB patch when the Hermes bytecode change is small. The
+  server compares the exact known bytes for the manifest and primary changed
+  files with the archive. When both sizes are known, a patch is preferred only
+  when it is strictly smaller than the complete file, and a total diff equal to
+  or larger than the archive selects the archive path. Unknown size metadata or
+  a missing transformed-file hash preserves the existing manifest-first and
+  runtime fallback behavior without storage probes or a native API change.
 
   See the [Bundle Diffing guide](https://hot-updater.dev/docs/guides/bundle-diffing)
   for the full runtime behavior and fallback rules.

@@ -39,6 +39,12 @@ describe("Detox remote asset proxy URLs", () => {
       fetchTargets.push(url);
 
       if (url.startsWith("https://provider.example.com/hot-updater/")) {
+        if (url.endsWith("/artifacts/archive-target/from/current")) {
+          return Response.json({
+            fileHash: "archive-hash",
+            fileUrl: signedBundleUrl,
+          });
+        }
         return new Response(
           JSON.stringify({
             changedAssets: {
@@ -52,6 +58,7 @@ describe("Detox remote asset proxy URLs", () => {
               },
             },
             fileUrl: signedBundleUrl,
+            manifestFileHash: "manifest-hash",
             manifestUrl: signedManifestUrl,
           }),
           {
@@ -125,6 +132,107 @@ describe("Detox remote asset proxy URLs", () => {
       expect(patchUrl).toMatch(
         /^http:\/\/localhost:3107\/e2e\/proxy-url\/[-0-9a-f]+$/,
       );
+      expect(
+        controller.handleAssertBundleArtifactSelection({
+          currentBundleId: "current",
+          selection: "manifest-diff",
+          targetBundleId: "target",
+        }),
+      ).toMatchObject({
+        changedAssetCount: 1,
+        changedAssetsPresent: true,
+        currentBundleId: "current",
+        manifestUrlPresent: true,
+        targetBundleId: "target",
+      });
+      expect(() =>
+        controller.handleAssertBundleArtifactSelection({
+          currentBundleId: "current",
+          selection: "archive-only",
+          targetBundleId: "target",
+        }),
+      ).toThrow("Unexpected Bundle artifact selection");
+      const controlRoutes = (await import("./control-server/routes.ts"))
+        .default;
+      const routeAssertion = await controlRoutes.request(
+        "/e2e/assert-bundle-artifact-selection",
+        {
+          body: JSON.stringify({
+            currentBundleId: "current",
+            selection: "manifest-diff",
+            targetBundleId: "target",
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      expect(routeAssertion.status).toBe(200);
+      expect(await routeAssertion.json()).toMatchObject({
+        currentBundleId: "current",
+        targetBundleId: "target",
+      });
+      const invalidRouteAssertion = await controlRoutes.request(
+        "/e2e/assert-bundle-artifact-selection",
+        {
+          body: JSON.stringify({
+            currentBundleId: "current",
+            selection: "unknown",
+            targetBundleId: "target",
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      expect(invalidRouteAssertion.status).toBe(400);
+      const sizeAwareProfileValidation = await controlRoutes.request(
+        "/e2e/jobs/deploy-bundle",
+        {
+          body: JSON.stringify({
+            bundleProfile: "sizeAwareLargeDiff",
+            channel: "production",
+            marker: "size-aware-route-contract",
+            mode: "reset",
+            patchMaxBaseBundles: 0,
+            safeBundleIds: [],
+            targetAppVersion: "1.0.x",
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      expect(sizeAwareProfileValidation.status).toBe(400);
+      expect(await sizeAwareProfileValidation.json()).toEqual({
+        error: "patchMaxBaseBundles must be an integer between 1 and 5",
+      });
+
+      await controller.handleProxyUpdateRequest(
+        new Request(
+          "http://localhost:3107/hot-updater/artifacts/archive-target/from/current",
+        ),
+      );
+      expect(
+        controller.handleAssertBundleArtifactSelection({
+          currentBundleId: "current",
+          selection: "archive-only",
+          targetBundleId: "archive-target",
+        }),
+      ).toMatchObject({
+        changedAssetsPresent: false,
+        currentBundleId: "current",
+        fileUrlPresent: true,
+        manifestFileHashPresent: false,
+        manifestUrlPresent: false,
+        targetBundleId: "archive-target",
+      });
+
+      controller.handleConfigureProxy({ reset: true });
+      expect(() =>
+        controller.handleAssertBundleArtifactSelection({
+          currentBundleId: "current",
+          selection: "archive-only",
+          targetBundleId: "archive-target",
+        }),
+      ).toThrow("Bundle artifact request was not observed");
 
       const assetResponse = await controller.handleProxyRemoteAssetRequest(
         new Request(payload.fileUrl),

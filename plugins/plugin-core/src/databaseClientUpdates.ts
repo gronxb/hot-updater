@@ -30,6 +30,9 @@ export const bundleUpdateToRow = (
     ...(update.storageUri !== undefined
       ? { storage_uri: update.storageUri }
       : {}),
+    ...(update.archiveByteSize !== undefined
+      ? { archive_byte_size: update.archiveByteSize }
+      : {}),
     ...(update.metadata !== undefined
       ? { metadata: bundleMetadataToRow(update.metadata) }
       : {}),
@@ -57,5 +60,6 @@ export const bundleUpdateToPatchRows = (
     base_file_hash: patch.baseFileHash,
     patch_file_hash: patch.patchFileHash,
     patch_storage_uri: patch.patchStorageUri,
+    byte_size: patch.byteSize,
     order_index: orderIndex,
   }));

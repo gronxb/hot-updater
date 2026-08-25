@@ -33,6 +33,7 @@ const databaseHarness = createDatabasePluginHarness();
 const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
 
 const sourceBundle: Bundle = {
+  archiveByteSize: 1024,
   id: "01900000-0000-7000-8000-000000000001",
   platform: "ios",
   fileHash: "hash-B1",

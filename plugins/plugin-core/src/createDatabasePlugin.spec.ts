@@ -57,6 +57,7 @@ const bundleRow = {
   file_hash: "hash-1",
   git_commit_hash: null,
   storage_uri: "storage://bundle-1.zip",
+  archive_byte_size: 3_000_000_001,
   metadata: {},
   manifest_storage_uri: null,
   manifest_file_hash: null,
@@ -70,6 +71,7 @@ const patchRow = {
   base_file_hash: "base-hash",
   patch_file_hash: "patch-hash",
   patch_storage_uri: "storage://patch-1",
+  byte_size: 3_000_000_002,
   order_index: 0,
 } as const;
 

@@ -27,6 +27,7 @@ const createCatalogDatabase = async () => {
         operation: "insert",
         row: {
           asset_base_storage_uri: null,
+          archive_byte_size: 3_000_000_001,
           file_hash: "bundle-hash",
           git_commit_hash: null,
           id: bundleId,

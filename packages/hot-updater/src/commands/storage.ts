@@ -43,7 +43,7 @@ export interface StoragePruneOptions {
 
 interface BundleManifest {
   bundleId: string;
-  assets: Record<string, { fileHash: string }>;
+  assets: Record<string, { downloadFileHash?: unknown; fileHash: string }>;
 }
 
 interface BundleStorageReferences {
@@ -349,6 +349,7 @@ async function collectReferencedAssetUris(
             resolveManifestAssetStorageUri({
               assetBaseStorageUri,
               assetPath: downloadPath,
+              downloadFileHash: asset.downloadFileHash,
               fileHash: asset.fileHash,
             }),
           ),

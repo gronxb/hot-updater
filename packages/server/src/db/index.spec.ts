@@ -205,6 +205,7 @@ function createSchemaOnlyAdapter({
 }
 
 const transactionBundle: Bundle = {
+  archiveByteSize: 1_024,
   id: "00000000-0000-0000-0000-000000000777",
   platform: "ios",
   fileHash: "transaction-hash",
@@ -1017,6 +1018,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
   describe("getBundleById", () => {
     it("should retrieve bundle by id without Prisma validation errors", async () => {
       const bundle: Bundle = {
+        archiveByteSize: 1_024,
         id: "00000000-0000-0000-0000-000000000010",
         platform: "ios",
         fileHash: "test-hash",
@@ -1083,6 +1085,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
 
     it("resolves s3:// storage URI to signed URL via s3StoragePlugin", async () => {
       const bundle: Bundle = {
+        archiveByteSize: 1_024,
         id: "00000000-0000-0000-0000-000000000001",
         platform: "ios",
         fileHash: "hash123",
@@ -1106,6 +1109,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       const nextManifestStorageUri =
         "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/manifest.json";
       const olderBundle: Bundle = {
+        archiveByteSize: 1_024,
         id: "00000000-0000-0000-0000-000000000100",
         platform: "ios",
         fileHash: "hash-older-zip",
@@ -1114,6 +1118,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
           "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000100/bundle.zip",
       };
       const currentBundle: Bundle = {
+        archiveByteSize: 1_024,
         id: "00000000-0000-0000-0000-000000000101",
         platform: "ios",
         fileHash: "hash-current-zip",
@@ -1125,6 +1130,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         manifestStorageUri: currentManifestStorageUri,
       };
       const nextBundle: Bundle = {
+        archiveByteSize: 1_024,
         id: "00000000-0000-0000-0000-000000000102",
         platform: "ios",
         fileHash: "hash-next-zip",
@@ -1138,6 +1144,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
           {
             baseBundleId: "00000000-0000-0000-0000-000000000100",
             baseFileHash: "hash-older-bundle",
+            byteSize: 48,
             patchFileHash: "hash-older-bsdiff",
             patchStorageUri:
               "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000100/index.ios.bundle.bsdiff",
@@ -1145,6 +1152,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
           {
             baseBundleId: currentBundle.id,
             baseFileHash: "hash-old-bundle",
+            byteSize: 48,
             patchFileHash: "hash-bsdiff",
             patchStorageUri:
               "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000101/index.ios.bundle.bsdiff",
@@ -1228,6 +1236,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       const nextManifestStorageUri =
         "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000109/manifest.json";
       const nextBundle: Bundle = {
+        archiveByteSize: 1_024,
         id: "00000000-0000-0000-0000-000000000109",
         platform: "ios",
         fileHash: "hash-next-zip",

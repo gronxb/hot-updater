@@ -37,8 +37,8 @@ type DemoReleaseFields = Pick<
 
 type DemoDeployment = Bundle & DemoReleaseFields;
 
-type DemoDeploymentSeed = Omit<Bundle, "storageUri"> &
-  Partial<Pick<Bundle, "storageUri">> &
+type DemoDeploymentSeed = Omit<Bundle, "archiveByteSize" | "storageUri"> &
+  Partial<Pick<Bundle, "archiveByteSize" | "storageUri">> &
   Omit<DemoReleaseFields, "rolloutCohortCount" | "targetCohorts"> &
   Partial<Pick<DemoReleaseFields, "rolloutCohortCount" | "targetCohorts">>;
 
@@ -79,6 +79,7 @@ const createPatchArtifact = (
   baseBundleId: baseBundle.id,
   baseFileHash: baseBundle.fileHash,
   patchFileHash: toSeedHash("patch", patchKey),
+  byteSize: 350_000,
   patchStorageUri:
     `${createReleaseRootUri(bundleId)}/patches/${baseBundle.id}/` +
     `index.${baseBundle.platform}.bundle.bsdiff`,
@@ -102,6 +103,7 @@ const createBundle = (bundle: DemoDeploymentSeed): DemoDeployment => {
     metadata: undefined,
     ...bundle,
     storageUri: bundle.storageUri ?? createBundleUri(bundle.id),
+    archiveByteSize: bundle.archiveByteSize ?? 8_000_000,
     manifestStorageUri:
       bundle.manifestStorageUri ?? createManifestUri(bundle.id),
     assetBaseStorageUri:

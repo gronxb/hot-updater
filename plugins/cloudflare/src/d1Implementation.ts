@@ -127,6 +127,7 @@ const bundleValues = (row: BundleRow): readonly unknown[] => [
   row.file_hash,
   row.git_commit_hash,
   row.storage_uri,
+  row.archive_byte_size,
   row.metadata,
   row.manifest_storage_uri,
   row.manifest_file_hash,
@@ -140,6 +141,7 @@ const patchValues = (row: BundlePatchRow): readonly unknown[] => [
   row.base_file_hash,
   row.patch_file_hash,
   row.patch_storage_uri,
+  row.byte_size,
   row.order_index,
 ];
 
@@ -163,6 +165,7 @@ const insertQuery = (
         "file_hash",
         "git_commit_hash",
         "storage_uri",
+        "archive_byte_size",
         "metadata",
         "manifest_storage_uri",
         "manifest_file_hash",
@@ -178,6 +181,7 @@ const insertQuery = (
         "base_file_hash",
         "patch_file_hash",
         "patch_storage_uri",
+        "byte_size",
         "order_index",
       ];
       values = patchValues(input.data);

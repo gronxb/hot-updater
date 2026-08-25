@@ -303,6 +303,7 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
       fileHash: `${bundleId}-hash`,
       gitCommitHash: null,
       storageUri: `s3://${bucketName}/${bundleId}.zip`,
+      archiveByteSize: 3_000_000_001,
     });
     const now = Date.now();
     await commitReleaseCatalogMutations({

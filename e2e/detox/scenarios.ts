@@ -20,6 +20,7 @@ import { republishedCrashedBundleSkippedScenario } from "./scenarios/republished
 import { runtimeChannelCrashRestoreScenario } from "./scenarios/runtime-channel-crash-restore.ts";
 import { runtimeChannelSwitchResetScenario } from "./scenarios/runtime-channel-switch-reset.ts";
 import { sameBundleReleaseAdoptionScenario } from "./scenarios/same-bundle-release-adoption.ts";
+import { sizeAwareArtifactSelectionScenario } from "./scenarios/size-aware-artifact-selection.ts";
 import { slowOldArtifactAfterNewerInstallScenario } from "./scenarios/slow-old-artifact-after-newer-install.ts";
 import { staleCatalogAfterNewerGenerationScenario } from "./scenarios/stale-catalog-after-newer-generation.ts";
 import { targetCohortsOnlyScenario } from "./scenarios/target-cohorts-only.ts";
@@ -51,6 +52,7 @@ const registeredDetoxScenarios: readonly DetoxScenarioDefinition[] = [
   fingerprintInitialInstallScenario,
   catalogOnlyNoUpdateScenario,
   sameBundleReleaseAdoptionScenario,
+  sizeAwareArtifactSelectionScenario,
   staleCatalogAfterNewerGenerationScenario,
   slowOldArtifactAfterNewerInstallScenario,
   failedDownloadSameGenerationRetryScenario,

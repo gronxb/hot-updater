@@ -7,6 +7,7 @@ export type BundleMetadata = {
 export interface BundlePatchArtifact {
   baseBundleId: string;
   baseFileHash: string;
+  byteSize: number;
   patchFileHash: string;
   patchStorageUri: string;
 }
@@ -51,6 +52,10 @@ export interface Bundle {
    * @example "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip"
    */
   storageUri: string;
+  /**
+   * Byte length of the stored bundle archive.
+   */
+  archiveByteSize: number;
   /**
    * The git commit hash of the bundle.
    */

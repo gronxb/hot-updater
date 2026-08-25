@@ -45,6 +45,7 @@ const bundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => {
     fileHash: `hash-${id}`,
     gitCommitHash: null,
     storageUri: `storage://${id}`,
+    archiveByteSize: 3_000_000_001,
     ...overrides,
   };
   return value;
@@ -265,6 +266,7 @@ describe("standaloneRepository", () => {
           baseFileHash: base.fileHash,
           patchFileHash: "patch-hash",
           patchStorageUri: "storage://patch",
+          byteSize: 3_000_000_002,
         },
       ],
     });
@@ -302,6 +304,7 @@ describe("standaloneRepository", () => {
           baseFileHash: base.fileHash,
           patchFileHash: "replacement-patch-hash",
           patchStorageUri: "storage://replacement-patch",
+          byteSize: 3_000_000_002,
         },
       ],
     });
@@ -660,6 +663,7 @@ describe("standaloneRepository", () => {
           baseFileHash: base.fileHash,
           patchFileHash: "patch-hash",
           patchStorageUri: "storage://patch",
+          byteSize: 3_000_000_002,
         },
       ],
     });
@@ -802,6 +806,7 @@ describe("standaloneRepository", () => {
           baseFileHash: base.fileHash,
           patchFileHash: "patch-hash",
           patchStorageUri: "storage://patch",
+          byteSize: 3_000_000_002,
         },
       ],
     });

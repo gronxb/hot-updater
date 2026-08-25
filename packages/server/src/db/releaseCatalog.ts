@@ -136,12 +136,14 @@ export const createArtifactResolver = (input: {
         : databaseClient.getBundleById(currentBundleId),
     ]);
     if (targetBundle === null) return null;
+    const fileUrl = await input.resolveFileUrl(targetBundle.storageUri);
     const base: ArtifactInfo = {
       fileHash: targetBundle.fileHash,
-      fileUrl: await input.resolveFileUrl(targetBundle.storageUri),
+      fileUrl,
     };
     if (input.readStorageText === undefined) return base;
     const manifest = await resolveManifestArtifacts({
+      archiveUrlUsable: fileUrl !== null,
       currentBundle,
       readStorageText: input.readStorageText,
       resolveFileUrl: input.resolveFileUrl,
