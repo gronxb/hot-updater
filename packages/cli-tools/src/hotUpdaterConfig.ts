@@ -80,8 +80,10 @@ const CONFIG_FILE_NAME = "hot-updater.config.ts";
 const MANAGED_IMPORT_PACKAGES = new Set([
   "dotenv",
   "firebase-admin",
+  "firebase-admin/app",
   "hot-updater",
   "@aws-sdk/credential-provider-sso",
+  "@aws-sdk/credential-providers",
   "@hot-updater/aws",
   "@hot-updater/bare",
   "@hot-updater/cloudflare",
@@ -707,7 +709,7 @@ const rebuildImportBlock = (
   return {
     start: getTopLevelFullStart(source, firstImport),
     end: lastImport.end,
-    text: `${nextImportBlock}\n\n`,
+    text: nextImportBlock,
   };
 };
 
@@ -832,7 +834,7 @@ const mergeHotUpdaterConfigText = (
 
   const bodyEdit = rebuildManagedBody(
     existingSource,
-    getTopLevelFullStart(existingSource, existingConfig.exportDeclaration),
+    existingConfig.exportDeclaration.start,
     scaffold,
   );
   if (!bodyEdit) {

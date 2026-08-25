@@ -219,12 +219,15 @@ export default defineConfig({
 
     await fs.writeFile(
       configPath,
-      `import { dynamoDB, s3Storage } from "@hot-updater/aws";
+      `import { applicationDefault } from "firebase-admin/app";
+import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
 config({ path: ".env.hotupdater" });
+
+const customSetting = process.env.CUSTOM_SETTING;
 
 const commonOptions = {
   bucketName: process.env.CUSTOM_BUCKET_NAME!,
@@ -269,8 +272,14 @@ export default defineConfig({
     expect(updatedConfig).not.toContain("s3Storage(");
     expect(updatedConfig).not.toContain("dynamoDB(");
     expect(updatedConfig).not.toContain("commonOptions");
+    expect(updatedConfig).not.toContain("applicationDefault");
+    expect(updatedConfig).toContain("customSetting");
     expect(updatedConfig).toContain('packageName: "com.example.app"');
     expect(updatedConfig).toContain('privateKeyPath: "./keys/private-key.pem"');
+    expect(updatedConfig).not.toMatch(/\n{3,}/);
+
+    await writeHotUpdaterConfig(createSupabaseScaffold("bare"), configPath);
+    await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(updatedConfig);
   });
 
   it("updates build plugin only when the selected build changes", async () => {

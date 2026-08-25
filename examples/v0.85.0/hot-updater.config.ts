@@ -1,19 +1,11 @@
-import { fromSSO } from "@aws-sdk/credential-provider-sso";
-import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
+import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
 config({
   path: process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH ?? ".env.hotupdater",
 });
-
-const providerNamespace = process.env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE;
-
-const awsOptions = {
-  region: process.env.HOT_UPDATER_S3_REGION!,
-  credentials: fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! }),
-};
 
 export default defineConfig({
   nativeBuild: {
@@ -46,17 +38,14 @@ export default defineConfig({
   },
 
   build: bare({ enableHermes: true, resetCache: false }),
-  storage: s3Storage({
-    ...awsOptions,
-    bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
-    basePath: providerNamespace,
+  storage: supabaseStorage({
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
   }),
-  database: dynamoDB({
-    ...awsOptions,
-    tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
-    cloudfrontDistributionId:
-      process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
-    shouldWaitForInvalidation: true,
+  database: supabaseDatabase({
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
   fingerprint: {
     debug: true,
@@ -72,4 +61,6 @@ export default defineConfig({
     enabled: true,
     privateKeyPath: "./keys/private-key.pem",
   },
+
+  authorityId: "ncdytlrazlpfoyecmdlh",
 });
