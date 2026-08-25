@@ -422,6 +422,7 @@ const printTemplate = async (
       }),
     );
     p.note(formatApiKeyNote(apiKey), "API Key");
+    p.log.message("Store this API key separately in a secure place.");
   } catch (error) {
     if (error instanceof ExecaError) {
       p.log.error(error.stderr || error.stdout || error.message);

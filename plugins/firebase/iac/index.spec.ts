@@ -329,9 +329,9 @@ describe("Firebase project creation", () => {
     expect(p.note).toHaveBeenCalledWith(
       expect.stringContaining("HotUpdater.checkForUpdate"),
     );
-    expect(p.note).toHaveBeenCalledWith(
-      `${API_KEY}\n\nStore this API key separately in a secure place.`,
-      "API Key",
+    expect(p.note).toHaveBeenCalledWith(API_KEY, "API Key");
+    expect(p.log.message).toHaveBeenCalledWith(
+      "Store this API key separately in a secure place.",
     );
   });
 

@@ -788,6 +788,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     );
   }
   p.note(formatApiKeyNote(apiKey), "API Key");
+  p.log.message("Store this API key separately in a secure place.");
 
   p.log.message(
     `Next step: ${link(
