@@ -944,6 +944,10 @@ describe("resolveEdgeFunctionDenoConfig", () => {
       path.join(os.tmpdir(), "hot-updater-supabase-edge-"),
     );
     try {
+      await fs.copyFile(
+        path.resolve("plugins/supabase/supabase/edge-functions/index.ts"),
+        path.join(targetDir, "index.ts"),
+      );
       const result = await resolveEdgeFunctionDenoConfig(targetDir);
 
       expect(result.imports).toEqual({
@@ -964,6 +968,9 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         )}`,
         mime: `npm:mime@${resolvePackageVersion("mime", {
           searchFrom: path.resolve("plugins/plugin-core"),
+        })}`,
+        hono: `npm:hono@${resolvePackageVersion("hono", {
+          searchFrom: path.resolve("plugins/supabase"),
         })}`,
       });
 

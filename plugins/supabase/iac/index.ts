@@ -373,7 +373,10 @@ const resolveBareSpecifierImportTarget = async (
 
 const buildEdgeFunctionImports = async (targetDir: string) => {
   const imports: Record<string, string> = {};
-  const visitedWorkspacePackages = new Set<string>();
+  const vendoredWorkspacePackages = new Map<
+    string,
+    Awaited<ReturnType<typeof prepareVendoredPackageImport>>
+  >();
 
   const addWorkspacePackage = async ({
     importSpecifier,
@@ -385,16 +388,17 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
     exportName: string;
   }) => {
     const visitKey = `${packageName}:${exportName}`;
-    if (visitedWorkspacePackages.has(visitKey)) {
-      return;
+    const existingPackage = vendoredWorkspacePackages.get(visitKey);
+    if (existingPackage) {
+      return existingPackage;
     }
-    visitedWorkspacePackages.add(visitKey);
 
     const vendoredPackage = await prepareVendoredPackageImport({
       targetDir,
       packageName,
       exportName,
     });
+    vendoredWorkspacePackages.set(visitKey, vendoredPackage);
 
     imports[importSpecifier] = vendoredPackage.importMapPath;
 
@@ -422,6 +426,8 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
         vendoredPackage.packageRoot,
       );
     }
+
+    return vendoredPackage;
   };
 
   await addWorkspacePackage({
@@ -429,11 +435,27 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
     packageName: "@hot-updater/server",
     exportName: ".",
   });
-  await addWorkspacePackage({
+  const supabasePackage = await addWorkspacePackage({
     importSpecifier: "@hot-updater/supabase/edge",
     packageName: "@hot-updater/supabase",
     exportName: "./edge",
   });
+
+  const edgeFunctionEntryPath = path.join(targetDir, "index.ts");
+  if (await pathExists(edgeFunctionEntryPath)) {
+    const edgeFunctionSpecifiers = await collectBareImportSpecifiers(
+      edgeFunctionEntryPath,
+    );
+    for (const specifier of edgeFunctionSpecifiers) {
+      if (imports[specifier]) {
+        continue;
+      }
+      imports[specifier] = await resolveBareSpecifierImportTarget(
+        specifier,
+        supabasePackage.packageRoot,
+      );
+    }
+  }
 
   return imports;
 };
@@ -738,10 +760,9 @@ const deployEdgeFunction = async (
     );
   }
   await fs.mkdir(targetDir, { recursive: true });
-  const denoConfig = await resolveEdgeFunctionDenoConfig(targetDir);
-
   const targetPath = path.join(targetDir, "index.ts");
   await fs.writeFile(targetPath, edgeFunctionsCode);
+  const denoConfig = await resolveEdgeFunctionDenoConfig(targetDir);
   await fs.writeFile(
     path.join(targetDir, "deno.json"),
     `${JSON.stringify(denoConfig, null, 2)}\n`,
