@@ -21,6 +21,7 @@ const bundleRow = (id: string) => ({
   file_hash: "hash",
   git_commit_hash: null,
   storage_uri: "storage://bundle",
+  archive_byte_size: 3_000_000_001,
   metadata: {},
   manifest_storage_uri: null,
   manifest_file_hash: null,
@@ -91,6 +92,7 @@ describe("prismaAdapter capabilities", () => {
       base_file_hash: "base-hash",
       patch_file_hash: "patch-hash",
       patch_storage_uri: "storage://patch",
+      byte_size: 3_000_000_002,
       order_index: 0,
     };
 
@@ -154,6 +156,7 @@ describe("prismaAdapter capabilities", () => {
       base_file_hash: "base-hash",
       patch_file_hash: "patch-hash",
       patch_storage_uri: "storage://patch",
+      byte_size: 3_000_000_002,
       order_index: 0,
     };
     await plugin.models.channels.insert({

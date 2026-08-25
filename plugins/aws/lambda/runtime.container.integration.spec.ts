@@ -478,6 +478,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       fileHash: "hash",
       gitCommitHash: null,
       storageUri: "storage://unused",
+      archiveByteSize: 3_000_000_001,
     });
     await seedHotUpdater.insertBundle(bundle);
     await seedProductionRelease({ bundle, database });

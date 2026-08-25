@@ -28,6 +28,7 @@ const createBundle = (id: string) => ({
   fileHash: "hash",
   gitCommitHash: null,
   storageUri: "storage://bundle",
+  archiveByteSize: 1,
 });
 
 afterEach(() => {
@@ -73,6 +74,48 @@ describe("standalone management routes", () => {
         expect(String(input)).toBe(`https://example.test/bundles/${encoded}`);
         expect(init?.method).toBe(method);
       }
+    },
+  );
+
+  it.each([
+    {
+      name: "archive size",
+      response: { ...createBundle("response-id"), archiveByteSize: undefined },
+    },
+    {
+      name: "patch size",
+      response: {
+        ...createBundle("response-id"),
+        patches: [
+          {
+            baseBundleId: "base-id",
+            baseFileHash: "base-hash",
+            patchFileHash: "patch-hash",
+            patchStorageUri: "storage://patch",
+          },
+        ],
+      },
+    },
+  ])(
+    "rejects a bundle response without required $name",
+    async ({ response }) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(JSON.stringify(response), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }),
+        ),
+      );
+      const remote = createStandaloneBundleRemote({
+        baseUrl: "https://example.test",
+      });
+
+      await expect(remote.loadBundle("response-id")).rejects.toThrow(
+        "Invalid bundle response.",
+      );
     },
   );
 });

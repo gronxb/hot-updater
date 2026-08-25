@@ -52,8 +52,11 @@ describe("MongoDB migration", () => {
       listIndexes: () => ({ toArray: async () => [] }),
       createIndex: async () => "created",
     };
+    const command = vi.fn(
+      async (_input: Record<string, unknown>): Promise<void> => undefined,
+    );
     const database = {
-      command: vi.fn(async () => undefined),
+      command,
       createCollection: async () => undefined,
       collection: (name: string) =>
         name === "private_hot_updater_settings"
@@ -74,6 +77,65 @@ describe("MongoDB migration", () => {
       { unique: true },
     );
     expect(settings.get("schema.core")).toBe("1.0.0");
+    const commands = command.mock.calls.map(([input]) => input);
+    expect(commands.find(({ collMod }) => collMod === "bundles")).toMatchObject(
+      {
+        validationAction: "error",
+        validationLevel: "strict",
+        validator: {
+          $and: [
+            {
+              $jsonSchema: {
+                properties: {
+                  archive_byte_size: {
+                    bsonType: ["double", "int", "long"],
+                    maximum: Number.MAX_SAFE_INTEGER,
+                    minimum: 0,
+                  },
+                },
+                required: expect.arrayContaining(["archive_byte_size"]),
+              },
+            },
+            {
+              $expr: {
+                $eq: [{ $trunc: "$archive_byte_size" }, "$archive_byte_size"],
+              },
+            },
+          ],
+        },
+      },
+    );
+    expect(
+      commands.find(({ collMod }) => collMod === "bundle_patches"),
+    ).toMatchObject({
+      validationAction: "error",
+      validationLevel: "strict",
+      validator: {
+        $and: [
+          {
+            $jsonSchema: {
+              properties: {
+                byte_size: {
+                  bsonType: ["double", "int", "long"],
+                  maximum: Number.MAX_SAFE_INTEGER,
+                  minimum: 0,
+                },
+              },
+              required: expect.arrayContaining(["byte_size"]),
+            },
+          },
+          {
+            $expr: {
+              $and: expect.arrayContaining([
+                {
+                  $eq: [{ $trunc: "$byte_size" }, "$byte_size"],
+                },
+              ]),
+            },
+          },
+        ],
+      },
+    });
   });
 
   it("is a no-op when schema.core is already 1.0.0", async () => {

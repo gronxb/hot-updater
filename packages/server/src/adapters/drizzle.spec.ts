@@ -1,6 +1,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import {
   boolean,
+  doublePrecision,
   integer,
   jsonb,
   pgTable,
@@ -24,6 +25,7 @@ const bundles = pgTable("bundles", {
   file_hash: text("file_hash").notNull(),
   git_commit_hash: text("git_commit_hash"),
   storage_uri: text("storage_uri").notNull(),
+  archive_byte_size: doublePrecision("archive_byte_size").notNull(),
   metadata: jsonb("metadata").notNull(),
   manifest_storage_uri: text("manifest_storage_uri"),
   manifest_file_hash: text("manifest_file_hash"),
@@ -76,6 +78,7 @@ const bundlePatches = pgTable("bundle_patches", {
   base_file_hash: text("base_file_hash").notNull(),
   patch_file_hash: text("patch_file_hash").notNull(),
   patch_storage_uri: text("patch_storage_uri").notNull(),
+  byte_size: doublePrecision("byte_size").notNull(),
   order_index: integer("order_index").notNull(),
 });
 const bundleEvents = pgTable("bundle_events", {

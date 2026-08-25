@@ -15,12 +15,14 @@ const patches = [
     baseFileHash: "primary-base-hash",
     patchFileHash: "primary-patch-hash",
     patchStorageUri: "storage://primary.patch",
+    byteSize: 101,
   },
   {
     baseBundleId: "secondary-base",
     baseFileHash: "secondary-base-hash",
     patchFileHash: "secondary-patch-hash",
     patchStorageUri: "storage://secondary.patch",
+    byteSize: 202,
   },
 ] as const;
 

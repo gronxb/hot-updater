@@ -369,9 +369,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   const ssmKeyPairManager = new SSMKeyPairManager(bucketRegion, credentials);
 
-  const keyPair = await ssmKeyPairManager.getOrCreateKeyPair(
-    `/hot-updater/${bucketName}/keypair`,
-  );
+  const keyPair = await ssmKeyPairManager.getOrCreateKeyPair(ssmParameterName);
 
   // Create CloudFront key group
   const { publicKeyId, keyGroupId } =

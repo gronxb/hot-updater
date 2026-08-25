@@ -68,6 +68,7 @@ describe("mongoAdapter capabilities", () => {
       fileHash: "bundle-retry-hash",
       gitCommitHash: null,
       storageUri: "storage://bundle-retry",
+      archiveByteSize: 3_000_000_001,
     };
     await client.insertBundle(bundle);
 

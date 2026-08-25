@@ -74,6 +74,7 @@ export const bundlePatchesV100 = table(
     base_file_hash: column("base_file_hash", "string"),
     patch_file_hash: column("patch_file_hash", "string"),
     patch_storage_uri: column("patch_storage_uri", "string"),
+    byte_size: float("byte_size"),
     order_index: integer("order_index").defaultTo(0),
   },
   {
@@ -110,6 +111,13 @@ export const bundlePatchesV100 = table(
         columns: ["base_bundle_id"],
         referencedTable: "bundles",
         referencedColumns: ["id"],
+      }),
+    ],
+    checks: [
+      check({
+        name: "bundle_patches_byte_size_check",
+        expression: "byte_size >= 0 and byte_size <= 9007199254740991",
+        sqliteInline: true,
       }),
     ],
   },
@@ -159,6 +167,7 @@ export const bundlesV100 = table(
     file_hash: stringColumn("file_hash"),
     git_commit_hash: stringColumn("git_commit_hash").nullable(),
     storage_uri: stringColumn("storage_uri"),
+    archive_byte_size: float("archive_byte_size"),
     metadata: json("metadata").defaultTo({}),
     manifest_storage_uri: stringColumn("manifest_storage_uri").nullable(),
     manifest_file_hash: stringColumn("manifest_file_hash").nullable(),
@@ -166,6 +175,14 @@ export const bundlesV100 = table(
   },
   {
     indexes: [index("bundles_platform_idx", ["platform"], ["mongodb"])],
+    checks: [
+      check({
+        name: "bundles_archive_byte_size_check",
+        expression:
+          "archive_byte_size >= 0 and archive_byte_size <= 9007199254740991",
+        sqliteInline: true,
+      }),
+    ],
   },
 );
 

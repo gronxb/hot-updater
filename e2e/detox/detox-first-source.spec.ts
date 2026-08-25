@@ -43,6 +43,7 @@ const expectedScenarioModuleFiles = [
   "runtime-channel-crash-restore.ts",
   "runtime-channel-switch-reset.ts",
   "same-bundle-release-adoption.ts",
+  "size-aware-artifact-selection.ts",
   "slow-old-artifact-after-newer-install.ts",
   "stale-catalog-after-newer-generation.ts",
   "target-cohorts-only.ts",

@@ -5,6 +5,7 @@ import {
   getManifestAssetDownloadPath,
   getManifestAssetStoragePath,
   replaceStorageUriKeySuffix,
+  resolveManifestAssetStorageFileHash,
   resolveManifestAssetStorageUri,
 } from "./assetStorageLayout";
 
@@ -17,6 +18,33 @@ describe("assetStorageLayout", () => {
       }),
     ).toBe("sha256/ab/abcdef.br");
   });
+
+  it("uses an exact transferred-file hash for content-addressed storage", () => {
+    const fileHash = "a".repeat(64);
+    const downloadFileHash = "b".repeat(64);
+
+    expect(
+      getManifestAssetStoragePath({
+        assetPath: "index.ios.bundle.br",
+        downloadFileHash,
+        fileHash,
+      }),
+    ).toBe(`sha256/bb/${downloadFileHash}.br`);
+  });
+
+  it.each(["B".repeat(64), "not-a-hash", "", null])(
+    "falls back to the logical hash for malformed transferred hash %s",
+    (downloadFileHash) => {
+      const fileHash = "a".repeat(64);
+
+      expect(
+        resolveManifestAssetStorageFileHash({
+          downloadFileHash,
+          fileHash,
+        }),
+      ).toBe(fileHash);
+    },
+  );
 
   it("creates escaped child storage uris", () => {
     expect(
@@ -87,6 +115,20 @@ describe("assetStorageLayout", () => {
         fileHash: "abcdef",
       }),
     ).toBe("s3://bucket/assets/sha256/ab/abcdef.png");
+  });
+
+  it("resolves transferred payload uris through the layout entrypoint", () => {
+    const fileHash = "a".repeat(64);
+    const downloadFileHash = "b".repeat(64);
+
+    expect(
+      resolveManifestAssetStorageUri({
+        assetBaseStorageUri: "s3://bucket/assets",
+        assetPath: "index.ios.bundle.br",
+        downloadFileHash,
+        fileHash,
+      }),
+    ).toBe(`s3://bucket/assets/sha256/bb/${downloadFileHash}.br`);
   });
 
   it("uses one physical download-name rule for bundle assets", () => {

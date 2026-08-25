@@ -123,6 +123,56 @@ it("maps idempotent Channel inserts to the normalized table", async () => {
   expect(recorded[0]?.sql).toContain("ON CONFLICT(name) DO NOTHING");
 });
 
+it("persists required archive and patch byte sizes", async () => {
+  let recorded: readonly D1Statement[] = [];
+  const implementation = createD1Implementation({
+    query: () => Promise.reject(new Error("unexpected standalone query")),
+    async batch(statements) {
+      recorded = statements;
+      return statements.map(() => []);
+    },
+  });
+  const bundle = {
+    id: "bundle-1",
+    platform: "ios" as const,
+    file_hash: "bundle-hash",
+    git_commit_hash: null,
+    storage_uri: "storage://bundle",
+    archive_byte_size: 3_000_000_001,
+    metadata: {},
+    manifest_storage_uri: null,
+    manifest_file_hash: null,
+    asset_base_storage_uri: null,
+  };
+
+  await expect(
+    implementation.commit?.({
+      changes: [
+        { model: "bundles", operation: "insert", row: bundle },
+        {
+          model: "bundlePatches",
+          operation: "insert",
+          row: {
+            id: "patch-1",
+            bundle_id: bundle.id,
+            base_bundle_id: bundle.id,
+            base_file_hash: "base-hash",
+            patch_file_hash: "patch-hash",
+            patch_storage_uri: "storage://patch",
+            byte_size: 3_000_000_002,
+            order_index: 0,
+          },
+        },
+      ],
+    }),
+  ).resolves.toEqual({ committed: true });
+
+  expect(recorded[0]?.sql).toContain("archive_byte_size");
+  expect(recorded[0]?.params).toContain("3000000001");
+  expect(recorded[1]?.sql).toContain("byte_size");
+  expect(recorded[1]?.params).toContain("3000000002");
+});
+
 it("returns the canonical Channel row after a concurrent name conflict", async () => {
   const implementation = createD1Implementation({
     query: () => Promise.reject(new Error("unexpected standalone query")),

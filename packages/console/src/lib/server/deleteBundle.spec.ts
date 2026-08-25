@@ -16,6 +16,7 @@ const baseBundle: Bundle = {
   platform: "ios",
   fileHash: "abc123",
   storageUri: "s3://bucket/bundle.zip",
+  archiveByteSize: 3_000_000_001,
   gitCommitHash: "deadbeef",
 };
 

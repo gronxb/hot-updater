@@ -14,7 +14,7 @@ Think of an OTA bundle as a folder of files installed on the device.
 
 ```txt
 First OTA update:
-  download compressed archive -> install OTA bundle
+  download archive, or manifest + all target files -> install OTA bundle
 
 Later OTA update:
   local unchanged files
@@ -27,7 +27,7 @@ What the device downloads depends on what changed:
 
 | When this happens | What the device downloads |
 | --- | --- |
-| First OTA after native install | Normal compressed archive |
+| First OTA after native install | Archive when it is known to be no larger; otherwise the manifest and all target files |
 | Later OTA, unchanged file | Nothing; the file is copied locally |
 | Later OTA, changed regular asset | Complete new asset file |
 | Later OTA, changed Hermes bundle file | `.bsdiff` patch when available, otherwise the complete new Hermes bundle file |
@@ -66,6 +66,44 @@ Hermes bundles can also be patched at the byte level.
 Regular assets include files such as images and fonts. They are not binary
 patched; if they changed, the complete new asset file is downloaded. The Hermes
 bundle is the only file type that gets the extra `.bsdiff` patch optimization.
+
+### How the server chooses a route
+
+The server compares the normal manifest route with the compressed archive
+before returning the existing artifact response:
+
+```txt
+diffBytes = exact UTF-8 bytes of the stored target manifest
+  + sum(primary download bytes for changed assets)
+```
+
+An unchanged asset contributes zero bytes. For a changed asset, the primary
+download is a retained patch or, when no patch is retained, the complete served
+file. When both patch and file sizes are known, the patch is retained only when
+it is strictly smaller. Equal sizes use the complete file. If the archive is
+usable and every primary size is known, a `diffBytes` value equal to or larger
+than the archive size selects the archive-only response.
+
+`downloadByteSize` in a manifest describes the representation that the device
+actually downloads. For a Brotli asset, that means the compressed payload, not
+the uncompressed installed file. Its optional `downloadFileHash` is the
+SHA-256 of those exact served bytes and identifies their content-addressed
+object; the existing `fileHash` still identifies and verifies the logical
+installed file.
+
+Older manifests can omit this optional download metadata. Raw assets use the
+logical `fileHash` key and do not need `downloadFileHash`. If
+`downloadByteSize` is missing or invalid, a present served-payload hash is
+invalid, or a transformed representation is missing its served-payload hash,
+Hot Updater does not guess or probe storage with `HEAD` requests. It keeps the
+existing manifest-first behavior instead. The estimate covers only the normal
+primary downloads, not a complete-file or archive download that may happen
+after an exceptional patch failure.
+
+This choice is entirely server-side. It does not add a native route, artifact
+response field, or client selection step. The native runtime continues to use
+the archive or manifest descriptor returned by the server and keeps the same
+verification and fallback behavior.
 
 ## How to use it
 
@@ -135,9 +173,10 @@ from:
 
 This means devices currently on `OTA A` or `OTA B` can download a small patch to
 `OTA C` instead of the complete new Hermes bundle file. Devices that only have
-the base bundle still use the compressed archive for their first OTA update.
-Devices on an older OTA outside the selected patch bases download the complete
-new Hermes bundle file instead of a patch.
+the base bundle cannot reuse OTA files or apply one of these patches; the server
+chooses between the archive and a manifest containing all target files. Devices
+on an older OTA outside the selected patch bases download the complete new
+Hermes bundle file instead of a patch when the manifest route is selected.
 
 Notes:
 
@@ -168,11 +207,12 @@ Hot Updater prepares both the normal delivery path and the diffing data:
 
 ### First OTA update
 
-The first OTA update after installing the native app downloads the normal
-compressed archive.
-
 There is no older OTA bundle on the device yet, so Hot Updater cannot copy local
-files or apply a patch.
+OTA files or apply a patch. The manifest route therefore counts every target
+file plus the manifest itself. The server uses the same comparison as later
+updates: it selects the archive when the archive is known to be no larger, and
+can otherwise return the complete manifest route. Missing optional size
+metadata keeps the manifest-first behavior.
 
 ### Later OTA updates
 

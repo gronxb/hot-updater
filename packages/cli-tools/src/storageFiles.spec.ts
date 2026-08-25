@@ -5,7 +5,11 @@ import path from "node:path";
 import { createStoragePlugin } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { putStorageFile, writeStorageFile } from "./storageFiles";
+import {
+  getStorageFileByteSize,
+  putStorageFile,
+  writeStorageFile,
+} from "./storageFiles";
 
 const temporaryDirectories: string[] = [];
 
@@ -64,11 +68,27 @@ describe("putStorageFile", () => {
     await expect(
       putStorageFile(storage, "releases", filePath),
     ).resolves.toEqual({
+      byteSize: size,
       storageUri: "test://bucket/releases/bundle.zip",
     });
 
     expect(firstChunkSize).toBeGreaterThan(0);
     expect(firstChunkSize).toBeLessThan(size);
+  });
+
+  it("rejects a file size that cannot be represented exactly", async () => {
+    const stat = vi.spyOn(fs, "stat").mockResolvedValueOnce({
+      size: BigInt(Number.MAX_SAFE_INTEGER) + 1n,
+    } as never);
+
+    try {
+      await expect(getStorageFileByteSize("too-large.zip")).rejects.toThrow(
+        "non-negative safe integer",
+      );
+      expect(stat).toHaveBeenCalledWith("too-large.zip", { bigint: true });
+    } finally {
+      stat.mockRestore();
+    }
   });
 });
 

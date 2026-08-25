@@ -4,6 +4,7 @@ import {
   cancelJob,
   getJob,
   handleAssertBsdiffPatchApplied,
+  handleAssertBundleArtifactSelection,
   handleAssertBundleAssetsStored,
   handleAssertBundlePatchBases,
   handleAssertCrashHistory,
@@ -152,9 +153,42 @@ app.post("/e2e/assert-proxy", async (c) => {
   return c.json(handleAssertProxy(payload));
 });
 
+app.post("/e2e/assert-bundle-artifact-selection", async (c) => {
+  const payload = (await c.req.json()) as {
+    currentBundleId?: string;
+    selection?: "archive-only" | "manifest-diff";
+    targetBundleId?: string;
+  };
+  if (
+    !payload.currentBundleId ||
+    !payload.targetBundleId ||
+    (payload.selection !== "archive-only" &&
+      payload.selection !== "manifest-diff")
+  ) {
+    return c.json(
+      {
+        error:
+          "currentBundleId, targetBundleId, and a valid selection are required",
+      },
+      400,
+    );
+  }
+  return c.json(
+    handleAssertBundleArtifactSelection({
+      currentBundleId: payload.currentBundleId,
+      selection: payload.selection,
+      targetBundleId: payload.targetBundleId,
+    }),
+  );
+});
+
 app.post("/e2e/jobs/deploy-bundle", async (c) => {
   const payload = (await c.req.json()) as {
-    bundleProfile?: "archive300mb" | "default" | "multiAssetReplacement";
+    bundleProfile?:
+      | "archive300mb"
+      | "default"
+      | "multiAssetReplacement"
+      | "sizeAwareLargeDiff";
     channel?: string;
     compressStrategy?: "tar.br" | "tar.gz" | "zip";
     disabled?: boolean;
@@ -184,12 +218,13 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     payload.bundleProfile !== undefined &&
     payload.bundleProfile !== "default" &&
     payload.bundleProfile !== "archive300mb" &&
-    payload.bundleProfile !== "multiAssetReplacement"
+    payload.bundleProfile !== "multiAssetReplacement" &&
+    payload.bundleProfile !== "sizeAwareLargeDiff"
   ) {
     return c.json(
       {
         error:
-          "bundleProfile must be default, archive300mb, or multiAssetReplacement",
+          "bundleProfile must be default, archive300mb, multiAssetReplacement, or sizeAwareLargeDiff",
       },
       400,
     );

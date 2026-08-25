@@ -11,6 +11,7 @@ export const currentBundle: Bundle = {
   platform: "ios",
   storageUri:
     "r2://bucket/bundles/00000000-0000-0000-0000-000000000001/archive.zip",
+  archiveByteSize: 3_000_000_001,
   manifestStorageUri:
     "r2://bucket/bundles/00000000-0000-0000-0000-000000000001/manifest.json",
   manifestFileHash: "sig:current-manifest",
@@ -34,6 +35,7 @@ export const targetBundle: Bundle = {
       patchFileHash: "patch-hash",
       patchStorageUri:
         "r2://bucket/bundles/00000000-0000-0000-0000-000000000002/patches/00000000-0000-0000-0000-000000000001/index.ios.bundle.bsdiff",
+      byteSize: 3_000_000_002,
     },
   ],
 };

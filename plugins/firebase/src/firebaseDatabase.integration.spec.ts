@@ -61,6 +61,7 @@ const storedBundleRow = (id: string) => ({
   file_hash: `hash-${id}`,
   git_commit_hash: null,
   storage_uri: `gs://bucket/${id}.zip`,
+  archive_byte_size: 3_000_000_001,
   metadata: {},
 });
 
@@ -70,6 +71,7 @@ const bundleFixture = (suffix: string) => ({
   fileHash: `hash-${suffix}`,
   gitCommitHash: null,
   storageUri: `storage://bundles/${suffix}.zip`,
+  archiveByteSize: 3_000_000_001,
   metadata: { app_version: suffix },
 });
 

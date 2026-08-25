@@ -74,6 +74,11 @@ export const parseMongoBundleRow = (
     file_hash: string(input["file_hash"], source),
     git_commit_hash: nullableString(input["git_commit_hash"], source),
     storage_uri: string(input["storage_uri"], source),
+    archive_byte_size: integer(
+      input["archive_byte_size"],
+      source,
+      Number.MAX_SAFE_INTEGER,
+    ),
     metadata: metadata(input["metadata"], source),
     manifest_storage_uri: nullableString(input["manifest_storage_uri"], source),
     manifest_file_hash: nullableString(input["manifest_file_hash"], source),
@@ -107,6 +112,7 @@ export const parseMongoPatchRow = (
     base_file_hash: string(input["base_file_hash"], source),
     patch_file_hash: string(input["patch_file_hash"], source),
     patch_storage_uri: string(input["patch_storage_uri"], source),
+    byte_size: integer(input["byte_size"], source, Number.MAX_SAFE_INTEGER),
     order_index: integer(input["order_index"], source),
   };
 };

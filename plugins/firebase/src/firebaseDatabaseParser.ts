@@ -11,6 +11,7 @@ import {
 
 import {
   boolean,
+  byteSize,
   FirebaseDatabaseDataError,
   nullableString,
   number,
@@ -53,6 +54,7 @@ export const parseFirebaseBundleRow = (
     file_hash: string(property(input, "file_hash"), source),
     git_commit_hash: nullableString(property(input, "git_commit_hash"), source),
     storage_uri: string(property(input, "storage_uri"), source),
+    archive_byte_size: byteSize(property(input, "archive_byte_size"), source),
     metadata: metadata(property(input, "metadata"), source),
     manifest_storage_uri: nullableString(
       property(input, "manifest_storage_uri"),
@@ -92,6 +94,7 @@ export const parseFirebasePatchRow = (
     base_file_hash: string(property(input, "base_file_hash"), source),
     patch_file_hash: string(property(input, "patch_file_hash"), source),
     patch_storage_uri: string(property(input, "patch_storage_uri"), source),
+    byte_size: byteSize(property(input, "byte_size"), source),
     order_index: number(property(input, "order_index"), source),
   };
 };

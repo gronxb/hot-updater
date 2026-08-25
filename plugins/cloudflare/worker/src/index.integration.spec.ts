@@ -142,6 +142,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
         fileHash: "hash",
         gitCommitHash: null,
         storageUri: "storage://unused",
+        archiveByteSize: 3_000_000_001,
       },
     ]);
 

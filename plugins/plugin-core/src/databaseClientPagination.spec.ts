@@ -16,6 +16,7 @@ const createBundle = (id: string): Bundle => ({
   fileHash: `hash-${id}`,
   gitCommitHash: null,
   storageUri: `storage://${id}`,
+  archiveByteSize: 3_000_000_001,
 });
 
 describe("database client pagination", () => {
@@ -79,6 +80,7 @@ describe("database client pagination", () => {
       channel: `release-${index}`,
       channel_id: `channel-${index}`,
       storage_uri: `storage://bundle-${index}.zip`,
+      archive_byte_size: 3_000_000_001 + index,
       target_app_version: "1.0.0",
       fingerprint_hash: null,
       metadata: {},
@@ -196,6 +198,7 @@ const bundlesRow = (bundle: Bundle): BundleRow => ({
   file_hash: bundle.fileHash,
   git_commit_hash: bundle.gitCommitHash,
   storage_uri: bundle.storageUri,
+  archive_byte_size: bundle.archiveByteSize,
   metadata: {},
   manifest_storage_uri: null,
   manifest_file_hash: null,

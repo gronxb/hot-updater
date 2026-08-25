@@ -30,6 +30,7 @@ describe("DynamoDB aggregate mutations", () => {
       fileHash: "base-hash",
       gitCommitHash: null,
       storageUri: "storage://base.zip",
+      archiveByteSize: 3_000_000_001,
       metadata: {},
     } as const;
     const bundle = {
@@ -42,6 +43,7 @@ describe("DynamoDB aggregate mutations", () => {
           baseFileHash: baseBundle.fileHash,
           patchFileHash: "first-patch-hash",
           patchStorageUri: "storage://first.patch",
+          byteSize: 3_000_000_002,
         },
       ],
     };
@@ -55,6 +57,7 @@ describe("DynamoDB aggregate mutations", () => {
           baseFileHash: baseBundle.fileHash,
           patchFileHash: "replacement-patch-hash",
           patchStorageUri: "storage://replacement.patch",
+          byteSize: 3_000_000_003,
         },
       ],
     });

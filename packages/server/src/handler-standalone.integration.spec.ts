@@ -86,6 +86,7 @@ const createTestBundle = (overrides?: Partial<Bundle>): Bundle => ({
   fileHash: "test-hash",
   gitCommitHash: null,
   storageUri: "test://storage",
+  archiveByteSize: 3_000_000_001,
   ...overrides,
 });
 

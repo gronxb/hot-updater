@@ -32,6 +32,7 @@ const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
   fileHash: `hash-${id}`,
   gitCommitHash: null,
   storageUri: `mock://artifacts/${id}.zip`,
+  archiveByteSize: 3_000_000_001,
   ...overrides,
 });
 

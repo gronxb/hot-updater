@@ -15,6 +15,7 @@ export const runtimeBundle: Bundle = {
   fileHash: "hash123",
   gitCommitHash: null,
   storageUri: "s3://test-bucket/bundles/bundle.zip",
+  archiveByteSize: 3_000_000_001,
 };
 
 export const createRuntimeStorage = (

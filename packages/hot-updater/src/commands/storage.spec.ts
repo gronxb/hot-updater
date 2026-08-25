@@ -83,9 +83,11 @@ const IMAGE_HASH = "a".repeat(64);
 const BUNDLE_HASH = "b".repeat(64);
 const ORPHAN_HASH = "c".repeat(64);
 const YOUNG_ORPHAN_HASH = "d".repeat(64);
+const DOWNLOAD_HASH = "e".repeat(64);
 const ORPHAN_PATCH_KEY = `bundles/${LIVE_BUNDLE_ID}/patches/${DEAD_BUNDLE_ID}/index.ios.bundle.bsdiff`;
 
 const liveBundle: Bundle = {
+  archiveByteSize: 100,
   assetBaseStorageUri: "s3://bucket/assets",
   fileHash: "archive-hash",
   gitCommitHash: null,
@@ -123,6 +125,7 @@ const liveBundleWithPatch: Bundle = {
     {
       baseBundleId: DEAD_BUNDLE_ID,
       baseFileHash: "base-hash",
+      byteSize: 10,
       patchFileHash: "patch-hash",
       patchStorageUri: `s3://bucket/${ORPHAN_PATCH_KEY}`,
     },
@@ -230,6 +233,66 @@ describe("handleStoragePrune", () => {
       expect.stringContaining("separate storage basePath"),
     );
     expect(mockDatabasePlugin.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("preserves the exact transferred payload referenced by downloadFileHash", async () => {
+    mockStorageNode.get.mockImplementation(async () => ({
+      response: new Response(
+        JSON.stringify({
+          bundleId: LIVE_BUNDLE_ID,
+          assets: {
+            "index.ios.bundle": {
+              downloadFileHash: DOWNLOAD_HASH,
+              fileHash: BUNDLE_HASH,
+            },
+          },
+        }),
+      ),
+    }));
+    mockStorageNode.listObjects.mockResolvedValue([
+      object(
+        `assets/sha256/${DOWNLOAD_HASH.slice(0, 2)}/${DOWNLOAD_HASH}.br`,
+        old,
+      ),
+      object(`assets/sha256/${BUNDLE_HASH.slice(0, 2)}/${BUNDLE_HASH}.br`, old),
+    ]);
+    const { handleStoragePrune } = await import("./storage");
+
+    await handleStoragePrune({ yes: true });
+
+    expect(mockStorageNode.deleteObjects).toHaveBeenCalledWith([
+      `assets/sha256/${BUNDLE_HASH.slice(0, 2)}/${BUNDLE_HASH}.br`,
+    ]);
+  });
+
+  it("falls back to the logical hash for a malformed downloadFileHash", async () => {
+    mockStorageNode.get.mockImplementation(async () => ({
+      response: new Response(
+        JSON.stringify({
+          bundleId: LIVE_BUNDLE_ID,
+          assets: {
+            "index.ios.bundle": {
+              downloadFileHash: "not-a-sha256",
+              fileHash: BUNDLE_HASH,
+            },
+          },
+        }),
+      ),
+    }));
+    mockStorageNode.listObjects.mockResolvedValue([
+      object(`assets/sha256/${BUNDLE_HASH.slice(0, 2)}/${BUNDLE_HASH}.br`, old),
+      object(
+        `assets/sha256/${DOWNLOAD_HASH.slice(0, 2)}/${DOWNLOAD_HASH}.br`,
+        old,
+      ),
+    ]);
+    const { handleStoragePrune } = await import("./storage");
+
+    await handleStoragePrune({ yes: true });
+
+    expect(mockStorageNode.deleteObjects).toHaveBeenCalledWith([
+      `assets/sha256/${DOWNLOAD_HASH.slice(0, 2)}/${DOWNLOAD_HASH}.br`,
+    ]);
   });
 
   it("deletes an old unreferenced patch below a live Bundle", async () => {

@@ -39,6 +39,7 @@ const deployment = (
   releaseOverrides: Partial<DeployReleasePolicy> = {},
 ): DeploymentSeed => ({
   bundle: {
+    archiveByteSize: 1024,
     fileHash: `hash-${id}`,
     gitCommitHash: null,
     id,
