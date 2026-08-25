@@ -1,5 +1,16 @@
 # @hot-updater/react-native
 
+## 0.36.5
+
+### Patch Changes
+
+- 1437cd0: Reject incomplete manifest-driven bundles before installing or launching them.
+- 88dbc44: Handle standard trailing slashes on Android archive directory entries without treating them as malicious paths.
+  - @hot-updater/cli-tools@0.36.5
+  - @hot-updater/core@0.36.5
+  - @hot-updater/js@0.36.5
+  - @hot-updater/plugin-core@0.36.5
+
 ## 0.36.4
 
 ### Patch Changes
