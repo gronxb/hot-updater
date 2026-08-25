@@ -1,4 +1,4 @@
 interface:
   display_name: "HotUpdater Agent"
-  short_description: "Run dashboard E2E through the local CLI"
-  default_prompt: "Use $hot-updater-agent to run `hot-updater-agent verify ...`, inspect failures with `reason <task-id>`, and diagnose provider bottlenecks with `hot-updater-agent -json timeline <profile> -limit 10`."
+  short_description: "Run full E2E or prepare a manual QA environment"
+  default_prompt: "Use $hot-updater-agent to choose full `verify` or a leased `manual start` environment. For manual QA consume the JSON handoff commands and always call `manual stop`."
