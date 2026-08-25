@@ -13,7 +13,7 @@ import {
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { transformEnv } from "@hot-updater/cli-tools";
+import { resolvePackageVersion, transformEnv } from "@hot-updater/cli-tools";
 import {
   type Bundle,
   type GetBundlesArgs,
@@ -935,6 +935,9 @@ const writeSupabaseRuntimeFiles = async ({
       "@hot-updater/supabase": pathToFileURL(
         path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),
       ).href,
+      hono: `npm:hono@${resolvePackageVersion("hono", {
+        searchFrom: path.join(WORKSPACE_ROOT, "plugins/supabase"),
+      })}`,
     },
   };
 

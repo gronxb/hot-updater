@@ -4,7 +4,7 @@ import {
   supabaseEdgeFunctionDatabase,
   supabaseEdgeFunctionStorage,
 } from "@hot-updater/supabase";
-import { Hono } from "npm:hono";
+import { Hono } from "hono";
 
 declare global {
   var HotUpdater: {

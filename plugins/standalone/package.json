@@ -51,7 +51,7 @@
     "@types/mime": "^2.0.3",
     "@types/node": "catalog:",
     "msw": "^2.7.0",
-    "verkit": "0.3.2",
+    "verkit": "catalog:",
     "vitest": "catalog:"
   },
   "inlinedDependencies": {

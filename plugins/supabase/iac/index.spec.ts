@@ -858,6 +858,9 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         mime: `npm:mime@${resolvePackageVersion("mime", {
           searchFrom: path.resolve("plugins/plugin-core"),
         })}`,
+        hono: `npm:hono@${resolvePackageVersion("hono", {
+          searchFrom: path.resolve("plugins/supabase"),
+        })}`,
         verkit: `npm:verkit@${resolvePackageVersion("verkit", {
           searchFrom: path.resolve("plugins/plugin-core"),
         })}`,

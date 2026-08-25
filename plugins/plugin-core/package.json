@@ -47,7 +47,7 @@
     "@hot-updater/js": "workspace:*",
     "es-toolkit": "^1.32.0",
     "mime": "^4.0.4",
-    "verkit": "0.3.2"
+    "verkit": "catalog:"
   },
   "devDependencies": {
     "@hot-updater/test-utils": "workspace:*",

@@ -60,7 +60,7 @@
     "@hot-updater/server": "workspace:*",
     "@supabase/supabase-js": "catalog:supabase",
     "hono": "catalog:hono",
-    "uuidv7": "^1.0.2"
+    "uuidv7": "catalog:"
   },
   "devDependencies": {
     "@electric-sql/pglite": "catalog:db",

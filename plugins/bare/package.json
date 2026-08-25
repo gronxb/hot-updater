@@ -27,7 +27,7 @@
   "dependencies": {
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
-    "uuidv7": "^1.0.2"
+    "uuidv7": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
