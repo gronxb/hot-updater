@@ -396,11 +396,23 @@ export interface StoragePlugin {
   readonly deleteObjects?: (keys: readonly string[]) => Promise<void>;
 }
 
-/**
- * Signing configuration type with conditional required fields.
- * When enabled is true, privateKeyPath is required.
- * When enabled is false, privateKeyPath is optional.
- */
+export interface BundleSigningPlugin {
+  readonly name: string;
+  /** Returns the RSA public key used by this provider in SPKI PEM format. */
+  readonly getPublicKey: () => Promise<{ readonly publicKey: string }>;
+  /**
+   * Signs `message` with RSA PKCS#1 v1.5 SHA-256.
+   *
+   * Hot Updater passes the 32 raw bytes decoded from a SHA-256 file hash.
+   * Remote signing services must treat this value as the raw message, not as
+   * an already-computed digest.
+   */
+  readonly sign: (input: {
+    readonly message: Uint8Array;
+  }) => Promise<{ readonly signature: Uint8Array }>;
+}
+
+/** Bundle signing configuration with legacy file support. */
 export type SigningConfig =
   | {
       /**
@@ -413,6 +425,8 @@ export type SigningConfig =
        * Optional when signing is disabled.
        */
       privateKeyPath?: string;
+      provider?: never;
+      publicKeyPath?: never;
     }
   | {
       /**
@@ -431,6 +445,22 @@ export type SigningConfig =
        * @example "/secure/path/to/private-key.pem"
        */
       privateKeyPath: string;
+      provider?: never;
+      publicKeyPath?: never;
+    }
+  | {
+      /** Enable bundle signing during deployment. */
+      enabled: true;
+      /** Provider that performs signing without exposing private key bytes. */
+      provider: BundleSigningPlugin;
+      /**
+       * Path to the provider's public key in SPKI PEM format.
+       *
+       * The public key is safe to commit and lets native builds embed it
+       * without granting access to the signing provider.
+       */
+      publicKeyPath: string;
+      privateKeyPath?: never;
     };
 
 /**

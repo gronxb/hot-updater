@@ -146,6 +146,15 @@ describe("AppSidebar analytics navigation", () => {
     ).toBe("true");
   });
 
+  it("always exposes the read-only Bundle signing destination", () => {
+    pathname = "/signing";
+    renderSidebar(capability("unsupported"));
+
+    const signing = screen.getByRole("link", { name: /bundle signing/i });
+    expect(signing.getAttribute("href")).toBe("/signing");
+    expect(signing.getAttribute("data-active")).toBe("true");
+  });
+
   it("shows one Analytics destination after support is confirmed", () => {
     renderSidebar(capability("supported"));
 

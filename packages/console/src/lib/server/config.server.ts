@@ -6,13 +6,13 @@ import {
 } from "@hot-updater/plugin-core";
 import { getRequest } from "@tanstack/react-start/server";
 
-import type { HotUpdaterConsoleConfig } from "../../index";
+import type { ResolvedHotUpdaterConsoleConfig } from "../../index";
 import { requireConsoleAccess } from "./auth.server";
 import { resolveConsoleConfig } from "./console-runtime.server";
 
-type ResolvedConsoleConfig = HotUpdaterConsoleConfig & {
+type ResolvedConsoleConfig = ResolvedHotUpdaterConsoleConfig & {
   readonly authorityId: string;
-  readonly console: NonNullable<HotUpdaterConsoleConfig["console"]>;
+  readonly console: NonNullable<ResolvedHotUpdaterConsoleConfig["console"]>;
 };
 
 let configPromise: Promise<ResolvedConsoleConfig> | null = null;

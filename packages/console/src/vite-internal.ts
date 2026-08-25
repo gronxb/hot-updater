@@ -136,6 +136,7 @@ const createConsoleModulesPlugin = (mode: ConsoleModuleMode): Plugin => {
             "    authorityId: config.authorityId,",
             "    console: { gitUrl: config.console.gitUrl },",
             "    database: config.database,",
+            "    signing: config.signing,",
             "    storage: config.storage,",
             "  };",
             "};",

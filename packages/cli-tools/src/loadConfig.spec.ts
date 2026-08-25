@@ -31,6 +31,9 @@ describe("ConfigResponse", () => {
       "zip" | "tar.br" | "tar.gz"
     >();
     expectTypeOf<ConfigResponse["console"]["port"]>().toEqualTypeOf<number>();
+    expectTypeOf<ConfigResponse["signing"]>().toEqualTypeOf<
+      ConfigInput["signing"]
+    >();
 
     expectTypeOf<ConfigResponse["storage"]["getDownloadUrl"]>().toEqualTypeOf<
       ConfigInput["storage"]["getDownloadUrl"]
@@ -64,6 +67,7 @@ describe("loadConfig", () => {
 
   afterEach(async () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
+    Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_SIGNING_PROVIDER__");
     vi.restoreAllMocks();
   });
 
@@ -148,6 +152,41 @@ describe("loadConfig", () => {
     const config = await loadConfig(null);
 
     expect(config.authorityId).toBe("from-null-context");
+  });
+
+  it("preserves the configured signing provider identity", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        "const provider = {",
+        "  name: 'test-signer',",
+        "  getPublicKey: async () => ({ publicKey: 'public-key' }),",
+        "  sign: async ({ message }) => ({ signature: message }),",
+        "};",
+        "globalThis.__HOT_UPDATER_TEST_SIGNING_PROVIDER__ = provider;",
+        "export default {",
+        "  signing: {",
+        "    enabled: true,",
+        "    provider,",
+        "    publicKeyPath: './public-key.pem',",
+        "  },",
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    const config = await loadConfig(null);
+    const signing = config.signing;
+
+    expect(signing?.enabled).toBe(true);
+    if (!signing?.enabled || !("provider" in signing)) {
+      throw new Error("Expected provider signing config");
+    }
+    expect(signing.provider).toBe(
+      Reflect.get(globalThis, "__HOT_UPDATER_TEST_SIGNING_PROVIDER__"),
+    );
   });
 
   it("preserves legacy merge semantics for arrays in user config", async () => {

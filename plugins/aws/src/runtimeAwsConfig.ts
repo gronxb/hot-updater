@@ -1,3 +1,4 @@
+import type { KMSClientConfig } from "@aws-sdk/client-kms";
 import type { S3ClientConfig } from "@aws-sdk/client-s3";
 import type { SSMClientConfig } from "@aws-sdk/client-ssm";
 
@@ -45,6 +46,17 @@ export const applyS3RuntimeAwsConfig = (
 export const applySsmRuntimeAwsConfig = (
   config: SSMClientConfig,
 ): SSMClientConfig => {
+  const endpoint = config.endpoint ?? getAwsEndpointUrl();
+
+  return {
+    ...config,
+    endpoint,
+  };
+};
+
+export const applyKmsRuntimeAwsConfig = (
+  config: KMSClientConfig,
+): KMSClientConfig => {
   const endpoint = config.endpoint ?? getAwsEndpointUrl();
 
   return {

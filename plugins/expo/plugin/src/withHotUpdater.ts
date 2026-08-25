@@ -1,6 +1,8 @@
+import { createPublicKey } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "path";
 
+import type { SigningConfig } from "@hot-updater/plugin-core";
 import type { ExpoConfig } from "expo/config";
 import {
   createRunOncePlugin,
@@ -17,6 +19,24 @@ import { transformAndroid, transformIOS } from "./transformers";
 
 const loadCliTools = () => import("@hot-updater/cli-tools");
 const loadHotUpdater = () => import("hot-updater");
+
+const canonicalizeRsaSpkiPublicKey = (publicKeyPem: string): string => {
+  const trimmed = publicKeyPem.trim();
+  if (
+    !trimmed.startsWith("-----BEGIN PUBLIC KEY-----") ||
+    !trimmed.endsWith("-----END PUBLIC KEY-----") ||
+    trimmed.includes("PRIVATE KEY")
+  ) {
+    throw new Error("not spki");
+  }
+
+  const publicKey = createPublicKey(trimmed);
+  if (publicKey.asymmetricKeyType !== "rsa") {
+    throw new Error("not rsa");
+  }
+
+  return publicKey.export({ format: "pem", type: "spki" }).toString().trim();
+};
 
 const ANDROID_META_DATA_KEYS = {
   channel: "com.hotupdater.CHANNEL",
@@ -95,17 +115,63 @@ const getFingerprint = async () => {
 /**
  * Extract public key for embedding in native configs.
  * Supports multiple sources with priority order:
- * 1. HOT_UPDATER_PRIVATE_KEY environment variable
- * 2. Private key file (extract public key)
- * 3. Public key file (derived from privateKeyPath)
+ * 1. Checked-in public key file
+ * 2. HOT_UPDATER_PRIVATE_KEY environment variable (legacy fallback)
+ * 3. Private key file (legacy fallback)
  * 4. Skip with warning (graceful fallback)
  */
 export const getPublicKeyFromConfig = async (
-  signingConfig: { enabled?: boolean; privateKeyPath?: string } | undefined,
+  signingConfig: SigningConfig | undefined,
 ): Promise<string | null> => {
   // If signing not enabled, no public key needed
   if (!signingConfig?.enabled) {
     return null;
+  }
+
+  const isProviderSigning =
+    "provider" in signingConfig && signingConfig.provider !== undefined;
+  const configuredPublicKeyPath =
+    isProviderSigning && "publicKeyPath" in signingConfig
+      ? signingConfig.publicKeyPath
+      : undefined;
+  const privateKeyPath =
+    "privateKeyPath" in signingConfig && signingConfig.privateKeyPath
+      ? path.resolve(process.cwd(), signingConfig.privateKeyPath)
+      : undefined;
+  const publicKeyPath = configuredPublicKeyPath
+    ? path.resolve(process.cwd(), configuredPublicKeyPath)
+    : privateKeyPath
+      ? path.join(path.dirname(privateKeyPath), "public-key.pem")
+      : undefined;
+
+  if (isProviderSigning) {
+    try {
+      if (!configuredPublicKeyPath?.trim()) {
+        throw new Error("missing public key path");
+      }
+      return canonicalizeRsaSpkiPublicKey(
+        await readFile(
+          path.resolve(process.cwd(), configuredPublicKeyPath),
+          "utf8",
+        ),
+      );
+    } catch {
+      throw new Error(
+        "[hot-updater] Failed to load publicKeyPath for provider-backed bundle signing.",
+      );
+    }
+  }
+
+  if (publicKeyPath) {
+    try {
+      const publicKey = await readFile(publicKeyPath, "utf8");
+      return createPublicKey(publicKey)
+        .export({ format: "pem", type: "spki" })
+        .toString()
+        .trim();
+    } catch {
+      // Legacy projects may only have a private key available.
+    }
   }
 
   const envPrivateKey = process.env.HOT_UPDATER_PRIVATE_KEY;
@@ -130,55 +196,27 @@ export const getPublicKeyFromConfig = async (
     }
   }
 
-  // If no privateKeyPath configured, can't proceed with file-based methods
-  if (!signingConfig.privateKeyPath) {
+  // If no legacy privateKeyPath is configured, no fallback remains.
+  if (!privateKeyPath) {
     console.warn(
       "[hot-updater] WARNING: signing.enabled is true but no privateKeyPath configured.\n" +
-        "Public key will not be embedded. Set HOT_UPDATER_PRIVATE_KEY environment variable or configure privateKeyPath.",
+        "Public key will not be embedded. Configure publicKeyPath.",
     );
     return null;
   }
 
-  // Resolve paths
-  const privateKeyPath = path.isAbsolute(signingConfig.privateKeyPath)
-    ? signingConfig.privateKeyPath
-    : path.resolve(process.cwd(), signingConfig.privateKeyPath);
-
-  const publicKeyPath = privateKeyPath.replace(
-    /private-key\.pem$/,
-    "public-key.pem",
-  );
-
   try {
-    // Priority 2: Private key file (existing method)
+    // Legacy fallback: extract the public key from the private key.
     const { getPublicKeyFromPrivate, loadPrivateKey } = await loadHotUpdater();
     const privateKeyPEM = await loadPrivateKey(privateKeyPath);
     const publicKeyPEM = getPublicKeyFromPrivate(privateKeyPEM);
     console.log(`[hot-updater] Extracted public key from ${privateKeyPath}`);
     return publicKeyPEM.trim();
   } catch {
-    try {
-      // Priority 3: Public key file (fallback)
-      const publicKeyPEM = await readFile(publicKeyPath, "utf-8");
-      console.log(`[hot-updater] Using public key from ${publicKeyPath}`);
-      return publicKeyPEM.trim();
-    } catch {
-      // Priority 4: All sources failed - throw error
-      throw new Error(
-        "[hot-updater] Failed to load public key for bundle signing.\n\n" +
-          "Signing is enabled (signing.enabled: true) but no public key sources found.\n\n" +
-          "For EAS builds, use EAS Secrets:\n" +
-          '  eas env:create --name HOT_UPDATER_PRIVATE_KEY --value "$(cat keys/private-key.pem)"\n\n' +
-          "Or add to eas.json:\n" +
-          '  "env": { "HOT_UPDATER_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\\n..." }\n\n' +
-          "For local development:\n" +
-          "  npx hot-updater keys generate\n\n" +
-          `Searched locations:\n` +
-          `  - HOT_UPDATER_PRIVATE_KEY environment variable\n` +
-          `  - Private key file: ${privateKeyPath}\n` +
-          `  - Public key file: ${publicKeyPath}\n`,
-      );
-    }
+    throw new Error(
+      "[hot-updater] Failed to load the public key for bundle signing. " +
+        "Configure publicKeyPath or generate a matching public-key.pem file.",
+    );
   }
 };
 
@@ -222,21 +260,39 @@ const withHotUpdaterNativeCode = (config: ExpoConfig) => {
 const withHotUpdaterConfigAsync =
   (props: HotUpdaterConfig) => (config: ExpoConfig) => {
     const channel = props.channel || "production";
+    let hotUpdaterConfigPromise:
+      | ReturnType<Awaited<ReturnType<typeof loadCliTools>>["loadConfig"]>
+      | undefined;
+    const getHotUpdaterConfig = async () => {
+      if (!hotUpdaterConfigPromise) {
+        const { loadConfig } = await loadCliTools();
+        hotUpdaterConfigPromise = loadConfig(null);
+      }
+      return hotUpdaterConfigPromise;
+    };
+    let publicKeyPromise: Promise<string | null> | undefined;
+    const getPublicKey = async () => {
+      if (!publicKeyPromise) {
+        publicKeyPromise = getHotUpdaterConfig().then(($config) =>
+          getPublicKeyFromConfig($config.signing),
+        );
+      }
+      return publicKeyPromise;
+    };
 
     let modifiedConfig = config;
 
     // === iOS: Add channel and fingerprint to Info.plist ===
     modifiedConfig = withInfoPlist(modifiedConfig, async (cfg) => {
       let fingerprintHash = null;
-      const { loadConfig } = await loadCliTools();
-      const config = await loadConfig(null);
-      if (config.updateStrategy !== "appVersion") {
+      const hotUpdaterConfig = await getHotUpdaterConfig();
+      if (hotUpdaterConfig.updateStrategy !== "appVersion") {
         const fingerprint = await getFingerprint();
         fingerprintHash = fingerprint.ios.hash;
       }
 
       // Load public key if signing is enabled
-      const publicKey = await getPublicKeyFromConfig(config.signing);
+      const publicKey = await getPublicKey();
 
       cfg.modResults.HOT_UPDATER_CHANNEL = channel;
       if (fingerprintHash) {
@@ -244,6 +300,8 @@ const withHotUpdaterConfigAsync =
       }
       if (publicKey) {
         cfg.modResults.HOT_UPDATER_PUBLIC_KEY = publicKey;
+      } else {
+        delete cfg.modResults.HOT_UPDATER_PUBLIC_KEY;
       }
       return cfg;
     });
@@ -251,15 +309,14 @@ const withHotUpdaterConfigAsync =
     // === Android: Add channel and fingerprint to AndroidManifest.xml ===
     modifiedConfig = withAndroidManifest(modifiedConfig, async (cfg) => {
       let fingerprintHash = null;
-      const { loadConfig } = await loadCliTools();
-      const config = await loadConfig(null);
-      if (config.updateStrategy !== "appVersion") {
+      const hotUpdaterConfig = await getHotUpdaterConfig();
+      if (hotUpdaterConfig.updateStrategy !== "appVersion") {
         const fingerprint = await getFingerprint();
         fingerprintHash = fingerprint.android.hash;
       }
 
       // Load public key if signing is enabled
-      const publicKey = await getPublicKeyFromConfig(config.signing);
+      const publicKey = await getPublicKey();
 
       const application = cfg.modResults.manifest.application?.[0];
       if (!application) {
@@ -286,6 +343,8 @@ const withHotUpdaterConfigAsync =
           ANDROID_META_DATA_KEYS.publicKey,
           publicKey,
         );
+      } else {
+        removeAndroidMetaData(application, ANDROID_META_DATA_KEYS.publicKey);
       }
 
       return cfg;

@@ -41,6 +41,7 @@ const { mockBuildPlugin, mockCli, mockServer, mockStoragePlugin } = vi.hoisted(
         tasks: vi.fn(),
         text: vi.fn(),
       },
+      prepareBundleSigning: vi.fn(),
     };
 
     return {
@@ -80,6 +81,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     getCwd: mockCli.getCwd,
     loadConfig: mockCli.loadConfig,
     p: mockCli.p,
+    prepareBundleSigning: mockCli.prepareBundleSigning,
     putStorageFile: (
       storage: typeof mockStoragePlugin,
       key: string,
@@ -191,10 +193,6 @@ vi.mock("@/utils/printBanner", () => ({
   printBanner: vi.fn(),
 }));
 
-vi.mock("@/utils/signing/bundleSigning", () => ({
-  signBundle: vi.fn(),
-}));
-
 vi.mock("@/utils/signing/validateSigningConfig", () => ({
   validateSigningConfig: vi.fn(),
 }));
@@ -225,7 +223,6 @@ import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getLatestGitCommit } from "@/utils/git";
 import { printBanner } from "@/utils/printBanner";
-import { signBundle } from "@/utils/signing/bundleSigning";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
@@ -353,6 +350,7 @@ describe("deploy rollout wiring", () => {
     mockServer.createBundleDiff.mockResolvedValue({
       id: "bundle-123",
     });
+    mockCli.prepareBundleSigning.mockResolvedValue(null);
 
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
@@ -1146,7 +1144,12 @@ describe("deploy rollout wiring", () => {
       bundleId: "bundle-123",
       stdout: "LLVM\nHermes",
     });
-    vi.mocked(signBundle).mockResolvedValue("signature");
+    const signFileHash = vi.fn(async () => "signature");
+    mockCli.prepareBundleSigning.mockResolvedValue({
+      name: "local-file",
+      publicKey: "public-key",
+      signFileHash,
+    });
 
     await deploy({
       channel: "production",
@@ -1156,7 +1159,10 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(signBundle).toHaveBeenCalledWith("file-hash", "/mock/private.pem");
+    expect(signFileHash).toHaveBeenCalledWith("file-hash");
+    expect(validateSigningConfig).toHaveBeenCalledWith(expect.anything(), {
+      expectedPublicKey: "public-key",
+    });
     expect(mockCli.p.spinner).not.toHaveBeenCalled();
     expect(mockCli.p.note).toHaveBeenCalledWith("LLVM\nHermes", "Build Output");
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
@@ -1177,6 +1183,41 @@ describe("deploy rollout wiring", () => {
 
     expect(buildOutputOrder).toBeGreaterThanOrEqual(0);
     expect(signingOrder).toBeGreaterThanOrEqual(0);
+  });
+
+  it("fails before build or upload when the signing provider cannot be prepared", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      compressStrategy: "tar.br",
+      database: databasePlugin,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 3,
+      },
+      signing: { enabled: true, privateKeyPath: "/mock/private.pem" },
+      storage: mockStoragePlugin,
+      updateStrategy: "appVersion",
+    });
+    mockCli.prepareBundleSigning.mockRejectedValue(
+      new Error("Failed to resolve the bundle signing provider public key."),
+    );
+
+    await expect(
+      deploy({
+        channel: "production",
+        forceUpdate: false,
+        interactive: false,
+        platform: "ios",
+        targetAppVersion: "1.0.x",
+      }),
+    ).rejects.toThrow(
+      "Failed to resolve the bundle signing provider public key.",
+    );
+
+    expect(mockBuildPlugin.build).not.toHaveBeenCalled();
+    expect(mockStoragePlugin.put).not.toHaveBeenCalled();
+    expect(await databaseHarness.releases()).toEqual([]);
   });
 
   it("creates automatic partial update paths when patch generation is enabled", async () => {

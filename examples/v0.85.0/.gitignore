@@ -79,9 +79,8 @@ yarn-error.log
 .env.hotupdater
 
 
-keys
 # hot-updater
-keys/
+keys/private-key.pem
 # hot-updater
 .hot-updater/log
 src/test/_fixture-archive-300mb-random.bmp

@@ -10,6 +10,7 @@ export {
   type CreateDatabasePluginOptions,
   type DatabasePluginInputErrorCode,
 } from "./createDatabasePlugin";
+export * from "./createBundleSigningPlugin";
 export * from "./createStorageKeyBuilder";
 export * from "./createStoragePlugin";
 export * from "./databaseClient";

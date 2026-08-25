@@ -1,3 +1,5 @@
+import { createPublicKey } from "node:crypto";
+import fs from "node:fs/promises";
 import path from "node:path";
 
 import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
@@ -8,6 +10,7 @@ import { warnIfExpoCNG } from "@/utils/expoDetection";
 import { appendToProjectRootGitignore } from "@/utils/git";
 import {
   generateKeyPair,
+  getPrivateKeyGitignorePath,
   getPublicKeyFromPrivate,
   loadPrivateKey,
   saveKeyPair,
@@ -17,6 +20,24 @@ import { ui } from "../utils/cli-ui";
 
 export const ANDROID_KEY = "hot_updater_public_key";
 export const IOS_KEY = "HOT_UPDATER_PUBLIC_KEY";
+
+const canonicalizeRsaSpkiPublicKey = (publicKeyPem: string): string => {
+  const trimmed = publicKeyPem.trim();
+  if (
+    !trimmed.startsWith("-----BEGIN PUBLIC KEY-----") ||
+    !trimmed.endsWith("-----END PUBLIC KEY-----") ||
+    trimmed.includes("PRIVATE KEY")
+  ) {
+    throw new Error("Bundle signing public key must be an SPKI PEM key.");
+  }
+
+  const publicKey = createPublicKey(trimmed);
+  if (publicKey.asymmetricKeyType !== "rsa") {
+    throw new Error("Bundle signing public key must be an RSA key.");
+  }
+
+  return publicKey.export({ format: "pem", type: "spki" }).toString();
+};
 
 export interface KeysGenerateOptions {
   output?: string;
@@ -46,18 +67,27 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
 
     spinner.stop("Keys generated");
 
-    // Add keys directory to .gitignore
-    const keysDir = path.basename(outputDir);
-    const gitignoreUpdated = appendToProjectRootGitignore({
-      cwd,
-      globLines: [`${keysDir}/`],
-    });
+    // The public key is safe to commit and is required by native builds.
+    const privateKeyGitignorePath = getPrivateKeyGitignorePath(cwd, outputDir);
+    const gitignoreUpdated = privateKeyGitignorePath
+      ? appendToProjectRootGitignore({
+          cwd,
+          globLines: [privateKeyGitignorePath],
+        })
+      : false;
 
     p.log.message(
       ui.block("Keys", [
         ui.kv("Private", ui.path(path.join(outputDir, "private-key.pem"))),
         ui.kv("Public", ui.path(path.join(outputDir, "public-key.pem"))),
-        ui.kv("Gitignore", gitignoreUpdated ? `${keysDir}/` : "unchanged"),
+        ui.kv(
+          "Gitignore",
+          privateKeyGitignorePath === null
+            ? "outside project"
+            : gitignoreUpdated
+              ? privateKeyGitignorePath
+              : "unchanged",
+        ),
       ]),
     );
     p.log.message(
@@ -179,8 +209,8 @@ const formatNativeTarget = (
  * By default, writes the public key to iOS Info.plist and AndroidManifest.xml.
  * Use --print-only to only display the key without modifying files.
  *
- * The private key path is read from hot-updater.config.ts (signing.privateKeyPath)
- * unless overridden with --input.
+ * The public key is read from the configured signing source unless --input
+ * overrides it with a legacy private key path.
  *
  * Usage: npx hot-updater keys export-public [--input ./keys/private-key.pem] [--print-only] [--yes]
  */
@@ -190,27 +220,46 @@ export const keysExportPublic = async (
   warnIfExpoCNG();
   const cwd = getCwd();
 
-  // Load config to get the private key path from signing.privateKeyPath
   const config = await loadConfig(null);
   const configPrivateKeyPath = config.signing?.privateKeyPath;
 
-  // Priority: CLI --input > config signing.privateKeyPath > default fallback
-  let privateKeyPath: string;
-  if (options.input) {
-    privateKeyPath = path.isAbsolute(options.input)
-      ? options.input
-      : path.join(cwd, options.input);
-  } else if (configPrivateKeyPath) {
-    privateKeyPath = path.isAbsolute(configPrivateKeyPath)
-      ? configPrivateKeyPath
-      : path.join(cwd, configPrivateKeyPath);
-  } else {
-    privateKeyPath = path.join(cwd, "keys", "private-key.pem");
-  }
-
   try {
-    const privateKeyPEM = await loadPrivateKey(privateKeyPath);
-    const publicKeyPEM = getPublicKeyFromPrivate(privateKeyPEM);
+    let publicKeyPEM: string;
+    if (options.input) {
+      const privateKeyPath = path.isAbsolute(options.input)
+        ? options.input
+        : path.join(cwd, options.input);
+      publicKeyPEM = getPublicKeyFromPrivate(
+        await loadPrivateKey(privateKeyPath),
+      );
+    } else if (
+      config.signing?.enabled &&
+      "provider" in config.signing &&
+      config.signing.provider
+    ) {
+      const publicKeyPath = path.resolve(cwd, config.signing.publicKeyPath);
+      publicKeyPEM = canonicalizeRsaSpkiPublicKey(
+        await fs.readFile(publicKeyPath, "utf8"),
+      );
+    } else {
+      const privateKeyPath = configPrivateKeyPath
+        ? path.resolve(cwd, configPrivateKeyPath)
+        : path.join(cwd, "keys", "private-key.pem");
+      const publicKeyPath = path.join(
+        path.dirname(privateKeyPath),
+        "public-key.pem",
+      );
+
+      try {
+        publicKeyPEM = createPublicKey(await fs.readFile(publicKeyPath, "utf8"))
+          .export({ format: "pem", type: "spki" })
+          .toString();
+      } catch {
+        publicKeyPEM = getPublicKeyFromPrivate(
+          await loadPrivateKey(privateKeyPath),
+        );
+      }
+    }
 
     // PRINT-ONLY MODE: Show key and instructions without writing
     if (options.printOnly) {

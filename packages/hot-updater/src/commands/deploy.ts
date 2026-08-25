@@ -11,6 +11,7 @@ import {
   HotUpdateDirUtil,
   loadConfig,
   p,
+  prepareBundleSigning,
   putStorageFile,
 } from "@hot-updater/cli-tools";
 import type {
@@ -51,7 +52,6 @@ import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { appendToProjectRootGitignore, getLatestGitCommit } from "@/utils/git";
 import { printBanner } from "@/utils/printBanner";
-import { signBundle } from "@/utils/signing/bundleSigning";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
@@ -626,8 +626,12 @@ const deployPlatform = async ({
     ? normalizePatchMaxBaseBundles(config.patch.maxBaseBundles)
     : 0;
 
-  // Validate signing configuration
-  const signingValidation = await validateSigningConfig(config);
+  const signingSession = await prepareBundleSigning(config.signing, { cwd });
+
+  // Validate signing configuration and the native key pinned by the app.
+  const signingValidation = await validateSigningConfig(config, {
+    expectedPublicKey: signingSession?.publicKey,
+  });
 
   if (signingValidation.issues.length > 0) {
     const errors = signingValidation.issues.filter((i) => i.type === "error");
@@ -862,16 +866,10 @@ const deployPlatform = async ({
           const currentBundleId = taskRef.buildResult.bundleId;
           bundleId = currentBundleId;
 
-          const manifestSigning =
-            config.signing?.enabled && config.signing.privateKeyPath
-              ? (assetFileHash: string) =>
-                  signBundle(assetFileHash, config.signing!.privateKeyPath!)
-              : undefined;
-
           const { manifest, manifestPath } = await writeBundleManifest({
             buildPath,
             bundleId: currentBundleId,
-            signFileHash: manifestSigning,
+            signFileHash: signingSession?.signFileHash,
             targetFiles,
           });
 
@@ -913,45 +911,25 @@ const deployPlatform = async ({
           fileHash = await getFileHashFromFile(bundlePath);
 
           // Sign bundle if signing is enabled
-          if (config.signing?.enabled) {
-            // Runtime validation: ensure privateKeyPath is provided when signing is enabled
-            if (!config.signing.privateKeyPath) {
-              throw new Error(
-                "privateKeyPath is required when signing is enabled. " +
-                  "Please provide a valid path to your RSA private key in hot-updater.config.ts",
-              );
-            }
-
+          if (signingSession) {
             try {
-              const signature = await signBundle(
-                fileHash,
-                config.signing.privateKeyPath,
-              );
+              const signature = await signingSession.signFileHash(fileHash);
               // Store signature in signed format (sig:<signature>)
               // The hash is verified implicitly during signature verification
               fileHash = createSignedFileHash(signature);
             } catch (error) {
               p.log.error(`Signing error: ${(error as Error).message}`);
               p.log.error(
-                "Ensure private key path is correct and file has proper permissions",
+                "Ensure the signing provider is available and matches the configured public key",
               );
               throw error;
             }
           }
 
           manifestFileHash = await getFileHashFromFile(manifestPath);
-          if (config.signing?.enabled) {
-            if (!config.signing.privateKeyPath) {
-              throw new Error(
-                "privateKeyPath is required when signing is enabled. " +
-                  "Please provide a valid path to your RSA private key in hot-updater.config.ts",
-              );
-            }
-
-            const signature = await signBundle(
-              manifestFileHash,
-              config.signing.privateKeyPath,
-            );
+          if (signingSession) {
+            const signature =
+              await signingSession.signFileHash(manifestFileHash);
             manifestFileHash = createSignedFileHash(signature);
           }
 

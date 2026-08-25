@@ -89,6 +89,115 @@ describe("getPublicKeyFromConfig", () => {
       getPublicKeyFromConfig({ enabled: true, privateKeyPath }),
     ).resolves.toBe(publicKey.trim());
   });
+
+  it("uses publicKeyPath without accessing the signing provider or private env", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-public-key-"));
+    tempDirs.push(dir);
+    const { publicKey } = createKeyPair();
+    const publicKeyPath = path.join(dir, "public-key.pem");
+    const provider = {
+      getPublicKey: vi.fn(),
+      name: "remoteSigner",
+      sign: vi.fn(),
+    };
+
+    await writeFile(publicKeyPath, publicKey);
+    process.env.HOT_UPDATER_PRIVATE_KEY = "not-a-private-key";
+
+    await expect(
+      getPublicKeyFromConfig({
+        enabled: true,
+        provider,
+        publicKeyPath,
+      }),
+    ).resolves.toBe(publicKey.trim());
+    expect(provider.getPublicKey).not.toHaveBeenCalled();
+    expect(provider.sign).not.toHaveBeenCalled();
+  });
+
+  it("does not fall back to private env when provider publicKeyPath is invalid", async () => {
+    const { privateKey } = createKeyPair();
+    const provider = {
+      getPublicKey: vi.fn(),
+      name: "remoteSigner",
+      sign: vi.fn(),
+    };
+    process.env.HOT_UPDATER_PRIVATE_KEY = privateKey;
+
+    await expect(
+      getPublicKeyFromConfig({
+        enabled: true,
+        provider,
+        publicKeyPath: "/missing/provider-public-key.pem",
+      }),
+    ).rejects.toThrow(
+      "Failed to load publicKeyPath for provider-backed bundle signing.",
+    );
+    expect(provider.getPublicKey).not.toHaveBeenCalled();
+    expect(provider.sign).not.toHaveBeenCalled();
+  });
+
+  it("does not fall back to private env when provider publicKeyPath is empty", async () => {
+    const { privateKey } = createKeyPair();
+    const provider = {
+      getPublicKey: vi.fn(),
+      name: "remoteSigner",
+      sign: vi.fn(),
+    };
+    process.env.HOT_UPDATER_PRIVATE_KEY = privateKey;
+
+    await expect(
+      getPublicKeyFromConfig({
+        enabled: true,
+        provider,
+        publicKeyPath: "",
+      }),
+    ).rejects.toThrow(
+      "Failed to load publicKeyPath for provider-backed bundle signing.",
+    );
+    expect(provider.getPublicKey).not.toHaveBeenCalled();
+    expect(provider.sign).not.toHaveBeenCalled();
+  });
+
+  it("rejects a private PEM passed as a provider publicKeyPath", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-public-key-"));
+    tempDirs.push(dir);
+    const { privateKey } = createKeyPair();
+    const publicKeyPath = path.join(dir, "public-key.pem");
+    const provider = {
+      getPublicKey: vi.fn(),
+      name: "remoteSigner",
+      sign: vi.fn(),
+    };
+    await writeFile(publicKeyPath, privateKey);
+    process.env.HOT_UPDATER_PRIVATE_KEY = privateKey;
+
+    await expect(
+      getPublicKeyFromConfig({
+        enabled: true,
+        provider,
+        publicKeyPath,
+      }),
+    ).rejects.toThrow(
+      "Failed to load publicKeyPath for provider-backed bundle signing.",
+    );
+    expect(provider.getPublicKey).not.toHaveBeenCalled();
+    expect(provider.sign).not.toHaveBeenCalled();
+  });
+
+  it("uses the public key beside a missing legacy private key", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-public-key-"));
+    tempDirs.push(dir);
+    const { publicKey } = createKeyPair();
+    await writeFile(path.join(dir, "public-key.pem"), publicKey);
+
+    await expect(
+      getPublicKeyFromConfig({
+        enabled: true,
+        privateKeyPath: path.join(dir, "private-key.pem"),
+      }),
+    ).resolves.toBe(publicKey.trim());
+  });
 });
 
 describe("withHotUpdater - Test Cases", () => {

@@ -19,8 +19,23 @@ export type ConsoleAuthAdapter = Readonly<{
   getProviders(request: Request): Promise<readonly ConsoleAuthProvider[]>;
 }>;
 
+export type ConsoleSigningConfig = Readonly<{
+  enabled: boolean;
+  provider?: string;
+  publicKeyPath?: string;
+}>;
+
 export type HotUpdaterConsoleConfig = Readonly<
-  Pick<ConfigInput, "authorityId" | "console" | "database" | "storage">
+  Pick<
+    ConfigInput,
+    "authorityId" | "console" | "database" | "signing" | "storage"
+  >
+>;
+
+export type ResolvedHotUpdaterConsoleConfig = Readonly<
+  Omit<HotUpdaterConsoleConfig, "signing"> & {
+    signing?: ConsoleSigningConfig;
+  }
 >;
 
 export type HotUpdaterConsoleConfigSource =

@@ -4,6 +4,7 @@ import {
   KeyRound,
   Moon,
   Package,
+  ShieldCheck,
   Sun,
 } from "lucide-react";
 
@@ -34,6 +35,7 @@ export function AppSidebar() {
   const isAnalyticsActive =
     currentPath === "/analytics" || currentPath === "/installations";
   const isAccessKeysActive = currentPath === "/access-keys";
+  const isSigningActive = currentPath === "/signing";
 
   return (
     <Sidebar collapsible="icon">
@@ -119,6 +121,16 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ) : null}
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isSigningActive}
+                  render={<Link to="/signing" />}
+                  tooltip="Bundle signing"
+                >
+                  <ShieldCheck />
+                  <span>Bundle signing</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

@@ -192,9 +192,9 @@ const getDefaultConfig = (): ConfigInput => {
 };
 
 export type ConfigResponse = RequiredDeep<
-  Omit<ConfigInput, "database" | "storage">
+  Omit<ConfigInput, "database" | "signing" | "storage">
 > &
-  Pick<ConfigInput, "database" | "storage">;
+  Pick<ConfigInput, "database" | "signing" | "storage">;
 
 const mergeConfigSources = (
   ...sources: Array<ConfigInput | null | undefined>
@@ -205,10 +205,12 @@ const mergeConfigSources = (
   );
 
   const database = sources.find((source) => source?.database)?.database;
+  const signing = sources.find((source) => source?.signing)?.signing;
   const storage = sources.find((source) => source?.storage)?.storage;
   return {
     ...mergedConfig,
     ...(database ? { database } : {}),
+    ...(signing ? { signing } : {}),
     ...(storage ? { storage } : {}),
   };
 };
