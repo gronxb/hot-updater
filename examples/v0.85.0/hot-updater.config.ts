@@ -1,17 +1,18 @@
-import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
-import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
+import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";
 import { config } from "dotenv";
+import { applicationDefault } from "firebase-admin/app";
 import { defineConfig } from "hot-updater";
 
 config({
   path: process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH ?? ".env.hotupdater",
 });
 
-const awsOptions = {
-  region: process.env.HOT_UPDATER_S3_REGION!,
-  credentials: fromNodeProviderChain(),
-};
+// https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
+// Check your .env.hotupdater file and add the credentials
+// Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
+// Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
+const credential = applicationDefault();
 
 export default defineConfig({
   nativeBuild: {
@@ -44,15 +45,15 @@ export default defineConfig({
   },
 
   build: bare({ enableHermes: true, resetCache: false }),
-  storage: s3Storage({
-    ...awsOptions,
-    bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  storage: firebaseStorage({
+    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+    storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
+    credential,
   }),
-  database: dynamoDB({
-    ...awsOptions,
-    tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
-    cloudfrontDistributionId:
-      process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+  database: firebaseDatabase({
+    authorityId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+    credential,
   }),
   fingerprint: {
     debug: true,
@@ -69,5 +70,5 @@ export default defineConfig({
     privateKeyPath: "./keys/private-key.pem",
   },
 
-  authorityId: "aws.reMLxCmkhy5IVoGMbgVXEHreq6A0k5gFU5G7BZ_jPWk",
+  authorityId: "hot-updater-25989",
 });
