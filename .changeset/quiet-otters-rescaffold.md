@@ -16,6 +16,12 @@ RPCs plus Firebase collections and Functions use fixed v1 namespaces, allowing
 v0 and v1 to coexist in one project while doctor identifies missing generation
 markers and gives the parallel-cutover remediation.
 
+AWS fresh installs use v1 Lambda and DynamoDB names plus a Lambda-scoped v1
+signing-key path. S3 buckets can be shared across generations: init no longer
+treats a matching bucket origin as CloudFront ownership, creates a new
+distribution by default, and only updates the exact saved distribution after
+its generation check passes.
+
 Remove the v0 app-version and fingerprint HTTP routes, the legacy SDK-version
 header contract, CDN forwarding and cache paths for those routes, and managed
 provider Release Catalog backfills. Existing v0 native binaries must remain on

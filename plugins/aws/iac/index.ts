@@ -20,6 +20,7 @@ import { execa } from "execa";
 
 import { dynamoDB } from "../src/dynamoDB";
 import { resolveAwsAuth } from "./awsAuth";
+import { getAwsV1SsmParameterName } from "./awsInfrastructureNames";
 import {
   assertAwsInfrastructureGeneration,
   assertAwsLambdaCanInitialize,
@@ -358,7 +359,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   // Create IAM role: Using IAMManager
   const iamManager = new IAMManager(bucketRegion, credentials);
-  const ssmParameterName = `/hot-updater/${bucketName}/keypair`;
+  const ssmParameterName = getAwsV1SsmParameterName(lambdaName);
   const lambdaRoleArn = await iamManager.createOrSelectRole({
     bucketName,
     dynamodbTableName: resolvedDynamoDBTableName,

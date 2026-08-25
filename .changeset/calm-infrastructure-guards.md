@@ -15,5 +15,5 @@ and report function discovery failures without an unhandled command stack.
 Bundle Firebase Functions' internal plugin dependency and deploy only the
 managed v1 Function target so an existing v0 Function is preserved.
 Wait for a newly provisioned Supabase Storage tenant before creating the
-selected bucket, and preserve the access level of a reused bucket for installed
-v0 apps.
+selected bucket, and preserve the access level of a reused operator-owned
+bucket.

@@ -432,47 +432,54 @@ export class CloudFrontManager {
     const savedDistributionExists = distributions.some(
       (distribution) => distribution.Id === distributionId,
     );
-    if (nonInteractive && savedDistribution) {
-      return savedDistribution;
-    }
-    if (distributionId && !savedDistribution) {
-      if (matchingDistributions.length === 0 && !savedDistributionExists) {
+    if (nonInteractive) {
+      if (savedDistribution) {
+        return savedDistribution;
+      }
+      if (!distributionId) {
+        return null;
+      }
+      if (!savedDistributionExists) {
         p.log.warn(
           "Saved CloudFront distribution was not found. A new distribution will be created.",
         );
         return null;
       }
-      if (nonInteractive) {
-        throw new MissingInitInputsError([
-          "HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID",
-        ]);
-      }
+      throw new MissingInitInputsError([
+        "HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID",
+      ]);
+    }
+    if (distributionId && !savedDistribution) {
       p.log.warn(
-        "Saved CloudFront distribution was not found. Select a distribution again.",
+        savedDistributionExists
+          ? "Saved CloudFront distribution does not use the selected S3 bucket. Select a distribution again."
+          : "Saved CloudFront distribution was not found. A new distribution will be created unless another distribution is selected.",
       );
     }
     if (matchingDistributions.length === 0) {
       return null;
     }
-    if (nonInteractive) {
-      if (!distributionId && matchingDistributions.length === 1) {
-        return matchingDistributions[0] ?? null;
-      }
-      throw new MissingInitInputsError([
-        "HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID",
-      ]);
-    }
 
-    const selectedDistributionId = await p.select({
-      initialValue: savedDistribution?.Id ?? matchingDistributions[0]?.Id,
+    const createNewDistribution = "__create-new-cloudfront-distribution__";
+    const selectedDistributionId = await p.select<string>({
+      initialValue: savedDistribution?.Id ?? createNewDistribution,
       message: "Select a CloudFront distribution:",
-      options: matchingDistributions.map((distribution) => ({
-        value: distribution.Id,
-        label: `${distribution.Id} (${distribution.DomainName})`,
-      })),
+      options: [
+        ...matchingDistributions.map((distribution) => ({
+          value: distribution.Id,
+          label: `${distribution.Id} (${distribution.DomainName})`,
+        })),
+        {
+          value: createNewDistribution,
+          label: "Create New CloudFront Distribution",
+        },
+      ],
     });
     if (p.isCancel(selectedDistributionId)) {
       process.exit(0);
+    }
+    if (selectedDistributionId === createNewDistribution) {
+      return null;
     }
     return (
       matchingDistributions.find(
