@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manual QA"
+  short_description: "Run natural-language OTA QA with prepared infrastructure"
+  default_prompt: "Use $manual-qa to verify in natural language that installing an OTA update and relaunching keeps the new bundle active."

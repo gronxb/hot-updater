@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createStandaloneBundleRemote } from "./standaloneBundleRemote";
+import { createStandaloneHttp } from "./standaloneHttp";
 
 const SPECIAL_BUNDLE_IDS = [
   {
@@ -24,15 +25,10 @@ const SPECIAL_BUNDLE_IDS = [
 const createBundle = (id: string) => ({
   id,
   platform: "ios" as const,
-  shouldForceUpdate: false,
-  enabled: true,
   fileHash: "hash",
   gitCommitHash: null,
-  message: "message",
-  channel: "production",
   storageUri: "storage://bundle",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
+  archiveByteSize: 1,
 });
 
 afterEach(() => {
@@ -40,6 +36,16 @@ afterEach(() => {
 });
 
 describe("standalone management routes", () => {
+  it("normalizes a trailing slash on the admin base URL", () => {
+    const http = createStandaloneHttp({
+      baseUrl: "https://example.test/hot-updater/admin/",
+    });
+
+    expect(http.buildUrl("/bundles")).toBe(
+      "https://example.test/hot-updater/admin/bundles",
+    );
+  });
+
   it.each([
     ["retrieve", "GET"],
     ["update", "PATCH"],
@@ -65,11 +71,51 @@ describe("standalone management routes", () => {
         if (operation === "delete") await remote.deleteBundle(id);
 
         const [input, init] = fetch.mock.calls.at(-1) ?? [];
-        expect(String(input)).toBe(
-          `https://example.test/api/bundles/${encoded}`,
-        );
+        expect(String(input)).toBe(`https://example.test/bundles/${encoded}`);
         expect(init?.method).toBe(method);
       }
+    },
+  );
+
+  it.each([
+    {
+      name: "archive size",
+      response: { ...createBundle("response-id"), archiveByteSize: undefined },
+    },
+    {
+      name: "patch size",
+      response: {
+        ...createBundle("response-id"),
+        patches: [
+          {
+            baseBundleId: "base-id",
+            baseFileHash: "base-hash",
+            patchFileHash: "patch-hash",
+            patchStorageUri: "storage://patch",
+          },
+        ],
+      },
+    },
+  ])(
+    "rejects a bundle response without required $name",
+    async ({ response }) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(JSON.stringify(response), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }),
+        ),
+      );
+      const remote = createStandaloneBundleRemote({
+        baseUrl: "https://example.test",
+      });
+
+      await expect(remote.loadBundle("response-id")).rejects.toThrow(
+        "Invalid bundle response.",
+      );
     },
   );
 });

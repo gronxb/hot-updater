@@ -5,6 +5,7 @@ export const databaseFields = {
     "file_hash",
     "git_commit_hash",
     "storage_uri",
+    "archive_byte_size",
     "metadata",
     "manifest_storage_uri",
     "manifest_file_hash",
@@ -17,6 +18,7 @@ export const databaseFields = {
     "base_file_hash",
     "patch_file_hash",
     "patch_storage_uri",
+    "byte_size",
     "order_index",
   ],
   releases: [
@@ -75,7 +77,7 @@ export const databaseFields = {
     "sdk_version",
     "received_at_ms",
   ],
-  client_access_keys: [
+  api_keys: [
     "id",
     "hash",
     "name",

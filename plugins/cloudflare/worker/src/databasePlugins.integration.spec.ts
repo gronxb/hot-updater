@@ -40,22 +40,43 @@ vi.mock("cloudflare", () => ({
       database: {
         query: async (
           _databaseId: string,
-          input: { readonly sql: string; readonly params?: readonly string[] },
+          input:
+            | { readonly sql: string; readonly params?: readonly string[] }
+            | {
+                readonly batch: readonly {
+                  readonly sql: string;
+                  readonly params?: readonly string[];
+                }[];
+              },
         ) => {
-          const params = input.params ?? [];
-          let paramOffset = 0;
-          const statements = input.sql
-            .split(";")
-            .map((sql) => sql.trim())
-            .filter(Boolean)
-            .map((sql) => {
-              const paramCount = sql.match(/\?/g)?.length ?? 0;
-              const statement = getDb()
-                .prepare(sql)
-                .bind(...params.slice(paramOffset, paramOffset + paramCount));
-              paramOffset += paramCount;
-              return statement;
-            });
+          const statements =
+            "batch" in input
+              ? input.batch.map(({ sql, params }) =>
+                  getDb()
+                    .prepare(sql)
+                    .bind(...(params ?? [])),
+                )
+              : (() => {
+                  const params = input.params ?? [];
+                  let paramOffset = 0;
+                  return input.sql
+                    .split(";")
+                    .map((sql) => sql.trim())
+                    .filter(Boolean)
+                    .map((sql) => {
+                      const paramCount = sql.match(/\?/g)?.length ?? 0;
+                      const statement = getDb()
+                        .prepare(sql)
+                        .bind(
+                          ...params.slice(
+                            paramOffset,
+                            paramOffset + paramCount,
+                          ),
+                        );
+                      paramOffset += paramCount;
+                      return statement;
+                    });
+                })();
           const results = await getDb().batch(statements);
           return {
             async *iterPages() {
@@ -71,7 +92,7 @@ vi.mock("cloudflare", () => ({
 const reset = async (): Promise<void> => {
   await getDb()
     .prepare(
-      "DELETE FROM bundle_events; DELETE FROM client_access_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
+      "DELETE FROM bundle_events; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
     )
     .run();
 };
@@ -87,6 +108,7 @@ const createBundleRow = (): BundleRow => ({
   file_hash: "hash",
   git_commit_hash: null,
   storage_uri: "storage://bundle",
+  archive_byte_size: 3_000_000_001,
   metadata: {},
   manifest_storage_uri: null,
   manifest_file_hash: null,

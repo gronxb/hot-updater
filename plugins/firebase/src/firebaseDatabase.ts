@@ -15,7 +15,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import {
   parseFirebaseBundleRow,
   parseFirebaseChannelRow,
-  parseFirebaseClientAccessKeyRow,
+  parseFirebaseApiKeyRow,
   parseFirebasePatchRow,
 } from "./firebaseDatabaseParser";
 import {
@@ -141,15 +141,15 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
                 )
               : null;
           }
-          case "client_access_keys": {
-            const document = await collections.clientAccessKeys.doc(id).get();
+          case "api_keys": {
+            const document = await collections.apiKeys.doc(id).get();
             return document.exists
               ? requireFirebaseDocumentKey(
-                  "client_access_keys",
+                  "api_keys",
                   document.id,
-                  parseFirebaseClientAccessKeyRow(
+                  parseFirebaseApiKeyRow(
                     document.data(),
-                    `client_access_keys/${document.id}`,
+                    `api_keys/${document.id}`,
                   ),
                 )
               : null;

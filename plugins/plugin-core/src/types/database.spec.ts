@@ -54,7 +54,7 @@ describe("database plugin types", () => {
       readonly row: never;
     }>().not.toMatchTypeOf<BundleRepositoryChange>();
     expectTypeOf<{
-      readonly model: "clientAccessKeys";
+      readonly model: "apiKeys";
       readonly operation: "insert";
       readonly row: never;
       readonly onConflict: "ignore";
@@ -108,7 +108,7 @@ describe("database plugin types", () => {
       readonly row: never;
     }>().not.toMatchTypeOf<BundleRepositoryChange>();
     expectTypeOf<{
-      readonly model: "clientAccessKeys";
+      readonly model: "apiKeys";
       readonly operation: "update";
       readonly where: { readonly id: "key-1" };
       readonly update: { readonly revokedAtMs: 1 };

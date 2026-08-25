@@ -3,9 +3,11 @@ import path from "path";
 
 import {
   confirmInitInputPersistence,
+  formatApiKeyNote,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
+  InitError,
   link,
   makeEnv,
   p,
@@ -16,11 +18,22 @@ import {
   transformEnv,
   transformTemplate,
 } from "@hot-updater/cli-tools";
+import { provisionApiKey } from "@hot-updater/server";
 import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
+import {
+  applicationDefault,
+  cert,
+  deleteApp,
+  getApps,
+} from "firebase-admin/app";
 
+import { firebaseDatabase } from "../src/firebaseDatabase";
 import { inputFirebaseApplicationCredentials } from "./firebaseApplicationCredentials";
-import { assertFirebaseInfrastructureCanInitialize } from "./firebaseInfrastructureState";
+import {
+  assertFirebaseFunctionCanInitialize,
+  assertFirebaseInfrastructureCanInitialize,
+} from "./firebaseInfrastructureState";
 import {
   assertFirebaseNonInteractiveInputs,
   type FirebaseCliEnv,
@@ -39,10 +52,16 @@ function App() {
   return null; // Replace with your app root
 }
 
-export default HotUpdater.wrap({
+HotUpdater.init({
   baseURL: "%%source%%",
-  updateStrategy: "appVersion", // or "fingerprint"
-})(App);`;
+  requestHeaders: {
+    "x-api-key": %%apiKey%%,
+  },
+});
+
+// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
+// when your app is ready to check.
+export default App;`;
 
 const getFirebaseRuntimePackageInfo = () => {
   const firebasePackageRoot = path.dirname(
@@ -109,6 +128,102 @@ interface FirebaseFunction {
   codebase: string;
   hash: string;
 }
+
+const commandErrorMessage = (error: unknown): string => {
+  if (error instanceof ExecaError) {
+    const output = error.stderr || error.stdout;
+    if (output !== undefined && output !== null) {
+      const text = String(output).trim();
+      if (!text) return error.message;
+      try {
+        const parsed: unknown = JSON.parse(text);
+        if (typeof parsed === "object" && parsed !== null) {
+          const message = Reflect.get(parsed, "error");
+          if (typeof message === "string") return message;
+        }
+      } catch {
+        return text;
+      }
+      return text;
+    }
+  }
+  return error instanceof Error ? error.message : String(error);
+};
+
+const ensureCloudFunctionsApiEnabled = async (
+  projectId: string,
+  cliEnv?: FirebaseCliEnv,
+): Promise<void> => {
+  await p.tasks([
+    {
+      title: "Checking Cloud Functions API",
+      task: async () => {
+        try {
+          await execa(
+            "gcloud",
+            [
+              "services",
+              "enable",
+              "cloudfunctions.googleapis.com",
+              `--project=${projectId}`,
+              "--quiet",
+            ],
+            { env: cliEnv },
+          );
+        } catch (error) {
+          throw new InitError(
+            `Could not enable the Cloud Functions API for Firebase project ${projectId}: ${commandErrorMessage(error)}`,
+          );
+        }
+        return "Cloud Functions API is enabled";
+      },
+    },
+  ]);
+};
+
+const listFirebaseFunctions = async (
+  cwd: string,
+  projectId: string,
+  nonInteractive: boolean,
+  cliEnv?: FirebaseCliEnv,
+): Promise<FirebaseFunction[]> => {
+  let functionsList: { readonly stdout: string };
+  try {
+    functionsList = await execa(
+      "npx",
+      [
+        "firebase",
+        "functions:list",
+        "--json",
+        "--project",
+        projectId,
+        ...(nonInteractive ? ["--non-interactive"] : []),
+      ],
+      {
+        cwd,
+        env: cliEnv,
+      },
+    );
+  } catch (error) {
+    throw new InitError(
+      `Could not list Firebase Functions for project ${projectId}: ${commandErrorMessage(error)}. Run npx firebase functions:list --project ${projectId} --debug for details.`,
+    );
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(functionsList.stdout);
+  } catch {
+    throw new InitError("Firebase functions list response was invalid.");
+  }
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !Array.isArray(Reflect.get(body, "result"))
+  ) {
+    throw new InitError("Firebase functions list response was invalid.");
+  }
+  return Reflect.get(body, "result") as FirebaseFunction[];
+};
 
 type FirebaseIndex = {
   collectionGroup: string;
@@ -298,6 +413,7 @@ const deployHosting = async (
 };
 
 const printTemplate = async (
+  apiKey: string,
   projectId: string,
   region: string,
   cliEnv?: FirebaseCliEnv,
@@ -323,9 +439,11 @@ const printTemplate = async (
 
     p.note(
       transformTemplate(SOURCE_TEMPLATE, {
+        apiKey: JSON.stringify(apiKey),
         source: functionUrl,
       }),
     );
+    p.note(formatApiKeyNote(apiKey), "API Key");
   } catch (error) {
     if (error instanceof ExecaError) {
       p.log.error(error.stderr || error.stdout || error.message);
@@ -349,9 +467,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
   const { managedEnv } = initEnvSources;
-  const savedInputs = resolveFirebaseInitInputs(
-    getHotUpdaterInitInputEnv(initEnvSources, nonInteractive),
+  const initInputEnv = getHotUpdaterInitInputEnv(
+    initEnvSources,
+    nonInteractive,
   );
+  const savedInputs = resolveFirebaseInitInputs(initInputEnv);
   assertFirebaseNonInteractiveInputs(savedInputs, nonInteractive);
   let applicationCredentials = savedInputs.applicationCredentials;
   const cliEnv = nonInteractive
@@ -394,6 +514,15 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     await assertFirebaseInfrastructureCanInitialize({
       applicationCredentials,
       projectId: initializeVariable.projectId,
+    });
+    await ensureCloudFunctionsApiEnabled(initializeVariable.projectId, cliEnv);
+    await assertFirebaseFunctionCanInitialize({
+      functions: await listFirebaseFunctions(
+        tmpDir,
+        initializeVariable.projectId,
+        nonInteractive,
+        cliEnv,
+      ),
     });
   }
 
@@ -477,6 +606,35 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   ]);
 
   await deployFirestore(tmpDir, nonInteractive, cliEnv);
+  const credential = applicationCredentials
+    ? cert(
+        JSON.parse(await fs.promises.readFile(applicationCredentials, "utf-8")),
+      )
+    : applicationDefault();
+  const existingApps = new Set(getApps());
+  const databasePlugin = firebaseDatabase({
+    authorityId: initializeVariable.projectId,
+    credential,
+    projectId: initializeVariable.projectId,
+  });
+  let apiKey: string;
+  try {
+    apiKey = (
+      await provisionApiKey({
+        apiKeys: databasePlugin.models.apiKeys,
+        existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
+        name: "Firebase init",
+      })
+    ).apiKey;
+    await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
+  } finally {
+    await databasePlugin.dispose?.();
+    await Promise.all(
+      getApps()
+        .filter((app) => !existingApps.has(app))
+        .map((app) => deleteApp(app)),
+    );
+  }
   await deployFunctions(tmpDir, nonInteractive, cliEnv);
   await deployHosting(tmpDir, nonInteractive, cliEnv);
 
@@ -484,21 +642,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     {
       title: "Check IAM policy",
       async task(message) {
-        const functionsList = await execa(
-          "npx",
-          [
-            "firebase",
-            "functions:list",
-            "--json",
-            ...(nonInteractive ? ["--non-interactive"] : []),
-          ],
-          {
-            cwd: tmpDir,
-            env: cliEnv,
-          },
+        const functionsData = await listFirebaseFunctions(
+          tmpDir,
+          initializeVariable.projectId,
+          nonInteractive,
+          cliEnv,
         );
-        const functionsListJson = JSON.parse(functionsList.stdout);
-        const functionsData = functionsListJson.result || [];
         const hotUpdater = functionsData.find(
           (fn: FirebaseFunction) => fn.id === "hot-updater",
         );
@@ -573,7 +722,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     await removeTmpDir();
     process.exit(1);
   }
-  await printTemplate(initializeVariable.projectId, currentRegion, cliEnv);
+  await printTemplate(
+    apiKey,
+    initializeVariable.projectId,
+    currentRegion,
+    cliEnv,
+  );
   await removeTmpDir();
 
   p.log.message(

@@ -111,6 +111,7 @@ describe("Supabase React Native init output", () => {
 
   it("uses the direct Edge Function URL for origin-only catalogs", () => {
     const source = getSupabaseReactNativeSource({
+      apiKey: "api-key",
       functionName: "update-server",
       projectId: "project-ref",
     });
@@ -118,6 +119,9 @@ describe("Supabase React Native init output", () => {
     expect(source).toContain(
       'baseURL: "https://project-ref.supabase.co/functions/v1/update-server"',
     );
+    expect(source).toContain('"x-api-key": "api-key"');
+    expect(source).toContain("HotUpdater.init({");
+    expect(source).not.toContain("HotUpdater.wrap");
     expect(source).toContain("return null; // Replace with your app root");
     expect(source).not.toContain("HOT_UPDATER_SUPABASE_CATALOG_CDN_URL");
   });
@@ -301,6 +305,10 @@ describe("selectBucket", () => {
     vi.clearAllMocks();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("prompts with a saved bucket selected by default in interactive mode", async () => {
     // Given
     const api: SupabaseApi = {
@@ -398,6 +406,59 @@ describe("selectBucket", () => {
       public: false,
     });
   });
+
+  it("waits for a new project's Storage tenant before creating a bucket", async () => {
+    vi.useFakeTimers();
+    const missingTenant = Object.assign(
+      new Error("Missing tenant config for tenant project-ref"),
+      { status: 400, statusCode: "400" },
+    );
+    const api: SupabaseApi = {
+      createBucket: vi
+        .fn()
+        .mockRejectedValueOnce(missingTenant)
+        .mockResolvedValue({ name: "new-bucket" }),
+      getInfrastructureState: vi.fn().mockResolvedValue("fresh"),
+      listBuckets: vi.fn().mockResolvedValue([
+        {
+          createdAt: "2026-08-24",
+          id: "new-bucket-id",
+          isPublic: false,
+          name: "new-bucket",
+        },
+      ]),
+      updateBucket: vi.fn(),
+    };
+
+    const creation = createSelectedBucket(api, {
+      create: true,
+      name: "new-bucket",
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+
+    await expect(creation).resolves.toEqual({
+      id: "new-bucket-id",
+      name: "new-bucket",
+    });
+    expect(api.createBucket).toHaveBeenCalledTimes(2);
+    expect(mockCli.p.log.info).toHaveBeenCalledWith(
+      "Waiting for Supabase Storage to become ready...",
+    );
+  });
+
+  it("does not retry unrelated bucket creation failures", async () => {
+    const api: SupabaseApi = {
+      createBucket: vi.fn().mockRejectedValue(new Error("Unauthorized")),
+      getInfrastructureState: vi.fn().mockResolvedValue("fresh"),
+      listBuckets: vi.fn(),
+      updateBucket: vi.fn(),
+    };
+
+    await expect(
+      createSelectedBucket(api, { create: true, name: "new-bucket" }),
+    ).rejects.toThrow("Unauthorized");
+    expect(api.createBucket).toHaveBeenCalledOnce();
+  });
 });
 
 describe("Supabase project readiness", () => {
@@ -409,6 +470,7 @@ describe("Supabase project readiness", () => {
   const createManagementApi = (): SupabaseManagementApi => ({
     createProject: vi.fn(),
     getProjectStatus: vi.fn(),
+    listFunctions: vi.fn(),
     listOrganizations: vi.fn(),
   });
 
@@ -871,6 +933,10 @@ describe("resolveEdgeFunctionDenoConfig", () => {
       path.join(os.tmpdir(), "hot-updater-supabase-edge-"),
     );
     try {
+      await fs.copyFile(
+        path.resolve("plugins/supabase/supabase/edge-functions/index.ts"),
+        path.join(targetDir, "index.ts"),
+      );
       const result = await resolveEdgeFunctionDenoConfig(targetDir);
 
       expect(result.imports).toEqual({
@@ -879,7 +945,6 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         "@hot-updater/supabase/edge":
           "./_hot-updater/hot-updater-supabase/dist/edge.mjs",
         "@hot-updater/core": "./_hot-updater/hot-updater-core/dist/index.mjs",
-        "@hot-updater/js": "./_hot-updater/hot-updater-js/dist/index.mjs",
         "@hot-updater/plugin-core":
           "./_hot-updater/hot-updater-plugin-core/dist/index.mjs",
         "@hot-updater/plugin-core/internal":
@@ -892,6 +957,9 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         )}`,
         mime: `npm:mime@${resolvePackageVersion("mime", {
           searchFrom: path.resolve("plugins/plugin-core"),
+        })}`,
+        hono: `npm:hono@${resolvePackageVersion("hono", {
+          searchFrom: path.resolve("plugins/supabase"),
         })}`,
       });
 

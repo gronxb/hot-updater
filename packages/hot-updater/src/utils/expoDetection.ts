@@ -8,14 +8,10 @@ import { getCwd, p } from "@hot-updater/cli-tools";
  * Returns true if expo package is installed and app.json or app.config.{js,mjs,ts,mts,cjs,cts} file exists.
  */
 export function isExpoCNG(): boolean {
-  // Check if expo package is installed
-  try {
-    require.resolve("expo/package.json");
-  } catch {
+  const cwd = getCwd();
+  if (!isExpo(cwd)) {
     return false;
   }
-
-  const cwd = getCwd();
 
   // Check app.json
   const appJsonPath = path.join(cwd, "app.json");
@@ -39,10 +35,17 @@ export function isExpoCNG(): boolean {
   });
 }
 
-export function isExpo(): boolean {
+export function isExpo(projectPath = getCwd()): boolean {
   try {
-    require.resolve("expo/package.json");
-    return true;
+    const packageJson = JSON.parse(
+      fs.readFileSync(path.join(projectPath, "package.json"), "utf-8"),
+    );
+    return [
+      packageJson.dependencies,
+      packageJson.devDependencies,
+      packageJson.optionalDependencies,
+      packageJson.peerDependencies,
+    ].some((dependencies) => dependencies?.expo != null);
   } catch {
     return false;
   }

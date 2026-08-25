@@ -9,6 +9,9 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     file_hash text not null,
     git_commit_hash text,
     storage_uri text not null,
+    archive_byte_size double precision not null check (
+      archive_byte_size >= 0 and archive_byte_size <= 9007199254740991
+    ),
     metadata jsonb not null default '{}'::jsonb,
     manifest_storage_uri text,
     manifest_file_hash text,
@@ -21,6 +24,9 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     base_file_hash text not null,
     patch_file_hash text not null,
     patch_storage_uri text not null,
+    byte_size double precision not null check (
+      byte_size >= 0 and byte_size <= 9007199254740991
+    ),
     order_index integer not null default 0
   );
   create table releases (
@@ -68,7 +74,7 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     from_release_id text,
     from_bundle_id text,
     to_release_id text,
-    to_bundle_id text,
+    to_bundle_id text not null,
     platform text not null,
     app_version text not null,
     channel text not null,
@@ -78,7 +84,7 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     sdk_version text,
     received_at_ms integer not null
   );
-  create table client_access_keys (
+  create table api_keys (
     id text primary key,
     hash text not null unique,
     name text not null,
@@ -91,7 +97,7 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
 
 export const DATABASE_PLUGIN_TEST_RESET_SQL = `
   delete from bundle_events;
-  delete from client_access_keys;
+  delete from api_keys;
   delete from bundle_patches;
   delete from release_catalogs;
   delete from releases;

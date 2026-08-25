@@ -42,7 +42,7 @@ describe("database plugin operation matrix", () => {
       | "release_catalogs"
       | "channels"
       | "bundle_events"
-      | "client_access_keys"
+      | "api_keys"
     >();
     expectTypeOf<CreateDatabaseModel>().toEqualTypeOf<DatabaseModel>();
   });
@@ -60,7 +60,7 @@ describe("database plugin operation matrix", () => {
       | "releases"
       | "release_catalogs"
       | "channels"
-      | "client_access_keys"
+      | "api_keys"
     >();
   });
 
@@ -146,7 +146,7 @@ describe("database plugin operation matrix", () => {
     expectTypeOf<
       Extract<
         DatabaseChange,
-        { readonly model: "clientAccessKeys"; readonly operation: "insert" }
+        { readonly model: "apiKeys"; readonly operation: "insert" }
       >["onConflict"]
     >().toEqualTypeOf<"ignore">();
     expectTypeOf<

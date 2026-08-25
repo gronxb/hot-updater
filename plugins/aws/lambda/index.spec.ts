@@ -37,8 +37,10 @@ vi.mock("@hot-updater/server", async () => {
   return {
     ...actual,
     createHotUpdater: serverMocks.createHotUpdater.mockReturnValue({
-      basePath: "/",
-      handler: fakeHotUpdaterHandler,
+      handlers: {
+        admin: vi.fn(),
+        client: fakeHotUpdaterHandler,
+      },
     }),
   };
 });
@@ -124,11 +126,11 @@ describe("aws lambda entrypoint", () => {
     };
   });
 
-  it("uses DynamoDB metadata with built-in Analytics and client keys", async () => {
+  it("uses DynamoDB metadata with built-in Analytics and API keys", async () => {
     const { handler } = await import("./index");
     await handler(
       createCloudFrontRequest(
-        "/release-catalogs/app-version/aws.test-authority/ios/cHJvZHVjdGlvbg/1.0.0",
+        "/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0",
       ),
       {} as never,
       () => undefined,
@@ -141,12 +143,7 @@ describe("aws lambda entrypoint", () => {
     expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
       expect.objectContaining({
         authorityId: "aws.test-authority",
-        features: {
-          updateCheck: true,
-          bundles: false,
-          analytics: {},
-          clientAccessKeys: true,
-        },
+        clientAccess: { type: "api-key" },
       }),
     );
   });
@@ -156,7 +153,7 @@ describe("aws lambda entrypoint", () => {
 
     const response = await handler(
       createCloudFrontRequest(
-        "/release-catalogs/app-version/aws.test-authority/ios/cHJvZHVjdGlvbg/1.0.0",
+        "/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0",
       ),
       {} as never,
       () => undefined,

@@ -9,7 +9,8 @@ icon: Package
 > **Important:** Configure Hot Updater with either `HotUpdater.wrap` or
 > [`HotUpdater.init`](/docs/react-native-api/init) before calling update APIs.
 > This enables automatic crash detection and rollback. Update methods will
-> throw an error if neither API is used.
+> throw an error if neither API is used. Do not use both configuration APIs in
+> the same app; Hot Updater reports mixed usage with `console.error`.
 
 `HotUpdater.wrap` always runs the automatic update flow. `updateMode` is not
 accepted. For a manual flow, use
@@ -39,15 +40,21 @@ function App() {
   );
 }
 
-export default HotUpdater.wrap({ // [!code hl:8]
+export default HotUpdater.wrap({
+  // [!code hl:9]
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion", // or "fingerprint"
+  analytics: true,
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
-    "Authorization": "Bearer <your-access-token>",
+    "x-api-key": "<your-api-key>",
   },
 })(App);
 ```
+
+Set `analytics: true` to send automatic app-ready transition and Release
+adoption events. Omitting it or setting it to `false` sends no Analytics
+events. The server routes remain available either way.
 
 ### Manual Updates
 
@@ -75,7 +82,7 @@ function App() {
       const updateInfo = await HotUpdater.checkForUpdate({
         updateStrategy: "appVersion", // Required: specify update strategy
         requestHeaders: {
-          Authorization: "Bearer <your-access-token>",
+          "x-api-key": "<your-api-key>",
         },
       });
 
@@ -99,7 +106,7 @@ function App() {
 HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: {
-    "Authorization": "Bearer <your-access-token>",
+    "x-api-key": "<your-api-key>",
   },
 });
 
@@ -112,36 +119,32 @@ export default App;
 
 ### Common Options
 
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `baseURL` | `string \| () => string \| Promise<string>` | Yes* | Your update server URL (standard approach) |
-| `resolver` | `HotUpdaterResolver` | Yes* | Custom network operations (advanced) |
-| `requestHeaders` | `Record<string, string>` | No | Custom HTTP headers for update requests |
-| `requestTimeout` | `number` | No | Request timeout in milliseconds (default: 5000) |
-| `onNotifyAppReady` | `(result) => void` | No | Callback invoked after native app-ready state is read |
+| Option             | Type                                        | Required | Description                                                 |
+| ------------------ | ------------------------------------------- | -------- | ----------------------------------------------------------- |
+| `baseURL`          | `string \| () => string \| Promise<string>` | Yes      | Your v1 client handler URL                                  |
+| `analytics`        | `boolean`                                   | No       | Send app-ready and Release adoption events (default: false) |
+| `requestHeaders`   | `Record<string, string>`                    | No       | Custom HTTP headers for update requests                     |
+| `requestTimeout`   | `number`                                    | No       | Request timeout in milliseconds (default: 5000)             |
+| `onNotifyAppReady` | `(result) => void`                          | No       | Callback invoked after native app-ready state is read       |
 
-\*Either `baseURL` or `resolver` must be provided (mutually exclusive)
-
-Release Catalog custom resolvers implement `fetchReleaseCatalog` and
-`resolveArtifact`. Declare `catalogCachePartition` only when the catalog
-transport uses a stable shared-cache partition; otherwise keep catalog
-responses private/no-store. The default resolver partitions shared catalog
-responses by `x-api-key`.
+`baseURL` is the only React Native transport configuration. It may resolve at
+runtime, but every resolved URL must expose the v1 HTTP protocol. Hot Updater
+expands handler-relative artifact paths against this URL.
 
 ### Automatic Mode Options
 
 The following options are available in automatic mode:
 
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `updateStrategy` | `"appVersion" \| "fingerprint"` | Yes | Update detection strategy |
-| `requestHeaders` | `Record<string, string>` | No | Custom HTTP headers for update requests |
-| `requestTimeout` | `number` | No | Request timeout in milliseconds (default: 5000) |
-| `fallbackComponent` | `React.FC<HotUpdaterFallbackComponentProps>` | No | UI component shown during updates |
-| `onProgress` | `(progress: number) => void` | No | Callback fired during bundle download (0-1) |
-| `reloadOnForceUpdate` | `boolean` | No | Auto-reload on force updates (default: true) |
-| `onUpdateProcessCompleted` | `(response) => void` | No | Callback when update process completes |
-| `onError` | `(error) => void` | No | Error handler for update failures |
+| Option                     | Type                                         | Required | Description                                     |
+| -------------------------- | -------------------------------------------- | -------- | ----------------------------------------------- |
+| `updateStrategy`           | `"appVersion" \| "fingerprint"`              | Yes      | Update detection strategy                       |
+| `requestHeaders`           | `Record<string, string>`                     | No       | Custom HTTP headers for update requests         |
+| `requestTimeout`           | `number`                                     | No       | Request timeout in milliseconds (default: 5000) |
+| `fallbackComponent`        | `React.FC<HotUpdaterFallbackComponentProps>` | No       | UI component shown during updates               |
+| `onProgress`               | `(progress: number) => void`                 | No       | Callback fired during bundle download (0-1)     |
+| `reloadOnForceUpdate`      | `boolean`                                    | No       | Auto-reload on force updates (default: true)    |
+| `onUpdateProcessCompleted` | `(response) => void`                         | No       | Callback when update process completes          |
+| `onError`                  | `(error) => void`                            | No       | Error handler for update failures               |
 
 #### `fallbackComponent`
 
@@ -153,11 +156,13 @@ During an update check, access to the entry point is temporarily blocked while c
 Without a `fallbackComponent`, the bundle downloads without blocking the screen.
 
 **Props:**
+
 - `progress`: Download progress (0-1, e.g., for a progress bar)
 - `status`: Update state (`CHECK_FOR_UPDATE` or `UPDATING`)
 - `message`: Message from the server, or `null`
 
 **Example:**
+
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 import { View, Text, Modal } from "react-native";
@@ -170,38 +175,39 @@ function App() {
   );
 }
 
-export default HotUpdater.wrap({ // [!code hl:32]
+export default HotUpdater.wrap({
+  // [!code hl:32]
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion", // or "fingerprint"
   fallbackComponent: ({ progress, status, message }) => (
-      <View
-        style={{
-          flex: 1,
-          padding: 20,
-          borderRadius: 10,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-        }}
-      >
-        {/* You can put a splash image here. */}
+    <View
+      style={{
+        flex: 1,
+        padding: 20,
+        borderRadius: 10,
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
+      }}
+    >
+      {/* You can put a splash image here. */}
 
+      <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+        {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
+      </Text>
+      {message && (
         <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-          {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
+          {message}
         </Text>
-        {message && (
-          <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-            {message}
-          </Text>
-        )}
-        {progress > 0 ? (
-          <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-            {Math.round(progress * 100)}%
-          </Text>
-        ) : null}
-      </View>
-    ),
-  })(App);
+      )}
+      {progress > 0 ? (
+        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+          {Math.round(progress * 100)}%
+        </Text>
+      ) : null}
+    </View>
+  ),
+})(App);
 ```
 
 #### `reloadOnForceUpdate`
@@ -237,7 +243,7 @@ export default HotUpdater.wrap({
   updateStrategy: "appVersion", // or "fingerprint"
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
-    "Authorization": "Bearer <your-access-token>",
+    "x-api-key": "<your-api-key>",
   },
   reloadOnForceUpdate: true, // Automatically reload the app on force updates // [!code hl]
 })(App);
@@ -262,7 +268,7 @@ export default HotUpdater.wrap({
   updateStrategy: "appVersion", // or "fingerprint"
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
-    "Authorization": "Bearer <your-access-token>",
+    "x-api-key": "<your-api-key>",
   },
   reloadOnForceUpdate: false, // Keep the current session running // [!code hl]
 })(App);
@@ -279,12 +285,12 @@ download-readiness signal.
 
 **Callback Arguments:**
 
-| Property | Type | Description |
-|----------|-------------|-------------|
-| `status` | "ROLLBACK" \| "UPDATE" \| "UP_TO_DATE" | The status of the update process |
-| `shouldForceUpdate` | boolean | Whether the update process is forced |
-| `id` | string | The ID of the bundle to update |
-| `message` | string \| null | The message of the update process |
+| Property            | Type                                   | Description                          |
+| ------------------- | -------------------------------------- | ------------------------------------ |
+| `status`            | "ROLLBACK" \| "UPDATE" \| "UP_TO_DATE" | The status of the update process     |
+| `shouldForceUpdate` | boolean                                | Whether the update process is forced |
+| `id`                | string                                 | The ID of the bundle to update       |
+| `message`           | string \| null                         | The message of the update process    |
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -303,7 +309,7 @@ export default HotUpdater.wrap({
   updateStrategy: "appVersion", // or "fingerprint"
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
-    "Authorization": "Bearer <your-access-token>",
+    "x-api-key": "<your-api-key>",
   },
   onUpdateProcessCompleted: ({ status, shouldForceUpdate, id, message }) => {
     console.log("Bundle updated:", status, shouldForceUpdate, id, message);
@@ -329,7 +335,8 @@ import { Alert } from "react-native";
 export default HotUpdater.wrap({
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion",
-  onError: (error) => { // [!code hl:5]
+  onError: (error) => {
+    // [!code hl:5]
     // Handle other errors
     console.error("Update error:", error);
   },
@@ -338,77 +345,29 @@ export default HotUpdater.wrap({
 
 ## How It Works
 
-The default resolver fetches a shared Release Catalog, evaluates it on the
-device, and resolves the selected artifact:
+The client fetches a shared Release Catalog, evaluates it on the device, and
+resolves the selected artifact:
 
-* App version catalog: `GET {baseURL}/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`
-* Fingerprint catalog: `GET {baseURL}/release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash`
-* Artifact resolution: `GET {baseURL}/artifacts/:targetBundleId/from/:currentBundleId`
+- App version catalog: `GET {baseURL}/release-catalogs/app-version/:platform/:channelKey/:appVersion`
+- Fingerprint catalog: `GET {baseURL}/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash`
+- Artifact resolution: `GET {baseURL}/artifacts/:targetBundleId/from/:currentBundleId`
 
-`:channelKey` is the base64url-encoded channel name. The default authority is
-`default` unless the resolver is configured with another stable authority.
+`:channelKey` is the base64url-encoded channel name. Catalog authority is
+server-owned and is not part of the React Native configuration or client URL.
 
-## Advanced: Legacy Custom Resolver
+## Custom Backends
 
-For advanced use cases where you need full control over network operations - such as implementing a custom server, using GraphQL, or complex authentication flows - you can use a custom `resolver` instead of `baseURL`.
-
-This API keeps the legacy direct-update resolver contract. New integrations
-should prefer `baseURL` and the default Release Catalog resolver.
-
-```tsx
-import { HotUpdater } from "@hot-updater/react-native";
-import { useEffect } from "react";
-
-function App() {
-  useEffect(() => {
-    const checkUpdate = async () => {
-      // When you call HotUpdater.checkForUpdate(),
-      // it will use the resolver.checkUpdate() defined below
-      const updateInfo = await HotUpdater.checkForUpdate({
-        updateStrategy: "appVersion",
-      });
-
-      if (updateInfo) {
-        await updateInfo.updateBundle();
-        if (updateInfo.shouldForceUpdate) {
-          await HotUpdater.reload();
-        }
-      }
-    };
-
-    checkUpdate();
-  }, []);
- 
-  return ...
-}
-
-export default HotUpdater.wrap({
-  resolver: { // [!code ++] 
-    // Override the default update check logic // [!code ++]
-    checkUpdate: async (params) => { // [!code ++]
-      // Custom network logic - GraphQL, custom API, etc. // [!code ++]
-      const response = await fetch(`https://custom-api.com/check`, { // [!code ++]
-        method: 'POST', // [!code ++]
-        body: JSON.stringify({ // [!code ++]
-          platform: params.platform, // [!code ++]
-          appVersion: params.appVersion, // [!code ++]
-          bundleId: params.bundleId, // [!code ++]
-        }), // [!code ++]
-        headers: params.requestHeaders, // [!code ++]
-      }); // [!code ++]
-      if (!response.ok) return null; // [!code ++]
-      return response.json(); // [!code ++]
-    }, // [!code ++]
-  }, // [!code ++]
-  updateStrategy: "appVersion",
-})(App);
-```
-
-> **Note**: The `resolver` option is mutually exclusive with `baseURL`. Using `resolver.checkUpdate()` overrides the default update check implementation.
+For advanced use cases where you need full control over network operations,
+such as GraphQL, RPC, or custom authentication, expose the v1 HTTP protocol
+through an adapter or proxy and point `baseURL` at that endpoint. The adapter
+may use any upstream protocol internally, but the React Native client always
+uses the standard Release Catalog, artifact, Analytics-event, and `/version`
+routes. This keeps catalog selection and native transition guards on one
+transport contract.
 
 ## Flag Behavior
 
-| Update Response                  | Runtime Behavior                                                                                                            | How to Enable                                                     |
-|----------------------------------|-----------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------|
-| `shouldForceUpdate: false`       | Stages the selected bundle without reloading the current runtime; it becomes active on the next runtime start.              | Default setting                                                   |
-| `shouldForceUpdate: true`        | `HotUpdater.wrap` reloads after preparing the selected transition; `reloadOnForceUpdate: false` defers it to a later start. | Use `--force-update` or the console; bundle-changing rollbacks also return it. |
+| Update Response            | Runtime Behavior                                                                                                            | How to Enable                                                                  |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `shouldForceUpdate: false` | Stages the selected bundle without reloading the current runtime; it becomes active on the next runtime start.              | Default setting                                                                |
+| `shouldForceUpdate: true`  | `HotUpdater.wrap` reloads after preparing the selected transition; `reloadOnForceUpdate: false` defers it to a later start. | Use `--force-update` or the console; bundle-changing rollbacks also return it. |

@@ -3,7 +3,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   ChannelRow,
-  ClientAccessKeyRow,
+  ApiKeyRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -49,7 +49,7 @@ const modelDelegates = {
   bundle_patches: "bundle_patches",
   bundle_events: "bundle_events",
   channels: "channels",
-  client_access_keys: "client_access_keys",
+  api_keys: "api_keys",
   releases: "releases",
   release_catalogs: "release_catalogs",
 } as const satisfies Record<DatabaseModel, string>;
@@ -89,11 +89,13 @@ const readNullableString = (
   return value;
 };
 
-const readOptionalNullableString = (
-  row: Record<string, unknown>,
-  field: string,
-): string | null =>
-  row[field] === undefined ? null : readNullableString(row, field);
+const readByteSize = (row: Record<string, unknown>, field: string): number => {
+  const value = row[field];
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new PrismaAdapterError(`expected byte-size field "${field}"`);
+  }
+  return value;
+};
 
 export const parsePrismaBundleRow = (value: unknown): BundleRow => {
   if (!isRecord(value)) throw new PrismaAdapterError("invalid bundle row");
@@ -111,6 +113,7 @@ export const parsePrismaBundleRow = (value: unknown): BundleRow => {
     file_hash: readString(value, "file_hash"),
     git_commit_hash: readNullableString(value, "git_commit_hash"),
     storage_uri: readString(value, "storage_uri"),
+    archive_byte_size: readByteSize(value, "archive_byte_size"),
     metadata,
     manifest_storage_uri: readNullableString(value, "manifest_storage_uri"),
     manifest_file_hash: readNullableString(value, "manifest_file_hash"),
@@ -139,6 +142,7 @@ export const parsePrismaPatchRow = (value: unknown): BundlePatchRow => {
     base_file_hash: readString(value, "base_file_hash"),
     patch_file_hash: readString(value, "patch_file_hash"),
     patch_storage_uri: readString(value, "patch_storage_uri"),
+    byte_size: readByteSize(value, "byte_size"),
     order_index: orderIndex,
   };
 };
@@ -163,9 +167,10 @@ export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
       ((type === "UPDATE_APPLIED" ||
         type === "RECOVERED" ||
         type === "RELEASE_ADOPTED") &&
+        typeof fromBundleId === "string" &&
         (updateStrategy === "fingerprint" ||
           updateStrategy === "appVersion")) ||
-      (type === "UNCHANGED" && updateStrategy === null)
+      (type === "UNCHANGED" && fromBundleId === null && updateStrategy === null)
     )
   ) {
     throw new PrismaAdapterError("invalid event shape");
@@ -176,10 +181,10 @@ export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
     install_id: readString(value, "install_id"),
     user_id: readNullableString(value, "user_id"),
     username: readNullableString(value, "username"),
-    from_release_id: readOptionalNullableString(value, "from_release_id"),
+    from_release_id: readNullableString(value, "from_release_id"),
     from_bundle_id: fromBundleId,
-    to_release_id: readOptionalNullableString(value, "to_release_id"),
-    to_bundle_id: readNullableString(value, "to_bundle_id"),
+    to_release_id: readNullableString(value, "to_release_id"),
+    to_bundle_id: readString(value, "to_bundle_id"),
     platform,
     app_version: readString(value, "app_version"),
     channel: readString(value, "channel"),
@@ -191,15 +196,13 @@ export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
   } as BundleEventRow;
 };
 
-export const parsePrismaClientAccessKeyRow = (
-  value: unknown,
-): ClientAccessKeyRow => {
+export const parsePrismaApiKeyRow = (value: unknown): ApiKeyRow => {
   if (!isRecord(value)) {
-    throw new PrismaAdapterError("invalid client access-key row");
+    throw new PrismaAdapterError("invalid API key row");
   }
   const role = readString(value, "role");
   if (role !== "client") {
-    throw new PrismaAdapterError("invalid client access-key role");
+    throw new PrismaAdapterError("invalid API key role");
   }
   const revokedAt = value["revoked_at_ms"];
   return {

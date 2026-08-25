@@ -24,8 +24,8 @@ import {
   type ChannelInsertInput,
   type ChannelInsertResult,
   type ChannelRow,
-  type ClientAccessKeyRow,
-  type ClientAccessKeyModel,
+  type ApiKeyRow,
+  type ApiKeyModel,
   createDatabasePlugin,
   type DatabaseCommit,
   type DatabaseCommitResult,
@@ -155,6 +155,9 @@ const field = (value: object, name: string): unknown =>
 const isNullableString = (value: unknown): value is string | null =>
   value === null || typeof value === "string";
 
+const isByteSize = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
 const isBundleRow = (value: unknown): value is BundleRow =>
   typeof value === "object" &&
   value !== null &&
@@ -164,6 +167,7 @@ const isBundleRow = (value: unknown): value is BundleRow =>
   typeof field(value, "file_hash") === "string" &&
   isNullableString(field(value, "git_commit_hash")) &&
   typeof field(value, "storage_uri") === "string" &&
+  isByteSize(field(value, "archive_byte_size")) &&
   isDatabaseMetadataObject(field(value, "metadata")) &&
   isNullableString(field(value, "manifest_storage_uri")) &&
   isNullableString(field(value, "manifest_file_hash")) &&
@@ -178,6 +182,7 @@ const isPatchRow = (value: unknown): value is BundlePatchRow =>
   typeof field(value, "base_file_hash") === "string" &&
   typeof field(value, "patch_file_hash") === "string" &&
   typeof field(value, "patch_storage_uri") === "string" &&
+  isByteSize(field(value, "byte_size")) &&
   typeof field(value, "order_index") === "number";
 
 const isChannelRow = (value: unknown): value is ChannelRow =>
@@ -2285,26 +2290,26 @@ const updateChannelReferenceCount = (
   },
 });
 
-type VersionedAccessKey = {
-  readonly row: ClientAccessKeyRow;
+type VersionedApiKey = {
+  readonly row: ApiKeyRow;
   readonly version: number;
 };
 
-const loadClientAccessKeyByHash = async (
+const loadApiKeyByHash = async (
   store: DynamoDBStore,
   hash: string,
-): Promise<VersionedAccessKey | null> => {
+): Promise<VersionedApiKey | null> => {
   const { Item } = await store.client.send(
     new GetCommand({
       TableName: store.tableName,
-      Key: { pk: DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION, sk: hash },
+      Key: { pk: DYNAMODB_API_KEY_HASH_PARTITION, sk: hash },
       ConsistentRead: true,
     }),
   );
   if (Item === undefined) return null;
-  const id = Item.client_access_key_id;
+  const id = Item.api_key_id;
   if (typeof id !== "string") throw new DynamoDBStoredItemError();
-  return loadClientAccessKey(store, id);
+  return loadApiKey(store, id);
 };
 
 const compileAndCommitDynamoDBChanges = async (
@@ -2342,16 +2347,16 @@ const compileAndCommitDynamoDBChanges = async (
   const releaseCatalogs = new Map(
     originalReleaseCatalogItems.map(({ sk, row }) => [sk, row] as const),
   );
-  const originalAccessKeys = new Map<string, VersionedAccessKey>();
-  const accessKeys = new Map<string, VersionedAccessKey>();
-  const accessKeyHashes = new Map<string, string>();
+  const originalApiKeys = new Map<string, VersionedApiKey>();
+  const apiKeys = new Map<string, VersionedApiKey>();
+  const apiKeyHashes = new Map<string, string>();
   const analytics = new Map<string, BundleEventRow>();
 
-  const rememberAccessKey = (value: VersionedAccessKey | null): void => {
-    if (value === null || accessKeys.has(value.row.id)) return;
-    originalAccessKeys.set(value.row.id, value);
-    accessKeys.set(value.row.id, value);
-    accessKeyHashes.set(value.row.hash, value.row.id);
+  const rememberApiKey = (value: VersionedApiKey | null): void => {
+    if (value === null || apiKeys.has(value.row.id)) return;
+    originalApiKeys.set(value.row.id, value);
+    apiKeys.set(value.row.id, value);
+    apiKeyHashes.set(value.row.hash, value.row.id);
   };
 
   const requireReleaseReferences = (row: ReleaseRow): void => {
@@ -2542,31 +2547,29 @@ const compileAndCommitDynamoDBChanges = async (
         analytics.set(key, change.row);
         break;
       }
-      case "clientAccessKeys":
+      case "apiKeys":
         if (change.operation === "insert") {
-          rememberAccessKey(
-            await loadClientAccessKeyByHash(store, change.row.hash),
-          );
-          if (accessKeyHashes.has(change.row.hash)) break;
-          rememberAccessKey(await loadClientAccessKey(store, change.row.id));
-          if (accessKeys.has(change.row.id)) {
+          rememberApiKey(await loadApiKeyByHash(store, change.row.hash));
+          if (apiKeyHashes.has(change.row.hash)) break;
+          rememberApiKey(await loadApiKey(store, change.row.id));
+          if (apiKeys.has(change.row.id)) {
             throw new DynamoDBCommitStateError(
-              `Client access key id "${change.row.id}" already exists`,
+              `API key id "${change.row.id}" already exists`,
             );
           }
           const inserted = { row: change.row, version: 1 };
-          accessKeys.set(change.row.id, inserted);
-          accessKeyHashes.set(change.row.hash, change.row.id);
+          apiKeys.set(change.row.id, inserted);
+          apiKeyHashes.set(change.row.hash, change.row.id);
         } else {
-          rememberAccessKey(await loadClientAccessKey(store, change.where.id));
-          const current = accessKeys.get(change.where.id);
+          rememberApiKey(await loadApiKey(store, change.where.id));
+          const current = apiKeys.get(change.where.id);
           if (current === undefined) {
             return {
               committed: false,
               conflict: { changeIndex, reason: "not_found" },
             };
           }
-          accessKeys.set(change.where.id, {
+          apiKeys.set(change.where.id, {
             row: {
               ...current.row,
               revoked_at_ms: change.update.revokedAtMs,
@@ -2877,8 +2880,8 @@ const compileAndCommitDynamoDBChanges = async (
     });
   }
 
-  for (const [id, current] of accessKeys) {
-    const original = originalAccessKeys.get(id);
+  for (const [id, current] of apiKeys) {
+    const original = originalApiKeys.get(id);
     if (original !== undefined && rowsEqual(original.row, current.row)) {
       continue;
     }
@@ -2886,7 +2889,7 @@ const compileAndCommitDynamoDBChanges = async (
       Put: {
         TableName: store.tableName,
         Item: boundedDynamoDBMetadataItem(
-          clientAccessKeyItem(
+          apiKeyItem(
             current.row,
             original === undefined ? 1 : original.version + 1,
           ),
@@ -2909,9 +2912,9 @@ const compileAndCommitDynamoDBChanges = async (
         Put: {
           TableName: store.tableName,
           Item: {
-            pk: DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION,
+            pk: DYNAMODB_API_KEY_HASH_PARTITION,
             sk: current.row.hash,
-            client_access_key_id: current.row.id,
+            api_key_id: current.row.id,
           },
           ConditionExpression: "attribute_not_exists(#pk)",
           ExpressionAttributeNames: { "#pk": "pk" },
@@ -2940,26 +2943,37 @@ const createDynamoDBCommit =
     }
   };
 export const DYNAMODB_ANALYTICS_PARTITION = "bundle_events";
-export const DYNAMODB_CLIENT_ACCESS_KEY_PARTITION = "client_access_keys";
-export const DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION =
-  "_hot-updater#client-access-key-hashes";
+export const DYNAMODB_API_KEY_PARTITION = "api_keys";
+export const DYNAMODB_API_KEY_HASH_PARTITION = "_hot-updater#api-key-hashes";
+
+const hasValidBundleEventShape = (value: object): boolean => {
+  const type = field(value, "type");
+  const fromBundleId = field(value, "from_bundle_id");
+  const updateStrategy = field(value, "update_strategy");
+  return (
+    ((type === "UPDATE_APPLIED" ||
+      type === "RECOVERED" ||
+      type === "RELEASE_ADOPTED") &&
+      typeof fromBundleId === "string" &&
+      (updateStrategy === "fingerprint" || updateStrategy === "appVersion")) ||
+    (type === "UNCHANGED" && fromBundleId === null && updateStrategy === null)
+  );
+};
 
 const isBundleEventRow = (value: unknown): value is BundleEventRow =>
   typeof value === "object" &&
   value !== null &&
   typeof field(value, "id") === "string" &&
   typeof field(value, "install_id") === "string" &&
-  (field(value, "to_bundle_id") === null ||
-    typeof field(value, "to_bundle_id") === "string") &&
+  isNullableString(field(value, "from_release_id")) &&
+  isNullableString(field(value, "to_release_id")) &&
+  typeof field(value, "to_bundle_id") === "string" &&
   (field(value, "platform") === "ios" ||
     field(value, "platform") === "android") &&
   typeof field(value, "received_at_ms") === "number" &&
-  (field(value, "type") === "UPDATE_APPLIED" ||
-    field(value, "type") === "RECOVERED" ||
-    field(value, "type") === "RELEASE_ADOPTED" ||
-    field(value, "type") === "UNCHANGED");
+  hasValidBundleEventShape(value);
 
-const isClientAccessKeyRow = (value: unknown): value is ClientAccessKeyRow =>
+const isApiKeyRow = (value: unknown): value is ApiKeyRow =>
   typeof value === "object" &&
   value !== null &&
   typeof field(value, "id") === "string" &&
@@ -3062,27 +3076,27 @@ export const createDynamoDBAnalyticsTable = (
   },
 });
 
-const clientAccessKeyItem = (
-  row: ClientAccessKeyRow,
+const apiKeyItem = (
+  row: ApiKeyRow,
   version: number,
 ): Record<string, unknown> => ({
-  pk: DYNAMODB_CLIENT_ACCESS_KEY_PARTITION,
+  pk: DYNAMODB_API_KEY_PARTITION,
   sk: row.id,
   version,
   row,
 });
 
-const loadClientAccessKey = async (
+const loadApiKey = async (
   store: DynamoDBStore,
   id: string,
 ): Promise<{
-  readonly row: ClientAccessKeyRow;
+  readonly row: ApiKeyRow;
   readonly version: number;
 } | null> => {
   const result = await store.client.send(
     new GetCommand({
       TableName: store.tableName,
-      Key: { pk: DYNAMODB_CLIENT_ACCESS_KEY_PARTITION, sk: id },
+      Key: { pk: DYNAMODB_API_KEY_PARTITION, sk: id },
       ConsistentRead: true,
     }),
   );
@@ -3090,28 +3104,26 @@ const loadClientAccessKey = async (
     ? null
     : parseOfficialRowItem(
         result.Item,
-        DYNAMODB_CLIENT_ACCESS_KEY_PARTITION,
-        isClientAccessKeyRow,
+        DYNAMODB_API_KEY_PARTITION,
+        isApiKeyRow,
       );
 };
 
-export const createDynamoDBClientAccessKeyTable = (
+export const createDynamoDBApiKeyTable = (
   store: DynamoDBStore,
-): ClientAccessKeyModel => {
-  const findByHash = async (
-    hash: string,
-  ): Promise<ClientAccessKeyRow | null> => {
+): ApiKeyModel => {
+  const findByHash = async (hash: string): Promise<ApiKeyRow | null> => {
     const lookup = await store.client.send(
       new GetCommand({
         TableName: store.tableName,
-        Key: { pk: DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION, sk: hash },
+        Key: { pk: DYNAMODB_API_KEY_HASH_PARTITION, sk: hash },
         ConsistentRead: true,
       }),
     );
-    const id = lookup.Item?.client_access_key_id;
+    const id = lookup.Item?.api_key_id;
     if (lookup.Item === undefined) return null;
     if (typeof id !== "string") throw new DynamoDBStoredItemError();
-    return (await loadClientAccessKey(store, id))?.row ?? null;
+    return (await loadApiKey(store, id))?.row ?? null;
   };
 
   return {
@@ -3122,7 +3134,7 @@ export const createDynamoDBClientAccessKeyTable = (
           {
             Put: {
               TableName: store.tableName,
-              Item: boundedDynamoDBMetadataItem(clientAccessKeyItem(row, 1)),
+              Item: boundedDynamoDBMetadataItem(apiKeyItem(row, 1)),
               ConditionExpression: "attribute_not_exists(#pk)",
               ExpressionAttributeNames: { "#pk": "pk" },
             },
@@ -3131,9 +3143,9 @@ export const createDynamoDBClientAccessKeyTable = (
             Put: {
               TableName: store.tableName,
               Item: {
-                pk: DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION,
+                pk: DYNAMODB_API_KEY_HASH_PARTITION,
                 sk: row.hash,
-                client_access_key_id: row.id,
+                api_key_id: row.id,
               },
               ConditionExpression: "attribute_not_exists(#pk)",
               ExpressionAttributeNames: { "#pk": "pk" },
@@ -3148,7 +3160,7 @@ export const createDynamoDBClientAccessKeyTable = (
     },
     findByHash,
     async list() {
-      const rows: ClientAccessKeyRow[] = [];
+      const rows: ApiKeyRow[] = [];
       let exclusiveStartKey: Record<string, unknown> | undefined;
       do {
         const page = await store.client.send(
@@ -3158,7 +3170,7 @@ export const createDynamoDBClientAccessKeyTable = (
             KeyConditionExpression: "#pk = :pk",
             ExpressionAttributeNames: { "#pk": "pk" },
             ExpressionAttributeValues: {
-              ":pk": DYNAMODB_CLIENT_ACCESS_KEY_PARTITION,
+              ":pk": DYNAMODB_API_KEY_PARTITION,
             },
             ConsistentRead: true,
           }),
@@ -3168,8 +3180,8 @@ export const createDynamoDBClientAccessKeyTable = (
             (item) =>
               parseOfficialRowItem(
                 item,
-                DYNAMODB_CLIENT_ACCESS_KEY_PARTITION,
-                isClientAccessKeyRow,
+                DYNAMODB_API_KEY_PARTITION,
+                isApiKeyRow,
               ).row,
           ),
         );
@@ -3182,14 +3194,14 @@ export const createDynamoDBClientAccessKeyTable = (
       );
     },
     async revoke({ id, revokedAtMs }) {
-      const current = await loadClientAccessKey(store, id);
+      const current = await loadApiKey(store, id);
       if (current === null) return null;
       const row = { ...current.row, revoked_at_ms: revokedAtMs };
       await store.client.send(
         new PutCommand({
           TableName: store.tableName,
           Item: boundedDynamoDBMetadataItem(
-            clientAccessKeyItem(row, current.version + 1),
+            apiKeyItem(row, current.version + 1),
           ),
           ConditionExpression: "#version = :currentVersion",
           ExpressionAttributeNames: { "#version": "version" },
@@ -3265,7 +3277,7 @@ export const dynamoDB = (config: DynamoDBConfig) => {
         DYNAMODB_UPDATE_INDEX_NAME,
       ),
       analytics: createDynamoDBAnalyticsTable(store),
-      clientAccessKeys: createDynamoDBClientAccessKeyTable(store),
+      apiKeys: createDynamoDBApiKeyTable(store),
     },
     async commit(input) {
       const result = await adapter.commit(input);

@@ -5,7 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 import type {
   BundleRow,
   ChannelRow,
-  ClientAccessKeyRow,
+  ApiKeyRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
@@ -40,7 +40,7 @@ setupDatabasePluginTestSuite({
   createPlugin: () => postgres({ dialect: new PGliteDialect(getClient()) }),
   reset: async () => {
     await getClient().exec(
-      "DELETE FROM bundle_events; DELETE FROM client_access_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
+      "DELETE FROM bundle_events; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
     );
   },
   dispose: async (plugin) => {
@@ -70,6 +70,7 @@ const bundleFixture = (): BundleRow => ({
   file_hash: "file-hash",
   git_commit_hash: null,
   storage_uri: "storage://bundles/701.zip",
+  archive_byte_size: 3_000_000_001,
   metadata: {},
   manifest_storage_uri: null,
   manifest_file_hash: null,
@@ -101,7 +102,7 @@ const releaseFixture = (
   updated_at_ms: 100,
 });
 
-const accessKeyFixture = (): ClientAccessKeyRow => ({
+const apiKeyFixture = (): ApiKeyRow => ({
   id: "00000000-0000-0000-0000-000000000901",
   hash: "channel-delete-race-hash",
   name: "channel-delete-race",
@@ -109,6 +110,42 @@ const accessKeyFixture = (): ClientAccessKeyRow => ({
   role: "client",
   created_at_ms: 100,
   revoked_at_ms: null,
+});
+
+describe("PostgreSQL artifact byte-size constraints", () => {
+  it("rejects negative archive and patch sizes at the database boundary", async () => {
+    const { database, plugin } = await createPostgresTestPlugin();
+    const bundle = bundleFixture();
+
+    try {
+      await expect(
+        database.exec(`
+          INSERT INTO bundles (
+            id, platform, file_hash, storage_uri, archive_byte_size, metadata
+          ) VALUES (
+            '${bundle.id}', 'ios', 'hash', 'storage://bundle', -1, '{}'
+          )
+        `),
+      ).rejects.toThrow();
+
+      await plugin.commit({
+        changes: [{ model: "bundles", operation: "insert", row: bundle }],
+      });
+      await expect(
+        database.exec(`
+          INSERT INTO bundle_patches (
+            id, bundle_id, base_bundle_id, base_file_hash, patch_file_hash,
+            patch_storage_uri, byte_size
+          ) VALUES (
+            'patch-invalid-size', '${bundle.id}', '${bundle.id}', 'base-hash',
+            'patch-hash', 'storage://patch', -1
+          )
+        `),
+      ).rejects.toThrow();
+    } finally {
+      await plugin.dispose?.();
+    }
+  });
 });
 
 describe("PostgreSQL channel model", () => {
@@ -264,7 +301,7 @@ describe("PostgreSQL channel model", () => {
       "racing",
       "00000000-0000-0000-0000-000000000005",
     );
-    const accessKey = accessKeyFixture();
+    const apiKey = apiKeyFixture();
 
     try {
       await plugin.models.channels.insert({
@@ -289,9 +326,9 @@ describe("PostgreSQL channel model", () => {
         plugin.commit({
           changes: [
             {
-              model: "clientAccessKeys",
+              model: "apiKeys",
               operation: "insert",
-              row: accessKey,
+              row: apiKey,
               onConflict: "ignore",
             },
             {
@@ -306,7 +343,7 @@ describe("PostgreSQL channel model", () => {
         conflict: { changeIndex: 1, reason: "referenced" },
       });
       await expect(
-        plugin.models.clientAccessKeys.findByHash(accessKey.hash),
+        plugin.models.apiKeys.findByHash(apiKey.hash),
       ).resolves.toBeNull();
       await expect(plugin.models.channels.list({})).resolves.toEqual({
         channels: [channel],

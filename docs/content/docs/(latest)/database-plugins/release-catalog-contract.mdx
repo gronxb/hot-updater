@@ -44,7 +44,7 @@ interface DatabaseModels {
   readonly releaseCatalogs: ReleaseCatalogModel;
   readonly channels: ChannelModel;
   readonly analytics: AnalyticsModel;
-  readonly clientAccessKeys: ClientAccessKeyModel;
+  readonly apiKeys: ApiKeyModel;
 }
 ```
 
@@ -65,11 +65,47 @@ implementation, but those details are not public.
 Bundle rows contain only artifact fields: ID, platform, hashes, storage URIs,
 manifest/asset information, Git commit, and artifact metadata.
 
+Every Bundle row has a required `archive_byte_size`, and every Bundle-patch row
+has a required `byte_size`. Both values are immutable non-negative
+integers no larger than `Number.MAX_SAFE_INTEGER`. Provider CRUD hydration must
+reject a missing, fractional, negative, or out-of-range value instead of
+constructing a partial v1 Bundle.
+
 `BundlePatchModel.findByBundleIds` returns all patch rows owned by the requested
 Bundle IDs. It returns immediately for an empty owner list.
 
+Manifest asset JSON may include optional `downloadByteSize` and
+`downloadFileHash` fields. These are not database columns. `downloadByteSize`
+describes the exact representation served to the client. When that differs
+from the logical file, a valid lowercase SHA-256 `downloadFileHash` identifies
+those exact served bytes and their content-addressed object key. For example, a
+Brotli asset records the compressed payload size and hash while `fileHash`
+continues to identify the logical installed file. Raw assets use the logical
+`fileHash` key and may omit `downloadFileHash`. A missing or invalid
+`downloadByteSize`, an invalid present `downloadFileHash`, or a missing hash for
+a transformed representation keeps legacy resolution behavior and makes the
+size comparison unknown; it does not invalidate the Bundle row.
+
 A Bundle referenced by any Release cannot be deleted. Release policy changes
 never mutate a Bundle.
+
+### Artifact route selection
+
+The server computes the normal manifest route as the exact UTF-8 byte length of
+the stored target manifest text plus the primary download size of every changed
+asset. Unchanged assets cost zero. A usable patch is primary only when it is
+strictly smaller than a usable complete file when both sizes are known; a tie
+uses the file. A retained patch remains primary when its required size is known
+and the optional file size is unknown.
+
+When the archive URL, archive size, and every primary size are known, a total
+diff size equal to or larger than `archive_byte_size` produces the archive-only
+response. Missing or invalid optional manifest metadata, or safe-integer sum
+overflow, preserves the existing manifest-first response. No request-time
+`HEAD` or storage metadata lookup is used, and this server-side decision does
+not change native routes or public artifact response types. Exceptional patch
+failure retains the existing patch-to-file-to-archive fallback and is not
+included in the normal-path total.
 
 ## Release model
 
@@ -129,7 +165,7 @@ and update time. A logical Release mutation increments every affected catalog
 generation. An empty scope remains as a newer tombstone row; generation never
 resets by deleting a catalog.
 
-## Channels, Analytics, and access keys
+## Channels, Analytics, and API keys
 
 Channels use opaque IDs and exact case-sensitive names. Concurrent
 `insert({ onConflict: "returnExisting" })` returns the canonical stored row.
@@ -140,8 +176,8 @@ Analytics append and stable cursor scan remain provider-owned persistence.
 Transition rows carry directional Release identity alongside Bundle identity.
 Old nullable Release IDs remain valid and are never inferred from Bundle ID.
 
-Client access-key create is idempotent by hash. Lookup, stable list ordering,
-and revoke semantics are unchanged.
+API key creation is idempotent by hash. Lookup, stable list ordering, and
+revocation semantics are unchanged.
 
 ## Declarative conditional commit
 
@@ -162,7 +198,7 @@ type DatabaseCommitExpectation =
 
 Release changes support insert, update, and delete. Catalog changes use
 `{ model: "releaseCatalogs", operation: "put", row }`. Bundle, patch,
-Channel, Analytics, and access-key changes retain their declared operations.
+Channel, Analytics, and API key changes retain their declared operations.
 
 The provider performs these steps inside one short native transaction:
 
@@ -234,8 +270,8 @@ Required provider mappings:
 on an empty database and no-op when `schema.core` is already `1.0.0`. Any
 other marker is rejected. There is no v0 Bundle-policy backfill.
 
-1. Create Channel, Bundle, patch, Release, catalog, Analytics, and
-   client-access-key storage with the official indexes and references.
+1. Create Channel, Bundle, patch, Release, catalog, Analytics, and API key
+   storage with the official indexes and references.
 2. Record `schema.core = 1.0.0`.
 3. Deploy Releases from source artifacts after the empty schema exists.
 
@@ -243,13 +279,20 @@ Managed provider init also requires newly scaffolded v1 resources. AWS,
 Cloudflare, Firebase, and Supabase fail before mutating detected v0
 infrastructure.
 
+The initial `1.0.0` definition changed on the unreleased `next`/RC line to add
+the required archive and patch size fields. A database created from an earlier
+pre-release `1.0.0` definition has the same schema marker, so migrate would
+no-op without adding the fields. Recreate that database from the current empty
+`1.0.0` schema; there is no incremental migration or backfill for this
+pre-release change.
+
 ## Runtime route boundary
 
 The shared device endpoints are:
 
 ```text
-GET /release-catalogs/app-version/:authorityId/:platform/:channelKey/:canonicalAppVersion
-GET /release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash
+GET /release-catalogs/app-version/:platform/:channelKey/:canonicalAppVersion
+GET /release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash
 GET /artifacts/:targetBundleId/from/:currentBundleId
 ```
 
@@ -258,10 +301,12 @@ short-lived shared-cacheable and vary by content encoding and `x-api-key`.
 Authentication errors, missing/incomplete catalogs, and server errors are
 `private, no-store`. Artifact resolution remains Bundle-keyed and private.
 
-A custom `HotUpdaterResolver` opts into shared catalog transport only by
-declaring a stable `catalogCachePartition` and using that same partition in
-its cache key. Omit the declaration when arbitrary headers or request context
-make the response private; those responses must remain `private, no-store`.
+Catalog authority remains server-owned compiler and persistence state. It is
+not supplied by React Native clients and does not appear in client route paths.
+Custom GraphQL, RPC, or other transports must sit behind an HTTP adapter or
+proxy that exposes these v1 routes. Successful shared responses must keep a
+stable cache partition; responses affected by arbitrary request context must
+remain `private, no-store`.
 
 The v0 app-version and fingerprint update-check routes are not exposed. Old
 native binaries must continue using a separate v0 endpoint during a parallel

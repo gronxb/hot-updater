@@ -21,14 +21,15 @@ vi.mock("@hot-updater/bsdiff", () => ({
 import { createBundleDiff } from "./createBundleDiff";
 
 const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
+  archiveByteSize: 1_024,
   fileHash: `${id}-file-hash`,
   gitCommitHash: null,
   id,
-  assetBaseStorageUri: `s3://test-bucket/releases/${id}/files`,
-  manifestStorageUri: `s3://test-bucket/releases/${id}/manifest.json`,
+  assetBaseStorageUri: "s3://test-bucket/releases/assets",
+  manifestStorageUri: `s3://test-bucket/releases/bundles/${id}/manifest.json`,
   metadata: {},
   platform: "ios",
-  storageUri: `s3://test-bucket/releases/${id}/bundle.zip`,
+  storageUri: `s3://test-bucket/releases/bundles/${id}/bundle.zip`,
   ...overrides,
 });
 
@@ -75,6 +76,8 @@ describe("createBundleDiff", () => {
   it("uploads a Hermes patch and stores patch metadata on the target bundle", async () => {
     const baseBundle = createBundle("00000000-0000-0000-0000-000000000001");
     const targetBundle = createBundle("00000000-0000-0000-0000-000000000002");
+    const baseDownloadFileHash = "a".repeat(64);
+    const targetDownloadFileHash = "b".repeat(64);
     const plugin = await createDatabasePlugin([baseBundle, targetBundle]);
     const databasePlugin: DatabasePlugin = plugin;
     const commit = vi.spyOn(databasePlugin, "commit");
@@ -97,6 +100,8 @@ describe("createBundleDiff", () => {
             JSON.stringify({
               assets: {
                 "index.ios.bundle": {
+                  downloadByteSize: 7,
+                  downloadFileHash: baseDownloadFileHash,
                   fileHash: "hash-old",
                 },
               },
@@ -110,6 +115,8 @@ describe("createBundleDiff", () => {
             JSON.stringify({
               assets: {
                 "index.ios.bundle": {
+                  downloadByteSize: 7,
+                  downloadFileHash: targetDownloadFileHash,
                   fileHash: "hash-new",
                 },
               },
@@ -118,19 +125,19 @@ describe("createBundleDiff", () => {
           );
         }
 
-        if (url.endsWith(`${baseBundle.id}/files/index.ios.bundle.br`)) {
+        if (url.endsWith(`/assets/sha256/aa/${baseDownloadFileHash}.br`)) {
           return new Response(brotliCompressSync(new Uint8Array([1, 2, 3])));
         }
 
-        if (url.endsWith(`${baseBundle.id}/files/index.ios.bundle`)) {
+        if (url.endsWith("/assets/sha256/ha/hash-old.bundle")) {
           return new Response(new Uint8Array([1, 2, 3]));
         }
 
-        if (url.endsWith(`${targetBundle.id}/files/index.ios.bundle.br`)) {
+        if (url.endsWith(`/assets/sha256/bb/${targetDownloadFileHash}.br`)) {
           return new Response(brotliCompressSync(new Uint8Array([1, 9, 3])));
         }
 
-        if (url.endsWith(`${targetBundle.id}/files/index.ios.bundle`)) {
+        if (url.endsWith("/assets/sha256/ha/hash-new.bundle")) {
           return new Response(new Uint8Array([1, 9, 3]));
         }
 
@@ -152,20 +159,21 @@ describe("createBundleDiff", () => {
 
       expect(upload).toHaveBeenCalledOnce();
       expect(commit).toHaveBeenCalledOnce();
-      expect(updatedBundle).toMatchObject({
-        patchBaseBundleId: baseBundle.id,
-        patchBaseFileHash: "hash-old",
-      });
-      expect(updatedBundle.patchFileHash).toMatch(/[a-f0-9]{64}/);
-      expect(updatedBundle.patchStorageUri).toContain(
-        `bundles/${targetBundle.id}/patches/${baseBundle.id}`,
+      const [patch] = updatedBundle.patches ?? [];
+      expect(patch?.baseBundleId).toBe(baseBundle.id);
+      expect(patch?.baseFileHash).toBe("hash-old");
+      expect(patch?.byteSize).toBe(4);
+      expect(patch?.patchFileHash).toMatch(/[a-f0-9]{64}/);
+      expect(patch?.patchStorageUri).toContain(
+        `bundles/${targetBundle.id}/patches/${baseBundle.id}/${patch?.patchFileHash}/`,
       );
       expect(updatedBundle.patches).toEqual([
         {
           baseBundleId: baseBundle.id,
           baseFileHash: "hash-old",
-          patchFileHash: updatedBundle.patchFileHash,
-          patchStorageUri: updatedBundle.patchStorageUri,
+          byteSize: 4,
+          patchFileHash: patch?.patchFileHash,
+          patchStorageUri: patch?.patchStorageUri,
         },
       ]);
     } finally {
@@ -248,12 +256,12 @@ describe("createBundleDiff", () => {
 
   it("uses a matching HTTPS storage plugin before direct fetch", async () => {
     const baseBundle = createBundle("00000000-0000-0000-0000-000000000001", {
-      assetBaseStorageUri: "https://storage.example.com/releases/base/files",
+      assetBaseStorageUri: "https://storage.example.com/releases/assets",
       manifestStorageUri:
         "https://storage.example.com/releases/base/manifest.json",
     });
     const targetBundle = createBundle("00000000-0000-0000-0000-000000000002", {
-      assetBaseStorageUri: "https://storage.example.com/releases/target/files",
+      assetBaseStorageUri: "https://storage.example.com/releases/assets",
       manifestStorageUri:
         "https://storage.example.com/releases/target/manifest.json",
     });
@@ -277,11 +285,11 @@ describe("createBundleDiff", () => {
         }),
       ],
       [
-        `${baseBundle.assetBaseStorageUri}/index.ios.bundle`,
+        `${baseBundle.assetBaseStorageUri}/sha256/ha/hash-old.bundle`,
         new Uint8Array([1, 2, 3]),
       ],
       [
-        `${targetBundle.assetBaseStorageUri}/index.ios.bundle`,
+        `${targetBundle.assetBaseStorageUri}/sha256/ha/hash-new.bundle`,
         new Uint8Array([1, 9, 3]),
       ],
     ]);
@@ -336,14 +344,11 @@ describe("createBundleDiff", () => {
         {
           baseBundleId: primaryBaseBundle.id,
           baseFileHash: "hash-primary-old",
+          byteSize: 4,
           patchFileHash: "hash-primary-patch",
           patchStorageUri: `s3://test-bucket/${primaryBaseBundle.id}/existing.bsdiff`,
         },
       ],
-      patchBaseBundleId: primaryBaseBundle.id,
-      patchBaseFileHash: "hash-primary-old",
-      patchFileHash: "hash-primary-patch",
-      patchStorageUri: `s3://test-bucket/${primaryBaseBundle.id}/existing.bsdiff`,
     });
     const databasePlugin = await createDatabasePlugin([
       primaryBaseBundle,
@@ -387,21 +392,19 @@ describe("createBundleDiff", () => {
           );
         }
 
-        if (
-          url.endsWith(`${secondaryBaseBundle.id}/files/index.ios.bundle.br`)
-        ) {
+        if (url.endsWith("/assets/sha256/ha/hash-secondary-old.br")) {
           return new Response(brotliCompressSync(new Uint8Array([1, 2, 3])));
         }
 
-        if (url.endsWith(`${secondaryBaseBundle.id}/files/index.ios.bundle`)) {
+        if (url.endsWith("/assets/sha256/ha/hash-secondary-old.bundle")) {
           return new Response(new Uint8Array([1, 2, 3]));
         }
 
-        if (url.endsWith(`${targetBundle.id}/files/index.ios.bundle.br`)) {
+        if (url.endsWith("/assets/sha256/ha/hash-target-new.br")) {
           return new Response(brotliCompressSync(new Uint8Array([1, 4, 3])));
         }
 
-        if (url.endsWith(`${targetBundle.id}/files/index.ios.bundle`)) {
+        if (url.endsWith("/assets/sha256/ha/hash-target-new.bundle")) {
           return new Response(new Uint8Array([1, 4, 3]));
         }
 
@@ -424,7 +427,6 @@ describe("createBundleDiff", () => {
         },
       );
 
-      expect(updatedBundle.patchBaseBundleId).toBe(primaryBaseBundle.id);
       expect(updatedBundle.patches).toMatchObject([
         {
           baseBundleId: primaryBaseBundle.id,

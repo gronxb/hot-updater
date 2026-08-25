@@ -10,7 +10,7 @@ import {
   parseSearchInstallationsInput,
 } from "../analytics-input";
 import {
-  createClientAccessKeyStore,
+  createApiKeyStore,
   createRuntimeHotUpdater,
   getActiveInstallationOverview,
   getAnalyticsCapability,
@@ -22,15 +22,15 @@ import {
 
 const createDatabase = () => mockDatabase({ latency: { min: 0, max: 0 } });
 
-describe("client access-key runtime", () => {
+describe("API-key runtime", () => {
   it("uses only the official database domain", async () => {
     const database = createDatabase();
 
-    const store = createClientAccessKeyStore({ database });
+    const store = createApiKeyStore({ database });
 
-    expect(store).toBe(database.models.clientAccessKeys);
+    expect(store).toBe(database.models.apiKeys);
     expect(
-      createClientAccessKeyStore({
+      createApiKeyStore({
         database: {
           models: {
             bundles: database.models.bundles,

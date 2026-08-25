@@ -98,8 +98,8 @@ The pull request is complete only when all of the following are true:
   its artifact download finishes later.
 - Deploy, rollout, target cohorts, force update, disable, rollback, promote,
   channels, runtime channel switching, patches, manifests, signing, crash
-  recovery, analytics, authentication, and custom resolvers have an explicit
-  preserved or intentionally changed behavior in this document.
+  recovery, analytics, authentication, and custom HTTP adapters have an
+  explicit preserved or intentionally changed behavior in this document.
 - All 14 existing Detox scenarios are migrated to Release semantics and remain
   meaningful on both iOS and Android.
 - The controlled RED-to-GREEN provider stress regression passes on AWS,
@@ -134,6 +134,7 @@ interface Bundle {
   platform: "ios" | "android";
   fileHash: string;
   storageUri: string;
+  archiveByteSize: number;
   gitCommitHash: string | null;
   metadata: BundleMetadata;
   manifestStorageUri: string | null;
@@ -157,6 +158,14 @@ Bundle identity continues to own archives, manifests, changed assets, signing,
 patch lineage, local files, and crash history. `manifest.json` stays
 Bundle-only and never receives a Release ID. Reusing a Bundle through promote
 or rollback must not rewrite or re-upload its manifest.
+
+`archiveByteSize` and every patch artifact's `byteSize` are required immutable
+non-negative safe integers. Manifest asset entries may additionally carry an
+optional `downloadByteSize` and `downloadFileHash`. The size describes the
+exact representation served to the client; when that representation differs
+from the logical file, such as a Brotli payload, the download hash is the
+SHA-256 of those exact served bytes and owns the content-addressed object key.
+The logical `fileHash` continues to identify and verify the installed file.
 
 ### Release is mutable delivery policy
 
@@ -243,6 +252,12 @@ it would incorrectly apply a first switch into an empty target channel.
 The final table contains only immutable artifact data. `bundle_patches` remains
 keyed by target and base Bundle IDs.
 
+`bundles.archive_byte_size` and `bundle_patches.byte_size` are required
+and constrained to non-negative JavaScript safe integers. Providers must
+reject missing, fractional, negative, or out-of-range values during row
+hydration. These fields are part of the initial unreleased `1.0.0` schema, not
+nullable compatibility metadata.
+
 ### `releases`
 
 ```text
@@ -293,12 +308,12 @@ v1:app-version:<authorityId>:<platform>:<channelKey>
 v1:fingerprint:<authorityId>:<platform>:<channelKey>:<fingerprintHash>
 ```
 
-`authorityId` is a stable project/server identity returned by managed config.
-Custom and dynamic base URLs must declare a distinct authority; two servers
-that both call a channel `production` must never share generation high-water.
-There is no separately issued dynamic `runtimeKey`: the versioned
-`authorityId + strategy + platform + channelKey + app version/fingerprint`
-scope is the complete catalog identity.
+`authorityId` is a stable project/server identity owned by deployment
+configuration and embedded in the Catalog. React Native does not configure or
+send it. Two servers that both call a channel `production` must return distinct
+authorities so they never share generation high-water. There is no separately
+issued dynamic `runtimeKey`. The complete catalog identity combines authority,
+strategy, platform, channel key, and app version or fingerprint.
 
 Channel deletion does not delete its catalog identity. An empty tombstone row
 retains generation so delete/recreate or disaster repair cannot restart at 1.
@@ -387,7 +402,7 @@ interface DatabaseModels {
   readonly releaseCatalogs: ReleaseCatalogModel;
   readonly channels: ChannelModel;
   readonly analytics: AnalyticsModel;
-  readonly clientAccessKeys: ClientAccessKeyModel;
+  readonly apiKeys: ApiKeyModel;
 }
 
 interface ReleaseModel {
@@ -407,6 +422,11 @@ interface ReleaseCatalogModel {
 
 The public catalog model is read-only. The compiler mutation envelope is the
 only writer.
+
+API key management is local to the server process. `createHotUpdater` exposes
+`apiKeys.create`, `apiKeys.list`, and `apiKeys.revoke` against the configured
+direct database plugin. Neither handler exposes an API key management route;
+the CLI and direct-database Console use the same local domain.
 
 ### Optimistic AoT mutation and CAS
 
@@ -633,13 +653,13 @@ bottleneck. Compression is a CDN transport concern and not catalog identity.
 ### Shared endpoints
 
 ```http
-GET /release-catalogs/app-version/:authorityId/:platform/:channelKey/:canonicalAppVersion
-GET /release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash
+GET /release-catalogs/app-version/:platform/:channelKey/:canonicalAppVersion
+GET /release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash
 ```
 
-The authority in configuration and path must match the authenticated project.
-It is not caller-selected tenancy. The URL excludes every installation-state
-field.
+The server selects the authority from its deployment configuration. It is not
+caller-selected tenancy and does not appear in the client path. The URL
+excludes every installation-state field.
 
 Expected complete response:
 
@@ -693,6 +713,31 @@ logic. It remains Bundle-keyed. The first implementation is `private,
 no-store` because Storage-signed URL expiry is not represented by the current
 StoragePlugin contract.
 
+The server compares the normal manifest route with the archive before it
+returns the existing `ArtifactInfo` shape:
+
+```text
+manifestBytes = UTF-8 byte length of the exact stored target manifest text
+primary(asset) = retained patch when present, otherwise served file
+diffBytes = manifestBytes + sum(primary(asset).byteSize)
+```
+
+Unchanged assets cost zero. When a patch and complete file are both usable and
+both sizes are known, the patch is retained only when it is strictly smaller;
+equality uses the complete file. If the archive URL is usable and every
+primary size is known, `diffBytes >= archiveByteSize` returns the archive-only
+response. Otherwise the existing manifest-first response is preserved.
+
+Required archive and patch sizes fail provider hydration when invalid. A
+missing or invalid `downloadByteSize`, an invalid present `downloadFileHash`, a
+missing hash for a transformed representation, or a safe-integer sum overflow
+makes only the comparison unknown. Raw assets use the logical `fileHash` key
+and may omit `downloadFileHash`. The server does not issue `HEAD` or storage
+metadata probes to fill the gap. Route selection remains server-only and does
+not add a native request, response field, or receipt transition. Patch failure
+still follows the existing patch-to-file-to-archive fallback and is not part of
+the normal-path estimate.
+
 No artifact request is made for no-update, same-Bundle Release adoption,
 `BUILTIN`, or `EMBEDDED`.
 
@@ -708,8 +753,8 @@ Vary: Accept-Encoding, x-api-key
 
 Requirements:
 
-- The actual provider cache key isolates host/authority, canonical path,
-  `x-api-key`, and supported content encoding.
+- The actual provider cache key isolates host, canonical path, `x-api-key`, and
+  supported content encoding. A host serves one configured Catalog authority.
 - Invalid keys cannot receive a valid-key object.
 - `401`, `403`, `404`, malformed/incomplete catalog errors, and `5xx` are
   `private, no-store`.
@@ -719,9 +764,9 @@ Requirements:
   misses inside one runtime instance.
 - Expected origin work is approximately one fill per active POP per TTL, not
   globally one fill.
-- Custom resolvers with arbitrary headers do not automatically opt into shared
-  caching. They must declare a stable `catalogCachePartition`; otherwise their
-  transport is private/no-store.
+- Custom GraphQL, RPC, or other upstream transports sit behind an HTTP adapter
+  or proxy that exposes the v1 protocol. Adapters affected by arbitrary request
+  context must keep their responses private/no-store.
 
 Cloudflare Worker Cache API is not accepted as proof of zero Worker execution,
 because it runs inside the Worker. The managed path must use a pre-Worker cache
@@ -955,19 +1000,11 @@ separate and that high-water is not crash-rollback state.
 
 ### Public client contract
 
-The resolver boundary becomes transport plus local selection:
-
-```ts
-interface HotUpdaterResolver {
-  fetchReleaseCatalog(params: ReleaseCatalogRequest): Promise<ReleaseCatalog>;
-  resolveArtifact(params: ArtifactRequest): Promise<ArtifactUpdateInfo>;
-  notifyAppReady?(params: ResolverNotifyAppReadyParams): Promise<void>;
-}
-```
-
-The default resolver implements the Release Catalog protocol. A legacy `checkUpdate` adapter remains for
-custom resolvers, but shared caching is opt-in through the explicit cache
-partition contract.
+`HotUpdater.init` and `HotUpdater.wrap` accept `baseURL` as their only network
+source. The client always implements the Release Catalog, artifact,
+Analytics-event, and `/version` HTTP protocol. A custom backend exposes that
+protocol through an adapter or proxy instead of injecting transport callbacks
+into the React Native runtime.
 
 Public/internal observability adds:
 
@@ -981,7 +1018,7 @@ The application pipeline is intentionally explicit:
 ```text
 checkForUpdate
   -> createReleaseCatalogRequest
-  -> resolver.fetchReleaseCatalog
+  -> fetch catalog from baseURL
   -> native.acceptCatalogHighWater
   -> createSelectionContextHash
   -> selectDesiredRelease
@@ -990,7 +1027,7 @@ checkForUpdate
 
 updateBundle(result)
   -> revalidateReleaseTransition
-  -> resolver.resolveArtifact only when Bundle differs
+  -> fetch artifact from baseURL only when Bundle differs
   -> native.commitSelectionIfCurrent (generation/context CAS)
   -> install/adopt/useBuiltin
 ```
@@ -1106,36 +1143,18 @@ application.
 
 ## Legacy endpoint compatibility
 
-Old URLs remain because installed binaries cannot change their resolver without
-an OTA. The legacy route reads the compiled catalog, executes the reference
-selector on the server, resolves Bundle artifacts, and returns existing
-`AppUpdateInfo`. It never calls provider `queries`.
-
-Exact current Release identity is unrecoverable from Bundle ID alone:
-
-```text
-R10 -> X, R20 -> Y, R30 -> X
-```
-
-The bridge does not invent a historical current Release. It selects the newest
-compatible/request-cohort-eligible Release from the current complete catalog,
-then compares that desired Release's artifact with the reported current Bundle.
-In the example, current X plus eligible R30/X requires no byte request; if R30
-is absent/ineligible and R20/Y wins, legacy receives Y. This preserves
-Bundle-level update behavior but cannot represent metadata-only Release
-adoption or exact Release analytics. The ambiguity above, including a qa-only
-R30 and disabled R30, is a required contract test.
-
-Legacy no-candidate behavior synthesizes the historical NIL/native fallback
-response only when a complete current catalog authorizes it. Legacy endpoints
-remain non-CDN-optimized.
+v1 does not mount the v0 app-version or fingerprint routes and does not bridge
+v0 requests into Release Catalog selection. Installed v0 binaries must keep
+using their unchanged v0 endpoint. A new native build containing the v1 SDK
+switches to the fresh v1 `baseURL`; v1 JavaScript is never delivered by OTA to
+a v0 native binary.
 
 ## Console product changes
 
 ### Navigation and responsibility
 
 `Releases` becomes the operational default. `Artifacts` contains immutable
-Bundle, manifest, Storage, and patch information. Analytics and Access Keys
+Bundle, manifest, Storage, and patch information. Analytics and API Keys
 stay top-level.
 
 ### Releases table and detail
@@ -1497,7 +1516,7 @@ Also inject:
 - failed purge;
 - delayed old catalog;
 - delayed old artifact completion;
-- invalid/random access keys.
+- invalid/random API keys.
 
 Required: no partial canonical/projection state, old actions fail native CAS,
 same-generation failed download is retryable, failed purge converges at TTL,

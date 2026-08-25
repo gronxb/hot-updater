@@ -2,48 +2,26 @@ import { describe, expect, it } from "vitest";
 
 import {
   createApi,
-  createManagementHandler,
+  createAdminHandler,
   testBundle,
 } from "./handler.testFixtures";
 
-describe("createHandler management routes", () => {
-  it("keeps all Channel routes behind the bundles feature", async () => {
+describe("createHandlers admin routes", () => {
+  it("does not match client routes", async () => {
     const api = createApi();
-    const handler = createManagementHandler(api, { bundles: false });
-    const responses = await Promise.all([
-      handler(new Request("http://localhost/hot-updater/api/channels")),
-      handler(
-        new Request("http://localhost/hot-updater/api/channels", {
-          method: "POST",
-          body: JSON.stringify({
-            row: { id: "channel-preview", name: "preview" },
-            onConflict: "returnExisting",
-          }),
-        }),
-      ),
-      handler(
-        new Request(
-          "http://localhost/hot-updater/api/channels/channel-preview",
-          { method: "DELETE" },
-        ),
-      ),
-    ]);
+    const handler = createAdminHandler(api);
+    const response = await handler(new Request("http://localhost/version"));
 
-    expect(responses.map(({ status }) => status)).toEqual([404, 404, 404]);
-    expect(api.getChannels).not.toHaveBeenCalled();
-    expect(api.insertChannel).not.toHaveBeenCalled();
-    expect(api.deleteChannel).not.toHaveBeenCalled();
+    expect(response.status).toBe(404);
   });
 
   it("exposes the canonical Channel-row route and removes the legacy path", async () => {
     const api = createApi();
-    const handler = createManagementHandler(api);
+    const handler = createAdminHandler(api);
 
-    const response = await handler(
-      new Request("http://localhost/hot-updater/api/channels"),
-    );
+    const response = await handler(new Request("http://localhost/channels"));
     const legacyResponse = await handler(
-      new Request("http://localhost/hot-updater/api/bundles/channels"),
+      new Request("http://localhost/bundles/channels"),
     );
 
     expect(response.status).toBe(200);
@@ -61,10 +39,10 @@ describe("createHandler management routes", () => {
       row: { id: "candidate-id", name: "preview" },
       inserted: true,
     });
-    const handler = createManagementHandler(api);
+    const handler = createAdminHandler(api);
 
     const response = await handler(
-      new Request("http://localhost/hot-updater/api/channels", {
+      new Request("http://localhost/channels", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -89,10 +67,10 @@ describe("createHandler management routes", () => {
       row: { id: "canonical-id", name: "preview" },
       inserted: false,
     });
-    const handler = createManagementHandler(api);
+    const handler = createAdminHandler(api);
 
     const response = await handler(
-      new Request("http://localhost/hot-updater/api/channels", {
+      new Request("http://localhost/channels", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -127,10 +105,10 @@ describe("createHandler management routes", () => {
     "rejects malformed Channel insert input before persistence",
     async (body) => {
       const api = createApi();
-      const handler = createManagementHandler(api);
+      const handler = createAdminHandler(api);
 
       const response = await handler(
-        new Request("http://localhost/hot-updater/api/channels", {
+        new Request("http://localhost/channels", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -145,10 +123,10 @@ describe("createHandler management routes", () => {
   it("returns no content after deleting an empty Channel", async () => {
     const api = createApi();
     api.deleteChannel.mockResolvedValueOnce({ deleted: true });
-    const handler = createManagementHandler(api);
+    const handler = createAdminHandler(api);
 
     const response = await handler(
-      new Request("http://localhost/hot-updater/api/channels/channel-preview", {
+      new Request("http://localhost/channels/channel-preview", {
         method: "DELETE",
       }),
     );
@@ -163,10 +141,10 @@ describe("createHandler management routes", () => {
   ])("maps Channel deletion result %j to HTTP %i", async (result, status) => {
     const api = createApi();
     api.deleteChannel.mockResolvedValueOnce(result);
-    const handler = createManagementHandler(api);
+    const handler = createAdminHandler(api);
 
     const response = await handler(
-      new Request("http://localhost/hot-updater/api/channels/channel-preview", {
+      new Request("http://localhost/channels/channel-preview", {
         method: "DELETE",
       }),
     );
@@ -188,10 +166,8 @@ describe("createHandler management routes", () => {
         totalPages: 0,
       },
     });
-    const handler = createManagementHandler(api);
-    const response = await handler(
-      new Request("http://localhost/hot-updater/api/bundles"),
-    );
+    const handler = createAdminHandler(api);
+    const response = await handler(new Request("http://localhost/bundles"));
 
     expect(response.status).toBe(200);
     expect(api.getBundles).toHaveBeenCalledWith({
@@ -204,12 +180,10 @@ describe("createHandler management routes", () => {
 
   it("forwards an explicit bundle id order direction", async () => {
     const api = createApi();
-    const handler = createManagementHandler(api);
+    const handler = createAdminHandler(api);
 
     const response = await handler(
-      new Request(
-        "http://localhost/hot-updater/api/bundles?orderDirection=asc",
-      ),
+      new Request("http://localhost/bundles?orderDirection=asc"),
     );
 
     expect(response.status).toBe(200);
@@ -222,14 +196,31 @@ describe("createHandler management routes", () => {
     });
   });
 
-  it("rejects an invalid bundle id order direction", async () => {
+  it("does not treat Release policy query parameters as Bundle filters", async () => {
     const api = createApi();
-    const handler = createManagementHandler(api);
+    const handler = createAdminHandler(api);
 
     const response = await handler(
       new Request(
-        "http://localhost/hot-updater/api/bundles?orderDirection=random",
+        "http://localhost/bundles?channel=production&enabled=true&targetAppVersion=1.0.0&fingerprintHash=abc",
       ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(api.getBundles).toHaveBeenCalledWith({
+      cursor: undefined,
+      limit: 50,
+      page: undefined,
+      where: {},
+    });
+  });
+
+  it("rejects an invalid bundle id order direction", async () => {
+    const api = createApi();
+    const handler = createAdminHandler(api);
+
+    const response = await handler(
+      new Request("http://localhost/bundles?orderDirection=random"),
     );
 
     expect(response.status).toBe(400);
@@ -243,10 +234,10 @@ describe("createHandler management routes", () => {
     `page=${Number.MAX_SAFE_INTEGER}`,
   ])("rejects invalid pagination parameters: %s", async (query) => {
     const api = createApi();
-    const handler = createManagementHandler(api);
+    const handler = createAdminHandler(api);
 
     const response = await handler(
-      new Request(`http://localhost/hot-updater/api/bundles?${query}`),
+      new Request(`http://localhost/bundles?${query}`),
     );
 
     expect(response.status).toBe(400);
@@ -255,10 +246,10 @@ describe("createHandler management routes", () => {
 
   it("rejects a bundle batch before mutation when atomic insertion is unavailable", async () => {
     const api = createApi();
-    const handler = createManagementHandler(api);
+    const handler = createAdminHandler(api);
 
     const response = await handler(
-      new Request("http://localhost/hot-updater/api/bundles", {
+      new Request("http://localhost/bundles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify([testBundle, { ...testBundle, id: "bundle-2" }]),

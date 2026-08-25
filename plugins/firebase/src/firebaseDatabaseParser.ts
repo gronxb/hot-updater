@@ -4,13 +4,14 @@ import {
   type BundleRow,
   type BundleEventRow,
   type ChannelRow,
-  type ClientAccessKeyRow,
+  type ApiKeyRow,
   type ReleaseCatalogRow,
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
 
 import {
   boolean,
+  byteSize,
   FirebaseDatabaseDataError,
   nullableString,
   number,
@@ -27,74 +28,19 @@ export {
 } from "./firebaseDatabaseParserShared";
 
 const metadata = (value: unknown, source: string) => {
-  const normalized = value === undefined ? {} : value;
-  if (!isDatabaseMetadataObject(normalized)) {
+  if (!isDatabaseMetadataObject(value)) {
     throw new FirebaseDatabaseDataError(source);
   }
-  return normalized;
+  return value;
 };
 
-export type FirebaseLegacyBundleRow = BundleRow & {
-  readonly should_force_update: boolean;
-  readonly enabled: boolean;
-  readonly message: string | null;
-  readonly channel: string;
-  readonly channel_id?: string;
-  readonly target_app_version: string | null;
-  readonly fingerprint_hash: string | null;
-  readonly rollout_cohort_count: number;
-  readonly target_cohorts: readonly string[] | null;
-};
-
-export const parseFirebaseLegacyBundleRow = (
-  value: unknown,
+const requiredNullableString = (
+  input: object,
+  key: string,
   source: string,
-): FirebaseLegacyBundleRow => {
-  const input = record(value, source);
-  const channelId = property(input, "channel_id");
-  return {
-    id: string(property(input, "id"), source),
-    platform: platform(property(input, "platform"), source),
-    should_force_update: boolean(
-      property(input, "should_force_update"),
-      source,
-    ),
-    enabled: boolean(property(input, "enabled"), source),
-    file_hash: string(property(input, "file_hash"), source),
-    git_commit_hash: nullableString(property(input, "git_commit_hash"), source),
-    message: nullableString(property(input, "message"), source),
-    channel: string(property(input, "channel"), source),
-    ...(channelId === undefined
-      ? {}
-      : { channel_id: string(channelId, source) }),
-    storage_uri: string(property(input, "storage_uri"), source),
-    target_app_version: nullableString(
-      property(input, "target_app_version"),
-      source,
-    ),
-    fingerprint_hash: nullableString(
-      property(input, "fingerprint_hash"),
-      source,
-    ),
-    metadata: metadata(property(input, "metadata"), source),
-    rollout_cohort_count:
-      property(input, "rollout_cohort_count") === undefined
-        ? 1000
-        : number(property(input, "rollout_cohort_count"), source),
-    target_cohorts: stringArray(property(input, "target_cohorts"), source),
-    manifest_storage_uri: nullableString(
-      property(input, "manifest_storage_uri"),
-      source,
-    ),
-    manifest_file_hash: nullableString(
-      property(input, "manifest_file_hash"),
-      source,
-    ),
-    asset_base_storage_uri: nullableString(
-      property(input, "asset_base_storage_uri"),
-      source,
-    ),
-  };
+): string | null => {
+  if (!Object.hasOwn(input, key)) throw new FirebaseDatabaseDataError(source);
+  return nullableString(property(input, key), source);
 };
 
 export const parseFirebaseBundleRow = (
@@ -108,6 +54,7 @@ export const parseFirebaseBundleRow = (
     file_hash: string(property(input, "file_hash"), source),
     git_commit_hash: nullableString(property(input, "git_commit_hash"), source),
     storage_uri: string(property(input, "storage_uri"), source),
+    archive_byte_size: byteSize(property(input, "archive_byte_size"), source),
     metadata: metadata(property(input, "metadata"), source),
     manifest_storage_uri: nullableString(
       property(input, "manifest_storage_uri"),
@@ -147,6 +94,7 @@ export const parseFirebasePatchRow = (
     base_file_hash: string(property(input, "base_file_hash"), source),
     patch_file_hash: string(property(input, "patch_file_hash"), source),
     patch_storage_uri: string(property(input, "patch_storage_uri"), source),
+    byte_size: byteSize(property(input, "byte_size"), source),
     order_index: number(property(input, "order_index"), source),
   };
 };
@@ -157,12 +105,10 @@ export const parseFirebaseBundleEventRow = (
 ): BundleEventRow => {
   const input = record(value, source);
   const type = string(property(input, "type"), source);
-  const fromBundleId = nullableString(
-    property(input, "from_bundle_id"),
-    source,
-  );
-  const updateStrategy = nullableString(
-    property(input, "update_strategy"),
+  const fromBundleId = requiredNullableString(input, "from_bundle_id", source);
+  const updateStrategy = requiredNullableString(
+    input,
+    "update_strategy",
     source,
   );
   if (
@@ -170,9 +116,10 @@ export const parseFirebaseBundleEventRow = (
       ((type === "UPDATE_APPLIED" ||
         type === "RECOVERED" ||
         type === "RELEASE_ADOPTED") &&
+        typeof fromBundleId === "string" &&
         (updateStrategy === "fingerprint" ||
           updateStrategy === "appVersion")) ||
-      (type === "UNCHANGED" && updateStrategy === null)
+      (type === "UNCHANGED" && fromBundleId === null && updateStrategy === null)
     )
   ) {
     throw new FirebaseDatabaseDataError(source);
@@ -183,10 +130,10 @@ export const parseFirebaseBundleEventRow = (
     install_id: string(property(input, "install_id"), source),
     user_id: nullableString(property(input, "user_id"), source),
     username: nullableString(property(input, "username"), source),
-    from_release_id: nullableString(property(input, "from_release_id"), source),
+    from_release_id: requiredNullableString(input, "from_release_id", source),
     from_bundle_id: fromBundleId,
-    to_release_id: nullableString(property(input, "to_release_id"), source),
-    to_bundle_id: nullableString(property(input, "to_bundle_id"), source),
+    to_release_id: requiredNullableString(input, "to_release_id", source),
+    to_bundle_id: string(property(input, "to_bundle_id"), source),
     platform: platform(property(input, "platform"), source),
     app_version: string(property(input, "app_version"), source),
     channel: string(property(input, "channel"), source),
@@ -201,10 +148,10 @@ export const parseFirebaseBundleEventRow = (
   } as BundleEventRow;
 };
 
-export const parseFirebaseClientAccessKeyRow = (
+export const parseFirebaseApiKeyRow = (
   value: unknown,
   source: string,
-): ClientAccessKeyRow => {
+): ApiKeyRow => {
   const input = record(value, source);
   const role = string(property(input, "role"), source);
   if (role !== "client") throw new FirebaseDatabaseDataError(source);
@@ -304,57 +251,4 @@ export const parseFirebaseReleaseCatalogRow = (
     is_tombstone: boolean(property(input, "is_tombstone"), source),
     updated_at_ms: number(property(input, "updated_at_ms"), source),
   };
-};
-
-type LegacyPatchInput = {
-  readonly value: unknown;
-  readonly bundleId: string;
-  readonly orderIndex: number;
-  readonly source: string;
-};
-
-const parseLegacyPatch = ({
-  value,
-  bundleId,
-  orderIndex,
-  source,
-}: LegacyPatchInput): BundlePatchRow => {
-  const input = record(value, source);
-  const baseBundleId = string(property(input, "baseBundleId"), source);
-  return {
-    id: `${bundleId}:${baseBundleId}`,
-    bundle_id: bundleId,
-    base_bundle_id: baseBundleId,
-    base_file_hash: string(property(input, "baseFileHash"), source),
-    patch_file_hash: string(property(input, "patchFileHash"), source),
-    patch_storage_uri: string(property(input, "patchStorageUri"), source),
-    order_index: orderIndex,
-  };
-};
-
-export const parseFirebaseLegacyPatchRows = (
-  value: unknown,
-  bundleId: string,
-  source: string,
-): readonly BundlePatchRow[] => {
-  const input = record(value, source);
-  const patches = property(input, "patches");
-  if (Array.isArray(patches)) {
-    return patches.map((patch, index) =>
-      parseLegacyPatch({ value: patch, bundleId, orderIndex: index, source }),
-    );
-  }
-  const baseBundleId = property(input, "patch_base_bundle_id");
-  if (baseBundleId === null || baseBundleId === undefined) return [];
-  return [
-    {
-      id: `${bundleId}:${string(baseBundleId, source)}`,
-      bundle_id: bundleId,
-      base_bundle_id: string(baseBundleId, source),
-      base_file_hash: string(property(input, "patch_base_file_hash"), source),
-      patch_file_hash: string(property(input, "patch_file_hash"), source),
-      patch_storage_uri: string(property(input, "patch_storage_uri"), source),
-      order_index: 0,
-    },
-  ];
 };

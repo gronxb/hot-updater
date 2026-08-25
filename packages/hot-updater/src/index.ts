@@ -37,6 +37,11 @@ import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
 
 import {
+  handleApiKeyCreate,
+  handleApiKeyList,
+  handleApiKeyRevoke,
+} from "./commands/apiKey";
+import {
   handleBundleDelete,
   handleBundleList,
   handleBundleShow,
@@ -151,6 +156,37 @@ channelCommand
   )
   .argument("<channel>", "the channel to set")
   .action(handleSetChannel);
+
+const apiKeyCommand = program.command("api-key").description("Manage API keys");
+
+apiKeyCommand
+  .command("create")
+  .description("Create an API key")
+  .argument("[configPath]", "path to the config file that exports hotUpdater")
+  .requiredOption("--name <name>", "name used to identify the API key")
+  .action((configPath: string | undefined, options: { name: string }) =>
+    handleApiKeyCreate(options.name, { configPath }),
+  );
+
+apiKeyCommand
+  .command("list")
+  .description("List API keys")
+  .argument("[configPath]", "path to the config file that exports hotUpdater")
+  .option("--json", "output API key metadata as JSON")
+  .action((configPath: string | undefined, options: { json?: boolean }) =>
+    handleApiKeyList({ ...options, configPath }),
+  );
+
+apiKeyCommand
+  .command("revoke")
+  .description("Revoke an API key")
+  .argument("<id>", "API key id")
+  .argument("[configPath]", "path to the config file that exports hotUpdater")
+  .option("-y, --yes", "skip confirmation prompt")
+  .action(
+    (id: string, configPath: string | undefined, options: { yes?: boolean }) =>
+      handleApiKeyRevoke(id, { ...options, configPath }),
+  );
 
 const bundleCommand = program.command("bundle").description("Manage bundles");
 

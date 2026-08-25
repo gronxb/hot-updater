@@ -3,7 +3,7 @@ import {
   checkForUpdate,
   type InternalCheckForUpdateOptions,
 } from "./checkForUpdate";
-import { createDefaultResolver } from "./DefaultResolver";
+import { createHttpClient, type HotUpdaterHttpClient } from "./httpClient";
 import {
   addListener,
   getActiveUpdateState,
@@ -18,7 +18,6 @@ import {
   getFingerprintHash,
   getInstallId,
   getManifest,
-  getMinBundleId,
   getMinimumReleaseId,
   getReleaseId,
   isChannelSwitched,
@@ -32,7 +31,6 @@ import {
   updateBundle,
 } from "./native";
 import { hotUpdaterStore } from "./store";
-import type { HotUpdaterResolver } from "./types";
 import {
   type AutoUpdateOptions,
   type HotUpdaterInitOptions,
@@ -57,14 +55,10 @@ export type {
   SetUserParams,
 } from "./native";
 export * from "./store";
-export { createDefaultResolver } from "./DefaultResolver";
 export {
   extractSignatureFailure,
   type HotUpdaterBaseURL,
-  type HotUpdaterResolver,
   isSignatureVerificationError,
-  type ResolverCheckUpdateParams,
-  type ResolverNotifyAppReadyParams,
   type SignatureVerificationFailure,
 } from "./types";
 export type {
@@ -97,33 +91,29 @@ type HotUpdaterWrap = {
   (options: HotUpdaterOptions): ReturnType<typeof wrap>;
 };
 
-const createConfiguredDefaultResolver = (
-  baseURL: Parameters<typeof createDefaultResolver>[0],
-  authorityId: string | undefined,
-) =>
-  authorityId === undefined
-    ? createDefaultResolver(baseURL)
-    : createDefaultResolver(baseURL, { authorityId });
-
 /**
  * Creates a HotUpdater client instance with all update management methods.
  * This function is called once on module initialization to create a singleton instance.
  */
 function createHotUpdaterClient() {
+  let configurationAPI: "init" | "wrap" | null = null;
+  let mixedConfigurationReported = false;
+
   // Global configuration stored from wrap
   const globalConfig: {
-    resolver: HotUpdaterResolver | null;
+    analytics?: boolean;
+    client: HotUpdaterHttpClient | null;
     requestHeaders?: Record<string, string>;
     requestTimeout?: number;
     onError?: (error: unknown) => void;
   } = {
-    resolver: null,
+    client: null,
   };
 
   const createMissingNetworkConfigError = (apiName: "init" | "wrap") => {
     if (apiName === "init") {
       return new Error(
-        `[HotUpdater] Either baseURL or resolver must be provided.\n\n` +
+        `[HotUpdater] baseURL must be provided.\n\n` +
           `Configure HotUpdater before calling update APIs with the standard baseURL setup:\n\n` +
           `  HotUpdater.init({\n` +
           `    baseURL: "<your-update-server-url>",\n` +
@@ -139,7 +129,7 @@ function createHotUpdaterClient() {
       `  })(App);\n\n`;
 
     return new Error(
-      `[HotUpdater] Either baseURL or resolver must be provided.\n\n` +
+      `[HotUpdater] baseURL must be provided.\n\n` +
         `Configure HotUpdater.wrap with the standard baseURL setup:\n\n` +
         baseURLExample +
         `For manual update flows, use HotUpdater.init() and visit: ` +
@@ -164,16 +154,12 @@ function createHotUpdaterClient() {
 
     const autoOptions = incoming as AutoUpdateOptions;
 
-    if ("baseURL" in autoOptions && autoOptions.baseURL) {
-      const { authorityId, baseURL, ...rest } = autoOptions;
+    if (autoOptions.baseURL) {
+      const { baseURL, ...rest } = autoOptions;
       return {
         ...rest,
-        resolver: createConfiguredDefaultResolver(baseURL, authorityId),
+        client: createHttpClient(baseURL),
       };
-    }
-
-    if ("resolver" in autoOptions && autoOptions.resolver) {
-      return autoOptions;
     }
 
     throw createMissingNetworkConfigError("wrap");
@@ -187,16 +173,12 @@ function createHotUpdaterClient() {
         updateMode?: unknown;
       };
 
-    if ("baseURL" in rest && rest.baseURL) {
-      const { authorityId, baseURL, ...baseURLRest } = rest;
+    if (rest.baseURL) {
+      const { baseURL, ...baseURLRest } = rest;
       return {
         ...baseURLRest,
-        resolver: createConfiguredDefaultResolver(baseURL, authorityId),
+        client: createHttpClient(baseURL),
       };
-    }
-
-    if ("resolver" in rest && rest.resolver) {
-      return rest;
     }
 
     throw createMissingNetworkConfigError("init");
@@ -206,14 +188,32 @@ function createHotUpdaterClient() {
     normalizedOptions: InternalInitOptions | InternalWrapOptions,
     options: HotUpdaterOptions | HotUpdaterInitOptions,
   ) => {
-    globalConfig.resolver = normalizedOptions.resolver;
+    globalConfig.analytics = normalizedOptions.analytics;
+    globalConfig.client = normalizedOptions.client;
     globalConfig.requestHeaders = options.requestHeaders;
     globalConfig.requestTimeout = options.requestTimeout;
     globalConfig.onError = options.onError;
   };
 
-  const ensureGlobalResolver = (methodName: string) => {
-    if (!globalConfig.resolver) {
+  const reportMixedConfiguration = (nextAPI: "init" | "wrap") => {
+    if (
+      configurationAPI !== null &&
+      configurationAPI !== nextAPI &&
+      !mixedConfigurationReported
+    ) {
+      mixedConfigurationReported = true;
+      console.error(
+        "[HotUpdater] HotUpdater.init() and HotUpdater.wrap() must not be used together. " +
+          "For custom or manual update flows, use HotUpdater.init() with " +
+          "HotUpdater.checkForUpdate(). For the automatic HOC flow, use " +
+          "HotUpdater.wrap().",
+      );
+    }
+    configurationAPI ??= nextAPI;
+  };
+
+  const ensureGlobalClient = (methodName: string) => {
+    if (!globalConfig.client) {
       throw new Error(
         `[HotUpdater] ${methodName} requires HotUpdater.wrap() or HotUpdater.init() to be used.\n\n` +
           `To fix this issue, configure HotUpdater before calling ${methodName}:\n\n` +
@@ -229,7 +229,7 @@ function createHotUpdaterClient() {
           `For manual update flows, visit: https://hot-updater.dev/docs/guides/custom-update`,
       );
     }
-    return globalConfig.resolver;
+    return globalConfig.client;
   };
 
   return {
@@ -251,13 +251,14 @@ function createHotUpdaterClient() {
      *   baseURL: "<your-update-server-url>",
      *   updateStrategy: "appVersion",
      *   requestHeaders: {
-     *     "Authorization": "Bearer <your-access-token>",
+     *     "x-api-key": "<your-api-key>",
      *   },
      * })(App);
      * ```
      */
     wrap: (options: HotUpdaterOptions) => {
       const normalizedOptions = normalizeOptions(options);
+      reportMixedConfiguration("wrap");
       configureGlobal(normalizedOptions, options);
 
       return wrap(normalizedOptions);
@@ -281,6 +282,7 @@ function createHotUpdaterClient() {
     init: (options: HotUpdaterInitOptions): void => {
       const normalizedOptions = normalizeInitOptions(options);
 
+      reportMixedConfiguration("init");
       configureGlobal(normalizedOptions, options);
 
       init(normalizedOptions);
@@ -334,11 +336,6 @@ function createHotUpdaterClient() {
      * Fetches the current bundle ID of the app.
      */
     getBundleId,
-
-    /**
-     * Retrieves the initial bundle ID based on the build time of the native app.
-     */
-    getMinBundleId,
 
     /** Preferred Release-catalog name for the build-time UUIDv7 floor. */
     getMinimumReleaseId,
@@ -421,18 +418,17 @@ function createHotUpdaterClient() {
      * Manually checks for updates.
      *
      * @param {Object} config - Update check configuration
-     * @param {string} config.source - Update server URL
      * @param {string} [config.channel] - Optional channel override for this update check
      * @param {Record<string, string>} [config.requestHeaders] - Request headers
      *
-     * @returns {Promise<UpdateInfo | null>} Update information or null if up to date
+     * @returns {Promise<CheckForUpdateResult | null>} Update information or null if up to date
      *
      * @example
      * ```ts
      * const updateInfo = await HotUpdater.checkForUpdate({
-     *   source: "<your-update-server-url>",
+     *   updateStrategy: "appVersion",
      *   requestHeaders: {
-     *     Authorization: "Bearer <your-access-token>",
+     *     "x-api-key": "<your-api-key>",
      *   },
      * });
      *
@@ -441,18 +437,19 @@ function createHotUpdaterClient() {
      *   return;
      * }
      *
-     * await HotUpdater.updateBundle(updateInfo.id, updateInfo.fileUrl);
+     * await updateInfo.updateBundle();
      * if (updateInfo.shouldForceUpdate) {
      *   await HotUpdater.reload();
      * }
      * ```
      */
     checkForUpdate: (config: CheckForUpdateOptions) => {
-      const resolver = ensureGlobalResolver("checkForUpdate");
+      const client = ensureGlobalClient("checkForUpdate");
 
       const mergedConfig: InternalCheckForUpdateOptions = {
         ...config,
-        resolver,
+        analytics: globalConfig.analytics,
+        client,
         requestHeaders: {
           ...globalConfig.requestHeaders,
           ...config.requestHeaders,
@@ -476,9 +473,9 @@ function createHotUpdaterClient() {
      * @example
      * ```ts
      * const updateInfo = await HotUpdater.checkForUpdate({
-     *   source: "<your-update-server-url>",
+     *   updateStrategy: "appVersion",
      *   requestHeaders: {
-     *     Authorization: "Bearer <your-access-token>",
+     *     "x-api-key": "<your-api-key>",
      *   },
      * });
      *
@@ -488,17 +485,14 @@ function createHotUpdaterClient() {
      *   };
      * }
      *
-     * await HotUpdater.updateBundle({
-     *   bundleId: updateInfo.id,
-     *   fileUrl: updateInfo.fileUrl
-     * });
+     * await updateInfo.updateBundle();
      * if (updateInfo.shouldForceUpdate) {
      *   await HotUpdater.reload();
      * }
      * ```
      */
     updateBundle: (params: UpdateParams) => {
-      ensureGlobalResolver("updateBundle");
+      ensureGlobalClient("updateBundle");
       return updateBundle(params);
     },
 

@@ -1,8 +1,8 @@
 import type {
+  ApiKeyRow,
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
-  BundleEventRow,
-  ClientAccessKeyRow,
   ChannelRow,
   ReleaseCatalogRow,
   ReleaseRow,
@@ -162,11 +162,11 @@ export function createMongoEventWhere(
   return createMongoWhereDocument(where);
 }
 
-export function createMongoClientAccessKeyWhere(
-  where: readonly DatabaseWhere<"client_access_keys">[] | undefined,
-): Filter<ClientAccessKeyRow>;
-export function createMongoClientAccessKeyWhere(
-  where: readonly DatabaseWhere<"client_access_keys">[] | undefined,
+export function createMongoApiKeyWhere(
+  where: readonly DatabaseWhere<"api_keys">[] | undefined,
+): Filter<ApiKeyRow>;
+export function createMongoApiKeyWhere(
+  where: readonly DatabaseWhere<"api_keys">[] | undefined,
 ): Document {
   return createMongoWhereDocument(where);
 }

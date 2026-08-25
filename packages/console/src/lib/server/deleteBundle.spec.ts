@@ -16,6 +16,7 @@ const baseBundle: Bundle = {
   platform: "ios",
   fileHash: "abc123",
   storageUri: "s3://bucket/bundle.zip",
+  archiveByteSize: 3_000_000_001,
   gitCommitHash: "deadbeef",
 };
 
@@ -282,54 +283,7 @@ describe("deleteBundle", () => {
     });
   });
 
-  it("deletes manifest artifacts individually when metadata is available", async () => {
-    const bundleWithManifest: Bundle = {
-      ...baseBundle,
-      assetBaseStorageUri: "s3://bucket/bundles/bundle-copy-id/files",
-      manifestFileHash: "manifest-hash",
-      manifestStorageUri: "s3://bucket/bundles/bundle-copy-id/manifest.json",
-    };
-    const databaseClient = createDatabaseClient(bundleWithManifest);
-    const deleteFromStorage = vi.fn();
-    const storagePlugin = createStoragePlugin("s3", {
-      delete: deleteFromStorage,
-    });
-
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        return new Response(
-          JSON.stringify({
-            assets: {
-              "assets/logo.png": { fileHash: "logo-hash" },
-              "index.ios.bundle": { fileHash: "bundle-hash" },
-            },
-          }),
-        );
-      }),
-    );
-
-    await deleteBundle(
-      { bundleId: bundleWithManifest.id },
-      { databaseClient, storagePlugin },
-    );
-
-    expect(deleteFromStorage).toHaveBeenCalledTimes(4);
-    expect(deleteFromStorage).toHaveBeenCalledWith({
-      storageUri: bundleWithManifest.storageUri,
-    });
-    expect(deleteFromStorage).toHaveBeenCalledWith({
-      storageUri: bundleWithManifest.manifestStorageUri,
-    });
-    expect(deleteFromStorage).toHaveBeenCalledWith({
-      storageUri: "s3://bucket/bundles/bundle-copy-id/files/assets/logo.png",
-    });
-    expect(deleteFromStorage).toHaveBeenCalledWith({
-      storageUri: "s3://bucket/bundles/bundle-copy-id/files/index.ios.bundle",
-    });
-  });
-
-  it("leaves content-addressed assets in place when deleting a bundle", async () => {
+  it("leaves shared content-addressed assets for storage prune", async () => {
     const bundleWithManifest: Bundle = {
       ...baseBundle,
       assetBaseStorageUri: "s3://bucket/assets",
@@ -368,52 +322,6 @@ describe("deleteBundle", () => {
     expect(deleteFromStorage).not.toHaveBeenCalledWith({
       storageUri: "s3://bucket/assets/sha256/bu/bundle-hash.br",
     });
-  });
-
-  it("does not treat a legacy asset base URI as an exact object when the manifest is unavailable", async () => {
-    const bundleWithManifest: Bundle = {
-      ...baseBundle,
-      assetBaseStorageUri: "s3://bucket/bundles/bundle-copy-id/files",
-      manifestFileHash: "manifest-hash",
-      manifestStorageUri: "s3://bucket/bundles/bundle-copy-id/manifest.json",
-    };
-    const databaseClient = createDatabaseClient(bundleWithManifest);
-    const deleteFromStorage = vi.fn();
-    const storagePlugin = createStoragePlugin("s3", {
-      delete: deleteFromStorage,
-    });
-    const consoleErrorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        return new Response("not found", {
-          status: 404,
-          statusText: "Not Found",
-        });
-      }),
-    );
-
-    await deleteBundle(
-      { bundleId: bundleWithManifest.id },
-      { databaseClient, storagePlugin },
-    );
-
-    expect(deleteFromStorage).toHaveBeenCalledWith({
-      storageUri: bundleWithManifest.storageUri,
-    });
-    expect(deleteFromStorage).toHaveBeenCalledWith({
-      storageUri: bundleWithManifest.manifestStorageUri,
-    });
-    expect(deleteFromStorage).not.toHaveBeenCalledWith({
-      storageUri: bundleWithManifest.assetBaseStorageUri,
-    });
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      "Failed to load bundle manifest for storage cleanup:",
-      expect.any(Error),
-    );
   });
 
   it("throws before database deletion when manifest storage uses an unsupported storage protocol", async () => {

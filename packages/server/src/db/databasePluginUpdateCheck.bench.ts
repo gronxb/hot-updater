@@ -88,16 +88,17 @@ const database = createDatabasePlugin({
 const hotUpdater = createHotUpdater({
   authorityId: AUTHORITY_ID,
   database,
+  clientAccess: { type: "public" },
 });
 const url =
-  `https://updates.example.com/api/release-catalogs/app-version/` +
-  `${AUTHORITY_ID}/ios/${CHANNEL_KEY}/1.0.0`;
+  `https://updates.example.com/release-catalogs/app-version/` +
+  `ios/${CHANNEL_KEY}/1.0.0`;
 
 describe("database plugin update check benchmark", () => {
   bench(
     "fixed-model plugin paged update check",
     async () => {
-      const response = await hotUpdater.handler(new Request(url));
+      const response = await hotUpdater.handlers.client(new Request(url));
       if (response.status !== 200) {
         throw new Error(`Expected 200 response, received ${response.status}.`);
       }

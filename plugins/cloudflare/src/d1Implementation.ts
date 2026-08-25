@@ -127,6 +127,7 @@ const bundleValues = (row: BundleRow): readonly unknown[] => [
   row.file_hash,
   row.git_commit_hash,
   row.storage_uri,
+  row.archive_byte_size,
   row.metadata,
   row.manifest_storage_uri,
   row.manifest_file_hash,
@@ -140,6 +141,7 @@ const patchValues = (row: BundlePatchRow): readonly unknown[] => [
   row.base_file_hash,
   row.patch_file_hash,
   row.patch_storage_uri,
+  row.byte_size,
   row.order_index,
 ];
 
@@ -163,6 +165,7 @@ const insertQuery = (
         "file_hash",
         "git_commit_hash",
         "storage_uri",
+        "archive_byte_size",
         "metadata",
         "manifest_storage_uri",
         "manifest_file_hash",
@@ -178,6 +181,7 @@ const insertQuery = (
         "base_file_hash",
         "patch_file_hash",
         "patch_storage_uri",
+        "byte_size",
         "order_index",
       ];
       values = patchValues(input.data);
@@ -187,7 +191,7 @@ const insertQuery = (
       values = channelValues(input.data);
       break;
     case "bundle_events":
-    case "client_access_keys":
+    case "api_keys":
     case "release_catalogs":
     case "releases":
       columns = Object.keys(input.data);
@@ -202,7 +206,7 @@ const insertQuery = (
         ? conflictMode === "ignore"
           ? " ON CONFLICT(name) DO NOTHING"
           : " ON CONFLICT(name) DO UPDATE SET name = excluded.name"
-        : input.model === "client_access_keys"
+        : input.model === "api_keys"
           ? conflictMode === "ignore"
             ? " ON CONFLICT(hash) DO NOTHING"
             : " ON CONFLICT(hash) DO UPDATE SET hash = excluded.hash"
@@ -259,7 +263,7 @@ const deleteQuery = (
 };
 
 type D1RequiredRow = {
-  readonly model: "bundles" | "client_access_keys" | "releases";
+  readonly model: "bundles" | "api_keys" | "releases";
   readonly id: string;
   readonly changeIndex: number;
 };
@@ -279,8 +283,8 @@ type D1CommitPlan = {
 const insertedKey = (change: DatabaseChange): string | undefined => {
   if (change.operation !== "insert") return undefined;
   if (change.model === "bundles") return `bundles:${change.row.id}`;
-  if (change.model === "clientAccessKeys") {
-    return `client_access_keys:${change.row.id}`;
+  if (change.model === "apiKeys") {
+    return `api_keys:${change.row.id}`;
   }
   if (change.model === "releases") {
     return `releases:${change.row.id}`;
@@ -300,9 +304,9 @@ const requiredRow = (
       changeIndex,
     };
   }
-  if (change.model === "clientAccessKeys") {
+  if (change.model === "apiKeys") {
     return {
-      model: "client_access_keys",
+      model: "api_keys",
       id: change.where.id,
       changeIndex,
     };
@@ -437,11 +441,11 @@ const changeQuery = (change: DatabaseChange, guard: D1Guard): D1Statement => {
           };
     case "analytics":
       return insertQuery({ model: "bundle_events", data: change.row }, guard);
-    case "clientAccessKeys":
+    case "apiKeys":
       return change.operation === "insert"
         ? insertQuery(
             {
-              model: "client_access_keys",
+              model: "api_keys",
               data: change.row,
               onConflict: change.onConflict,
             },
@@ -450,7 +454,7 @@ const changeQuery = (change: DatabaseChange, guard: D1Guard): D1Statement => {
           )
         : updateQuery(
             {
-              model: "client_access_keys",
+              model: "api_keys",
               where: [{ field: "id", value: change.where.id }],
               update: { revoked_at_ms: change.update.revokedAtMs },
             },
@@ -524,9 +528,9 @@ const createCommitPlan = (input: DatabaseCommit): D1CommitPlan => {
         WHERE json_extract(required.value, '$.model') = 'bundles'
           AND bundles.id = json_extract(required.value, '$.id')
         UNION ALL
-        SELECT 1 FROM client_access_keys
-        WHERE json_extract(required.value, '$.model') = 'client_access_keys'
-          AND client_access_keys.id = json_extract(required.value, '$.id')
+        SELECT 1 FROM api_keys
+        WHERE json_extract(required.value, '$.model') = 'api_keys'
+          AND api_keys.id = json_extract(required.value, '$.id')
         UNION ALL
         SELECT 1 FROM channels
         WHERE json_extract(required.value, '$.model') = 'channels'
@@ -646,8 +650,8 @@ export const createD1Implementation = (
         return parseD1Row("channels", rows[0]);
       case "bundle_events":
         return parseD1Row("bundle_events", rows[0]);
-      case "client_access_keys":
-        return parseD1Row("client_access_keys", rows[0]);
+      case "api_keys":
+        return parseD1Row("api_keys", rows[0]);
       case "releases":
         return parseD1Row("releases", rows[0]);
       case "release_catalogs":
@@ -661,8 +665,8 @@ export const createD1Implementation = (
     switch (input.model) {
       case "bundles":
         return parseD1Row("bundles", rows[0]);
-      case "client_access_keys":
-        return parseD1Row("client_access_keys", rows[0]);
+      case "api_keys":
+        return parseD1Row("api_keys", rows[0]);
       case "releases":
         return parseD1Row("releases", rows[0]);
       case "release_catalogs":
@@ -688,8 +692,8 @@ export const createD1Implementation = (
         return parseD1Row("bundle_patches", rows[0]);
       case "channels":
         return parseD1Row("channels", rows[0]);
-      case "client_access_keys":
-        return parseD1Row("client_access_keys", rows[0]);
+      case "api_keys":
+        return parseD1Row("api_keys", rows[0]);
       case "releases":
         return parseD1Row("releases", rows[0]);
       case "release_catalogs":

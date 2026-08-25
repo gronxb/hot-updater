@@ -9,7 +9,6 @@ describe("Release catalog request URL", () => {
   it("is shared by a scope and excludes install decision state", () => {
     const url = buildReleaseCatalogUrl({
       appVersion: "1.0",
-      authorityId: "project-a",
       baseUrl: "https://updates.example.com/hot-updater/",
       channel: "production",
       platform: "ios",
@@ -25,7 +24,7 @@ describe("Release catalog request URL", () => {
     ];
 
     expect(url).toBe(
-      "https://updates.example.com/hot-updater/release-catalogs/app-version/project-a/ios/cHJvZHVjdGlvbg/1.0.0",
+      "https://updates.example.com/hot-updater/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0",
     );
     expect(() =>
       assertCatalogUrlHasNoDeviceState(url, deviceState),
@@ -37,7 +36,6 @@ describe("Release catalog request URL", () => {
     expect(() =>
       buildReleaseCatalogUrl({
         appVersion: "not-a-version",
-        authorityId: "project-a",
         baseUrl: "https://updates.example.com/hot-updater",
         channel: "production",
         platform: "android",
@@ -48,7 +46,6 @@ describe("Release catalog request URL", () => {
 
   it("builds the persisted fingerprint catalog selector", () => {
     const url = buildReleaseCatalogUrl({
-      authorityId: "project-a",
       baseUrl: "https://updates.example.com/hot-updater",
       channel: "production",
       fingerprintHash: "sha256-native-state",
@@ -57,7 +54,7 @@ describe("Release catalog request URL", () => {
     });
 
     expect(url).toBe(
-      "https://updates.example.com/hot-updater/release-catalogs/fingerprint/project-a/android/cHJvZHVjdGlvbg/sha256-native-state",
+      "https://updates.example.com/hot-updater/release-catalogs/fingerprint/android/cHJvZHVjdGlvbg/sha256-native-state",
     );
   });
 

@@ -113,7 +113,7 @@ export const createDrizzleCrud = (
   const releases = getDrizzleTable(db, "releases");
   const releaseCatalogs = getDrizzleTable(db, "release_catalogs");
   const channels = getDrizzleTable(db, "channels");
-  const clientAccessKeys = getDrizzleTable(db, "client_access_keys");
+  const apiKeys = getDrizzleTable(db, "api_keys");
   return {
     async deleteChannel({ id }) {
       const idPredicate = eq(getDrizzleColumn(channels, "id"), id);
@@ -187,11 +187,11 @@ export const createDrizzleCrud = (
             undefined,
           );
           return input.data;
-        case "client_access_keys":
+        case "api_keys":
           await executeInsert(
             db,
             provider,
-            clientAccessKeys,
+            apiKeys,
             input.data,
             input.onConflict,
           );
@@ -212,18 +212,11 @@ export const createDrizzleCrud = (
       if (selector === undefined || typeof selector.value !== "string") {
         throw new DrizzleAdapterInvariantError();
       }
-      if (input.model === "client_access_keys") {
-        const idPredicate = eq(
-          getDrizzleColumn(clientAccessKeys, "id"),
-          selector.value,
-        );
-        await db
-          .update(clientAccessKeys)
-          .set(input.update)
-          .where(idPredicate)
-          .execute();
+      if (input.model === "api_keys") {
+        const idPredicate = eq(getDrizzleColumn(apiKeys, "id"), selector.value);
+        await db.update(apiKeys).set(input.update).where(idPredicate).execute();
         return (
-          (await db.query.client_access_keys.findFirst({
+          (await db.query.api_keys.findFirst({
             where: idPredicate,
           })) ?? null
         );
@@ -334,10 +327,10 @@ export const createDrizzleCrud = (
               where: buildDrizzleWhere(provider, patches, input.where),
             })) ?? null
           );
-        case "client_access_keys":
+        case "api_keys":
           return (
-            (await db.query.client_access_keys.findFirst({
-              where: buildDrizzleWhere(provider, clientAccessKeys, input.where),
+            (await db.query.api_keys.findFirst({
+              where: buildDrizzleWhere(provider, apiKeys, input.where),
             })) ?? null
           );
         case "channels":
@@ -381,10 +374,10 @@ export const createDrizzleCrud = (
             limit: input.limit,
             offset: input.offset,
           });
-        case "client_access_keys":
-          return db.query.client_access_keys.findMany({
-            where: buildDrizzleWhere(provider, clientAccessKeys, input.where),
-            orderBy: toOrderBy(clientAccessKeys, input),
+        case "api_keys":
+          return db.query.api_keys.findMany({
+            where: buildDrizzleWhere(provider, apiKeys, input.where),
+            orderBy: toOrderBy(apiKeys, input),
             limit: input.limit,
             offset: input.offset,
           });

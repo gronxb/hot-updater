@@ -1,9 +1,9 @@
-import { getContentAddressedAssetStoragePath } from "./contentAddressedAssets";
+import {
+  getContentAddressedAssetStoragePath,
+  isContentAddressedAssetFileHash,
+} from "./contentAddressedAssets";
 import { createStorageKeyBuilder } from "./createStorageKeyBuilder";
-import { getLegacyManifestAssetStoragePath } from "./legacyAssetStorageLayout";
 import { createStorageUri, parseStorageUri } from "./parseStorageUri";
-
-export type AssetStorageLayout = "content-addressed" | "legacy-files";
 
 export const isBrotliManifestAssetPath = (assetPath: string) =>
   /(^|\/)index\.[^/]+\.bundle$/.test(assetPath.replace(/\\/g, "/"));
@@ -68,54 +68,50 @@ export const replaceStorageUriKeySuffix = ({
   });
 };
 
-export const getAssetStorageLayout = (
-  assetBaseStorageUri: string,
-): AssetStorageLayout => {
-  const pathname = new URL(assetBaseStorageUri).pathname.replace(/\/+$/, "");
-  return pathname.endsWith("/assets") || pathname === "/assets"
-    ? "content-addressed"
-    : "legacy-files";
-};
-
-export const isContentAddressedAssetBaseStorageUri = (
-  assetBaseStorageUri: string,
-) => getAssetStorageLayout(assetBaseStorageUri) === "content-addressed";
-
-export const getManifestAssetStoragePath = ({
-  assetBaseStorageUri,
-  assetPath,
+export const resolveManifestAssetStorageFileHash = ({
+  downloadFileHash,
   fileHash,
 }: {
-  assetBaseStorageUri: string;
-  assetPath: string;
+  downloadFileHash?: unknown;
   fileHash: string;
-}) => {
-  const layout = getAssetStorageLayout(assetBaseStorageUri);
+}) =>
+  isContentAddressedAssetFileHash(downloadFileHash)
+    ? downloadFileHash
+    : fileHash;
 
-  if (layout === "content-addressed") {
-    return getContentAddressedAssetStoragePath({
-      assetPath,
+export const getManifestAssetStoragePath = ({
+  assetPath,
+  downloadFileHash,
+  fileHash,
+}: {
+  assetPath: string;
+  downloadFileHash?: unknown;
+  fileHash: string;
+}) =>
+  getContentAddressedAssetStoragePath({
+    assetPath,
+    fileHash: resolveManifestAssetStorageFileHash({
+      downloadFileHash,
       fileHash,
-    });
-  }
-
-  return getLegacyManifestAssetStoragePath({ assetPath });
-};
+    }),
+  });
 
 export const resolveManifestAssetStorageUri = ({
   assetBaseStorageUri,
   assetPath,
+  downloadFileHash,
   fileHash,
 }: {
   assetBaseStorageUri: string;
   assetPath: string;
+  downloadFileHash?: unknown;
   fileHash: string;
 }) =>
   createStorageUriWithRelativePath({
     baseStorageUri: assetBaseStorageUri,
     relativePath: getManifestAssetStoragePath({
-      assetBaseStorageUri,
       assetPath,
+      downloadFileHash,
       fileHash,
     }),
   });

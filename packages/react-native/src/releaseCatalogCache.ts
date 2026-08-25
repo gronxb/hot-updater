@@ -4,6 +4,7 @@ import {
   MAX_DISTINCT_TARGET_COHORTS_PER_SCOPE,
   NUMERIC_COHORT_SIZE,
   isUUIDv7,
+  parseReleaseCatalogScopeKey,
   type ReleaseCatalog,
 } from "@hot-updater/core";
 
@@ -40,18 +41,30 @@ type CachedCatalog = {
 
 let lastParsedCache:
   | (CachedCatalog & {
-      readonly authorityId: string;
+      readonly partition: string;
       readonly serialized: string;
-      readonly scopeKey: string;
     })
   | null = null;
 
+export type ExpectedReleaseCatalogScope = {
+  readonly channelKey: string;
+  readonly platform: "ios" | "android";
+} & (
+  | {
+      readonly strategy: "APP_VERSION";
+      readonly fingerprintHash?: never;
+    }
+  | {
+      readonly strategy: "FINGERPRINT";
+      readonly fingerprintHash: string;
+    }
+);
+
 type FetchReleaseCatalogInput = {
-  readonly authorityId: string;
   readonly baseURL: string;
+  readonly expectedScope: ExpectedReleaseCatalogScope;
   readonly requestHeaders?: Record<string, string>;
   readonly requestTimeout?: number;
-  readonly scopeKey: string;
   readonly url: string;
 };
 
@@ -102,10 +115,29 @@ const isValidReleaseDescriptor = (value: unknown): boolean => {
   );
 };
 
+export const hasExpectedReleaseCatalogScope = (
+  catalog: ReleaseCatalog,
+  expected: ExpectedReleaseCatalogScope,
+): boolean => {
+  try {
+    const parsed = parseReleaseCatalogScopeKey(catalog.scopeKey);
+    return (
+      parsed.authorityId === catalog.authorityId &&
+      parsed.channelKey === expected.channelKey &&
+      parsed.platform === expected.platform &&
+      parsed.strategy === expected.strategy &&
+      (parsed.strategy === "APP_VERSION" ||
+        (expected.strategy === "FINGERPRINT" &&
+          parsed.fingerprintHash === expected.fingerprintHash))
+    );
+  } catch {
+    return false;
+  }
+};
+
 const parseValidatedCatalog = (
   value: string,
-  authorityId: string,
-  scopeKey: string,
+  expectedScope: ExpectedReleaseCatalogScope,
 ): ReleaseCatalog | null => {
   if (getUtf8ByteLength(value) > MAX_RELEASE_CATALOG_WIRE_BYTES) return null;
 
@@ -113,8 +145,8 @@ const parseValidatedCatalog = (
     const catalog = JSON.parse(value) as Partial<ReleaseCatalog>;
     if (
       catalog.schemaVersion !== 1 ||
-      catalog.authorityId !== authorityId ||
-      catalog.scopeKey !== scopeKey ||
+      typeof catalog.authorityId !== "string" ||
+      typeof catalog.scopeKey !== "string" ||
       !Number.isSafeInteger(catalog.generation) ||
       (catalog.generation ?? 0) < 1 ||
       typeof catalog.catalogHash !== "string" ||
@@ -125,6 +157,11 @@ const parseValidatedCatalog = (
       (catalog.rollbackReleases !== undefined &&
         (!Array.isArray(catalog.rollbackReleases) ||
           !catalog.rollbackReleases.every(isValidReleaseDescriptor)))
+    ) {
+      return null;
+    }
+    if (
+      !hasExpectedReleaseCatalogScope(catalog as ReleaseCatalog, expectedScope)
     ) {
       return null;
     }
@@ -154,14 +191,13 @@ const serializeCache = (etag: string, body: string): string =>
 
 const parseCache = (
   value: string,
-  authorityId: string,
-  scopeKey: string,
+  expectedScope: ExpectedReleaseCatalogScope,
+  partition: string,
 ): CachedCatalog | null => {
   if (
     lastParsedCache !== null &&
     lastParsedCache.serialized === value &&
-    lastParsedCache.authorityId === authorityId &&
-    lastParsedCache.scopeKey === scopeKey
+    lastParsedCache.partition === partition
   ) {
     return lastParsedCache;
   }
@@ -178,9 +214,9 @@ const parseCache = (
   const etag = value.slice(versionEnd + 1, etagEnd);
   const body = value.slice(etagEnd + 1);
   if (!isValidETag(etag)) return null;
-  const catalog = parseValidatedCatalog(body, authorityId, scopeKey);
+  const catalog = parseValidatedCatalog(body, expectedScope);
   if (catalog === null) return null;
-  const parsed = { authorityId, catalog, etag, scopeKey, serialized: value };
+  const parsed = { catalog, etag, partition, serialized: value };
   lastParsedCache = parsed;
   return parsed;
 };
@@ -195,18 +231,13 @@ const normalizedHeaders = (
 };
 
 export const createReleaseCatalogCachePartition = (
-  input: Pick<
-    FetchReleaseCatalogInput,
-    "authorityId" | "baseURL" | "requestHeaders" | "scopeKey" | "url"
-  >,
+  input: Pick<FetchReleaseCatalogInput, "baseURL" | "requestHeaders" | "url">,
 ): string =>
   JSON.stringify({
-    authorityId: input.authorityId,
     baseURL: input.baseURL,
     headers: normalizedHeaders(input.requestHeaders),
-    scopeKey: input.scopeKey,
     url: input.url,
-    version: 1,
+    version: 2,
   });
 
 const fetchCatalogResponse = async (
@@ -243,13 +274,12 @@ const fetchCatalogResponse = async (
 
 const readValidatedCache = async (
   partition: string,
-  authorityId: string,
-  scopeKey: string,
+  expectedScope: ExpectedReleaseCatalogScope,
 ): Promise<CachedCatalog | null> => {
   const value = await readNativeReleaseCatalogCache(partition);
   if (value === null) return null;
 
-  const cached = parseCache(value, authorityId, scopeKey);
+  const cached = parseCache(value, expectedScope, partition);
   if (cached === null) {
     await removeNativeReleaseCatalogCache(partition);
   }
@@ -266,11 +296,7 @@ const consumeSuccessfulResponse = async (
   }
 
   const body = await response.text();
-  const catalog = parseValidatedCatalog(
-    body,
-    input.authorityId,
-    input.scopeKey,
-  );
+  const catalog = parseValidatedCatalog(body, input.expectedScope);
   if (catalog === null) {
     await removeNativeReleaseCatalogCache(partition);
     throw new Error("Received an invalid Release catalog");
@@ -285,10 +311,9 @@ const consumeSuccessfulResponse = async (
     }
     if (await writeNativeReleaseCatalogCache(partition, serialized)) {
       lastParsedCache = {
-        authorityId: input.authorityId,
         catalog,
         etag,
-        scopeKey: input.scopeKey,
+        partition,
         serialized,
       };
     }
@@ -302,11 +327,7 @@ export const fetchReleaseCatalogWithCache = async (
   input: FetchReleaseCatalogInput,
 ): Promise<ReleaseCatalog> => {
   const partition = createReleaseCatalogCachePartition(input);
-  const cached = await readValidatedCache(
-    partition,
-    input.authorityId,
-    input.scopeKey,
-  );
+  const cached = await readValidatedCache(partition, input.expectedScope);
   const response = await fetchCatalogResponse(input, cached?.etag);
 
   if (response.status === 304) {

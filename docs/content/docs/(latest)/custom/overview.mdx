@@ -40,9 +40,9 @@ import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
-const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN;
-if (!managementToken) {
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required");
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) {
+  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
 }
 
 export default defineConfig({
@@ -57,9 +57,9 @@ export default defineConfig({
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
   database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater",
+    baseUrl: "http://localhost:3000/hot-updater/admin",
     commonHeaders: {
-      Authorization: `Bearer ${managementToken}`,
+      Authorization: `Bearer ${adminToken}`,
     },
   }),
   updateStrategy: "appVersion",
@@ -104,6 +104,7 @@ subpath with the same public plugin name.
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
+  clientAccess: { type: "api-key" },
   storage: [
     s3Storage({
       /* AWS S3 config with download URL support */
@@ -115,11 +116,6 @@ export const hotUpdater = createHotUpdater({
       /* My Custom Storage */
     }),
   ],
-  basePath: "/hot-updater",
-  features: {
-    updateCheck: true,
-    bundles: false,
-  },
 });
 ```
 
@@ -131,45 +127,38 @@ plugin owns reads, URL generation, and exact deletion even for `http` or
 `https`. Only when no plugin owns an HTTP(S) URI does Hot Updater use the direct
 URL; an unowned non-HTTP scheme is unsupported.
 
-## Features
+## Runtime policy
 
-`createHotUpdater` exposes runtime route groups and optional behavior through
-one `features` object:
+`createHotUpdater` always exposes Analytics ingestion and query capabilities.
+React Native clients independently decide whether to send lifecycle events
+with `HotUpdater.init({ analytics })`.
 
-- `updateCheck`: update-check endpoints used by React Native clients
-- `bundles`: Bundle, Release, Release Catalog, and Channel management endpoints
-  used by the CLI and Console
-- `analytics`: event ingestion and query routes backed by
-  `database.models.analytics`
-- `clientAccessKeys`: authentication for update checks and Analytics ingestion
-  backed by `database.models.clientAccessKeys`
+Every server must explicitly set `clientAccess`. Use `{ type: "api-key" }` to
+require authentication for update checks and Analytics ingestion through
+`database.models.apiKeys`, or `{ type: "public" }` to keep those
+client routes public.
 
-`updateCheck` is mounted by default. `bundles` is disabled by default and must
-be enabled explicitly when the CLI needs management APIs. When `bundles: true`,
-protect every route under `/api/*` with framework middleware. The `/version`
-endpoint is always mounted for diagnostics.
+Release Catalog, artifact, storage-download, and `/version` routes are always
+available on `handlers.client`. Bundle, Release, Release Catalog row, Channel,
+database-commit, and Analytics-query routes live exclusively on
+`handlers.admin`. Expose that handler only through an authenticated framework
+mount.
 
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
+  clientAccess: { type: "api-key" },
   storage: [
     s3Storage({
       /* storage config */
     }),
   ],
-  basePath: "/hot-updater",
-  features: {
-    updateCheck: true,
-    bundles: true,
-    analytics: true,
-    clientAccessKeys: true,
-  },
 });
 ```
 
-Use `analytics: { queryAccess: "public" }` only when Analytics query routes
-are intentionally public, such as a local fixture. `analytics: true` keeps
-queries protected. `false` or an omitted feature disables it.
+Analytics ingestion is available on `handlers.client` and queries are
+available on `handlers.admin`. The server does not authenticate admin queries
+itself; the framework middleware protecting the admin mount owns that decision.
 
 <Callout type="warn">
 **Recommendation: Match Your CLI Configuration**

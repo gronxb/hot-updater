@@ -19,10 +19,6 @@ interface NodeResponse {
   [key: string]: unknown;
 }
 
-type HandlerHotUpdaterAPI = {
-  readonly handler: (request: Request) => Promise<Response>;
-};
-
 export { HOT_UPDATER_SERVER_VERSION } from "./version";
 export { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "./handlerVersionRoutes";
 
@@ -37,22 +33,28 @@ export { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "./handlerVersionRoutes";
  *
  * const app = express();
  *
- * // Mount middleware
- * app.use(express.json());
- *
- * // Mount hot-updater handler
- * app.all("/hot-updater/*", toNodeHandler(hotUpdater));
+ * app.use(
+ *   "/hot-updater/admin",
+ *   bearerMiddleware,
+ *   express.json({ limit: "1mb" }),
+ *   toNodeHandler(hotUpdater.handlers.admin),
+ * );
+ * app.use(
+ *   "/hot-updater",
+ *   express.json({ limit: "1mb" }),
+ *   toNodeHandler(hotUpdater.handlers.client),
+ * );
  * ```
  */
 export function toNodeHandler(
-  hotUpdater: HandlerHotUpdaterAPI,
+  handler: HotUpdaterHandler,
 ): (req: any, res: any, next?: any) => Promise<void> {
   return async (req: NodeRequest, res: NodeResponse) => {
     try {
       // Build full URL
       const protocol = req.protocol || "http";
       const host = req.get?.("host") || "localhost";
-      const url = `${protocol}://${host}${req.url || "/"}`;
+      const url = `${protocol}://${host}${req.url ?? "/"}`;
 
       // Convert headers to Web Headers
       const headers = new Headers();
@@ -81,8 +83,7 @@ export function toNodeHandler(
         body,
       });
 
-      // Call hot-updater handler
-      const response = await hotUpdater.handler(webRequest);
+      const response = await handler(webRequest);
 
       // Set status code
       res.status(response.status);
@@ -107,3 +108,4 @@ export function toNodeHandler(
     }
   };
 }
+import type { HotUpdaterHandler } from "./handlerTypes";

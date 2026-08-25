@@ -36,7 +36,7 @@ async function checkAndUpdate() {
 
   const updateInfo = await HotUpdater.checkForUpdate({
     updateStrategy: "appVersion", // or "fingerprint"
-    // requestHeaders: { Authorization: "Bearer <token>" },
+    // requestHeaders: { "x-api-key": "<your-api-key>" },
   });
 
   if (!updateInfo) return;
@@ -64,7 +64,11 @@ export function UpdateButton() {
   const { progress, isUpdateDownloaded } = useHotUpdaterStore();
   return (
     <Button
-      title={isUpdateDownloaded ? "Restart to update" : `Updating... ${Math.round(progress * 100)}%`}
+      title={
+        isUpdateDownloaded
+          ? "Restart to update"
+          : `Updating... ${Math.round(progress * 100)}%`
+      }
       onPress={() => HotUpdater.reload()}
       disabled={!isUpdateDownloaded}
     />

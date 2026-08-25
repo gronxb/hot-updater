@@ -77,7 +77,7 @@ const missingDatabase = createDatabasePlugin({
         throw new Error("database plugin is required");
       },
     },
-    clientAccessKeys: {
+    apiKeys: {
       create: async () => {
         throw new Error("database plugin is required");
       },

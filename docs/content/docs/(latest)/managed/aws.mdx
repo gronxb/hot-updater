@@ -67,6 +67,7 @@ Run the following command to install dependencies:
 
 ```package-install
 npm install hot-updater --save-dev
+npm install @hot-updater/react-native
 ```
 
 ## Step 2: Configure AWS
@@ -88,9 +89,10 @@ npx hot-updater init
 5. **Select Region**: Choose an AWS region for S3 and DynamoDB
 6. **Select S3 Bucket**: Choose an existing bucket or create a new one
 7. **Create DynamoDB Table**: Enter a table name; init creates it or validates its schema
-8. **Create IAM Role**: Create or reuse a resource-scoped role for this Lambda installation
-9. **Deploy Lambda Function**: Deploy the Lambda@Edge function to handle updates
-10. **Create/Update CloudFront Distribution**: Create or update a CloudFront distribution
+8. **Provision API Key**: Create the first client API key or reuse the saved key
+9. **Create IAM Role**: Create or reuse a resource-scoped role for this Lambda installation
+10. **Deploy Lambda Function**: Deploy the Lambda@Edge function to handle updates
+11. **Create/Update CloudFront Distribution**: Create or update a CloudFront distribution
 
   </Accordion>
 </Accordions>
@@ -107,13 +109,15 @@ HOT_UPDATER_AWS_LAMBDA_NAME=hot-updater-edge
 HOT_UPDATER_S3_BUCKET_NAME=your-s3-bucket-name
 HOT_UPDATER_S3_REGION=your-region
 HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID=your-distribution-id
-HOT_UPDATER_API_KEY=your-client-access-key
+HOT_UPDATER_API_KEY=your-api-key
 ```
 
-Init reuses `HOT_UPDATER_API_KEY` when supplied or creates a client access key,
-registers it in DynamoDB, and persists the plaintext value locally. Bundle this
-client key in the app's `x-api-key` request header. It does not authorize
-management or Analytics-query routes.
+Managed init reuses `HOT_UPDATER_API_KEY` when supplied or creates an API key,
+registers it in DynamoDB, and persists the plaintext value locally. Send this
+API key in the app's `x-api-key` request header. It does not authorize
+management or Analytics-query routes. Do not run `hot-updater api-key create`
+for a managed installation; that command bootstraps direct self-hosted
+`createHotUpdater` configurations.
 
 If you choose a shared AWS profile or SSO, the generated env file also includes:
 
@@ -136,11 +140,59 @@ HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
 
 <Callout type="warn">
 
-If you're **not** using the `react-native-dotenv` solution, provider credentials from `.env.hotupdater` will not be included in your app bundle. The client access key is the exception: add it explicitly to the app as shown below.
+If you're **not** using the `react-native-dotenv` solution, provider credentials from `.env.hotupdater` will not be included in your app bundle. The API key is the exception: add it explicitly to the app as shown below.
 
 please refer to the article below for more details:
 [Security](/docs/policy/security#plugin-token-protection)
 
+</Callout>
+
+## Step 3: Add HotUpdater to Your Project
+
+Configure the endpoint and API key once, then check when your app is ready.
+Replace the API-key placeholder with your existing React Native build-time
+configuration value. Do not paste the plaintext key into App.tsx and commit it.
+
+```tsx title="App.tsx"
+import { HotUpdater } from "@hot-updater/react-native";
+import { useEffect } from "react";
+import { Text, View } from "react-native";
+
+HotUpdater.init({
+  baseURL: "https://<your-cloudfront-distribution-url>", // [!code ++]
+  requestHeaders: {
+    "x-api-key": "<HOT_UPDATER_API_KEY from .env.hotupdater>", // [!code ++]
+  },
+});
+
+function App() {
+  useEffect(() => {
+    void HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
+      .then(async (updateInfo) => {
+        if (!updateInfo) return;
+        await updateInfo.updateBundle();
+        if (updateInfo.shouldForceUpdate) await HotUpdater.reload();
+      })
+      .catch(console.error);
+  }, []);
+
+  return (
+    <View>
+      <Text>Hello World</Text>
+    </View>
+  );
+}
+
+export default App;
+```
+
+<Callout type="info">
+  The managed AWS runtime exposes `/version` publicly. OTA update checks and
+  Analytics ingestion require `x-api-key: $HOT_UPDATER_API_KEY`, using a key
+  registered or created during init. Internally, Analytics is always available
+  and `clientAccess` uses the `api-key` policy; only `handlers.client` is
+  mounted. API keys do not authorize Analytics query routes, and bundle
+  management endpoints are not mounted on the public function URL.
 </Callout>
 
 ## Cost and capacity
@@ -157,7 +209,7 @@ pages from DynamoDB.
 Review the [DynamoDB pricing model](https://aws.amazon.com/dynamodb/pricing/) and
 [Lambda@Edge pricing](https://aws.amazon.com/lambda/pricing/).
 
-Each client key authorizes OTA selectors and event ingestion, but not
+Each API key authorizes OTA selectors and event ingestion, but not
 Analytics query or management routes. Managed tables cap on-demand throughput
 at 4,000 reads and 100 writes per second for both the table and update index.
 The cap is a cost guardrail and can throttle bursts; protect production
@@ -187,7 +239,7 @@ change deletion protection on an operator-owned reused table.
 New distributions use `PriceClass_All` to preserve worldwide OTA latency. The
 Release-catalog behavior honors the server's five-second shared TTL. Catalog
 authentication failures, missing rows, and server errors are private and are
-not cached. Cache identity uses only the client access key and content encoding;
+not cached. Cache identity uses only the API key and content encoding;
 the removed v0 SDK-version header is not forwarded.
 
 If regional reach matters less than transfer price, change the distribution price
@@ -210,7 +262,7 @@ and CloudFront resources and ship the new endpoint in a new native build. Keep
 the v0 distribution available for installed v0 binaries that still need OTA
 service.
 
-## Step 3: Generated Configurations
+## Generated Configuration and Operations
 
 During the initialization process, the following file is automatically generated:
 
@@ -258,7 +310,7 @@ If you choose **shared AWS profile**, `fromNodeProviderChain()` is replaced with
 account/access-key mode emits a literal access-key credential block. Keep the
 generated `authorityId`: it is derived from the selected DynamoDB table.
 
-## Step 4: Replace Account Access Keys (Optional)
+### Replace Account Access Keys (Optional)
 
 By this point, `.env.hotupdater` already contains the settings selected during
 `hot-updater init`.
@@ -279,65 +331,7 @@ HOT_UPDATER_S3_ACCESS_KEY_ID=your-access-key-id
 HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
 ```
 
-## Step 5: Add HotUpdater to Your Project
-
-The HotUpdater component wraps your application, enabling seamless delivery of updates and fallback UI during updates. Follow these steps to integrate it into your App.tsx:
-
-```tsx title="App.tsx"
-import { HotUpdater } from "@hot-updater/react-native";
-import { Text, View } from "react-native";
-
-function App() {
-  return (
-    <View>
-      <Text>Hello World</Text>
-    </View>
-  );
-}
-
-export default HotUpdater.wrap({
-  baseURL: "https://<your-cloudfront-distribution-url>", // [!code ++]
-  authorityId: "aws.<generated-authority-id>", // [!code ++]
-  updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
-  requestHeaders: {
-    "x-api-key": "<HOT_UPDATER_API_KEY from .env.hotupdater>", // [!code ++]
-  },
-  fallbackComponent: ({ progress, status }) => (
-    <View
-      style={{
-        flex: 1,
-        padding: 20,
-        borderRadius: 10,
-        justifyContent: "center",
-        alignItems: "center",
-        backgroundColor: "rgba(0, 0, 0, 0.5)",
-      }}
-    >
-      {/* You can put a splash image here. */}
-
-      <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-        {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
-      </Text>
-      {progress > 0 ? (
-        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-          {Math.round(progress * 100)}%
-        </Text>
-      ) : null}
-    </View>
-  ),
-})(App);
-```
-
-<Callout type="info">
-  The managed AWS runtime exposes `/version` publicly. OTA update checks and
-  Analytics ingestion require `x-api-key: $HOT_UPDATER_API_KEY`, using a key
-  created from the Console. Internally, it enables `updateCheck`, `analytics`,
-  and `clientAccessKeys`, while disabling `bundles`. Client access keys do not
-  authorize Analytics query routes, and bundle management endpoints are not
-  mounted on the public function URL.
-</Callout>
-
-## Step 6: If You Use Expo, Add the Config Plugin
+## Step 4: If You Use Expo, Add the Config Plugin
 
 Add the plugin to your `app.json` file as shown below:
 
@@ -371,7 +365,7 @@ npx expo prebuild
   additional Babel plugin setup.
 </Callout>
 
-## Step 7: Add Native Code
+## Step 5: Add Native Code
 
 To complete the integration of `hot-updater`, you'll need to add native code modifications for both Android and iOS platforms. This step ensures the `hot-updater` can interact with your app's underlying framework to apply updates seamlessly.
 

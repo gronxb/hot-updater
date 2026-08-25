@@ -1,24 +1,15 @@
-import type { LegacyBundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 import { vi } from "vitest";
 
-import {
-  createHandler,
-  type HandlerAPI,
-  type HandlerFeatures,
-} from "./handler";
+import { createHandlers, type HandlerAPI } from "./handler";
 
-export const testBundle: LegacyBundle = {
+export const testBundle: Bundle = {
   id: "bundle-1",
   platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
   fileHash: "hash123",
   gitCommitHash: null,
-  message: "Test bundle",
-  channel: "production",
   storageUri: "s3://test-bucket/bundles/bundle-1.zip",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
+  archiveByteSize: 3_000_000_001,
 };
 
 export const createApi = () =>
@@ -35,15 +26,5 @@ export const createApi = () =>
     deleteBundleById: vi.fn<HandlerAPI["deleteBundleById"]>(),
   }) satisfies HandlerAPI;
 
-export const createManagementHandler = (
-  api: HandlerAPI,
-  features: Partial<HandlerFeatures> = {},
-) =>
-  createHandler(api, {
-    basePath: "/hot-updater",
-    features: {
-      updateCheck: true,
-      bundles: true,
-      ...features,
-    },
-  });
+export const createAdminHandler = (api: HandlerAPI) =>
+  createHandlers(api).admin;

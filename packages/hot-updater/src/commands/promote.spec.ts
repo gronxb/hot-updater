@@ -1,8 +1,9 @@
-import type { LegacyBundle } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/plugin-core";
 import { updateReleasePolicy } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
+import type { DeployReleasePolicy } from "./deployTransaction";
 
 const { confirm, loadConfig, log } = vi.hoisted(() => ({
   confirm: vi.fn(),
@@ -31,12 +32,15 @@ vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 const databaseHarness = createDatabasePluginHarness();
 const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
 
-const sourceBundle: LegacyBundle = {
+const sourceBundle: Bundle = {
+  archiveByteSize: 1024,
   id: "01900000-0000-7000-8000-000000000001",
   platform: "ios",
   fileHash: "hash-B1",
   storageUri: "storage://artifacts/B1.zip",
   gitCommitHash: null,
+};
+const sourceRelease: DeployReleasePolicy = {
   channel: "production",
   enabled: true,
   fingerprintHash: null,
@@ -62,7 +66,9 @@ describe("handlePromote", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     databaseHarness.reset();
-    await databaseHarness.seedLegacyBundles([sourceBundle]);
+    await databaseHarness.seedDeployments([
+      { bundle: sourceBundle, release: sourceRelease },
+    ]);
     loadConfig.mockResolvedValue({ database: databaseHarness.plugin });
   });
 

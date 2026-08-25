@@ -2,7 +2,6 @@ import { encodeChannelKey } from "../../../packages/core/src/releaseCatalogScope
 import { canonicalizeAppVersion } from "../../../plugins/plugin-core/src/releaseCatalogCompiler.ts";
 
 type ReleaseCatalogUrlBaseInput = {
-  readonly authorityId: string;
   readonly baseUrl: string;
   readonly channel: string;
   readonly platform: "android" | "ios";
@@ -44,7 +43,6 @@ export function buildReleaseCatalogUrl(input: ReleaseCatalogUrlInput): string {
     `release-catalogs/${
       input.strategy === "fingerprint" ? "fingerprint" : "app-version"
     }`,
-    encodeURIComponent(input.authorityId),
     input.platform,
     encodeChannelKey(input.channel),
     encodeURIComponent(strategyValue),

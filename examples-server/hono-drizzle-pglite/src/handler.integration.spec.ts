@@ -9,7 +9,7 @@ import {
   createTestDbPath,
   killPort,
   spawnServerProcess,
-  TEST_MANAGEMENT_AUTH_TOKEN,
+  TEST_ADMIN_AUTH_TOKEN,
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
@@ -71,7 +71,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
     await waitForServer(baseUrl, 180); // 180 attempts * 200ms = 36 seconds
 
     bundleMethods = createBundleMethodsFromServer({
-      baseUrl: `${baseUrl}/hot-updater`,
+      baseUrl: `${baseUrl}/hot-updater/admin`,
     });
   }, 120000);
 
@@ -81,7 +81,6 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
 
   setupBundleMethodsTestSuite({
     getBundleById: (id) => bundleMethods.getBundleById(id),
-    getChannels: () => bundleMethods.getChannels(),
     insertBundle: (bundle) => bundleMethods.insertBundle(bundle),
     getBundles: (options) => bundleMethods.getBundles(options),
     updateBundleById: (bundleId, newBundle) =>
@@ -89,29 +88,28 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
     deleteBundleById: (bundleId) => bundleMethods.deleteBundleById(bundleId),
   });
 
-  it("protects bundle management routes without hiding public catalog routes", async () => {
+  it("protects bundle management routes while keeping catalog routes public", async () => {
     const unauthorizedBundles = await fetch(
-      `${baseUrl}/hot-updater/api/bundles`,
+      `${baseUrl}/hot-updater/admin/bundles`,
     );
     const authorizedBundles = await fetch(
-      `${baseUrl}/hot-updater/api/bundles`,
+      `${baseUrl}/hot-updater/admin/bundles`,
       {
         headers: {
-          Authorization: `Bearer ${TEST_MANAGEMENT_AUTH_TOKEN}`,
+          Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}`,
         },
       },
     );
     const version = await fetch(`${baseUrl}/hot-updater/version`);
     const updateCheck = await fetch(
-      `${baseUrl}/hot-updater/release-catalogs/app-version/default/ios/cHJvZHVjdGlvbg/1.0.0`,
+      `${baseUrl}/hot-updater/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0`,
     );
 
     expect(unauthorizedBundles.status).toBe(401);
     expect(authorizedBundles.status).toBe(200);
     expect(version.status).toBe(200);
-    expect(updateCheck.status).toBe(200);
-    expect(updateCheck.headers.get("content-type")).toContain(
-      "application/vnd.hot-updater.release-catalog+json",
-    );
+    expect(updateCheck.status).toBe(404);
+    expect(updateCheck.headers.get("cache-control")).toBe("private, no-store");
+    await expect(updateCheck.json()).resolves.toEqual({ error: "Not found" });
   });
 });

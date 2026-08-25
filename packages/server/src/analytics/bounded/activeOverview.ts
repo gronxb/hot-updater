@@ -80,7 +80,6 @@ export function collectActiveInstallationOverview(
   const selectedInstallIds = new Set(selectedRows.map((row) => row.install_id));
   const bundleCounts = new Map<string, number>();
   for (const row of selectedRows) {
-    if (row.to_bundle_id === null) continue;
     bundleCounts.set(
       row.to_bundle_id,
       (bundleCounts.get(row.to_bundle_id) ?? 0) + 1,
@@ -105,7 +104,6 @@ export function collectActiveInstallationOverview(
   const bundleCountsByBucket = latestByBucket.map((bucket) => {
     const counts = new Map<string, number>();
     for (const row of bucket.values()) {
-      if (row.to_bundle_id === null) continue;
       counts.set(row.to_bundle_id, (counts.get(row.to_bundle_id) ?? 0) + 1);
     }
     return counts;

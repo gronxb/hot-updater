@@ -42,12 +42,9 @@
   "publishConfig": {
     "access": "public"
   },
-  "dependencies": {
-    "@hot-updater/core": "workspace:*"
-  },
   "devDependencies": {
     "@types/node": "catalog:",
-    "verkit": "0.3.2"
+    "verkit": "catalog:"
   },
   "inlinedDependencies": {
     "verkit": "0.3.2"

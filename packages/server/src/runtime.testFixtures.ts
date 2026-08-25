@@ -1,4 +1,4 @@
-import type { LegacyBundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 import type {
   DatabasePlugin,
   StoragePlugin,
@@ -9,18 +9,13 @@ import { createStoragePlugin } from "@hot-updater/plugin-core";
 import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
 import type { DatabaseAdapterCapabilities, Migrator } from "./db/types";
 
-export const runtimeBundle: LegacyBundle = {
+export const runtimeBundle: Bundle = {
   id: "00000000-0000-0000-0000-000000000001",
   platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
   fileHash: "hash123",
   gitCommitHash: null,
-  message: "Test bundle",
-  channel: "production",
   storageUri: "s3://test-bucket/bundles/bundle.zip",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
+  archiveByteSize: 3_000_000_001,
 };
 
 export const createRuntimeStorage = (

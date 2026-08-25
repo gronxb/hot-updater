@@ -1,4 +1,4 @@
-import type { LegacyBundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -10,18 +10,13 @@ import { loadBundleRows } from "./databaseClientReads";
 import { createMemoryDatabasePlugin } from "./databasePluginMemory.testFixtures";
 import type { BundleRow } from "./types";
 
-const createBundle = (id: string): LegacyBundle => ({
+const createBundle = (id: string): Bundle => ({
   id,
   platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
   fileHash: `hash-${id}`,
   gitCommitHash: null,
-  message: id,
-  channel: "production",
   storageUri: `storage://${id}`,
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
+  archiveByteSize: 3_000_000_001,
 });
 
 describe("database client pagination", () => {
@@ -85,6 +80,7 @@ describe("database client pagination", () => {
       channel: `release-${index}`,
       channel_id: `channel-${index}`,
       storage_uri: `storage://bundle-${index}.zip`,
+      archive_byte_size: 3_000_000_001 + index,
       target_app_version: "1.0.0",
       fingerprint_hash: null,
       metadata: {},
@@ -196,12 +192,13 @@ describe("database client pagination", () => {
   });
 });
 
-const bundlesRow = (bundle: LegacyBundle): BundleRow => ({
+const bundlesRow = (bundle: Bundle): BundleRow => ({
   id: bundle.id,
   platform: bundle.platform,
   file_hash: bundle.fileHash,
   git_commit_hash: bundle.gitCommitHash,
   storage_uri: bundle.storageUri,
+  archive_byte_size: bundle.archiveByteSize,
   metadata: {},
   manifest_storage_uri: null,
   manifest_file_hash: null,

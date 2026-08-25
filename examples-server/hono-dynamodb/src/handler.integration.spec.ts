@@ -13,20 +13,25 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { DYNAMODB_UPDATE_INDEX_NAME } from "@hot-updater/aws";
-import { type Bundle, type LegacyBundle } from "@hot-updater/core";
-import { updateReleasePolicy } from "@hot-updater/plugin-core";
-import { createClientAccessKey, type HotUpdaterAPI } from "@hot-updater/server";
-import { standaloneRepository } from "@hot-updater/standalone";
 import {
-  deleteLegacyBundle,
-  setupBundleMethodsTestSuite,
-} from "@hot-updater/test-utils";
+  type Bundle,
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+} from "@hot-updater/core";
+import {
+  commitReleaseCatalogMutations,
+  createUUIDv7,
+  updateReleasePolicy,
+} from "@hot-updater/plugin-core";
+import { createApiKey, type HotUpdaterAPI } from "@hot-updater/server";
+import { standaloneRepository } from "@hot-updater/standalone";
+import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
   assertDockerComposeAvailable,
   cleanupServer,
   killPort,
   spawnServerProcess,
-  TEST_MANAGEMENT_AUTH_TOKEN,
+  TEST_ADMIN_AUTH_TOKEN,
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
@@ -176,8 +181,8 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     await waitForServer(baseUrl, 180);
 
     const db = await import("./db.js");
-    const created = await createClientAccessKey({
-      clientAccessKeys: db.database.models.clientAccessKeys,
+    const created = await createApiKey({
+      apiKeys: db.database.models.apiKeys,
       name: "Standalone integration test",
     });
     rawApiKey = created.apiKey;
@@ -200,13 +205,12 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
 
   setupBundleMethodsTestSuite({
     getBundleById: (id: string) => hotUpdater.getBundleById(id),
-    getChannels: () => hotUpdater.getChannels(),
-    insertBundle: (bundle: LegacyBundle) => hotUpdater.insertBundle(bundle),
+    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
     getBundles: (options) => hotUpdater.getBundles(options),
     updateBundleById: (bundleId: string, bundle: Partial<Bundle>) =>
       hotUpdater.updateBundleById(bundleId, bundle),
     deleteBundleById: (bundleId: string) =>
-      deleteLegacyBundle(hotUpdater, bundleId),
+      hotUpdater.deleteBundleById(bundleId),
   });
 
   it("accepts authenticated events without granting client query access", async () => {
@@ -220,6 +224,8 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
       cohort: "default",
       fingerprintHash: null,
       fromBundleId: null,
+      fromReleaseId: null,
+      toReleaseId: null,
       updateStrategy: null,
     };
     const unauthorized = await fetch(`${baseUrl}/hot-updater/events`, {
@@ -236,14 +242,14 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
       body: JSON.stringify(event),
     });
     const clientQuery = await fetch(
-      `${baseUrl}/hot-updater/api/installations/overview`,
+      `${baseUrl}/hot-updater/admin/installations/overview`,
       { headers: { "x-api-key": rawApiKey } },
     );
-    const managementQuery = await fetch(
-      `${baseUrl}/hot-updater/api/installations/overview`,
+    const adminQuery = await fetch(
+      `${baseUrl}/hot-updater/admin/installations/overview`,
       {
         headers: {
-          Authorization: `Bearer ${TEST_MANAGEMENT_AUTH_TOKEN}`,
+          Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}`,
         },
       },
     );
@@ -251,46 +257,95 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     expect(unauthorized.status).toBe(401);
     expect(accepted.status).toBe(204);
     expect(clientQuery.status).toBe(401);
-    expect(managementQuery.status).toBe(200);
+    expect(adminQuery.status).toBe(200);
   });
 
-  it("requires a client key for unversioned catalog routes", async () => {
+  it("requires an API key before reporting a missing catalog", async () => {
     const path =
-      "/hot-updater/release-catalogs/app-version/default/ios/cHJvZHVjdGlvbg/1.0.0";
+      "/hot-updater/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0";
     const unauthorized = await fetch(`${baseUrl}${path}`);
     const authorized = await fetch(`${baseUrl}${path}`, {
       headers: { "x-api-key": rawApiKey },
     });
 
     expect(unauthorized.status).toBe(401);
-    expect(authorized.status).toBe(200);
-    expect(authorized.headers.get("content-type")).toContain(
-      "application/vnd.hot-updater.release-catalog+json",
-    );
+    expect(authorized.status).toBe(404);
+    expect(authorized.headers.get("cache-control")).toBe("private, no-store");
+    await expect(authorized.json()).resolves.toEqual({ error: "Not found" });
   });
 
   it("updates Release policy through the authenticated standalone repository", async () => {
     const database = standaloneRepository({
-      baseUrl: `${baseUrl}/hot-updater`,
+      baseUrl: `${baseUrl}/hot-updater/admin`,
       commonHeaders: {
-        Authorization: `Bearer ${TEST_MANAGEMENT_AUTH_TOKEN}`,
+        Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}`,
       },
     });
     const bundleId = "hono-dynamodb-update-target-app-version";
+    const channelName = "production";
+    const channelKey = encodeChannelKey(channelName);
+    const channel = (
+      await database.models.channels.insert({
+        row: { id: `channel:${channelKey}`, name: channelName },
+        onConflict: "returnExisting",
+      })
+    ).row;
+    const scopeKey = createReleaseCatalogScopeKey({
+      authorityId: "default",
+      channelKey,
+      platform: "ios",
+      strategy: "APP_VERSION",
+    });
 
     await hotUpdater.insertBundle({
       id: bundleId,
       platform: "ios",
-      shouldForceUpdate: false,
-      enabled: true,
       fileHash: `${bundleId}-hash`,
       gitCommitHash: null,
-      message: null,
-      channel: "production",
-      targetAppVersion: "1.x.x",
       storageUri: `s3://${bucketName}/${bundleId}.zip`,
-      fingerprintHash: null,
-      rolloutCohortCount: 1000,
+      archiveByteSize: 3_000_000_001,
+    });
+    const now = Date.now();
+    await commitReleaseCatalogMutations({
+      database,
+      mutations: [
+        {
+          mutation: {
+            operation: "insert",
+            row: {
+              bundle_id: bundleId,
+              channel_id: channel.id,
+              created_at_ms: now,
+              enabled: true,
+              fingerprint_hash: null,
+              id: createUUIDv7(),
+              kind: "BUNDLE",
+              message: null,
+              operation: "DEPLOY",
+              platform: "ios",
+              revision: 1,
+              rollout_cohort_count: 1_000,
+              scope_key: scopeKey,
+              should_force_update: false,
+              source_release_id: null,
+              strategy: "APP_VERSION",
+              target_app_version: "1.x.x",
+              target_cohorts: [],
+              updated_at_ms: now,
+            },
+          },
+          scope: {
+            authorityId: "default",
+            channelId: channel.id,
+            channelName,
+            fingerprintHash: null,
+            platform: "ios",
+            scopeKey,
+            strategy: "APP_VERSION",
+          },
+          updatedAtMs: now,
+        },
+      ],
     });
     const [release] = await database.models.releases.findMany({
       bundleId,

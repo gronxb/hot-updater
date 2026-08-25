@@ -55,7 +55,6 @@
     "access": "public"
   },
   "devDependencies": {
-    "@hot-updater/js": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",

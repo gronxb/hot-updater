@@ -30,7 +30,7 @@ export const createStandaloneReleaseRemote = (
   return {
     async findReleaseById(id: string): Promise<ReleaseRow | null> {
       const response = await fetch(
-        http.buildUrl(`/api/releases/${encodeURIComponent(id)}`),
+        http.buildUrl(`/releases/${encodeURIComponent(id)}`),
         { headers: headers() },
       );
       if (response.status === 404) return null;
@@ -45,7 +45,7 @@ export const createStandaloneReleaseRemote = (
       readonly afterReleaseId?: string;
       readonly limit: number;
     }): Promise<readonly ReleaseRow[]> {
-      const url = new URL(http.buildUrl("/api/releases"));
+      const url = new URL(http.buildUrl("/releases"));
       url.searchParams.set("scopeKey", input.scopeKey);
       url.searchParams.set("limit", String(input.limit));
       if (input.afterReleaseId !== undefined) {
@@ -76,7 +76,7 @@ export const createStandaloneReleaseRemote = (
       readonly targetAppVersion?: string;
       readonly limit: number;
     }): Promise<readonly ReleaseRow[]> {
-      const url = new URL(http.buildUrl("/api/releases"));
+      const url = new URL(http.buildUrl("/releases"));
       url.searchParams.set("limit", String(input.limit));
       for (const [key, value] of Object.entries(input)) {
         if (key !== "limit" && value !== undefined) {
@@ -102,7 +102,7 @@ export const createStandaloneReleaseRemote = (
       scopeKey: string,
     ): Promise<ReleaseCatalogRow | null> {
       const response = await fetch(
-        http.buildUrl(`/api/release-catalogs/${encodeURIComponent(scopeKey)}`),
+        http.buildUrl(`/release-catalogs/${encodeURIComponent(scopeKey)}`),
         { headers: headers() },
       );
       if (response.status === 404) return null;
@@ -116,7 +116,7 @@ export const createStandaloneReleaseRemote = (
       readonly afterScopeKey?: string;
       readonly limit: number;
     }): Promise<readonly ReleaseCatalogRow[]> {
-      const url = new URL(http.buildUrl("/api/release-catalogs"));
+      const url = new URL(http.buildUrl("/release-catalogs"));
       url.searchParams.set("limit", String(input.limit));
       if (input.afterScopeKey !== undefined) {
         url.searchParams.set("afterScopeKey", input.afterScopeKey);
@@ -137,7 +137,7 @@ export const createStandaloneReleaseRemote = (
     },
 
     async commit(input: DatabaseCommit): Promise<DatabaseCommitResult> {
-      const response = await fetch(http.buildUrl("/api/database/commit"), {
+      const response = await fetch(http.buildUrl("/database/commit"), {
         body: JSON.stringify(input),
         headers: http.headers(),
         method: "POST",

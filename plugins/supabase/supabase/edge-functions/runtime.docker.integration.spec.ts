@@ -13,10 +13,19 @@ import {
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { transformEnv } from "@hot-updater/cli-tools";
-import { type Bundle, NIL_UUID } from "@hot-updater/core";
-import { createDatabaseClient } from "@hot-updater/plugin-core";
-import { createHotUpdater } from "@hot-updater/server";
+import { resolvePackageVersion, transformEnv } from "@hot-updater/cli-tools";
+import {
+  type Bundle,
+  NIL_UUID,
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+} from "@hot-updater/core";
+import {
+  commitReleaseCatalogMutations,
+  createDatabaseClient,
+  createUUIDv7,
+} from "@hot-updater/plugin-core";
+import { createHotUpdater, registerApiKey } from "@hot-updater/server";
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -36,8 +45,8 @@ const __dirname = path.dirname(__filename);
 const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
 const FUNCTION_NAME = "hot-updater-function";
 const FUNCTION_BASE_PATH = `/${FUNCTION_NAME}`;
-const HOT_UPDATER_BASE_PATH = "/";
 const AUTHORITY_ID = "supabase.runtime-acceptance";
+const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 const BUCKET_NAME = "hot-updater-bundles";
 const DENO_DOCKER_IMAGE = "denoland/deno:alpine";
 const DENO_CACHE_VOLUME = "hot-updater-supabase-deno-cache";
@@ -99,18 +108,78 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
 const runtimeBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle =>
   toRuntimeBundle({
     platform: "ios",
-    targetAppVersion: "1.0.0",
-    shouldForceUpdate: false,
-    enabled: true,
     fileHash: `hash-${id}`,
     gitCommitHash: null,
-    message: null,
-    channel: "production",
     storageUri: "storage://unused",
-    fingerprintHash: null,
+    archiveByteSize: 3_000_000_001,
     ...overrides,
     id,
   });
+
+const seedProductionRelease = async ({
+  bundle,
+  database,
+}: {
+  readonly bundle: Bundle;
+  readonly database: ReturnType<typeof supabaseDatabase>;
+}) => {
+  const channelName = "production";
+  const channelKey = encodeChannelKey(channelName);
+  const channel = (
+    await database.models.channels.insert({
+      row: { id: `channel:${channelKey}`, name: channelName },
+      onConflict: "returnExisting",
+    })
+  ).row;
+  const scopeKey = createReleaseCatalogScopeKey({
+    authorityId: AUTHORITY_ID,
+    channelKey,
+    platform: bundle.platform,
+    strategy: "APP_VERSION",
+  });
+  const now = Date.now();
+  await commitReleaseCatalogMutations({
+    database,
+    mutations: [
+      {
+        mutation: {
+          operation: "insert",
+          row: {
+            bundle_id: bundle.id,
+            channel_id: channel.id,
+            created_at_ms: now,
+            enabled: true,
+            fingerprint_hash: null,
+            id: createUUIDv7(),
+            kind: "BUNDLE",
+            message: "hello",
+            operation: "DEPLOY",
+            platform: bundle.platform,
+            revision: 1,
+            rollout_cohort_count: 1_000,
+            scope_key: scopeKey,
+            should_force_update: false,
+            source_release_id: null,
+            strategy: "APP_VERSION",
+            target_app_version: "1.0",
+            target_cohorts: [],
+            updated_at_ms: now,
+          },
+        },
+        scope: {
+          authorityId: AUTHORITY_ID,
+          channelId: channel.id,
+          channelName,
+          fingerprintHash: null,
+          platform: bundle.platform,
+          scopeKey,
+          strategy: "APP_VERSION",
+        },
+        updatedAtMs: now,
+      },
+    ],
+  });
+};
 
 describe.sequential("supabase edge runtime acceptance", () => {
   let runtimeRoot: string | undefined;
@@ -121,6 +190,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
   let edgePort = 0;
   let gatewayBaseUrl = "";
   let edgeRuntime: ReturnType<typeof spawnRuntime> | undefined;
+  let database: ReturnType<typeof supabaseDatabase>;
   let seedHotUpdater: ReturnType<typeof createHotUpdater>;
   let databaseClient: ReturnType<typeof createDatabaseClient>;
   let supabaseAdmin: ReturnType<typeof createClient>;
@@ -238,19 +308,21 @@ describe.sequential("supabase edge runtime acceptance", () => {
     supabaseAdmin = createClient(gatewayBaseUrl, SERVICE_ROLE_KEY);
     await ensureBucketExists(supabaseAdmin);
 
-    databaseClient = createDatabaseClient(
-      supabaseDatabase({
-        supabaseUrl: gatewayBaseUrl,
-        supabaseServiceRoleKey: SERVICE_ROLE_KEY,
-      }),
-    );
+    database = supabaseDatabase({
+      supabaseUrl: gatewayBaseUrl,
+      supabaseServiceRoleKey: SERVICE_ROLE_KEY,
+    });
+    await registerApiKey({
+      apiKey: API_KEY,
+      apiKeys: database.models.apiKeys,
+      name: "Runtime acceptance",
+    });
+    databaseClient = createDatabaseClient(database);
 
     seedHotUpdater = createHotUpdater({
       authorityId: AUTHORITY_ID,
-      database: supabaseDatabase({
-        supabaseUrl: gatewayBaseUrl,
-        supabaseServiceRoleKey: SERVICE_ROLE_KEY,
-      }),
+      database,
+      clientAccess: { type: "public" },
       storage: [
         supabaseStorage({
           supabaseUrl: gatewayBaseUrl,
@@ -258,11 +330,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
           bucketName: BUCKET_NAME,
         }),
       ],
-      basePath: HOT_UPDATER_BASE_PATH,
-      features: {
-        updateCheck: true,
-        bundles: false,
-      },
     });
 
     edgeRuntime = spawnRuntime({
@@ -406,12 +473,14 @@ describe.sequential("supabase edge runtime acceptance", () => {
           baseFileHash: base.fileHash,
           patchFileHash: "hash-valid-patch",
           patchStorageUri: "storage://valid-patch",
+          byteSize: 3_000_000_002,
         },
         {
           baseBundleId: "00000000-0000-0000-0000-000000000199",
           baseFileHash: "hash-missing-base",
           patchFileHash: "hash-invalid-patch",
           patchStorageUri: "storage://invalid-patch",
+          byteSize: 3_000_000_003,
         },
       ],
     } satisfies Bundle;
@@ -457,6 +526,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
             baseFileHash: base.fileHash,
             patchFileHash: "hash-patch",
             patchStorageUri: "storage://patch",
+            byteSize: 3_000_000_002,
           },
         ],
       } satisfies Bundle;
@@ -505,6 +575,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
             baseFileHash: base.fileHash,
             patchFileHash: "hash-patch",
             patchStorageUri: "storage://patch",
+            byteSize: 3_000_000_002,
           },
         ],
       } satisfies Bundle;
@@ -535,6 +606,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
           baseFileHash: base.fileHash,
           patchFileHash: "hash-old-patch",
           patchStorageUri: "storage://old-patch",
+          byteSize: 3_000_000_002,
         },
       ],
     } satisfies Bundle;
@@ -551,6 +623,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
               baseFileHash: "hash-missing-base",
               patchFileHash: "hash-invalid-patch",
               patchStorageUri: "storage://invalid-patch",
+              byteSize: 3_000_000_003,
             },
           ],
         }),
@@ -578,6 +651,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
           baseFileHash: base.fileHash,
           patchFileHash: "hash-old-patch",
           patchStorageUri: "storage://old-patch",
+          byteSize: 3_000_000_002,
         },
       ],
     } satisfies Bundle;
@@ -632,26 +706,29 @@ describe.sequential("supabase edge runtime acceptance", () => {
     const bundle = toRuntimeBundle({
       id: "00000000-0000-0000-0000-000000000001",
       platform: "ios",
-      targetAppVersion: "1.0",
-      shouldForceUpdate: false,
-      enabled: true,
       fileHash: "hash",
       gitCommitHash: null,
-      message: "hello",
-      channel: "production",
       storageUri: "storage://unused",
-      fingerprintHash: null,
+      archiveByteSize: 3_000_000_001,
     });
 
     await uploadBundleObject(supabaseAdmin, bundle.id);
     await seedHotUpdater.insertBundle(bundle);
+    await seedProductionRelease({ bundle, database });
+
+    const unauthorized = await fetch(
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0`,
+    );
+    expect(unauthorized.status).toBe(401);
 
     const response = await fetch(
-      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/release-catalogs/app-version/${encodeURIComponent(AUTHORITY_ID)}/ios/cHJvZHVjdGlvbg/1.0.0`,
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0`,
+      { headers: { "x-api-key": API_KEY } },
     );
 
     expect(response.ok).toBe(true);
     await expect(response.json()).resolves.toMatchObject({
+      authorityId: AUTHORITY_ID,
       releases: [{ bundleId: "00000000-0000-0000-0000-000000000001" }],
     });
   });
@@ -666,7 +743,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
   it("does not expose management routes from the edge function entrypoint", async () => {
     const response = await fetch(
-      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/api/bundles`,
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/admin/bundles`,
     );
 
     expect(response.status).toBe(404);
@@ -1077,6 +1154,9 @@ const writeSupabaseRuntimeFiles = async ({
       "@hot-updater/supabase/edge": pathToFileURL(
         path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),
       ).href,
+      hono: `npm:hono@${resolvePackageVersion("hono", {
+        searchFrom: path.join(WORKSPACE_ROOT, "plugins/supabase"),
+      })}`,
     },
   };
 

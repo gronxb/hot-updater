@@ -5,7 +5,11 @@ import path from "path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createBundleManifest, writeBundleManifest } from "./bundleManifest";
+import {
+  createBundleManifest,
+  writeBundleManifest,
+  writeBundleManifestFile,
+} from "./bundleManifest";
 
 const createdDirectories: string[] = [];
 
@@ -115,6 +119,33 @@ describe("bundleManifest", () => {
       fileHash: expectedHash,
       signature: `signed:${expectedHash}`,
     });
+  });
+
+  it("writes transferred payload identity and size into the final manifest", async () => {
+    const buildPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-manifest-"),
+    );
+    createdDirectories.push(buildPath);
+    const downloadFileHash = "b".repeat(64);
+    const manifest = {
+      bundleId: "bundle-sized",
+      assets: {
+        "index.ios.bundle": {
+          downloadByteSize: 123,
+          downloadFileHash,
+          fileHash: "a".repeat(64),
+        },
+      },
+    };
+
+    const manifestPath = await writeBundleManifestFile({
+      buildPath,
+      manifest,
+    });
+
+    expect(await fs.readFile(manifestPath, "utf8")).toBe(
+      `${JSON.stringify(manifest, null, 2)}\n`,
+    );
   });
 
   it("limits concurrent file hash and signing work", async () => {

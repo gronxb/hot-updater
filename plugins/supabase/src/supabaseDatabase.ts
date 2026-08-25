@@ -120,18 +120,18 @@ const createSupabaseImplementation = (
           }
           return data;
         }
-        case "client_access_keys": {
+        case "api_keys": {
           const query =
             input.onConflict === "ignore"
-              ? supabase.from("client_access_keys").upsert(input.data, {
+              ? supabase.from("api_keys").upsert(input.data, {
                   onConflict: "hash",
                   ignoreDuplicates: true,
                 })
-              : supabase.from("client_access_keys").insert(input.data);
+              : supabase.from("api_keys").insert(input.data);
           const { data, error } = await query.select("*").maybeSingle();
-          throwSupabaseError("create client_access_keys", error);
+          throwSupabaseError("create api_keys", error);
           if (data === null && input.onConflict !== "ignore") {
-            throw new SupabaseMissingDataError("create client_access_keys");
+            throw new SupabaseMissingDataError("create api_keys");
           }
           return data ?? input.data;
         }
@@ -139,11 +139,11 @@ const createSupabaseImplementation = (
     },
     async update(input: UpdateDatabaseImplementationInput) {
       const filter = buildSupabaseFilter(input.where);
-      if (input.model === "client_access_keys") {
-        let query = supabase.from("client_access_keys").update(input.update);
+      if (input.model === "api_keys") {
+        let query = supabase.from("api_keys").update(input.update);
         if (filter !== undefined) query = query.or(filter);
         const { data, error } = await query.select("*").maybeSingle();
-        throwSupabaseError("update client_access_keys", error);
+        throwSupabaseError("update api_keys", error);
         return data;
       }
       if (input.model === "releases") {
@@ -245,11 +245,11 @@ const createSupabaseImplementation = (
           throwSupabaseError("findOne bundles", error);
           return data;
         }
-        case "client_access_keys": {
-          let query = supabase.from("client_access_keys").select("*");
+        case "api_keys": {
+          let query = supabase.from("api_keys").select("*");
           if (filter !== undefined) query = query.or(filter);
           const { data, error } = await query.limit(1).maybeSingle();
-          throwSupabaseError("findOne client_access_keys", error);
+          throwSupabaseError("findOne api_keys", error);
           return data;
         }
         case "channels": {
@@ -317,8 +317,8 @@ const createSupabaseImplementation = (
           throwSupabaseError("findMany bundle_events", error);
           return data ?? [];
         }
-        case "client_access_keys": {
-          let query = supabase.from("client_access_keys").select("*");
+        case "api_keys": {
+          let query = supabase.from("api_keys").select("*");
           if (filter !== undefined) query = query.or(filter);
           for (const clause of orderBy) {
             query = query.order(clause.field, {
@@ -327,7 +327,7 @@ const createSupabaseImplementation = (
             });
           }
           const { data, error } = await query.range(input.offset, rangeEnd);
-          throwSupabaseError("findMany client_access_keys", error);
+          throwSupabaseError("findMany api_keys", error);
           return data ?? [];
         }
         case "bundle_patches": {

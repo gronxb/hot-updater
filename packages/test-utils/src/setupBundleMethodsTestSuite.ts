@@ -1,5 +1,4 @@
-import type { Bundle, LegacyBundle, Platform } from "@hot-updater/core";
-import type { ChannelRow } from "@hot-updater/plugin-core";
+import type { Bundle, Platform } from "@hot-updater/core";
 import { beforeEach, describe, expect, it } from "vitest";
 
 interface PaginationInfo {
@@ -27,36 +26,24 @@ interface ArtifactQueryOptions {
   };
 }
 
-const legacyBundle = (
-  id: string,
-  overrides: Partial<LegacyBundle> = {},
-): LegacyBundle => ({
+const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
   id,
   platform: "ios",
   fileHash: `hash-${id}`,
   gitCommitHash: null,
   storageUri: `mock://artifacts/${id}.zip`,
-  channel: "production",
-  enabled: true,
-  fingerprintHash: null,
-  message: `Release for ${id}`,
-  shouldForceUpdate: false,
-  targetAppVersion: "1.0.0",
-  rolloutCohortCount: 1_000,
-  targetCohorts: [],
+  archiveByteSize: 3_000_000_001,
   ...overrides,
 });
 
 export const setupBundleMethodsTestSuite = ({
   getBundleById,
-  getChannels,
   insertBundle,
   getBundles,
   deleteBundleById,
 }: {
   readonly getBundleById: (id: string) => Promise<Bundle | null>;
-  readonly getChannels: () => Promise<readonly ChannelRow[]>;
-  readonly insertBundle: (bundle: LegacyBundle) => Promise<void>;
+  readonly insertBundle: (bundle: Bundle) => Promise<void>;
   readonly getBundles: (options: ArtifactQueryOptions) => Promise<{
     readonly data: Bundle[];
     readonly pagination: PaginationInfo;
@@ -78,11 +65,8 @@ export const setupBundleMethodsTestSuite = ({
   });
 
   describe("Bundle artifact repository", () => {
-    it("persists artifact fields while keeping delivery policy off Bundle reads", async () => {
-      const input = legacyBundle("00000000-0000-0000-0000-000000000010", {
-        rolloutCohortCount: 250,
-        targetCohorts: ["qa"],
-      });
+    it("persists artifact fields", async () => {
+      const input = createBundle("00000000-0000-0000-0000-000000000010");
 
       await insertBundle(input);
 
@@ -93,10 +77,6 @@ export const setupBundleMethodsTestSuite = ({
         fileHash: input.fileHash,
         storageUri: input.storageUri,
       });
-      expect(artifact).not.toHaveProperty("channel");
-      expect(artifact).not.toHaveProperty("enabled");
-      expect(artifact).not.toHaveProperty("rolloutCohortCount");
-      expect(artifact).not.toHaveProperty("targetCohorts");
     });
 
     it("returns null for a missing artifact", async () => {
@@ -105,23 +85,9 @@ export const setupBundleMethodsTestSuite = ({
       ).resolves.toBeNull();
     });
 
-    it("creates Channels from legacy delivery input", async () => {
-      await insertBundle(legacyBundle("00000000-0000-0000-0000-000000000020"));
-      await insertBundle(
-        legacyBundle("00000000-0000-0000-0000-000000000021", {
-          channel: "staging",
-          platform: "android",
-        }),
-      );
-
-      const names = (await getChannels()).map(({ name }) => name);
-      expect(names).toContain("production");
-      expect(names).toContain("staging");
-    });
-
     it("filters artifacts by platform and id without Release policy filters", async () => {
-      const ios = legacyBundle("00000000-0000-0000-0000-000000000030");
-      const android = legacyBundle("00000000-0000-0000-0000-000000000031", {
+      const ios = createBundle("00000000-0000-0000-0000-000000000030");
+      const android = createBundle("00000000-0000-0000-0000-000000000031", {
         platform: "android",
       });
       await insertBundle(ios);
@@ -141,8 +107,8 @@ export const setupBundleMethodsTestSuite = ({
     });
 
     it("supports stable artifact cursor pagination", async () => {
-      const first = legacyBundle("00000000-0000-0000-0000-000000000040");
-      const second = legacyBundle("00000000-0000-0000-0000-000000000041");
+      const first = createBundle("00000000-0000-0000-0000-000000000040");
+      const second = createBundle("00000000-0000-0000-0000-000000000041");
       await insertBundle(first);
       await insertBundle(second);
 
@@ -163,8 +129,8 @@ export const setupBundleMethodsTestSuite = ({
       expect(page1.data[0]?.id).not.toBe(page2.data[0]?.id);
     });
 
-    it("deletes an artifact after its legacy Release is removed by the API", async () => {
-      const input = legacyBundle("00000000-0000-0000-0000-000000000050");
+    it("deletes an artifact", async () => {
+      const input = createBundle("00000000-0000-0000-0000-000000000050");
       await insertBundle(input);
 
       await deleteBundleById(input.id);

@@ -24,6 +24,7 @@ export const bundles = pgTable("bundles", {
   file_hash: text("file_hash").notNull(),
   git_commit_hash: text("git_commit_hash"),
   storage_uri: text("storage_uri").notNull(),
+  archive_byte_size: doublePrecision("archive_byte_size").notNull(),
   metadata: json("metadata").notNull().default({}),
   manifest_storage_uri: text("manifest_storage_uri"),
   manifest_file_hash: text("manifest_file_hash"),
@@ -49,6 +50,7 @@ export const bundle_patches = pgTable("bundle_patches", {
   base_file_hash: text("base_file_hash").notNull(),
   patch_file_hash: text("patch_file_hash").notNull(),
   patch_storage_uri: text("patch_storage_uri").notNull(),
+  byte_size: doublePrecision("byte_size").notNull(),
   order_index: integer("order_index").notNull().default(0)
 }, (table) => [
   foreignKey({
@@ -183,7 +185,7 @@ export const bundle_events = pgTable("bundle_events", {
   from_release_id: uuid("from_release_id"),
   from_bundle_id: uuid("from_bundle_id"),
   to_release_id: uuid("to_release_id"),
-  to_bundle_id: uuid("to_bundle_id"),
+  to_bundle_id: uuid("to_bundle_id").notNull(),
   platform: text("platform").notNull(),
   app_version: text("app_version").notNull(),
   channel: text("channel").notNull(),
@@ -203,7 +205,7 @@ export const bundle_events = pgTable("bundle_events", {
   index("bundle_events_from_release_idx").on(table.type, table.from_release_id, table.received_at_ms, table.id)
 ])
 
-export const client_access_keys = pgTable("client_access_keys", {
+export const api_keys = pgTable("api_keys", {
   id: varchar("id", { length: 255 }).primaryKey().notNull(),
   hash: text("hash").notNull(),
   name: text("name").notNull(),
@@ -212,8 +214,8 @@ export const client_access_keys = pgTable("client_access_keys", {
   created_at_ms: doublePrecision("created_at_ms").notNull(),
   revoked_at_ms: doublePrecision("revoked_at_ms")
 }, (table) => [
-  uniqueIndex("client_access_keys_hash_key").on(table.hash),
-  index("client_access_keys_created_at_idx").on(table.created_at_ms, table.id)
+  uniqueIndex("api_keys_hash_key").on(table.hash),
+  index("api_keys_created_at_idx").on(table.created_at_ms, table.id)
 ])
 
 export const private_hot_updater_settings = pgTable("private_hot_updater_settings", {

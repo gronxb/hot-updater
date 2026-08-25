@@ -1,14 +1,6 @@
 import type { Bundle, Platform } from "@hot-updater/core";
 
-export type {
-  AppVersionGetBundlesArgs,
-  Bundle,
-  LegacyBundle,
-  FingerprintGetBundlesArgs,
-  GetBundlesArgs,
-  Platform,
-  UpdateInfo,
-} from "@hot-updater/core";
+export type { Bundle, Platform } from "@hot-updater/core";
 
 export * from "./utils";
 export * from "./public";

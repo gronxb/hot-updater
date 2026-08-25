@@ -36,7 +36,7 @@ const createTables = (): Tables => ({
   release_catalogs: { rows: [] },
   channels: { rows: [] },
   bundle_events: { rows: [] },
-  client_access_keys: { rows: [] },
+  api_keys: { rows: [] },
 });
 
 const assertReferences = (
@@ -67,7 +67,7 @@ const assertReferences = (
       return;
     case "channels":
     case "bundle_events":
-    case "client_access_keys":
+    case "api_keys":
       return;
     case "bundle_patches":
       if (
@@ -140,9 +140,9 @@ const createCrudImplementation = (
         }
         tables.release_catalogs.rows.push(structuredClone(input.data));
         return input.data;
-      case "client_access_keys":
+      case "api_keys":
         {
-          const existing = tables.client_access_keys.rows.find(
+          const existing = tables.api_keys.rows.find(
             ({ id, hash }) => id === input.data.id || hash === input.data.hash,
           );
           if (existing !== undefined && input.onConflict === "ignore") {
@@ -150,20 +150,20 @@ const createCrudImplementation = (
           }
           if (existing !== undefined) break;
         }
-        tables.client_access_keys.rows.push(structuredClone(input.data));
+        tables.api_keys.rows.push(structuredClone(input.data));
         return input.data;
     }
     throw new MemoryConstraintError(`Duplicate ${input.model} id`);
   },
   update: async (input) => {
-    if (input.model === "client_access_keys") {
-      const index = tables.client_access_keys.rows.findIndex((row) =>
+    if (input.model === "api_keys") {
+      const index = tables.api_keys.rows.findIndex((row) =>
         matchesAll(row, input.where),
       );
-      const current = tables.client_access_keys.rows[index];
+      const current = tables.api_keys.rows[index];
       if (current === undefined) return null;
       const updated = { ...current, ...input.update };
-      tables.client_access_keys.rows[index] = updated;
+      tables.api_keys.rows[index] = updated;
       return structuredClone(updated);
     }
     if (input.model === "releases") {
@@ -294,11 +294,10 @@ const createCrudImplementation = (
             matchesAll(row, input.where),
           ) ?? null
         );
-      case "client_access_keys":
+      case "api_keys":
         return (
-          tables.client_access_keys.rows.find((row) =>
-            matchesAll(row, input.where),
-          ) ?? null
+          tables.api_keys.rows.find((row) => matchesAll(row, input.where)) ??
+          null
         );
       case "channels":
         return (
@@ -356,9 +355,9 @@ const createCrudImplementation = (
           input.offset,
           input.limit,
         );
-      case "client_access_keys":
+      case "api_keys":
         return queryRows(
-          tables.client_access_keys.rows,
+          tables.api_keys.rows,
           input.where,
           input.orderBy,
           input.distinctOn,
@@ -440,8 +439,7 @@ const createImplementation = (tables: Tables): DatabasePluginImplementation => {
         tables.release_catalogs.rows = transactionTables.release_catalogs.rows;
         tables.channels.rows = transactionTables.channels.rows;
         tables.bundle_events.rows = transactionTables.bundle_events.rows;
-        tables.client_access_keys.rows =
-          transactionTables.client_access_keys.rows;
+        tables.api_keys.rows = transactionTables.api_keys.rows;
         return result;
       }),
   };
@@ -472,7 +470,7 @@ export const createInMemoryDatabaseHarness = () => {
       tables.release_catalogs.rows = [];
       tables.channels.rows = [];
       tables.bundle_events.rows = [];
-      tables.client_access_keys.rows = [];
+      tables.api_keys.rows = [];
     },
   };
 };

@@ -31,6 +31,7 @@ Run the following command to install dependencies:
 
 ```package-install
 npm install hot-updater --save-dev
+npm install @hot-updater/react-native
 ```
 
 ## Step 2: Configure Firebase
@@ -52,8 +53,9 @@ During the setup, you will be prompted to:
 1. **Create or Select a Firebase Project**: Choose an existing project or create a new one.
 2. **Verify Storage**: Init locates the selected project's canonical default bucket and stops if Storage has not been enabled.
 3. **Deploy Firestore Indexes**: Deploy the indexes used to store and query updates.
-4. **Deploy Functions**: Deploy a Firebase Function v2 called `hot-updater`.
-5. **Add IAM Policy**: Add a new IAM policy to the service account of the function.
+4. **Provision API Key**: Create the first client API key or reuse the saved key.
+5. **Deploy Functions**: Deploy a Firebase Function v2 called `hot-updater`.
+6. **Add IAM Policy**: Add a new IAM policy to the service account of the function.
 
   </Accordion>
 </Accordions>
@@ -67,20 +69,75 @@ persistence.
 HOT_UPDATER_FIREBASE_PROJECT_ID=your-project-id
 HOT_UPDATER_FIREBASE_REGION=your-functions-region
 HOT_UPDATER_FIREBASE_STORAGE_BUCKET=your-bucket-name
+HOT_UPDATER_API_KEY=your-api-key
 # Project Settings > Service Accounts > New Private Key > Download JSON
 GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json
 ```
 
+Managed init reuses `HOT_UPDATER_API_KEY` when supplied or creates an API key,
+registers it in Firestore, and persists the plaintext value locally. Send this
+API key in the app's `x-api-key` request header. Do not run
+`hot-updater api-key create` for a managed installation.
+
 <Callout type="warn">
 
-If you're **not** using the `react-native-dotenv` solution, the tokens from your `.env.hotupdater` file will not be included in your app bundle and are therefore not exposed to risks. However, if you're still concerned,
+Provider credentials from `.env.hotupdater` are not included in your app bundle
+unless you explicitly configure that behavior. The API key is the exception:
+add `HOT_UPDATER_API_KEY` to your React Native build-time configuration as
+shown below, but never add the Firebase service-account credential.
 
-please refer to the article below for more details:
+For more details, see:
 [Security](/docs/policy/security#plugin-token-protection)
 
 </Callout>
 
-## Step 3: Generated Configurations
+## Step 3: Add HotUpdater to Your Project
+
+Configure the endpoint and API key once, then check when your app is ready.
+Replace the API-key placeholder with your existing React Native build-time
+configuration value. Do not paste the plaintext key into App.tsx and commit it.
+
+```tsx title="App.tsx"
+import { HotUpdater } from "@hot-updater/react-native";
+import { useEffect } from "react";
+import { Text, View } from "react-native";
+
+HotUpdater.init({
+  baseURL: "https://<project-id>.web.app", // [!code ++]
+  requestHeaders: {
+    "x-api-key": "<HOT_UPDATER_API_KEY from .env.hotupdater>", // [!code ++]
+  },
+});
+
+function App() {
+  useEffect(() => {
+    void HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
+      .then(async (updateInfo) => {
+        if (!updateInfo) return;
+        await updateInfo.updateBundle();
+        if (updateInfo.shouldForceUpdate) await HotUpdater.reload();
+      })
+      .catch(console.error);
+  }, []);
+
+  return (
+    <View>
+      <Text>Hello World</Text>
+    </View>
+  );
+}
+
+export default App;
+```
+
+<Callout type="info">
+  The managed Firebase runtime exposes `/version` publicly. OTA update checks
+  and Analytics ingestion require `x-api-key: $HOT_UPDATER_API_KEY`. Internally,
+  it enables Analytics and mounts only `handlers.client`. Admin routes,
+  including Analytics queries, are not mounted on the public Hosting URL.
+</Callout>
+
+## Generated Configuration and Operations
 
 During the initialization process, the following file is automatically generated:
 
@@ -94,6 +151,7 @@ During the initialization process, the following file is automatically generated
 HOT_UPDATER_FIREBASE_PROJECT_ID=your-project-id
 HOT_UPDATER_FIREBASE_REGION=your-functions-region
 HOT_UPDATER_FIREBASE_STORAGE_BUCKET=your-bucket-name
+HOT_UPDATER_API_KEY=your-api-key
 # Project Settings > Service Accounts > New Private Key > Download JSON
 GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json
 ```
@@ -156,64 +214,7 @@ and authentication partitioning. Errors are `private, no-store`.
 Do not use the direct Cloud Functions URL when validating the shared-cache
 profile; it proves Function correctness but bypasses Firebase Hosting.
 
-## Step 4: Add HotUpdater to Your Project
-
-The HotUpdater component wraps your application, enabling seamless delivery of updates and fallback UI during updates. Follow these steps to integrate it into your App.tsx:
-
-```tsx title="App.tsx"
-import { HotUpdater } from "@hot-updater/react-native";
-import { Text, View } from "react-native";
-
-function App() {
-  return (
-    <View>
-      <Text>Hello World</Text>
-    </View>
-  );
-}
-
-export default HotUpdater.wrap({
-  baseURL: "https://<project-id>.web.app", // [!code ++]
-  authorityId: "your-project-id", // [!code ++]
-  updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
-  requestHeaders: {
-    // if you want to use the request headers, you can add them here
-  },
-  fallbackComponent: ({ progress, status }) => (
-    <View
-      style={{
-        flex: 1,
-        padding: 20,
-        borderRadius: 10,
-        justifyContent: "center",
-        alignItems: "center",
-        backgroundColor: "rgba(0, 0, 0, 0.5)",
-      }}
-    >
-      {/* You can put a splash image here. */}
-
-      <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-        {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
-      </Text>
-      {progress > 0 ? (
-        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-          {Math.round(progress * 100)}%
-        </Text>
-      ) : null}
-    </View>
-  ),
-})(App);
-```
-
-<Callout type="info">
-The managed Firebase runtime exposes public update checks, Analytics event
-ingestion, and `/version`. Internally, it enables
-`features: { updateCheck: true, bundles: false, analytics: true }`.
-Analytics query routes stay protected, and bundle management routes are not
-mounted on the public Hosting URL.
-</Callout>
-
-## Step 5: If You Use Expo, Add the Config Plugin
+## Step 4: If You Use Expo, Add the Config Plugin
 
 Add the plugin to your `app.json` file as shown below:
 
@@ -247,7 +248,7 @@ npx expo prebuild
   additional Babel plugin setup.
 </Callout>
 
-## Step 6: Add Native Code
+## Step 5: Add Native Code
 
 To complete the integration of `hot-updater`, you'll need to add native code modifications for both Android and iOS platforms. This step ensures the `hot-updater` can interact with your app's underlying framework to apply updates seamlessly.
 

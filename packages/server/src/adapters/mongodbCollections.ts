@@ -3,7 +3,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   ChannelRow,
-  ClientAccessKeyRow,
+  ApiKeyRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -38,7 +38,7 @@ export type MongoCollections = {
   readonly bundlePatches: Collection<BundlePatchRow>;
   readonly bundleEvents: Collection<BundleEventRow>;
   readonly channels: Collection<ChannelRow>;
-  readonly clientAccessKeys: Collection<ClientAccessKeyRow>;
+  readonly apiKeys: Collection<ApiKeyRow>;
   readonly releases: Collection<ReleaseRow>;
   readonly releaseCatalogs: Collection<ReleaseCatalogRow>;
 };
@@ -52,8 +52,7 @@ export const createMongoCollections = (
     bundlePatches: database.collection<BundlePatchRow>("bundle_patches"),
     bundleEvents: database.collection<BundleEventRow>("bundle_events"),
     channels: database.collection<ChannelRow>("channels"),
-    clientAccessKeys:
-      database.collection<ClientAccessKeyRow>("client_access_keys"),
+    apiKeys: database.collection<ApiKeyRow>("api_keys"),
     releases: database.collection<ReleaseRow>("releases"),
     releaseCatalogs: database.collection<ReleaseCatalogRow>("release_catalogs"),
   };

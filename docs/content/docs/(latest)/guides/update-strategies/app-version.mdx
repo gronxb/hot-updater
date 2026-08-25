@@ -77,7 +77,7 @@ export default HotUpdater.wrap({
 The client fetches the app-version Release Catalog:
 
 ```
-GET {baseUrl}/release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion
+GET {baseUrl}/release-catalogs/app-version/:platform/:channelKey/:appVersion
 ```
 
 It evaluates the catalog locally, then resolves the selected artifact through
@@ -89,13 +89,11 @@ base64url-encoded channel name.
 Test your update endpoint using curl:
 
 ```bash
-curl "https://your-update-endpoint.com/release-catalogs/app-version/default/ios/cHJvZHVjdGlvbg/1.0.0"
+curl "https://your-update-endpoint.com/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0"
 ```
 
 Parameters:
 
-- `:authorityId` - Authority that owns the Release Catalog (defaults to
-  `default` unless configured)
 - `:platform` - `ios` or `android`
 - `:channelKey` - Canonical base64url encoding of the channel name (for example,
   `production` becomes `cHJvZHVjdGlvbg`)

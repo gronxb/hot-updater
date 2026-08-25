@@ -7,6 +7,7 @@ import {
   confirmInitInputPersistence,
   copyDirToTmp,
   createHotUpdaterConfigScaffoldFromBuilder,
+  formatApiKeyNote,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -21,8 +22,10 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
+import { provisionApiKey } from "@hot-updater/server";
 import { Cloudflare } from "cloudflare";
 
+import { d1Database } from "../src/d1Database";
 import { createWrangler } from "../src/utils/createWrangler";
 import {
   validateCloudflareApiToken,
@@ -30,7 +33,10 @@ import {
 } from "./cloudflareApiToken";
 import { resolveCloudflareReplayD1Database } from "./cloudflareD1Selection";
 import { resolveCloudflareInfrastructureApiToken } from "./cloudflareInfrastructureAuth";
-import { assertCloudflareInfrastructureCanInitialize } from "./cloudflareInfrastructureState";
+import {
+  assertCloudflareInfrastructureCanInitialize,
+  assertCloudflareWorkerCanInitialize,
+} from "./cloudflareInfrastructureState";
 import {
   CLOUDFLARE_INIT_PERMISSION,
   type CloudflareCredentialSource,
@@ -87,10 +93,16 @@ function App() {
   return null; // Replace with your app root
 }
 
-export default HotUpdater.wrap({
+HotUpdater.init({
   baseURL: "%%source%%",
-  updateStrategy: "appVersion", // or "fingerprint"
-})(App);`;
+  requestHeaders: {
+    "x-api-key": %%apiKey%%,
+  },
+});
+
+// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
+// when your app is ready to check.
+export default App;`;
 
 const deployWorker = async (
   apiToken: string,
@@ -213,9 +225,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile);
   const { managedEnv } = initEnvSources;
-  const existingInputs = resolveCloudflareInitInputs(
-    getHotUpdaterInitInputEnv(initEnvSources, nonInteractive),
+  const initInputEnv = getHotUpdaterInitInputEnv(
+    initEnvSources,
+    nonInteractive,
   );
+  const existingInputs = resolveCloudflareInitInputs(initInputEnv);
   assertCloudflareNonInteractiveInputs(existingInputs, nonInteractive);
   const {
     accessKeyId: existingR2AccessKeyId,
@@ -590,6 +604,33 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     );
   }
 
+  const workerScripts = await runCloudflareApiRequest({
+    request: () =>
+      cf.workers.scripts.list({
+        account_id: accountId,
+      }),
+    source: infrastructureCredentialSource,
+  });
+  const subdomains = await runCloudflareApiRequest({
+    request: () =>
+      cf.workers.subdomains.get({
+        account_id: accountId,
+      }),
+    source: infrastructureCredentialSource,
+  });
+  if (!subdomains.subdomain) {
+    throw new Error(
+      "Cloudflare Workers subdomain is required to configure the storage download URL.",
+    );
+  }
+  await assertCloudflareWorkerCanInitialize({
+    scriptNames: workerScripts.result.flatMap(({ id }) =>
+      typeof id === "string" ? [id] : [],
+    ),
+    workerName,
+    workersSubdomain: subdomains.subdomain,
+  });
+
   const resolvedInputs = {
     ...existingInputs,
     accessKeyId,
@@ -691,19 +732,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseName.envKey]: d1DatabaseName,
   });
 
-  const subdomains = await runCloudflareApiRequest({
-    request: () =>
-      cf.workers.subdomains.get({
-        account_id: accountId,
-      }),
-    source: infrastructureCredentialSource,
-  });
-  if (!subdomains.subdomain) {
-    throw new Error(
-      "Cloudflare Workers subdomain is required to configure the storage download URL.",
-    );
-  }
-
   await deployWorker(infrastructureApiToken, accountId, {
     credentialSource: infrastructureCredentialSource,
     d1DatabaseId: selectedD1DatabaseId,
@@ -712,6 +740,25 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     r2BucketName: selectedBucketName,
     workerName,
   });
+
+  const databasePlugin = d1Database({
+    accountId,
+    cloudflareApiToken: apiToken,
+    databaseId: selectedD1DatabaseId,
+  });
+  let apiKey: string;
+  try {
+    apiKey = (
+      await provisionApiKey({
+        apiKeys: databasePlugin.models.apiKeys,
+        existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
+        name: "Cloudflare init",
+      })
+    ).apiKey;
+    await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
+  } finally {
+    await databasePlugin.dispose?.();
+  }
 
   const configWriteResult = await writeHotUpdaterConfig(
     getConfigScaffold(build, selectedD1DatabaseId),
@@ -735,10 +782,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   if (subdomains.subdomain) {
     p.note(
       transformTemplate(SOURCE_TEMPLATE, {
+        apiKey: JSON.stringify(apiKey),
         source: `https://${workerName}.${subdomains.subdomain}.workers.dev`,
       }),
     );
   }
+  p.note(formatApiKeyNote(apiKey), "API Key");
 
   p.log.message(
     `Next step: ${link(

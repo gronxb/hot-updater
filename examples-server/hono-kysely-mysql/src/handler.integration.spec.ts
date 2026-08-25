@@ -1,14 +1,11 @@
 import path from "path";
 import { fileURLToPath } from "url";
 
-import type { Bundle, LegacyBundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 import { createHotUpdater, type HotUpdaterAPI } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { createMigrator } from "@hot-updater/server/db";
-import {
-  deleteLegacyBundle,
-  setupBundleMethodsTestSuite,
-} from "@hot-updater/test-utils";
+import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
   assertDockerComposeAvailable,
   cleanupServer,
@@ -84,13 +81,12 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
   setupBundleMethodsTestSuite({
     getBundleById: (id: string) => hotUpdater.getBundleById(id),
-    getChannels: () => hotUpdater.getChannels(),
-    insertBundle: (bundle: LegacyBundle) => hotUpdater.insertBundle(bundle),
+    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
     getBundles: (options) => hotUpdater.getBundles(options),
     updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
       hotUpdater.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId: string) =>
-      deleteLegacyBundle(hotUpdater, bundleId),
+      hotUpdater.deleteBundleById(bundleId),
   });
 
   it("rejects in-place upgrade from a v0 MySQL schema", async () => {
@@ -138,6 +134,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
       const migrationHotUpdater = createHotUpdater({
         database: kyselyAdapter({ db, provider: "mysql" }),
+        clientAccess: { type: "public" },
       });
       const migrator = createMigrator(migrationHotUpdater);
 
@@ -195,7 +192,12 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
         provider: "mysql",
         relationMode: "fumadb",
       });
-      const migrator = createMigrator(createHotUpdater({ database: adapter }));
+      const migrator = createMigrator(
+        createHotUpdater({
+          database: adapter,
+          clientAccess: { type: "public" },
+        }),
+      );
       const migration = await migrator.migrateToLatest({
         mode: "from-schema",
         updateSettings: true,
@@ -242,6 +244,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
               base_file_hash: "base-hash",
               patch_file_hash: "patch-hash",
               patch_storage_uri: "storage://fumadb-patch",
+              byte_size: 3_000_000_002,
               order_index: 0,
             },
           },
@@ -305,6 +308,7 @@ const createAdapterBundleRow = (id: string) => ({
   file_hash: `${id}-hash`,
   git_commit_hash: null,
   storage_uri: `storage://${id}`,
+  archive_byte_size: 3_000_000_001,
   metadata: {},
   manifest_storage_uri: null,
   manifest_file_hash: null,

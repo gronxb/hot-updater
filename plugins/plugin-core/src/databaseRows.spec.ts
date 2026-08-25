@@ -1,4 +1,4 @@
-import type { Bundle, LegacyBundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -10,25 +10,18 @@ import {
   rowsToBundles,
 } from "./databaseRows";
 
-const createBundle = (id: string): LegacyBundle => ({
+const createBundle = (id: string): Bundle => ({
   id,
   platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
   fileHash: `hash-${id}`,
   gitCommitHash: null,
-  message: null,
-  channel: "production",
   storageUri: `storage://${id}`,
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
+  archiveByteSize: 3_000_000_001,
   metadata: { app_version: "1.0.0" },
-  rolloutCohortCount: 250,
-  targetCohorts: ["qa"],
 });
 
 describe("database rows", () => {
-  const toRow = (bundle: Bundle) => bundleToRow(bundle, "channel-production");
+  const toRow = (bundle: Bundle) => bundleToRow(bundle);
 
   it("defaults missing metadata but rejects explicit null metadata", () => {
     const missingMetadata = createBundle("missing-metadata");
@@ -52,7 +45,7 @@ describe("database rows", () => {
     expect(rowToBundle(row).metadata).toEqual(metadata);
   });
 
-  it("round-trips ordered patches and derives the scalar compatibility view", () => {
+  it("round-trips multiple ordered patch artifacts", () => {
     const firstBase = createBundle("base-a");
     const secondBase = createBundle("base-b");
     const bundle: Bundle = {
@@ -61,12 +54,14 @@ describe("database rows", () => {
         {
           baseBundleId: firstBase.id,
           baseFileHash: firstBase.fileHash,
+          byteSize: 3_000_000_002,
           patchFileHash: "patch-a",
           patchStorageUri: "storage://patch-a",
         },
         {
           baseBundleId: secondBase.id,
           baseFileHash: secondBase.fileHash,
+          byteSize: 3_000_000_003,
           patchFileHash: "patch-b",
           patchStorageUri: "storage://patch-b",
         },
@@ -80,8 +75,6 @@ describe("database rows", () => {
     ]);
 
     expect(hydrated?.patches).toEqual(bundle.patches);
-    expect(hydrated?.patchBaseBundleId).toBe(firstBase.id);
-    expect(hydrated?.patchFileHash).toBe("patch-a");
     expect(toRow(bundle)).not.toHaveProperty("target_cohorts");
   });
 
@@ -93,6 +86,7 @@ describe("database rows", () => {
         {
           baseBundleId: base.id,
           baseFileHash: base.fileHash,
+          byteSize: 3_000_000_002,
           patchFileHash: "patch",
           patchStorageUri: "storage://patch",
         },
@@ -127,6 +121,7 @@ describe("database rows", () => {
       base_file_hash: base.fileHash,
       patch_file_hash: "patch",
       patch_storage_uri: "storage://patch",
+      byte_size: 3_000_000_002,
       order_index: 0,
     } as const;
 

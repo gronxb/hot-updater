@@ -16,6 +16,7 @@ const createBundle = (id: string): Bundle => ({
   fileHash: `hash-${id}`,
   gitCommitHash: null,
   storageUri: `s3://bucket/${id}.zip`,
+  archiveByteSize: 3_000_000_001,
 });
 
 const toRow = (bundle: Bundle): BundleRow => bundleToRow(bundle);
@@ -32,6 +33,7 @@ const createPatchRow = (
   base_file_hash: `base-hash-${id}`,
   patch_file_hash: `patch-hash-${id}`,
   patch_storage_uri: `s3://bucket/${id}.patch`,
+  byte_size: 3_000_000_002,
   order_index: orderIndex,
 });
 
@@ -48,6 +50,7 @@ describe("bundle row conversion", () => {
         {
           baseBundleId: baseBundle.id,
           baseFileHash: "base-hash",
+          byteSize: 3_000_000_002,
           patchFileHash: "patch-hash",
           patchStorageUri: "s3://bucket/target.patch",
         },
@@ -65,16 +68,10 @@ describe("bundle row conversion", () => {
     expect(row).not.toHaveProperty("channel");
     expect(row).not.toHaveProperty("enabled");
     expect(hydratedBundles).toHaveLength(1);
-    expect(hydratedBundles[0]).toEqual({
-      ...bundle,
-      patchBaseBundleId: baseBundle.id,
-      patchBaseFileHash: "base-hash",
-      patchFileHash: "patch-hash",
-      patchStorageUri: "s3://bucket/target.patch",
-    });
+    expect(hydratedBundles[0]).toEqual(bundle);
   });
 
-  it("orders patches deterministically before deriving the compatibility scalar fields", () => {
+  it("orders multiple patches deterministically", () => {
     const oldest = createBundle("oldest");
     const newest = createBundle("newest");
     const target = createBundle("target");
@@ -94,24 +91,14 @@ describe("bundle row conversion", () => {
       secondById.patch_file_hash,
       later.patch_file_hash,
     ]);
-    expect(hydrated?.patchBaseBundleId).toBe(firstById.base_bundle_id);
-    expect(hydrated?.patchBaseFileHash).toBe(firstById.base_file_hash);
-    expect(hydrated?.patchFileHash).toBe(firstById.patch_file_hash);
-    expect(hydrated?.patchStorageUri).toBe(firstById.patch_storage_uri);
   });
 
-  it("hydrates an empty patch set with compatibility defaults", () => {
+  it("hydrates an empty patch set", () => {
     const bundle = createBundle("without-patches");
 
     const [hydrated] = rowsToBundles([toRow(bundle)], [], []);
 
-    expect(hydrated).toMatchObject({
-      patches: [],
-      patchBaseBundleId: null,
-      patchBaseFileHash: null,
-      patchFileHash: null,
-      patchStorageUri: null,
-    });
+    expect(hydrated).toMatchObject({ patches: [] });
   });
 
   it("preserves nested metadata at the row boundary", () => {

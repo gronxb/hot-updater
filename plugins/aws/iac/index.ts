@@ -2,6 +2,7 @@ import {
   colors,
   confirmInitInputPersistence,
   ensureInstallPackages,
+  formatApiKeyNote,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -13,16 +14,16 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
-import type { ClientAccessKeyModel } from "@hot-updater/plugin-core";
-import {
-  createClientAccessKey,
-  registerClientAccessKey,
-} from "@hot-updater/server";
+import type { ApiKeyModel } from "@hot-updater/plugin-core";
+import { provisionApiKey } from "@hot-updater/server";
 import { execa } from "execa";
 
 import { dynamoDB } from "../src/dynamoDB";
 import { resolveAwsAuth } from "./awsAuth";
-import { assertAwsInfrastructureGeneration } from "./awsInfrastructureState";
+import {
+  assertAwsInfrastructureGeneration,
+  assertAwsLambdaCanInitialize,
+} from "./awsInfrastructureState";
 import {
   assertAwsNonInteractiveInputs,
   resolveAwsInitInputs,
@@ -63,21 +64,15 @@ export const prepareDynamoDBDeployment = async (input: {
   return dynamodbManager.ensureTable(input.tableName);
 };
 
-export const prepareDynamoDBClientAccessKey = async (input: {
-  readonly clientAccessKeys: ClientAccessKeyModel;
+export const prepareDynamoDBApiKey = async (input: {
+  readonly apiKeys: ApiKeyModel;
   readonly existingApiKey?: string;
 }): Promise<string> => {
-  const existingApiKey = input.existingApiKey?.trim();
-  const created = existingApiKey
-    ? await registerClientAccessKey({
-        apiKey: existingApiKey,
-        clientAccessKeys: input.clientAccessKeys,
-        name: "AWS init",
-      })
-    : await createClientAccessKey({
-        clientAccessKeys: input.clientAccessKeys,
-        name: "AWS init",
-      });
+  const created = await provisionApiKey({
+    apiKeys: input.apiKeys,
+    existingApiKey: input.existingApiKey,
+    name: "AWS init",
+  });
   return created.apiKey;
 };
 
@@ -273,6 +268,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     p.log.error("AWS DynamoDB table name is required.");
     process.exit(1);
   }
+  await assertAwsLambdaCanInitialize({
+    credentials,
+    lambdaName,
+  });
   const cloudFrontManager = new CloudFrontManager(bucketRegion, credentials);
   const selectedDistribution = await cloudFrontManager.selectDistribution({
     bucketName,
@@ -345,8 +344,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   });
   let apiKey: string;
   try {
-    apiKey = await prepareDynamoDBClientAccessKey({
-      clientAccessKeys: databasePlugin.models.clientAccessKeys,
+    apiKey = await prepareDynamoDBApiKey({
+      apiKeys: databasePlugin.models.apiKeys,
       existingApiKey: providerEnv.HOT_UPDATER_API_KEY,
     });
     await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
@@ -447,10 +446,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   p.note(
     transformTemplate(SOURCE_TEMPLATE, {
       apiKey: JSON.stringify(apiKey),
-      authorityId: JSON.stringify(authorityId),
       source: JSON.stringify(sourceUrl),
     }),
   );
+  p.note(formatApiKeyNote(apiKey), "API Key");
   p.log.message(
     `Next step: ${link("https://hot-updater.dev/docs/managed/aws#step-4-changeenv-file-optional")}`,
   );

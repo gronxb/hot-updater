@@ -4,6 +4,7 @@ import {
   cancelJob,
   getJob,
   handleAssertBsdiffPatchApplied,
+  handleAssertBundleArtifactSelection,
   handleAssertBundleAssetsStored,
   handleAssertBundlePatchBases,
   handleAssertCrashHistory,
@@ -152,10 +153,44 @@ app.post("/e2e/assert-proxy", async (c) => {
   return c.json(handleAssertProxy(payload));
 });
 
+app.post("/e2e/assert-bundle-artifact-selection", async (c) => {
+  const payload = (await c.req.json()) as {
+    currentBundleId?: string;
+    selection?: "archive-only" | "manifest-diff";
+    targetBundleId?: string;
+  };
+  if (
+    !payload.currentBundleId ||
+    !payload.targetBundleId ||
+    (payload.selection !== "archive-only" &&
+      payload.selection !== "manifest-diff")
+  ) {
+    return c.json(
+      {
+        error:
+          "currentBundleId, targetBundleId, and a valid selection are required",
+      },
+      400,
+    );
+  }
+  return c.json(
+    handleAssertBundleArtifactSelection({
+      currentBundleId: payload.currentBundleId,
+      selection: payload.selection,
+      targetBundleId: payload.targetBundleId,
+    }),
+  );
+});
+
 app.post("/e2e/jobs/deploy-bundle", async (c) => {
   const payload = (await c.req.json()) as {
-    bundleProfile?: "archive300mb" | "default" | "multiAssetReplacement";
+    bundleProfile?:
+      | "archive300mb"
+      | "default"
+      | "multiAssetReplacement"
+      | "sizeAwareLargeDiff";
     channel?: string;
+    compressStrategy?: "tar.br" | "tar.gz" | "zip";
     disabled?: boolean;
     diffBaseBundleId?: string;
     forceUpdate?: boolean;
@@ -183,13 +218,25 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     payload.bundleProfile !== undefined &&
     payload.bundleProfile !== "default" &&
     payload.bundleProfile !== "archive300mb" &&
-    payload.bundleProfile !== "multiAssetReplacement"
+    payload.bundleProfile !== "multiAssetReplacement" &&
+    payload.bundleProfile !== "sizeAwareLargeDiff"
   ) {
     return c.json(
       {
         error:
-          "bundleProfile must be default, archive300mb, or multiAssetReplacement",
+          "bundleProfile must be default, archive300mb, multiAssetReplacement, or sizeAwareLargeDiff",
       },
+      400,
+    );
+  }
+  if (
+    payload.compressStrategy !== undefined &&
+    payload.compressStrategy !== "tar.br" &&
+    payload.compressStrategy !== "tar.gz" &&
+    payload.compressStrategy !== "zip"
+  ) {
+    return c.json(
+      { error: "compressStrategy must be tar.br, tar.gz, or zip" },
       400,
     );
   }
@@ -212,6 +259,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     jobId: startDeployBundleJob({
       bundleProfile: payload.bundleProfile,
       channel: payload.channel,
+      compressStrategy: payload.compressStrategy,
       disabled: payload.disabled,
       diffBaseBundleId: payload.diffBaseBundleId,
       forceUpdate: payload.forceUpdate,
@@ -479,6 +527,7 @@ app.post("/e2e/assert-bundle-patch-bases", async (c) => {
 
 app.post("/e2e/assert-manifest-diff-applied", async (c) => {
   const payload = (await c.req.json()) as {
+    allowBsdiff?: boolean;
     bundleId?: string;
     previousBundleId?: string;
   };
@@ -488,6 +537,7 @@ app.post("/e2e/assert-manifest-diff-applied", async (c) => {
 
   return c.json(
     await handleAssertManifestDiffApplied({
+      allowBsdiff: payload.allowBsdiff,
       bundleId: payload.bundleId,
       previousBundleId: payload.previousBundleId,
     }),

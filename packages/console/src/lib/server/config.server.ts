@@ -20,10 +20,10 @@ let databaseClient: DatabaseClient | null = null;
 let hotUpdater: ReturnType<
   typeof import("./runtime.server").createRuntimeHotUpdater
 > | null = null;
-let clientAccessKeyStore: ReturnType<
-  typeof import("./runtime.server").createClientAccessKeyStore
+let apiKeyStore: ReturnType<
+  typeof import("./runtime.server").createApiKeyStore
 > | null = null;
-let clientAccessKeyStoreResolved = false;
+let apiKeyStoreResolved = false;
 let storagePluginPromise: Promise<
   StoragePluginWith<"get" | "put" | "exists" | "delete">
 > | null = null;
@@ -80,10 +80,10 @@ export const prepareConfig = async (request: Request = getRequest()) => {
       hotUpdater = createRuntimeHotUpdater(config);
     }
 
-    if (!clientAccessKeyStoreResolved) {
-      const { createClientAccessKeyStore } = await import("./runtime.server");
-      clientAccessKeyStore = createClientAccessKeyStore(config);
-      clientAccessKeyStoreResolved = true;
+    if (!apiKeyStoreResolved) {
+      const { createApiKeyStore } = await import("./runtime.server");
+      apiKeyStore = createApiKeyStore(config);
+      apiKeyStoreResolved = true;
     }
 
     const storagePlugin = await loadCachedStoragePlugin(config);
@@ -92,7 +92,7 @@ export const prepareConfig = async (request: Request = getRequest()) => {
       config,
       databaseClient,
       hotUpdater,
-      clientAccessKeyStore,
+      apiKeyStore,
       storagePlugin,
     };
   } catch (error) {

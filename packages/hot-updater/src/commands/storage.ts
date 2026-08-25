@@ -17,7 +17,6 @@ import {
   BUNDLE_STORAGE_PREFIX,
   createDatabaseClient,
   getManifestAssetDownloadPath,
-  isContentAddressedAssetBaseStorageUri,
   resolveManifestAssetStorageUri,
 } from "@hot-updater/plugin-core";
 
@@ -44,12 +43,11 @@ export interface StoragePruneOptions {
 
 interface BundleManifest {
   bundleId: string;
-  assets: Record<string, { fileHash: string }>;
+  assets: Record<string, { downloadFileHash?: unknown; fileHash: string }>;
 }
 
 interface BundleStorageReferences {
   exactUris: ReadonlySet<string>;
-  prefixUris: readonly string[];
 }
 
 interface PruneCandidate extends StorageObject {
@@ -134,16 +132,6 @@ function normalizeStorageUri(storageUri: string): string {
   return new URL(storageUri).toString();
 }
 
-function isLegacyBundleArtifactPath(segments: readonly string[]) {
-  const [firstSegment] = segments;
-  return (
-    firstSegment === "manifest.json" ||
-    firstSegment === "files" ||
-    firstSegment === "patches" ||
-    (firstSegment !== undefined && /^bundle(?:\..+)?$/.test(firstSegment))
-  );
-}
-
 interface BundleStorageKey {
   readonly bundleId: string;
   readonly isPatch: boolean;
@@ -159,27 +147,12 @@ function isSupportedPatchArtifactPath(segments: readonly string[]) {
 
 function parseBundleStorageKey(key: string): BundleStorageKey | null {
   const segments = key.split("/").filter(Boolean);
-  if (segments[0] === BUNDLE_STORAGE_PREFIX) {
-    const bundleId = segments[1];
-    if (!bundleId || !UUID_V7_RE.test(bundleId)) return null;
-    return {
-      bundleId: bundleId.toLowerCase(),
-      isPatch: isSupportedPatchArtifactPath(segments.slice(2)),
-    };
-  }
-
-  const bundleId = segments[0];
-  const artifactPath = segments.slice(1);
-  if (
-    !bundleId ||
-    !UUID_V7_RE.test(bundleId) ||
-    !isLegacyBundleArtifactPath(artifactPath)
-  ) {
-    return null;
-  }
+  if (segments[0] !== BUNDLE_STORAGE_PREFIX) return null;
+  const bundleId = segments[1];
+  if (!bundleId || !UUID_V7_RE.test(bundleId)) return null;
   return {
     bundleId: bundleId.toLowerCase(),
-    isPatch: isSupportedPatchArtifactPath(artifactPath),
+    isPatch: isSupportedPatchArtifactPath(segments.slice(2)),
   };
 }
 
@@ -344,10 +317,7 @@ async function collectReferencedAssetUris(
 ) {
   const bundlesWithSharedAssets = bundles.filter((bundle) => {
     const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
-    if (
-      assetBaseStorageUri === null ||
-      !isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)
-    ) {
+    if (assetBaseStorageUri === null) {
       return false;
     }
 
@@ -379,6 +349,7 @@ async function collectReferencedAssetUris(
             resolveManifestAssetStorageUri({
               assetBaseStorageUri,
               assetPath: downloadPath,
+              downloadFileHash: asset.downloadFileHash,
               fileHash: asset.fileHash,
             }),
           ),
@@ -397,7 +368,6 @@ function collectBundleStorageReferences(
   bundles: readonly Bundle[],
 ): BundleStorageReferences {
   const exactUris = new Set<string>();
-  const prefixUris = new Set<string>();
   const addExactUri = (storageUri: string | null | undefined) => {
     if (storageUri) {
       exactUris.add(normalizeStorageUri(storageUri));
@@ -411,19 +381,9 @@ function collectBundleStorageReferences(
     for (const patch of getBundlePatches(bundle)) {
       addExactUri(patch.patchStorageUri);
     }
-
-    const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
-    if (
-      assetBaseStorageUri &&
-      !isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)
-    ) {
-      prefixUris.add(
-        `${normalizeStorageUri(assetBaseStorageUri).replace(/\/+$/, "")}/`,
-      );
-    }
   }
 
-  return { exactUris, prefixUris: [...prefixUris] };
+  return { exactUris };
 }
 
 function getPruneCandidates({
@@ -441,12 +401,7 @@ function getPruneCandidates({
 
   for (const object of objects) {
     const normalizedStorageUri = normalizeStorageUri(object.storageUri);
-    if (
-      bundleStorageReferences.exactUris.has(normalizedStorageUri) ||
-      bundleStorageReferences.prefixUris.some((prefix) =>
-        normalizedStorageUri.startsWith(prefix),
-      )
-    ) {
+    if (bundleStorageReferences.exactUris.has(normalizedStorageUri)) {
       continue;
     }
 

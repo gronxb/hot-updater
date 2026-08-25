@@ -8,6 +8,7 @@ import {
   createTarGzTargetFiles,
   createZipTargetFiles,
   getCwd,
+  getStorageFileByteSize,
   HotUpdateDirUtil,
   loadConfig,
   p,
@@ -28,8 +29,9 @@ import {
   createDatabaseClient,
   createStorageRootUriWithPath,
   createStorageUriWithRelativePath,
-  getContentAddressedAssetStoragePath,
   getManifestAssetDownloadPath,
+  getManifestAssetStoragePath,
+  isContentAddressedAssetFileHash,
 } from "@hot-updater/plugin-core";
 import { createBundleDiff } from "@hot-updater/server/db";
 import isPortReachable from "is-port-reachable";
@@ -38,7 +40,11 @@ import { normalizeRange, rangesIntersect } from "verkit";
 
 import { getPlatform } from "@/prompts/getPlatform";
 import { createSignedFileHash } from "@/signedHashUtils";
-import { type Manifest, writeBundleManifest } from "@/utils/bundleManifest";
+import {
+  createBundleManifest,
+  type Manifest,
+  writeBundleManifestFile,
+} from "@/utils/bundleManifest";
 import {
   isFingerprintEquals,
   nativeFingerprint,
@@ -352,17 +358,22 @@ const getRelativeStorageDir = (relativePath: string) => {
   return dirname === "." ? "" : dirname;
 };
 
-const ensureUploadSourcePath = async ({
+type ManifestTargetFile = { path: string; name: string };
+
+type PreparedAssetUploadTarget = {
+  storagePath: string;
+  uploadSourcePath: string;
+};
+
+const prepareManifestAssetUploadFile = async ({
   outputPath,
   targetFile,
-  uploadFilename,
 }: {
   outputPath: string;
-  targetFile: { path: string; name: string };
-  uploadFilename?: string;
+  targetFile: ManifestTargetFile;
 }) => {
   const uploadName = getManifestAssetDownloadPath(targetFile.name);
-  const expectedFilename = uploadFilename ?? path.posix.basename(uploadName);
+  const expectedFilename = path.posix.basename(uploadName);
   const actualFilename = path.basename(targetFile.path);
 
   if (uploadName === targetFile.name && expectedFilename === actualFilename) {
@@ -372,7 +383,7 @@ const ensureUploadSourcePath = async ({
   const aliasDir = path.join(
     outputPath,
     "upload-artifacts",
-    uploadFilename ? "" : getRelativeStorageDir(uploadName),
+    getRelativeStorageDir(uploadName),
   );
   await fs.promises.mkdir(aliasDir, { recursive: true });
 
@@ -393,18 +404,45 @@ const ensureUploadSourcePath = async ({
   return aliasPath;
 };
 
-const getUniqueContentAddressedAssetUploadTargets = ({
+const prepareContentAddressedUploadFile = async ({
+  outputPath,
+  sourcePath,
+  storagePath,
+}: {
+  outputPath: string;
+  sourcePath: string;
+  storagePath: string;
+}) => {
+  const filename = path.posix.basename(storagePath);
+  if (path.basename(sourcePath) === filename) {
+    return sourcePath;
+  }
+
+  const uploadPath = path.join(
+    outputPath,
+    "upload-artifacts",
+    "content-addressed",
+    filename,
+  );
+  await fs.promises.mkdir(path.dirname(uploadPath), { recursive: true });
+  await fs.promises.copyFile(sourcePath, uploadPath);
+  return uploadPath;
+};
+
+const prepareContentAddressedAssetUploadTargets = async ({
   manifest,
+  outputPath,
   targetFiles,
 }: {
   manifest: Manifest;
-  targetFiles: { path: string; name: string }[];
+  outputPath: string;
+  targetFiles: ManifestTargetFile[];
 }) => {
-  const targets = new Map<
+  const candidates = new Map<
     string,
     {
-      storagePath: string;
-      targetFile: { path: string; name: string };
+      targetFile: ManifestTargetFile;
+      targetNames: string[];
     }
   >();
 
@@ -414,20 +452,74 @@ const getUniqueContentAddressedAssetUploadTargets = ({
       throw new Error(`Manifest file hash not found for ${targetFile.name}`);
     }
 
-    const storagePath = getContentAddressedAssetStoragePath({
-      assetPath: getManifestAssetDownloadPath(targetFile.name),
+    const downloadPath = getManifestAssetDownloadPath(targetFile.name);
+    const logicalStoragePath = getManifestAssetStoragePath({
+      assetPath: downloadPath,
       fileHash: manifestAsset.fileHash,
     });
+    const candidateKey = `${downloadPath === targetFile.name ? "raw" : "br"}:${logicalStoragePath}`;
 
-    if (!targets.has(storagePath)) {
-      targets.set(storagePath, {
-        storagePath,
+    const candidate = candidates.get(candidateKey);
+    if (candidate) {
+      candidate.targetNames.push(targetFile.name);
+    } else {
+      candidates.set(candidateKey, {
         targetFile,
+        targetNames: [targetFile.name],
       });
     }
   }
 
-  return [...targets.values()];
+  const targets = new Map<string, PreparedAssetUploadTarget>();
+  await runWithConcurrency(
+    [...candidates.values()],
+    MANIFEST_ASSET_UPLOAD_CONCURRENCY,
+    async ({ targetFile, targetNames }) => {
+      const uploadName = getManifestAssetDownloadPath(targetFile.name);
+      const usesBrotli = uploadName !== targetFile.name;
+      const preparedPath = await prepareManifestAssetUploadFile({
+        outputPath,
+        targetFile,
+      });
+      const downloadByteSize = await getStorageFileByteSize(preparedPath);
+      const downloadFileHash = usesBrotli
+        ? await getFileHashFromFile(preparedPath)
+        : undefined;
+      if (
+        downloadFileHash !== undefined &&
+        !isContentAddressedAssetFileHash(downloadFileHash)
+      ) {
+        throw new Error(
+          `Prepared asset hash must be a lowercase SHA-256 hash: ${targetFile.name}`,
+        );
+      }
+
+      const manifestAsset = manifest.assets[targetFile.name]!;
+      const storagePath = getManifestAssetStoragePath({
+        assetPath: uploadName,
+        downloadFileHash,
+        fileHash: manifestAsset.fileHash,
+      });
+      const uploadSourcePath = await prepareContentAddressedUploadFile({
+        outputPath,
+        sourcePath: preparedPath,
+        storagePath,
+      });
+
+      for (const targetName of targetNames) {
+        manifest.assets[targetName] = {
+          ...manifest.assets[targetName]!,
+          downloadByteSize,
+          ...(downloadFileHash ? { downloadFileHash } : {}),
+        };
+      }
+      targets.set(storagePath, { storagePath, uploadSourcePath });
+    },
+  );
+
+  return [...targets.values()].sort((left, right) =>
+    left.storagePath.localeCompare(right.storagePath),
+  );
 };
 
 const getPlatformName = (platform: Platform) =>
@@ -820,16 +912,16 @@ const deployPlatform = async ({
         bundleId: string;
         stdout: string | null;
       } | null;
-      targetFiles: { path: string; name: string }[];
-      manifest: Manifest | null;
+      assetUploadTargets: PreparedAssetUploadTarget[];
+      archiveByteSize: number | null;
       manifestPath: string | null;
       manifestStorageUri: string | null;
       assetBaseStorageUri: string | null;
       storageUri: string | null;
     } = {
       buildResult: null,
-      targetFiles: [],
-      manifest: null,
+      assetUploadTargets: [],
+      archiveByteSize: null,
       manifestPath: null,
       manifestStorageUri: null,
       assetBaseStorageUri: null,
@@ -866,11 +958,20 @@ const deployPlatform = async ({
           const currentBundleId = taskRef.buildResult.bundleId;
           bundleId = currentBundleId;
 
-          const { manifest, manifestPath } = await writeBundleManifest({
-            buildPath,
+          const manifest = await createBundleManifest({
             bundleId: currentBundleId,
             signFileHash: signingSession?.signFileHash,
             targetFiles,
+          });
+          const assetUploadTargets =
+            await prepareContentAddressedAssetUploadTargets({
+              manifest,
+              outputPath: outputRoot,
+              targetFiles,
+            });
+          const manifestPath = await writeBundleManifestFile({
+            buildPath,
+            manifest,
           });
 
           const bundleTargetFiles = [
@@ -880,8 +981,7 @@ const deployPlatform = async ({
               name: "manifest.json",
             },
           ];
-          taskRef.targetFiles = targetFiles;
-          taskRef.manifest = manifest;
+          taskRef.assetUploadTargets = assetUploadTargets;
           taskRef.manifestPath = manifestPath;
 
           switch (compressStrategy) {
@@ -959,16 +1059,9 @@ const deployPlatform = async ({
           if (!taskRef.manifestPath) {
             throw new Error("Manifest path not found");
           }
-          if (!taskRef.manifest) {
-            throw new Error("Manifest not found");
-          }
 
           try {
-            const assetUploadTargets =
-              getUniqueContentAddressedAssetUploadTargets({
-                manifest: taskRef.manifest,
-                targetFiles: taskRef.targetFiles,
-              });
+            const assetUploadTargets = taskRef.assetUploadTargets;
 
             const uploadStepCount = assetUploadTargets.length + 2;
             let uploadedStepCount = 0;
@@ -984,20 +1077,19 @@ const deployPlatform = async ({
             };
 
             updateUploadProgress();
-            const { storageUri } = await putStorageFile(
+            const { byteSize, storageUri } = await putStorageFile(
               storagePlugin,
               createBundleStorageKey(bundleId),
               bundlePath,
             );
+            taskRef.archiveByteSize = byteSize;
             taskRef.storageUri = storageUri;
             uploadedStepCount += 1;
             updateUploadProgress();
 
             // /assets is a shared content-addressed root, not a per-bundle
             // directory. The server uses this suffix to derive asset object keys
-            // from manifest fileHash values. LEGACY: existing /files bundles
-            // still resolve through the server fallback until that layout is
-            // intentionally removed.
+            // from each manifest asset's transferred or logical file hash.
             taskRef.assetBaseStorageUri = createStorageRootUriWithPath(
               storageUri,
               bundleId,
@@ -1006,7 +1098,7 @@ const deployPlatform = async ({
             await runWithConcurrency(
               assetUploadTargets,
               MANIFEST_ASSET_UPLOAD_CONCURRENCY,
-              async ({ storagePath, targetFile }) => {
+              async ({ storagePath, uploadSourcePath }) => {
                 const storageUri = createStorageUriWithRelativePath({
                   baseStorageUri: taskRef.assetBaseStorageUri!,
                   relativePath: storagePath,
@@ -1016,12 +1108,6 @@ const deployPlatform = async ({
                 const uploadKey = ["assets", relativeDir]
                   .filter(Boolean)
                   .join("/");
-
-                const uploadSourcePath = await ensureUploadSourcePath({
-                  outputPath: outputRoot,
-                  targetFile,
-                  uploadFilename: path.posix.basename(storagePath),
-                });
 
                 if ((await storagePlugin.exists({ storageUri })).exists) {
                   skippedUploadCount += 1;
@@ -1066,28 +1152,34 @@ const deployPlatform = async ({
           if (!manifestFileHash) {
             throw new Error("Manifest file hash not found");
           }
+          if (taskRef.archiveByteSize === null) {
+            throw new Error("Bundle archive byte size not found");
+          }
           const appVersion = await getNativeAppVersion(platform);
 
           try {
             await persistDeployment({
               authorityId: config.authorityId ?? "default",
               bundle: {
-                shouldForceUpdate: options.forceUpdate,
                 platform,
                 fileHash,
                 gitCommitHash,
-                message: options?.message ?? gitMessage,
                 id: bundleId,
-                enabled: !options.disabled,
-                channel,
-                targetAppVersion: target.appVersion,
-                fingerprintHash: target.fingerprintHash,
+                archiveByteSize: taskRef.archiveByteSize,
                 storageUri: taskRef.storageUri,
                 metadata: appVersion ? { app_version: appVersion } : {},
                 assetBaseStorageUri: taskRef.assetBaseStorageUri,
                 manifestFileHash,
                 manifestStorageUri: taskRef.manifestStorageUri,
+              },
+              release: {
+                channel,
+                enabled: !options.disabled,
+                fingerprintHash: target.fingerprintHash,
+                message: options?.message ?? gitMessage,
                 rolloutCohortCount,
+                shouldForceUpdate: options.forceUpdate,
+                targetAppVersion: target.appVersion,
               },
             });
           } catch (e) {

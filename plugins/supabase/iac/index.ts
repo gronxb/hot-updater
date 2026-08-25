@@ -8,6 +8,7 @@ import {
   confirmInitInputPersistence,
   copyDirToTmp,
   createHotUpdaterConfigScaffoldFromBuilder,
+  formatApiKeyNote,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -24,9 +25,11 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
+import { provisionApiKey } from "@hot-updater/server";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
+import { supabaseDatabase } from "../src/supabaseDatabase";
 import {
   initProvider as SUPABASE_INIT_PROVIDER,
   isSupabaseFunctionName,
@@ -40,7 +43,10 @@ import {
   linkSupabase,
   pushDB,
 } from "./supabaseCli";
-import { assertSupabaseInfrastructureCanInitialize } from "./supabaseInfrastructureState";
+import {
+  assertSupabaseFunctionCanInitialize,
+  assertSupabaseInfrastructureCanInitialize,
+} from "./supabaseInfrastructureState";
 import {
   assertSupabaseNonInteractiveInputs,
   inputSupabaseDatabasePassword,
@@ -61,6 +67,8 @@ const SUPABASE_PROJECT_READY_STATUS = "ACTIVE_HEALTHY";
 const SUPABASE_PROJECT_PROVISIONING_STATUS = "COMING_UP";
 const SUPABASE_PROJECT_READINESS_MAX_ATTEMPTS = 60 * 5;
 const SUPABASE_PROJECT_READINESS_POLL_INTERVAL_MS = 1000;
+const SUPABASE_STORAGE_READINESS_MAX_ATTEMPTS = 60 * 5;
+const SUPABASE_STORAGE_READINESS_POLL_INTERVAL_MS = 1000;
 const LEGACY_SUPABASE_CATALOG_CDN_URL_ENV_KEY =
   "HOT_UPDATER_SUPABASE_CATALOG_CDN_URL";
 const STATIC_IMPORT_SPECIFIER_PATTERN =
@@ -150,19 +158,28 @@ function App() {
   return null; // Replace with your app root
 }
 
-export default HotUpdater.wrap({
+HotUpdater.init({
   baseURL: "%%source%%",
-  updateStrategy: "appVersion", // or "fingerprint"
-})(App);`;
+  requestHeaders: {
+    "x-api-key": %%apiKey%%,
+  },
+});
+
+// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
+// when your app is ready to check.
+export default App;`;
 
 export const getSupabaseReactNativeSource = ({
+  apiKey,
   functionName,
   projectId,
 }: {
+  readonly apiKey: string;
   readonly functionName: string;
   readonly projectId: string;
 }): string =>
   transformTemplate(SOURCE_TEMPLATE, {
+    apiKey: JSON.stringify(apiKey),
     source: `https://${projectId}.supabase.co/functions/v1/${functionName}`,
   });
 
@@ -356,7 +373,10 @@ const resolveBareSpecifierImportTarget = async (
 
 const buildEdgeFunctionImports = async (targetDir: string) => {
   const imports: Record<string, string> = {};
-  const visitedWorkspacePackages = new Set<string>();
+  const vendoredWorkspacePackages = new Map<
+    string,
+    Awaited<ReturnType<typeof prepareVendoredPackageImport>>
+  >();
 
   const addWorkspacePackage = async ({
     importSpecifier,
@@ -368,16 +388,17 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
     exportName: string;
   }) => {
     const visitKey = `${packageName}:${exportName}`;
-    if (visitedWorkspacePackages.has(visitKey)) {
-      return;
+    const existingPackage = vendoredWorkspacePackages.get(visitKey);
+    if (existingPackage) {
+      return existingPackage;
     }
-    visitedWorkspacePackages.add(visitKey);
 
     const vendoredPackage = await prepareVendoredPackageImport({
       targetDir,
       packageName,
       exportName,
     });
+    vendoredWorkspacePackages.set(visitKey, vendoredPackage);
 
     imports[importSpecifier] = vendoredPackage.importMapPath;
 
@@ -405,6 +426,8 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
         vendoredPackage.packageRoot,
       );
     }
+
+    return vendoredPackage;
   };
 
   await addWorkspacePackage({
@@ -412,11 +435,27 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
     packageName: "@hot-updater/server",
     exportName: ".",
   });
-  await addWorkspacePackage({
+  const supabasePackage = await addWorkspacePackage({
     importSpecifier: "@hot-updater/supabase/edge",
     packageName: "@hot-updater/supabase",
     exportName: "./edge",
   });
+
+  const edgeFunctionEntryPath = path.join(targetDir, "index.ts");
+  if (await pathExists(edgeFunctionEntryPath)) {
+    const edgeFunctionSpecifiers = await collectBareImportSpecifiers(
+      edgeFunctionEntryPath,
+    );
+    for (const specifier of edgeFunctionSpecifiers) {
+      if (imports[specifier]) {
+        continue;
+      }
+      imports[specifier] = await resolveBareSpecifierImportTarget(
+        specifier,
+        supabasePackage.packageRoot,
+      );
+    }
+  }
 
   return imports;
 };
@@ -534,6 +573,39 @@ export type SupabaseBucketSelection =
       readonly name: string;
     };
 
+const isMissingSupabaseStorageTenantError = (error: unknown): boolean =>
+  error instanceof Error &&
+  /Missing tenant config for tenant/u.test(error.message) &&
+  (Reflect.get(error, "status") === 400 ||
+    Reflect.get(error, "statusCode") === "400");
+
+const retryWhileSupabaseStorageTenantIsProvisioning = async <Result>(
+  operation: () => Promise<Result>,
+): Promise<Result> => {
+  for (
+    let attempt = 1;
+    attempt <= SUPABASE_STORAGE_READINESS_MAX_ATTEMPTS;
+    attempt++
+  ) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (
+        !isMissingSupabaseStorageTenantError(error) ||
+        attempt === SUPABASE_STORAGE_READINESS_MAX_ATTEMPTS
+      ) {
+        throw error;
+      }
+      if (attempt === 1) {
+        p.log.info("Waiting for Supabase Storage to become ready...");
+      }
+      await delay(SUPABASE_STORAGE_READINESS_POLL_INTERVAL_MS);
+    }
+  }
+
+  throw new Error("Supabase Storage did not become ready.");
+};
+
 export const selectBucket = async (
   api: SupabaseApi,
   preferredBucketName?: string,
@@ -648,9 +720,13 @@ export const createSelectedBucket = async (
     return selection;
   }
 
-  await api.createBucket(selection.name, { public: false });
+  await retryWhileSupabaseStorageTenantIsProvisioning(() =>
+    api.createBucket(selection.name, { public: false }),
+  );
   p.log.success(`Bucket "${selection.name}" created successfully.`);
-  const buckets = await api.listBuckets();
+  const buckets = await retryWhileSupabaseStorageTenantIsProvisioning(() =>
+    api.listBuckets(),
+  );
   const bucket = buckets.find((item) => item.name === selection.name);
   if (!bucket) {
     throw new Error("Failed to create and select new bucket");
@@ -684,10 +760,9 @@ const deployEdgeFunction = async (
     );
   }
   await fs.mkdir(targetDir, { recursive: true });
-  const denoConfig = await resolveEdgeFunctionDenoConfig(targetDir);
-
   const targetPath = path.join(targetDir, "index.ts");
   await fs.writeFile(targetPath, edgeFunctionsCode);
+  const denoConfig = await resolveEdgeFunctionDenoConfig(targetDir);
   await fs.writeFile(
     path.join(targetDir, "deno.json"),
     `${JSON.stringify(denoConfig, null, 2)}\n`,
@@ -847,13 +922,14 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
   const { inputEnv, managedEnv } = initEnvSources;
-  const savedInputs = resolveSupabaseInitInputs(
-    getHotUpdaterInitInputEnv(initEnvSources, nonInteractive),
-    {
-      inputEnv,
-      managedEnv,
-    },
+  const initInputEnv = getHotUpdaterInitInputEnv(
+    initEnvSources,
+    nonInteractive,
   );
+  const savedInputs = resolveSupabaseInitInputs(initInputEnv, {
+    inputEnv,
+    managedEnv,
+  });
   await assertSupabaseNonInteractiveInputs(savedInputs, nonInteractive);
   const initInputs = await inputSupabaseDeploymentInputs({
     ...savedInputs,
@@ -913,6 +989,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       projectAccess.api,
       project!.id,
     );
+    await assertSupabaseFunctionCanInitialize({
+      functionName,
+      functionSlugs: await managementApi.listFunctions(project!.id),
+      projectId: project!.id,
+    });
     await ensureSupabaseBucketPrivate({
       api: projectAccess.api,
       nonInteractive,
@@ -1036,6 +1117,23 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   });
 
   await pushDB(tmpDir, { accessToken, dbPassword });
+  const databasePlugin = supabaseDatabase({
+    supabaseServiceRoleKey: projectAccess.serviceRoleApiKey,
+    supabaseUrl: `https://${project.id}.supabase.co`,
+  });
+  let apiKey: string;
+  try {
+    apiKey = (
+      await provisionApiKey({
+        apiKeys: databasePlugin.models.apiKeys,
+        existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
+        name: "Supabase init",
+      })
+    ).apiKey;
+    await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
+  } finally {
+    await databasePlugin.dispose?.();
+  }
   await deployEdgeFunction(
     accessToken,
     tmpDir,
@@ -1068,10 +1166,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   p.note(
     getSupabaseReactNativeSource({
+      apiKey,
       functionName,
       projectId: project.id,
     }),
   );
+  p.note(formatApiKeyNote(apiKey), "API Key");
   reportSupabaseOriginCatalogReady();
 
   p.log.message(

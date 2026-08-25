@@ -8,6 +8,7 @@ const createBundle = (overrides: Partial<Bundle>): Bundle => ({
   platform: "ios",
   fileHash: "hash",
   storageUri: "storage://bundle.zip",
+  archiveByteSize: 3_000_000_001,
   gitCommitHash: null,
   ...overrides,
 });

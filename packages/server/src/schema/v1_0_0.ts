@@ -74,6 +74,7 @@ export const bundlePatchesV100 = table(
     base_file_hash: column("base_file_hash", "string"),
     patch_file_hash: column("patch_file_hash", "string"),
     patch_storage_uri: column("patch_storage_uri", "string"),
+    byte_size: float("byte_size"),
     order_index: integer("order_index").defaultTo(0),
   },
   {
@@ -112,11 +113,18 @@ export const bundlePatchesV100 = table(
         referencedColumns: ["id"],
       }),
     ],
+    checks: [
+      check({
+        name: "bundle_patches_byte_size_check",
+        expression: "byte_size >= 0 and byte_size <= 9007199254740991",
+        sqliteInline: true,
+      }),
+    ],
   },
 );
 
-export const clientAccessKeysV100 = table(
-  "client_access_keys",
+export const apiKeysV100 = table(
+  "api_keys",
   {
     id: idColumn("id", varchar(255)),
     hash: stringColumn("hash"),
@@ -128,22 +136,22 @@ export const clientAccessKeysV100 = table(
   },
   {
     indexes: [
-      uniqueIndex("client_access_keys_hash_key", ["hash"]),
-      index("client_access_keys_created_at_idx", ["created_at_ms", "id"]),
+      uniqueIndex("api_keys_hash_key", ["hash"]),
+      index("api_keys_created_at_idx", ["created_at_ms", "id"]),
     ],
     checks: [
       check({
-        name: "client_access_keys_role_check",
+        name: "api_keys_role_check",
         expression: "role = 'client'",
         sqliteInline: true,
       }),
       check({
-        name: "client_access_keys_created_at_check",
+        name: "api_keys_created_at_check",
         expression: "created_at_ms >= 0",
         sqliteInline: true,
       }),
       check({
-        name: "client_access_keys_revoked_at_check",
+        name: "api_keys_revoked_at_check",
         expression: "revoked_at_ms is null or revoked_at_ms >= 0",
         sqliteInline: true,
       }),
@@ -159,6 +167,7 @@ export const bundlesV100 = table(
     file_hash: stringColumn("file_hash"),
     git_commit_hash: stringColumn("git_commit_hash").nullable(),
     storage_uri: stringColumn("storage_uri"),
+    archive_byte_size: float("archive_byte_size"),
     metadata: json("metadata").defaultTo({}),
     manifest_storage_uri: stringColumn("manifest_storage_uri").nullable(),
     manifest_file_hash: stringColumn("manifest_file_hash").nullable(),
@@ -166,6 +175,14 @@ export const bundlesV100 = table(
   },
   {
     indexes: [index("bundles_platform_idx", ["platform"], ["mongodb"])],
+    checks: [
+      check({
+        name: "bundles_archive_byte_size_check",
+        expression:
+          "archive_byte_size >= 0 and archive_byte_size <= 9007199254740991",
+        sqliteInline: true,
+      }),
+    ],
   },
 );
 
@@ -366,7 +383,7 @@ export const bundleEventsV100 = table(
     from_release_id: uuid("from_release_id").nullable(),
     from_bundle_id: uuid("from_bundle_id").nullable(),
     to_release_id: uuid("to_release_id").nullable(),
-    to_bundle_id: uuid("to_bundle_id").nullable(),
+    to_bundle_id: uuid("to_bundle_id"),
     platform: stringColumn("platform"),
     app_version: stringColumn("app_version"),
     channel: stringColumn("channel"),
@@ -426,7 +443,7 @@ export const bundleEventsV100 = table(
       check({
         name: "bundle_events_shape_check",
         expression:
-          "((type in ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')) and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and update_strategy is null)",
+          "((type in ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')) and from_bundle_id is not null and update_strategy is not null and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and from_bundle_id is null and update_strategy is null)",
         sqliteInline: true,
       }),
       check({
@@ -448,7 +465,7 @@ export const v1_0_0 = schema({
     releasesV100,
     releaseCatalogsV100,
     bundleEventsV100,
-    clientAccessKeysV100,
+    apiKeysV100,
     createSettingsTable("1.0.0"),
   ],
 });

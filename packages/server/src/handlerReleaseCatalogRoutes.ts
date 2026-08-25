@@ -1,4 +1,4 @@
-import type { AppUpdateAvailableInfo, ReleaseCatalog } from "@hot-updater/core";
+import type { ReleaseCatalog } from "@hot-updater/core";
 import { canonicalizeAppVersion } from "@hot-updater/plugin-core";
 
 import { requirePlatformParam, requireRouteParam } from "./handlerParameters";
@@ -18,45 +18,6 @@ const privateNotFound = (): Response =>
     },
   );
 
-const serializeArtifactInfo = (
-  info: AppUpdateAvailableInfo,
-  request: Request,
-): string => {
-  const resolveUrl = (url: string) => new URL(url, request.url).toString();
-  const changedAssets = info.changedAssets
-    ? Object.fromEntries(
-        Object.entries(info.changedAssets).map(([path, asset]) => [
-          path,
-          {
-            ...asset,
-            ...(asset.file
-              ? { file: { ...asset.file, url: resolveUrl(asset.file.url) } }
-              : {}),
-            ...(asset.patch
-              ? {
-                  patch: {
-                    ...asset.patch,
-                    patchUrl: resolveUrl(asset.patch.patchUrl),
-                  },
-                }
-              : {}),
-          },
-        ]),
-      )
-    : info.changedAssets;
-  return JSON.stringify({
-    ...info,
-    fileUrl: info.fileUrl === null ? null : resolveUrl(info.fileUrl),
-    ...(info.manifestUrl === undefined
-      ? {}
-      : {
-          manifestUrl:
-            info.manifestUrl === null ? null : resolveUrl(info.manifestUrl),
-        }),
-    ...(changedAssets === undefined ? {} : { changedAssets }),
-  } satisfies AppUpdateAvailableInfo);
-};
-
 const responseHash = async (body: string): Promise<string> => {
   const digest = await crypto.subtle.digest(
     "SHA-256",
@@ -70,6 +31,7 @@ const responseHash = async (body: string): Promise<string> => {
 const catalogResponse = async (
   catalog: ReleaseCatalog | null,
   request: Request,
+  clientAccessHeaderName: string,
 ): Promise<Response> => {
   if (catalog === null) return privateNotFound();
   const body = JSON.stringify(catalog);
@@ -78,7 +40,7 @@ const catalogResponse = async (
     "cache-control": "public, max-age=0, s-maxage=5",
     "content-type": CATALOG_CONTENT_TYPE,
     etag,
-    vary: "Accept-Encoding, x-api-key",
+    vary: `Accept-Encoding, ${clientAccessHeaderName}`,
   };
   if (request.headers.get("if-none-match") === etag) {
     return new Response(null, { headers, status: 304 });
@@ -88,6 +50,7 @@ const catalogResponse = async (
 
 export const createReleaseCatalogRouteHandlers = (
   authorityId: string,
+  clientAccessHeaderName = "x-api-key",
 ): Record<string, RouteHandler> => {
   const cache = new Map<
     string,
@@ -133,9 +96,6 @@ export const createReleaseCatalogRouteHandlers = (
   return {
     appVersionReleaseCatalog: async (params, request, api) => {
       if (api.getReleaseCatalog === undefined) return privateNotFound();
-      if (requireRouteParam(params, "authorityId") !== authorityId) {
-        return privateNotFound();
-      }
       const rawAppVersion = requireRouteParam(params, "appVersion");
       const appVersion = canonicalizeAppVersion(rawAppVersion);
       if (appVersion === null || appVersion !== rawAppVersion) {
@@ -156,14 +116,12 @@ export const createReleaseCatalogRouteHandlers = (
           api.getReleaseCatalog!(input),
         ),
         request,
+        clientAccessHeaderName,
       );
     },
 
     fingerprintReleaseCatalog: async (params, request, api) => {
       if (api.getReleaseCatalog === undefined) return privateNotFound();
-      if (requireRouteParam(params, "authorityId") !== authorityId) {
-        return privateNotFound();
-      }
       const input = {
         authorityId,
         channelKey: requireRouteParam(params, "channelKey"),
@@ -176,17 +134,18 @@ export const createReleaseCatalogRouteHandlers = (
           api.getReleaseCatalog!(input),
         ),
         request,
+        clientAccessHeaderName,
       );
     },
 
-    artifact: async (params, request, api) => {
+    artifact: async (params, _request, api) => {
       if (api.getArtifactInfo === undefined) return privateNotFound();
       const info = await api.getArtifactInfo(
         requireRouteParam(params, "targetBundleId"),
         requireRouteParam(params, "currentBundleId"),
       );
       if (info === null) return privateNotFound();
-      return new Response(serializeArtifactInfo(info, request), {
+      return new Response(JSON.stringify(info), {
         status: 200,
         headers: {
           "cache-control": "private, no-store",

@@ -167,4 +167,53 @@ describe("LambdaEdgeDeployer", () => {
     );
     expect(lambdaMocks.updateFunctionCode).not.toHaveBeenCalled();
   });
+
+  it("retries first-time creation while the new IAM role propagates", async () => {
+    // Given
+    vi.useFakeTimers();
+    lambdaMocks.createFunction
+      .mockRejectedValueOnce(
+        Object.assign(
+          new Error(
+            "The role defined for the function cannot be assumed by Lambda.",
+          ),
+          { name: "InvalidParameterValueException" },
+        ),
+      )
+      .mockResolvedValue({
+        FunctionArn:
+          "arn:aws:lambda:us-east-1:123456789012:function:hot-updater-edge",
+        Version: "1",
+      });
+    const deployer = new LambdaEdgeDeployer({
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    // When
+    const deployment = deployer.deploy(
+      "arn:aws:iam::123456789012:role/hot-updater-edge",
+      "hot-updater-edge",
+      {
+        authorityId: "aws.test-authority",
+        bucketName: "hot-updater-storage",
+        dynamodbRegion: "ap-northeast-2",
+        dynamodbTableName: "hot-updater-metadata",
+        publicKeyId: "public-key-id",
+        ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
+        ssmRegion: "ap-northeast-2",
+      },
+    );
+    await vi.runAllTimersAsync();
+
+    // Then
+    await expect(deployment).resolves.toEqual({
+      lambdaName: "hot-updater-edge",
+      functionArn:
+        "arn:aws:lambda:us-east-1:123456789012:function:hot-updater-edge:1",
+    });
+    expect(lambdaMocks.createFunction).toHaveBeenCalledTimes(2);
+    expect(lambdaMocks.updateFunctionCode).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
 });

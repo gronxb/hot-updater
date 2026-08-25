@@ -1,5 +1,4 @@
 import {
-  getAssetBaseStorageUri,
   getBundlePatches,
   getManifestStorageUri,
   getPatchStorageUri,
@@ -9,9 +8,6 @@ import type {
   DatabaseClient,
   StoragePluginWith,
 } from "@hot-updater/plugin-core";
-import { isContentAddressedAssetBaseStorageUri } from "@hot-updater/plugin-core";
-
-import { getLegacyBundleAssetCleanupUris } from "./legacyBundleAssetCleanup";
 
 interface DeleteBundleInput {
   bundleId: string;
@@ -23,17 +19,13 @@ interface DeleteBundlesInput {
 
 interface DeleteBundleDependencies {
   databaseClient: DatabaseClient;
-  storagePlugin: StoragePluginWith<"get" | "delete">;
+  storagePlugin: StoragePluginWith<"delete">;
   waitForStorageCleanup?: boolean;
-}
-
-interface BundleManifest {
-  assets?: Record<string, { fileHash: string; signature?: string }>;
 }
 
 function resolveStorageUriForDeletion(
   storageUri: string,
-  storagePlugin: StoragePluginWith<"get" | "delete">,
+  storagePlugin: StoragePluginWith<"delete">,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
@@ -48,49 +40,9 @@ function resolveStorageUriForDeletion(
   throw new Error(`No storage plugin for protocol: ${protocol}`);
 }
 
-async function downloadStorageBytes(
-  storageUri: string,
-  storagePlugin: StoragePluginWith<"get" | "delete">,
-) {
-  const protocol = new URL(storageUri).protocol.replace(":", "");
-
-  if (storagePlugin.protocol === protocol) {
-    const { response } = await storagePlugin.get({ storageUri });
-    if (response === null) {
-      throw new Error(`Storage object not found: ${storageUri}`);
-    }
-    return new Uint8Array(await response.arrayBuffer());
-  }
-
-  if (protocol === "http" || protocol === "https") {
-    const response = await fetch(storageUri);
-    if (!response.ok) {
-      throw new Error(
-        `Failed to download bundle manifest: ${response.statusText}`,
-      );
-    }
-
-    return new Uint8Array(await response.arrayBuffer());
-  }
-
-  throw new Error(`No storage plugin for protocol: ${protocol}`);
-}
-
-async function loadBundleManifest(
-  manifestStorageUri: string,
-  storagePlugin: StoragePluginWith<"get" | "delete">,
-) {
-  const manifestBytes = await downloadStorageBytes(
-    manifestStorageUri,
-    storagePlugin,
-  );
-
-  return JSON.parse(new TextDecoder().decode(manifestBytes)) as BundleManifest;
-}
-
 async function cleanupBundleStorage(
   bundle: Bundle,
-  storagePlugin: StoragePluginWith<"get" | "delete">,
+  storagePlugin: StoragePluginWith<"delete">,
 ) {
   const cleanupUris = new Set<string>();
   const addCleanupUri = (storageUri: string | undefined) => {
@@ -107,33 +59,6 @@ async function cleanupBundleStorage(
   addCleanupUri(getPatchStorageUri(bundle) ?? undefined);
   for (const patch of getBundlePatches(bundle)) {
     addCleanupUri(patch.patchStorageUri);
-  }
-
-  const manifestStorageUri = getManifestStorageUri(bundle);
-  const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
-  if (assetBaseStorageUri) {
-    if (!manifestStorageUri) {
-      // The flat storage v2 delete contract removes one exact object. A legacy
-      // asset base URI is a prefix, so it must not be passed as an object key.
-    } else if (!isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
-      try {
-        const manifest = await loadBundleManifest(
-          manifestStorageUri,
-          storagePlugin,
-        );
-        for (const storageUri of getLegacyBundleAssetCleanupUris({
-          assetBaseStorageUri,
-          manifest,
-        })) {
-          addCleanupUri(storageUri);
-        }
-      } catch (error) {
-        console.error(
-          "Failed to load bundle manifest for storage cleanup:",
-          error,
-        );
-      }
-    }
   }
 
   for (const storageUri of cleanupUris) {
@@ -173,7 +98,6 @@ export async function deleteBundles(
     const cleanupCandidates = [
       bundle.storageUri,
       getManifestStorageUri(bundle),
-      getAssetBaseStorageUri(bundle),
       getPatchStorageUri(bundle),
       ...getBundlePatches(bundle).map((patch) => patch.patchStorageUri),
     ].filter((value): value is string => Boolean(value));

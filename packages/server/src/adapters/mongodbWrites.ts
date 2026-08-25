@@ -15,7 +15,7 @@ import {
 import {
   createMongoBundleWhere,
   createMongoChannelWhere,
-  createMongoClientAccessKeyWhere,
+  createMongoApiKeyWhere,
   createMongoPatchWhere,
   createMongoReleaseCatalogWhere,
   createMongoReleaseWhere,
@@ -128,16 +128,16 @@ export const createMongoWrites = (
           mongoSessionOptions(session),
         );
         return input.data;
-      case "client_access_keys":
+      case "api_keys":
         if (input.onConflict === "ignore") {
-          await collections.clientAccessKeys.updateOne(
+          await collections.apiKeys.updateOne(
             { hash: input.data.hash },
             { $setOnInsert: input.data },
             { upsert: true, ...mongoSessionOptions(session) },
           );
           return input.data;
         }
-        await collections.clientAccessKeys.insertOne(
+        await collections.apiKeys.insertOne(
           input.data,
           mongoSessionOptions(session),
         );
@@ -159,9 +159,9 @@ export const createMongoWrites = (
     }
   },
   update: async (input) => {
-    if (input.model === "client_access_keys") {
-      return collections.clientAccessKeys.findOneAndUpdate(
-        createMongoClientAccessKeyWhere(input.where),
+    if (input.model === "api_keys") {
+      return collections.apiKeys.findOneAndUpdate(
+        createMongoApiKeyWhere(input.where),
         { $set: input.update },
         {
           projection: WITHOUT_INTERNAL_FIELDS,

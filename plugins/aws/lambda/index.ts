@@ -55,12 +55,7 @@ const getHotUpdater = (distributionDomainName: string) => {
   const hotUpdater = createHotUpdater({
     authorityId: AUTHORITY_ID,
     database,
-    features: {
-      updateCheck: true,
-      bundles: false,
-      analytics: {},
-      clientAccessKeys: true,
-    },
+    clientAccess: { type: "api-key" },
     storage: [
       s3Storage({
         bucketName: S3_BUCKET_NAME,
@@ -73,7 +68,6 @@ const getHotUpdater = (distributionDomainName: string) => {
         }),
       }),
     ],
-    basePath: HOT_UPDATER_BASE_PATH,
   });
   hotUpdaterByDistribution.set(distributionDomainName, hotUpdater);
   return hotUpdater;
@@ -84,7 +78,7 @@ const app = new Hono<{ Bindings: Bindings }>();
 app.mount(
   HOT_UPDATER_BASE_PATH,
   async (request: Request, distributionDomainName: string) => {
-    return getHotUpdater(distributionDomainName).handler(request);
+    return getHotUpdater(distributionDomainName).handlers.client(request);
   },
   {
     optionHandler: (c) => [c.env.config.distributionDomainName],

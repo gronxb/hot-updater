@@ -23,10 +23,11 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { useClientAccessKeyCapabilityQuery } from "@/lib/access-keys-api";
+import { useApiKeyCapabilityQuery } from "@/lib/api-keys-api";
+
 export function AppSidebar() {
   const analyticsCapability = useAnalyticsCapability();
-  const accessKeyCapability = useClientAccessKeyCapabilityQuery();
+  const apiKeyCapability = useApiKeyCapabilityQuery();
   const { theme, setTheme } = useTheme();
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
@@ -34,7 +35,7 @@ export function AppSidebar() {
   const isBundlesActive = currentPath === "/";
   const isAnalyticsActive =
     currentPath === "/analytics" || currentPath === "/installations";
-  const isAccessKeysActive = currentPath === "/access-keys";
+  const isApiKeysActive = currentPath === "/api-keys";
   const isSigningActive = currentPath === "/signing";
 
   return (
@@ -109,15 +110,15 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ) : null}
-              {accessKeyCapability.data?.accessKeys ? (
+              {apiKeyCapability.data?.apiKeys ? (
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    isActive={isAccessKeysActive}
-                    render={<Link to="/access-keys" />}
-                    tooltip="Access keys"
+                    isActive={isApiKeysActive}
+                    render={<Link to="/api-keys" />}
+                    tooltip="API keys"
                   >
                     <KeyRound />
-                    <span>Access keys</span>
+                    <span>API keys</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ) : null}

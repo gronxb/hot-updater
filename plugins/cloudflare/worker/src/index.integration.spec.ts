@@ -1,5 +1,13 @@
-import type { LegacyBundle as Bundle } from "@hot-updater/core";
-import { createHotUpdater } from "@hot-updater/server";
+import {
+  type Bundle,
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+} from "@hot-updater/core";
+import {
+  commitReleaseCatalogMutations,
+  createUUIDv7,
+} from "@hot-updater/plugin-core";
+import { createHotUpdater, registerApiKey } from "@hot-updater/server";
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 
@@ -23,6 +31,7 @@ declare module "cloudflare:test" {
 }
 
 const PUBLIC_BASE_URL = "https://updates.example.com";
+const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 
 const toRuntimeBundle = (bundle: Bundle): Bundle => {
   return {
@@ -32,9 +41,11 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
 };
 
 const seedBundles = async (bundles: Bundle[]) => {
+  const database = d1Database(env.DB);
   const seedHotUpdater = createHotUpdater({
     authorityId: env.AUTHORITY_ID,
-    database: d1Database(env.DB),
+    database,
+    clientAccess: { type: "public" },
   });
   for (const bundle of bundles.map(toRuntimeBundle)) {
     const existing = await seedHotUpdater.getBundleById(bundle.id);
@@ -43,12 +54,75 @@ const seedBundles = async (bundles: Bundle[]) => {
     } else {
       await seedHotUpdater.updateBundleById(bundle.id, bundle);
     }
+    const channelName = "production";
+    const channelKey = encodeChannelKey(channelName);
+    const channel = (
+      await database.models.channels.insert({
+        row: { id: `channel:${channelKey}`, name: channelName },
+        onConflict: "returnExisting",
+      })
+    ).row;
+    const scopeKey = createReleaseCatalogScopeKey({
+      authorityId: env.AUTHORITY_ID,
+      channelKey,
+      platform: bundle.platform,
+      strategy: "APP_VERSION",
+    });
+    const now = Date.now();
+    const releaseId = createUUIDv7();
+    await commitReleaseCatalogMutations({
+      database,
+      mutations: [
+        {
+          mutation: {
+            operation: "insert",
+            row: {
+              bundle_id: bundle.id,
+              channel_id: channel.id,
+              created_at_ms: now,
+              enabled: true,
+              fingerprint_hash: null,
+              id: releaseId,
+              kind: "BUNDLE",
+              message: "hello",
+              operation: "DEPLOY",
+              platform: bundle.platform,
+              revision: 1,
+              rollout_cohort_count: 1_000,
+              scope_key: scopeKey,
+              should_force_update: false,
+              source_release_id: null,
+              strategy: "APP_VERSION",
+              target_app_version: "1.0",
+              target_cohorts: [],
+              updated_at_ms: now,
+            },
+          },
+          scope: {
+            authorityId: env.AUTHORITY_ID,
+            channelId: channel.id,
+            channelName,
+            fingerprintHash: null,
+            platform: bundle.platform,
+            scopeKey,
+            strategy: "APP_VERSION",
+          },
+          updatedAtMs: now,
+        },
+      ],
+    });
   }
 };
 
 describe.sequential("cloudflare worker runtime acceptance", () => {
   beforeAll(async () => {
     await env.DB.prepare(inject("prepareSql")).run();
+    const database = d1Database(env.DB);
+    await registerApiKey({
+      apiKey: API_KEY,
+      apiKeys: database.models.apiKeys,
+      name: "Runtime acceptance",
+    });
   });
 
   beforeEach(async () => {
@@ -65,26 +139,31 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
       {
         id: "00000000-0000-0000-0000-000000000001",
         platform: "ios",
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: true,
         fileHash: "hash",
         gitCommitHash: null,
-        message: "hello",
-        channel: "production",
         storageUri: "storage://unused",
-        fingerprintHash: null,
+        archiveByteSize: 3_000_000_001,
       },
     ]);
 
+    const unauthorized = await worker.fetch(
+      new Request(
+        `${PUBLIC_BASE_URL}/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0`,
+      ),
+      env,
+    );
+    expect(unauthorized.status).toBe(401);
+
     const response = await worker.fetch(
       new Request(
-        `${PUBLIC_BASE_URL}/release-catalogs/app-version/${encodeURIComponent(env.AUTHORITY_ID)}/ios/cHJvZHVjdGlvbg/1.0.0`,
+        `${PUBLIC_BASE_URL}/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0`,
+        { headers: { "x-api-key": API_KEY } },
       ),
       env,
     );
 
     await expect(response.json()).resolves.toMatchObject({
+      authorityId: env.AUTHORITY_ID,
       releases: [{ bundleId: "00000000-0000-0000-0000-000000000001" }],
     });
   });
@@ -103,7 +182,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
 
   it("does not expose management routes from the worker entrypoint", async () => {
     const response = await worker.fetch(
-      new Request(`${PUBLIC_BASE_URL}/api/bundles`),
+      new Request(`${PUBLIC_BASE_URL}/admin/bundles`),
       env,
     );
 

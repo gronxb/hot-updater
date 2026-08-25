@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 describe("managed Firebase Release catalog caching", () => {
-  it("routes the managed API through Firebase Hosting", async () => {
+  it("routes the managed API through one pinned Firebase Hosting rewrite", async () => {
     const config = JSON.parse(
       await readFile(
         new URL("../firebase/public/firebase.json", import.meta.url),
@@ -22,19 +22,7 @@ describe("managed Firebase Release catalog caching", () => {
         rewrites: [
           {
             function: { functionId: "hot-updater", pinTag: true },
-            source: "/version",
-          },
-          {
-            function: { functionId: "hot-updater", pinTag: true },
-            source: "/release-catalogs/**",
-          },
-          {
-            function: { functionId: "hot-updater", pinTag: true },
-            source: "/artifacts/**",
-          },
-          {
-            function: { functionId: "hot-updater", pinTag: true },
-            source: "/events",
+            regex: "^/(?:version|release-catalogs/.*|artifacts/.*|events)$",
           },
         ],
       }),

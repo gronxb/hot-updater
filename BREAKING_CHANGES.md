@@ -10,7 +10,7 @@ features are omitted unless they change an existing contract.
 
 ## Required migration shape
 
-Hot Updater v1 is not an in-place managed-infrastructure upgrade.
+Hot Updater v1 is not an in-place infrastructure upgrade.
 
 - Keep the existing v0 endpoint and resources available for installed v0
   binaries.
@@ -33,9 +33,8 @@ The supported combinations are:
 | v1         | Fresh v1       | Yes                                                 |
 
 Managed AWS, Cloudflare, Firebase, and Supabase initialization rejects selected
-v0 resources before mutating them. Self-hosted SQL and MongoDB installations
-have versioned migrations from supported v0 schema markers, but v0 writers must
-stop before migrating and cannot write to schema `1.0.0`.
+v0 resources before mutating them. Self-hosted SQL and MongoDB migrations also
+create schema `1.0.0` only on empty storage and reject every v0 schema marker.
 
 See the [v1 upgrade guide](<./docs/content/docs/(latest)/guides/upgrade-to-v1.mdx>)
 for the parallel-cutover procedure.
@@ -47,27 +46,79 @@ read followed by local selection on the device.
 
 | `main`                                                                                  | `next`                                                                                                     |
 | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `GET /app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId[/:cohort]`      | `GET /release-catalogs/app-version/:authorityId/:platform/:channelKey/:appVersion`                         |
-| `GET /fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId[/:cohort]` | `GET /release-catalogs/fingerprint/:authorityId/:platform/:channelKey/:fingerprintHash`                    |
+| `GET /app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId[/:cohort]`      | `GET /release-catalogs/app-version/:platform/:channelKey/:appVersion`                                      |
+| `GET /fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId[/:cohort]` | `GET /release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash`                                 |
 | Update response includes the selected Bundle artifact                                   | `GET /artifacts/:targetBundleId/from/:currentBundleId` resolves the artifact after local Release selection |
 | `Hot-Updater-SDK-Version` request header participates in compatibility behavior         | The legacy SDK-version header contract is removed                                                          |
-| `GET /api/bundles/channels` returns channel strings                                     | `GET`, `POST`, and `DELETE /api/channels[/:id]` manage persistent Channel rows                             |
+| `GET /api/bundles/channels` returns channel strings                                     | `GET`, `POST`, and `DELETE /hot-updater/admin/channels[/:id]` manage persistent Channel rows               |
 
 Additional route and handler changes:
 
 - Client routes are unversioned. Managed provider base URLs now point at the
   public deployment root; incompatible generations use different base URLs.
-- `authorityId` is part of Release Catalog identity. A non-default value must be
-  stable and match across the CLI, server, and React Native client.
-- `HandlerOptions.routes` is replaced by `HandlerOptions.features`.
-- `standaloneRepository({ routes })` no longer accepts a custom `channels`
-  route. Channel management uses the canonical `/api/channels` endpoint.
-- `createHandler` and `createHotUpdater().handler` no longer accept a
-  provider-specific request context as a second argument. Runtime bindings and
-  credentials must be captured when constructing the database or storage
-  plugin.
+- `authorityId` remains stable server and deployment configuration for Release
+  Catalog compilation and persistence. React Native clients neither configure
+  it nor include it in Catalog paths.
+- `HandlerOptions.routes` is removed. The client handler always owns the v1
+  update protocol and Analytics ingestion. API key authentication is configured
+  explicitly through the required `clientAccess` policy.
+- The unified `createHandler` and `createHotUpdater().handler` surfaces are
+  replaced by `createHandlers(...).client/admin` and
+  `createHotUpdater().handlers.client/admin`. The client handler owns
+  `/version`, Release Catalog, artifact, storage-download, and Analytics-event
+  routes. The admin handler owns Bundle, Release, Release Catalog row, Channel,
+  database-commit, and Analytics-query routes. Neither handler matches the
+  other surface.
+- Handlers match mount-relative paths, and `basePath` is removed. The framework
+  owns the external mount path. Built-in storage paths are relative to the
+  client handler and React Native resolves them against its configured
+  `baseURL`.
+- The admin handler has no built-in authentication callback. Protect its mount
+  with framework middleware, register that middleware and the specific admin
+  mount before the broader client mount, and fail startup when its credential
+  is missing.
+- `features`, including `features.bundles` and `features.updateCheck`, is
+  removed. Explicitly mounting `handlers.admin` is the opt-in for admin routes,
+  while mounting `handlers.client` exposes the complete client protocol.
+  Analytics ingestion is always available on the client handler and queries
+  are always available on the admin handler, so the server-side Analytics flag
+  and `queryAccess` are removed. React Native reporting remains opt-in by
+  setting `analytics: true` in either `HotUpdater.init` or `HotUpdater.wrap`;
+  omission or `false` sends no events. Client authentication moves to the
+  required top-level `clientAccess` policy.
+- `standaloneRepository.baseUrl` now identifies the exact admin root, such as
+  `https://example.com/hot-updater/admin`. Its default and fixed request paths
+  are relative (`/bundles`, `/releases`, `/release-catalogs`, `/channels`, and
+  `/database/commit`) rather than appending `/api` to a shared client root.
+  `standaloneRepository({ routes })` no longer accepts a custom `channels`
+  route.
+- `toNodeHandler` now accepts one handler function, for example
+  `toNodeHandler(hotUpdater.handlers.admin)`, rather than the whole Hot Updater
+  object.
+- Runtime bindings and credentials must be captured when constructing the
+  database or storage plugin; handlers no longer accept a provider-specific
+  request context as a second argument.
 - `/version` reports the v1 infrastructure generation. Use `hot-updater doctor`
   against the generated public base URL before shipping the native build.
+
+The recommended same-host composition is:
+
+```ts
+const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
+if (!adminToken) throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
+
+app.use("/hot-updater/admin/*", bearerAuth({ token: adminToken }));
+app.mount("/hot-updater/admin", hotUpdater.handlers.admin);
+app.mount("/hot-updater", hotUpdater.handlers.client);
+```
+
+`HotUpdater.init` and `HotUpdater.wrap` continue to use the client base URL
+(`https://example.com/hot-updater`). Never embed the admin bearer token in the
+React Native app; the `api-key` client policy uses `x-api-key` by default or
+the explicitly configured `headerName`. Local or direct-database Console
+operation is unchanged. A Console configured with
+`standaloneRepository` must use the admin root and keep its bearer header on
+the server side; hosted Console user authentication remains a separate layer.
 
 ## Bundle and Release ownership
 
@@ -86,10 +137,10 @@ Release instead:
 - `targetAppVersion`
 - `targetCohorts`
 
-`LegacyBundle` remains only as a transitional input for compatibility surfaces.
-New integrations must not treat its policy fields as Bundle storage.
-The retained `@hot-updater/js` `getUpdateInfo` helper now accepts
-`LegacyBundle[]`, not the new immutable `Bundle[]`.
+The combined `LegacyBundle` management shape is removed. Bundle writes accept
+artifact fields only, while Release writes carry delivery policy. The server no
+longer exposes the v0 Bundle selector or translates Bundle mutations into
+Release policy.
 
 Release IDs and Bundle IDs are independent UUIDv7 identities. In particular:
 
@@ -103,8 +154,9 @@ Release IDs and Bundle IDs are independent UUIDv7 identities. In particular:
   compatible enabled Release or the built-in Bundle.
 - A Bundle cannot be deleted until all referencing Releases are disabled and
   hard-deleted.
-- If both `Bundle.patches` and the deprecated scalar patch fields are present,
-  the first `Bundle.patches` entry now wins. `main` preferred the scalar fields.
+- Binary patches are represented only by `Bundle.patches`. The deprecated
+  `patchBaseBundleId`, `patchBaseFileHash`, `patchFileHash`, and
+  `patchStorageUri` Bundle fields are removed.
 
 ## CLI changes
 
@@ -124,6 +176,31 @@ Automation that manages delivery policy must use Release IDs.
 The top-level `rollback` command is removed. Release mutations now support
 revision preconditions and Catalog preflight. `db catalog preflight` and
 `db catalog rebuild` verify or repair compiled projections.
+
+Self-hosted deployments manage API keys through the same official database
+domain used by managed init and Console:
+
+```bash
+hot-updater db migrate src/hotUpdater.ts
+hot-updater api-key create src/hotUpdater.ts --name "Mobile app"
+hot-updater api-key list src/hotUpdater.ts
+hot-updater api-key revoke <api-key-id> src/hotUpdater.ts
+```
+
+`create` prints the plaintext API key exactly once. Only its SHA-256 hash and
+non-secret metadata are persisted. The recommended self-hosted bootstrap sets
+`clientAccess: { type: "api-key" }`, applies the schema, creates the API key,
+and passes the printed value to `HotUpdater.init` in
+`requestHeaders: { "x-api-key": apiKey }`. Use
+`clientAccess: { type: "public" }` only as an explicit unauthenticated
+alternative. Rotate a deployed credential by creating a replacement, shipping
+clients with the replacement, and revoking the old API key after the rollout.
+
+Managed AWS, Cloudflare, Firebase, and Supabase init create and register the
+first API key automatically. A rerun reuses the existing
+`HOT_UPDATER_API_KEY`, so managed users do not run the self-hosted
+`hot-updater api-key create` command. Managed React Native setup passes that
+value to `HotUpdater.init` through the `x-api-key` request header.
 
 ## Configuration and server composition
 
@@ -149,19 +226,36 @@ plugin object directly.
 createHotUpdater({
   authorityId,
   database,
+  clientAccess: { type: "api-key" },
   storage: [storagePlugin],
-  features: {
-    updateCheck: true,
-    bundles: true,
-  },
-  basePath,
 });
 ```
+
+The returned object exposes in-process API key management through
+`hotUpdater.apiKeys.create`, `hotUpdater.apiKeys.list`, and
+`hotUpdater.apiKeys.revoke`. These operations use the configured direct
+database plugin and are not HTTP routes on either handler.
 
 The following v0 options are removed or renamed:
 
 - `storages` and deprecated `storagePlugins` become `storage`.
-- `routes` becomes `features`.
+- Analytics ingestion and query routes are always available. React Native
+  clients independently enable automatic event reporting by setting
+  `analytics: true` in either `HotUpdater.init` or `HotUpdater.wrap`. Omission
+  or `false` sends no events.
+- `features.clientAccessKeys: true` becomes
+  `clientAccess: { type: "api-key" }`. API-key mode reads `x-api-key` by
+  default. Set `headerName` to use another valid HTTP header; clients must send
+  the same header and Release Catalog responses include it in `Vary`.
+- `features.clientAccessKeys: false` becomes the explicit unauthenticated
+  alternative, `clientAccess: { type: "public" }`.
+- `clientAccess` is required. There is no implicit public or authenticated
+  default. It applies to Release Catalog, artifact, and Analytics ingestion
+  routes; `/version`, signed storage downloads, and admin routes are
+  unaffected.
+- Update routes are always present on `handlers.client`.
+- `basePath` is removed. The framework mount and React Native `baseURL` define
+  the external client path without duplicating it in `createHotUpdater`.
 - `cwd` is removed.
 - Database and storage factory thunks are not accepted.
 - Runtime request contexts are removed from database, storage, handler, and
@@ -177,9 +271,7 @@ build:
 ```json
 {
   "expo": {
-    "plugins": [
-      ["@hot-updater/expo", { "channel": "production" }]
-    ]
+    "plugins": [["@hot-updater/expo", { "channel": "production" }]]
   }
 }
 ```
@@ -204,7 +296,7 @@ createDatabasePlugin({
     releaseCatalogs,
     channels,
     analytics,
-    clientAccessKeys,
+    apiKeys,
   },
   commit,
   dispose,
@@ -228,7 +320,7 @@ This breaks custom database providers in the following ways:
   channel. Compatibility writes resolve the legacy `channel` value into the
   Release row.
 - Schema `1.0.0` adds Releases, Release Catalogs, normalized Channels,
-  Analytics events, client access keys, and Bundle patch relations.
+  Analytics events, API keys, and Bundle patch relations.
 
 `createBlobDatabasePlugin` is removed. Object storage cannot satisfy the atomic
 Release/Catalog contract.
@@ -264,6 +356,8 @@ Breaking details for custom storage providers:
 - Persisted locations use validated hierarchical
   `protocol://bucket/encoded/slash/key` URIs. Custom providers should use
   `createStorageUri` and `parseStorageUri` instead of concatenating strings.
+- The mutable v0 per-Bundle asset layout and its cleanup fallback are removed.
+  Fresh v1 deployments store manifest assets by content hash.
 - Download URL policy belongs to the storage implementation. Server composition
   no longer wraps runtime-specific storage profiles.
 
@@ -272,10 +366,22 @@ for the complete operation requirements.
 
 ## React Native API changes
 
-The default resolver now fetches Release Catalogs and resolves artifacts from
-the new routes. Existing `baseURL` configuration remains valid only when it
-points to a v1 endpoint, and `authorityId` must match that endpoint when a
-non-default identity is used.
+`HotUpdater.init` and `HotUpdater.wrap` now accept `baseURL` as their only
+network source. The `resolver` and client-side `authorityId` options,
+`HotUpdaterResolver`, its parameter/result helper types, and
+`createDefaultResolver` are removed. Existing `baseURL` configuration remains
+valid only when it points to a v1 client handler. Catalog client paths no longer
+contain authority; authority remains server-owned deployment and persistence
+state.
+
+Custom GraphQL, RPC, and other transports must expose the v1 Release Catalog,
+artifact, Analytics-event, and `/version` HTTP protocol through an adapter or
+proxy, then pass that endpoint as `baseURL`. There is no React Native callback
+escape hatch for replacing only part of the protocol.
+
+Do not configure `HotUpdater.init` and `HotUpdater.wrap` in the same app. Mixed
+usage now reports a one-time `console.error`. Use `init + checkForUpdate` for a
+custom or manual flow, or use `wrap` for the automatic HOC flow.
 
 `NotifyAppReadyResult` changes shape:
 
@@ -287,11 +393,16 @@ toBundleId, ... }`.
 - `onNotifyAppReady` consumers and direct `HotUpdater.notifyAppReady()` callers
   must handle the new discriminated union.
 
-For a custom resolver, `notifyAppReady` now receives a directional Analytics
-event shape and returns `Promise<void>`. The legacy `checkUpdate` resolver hook
-is intentionally retained, but it stays on legacy selection semantics and does
-not provide Release Catalog guarantees. A v1 custom resolver implements both
-`fetchReleaseCatalog` and `resolveArtifact`.
+App-ready transition and Release adoption reporting use the configured
+`baseURL`. `analytics: true` enables both event paths for `HotUpdater.init` and
+`HotUpdater.wrap`; omission or `false` sends nothing. The server routes and
+backing model remain available regardless.
+
+The v0 `HotUpdater.getMinBundleId()` alias is removed; use
+`HotUpdater.getMinimumReleaseId()`. The deprecated positional
+`HotUpdater.updateBundle(bundleId, fileUrl)` overload is also removed. Pass the
+complete parameter object or call `updateInfo.updateBundle()` on the result of
+`HotUpdater.checkForUpdate()`.
 
 ## Removed provider exports
 
@@ -305,6 +416,7 @@ not provide Release Catalog guarantees. A v1 custom resolver implements both
 | `@hot-updater/cloudflare/worker` | `verifyJwtSignedUrl`                                                          | Use the server storage download handler                                           |
 | `@hot-updater/supabase`          | Root `supabaseEdgeFunctionDatabase` and `supabaseEdgeFunctionStorage` exports | Import `supabaseDatabase` and `supabaseStorage` from `@hot-updater/supabase/edge` |
 | `@hot-updater/js`                | `verifyJwtSignedUrl`, `withJwtSignedUrl`                                      | Use provider-owned download URL handling or the server storage handler            |
+| `@hot-updater/js`                | `getUpdateInfo`                                                               | Release Catalog selection on the device and Release disable for rollback          |
 | `@hot-updater/postgres`          | `getUpdateInfo`                                                               | Release Catalog compilation and exact Catalog reads                               |
 | `@hot-updater/plugin-core`       | `createBlobDatabasePlugin` and profiled storage helpers                       | Fixed database models and flat storage plugins described above                    |
 | `@hot-updater/plugin-core`       | `createRequestUpdateBundleResolver`, `getRequestUpdateBundleSeeds`            | `createRequestBundleResolver` for request-scoped Bundle reads                     |
@@ -316,19 +428,17 @@ need a download URL resolver.
 
 ## Compatibility intentionally retained
 
-The following are not breaking changes in this comparison, although some are
-deprecated migration shims:
+Compatibility is limited to state that can remain on a device when a new v1
+native build is installed over a v0 app:
 
-- Custom resolver `checkUpdate`
-- `getMinBundleId` / `MIN_BUNDLE_ID`
-- The old `updateBundle(id, url)` overload
-- Manual `HotUpdater.wrap({ updateMode: "manual" })`
-- `releaseChannel`, Android `stringResourcePaths`, database `sortBy`, Supabase
-  `supabaseAnonKey`, and Cloudflare Wrangler R2 configuration
-- Legacy Bundle management requests other than the removed
-  `/api/bundles/channels` route
-- Reads of retained v0 Bundle artifacts and supported self-hosted database
-  migrations
+- Native Bundle metadata containing Bundle-ID-only stable or staging state
+- Local `BUNDLE_ID` files and retained on-device Bundle directories
+- The persisted cohort identity used to keep existing installations in the
+  same rollout bucket
+
+This does not extend to server databases, storage objects, HTTP routes, custom
+transport callbacks, or management write shapes. Those boundaries are fresh in
+v1.
 
 The detailed retention rules are in the
 [v1 compatibility inventory](./docs/release-catalog-v1-compatibility.md).
@@ -337,8 +447,8 @@ The detailed retention rules are in the
 
 1. Preserve the v0 endpoint, credentials, resource IDs, and database backup.
 2. Upgrade all Hot Updater packages together.
-3. Scaffold fresh managed v1 infrastructure, or migrate a supported self-hosted
-   database only after stopping v0 writers.
+3. Scaffold fresh v1 infrastructure. For self-hosted providers, create schema
+   `1.0.0` on an empty database; do not point v1 tooling at a v0 database.
 4. Update custom database/storage providers, server options, removed imports,
    CLI automation, and app-ready result handling.
 5. Redeploy the desired Releases because managed v0 policy is not backfilled.

@@ -11,6 +11,7 @@ create table bundles (
   file_hash text not null,
   git_commit_hash text,
   storage_uri text not null,
+  archive_byte_size double precision not null,
   metadata json not null default '{}'::json,
   manifest_storage_uri text,
   manifest_file_hash text,
@@ -24,6 +25,7 @@ create table bundle_patches (
   base_file_hash text not null,
   patch_file_hash text not null,
   patch_storage_uri text not null,
+  byte_size double precision not null,
   order_index integer not null default 0
 );
 
@@ -74,7 +76,7 @@ create table bundle_events (
   from_release_id uuid,
   from_bundle_id uuid,
   to_release_id uuid,
-  to_bundle_id uuid,
+  to_bundle_id uuid not null,
   platform text not null,
   app_version text not null,
   channel text not null,
@@ -85,7 +87,7 @@ create table bundle_events (
   received_at_ms double precision not null
 );
 
-create table client_access_keys (
+create table api_keys (
   id varchar(255) primary key not null,
   hash text not null,
   name text not null,
@@ -118,13 +120,17 @@ create index bundle_events_to_bundle_idx on bundle_events(type, to_bundle_id, re
 create index bundle_events_from_bundle_idx on bundle_events(type, from_bundle_id, received_at_ms, id);
 create index bundle_events_to_release_idx on bundle_events(type, to_release_id, received_at_ms, id);
 create index bundle_events_from_release_idx on bundle_events(type, from_release_id, received_at_ms, id);
-create unique index client_access_keys_hash_key on client_access_keys(hash);
-create index client_access_keys_created_at_idx on client_access_keys(created_at_ms, id);
+create unique index api_keys_hash_key on api_keys(hash);
+create index api_keys_created_at_idx on api_keys(created_at_ms, id);
 
 alter table channels add constraint channels_id_length_check
   check (char_length(id) between 1 and 255);
 alter table channels add constraint channels_name_length_check
   check (char_length(name) between 1 and 255);
+alter table bundles add constraint bundles_archive_byte_size_check
+  check (archive_byte_size >= 0 and archive_byte_size <= 9007199254740991);
+alter table bundle_patches add constraint bundle_patches_byte_size_check
+  check (byte_size >= 0 and byte_size <= 9007199254740991);
 alter table releases add constraint releases_revision_check
   check (revision >= 1);
 alter table releases add constraint releases_kind_bundle_check
@@ -146,14 +152,14 @@ alter table bundle_events add constraint bundle_events_type_check
 alter table bundle_events add constraint bundle_events_platform_check
   check (platform in ('ios', 'android'));
 alter table bundle_events add constraint bundle_events_shape_check
-  check (((type in ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')) and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and update_strategy is null));
+  check (((type in ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')) and from_bundle_id is not null and update_strategy is not null and update_strategy in ('fingerprint', 'appVersion')) or (type = 'UNCHANGED' and from_bundle_id is null and update_strategy is null));
 alter table bundle_events add constraint bundle_events_received_at_check
   check (received_at_ms >= 0);
-alter table client_access_keys add constraint client_access_keys_role_check
+alter table api_keys add constraint api_keys_role_check
   check (role = 'client');
-alter table client_access_keys add constraint client_access_keys_created_at_check
+alter table api_keys add constraint api_keys_created_at_check
   check (created_at_ms >= 0);
-alter table client_access_keys add constraint client_access_keys_revoked_at_check
+alter table api_keys add constraint api_keys_revoked_at_check
   check (revoked_at_ms is null or revoked_at_ms >= 0);
 
 alter table bundle_patches add constraint bundle_patches_bundle_id_fk

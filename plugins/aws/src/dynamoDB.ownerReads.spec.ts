@@ -20,6 +20,7 @@ const bundleRow = bundleToRow({
   fileHash: "hash",
   gitCommitHash: null,
   storageUri: "storage://bundle.zip",
+  archiveByteSize: 3_000_000_001,
   metadata: {},
 });
 const patch = (sequence: number) => ({
@@ -29,6 +30,7 @@ const patch = (sequence: number) => ({
   base_file_hash: `base-${sequence}`,
   patch_file_hash: `patch-${sequence}`,
   patch_storage_uri: `storage://patch-${sequence}`,
+  byte_size: 3_000_000_002 + sequence,
   order_index: sequence,
 });
 const tableName = "hot-updater-metadata";

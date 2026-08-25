@@ -34,7 +34,7 @@ export default HotUpdater.wrap({
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion", // or "fingerprint"
   requestHeaders: {
-    "Authorization": "Bearer <your-access-token>",
+    "x-api-key": "<your-api-key>",
   },
 })(App);
 ```

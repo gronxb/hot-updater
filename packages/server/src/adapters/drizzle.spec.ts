@@ -1,6 +1,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import {
   boolean,
+  doublePrecision,
   integer,
   jsonb,
   pgTable,
@@ -24,6 +25,7 @@ const bundles = pgTable("bundles", {
   file_hash: text("file_hash").notNull(),
   git_commit_hash: text("git_commit_hash"),
   storage_uri: text("storage_uri").notNull(),
+  archive_byte_size: doublePrecision("archive_byte_size").notNull(),
   metadata: jsonb("metadata").notNull(),
   manifest_storage_uri: text("manifest_storage_uri"),
   manifest_file_hash: text("manifest_file_hash"),
@@ -76,6 +78,7 @@ const bundlePatches = pgTable("bundle_patches", {
   base_file_hash: text("base_file_hash").notNull(),
   patch_file_hash: text("patch_file_hash").notNull(),
   patch_storage_uri: text("patch_storage_uri").notNull(),
+  byte_size: doublePrecision("byte_size").notNull(),
   order_index: integer("order_index").notNull(),
 });
 const bundleEvents = pgTable("bundle_events", {
@@ -87,7 +90,7 @@ const bundleEvents = pgTable("bundle_events", {
   from_release_id: text("from_release_id"),
   from_bundle_id: text("from_bundle_id"),
   to_release_id: text("to_release_id"),
-  to_bundle_id: text("to_bundle_id"),
+  to_bundle_id: text("to_bundle_id").notNull(),
   platform: text("platform").notNull(),
   app_version: text("app_version").notNull(),
   channel: text("channel").notNull(),
@@ -97,7 +100,7 @@ const bundleEvents = pgTable("bundle_events", {
   sdk_version: text("sdk_version"),
   received_at_ms: integer("received_at_ms").notNull(),
 });
-const clientAccessKeys = pgTable("client_access_keys", {
+const apiKeys = pgTable("api_keys", {
   id: text("id").primaryKey(),
   hash: text("hash").notNull().unique(),
   name: text("name").notNull(),
@@ -111,7 +114,7 @@ const schema = {
   bundle_patches: bundlePatches,
   bundles,
   channels,
-  client_access_keys: clientAccessKeys,
+  api_keys: apiKeys,
   release_catalogs: releaseCatalogs,
   releases,
 };

@@ -138,6 +138,30 @@ describe("supabaseManagementApi", () => {
     );
   });
 
+  it("lists Edge Functions through the authenticated Supabase CLI", async () => {
+    mocks.execa.mockResolvedValue({
+      stdout: JSON.stringify([{ slug: "update-server" }]),
+    });
+
+    await expect(
+      supabaseManagementApi().listFunctions("project-ref"),
+    ).resolves.toEqual(["update-server"]);
+    expect(mocks.execa).toHaveBeenCalledWith(
+      "npx",
+      [
+        "-y",
+        "supabase",
+        "functions",
+        "list",
+        "--project-ref",
+        "project-ref",
+        "--output",
+        "json",
+      ],
+      { env: undefined },
+    );
+  });
+
   it("lists organizations with the access token in a header", async () => {
     mockFetch.mockResolvedValue(
       new Response(
@@ -150,6 +174,23 @@ describe("supabaseManagementApi", () => {
     ).resolves.toEqual([{ id: "org-id", name: "Team", slug: "team-slug" }]);
     expect(mockFetch).toHaveBeenCalledWith(
       "https://api.supabase.com/v1/organizations",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer access-token",
+        }),
+        method: "GET",
+      }),
+    );
+  });
+
+  it("lists Edge Functions with the access token in a header", async () => {
+    mockFetch.mockResolvedValue(Response.json([{ slug: "update-server" }]));
+
+    await expect(
+      supabaseManagementApi("access-token").listFunctions("project-ref"),
+    ).resolves.toEqual(["update-server"]);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://api.supabase.com/v1/projects/project-ref/functions",
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: "Bearer access-token",

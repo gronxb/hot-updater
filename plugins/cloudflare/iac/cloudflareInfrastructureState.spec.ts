@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   assertCloudflareInfrastructureCanInitialize,
+  assertCloudflareWorkerCanInitialize,
   resolveCloudflareInfrastructureState,
 } from "./cloudflareInfrastructureState";
 
@@ -21,5 +22,59 @@ describe("Cloudflare infrastructure generation", () => {
     ).toThrow(
       "Cloudflare v0 infrastructure was detected at D1 database legacy-db",
     );
+  });
+
+  it("allows a Worker name that does not exist", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+
+    await expect(
+      assertCloudflareWorkerCanInitialize({
+        fetchImpl,
+        scriptNames: ["another-worker"],
+        workerName: "hot-updater",
+        workersSubdomain: "example",
+      }),
+    ).resolves.toBeUndefined();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it.each([400, 404])(
+    "blocks an existing v0 Worker returning HTTP %i with the selected name",
+    async (status) => {
+      const fetchImpl = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response(null, { status }));
+
+      await expect(
+        assertCloudflareWorkerCanInitialize({
+          fetchImpl,
+          scriptNames: ["hot-updater"],
+          workerName: "hot-updater",
+          workersSubdomain: "example",
+        }),
+      ).rejects.toThrow(
+        "Cloudflare v0 infrastructure was detected at Worker hot-updater",
+      );
+      expect(fetchImpl).toHaveBeenCalledWith(
+        "https://hot-updater.example.workers.dev/version",
+      );
+    },
+  );
+
+  it("allows an existing v1 Worker with the selected name", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        Response.json({ infrastructureGeneration: 1, version: "1.0.0" }),
+      );
+
+    await expect(
+      assertCloudflareWorkerCanInitialize({
+        fetchImpl,
+        scriptNames: ["hot-updater"],
+        workerName: "hot-updater",
+        workersSubdomain: "example",
+      }),
+    ).resolves.toBeUndefined();
   });
 });

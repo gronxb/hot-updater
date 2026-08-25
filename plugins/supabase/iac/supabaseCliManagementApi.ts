@@ -4,6 +4,7 @@ import type {
   SupabaseManagementApi,
   SupabaseOrganization,
 } from "./supabaseManagementApi";
+import { parseSupabaseFunctionSlugs } from "./supabaseManagementApi";
 
 class SupabaseCliResponseError extends Error {
   constructor(message: string) {
@@ -48,6 +49,17 @@ export const supabaseCliManagementApi = (): SupabaseManagementApi => ({
           : [],
     );
   },
+  listFunctions: async (projectId) =>
+    parseSupabaseFunctionSlugs(
+      await runSupabaseCli([
+        "functions",
+        "list",
+        "--project-ref",
+        projectId,
+        "--output",
+        "json",
+      ]),
+    ),
   createProject: async ({ name, organizationSlug, region }) => {
     await execa(
       "npx",

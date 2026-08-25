@@ -3,7 +3,7 @@ import {
   type BundleEventRow,
   type BundlePatchRow,
   type ChannelRow,
-  type ClientAccessKeyRow,
+  type ApiKeyRow,
   type ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
 import type {
@@ -124,12 +124,12 @@ const updateBundle = async (
   )} where ${sql.ref("id")} = ${id}`.execute(executor);
 };
 
-const updateClientAccessKey = async (
+const updateApiKey = async (
   executor: QueryExecutorProvider,
   id: string,
   revokedAtMs: number | null,
 ): Promise<void> => {
-  await sql`update ${sql.table("client_access_keys")} set ${sql.ref(
+  await sql`update ${sql.table("api_keys")} set ${sql.ref(
     "revoked_at_ms",
   )} = ${revokedAtMs} where ${sql.ref("id")} = ${id}`.execute(executor);
 };
@@ -309,10 +309,10 @@ export const createKyselyCrud = (
       case "release_catalogs":
         await insertRow(executor, "release_catalogs", input.data, provider);
         return input.data;
-      case "client_access_keys":
+      case "api_keys":
         await insertRow(
           executor,
-          "client_access_keys",
+          "api_keys",
           input.data,
           provider,
           input.onConflict,
@@ -334,14 +334,10 @@ export const createKyselyCrud = (
     if (selector === undefined || typeof selector.value !== "string") {
       throw new KyselyAdapterInvariantError(`${input.model}.update.selector`);
     }
-    if (input.model === "client_access_keys") {
-      await updateClientAccessKey(
-        executor,
-        selector.value,
-        input.update.revoked_at_ms,
-      );
-      const result = await sql<ClientAccessKeyRow>`select * from ${sql.table(
-        "client_access_keys",
+    if (input.model === "api_keys") {
+      await updateApiKey(executor, selector.value, input.update.revoked_at_ms);
+      const result = await sql<ApiKeyRow>`select * from ${sql.table(
+        "api_keys",
       )} where ${sql.ref("id")} = ${selector.value} limit 1`.execute(executor);
       return result.rows[0] ?? null;
     }
@@ -493,10 +489,10 @@ export const createKyselyCrud = (
         )}${where} limit 1`.execute(executor);
         return result.rows[0] ?? null;
       }
-      case "client_access_keys": {
+      case "api_keys": {
         const where = whereClause(buildKyselyWhere(provider, input.where));
-        const result = await sql<ClientAccessKeyRow>`select * from ${sql.table(
-          "client_access_keys",
+        const result = await sql<ApiKeyRow>`select * from ${sql.table(
+          "api_keys",
         )}${where} limit 1`.execute(executor);
         return result.rows[0] ?? null;
       }
@@ -555,11 +551,11 @@ export const createKyselyCrud = (
         )}${where}${order}${pagination}`.execute(executor);
         return [...result.rows];
       }
-      case "client_access_keys": {
+      case "api_keys": {
         const where = whereClause(buildKyselyWhere(provider, input.where));
         const order = orderClause(input);
-        const result = await sql<ClientAccessKeyRow>`select * from ${sql.table(
-          "client_access_keys",
+        const result = await sql<ApiKeyRow>`select * from ${sql.table(
+          "api_keys",
         )}${where}${order}${pagination}`.execute(executor);
         return [...result.rows];
       }

@@ -61,11 +61,10 @@
     "@hot-updater/server": "workspace:*",
     "@supabase/supabase-js": "catalog:supabase",
     "hono": "catalog:hono",
-    "uuidv7": "^1.0.2"
+    "uuidv7": "catalog:"
   },
   "devDependencies": {
     "@electric-sql/pglite": "catalog:db",
-    "@hot-updater/js": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "camelcase-keys": "^9.1.3",

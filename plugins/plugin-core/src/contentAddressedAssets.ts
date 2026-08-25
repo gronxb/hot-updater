@@ -1,5 +1,13 @@
 export const CONTENT_ADDRESSED_ASSET_PREFIX = "assets";
 
+const SHA256_FILE_HASH_RE = /^[0-9a-f]{64}$/;
+
+export const isContentAddressedAssetFileHash = (
+  value: unknown,
+): value is string => {
+  return typeof value === "string" && SHA256_FILE_HASH_RE.test(value);
+};
+
 export const getContentAddressedAssetStoragePath = ({
   assetPath,
   fileHash,

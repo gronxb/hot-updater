@@ -7,6 +7,7 @@ import {
 } from "../db/schemaGenerators";
 import {
   bundleEventsV100,
+  bundlePatchesV100,
   bundlesV100,
   releaseCatalogsV100,
   releasesV100,
@@ -38,6 +39,7 @@ describe("v1.0.0 Release Catalog schema", () => {
       "file_hash",
       "git_commit_hash",
       "storage_uri",
+      "archive_byte_size",
       "metadata",
       "manifest_storage_uri",
       "manifest_file_hash",
@@ -48,18 +50,50 @@ describe("v1.0.0 Release Catalog schema", () => {
     expect(fields).not.toContain("target_app_version");
   });
 
-  it("keeps all directional analytics identities nullable", () => {
+  it("stores required archive and patch sizes as bounded floating columns", () => {
+    const archiveSize = bundlesV100.columns.find(
+      ({ ormName }) => ormName === "archive_byte_size",
+    );
+    const patchSize = bundlePatchesV100.columns.find(
+      ({ ormName }) => ormName === "byte_size",
+    );
+    const sql = createTableSql("postgresql").join("\n");
+    const prisma = generatePrismaSchema("postgresql", v1_0_0);
+    const drizzle = generateDrizzleSchema("postgresql", v1_0_0);
+
+    expect(archiveSize?.type).toBe("float");
+    expect(archiveSize?.nullable).toBeUndefined();
+    expect(patchSize?.type).toBe("float");
+    expect(patchSize?.nullable).toBeUndefined();
+    expect(sql).toContain("archive_byte_size double precision not null");
+    expect(sql).toContain("byte_size double precision not null");
+    expect(sql).toContain("archive_byte_size <= 9007199254740991");
+    expect(sql).toContain("byte_size <= 9007199254740991");
+    expect(prisma).toContain("archive_byte_size Float");
+    expect(prisma).toContain("byte_size Float");
+    expect(drizzle).toContain(
+      'archive_byte_size: doublePrecision("archive_byte_size").notNull()',
+    );
+    expect(drizzle).toContain(
+      'byte_size: doublePrecision("byte_size").notNull()',
+    );
+  });
+
+  it("keeps nullable sources while requiring the reported target Bundle", () => {
     for (const field of [
       "from_release_id",
       "to_release_id",
       "from_bundle_id",
-      "to_bundle_id",
     ]) {
       expect(
         bundleEventsV100.columns.find(({ ormName }) => ormName === field)
           ?.nullable,
       ).toBe(true);
     }
+    expect(
+      bundleEventsV100.columns.find(({ ormName }) => ormName === "to_bundle_id")
+        ?.nullable,
+    ).toBeUndefined();
   });
 
   it("generates nullable source and artifact relations with the intended deletion rules", () => {
@@ -83,6 +117,9 @@ describe("v1.0.0 Release Catalog schema", () => {
     expect(sql).toContain("create table release_catalogs");
     expect(sql).toContain("releases_scope_order_idx");
     expect(sql).toContain("release_catalogs_generation_check");
+    expect(sql).toContain("to_bundle_id uuid not null");
+    expect(sql).toContain("from_bundle_id is not null");
+    expect(sql).toContain("type = 'UNCHANGED' and from_bundle_id is null");
     expect(sql).toContain("on delete set null");
   });
 

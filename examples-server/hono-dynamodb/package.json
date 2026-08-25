@@ -5,6 +5,9 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "e2e:bootstrap-api-key": "tsx scripts/e2e-bootstrap-api-key.ts",
+    "e2e:cleanup": "bash scripts/e2e-cleanup.sh",
+    "e2e:service": "bash scripts/e2e-service.sh",
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:type": "tsc --noEmit",
@@ -21,7 +24,7 @@
   },
   "devDependencies": {
     "@aws-sdk/client-dynamodb": "3.1066.0",
-    "@aws-sdk/client-s3": "3.1066.0",
+    "@aws-sdk/client-s3": "catalog:aws",
     "@aws-sdk/lib-dynamodb": "3.1066.0",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",

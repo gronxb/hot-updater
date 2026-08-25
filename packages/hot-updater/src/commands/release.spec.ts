@@ -1,8 +1,11 @@
-import type { LegacyBundle } from "@hot-updater/plugin-core";
 import { updateReleasePolicy } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
+import {
+  createDatabasePluginHarness,
+  type DeploymentSeed,
+} from "./databasePlugin.testFixtures";
+import type { DeployReleasePolicy } from "./deployTransaction";
 
 const { confirm, loadConfig, log } = vi.hoisted(() => ({
   confirm: vi.fn(),
@@ -31,24 +34,29 @@ vi.mock("../utils/printBanner", () => ({ printBanner: vi.fn() }));
 const databaseHarness = createDatabasePluginHarness();
 const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
 
-const releaseBundle = (
+const deployment = (
   id: string,
-  overrides: Partial<LegacyBundle> = {},
-): LegacyBundle => ({
-  channel: "production",
-  enabled: true,
-  fileHash: `hash-${id}`,
-  fingerprintHash: null,
-  gitCommitHash: null,
-  id,
-  message: "ready",
-  platform: "ios",
-  rolloutCohortCount: 500,
-  shouldForceUpdate: true,
-  storageUri: `storage://artifacts/${id}.zip`,
-  targetAppVersion: "1.0.x",
-  targetCohorts: ["staff"],
-  ...overrides,
+  releaseOverrides: Partial<DeployReleasePolicy> = {},
+): DeploymentSeed => ({
+  bundle: {
+    archiveByteSize: 1024,
+    fileHash: `hash-${id}`,
+    gitCommitHash: null,
+    id,
+    platform: "ios",
+    storageUri: `storage://artifacts/${id}.zip`,
+  },
+  release: {
+    channel: "production",
+    enabled: true,
+    fingerprintHash: null,
+    message: "ready",
+    rolloutCohortCount: 500,
+    shouldForceUpdate: true,
+    targetAppVersion: "1.0.x",
+    targetCohorts: ["staff"],
+    ...releaseOverrides,
+  },
 });
 
 describe("Release commands", () => {
@@ -66,27 +74,27 @@ describe("Release commands", () => {
   });
 
   it("filters Releases by Bundle and includes creation time in the table", async () => {
-    const first = releaseBundle("01900000-0000-7000-8000-000000000001");
-    const second = releaseBundle("01900000-0000-7000-8000-000000000002");
-    await databaseHarness.seedLegacyBundles([first, second]);
+    const first = deployment("01900000-0000-7000-8000-000000000001");
+    const second = deployment("01900000-0000-7000-8000-000000000002");
+    await databaseHarness.seedDeployments([first, second]);
     const output = vi.spyOn(console, "log").mockImplementation(() => {});
     const { handleReleaseList } = await import("./release");
 
-    await handleReleaseList({ bundleId: first.id });
+    await handleReleaseList({ bundleId: first.bundle.id });
 
     const rendered = String(output.mock.calls[0]?.[0]);
     expect(rendered).toContain("Created");
-    expect(rendered).toContain(first.id);
-    expect(rendered).not.toContain(second.id);
+    expect(rendered).toContain(first.bundle.id);
+    expect(rendered).not.toContain(second.bundle.id);
   });
 
   it("shows complete Release policy, scope, and provenance", async () => {
-    const bundle = releaseBundle("01900000-0000-7000-8000-000000000001");
-    await databaseHarness.seedLegacyBundles([bundle]);
+    const seeded = deployment("01900000-0000-7000-8000-000000000001");
+    await databaseHarness.seedDeployments([seeded]);
     const output = vi.spyOn(console, "log").mockImplementation(() => {});
     const { handleReleaseShow } = await import("./release");
 
-    await handleReleaseShow(bundle.id);
+    await handleReleaseShow(seeded.bundle.id);
 
     const rendered = String(output.mock.calls[0]?.[0]);
     for (const field of [
@@ -104,12 +112,12 @@ describe("Release commands", () => {
   });
 
   it("previews device-dependent fallback and warns for the sole enabled Release", async () => {
-    const bundle = releaseBundle("01900000-0000-7000-8000-000000000001");
-    await databaseHarness.seedLegacyBundles([bundle]);
+    const seeded = deployment("01900000-0000-7000-8000-000000000001");
+    await databaseHarness.seedDeployments([seeded]);
     vi.spyOn(console, "log").mockImplementation(() => {});
     const { handleReleaseEnablement } = await import("./release");
 
-    await handleReleaseEnablement(bundle.id, false, { yes: true });
+    await handleReleaseEnablement(seeded.bundle.id, false, { yes: true });
 
     expect(log.message).toHaveBeenCalledWith(
       expect.stringContaining("previous compatible enabled Release or BUILTIN"),
@@ -121,13 +129,13 @@ describe("Release commands", () => {
       expect.stringContaining("only enabled Release"),
     );
     await expect(
-      databaseHarness.plugin.models.releases.findById(bundle.id),
+      databaseHarness.plugin.models.releases.findById(seeded.bundle.id),
     ).resolves.toMatchObject({ enabled: false, revision: 2 });
   });
 
   it("uses the previewed revision as the disable CAS boundary", async () => {
-    const bundle = releaseBundle("01900000-0000-7000-8000-000000000001");
-    await databaseHarness.seedLegacyBundles([bundle]);
+    const seeded = deployment("01900000-0000-7000-8000-000000000001");
+    await databaseHarness.seedDeployments([seeded]);
     Object.defineProperty(process.stdin, "isTTY", {
       configurable: true,
       value: true,
@@ -136,18 +144,18 @@ describe("Release commands", () => {
       await updateReleasePolicy({
         database: databaseHarness.plugin,
         patch: { message: "changed concurrently" },
-        releaseId: bundle.id,
+        releaseId: seeded.bundle.id,
       });
       return true;
     });
     const { handleReleaseEnablement } = await import("./release");
 
-    await expect(handleReleaseEnablement(bundle.id, false, {})).rejects.toThrow(
-      /revision/i,
-    );
+    await expect(
+      handleReleaseEnablement(seeded.bundle.id, false, {}),
+    ).rejects.toThrow(/revision/i);
 
     await expect(
-      databaseHarness.plugin.models.releases.findById(bundle.id),
+      databaseHarness.plugin.models.releases.findById(seeded.bundle.id),
     ).resolves.toMatchObject({
       enabled: true,
       message: "changed concurrently",
@@ -156,12 +164,12 @@ describe("Release commands", () => {
   });
 
   it("keeps JSON disable output machine-readable without a human preview", async () => {
-    const bundle = releaseBundle("01900000-0000-7000-8000-000000000001");
-    await databaseHarness.seedLegacyBundles([bundle]);
+    const seeded = deployment("01900000-0000-7000-8000-000000000001");
+    await databaseHarness.seedDeployments([seeded]);
     const output = vi.spyOn(console, "log").mockImplementation(() => {});
     const { handleReleaseEnablement } = await import("./release");
 
-    await handleReleaseEnablement(bundle.id, false, {
+    await handleReleaseEnablement(seeded.bundle.id, false, {
       json: true,
       yes: true,
     });
@@ -169,7 +177,7 @@ describe("Release commands", () => {
     const payload = JSON.parse(String(output.mock.calls[0]?.[0]));
     expect(payload.release).toMatchObject({
       enabled: false,
-      id: bundle.id,
+      id: seeded.bundle.id,
       revision: 2,
     });
     expect(payload.catalog).toEqual(

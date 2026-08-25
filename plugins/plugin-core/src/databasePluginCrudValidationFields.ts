@@ -42,6 +42,8 @@ export const modelValidators: ValidatorMap = {
     channel: isChannelText,
     channel_id: isChannelText,
     storage_uri: (value) => typeof value === "string",
+    archive_byte_size: (value) =>
+      typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
     target_app_version: (value) => value === null || typeof value === "string",
     fingerprint_hash: (value) => value === null || typeof value === "string",
     metadata: isDatabaseMetadataObject,
@@ -66,6 +68,8 @@ export const modelValidators: ValidatorMap = {
     base_file_hash: (value) => typeof value === "string",
     patch_file_hash: (value) => typeof value === "string",
     patch_storage_uri: (value) => typeof value === "string",
+    byte_size: (value) =>
+      typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
     order_index: (value) =>
       typeof value === "number" && Number.isInteger(value) && value >= 0,
   },
@@ -134,7 +138,7 @@ export const modelValidators: ValidatorMap = {
     from_bundle_id: (value) => value === null || typeof value === "string",
     from_release_id: (value) => value === null || typeof value === "string",
     to_release_id: (value) => value === null || typeof value === "string",
-    to_bundle_id: (value) => value === null || typeof value === "string",
+    to_bundle_id: (value) => typeof value === "string",
     platform: (value) => value === "ios" || value === "android",
     app_version: (value) => typeof value === "string",
     channel: (value) => typeof value === "string",
@@ -146,7 +150,7 @@ export const modelValidators: ValidatorMap = {
     received_at_ms: (value) =>
       typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
   },
-  client_access_keys: {
+  api_keys: {
     id: (value) => typeof value === "string",
     hash: (value) => typeof value === "string",
     name: (value) => typeof value === "string",
@@ -203,6 +207,8 @@ export const stringFields = new Set<string>([
 ]);
 
 export const numberFields = new Set<string>([
+  "archive_byte_size",
+  "byte_size",
   "rollout_cohort_count",
   "order_index",
   "revision",
@@ -230,6 +236,7 @@ export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
     "channel",
     "channel_id",
     "storage_uri",
+    "archive_byte_size",
     "target_app_version",
     "fingerprint_hash",
     "rollout_cohort_count",
@@ -244,6 +251,7 @@ export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
     "base_file_hash",
     "patch_file_hash",
     "patch_storage_uri",
+    "byte_size",
     "order_index",
   ]),
   releases: new Set([
@@ -300,7 +308,7 @@ export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
     "sdk_version",
     "received_at_ms",
   ]),
-  client_access_keys: new Set([
+  api_keys: new Set([
     "id",
     "hash",
     "name",

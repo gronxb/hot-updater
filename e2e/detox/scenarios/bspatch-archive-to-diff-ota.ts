@@ -8,6 +8,7 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/deploy-bundle",
       {
         channel: "production",
+        compressStrategy: "tar.gz",
         marker: "archive-base-detox",
         mode: "reset",
         safeBundleIds: [],

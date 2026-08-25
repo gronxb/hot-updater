@@ -1,12 +1,12 @@
 ---
 name: hot-updater-agent
-description: Use when an AI agent needs to run, monitor, diagnose, or iterate HotUpdater E2E jobs through the local `hot-updater-agent` dashboard CLI instead of running device flows directly.
+description: Use when an AI agent needs to run or inspect full HotUpdater E2E jobs, or prepare and lease a profile-scoped manual QA environment through the local `hot-updater-agent` CLI.
 ---
 
 # HotUpdater Agent
 
 Use this skill from the HotUpdater repository root when E2E should run through
-the dashboard queue.
+the dashboard queue or manual QA needs prepared provider infrastructure.
 
 The CLI infers the current PR with `gh pr view`; there is no `-pr` flag.
 
@@ -25,7 +25,7 @@ Valid profiles:
 - `aws`
 
 Use the user-mentioned profile. If none is mentioned, use
-`standalone-dynamodb`.
+`standalone-kysely`.
 
 ## Commands
 
@@ -70,13 +70,55 @@ hot-updater-agent timeline <profile|task-id> -limit 10
 hot-updater-agent -json timeline <profile|task-id> -limit 10
 ```
 
+Prepare one platform for agent-device-led manual QA:
+
+```bash
+hot-updater-agent manual start <profile> \
+  -platform <ios|android> \
+  -ref "$(git rev-parse HEAD)" \
+  -env-target examples/v0.85.0/.env.hotupdater \
+  -ttl 2h
+```
+
+`manual start` waits until the profile service, native release artifact, and
+control server are ready. Human output returns all handoff fields and exact
+agent-device commands. Prefer structured output when another agent consumes
+the handoff:
+
+```bash
+hot-updater-agent -json manual start <profile> -platform ios -ref "$(git rev-parse HEAD)"
+```
+
+The JSON session contains `id`, status/expiry/ref/log metadata, and
+`handoff.worktreePath`, `scenarioRoot`, `envTargetPath`, `controlBaseUrl`,
+`runtimeConfigUrl`, `appBaseUrl`, `cleanupCommand`, plus
+`handoff.agentDevice` with session, platform, device ID, app ID, binary path,
+and exact boot/install/open/snapshot/close commands.
+
+Inspect or release the lease:
+
+```bash
+hot-updater-agent manual status [session-id] [-limit 20]
+hot-updater-agent manual stop <session-id>
+hot-updater-agent manual --help
+```
+
+Only one manual session may be active. It blocks dashboard E2E execution until
+`manual stop` or TTL expiry. Always stop it in a finally-style cleanup path;
+iOS and Android manual sessions must run sequentially.
+
 ## Workflow
 
-1. Check existing work: `hot-updater-agent status -limit 5`.
-2. For performance or provider diagnosis, read `hot-updater-agent -json timeline <profile> -limit 10`.
-3. For a failed exact job, read `hot-updater-agent reason <task-id> -tail 240`.
-4. Patch this repo based on the observed failure.
-5. Re-run the same `verify` command until the dashboard job succeeds or the blocker is clearly outside repo code.
+1. Choose full E2E (`verify`) or prepared manual QA (`manual start`).
+2. Check existing work: `hot-updater-agent status -limit 5` and, for manual
+   work, `hot-updater-agent manual status -limit 5`.
+3. For provider diagnosis, read
+   `hot-updater-agent -json timeline <profile> -limit 10`.
+4. For a failed exact E2E job, read
+   `hot-updater-agent reason <task-id> -tail 240`.
+5. For manual QA, consume only the returned handoff and always stop the lease.
+6. Re-run the same path until it succeeds or the blocker is clearly outside
+   repository code.
 
 Use `timeline` data to distinguish setup, deploy, service boot, app reload, and
 E2E command execution bottlenecks. Compare `providerBottlenecks[*].totalMs`,

@@ -6,14 +6,11 @@ import os from "os";
 import path from "path";
 import { setTimeout as sleep } from "timers/promises";
 import { fileURLToPath } from "url";
+import { brotliDecompressSync } from "zlib";
 
 import {
   getBundlePatch,
   getBundlePatches,
-  getPatchBaseBundleId,
-  getPatchBaseFileHash,
-  getPatchFileHash,
-  getPatchStorageUri,
 } from "../../../packages/core/src/bundleArtifacts.ts";
 import {
   createReleaseCatalogScopeKey,
@@ -42,6 +39,12 @@ import {
   verifyConsoleAnalytics,
   type ObservedAnalyticsEvent,
 } from "../console-analytics-qa.ts";
+import {
+  PAX_LONG_ASSET_ANDROID_MANIFEST_PATH,
+  PAX_LONG_ASSET_MANIFEST_PATH,
+  PAX_LONG_ASSET_RELATIVE_PATH,
+  PAX_LONG_ASSET_REQUIRE_PATH,
+} from "../pax-long-path-fixture.ts";
 import { hasActiveInstrumentationForPackage } from "./android-instrumentation.ts";
 import {
   advanceAndroidRestartWait,
@@ -57,16 +60,26 @@ import {
   acquireFairFileLock,
   resolveDeployLockCapacity,
 } from "./fair-file-lock.ts";
+import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
 import { resetProviderAfterReady } from "./provider-reset-retry.ts";
 import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
 import {
   readE2eScreenStateSnapshot,
   resetE2eScreenState,
 } from "./screen-state.ts";
-import { shouldProbeUpdateCheckVisibility } from "./update-check-visibility.ts";
+import { readPaxPaths } from "./tar-pax.ts";
+import {
+  shouldProbeUpdateCheckVisibility,
+  validateArtifactInfoVisibility,
+} from "./update-check-visibility.ts";
 
 type Platform = "ios" | "android";
-type BundleProfile = "archive300mb" | "default" | "multiAssetReplacement";
+type BundleProfile =
+  | "archive300mb"
+  | "default"
+  | "multiAssetReplacement"
+  | "sizeAwareLargeDiff";
+type CompressionStrategy = "tar.br" | "tar.gz" | "zip";
 
 type JobResult = Record<string, unknown>;
 
@@ -120,12 +133,16 @@ type SessionState = {
   observedAnalyticsEvents: ObservedAnalyticsEvent[];
   platform: Platform;
   resultsDir: string;
+  sizeAwareLargeAssetBackupCaptured: boolean;
+  sizeAwareLargeAssetBackupPath: string | null;
+  sizeAwareLargeAssetPath: string;
   storePath: string | null;
 };
 
 type DeployBundleRequest = {
   bundleProfile?: BundleProfile;
   channel: string;
+  compressStrategy?: CompressionStrategy;
   disabled?: boolean;
   diffBaseBundleId?: string;
   forceUpdate?: boolean;
@@ -236,6 +253,10 @@ const STANDALONE_REPOSITORY_BASE_URL_PATTERN =
   /(standaloneRepository\(\{\s*baseUrl:\s*)["'][^"']+["']/;
 const UPDATE_STRATEGY_CONFIG_PATTERN =
   /updateStrategy:\s*["'](?:appVersion|fingerprint)["']/;
+const COMPRESS_STRATEGY_CONFIG_PATTERN =
+  /compressStrategy:\s*["'](?:tar\.br|tar\.gz|zip)["']/;
+const DEFINE_CONFIG_START_PATTERN =
+  /(export\s+default\s+defineConfig\s*\(\s*\{\s*\n)/;
 const MARKER_PATTERN =
   /export\s+const\s+E2E_SCENARIO_MARKER\s*(?::\s*string)?\s*=\s*["'][^"']*["'];/;
 const BUILT_IN_APP_MARKER = "targeted-qa-detox";
@@ -264,6 +285,17 @@ const LARGE_ARCHIVE_ASSET_SIZE_BYTES =
   LARGE_ARCHIVE_BMP_HEADER_SIZE +
   LARGE_ARCHIVE_BMP_ROW_SIZE * LARGE_ARCHIVE_BMP_HEIGHT;
 const LARGE_ARCHIVE_MIN_EXPECTED_SIZE_BYTES = 280 * 1024 * 1024;
+const SIZE_AWARE_LARGE_ASSET_RELATIVE_PATH =
+  "src/test/_fixture-size-aware-large-compressible.bmp";
+const SIZE_AWARE_LARGE_ASSET_REQUIRE_PATH =
+  "../test/_fixture-size-aware-large-compressible.bmp";
+const SIZE_AWARE_LARGE_BMP_WIDTH = 4096;
+const SIZE_AWARE_LARGE_BMP_HEIGHT = 4096;
+const SIZE_AWARE_LARGE_BMP_HEADER_SIZE = 54;
+const SIZE_AWARE_LARGE_BMP_ROW_SIZE = SIZE_AWARE_LARGE_BMP_WIDTH * 3;
+const SIZE_AWARE_LARGE_ASSET_SIZE_BYTES =
+  SIZE_AWARE_LARGE_BMP_HEADER_SIZE +
+  SIZE_AWARE_LARGE_BMP_ROW_SIZE * SIZE_AWARE_LARGE_BMP_HEIGHT;
 const MULTI_ASSET_FIXTURES = [
   {
     androidManifestPath: "raw/src_test__fixturemultiasseta.bmp",
@@ -282,6 +314,12 @@ const MULTI_ASSET_FIXTURES = [
     manifestPath: "assets/src/test/_fixture-multi-asset-c.bmp",
     relativePath: "src/test/_fixture-multi-asset-c.bmp",
     requirePath: "../test/_fixture-multi-asset-c.bmp",
+  },
+  {
+    androidManifestPath: PAX_LONG_ASSET_ANDROID_MANIFEST_PATH,
+    manifestPath: PAX_LONG_ASSET_MANIFEST_PATH,
+    relativePath: PAX_LONG_ASSET_RELATIVE_PATH,
+    requirePath: PAX_LONG_ASSET_REQUIRE_PATH,
   },
 ] as const;
 const MULTI_ASSET_BMP_WIDTH = 64;
@@ -469,6 +507,12 @@ const fixtureSession: SessionState = {
   observedAnalyticsEvents: [],
   platform,
   resultsDir,
+  sizeAwareLargeAssetBackupCaptured: false,
+  sizeAwareLargeAssetBackupPath: null,
+  sizeAwareLargeAssetPath: path.join(
+    EXAMPLE_DIR,
+    SIZE_AWARE_LARGE_ASSET_RELATIVE_PATH,
+  ),
   storePath: null,
 };
 
@@ -496,11 +540,23 @@ type CapturedProxyResponse = {
   readonly status: number;
   readonly statusText: string;
 };
+type CapturedArtifactSelection = {
+  readonly changedAssetCount: number;
+  readonly changedAssetFileCount: number;
+  readonly changedAssetPatchCount: number;
+  readonly changedAssetsPresent: boolean;
+  readonly currentBundleId: string;
+  readonly fileUrlPresent: boolean;
+  readonly manifestFileHashPresent: boolean;
+  readonly manifestUrlPresent: boolean;
+  readonly targetBundleId: string;
+};
 const proxyRequestCounts = {
   artifact: 0,
   catalog: 0,
   legacy: 0,
 };
+const capturedArtifactSelections: CapturedArtifactSelection[] = [];
 let artifactFailuresRemaining = 0;
 const proxyPathCounts = new Map<string, number>();
 const capturedCatalogResponses = new Map<
@@ -1009,6 +1065,56 @@ async function ensureLargeArchiveAsset() {
   });
 }
 
+function createSizeAwareLargeBmpHeader() {
+  const header = Buffer.alloc(SIZE_AWARE_LARGE_BMP_HEADER_SIZE);
+  const pixelDataSize =
+    SIZE_AWARE_LARGE_BMP_ROW_SIZE * SIZE_AWARE_LARGE_BMP_HEIGHT;
+
+  header.write("BM", 0, "ascii");
+  header.writeUInt32LE(SIZE_AWARE_LARGE_ASSET_SIZE_BYTES, 2);
+  header.writeUInt32LE(SIZE_AWARE_LARGE_BMP_HEADER_SIZE, 10);
+  header.writeUInt32LE(40, 14);
+  header.writeInt32LE(SIZE_AWARE_LARGE_BMP_WIDTH, 18);
+  header.writeInt32LE(SIZE_AWARE_LARGE_BMP_HEIGHT, 22);
+  header.writeUInt16LE(1, 26);
+  header.writeUInt16LE(24, 28);
+  header.writeUInt32LE(0, 30);
+  header.writeUInt32LE(pixelDataSize, 34);
+  header.writeInt32LE(2835, 38);
+  header.writeInt32LE(2835, 42);
+
+  return header;
+}
+
+async function ensureSizeAwareLargeAsset() {
+  if (!fixtureSession.sizeAwareLargeAssetBackupCaptured) {
+    fixtureSession.sizeAwareLargeAssetBackupPath = await backupFile(
+      fixtureSession.sizeAwareLargeAssetPath,
+    );
+    fixtureSession.sizeAwareLargeAssetBackupCaptured = true;
+  }
+
+  await fsPromises.mkdir(path.dirname(fixtureSession.sizeAwareLargeAssetPath), {
+    recursive: true,
+  });
+  const handle = await fsPromises.open(
+    fixtureSession.sizeAwareLargeAssetPath,
+    "w",
+  );
+  try {
+    const header = createSizeAwareLargeBmpHeader();
+    await handle.write(header, 0, header.length);
+    await handle.truncate(SIZE_AWARE_LARGE_ASSET_SIZE_BYTES);
+  } finally {
+    await handle.close();
+  }
+
+  logDetoxFixture("size-aware compressible asset ready", {
+    path: path.relative(REPO_DIR, fixtureSession.sizeAwareLargeAssetPath),
+    sizeBytes: SIZE_AWARE_LARGE_ASSET_SIZE_BYTES,
+  });
+}
+
 function resolveBundleProfile(value: BundleProfile | undefined): BundleProfile {
   return value ?? "default";
 }
@@ -1100,6 +1206,14 @@ async function applyAppScenario({
       ].join("\n");
     }
 
+    if (bundleProfile === "sizeAwareLargeDiff") {
+      return [
+        DEPLOY_ASSET_GUARD_START,
+        `  void Image.resolveAssetSource(require(${JSON.stringify(SIZE_AWARE_LARGE_ASSET_REQUIRE_PATH)}));`,
+        `  ${DEPLOY_ASSET_GUARD_END}`,
+      ].join("\n");
+    }
+
     return `${DEPLOY_ASSET_GUARD_START}\n  ${DEPLOY_ASSET_GUARD_END}`;
   })();
 
@@ -1122,10 +1236,12 @@ async function applyAppScenario({
 }
 
 async function applyDeployConfig({
+  compressStrategy,
   patchEnabled,
   patchMaxBaseBundles,
   strategy,
 }: {
+  compressStrategy?: CompressionStrategy;
   patchEnabled: boolean;
   patchMaxBaseBundles?: number;
   strategy: "appVersion" | "fingerprint";
@@ -1157,7 +1273,25 @@ async function applyDeployConfig({
       ].join("\n")
     : `${AUTO_PATCH_CONFIG_GUARD_START}\n  ${AUTO_PATCH_CONFIG_GUARD_END}`;
 
-  const sourceWithUpdateStrategy = source.replace(
+  const sourceWithCompressionStrategy = (() => {
+    if (!compressStrategy) {
+      return source;
+    }
+    if (COMPRESS_STRATEGY_CONFIG_PATTERN.test(source)) {
+      return source.replace(
+        COMPRESS_STRATEGY_CONFIG_PATTERN,
+        `compressStrategy: ${JSON.stringify(compressStrategy)}`,
+      );
+    }
+    if (!DEFINE_CONFIG_START_PATTERN.test(source)) {
+      throw new Error("Failed to locate defineConfig for compressStrategy");
+    }
+    return source.replace(
+      DEFINE_CONFIG_START_PATTERN,
+      `$1  compressStrategy: ${JSON.stringify(compressStrategy)},\n`,
+    );
+  })();
+  const sourceWithUpdateStrategy = sourceWithCompressionStrategy.replace(
     UPDATE_STRATEGY_CONFIG_PATTERN,
     `updateStrategy: ${JSON.stringify(strategy)}`,
   );
@@ -1178,7 +1312,8 @@ async function applyDeployConfig({
   const deployBaseUrl = getControllerReachableAppBaseUrl();
   const sourceWithDeployBaseUrl = sourceWithWarmMetroCache.replace(
     STANDALONE_REPOSITORY_BASE_URL_PATTERN,
-    (_match, prefix: string) => `${prefix}${JSON.stringify(deployBaseUrl)}`,
+    (_match, prefix: string) =>
+      `${prefix}${JSON.stringify(`${deployBaseUrl}/admin`)}`,
   );
 
   await fsPromises.writeFile(
@@ -1186,6 +1321,7 @@ async function applyDeployConfig({
     sourceWithDeployBaseUrl.replace(AUTO_PATCH_CONFIG_PATTERN, autoPatchSource),
   );
   logDetoxFixture("deploy config applied", {
+    compressStrategy: compressStrategy ?? null,
     deployBaseUrl,
     patchEnabled,
     patchMaxBaseBundles: patchMaxBaseBundles ?? null,
@@ -1380,8 +1516,8 @@ async function verifyConfiguredConsoleAnalytics(args: {
     const client = analytics
       ? createConsoleAnalyticsProviderClient(createAnalyticsProvider(analytics))
       : createConsoleAnalyticsHttpClient({
-          baseUrl: getControllerReachableAppBaseUrl(),
-          headers: getHotUpdaterManagementHeaders(),
+          baseUrl: `${getControllerReachableAppBaseUrl()}/admin`,
+          headers: getHotUpdaterAdminHeaders(),
         });
     for (let attempt = 1; attempt <= 30; attempt += 1) {
       try {
@@ -1548,67 +1684,18 @@ async function patchProviderRelease(
   return result;
 }
 
-function readLegacyPatchAssetPath(bundle: Bundle | null | undefined) {
-  const patchAssetPath = bundle?.metadata?.hbc_patch_asset_path;
-  return typeof patchAssetPath === "string" && patchAssetPath.length > 0
-    ? patchAssetPath
-    : null;
-}
-
-function inferPatchAssetPathFromStorageUri({
-  baseBundleId,
-  patchStorageUri,
-}: {
-  baseBundleId: string;
-  patchStorageUri: string;
-}) {
-  let pathname: string;
-  try {
-    pathname = new URL(patchStorageUri).pathname;
-  } catch {
-    return null;
-  }
-
-  const segments = pathname
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => {
-      try {
-        return decodeURIComponent(segment);
-      } catch {
-        return segment;
-      }
-    });
-  const patchesIndex = segments.findIndex(
-    (segment, index) =>
-      segment === "patches" && segments[index + 1] === baseBundleId,
-  );
-  if (patchesIndex === -1) {
-    return null;
-  }
-
-  const patchPath = segments.slice(patchesIndex + 2).join("/");
-  return patchPath.endsWith(".bsdiff")
-    ? patchPath.slice(0, -".bsdiff".length)
-    : null;
-}
-
 function resolvePatchAssetPath(
   bundle: Bundle | null | undefined,
   baseBundleId: string,
 ) {
-  const patchStorageUri = bundle
-    ? (getBundlePatch(bundle, baseBundleId)?.patchStorageUri ??
-      getPatchStorageUri(bundle))
+  const patch = bundle ? getBundlePatch(bundle, baseBundleId) : null;
+  return patch
+    ? inferPatchAssetPathFromStorageUri({
+        baseBundleId,
+        patchFileHash: patch.patchFileHash,
+        patchStorageUri: patch.patchStorageUri,
+      })
     : null;
-  if (!patchStorageUri) {
-    return readLegacyPatchAssetPath(bundle);
-  }
-
-  return (
-    readLegacyPatchAssetPath(bundle) ??
-    inferPatchAssetPathFromStorageUri({ baseBundleId, patchStorageUri })
-  );
 }
 
 function getBundlePatchBaseBundleIds(bundle: Bundle | null | undefined) {
@@ -1633,14 +1720,10 @@ async function resolveAutoPatchBundleDiff(
     const bundle = await fetchProviderBundleById(bundleId);
     const patchAssetPath = resolvePatchAssetPath(bundle, baseBundleId);
     const matchingPatch = getBundlePatch(bundle, baseBundleId);
-    const patchBaseBundleId =
-      matchingPatch?.baseBundleId ?? getPatchBaseBundleId(bundle);
-    const patchBaseFileHash =
-      matchingPatch?.baseFileHash ?? getPatchBaseFileHash(bundle);
-    const patchFileHash =
-      matchingPatch?.patchFileHash ?? getPatchFileHash(bundle);
-    const patchStorageUri =
-      matchingPatch?.patchStorageUri ?? getPatchStorageUri(bundle);
+    const patchBaseBundleId = matchingPatch?.baseBundleId ?? null;
+    const patchBaseFileHash = matchingPatch?.baseFileHash ?? null;
+    const patchFileHash = matchingPatch?.patchFileHash ?? null;
+    const patchStorageUri = matchingPatch?.patchStorageUri ?? null;
 
     observed = {
       bundleId: bundle.id,
@@ -3066,7 +3149,7 @@ function getControllerReachableProviderReadinessUrl({
 }: {
   readonly limit: number;
 }) {
-  const url = new URL(`${getControllerReachableAppBaseUrl()}/api/bundles`);
+  const url = new URL(`${getControllerReachableAppBaseUrl()}/admin/bundles`);
   if (!isLoopbackHost(url.hostname)) {
     return null;
   }
@@ -3153,13 +3236,13 @@ async function patchEnvRuntimeConfigUrl() {
   });
 }
 
-function getHotUpdaterManagementHeaders() {
-  const authToken = readHotUpdaterAuthToken();
-  return authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
+function getHotUpdaterAdminHeaders() {
+  const adminToken = readHotUpdaterAdminToken();
+  return adminToken ? { Authorization: `Bearer ${adminToken}` } : undefined;
 }
 
-function readHotUpdaterAuthToken() {
-  return readHotUpdaterEnvValue("HOT_UPDATER_AUTH_TOKEN");
+function readHotUpdaterAdminToken() {
+  return readHotUpdaterEnvValue("HOT_UPDATER_ADMIN_TOKEN");
 }
 
 function readHotUpdaterApiKey() {
@@ -3174,7 +3257,7 @@ export function getHotUpdaterClientRequestHeaders() {
 }
 
 function readHotUpdaterEnvValue(
-  key: "HOT_UPDATER_API_KEY" | "HOT_UPDATER_AUTH_TOKEN",
+  key: "HOT_UPDATER_API_KEY" | "HOT_UPDATER_ADMIN_TOKEN",
 ) {
   const envValue = process.env[key]?.trim();
   if (envValue) return envValue;
@@ -3223,7 +3306,7 @@ async function waitForLocalProviderReady() {
     for (const url of urls) {
       try {
         const response = await fetch(url, {
-          headers: getHotUpdaterManagementHeaders(),
+          headers: getHotUpdaterAdminHeaders(),
           signal: AbortSignal.timeout(PROVIDER_READY_HTTP_TIMEOUT_MS),
         });
         if (!response.ok) {
@@ -3434,10 +3517,10 @@ function rewriteProxiedUpdatePath(pathname: string) {
   if (
     segments[0] === "release-catalogs" &&
     (segments[1] === "app-version" || segments[1] === "fingerprint") &&
-    segments[4]
+    segments[3]
   ) {
-    const channel = decodeChannelKey(decodeURIComponent(segments[4]));
-    segments[4] = encodeChannelKey(
+    const channel = decodeChannelKey(decodeURIComponent(segments[3]));
+    segments[3] = encodeChannelKey(
       !channelNamespace || channel.startsWith(`${channelNamespace}-`)
         ? channel
         : getFixtureChannel(channel),
@@ -3463,11 +3546,21 @@ function toAppReachableProxyUrl(url: string) {
 }
 
 function rewriteRemoteAssetUrl(value: unknown): unknown {
-  if (typeof value !== "string" || !/^https?:\/\//.test(value)) {
+  if (typeof value !== "string") {
     return value;
   }
 
-  return toAppReachableProxyUrl(value);
+  if (/^https?:\/\//.test(value)) {
+    return toAppReachableProxyUrl(value);
+  }
+
+  if (value.startsWith("/storage/")) {
+    return toAppReachableProxyUrl(
+      `${getControllerReachableAppBaseUrl()}/${value.slice(1)}`,
+    );
+  }
+
+  return value;
 }
 
 function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
@@ -3535,28 +3628,32 @@ function rewriteReleaseCatalogScope(
     segments[0] !== "hot-updater" ||
     segments[1] !== "release-catalogs" ||
     (segments[2] !== "app-version" && segments[2] !== "fingerprint") ||
-    !segments[3] ||
-    (segments[4] !== "ios" && segments[4] !== "android") ||
+    (segments[3] !== "ios" && segments[3] !== "android") ||
+    !segments[4] ||
     !segments[5]
   ) {
     return payload;
   }
 
-  const authorityId = decodeURIComponent(segments[3]);
-  const channelKey = decodeURIComponent(segments[5]);
+  const authorityId = Reflect.get(payload, "authorityId");
+  if (typeof authorityId !== "string" || authorityId.length === 0) {
+    return payload;
+  }
+
+  const channelKey = decodeURIComponent(segments[4]);
   const scopeKey = createReleaseCatalogScopeKey(
     segments[2] === "app-version"
       ? {
           authorityId,
           channelKey,
-          platform: segments[4],
+          platform: segments[3],
           strategy: "APP_VERSION",
         }
       : {
           authorityId,
           channelKey,
-          fingerprintHash: decodeURIComponent(segments[6] ?? ""),
-          platform: segments[4],
+          fingerprintHash: decodeURIComponent(segments[5]),
+          platform: segments[3],
           strategy: "FINGERPRINT",
         },
   );
@@ -3614,6 +3711,61 @@ function summarizeUpdateInfoPayload(payload: unknown) {
     proxiedChangedAssetUrlCount,
     status: typeof updateInfo.status === "string" ? updateInfo.status : null,
   };
+}
+
+function captureArtifactSelection(pathname: string, payload: unknown) {
+  const match = pathname.match(
+    /^\/hot-updater\/artifacts\/([^/]+)\/from\/([^/]+)\/?$/,
+  );
+  if (!match || !payload || typeof payload !== "object") {
+    return;
+  }
+
+  let targetBundleId: string;
+  let currentBundleId: string;
+  try {
+    targetBundleId = decodeURIComponent(match[1]!);
+    currentBundleId = decodeURIComponent(match[2]!);
+  } catch {
+    return;
+  }
+
+  const artifact = payload as {
+    changedAssets?: unknown;
+    fileUrl?: unknown;
+    manifestFileHash?: unknown;
+    manifestUrl?: unknown;
+  };
+  const changedAssetsPresent =
+    artifact.changedAssets !== undefined && artifact.changedAssets !== null;
+  const changedAssetEntries =
+    changedAssetsPresent &&
+    typeof artifact.changedAssets === "object" &&
+    !Array.isArray(artifact.changedAssets)
+      ? Object.values(artifact.changedAssets as Record<string, unknown>)
+      : [];
+
+  capturedArtifactSelections.push({
+    changedAssetCount: changedAssetEntries.length,
+    changedAssetFileCount: changedAssetEntries.filter(
+      (entry) =>
+        entry !== null &&
+        typeof entry === "object" &&
+        Reflect.get(entry, "file") !== undefined,
+    ).length,
+    changedAssetPatchCount: changedAssetEntries.filter(
+      (entry) =>
+        entry !== null &&
+        typeof entry === "object" &&
+        Reflect.get(entry, "patch") !== undefined,
+    ).length,
+    changedAssetsPresent,
+    currentBundleId,
+    fileUrlPresent: typeof artifact.fileUrl === "string",
+    manifestFileHashPresent: typeof artifact.manifestFileHash === "string",
+    manifestUrlPresent: typeof artifact.manifestUrl === "string",
+    targetBundleId,
+  });
 }
 
 function classifyProxiedUpdatePath(pathname: string) {
@@ -3685,6 +3837,7 @@ function captureCatalogResponse(
 export function handleProxyState() {
   return {
     artifactFailuresRemaining,
+    capturedArtifactSelections: [...capturedArtifactSelections],
     capturedCatalogGenerations: Object.fromEntries(
       [...capturedCatalogResponses].map(([pathname, generations]) => [
         pathname,
@@ -3716,6 +3869,7 @@ export function handleConfigureProxy(input: {
     proxyRequestCounts.catalog = 0;
     proxyRequestCounts.legacy = 0;
     proxyPathCounts.clear();
+    capturedArtifactSelections.length = 0;
     capturedCatalogResponses.clear();
     artifactFailuresRemaining = 0;
   }
@@ -3733,6 +3887,48 @@ export function handleConfigureProxy(input: {
     artifactFailuresRemaining = input.artifactFailures;
   }
   return handleProxyState();
+}
+
+export function handleAssertBundleArtifactSelection(input: {
+  currentBundleId: string;
+  selection: "archive-only" | "manifest-diff";
+  targetBundleId: string;
+}) {
+  const observed = capturedArtifactSelections.findLast(
+    (entry) =>
+      entry.currentBundleId === input.currentBundleId &&
+      entry.targetBundleId === input.targetBundleId,
+  );
+  if (!observed) {
+    throw createEndpointError("Bundle artifact request was not observed", {
+      expected: input,
+      observed: [...capturedArtifactSelections],
+    });
+  }
+
+  const matches =
+    input.selection === "manifest-diff"
+      ? observed.changedAssetsPresent &&
+        observed.changedAssetCount > 0 &&
+        observed.manifestFileHashPresent &&
+        observed.manifestUrlPresent
+      : observed.fileUrlPresent &&
+        !observed.changedAssetsPresent &&
+        !observed.manifestFileHashPresent &&
+        !observed.manifestUrlPresent;
+  if (!matches) {
+    throw createEndpointError("Unexpected Bundle artifact selection", {
+      expected: input,
+      observed,
+    });
+  }
+
+  logDetoxFixture("Bundle artifact selection verified", {
+    ...observed,
+    platform: fixtureSession.platform,
+    selection: input.selection,
+  });
+  return observed;
 }
 
 export function handleAssertProxy(input: {
@@ -3863,6 +4059,9 @@ export async function handleProxyUpdateRequest(request: Request) {
     const body = await response.text();
     try {
       const payload = JSON.parse(body);
+      if (requestKind === "artifact" && response.ok) {
+        captureArtifactSelection(requestUrl.pathname, payload);
+      }
       const rewrittenPayload =
         requestKind === "catalog"
           ? rewriteReleaseCatalogScope(
@@ -3967,14 +4166,10 @@ function getRemoteAssetProxyTarget(requestUrl: URL) {
 }
 
 function buildCatalogUrl(args: {
-  catalog: Pick<
-    ReleaseCatalogRow,
-    "authority_id" | "fingerprint_hash" | "strategy"
-  >;
+  catalog: Pick<ReleaseCatalogRow, "fingerprint_hash" | "strategy">;
   channel: string;
 }) {
   const base = {
-    authorityId: args.catalog.authority_id,
     baseUrl: getControllerReachableAppBaseUrl(),
     channel: args.channel,
     platform: fixtureSession.platform,
@@ -4011,6 +4206,7 @@ async function waitForReleaseCatalogVisibility(args: {
   bundleId: string | null;
   catalog: ReleaseCatalogRow;
   channel: string;
+  expectedFileHash: string | null;
   releaseId: string;
   signal?: AbortSignal;
 }) {
@@ -4057,6 +4253,7 @@ async function waitForReleaseCatalogVisibility(args: {
           if (args.bundleId !== null) {
             await waitForArtifactResolution({
               bundleId: args.bundleId,
+              expectedFileHash: args.expectedFileHash,
               signal: args.signal,
             });
           }
@@ -4118,6 +4315,7 @@ async function waitForReleaseCatalogVisibility(args: {
 
 async function waitForArtifactResolution(args: {
   bundleId: string;
+  expectedFileHash: string | null;
   signal?: AbortSignal;
 }) {
   const url = `${getControllerReachableAppBaseUrl()}/artifacts/${encodeURIComponent(
@@ -4134,13 +4332,24 @@ async function waitForArtifactResolution(args: {
       { body: truncateForLog(body), bundleId: args.bundleId, url },
     );
   }
-  const payload = JSON.parse(body) as { id?: unknown };
-  if (payload.id !== args.bundleId) {
-    throw createEndpointError("Artifact resolution returned another Bundle", {
-      bundleId: args.bundleId,
-      payload,
-      url,
-    });
+  const payload: unknown = JSON.parse(body);
+  const validation = validateArtifactInfoVisibility(
+    payload,
+    args.expectedFileHash,
+  );
+  if (!validation.ok) {
+    throw createEndpointError(
+      validation.reason === "file-hash-mismatch"
+        ? "Artifact resolution returned another file hash"
+        : "Artifact resolution returned invalid ArtifactInfo",
+      {
+        bundleId: args.bundleId,
+        expectedFileHash: args.expectedFileHash,
+        payload,
+        validation,
+        url,
+      },
+    );
   }
 }
 
@@ -5110,6 +5319,12 @@ async function bootstrap() {
       fixtureSession.largeArchiveAssetPath,
     );
   }
+  if (!fixtureSession.sizeAwareLargeAssetBackupCaptured) {
+    fixtureSession.sizeAwareLargeAssetBackupPath = await backupFile(
+      fixtureSession.sizeAwareLargeAssetPath,
+    );
+    fixtureSession.sizeAwareLargeAssetBackupCaptured = true;
+  }
 
   fixtureSession.builtInBundleId = null;
   fixtureSession.deployedBundles = [];
@@ -5128,6 +5343,10 @@ async function bootstrap() {
   await restoreFile(
     fixtureSession.largeArchiveAssetBackupPath,
     fixtureSession.largeArchiveAssetPath,
+  );
+  await restoreFile(
+    fixtureSession.sizeAwareLargeAssetBackupPath,
+    fixtureSession.sizeAwareLargeAssetPath,
   );
   await restoreMultiAssetFixtures();
   await restoreFile(
@@ -5313,9 +5532,14 @@ async function deployFixtureBundle(
     throwIfAborted(signal);
     await ensureMultiAssetFixtures(request.marker);
   }
+  if (bundleProfile === "sizeAwareLargeDiff") {
+    throwIfAborted(signal);
+    await ensureSizeAwareLargeAsset();
+  }
 
   throwIfAborted(signal);
   await applyDeployConfig({
+    compressStrategy: request.compressStrategy,
     patchEnabled,
     patchMaxBaseBundles: request.patchMaxBaseBundles,
     strategy: request.strategy ?? "appVersion",
@@ -5445,6 +5669,30 @@ async function deployFixtureBundle(
       const archiveStats = await fsPromises.stat(archivePath);
 
       if (
+        bundleProfile === "multiAssetReplacement" &&
+        request.compressStrategy === "tar.br"
+      ) {
+        const expectedPaxPath =
+          fixtureSession.platform === "ios"
+            ? PAX_LONG_ASSET_MANIFEST_PATH
+            : PAX_LONG_ASSET_ANDROID_MANIFEST_PATH;
+        const paxPaths = readPaxPaths(
+          brotliDecompressSync(await fsPromises.readFile(archivePath)),
+        );
+        if (!paxPaths.includes(expectedPaxPath)) {
+          throw createEndpointError(
+            "Expected multi-asset archive to contain a POSIX PAX path.",
+            { expectedPaxPath, paxPaths },
+          );
+        }
+        logDetoxFixture("PAX archive path verified", {
+          archivePath: path.relative(REPO_DIR, archivePath),
+          expectedPaxPath,
+          platform: fixtureSession.platform,
+        });
+      }
+
+      if (
         bundleProfile === "archive300mb" &&
         archiveStats.size < LARGE_ARCHIVE_MIN_EXPECTED_SIZE_BYTES
       ) {
@@ -5498,6 +5746,7 @@ async function deployFixtureBundle(
       bundleId,
       catalog: deployed.catalog,
       channel: remoteChannel,
+      expectedFileHash: bundle.fileHash,
       releaseId: deployed.release.id,
       signal,
     });
@@ -5684,6 +5933,10 @@ async function createFixtureRepublishedRelease(input: {
     bundleId: created.release.bundle_id,
     catalog: created.catalog,
     channel: created.channel.name,
+    expectedFileHash:
+      created.release.bundle_id === null
+        ? null
+        : (await fetchProviderBundleById(created.release.bundle_id)).fileHash,
     releaseId: created.release.id,
   });
 
@@ -6066,6 +6319,7 @@ function hasManifestBackedBundleEvidence(args: {
 }
 
 async function readManifestDiffState(args: {
+  allowBsdiff?: boolean;
   bundleId: string;
   previousBundleId: string;
 }) {
@@ -6077,6 +6331,7 @@ async function readManifestDiffState(args: {
   const expectedHash = getManifestAssetFileHash(manifest, assetPath);
   const assetFile = readBundleAssetFileHash(args.bundleId, assetPath);
   const archiveLogs = readFirstOtaArchiveInstallLogs();
+  const nativeLogs = readHotUpdaterNativeLogs();
   const bsdiffLogs = readBsdiffPatchLogs();
   const archiveFragments = [
     "Skipping manifest-driven install",
@@ -6088,6 +6343,10 @@ async function readManifestDiffState(args: {
     "HotUpdaterBsdiffPatchApplied",
     `asset=${assetPath}`,
     `baseBundleId=${args.previousBundleId}`,
+  ];
+  const manifestFallbackFragments = [
+    `Manifest-driven install failed for ${args.bundleId}`,
+    "Falling back to archive",
   ];
   const record =
     fixtureSession.deployedBundles.find(
@@ -6105,7 +6364,9 @@ async function readManifestDiffState(args: {
       manifest,
     }) &&
     !includesAllFragments(archiveLogs, archiveFragments) &&
-    !includesAllFragments(bsdiffLogs, bsdiffFragments);
+    !includesAllFragments(nativeLogs, manifestFallbackFragments) &&
+    (args.allowBsdiff === true ||
+      !includesAllFragments(bsdiffLogs, bsdiffFragments));
 
   return {
     archiveFragments,
@@ -6118,7 +6379,9 @@ async function readManifestDiffState(args: {
     diagnostics,
     expectedHash,
     manifest,
+    manifestFallbackFragments,
     metadataState,
+    nativeLogs,
     ok,
     record,
   };
@@ -6223,6 +6486,7 @@ async function assertBsdiffPatchApplied(args: {
 }
 
 async function assertManifestDiffApplied(args: {
+  allowBsdiff?: boolean;
   bundleId: string;
   previousBundleId: string;
 }) {
@@ -6260,6 +6524,10 @@ async function assertManifestDiffApplied(args: {
       diagnostics: state.diagnostics,
       expectedHash: state.expectedHash,
       manifest: state.manifest,
+      manifestFallbackLogMatched: includesAllFragments(
+        state.nativeLogs,
+        state.manifestFallbackFragments,
+      ),
       metadataState: state.metadataState,
       platform: fixtureSession.platform,
       previousBundleId: args.previousBundleId,
@@ -6697,6 +6965,10 @@ async function cleanup() {
     fixtureSession.largeArchiveAssetBackupPath,
     fixtureSession.largeArchiveAssetPath,
   );
+  await restoreFile(
+    fixtureSession.sizeAwareLargeAssetBackupPath,
+    fixtureSession.sizeAwareLargeAssetPath,
+  );
   await restoreMultiAssetFixtures();
 
   fixtureSession.appBackupPath = null;
@@ -6704,6 +6976,8 @@ async function cleanup() {
   fixtureSession.envBackupPath = null;
   fixtureSession.largeArchiveAssetBackupPath = null;
   fixtureSession.multiAssetBackupPaths = {};
+  fixtureSession.sizeAwareLargeAssetBackupCaptured = false;
+  fixtureSession.sizeAwareLargeAssetBackupPath = null;
   return {};
 }
 
@@ -6877,6 +7151,7 @@ export async function handleAssertBundlePatchBases(args: {
 }
 
 export async function handleAssertManifestDiffApplied(args: {
+  allowBsdiff?: boolean;
   bundleId: string;
   previousBundleId: string;
 }) {

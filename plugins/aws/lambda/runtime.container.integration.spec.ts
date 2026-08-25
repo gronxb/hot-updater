@@ -23,8 +23,16 @@ import {
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { transformEnv } from "@hot-updater/cli-tools";
-import type { LegacyBundle as Bundle } from "@hot-updater/core";
-import { createClientAccessKey, createHotUpdater } from "@hot-updater/server";
+import {
+  type Bundle,
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+} from "@hot-updater/core";
+import {
+  commitReleaseCatalogMutations,
+  createUUIDv7,
+} from "@hot-updater/plugin-core";
+import { createApiKey, createHotUpdater } from "@hot-updater/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -55,7 +63,6 @@ const CLOUDFRONT_KEY_PAIR_ID = "KTEST";
 const AUTHORITY_ID = "aws.runtime-acceptance";
 const LOCALSTACK_IMAGE = "localstack/localstack:3";
 const LAMBDA_IMAGE = "public.ecr.aws/lambda/nodejs:22";
-const HOT_UPDATER_BASE_PATH = "/";
 const ORIGIN_HOST = `${S3_BUCKET_NAME}.s3.${REGION}.amazonaws.com`;
 const REQUIRED_BUILD_ARTIFACTS = [
   {
@@ -222,6 +229,71 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
   };
 };
 
+const seedProductionRelease = async ({
+  bundle,
+  database,
+}: {
+  readonly bundle: Bundle;
+  readonly database: ReturnType<typeof dynamoDB>;
+}) => {
+  const channelName = "production";
+  const channelKey = encodeChannelKey(channelName);
+  const channel = (
+    await database.models.channels.insert({
+      row: { id: `channel:${channelKey}`, name: channelName },
+      onConflict: "returnExisting",
+    })
+  ).row;
+  const scopeKey = createReleaseCatalogScopeKey({
+    authorityId: AUTHORITY_ID,
+    channelKey,
+    platform: bundle.platform,
+    strategy: "APP_VERSION",
+  });
+  const now = Date.now();
+  await commitReleaseCatalogMutations({
+    database,
+    mutations: [
+      {
+        mutation: {
+          operation: "insert",
+          row: {
+            bundle_id: bundle.id,
+            channel_id: channel.id,
+            created_at_ms: now,
+            enabled: true,
+            fingerprint_hash: null,
+            id: createUUIDv7(),
+            kind: "BUNDLE",
+            message: "hello",
+            operation: "DEPLOY",
+            platform: bundle.platform,
+            revision: 1,
+            rollout_cohort_count: 1_000,
+            scope_key: scopeKey,
+            should_force_update: false,
+            source_release_id: null,
+            strategy: "APP_VERSION",
+            target_app_version: "1.0",
+            target_cohorts: [],
+            updated_at_ms: now,
+          },
+        },
+        scope: {
+          authorityId: AUTHORITY_ID,
+          channelId: channel.id,
+          channelName,
+          fingerprintHash: null,
+          platform: bundle.platform,
+          scopeKey,
+          strategy: "APP_VERSION",
+        },
+        updatedAtMs: now,
+      },
+    ],
+  });
+};
+
 describe.sequential("aws lambda runtime acceptance", () => {
   let localstackPort = 0;
   let lambdaPort = 0;
@@ -304,12 +376,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     seedHotUpdater = createHotUpdater({
       authorityId: AUTHORITY_ID,
       database,
-      features: {
-        updateCheck: true,
-        bundles: false,
-        analytics: {},
-        clientAccessKeys: true,
-      },
+      clientAccess: { type: "api-key" },
       storage: [
         s3Storage({
           bucketName: S3_BUCKET_NAME,
@@ -328,7 +395,6 @@ describe.sequential("aws lambda runtime acceptance", () => {
           }),
         }),
       ],
-      basePath: HOT_UPDATER_BASE_PATH,
     });
 
     runtimeDir = await mkdtemp(
@@ -367,8 +433,8 @@ describe.sequential("aws lambda runtime acceptance", () => {
       clearBucket(s3Client, S3_BUCKET_NAME),
       clearDynamoDBTable(dynamodbClient),
     ]);
-    const created = await createClientAccessKey({
-      clientAccessKeys: database.models.clientAccessKeys,
+    const created = await createApiKey({
+      apiKeys: database.models.apiKeys,
       name: "Runtime test",
     });
     rawApiKey = created.apiKey;
@@ -406,23 +472,18 @@ describe.sequential("aws lambda runtime acceptance", () => {
   });
 
   it("serves unversioned Release Catalog routes from the packaged lambda entrypoint", async () => {
-    await seedHotUpdater.insertBundle(
-      toRuntimeBundle({
-        id: "00000000-0000-0000-0000-000000000001",
-        platform: "ios",
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: true,
-        fileHash: "hash",
-        gitCommitHash: null,
-        message: "hello",
-        channel: "production",
-        storageUri: "storage://unused",
-        fingerprintHash: null,
-      }),
-    );
+    const bundle = toRuntimeBundle({
+      id: "00000000-0000-0000-0000-000000000001",
+      platform: "ios",
+      fileHash: "hash",
+      gitCommitHash: null,
+      storageUri: "storage://unused",
+      archiveByteSize: 3_000_000_001,
+    });
+    await seedHotUpdater.insertBundle(bundle);
+    await seedProductionRelease({ bundle, database });
 
-    const updatePath = `/release-catalogs/app-version/${encodeURIComponent(AUTHORITY_ID)}/ios/cHJvZHVjdGlvbg/1.0.0`;
+    const updatePath = "/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0";
     const unauthorizedResponse = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
@@ -447,10 +508,12 @@ describe.sequential("aws lambda runtime acceptance", () => {
 
     expect(unauthorizedPayload.status).toBe("401");
     const body = (await readLambdaJson(payload)) as {
+      authorityId?: string;
       releases?: { bundleId?: string }[];
     };
 
     expect(body).toMatchObject({
+      authorityId: AUTHORITY_ID,
       releases: [{ bundleId: "00000000-0000-0000-0000-000000000001" }],
     });
   });
@@ -476,7 +539,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     const response = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
-        path: "/api/bundles",
+        path: "/admin/bundles",
         headers: new Headers(),
       }),
     );
@@ -500,6 +563,8 @@ describe.sequential("aws lambda runtime acceptance", () => {
       cohort: "default",
       fingerprintHash: null,
       fromBundleId: null,
+      fromReleaseId: null,
+      toReleaseId: null,
       updateStrategy: null,
     };
     const unauthorizedIngestionResponse = await invokeLambda(
@@ -532,7 +597,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     expect(unauthorizedIngestionPayload.status).toBe("401");
     expect(ingestionPayload.status).toBe("204");
 
-    const protectedPath = "/api/installations/overview";
+    const protectedPath = "/admin/installations/overview";
     const unauthorizedResponse = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
@@ -544,7 +609,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       status?: string;
     };
 
-    expect(unauthorizedPayload.status).toBe("401");
+    expect(unauthorizedPayload.status).toBe("404");
 
     const authorizedResponse = await invokeLambda(
       lambdaPort,
@@ -558,9 +623,9 @@ describe.sequential("aws lambda runtime acceptance", () => {
       status?: string;
     };
 
-    expect(authorizedPayload.status).toBe("401");
+    expect(authorizedPayload.status).toBe("404");
     await expect(readLambdaJson(authorizedPayload)).resolves.toEqual({
-      error: "Unauthorized",
+      error: "Not found",
     });
 
     await expect(

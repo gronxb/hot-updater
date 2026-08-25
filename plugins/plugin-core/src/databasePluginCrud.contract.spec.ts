@@ -31,10 +31,42 @@ const bundleRow = {
   file_hash: "hash-1",
   git_commit_hash: null,
   storage_uri: "storage://bundle-1.zip",
+  archive_byte_size: 3_000_000_001,
   metadata: {},
   manifest_storage_uri: null,
   manifest_file_hash: null,
   asset_base_storage_uri: null,
+};
+
+const patchRow = {
+  id: "patch-1",
+  bundle_id: bundleRow.id,
+  base_bundle_id: "base-1",
+  base_file_hash: "base-hash",
+  patch_file_hash: "patch-hash",
+  patch_storage_uri: "storage://patch-1",
+  byte_size: 3_000_000_002,
+  order_index: 0,
+};
+
+const bundleEventRow = {
+  id: "event-1",
+  type: "UPDATE_APPLIED" as const,
+  install_id: "install-1",
+  user_id: null,
+  username: null,
+  from_release_id: null,
+  from_bundle_id: "bundle-old",
+  to_release_id: null,
+  to_bundle_id: "bundle-new",
+  platform: "ios" as const,
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "default",
+  update_strategy: "fingerprint" as const,
+  fingerprint_hash: null,
+  sdk_version: null,
+  received_at_ms: 1,
 };
 
 const invoke = (
@@ -153,6 +185,116 @@ describe("database plugin CRUD runtime contract", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["bundles", bundleRow, "archive_byte_size"],
+    ["bundle_patches", patchRow, "byte_size"],
+  ] as const)(
+    "rejects invalid required byte sizes for %s before provider execution",
+    async (model, row, field) => {
+      for (const value of [
+        -1,
+        1.5,
+        Number.MAX_SAFE_INTEGER + 1,
+        "1",
+        Number.NaN,
+        Number.POSITIVE_INFINITY,
+      ]) {
+        const create = vi.fn(async ({ data }) => data);
+        const plugin = createValidatedCrud({
+          name: "byte-size-input-contract",
+          plugin: () => ({ ...createMethods(), create }),
+        });
+
+        const result = invoke(plugin, "create", {
+          model,
+          data: { ...row, [field]: value },
+        });
+
+        await expect(result).rejects.toMatchObject({ code: "invalid-data" });
+        expect(create).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it.each([
+    ["bundles", { ...bundleRow, archive_byte_size: 0 }],
+    ["bundle_patches", { ...patchRow, byte_size: Number.MAX_SAFE_INTEGER }],
+  ] as const)("accepts boundary byte sizes for %s", async (model, data) => {
+    const create = vi.fn(async ({ data: input }) => input);
+    const plugin = createValidatedCrud({
+      name: "byte-size-boundary-contract",
+      plugin: () => ({ ...createMethods(), create }),
+    });
+
+    await expect(invoke(plugin, "create", { model, data })).resolves.toEqual(
+      data,
+    );
+    expect(create).toHaveBeenCalledOnce();
+  });
+
+  it("accepts explicit null Release ids on an Analytics event", async () => {
+    const create = vi.fn(async ({ data }) => data);
+    const plugin = createValidatedCrud({
+      name: "analytics-create-contract",
+      plugin: () => ({ ...createMethods(), create }),
+    });
+
+    await expect(
+      invoke(plugin, "create", {
+        model: "bundle_events",
+        data: bundleEventRow,
+      }),
+    ).resolves.toMatchObject({
+      from_release_id: null,
+      to_release_id: null,
+    });
+  });
+
+  it.each(["from_release_id", "to_release_id"])(
+    "rejects an omitted Analytics create field: %s",
+    async (field) => {
+      const create = vi.fn(async ({ data }) => data);
+      const plugin = createValidatedCrud({
+        name: "analytics-create-contract",
+        plugin: () => ({ ...createMethods(), create }),
+      });
+      const data: Record<string, unknown> = { ...bundleEventRow };
+      delete data[field];
+
+      const result = invoke(plugin, "create", {
+        model: "bundle_events",
+        data,
+      });
+
+      await expect(result).rejects.toMatchObject({ code: "invalid-data" });
+      expect(create).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { from_bundle_id: null },
+    { to_bundle_id: null },
+    {
+      type: "UNCHANGED",
+      from_bundle_id: "bundle-old",
+      update_strategy: null,
+    },
+  ])("rejects an invalid Analytics direction shape", async (overrides) => {
+    const create = vi.fn(async ({ data }) => data);
+    const plugin = createValidatedCrud({
+      name: "analytics-direction-contract",
+      plugin: () => ({ ...createMethods(), create }),
+    });
+
+    const result = invoke(plugin, "create", {
+      model: "bundle_events",
+      data: { ...bundleEventRow, ...overrides },
+    });
+
+    await expect(result).rejects.toMatchObject({ code: "invalid-data" });
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("rejects duplicate order fields before provider execution", async () => {
     const findMany = vi.fn(async () => []);
     const plugin = createValidatedCrud({
@@ -196,6 +338,33 @@ describe("database plugin CRUD runtime contract", () => {
       offset: 0,
     });
   });
+
+  it.each([
+    ["bundles", "archive_byte_size", 3_000_000_001],
+    ["bundle_patches", "byte_size", 3_000_000_002],
+  ] as const)(
+    "forwards numeric byte-size comparison and sorting for %s",
+    async (model, field, value) => {
+      const findMany = vi.fn(async () => []);
+      const plugin = createValidatedCrud({
+        name: "byte-size-query-contract",
+        plugin: () => ({ ...createMethods(), findMany }),
+      });
+      const where = [{ field, operator: "gte" as const, value }];
+      const orderBy = [{ field, direction: "desc" as const }];
+
+      await expect(
+        invoke(plugin, "findMany", { model, where, orderBy }),
+      ).resolves.toEqual([]);
+      expect(findMany).toHaveBeenCalledWith({
+        model,
+        where,
+        orderBy,
+        limit: 100,
+        offset: 0,
+      });
+    },
+  );
 
   it.each([
     null,
@@ -341,6 +510,31 @@ describe("database plugin CRUD runtime contract", () => {
     await expect(result).rejects.toMatchObject({ code: "invalid-result" });
   });
 
+  it.each([
+    ["bundles", bundleRow, "archive_byte_size"],
+    ["bundle_patches", patchRow, "byte_size"],
+  ] as const)(
+    "rejects a %s provider result missing its required byte size",
+    async (model, row, field) => {
+      const returnedRow: Record<string, unknown> = { ...row };
+      delete returnedRow[field];
+      const plugin = createValidatedCrud({
+        name: "byte-size-result-contract",
+        plugin: () => ({
+          ...createMethods(),
+          findOne: async () => returnedRow,
+        }),
+      });
+
+      const result = invoke(plugin, "findOne", {
+        model,
+        where: [{ field: "id", value: row.id }],
+      });
+
+      await expect(result).rejects.toMatchObject({ code: "invalid-result" });
+    },
+  );
+
   it.each(["{}", { nested: () => true }])(
     "rejects malformed metadata returned by a provider",
     async (metadata) => {
@@ -358,6 +552,28 @@ describe("database plugin CRUD runtime contract", () => {
         model: "bundles",
         where: [{ field: "id", value: bundleRow.id }],
         select: ["metadata"],
+      });
+
+      await expect(result).rejects.toMatchObject({ code: "invalid-result" });
+    },
+  );
+
+  it.each(["from_release_id", "to_release_id"])(
+    "rejects an omitted Analytics provider result field: %s",
+    async (field) => {
+      const row: Record<string, unknown> = { ...bundleEventRow };
+      delete row[field];
+      const plugin = createValidatedCrud({
+        name: "analytics-result-contract",
+        plugin: () => ({
+          ...createMethods(),
+          findOne: async () => row,
+        }),
+      });
+
+      const result = invoke(plugin, "findOne", {
+        model: "bundle_events",
+        where: [{ field: "id", value: bundleEventRow.id }],
       });
 
       await expect(result).rejects.toMatchObject({ code: "invalid-result" });

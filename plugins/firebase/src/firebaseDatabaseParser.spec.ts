@@ -1,14 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import { createBundleRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
-import { parseFirebaseBundleRow } from "./firebaseDatabaseParser";
+import {
+  createBundlePatchRowFixture,
+  createBundleEventRowFixture,
+  createBundleRowFixture,
+} from "../../../packages/test-utils/src/databaseTestFixtures";
+import {
+  parseFirebaseBundleEventRow,
+  parseFirebaseBundleRow,
+  parseFirebasePatchRow,
+} from "./firebaseDatabaseParser";
 
 describe("parseFirebaseBundleRow", () => {
-  it("keeps compatibility for a missing legacy metadata field", () => {
+  it("rejects a missing metadata field", () => {
     const { metadata: _metadata, ...row } =
       createBundleRowFixture("missing-metadata");
 
-    expect(parseFirebaseBundleRow(row, "bundles/legacy").metadata).toEqual({});
+    expect(() =>
+      parseFirebaseBundleRow(row, "bundles/missing-metadata"),
+    ).toThrow("Invalid Firebase database data");
   });
 
   it("rejects explicit null metadata", () => {
@@ -19,6 +29,87 @@ describe("parseFirebaseBundleRow", () => {
           metadata: null,
         },
         "bundles/null-metadata",
+      ),
+    ).toThrow("Invalid Firebase database data");
+  });
+
+  it("preserves safe archive sizes above 2 GiB", () => {
+    expect(
+      parseFirebaseBundleRow(createBundleRowFixture("large"), "bundles/large"),
+    ).toMatchObject({ archive_byte_size: 3_000_000_001 });
+  });
+
+  it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN])(
+    "rejects invalid archive size %s",
+    (archiveByteSize) => {
+      expect(() =>
+        parseFirebaseBundleRow(
+          {
+            ...createBundleRowFixture("invalid-size"),
+            archive_byte_size: archiveByteSize,
+          },
+          "bundles/invalid-size",
+        ),
+      ).toThrow("Invalid Firebase database data");
+    },
+  );
+});
+
+describe("parseFirebasePatchRow", () => {
+  const row = createBundlePatchRowFixture("large", "bundle", "base");
+
+  it("preserves safe patch sizes above 2 GiB", () => {
+    expect(parseFirebasePatchRow(row, "bundle_patches/large")).toMatchObject({
+      byte_size: 3_000_000_002,
+    });
+  });
+
+  it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN])(
+    "rejects invalid patch size %s",
+    (patchByteSize) => {
+      expect(() =>
+        parseFirebasePatchRow(
+          { ...row, byte_size: patchByteSize },
+          "bundle_patches/invalid-size",
+        ),
+      ).toThrow("Invalid Firebase database data");
+    },
+  );
+});
+
+describe("parseFirebaseBundleEventRow", () => {
+  it("preserves explicit null Release ids", () => {
+    expect(
+      parseFirebaseBundleEventRow(
+        createBundleEventRowFixture("1", 1),
+        "bundle_events/event-1",
+      ),
+    ).toMatchObject({ from_release_id: null, to_release_id: null });
+  });
+
+  it.each(["from_release_id", "to_release_id"])(
+    "rejects an omitted field: %s",
+    (field) => {
+      const row: Record<string, unknown> = {
+        ...createBundleEventRowFixture("1", 1),
+      };
+      delete row[field];
+
+      expect(() =>
+        parseFirebaseBundleEventRow(row, "bundle_events/event-1"),
+      ).toThrow("Invalid Firebase database data");
+    },
+  );
+
+  it.each([
+    { from_bundle_id: null },
+    { to_bundle_id: null },
+    { type: "UNCHANGED", from_bundle_id: "bundle-old", update_strategy: null },
+  ])("rejects an invalid direction shape", (overrides) => {
+    expect(() =>
+      parseFirebaseBundleEventRow(
+        { ...createBundleEventRowFixture("1", 1), ...overrides },
+        "bundle_events/event-1",
       ),
     ).toThrow("Invalid Firebase database data");
   });

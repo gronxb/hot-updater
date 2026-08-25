@@ -117,8 +117,8 @@ export const findManyPostgresRows = async (
       }
       return query.limit(input.limit).offset(input.offset).execute();
     }
-    case "client_access_keys": {
-      let query = db.selectFrom("client_access_keys").selectAll();
+    case "api_keys": {
+      let query = db.selectFrom("api_keys").selectAll();
       if (where !== undefined) query = query.where(where);
       if (input.distinctOn !== undefined) {
         query = query.distinctOn(input.distinctOn.fields);

@@ -2,6 +2,7 @@ import { existsSync, statSync } from "fs";
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
+import type { ApiKeyManagementAPI } from "@hot-updater/server";
 import { createJiti } from "jiti";
 
 import { ui } from "../../utils/cli-ui";
@@ -11,9 +12,12 @@ import {
   resolveGeneratedSchemaPlaceholderPath,
 } from "./generated-schema-placeholder";
 
+export type { ApiKeyManagementAPI, ApiKeyMetadata } from "@hot-updater/server";
+
 export interface HotUpdaterInstance {
   adapterName: string;
   authorityId: string;
+  apiKeys?: ApiKeyManagementAPI;
 }
 
 export interface LoadHotUpdaterResult {
@@ -167,6 +171,7 @@ export async function loadHotUpdater(
         "  import { kyselyAdapter } from '@hot-updater/server/adapters/kysely';\n\n" +
         "  export const hotUpdater = createHotUpdater({\n" +
         "    database: kyselyAdapter({ db: kysely, provider: 'postgresql' }),\n" +
+        '    clientAccess: { type: "api-key" },\n' +
         "    storage: [...],\n" +
         "  });",
     );

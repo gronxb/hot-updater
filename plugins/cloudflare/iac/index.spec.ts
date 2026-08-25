@@ -22,6 +22,9 @@ const mocks = vi.hoisted(() => {
       },
     },
     workers: {
+      scripts: {
+        list: vi.fn(),
+      },
       subdomains: {
         get: vi.fn(),
       },
@@ -158,6 +161,7 @@ describe("Cloudflare init discovery", () => {
     mocks.api.workers.subdomains.get.mockResolvedValue({
       subdomain: "example",
     });
+    mocks.api.workers.scripts.list.mockResolvedValue({ result: [] });
     mocks.api.d1.database.query.mockResolvedValue({
       async *iterPages() {
         yield { result: [{ results: [] }] };
@@ -327,6 +331,28 @@ describe("Cloudflare init discovery", () => {
 
     expect(mocks.makeEnv).not.toHaveBeenCalled();
     expect(mocks.api.workers.subdomains.get).not.toHaveBeenCalled();
+    expect(mocks.createWrangler).not.toHaveBeenCalled();
+  });
+
+  it("blocks an existing v0 Worker before changing infrastructure", async () => {
+    mocks.api.d1.database.list.mockResolvedValue({
+      result: [{ name: "ota", uuid: "database-id" }],
+    });
+    mocks.api.workers.scripts.list.mockResolvedValue({
+      result: [{ id: "hot-updater" }],
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 404 }));
+
+    await expect(runInit({ build: "bare" })).rejects.toThrow(
+      "Cloudflare v0 infrastructure was detected at Worker hot-updater",
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://hot-updater.example.workers.dev/version",
+    );
+    expect(mocks.makeEnv).not.toHaveBeenCalled();
     expect(mocks.createWrangler).not.toHaveBeenCalled();
   });
 

@@ -7,6 +7,7 @@ import { transformFileSync } from "@babel/core";
 import { describe, expect, it } from "vitest";
 
 import type { JsonObject } from "./control-client.ts";
+import { PAX_LONG_ASSET_MANIFEST_PATH } from "./pax-long-path-fixture.ts";
 import {
   getDetoxScenarioDefinition,
   listDetoxScenarioNames,
@@ -101,6 +102,7 @@ const defaultDetoxScenarioNames = [
   "fingerprint-initial-install",
   "catalog-only-no-update",
   "same-bundle-release-adoption",
+  "size-aware-artifact-selection",
   "stale-catalog-after-newer-generation",
   "slow-old-artifact-after-newer-install",
   "failed-download-same-generation-retry",
@@ -265,10 +267,12 @@ describe("Detox scenario contract", () => {
       ),
     );
 
-    // When / Then: every profile server mounts public analytics routes so the
-    // provider-backed checkpoint can verify Release and Bundle identities.
+    // When / Then: server Analytics needs no per-profile flag, while every
+    // profile still declares its client access policy explicitly.
     for (const source of sources) {
-      expect(source).toContain('analytics: { queryAccess: "public" }');
+      expect(source).toContain("clientAccess: { type:");
+      expect(source).not.toContain("analytics: true");
+      expect(source).not.toContain("features:");
     }
   });
 
@@ -277,7 +281,7 @@ describe("Detox scenario contract", () => {
 
     expect(detoxScenarios).toEqual(defaultDetoxScenarioNames);
     expect(listDetoxScenarioNames()).toEqual(defaultDetoxScenarioNames);
-    expect(new Set(listDetoxScenarioNames()).size).toBe(25);
+    expect(new Set(listDetoxScenarioNames()).size).toBe(26);
   });
 
   it("keeps repeated catalog checks as no-ops while already built-in", async () => {
@@ -1827,6 +1831,98 @@ describe("Detox scenario contract", () => {
       "assert archive diff marker",
       "assert archive diff stable launch",
     ]);
+    expect(
+      (
+        await controlStepBody(
+          "bspatch-archive-to-diff-ota",
+          "deploy archive base bundle",
+        )
+      ).compressStrategy,
+    ).toBe("tar.gz");
+  });
+
+  it("proves size-aware choices at separate Release and Bundle identity layers", async () => {
+    const scenarioName = "size-aware-artifact-selection";
+    const calls = await recordScenarioCalls(scenarioName);
+    const deployCalls = calls.filter(
+      (call) =>
+        call.kind === "control" && call.pathName === "/e2e/jobs/deploy-bundle",
+    );
+
+    expect(deployCalls).toHaveLength(3);
+    expect(
+      await controlStepBody(
+        scenarioName,
+        "deploy size-aware small diff bundle",
+      ),
+    ).toMatchObject({
+      compressStrategy: "tar.br",
+      diffBaseBundleId: "$sizeAwareBaseBundleId",
+      patchMaxBaseBundles: 1,
+    });
+    expect(
+      await controlStepBody(
+        scenarioName,
+        "deploy size-aware large diff bundle",
+      ),
+    ).toMatchObject({
+      bundleProfile: "sizeAwareLargeDiff",
+      compressStrategy: "tar.br",
+      diffBaseBundleId: "$sizeAwareSmallBundleId",
+      patchMaxBaseBundles: 1,
+    });
+    expect(
+      await controlStepDefinition(
+        scenarioName,
+        "assert size-aware small manifest selection",
+      ),
+    ).toMatchObject({
+      body: {
+        currentBundleId: "$sizeAwareBaseBundleId",
+        selection: "manifest-diff",
+        targetBundleId: "$sizeAwareSmallBundleId",
+      },
+      pathName: "/e2e/assert-bundle-artifact-selection",
+    });
+    expect(
+      await controlStepDefinition(
+        scenarioName,
+        "assert size-aware large archive selection",
+      ),
+    ).toMatchObject({
+      body: {
+        currentBundleId: "$sizeAwareSmallBundleId",
+        selection: "archive-only",
+        targetBundleId: "$sizeAwareLargeBundleId",
+      },
+      pathName: "/e2e/assert-bundle-artifact-selection",
+    });
+
+    for (const phase of ["small", "large"] as const) {
+      const releaseAssertionIndex = calls.findIndex(
+        (call) =>
+          call.kind === "assertText" &&
+          call.stage === `assert size-aware ${phase} Release installed` &&
+          call.testID === "update-action-result" &&
+          call.options?.exactText === true,
+      );
+      const byteAssertionIndex = calls.findIndex(
+        (call) =>
+          call.kind === "control" &&
+          call.stage ===
+            `assert size-aware ${phase} ${phase === "small" ? "manifest" : "archive"} selection`,
+      );
+      const proxyResetIndex = calls.findIndex(
+        (call) =>
+          call.kind === "control" &&
+          call.stage === `reset size-aware ${phase} artifact evidence` &&
+          call.pathName === "/e2e/proxy-control",
+      );
+
+      expect(proxyResetIndex, phase).toBeGreaterThan(-1);
+      expect(releaseAssertionIndex, phase).toBeGreaterThan(proxyResetIndex);
+      expect(byteAssertionIndex, phase).toBeGreaterThan(releaseAssertionIndex);
+    }
   });
 
   it("keeps bsdiff install phases aligned with Maestro metadata-first assertions", async () => {
@@ -1885,7 +1981,36 @@ describe("Detox scenario contract", () => {
       "reload second multi-asset update",
       "wait second multi-asset metadata stable",
       "assert multi-assets replaced",
+      "assert multi-asset manifest reuse",
     ]);
+    const firstDeploy = await controlStepBody(
+      "multi-asset-replacement",
+      "deploy first multi-asset bundle",
+    );
+    const secondDeploy = await controlStepBody(
+      "multi-asset-replacement",
+      "deploy second multi-asset bundle",
+    );
+    expect(firstDeploy.compressStrategy).toBe("tar.br");
+    expect(secondDeploy.compressStrategy).toBe("tar.br");
+    expect(
+      (
+        await controlStepBody(
+          "multi-asset-replacement",
+          "assert first multi-assets stored",
+        )
+      ).assetPaths,
+    ).toContain(PAX_LONG_ASSET_MANIFEST_PATH);
+    expect(
+      await controlStepBody(
+        "multi-asset-replacement",
+        "assert multi-asset manifest reuse",
+      ),
+    ).toEqual({
+      allowBsdiff: true,
+      bundleId: "$secondBundleId",
+      previousBundleId: "$firstBundleId",
+    });
     expect(
       (
         await controlStepBody(

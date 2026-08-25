@@ -10,6 +10,17 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isNonNegativeInteger = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= 0;
 
+const isByteSize = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+const isBundlePatch = (value: unknown): boolean =>
+  isRecord(value) &&
+  typeof value.baseBundleId === "string" &&
+  typeof value.baseFileHash === "string" &&
+  isByteSize(value.byteSize) &&
+  typeof value.patchFileHash === "string" &&
+  typeof value.patchStorageUri === "string";
+
 const isChannelText = (value: unknown): value is string => {
   if (typeof value !== "string" || value.length === 0) return false;
   let codePoints = 0;
@@ -28,7 +39,11 @@ export const isBundle = (value: unknown): value is Bundle =>
   typeof value.id === "string" &&
   (value.platform === "ios" || value.platform === "android") &&
   typeof value.fileHash === "string" &&
-  typeof value.storageUri === "string";
+  typeof value.storageUri === "string" &&
+  isByteSize(value.archiveByteSize) &&
+  (value.patches === undefined ||
+    value.patches === null ||
+    (Array.isArray(value.patches) && value.patches.every(isBundlePatch)));
 
 const isPaginationInfo = (
   value: unknown,

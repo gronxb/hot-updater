@@ -1,4 +1,5 @@
 export * from "./BuildLogger";
+export * from "./apiKeyNote";
 export * from "./banner";
 export * from "./bundleSigning";
 export * from "./ConfigBuilder";
@@ -16,6 +17,7 @@ export * from "./getReactNativeMetadatas";
 export * from "./hotUpdaterConfig";
 export * from "./hotUpdaterEnv";
 export * from "./HotUpdateDirUtil";
+export * from "./infrastructureGeneration";
 export * from "./initProvider";
 export * from "./initOptions";
 export * from "./LogWriter";

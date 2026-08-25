@@ -10,6 +10,7 @@ const createBundle = (overrides: Partial<Bundle>): Bundle => ({
   platform: "ios",
   fileHash: "bundle-hash",
   storageUri: "s3://bucket/bundle.zip",
+  archiveByteSize: 3_000_000_001,
   gitCommitHash: "deadbeef",
   ...overrides,
 });
@@ -57,12 +58,14 @@ describe("getBundleChildren", () => {
           baseFileHash: "older-base-hash",
           patchFileHash: "older-patch-hash",
           patchStorageUri: "s3://bucket/older.patch",
+          byteSize: 3_000_000_002,
         },
         {
           baseBundleId: baseBundle.id,
           baseFileHash: "base-hash",
           patchFileHash: "patch-hash",
           patchStorageUri: "s3://bucket/base.patch",
+          byteSize: 3_000_000_003,
         },
       ],
     });
@@ -74,6 +77,7 @@ describe("getBundleChildren", () => {
           baseFileHash: "other-base-hash",
           patchFileHash: "other-patch-hash",
           patchStorageUri: "s3://bucket/other.patch",
+          byteSize: 3_000_000_004,
         },
       ],
     });
@@ -104,12 +108,14 @@ describe("getBundleChildren", () => {
           baseFileHash: "base-hash",
           patchFileHash: "patch-hash",
           patchStorageUri: "s3://bucket/base.patch",
+          byteSize: 3_000_000_002,
         },
         {
           baseBundleId: olderBaseBundle.id,
           baseFileHash: "older-base-hash",
           patchFileHash: "older-patch-hash",
           patchStorageUri: "s3://bucket/older.patch",
+          byteSize: 3_000_000_003,
         },
       ],
     });

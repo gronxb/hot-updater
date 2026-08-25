@@ -19,6 +19,7 @@ const bundle = (sequence: number): Bundle => ({
   fileHash: `hash-${sequence}`,
   gitCommitHash: null,
   storageUri: `storage://bundle-${sequence}.zip`,
+  archiveByteSize: 3_000_000_001 + sequence,
   metadata: {},
 });
 
@@ -29,6 +30,7 @@ const patchRow = (owner: Bundle, base: Bundle) => ({
   base_file_hash: base.fileHash,
   patch_file_hash: `patch-${base.id}`,
   patch_storage_uri: `storage://patch-${base.id}`,
+  byte_size: 3_000_000_002,
   order_index: 0,
 });
 
@@ -41,10 +43,7 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
   it("retries concurrent idempotent channel inserts without dropping either bundle", async () => {
     const plugin = fixture.createPlugin();
     const channel = { id: productionChannelId, name: "production" } as const;
-    const rows = [
-      bundleToRow(bundle(901), channel.id),
-      bundleToRow(bundle(902), channel.id),
-    ];
+    const rows = [bundleToRow(bundle(901)), bundleToRow(bundle(902))];
 
     await expect(
       Promise.all(
@@ -117,6 +116,7 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
         baseFileHash: base.fileHash,
         patchFileHash: `patch-${base.id}`,
         patchStorageUri: `storage://patch-${base.id}`,
+        byteSize: 3_000_000_002,
       })),
     };
 
@@ -127,6 +127,7 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
         baseFileHash: base.fileHash,
         patchFileHash: `updated-patch-${base.id}`,
         patchStorageUri: `storage://updated-patch-${base.id}`,
+        byteSize: 3_000_000_003,
       })),
     });
     await expect(database.getBundleById(owner.id)).resolves.toMatchObject({
@@ -140,7 +141,7 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
         client: fixture.client,
         tableName: fixture.tableName,
       }).insertBundleWithPatches({
-        bundle: bundleToRow(bundle(200), productionChannelId),
+        bundle: bundleToRow(bundle(200)),
         patches: Array.from({ length: 101 }, (_, index) =>
           patchRow(bundle(200), bundle(index + 300)),
         ),
@@ -162,6 +163,7 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
             baseFileHash: base.fileHash,
             patchFileHash: `patch-${sequence}`,
             patchStorageUri: `storage://patch-${sequence}`,
+            byteSize: 3_000_000_002 + sequence,
           },
         ],
       });
@@ -175,6 +177,7 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
           baseFileHash: base.fileHash,
           patchFileHash: "patch-26",
           patchStorageUri: "storage://patch-26",
+          byteSize: 3_000_000_028,
         },
       ],
     });

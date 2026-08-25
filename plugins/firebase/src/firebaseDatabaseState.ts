@@ -2,7 +2,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   BundleEventRow,
-  ClientAccessKeyRow,
+  ApiKeyRow,
   ChannelRow,
   ReleaseCatalogRow,
   ReleaseRow,
@@ -22,7 +22,7 @@ export interface FirebaseDatabaseSnapshot {
   readonly bundlePatches: Map<string, BundlePatchRow>;
   readonly bundleEvents: Map<string, BundleEventRow>;
   readonly channels: Map<string, ChannelRow>;
-  readonly clientAccessKeys: Map<string, ClientAccessKeyRow>;
+  readonly apiKeys: Map<string, ApiKeyRow>;
   readonly releaseCatalogs: Map<string, ReleaseCatalogRow>;
   readonly releases: Map<string, ReleaseRow>;
 }
@@ -42,7 +42,7 @@ export const cloneFirebaseDatabaseSnapshot = (
   bundlePatches: new Map(snapshot.bundlePatches),
   bundleEvents: new Map(snapshot.bundleEvents),
   channels: new Map(snapshot.channels),
-  clientAccessKeys: new Map(snapshot.clientAccessKeys),
+  apiKeys: new Map(snapshot.apiKeys),
   releaseCatalogs: new Map(snapshot.releaseCatalogs),
   releases: new Map(snapshot.releases),
 });
@@ -134,30 +134,28 @@ export const createFirebaseDatabaseState = (
         snapshot.channels.set(input.data.id, input.data);
         return input.data;
       }
-      case "client_access_keys": {
-        const existing = [...snapshot.clientAccessKeys.values()].find(
+      case "api_keys": {
+        const existing = [...snapshot.apiKeys.values()].find(
           ({ hash }) => hash === input.data.hash,
         );
         if (existing && input.onConflict === "ignore") return existing;
-        requireUnique(snapshot.clientAccessKeys, input.data.id, input.model);
+        requireUnique(snapshot.apiKeys, input.data.id, input.model);
         if (existing) {
-          throw new FirebaseDatabaseConstraintError(
-            "client_access_keys.hash.unique",
-          );
+          throw new FirebaseDatabaseConstraintError("api_keys.hash.unique");
         }
-        snapshot.clientAccessKeys.set(input.data.id, input.data);
+        snapshot.apiKeys.set(input.data.id, input.data);
         return input.data;
       }
     }
   },
   async update(input): Promise<DatabaseImplementationResult | null> {
-    if (input.model === "client_access_keys") {
-      const current = [...snapshot.clientAccessKeys.values()].find((row) =>
+    if (input.model === "api_keys") {
+      const current = [...snapshot.apiKeys.values()].find((row) =>
         matchesFirebaseDatabaseWhere(row, input.where),
       );
       if (!current) return null;
       const updated = { ...current, ...input.update };
-      snapshot.clientAccessKeys.set(current.id, updated);
+      snapshot.apiKeys.set(current.id, updated);
       return updated;
     }
     if (input.model === "releases") {
@@ -259,9 +257,9 @@ export const createFirebaseDatabaseState = (
             matchesFirebaseDatabaseWhere(row, input.where),
           ) ?? null
         );
-      case "client_access_keys":
+      case "api_keys":
         return (
-          [...snapshot.clientAccessKeys.values()].find((row) =>
+          [...snapshot.apiKeys.values()].find((row) =>
             matchesFirebaseDatabaseWhere(row, input.where),
           ) ?? null
         );
@@ -310,11 +308,8 @@ export const createFirebaseDatabaseState = (
           [...snapshot.channels.values()],
           input,
         );
-      case "client_access_keys":
-        return queryFirebaseDatabaseRows(
-          [...snapshot.clientAccessKeys.values()],
-          input,
-        );
+      case "api_keys":
+        return queryFirebaseDatabaseRows([...snapshot.apiKeys.values()], input);
       case "releases":
         return queryFirebaseDatabaseRows<"releases">(
           [...snapshot.releases.values()],

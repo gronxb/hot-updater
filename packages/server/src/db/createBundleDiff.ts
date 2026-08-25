@@ -24,7 +24,15 @@ import {
 
 type BundleManifest = {
   bundleId: string;
-  assets: Record<string, { fileHash: string; signature?: string }>;
+  assets: Record<
+    string,
+    {
+      downloadByteSize?: unknown;
+      downloadFileHash?: unknown;
+      fileHash: string;
+      signature?: string;
+    }
+  >;
 };
 
 export interface CreateBundleDiffInput {
@@ -179,6 +187,7 @@ async function fetchAssetBytes(
     const compressedAssetStorageUri = resolveManifestAssetStorageUri({
       assetBaseStorageUri,
       assetPath: downloadPath,
+      downloadFileHash: asset.downloadFileHash,
       fileHash: asset.fileHash,
     });
 
@@ -221,12 +230,8 @@ function buildNextPatchState({
   const orderedPatches = makePrimary
     ? [nextPatch, ...existingPatches]
     : [...existingPatches, nextPatch];
-  const primaryPatch = orderedPatches[0] ?? nextPatch;
 
-  return {
-    patches: orderedPatches,
-    primaryPatch,
-  };
+  return orderedPatches;
 }
 
 export async function createBundleDiff(
@@ -298,6 +303,10 @@ export async function createBundleDiff(
   ]);
 
   const patchBytes = await hdiff(baseBytes, targetBytes);
+  const patchFileHash = crypto
+    .createHash("sha256")
+    .update(patchBytes)
+    .digest("hex");
   const patchFilename = `${path.posix.basename(targetAssetPath)}.bsdiff`;
   const previousPatch = getBundlePatch(targetBundle, baseBundle.id);
 
@@ -305,6 +314,7 @@ export async function createBundleDiff(
     targetBundle.id,
     "patches",
     baseBundle.id,
+    patchFileHash,
     getRelativeStorageDir(targetAssetPath),
     patchFilename,
   );
@@ -319,18 +329,15 @@ export async function createBundleDiff(
     contentLength: patchBytes.byteLength,
     contentType: "application/octet-stream",
   });
-  const patchFileHash = crypto
-    .createHash("sha256")
-    .update(patchBytes)
-    .digest("hex");
 
   const nextPatch = {
     baseBundleId: baseBundle.id,
     baseFileHash: baseAssetHash,
+    byteSize: patchBytes.byteLength,
     patchFileHash,
     patchStorageUri: patchUpload.storageUri,
   };
-  const nextState = buildNextPatchState({
+  const patches = buildNextPatchState({
     currentBundle: targetBundle,
     nextPatch,
     makePrimary: options.makePrimary ?? true,
@@ -338,11 +345,7 @@ export async function createBundleDiff(
 
   const updatedBundle: Bundle = {
     ...targetBundle,
-    patches: nextState.patches,
-    patchBaseBundleId: nextState.primaryPatch.baseBundleId,
-    patchBaseFileHash: nextState.primaryPatch.baseFileHash,
-    patchFileHash: nextState.primaryPatch.patchFileHash,
-    patchStorageUri: nextState.primaryPatch.patchStorageUri,
+    patches,
   };
   await database.updateBundleById(targetBundle.id, updatedBundle);
 

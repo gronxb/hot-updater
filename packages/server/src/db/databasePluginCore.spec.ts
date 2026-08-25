@@ -21,37 +21,42 @@ describe("createDatabasePluginCore", () => {
     expect(beforeOperation).toHaveBeenCalledOnce();
   });
 
-  it("rejects invalid bundles before invoking low create", async () => {
+  it("inserts an artifact without synthesizing a Release", async () => {
     const plugin: DatabasePlugin = createInMemoryDatabasePlugin();
-    const commit = vi.spyOn(plugin, "commit");
     const core = createDatabasePluginCore(plugin, resolveFileUrl);
-    const result = core.api.insertBundle({
-      ...currentBundle,
-      targetAppVersion: null,
-      fingerprintHash: null,
-    });
 
-    await expect(result).rejects.toThrow(
-      "Bundle must define either targetAppVersion or fingerprintHash.",
-    );
-    expect(commit).not.toHaveBeenCalled();
+    await core.api.insertBundle(currentBundle);
+
+    await expect(
+      core.api.getBundleById(currentBundle.id),
+    ).resolves.toMatchObject(currentBundle);
+    await expect(
+      plugin.models.releases.findMany({
+        bundleId: currentBundle.id,
+        limit: 10,
+      }),
+    ).resolves.toEqual([]);
   });
 
-  it("rejects invalid updates before invoking low update", async () => {
+  it("updates an artifact without requiring or mutating a Release", async () => {
     const plugin: DatabasePlugin = createInMemoryDatabasePlugin();
-    const commit = vi.spyOn(plugin, "commit");
     const core = createDatabasePluginCore(plugin, resolveFileUrl);
     await core.api.insertBundle(currentBundle);
-    commit.mockClear();
-    const result = core.api.updateBundleById(currentBundle.id, {
-      id: "00000000-0000-0000-0000-000000000099",
-      targetAppVersion: null,
-      fingerprintHash: null,
+    await core.api.updateBundleById(currentBundle.id, {
+      storageUri: `r2://bucket/bundles/${currentBundle.id}/updated.zip`,
     });
 
-    await expect(result).rejects.toThrow(
-      "Bundle must define either targetAppVersion or fingerprintHash.",
-    );
-    expect(commit).not.toHaveBeenCalled();
+    await expect(
+      core.api.getBundleById(currentBundle.id),
+    ).resolves.toMatchObject({
+      id: currentBundle.id,
+      storageUri: `r2://bucket/bundles/${currentBundle.id}/updated.zip`,
+    });
+    await expect(
+      plugin.models.releases.findMany({
+        bundleId: currentBundle.id,
+        limit: 10,
+      }),
+    ).resolves.toEqual([]);
   });
 });

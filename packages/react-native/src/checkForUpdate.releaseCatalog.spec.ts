@@ -6,7 +6,7 @@ import {
 } from "@hot-updater/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { HotUpdaterResolver } from "./types";
+import type { HotUpdaterHttpClient } from "./httpClient";
 
 const MINIMUM_RELEASE_ID = "00000000-0000-7000-8000-000000000001";
 const RELEASE_ID = "00000000-0000-7000-8000-000000000002";
@@ -40,7 +40,9 @@ const mocks = vi.hoisted(() => ({
   getCrashHistory: vi.fn(() => []),
   getDefaultChannel: vi.fn(() => CHANNEL),
   getFingerprintHash: vi.fn(() => null),
-  getMinBundleId: vi.fn(() => MINIMUM_RELEASE_ID),
+  getInstallId: vi.fn(() => "install-id"),
+  getMinimumReleaseId: vi.fn(() => MINIMUM_RELEASE_ID),
+  getPersistedUserIdentity: vi.fn(() => ({})),
   isChannelSwitched: vi.fn(() => false),
   isReleaseSelectionCurrent: vi.fn(() => true),
   resetChannel: vi.fn(),
@@ -74,22 +76,22 @@ const createCatalog = (
   ...overrides,
 });
 
-const createResolver = (catalog = createCatalog()) => {
+const createClient = (catalog = createCatalog()) => {
   const fetchReleaseCatalog = vi.fn(async () => catalog);
   const resolveArtifact = vi.fn(async () => ({
     fileHash: "bundle-hash",
     fileUrl: "https://updates.example.com/bundle.zip",
-    id: TARGET_BUNDLE_ID,
-    message: null,
-    shouldForceUpdate: false,
-    status: "UPDATE" as const,
   }));
-  const resolver: HotUpdaterResolver = {
-    authorityId: AUTHORITY_ID,
+  const sendAnalyticsEvent = vi.fn(async () => undefined);
+  const session = {
     fetchReleaseCatalog,
     resolveArtifact,
+    sendAnalyticsEvent,
   };
-  return { fetchReleaseCatalog, resolveArtifact, resolver };
+  const client: HotUpdaterHttpClient = {
+    createSession: vi.fn(async () => session),
+  };
+  return { client, fetchReleaseCatalog, resolveArtifact, sendAnalyticsEvent };
 };
 
 describe("checkForUpdate Release catalog protocol", () => {
@@ -110,10 +112,10 @@ describe("checkForUpdate Release catalog protocol", () => {
 
   it("selects locally and defers Bundle artifact resolution until install", async () => {
     const { checkForUpdate } = await import("./checkForUpdate");
-    const { fetchReleaseCatalog, resolveArtifact, resolver } = createResolver();
+    const { client, fetchReleaseCatalog, resolveArtifact } = createClient();
 
     const result = await checkForUpdate({
-      resolver,
+      client,
       updateStrategy: "appVersion",
     });
 
@@ -124,7 +126,6 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
     expect(fetchReleaseCatalog).toHaveBeenCalledWith({
       appVersion: "1.2.0",
-      authorityId: AUTHORITY_ID,
       channel: CHANNEL,
       fingerprintHash: null,
       platform: "ios",
@@ -146,6 +147,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       expect.objectContaining({
         bundleId: TARGET_BUNDLE_ID,
         selection: expect.objectContaining({
+          authorityId: AUTHORITY_ID,
           releaseId: RELEASE_ID,
           scopeKey: SCOPE_KEY,
         }),
@@ -181,10 +183,11 @@ describe("checkForUpdate Release catalog protocol", () => {
         },
       ],
     });
-    const { resolveArtifact, resolver } = createResolver(forceCatalog);
+    const { client, resolveArtifact, sendAnalyticsEvent } =
+      createClient(forceCatalog);
 
     const result = await checkForUpdate({
-      resolver,
+      client,
       updateStrategy: "appVersion",
     });
 
@@ -195,6 +198,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     await expect(result?.updateBundle()).resolves.toBe(true);
     expect(resolveArtifact).not.toHaveBeenCalled();
     expect(mocks.updateBundle).not.toHaveBeenCalled();
+    expect(sendAnalyticsEvent).not.toHaveBeenCalled();
     expect(mocks.commitReleaseSelection).toHaveBeenCalledWith({
       guard: expect.objectContaining({ generation: 2, scopeKey: SCOPE_KEY }),
       selection: expect.objectContaining({
@@ -202,6 +206,44 @@ describe("checkForUpdate Release catalog protocol", () => {
         releaseId: RELEASE_ID,
       }),
     });
+  });
+
+  it("sends RELEASE_ADOPTED only when analytics is enabled", async () => {
+    const active: PersistedSelectionReceipt = {
+      authorityId: AUTHORITY_ID,
+      bundleId: TARGET_BUNDLE_ID,
+      catalogHash: `sha256:${"b".repeat(64)}`,
+      channel: CHANNEL,
+      generation: 1,
+      kind: "BUNDLE",
+      releaseId: MINIMUM_RELEASE_ID,
+      scopeKey: SCOPE_KEY,
+      selectionContextHash: "old-context",
+    };
+    mocks.getBundleId.mockReturnValueOnce(TARGET_BUNDLE_ID);
+    mocks.getActiveUpdateState.mockReturnValueOnce({
+      activeSelection: active,
+      highestSeenCatalogs: {},
+      stableSelection: active,
+      verificationPending: false,
+    });
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client, sendAnalyticsEvent } = createClient();
+
+    const result = await checkForUpdate({
+      analytics: true,
+      client,
+      updateStrategy: "appVersion",
+    });
+    await result?.updateBundle();
+
+    expect(sendAnalyticsEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fromReleaseId: MINIMUM_RELEASE_ID,
+        toReleaseId: RELEASE_ID,
+        type: "RELEASE_ADOPTED",
+      }),
+    );
   });
 
   it("selects a lower-id Release when explicitly switching scopes", async () => {
@@ -231,11 +273,11 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
     const betaCatalog = createCatalog({ scopeKey: betaScopeKey });
     const { checkForUpdate } = await import("./checkForUpdate");
-    const { resolver } = createResolver(betaCatalog);
+    const { client } = createClient(betaCatalog);
 
     const result = await checkForUpdate({
       channel: betaChannel,
-      resolver,
+      client,
       updateStrategy: "appVersion",
     });
 
@@ -267,10 +309,10 @@ describe("checkForUpdate Release catalog protocol", () => {
       verificationPending: false,
     });
     const { checkForUpdate } = await import("./checkForUpdate");
-    const { resolveArtifact, resolver } = createResolver();
+    const { client, resolveArtifact } = createClient();
 
     const result = await checkForUpdate({
-      resolver,
+      client,
       updateStrategy: "appVersion",
     });
 
@@ -303,9 +345,9 @@ describe("checkForUpdate Release catalog protocol", () => {
       .mockReturnValueOnce(false);
     const { StaleReleaseCatalogError } = await import("./error");
     const { checkForUpdate } = await import("./checkForUpdate");
-    const { resolver } = createResolver();
+    const { client } = createClient();
     const result = await checkForUpdate({
-      resolver,
+      client,
       updateStrategy: "appVersion",
     });
 
@@ -347,10 +389,10 @@ describe("checkForUpdate Release catalog protocol", () => {
       ],
     });
     const { checkForUpdate } = await import("./checkForUpdate");
-    const { resolver } = createResolver(catalog);
+    const { client } = createClient(catalog);
 
     const result = await checkForUpdate({
-      resolver,
+      client,
       updateStrategy: "appVersion",
     });
 
@@ -400,10 +442,10 @@ describe("checkForUpdate Release catalog protocol", () => {
       ],
     });
     const { checkForUpdate } = await import("./checkForUpdate");
-    const { resolver } = createResolver(catalog);
+    const { client } = createClient(catalog);
 
     const result = await checkForUpdate({
-      resolver,
+      client,
       updateStrategy: "appVersion",
     });
 
@@ -434,12 +476,12 @@ describe("checkForUpdate Release catalog protocol", () => {
       verificationPending: false,
     });
     const { checkForUpdate } = await import("./checkForUpdate");
-    const { resolver } = createResolver(
+    const { client } = createClient(
       createCatalog({ releases: [], rollbackReleases: [] }),
     );
 
     const result = await checkForUpdate({
-      resolver,
+      client,
       updateStrategy: "appVersion",
     });
 
@@ -464,12 +506,12 @@ describe("checkForUpdate Release catalog protocol", () => {
   it("does not surface a rollback when the app already uses built-in bytes", async () => {
     mocks.getBundleId.mockReturnValueOnce(MINIMUM_RELEASE_ID);
     const { checkForUpdate } = await import("./checkForUpdate");
-    const { resolver } = createResolver(
+    const { client } = createClient(
       createCatalog({ releases: [], rollbackReleases: [] }),
     );
 
     await expect(
-      checkForUpdate({ resolver, updateStrategy: "appVersion" }),
+      checkForUpdate({ client, updateStrategy: "appVersion" }),
     ).resolves.toBeNull();
     expect(mocks.commitReleaseSelection).not.toHaveBeenCalled();
   });
@@ -478,10 +520,10 @@ describe("checkForUpdate Release catalog protocol", () => {
     mocks.acceptReleaseCatalog.mockReturnValueOnce(false);
     const onError = vi.fn();
     const { checkForUpdate } = await import("./checkForUpdate");
-    const { resolveArtifact, resolver } = createResolver();
+    const { client, resolveArtifact } = createClient();
 
     await expect(
-      checkForUpdate({ onError, resolver, updateStrategy: "appVersion" }),
+      checkForUpdate({ client, onError, updateStrategy: "appVersion" }),
     ).resolves.toBeNull();
 
     expect(onError).toHaveBeenCalledWith(
@@ -490,5 +532,69 @@ describe("checkForUpdate Release catalog protocol", () => {
       }),
     );
     expect(resolveArtifact).not.toHaveBeenCalled();
+  });
+
+  it("rejects mismatched catalog scope before native catalog state mutates", async () => {
+    const wrongScope = createReleaseCatalogScopeKey({
+      authorityId: AUTHORITY_ID,
+      channelKey: encodeChannelKey("beta"),
+      platform: "ios",
+      strategy: "APP_VERSION",
+    });
+    const onError = vi.fn();
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client } = createClient(createCatalog({ scopeKey: wrongScope }));
+
+    await expect(
+      checkForUpdate({ client, onError, updateStrategy: "appVersion" }),
+    ).resolves.toBeNull();
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Received an invalid Release catalog",
+      }),
+    );
+    expect(mocks.acceptReleaseCatalog).not.toHaveBeenCalled();
+    expect(mocks.commitReleaseSelection).not.toHaveBeenCalled();
+    expect(mocks.updateBundle).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unsolicited server authority before accepting catalog state", async () => {
+    const active: PersistedSelectionReceipt = {
+      authorityId: "existing-project",
+      bundleId: CURRENT_BUNDLE_ID,
+      catalogHash: `sha256:${"b".repeat(64)}`,
+      channel: CHANNEL,
+      generation: 1,
+      kind: "BUNDLE",
+      releaseId: ACTIVE_RELEASE_ID,
+      scopeKey: createReleaseCatalogScopeKey({
+        authorityId: "existing-project",
+        channelKey: encodeChannelKey(CHANNEL),
+        platform: "ios",
+        strategy: "APP_VERSION",
+      }),
+      selectionContextHash: "old-context",
+    };
+    mocks.getActiveUpdateState.mockReturnValueOnce({
+      activeSelection: active,
+      highestSeenCatalogs: {},
+      stableSelection: active,
+      verificationPending: false,
+    });
+    const onError = vi.fn();
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client } = createClient();
+
+    await expect(
+      checkForUpdate({ client, onError, updateStrategy: "appVersion" }),
+    ).resolves.toBeNull();
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Release transition rejected: UNSOLICITED_SCOPE",
+      }),
+    );
+    expect(mocks.acceptReleaseCatalog).not.toHaveBeenCalled();
   });
 });

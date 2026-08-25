@@ -3,7 +3,10 @@ import { commitReleaseCatalogMutation } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
+import { registerApiKey } from "./apiKeys";
 import { createHotUpdater } from "./index";
+
+const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 
 const authorityId = "project-a";
 const channelKey = encodeChannelKey("production");
@@ -24,6 +27,7 @@ const createCatalogDatabase = async () => {
         operation: "insert",
         row: {
           asset_base_storage_uri: null,
+          archive_byte_size: 3_000_000_001,
           file_hash: "bundle-hash",
           git_commit_hash: null,
           id: bundleId,
@@ -77,18 +81,22 @@ const createCatalogDatabase = async () => {
 };
 
 describe("Release catalog routes", () => {
-  it("serves the compiled app-version projection with cache identity and ETag revalidation", async () => {
+  it("serves the configured authority on the authority-free app-version path with cache identity and ETag revalidation", async () => {
     const database = await createCatalogDatabase();
-    const hotUpdater = createHotUpdater({ authorityId, database });
+    const hotUpdater = createHotUpdater({
+      authorityId,
+      database,
+      clientAccess: { type: "public" },
+    });
     const catalogRead = vi.spyOn(
       database.models.releaseCatalogs,
       "findByScopeKey",
     );
     const url =
-      `https://updates.example.com/api/release-catalogs/app-version/` +
-      `${authorityId}/ios/${channelKey}/1.5.0`;
+      `https://updates.example.com/release-catalogs/app-version/` +
+      `ios/${channelKey}/1.5.0`;
 
-    const response = await hotUpdater.handler(new Request(url));
+    const response = await hotUpdater.handlers.client(new Request(url));
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe(
       "public, max-age=0, s-maxage=5",
@@ -120,14 +128,14 @@ describe("Release catalog routes", () => {
 
     const etag = response.headers.get("etag");
     expect(etag).toMatch(/^"sha256:[0-9a-f]{64}"$/);
-    const revalidated = await hotUpdater.handler(
+    const revalidated = await hotUpdater.handlers.client(
       new Request(url, { headers: { "if-none-match": etag! } }),
     );
     expect(revalidated.status).toBe(304);
     expect(await revalidated.text()).toBe("");
     expect(catalogRead).toHaveBeenCalledOnce();
 
-    const nonCanonicalVersion = await hotUpdater.handler(
+    const nonCanonicalVersion = await hotUpdater.handlers.client(
       new Request(url.replace("/1.5.0", "/v1.5")),
     );
     expect(nonCanonicalVersion.status).toBe(400);
@@ -136,13 +144,31 @@ describe("Release catalog routes", () => {
     );
     expect(catalogRead).toHaveBeenCalledOnce();
 
-    const wrongAuthority = await hotUpdater.handler(
-      new Request(url.replace(authorityId, "project-b")),
+    const invalidPlatform = await hotUpdater.handlers.client(
+      new Request(url.replace("/ios/", "/windows/")),
     );
-    expect(wrongAuthority.status).toBe(404);
-    expect(wrongAuthority.headers.get("cache-control")).toBe(
+    expect(invalidPlatform.status).toBe(400);
+    expect(catalogRead).toHaveBeenCalledOnce();
+
+    const otherChannel = await hotUpdater.handlers.client(
+      new Request(
+        url.replace(`/${channelKey}/`, `/${encodeChannelKey("beta")}/`),
+      ),
+    );
+    expect(otherChannel.status).toBe(404);
+    expect(catalogRead).toHaveBeenCalledTimes(2);
+
+    const legacyAuthorityPath = await hotUpdater.handlers.client(
+      new Request(
+        `https://updates.example.com/release-catalogs/app-version/` +
+          `${authorityId}/ios/${channelKey}/1.5.0`,
+      ),
+    );
+    expect(legacyAuthorityPath.status).toBe(404);
+    expect(legacyAuthorityPath.headers.get("cache-control")).toBe(
       "private, no-store",
     );
+    expect(catalogRead).toHaveBeenCalledTimes(2);
   });
 
   it("singleflights concurrent cold requests into one exact catalog read", async () => {
@@ -151,16 +177,55 @@ describe("Release catalog routes", () => {
       database.models.releaseCatalogs,
       "findByScopeKey",
     );
-    const hotUpdater = createHotUpdater({ authorityId, database });
+    const hotUpdater = createHotUpdater({
+      authorityId,
+      database,
+      clientAccess: { type: "public" },
+    });
     const url =
-      `https://updates.example.com/api/release-catalogs/app-version/` +
-      `${authorityId}/ios/${channelKey}/1.5.0`;
+      `https://updates.example.com/release-catalogs/app-version/` +
+      `ios/${channelKey}/1.5.0`;
 
     const responses = await Promise.all(
-      Array.from({ length: 100 }, () => hotUpdater.handler(new Request(url))),
+      Array.from({ length: 100 }, () =>
+        hotUpdater.handlers.client(new Request(url)),
+      ),
     );
 
     expect(responses.every(({ status }) => status === 200)).toBe(true);
     expect(catalogRead).toHaveBeenCalledOnce();
+  });
+
+  it("varies authenticated catalog responses by the configured header", async () => {
+    const database = await createCatalogDatabase();
+    await registerApiKey({
+      apiKeys: database.models.apiKeys,
+      apiKey: API_KEY,
+      name: "App",
+    });
+    const hotUpdater = createHotUpdater({
+      authorityId,
+      clientAccess: {
+        headerName: "X-Hot-Updater-Key",
+        type: "api-key",
+      },
+      database,
+    });
+    const url =
+      `https://updates.example.com/release-catalogs/app-version/` +
+      `ios/${channelKey}/1.5.0`;
+
+    const unauthorized = await hotUpdater.handlers.client(
+      new Request(url, { headers: { "x-api-key": API_KEY } }),
+    );
+    expect(unauthorized.status).toBe(401);
+
+    const response = await hotUpdater.handlers.client(
+      new Request(url, { headers: { "x-hot-updater-key": API_KEY } }),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("vary")).toBe(
+      "Accept-Encoding, x-hot-updater-key",
+    );
   });
 });
