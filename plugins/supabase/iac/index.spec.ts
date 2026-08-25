@@ -11,11 +11,13 @@ const { mockCli, mockExeca } = vi.hoisted(() => ({
       log: {
         error: vi.fn(),
         info: vi.fn(),
+        message: vi.fn(),
         success: vi.fn(),
         warn: vi.fn(),
       },
       confirm: vi.fn(),
       isCancel: vi.fn(() => false),
+      note: vi.fn(),
       select: vi.fn(),
       spinner: vi.fn(() => ({
         start: vi.fn(),
@@ -59,6 +61,7 @@ import {
   getSupabaseProjectAccess,
   getSupabaseReactNativeSource,
   getLegacySupabaseConfigReference,
+  reportSupabaseApiKey,
   reportSupabaseOriginCatalogReady,
   resolveEdgeFunctionDenoConfig,
   selectBucket,
@@ -138,6 +141,18 @@ describe("Supabase React Native init output", () => {
       "Catalog checks still invoke the Supabase Edge Function.",
     );
     expect(mockCli.p.log.warn).not.toHaveBeenCalled();
+  });
+
+  it("prints API key storage guidance after the API key note", () => {
+    reportSupabaseApiKey("api-key");
+
+    expect(mockCli.p.note).toHaveBeenCalledWith("api-key", "API Key");
+    expect(mockCli.p.log.message).toHaveBeenCalledWith(
+      "Store this API key separately in a secure place.",
+    );
+    expect(mockCli.p.note.mock.invocationCallOrder[0]).toBeLessThan(
+      mockCli.p.log.message.mock.invocationCallOrder[0]!,
+    );
   });
 });
 

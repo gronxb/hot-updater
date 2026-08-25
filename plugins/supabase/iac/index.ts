@@ -8,7 +8,6 @@ import {
   confirmInitInputPersistence,
   copyDirToTmp,
   createHotUpdaterConfigScaffoldFromBuilder,
-  formatApiKeyNote,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -188,6 +187,11 @@ export const getSupabaseReactNativeSource = ({
 export const reportSupabaseOriginCatalogReady = () => {
   p.log.success("Release catalog endpoint is ready in origin-only mode.");
   p.log.info("Catalog checks still invoke the Supabase Edge Function.");
+};
+
+export const reportSupabaseApiKey = (apiKey: string) => {
+  p.note(apiKey, "API Key");
+  p.log.message("Store this API key separately in a secure place.");
 };
 
 const resolvePackageExportPath = async (
@@ -1229,7 +1233,7 @@ const runInitWithoutCliMetadata = async ({
       projectId: project.id,
     }),
   );
-  p.note(formatApiKeyNote(apiKey), "API Key");
+  reportSupabaseApiKey(apiKey);
   reportSupabaseOriginCatalogReady();
 
   p.log.message(
