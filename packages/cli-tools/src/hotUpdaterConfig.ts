@@ -832,11 +832,20 @@ const mergeHotUpdaterConfigText = (
     };
   }
 
-  const bodyEdit = rebuildManagedBody(
+  const exportFullStart = getTopLevelFullStart(
     existingSource,
-    existingConfig.exportDeclaration.start,
-    scaffold,
+    existingConfig.exportDeclaration,
   );
+  const exportLeadingTrivia = existingText.slice(
+    exportFullStart,
+    existingConfig.exportDeclaration.start,
+  );
+  const firstTriviaContent = exportLeadingTrivia.search(/\S/);
+  const managedBodyEnd =
+    firstTriviaContent === -1
+      ? existingConfig.exportDeclaration.start
+      : exportFullStart + firstTriviaContent;
+  const bodyEdit = rebuildManagedBody(existingSource, managedBodyEnd, scaffold);
   if (!bodyEdit) {
     return {
       reason: "Existing helper declarations could not be merged safely.",
