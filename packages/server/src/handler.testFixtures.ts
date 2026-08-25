@@ -9,6 +9,7 @@ export const testBundle: Bundle = {
   fileHash: "hash123",
   gitCommitHash: null,
   storageUri: "s3://test-bucket/bundles/bundle-1.zip",
+  archiveByteSize: 3_000_000_001,
 };
 
 export const createApi = () =>

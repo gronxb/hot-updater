@@ -89,6 +89,14 @@ const readNullableString = (
   return value;
 };
 
+const readByteSize = (row: Record<string, unknown>, field: string): number => {
+  const value = row[field];
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new PrismaAdapterError(`expected byte-size field "${field}"`);
+  }
+  return value;
+};
+
 export const parsePrismaBundleRow = (value: unknown): BundleRow => {
   if (!isRecord(value)) throw new PrismaAdapterError("invalid bundle row");
   const platform = value["platform"];
@@ -105,6 +113,7 @@ export const parsePrismaBundleRow = (value: unknown): BundleRow => {
     file_hash: readString(value, "file_hash"),
     git_commit_hash: readNullableString(value, "git_commit_hash"),
     storage_uri: readString(value, "storage_uri"),
+    archive_byte_size: readByteSize(value, "archive_byte_size"),
     metadata,
     manifest_storage_uri: readNullableString(value, "manifest_storage_uri"),
     manifest_file_hash: readNullableString(value, "manifest_file_hash"),
@@ -133,6 +142,7 @@ export const parsePrismaPatchRow = (value: unknown): BundlePatchRow => {
     base_file_hash: readString(value, "base_file_hash"),
     patch_file_hash: readString(value, "patch_file_hash"),
     patch_storage_uri: readString(value, "patch_storage_uri"),
+    patch_byte_size: readByteSize(value, "patch_byte_size"),
     order_index: orderIndex,
   };
 };

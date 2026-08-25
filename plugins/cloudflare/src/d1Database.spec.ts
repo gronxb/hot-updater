@@ -19,6 +19,7 @@ const bundleD1Row = {
   file_hash: "hash",
   git_commit_hash: null,
   storage_uri: "storage://bundle",
+  archive_byte_size: 3_000_000_001,
   metadata: '{"version":1}',
   manifest_storage_uri: null,
   manifest_file_hash: null,

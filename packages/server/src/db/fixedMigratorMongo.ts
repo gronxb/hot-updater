@@ -45,6 +45,11 @@ const ignoreExistingCollection = (error: unknown): undefined => {
 };
 
 const mongoNullableString = { bsonType: ["string", "null"] } as const;
+const mongoByteSize = {
+  bsonType: ["double", "int", "long"],
+  maximum: Number.MAX_SAFE_INTEGER,
+  minimum: 0,
+} as const;
 
 const mongoBundleValidator = {
   $and: [
@@ -52,6 +57,7 @@ const mongoBundleValidator = {
       $jsonSchema: {
         bsonType: "object",
         properties: {
+          archive_byte_size: mongoByteSize,
           asset_base_storage_uri: mongoNullableString,
           file_hash: { bsonType: "string" },
           git_commit_hash: mongoNullableString,
@@ -68,10 +74,54 @@ const mongoBundleValidator = {
           "file_hash",
           "git_commit_hash",
           "storage_uri",
+          "archive_byte_size",
           "metadata",
           "manifest_storage_uri",
           "manifest_file_hash",
           "asset_base_storage_uri",
+        ],
+      },
+    },
+    {
+      $expr: {
+        $eq: [{ $trunc: "$archive_byte_size" }, "$archive_byte_size"],
+      },
+    },
+  ],
+} as const;
+
+const mongoPatchValidator = {
+  $and: [
+    {
+      $jsonSchema: {
+        bsonType: "object",
+        properties: {
+          base_bundle_id: { bsonType: "string" },
+          base_file_hash: { bsonType: "string" },
+          bundle_id: { bsonType: "string" },
+          id: { bsonType: "string" },
+          order_index: mongoByteSize,
+          patch_byte_size: mongoByteSize,
+          patch_file_hash: { bsonType: "string" },
+          patch_storage_uri: { bsonType: "string" },
+        },
+        required: [
+          "id",
+          "bundle_id",
+          "base_bundle_id",
+          "base_file_hash",
+          "patch_file_hash",
+          "patch_storage_uri",
+          "patch_byte_size",
+          "order_index",
+        ],
+      },
+    },
+    {
+      $expr: {
+        $and: [
+          { $eq: [{ $trunc: "$order_index" }, "$order_index"] },
+          { $eq: [{ $trunc: "$patch_byte_size" }, "$patch_byte_size"] },
         ],
       },
     },
@@ -325,6 +375,7 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
             enforceSchema: async () => {
               for (const [collection, validator] of [
                 ["bundles", mongoBundleValidator],
+                ["bundle_patches", mongoPatchValidator],
                 ["releases", mongoReleaseValidator],
                 ["release_catalogs", mongoReleaseCatalogValidator],
               ] as const) {

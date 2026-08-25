@@ -9,6 +9,9 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     file_hash text not null,
     git_commit_hash text,
     storage_uri text not null,
+    archive_byte_size double precision not null check (
+      archive_byte_size >= 0 and archive_byte_size <= 9007199254740991
+    ),
     metadata jsonb not null default '{}'::jsonb,
     manifest_storage_uri text,
     manifest_file_hash text,
@@ -21,6 +24,9 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     base_file_hash text not null,
     patch_file_hash text not null,
     patch_storage_uri text not null,
+    patch_byte_size double precision not null check (
+      patch_byte_size >= 0 and patch_byte_size <= 9007199254740991
+    ),
     order_index integer not null default 0
   );
   create table releases (

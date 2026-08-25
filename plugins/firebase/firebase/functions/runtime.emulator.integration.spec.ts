@@ -393,6 +393,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
         fileHash: "hash",
         gitCommitHash: null,
         storageUri: "storage://unused",
+        archiveByteSize: 3_000_000_001,
       },
       storageBucket,
     );

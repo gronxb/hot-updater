@@ -145,6 +145,7 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/scenarios/runtime-channel-crash-restore.ts",
       "e2e/detox/scenarios/runtime-channel-switch-reset.ts",
       "e2e/detox/scenarios/same-bundle-release-adoption.ts",
+      "e2e/detox/scenarios/size-aware-artifact-selection.ts",
       "e2e/detox/scenarios/slow-old-artifact-after-newer-install.ts",
       "e2e/detox/scenarios/stale-catalog-after-newer-generation.ts",
       "e2e/detox/scenarios/target-cohorts-only.ts",

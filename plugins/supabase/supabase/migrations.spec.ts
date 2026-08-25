@@ -51,6 +51,12 @@ describe("Supabase v1 schema", () => {
     );
     expect(sql).toContain("REVOKE EXECUTE ON FUNCTION");
     expect(sql).toContain("TO service_role;");
+    expect(sql).toContain("archive_byte_size double precision NOT NULL CHECK");
+    expect(sql).toContain("patch_byte_size double precision NOT NULL CHECK");
+    expect(sql).toContain("archive_byte_size = v_bundle.archive_byte_size");
+    expect(sql).toContain(
+      "patch_file_hash, patch_storage_uri, patch_byte_size, order_index",
+    );
     expect(sql).not.toContain("get_update_info");
     expect(sql).not.toContain("ALTER TABLE public.bundles ADD COLUMN");
   });
@@ -86,16 +92,35 @@ describe("Supabase v1 schema", () => {
       await database.exec(`
         INSERT INTO public.channels (id, name) VALUES ('channel-1', 'production');
         INSERT INTO public.bundles (
-          id, platform, file_hash, storage_uri, metadata
+          id, platform, file_hash, storage_uri, archive_byte_size, metadata
         ) VALUES (
           '00000000-0000-0000-0000-000000000001', 'ios', 'hash',
-          'storage://bundle', '{}'::jsonb
+          'storage://bundle', 3000000001, '{}'::jsonb
+        );
+        INSERT INTO public.bundle_patches (
+          id, bundle_id, base_bundle_id, base_file_hash, patch_file_hash,
+          patch_storage_uri, patch_byte_size
+        ) VALUES (
+          'patch-1', '00000000-0000-0000-0000-000000000001',
+          '00000000-0000-0000-0000-000000000001', 'base-hash', 'patch-hash',
+          'storage://patch', 3000000002
         );
       `);
       const channels = await database.query<{ name: string }>(
         "SELECT name FROM public.channels",
       );
       expect(channels.rows).toEqual([{ name: "production" }]);
+      const sizes = await database.query<{
+        archive_byte_size: number;
+        patch_byte_size: number;
+      }>(`
+        SELECT bundle.archive_byte_size, patch.patch_byte_size
+        FROM public.bundles AS bundle
+        JOIN public.bundle_patches AS patch ON patch.bundle_id = bundle.id
+      `);
+      expect(sizes.rows).toEqual([
+        { archive_byte_size: 3_000_000_001, patch_byte_size: 3_000_000_002 },
+      ]);
     } finally {
       await database.close();
     }

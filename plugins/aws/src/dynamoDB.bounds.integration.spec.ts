@@ -34,6 +34,7 @@ describe("DynamoDB reads beyond the former metadata ceiling", () => {
         fileHash: `hash-${index}`,
         gitCommitHash: null,
         storageUri: `storage://bundle-${index}.zip`,
+        archiveByteSize: 3_000_000_001 + index,
         metadata: {},
       }),
     );
@@ -53,6 +54,7 @@ describe("DynamoDB reads beyond the former metadata ceiling", () => {
         base_file_hash: base.file_hash,
         patch_file_hash: `patch-hash-${index}`,
         patch_storage_uri: "",
+        patch_byte_size: 3_000_000_002 + index,
         order_index: index % patchesPerOwner,
       };
     });

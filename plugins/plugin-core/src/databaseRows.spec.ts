@@ -16,6 +16,7 @@ const createBundle = (id: string): Bundle => ({
   fileHash: `hash-${id}`,
   gitCommitHash: null,
   storageUri: `storage://${id}`,
+  archiveByteSize: 3_000_000_001,
   metadata: { app_version: "1.0.0" },
 });
 
@@ -53,12 +54,14 @@ describe("database rows", () => {
         {
           baseBundleId: firstBase.id,
           baseFileHash: firstBase.fileHash,
+          byteSize: 3_000_000_002,
           patchFileHash: "patch-a",
           patchStorageUri: "storage://patch-a",
         },
         {
           baseBundleId: secondBase.id,
           baseFileHash: secondBase.fileHash,
+          byteSize: 3_000_000_003,
           patchFileHash: "patch-b",
           patchStorageUri: "storage://patch-b",
         },
@@ -83,6 +86,7 @@ describe("database rows", () => {
         {
           baseBundleId: base.id,
           baseFileHash: base.fileHash,
+          byteSize: 3_000_000_002,
           patchFileHash: "patch",
           patchStorageUri: "storage://patch",
         },
@@ -117,6 +121,7 @@ describe("database rows", () => {
       base_file_hash: base.fileHash,
       patch_file_hash: "patch",
       patch_storage_uri: "storage://patch",
+      patch_byte_size: 3_000_000_002,
       order_index: 0,
     } as const;
 

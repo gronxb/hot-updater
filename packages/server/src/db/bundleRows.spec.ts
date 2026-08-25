@@ -16,6 +16,7 @@ const createBundle = (id: string): Bundle => ({
   fileHash: `hash-${id}`,
   gitCommitHash: null,
   storageUri: `s3://bucket/${id}.zip`,
+  archiveByteSize: 3_000_000_001,
 });
 
 const toRow = (bundle: Bundle): BundleRow => bundleToRow(bundle);
@@ -32,6 +33,7 @@ const createPatchRow = (
   base_file_hash: `base-hash-${id}`,
   patch_file_hash: `patch-hash-${id}`,
   patch_storage_uri: `s3://bucket/${id}.patch`,
+  patch_byte_size: 3_000_000_002,
   order_index: orderIndex,
 });
 
@@ -48,6 +50,7 @@ describe("bundle row conversion", () => {
         {
           baseBundleId: baseBundle.id,
           baseFileHash: "base-hash",
+          byteSize: 3_000_000_002,
           patchFileHash: "patch-hash",
           patchStorageUri: "s3://bucket/target.patch",
         },

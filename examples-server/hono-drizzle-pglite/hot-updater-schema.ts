@@ -24,6 +24,7 @@ export const bundles = pgTable("bundles", {
   file_hash: text("file_hash").notNull(),
   git_commit_hash: text("git_commit_hash"),
   storage_uri: text("storage_uri").notNull(),
+  archive_byte_size: doublePrecision("archive_byte_size").notNull(),
   metadata: json("metadata").notNull().default({}),
   manifest_storage_uri: text("manifest_storage_uri"),
   manifest_file_hash: text("manifest_file_hash"),
@@ -49,6 +50,7 @@ export const bundle_patches = pgTable("bundle_patches", {
   base_file_hash: text("base_file_hash").notNull(),
   patch_file_hash: text("patch_file_hash").notNull(),
   patch_storage_uri: text("patch_storage_uri").notNull(),
+  patch_byte_size: doublePrecision("patch_byte_size").notNull(),
   order_index: integer("order_index").notNull().default(0)
 }, (table) => [
   foreignKey({

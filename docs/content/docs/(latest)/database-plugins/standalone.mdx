@@ -269,25 +269,35 @@ Create requests send full `Bundle` objects. Update requests send
 `:id` route parameter.
 
 ```typescript
+interface BundlePatchArtifact {
+  baseBundleId: string;
+  baseFileHash: string;
+  byteSize: number;
+  patchFileHash: string;
+  patchStorageUri: string;
+}
+
 interface Bundle {
   id: string;
   platform: "ios" | "android";
-  shouldForceUpdate: boolean;
-  enabled: boolean;
   fileHash: string;
   storageUri: string;
+  archiveByteSize: number;
   gitCommitHash: string | null;
-  message: string | null;
-  channel: string;
-  targetAppVersion: string | null;
-  fingerprintHash: string | null;
   metadata?: {
     app_version?: string;
   };
-  rolloutCohortCount?: number | null;
-  targetCohorts?: string[] | null;
+  manifestStorageUri?: string | null;
+  manifestFileHash?: string | null;
+  assetBaseStorageUri?: string | null;
+  patches?: BundlePatchArtifact[] | null;
 }
 ```
+
+`archiveByteSize` and every patch `byteSize` are required non-negative safe
+integers. Bundle objects contain immutable artifact data only; Channel,
+rollout, targeting, enablement, force-update, and message policy belong to
+Releases.
 
 ### List Bundles Contract
 
@@ -302,7 +312,6 @@ Supported query params:
 
 | Query param | Type                 | Notes                                                          |
 | ----------- | -------------------- | -------------------------------------------------------------- |
-| `channel`   | `string`             | Exact match                                                    |
 | `platform`  | `"ios" \| "android"` | Exact match                                                    |
 | `limit`     | `number`             | Window size                                                    |
 | `page`      | `number`             | Optional positive page number for stable page-aligned requests |
@@ -313,7 +322,17 @@ Expected response:
 
 ```json
 {
-  "data": [{ "id": "bundle-id", "channel": "production" }],
+  "data": [
+    {
+      "id": "bundle-id",
+      "platform": "ios",
+      "fileHash": "bundle-file-hash",
+      "storageUri": "s3://bucket/bundles/bundle-id/bundle.zip",
+      "archiveByteSize": 1048576,
+      "gitCommitHash": null,
+      "patches": []
+    }
+  ],
   "pagination": {
     "total": 1,
     "hasNextPage": false,

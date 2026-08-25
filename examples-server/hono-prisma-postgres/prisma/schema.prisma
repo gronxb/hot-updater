@@ -27,6 +27,7 @@ model bundles {
   file_hash String
   git_commit_hash String?
   storage_uri String
+  archive_byte_size Float
   metadata Json @default("{}")
   manifest_storage_uri String?
   manifest_file_hash String?
@@ -42,6 +43,7 @@ model bundle_patches {
   base_file_hash String
   patch_file_hash String
   patch_storage_uri String
+  patch_byte_size Float
   order_index Int @default(0)
   bundle bundles @relation("bundle_patches_bundles_patches", fields: [bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)
   baseBundle bundles @relation("bundle_patches_bundles_baseForPatches", fields: [base_bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)

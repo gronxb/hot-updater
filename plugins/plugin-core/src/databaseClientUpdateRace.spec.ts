@@ -15,6 +15,7 @@ const createBundle = (): Bundle => ({
   fileHash: "hash-1",
   gitCommitHash: null,
   storageUri: "storage://bundle-1",
+  archiveByteSize: 3_000_000_001,
 });
 
 const createFixture = (expectedUpdates: number) => {

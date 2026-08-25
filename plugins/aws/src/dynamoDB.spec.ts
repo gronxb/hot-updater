@@ -36,6 +36,7 @@ const bundleRow = bundleToRow({
   fileHash: "hash",
   gitCommitHash: null,
   storageUri: "storage://bundle",
+  archiveByteSize: 3_000_000_001,
   metadata: {},
 });
 

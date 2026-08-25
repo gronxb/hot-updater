@@ -18,6 +18,7 @@ const createDeployment = (
   platform: Bundle["platform"],
 ): Omit<DeploymentWrite, "authorityId"> => ({
   bundle: {
+    archiveByteSize: 1024,
     fileHash: `${id}-hash`,
     gitCommitHash: null,
     id,

@@ -134,6 +134,7 @@ interface Bundle {
   platform: "ios" | "android";
   fileHash: string;
   storageUri: string;
+  archiveByteSize: number;
   gitCommitHash: string | null;
   metadata: BundleMetadata;
   manifestStorageUri: string | null;
@@ -157,6 +158,14 @@ Bundle identity continues to own archives, manifests, changed assets, signing,
 patch lineage, local files, and crash history. `manifest.json` stays
 Bundle-only and never receives a Release ID. Reusing a Bundle through promote
 or rollback must not rewrite or re-upload its manifest.
+
+`archiveByteSize` and every patch artifact's `byteSize` are required immutable
+non-negative safe integers. Manifest asset entries may additionally carry an
+optional `downloadByteSize` and `downloadFileHash`. The size describes the
+exact representation served to the client; when that representation differs
+from the logical file, such as a Brotli payload, the download hash is the
+SHA-256 of those exact served bytes and owns the content-addressed object key.
+The logical `fileHash` continues to identify and verify the installed file.
 
 ### Release is mutable delivery policy
 
@@ -242,6 +251,12 @@ it would incorrectly apply a first switch into an empty target channel.
 
 The final table contains only immutable artifact data. `bundle_patches` remains
 keyed by target and base Bundle IDs.
+
+`bundles.archive_byte_size` and `bundle_patches.patch_byte_size` are required
+and constrained to non-negative JavaScript safe integers. Providers must
+reject missing, fractional, negative, or out-of-range values during row
+hydration. These fields are part of the initial unreleased `1.0.0` schema, not
+nullable compatibility metadata.
 
 ### `releases`
 
@@ -697,6 +712,31 @@ This reuses archive, signed URL, manifest diff, changed asset, and binary patch
 logic. It remains Bundle-keyed. The first implementation is `private,
 no-store` because Storage-signed URL expiry is not represented by the current
 StoragePlugin contract.
+
+The server compares the normal manifest route with the archive before it
+returns the existing `ArtifactInfo` shape:
+
+```text
+manifestBytes = UTF-8 byte length of the exact stored target manifest text
+primary(asset) = retained patch when present, otherwise served file
+diffBytes = manifestBytes + sum(primary(asset).byteSize)
+```
+
+Unchanged assets cost zero. When a patch and complete file are both usable and
+both sizes are known, the patch is retained only when it is strictly smaller;
+equality uses the complete file. If the archive URL is usable and every
+primary size is known, `diffBytes >= archiveByteSize` returns the archive-only
+response. Otherwise the existing manifest-first response is preserved.
+
+Required archive and patch sizes fail provider hydration when invalid. A
+missing or invalid `downloadByteSize`, an invalid present `downloadFileHash`, a
+missing hash for a transformed representation, or a safe-integer sum overflow
+makes only the comparison unknown. Raw assets use the logical `fileHash` key
+and may omit `downloadFileHash`. The server does not issue `HEAD` or storage
+metadata probes to fill the gap. Route selection remains server-only and does
+not add a native request, response field, or receipt transition. Patch failure
+still follows the existing patch-to-file-to-archive fallback and is not part of
+the normal-path estimate.
 
 No artifact request is made for no-update, same-Bundle Release adoption,
 `BUILTIN`, or `EMBEDDED`.

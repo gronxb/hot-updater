@@ -21,6 +21,7 @@ vi.mock("@hot-updater/bsdiff", () => ({
 import { createBundleDiff } from "./createBundleDiff";
 
 const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
+  archiveByteSize: 1_024,
   fileHash: `${id}-file-hash`,
   gitCommitHash: null,
   id,
@@ -75,6 +76,8 @@ describe("createBundleDiff", () => {
   it("uploads a Hermes patch and stores patch metadata on the target bundle", async () => {
     const baseBundle = createBundle("00000000-0000-0000-0000-000000000001");
     const targetBundle = createBundle("00000000-0000-0000-0000-000000000002");
+    const baseDownloadFileHash = "a".repeat(64);
+    const targetDownloadFileHash = "b".repeat(64);
     const plugin = await createDatabasePlugin([baseBundle, targetBundle]);
     const databasePlugin: DatabasePlugin = plugin;
     const commit = vi.spyOn(databasePlugin, "commit");
@@ -97,6 +100,8 @@ describe("createBundleDiff", () => {
             JSON.stringify({
               assets: {
                 "index.ios.bundle": {
+                  downloadByteSize: 7,
+                  downloadFileHash: baseDownloadFileHash,
                   fileHash: "hash-old",
                 },
               },
@@ -110,6 +115,8 @@ describe("createBundleDiff", () => {
             JSON.stringify({
               assets: {
                 "index.ios.bundle": {
+                  downloadByteSize: 7,
+                  downloadFileHash: targetDownloadFileHash,
                   fileHash: "hash-new",
                 },
               },
@@ -118,7 +125,7 @@ describe("createBundleDiff", () => {
           );
         }
 
-        if (url.endsWith("/assets/sha256/ha/hash-old.br")) {
+        if (url.endsWith(`/assets/sha256/aa/${baseDownloadFileHash}.br`)) {
           return new Response(brotliCompressSync(new Uint8Array([1, 2, 3])));
         }
 
@@ -126,7 +133,7 @@ describe("createBundleDiff", () => {
           return new Response(new Uint8Array([1, 2, 3]));
         }
 
-        if (url.endsWith("/assets/sha256/ha/hash-new.br")) {
+        if (url.endsWith(`/assets/sha256/bb/${targetDownloadFileHash}.br`)) {
           return new Response(brotliCompressSync(new Uint8Array([1, 9, 3])));
         }
 
@@ -155,14 +162,16 @@ describe("createBundleDiff", () => {
       const [patch] = updatedBundle.patches ?? [];
       expect(patch?.baseBundleId).toBe(baseBundle.id);
       expect(patch?.baseFileHash).toBe("hash-old");
+      expect(patch?.byteSize).toBe(4);
       expect(patch?.patchFileHash).toMatch(/[a-f0-9]{64}/);
       expect(patch?.patchStorageUri).toContain(
-        `bundles/${targetBundle.id}/patches/${baseBundle.id}`,
+        `bundles/${targetBundle.id}/patches/${baseBundle.id}/${patch?.patchFileHash}/`,
       );
       expect(updatedBundle.patches).toEqual([
         {
           baseBundleId: baseBundle.id,
           baseFileHash: "hash-old",
+          byteSize: 4,
           patchFileHash: patch?.patchFileHash,
           patchStorageUri: patch?.patchStorageUri,
         },
@@ -335,6 +344,7 @@ describe("createBundleDiff", () => {
         {
           baseBundleId: primaryBaseBundle.id,
           baseFileHash: "hash-primary-old",
+          byteSize: 4,
           patchFileHash: "hash-primary-patch",
           patchStorageUri: `s3://test-bucket/${primaryBaseBundle.id}/existing.bsdiff`,
         },

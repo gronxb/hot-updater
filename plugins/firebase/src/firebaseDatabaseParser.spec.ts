@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createBundlePatchRowFixture,
   createBundleEventRowFixture,
   createBundleRowFixture,
 } from "../../../packages/test-utils/src/databaseTestFixtures";
 import {
   parseFirebaseBundleEventRow,
   parseFirebaseBundleRow,
+  parseFirebasePatchRow,
 } from "./firebaseDatabaseParser";
 
 describe("parseFirebaseBundleRow", () => {
@@ -30,6 +32,49 @@ describe("parseFirebaseBundleRow", () => {
       ),
     ).toThrow("Invalid Firebase database data");
   });
+
+  it("preserves safe archive sizes above 2 GiB", () => {
+    expect(
+      parseFirebaseBundleRow(createBundleRowFixture("large"), "bundles/large"),
+    ).toMatchObject({ archive_byte_size: 3_000_000_001 });
+  });
+
+  it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN])(
+    "rejects invalid archive size %s",
+    (archiveByteSize) => {
+      expect(() =>
+        parseFirebaseBundleRow(
+          {
+            ...createBundleRowFixture("invalid-size"),
+            archive_byte_size: archiveByteSize,
+          },
+          "bundles/invalid-size",
+        ),
+      ).toThrow("Invalid Firebase database data");
+    },
+  );
+});
+
+describe("parseFirebasePatchRow", () => {
+  const row = createBundlePatchRowFixture("large", "bundle", "base");
+
+  it("preserves safe patch sizes above 2 GiB", () => {
+    expect(parseFirebasePatchRow(row, "bundle_patches/large")).toMatchObject({
+      patch_byte_size: 3_000_000_002,
+    });
+  });
+
+  it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN])(
+    "rejects invalid patch size %s",
+    (patchByteSize) => {
+      expect(() =>
+        parseFirebasePatchRow(
+          { ...row, patch_byte_size: patchByteSize },
+          "bundle_patches/invalid-size",
+        ),
+      ).toThrow("Invalid Firebase database data");
+    },
+  );
 });
 
 describe("parseFirebaseBundleEventRow", () => {

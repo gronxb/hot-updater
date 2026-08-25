@@ -13,6 +13,9 @@ CREATE TABLE public.bundles (
   file_hash text NOT NULL,
   git_commit_hash text,
   storage_uri text NOT NULL,
+  archive_byte_size double precision NOT NULL CHECK (
+    archive_byte_size BETWEEN 0 AND 9007199254740991
+  ),
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   manifest_storage_uri text,
   manifest_file_hash text,
@@ -26,6 +29,9 @@ CREATE TABLE public.bundle_patches (
   base_file_hash text NOT NULL,
   patch_file_hash text NOT NULL,
   patch_storage_uri text NOT NULL,
+  patch_byte_size double precision NOT NULL CHECK (
+    patch_byte_size BETWEEN 0 AND 9007199254740991
+  ),
   order_index integer NOT NULL DEFAULT 0,
   CONSTRAINT bundle_patches_bundle_id_fk FOREIGN KEY (bundle_id)
     REFERENCES public.bundles(id) ON UPDATE RESTRICT ON DELETE CASCADE,
@@ -325,12 +331,13 @@ BEGIN
               );
               INSERT INTO public.bundles (
                 id, platform, file_hash, git_commit_hash, storage_uri,
-                metadata, manifest_storage_uri, manifest_file_hash,
+                archive_byte_size, metadata, manifest_storage_uri, manifest_file_hash,
                 asset_base_storage_uri
               ) VALUES (
                 v_bundle.id, v_bundle.platform, v_bundle.file_hash,
                 v_bundle.git_commit_hash, v_bundle.storage_uri,
-                v_bundle.metadata, v_bundle.manifest_storage_uri,
+                v_bundle.archive_byte_size, v_bundle.metadata,
+                v_bundle.manifest_storage_uri,
                 v_bundle.manifest_file_hash, v_bundle.asset_base_storage_uri
               );
             WHEN 'update' THEN
@@ -348,6 +355,7 @@ BEGIN
                 file_hash = v_bundle.file_hash,
                 git_commit_hash = v_bundle.git_commit_hash,
                 storage_uri = v_bundle.storage_uri,
+                archive_byte_size = v_bundle.archive_byte_size,
                 metadata = v_bundle.metadata,
                 manifest_storage_uri = v_bundle.manifest_storage_uri,
                 manifest_file_hash = v_bundle.manifest_file_hash,
@@ -375,11 +383,12 @@ BEGIN
               );
               INSERT INTO public.bundle_patches (
                 id, bundle_id, base_bundle_id, base_file_hash,
-                patch_file_hash, patch_storage_uri, order_index
+                patch_file_hash, patch_storage_uri, patch_byte_size, order_index
               ) VALUES (
                 v_patch.id, v_patch.bundle_id, v_patch.base_bundle_id,
                 v_patch.base_file_hash, v_patch.patch_file_hash,
-                v_patch.patch_storage_uri, v_patch.order_index
+                v_patch.patch_storage_uri, v_patch.patch_byte_size,
+                v_patch.order_index
               );
             WHEN 'delete' THEN
               DELETE FROM public.bundle_patches

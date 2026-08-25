@@ -54,6 +54,7 @@ describe("commitReleaseCatalogMutation", () => {
           operation: "insert",
           row: {
             asset_base_storage_uri: null,
+            archive_byte_size: 3_000_000_001,
             file_hash: "bundle-hash",
             git_commit_hash: null,
             id: release.bundle_id!,
@@ -125,6 +126,7 @@ describe("commitReleaseCatalogMutation", () => {
           operation: "insert",
           row: {
             asset_base_storage_uri: null,
+            archive_byte_size: 3_000_000_001,
             file_hash: "bundle-hash",
             git_commit_hash: null,
             id: release.bundle_id!,
@@ -173,6 +175,7 @@ describe("commitReleaseCatalogMutation", () => {
     });
     const seededBundles = Array.from({ length: 20_000 }, (_, index) => ({
       asset_base_storage_uri: null,
+      archive_byte_size: 3_000_000_001 + index,
       file_hash: `hash-${index}`,
       git_commit_hash: null,
       id: `00000000-0000-7001-8000-${String(index + 1).padStart(12, "0")}`,

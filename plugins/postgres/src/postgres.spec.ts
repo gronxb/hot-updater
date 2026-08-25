@@ -70,6 +70,7 @@ const bundleFixture = (): BundleRow => ({
   file_hash: "file-hash",
   git_commit_hash: null,
   storage_uri: "storage://bundles/701.zip",
+  archive_byte_size: 3_000_000_001,
   metadata: {},
   manifest_storage_uri: null,
   manifest_file_hash: null,
@@ -109,6 +110,42 @@ const apiKeyFixture = (): ApiKeyRow => ({
   role: "client",
   created_at_ms: 100,
   revoked_at_ms: null,
+});
+
+describe("PostgreSQL artifact byte-size constraints", () => {
+  it("rejects negative archive and patch sizes at the database boundary", async () => {
+    const { database, plugin } = await createPostgresTestPlugin();
+    const bundle = bundleFixture();
+
+    try {
+      await expect(
+        database.exec(`
+          INSERT INTO bundles (
+            id, platform, file_hash, storage_uri, archive_byte_size, metadata
+          ) VALUES (
+            '${bundle.id}', 'ios', 'hash', 'storage://bundle', -1, '{}'
+          )
+        `),
+      ).rejects.toThrow();
+
+      await plugin.commit({
+        changes: [{ model: "bundles", operation: "insert", row: bundle }],
+      });
+      await expect(
+        database.exec(`
+          INSERT INTO bundle_patches (
+            id, bundle_id, base_bundle_id, base_file_hash, patch_file_hash,
+            patch_storage_uri, patch_byte_size
+          ) VALUES (
+            'patch-invalid-size', '${bundle.id}', '${bundle.id}', 'base-hash',
+            'patch-hash', 'storage://patch', -1
+          )
+        `),
+      ).rejects.toThrow();
+    } finally {
+      await plugin.dispose?.();
+    }
+  });
 });
 
 describe("PostgreSQL channel model", () => {

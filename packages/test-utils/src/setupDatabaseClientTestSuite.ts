@@ -66,6 +66,7 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
               baseFileHash: base.fileHash,
               patchFileHash: "patch-hash-102",
               patchStorageUri: "storage://patches/102.patch",
+              byteSize: 3_000_000_002,
             },
           ],
         } satisfies Bundle;
@@ -128,6 +129,7 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
                 baseFileHash: secondBase.fileHash,
                 patchFileHash: "replacement-hash",
                 patchStorageUri: "storage://patches/replacement.patch",
+                byteSize: 3_000_000_003,
               },
             ],
           });
@@ -150,6 +152,7 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
             baseFileHash: secondBase.fileHash,
             patchFileHash: "replacement-hash",
             patchStorageUri: "storage://patches/replacement.patch",
+            byteSize: 3_000_000_003,
           },
         ]);
       });

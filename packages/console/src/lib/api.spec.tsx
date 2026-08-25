@@ -51,6 +51,7 @@ const bundle: Bundle = {
   fileHash: "hash",
   gitCommitHash: null,
   storageUri: "s3://bucket/bundle.zip",
+  archiveByteSize: 3_000_000_001,
 };
 
 const otherBundle: Bundle = {

@@ -239,6 +239,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
       fileHash: "concurrent-target-hash",
       gitCommitHash: null,
       storageUri: "storage://concurrent-target",
+      archiveByteSize: 3_000_000_001,
     });
     const now = Date.now();
     await commitReleaseCatalogMutations({
@@ -350,6 +351,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
       file_hash: "rollback-hash",
       git_commit_hash: null,
       storage_uri: "storage://rollback",
+      archive_byte_size: 3_000_000_001,
       metadata: {},
       manifest_storage_uri: null,
       manifest_file_hash: null,
@@ -374,6 +376,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
       base_file_hash: "rollback-base-hash",
       patch_file_hash: "rollback-patch-hash",
       patch_storage_uri: "storage://rollback-patch",
+      patch_byte_size: 3_000_000_002,
       order_index: 0,
     };
     await database.commit({

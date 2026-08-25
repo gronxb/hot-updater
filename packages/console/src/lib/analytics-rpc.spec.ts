@@ -14,6 +14,7 @@ const createBundle = (id: string): Bundle => ({
   platform: "ios",
   fileHash: `hash-${id}`,
   storageUri: `storage://${id}.zip`,
+  archiveByteSize: 3_000_000_001,
   gitCommitHash: null,
 });
 

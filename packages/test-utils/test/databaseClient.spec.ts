@@ -14,6 +14,7 @@ const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
   fileHash: `hash-${id}`,
   gitCommitHash: null,
   storageUri: `storage://${id}`,
+  archiveByteSize: 3_000_000_001,
   ...overrides,
 });
 
@@ -35,12 +36,14 @@ describe("database client", () => {
           baseFileHash: firstBase.fileHash,
           patchFileHash: "patch-1",
           patchStorageUri: "storage://patch-1",
+          byteSize: 3_000_000_002,
         },
         {
           baseBundleId: secondBase.id,
           baseFileHash: secondBase.fileHash,
           patchFileHash: "patch-2",
           patchStorageUri: "storage://patch-2",
+          byteSize: 3_000_000_003,
         },
       ],
     });
@@ -82,6 +85,7 @@ describe("database client", () => {
           baseFileHash: firstBase.fileHash,
           patchFileHash: "old",
           patchStorageUri: "storage://old",
+          byteSize: 3_000_000_002,
         },
       ],
     });
@@ -96,6 +100,7 @@ describe("database client", () => {
           baseFileHash: secondBase.fileHash,
           patchFileHash: "new",
           patchStorageUri: "storage://new",
+          byteSize: 3_000_000_003,
         },
       ],
     });
@@ -121,6 +126,7 @@ describe("database client", () => {
           baseFileHash: base.fileHash,
           patchFileHash: "safe-owner",
           patchStorageUri: "storage://safe-owner",
+          byteSize: 3_000_000_002,
         },
       ],
     });
@@ -140,6 +146,7 @@ describe("database client", () => {
           baseFileHash: "missing",
           patchFileHash: "patch",
           patchStorageUri: "storage://patch",
+          byteSize: 3_000_000_002,
         },
       ],
     });
@@ -159,6 +166,7 @@ describe("database client", () => {
           baseFileHash: "missing",
           patchFileHash: "patch",
           patchStorageUri: "storage://patch",
+          byteSize: 3_000_000_002,
         },
       ],
     });
@@ -192,6 +200,7 @@ describe("database client", () => {
           baseFileHash: "missing",
           patchFileHash: "patch",
           patchStorageUri: "storage://patch",
+          byteSize: 3_000_000_002,
         },
       ],
     });

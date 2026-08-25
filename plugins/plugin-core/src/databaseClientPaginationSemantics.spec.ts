@@ -13,6 +13,7 @@ const createBundle = (id: string): Bundle => ({
   fileHash: `hash-${id}`,
   gitCommitHash: null,
   storageUri: `storage://${id}`,
+  archiveByteSize: 3_000_000_001,
 });
 
 const createFixture = (): {

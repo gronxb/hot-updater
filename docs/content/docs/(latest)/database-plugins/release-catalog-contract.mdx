@@ -65,11 +65,47 @@ implementation, but those details are not public.
 Bundle rows contain only artifact fields: ID, platform, hashes, storage URIs,
 manifest/asset information, Git commit, and artifact metadata.
 
+Every Bundle row has a required `archive_byte_size`, and every Bundle-patch row
+has a required `patch_byte_size`. Both values are immutable non-negative
+integers no larger than `Number.MAX_SAFE_INTEGER`. Provider CRUD hydration must
+reject a missing, fractional, negative, or out-of-range value instead of
+constructing a partial v1 Bundle.
+
 `BundlePatchModel.findByBundleIds` returns all patch rows owned by the requested
 Bundle IDs. It returns immediately for an empty owner list.
 
+Manifest asset JSON may include optional `downloadByteSize` and
+`downloadFileHash` fields. These are not database columns. `downloadByteSize`
+describes the exact representation served to the client. When that differs
+from the logical file, a valid lowercase SHA-256 `downloadFileHash` identifies
+those exact served bytes and their content-addressed object key. For example, a
+Brotli asset records the compressed payload size and hash while `fileHash`
+continues to identify the logical installed file. Raw assets use the logical
+`fileHash` key and may omit `downloadFileHash`. A missing or invalid
+`downloadByteSize`, an invalid present `downloadFileHash`, or a missing hash for
+a transformed representation keeps legacy resolution behavior and makes the
+size comparison unknown; it does not invalidate the Bundle row.
+
 A Bundle referenced by any Release cannot be deleted. Release policy changes
 never mutate a Bundle.
+
+### Artifact route selection
+
+The server computes the normal manifest route as the exact UTF-8 byte length of
+the stored target manifest text plus the primary download size of every changed
+asset. Unchanged assets cost zero. A usable patch is primary only when it is
+strictly smaller than a usable complete file when both sizes are known; a tie
+uses the file. A retained patch remains primary when its required size is known
+and the optional file size is unknown.
+
+When the archive URL, archive size, and every primary size are known, a total
+diff size equal to or larger than `archive_byte_size` produces the archive-only
+response. Missing or invalid optional manifest metadata, or safe-integer sum
+overflow, preserves the existing manifest-first response. No request-time
+`HEAD` or storage metadata lookup is used, and this server-side decision does
+not change native routes or public artifact response types. Exceptional patch
+failure retains the existing patch-to-file-to-archive fallback and is not
+included in the normal-path total.
 
 ## Release model
 
@@ -242,6 +278,13 @@ other marker is rejected. There is no v0 Bundle-policy backfill.
 Managed provider init also requires newly scaffolded v1 resources. AWS,
 Cloudflare, Firebase, and Supabase fail before mutating detected v0
 infrastructure.
+
+The initial `1.0.0` definition changed on the unreleased `next`/RC line to add
+the required archive and patch size fields. A database created from an earlier
+pre-release `1.0.0` definition has the same schema marker, so migrate would
+no-op without adding the fields. Recreate that database from the current empty
+`1.0.0` schema; there is no incremental migration or backfill for this
+pre-release change.
 
 ## Runtime route boundary
 

@@ -47,6 +47,13 @@ export const number = (value: unknown, source: string): number => {
   return value;
 };
 
+export const byteSize = (value: unknown, source: string): number => {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new FirebaseDatabaseDataError(source);
+  }
+  return value;
+};
+
 export const stringArray = (
   value: unknown,
   source: string,

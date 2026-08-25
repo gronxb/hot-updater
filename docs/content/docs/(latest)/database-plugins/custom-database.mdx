@@ -96,6 +96,12 @@ and an empty patch owner list return no rows without I/O. Bundle rows contain
 artifact identity and storage fields only; rollout, channel, compatibility,
 force-update, and message fields belong to Releases.
 
+`BundleRow.archive_byte_size` and `BundlePatchRow.patch_byte_size` are required
+immutable non-negative safe integers. Reject missing, fractional, negative, or
+out-of-range values on every read and write. Optional manifest asset
+`downloadByteSize` and `downloadFileHash` values live in manifest JSON and are
+not additional database columns.
+
 ### Releases
 
 ```ts
@@ -220,10 +226,15 @@ its first write; there is no Release-now/catalog-later fallback.
 v1 does not upgrade a populated v0 database. Create empty 1.0.0 storage and
 redeploy Releases from source artifacts.
 
+If you already created schema `1.0.0` from an earlier unreleased `next` or RC
+build, recreate it as well. The schema marker did not change when the required
+archive and patch size fields were added, so there is no incremental migration
+or backfill for that pre-release database.
+
 1. Remove `queries`, `getUpdateInfo`, provider decision SQL/RPCs, and any
    desired-state cache owned by the provider.
-2. Keep Bundle rows as immutable artifacts. Store rollout and compatibility
-   policy on Releases.
+2. Keep Bundle rows as immutable artifacts, including required archive and
+   patch byte sizes. Store rollout and compatibility policy on Releases.
 3. Add Channel, Release, and Release-catalog storage, indexes, and references.
 4. Implement exact catalog reads and strongly consistent, keyset-paged Release
    scope reads.

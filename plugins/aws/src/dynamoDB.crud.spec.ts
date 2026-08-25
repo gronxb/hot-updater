@@ -10,8 +10,12 @@ import { bundleToRow } from "@hot-updater/plugin-core";
 import { mockClient } from "aws-sdk-client-mock";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { createDynamoDBCrud } from "./dynamoDB";
-import { toDynamoDBBundleItem, toDynamoDBPatchItem } from "./dynamoDB";
+import {
+  createDynamoDBCrud,
+  parseDynamoDBItem,
+  toDynamoDBBundleItem,
+  toDynamoDBPatchItem,
+} from "./dynamoDB";
 
 const dynamodb = mockClient(DynamoDBDocumentClient);
 const bundleId = "00000000-0000-0000-0000-000000000001";
@@ -22,6 +26,7 @@ const bundleRow = bundleToRow({
   fileHash: "hash",
   gitCommitHash: null,
   storageUri: "storage://bundle.zip",
+  archiveByteSize: 3_000_000_001,
   metadata: {},
 });
 const patchRow = {
@@ -31,6 +36,7 @@ const patchRow = {
   base_file_hash: "base-hash",
   patch_file_hash: "patch-hash",
   patch_storage_uri: "storage://patch.patch",
+  patch_byte_size: 3_000_000_002,
   order_index: 0,
 } as const;
 
@@ -53,6 +59,19 @@ const createCrud = () => {
 describe("DynamoDB CRUD access patterns", () => {
   beforeEach(() => {
     dynamodb.reset();
+  });
+
+  it("rejects stored rows with invalid required byte sizes", () => {
+    expect(() =>
+      parseDynamoDBItem(
+        toDynamoDBBundleItem({ ...bundleRow, archive_byte_size: 1.5 }),
+      ),
+    ).toThrow("DynamoDB contains an invalid Hot Updater row");
+    expect(() =>
+      parseDynamoDBItem(
+        toDynamoDBPatchItem({ ...patchRow, patch_byte_size: -1 }),
+      ),
+    ).toThrow("DynamoDB contains an invalid Hot Updater row");
   });
 
   it("uses a strongly consistent key read for an exact bundle id", async () => {

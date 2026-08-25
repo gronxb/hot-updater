@@ -16,6 +16,7 @@ const bundle = toDynamoDBBundleItem(
     fileHash: "hash",
     gitCommitHash: null,
     storageUri: "storage://bundle.zip",
+    archiveByteSize: 3_000_000_001,
     metadata: {},
   }),
 );

@@ -11,10 +11,14 @@ CREATE TABLE bundles (
   file_hash TEXT NOT NULL,
   git_commit_hash TEXT,
   storage_uri TEXT NOT NULL,
+  archive_byte_size REAL NOT NULL,
   metadata TEXT NOT NULL DEFAULT '{}',
   manifest_storage_uri TEXT,
   manifest_file_hash TEXT,
-  asset_base_storage_uri TEXT
+  asset_base_storage_uri TEXT,
+  CONSTRAINT bundles_archive_byte_size_check CHECK (
+    archive_byte_size >= 0 AND archive_byte_size <= 9007199254740991
+  )
 );
 
 CREATE TABLE bundle_patches (
@@ -24,7 +28,11 @@ CREATE TABLE bundle_patches (
   base_file_hash TEXT NOT NULL,
   patch_file_hash TEXT NOT NULL,
   patch_storage_uri TEXT NOT NULL,
+  patch_byte_size REAL NOT NULL,
   order_index INTEGER NOT NULL DEFAULT 0,
+  CONSTRAINT bundle_patches_patch_byte_size_check CHECK (
+    patch_byte_size >= 0 AND patch_byte_size <= 9007199254740991
+  ),
   CONSTRAINT bundle_patches_bundle_id_fk FOREIGN KEY (bundle_id)
     REFERENCES bundles(id) ON UPDATE RESTRICT ON DELETE CASCADE,
   CONSTRAINT bundle_patches_base_bundle_id_fk FOREIGN KEY (base_bundle_id)

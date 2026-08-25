@@ -22,6 +22,7 @@ export interface BundleRow {
   readonly file_hash: string;
   readonly git_commit_hash: string | null;
   readonly storage_uri: string;
+  readonly archive_byte_size: number;
   readonly metadata: DatabaseBundleMetadata;
   readonly manifest_storage_uri: string | null;
   readonly manifest_file_hash: string | null;
@@ -35,6 +36,7 @@ export interface BundlePatchRow {
   readonly base_file_hash: string;
   readonly patch_file_hash: string;
   readonly patch_storage_uri: string;
+  readonly patch_byte_size: number;
   readonly order_index: number;
 }
 

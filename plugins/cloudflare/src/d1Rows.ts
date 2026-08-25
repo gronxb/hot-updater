@@ -57,6 +57,18 @@ const numberValue = (
   return value;
 };
 
+const byteSizeValue = (
+  row: Record<string, unknown>,
+  field: string,
+  model: DatabaseModel,
+): number => {
+  const value = row[field];
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new InvalidD1RowError(model);
+  }
+  return value;
+};
+
 const booleanValue = (
   row: Record<string, unknown>,
   field: string,
@@ -97,6 +109,7 @@ const bundleRow = (row: Record<string, unknown>): BundleRow => {
     file_hash: stringValue(row, "file_hash", "bundles"),
     git_commit_hash: nullableString(row, "git_commit_hash", "bundles"),
     storage_uri: stringValue(row, "storage_uri", "bundles"),
+    archive_byte_size: byteSizeValue(row, "archive_byte_size", "bundles"),
     metadata: metadata(row),
     manifest_storage_uri: nullableString(
       row,
@@ -119,6 +132,7 @@ const patchRow = (row: Record<string, unknown>): BundlePatchRow => ({
   base_file_hash: stringValue(row, "base_file_hash", "bundle_patches"),
   patch_file_hash: stringValue(row, "patch_file_hash", "bundle_patches"),
   patch_storage_uri: stringValue(row, "patch_storage_uri", "bundle_patches"),
+  patch_byte_size: byteSizeValue(row, "patch_byte_size", "bundle_patches"),
   order_index: numberValue(row, "order_index", "bundle_patches"),
 });
 

@@ -95,6 +95,7 @@ export const bundleToRow = (bundle: Bundle): BundleRow => {
     file_hash: bundle.fileHash,
     git_commit_hash: bundle.gitCommitHash,
     storage_uri: bundle.storageUri,
+    archive_byte_size: bundle.archiveByteSize,
     metadata,
     manifest_storage_uri: getManifestStorageUri(bundle),
     manifest_file_hash: getManifestFileHash(bundle),
@@ -110,6 +111,7 @@ export const bundleToPatchRows = (bundle: Bundle): BundlePatchRow[] =>
     base_file_hash: patch.baseFileHash,
     patch_file_hash: patch.patchFileHash,
     patch_storage_uri: patch.patchStorageUri,
+    patch_byte_size: patch.byteSize,
     order_index: orderIndex,
   }));
 
@@ -119,6 +121,7 @@ const comparePatchRows = (left: BundlePatchRow, right: BundlePatchRow) =>
 const patchRowToArtifact = (row: BundlePatchRow): BundlePatchArtifact => ({
   baseBundleId: row.base_bundle_id,
   baseFileHash: row.base_file_hash,
+  byteSize: row.patch_byte_size,
   patchFileHash: row.patch_file_hash,
   patchStorageUri: row.patch_storage_uri,
 });
@@ -137,6 +140,7 @@ export const rowToBundle = (
     fileHash: row.file_hash,
     gitCommitHash: row.git_commit_hash,
     storageUri: row.storage_uri,
+    archiveByteSize: row.archive_byte_size,
     metadata: stripBundleArtifactMetadata(row.metadata),
     manifestStorageUri: row.manifest_storage_uri,
     manifestFileHash: row.manifest_file_hash,
