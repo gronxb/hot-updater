@@ -12,7 +12,8 @@ internal object RelativePathResolver {
             return null
         }
 
-        val components = path.split("/")
+        // Archive directory entries conventionally end with one slash.
+        val components = path.removeSuffix("/").split("/")
         if (components.any { it.isEmpty() || it == "." || it == ".." }) {
             return null
         }
