@@ -938,7 +938,7 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     private func createInitialMetadata() -> BundleMetadata {
-        let currentBundleId = getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
+        let currentBundleId = getCachedBundleId()
         return BundleMetadata(
             isolationKey: isolationKey,
             stableBundleId: nil,
@@ -956,7 +956,7 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     private func getActiveBundleId() -> String? {
-        if let cachedBundleId = getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent {
+        if let cachedBundleId = getCachedBundleId() {
             return cachedBundleId
         }
 
@@ -1018,12 +1018,11 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     func canUseManifestDrivenInstall() -> Bool {
-        guard let currentBundleURL = getCachedBundleURL(),
+        guard let currentBundleId = getCachedBundleId(),
               case .success(let storeDir) = bundleStoreDir() else {
             return false
         }
 
-        let currentBundleId = currentBundleURL.deletingLastPathComponent().lastPathComponent
         let currentBundleDir = (storeDir as NSString).appendingPathComponent(currentBundleId)
         guard fileSystem.fileExists(atPath: currentBundleDir),
               let snapshot = getActiveBundleMetadataSnapshot(),
@@ -1822,6 +1821,58 @@ class BundleFileStorageService: BundleStorageService {
             return .failure(error)
         }
     }
+
+    private func bundleId(for bundleURL: URL, storeDir: String) -> String? {
+        let storeURL = URL(fileURLWithPath: storeDir, isDirectory: true).standardizedFileURL
+        let bundleURL = bundleURL.standardizedFileURL
+        let storePrefix = storeURL.path + "/"
+
+        guard bundleURL.path.hasPrefix(storePrefix) else {
+            return nil
+        }
+
+        return bundleURL.path
+            .dropFirst(storePrefix.count)
+            .split(separator: "/")
+            .first
+            .map(String.init)
+    }
+
+    private func getCachedBundleId() -> String? {
+        guard let bundleURL = getCachedBundleURL(),
+              case .success(let storeDir) = bundleStoreDir() else {
+            return nil
+        }
+
+        return bundleId(for: bundleURL, storeDir: storeDir)
+    }
+
+    func resolveBundlePathAfterMove(
+        _ bundlePath: String,
+        from sourceDirectory: String,
+        to destinationDirectory: String
+    ) throws -> String {
+        let sourceURL = URL(
+            fileURLWithPath: sourceDirectory,
+            isDirectory: true
+        ).standardizedFileURL
+        let bundleURL = URL(fileURLWithPath: bundlePath).standardizedFileURL
+        let sourcePrefix = sourceURL.path + "/"
+
+        guard bundleURL.path.hasPrefix(sourcePrefix) else {
+            throw BundleStorageError.invalidBundle
+        }
+
+        let relativePath = String(bundleURL.path.dropFirst(sourcePrefix.count))
+        guard ArchiveExtractionUtilities.normalizedRelativePath(from: relativePath) == relativePath else {
+            throw BundleStorageError.invalidBundle
+        }
+
+        return try ArchiveExtractionUtilities.extractionURL(
+            for: relativePath,
+            destinationRoot: destinationDirectory
+        ).path
+    }
     
     /**
      * Gets the URL to the cached bundle file if it exists.
@@ -1843,13 +1894,7 @@ class BundleFileStorageService: BundleStorageService {
             }
 
             let storeURL = URL(fileURLWithPath: storeDir, isDirectory: true).standardizedFileURL
-            let storePrefix = storeURL.path + "/"
-            guard bundleURL.path.hasPrefix(storePrefix),
-                  let bundleId = bundleURL.path
-                    .dropFirst(storePrefix.count)
-                    .split(separator: "/")
-                    .first
-                    .map(String.init) else {
+            guard let bundleId = bundleId(for: bundleURL, storeDir: storeDir) else {
                 return nil
             }
 
@@ -1880,7 +1925,7 @@ class BundleFileStorageService: BundleStorageService {
         guard let metadata = loadMetadataOrNull() else {
             return LaunchSelection(
                 bundleURL: getCachedBundleURL() ?? getFallbackBundleURL(bundle: bundle),
-                launchedBundleId: getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent,
+                launchedBundleId: getCachedBundleId(),
                 shouldRollbackOnCrash: false
             )
         }
@@ -1956,7 +2001,7 @@ class BundleFileStorageService: BundleStorageService {
         }
 
         // Get the current bundle ID from the cached bundle URL (exclude fallback bundles)
-        let currentBundleId = self.getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
+        let currentBundleId = self.getCachedBundleId()
 
         guard let validFileUrl = fileUrl else {
             NSLog("[BundleStorage] fileUrl is nil, resetting bundle URL.")
@@ -2128,7 +2173,7 @@ class BundleFileStorageService: BundleStorageService {
             return
         }
 
-        let currentBundleId = self.getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
+        let currentBundleId = self.getCachedBundleId()
         let currentBundleDir = currentBundleId.map {
             (storeDir as NSString).appendingPathComponent($0)
         }
@@ -2443,8 +2488,10 @@ class BundleFileStorageService: BundleStorageService {
                     throw BundleStorageError.moveOperationFailed(error)
                 }
 
-                let finalBundlePath = (realDir as NSString).appendingPathComponent(
-                    (bundlePathInTmp as NSString).lastPathComponent
+                let finalBundlePath = try resolveBundlePathAfterMove(
+                    bundlePathInTmp,
+                    from: tmpDir,
+                    to: realDir
                 )
                 let currentMetadata = self.loadMetadataOrNull() ?? self.createInitialMetadata()
                 guard let updatedMetadata = self.prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId) else {
@@ -2665,7 +2712,7 @@ class BundleFileStorageService: BundleStorageService {
         progressHandler: @escaping (UpdateProgressPayload) -> Void,
         completion: @escaping (Result<Bool, Error>) -> Void
     ) {
-        let currentBundleId = self.getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
+        let currentBundleId = self.getCachedBundleId()
         NSLog("[BundleStorage] Processing downloaded file atPath: \(location.path)")
 
         // 1) Ensure the bundle file exists
@@ -2781,7 +2828,11 @@ class BundleFileStorageService: BundleStorageService {
                     }
 
                     // 11) Construct final bundlePath for preferences
-                    let finalBundlePath = (realDir as NSString).appendingPathComponent((bundlePathInTmp as NSString).lastPathComponent)
+                    let finalBundlePath = try resolveBundlePathAfterMove(
+                        bundlePathInTmp,
+                        from: tmpDir,
+                        to: realDir
+                    )
 
                     // 12) Set the bundle URL in preferences (for backwards compatibility)
                     let currentMetadata = self.loadMetadataOrNull() ?? self.createInitialMetadata()
