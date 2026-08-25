@@ -1197,7 +1197,7 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(signFileHash).toHaveBeenCalledWith("file-hash");
+    expect(signFileHash).toHaveBeenCalledWith(TRANSFER_FILE_HASH);
     expect(validateSigningConfig).toHaveBeenCalledWith(expect.anything(), {
       expectedPublicKey: "public-key",
     });
