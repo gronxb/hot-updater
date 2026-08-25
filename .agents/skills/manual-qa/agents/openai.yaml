@@ -1,4 +1,4 @@
 interface:
   display_name: "Manual QA"
-  short_description: "Run one OTA scenario with prepared infra and agent-device"
-  default_prompt: "Use $manual-qa with a scenario name such as release-ota-recovery. Prepare the default profile environment, interpret that exact scenario, drive it manually with agent-device, and always release the session."
+  short_description: "Run natural-language OTA QA with prepared infrastructure"
+  default_prompt: "Use $manual-qa to verify in natural language that installing an OTA update and relaunching keeps the new bundle active."

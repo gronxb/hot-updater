@@ -25,7 +25,7 @@ Valid profiles:
 - `aws`
 
 Use the user-mentioned profile. If none is mentioned, use
-`standalone-dynamodb`.
+`standalone-kysely`.
 
 ## Commands
 

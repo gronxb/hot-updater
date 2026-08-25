@@ -1,12 +1,13 @@
 ---
 name: manual-qa
-description: Manually execute one named `examples/v0.85.0` OTA scenario with a profile-scoped environment prepared by `hot-updater-agent` and app interactions driven through `agent-device`. Use when the caller supplies a scenario name and wants AI-led manual QA instead of the full Detox E2E runner.
+description: Execute a caller's natural-language HotUpdater QA scenario on `examples/v0.85.0` with profile-scoped infrastructure prepared by `hot-updater-agent` and app interactions driven through `agent-device`. Use for AI-led manual OTA QA rather than the full Detox E2E runner.
 ---
 
 # Hot Updater Manual QA
 
-The only required caller input is a scenario name, for example
-`release-ota-recovery` or `release-ota-recovery.ts`.
+The only required caller input is a natural-language scenario. Accept the
+user's intent directly; never require or reinterpret it as a file name from
+`e2e/detox/scenarios`.
 
 Always load and follow
 [$hot-updater-agent](../hot-updater-agent/SKILL.md) and
@@ -15,7 +16,7 @@ Always load and follow
 
 ## Defaults
 
-- Profile: `standalone-dynamodb`.
+- Profile: `standalone-kysely`.
 - Platforms: iOS, then Android, strictly sequential.
 - Environment target: `examples/v0.85.0/.env.hotupdater`.
 - Git target: the exact current `HEAD` SHA.
@@ -29,7 +30,7 @@ Never ask for them when the defaults are sufficient.
 For each platform, run from the repository root:
 
 ```bash
-hot-updater-agent -json manual start standalone-dynamodb \
+hot-updater-agent -json manual start standalone-kysely \
   -platform ios \
   -ref "$(git rev-parse HEAD)" \
   -env-target examples/v0.85.0/.env.hotupdater \
@@ -44,71 +45,69 @@ source of truth. It includes:
 - control, runtime-config, and update-server URLs;
 - platform, device ID, app ID, release artifact path, and agent-device session;
 - exact `boot`, `install`, `open`, `snapshot`, and `close` commands;
-- the cleanup command in human-readable output.
+- the exact cleanup command.
 
 Do not reconstruct fixed ports, paths, app IDs, devices, or agent-device flags.
 Use the values and commands returned for this session.
 
-## Resolve The Scenario
+## Turn Natural Language Into A Manual Plan
 
-Normalize only an optional `.ts` suffix. Reject directory components and
-resolve exactly:
+Before touching the device, translate the request into a small observable test
+plan containing:
 
-```text
-<handoff.scenarioRoot>/<scenario-name>.ts
-```
+- required preconditions and OTA/provider state;
+- user-visible actions in order;
+- expected results and the evidence that will prove each result;
+- any destructive or intentionally crashing step that needs special handling.
 
-Stop if that file does not exist. Read the complete scenario and
-`<handoff.scenarioRoot>/types.ts`, then read the complete
-`<handoff.scenarioRoot>/../detox-app-driver.js`. The scenario is the executable
-specification and the driver defines the orchestration semantics that must be
-translated from Detox to control calls plus agent-device. Preserve call order,
-request bodies, saved result variables, exact text expectations,
-launch/reload boundaries, screen-state waits, Android reattachment, and
-negative assertions. Do not run Detox and do not substitute a similarly named
-scenario.
+Keep the user's scope. Do not silently expand a focused request into the fixed
+regression suite. If a required expectation is genuinely ambiguous after
+inspecting the app and control contracts, stop and name the ambiguity instead
+of inventing a pass condition.
 
-## Translate The Scenario Manually
+Use the prepared worktree to discover how to carry out the plan. Read only the
+relevant parts of:
 
-Interpret the scenario driver operations as follows:
+- `examples/v0.85.0/src/e2eApp` for routes, actions, testIDs, and visible
+  evidence;
+- `e2e/detox/control-server/routes.ts` for supported control operations;
+- `e2e/detox/detox-app-driver.js` when launch, reload, screen-state wait, crash,
+  or Android reattachment semantics matter;
+- `e2e/detox/scenarios` only as optional implementation examples for a similar
+  step, never as the accepted input vocabulary or an exact script to run.
 
-- `app.control(stage, path, body)`: POST JSON to
-  `<handoff.controlBaseUrl><path>`. If the response contains `jobId`, poll
+Do not create a Detox scenario file and do not run Detox.
+
+## Execute With Control APIs And Agent Device
+
+- Before the first app step, run the returned `bootCommand`, `installCommand`,
+  and `openCommand` in that order.
+- Use the returned agent-device session/device binding for every app command.
+  Open the focused route for the intended action or evidence, take an
+  interactive snapshot, then use refs/selectors with `--settle` for mutations.
+- Verify named expectations with agent-device `wait`, `get`, `is`, `find`, or
+  settled diffs. A screenshot or bare snapshot alone is not a pass condition.
+- POST infrastructure/deploy/state operations to
+  `<handoff.controlBaseUrl><path>`. For responses containing `jobId`, poll
   `GET /e2e/jobs/<jobId>` until `succeeded`; fail on `failed` or `cancelled`.
-  Save every returned field, apply `saveResultAs`/`saveResultFieldsAs` aliases
-  exactly like `detox-app-driver.js`, then interpolate later `$variable`
-  references. Reattach Android after external relaunch/recovery endpoints when
-  the driver does.
-- `app.launch(...)`: POST `/e2e/prepare-app-launch`, then run the returned
-  `openCommand`. Preserve `allowDisconnect` semantics for intentional crash
-  launches.
-- `app.reload(...)`: run `closeCommand`, POST `/e2e/prepare-app-launch`, then
-  run `openCommand`.
-- `app.terminate(...)`: run the returned `closeCommand`.
-- `app.resetAppState(...)`: POST `/e2e/reset-local-app-state`, then run the
-  returned `openCommand`.
-- `app.tap(..., testID)`: follow the action-result mapping in
-  `detox-app-driver.js`. Reset the mapped `/e2e/screen-state` field to `idle`,
-  open the focused route for that testID, take a fresh returned
-  `snapshotCommand`, press the exact element with `--settle`, and wait through
-  `runtimeConfigUrl` until the result is neither `idle` nor ` -> checking`.
-- `app.typeText(...)`: open and snapshot the focused route, fill the exact
-  testID with `--settle`, then mirror the driver's `/e2e/screen-state` patch
-  for mapped text inputs.
-- `app.assertText(..., testID, expected)`: open the focused evidence route,
-  take a fresh interactive snapshot, and assert the current text with
-  agent-device `get`, `is`, `find`, or `wait`. For action-result `exactText`,
-  first wait for the matching runtime-config screen-state field exactly as the
-  driver does. Honor `exactText`; for arrays, any listed value may satisfy the
-  assertion.
-
-Before the first scenario step, run the returned `bootCommand`,
-`installCommand`, and `openCommand` in that order.
+- Record every returned Bundle ID, Release ID, authority, scope, generation,
+  cohort, marker, and other value needed by a later assertion. Never continue
+  with an empty or guessed value.
+- Before a fresh launch, POST `/e2e/prepare-app-launch`; for reload, close the
+  app, prepare the launch, then reopen it. Use
+  `/e2e/reset-local-app-state` only when the user's precondition requires a
+  clean local state.
+- For mapped action results, mirror `detox-app-driver.js`: reset the relevant
+  `/e2e/screen-state` field to `idle`, perform the UI action, and wait through
+  `runtimeConfigUrl` until the field reaches the expected value. Reattach
+  Android after external restart or crash-recovery operations when required.
+- Preserve intentional crash/disconnect semantics and gather recovery evidence
+  after relaunch; do not convert a module-scope crash case into an unrelated UI
+  crash.
 
 Use `curl -fsS` with `content-type: application/json` for control calls. Keep a
-small variable ledger containing every saved Bundle ID, Release ID, authority,
-scope, generation, cohort, and marker. Never continue with an empty or guessed
-saved value.
+small evidence ledger that links each expected result to the observed UI,
+control response, or native state.
 
 ## OTA Assertion Rules
 
@@ -142,7 +141,8 @@ an exclusive dashboard E2E lease, so leaving it ready blocks queued E2E work.
 
 ## Reporting
 
-Report scenario, profile, platform, prepared commit, session ID, deployed
-Release/Bundle pairs, saved runtime variables, each assertion and evidence
-source, final status, and cleanup result. On failure include the failing stage,
-control response or snapshot evidence, and the session log path.
+Report the user's scenario, resolved manual plan, profile, platform, prepared
+commit, session ID, deployed Release/Bundle pairs, saved runtime variables,
+each assertion and evidence source, final status, and cleanup result. On
+failure include the failing stage, control response or snapshot evidence, and
+the session log path.
