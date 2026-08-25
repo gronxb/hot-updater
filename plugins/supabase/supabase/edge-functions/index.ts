@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createHotUpdater } from "@hot-updater/server";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase/edge";
-import { Hono } from "npm:hono";
+import { Hono } from "hono";
 
 declare global {
   var HotUpdater: {
