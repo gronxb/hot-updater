@@ -59,7 +59,7 @@
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/js": "workspace:*",
     "rou3": "0.7.9",
-    "verkit": "0.3.2"
+    "verkit": "catalog:"
   },
   "peerDependencies": {
     "@prisma/client": "*",
@@ -92,6 +92,6 @@
     "kysely-pglite-dialect": "catalog:db",
     "mongodb": "catalog:db",
     "msw": "^2.7.0",
-    "uuidv7": "^1.0.2"
+    "uuidv7": "catalog:"
   }
 }

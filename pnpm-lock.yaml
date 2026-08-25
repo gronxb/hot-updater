@@ -5,6 +5,10 @@ settings:
   excludeLinksFromLockfile: false
 
 catalogs:
+  aws:
+    '@aws-sdk/client-s3':
+      specifier: 3.1066.0
+      version: 3.1066.0
   db:
     '@electric-sql/pglite':
       specifier: 0.4.1
@@ -40,6 +44,12 @@ catalogs:
     '@types/node':
       specifier: ^20
       version: 20.19.43
+    uuidv7:
+      specifier: ^1.0.2
+      version: 1.2.1
+    verkit:
+      specifier: 0.3.2
+      version: 0.3.2
     vitest:
       specifier: 4.1.4
       version: 4.1.4
@@ -49,11 +59,11 @@ catalogs:
       version: 14.2.0
   hono:
     '@hono/node-server':
-      specifier: 1.19.11
-      version: 1.19.11
+      specifier: 1.19.17
+      version: 1.19.17
     hono:
-      specifier: 4.12.9
-      version: 4.12.9
+      specifier: 4.12.34
+      version: 4.12.34
   supabase:
     '@supabase/supabase-js':
       specifier: 2.76.1
@@ -90,7 +100,7 @@ importers:
         version: 0.13.0(@cloudflare/workers-types@4.20260611.1)(@vitest/runner@4.1.4)(@vitest/snapshot@4.1.4)(vitest@4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.9.3)(jsdom@29.1.1(@noble/hashes@1.8.0))(msw@2.14.6(@types/node@25.9.3)(@typescript/typescript6@6.0.2))(vite@8.0.14(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)))
       '@hono/node-server':
         specifier: catalog:hono
-        version: 1.19.11(hono@4.12.9)
+        version: 1.19.17(hono@4.12.34)
       '@nx/js':
         specifier: 22.6.3
         version: 22.6.3(@babel/traverse@7.29.7)(nx@22.6.3)
@@ -117,7 +127,7 @@ importers:
         version: 9.5.2
       hono:
         specifier: catalog:hono
-        version: 4.12.9
+        version: 4.12.34
       jest:
         specifier: ^29.7.0
         version: 29.7.0(@types/node@25.9.3)(babel-plugin-macros@3.1.0)
@@ -358,7 +368,7 @@ importers:
         version: 0.4.1
       '@hono/node-server':
         specifier: catalog:hono
-        version: 1.19.11(hono@4.12.9)
+        version: 1.19.17(hono@4.12.34)
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
@@ -394,7 +404,7 @@ importers:
         version: 9.5.2
       hono:
         specifier: catalog:hono
-        version: 4.12.9
+        version: 4.12.34
       hot-updater:
         specifier: workspace:*
         version: link:../../packages/hot-updater
@@ -409,7 +419,7 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: catalog:hono
-        version: 1.19.11(hono@4.12.9)
+        version: 1.19.17(hono@4.12.34)
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
@@ -427,7 +437,7 @@ importers:
         version: 16.6.1
       hono:
         specifier: catalog:hono
-        version: 4.12.9
+        version: 4.12.34
       kysely:
         specifier: catalog:db
         version: 0.28.17
@@ -464,7 +474,7 @@ importers:
         version: 0.4.1
       '@hono/node-server':
         specifier: catalog:hono
-        version: 1.19.11(hono@4.12.9)
+        version: 1.19.17(hono@4.12.34)
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
@@ -482,7 +492,7 @@ importers:
         version: 16.6.1
       hono:
         specifier: catalog:hono
-        version: 4.12.9
+        version: 4.12.34
       kysely:
         specifier: catalog:db
         version: 0.28.17
@@ -516,7 +526,7 @@ importers:
     devDependencies:
       '@hono/node-server':
         specifier: catalog:hono
-        version: 1.19.11(hono@4.12.9)
+        version: 1.19.17(hono@4.12.34)
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
@@ -558,7 +568,7 @@ importers:
         version: 14.2.0
       hono:
         specifier: catalog:hono
-        version: 4.12.9
+        version: 4.12.34
       hot-updater:
         specifier: workspace:*
         version: link:../../packages/hot-updater
@@ -576,7 +586,7 @@ importers:
     devDependencies:
       '@hono/node-server':
         specifier: catalog:hono
-        version: 1.19.11(hono@4.12.9)
+        version: 1.19.17(hono@4.12.34)
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
@@ -609,7 +619,7 @@ importers:
         version: 9.5.2
       hono:
         specifier: catalog:hono
-        version: 4.12.9
+        version: 4.12.34
       hot-updater:
         specifier: workspace:*
         version: link:../../packages/hot-updater
@@ -627,7 +637,7 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: catalog:hono
-        version: 1.19.11(hono@4.12.9)
+        version: 1.19.17(hono@4.12.34)
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
@@ -648,10 +658,10 @@ importers:
         version: 16.6.1
       hono:
         specifier: catalog:hono
-        version: 4.12.9
+        version: 4.12.34
     devDependencies:
       '@aws-sdk/client-s3':
-        specifier: 3.1066.0
+        specifier: catalog:aws
         version: 3.1066.0
       '@hot-updater/test-utils':
         specifier: workspace:*
@@ -1437,7 +1447,7 @@ importers:
         specifier: ^7.5.16
         version: 7.5.16
       verkit:
-        specifier: 0.3.2
+        specifier: 'catalog:'
         version: 0.3.2
       workspace-tools:
         specifier: ^0.41.7
@@ -1585,7 +1595,7 @@ importers:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
       verkit:
-        specifier: 0.3.2
+        specifier: 'catalog:'
         version: 0.3.2
       vite:
         specifier: 8.0.8
@@ -1706,7 +1716,7 @@ importers:
         specifier: npm:@typescript/typescript6@6.0.2
         version: '@typescript/typescript6@6.0.2'
       verkit:
-        specifier: 0.3.2
+        specifier: 'catalog:'
         version: 0.3.2
 
   packages/react-native:
@@ -1803,7 +1813,7 @@ importers:
         specifier: 0.7.9
         version: 0.7.9
       verkit:
-        specifier: 0.3.2
+        specifier: 'catalog:'
         version: 0.3.2
     devDependencies:
       '@electric-sql/pglite':
@@ -1837,7 +1847,7 @@ importers:
         specifier: ^2.7.0
         version: 2.14.6(@types/node@20.19.43)(typescript@7.0.2)
       uuidv7:
-        specifier: ^1.0.2
+        specifier: 'catalog:'
         version: 1.2.1
 
   packages/test-utils:
@@ -1876,7 +1886,7 @@ importers:
         specifier: 3.1066.0
         version: 3.1066.0
       '@aws-sdk/client-s3':
-        specifier: 3.1066.0
+        specifier: catalog:aws
         version: 3.1066.0
       '@aws-sdk/client-ssm':
         specifier: 3.1066.0
@@ -1910,7 +1920,7 @@ importers:
         version: 1.0.7
       hono:
         specifier: catalog:hono
-        version: 4.12.9
+        version: 4.12.34
     devDependencies:
       '@hot-updater/core':
         specifier: workspace:*
@@ -1952,7 +1962,7 @@ importers:
         specifier: workspace:*
         version: link:../plugin-core
       uuidv7:
-        specifier: ^1.0.2
+        specifier: 'catalog:'
         version: 1.2.1
     devDependencies:
       '@types/node':
@@ -1984,7 +1994,7 @@ importers:
   plugins/cloudflare:
     dependencies:
       '@aws-sdk/client-s3':
-        specifier: 3.1066.0
+        specifier: catalog:aws
         version: 3.1066.0
       '@aws-sdk/lib-storage':
         specifier: 3.1008.0
@@ -2012,9 +2022,9 @@ importers:
         version: 4.2.0
       hono:
         specifier: catalog:hono
-        version: 4.12.9
+        version: 4.12.34
       uuidv7:
-        specifier: ^1.0.2
+        specifier: 'catalog:'
         version: 1.2.1
     devDependencies:
       '@cloudflare/vitest-pool-workers':
@@ -2051,7 +2061,7 @@ importers:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
       verkit:
-        specifier: 0.3.2
+        specifier: 'catalog:'
         version: 0.3.2
       vitest:
         specifier: 'catalog:'
@@ -2100,7 +2110,7 @@ importers:
         specifier: workspace:*
         version: link:../plugin-core
       uuidv7:
-        specifier: ^1.0.2
+        specifier: 'catalog:'
         version: 1.2.1
     devDependencies:
       '@types/node':
@@ -2129,7 +2139,7 @@ importers:
         version: link:../../packages/server
       hono:
         specifier: catalog:hono
-        version: 4.12.9
+        version: 4.12.34
     devDependencies:
       '@hot-updater/js':
         specifier: workspace:*
@@ -2184,7 +2194,7 @@ importers:
         specifier: ^6.0.10
         version: 6.2.3
       verkit:
-        specifier: 0.3.2
+        specifier: 'catalog:'
         version: 0.3.2
 
   plugins/mock:
@@ -2218,7 +2228,7 @@ importers:
         specifier: ^4.0.4
         version: 4.1.0
       verkit:
-        specifier: 0.3.2
+        specifier: 'catalog:'
         version: 0.3.2
     devDependencies:
       '@hot-updater/test-utils':
@@ -2280,7 +2290,7 @@ importers:
         specifier: workspace:*
         version: link:../plugin-core
       uuidv7:
-        specifier: ^1.0.2
+        specifier: 'catalog:'
         version: 1.2.1
     devDependencies:
       '@types/node':
@@ -2331,7 +2341,7 @@ importers:
         specifier: ^2.7.0
         version: 2.14.6(@types/node@20.19.43)(typescript@7.0.2)
       verkit:
-        specifier: 0.3.2
+        specifier: 'catalog:'
         version: 0.3.2
       vitest:
         specifier: 'catalog:'
@@ -2356,9 +2366,9 @@ importers:
         version: 2.76.1
       hono:
         specifier: catalog:hono
-        version: 4.12.9
+        version: 4.12.34
       uuidv7:
-        specifier: ^1.0.2
+        specifier: 'catalog:'
         version: 1.2.1
     devDependencies:
       '@electric-sql/pglite':
@@ -4978,14 +4988,8 @@ packages:
   '@hapi/topo@5.1.0':
     resolution: {integrity: sha512-foQZKJig7Ob0BMAYBfcJk8d77QtOe7Wo4ox7ff1lQYoNNAb6jwcY1ncdoy2e9wQZzvNy7ODZCYJkK8kzmcAnAg==}
 
-  '@hono/node-server@1.19.11':
-    resolution: {integrity: sha512-dr8/3zEaB+p0D2n/IUrlPF1HZm586qgJNXK1a9fhg/PzdtkK7Ksd5l312tJX2yBuALqDYBlG20QEbayqPyxn+g==}
-    engines: {node: '>=18.14.1'}
-    peerDependencies:
-      hono: ^4
-
-  '@hono/node-server@1.19.14':
-    resolution: {integrity: sha512-GwtvgtXxnWsucXvbQXkRgqksiH2Qed37H9xHZocE5sA3N8O8O8/8FA3uclQXxXVzc9XBZuEOMK7+r02FmSpHtw==}
+  '@hono/node-server@1.19.17':
+    resolution: {integrity: sha512-dSneS5qhiauZWGDCeK4o695Xd9nUNjviSZCMQrj10eetr8Uln1ucn6bbphOM6UynAMMtNIzZNSpL9vnASJwrPQ==}
     engines: {node: '>=18.14.1'}
     peerDependencies:
       hono: ^4
@@ -10321,10 +10325,12 @@ packages:
   '@xmldom/xmldom@0.8.13':
     resolution: {integrity: sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==}
     engines: {node: '>=10.0.0'}
+    deprecated: this version has critical issues, please update to the latest version
 
   '@xmldom/xmldom@0.9.10':
     resolution: {integrity: sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==}
     engines: {node: '>=14.6'}
+    deprecated: this version has critical issues, please update to the latest version
 
   '@xterm/xterm@5.5.0':
     resolution: {integrity: sha512-hqJHYaQb5OptNunnyAnkHyM8aCjZ1MEIDTQu1iIbbTD/xops91NB5yq1ZK/dC2JDbVWtF23zUtl9JE2NqwT87A==}
@@ -13761,12 +13767,8 @@ packages:
   highlight.js@10.7.3:
     resolution: {integrity: sha512-tzcUFauisWKNHaRkN4Wjl/ZA07gENAjFl3J/c480dprkGTg5EQstgaNFqBfUqCq54kZRIEcreTsAgF/m2quD7A==}
 
-  hono@4.12.25:
-    resolution: {integrity: sha512-2NFaIyNVgJmBs/ecmtGzlmluTFs5cHEWGTdu0t1HBwYzoGXOL5nUQBRMXsXWla5i4KkG//QMzVP88m1+I3fdAQ==}
-    engines: {node: '>=16.9.0'}
-
-  hono@4.12.9:
-    resolution: {integrity: sha512-wy3T8Zm2bsEvxKZM5w21VdHDDcwVS1yUFFY6i8UobSsKfFceT7TOwhbhfKsDyx7tYQlmRM5FLpIuYvNFyjctiA==}
+  hono@4.12.34:
+    resolution: {integrity: sha512-GqXJqY/xJkJmuloTrnV1ZEXG3fqte+VjkUqoRNZXcrUidiUOP4fMSIHHY4tsqZBK++kVyWmt/AAfSUuy57/eSA==}
     engines: {node: '>=16.9.0'}
 
   hookable@6.1.1:
@@ -24021,17 +24023,13 @@ snapshots:
     dependencies:
       '@hapi/hoek': 9.3.0
 
-  '@hono/node-server@1.19.11(hono@4.12.9)':
+  '@hono/node-server@1.19.17(hono@4.12.34)':
     dependencies:
-      hono: 4.12.9
+      hono: 4.12.34
 
-  '@hono/node-server@1.19.14(hono@4.12.25)':
+  '@hono/node-server@2.0.4(hono@4.12.34)':
     dependencies:
-      hono: 4.12.25
-
-  '@hono/node-server@2.0.4(hono@4.12.25)':
-    dependencies:
-      hono: 4.12.25
+      hono: 4.12.34
 
   '@hot-updater/react-native@file:packages/react-native(expo@52.0.49(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@expo/metro-runtime@4.0.1(react-native@0.80.1(@babel/core@7.26.0)(@react-native-community/cli@20.1.0(@typescript/typescript6@6.0.2))(@types/react@19.2.15)(react@19.1.0)))(graphql@16.14.2)(react-native-webview@13.12.5(react-native@0.80.1(@babel/core@7.26.0)(@react-native-community/cli@20.1.0(@typescript/typescript6@6.0.2))(@types/react@19.2.15)(react@19.1.0))(react@19.1.0))(react-native@0.80.1(@babel/core@7.26.0)(@react-native-community/cli@20.1.0(@typescript/typescript6@6.0.2))(@types/react@19.2.15)(react@19.1.0))(react@19.1.0))(hot-updater@packages+hot-updater)(react-native@0.80.1(@babel/core@7.26.0)(@react-native-community/cli@20.1.0(@typescript/typescript6@6.0.2))(@types/react@19.2.15)(react@19.1.0))(react@19.1.0)':
     dependencies:
@@ -24722,7 +24720,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.29.0(zod@3.25.76)':
     dependencies:
-      '@hono/node-server': 1.19.14(hono@4.12.25)
+      '@hono/node-server': 1.19.17(hono@4.12.34)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
@@ -24732,7 +24730,7 @@ snapshots:
       eventsource-parser: 3.1.0
       express: 5.2.1
       express-rate-limit: 8.5.2(express@5.2.1)
-      hono: 4.12.25
+      hono: 4.12.34
       jose: 6.2.3
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -35267,9 +35265,7 @@ snapshots:
 
   highlight.js@10.7.3: {}
 
-  hono@4.12.25: {}
-
-  hono@4.12.9: {}
+  hono@4.12.34: {}
 
   hookable@6.1.1: {}
 
@@ -43390,11 +43386,11 @@ snapshots:
 
   waku@1.0.0-beta.1(@types/node@24.13.2)(esbuild@0.28.1)(jiti@2.7.0)(react-dom@19.2.6(react@19.2.6))(react-server-dom-webpack@19.2.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(webpack@5.107.2(esbuild@0.28.1)))(react@19.2.6)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0):
     dependencies:
-      '@hono/node-server': 2.0.4(hono@4.12.25)
+      '@hono/node-server': 2.0.4(hono@4.12.34)
       '@vitejs/plugin-react': 6.0.2(vite@8.0.14(@types/node@24.13.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
       '@vitejs/plugin-rsc': 0.5.27(react-dom@19.2.6(react@19.2.6))(react-server-dom-webpack@19.2.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(webpack@5.107.2(esbuild@0.28.1)))(react@19.2.6)(vite@8.0.14(@types/node@24.13.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
       dotenv: 17.4.2
-      hono: 4.12.25
+      hono: 4.12.34
       magic-string: 0.30.21
       picocolors: 1.1.1
       react: 19.2.6

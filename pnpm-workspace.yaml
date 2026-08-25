@@ -27,8 +27,12 @@ allowBuilds:
 
 catalog:
   "@types/node": ^20
+  uuidv7: ^1.0.2
+  verkit: 0.3.2
   vitest: 4.1.4
 catalogs:
+  aws:
+    "@aws-sdk/client-s3": 3.1066.0
   db:
     "@electric-sql/pglite": 0.4.1
     "@libsql/client": 0.15.15
@@ -43,8 +47,8 @@ catalogs:
   firebase:
     firebase-admin: 14.2.0
   hono:
-    "@hono/node-server": 1.19.11
-    hono: 4.12.9
+    "@hono/node-server": 1.19.17
+    hono: 4.12.34
   supabase:
     "@supabase/supabase-js": 2.76.1
   tools:
