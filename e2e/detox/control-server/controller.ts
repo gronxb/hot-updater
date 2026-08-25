@@ -60,6 +60,7 @@ import {
   acquireFairFileLock,
   resolveDeployLockCapacity,
 } from "./fair-file-lock.ts";
+import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
 import { resetProviderAfterReady } from "./provider-reset-retry.ts";
 import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
 import {
@@ -1683,53 +1684,17 @@ async function patchProviderRelease(
   return result;
 }
 
-function inferPatchAssetPathFromStorageUri({
-  baseBundleId,
-  patchStorageUri,
-}: {
-  baseBundleId: string;
-  patchStorageUri: string;
-}) {
-  let pathname: string;
-  try {
-    pathname = new URL(patchStorageUri).pathname;
-  } catch {
-    return null;
-  }
-
-  const segments = pathname
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => {
-      try {
-        return decodeURIComponent(segment);
-      } catch {
-        return segment;
-      }
-    });
-  const patchesIndex = segments.findIndex(
-    (segment, index) =>
-      segment === "patches" && segments[index + 1] === baseBundleId,
-  );
-  if (patchesIndex === -1) {
-    return null;
-  }
-
-  const patchPath = segments.slice(patchesIndex + 2).join("/");
-  return patchPath.endsWith(".bsdiff")
-    ? patchPath.slice(0, -".bsdiff".length)
-    : null;
-}
-
 function resolvePatchAssetPath(
   bundle: Bundle | null | undefined,
   baseBundleId: string,
 ) {
-  const patchStorageUri = bundle
-    ? getBundlePatch(bundle, baseBundleId)?.patchStorageUri
-    : null;
-  return patchStorageUri
-    ? inferPatchAssetPathFromStorageUri({ baseBundleId, patchStorageUri })
+  const patch = bundle ? getBundlePatch(bundle, baseBundleId) : null;
+  return patch
+    ? inferPatchAssetPathFromStorageUri({
+        baseBundleId,
+        patchFileHash: patch.patchFileHash,
+        patchStorageUri: patch.patchStorageUri,
+      })
     : null;
 }
 
