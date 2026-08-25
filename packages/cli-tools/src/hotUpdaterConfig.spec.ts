@@ -223,6 +223,7 @@ export default defineConfig({
 import { bare } from "@hot-updater/bare";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+import { localSigning } from "hot-updater/signing";
 
 config({ path: ".env.hotupdater" });
 
@@ -248,10 +249,9 @@ export default defineConfig({
   database: dynamoDB({
     ...commonOptions,
   }),
-  signing: {
-    enabled: true,
+  signing: localSigning({
     privateKeyPath: "./keys/private-key.pem",
-  },
+  }),
 });
 `,
       "utf-8",
@@ -271,6 +271,9 @@ export default defineConfig({
     expect(updatedConfig).not.toContain("commonOptions");
     expect(updatedConfig).toContain('packageName: "com.example.app"');
     expect(updatedConfig).toContain('privateKeyPath: "./keys/private-key.pem"');
+    expect(updatedConfig).toContain(
+      'import { localSigning } from "hot-updater/signing"',
+    );
   });
 
   it("updates build plugin only when the selected build changes", async () => {

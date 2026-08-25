@@ -27,6 +27,7 @@ allowBuilds:
   protobufjs: true
   re2: true
   sharp: true
+  sse4_crc32: false
   workerd: true
 
 catalog:

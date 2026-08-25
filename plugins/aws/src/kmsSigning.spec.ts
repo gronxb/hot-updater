@@ -8,11 +8,12 @@ import {
 import { mockClient } from "aws-sdk-client-mock";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { awsKmsSigning } from "./awsKmsSigning";
+import { kmsSigning } from "./kmsSigning";
 
 const kms = mockClient(KMSClient);
 const canonicalKeyId =
   "arn:aws:kms:us-east-1:123456789012:key/11111111-2222-3333-4444-555555555555";
+const publicKeyPath = "./keys/public-key.pem";
 
 const keyPair = generateKeyPairSync("rsa", {
   modulusLength: 2048,
@@ -32,7 +33,7 @@ const mockPublicKey = () => {
   });
 };
 
-describe("awsKmsSigning", () => {
+describe("kmsSigning", () => {
   beforeEach(() => {
     kms.reset();
     mockPublicKey();
@@ -46,10 +47,13 @@ describe("awsKmsSigning", () => {
       Signature: signature,
       SigningAlgorithm: "RSASSA_PKCS1_V1_5_SHA_256",
     });
-    const provider = awsKmsSigning({
+    const provider = kmsSigning({
       keyId: "alias/hot-updater-bundle-signing",
+      publicKeyPath,
       region: "us-east-1",
     });
+
+    expect(provider).toMatchObject({ name: "kmsSigning", publicKeyPath });
 
     await expect(provider.sign({ message })).resolves.toEqual({
       signature: new Uint8Array(signature),
@@ -77,8 +81,9 @@ describe("awsKmsSigning", () => {
       Signature: signature,
       SigningAlgorithm: "RSASSA_PKCS1_V1_5_SHA_256",
     });
-    const provider = awsKmsSigning({
+    const provider = kmsSigning({
       keyId: canonicalKeyId,
+      publicKeyPath,
       region: "us-east-1",
     });
 
@@ -99,8 +104,9 @@ describe("awsKmsSigning", () => {
       PublicKey: publicKeyDer,
       SigningAlgorithms: ["ECDSA_SHA_256"],
     });
-    const provider = awsKmsSigning({
+    const provider = kmsSigning({
       keyId: canonicalKeyId,
+      publicKeyPath,
       region: "us-east-1",
     });
 
@@ -119,8 +125,9 @@ describe("awsKmsSigning", () => {
       PublicKey: publicKeyDer,
       SigningAlgorithms: ["RSASSA_PKCS1_V1_5_SHA_256"],
     });
-    const provider = awsKmsSigning({
+    const provider = kmsSigning({
       keyId: "alias/hot-updater-bundle-signing",
+      publicKeyPath,
       region: "us-east-1",
     });
 
@@ -137,8 +144,9 @@ describe("awsKmsSigning", () => {
       Signature: new Uint8Array([1, 2, 3]),
       SigningAlgorithm: "RSASSA_PKCS1_V1_5_SHA_256",
     });
-    const provider = awsKmsSigning({
+    const provider = kmsSigning({
       keyId: canonicalKeyId,
+      publicKeyPath,
       region: "us-east-1",
     });
 
@@ -148,14 +156,26 @@ describe("awsKmsSigning", () => {
   });
 
   it("rejects messages that are not SHA-256-sized", async () => {
-    const provider = awsKmsSigning({
+    const provider = kmsSigning({
       keyId: canonicalKeyId,
+      publicKeyPath,
       region: "us-east-1",
     });
 
     await expect(
       provider.sign({ message: new Uint8Array(31) }),
     ).rejects.toThrow("AWS KMS signing messages must be exactly 32 bytes.");
+    expect(kms.calls()).toHaveLength(0);
+  });
+
+  it("rejects an empty public key path before creating a signing session", () => {
+    expect(() =>
+      kmsSigning({
+        keyId: canonicalKeyId,
+        publicKeyPath: " ",
+        region: "us-east-1",
+      }),
+    ).toThrow("AWS KMS signing public key path is required.");
     expect(kms.calls()).toHaveLength(0);
   });
 });

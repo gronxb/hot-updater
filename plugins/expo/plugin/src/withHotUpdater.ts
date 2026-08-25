@@ -112,110 +112,27 @@ const getFingerprint = async () => {
   return fingerprintCache;
 };
 
-/**
- * Extract public key for embedding in native configs.
- * Supports multiple sources with priority order:
- * 1. Checked-in public key file
- * 2. HOT_UPDATER_PRIVATE_KEY environment variable (legacy fallback)
- * 3. Private key file (legacy fallback)
- * 4. Skip with warning (graceful fallback)
- */
+/** Reads the checked-in public key without accessing signing credentials. */
 export const getPublicKeyFromConfig = async (
   signingConfig: SigningConfig | undefined,
 ): Promise<string | null> => {
-  // If signing not enabled, no public key needed
-  if (!signingConfig?.enabled) {
-    return null;
-  }
-
-  const isProviderSigning =
-    "provider" in signingConfig && signingConfig.provider !== undefined;
-  const configuredPublicKeyPath =
-    isProviderSigning && "publicKeyPath" in signingConfig
-      ? signingConfig.publicKeyPath
-      : undefined;
-  const privateKeyPath =
-    "privateKeyPath" in signingConfig && signingConfig.privateKeyPath
-      ? path.resolve(process.cwd(), signingConfig.privateKeyPath)
-      : undefined;
-  const publicKeyPath = configuredPublicKeyPath
-    ? path.resolve(process.cwd(), configuredPublicKeyPath)
-    : privateKeyPath
-      ? path.join(path.dirname(privateKeyPath), "public-key.pem")
-      : undefined;
-
-  if (isProviderSigning) {
-    try {
-      if (!configuredPublicKeyPath?.trim()) {
-        throw new Error("missing public key path");
-      }
-      return canonicalizeRsaSpkiPublicKey(
-        await readFile(
-          path.resolve(process.cwd(), configuredPublicKeyPath),
-          "utf8",
-        ),
-      );
-    } catch {
-      throw new Error(
-        "[hot-updater] Failed to load publicKeyPath for provider-backed bundle signing.",
-      );
-    }
-  }
-
-  if (publicKeyPath) {
-    try {
-      const publicKey = await readFile(publicKeyPath, "utf8");
-      return createPublicKey(publicKey)
-        .export({ format: "pem", type: "spki" })
-        .toString()
-        .trim();
-    } catch {
-      // Legacy projects may only have a private key available.
-    }
-  }
-
-  const envPrivateKey = process.env.HOT_UPDATER_PRIVATE_KEY;
-  if (envPrivateKey) {
-    try {
-      const { getPublicKeyFromPrivate, loadPrivateKey } =
-        await loadHotUpdater();
-      const envPrivateKeyPEM = envPrivateKey.includes("-----BEGIN")
-        ? envPrivateKey
-        : await loadPrivateKey(envPrivateKey);
-      const publicKeyPEM = getPublicKeyFromPrivate(envPrivateKeyPEM);
-      console.log(
-        "[hot-updater] Using public key extracted from HOT_UPDATER_PRIVATE_KEY environment variable",
-      );
-      return publicKeyPEM.trim();
-    } catch (error) {
-      console.warn(
-        "[hot-updater] WARNING: Failed to extract public key from HOT_UPDATER_PRIVATE_KEY:\n" +
-          `${error instanceof Error ? error.message : String(error)}\n`,
-      );
-      // Continue to try other methods
-    }
-  }
-
-  // If no legacy privateKeyPath is configured, no fallback remains.
-  if (!privateKeyPath) {
-    console.warn(
-      "[hot-updater] WARNING: signing.enabled is true but no privateKeyPath configured.\n" +
-        "Public key will not be embedded. Configure publicKeyPath.",
-    );
+  if (!signingConfig) {
     return null;
   }
 
   try {
-    // Legacy fallback: extract the public key from the private key.
-    const { getPublicKeyFromPrivate, loadPrivateKey } = await loadHotUpdater();
-    const privateKeyPEM = await loadPrivateKey(privateKeyPath);
-    const publicKeyPEM = getPublicKeyFromPrivate(privateKeyPEM);
-    console.log(`[hot-updater] Extracted public key from ${privateKeyPath}`);
-    return publicKeyPEM.trim();
+    if (!signingConfig.publicKeyPath.trim()) {
+      throw new Error("missing public key path");
+    }
+    return canonicalizeRsaSpkiPublicKey(
+      await readFile(
+        path.resolve(process.cwd(), signingConfig.publicKeyPath),
+        "utf8",
+      ),
+    );
   } catch {
     throw new Error(
-      "[hot-updater] Failed to load the public key for bundle signing. " +
-        "Configure publicKeyPath or generate a matching public-key.pem file.",
+      "[hot-updater] Failed to load publicKeyPath for bundle signing.",
     );
   }
 };

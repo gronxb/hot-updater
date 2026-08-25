@@ -95,7 +95,8 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
         ui.kv(
           "Code",
           ui.code(
-            'signing: { enabled: true, privateKeyPath: "./keys/private-key.pem" }',
+            'import { localSigning } from "hot-updater/signing";\n' +
+              'signing: localSigning({ privateKeyPath: "./keys/private-key.pem" })',
           ),
         ),
         ui.kv("Run", ui.command("hot-updater keys export-public")),
@@ -221,8 +222,6 @@ export const keysExportPublic = async (
   const cwd = getCwd();
 
   const config = await loadConfig(null);
-  const configPrivateKeyPath = config.signing?.privateKeyPath;
-
   try {
     let publicKeyPEM: string;
     if (options.input) {
@@ -232,19 +231,13 @@ export const keysExportPublic = async (
       publicKeyPEM = getPublicKeyFromPrivate(
         await loadPrivateKey(privateKeyPath),
       );
-    } else if (
-      config.signing?.enabled &&
-      "provider" in config.signing &&
-      config.signing.provider
-    ) {
+    } else if (config.signing) {
       const publicKeyPath = path.resolve(cwd, config.signing.publicKeyPath);
       publicKeyPEM = canonicalizeRsaSpkiPublicKey(
         await fs.readFile(publicKeyPath, "utf8"),
       );
     } else {
-      const privateKeyPath = configPrivateKeyPath
-        ? path.resolve(cwd, configPrivateKeyPath)
-        : path.join(cwd, "keys", "private-key.pem");
+      const privateKeyPath = path.join(cwd, "keys", "private-key.pem");
       const publicKeyPath = path.join(
         path.dirname(privateKeyPath),
         "public-key.pem",

@@ -3,6 +3,6 @@ export {
   dynamoDB,
   type DynamoDBConfig,
 } from "./dynamoDB";
-export * from "./awsKmsSigning";
 export * from "./cloudFrontDownloadUrl";
+export * from "./kmsSigning";
 export * from "./s3Storage";

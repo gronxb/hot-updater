@@ -5,6 +5,7 @@ import type { BundleSigningPlugin, SigningConfig } from "./types";
 
 const provider = createBundleSigningPlugin({
   name: "test",
+  publicKeyPath: "public-key.pem",
   getPublicKey: async () => ({ publicKey: "public-key" }),
   sign: async ({ message }) => ({ signature: message }),
 });
@@ -15,28 +16,16 @@ describe("createBundleSigningPlugin", () => {
     expectTypeOf(provider).toMatchTypeOf<BundleSigningPlugin>();
   });
 
-  it("accepts only one enabled signing source", () => {
-    expectTypeOf<{
-      enabled: true;
-      privateKeyPath: string;
-    }>().toMatchTypeOf<SigningConfig>();
-    expectTypeOf<{
-      enabled: true;
-      provider: BundleSigningPlugin;
-      publicKeyPath: string;
-    }>().toMatchTypeOf<SigningConfig>();
+  it("uses the plugin directly as signing config", () => {
+    expectTypeOf(provider).toMatchTypeOf<SigningConfig>();
 
-    // @ts-expect-error provider signing requires a public key path
-    const missingPublicKey: SigningConfig = { enabled: true, provider };
-    // @ts-expect-error file and provider signing sources are mutually exclusive
-    const conflictingSources: SigningConfig = {
-      enabled: true,
-      privateKeyPath: "private.pem",
-      provider,
-      publicKeyPath: "public.pem",
+    // @ts-expect-error signing plugins require a pinned public key path
+    const missingPublicKey: SigningConfig = {
+      name: "missing-public-key",
+      getPublicKey: async () => ({ publicKey: "public-key" }),
+      sign: async ({ message }) => ({ signature: message }),
     };
 
-    expect(missingPublicKey.enabled).toBe(true);
-    expect(conflictingSources.enabled).toBe(true);
+    expect(missingPublicKey.name).toBe("missing-public-key");
   });
 });

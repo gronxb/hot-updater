@@ -3,6 +3,7 @@ import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
+import { localSigning } from "hot-updater/signing";
 
 config({
   path: process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH ?? ".env.hotupdater",
@@ -68,8 +69,7 @@ export default defineConfig({
   },
   /* E2E_AUTO_PATCH_CONFIG_END */
   updateStrategy: "appVersion",
-  signing: {
-    enabled: true,
+  signing: localSigning({
     privateKeyPath: "./keys/private-key.pem",
-  },
+  }),
 });

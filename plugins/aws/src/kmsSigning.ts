@@ -14,9 +14,11 @@ import { applyKmsRuntimeAwsConfig } from "./runtimeAwsConfig";
 
 const SIGNING_ALGORITHM = "RSASSA_PKCS1_V1_5_SHA_256" as const;
 
-export interface AwsKmsSigningOptions extends KMSClientConfig {
+export interface KmsSigningOptions extends KMSClientConfig {
   /** AWS KMS asymmetric RSA signing key ARN, ID, or alias. */
   keyId: string;
+  /** Checked-in RSA SPKI public key used as the native trust anchor. */
+  publicKeyPath: string;
 }
 
 interface ResolvedKmsKey {
@@ -85,12 +87,16 @@ const loadPublicKey = async (
  * Creates a bundle signer backed by an AWS KMS asymmetric RSA signing key.
  * The private key never leaves KMS.
  */
-export const awsKmsSigning = ({
+export const kmsSigning = ({
   keyId,
+  publicKeyPath,
   ...clientConfig
-}: AwsKmsSigningOptions): BundleSigningPlugin => {
+}: KmsSigningOptions): BundleSigningPlugin => {
   if (keyId.trim().length === 0) {
     throw new Error("AWS KMS signing key ID is required.");
+  }
+  if (publicKeyPath.trim().length === 0) {
+    throw new Error("AWS KMS signing public key path is required.");
   }
 
   const client = new KMSClient(applyKmsRuntimeAwsConfig(clientConfig));
@@ -109,7 +115,8 @@ export const awsKmsSigning = ({
   };
 
   return {
-    name: "awsKmsSigning",
+    name: "kmsSigning",
+    publicKeyPath,
     async getPublicKey() {
       const { publicKey } = await resolveKey();
       return { publicKey };

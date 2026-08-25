@@ -17,7 +17,12 @@
       "import": "./dist/config.mjs",
       "require": "./dist/config.mjs"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./signing": {
+      "types": "./dist/signing.d.mts",
+      "import": "./dist/signing.mjs",
+      "require": "./dist/signing.mjs"
+    }
   },
   "files": [
     "dist",

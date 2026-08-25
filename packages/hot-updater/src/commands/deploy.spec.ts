@@ -256,6 +256,12 @@ const fixtureBundleId = (sequence: number): string =>
 const DEPLOY_BUNDLE_ID = fixtureBundleId(123);
 const LOGICAL_FILE_HASH = "a".repeat(64);
 const TRANSFER_FILE_HASH = "b".repeat(64);
+const mockSigningPlugin = {
+  getPublicKey: vi.fn(async () => ({ publicKey: "public-key" })),
+  name: "mock-signing",
+  publicKeyPath: "/mock/public.pem",
+  sign: vi.fn(async () => ({ signature: new Uint8Array([1]) })),
+};
 
 const mockGetBundlesWithFixtures = (fixtures: DeploymentFixture[]) => {
   mockBuildPlugin.build.mockResolvedValue({
@@ -383,7 +389,6 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 3,
       },
-      signing: { enabled: false },
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
@@ -628,7 +633,6 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 3,
       },
-      signing: { enabled: false },
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
@@ -673,7 +677,6 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 3,
       },
-      signing: { enabled: false },
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     }));
@@ -706,7 +709,6 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 3,
       },
-      signing: { enabled: false },
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
@@ -739,7 +741,6 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 3,
       },
-      signing: { enabled: false },
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
@@ -780,7 +781,6 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 3,
       },
-      signing: { enabled: false },
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
@@ -1010,7 +1010,6 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 3,
       },
-      signing: { enabled: false },
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
@@ -1173,7 +1172,7 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 3,
       },
-      signing: { enabled: true, privateKeyPath: "/mock/private.pem" },
+      signing: mockSigningPlugin,
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
@@ -1233,7 +1232,7 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 3,
       },
-      signing: { enabled: true, privateKeyPath: "/mock/private.pem" },
+      signing: mockSigningPlugin,
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
@@ -1268,7 +1267,6 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 2,
       },
-      signing: { enabled: false },
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
@@ -1331,7 +1329,6 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 1,
       },
-      signing: { enabled: false },
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
@@ -1375,7 +1372,6 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 1,
       },
-      signing: { enabled: false },
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
@@ -1407,7 +1403,6 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 1,
       },
-      signing: { enabled: false },
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
@@ -1455,7 +1450,6 @@ describe("deploy rollout wiring", () => {
         enabled: true,
         maxBaseBundles: 1,
       },
-      signing: { enabled: false },
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });

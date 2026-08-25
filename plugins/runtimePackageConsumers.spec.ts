@@ -138,7 +138,7 @@ describe("packed provider entrypoints", () => {
     {
       directory: "aws",
       packageName: "@hot-updater/aws",
-      exports: ["cloudFrontDownloadUrl", "s3Storage"],
+      exports: ["cloudFrontDownloadUrl", "kmsSigning", "s3Storage"],
       handler: "@hot-updater/aws/lambda",
     },
     {
@@ -149,7 +149,7 @@ describe("packed provider entrypoints", () => {
     {
       directory: "firebase",
       packageName: "@hot-updater/firebase",
-      exports: ["firebaseDatabase", "firebaseStorage"],
+      exports: ["firebaseDatabase", "firebaseKmsSigning", "firebaseStorage"],
       absentExports: ["firebaseStorageDelivery"],
       handler: "@hot-updater/firebase/functions",
     },

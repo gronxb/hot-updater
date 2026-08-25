@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     config: "./src/config.ts",
     index: "./src/index.ts",
+    signing: "./src/signing.ts",
   },
   deps: {
     alwaysBundle: [/^@hot-updater\/(aws|cloudflare|firebase|supabase)\/init$/],
@@ -20,8 +21,13 @@ export default defineConfig({
         import: "./dist/config.mjs",
         require: "./dist/config.mjs",
       },
+      "./signing": {
+        types: "./dist/signing.d.mts",
+        import: "./dist/signing.mjs",
+        require: "./dist/signing.mjs",
+      },
     },
-    exclude: ["index"],
+    exclude: ["index", "signing"],
     inlinedDependencies: true,
     legacy: true,
   },

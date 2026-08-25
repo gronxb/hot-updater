@@ -54,7 +54,7 @@ export async function validateSigningConfig(
   config: ConfigResponse,
   options: { readonly expectedPublicKey?: string } = {},
 ): Promise<SigningValidationResult> {
-  const signingEnabled = config.signing?.enabled ?? false;
+  const signingEnabled = config.signing !== undefined;
 
   const iosParser = new IosConfigParser(config.platform.ios.infoPlistPaths);
   const androidParser = new AndroidConfigParser(

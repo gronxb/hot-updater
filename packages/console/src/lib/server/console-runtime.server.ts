@@ -1,5 +1,3 @@
-import path from "node:path";
-
 import type {
   ConsoleAuthAdapter,
   ConsoleSigningConfig,
@@ -16,42 +14,15 @@ const readString = (value: unknown, key: string): string | undefined => {
 };
 
 const getProviderName = (signing: unknown): string => {
-  const provider =
-    typeof signing === "object" && signing !== null
-      ? Reflect.get(signing, "provider")
-      : undefined;
-  const providerName =
-    typeof provider === "string"
-      ? provider
-      : (readString(provider, "name") ?? readString(signing, "name"));
-  if (providerName?.trim()) return providerName.trim().slice(0, 80);
-  return readString(signing, "privateKeyPath")
-    ? "Local file"
-    : "Configured provider";
-};
-
-const deriveLegacyPublicKeyPath = (
-  privateKeyPath: string | undefined,
-): string | undefined => {
-  if (
-    privateKeyPath === undefined ||
-    path.basename(privateKeyPath) !== "private-key.pem"
-  ) {
-    return undefined;
-  }
-  return path.join(path.dirname(privateKeyPath), "public-key.pem");
+  return readString(signing, "name")?.slice(0, 80) ?? "Configured provider";
 };
 
 export const sanitizeConsoleSigningConfig = (
   signing: unknown,
 ): ConsoleSigningConfig | undefined => {
   if (typeof signing !== "object" || signing === null) return undefined;
-  const enabled = Reflect.get(signing, "enabled") === true;
-  if (!enabled) return { enabled: false };
 
-  const publicKeyPath =
-    readString(signing, "publicKeyPath") ??
-    deriveLegacyPublicKeyPath(readString(signing, "privateKeyPath"));
+  const publicKeyPath = readString(signing, "publicKeyPath");
   return {
     enabled: true,
     provider: getProviderName(signing),

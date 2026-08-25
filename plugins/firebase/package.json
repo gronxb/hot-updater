@@ -45,10 +45,12 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "@google-cloud/kms": "5.7.0",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
+    "fast-crc32c": "2.0.0",
     "hono": "catalog:hono"
   },
   "publishConfig": {
@@ -57,6 +59,7 @@
   "devDependencies": {
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
+    "@types/fast-crc32c": "^2.0.3",
     "@types/node": "catalog:",
     "es-toolkit": "^1.32.0",
     "execa": "catalog:tools",

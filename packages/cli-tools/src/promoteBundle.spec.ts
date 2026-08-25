@@ -27,11 +27,7 @@ const baseBundle: Bundle = {
   gitCommitHash: "deadbeef",
 };
 
-const config = {
-  signing: {
-    enabled: false,
-  },
-} as ConfigResponse;
+const config = {} as ConfigResponse;
 
 interface TestBundleManifest {
   assets: Record<
@@ -453,13 +449,10 @@ describe("createCopiedBundleArchive", () => {
     const signedConfig = {
       ...config,
       signing: {
-        enabled: true,
-        provider: {
-          name: "test-provider",
-          getPublicKey: async () => ({ publicKey: nextKeys.publicKey }),
-          sign: providerSign,
-        },
+        name: "test-provider",
         publicKeyPath,
+        getPublicKey: async () => ({ publicKey: nextKeys.publicKey }),
+        sign: providerSign,
       },
     } satisfies ConfigResponse;
 
@@ -588,13 +581,10 @@ describe("createCopiedBundleArchive", () => {
     const signedConfig = {
       ...config,
       signing: {
-        enabled: true,
-        provider: {
-          name: "test-provider",
-          getPublicKey: async () => ({ publicKey: keys.publicKey }),
-          sign,
-        },
+        name: "test-provider",
         publicKeyPath,
+        getPublicKey: async () => ({ publicKey: keys.publicKey }),
+        sign,
       },
     } satisfies ConfigResponse;
 
@@ -706,13 +696,10 @@ describe("createCopiedBundleArchive", () => {
     const signedConfig = {
       ...config,
       signing: {
-        enabled: true,
-        provider: {
-          name: "test-provider",
-          getPublicKey: async () => ({ publicKey: keys.publicKey }),
-          sign,
-        },
+        name: "test-provider",
         publicKeyPath,
+        getPublicKey: async () => ({ publicKey: keys.publicKey }),
+        sign,
       },
     } satisfies ConfigResponse;
 

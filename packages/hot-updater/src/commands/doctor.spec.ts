@@ -41,9 +41,6 @@ const createConfig = (overrides: Record<string, unknown> = {}) => ({
       androidManifestPaths: [],
     },
   },
-  signing: {
-    enabled: false,
-  },
   database: doctorDatabaseHarness.plugin,
   ...overrides,
 });

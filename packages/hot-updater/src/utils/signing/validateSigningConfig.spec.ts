@@ -40,7 +40,12 @@ const createConfig = (): ConfigResponse =>
       android: { androidManifestPaths: ["AndroidManifest.xml"] },
       ios: { infoPlistPaths: ["Info.plist"] },
     },
-    signing: { enabled: true, privateKeyPath: "private-key.pem" },
+    signing: {
+      getPublicKey: async () => ({ publicKey: "public-key" }),
+      name: "test-signing",
+      publicKeyPath: "public-key.pem",
+      sign: async ({ message }) => ({ signature: message }),
+    },
   }) as ConfigResponse;
 
 describe("validateSigningConfig", () => {

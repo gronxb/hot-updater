@@ -12,9 +12,19 @@ published without the configured signing key. Hot Updater uses RSA-SHA256
 signatures and embeds only the public key in the app.
 
 The private key is the deployment authority. Prefer a remote signing service
-such as AWS KMS, where the private key is non-exportable and the deploy process
-submits only a message to sign. A secret manager that returns a PEM file is a
-compatibility option, but the key still becomes readable by the deploy process.
+where the private key is non-exportable and the deploy process submits only a
+message to sign.
+
+| Official signer | Import | Key storage |
+| --- | --- | --- |
+| Local PEM | `hot-updater/signing` | Your filesystem or secret manager |
+| AWS KMS | `@hot-updater/aws` | Non-exportable AWS KMS key |
+| Firebase project | `@hot-updater/firebase` | Version-pinned Google Cloud KMS key |
+
+GitHub, Cloudflare, and Supabase do not provide a compatible arbitrary-message,
+non-exportable RSA signing API. Their secret stores expose the PEM to the
+runtime, so Hot Updater does not label them managed signing providers. In
+GitHub Actions, use OIDC with AWS KMS or Google Cloud KMS instead.
 
 > **Important**: Release a native app containing the public key before you
 > deploy signed bundles. An app without the matching public key rejects them.
@@ -74,25 +84,22 @@ npm install @hot-updater/aws --save-dev
 ```
 
 ```ts title="hot-updater.config.ts"
-import { awsKmsSigning } from "@hot-updater/aws";
+import { kmsSigning } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   // ...other config
-  signing: {
-    enabled: true,
-    provider: awsKmsSigning({
-      // A key ARN is an identifier, not a secret. Pin the exact key.
-      keyId:
-        "arn:aws:kms:ap-northeast-2:123456789012:key/00000000-0000-0000-0000-000000000000",
-      region: "ap-northeast-2",
-    }),
+  signing: kmsSigning({
+    // A key ARN is an identifier, not a secret. Pin the exact key.
+    keyId:
+      "arn:aws:kms:ap-northeast-2:123456789012:key/00000000-0000-0000-0000-000000000000",
+    region: "ap-northeast-2",
     publicKeyPath: "./keys/public-key.pem",
-  },
+  }),
 });
 ```
 
-`awsKmsSigning` also accepts AWS SDK v3 KMS client options such as
+`kmsSigning` also accepts AWS SDK v3 KMS client options such as
 `credentials` and `endpoint`. Prefer the default credential chain with a
 short-lived workload identity instead of putting long-lived credentials in
 `hot-updater.config.ts`.
@@ -203,20 +210,47 @@ memoized. Resolving the provider public key adds a separate request. Account
 for KMS latency, request quotas, availability, and cost. Provider errors fail
 the deployment; Hot Updater does not fall back to an unsigned bundle.
 
+## Firebase projects: Google Cloud KMS
+
+Firebase projects are Google Cloud projects, so they can use Cloud KMS without
+exporting the private key. Pin a full CryptoKeyVersion resource name; a moving
+alias would stop matching the public key embedded in installed apps.
+
+```bash
+npm install @hot-updater/firebase --save-dev
+```
+
+```ts title="hot-updater.config.ts"
+import { firebaseKmsSigning } from "@hot-updater/firebase";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  // ...other config
+  signing: firebaseKmsSigning({
+    keyVersion:
+      "projects/PROJECT/locations/LOCATION/keyRings/RING/cryptoKeys/KEY/cryptoKeyVersions/1",
+    publicKeyPath: "./keys/public-key.pem",
+  }),
+});
+```
+
+The provider uses Application Default Credentials. Locally, authenticate ADC;
+in Google Cloud, use an attached service account; in GitHub Actions, use
+Workload Identity Federation. Grant the key-level
+`roles/cloudkms.signerVerifier` role, or a custom role limited to signing and
+reading the public key. Only RSA PKCS#1 SHA-256 key versions are accepted.
+
 ## Expo and EAS Build
 
 Expo embeds the public key during `expo prebuild`:
 
 ```ts title="hot-updater.config.ts"
 export default defineConfig({
-  signing: {
-    enabled: true,
-    provider: awsKmsSigning({
-      keyId: "arn:aws:kms:REGION:ACCOUNT_ID:key/KEY_ID",
-      region: "REGION",
-    }),
+  signing: kmsSigning({
+    keyId: "arn:aws:kms:REGION:ACCOUNT_ID:key/KEY_ID",
+    region: "REGION",
     publicKeyPath: "./keys/public-key.pem",
-  },
+  }),
   // ...other config
 });
 ```
@@ -232,18 +266,18 @@ private key with EAS Secrets, add it to `eas.json`, or use `.easignore` to send
 `keys/private-key.pem` to the build worker. Ensure `keys/public-key.pem` is
 included in the build input.
 
-## Legacy Local Private Key
+## Local Private Key
 
-`privateKeyPath` remains supported for existing projects and offline signing:
+Use the local plugin for offline signing or when you manage the key yourself:
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
+import { localSigning } from "hot-updater/signing";
 
 export default defineConfig({
-  signing: {
-    enabled: true,
+  signing: localSigning({
     privateKeyPath: "./keys/private-key.pem",
-  },
+  }),
   // ...other config
 });
 ```
@@ -260,7 +294,7 @@ The command creates `private-key.pem` with owner-only permissions and
 file out of Git, EAS build inputs, artifacts, caches, and logs. Keep and commit
 the public file so Expo can embed it without reading the private key.
 
-For legacy CI, use a protected secret manager and materialize the private file
+For CI, use a protected secret manager and materialize the private file
 only outside the workspace for the duration of the trusted signing job. A PEM
 retrieved from a secret manager is still available to that process and is less
 isolated than a KMS or HSM-backed remote signer.
@@ -333,12 +367,12 @@ signing boundary.
 
 ## Configuration States
 
-| `signing.enabled` | Native public key     | Result                        |
-| ----------------- | --------------------- | ----------------------------- |
-| `false`           | Not present           | Normal unsigned updates       |
-| `false`           | Present               | Updates rejected              |
-| `true`            | Present and matching  | Signed updates verified       |
-| `true`            | Missing or mismatched | Deployment or update rejected |
+| `signing` config | Native public key     | Result                        |
+| ---------------- | --------------------- | ----------------------------- |
+| Omitted          | Not present           | Normal unsigned updates       |
+| Omitted          | Present               | Updates rejected              |
+| Plugin           | Present and matching  | Signed updates verified       |
+| Plugin           | Missing or mismatched | Deployment or update rejected |
 
 Config and native files must match. Hot Updater fails closed rather than
 installing an unsigned or unverifiable update.

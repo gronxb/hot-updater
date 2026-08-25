@@ -161,16 +161,13 @@ describe("loadConfig", () => {
       [
         "const provider = {",
         "  name: 'test-signer',",
+        "  publicKeyPath: './public-key.pem',",
         "  getPublicKey: async () => ({ publicKey: 'public-key' }),",
         "  sign: async ({ message }) => ({ signature: message }),",
         "};",
         "globalThis.__HOT_UPDATER_TEST_SIGNING_PROVIDER__ = provider;",
         "export default {",
-        "  signing: {",
-        "    enabled: true,",
-        "    provider,",
-        "    publicKeyPath: './public-key.pem',",
-        "  },",
+        "  signing: provider,",
         "};",
         "",
       ].join("\n"),
@@ -180,11 +177,7 @@ describe("loadConfig", () => {
     const config = await loadConfig(null);
     const signing = config.signing;
 
-    expect(signing?.enabled).toBe(true);
-    if (!signing?.enabled || !("provider" in signing)) {
-      throw new Error("Expected provider signing config");
-    }
-    expect(signing.provider).toBe(
+    expect(signing).toBe(
       Reflect.get(globalThis, "__HOT_UPDATER_TEST_SIGNING_PROVIDER__"),
     );
   });

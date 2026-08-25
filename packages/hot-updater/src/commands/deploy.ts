@@ -1045,7 +1045,7 @@ const deployPlatform = async ({
       );
     }
 
-    if (config.signing?.enabled) {
+    if (signingSession) {
       p.log.success("✅ Bundle Signing Complete");
     }
 

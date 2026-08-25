@@ -41,18 +41,6 @@ const parseRsaPublicKey = (publicKeyPEM: string): KeyObject => {
   }
 };
 
-const parseRsaPrivateKey = (privateKeyPEM: string): KeyObject => {
-  try {
-    const privateKey = crypto.createPrivateKey(privateKeyPEM);
-    if (privateKey.asymmetricKeyType !== "rsa") {
-      throw new Error("not rsa");
-    }
-    return privateKey;
-  } catch {
-    throw new Error("Bundle signing private key must be a valid RSA PEM key.");
-  }
-};
-
 const exportPublicKey = (publicKey: KeyObject) =>
   publicKey.export({ type: "spki", format: "pem" }).toString();
 
@@ -65,21 +53,20 @@ const publicKeysMatch = (left: KeyObject, right: KeyObject) => {
   );
 };
 
-const readKeyFile = async (
-  cwd: string,
-  filePath: string,
-  kind: "private" | "public",
-) => {
+const readKeyFile = async (cwd: string, filePath: string) => {
   try {
     return await fs.readFile(resolvePath(cwd, filePath), "utf8");
   } catch {
-    throw new Error(`Failed to read the bundle signing ${kind} key file.`);
+    throw new Error("Failed to read the bundle signing public key file.");
   }
 };
 
-const getProviderPublicKey = async (provider: BundleSigningPlugin) => {
+const getProviderPublicKey = async (
+  provider: BundleSigningPlugin,
+  cwd: string,
+) => {
   try {
-    const result = await provider.getPublicKey();
+    const result = await provider.getPublicKey({ cwd });
     if (!result || typeof result.publicKey !== "string") {
       throw new Error("invalid result");
     }
@@ -149,35 +136,13 @@ const createMemoizedSigner = ({
   };
 };
 
-const prepareLegacySigning = async (
-  signing: Extract<SigningConfig, { privateKeyPath: string }>,
-  cwd: string,
-): Promise<BundleSigningSession> => {
-  const privateKeyPEM = await readKeyFile(
-    cwd,
-    signing.privateKeyPath,
-    "private",
-  );
-  const privateKey = parseRsaPrivateKey(privateKeyPEM);
-  const publicKey = crypto.createPublicKey(privateKey);
-
-  return {
-    name: "local-file",
-    publicKey: exportPublicKey(publicKey),
-    signFileHash: createMemoizedSigner({
-      publicKey,
-      sign: async (message) => crypto.sign("RSA-SHA256", message, privateKey),
-    }),
-  };
-};
-
-const prepareProviderSigning = async (
-  signing: Extract<SigningConfig, { provider: BundleSigningPlugin }>,
+const preparePluginSigning = async (
+  signing: BundleSigningPlugin,
   cwd: string,
 ): Promise<BundleSigningSession> => {
   const [configuredPublicKeyPEM, providerPublicKey] = await Promise.all([
-    readKeyFile(cwd, signing.publicKeyPath, "public"),
-    getProviderPublicKey(signing.provider),
+    readKeyFile(cwd, signing.publicKeyPath),
+    getProviderPublicKey(signing, cwd),
   ]);
   const configuredPublicKey = parseRsaPublicKey(configuredPublicKeyPEM);
 
@@ -188,12 +153,12 @@ const prepareProviderSigning = async (
   }
 
   return {
-    name: signing.provider.name,
+    name: signing.name,
     publicKey: exportPublicKey(providerPublicKey),
     signFileHash: createMemoizedSigner({
       publicKey: providerPublicKey,
       sign: async (message) => {
-        const result = await signing.provider.sign({ message });
+        const result = await signing.sign({ cwd, message });
         return result.signature;
       },
     }),
@@ -204,12 +169,22 @@ export const prepareBundleSigning = async (
   signing: SigningConfig | undefined,
   options: { readonly cwd?: string } = {},
 ): Promise<BundleSigningSession | null> => {
-  if (!signing?.enabled) {
+  if (!signing) {
     return null;
   }
 
+  if (
+    typeof signing.name !== "string" ||
+    typeof signing.publicKeyPath !== "string" ||
+    signing.publicKeyPath.trim().length === 0 ||
+    typeof signing.getPublicKey !== "function" ||
+    typeof signing.sign !== "function"
+  ) {
+    throw new Error(
+      "Bundle signing must be configured with a signing plugin. Omit signing to disable it.",
+    );
+  }
+
   const cwd = options.cwd ?? getCwd();
-  return "provider" in signing && signing.provider
-    ? prepareProviderSigning(signing, cwd)
-    : prepareLegacySigning(signing, cwd);
+  return preparePluginSigning(signing, cwd);
 };
