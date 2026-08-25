@@ -427,6 +427,39 @@ struct BundleFileStorageServiceTests {
         try preferences.setItem(bundleURL.path, forKey: "HotUpdaterBundleURL")
 
         #expect(service.getCachedBundleURL() == bundleURL)
+        #expect(service.getBundleId() == "nested-bundle")
+        #expect(service.canUseManifestDrivenInstall())
+    }
+
+    @Test
+    func preservesNestedBundlePathAfterDirectoryMove() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+        let sourceDirectory = workingDirectory.appendingPathComponent("nested-bundle.tmp")
+        let destinationDirectory = workingDirectory.appendingPathComponent("nested-bundle")
+        let nestedDirectory = sourceDirectory.appendingPathComponent("dist", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: nestedDirectory,
+            withIntermediateDirectories: true
+        )
+        try writeBundle(in: nestedDirectory, bundleFileName: "index.ios.bundle")
+        let sourceBundleURL = nestedDirectory.appendingPathComponent("index.ios.bundle")
+
+        let resolvedPath = try service.resolveBundlePathAfterMove(
+            sourceBundleURL.path,
+            from: sourceDirectory.path,
+            to: destinationDirectory.path
+        )
+
+        #expect(
+            resolvedPath == destinationDirectory
+                .appendingPathComponent("dist/index.ios.bundle")
+                .path
+        )
     }
 
     @Test
