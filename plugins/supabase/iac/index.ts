@@ -435,6 +435,14 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
     exportName: "./edge",
   });
 
+  const supabasePackageRoot = path.dirname(
+    require.resolve("@hot-updater/supabase/package.json"),
+  );
+  imports.hono = await resolveBareSpecifierImportTarget(
+    "hono",
+    supabasePackageRoot,
+  );
+
   return imports;
 };
 

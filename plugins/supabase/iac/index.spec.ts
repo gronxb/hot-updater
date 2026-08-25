@@ -954,6 +954,9 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         mime: `npm:mime@${resolvePackageVersion("mime", {
           searchFrom: path.resolve("plugins/plugin-core"),
         })}`,
+        hono: `npm:hono@${resolvePackageVersion("hono", {
+          searchFrom: path.resolve("plugins/supabase"),
+        })}`,
       });
 
       await expect(
