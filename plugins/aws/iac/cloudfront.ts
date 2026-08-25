@@ -4,6 +4,7 @@ import { CloudFront } from "@aws-sdk/client-cloudfront";
 import { makeEnv, MissingInitInputsError, p } from "@hot-updater/cli-tools";
 import { delay } from "es-toolkit";
 
+import { resolveAwsDistributionGeneration } from "./awsInfrastructureState";
 import {
   applyDistributionConfigOverrides,
   buildDistributionConfig,
@@ -460,19 +461,39 @@ export class CloudFrontManager {
       return null;
     }
 
+    const legacyDistributionIds = new Set<string>();
+    await Promise.all(
+      matchingDistributions.map(async (distribution) => {
+        const generation = await resolveAwsDistributionGeneration({
+          domainName: distribution.DomainName,
+        });
+        if (generation === "v0") {
+          legacyDistributionIds.add(distribution.Id);
+        }
+      }),
+    );
+
     const createNewDistribution = "__create-new-cloudfront-distribution__";
+    const reusableSavedDistributionId =
+      savedDistribution && !legacyDistributionIds.has(savedDistribution.Id)
+        ? savedDistribution.Id
+        : undefined;
     const selectedDistributionId = await p.select<string>({
-      initialValue: savedDistribution?.Id ?? createNewDistribution,
+      initialValue: reusableSavedDistributionId ?? createNewDistribution,
       message: "Select a CloudFront distribution:",
       options: [
-        ...matchingDistributions.map((distribution) => ({
-          value: distribution.Id,
-          label: `${distribution.Id} (${distribution.DomainName})`,
-        })),
         {
           value: createNewDistribution,
           label: "Create New CloudFront Distribution",
         },
+        ...matchingDistributions.map((distribution) => {
+          const isLegacy = legacyDistributionIds.has(distribution.Id);
+          return {
+            value: distribution.Id,
+            label: `${distribution.Id} (${distribution.DomainName})${isLegacy ? " (v0, deprecated)" : ""}`,
+            disabled: isLegacy,
+          };
+        }),
       ],
     });
     if (p.isCancel(selectedDistributionId)) {

@@ -7,6 +7,50 @@ import {
 
 type Fetch = typeof fetch;
 
+export type AwsDistributionGeneration = "unknown" | "v0" | "v1";
+
+const AWS_DISTRIBUTION_VERSION_PATHS = [
+  "/version",
+  "/api/check-update/version",
+] as const;
+
+const readAwsDistributionGeneration = (
+  payload: unknown,
+): AwsDistributionGeneration => {
+  if (typeof payload !== "object" || payload === null) return "unknown";
+  if ("infrastructureGeneration" in payload) {
+    return payload.infrastructureGeneration === 1 ? "v1" : "unknown";
+  }
+  return "version" in payload && typeof payload.version === "string"
+    ? "v0"
+    : "unknown";
+};
+
+export const resolveAwsDistributionGeneration = async ({
+  domainName,
+  fetchImpl = fetch,
+}: {
+  readonly domainName: string;
+  readonly fetchImpl?: Fetch;
+}): Promise<AwsDistributionGeneration> => {
+  const generations = await Promise.all(
+    AWS_DISTRIBUTION_VERSION_PATHS.map(async (path) => {
+      try {
+        const response = await fetchImpl(`https://${domainName}${path}`);
+        if (!response.ok) return "unknown";
+        return readAwsDistributionGeneration(
+          await response.json().catch(() => undefined),
+        );
+      } catch {
+        return "unknown";
+      }
+    }),
+  );
+  if (generations.includes("v1")) return "v1";
+  if (generations.includes("v0")) return "v0";
+  return "unknown";
+};
+
 export const assertAwsInfrastructureGeneration = async (input: {
   readonly domainName: string;
   readonly fetchImpl?: Fetch;
