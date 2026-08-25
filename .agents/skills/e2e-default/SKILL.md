@@ -1,20 +1,23 @@
 ---
 name: e2e-default
-description: Run the fixed `examples/v0.85.0` Release Catalog regression: install a good Release/Bundle, then crash a newer Release/Bundle and prove full-receipt recovery with directional IDs.
+description: Run the repository's fixed `release-ota-recovery` scenario manually on `examples/v0.85.0` through `../manual-qa`.
 ---
 
-# Hot Updater V0.85 Default Release E2E
+# Hot Updater V0.85 Default Manual QA
 
-Always load and follow [$agent-device](../agent-device/SKILL.md) and
-[$e2e](../e2e/SKILL.md). This skill owns the scenario. Run iOS, then Android,
-unless the caller narrows the platform.
+Always load and follow [$manual-qa](../manual-qa/SKILL.md). Pass it the exact
+scenario name `release-ota-recovery`. Run iOS, then Android unless the caller
+narrows the platform. The checked-out
+`e2e/detox/scenarios/release-ota-recovery.ts` file is authoritative if this
+summary drifts.
 
 ## Scenario
 
-For each platform:
+For each platform, execute `release-ota-recovery` through `manual-qa`. Its
+expected high-level flow is:
 
-1. Build/reinstall a clean release binary and record `BUILTIN_BUNDLE_ID`.
-2. Deploy a good marker bundle; record `STABLE_BUNDLE_ID` and
+1. Install the prepared release artifact and capture `BUILTIN_BUNDLE_ID`.
+2. Deploy the scenario's stable marker bundle; record `STABLE_BUNDLE_ID` and
    `STABLE_RELEASE_ID`.
 3. Install/reload it and verify:
    - `runtime-bundle-id` is `STABLE_BUNDLE_ID`;
@@ -24,9 +27,9 @@ For each platform:
    - launch status is `UPDATE_APPLIED` or, on an already-reported process,
      `UNCHANGED`;
    - crash history is empty.
-4. Revert the marker patch, add a module-scope crash patch that treats the
-   built-in and stable Bundle IDs as safe, deploy it, and record
-   `CRASH_BUNDLE_ID` plus `CRASH_RELEASE_ID`. Revert immediately.
+4. Use the scenario's `mode: "crash"` deploy with the built-in and stable
+   Bundle IDs in `safeBundleIds`; record `CRASH_BUNDLE_ID` plus
+   `CRASH_RELEASE_ID`.
 5. Install and launch the crash bundle, then relaunch for recovery.
 6. Verify:
    - `runtime-bundle-id` returns to `STABLE_BUNDLE_ID`;
@@ -42,29 +45,10 @@ For each platform:
 
 Recovery to BUILTIN fails this scenario.
 
-## Temporary Patches
-
-Good deploy: make the smallest visible module-scope marker change already
-supported by `src/e2eApp/patchSurface.ts`. Do not add a new page.
-
-Crash deploy:
-
-```ts
-const E2E_SAFE_BUNDLE_IDS = new Set([
-  "<BUILTIN_BUNDLE_ID>",
-  "<STABLE_BUNDLE_ID>",
-]);
-
-if (!E2E_SAFE_BUNDLE_IDS.has(HotUpdater.getBundleId())) {
-  throw new Error("hot-updater e2e-default crash bundle");
-}
-```
-
-The crash check must execute at module scope, outside `App`.
-
 ## Evidence Routes
 
-Use the route/testID table in `../e2e/SKILL.md`. The required routes are:
+Use the route/testID table in `../manual-qa/references/runtime-targets.md`. The
+required routes are:
 
 - `/e2e/runtime-bundle`;
 - `/e2e/runtime-release-state`;

@@ -1,4 +1,4 @@
 interface:
   display_name: "E2E Current PR"
-  short_description: "Generate and run PR-aware OTA E2E flows"
-  default_prompt: "Use $e2e-current-pr to infer an OTA E2E scenario from the current PR diff and execute it on examples/v0.85.0."
+  short_description: "Select and manually run a PR-aware OTA scenario"
+  default_prompt: "Use $e2e-current-pr to infer the narrowest existing OTA scenario from the current PR diff, then run it through $manual-qa on examples/v0.85.0."

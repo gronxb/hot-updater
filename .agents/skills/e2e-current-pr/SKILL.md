@@ -1,15 +1,16 @@
 ---
 name: e2e-current-pr
-description: Generate and execute PR-aware OTA E2E scenarios for `examples/v0.85.0` by diffing the checked-out branch against its PR base branch or default branch, inferring the affected runtime, rollout, and recovery surfaces, and then running the scenario through `../e2e`. Use when the caller wants current-branch OTA validation without hand-writing the scenario.
+description: Select an existing PR-aware OTA scenario for `examples/v0.85.0` by diffing the checked-out branch against its PR base/default branch, then execute it through `../manual-qa`. Use when the caller wants current-branch manual OTA validation without choosing the scenario.
 ---
 
 # E2E Current PR
 
 Use this skill from the repository root on the branch that should be validated.
 
-Always load and follow [$e2e](../e2e/SKILL.md). This skill owns base-branch
-detection, diff review, scenario selection, and platform choice. `../e2e`
-owns build, deploy, device interaction, and evidence gathering.
+Always load and follow [$manual-qa](../manual-qa/SKILL.md). This skill owns
+base-branch detection, diff review, existing scenario selection, and platform
+choice. `../manual-qa` owns infrastructure preparation, control calls,
+agent-device interaction, evidence gathering, and cleanup.
 
 ## Workflow
 
@@ -19,10 +20,10 @@ owns build, deploy, device interaction, and evidence gathering.
    default branch.
 3. Read the summary, then inspect the changed files that look OTA-relevant. Do
    not rely on the tags alone if the patch excerpt points at risky runtime code.
-4. Translate the diff into a concrete scenario before execution. State the base
-   branch, changed risk areas, chosen platform scope, stable assertions, and
-  crash assertions if any. Name Release-selection assertions separately from
-  Bundle-byte assertions, then execute it with [$e2e](../e2e/SKILL.md).
+4. Map the risk to the narrowest existing file under `e2e/detox/scenarios`.
+   State the base branch, changed risk areas, chosen platform scope, and why the
+   selected scenario covers them. Then pass only that scenario name plus any
+   required platform override to [$manual-qa](../manual-qa/SKILL.md).
 5. Run one platform at a time. Default to both platforms when shared runtime or
    cross-platform native code changes.
 6. Report the chosen scenario, evidence, and any surfaces you intentionally
@@ -51,9 +52,9 @@ owns build, deploy, device interaction, and evidence gathering.
 - If the diff only changes docs, CI, or tooling with no OTA runtime impact,
   stop and explain that this skill does not have a meaningful E2E scenario to
   run.
-- When the changed behavior is not already visible in the example UI, add the
-  smallest temporary proof point needed for the scenario, deploy it, and revert
-  that patch immediately after the deploy finishes.
+- If no existing scenario meaningfully covers the changed behavior, stop and
+  report the missing coverage. Do not invent or edit a scenario during this
+  skill run.
 
 ## Diff Review Rules
 
@@ -64,8 +65,8 @@ owns build, deploy, device interaction, and evidence gathering.
   explicitly wants to include those changes. The PR diff target is
   `merge-base(base, HEAD)..HEAD`, not the unstaged local worktree.
 - Keep the scenario tight to the changed behavior. Do not default to the full
-  fixed regression in `../e2e-default` unless the diff truly spans both stable and
-  recovery flows.
+  fixed regression in `../e2e-default` unless the diff truly spans both stable
+  and recovery flows.
 - Treat Release policy and Bundle artifacts as separate risk surfaces. Policy
   changes use `/e2e/jobs/patch-release` and Release IDs; patch/manifest/storage
   assertions keep Bundle IDs.
@@ -98,6 +99,7 @@ Include:
 - changed OTA surfaces
 - scenario chosen and why
 - platforms run and why
-- deployed Release/Bundle pairs, final receipt/high-water, and public status
-  evidence from `../e2e`
+- manual session IDs, deployed Release/Bundle pairs, final
+  receipt/high-water, public status evidence, and cleanup results from
+  `../manual-qa`
 - any areas intentionally left uncovered
