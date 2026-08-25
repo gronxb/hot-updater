@@ -71,7 +71,7 @@ const patchRow = {
   base_file_hash: "base-hash",
   patch_file_hash: "patch-hash",
   patch_storage_uri: "storage://patch-1",
-  patch_byte_size: 3_000_000_002,
+  byte_size: 3_000_000_002,
   order_index: 0,
 } as const;
 

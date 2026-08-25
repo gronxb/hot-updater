@@ -141,7 +141,7 @@ const patchValues = (row: BundlePatchRow): readonly unknown[] => [
   row.base_file_hash,
   row.patch_file_hash,
   row.patch_storage_uri,
-  row.patch_byte_size,
+  row.byte_size,
   row.order_index,
 ];
 
@@ -181,7 +181,7 @@ const insertQuery = (
         "base_file_hash",
         "patch_file_hash",
         "patch_storage_uri",
-        "patch_byte_size",
+        "byte_size",
         "order_index",
       ];
       values = patchValues(input.data);

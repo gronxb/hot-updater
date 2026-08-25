@@ -36,7 +36,7 @@ export interface BundlePatchRow {
   readonly base_file_hash: string;
   readonly patch_file_hash: string;
   readonly patch_storage_uri: string;
-  readonly patch_byte_size: number;
+  readonly byte_size: number;
   readonly order_index: number;
 }
 

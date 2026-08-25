@@ -59,7 +59,7 @@ it("creates official-domain tables on an empty database", async () => {
   await env.DB.prepare(`
     INSERT INTO bundle_patches (
       id, bundle_id, base_bundle_id, base_file_hash, patch_file_hash,
-      patch_storage_uri, patch_byte_size
+      patch_storage_uri, byte_size
     ) VALUES (
       'patch-1', '00000000-0000-0000-0000-000000000001',
       '00000000-0000-0000-0000-000000000001', 'base-hash', 'patch-hash',
@@ -88,12 +88,12 @@ it("creates official-domain tables on an empty database", async () => {
     bundle_id: "00000000-0000-0000-0000-000000000001",
   });
   const sizes = await env.DB.prepare(`
-    SELECT bundle.archive_byte_size, patch.patch_byte_size
+    SELECT bundle.archive_byte_size, patch.byte_size
     FROM bundles AS bundle
     JOIN bundle_patches AS patch ON patch.bundle_id = bundle.id
   `).first();
   expect(sizes).toEqual({
     archive_byte_size: 3_000_000_001,
-    patch_byte_size: 3_000_000_002,
+    byte_size: 3_000_000_002,
   });
 });

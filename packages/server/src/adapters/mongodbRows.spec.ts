@@ -49,7 +49,7 @@ describe("parseMongoPatchRow", () => {
 
   it("preserves safe patch sizes above 2 GiB", () => {
     expect(parseMongoPatchRow(row)).toMatchObject({
-      patch_byte_size: 3_000_000_002,
+      byte_size: 3_000_000_002,
     });
   });
 
@@ -57,7 +57,7 @@ describe("parseMongoPatchRow", () => {
     "rejects invalid patch size %s",
     (patchByteSize) => {
       expect(() =>
-        parseMongoPatchRow({ ...row, patch_byte_size: patchByteSize }),
+        parseMongoPatchRow({ ...row, byte_size: patchByteSize }),
       ).toThrow("Invalid MongoDB plugin data");
     },
   );

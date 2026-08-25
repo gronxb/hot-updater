@@ -30,7 +30,7 @@ const patchRow = (owner: Bundle, base: Bundle) => ({
   base_file_hash: base.fileHash,
   patch_file_hash: `patch-${base.id}`,
   patch_storage_uri: `storage://patch-${base.id}`,
-  patch_byte_size: 3_000_000_002,
+  byte_size: 3_000_000_002,
   order_index: 0,
 });
 

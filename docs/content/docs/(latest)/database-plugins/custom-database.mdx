@@ -96,7 +96,7 @@ and an empty patch owner list return no rows without I/O. Bundle rows contain
 artifact identity and storage fields only; rollout, channel, compatibility,
 force-update, and message fields belong to Releases.
 
-`BundleRow.archive_byte_size` and `BundlePatchRow.patch_byte_size` are required
+`BundleRow.archive_byte_size` and `BundlePatchRow.byte_size` are required
 immutable non-negative safe integers. Reject missing, fractional, negative, or
 out-of-range values on every read and write. Optional manifest asset
 `downloadByteSize` and `downloadFileHash` values live in manifest JSON and are

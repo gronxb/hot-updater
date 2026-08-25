@@ -115,20 +115,20 @@ describe("MongoDB migration", () => {
           {
             $jsonSchema: {
               properties: {
-                patch_byte_size: {
+                byte_size: {
                   bsonType: ["double", "int", "long"],
                   maximum: Number.MAX_SAFE_INTEGER,
                   minimum: 0,
                 },
               },
-              required: expect.arrayContaining(["patch_byte_size"]),
+              required: expect.arrayContaining(["byte_size"]),
             },
           },
           {
             $expr: {
               $and: expect.arrayContaining([
                 {
-                  $eq: [{ $trunc: "$patch_byte_size" }, "$patch_byte_size"],
+                  $eq: [{ $trunc: "$byte_size" }, "$byte_size"],
                 },
               ]),
             },

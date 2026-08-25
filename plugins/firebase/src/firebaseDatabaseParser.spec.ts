@@ -60,7 +60,7 @@ describe("parseFirebasePatchRow", () => {
 
   it("preserves safe patch sizes above 2 GiB", () => {
     expect(parseFirebasePatchRow(row, "bundle_patches/large")).toMatchObject({
-      patch_byte_size: 3_000_000_002,
+      byte_size: 3_000_000_002,
     });
   });
 
@@ -69,7 +69,7 @@ describe("parseFirebasePatchRow", () => {
     (patchByteSize) => {
       expect(() =>
         parseFirebasePatchRow(
-          { ...row, patch_byte_size: patchByteSize },
+          { ...row, byte_size: patchByteSize },
           "bundle_patches/invalid-size",
         ),
       ).toThrow("Invalid Firebase database data");

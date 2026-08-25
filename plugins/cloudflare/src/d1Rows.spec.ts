@@ -55,7 +55,7 @@ it("preserves SQLite patch sizes above 2 GiB", () => {
   const patch = createBundlePatchRowFixture("large", "bundle", "base");
 
   expect(parseD1Row("bundle_patches", patch)).toMatchObject({
-    patch_byte_size: 3_000_000_002,
+    byte_size: 3_000_000_002,
   });
 });
 

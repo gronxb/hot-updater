@@ -29,8 +29,8 @@ CREATE TABLE public.bundle_patches (
   base_file_hash text NOT NULL,
   patch_file_hash text NOT NULL,
   patch_storage_uri text NOT NULL,
-  patch_byte_size double precision NOT NULL CHECK (
-    patch_byte_size BETWEEN 0 AND 9007199254740991
+  byte_size double precision NOT NULL CHECK (
+    byte_size BETWEEN 0 AND 9007199254740991
   ),
   order_index integer NOT NULL DEFAULT 0,
   CONSTRAINT bundle_patches_bundle_id_fk FOREIGN KEY (bundle_id)
@@ -383,11 +383,11 @@ BEGIN
               );
               INSERT INTO public.bundle_patches (
                 id, bundle_id, base_bundle_id, base_file_hash,
-                patch_file_hash, patch_storage_uri, patch_byte_size, order_index
+                patch_file_hash, patch_storage_uri, byte_size, order_index
               ) VALUES (
                 v_patch.id, v_patch.bundle_id, v_patch.base_bundle_id,
                 v_patch.base_file_hash, v_patch.patch_file_hash,
-                v_patch.patch_storage_uri, v_patch.patch_byte_size,
+                v_patch.patch_storage_uri, v_patch.byte_size,
                 v_patch.order_index
               );
             WHEN 'delete' THEN

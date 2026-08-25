@@ -252,7 +252,7 @@ it would incorrectly apply a first switch into an empty target channel.
 The final table contains only immutable artifact data. `bundle_patches` remains
 keyed by target and base Bundle IDs.
 
-`bundles.archive_byte_size` and `bundle_patches.patch_byte_size` are required
+`bundles.archive_byte_size` and `bundle_patches.byte_size` are required
 and constrained to non-negative JavaScript safe integers. Providers must
 reject missing, fractional, negative, or out-of-range values during row
 hydration. These fields are part of the initial unreleased `1.0.0` schema, not

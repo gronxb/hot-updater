@@ -50,7 +50,7 @@ export const bundle_patches = sqliteTable("bundle_patches", {
   base_file_hash: text("base_file_hash").notNull(),
   patch_file_hash: text("patch_file_hash").notNull(),
   patch_storage_uri: text("patch_storage_uri").notNull(),
-  patch_byte_size: real("patch_byte_size").notNull(),
+  byte_size: real("byte_size").notNull(),
   order_index: integer("order_index").notNull().default(0)
 }, (table) => [
   foreignKey({

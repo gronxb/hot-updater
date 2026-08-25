@@ -36,7 +36,7 @@ const patchRow = {
   base_file_hash: "base-hash",
   patch_file_hash: "patch-hash",
   patch_storage_uri: "storage://patch.patch",
-  patch_byte_size: 3_000_000_002,
+  byte_size: 3_000_000_002,
   order_index: 0,
 } as const;
 
@@ -68,9 +68,7 @@ describe("DynamoDB CRUD access patterns", () => {
       ),
     ).toThrow("DynamoDB contains an invalid Hot Updater row");
     expect(() =>
-      parseDynamoDBItem(
-        toDynamoDBPatchItem({ ...patchRow, patch_byte_size: -1 }),
-      ),
+      parseDynamoDBItem(toDynamoDBPatchItem({ ...patchRow, byte_size: -1 })),
     ).toThrow("DynamoDB contains an invalid Hot Updater row");
   });
 

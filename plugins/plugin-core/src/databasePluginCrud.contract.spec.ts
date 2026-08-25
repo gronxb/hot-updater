@@ -45,7 +45,7 @@ const patchRow = {
   base_file_hash: "base-hash",
   patch_file_hash: "patch-hash",
   patch_storage_uri: "storage://patch-1",
-  patch_byte_size: 3_000_000_002,
+  byte_size: 3_000_000_002,
   order_index: 0,
 };
 
@@ -187,7 +187,7 @@ describe("database plugin CRUD runtime contract", () => {
 
   it.each([
     ["bundles", bundleRow, "archive_byte_size"],
-    ["bundle_patches", patchRow, "patch_byte_size"],
+    ["bundle_patches", patchRow, "byte_size"],
   ] as const)(
     "rejects invalid required byte sizes for %s before provider execution",
     async (model, row, field) => {
@@ -218,10 +218,7 @@ describe("database plugin CRUD runtime contract", () => {
 
   it.each([
     ["bundles", { ...bundleRow, archive_byte_size: 0 }],
-    [
-      "bundle_patches",
-      { ...patchRow, patch_byte_size: Number.MAX_SAFE_INTEGER },
-    ],
+    ["bundle_patches", { ...patchRow, byte_size: Number.MAX_SAFE_INTEGER }],
   ] as const)("accepts boundary byte sizes for %s", async (model, data) => {
     const create = vi.fn(async ({ data: input }) => input);
     const plugin = createValidatedCrud({
@@ -344,7 +341,7 @@ describe("database plugin CRUD runtime contract", () => {
 
   it.each([
     ["bundles", "archive_byte_size", 3_000_000_001],
-    ["bundle_patches", "patch_byte_size", 3_000_000_002],
+    ["bundle_patches", "byte_size", 3_000_000_002],
   ] as const)(
     "forwards numeric byte-size comparison and sorting for %s",
     async (model, field, value) => {
@@ -515,7 +512,7 @@ describe("database plugin CRUD runtime contract", () => {
 
   it.each([
     ["bundles", bundleRow, "archive_byte_size"],
-    ["bundle_patches", patchRow, "patch_byte_size"],
+    ["bundle_patches", patchRow, "byte_size"],
   ] as const)(
     "rejects a %s provider result missing its required byte size",
     async (model, row, field) => {

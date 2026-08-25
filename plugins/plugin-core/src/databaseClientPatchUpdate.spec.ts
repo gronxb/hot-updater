@@ -180,7 +180,7 @@ describe("database client patch updates", () => {
             bundle_id: "owner",
             id: "owner:base",
             order_index: 0,
-            patch_byte_size: 3_000_000_002,
+            byte_size: 3_000_000_002,
             patch_file_hash: "patch-hash",
             patch_storage_uri: "storage://patch",
           },

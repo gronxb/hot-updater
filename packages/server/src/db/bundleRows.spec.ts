@@ -33,7 +33,7 @@ const createPatchRow = (
   base_file_hash: `base-hash-${id}`,
   patch_file_hash: `patch-hash-${id}`,
   patch_storage_uri: `s3://bucket/${id}.patch`,
-  patch_byte_size: 3_000_000_002,
+  byte_size: 3_000_000_002,
   order_index: orderIndex,
 });
 

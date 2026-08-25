@@ -74,7 +74,7 @@ export const bundlePatchesV100 = table(
     base_file_hash: column("base_file_hash", "string"),
     patch_file_hash: column("patch_file_hash", "string"),
     patch_storage_uri: column("patch_storage_uri", "string"),
-    patch_byte_size: float("patch_byte_size"),
+    byte_size: float("byte_size"),
     order_index: integer("order_index").defaultTo(0),
   },
   {
@@ -115,9 +115,8 @@ export const bundlePatchesV100 = table(
     ],
     checks: [
       check({
-        name: "bundle_patches_patch_byte_size_check",
-        expression:
-          "patch_byte_size >= 0 and patch_byte_size <= 9007199254740991",
+        name: "bundle_patches_byte_size_check",
+        expression: "byte_size >= 0 and byte_size <= 9007199254740991",
         sqliteInline: true,
       }),
     ],

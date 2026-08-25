@@ -101,7 +101,7 @@ const mongoPatchValidator = {
           bundle_id: { bsonType: "string" },
           id: { bsonType: "string" },
           order_index: mongoByteSize,
-          patch_byte_size: mongoByteSize,
+          byte_size: mongoByteSize,
           patch_file_hash: { bsonType: "string" },
           patch_storage_uri: { bsonType: "string" },
         },
@@ -112,7 +112,7 @@ const mongoPatchValidator = {
           "base_file_hash",
           "patch_file_hash",
           "patch_storage_uri",
-          "patch_byte_size",
+          "byte_size",
           "order_index",
         ],
       },
@@ -121,7 +121,7 @@ const mongoPatchValidator = {
       $expr: {
         $and: [
           { $eq: [{ $trunc: "$order_index" }, "$order_index"] },
-          { $eq: [{ $trunc: "$patch_byte_size" }, "$patch_byte_size"] },
+          { $eq: [{ $trunc: "$byte_size" }, "$byte_size"] },
         ],
       },
     },

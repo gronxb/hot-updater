@@ -94,7 +94,7 @@ export const parseFirebasePatchRow = (
     base_file_hash: string(property(input, "base_file_hash"), source),
     patch_file_hash: string(property(input, "patch_file_hash"), source),
     patch_storage_uri: string(property(input, "patch_storage_uri"), source),
-    patch_byte_size: byteSize(property(input, "patch_byte_size"), source),
+    byte_size: byteSize(property(input, "byte_size"), source),
     order_index: number(property(input, "order_index"), source),
   };
 };

@@ -376,7 +376,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
       base_file_hash: "rollback-base-hash",
       patch_file_hash: "rollback-patch-hash",
       patch_storage_uri: "storage://rollback-patch",
-      patch_byte_size: 3_000_000_002,
+      byte_size: 3_000_000_002,
       order_index: 0,
     };
     await database.commit({

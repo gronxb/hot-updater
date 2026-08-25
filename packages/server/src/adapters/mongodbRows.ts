@@ -112,11 +112,7 @@ export const parseMongoPatchRow = (
     base_file_hash: string(input["base_file_hash"], source),
     patch_file_hash: string(input["patch_file_hash"], source),
     patch_storage_uri: string(input["patch_storage_uri"], source),
-    patch_byte_size: integer(
-      input["patch_byte_size"],
-      source,
-      Number.MAX_SAFE_INTEGER,
-    ),
+    byte_size: integer(input["byte_size"], source, Number.MAX_SAFE_INTEGER),
     order_index: integer(input["order_index"], source),
   };
 };

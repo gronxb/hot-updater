@@ -18,7 +18,7 @@ export const databaseFields = {
     "base_file_hash",
     "patch_file_hash",
     "patch_storage_uri",
-    "patch_byte_size",
+    "byte_size",
     "order_index",
   ],
   releases: [

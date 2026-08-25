@@ -111,7 +111,7 @@ export const bundleToPatchRows = (bundle: Bundle): BundlePatchRow[] =>
     base_file_hash: patch.baseFileHash,
     patch_file_hash: patch.patchFileHash,
     patch_storage_uri: patch.patchStorageUri,
-    patch_byte_size: patch.byteSize,
+    byte_size: patch.byteSize,
     order_index: orderIndex,
   }));
 
@@ -121,7 +121,7 @@ const comparePatchRows = (left: BundlePatchRow, right: BundlePatchRow) =>
 const patchRowToArtifact = (row: BundlePatchRow): BundlePatchArtifact => ({
   baseBundleId: row.base_bundle_id,
   baseFileHash: row.base_file_hash,
-  byteSize: row.patch_byte_size,
+  byteSize: row.byte_size,
   patchFileHash: row.patch_file_hash,
   patchStorageUri: row.patch_storage_uri,
 });

@@ -55,7 +55,7 @@ describe("v1.0.0 Release Catalog schema", () => {
       ({ ormName }) => ormName === "archive_byte_size",
     );
     const patchSize = bundlePatchesV100.columns.find(
-      ({ ormName }) => ormName === "patch_byte_size",
+      ({ ormName }) => ormName === "byte_size",
     );
     const sql = createTableSql("postgresql").join("\n");
     const prisma = generatePrismaSchema("postgresql", v1_0_0);
@@ -66,16 +66,16 @@ describe("v1.0.0 Release Catalog schema", () => {
     expect(patchSize?.type).toBe("float");
     expect(patchSize?.nullable).toBeUndefined();
     expect(sql).toContain("archive_byte_size double precision not null");
-    expect(sql).toContain("patch_byte_size double precision not null");
+    expect(sql).toContain("byte_size double precision not null");
     expect(sql).toContain("archive_byte_size <= 9007199254740991");
-    expect(sql).toContain("patch_byte_size <= 9007199254740991");
+    expect(sql).toContain("byte_size <= 9007199254740991");
     expect(prisma).toContain("archive_byte_size Float");
-    expect(prisma).toContain("patch_byte_size Float");
+    expect(prisma).toContain("byte_size Float");
     expect(drizzle).toContain(
       'archive_byte_size: doublePrecision("archive_byte_size").notNull()',
     );
     expect(drizzle).toContain(
-      'patch_byte_size: doublePrecision("patch_byte_size").notNull()',
+      'byte_size: doublePrecision("byte_size").notNull()',
     );
   });
 

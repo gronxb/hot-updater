@@ -121,7 +121,7 @@ describe("database rows", () => {
       base_file_hash: base.fileHash,
       patch_file_hash: "patch",
       patch_storage_uri: "storage://patch",
-      patch_byte_size: 3_000_000_002,
+      byte_size: 3_000_000_002,
       order_index: 0,
     } as const;
 

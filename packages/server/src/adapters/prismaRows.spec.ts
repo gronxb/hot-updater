@@ -48,7 +48,7 @@ describe("parsePrismaPatchRow", () => {
 
   it("preserves safe patch sizes above 2 GiB", () => {
     expect(parsePrismaPatchRow(row)).toMatchObject({
-      patch_byte_size: 3_000_000_002,
+      byte_size: 3_000_000_002,
     });
   });
 
@@ -56,7 +56,7 @@ describe("parsePrismaPatchRow", () => {
     "rejects invalid patch size %s",
     (patchByteSize) => {
       expect(() =>
-        parsePrismaPatchRow({ ...row, patch_byte_size: patchByteSize }),
+        parsePrismaPatchRow({ ...row, byte_size: patchByteSize }),
       ).toThrow("Invalid Prisma plugin state");
     },
   );

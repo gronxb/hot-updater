@@ -52,7 +52,7 @@ export const createBundlePatchRowFixture = (
   base_file_hash: `base-hash-${suffix}`,
   patch_file_hash: `patch-hash-${suffix}`,
   patch_storage_uri: `storage://patches/${suffix}.patch`,
-  patch_byte_size: 3_000_000_002,
+  byte_size: 3_000_000_002,
   order_index: orderIndex,
 });
 

@@ -132,7 +132,7 @@ const patchRow = (row: Record<string, unknown>): BundlePatchRow => ({
   base_file_hash: stringValue(row, "base_file_hash", "bundle_patches"),
   patch_file_hash: stringValue(row, "patch_file_hash", "bundle_patches"),
   patch_storage_uri: stringValue(row, "patch_storage_uri", "bundle_patches"),
-  patch_byte_size: byteSizeValue(row, "patch_byte_size", "bundle_patches"),
+  byte_size: byteSizeValue(row, "byte_size", "bundle_patches"),
   order_index: numberValue(row, "order_index", "bundle_patches"),
 });
 

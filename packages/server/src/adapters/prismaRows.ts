@@ -142,7 +142,7 @@ export const parsePrismaPatchRow = (value: unknown): BundlePatchRow => {
     base_file_hash: readString(value, "base_file_hash"),
     patch_file_hash: readString(value, "patch_file_hash"),
     patch_storage_uri: readString(value, "patch_storage_uri"),
-    patch_byte_size: readByteSize(value, "patch_byte_size"),
+    byte_size: readByteSize(value, "byte_size"),
     order_index: orderIndex,
   };
 };

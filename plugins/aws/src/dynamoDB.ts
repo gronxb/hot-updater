@@ -182,7 +182,7 @@ const isPatchRow = (value: unknown): value is BundlePatchRow =>
   typeof field(value, "base_file_hash") === "string" &&
   typeof field(value, "patch_file_hash") === "string" &&
   typeof field(value, "patch_storage_uri") === "string" &&
-  isByteSize(field(value, "patch_byte_size")) &&
+  isByteSize(field(value, "byte_size")) &&
   typeof field(value, "order_index") === "number";
 
 const isChannelRow = (value: unknown): value is ChannelRow =>

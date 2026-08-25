@@ -28,10 +28,10 @@ CREATE TABLE bundle_patches (
   base_file_hash TEXT NOT NULL,
   patch_file_hash TEXT NOT NULL,
   patch_storage_uri TEXT NOT NULL,
-  patch_byte_size REAL NOT NULL,
+  byte_size REAL NOT NULL,
   order_index INTEGER NOT NULL DEFAULT 0,
-  CONSTRAINT bundle_patches_patch_byte_size_check CHECK (
-    patch_byte_size >= 0 AND patch_byte_size <= 9007199254740991
+  CONSTRAINT bundle_patches_byte_size_check CHECK (
+    byte_size >= 0 AND byte_size <= 9007199254740991
   ),
   CONSTRAINT bundle_patches_bundle_id_fk FOREIGN KEY (bundle_id)
     REFERENCES bundles(id) ON UPDATE RESTRICT ON DELETE CASCADE,

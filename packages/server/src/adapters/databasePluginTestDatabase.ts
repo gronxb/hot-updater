@@ -24,8 +24,8 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     base_file_hash text not null,
     patch_file_hash text not null,
     patch_storage_uri text not null,
-    patch_byte_size double precision not null check (
-      patch_byte_size >= 0 and patch_byte_size <= 9007199254740991
+    byte_size double precision not null check (
+      byte_size >= 0 and byte_size <= 9007199254740991
     ),
     order_index integer not null default 0
   );

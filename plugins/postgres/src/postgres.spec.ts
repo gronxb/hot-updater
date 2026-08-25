@@ -135,7 +135,7 @@ describe("PostgreSQL artifact byte-size constraints", () => {
         database.exec(`
           INSERT INTO bundle_patches (
             id, bundle_id, base_bundle_id, base_file_hash, patch_file_hash,
-            patch_storage_uri, patch_byte_size
+            patch_storage_uri, byte_size
           ) VALUES (
             'patch-invalid-size', '${bundle.id}', '${bundle.id}', 'base-hash',
             'patch-hash', 'storage://patch', -1

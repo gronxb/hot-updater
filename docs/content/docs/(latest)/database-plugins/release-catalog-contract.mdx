@@ -66,7 +66,7 @@ Bundle rows contain only artifact fields: ID, platform, hashes, storage URIs,
 manifest/asset information, Git commit, and artifact metadata.
 
 Every Bundle row has a required `archive_byte_size`, and every Bundle-patch row
-has a required `patch_byte_size`. Both values are immutable non-negative
+has a required `byte_size`. Both values are immutable non-negative
 integers no larger than `Number.MAX_SAFE_INTEGER`. Provider CRUD hydration must
 reject a missing, fractional, negative, or out-of-range value instead of
 constructing a partial v1 Bundle.

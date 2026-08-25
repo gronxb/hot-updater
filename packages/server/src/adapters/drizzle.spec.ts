@@ -78,7 +78,7 @@ const bundlePatches = pgTable("bundle_patches", {
   base_file_hash: text("base_file_hash").notNull(),
   patch_file_hash: text("patch_file_hash").notNull(),
   patch_storage_uri: text("patch_storage_uri").notNull(),
-  patch_byte_size: doublePrecision("patch_byte_size").notNull(),
+  byte_size: doublePrecision("byte_size").notNull(),
   order_index: integer("order_index").notNull(),
 });
 const bundleEvents = pgTable("bundle_events", {

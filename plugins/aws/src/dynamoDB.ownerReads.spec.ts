@@ -30,7 +30,7 @@ const patch = (sequence: number) => ({
   base_file_hash: `base-${sequence}`,
   patch_file_hash: `patch-${sequence}`,
   patch_storage_uri: `storage://patch-${sequence}`,
-  patch_byte_size: 3_000_000_002 + sequence,
+  byte_size: 3_000_000_002 + sequence,
   order_index: sequence,
 });
 const tableName = "hot-updater-metadata";

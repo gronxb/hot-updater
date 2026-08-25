@@ -68,7 +68,7 @@ export const modelValidators: ValidatorMap = {
     base_file_hash: (value) => typeof value === "string",
     patch_file_hash: (value) => typeof value === "string",
     patch_storage_uri: (value) => typeof value === "string",
-    patch_byte_size: (value) =>
+    byte_size: (value) =>
       typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
     order_index: (value) =>
       typeof value === "number" && Number.isInteger(value) && value >= 0,
@@ -208,7 +208,7 @@ export const stringFields = new Set<string>([
 
 export const numberFields = new Set<string>([
   "archive_byte_size",
-  "patch_byte_size",
+  "byte_size",
   "rollout_cohort_count",
   "order_index",
   "revision",
@@ -251,7 +251,7 @@ export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
     "base_file_hash",
     "patch_file_hash",
     "patch_storage_uri",
-    "patch_byte_size",
+    "byte_size",
     "order_index",
   ]),
   releases: new Set([
