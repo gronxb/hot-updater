@@ -1,6 +1,6 @@
+import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
 import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
-import { fromSSO } from "@aws-sdk/credential-provider-sso";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
@@ -10,7 +10,7 @@ config({
 
 const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
-  credentials: fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! }),
+  credentials: fromNodeProviderChain(),
 };
 
 export default defineConfig({
@@ -51,7 +51,8 @@ export default defineConfig({
   database: dynamoDB({
     ...awsOptions,
     tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
-    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+    cloudfrontDistributionId:
+      process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
   fingerprint: {
     debug: true,

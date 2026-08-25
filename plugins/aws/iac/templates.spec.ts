@@ -111,6 +111,36 @@ export default defineConfig({
     expect(updated).toContain("basePath: providerNamespace");
   });
 
+  it("replaces stale credentials when the authentication mode changes", async () => {
+    const tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-aws-auth-switch-"),
+    );
+    tempDirs.push(tempDir);
+    const configPath = path.join(tempDir, "hot-updater.config.ts");
+    await fs.writeFile(
+      configPath,
+      `${
+        getConfigScaffold("bare", {
+          mode: "sso",
+          profile: "hot-updater",
+        }).text
+      }\n`,
+      "utf8",
+    );
+
+    await writeHotUpdaterConfig(
+      getConfigScaffold("bare", { mode: "local", profile: null }),
+      configPath,
+    );
+
+    const updated = await fs.readFile(configPath, "utf8");
+    expect(updated).toContain(
+      'import { fromNodeProviderChain } from "@aws-sdk/credential-providers";',
+    );
+    expect(updated).toContain("credentials: fromNodeProviderChain()");
+    expect(updated).not.toContain("fromSSO(");
+  });
+
   it("renders access key credentials for account mode", () => {
     const scaffold = getConfigScaffold("bare", { mode: "account" });
 

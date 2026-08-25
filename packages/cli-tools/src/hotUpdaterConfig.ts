@@ -31,6 +31,7 @@ export type ManagedHelperStatement = {
   name: string;
   code: string;
   strategy: ManagedHelperStrategy;
+  replaceIncompatibleProperties?: string[];
 };
 
 export type CreateHotUpdaterConfigScaffoldOptions = {
@@ -351,6 +352,7 @@ const appendMissingProperties = (
 const mergeObjectLiteralText = (
   existingObject: ObjectSource,
   newObject: ObjectSource,
+  replaceIncompatibleProperties: readonly string[] = [],
 ): string | null => {
   const existingText = getNodeText(
     existingObject.source,
@@ -385,6 +387,26 @@ const mergeObjectLiteralText = (
       continue;
     }
 
+    const existingCallee = getCallCallee(property.value);
+    const nextCallee = getCallCallee(nextProperty.value);
+    const hasIncompatibleValue =
+      (existingCallee !== null &&
+        nextCallee !== null &&
+        existingCallee !== nextCallee) ||
+      (property.value.type === "ObjectExpression") !==
+        (nextProperty.value.type === "ObjectExpression");
+    if (
+      replaceIncompatibleProperties.includes(propertyName) &&
+      hasIncompatibleValue
+    ) {
+      edits.push({
+        start: property.value.start - existingObject.objectExpression.start,
+        end: property.value.end - existingObject.objectExpression.start,
+        text: getNodeText(newObject.source, nextProperty.value),
+      });
+      continue;
+    }
+
     if (
       property.value.type === "ObjectExpression" &&
       nextProperty.value.type === "ObjectExpression"
@@ -398,6 +420,7 @@ const mergeObjectLiteralText = (
           objectExpression: nextProperty.value,
           source: newObject.source,
         },
+        replaceIncompatibleProperties,
       );
       if (!mergedValue) {
         return null;
@@ -533,6 +556,7 @@ const mergeHelperStatement = (
       objectExpression: nextInitializer,
       source: nextStatement.source,
     },
+    helper.replaceIncompatibleProperties,
   );
   if (!mergedInitializer) {
     return null;

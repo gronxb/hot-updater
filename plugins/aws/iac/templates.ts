@@ -41,6 +41,7 @@ export const getConfigScaffold = (
         {
           name: "awsOptions",
           strategy: "merge-object",
+          replaceIncompatibleProperties: ["credentials"],
           code: `
 const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
@@ -54,6 +55,7 @@ const awsOptions = {
         {
           name: "awsOptions",
           strategy: "merge-object",
+          replaceIncompatibleProperties: ["credentials"],
           code: authMode.profile
             ? `
 const awsOptions = {
@@ -73,6 +75,7 @@ const awsOptions = {
         {
           name: "awsOptions",
           strategy: "merge-object",
+          replaceIncompatibleProperties: ["credentials"],
           code: `
 const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
