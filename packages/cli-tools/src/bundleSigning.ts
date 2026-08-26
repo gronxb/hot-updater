@@ -30,13 +30,16 @@ const parseRsaPublicKey = (publicKeyPEM: string): KeyObject => {
       throw new Error("not spki");
     }
     const publicKey = crypto.createPublicKey(normalizedPublicKey);
-    if (publicKey.asymmetricKeyType !== "rsa") {
+    if (
+      publicKey.asymmetricKeyType !== "rsa" ||
+      (publicKey.asymmetricKeyDetails?.modulusLength ?? 0) < 2048
+    ) {
       throw new Error("not rsa");
     }
     return publicKey;
   } catch {
     throw new Error(
-      "Bundle signing public key must be a valid RSA SPKI PEM key.",
+      "Bundle signing public key must be a valid RSA SPKI PEM key with a modulus of at least 2048 bits.",
     );
   }
 };

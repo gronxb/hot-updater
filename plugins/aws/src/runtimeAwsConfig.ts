@@ -57,10 +57,12 @@ export const applySsmRuntimeAwsConfig = (
 export const applyKmsRuntimeAwsConfig = (
   config: KMSClientConfig,
 ): KMSClientConfig => {
-  const endpoint = config.endpoint ?? getAwsEndpointUrl();
-
   return {
     ...config,
-    endpoint,
+    // A global AWS_ENDPOINT_URL is often set for S3-compatible storage or
+    // LocalStack. Signing must not silently send KMS requests to that ambient
+    // endpoint. Tests and private endpoints remain available via the explicit
+    // KMS client `endpoint` option.
+    ignoreConfiguredEndpointUrls: true,
   };
 };

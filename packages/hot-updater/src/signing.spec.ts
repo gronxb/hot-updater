@@ -61,4 +61,40 @@ describe("localSigning", () => {
       "private-canary.pem",
     );
   });
+
+  it("allows a checked-in public key path beside an external private key", async () => {
+    const signing = localSigning({
+      privateKeyPath: "/tmp/hot-updater/private-key.pem",
+      publicKeyPath: "./keys/public-key.pem",
+    });
+
+    expect(signing.publicKeyPath).toBe("./keys/public-key.pem");
+  });
+
+  it("rejects weak keys and messages outside the signing contract", async () => {
+    const cwd = await createTempDir();
+    const { privateKey } = crypto.generateKeyPairSync("rsa", {
+      modulusLength: 1024,
+      privateKeyEncoding: { format: "pem", type: "pkcs8" },
+      publicKeyEncoding: { format: "pem", type: "spki" },
+    });
+    await fs.writeFile(path.join(cwd, "private-key.pem"), privateKey);
+    const signing = localSigning({ privateKeyPath: "private-key.pem" });
+
+    await expect(signing.getPublicKey({ cwd })).rejects.toThrow(
+      "Failed to load the local bundle signing private key.",
+    );
+    await expect(
+      signing.sign({ cwd, message: new Uint8Array(31) }),
+    ).rejects.toThrow("messages must be exactly 32 bytes");
+  });
+
+  it("rejects an empty explicit public key path", () => {
+    expect(() =>
+      localSigning({
+        privateKeyPath: "private-key.pem",
+        publicKeyPath: " ",
+      }),
+    ).toThrow("requires publicKeyPath when provided");
+  });
 });

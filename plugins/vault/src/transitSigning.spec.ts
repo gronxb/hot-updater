@@ -121,6 +121,21 @@ describe("transitSigning", () => {
     },
   );
 
+  it("constructs without runtime credentials and resolves them lazily", async () => {
+    vi.stubEnv("VAULT_ADDR", "");
+    vi.stubEnv("VAULT_TOKEN", "");
+    vi.stubEnv("BAO_ADDR", "");
+    vi.stubEnv("BAO_TOKEN", "");
+
+    const provider = transitSigning({ keyName, keyVersion, publicKeyPath });
+
+    expect(provider).toMatchObject({ name: "transitSigning", publicKeyPath });
+    await expect(provider.getPublicKey()).rejects.toThrow(
+      "Failed to load the Vault Transit signing public key.",
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   it("caches the validated public key", async () => {
     mockFetch.mockResolvedValue(jsonResponse(publicKeyResponse()));
     const provider = createProvider();

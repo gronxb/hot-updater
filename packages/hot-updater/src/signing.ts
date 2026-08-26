@@ -7,6 +7,11 @@ import type { BundleSigningPlugin } from "@hot-updater/plugin-core";
 export interface LocalSigningOptions {
   /** Path to an RSA private key in PEM format. */
   readonly privateKeyPath: string;
+  /**
+   * Checked-in RSA SPKI public key used as the native trust anchor.
+   * Defaults to `public-key.pem` beside `privateKeyPath`.
+   */
+  readonly publicKeyPath?: string;
 }
 
 const resolvePath = (cwd: string, filePath: string) =>
@@ -17,7 +22,10 @@ const loadPrivateKey = async (privateKeyPath: string): Promise<KeyObject> => {
     const privateKey = crypto.createPrivateKey(
       await fs.readFile(privateKeyPath, "utf8"),
     );
-    if (privateKey.asymmetricKeyType !== "rsa") {
+    if (
+      privateKey.asymmetricKeyType !== "rsa" ||
+      (privateKey.asymmetricKeyDetails?.modulusLength ?? 0) < 2048
+    ) {
       throw new Error("not rsa");
     }
     return privateKey;
@@ -29,15 +37,21 @@ const loadPrivateKey = async (privateKeyPath: string): Promise<KeyObject> => {
 /** Signs bundles with a private key stored on the local filesystem. */
 export const localSigning = ({
   privateKeyPath,
+  publicKeyPath: configuredPublicKeyPath,
 }: LocalSigningOptions): BundleSigningPlugin => {
   if (!privateKeyPath.trim()) {
     throw new Error("localSigning requires privateKeyPath.");
   }
+  if (
+    configuredPublicKeyPath !== undefined &&
+    !configuredPublicKeyPath.trim()
+  ) {
+    throw new Error("localSigning requires publicKeyPath when provided.");
+  }
 
-  const publicKeyPath = path.join(
-    path.dirname(privateKeyPath),
-    "public-key.pem",
-  );
+  const publicKeyPath =
+    configuredPublicKeyPath ??
+    path.join(path.dirname(privateKeyPath), "public-key.pem");
   const privateKeys = new Map<string, Promise<KeyObject>>();
 
   const getPrivateKey = (cwd = process.cwd()) => {
@@ -66,6 +80,11 @@ export const localSigning = ({
       };
     },
     async sign({ message, cwd }) {
+      if (!(message instanceof Uint8Array) || message.byteLength !== 32) {
+        throw new Error(
+          "Local bundle signing messages must be exactly 32 bytes.",
+        );
+      }
       const privateKey = await getPrivateKey(cwd);
       return {
         signature: crypto.sign("RSA-SHA256", message, privateKey),

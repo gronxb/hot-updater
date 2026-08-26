@@ -114,6 +114,28 @@ describe("prepareBundleSigning", () => {
     );
   });
 
+  it("rejects RSA public keys weaker than 2048 bits", async () => {
+    const dir = await createTempDir();
+    const weakKeyPair = crypto.generateKeyPairSync("rsa", {
+      modulusLength: 1024,
+      publicKeyEncoding: { type: "spki", format: "pem" },
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    });
+    await fs.writeFile(path.join(dir, "public.pem"), weakKeyPair.publicKey);
+    const provider = createBundleSigningPlugin({
+      name: "weak-provider",
+      publicKeyPath: "public.pem",
+      getPublicKey: async () => ({ publicKey: weakKeyPair.publicKey }),
+      sign: async ({ message }) => ({
+        signature: crypto.sign("RSA-SHA256", message, weakKeyPair.privateKey),
+      }),
+    });
+
+    await expect(prepareBundleSigning(provider, { cwd: dir })).rejects.toThrow(
+      "Failed to resolve the bundle signing provider public key.",
+    );
+  });
+
   it("validates hashes and verifies every provider signature", async () => {
     const dir = await createTempDir();
     const { publicKey } = createKeyPair();

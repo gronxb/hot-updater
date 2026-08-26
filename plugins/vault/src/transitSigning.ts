@@ -25,6 +25,12 @@ interface ResolvedKey {
   publicKey: string;
 }
 
+interface ResolvedConnection {
+  headers: Record<string, string>;
+  keyUrl: string;
+  signUrl: string;
+}
+
 const invalidPublicKeyResponse = () =>
   new Error("Vault Transit returned an invalid signing public key response.");
 
@@ -173,15 +179,16 @@ const readSignature = (response: unknown, keyVersion: number) => {
 
 /** Creates a bundle signer backed by Vault or OpenBao Transit. */
 export const transitSigning = ({
-  address = process.env.VAULT_ADDR ?? process.env.BAO_ADDR ?? "",
+  address,
   keyName,
   keyVersion,
   mountPath = "transit",
-  namespace = process.env.VAULT_NAMESPACE,
+  namespace,
   publicKeyPath,
-  token = process.env.VAULT_TOKEN ?? process.env.BAO_TOKEN ?? "",
+  token,
 }: TransitSigningOptions): BundleSigningPlugin => {
-  const normalizedAddress = normalizeAddress(address);
+  const configuredAddress =
+    address === undefined ? undefined : normalizeAddress(address);
   const normalizedMountPath = normalizeMountPath(mountPath);
   if (!keyName.trim()) {
     throw new Error("Vault Transit signing key name is required.");
@@ -197,21 +204,41 @@ export const transitSigning = ({
   if (!publicKeyPath.trim()) {
     throw new Error("Vault Transit signing public key path is required.");
   }
-  if (!token.trim()) {
+  if (token !== undefined && !token.trim()) {
     throw new Error("Vault Transit signing token is required.");
   }
 
   const keyPath = encodeURIComponent(keyName);
-  const keyUrl = `${normalizedAddress}/v1/${normalizedMountPath}/keys/${keyPath}`;
-  const signUrl = `${normalizedAddress}/v1/${normalizedMountPath}/sign/${keyPath}/sha2-256`;
-  const headers = {
-    "Content-Type": "application/json",
-    "X-Vault-Token": token,
-    ...(namespace ? { "X-Vault-Namespace": namespace } : {}),
+  let resolvedConnection: ResolvedConnection | undefined;
+  const getConnection = () => {
+    if (resolvedConnection) return resolvedConnection;
+
+    const normalizedAddress =
+      configuredAddress ??
+      normalizeAddress(process.env.VAULT_ADDR ?? process.env.BAO_ADDR ?? "");
+    const resolvedToken =
+      token ?? process.env.VAULT_TOKEN ?? process.env.BAO_TOKEN ?? "";
+    if (!resolvedToken.trim()) {
+      throw new Error("Vault Transit signing token is required.");
+    }
+    const resolvedNamespace = namespace ?? process.env.VAULT_NAMESPACE;
+    resolvedConnection = {
+      headers: {
+        "Content-Type": "application/json",
+        "X-Vault-Token": resolvedToken,
+        ...(resolvedNamespace
+          ? { "X-Vault-Namespace": resolvedNamespace }
+          : {}),
+      },
+      keyUrl: `${normalizedAddress}/v1/${normalizedMountPath}/keys/${keyPath}`,
+      signUrl: `${normalizedAddress}/v1/${normalizedMountPath}/sign/${keyPath}/sha2-256`,
+    };
+    return resolvedConnection;
   };
   let resolvedKey: Promise<ResolvedKey> | undefined;
 
   const request = async (url: string, init?: RequestInit) => {
+    const { headers } = getConnection();
     let response: Response;
     try {
       response = await fetch(url, {
@@ -235,7 +262,8 @@ export const transitSigning = ({
 
   const getResolvedKey = () => {
     if (resolvedKey) return resolvedKey;
-    resolvedKey = request(keyUrl)
+    resolvedKey = Promise.resolve()
+      .then(() => request(getConnection().keyUrl))
       .then((response) => ({
         publicKey: readPublicKey(response, keyName, keyVersion),
       }))
@@ -269,7 +297,7 @@ export const transitSigning = ({
       const { publicKey } = await getResolvedKey();
       let response: unknown;
       try {
-        response = await request(signUrl, {
+        response = await request(getConnection().signUrl, {
           body: JSON.stringify({
             input: Buffer.from(message).toString("base64"),
             key_version: keyVersion,
