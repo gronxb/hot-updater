@@ -15,16 +15,19 @@ The private key is the deployment authority. Prefer a remote signing service
 where the private key is non-exportable and the deploy process submits only a
 message to sign.
 
-| Official signer | Import | Key storage |
-| --- | --- | --- |
-| Local PEM | `hot-updater/signing` | Your filesystem or secret manager |
-| AWS KMS | `@hot-updater/aws` | Non-exportable AWS KMS key |
-| Firebase project | `@hot-updater/firebase` | Version-pinned Google Cloud KMS key |
+| Official signer         | Import                  | Key storage                                 |
+| ----------------------- | ----------------------- | ------------------------------------------- |
+| Local PEM               | `hot-updater/signing`   | Your filesystem or secret manager           |
+| AWS KMS                 | `@hot-updater/aws`      | Non-exportable AWS KMS key                  |
+| Azure Key Vault         | `@hot-updater/azure`    | Version-pinned Key Vault or Managed HSM key |
+| Firebase project        | `@hot-updater/firebase` | Version-pinned Google Cloud KMS key         |
+| Vault / OpenBao Transit | `@hot-updater/vault`    | Non-exportable Transit RSA key              |
 
-GitHub, Cloudflare, and Supabase do not provide a compatible arbitrary-message,
-non-exportable RSA signing API. Their secret stores expose the PEM to the
-runtime, so Hot Updater does not label them managed signing providers. In
-GitHub Actions, use OIDC with AWS KMS or Google Cloud KMS instead.
+Signer support is not limited to a specific storage provider. GitHub Actions
+can use OIDC with any compatible KMS, while Cloudflare Workers and Supabase
+Edge Functions can call a remote KMS or Transit signer. Their secret stores can
+also hold an exportable PEM, but that has a weaker custody boundary than the
+non-exportable providers listed above.
 
 > **Important**: Release a native app containing the public key before you
 > deploy signed bundles. An app without the matching public key rejects them.
@@ -203,6 +206,11 @@ RSA PKCS#1 v1.5 with SHA-256. The AWS KMS provider therefore uses:
 Do not substitute `DIGEST` or an RSA-PSS algorithm. Existing iOS and Android
 verifiers expect the exact protocol above.
 
+Other official providers preserve the same signature semantics through their
+native APIs: Firebase Cloud KMS submits `SHA-256(message)` to its digest API,
+Azure Key Vault uses `signData("RS256", message)`, and Vault Transit uses
+`prehashed: false` with `pkcs1v15` and `sha2-256`.
+
 If a bundle manifest contains `N` target files with distinct hashes, a remote
 provider performs `N + 2` signing calls: one per target file, one for the
 manifest, and one for the bundle archive. Repeated identical hashes are
@@ -239,6 +247,66 @@ in Google Cloud, use an attached service account; in GitHub Actions, use
 Workload Identity Federation. Grant the key-level
 `roles/cloudkms.signerVerifier` role, or a custom role limited to signing and
 reading the public key. Only RSA PKCS#1 SHA-256 key versions are accepted.
+
+## Azure Key Vault and Managed HSM
+
+[Azure Key Vault Keys](https://learn.microsoft.com/azure/key-vault/keys/about-keys)
+keeps HSM-backed private key material non-exportable. Pin the complete
+versioned key identifier. `DefaultAzureCredential` supports local Azure CLI
+credentials, managed identities, and workload identity without putting a
+client secret in the Hot Updater config.
+
+```bash
+npm install @hot-updater/azure --save-dev
+```
+
+```ts title="hot-updater.config.ts"
+import { keyVaultSigning } from "@hot-updater/azure";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  signing: keyVaultSigning({
+    keyId: "https://VAULT.vault.azure.net/keys/bundle-signing/VERSION",
+    publicKeyPath: "./keys/public-key.pem",
+  }),
+});
+```
+
+The key must be an enabled RSA or RSA-HSM key with `sign` permission. Grant the
+deploy identity only the Key Vault data-plane permissions needed to read the
+public key and sign. Hot Updater rejects an unversioned key URL, a response for
+another key version, or a signature that does not match the pinned public key.
+
+## HashiCorp Vault and OpenBao Transit
+
+[Vault Transit](https://developer.hashicorp.com/vault/docs/secrets/transit)
+and [OpenBao Transit](https://openbao.org/docs/secrets/transit/) provide signing
+as a service without returning the private key. Use a pinned RSA key version
+and a token policy limited to reading that key and calling its sign endpoint.
+
+```bash
+npm install @hot-updater/vault --save-dev
+```
+
+```ts title="hot-updater.config.ts"
+import { transitSigning } from "@hot-updater/vault";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  signing: transitSigning({
+    address: process.env.VAULT_ADDR,
+    token: process.env.VAULT_TOKEN,
+    keyName: "bundle-signing",
+    keyVersion: 1,
+    publicKeyPath: "./keys/public-key.pem",
+  }),
+});
+```
+
+`address`, `token`, and `namespace` default to `VAULT_ADDR`, `VAULT_TOKEN`, and
+`VAULT_NAMESPACE`. OpenBao's `BAO_ADDR` and `BAO_TOKEN` are also recognized.
+The default Transit mount is `transit`; set `mountPath` when it is mounted
+elsewhere. Only RSA-2048, RSA-3072, and RSA-4096 keys are accepted.
 
 ## Expo and EAS Build
 
