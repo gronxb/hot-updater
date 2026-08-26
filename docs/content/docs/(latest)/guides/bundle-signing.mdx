@@ -7,23 +7,27 @@ version: 0.23.0
 
 ## Why Bundle Signing?
 
-Bundle signing lets the native app reject an OTA bundle that was changed or
-published without the configured signing key. Hot Updater uses RSA-SHA256
-signatures and embeds only the public key in the app.
+Bundle signing lets the native app reject an OTA artifact whose signed bytes
+were changed or were not authorized by the configured signing key. Hot Updater
+uses RSA-SHA256 signatures and embeds only the public key in the app.
+
+Signing authenticates artifact content. It does not authorize release
+targeting, prevent rollback to an older correctly signed artifact, or replace
+review and access controls around publishing.
 
 The private key is the deployment authority. Prefer a remote signing service
 where the private key is non-exportable and the deploy process submits only a
 message to sign.
 
-| Official signer         | Import                    | Key storage                                 |
-| ----------------------- | ------------------------- | ------------------------------------------- |
-| Local PEM               | `hot-updater/signing`     | Your filesystem or secret manager           |
-| AWS KMS                 | `@hot-updater/aws`        | Non-exportable AWS KMS key                  |
-| Azure Key Vault         | `@hot-updater/azure`      | Version-pinned Key Vault or Managed HSM key |
-| Cloudflare Worker       | `@hot-updater/cloudflare` | Non-extractable Worker `CryptoKey`          |
-| Firebase project        | `@hot-updater/firebase`   | Version-pinned Google Cloud KMS key         |
-| Supabase Edge Function  | `@hot-updater/supabase`   | Runtime-readable Edge Function secret       |
-| Vault / OpenBao Transit | `@hot-updater/vault`      | Non-exportable Transit RSA key              |
+| Official signer         | Import                    | Custody                                           |
+| ----------------------- | ------------------------- | ------------------------------------------------- |
+| Local PEM               | `hot-updater/signing`     | Exportable key managed by your deploy environment |
+| AWS KMS                 | `@hot-updater/aws`        | Non-exportable AWS KMS key                        |
+| Firebase project        | `@hot-updater/firebase`   | Non-exportable Google Cloud KMS key               |
+| Cloudflare Worker       | `@hot-updater/cloudflare` | Non-extractable Worker `CryptoKey` binding        |
+| Supabase Edge Function  | `@hot-updater/supabase`   | Runtime-readable project secret                   |
+| Azure Key Vault         | `@hot-updater/azure`      | Non-exportable Key Vault or Managed HSM key       |
+| Vault / OpenBao Transit | `@hot-updater/vault`      | Non-exportable Transit RSA key                    |
 
 Signer support is not limited to the storage or database provider. GitHub
 Actions is an identity source rather than a signing service, so use its OIDC
@@ -32,6 +36,26 @@ provider-hosted signers below, with different custody guarantees.
 
 > **Important**: Release a native app containing the public key before you
 > deploy signed bundles. An app without the matching public key rejects them.
+
+## Choose and Roll Out a Signer
+
+Signing is independent of storage and database selection. The AWS, Firebase,
+Cloudflare, and Supabase plugins are the natural choices when the same provider
+already owns your OTA infrastructure. Azure and Vault/OpenBao can sign bundles
+stored by any provider. Use the local plugin only when an exportable key is an
+acceptable custody model.
+
+`hot-updater init` does not create or enable a signing key. Signing remains an
+explicit opt-in:
+
+1. Provision one dedicated RSA signing key and pin its immutable key version.
+2. Export its SPKI public key to `keys/public-key.pem` and commit that file.
+3. Add the matching signing plugin to `hot-updater.config.ts`.
+4. Run `npx hot-updater keys export-public`, or `npx expo prebuild` for Expo.
+5. Release the native app, then begin signed OTA deployments.
+
+All official signers require RSA keys of at least 2048 bits. Prefer 3072 or
+4096 bits for newly provisioned keys.
 
 ## Recommended: AWS KMS
 
@@ -217,10 +241,9 @@ The Cloudflare and Supabase plugins use the authenticated
 version, RSA-SHA256 algorithm, and SHA-256 fingerprint of the SPKI public key.
 The client rejects redirects and locally verifies every returned signature.
 
-If a bundle manifest contains `N` target files with distinct hashes, a remote
-provider performs `N + 2` signing calls: one per target file, one for the
-manifest, and one for the bundle archive. Repeated identical hashes are
-memoized. Resolving the provider public key adds a separate request. Account
+Remote providers receive one request for each distinct signed hash. Repeated
+identical hashes are memoized, including hashes shared by multiple artifact
+references. Resolving the provider public key adds a separate request. Account
 for KMS latency, request quotas, availability, and cost. Provider errors fail
 the deployment; Hot Updater does not fall back to an unsigned bundle.
 
@@ -229,6 +252,25 @@ the deployment; Hot Updater does not fall back to an unsigned bundle.
 Firebase projects are Google Cloud projects, so they can use Cloud KMS without
 exporting the private key. Pin a full CryptoKeyVersion resource name; a moving
 alias would stop matching the public key embedded in installed apps.
+
+Create an asymmetric signing key version using an RSA PKCS#1 SHA-256 algorithm,
+then export only that version's public key:
+
+```bash
+mkdir -p keys
+
+gcloud kms keyrings create hot-updater --location=global
+gcloud kms keys create bundle-signing \
+  --location=global \
+  --keyring=hot-updater \
+  --purpose=asymmetric-signing \
+  --default-algorithm=rsa-sign-pkcs1-4096-sha256
+gcloud kms keys versions get-public-key 1 \
+  --location=global \
+  --keyring=hot-updater \
+  --key=bundle-signing \
+  --output-file=keys/public-key.pem
+```
 
 ```bash
 npm install @hot-updater/firebase --save-dev
@@ -342,6 +384,12 @@ random signing token as a `secret_text` binding, for example with
 binding. The deploy environment needs only the same signing token; it does not
 need the Cloudflare management API token.
 
+Possession of the signing token grants an online signing oracle, and anyone who
+can deploy code to the Worker can request signatures with its key. Use a
+dedicated Worker and token, restrict deployments to reviewed protected refs,
+rate-limit the signing route, redact authorization headers and request bodies,
+and revoke the token immediately if it is exposed.
+
 For a Worker mounted below a custom path, use that base path in `workerUrl`
 and pass the resulting full signing pathname as `endpointPath` to the handler.
 The private key binding is validated as private, non-extractable, RSA-SHA256,
@@ -384,7 +432,7 @@ specifier or a floating tag in a process that can read the private key.
 ```json title="supabase/functions/hot-updater-signer/deno.json"
 {
   "imports": {
-    "@hot-updater/supabase/edge/signing": "npm:@hot-updater/supabase@1.0.0-rc.0/edge/signing"
+    "@hot-updater/supabase/edge/signing": "npm:@hot-updater/supabase@<exact-version>/edge/signing"
   }
 }
 ```
@@ -416,10 +464,19 @@ the official handler can enforce its dedicated token:
 verify_jwt = false
 ```
 
+Replace `<exact-version>` with the exact installed package version, commit the
+generated `deno.lock`, and deploy the signer explicitly:
+
+```bash
+supabase functions deploy hot-updater-signer --project-ref PROJECT_REF
+```
+
 Supabase project secrets are available to the project's Edge Function runtime.
 Keep the signer in a dedicated function, restrict function deployment and
 secret-management access, and do not expose these values to the OTA client
-handler.
+handler. Other code deployed to the same project can read project secrets, so
+use a dedicated Supabase project or an external KMS/Vault signer when that
+shared administrative boundary is too broad.
 
 ## Azure Key Vault and Managed HSM
 
@@ -428,6 +485,27 @@ keeps HSM-backed private key material non-exportable. Pin the complete
 versioned key identifier. `DefaultAzureCredential` supports local Azure CLI
 credentials, managed identities, and workload identity without putting a
 client secret in the Hot Updater config.
+
+For example, create a non-exportable version and download only its public key:
+
+```bash
+mkdir -p keys
+
+KEY_ID=$(az keyvault key create \
+  --vault-name VAULT \
+  --name bundle-signing \
+  --kty RSA-HSM \
+  --size 4096 \
+  --ops sign verify \
+  --exportable false \
+  --query key.kid \
+  --output tsv)
+
+az keyvault key download \
+  --id "$KEY_ID" \
+  --file keys/public-key.pem \
+  --encoding PEM
+```
 
 ```bash
 npm install @hot-updater/azure --save-dev
@@ -448,7 +526,8 @@ export default defineConfig({
 The key must be an enabled RSA or RSA-HSM key with `sign` permission. Grant the
 deploy identity only the Key Vault data-plane permissions needed to read the
 public key and sign. Hot Updater rejects an unversioned key URL, a response for
-another key version, or a signature that does not match the pinned public key.
+another key version, an exportable key, or a signature that does not match the
+pinned public key.
 
 ## HashiCorp Vault and OpenBao Transit
 
@@ -456,6 +535,19 @@ another key version, or a signature that does not match the pinned public key.
 and [OpenBao Transit](https://openbao.org/docs/secrets/transit/) provide signing
 as a service without returning the private key. Use a pinned RSA key version
 and a token policy limited to reading that key and calling its sign endpoint.
+
+```bash
+mkdir -p keys
+
+vault write transit/keys/bundle-signing \
+  type=rsa-4096 \
+  exportable=false \
+  allow_plaintext_backup=false
+
+vault read -format=json transit/keys/bundle-signing \
+  | jq -r '.data.keys["1"].public_key' \
+  > keys/public-key.pem
+```
 
 ```bash
 npm install @hot-updater/vault --save-dev
@@ -481,6 +573,7 @@ export default defineConfig({
 The default Transit mount is `transit`; set `mountPath` when it is mounted
 elsewhere. Only RSA-2048, RSA-3072, and RSA-4096 keys are accepted. Transit
 requires HTTPS; plain HTTP is accepted only for loopback development servers.
+Hot Updater rejects keys that permit export or plaintext backup.
 
 ## Expo and EAS Build
 
@@ -518,7 +611,10 @@ import { localSigning } from "hot-updater/signing";
 
 export default defineConfig({
   signing: localSigning({
-    privateKeyPath: "./keys/private-key.pem",
+    privateKeyPath:
+      process.env.HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH ??
+      "./keys/private-key.pem",
+    publicKeyPath: "./keys/public-key.pem",
   }),
   // ...other config
 });
@@ -541,6 +637,43 @@ only outside the workspace for the duration of the trusted signing job. A PEM
 retrieved from a secret manager is still available to that process and is less
 isolated than a KMS or HSM-backed remote signer.
 
+If local PEM custody is required in GitHub Actions, write the secret beneath
+`runner.temp`, keep the checked-in public key path explicit, and remove the
+temporary file even when deployment fails:
+
+```yaml title=".github/workflows/deploy.yml"
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH: ${{ runner.temp }}/hot-updater-signing/private-key.pem
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Materialize the signing key
+        env:
+          HOT_UPDATER_SIGNING_PRIVATE_KEY: ${{ secrets.HOT_UPDATER_SIGNING_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d "$(dirname "$HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH")"
+          printf '%s' "$HOT_UPDATER_SIGNING_PRIVATE_KEY" > "$HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH"
+          chmod 600 "$HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH"
+
+      - run: npx --no-install hot-updater deploy -p ios
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -f "$HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH"
+```
+
+Prefer GitHub OIDC with a KMS signer when available because the workflow then
+receives short-lived signing authorization instead of exportable key material.
+
 ## Manual Public Key Configuration
 
 `npx hot-updater keys export-public` writes the public key to:
@@ -548,6 +681,12 @@ isolated than a KMS or HSM-backed remote signer.
 - iOS: `Info.plist` → `HOT_UPDATER_PUBLIC_KEY`
 - Android: application metadata in `AndroidManifest.xml` →
   `com.hotupdater.PUBLIC_KEY`
+
+If either native project already contains a different or invalid public key,
+the command prints the old and new fingerprints and defaults to cancelling the
+replacement. Review the native-first rotation sequence below before accepting
+the prompt. `--yes` explicitly accepts that trust-anchor replacement; it is not
+required when the same key is already embedded.
 
 For custom native paths, configure `platform`:
 

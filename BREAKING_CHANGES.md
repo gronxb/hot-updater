@@ -39,6 +39,43 @@ create schema `1.0.0` only on empty storage and reject every v0 schema marker.
 See the [v1 upgrade guide](<./docs/content/docs/(latest)/guides/upgrade-to-v1.mdx>)
 for the parallel-cutover procedure.
 
+## Bundle Signing configuration
+
+The legacy inline signing object is replaced by a signing plugin. Migrate local
+PEM signing as follows:
+
+```ts
+// Before
+signing: {
+  enabled: true,
+  privateKeyPath: "./keys/private-key.pem",
+}
+
+// After
+import { localSigning } from "hot-updater/signing";
+
+signing: localSigning({
+  privateKeyPath: "./keys/private-key.pem",
+  publicKeyPath: "./keys/public-key.pem",
+})
+```
+
+Replace `enabled: false` by omitting `signing`. Do not ignore the entire
+`keys/` directory: keep the private key out of source control, but commit the
+SPKI public key so Expo, Console, and native trust-anchor checks do not need
+private-key or provider credentials.
+
+The AWS, Firebase, Cloudflare, Supabase, Azure, and Vault packages now export
+provider-backed signers. See the
+[Bundle Signing guide](<./docs/content/docs/(latest)/guides/bundle-signing.mdx>)
+for their imports and custody differences.
+
+If the public key is unchanged, this configuration migration does not require
+a new native trust anchor. If the key changes, release the native app with the
+new public key before deploying artifacts signed by it. `keys export-public`
+now defaults to cancelling a different or invalid embedded-key replacement;
+`--yes` is an explicit acknowledgement of that rotation.
+
 ## Update protocol and HTTP routes
 
 The per-installation v0 update decision is replaced by a shared Release Catalog
