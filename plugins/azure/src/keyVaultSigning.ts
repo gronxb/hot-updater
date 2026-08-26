@@ -67,6 +67,7 @@ const toPublicKey = (response: KeyVaultKey, keyId: string) => {
   }
 
   if (
+    response.properties.exportable === true ||
     !["RSA", "RSA-HSM"].includes(response.keyType ?? "") ||
     !response.keyOperations?.includes("sign")
   ) {
@@ -82,7 +83,10 @@ const toPublicKey = (response: KeyVaultKey, keyId: string) => {
         n: Buffer.from(response.key.n).toString("base64url"),
       },
     });
-    if (key.asymmetricKeyType !== "rsa") {
+    if (
+      key.asymmetricKeyType !== "rsa" ||
+      (key.asymmetricKeyDetails?.modulusLength ?? 0) < 2048
+    ) {
       throw new Error("not rsa");
     }
     return key.export({ format: "pem", type: "spki" }).toString();

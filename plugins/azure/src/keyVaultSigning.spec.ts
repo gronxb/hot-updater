@@ -119,10 +119,16 @@ describe("keyVaultSigning", () => {
   it.each([
     { keyType: "EC", keyOperations: ["sign"] },
     { keyType: "RSA", keyOperations: ["encrypt"] },
+    { properties: { exportable: true } },
   ])("rejects unsupported key capabilities %#", async (patch) => {
+    const response = publicKeyResponse();
     mocks.getKey.mockResolvedValueOnce({
-      ...publicKeyResponse(),
+      ...response,
       ...patch,
+      properties: {
+        ...response.properties,
+        ...patch.properties,
+      },
     });
 
     await expect(createProvider().getPublicKey()).rejects.toThrow(

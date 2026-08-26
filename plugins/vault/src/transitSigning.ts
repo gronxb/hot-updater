@@ -127,6 +127,8 @@ const readPublicKey = (
   }
   if (
     data.supports_signing !== true ||
+    data.exportable === true ||
+    data.allow_plaintext_backup === true ||
     !["rsa-2048", "rsa-3072", "rsa-4096"].includes(String(data.type))
   ) {
     throw unsupportedSigningKey();
@@ -146,7 +148,11 @@ const readPublicKey = (
       throw new Error("not spki");
     }
     const key = createPublicKey(normalizedPublicKey);
-    if (key.asymmetricKeyType !== "rsa") {
+    const expectedModulusLength = Number(String(data.type).slice(4));
+    if (
+      key.asymmetricKeyType !== "rsa" ||
+      key.asymmetricKeyDetails?.modulusLength !== expectedModulusLength
+    ) {
       throw new Error("not rsa");
     }
     return key.export({ format: "pem", type: "spki" }).toString();

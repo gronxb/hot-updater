@@ -148,16 +148,18 @@ describe("transitSigning", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
-  it.each([{ supports_signing: false }, { type: "ecdsa-p256" }])(
-    "rejects unsupported key capabilities %#",
-    async (patch) => {
-      mockFetch.mockResolvedValue(jsonResponse(publicKeyResponse(patch)));
+  it.each([
+    { supports_signing: false },
+    { type: "ecdsa-p256" },
+    { exportable: true },
+    { allow_plaintext_backup: true },
+  ])("rejects unsupported key capabilities %#", async (patch) => {
+    mockFetch.mockResolvedValue(jsonResponse(publicKeyResponse(patch)));
 
-      await expect(createProvider().getPublicKey()).rejects.toThrow(
-        "Vault Transit key does not support RSA-SHA256 bundle signing.",
-      );
-    },
-  );
+    await expect(createProvider().getPublicKey()).rejects.toThrow(
+      "Vault Transit key does not support RSA-SHA256 bundle signing.",
+    );
+  });
 
   it.each([
     { name: "a different key", patch: { name: "other-key" } },
