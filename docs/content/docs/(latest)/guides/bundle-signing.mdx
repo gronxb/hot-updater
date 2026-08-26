@@ -15,19 +15,20 @@ The private key is the deployment authority. Prefer a remote signing service
 where the private key is non-exportable and the deploy process submits only a
 message to sign.
 
-| Official signer         | Import                  | Key storage                                 |
-| ----------------------- | ----------------------- | ------------------------------------------- |
-| Local PEM               | `hot-updater/signing`   | Your filesystem or secret manager           |
-| AWS KMS                 | `@hot-updater/aws`      | Non-exportable AWS KMS key                  |
-| Azure Key Vault         | `@hot-updater/azure`    | Version-pinned Key Vault or Managed HSM key |
-| Firebase project        | `@hot-updater/firebase` | Version-pinned Google Cloud KMS key         |
-| Vault / OpenBao Transit | `@hot-updater/vault`    | Non-exportable Transit RSA key              |
+| Official signer         | Import                    | Key storage                                 |
+| ----------------------- | ------------------------- | ------------------------------------------- |
+| Local PEM               | `hot-updater/signing`     | Your filesystem or secret manager           |
+| AWS KMS                 | `@hot-updater/aws`        | Non-exportable AWS KMS key                  |
+| Azure Key Vault         | `@hot-updater/azure`      | Version-pinned Key Vault or Managed HSM key |
+| Cloudflare Worker       | `@hot-updater/cloudflare` | Non-extractable Worker `CryptoKey`          |
+| Firebase project        | `@hot-updater/firebase`   | Version-pinned Google Cloud KMS key         |
+| Supabase Edge Function  | `@hot-updater/supabase`   | Runtime-readable Edge Function secret       |
+| Vault / OpenBao Transit | `@hot-updater/vault`      | Non-exportable Transit RSA key              |
 
-Signer support is not limited to a specific storage provider. GitHub Actions
-can use OIDC with any compatible KMS, while Cloudflare Workers and Supabase
-Edge Functions can call a remote KMS or Transit signer. Their secret stores can
-also hold an exportable PEM, but that has a weaker custody boundary than the
-non-exportable providers listed above.
+Signer support is not limited to the storage or database provider. GitHub
+Actions is an identity source rather than a signing service, so use its OIDC
+token with a compatible KMS signer. Cloudflare and Supabase provide official
+provider-hosted signers below, with different custody guarantees.
 
 > **Important**: Release a native app containing the public key before you
 > deploy signed bundles. An app without the matching public key rejects them.
@@ -211,6 +212,11 @@ native APIs: Firebase Cloud KMS submits `SHA-256(message)` to its digest API,
 Azure Key Vault uses `signData("RS256", message)`, and Vault Transit uses
 `prehashed: false` with `pkcs1v15` and `sha2-256`.
 
+The Cloudflare and Supabase plugins use the authenticated
+`/_hot-updater/signing` protocol. Requests and responses pin the protocol
+version, RSA-SHA256 algorithm, and SHA-256 fingerprint of the SPKI public key.
+The client rejects redirects and locally verifies every returned signature.
+
 If a bundle manifest contains `N` target files with distinct hashes, a remote
 provider performs `N + 2` signing calls: one per target file, one for the
 manifest, and one for the bundle archive. Repeated identical hashes are
@@ -247,6 +253,173 @@ in Google Cloud, use an attached service account; in GitHub Actions, use
 Workload Identity Federation. Grant the key-level
 `roles/cloudkms.signerVerifier` role, or a custom role limited to signing and
 reading the public key. Only RSA PKCS#1 SHA-256 key versions are accepted.
+
+## Cloudflare Workers
+
+Cloudflare can hold the RSA private key as a Workers `secret_key` binding.
+The Worker receives a non-extractable `CryptoKey` with only the `sign`
+usage. This is a stronger boundary than a text secret, but it is not a KMS or
+HSM.
+
+Install the provider and configure the deploy-side plugin with the base URL of
+a dedicated signing Worker:
+
+```bash
+npm install @hot-updater/cloudflare --save-dev
+```
+
+```ts title="hot-updater.config.ts"
+import { workerSigning } from "@hot-updater/cloudflare";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  signing: workerSigning({
+    workerUrl: "https://hot-updater-signer.example.workers.dev",
+    publicKeyPath: "./keys/public-key.pem",
+  }),
+});
+```
+
+The plugin reads `HOT_UPDATER_CLOUDFLARE_SIGNING_TOKEN` only when it loads the
+public key or signs. You may pass `signingToken` explicitly, but do not put it
+in source control.
+
+Create a dedicated Worker and mount the official handler:
+
+```ts title="src/index.ts"
+import { createWorkerSigningHandler } from "@hot-updater/cloudflare/worker";
+
+interface Env {
+  HOT_UPDATER_SIGNING_KEY: CryptoKey;
+  HOT_UPDATER_SIGNING_PUBLIC_KEY: string;
+  HOT_UPDATER_SIGNING_TOKEN: string;
+}
+
+export default {
+  async fetch(request: Request, env: Env) {
+    return (
+      (await createWorkerSigningHandler({
+        request,
+        privateKey: env.HOT_UPDATER_SIGNING_KEY,
+        publicKey: env.HOT_UPDATER_SIGNING_PUBLIC_KEY,
+        signingToken: env.HOT_UPDATER_SIGNING_TOKEN,
+      })) ?? new Response("Not found", { status: 404 })
+    );
+  },
+};
+```
+
+Provision `HOT_UPDATER_SIGNING_KEY` through the
+[Workers Script Secrets API](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/secrets/methods/update/)
+as `type: "secret_key"`, `format: "pkcs8"`, algorithm
+`RSASSA-PKCS1-v1_5` with `SHA-256`, and `usages: ["sign"]`. The required
+`key_base64` value is the base64 encoding of PKCS#8 DER, not the PEM text:
+
+```bash
+openssl pkcs8 -topk8 -nocrypt \
+  -in keys/private-key.pem \
+  -outform DER \
+  | openssl base64 -A
+```
+
+```json title="Workers Script Secrets API body"
+{
+  "name": "HOT_UPDATER_SIGNING_KEY",
+  "type": "secret_key",
+  "format": "pkcs8",
+  "algorithm": {
+    "name": "RSASSA-PKCS1-v1_5",
+    "hash": "SHA-256"
+  },
+  "usages": ["sign"],
+  "key_base64": "BASE64_ENCODED_PKCS8_DER"
+}
+```
+
+Store the SPKI PEM public key as a plain-text binding. Store the separate
+random signing token as a `secret_text` binding, for example with
+`wrangler secret put`; never place the token in `[vars]` or another plain-text
+binding. The deploy environment needs only the same signing token; it does not
+need the Cloudflare management API token.
+
+For a Worker mounted below a custom path, use that base path in `workerUrl`
+and pass the resulting full signing pathname as `endpointPath` to the handler.
+The private key binding is validated as private, non-extractable, RSA-SHA256,
+and sign-only before each signature.
+
+## Supabase Edge Functions
+
+Supabase does not expose an arbitrary-data KMS signing primitive. The official
+plugin therefore hosts signing in a dedicated Edge Function and stores the
+PKCS#8 PEM in a project secret. The function imports it as a non-extractable
+`CryptoKey`, but the original PEM remains readable to Edge Function code and
+project members who can manage secrets. Treat this as secret-backed custody,
+not KMS/HSM isolation.
+
+```bash
+npm install @hot-updater/supabase --save-dev
+```
+
+```ts title="hot-updater.config.ts"
+import { edgeFunctionSigning } from "@hot-updater/supabase";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  signing: edgeFunctionSigning({
+    functionUrl:
+      "https://PROJECT_REF.supabase.co/functions/v1/hot-updater-signer",
+    publicKeyPath: "./keys/public-key.pem",
+  }),
+});
+```
+
+The deploy process reads `HOT_UPDATER_SUPABASE_SIGNING_TOKEN` lazily. Use a
+dedicated random token; never reuse the Supabase anon key, service-role key, or
+Hot Updater client API key.
+
+Pin the signing-only runtime in the function-local `deno.json`. Keep the exact
+version and generated `deno.lock` under review; do not use an unversioned npm
+specifier or a floating tag in a process that can read the private key.
+
+```json title="supabase/functions/hot-updater-signer/deno.json"
+{
+  "imports": {
+    "@hot-updater/supabase/edge/signing": "npm:@hot-updater/supabase@1.0.0-rc.0/edge/signing"
+  }
+}
+```
+
+Create the dedicated Edge Function:
+
+```ts title="supabase/functions/hot-updater-signer/index.ts"
+import { createEdgeFunctionSigningHandler } from "@hot-updater/supabase/edge/signing";
+
+Deno.serve(async (request) => {
+  return (
+    (await createEdgeFunctionSigningHandler({
+      request,
+      privateKey: Deno.env.get("HOT_UPDATER_SIGNING_PRIVATE_KEY") ?? "",
+      publicKey: Deno.env.get("HOT_UPDATER_SIGNING_PUBLIC_KEY") ?? "",
+      signingToken: Deno.env.get("HOT_UPDATER_SIGNING_TOKEN") ?? "",
+    })) ?? new Response("Not found", { status: 404 })
+  );
+});
+```
+
+Set the private PKCS#8 PEM, public SPKI PEM, and token with
+`supabase secrets set --env-file <protected-file>`, then delete the local
+protected file. Disable Supabase JWT verification only for this function so
+the official handler can enforce its dedicated token:
+
+```toml title="supabase/config.toml"
+[functions.hot-updater-signer]
+verify_jwt = false
+```
+
+Supabase project secrets are available to the project's Edge Function runtime.
+Keep the signer in a dedicated function, restrict function deployment and
+secret-management access, and do not expose these values to the OTA client
+handler.
 
 ## Azure Key Vault and Managed HSM
 
@@ -306,7 +479,8 @@ export default defineConfig({
 `address`, `token`, and `namespace` default to `VAULT_ADDR`, `VAULT_TOKEN`, and
 `VAULT_NAMESPACE`. OpenBao's `BAO_ADDR` and `BAO_TOKEN` are also recognized.
 The default Transit mount is `transit`; set `mountPath` when it is mounted
-elsewhere. Only RSA-2048, RSA-3072, and RSA-4096 keys are accepted.
+elsewhere. Only RSA-2048, RSA-3072, and RSA-4096 keys are accepted. Transit
+requires HTTPS; plain HTTP is accepted only for loopback development servers.
 
 ## Expo and EAS Build
 

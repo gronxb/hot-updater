@@ -81,6 +81,7 @@ describe("transitSigning", () => {
           "X-Vault-Namespace": "engineering",
           "X-Vault-Token": token,
         },
+        redirect: "error",
       }),
     );
     const signCall = mockFetch.mock.calls[1];
@@ -96,9 +97,29 @@ describe("transitSigning", () => {
           signature_algorithm: "pkcs1v15",
         }),
         method: "POST",
+        redirect: "error",
       }),
     );
   });
+
+  it.each([
+    "http://localhost:8200",
+    "http://127.0.0.1:8200",
+    "http://[::1]:8200",
+  ])(
+    "allows an insecure loopback development address: %s",
+    (loopbackAddress) => {
+      expect(() =>
+        transitSigning({
+          address: loopbackAddress,
+          keyName,
+          keyVersion,
+          publicKeyPath,
+          token,
+        }),
+      ).not.toThrow();
+    },
+  );
 
   it("caches the validated public key", async () => {
     mockFetch.mockResolvedValue(jsonResponse(publicKeyResponse()));
@@ -180,6 +201,9 @@ describe("transitSigning", () => {
     expect(() =>
       transitSigning({ ...base, address: "https://secret@vault.example.com" }),
     ).toThrow("valid server address");
+    expect(() =>
+      transitSigning({ ...base, address: "http://vault.example.com" }),
+    ).toThrow("valid server address");
     expect(() => transitSigning({ ...base, address, keyVersion: 0 })).toThrow(
       "pinned key version",
     );
@@ -189,6 +213,12 @@ describe("transitSigning", () => {
     expect(() =>
       transitSigning({ ...base, address, publicKeyPath: " " }),
     ).toThrow("public key path is required");
+    expect(() =>
+      transitSigning({ ...base, address, mountPath: "team/../transit" }),
+    ).toThrow("valid mount path");
+    expect(() =>
+      transitSigning({ ...base, address, keyName: "team/../bundle-signing" }),
+    ).toThrow("dot path segments");
 
     await expect(
       createProvider().sign({ message: new Uint8Array(31) }),
@@ -208,6 +238,27 @@ describe("transitSigning", () => {
     );
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
+
+  it.each([
+    new Response("{}", {
+      headers: {
+        "Content-Length": String(64 * 1024 + 1),
+        "Content-Type": "application/json",
+      },
+    }),
+    new Response("x".repeat(64 * 1024 + 1), {
+      headers: { "Content-Type": "application/json" },
+    }),
+  ])(
+    "rejects oversized provider responses without buffering them",
+    async (response) => {
+      mockFetch.mockResolvedValue(response);
+
+      await expect(createProvider().getPublicKey()).rejects.toThrow(
+        "Failed to load the Vault Transit signing public key.",
+      );
+    },
+  );
 
   it("redacts signing errors", async () => {
     const message = new Uint8Array(32).fill(3);

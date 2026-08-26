@@ -5,3 +5,4 @@ export {
 } from "./createDatabasePlugin";
 export { databaseFields } from "./types/databaseFields";
 export type * from "./types/internal";
+export * from "./remoteBundleSigning";

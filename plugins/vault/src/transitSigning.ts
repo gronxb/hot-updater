@@ -2,6 +2,8 @@ import { createPublicKey, verify } from "node:crypto";
 
 import type { BundleSigningPlugin } from "@hot-updater/plugin-core";
 
+const RESPONSE_BODY_LIMIT = 64 * 1024;
+
 export interface TransitSigningOptions {
   /** Vault or OpenBao server URL. Defaults to VAULT_ADDR or BAO_ADDR. */
   readonly address?: string;
@@ -29,11 +31,14 @@ const invalidPublicKeyResponse = () =>
 const unsupportedSigningKey = () =>
   new Error("Vault Transit key does not support RSA-SHA256 bundle signing.");
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
 const normalizeAddress = (address: string) => {
   try {
     const url = new URL(address);
     if (
-      !/^https?:$/u.test(url.protocol) ||
+      (url.protocol !== "https:" &&
+        !(url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname))) ||
       url.username ||
       url.password ||
       url.search ||
@@ -49,7 +54,10 @@ const normalizeAddress = (address: string) => {
 
 const normalizeMountPath = (mountPath: string) => {
   const normalized = mountPath.replace(/^\/+|\/+$/gu, "");
-  if (!normalized || normalized.split("/").some((part) => !part)) {
+  if (
+    !normalized ||
+    normalized.split("/").some((part) => !part || part === "." || part === "..")
+  ) {
     throw new Error("Vault Transit signing requires a valid mount path.");
   }
   return normalized
@@ -60,6 +68,44 @@ const normalizeMountPath = (mountPath: string) => {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
+
+const readResponseJson = async (response: Response): Promise<unknown> => {
+  const contentLength = response.headers.get("content-length");
+  if (
+    contentLength !== null &&
+    (!/^\d+$/u.test(contentLength) ||
+      Number(contentLength) > RESPONSE_BODY_LIMIT)
+  ) {
+    throw new Error("response too large");
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("missing response body");
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > RESPONSE_BODY_LIMIT) {
+        await reader.cancel();
+        throw new Error("response too large");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body));
+};
 
 const readPublicKey = (
   response: unknown,
@@ -140,6 +186,11 @@ export const transitSigning = ({
   if (!keyName.trim()) {
     throw new Error("Vault Transit signing key name is required.");
   }
+  if (keyName.split("/").some((part) => part === "." || part === "..")) {
+    throw new Error(
+      "Vault Transit signing key name must not contain dot path segments.",
+    );
+  }
   if (!Number.isSafeInteger(keyVersion) || keyVersion < 1) {
     throw new Error("Vault Transit signing requires a pinned key version.");
   }
@@ -166,6 +217,7 @@ export const transitSigning = ({
       response = await fetch(url, {
         ...init,
         headers,
+        redirect: "error",
         signal: AbortSignal.timeout(30_000),
       });
     } catch {
@@ -175,7 +227,7 @@ export const transitSigning = ({
       throw new Error("Vault Transit request failed.");
     }
     try {
-      return await response.json();
+      return await readResponseJson(response);
     } catch {
       throw new Error("Vault Transit returned an invalid JSON response.");
     }

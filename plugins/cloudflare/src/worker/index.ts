@@ -3,3 +3,4 @@ export {
   r2WorkerStorage as r2Storage,
   type CloudflareWorkerStorageConfig,
 } from "../r2WorkerStorage";
+export * from "./workerSigningHandler";

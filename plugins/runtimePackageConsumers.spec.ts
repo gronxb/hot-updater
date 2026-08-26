@@ -149,7 +149,7 @@ describe("packed provider entrypoints", () => {
     {
       directory: "cloudflare",
       packageName: "@hot-updater/cloudflare",
-      exports: ["d1Database", "r2Storage"],
+      exports: ["d1Database", "r2Storage", "workerSigning"],
     },
     {
       directory: "firebase",
@@ -166,7 +166,7 @@ describe("packed provider entrypoints", () => {
     {
       directory: "supabase",
       packageName: "@hot-updater/supabase",
-      exports: ["supabaseDatabase", "supabaseStorage"],
+      exports: ["edgeFunctionSigning", "supabaseDatabase", "supabaseStorage"],
       absentExports: [
         "supabaseEdgeFunctionDatabase",
         "supabaseEdgeFunctionStorage",
@@ -183,10 +183,17 @@ describe("packed provider entrypoints", () => {
       packageName: "@hot-updater/supabase/edge",
       exports: ["supabaseDatabase", "supabaseStorage"],
       absentExports: [
+        "createEdgeFunctionSigningHandler",
         "supabaseEdgeFunctionDatabase",
         "supabaseEdgeFunctionStorage",
         "supabaseStorageDelivery",
       ],
+    },
+    {
+      directory: "supabase",
+      packageName: "@hot-updater/supabase/edge/signing",
+      exports: ["createEdgeFunctionSigningHandler"],
+      absentExports: ["supabaseDatabase", "supabaseStorage"],
     },
   ])(
     "resolves $packageName from the packed ESM and CommonJS package",
@@ -262,6 +269,7 @@ const databaseBinding = {
   batch: async (statements) => Promise.all(statements.map((statement) => statement.all())),
 };
 const database = runtime.d1Database(databaseBinding);
+if (typeof runtime.createWorkerSigningHandler !== "function") throw new Error("missing Worker signing handler");
 if (database.name !== "d1Database") throw new Error("invalid d1Database name");
 if (typeof database.models.analytics.append !== "function") throw new Error("missing analytics model");
 if (typeof database.models.apiKeys.create !== "function") throw new Error("missing apiKeys model");
@@ -289,11 +297,11 @@ for (const operation of ["put", "get", "getDownloadUrl", "exists", "delete"]) {
 
     const moduleConsumer = path.join(packageDirectory, "consumer.mts");
     const commonJsConsumer = path.join(packageDirectory, "consumer.cts");
-    const consumerSource = `import { r2Storage as rootStorage } from ${JSON.stringify(
+    const consumerSource = `import { r2Storage as rootStorage, workerSigning } from ${JSON.stringify(
       rootSpecifier,
-    )};\nimport { d1Database, r2Storage } from ${JSON.stringify(
+    )};\nimport { createWorkerSigningHandler, d1Database, r2Storage } from ${JSON.stringify(
       moduleSpecifier,
-    )};\ndeclare const binding: Parameters<typeof d1Database>[0];\ndeclare const rootStorageConfig: Parameters<typeof rootStorage>[0];\ndeclare const storageConfig: Parameters<typeof r2Storage>[0];\nconst database = d1Database(binding);\nconst nodeStorage = rootStorage(rootStorageConfig);\nconst workerStorage = r2Storage(storageConfig);\nvoid database.models.bundles;\nvoid database.models.bundlePatches;\nvoid database.models.channels;\nvoid database.models.releaseCatalogs;\nvoid database.models.releases;\nvoid database.models.analytics;\nvoid database.models.apiKeys;\nvoid database.commit;\nvoid nodeStorage.put;\nvoid nodeStorage.get;\nvoid nodeStorage.exists;\nvoid nodeStorage.delete;\nvoid workerStorage.put;\nvoid workerStorage.get;\nvoid workerStorage.getDownloadUrl;\nvoid workerStorage.exists;\nvoid workerStorage.delete;\n`;
+    )};\ndeclare const binding: Parameters<typeof d1Database>[0];\ndeclare const rootStorageConfig: Parameters<typeof rootStorage>[0];\ndeclare const storageConfig: Parameters<typeof r2Storage>[0];\ntype SigningHandlerOptions = Parameters<typeof createWorkerSigningHandler>[0];\nconst database = d1Database(binding);\nconst nodeStorage = rootStorage(rootStorageConfig);\nconst workerStorage = r2Storage(storageConfig);\nconst signing = workerSigning({ workerUrl: "https://signer.example.com", publicKeyPath: "keys/public.pem" });\nvoid database.models.bundles;\nvoid database.models.bundlePatches;\nvoid database.models.channels;\nvoid database.models.releaseCatalogs;\nvoid database.models.releases;\nvoid database.models.analytics;\nvoid database.models.apiKeys;\nvoid database.commit;\nvoid nodeStorage.put;\nvoid nodeStorage.get;\nvoid nodeStorage.exists;\nvoid nodeStorage.delete;\nvoid workerStorage.put;\nvoid workerStorage.get;\nvoid workerStorage.getDownloadUrl;\nvoid workerStorage.exists;\nvoid workerStorage.delete;\nvoid signing.sign;\nvoid ({} as SigningHandlerOptions).privateKey;\n`;
     await writeFile(moduleConsumer, consumerSource);
     await writeFile(commonJsConsumer, consumerSource);
 
@@ -307,6 +315,15 @@ for (const operation of ["put", "get", "getDownloadUrl", "exists", "delete"]) {
     const { packageDirectory } = await packProvider("supabase");
     const rootSpecifier = "@hot-updater/supabase";
     const edgeSpecifier = "@hot-updater/supabase/edge";
+    const signingSpecifier = "@hot-updater/supabase/edge/signing";
+    for (const file of ["edgeSigning.cjs", "edgeSigning.mjs"]) {
+      const source = await readFile(
+        path.join(packageDirectory, "dist", file),
+        "utf8",
+      );
+      expect(source).not.toContain("@supabase/supabase-js");
+      expect(source).not.toContain("supabaseStorage");
+    }
     const runtimeAssertions = `
 const config = {
   supabaseUrl: "https://test.supabase.invalid",
@@ -323,6 +340,7 @@ for (const runtime of [rootRuntime, edgeRuntime]) {
     if (typeof storage[operation] !== "function") throw new Error("missing storage " + operation);
   }
 }
+if (typeof rootRuntime.edgeFunctionSigning !== "function") throw new Error("missing root Edge Function signer");
 `;
 
     await runNode(
@@ -340,11 +358,13 @@ for (const runtime of [rootRuntime, edgeRuntime]) {
       packageDirectory,
       "supabase-consumer.cts",
     );
-    const consumerSource = `import { supabaseDatabase as rootDatabase, supabaseStorage as rootStorage } from ${JSON.stringify(
+    const consumerSource = `import { edgeFunctionSigning, supabaseDatabase as rootDatabase, supabaseStorage as rootStorage } from ${JSON.stringify(
       rootSpecifier,
     )};\nimport { supabaseDatabase as edgeDatabase, supabaseStorage as edgeStorage } from ${JSON.stringify(
       edgeSpecifier,
-    )};\nconst config: Parameters<typeof rootDatabase>[0] = { supabaseUrl: "https://test.supabase.invalid", supabaseServiceRoleKey: "test-service-role-key" };\nconst edgeConfig: Parameters<typeof edgeDatabase>[0] = config;\nconst rootStorageConfig: Parameters<typeof rootStorage>[0] = { ...config, bucketName: "updates" };\nconst edgeStorageConfig: Parameters<typeof edgeStorage>[0] = rootStorageConfig;\nvoid rootDatabase(config).models.channels;\nvoid edgeDatabase(edgeConfig).models.channels;\nvoid rootStorage(rootStorageConfig).getDownloadUrl;\nvoid edgeStorage(edgeStorageConfig).getDownloadUrl;\n`;
+    )};\nimport { createEdgeFunctionSigningHandler } from ${JSON.stringify(
+      signingSpecifier,
+    )};\nconst config: Parameters<typeof rootDatabase>[0] = { supabaseUrl: "https://test.supabase.invalid", supabaseServiceRoleKey: "test-service-role-key" };\nconst edgeConfig: Parameters<typeof edgeDatabase>[0] = config;\nconst rootStorageConfig: Parameters<typeof rootStorage>[0] = { ...config, bucketName: "updates" };\nconst edgeStorageConfig: Parameters<typeof edgeStorage>[0] = rootStorageConfig;\ntype SigningHandlerOptions = Parameters<typeof createEdgeFunctionSigningHandler>[0];\nconst signing = edgeFunctionSigning({ functionUrl: "https://project.supabase.co/functions/v1/bundle-signer", publicKeyPath: "keys/public.pem" });\nvoid rootDatabase(config).models.channels;\nvoid edgeDatabase(edgeConfig).models.channels;\nvoid rootStorage(rootStorageConfig).getDownloadUrl;\nvoid edgeStorage(edgeStorageConfig).getDownloadUrl;\nvoid signing.sign;\nvoid ({} as SigningHandlerOptions).privateKey;\n`;
     await writeFile(moduleConsumer, consumerSource);
     await writeFile(commonJsConsumer, consumerSource);
     await typeCheckConsumers(packageDirectory, [
