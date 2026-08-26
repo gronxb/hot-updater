@@ -126,4 +126,29 @@ describe("validateSigningConfig", () => {
       "PUBLIC_KEY_MISMATCH",
     ]);
   });
+
+  it("rejects a matching RSA trust anchor weaker than 2048 bits", async () => {
+    const weakPublicKey = crypto
+      .generateKeyPairSync("rsa", { modulusLength: 1024 })
+      .publicKey.export({ format: "pem", type: "spki" })
+      .toString();
+    parser.android.get.mockResolvedValue({
+      paths: ["AndroidManifest.xml"],
+      value: weakPublicKey,
+    });
+    parser.ios.get.mockResolvedValue({
+      paths: ["Info.plist"],
+      value: weakPublicKey,
+    });
+
+    const result = await validateSigningConfig(createConfig(), {
+      expectedPublicKey: weakPublicKey,
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.issues.map(({ code }) => code)).toEqual([
+      "PUBLIC_KEY_MISMATCH",
+      "PUBLIC_KEY_MISMATCH",
+    ]);
+  });
 });

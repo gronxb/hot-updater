@@ -75,6 +75,12 @@ export const inspectBundleSigning = async (
         "The configured public key is not an RSA public key.",
       );
     }
+    if ((publicKey.asymmetricKeyDetails?.modulusLength ?? 0) < 2048) {
+      return misconfigured(
+        provider,
+        "The configured RSA public key must be at least 2048 bits.",
+      );
+    }
 
     const canonicalDer = publicKey.export({ format: "der", type: "spki" });
     const canonicalPem = publicKey.export({ format: "pem", type: "spki" });

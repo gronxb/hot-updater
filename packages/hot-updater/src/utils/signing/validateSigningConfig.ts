@@ -18,7 +18,10 @@ const parseRsaSpkiPublicKey = (publicKeyPem: string) => {
     throw new Error("not spki");
   }
   const publicKey = crypto.createPublicKey(normalized);
-  if (publicKey.asymmetricKeyType !== "rsa") {
+  if (
+    publicKey.asymmetricKeyType !== "rsa" ||
+    (publicKey.asymmetricKeyDetails?.modulusLength ?? 0) < 2048
+  ) {
     throw new Error("not rsa");
   }
   return publicKey;

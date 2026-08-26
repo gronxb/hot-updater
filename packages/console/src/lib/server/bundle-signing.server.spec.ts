@@ -79,6 +79,29 @@ describe("bundle signing inspection", () => {
     });
   });
 
+  it("rejects an RSA public key weaker than 2048 bits", async () => {
+    const directory = await createTemporaryDirectory();
+    const { publicKey } = generateKeyPairSync("rsa", {
+      modulusLength: 1024,
+      privateKeyEncoding: { format: "pem", type: "pkcs8" },
+      publicKeyEncoding: { format: "pem", type: "spki" },
+    });
+    const publicKeyPath = path.join(directory, "public-key.pem");
+    await writeFile(publicKeyPath, publicKey);
+
+    await expect(
+      inspectBundleSigning({
+        enabled: true,
+        provider: "Weak signer",
+        publicKeyPath,
+      }),
+    ).resolves.toEqual({
+      message: "The configured RSA public key must be at least 2048 bits.",
+      provider: "Weak signer",
+      status: "misconfigured",
+    });
+  });
+
   it("returns a path-free fixed error when the public key is unavailable", async () => {
     const publicKeyPath = "/secret/provider/missing-public-key.pem";
     const inspection = await inspectBundleSigning({

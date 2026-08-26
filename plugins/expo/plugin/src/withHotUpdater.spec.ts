@@ -104,6 +104,29 @@ describe("getPublicKeyFromConfig", () => {
     expect(provider.getPublicKey).not.toHaveBeenCalled();
     expect(provider.sign).not.toHaveBeenCalled();
   });
+
+  it("rejects an RSA public key weaker than 2048 bits", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-public-key-"));
+    tempDirs.push(dir);
+    const { publicKey } = generateKeyPairSync("rsa", {
+      modulusLength: 1024,
+      privateKeyEncoding: { format: "pem", type: "pkcs8" },
+      publicKeyEncoding: { format: "pem", type: "spki" },
+    });
+    const publicKeyPath = path.join(dir, "public-key.pem");
+    const provider = {
+      getPublicKey: vi.fn(),
+      name: "remoteSigner",
+      publicKeyPath,
+      sign: vi.fn(),
+    };
+    await writeFile(publicKeyPath, publicKey);
+
+    await expect(getPublicKeyFromConfig(provider)).rejects.toThrow(
+      "Failed to load publicKeyPath for bundle signing.",
+    );
+    expect(provider.getPublicKey).not.toHaveBeenCalled();
+  });
 });
 
 describe("withHotUpdater - Test Cases", () => {

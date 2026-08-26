@@ -1,4 +1,4 @@
-import { createPublicKey } from "node:crypto";
+import { createHash, createPublicKey } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -22,7 +22,7 @@ export const ANDROID_KEY = "hot_updater_public_key";
 export const IOS_KEY = "HOT_UPDATER_PUBLIC_KEY";
 
 const canonicalizeRsaSpkiPublicKey = (publicKeyPem: string): string => {
-  const trimmed = publicKeyPem.trim();
+  const trimmed = publicKeyPem.replaceAll("\\n", "\n").trim();
   if (
     !trimmed.startsWith("-----BEGIN PUBLIC KEY-----") ||
     !trimmed.endsWith("-----END PUBLIC KEY-----") ||
@@ -32,11 +32,39 @@ const canonicalizeRsaSpkiPublicKey = (publicKeyPem: string): string => {
   }
 
   const publicKey = createPublicKey(trimmed);
-  if (publicKey.asymmetricKeyType !== "rsa") {
+  if (
+    publicKey.asymmetricKeyType !== "rsa" ||
+    (publicKey.asymmetricKeyDetails?.modulusLength ?? 0) < 2048
+  ) {
     throw new Error("Bundle signing public key must be an RSA key.");
   }
 
   return publicKey.export({ format: "pem", type: "spki" }).toString();
+};
+
+const getPublicKeyIdentity = (publicKeyPem: string) => {
+  const publicKey = createPublicKey(canonicalizeRsaSpkiPublicKey(publicKeyPem));
+  const der = publicKey.export({ format: "der", type: "spki" });
+  return {
+    der,
+    fingerprint: `sha256:${createHash("sha256").update(der).digest("hex")}`,
+  };
+};
+
+const getTrustAnchorChange = (
+  platform: "android" | "ios",
+  existingPublicKey: string | null,
+  nextPublicKey: ReturnType<typeof getPublicKeyIdentity>,
+) => {
+  if (!existingPublicKey) return null;
+
+  try {
+    const existing = getPublicKeyIdentity(existingPublicKey);
+    if (existing.der.equals(nextPublicKey.der)) return null;
+    return { platform, fingerprint: existing.fingerprint };
+  } catch {
+    return { platform, fingerprint: "invalid public key" };
+  }
 };
 
 export interface KeysGenerateOptions {
@@ -288,11 +316,43 @@ export const keysExportPublic = async (
       );
     }
 
+    const [androidPublicKey, iosPublicKey] = await Promise.all([
+      androidExists
+        ? androidParser.get(ANDROID_KEY)
+        : Promise.resolve({ value: null }),
+      iosExists ? iosParser.get(IOS_KEY) : Promise.resolve({ value: null }),
+    ]);
+    const nextPublicKey = getPublicKeyIdentity(publicKeyPEM);
+    const trustAnchorChanges = [
+      getTrustAnchorChange("android", androidPublicKey.value, nextPublicKey),
+      getTrustAnchorChange("ios", iosPublicKey.value, nextPublicKey),
+    ].filter((change) => change !== null);
+
+    if (trustAnchorChanges.length > 0) {
+      p.log.warn(
+        "Replacing a native bundle signing key is not a transparent rotation.",
+      );
+      p.log.message(
+        ui.block("Trust anchor change", [
+          ui.kv("New", nextPublicKey.fingerprint),
+          ...trustAnchorChanges.map(({ platform, fingerprint }) =>
+            ui.kv(platform, fingerprint),
+          ),
+        ]),
+      );
+      p.log.warn(
+        "Installed apps using the previous key will reject bundles signed by the new key.",
+      );
+    }
+
     // Confirmation prompt (unless --yes)
     if (!options.yes) {
       const shouldContinue = await p.confirm({
-        message: "Write public key?",
-        initialValue: true,
+        message:
+          trustAnchorChanges.length > 0
+            ? "Replace the existing public key?"
+            : "Write public key?",
+        initialValue: trustAnchorChanges.length === 0,
       });
 
       if (p.isCancel(shouldContinue) || !shouldContinue) {

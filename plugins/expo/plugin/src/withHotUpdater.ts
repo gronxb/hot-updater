@@ -31,7 +31,10 @@ const canonicalizeRsaSpkiPublicKey = (publicKeyPem: string): string => {
   }
 
   const publicKey = createPublicKey(trimmed);
-  if (publicKey.asymmetricKeyType !== "rsa") {
+  if (
+    publicKey.asymmetricKeyType !== "rsa" ||
+    (publicKey.asymmetricKeyDetails?.modulusLength ?? 0) < 2048
+  ) {
     throw new Error("not rsa");
   }
 
