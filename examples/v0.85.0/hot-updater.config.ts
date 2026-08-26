@@ -1,18 +1,11 @@
 import { bare } from "@hot-updater/bare";
-import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";
+import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { config } from "dotenv";
-import { applicationDefault } from "firebase-admin/app";
 import { defineConfig } from "hot-updater";
 
 config({
   path: process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH ?? ".env.hotupdater",
 });
-
-// https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Check your .env.hotupdater file and add the credentials
-// Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
-// Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
-const credential = applicationDefault();
 
 export default defineConfig({
   nativeBuild: {
@@ -45,15 +38,18 @@ export default defineConfig({
   },
 
   build: bare({ enableHermes: true, resetCache: false }),
-  storage: firebaseStorage({
-    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
-    storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
-    credential,
+  storage: r2Storage({
+    bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    credentials: {
+      accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
+    },
   }),
-  database: firebaseDatabase({
-    authorityId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
-    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
-    credential,
+  database: d1Database({
+    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
   fingerprint: {
     debug: true,
@@ -70,5 +66,5 @@ export default defineConfig({
     privateKeyPath: "./keys/private-key.pem",
   },
 
-  authorityId: "hot-updater-25989",
+  authorityId: "9bfb9f0b-37a8-412c-a8f4-c1a949237fb3",
 });
