@@ -72,6 +72,15 @@ describe("DynamoDB CRUD access patterns", () => {
     ).toThrow("DynamoDB contains an invalid Hot Updater row");
   });
 
+  it("defaults a legacy stored bundle's missing archive byte size", () => {
+    const legacyItem = structuredClone(toDynamoDBBundleItem(bundleRow));
+    Reflect.deleteProperty(legacyItem.row, "archive_byte_size");
+
+    expect(parseDynamoDBItem(legacyItem)).toMatchObject({
+      row: { ...bundleRow, archive_byte_size: 0 },
+    });
+  });
+
   it("uses a strongly consistent key read for an exact bundle id", async () => {
     // Given
     dynamodb.on(GetCommand).resolves({ Item: toDynamoDBBundleItem(bundleRow) });

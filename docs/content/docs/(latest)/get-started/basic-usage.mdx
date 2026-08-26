@@ -83,6 +83,15 @@ export default defineConfig({
   (Managed)](/docs/managed/supabase) documentation.
 </Callout>
 
+<Callout type="info">
+  Re-running `init` with a different provider updates only the provider-managed
+  imports, helpers, and `build`/`storage`/`database` settings in
+  `hot-updater.config.ts`. It preserves your other configuration, previous
+  provider variables in `.env.hotupdater`, and existing remote infrastructure.
+  Remove old credentials and infrastructure manually only after all deployed
+  app versions have migrated to the new provider.
+</Callout>
+
 <Callout type="warn">
   The environment variables in `.env.hotupdater` are used only during deployment, not in
   your app bundle. However, if you're using `react-native-dotenv`, review the

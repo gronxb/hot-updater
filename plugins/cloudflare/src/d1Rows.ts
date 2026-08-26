@@ -109,7 +109,10 @@ const bundleRow = (row: Record<string, unknown>): BundleRow => {
     file_hash: stringValue(row, "file_hash", "bundles"),
     git_commit_hash: nullableString(row, "git_commit_hash", "bundles"),
     storage_uri: stringValue(row, "storage_uri", "bundles"),
-    archive_byte_size: byteSizeValue(row, "archive_byte_size", "bundles"),
+    archive_byte_size:
+      row["archive_byte_size"] === undefined
+        ? 0
+        : byteSizeValue(row, "archive_byte_size", "bundles"),
     metadata: metadata(row),
     manifest_storage_uri: nullableString(
       row,

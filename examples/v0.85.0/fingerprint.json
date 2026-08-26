@@ -251,7 +251,7 @@
         "reasons": [
           "rncoreAutolinking"
         ],
-        "hash": "98b83277099843384d00066b1d4d63cf27902e98",
+        "hash": "2d24019fa2304c6ec100133ff4bd3418ab17aed0",
         "debugInfo": {
           "path": "node_modules/@hot-updater/react-native",
           "children": [
@@ -560,7 +560,7 @@
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/BundleFileStorageService.swift",
-                          "hash": "0391b673442394b30539c4aa49a3997e56ed9565"
+                          "hash": "67388c18b98aa98452bcda83c58dfdfde316dc28"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/BundleMetadata.swift",
@@ -647,7 +647,7 @@
                           "hash": "1819cbfc897319e45aeac88691ea325ae7a99d58"
                         }
                       ],
-                      "hash": "3a90e2c00c23f66b8c78eb72244d836b712afdd1"
+                      "hash": "fcd1a0fff1ed69b92776d2445be3e9581ca262e8"
                     },
                     {
                       "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Package.swift",
@@ -676,23 +676,23 @@
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Test/BundleFileStorageServiceTests.swift",
-                          "hash": "652d56e19b60f83d7efe6158ab23048904ef2daa"
+                          "hash": "9ceb6415df286be402e8db47ab8d4c09d85037d2"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Test/ReleaseCatalogCacheServiceTests.swift",
                           "hash": "2fda0e2e5b61bf19a0e86fa4a7bdaeb12dcf8b92"
                         }
                       ],
-                      "hash": "12dcb323f967e7ecc695cc855257b1011845c376"
+                      "hash": "2a66cd6f811c607925aad14256c3fffa09c4b31f"
                     }
                   ],
-                  "hash": "a9eb02693aa738b1314d02e5d29a2dcfbea3bdf9"
+                  "hash": "2512934488590483e845077a1e60971d83ec2378"
                 }
               ],
-              "hash": "97b6c7865cc6f9a743e76ba4d6e18fdc08a516c0"
+              "hash": "640e56ededc6ef296390f0de9009eb3452ddf408"
             }
           ],
-          "hash": "98b83277099843384d00066b1d4d63cf27902e98"
+          "hash": "2d24019fa2304c6ec100133ff4bd3418ab17aed0"
         }
       },
       {
@@ -3750,7 +3750,7 @@
         }
       }
     ],
-    "hash": "67d605d001a185b15cc6324dc479820275222d6c"
+    "hash": "fd99c9701b3cb4936893e3cca7b88c223353b068"
   },
   "android": {
     "sources": [
@@ -4004,7 +4004,7 @@
         "reasons": [
           "rncoreAutolinking"
         ],
-        "hash": "98b83277099843384d00066b1d4d63cf27902e98",
+        "hash": "2d24019fa2304c6ec100133ff4bd3418ab17aed0",
         "debugInfo": {
           "path": "node_modules/@hot-updater/react-native",
           "children": [
@@ -4313,7 +4313,7 @@
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/BundleFileStorageService.swift",
-                          "hash": "0391b673442394b30539c4aa49a3997e56ed9565"
+                          "hash": "67388c18b98aa98452bcda83c58dfdfde316dc28"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/BundleMetadata.swift",
@@ -4400,7 +4400,7 @@
                           "hash": "1819cbfc897319e45aeac88691ea325ae7a99d58"
                         }
                       ],
-                      "hash": "3a90e2c00c23f66b8c78eb72244d836b712afdd1"
+                      "hash": "fcd1a0fff1ed69b92776d2445be3e9581ca262e8"
                     },
                     {
                       "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Package.swift",
@@ -4429,23 +4429,23 @@
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Test/BundleFileStorageServiceTests.swift",
-                          "hash": "652d56e19b60f83d7efe6158ab23048904ef2daa"
+                          "hash": "9ceb6415df286be402e8db47ab8d4c09d85037d2"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Test/ReleaseCatalogCacheServiceTests.swift",
                           "hash": "2fda0e2e5b61bf19a0e86fa4a7bdaeb12dcf8b92"
                         }
                       ],
-                      "hash": "12dcb323f967e7ecc695cc855257b1011845c376"
+                      "hash": "2a66cd6f811c607925aad14256c3fffa09c4b31f"
                     }
                   ],
-                  "hash": "a9eb02693aa738b1314d02e5d29a2dcfbea3bdf9"
+                  "hash": "2512934488590483e845077a1e60971d83ec2378"
                 }
               ],
-              "hash": "97b6c7865cc6f9a743e76ba4d6e18fdc08a516c0"
+              "hash": "640e56ededc6ef296390f0de9009eb3452ddf408"
             }
           ],
-          "hash": "98b83277099843384d00066b1d4d63cf27902e98"
+          "hash": "2d24019fa2304c6ec100133ff4bd3418ab17aed0"
         }
       },
       {
@@ -7503,6 +7503,6 @@
         }
       }
     ],
-    "hash": "67d605d001a185b15cc6324dc479820275222d6c"
+    "hash": "fd99c9701b3cb4936893e3cca7b88c223353b068"
   }
 }

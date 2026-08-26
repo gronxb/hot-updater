@@ -188,7 +188,7 @@ describe("Supabase non-interactive inputs", () => {
     expect(mocks.text).toHaveBeenCalledWith(
       expect.objectContaining({
         initialValue: "saved-function",
-        placeholder: "update-server",
+        placeholder: "hot-updater-v1",
       }),
     );
     expect(deploymentInputs.functionName).toBe("edited-function");

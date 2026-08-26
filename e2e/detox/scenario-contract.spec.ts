@@ -483,6 +483,28 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).toContain("verifyConsoleAnalytics");
   });
 
+  it("clears Releases across all channels before deleting global Bundles", async () => {
+    // Given: a failed E2E job can leave a Release in an older channel that
+    // still references a Bundle returned by the platform-global Bundle list.
+    const controllerSource = await fs.readFile(
+      detoxControlServerControllerPath,
+      "utf8",
+    );
+    const clearBundlesBody = controllerSource.slice(
+      controllerSource.indexOf("async function clearProviderBundles()"),
+      controllerSource.indexOf(
+        "async function clearProviderBundlesAfterReadiness()",
+      ),
+    );
+
+    // When: the next scenario resets provider state.
+    // Then: it clears Releases without a channel filter before Bundle delete.
+    expect(clearBundlesBody).toContain("await clearProviderReleases(null)");
+    expect(
+      clearBundlesBody.indexOf("clearProviderReleases(null)"),
+    ).toBeLessThan(clearBundlesBody.indexOf("deleteProviderBundle(bundle.id)"));
+  });
+
   it("does not launch the app before provider bundles are deployed", async () => {
     // Given: the control server resets remote bundles and local app state
     // before any provider-backed update-check URL can be requested.

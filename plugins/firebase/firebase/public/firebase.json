@@ -13,18 +13,5 @@
       "*.local"
     ],
     "gen": 2
-  },
-  "hosting": {
-    "public": "hosting",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [
-      {
-        "regex": "^/(?:version|release-catalogs/.*|artifacts/.*|events)$",
-        "function": {
-          "functionId": "hot-updater",
-          "pinTag": true
-        }
-      }
-    ]
   }
 }

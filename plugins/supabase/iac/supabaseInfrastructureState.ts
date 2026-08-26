@@ -1,6 +1,6 @@
 import {
   assertInfrastructureGenerationAtUrl,
-  LegacyInfrastructureError,
+  InitError,
 } from "@hot-updater/cli-tools";
 
 import type { SupabaseApi } from "./supabaseApi";
@@ -9,8 +9,10 @@ export const assertSupabaseInfrastructureCanInitialize = async (
   api: SupabaseApi,
   projectId: string,
 ): Promise<void> => {
-  if ((await api.getInfrastructureState()) === "v0") {
-    throw new LegacyInfrastructureError("Supabase", `project ${projectId}`);
+  if ((await api.getInfrastructureState()) === "incompatible") {
+    throw new InitError(
+      `Supabase v1 infrastructure in project ${projectId} is incomplete or uses an unsupported database version.`,
+    );
   }
 };
 

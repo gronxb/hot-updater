@@ -1,17 +1,37 @@
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
+import { FIREBASE_V1_COLLECTION_NAMES } from "../src/firebaseInfrastructureNames";
+
 export function createFirestoreMock(projectId: string) {
   const app = getApps()[0] ?? initializeApp({ projectId });
   const firestore = getFirestore(app);
-  const bundlesCollection = firestore.collection("bundles");
-  const bundlePatchesCollection = firestore.collection("bundle_patches");
-  const bundleEventsCollection = firestore.collection("bundle_events");
-  const channelsCollection = firestore.collection("channels");
-  const apiKeysCollection = firestore.collection("api_keys");
-  const releasesCollection = firestore.collection("releases");
-  const releaseCatalogsCollection = firestore.collection("release_catalogs");
+  const bundlesCollection = firestore.collection(
+    FIREBASE_V1_COLLECTION_NAMES.bundles,
+  );
+  const bundlePatchesCollection = firestore.collection(
+    FIREBASE_V1_COLLECTION_NAMES.bundlePatches,
+  );
+  const bundleEventsCollection = firestore.collection(
+    FIREBASE_V1_COLLECTION_NAMES.bundleEvents,
+  );
+  const channelsCollection = firestore.collection(
+    FIREBASE_V1_COLLECTION_NAMES.channels,
+  );
+  const apiKeysCollection = firestore.collection(
+    FIREBASE_V1_COLLECTION_NAMES.apiKeys,
+  );
+  const releasesCollection = firestore.collection(
+    FIREBASE_V1_COLLECTION_NAMES.releases,
+  );
+  const releaseCatalogsCollection = firestore.collection(
+    FIREBASE_V1_COLLECTION_NAMES.releaseCatalogs,
+  );
   const settingsCollection = firestore.collection(
+    FIREBASE_V1_COLLECTION_NAMES.settings,
+  );
+  const legacyBundlesCollection = firestore.collection("bundles");
+  const legacySettingsCollection = firestore.collection(
     "private_hot_updater_settings",
   );
 
@@ -25,6 +45,8 @@ export function createFirestoreMock(projectId: string) {
       releasesCollection,
       releaseCatalogsCollection,
       settingsCollection,
+      legacyBundlesCollection,
+      legacySettingsCollection,
     ];
     for (const coll of collections) {
       const snapshot = await coll.get();
@@ -46,6 +68,8 @@ export function createFirestoreMock(projectId: string) {
     releasesCollection,
     releaseCatalogsCollection,
     settingsCollection,
+    legacyBundlesCollection,
+    legacySettingsCollection,
     clearCollections,
   };
 }

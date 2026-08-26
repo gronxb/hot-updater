@@ -1,6 +1,7 @@
 import { MissingInitInputsError, p } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 
+import { FIREBASE_V1_FUNCTION_NAME } from "../src/firebaseInfrastructureNames";
 import type { FirebaseCliEnv } from "./firebaseInitInputs";
 import {
   initProvider as FIREBASE_INIT_PROVIDER,
@@ -73,7 +74,7 @@ export const resolveFirebaseRegion = async ({
             typeof entry === "object" &&
             entry !== null &&
             "id" in entry &&
-            entry.id === "hot-updater" &&
+            entry.id === FIREBASE_V1_FUNCTION_NAME &&
             "region" in entry &&
             typeof entry.region === "string"
           ) {

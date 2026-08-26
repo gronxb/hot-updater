@@ -35,6 +35,7 @@ import {
   createFirebaseDatabaseState,
   FirebaseDatabaseConstraintError,
 } from "./firebaseDatabaseState";
+import { FIREBASE_V1_COLLECTION_NAMES } from "./firebaseInfrastructureNames";
 
 type FirebaseMutation<TResult> = (
   database: TransactionDatabasePluginImplementation,
@@ -184,7 +185,7 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
           if (idDocument.exists) {
             const row = parseFirebaseChannelRow(
               idDocument.data(),
-              `private_hot_updater_settings/${idDocument.id}`,
+              `${FIREBASE_V1_COLLECTION_NAMES.settings}/${idDocument.id}`,
             );
             if (row.id !== input.row.id || row.name !== input.row.name) {
               throw new FirebaseDatabaseConstraintError("channels.id.registry");
@@ -225,7 +226,7 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
           }
           const row = parseFirebaseChannelRow(
             idDocument.data(),
-            `private_hot_updater_settings/${idDocument.id}`,
+            `${FIREBASE_V1_COLLECTION_NAMES.settings}/${idDocument.id}`,
           );
           const reference = collections.channels.doc(
             firebaseChannelDocumentId(row.name),

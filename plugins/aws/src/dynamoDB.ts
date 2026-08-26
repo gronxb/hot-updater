@@ -158,6 +158,13 @@ const isNullableString = (value: unknown): value is string | null =>
 const isByteSize = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
+const withLegacyArchiveByteSize = (value: unknown): unknown =>
+  typeof value === "object" &&
+  value !== null &&
+  field(value, "archive_byte_size") === undefined
+    ? { ...value, archive_byte_size: 0 }
+    : value;
+
 const isBundleRow = (value: unknown): value is BundleRow =>
   typeof value === "object" &&
   value !== null &&
@@ -250,7 +257,8 @@ export const parseDynamoDBItem = (
   const ownedPatchCount = value.owned_patch_count;
   const gsi1pk = value.gsi1pk;
   const gsi1sk = value.gsi1sk;
-  const row = value.row;
+  const row =
+    pk === "bundles" ? withLegacyArchiveByteSize(value.row) : value.row;
   if (typeof sk !== "string" || typeof version !== "number") {
     throw new DynamoDBStoredItemError();
   }

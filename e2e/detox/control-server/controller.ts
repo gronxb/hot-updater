@@ -1828,8 +1828,9 @@ async function deleteProviderBundle(bundleId: string) {
   throw lastError;
 }
 
-async function clearProviderReleases() {
-  const resetChannels = getFixtureResetChannels();
+async function clearProviderReleases(
+  resetChannels: readonly string[] | null = getFixtureResetChannels(),
+) {
   const clearedReleaseIds: string[] = [];
   await withConfiguredDatabase(async (database) => {
     const channels = await database.models.channels.list({});
@@ -1870,7 +1871,9 @@ async function clearProviderReleases() {
 }
 
 async function clearProviderBundles() {
-  await clearProviderReleases();
+  // Bundle listing is global for a platform, so every referencing Release must
+  // be removed before the global Bundle cleanup can be retried safely.
+  await clearProviderReleases(null);
   const clearedBundleIds: string[] = [];
   const clearedIds = new Set<string>();
 
