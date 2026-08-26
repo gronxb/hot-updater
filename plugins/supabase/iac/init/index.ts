@@ -1,5 +1,7 @@
 import type { InitProviderDefinition } from "@hot-updater/cli-tools";
 
+import { SUPABASE_V1_FUNCTION_NAME } from "../../src/supabaseInfrastructureNames";
+
 export const SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY =
   "HOT_UPDATER_SUPABASE_DB_PASSWORD_PROJECT_ID";
 
@@ -99,9 +101,9 @@ export const initProvider = {
       envKey: "HOT_UPDATER_SUPABASE_FUNCTION_NAME",
       help: "Edge Function name",
       prompt: {
-        defaultValue: "update-server",
+        defaultValue: SUPABASE_V1_FUNCTION_NAME,
         message: "Enter a name for the edge function",
-        placeholder: "update-server",
+        placeholder: SUPABASE_V1_FUNCTION_NAME,
         type: "text",
       },
       validate: isSupabaseFunctionName,

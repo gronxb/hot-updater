@@ -29,6 +29,7 @@ import {
 } from "firebase-admin/app";
 
 import { firebaseDatabase } from "../src/firebaseDatabase";
+import { FIREBASE_V1_FUNCTION_NAME } from "../src/firebaseInfrastructureNames";
 import { inputFirebaseApplicationCredentials } from "./firebaseApplicationCredentials";
 import {
   assertFirebaseFunctionCanInitialize,
@@ -362,38 +363,7 @@ const deployFunctions = async (
         "firebase",
         "deploy",
         "--only",
-        "functions",
-        ...(nonInteractive ? ["--non-interactive"] : []),
-      ],
-      {
-        cwd,
-        env: cliEnv,
-        stdio: "inherit",
-      },
-    );
-  } catch (e) {
-    if (e instanceof ExecaError) {
-      p.log.error(e.stderr || e.stdout || e.message);
-    } else if (e instanceof Error) {
-      p.log.error(e.message);
-    }
-    process.exit(1);
-  }
-};
-
-const deployHosting = async (
-  cwd: string,
-  nonInteractive = false,
-  cliEnv?: FirebaseCliEnv,
-) => {
-  try {
-    await execa(
-      "npx",
-      [
-        "firebase",
-        "deploy",
-        "--only",
-        "hosting",
+        `functions:${FIREBASE_V1_FUNCTION_NAME}`,
         ...(nonInteractive ? ["--non-interactive"] : []),
       ],
       {
@@ -419,12 +389,12 @@ const printTemplate = async (
   cliEnv?: FirebaseCliEnv,
 ) => {
   try {
-    await execa(
+    const describedFunction = await execa(
       "gcloud",
       [
         "functions",
         "describe",
-        "hot-updater",
+        FIREBASE_V1_FUNCTION_NAME,
         "--project",
         projectId,
         "--region",
@@ -435,7 +405,15 @@ const printTemplate = async (
         env: cliEnv,
       },
     );
-    const functionUrl = `https://${projectId}.web.app`;
+    const functionData = JSON.parse(describedFunction.stdout) as {
+      readonly serviceConfig?: { readonly uri?: string };
+    };
+    const functionUrl = functionData.serviceConfig?.uri;
+    if (!functionUrl) {
+      throw new InitError(
+        `Firebase Function ${FIREBASE_V1_FUNCTION_NAME} did not report an endpoint URL.`,
+      );
+    }
 
     p.note(
       transformTemplate(SOURCE_TEMPLATE, {
@@ -444,6 +422,7 @@ const printTemplate = async (
       }),
     );
     p.note(formatApiKeyNote(apiKey), "API Key");
+    p.log.message("Store this API key separately in a secure place.");
   } catch (error) {
     if (error instanceof ExecaError) {
       p.log.error(error.stderr || error.stdout || error.message);
@@ -636,7 +615,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     );
   }
   await deployFunctions(tmpDir, nonInteractive, cliEnv);
-  await deployHosting(tmpDir, nonInteractive, cliEnv);
 
   await p.tasks([
     {
@@ -649,12 +627,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
           cliEnv,
         );
         const hotUpdater = functionsData.find(
-          (fn: FirebaseFunction) => fn.id === "hot-updater",
+          (fn: FirebaseFunction) => fn.id === FIREBASE_V1_FUNCTION_NAME,
         );
         const account = hotUpdater?.serviceAccount as string | undefined;
 
         if (!account) {
-          p.log.error("hot-updater function not found");
+          p.log.error(`${FIREBASE_V1_FUNCTION_NAME} function not found`);
           await removeTmpDir();
           process.exit(1);
         }

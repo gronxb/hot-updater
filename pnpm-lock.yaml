@@ -1192,6 +1192,9 @@ importers:
       '@aws-sdk/credential-provider-sso':
         specifier: ^3.972.25
         version: 3.972.52
+      '@aws-sdk/credential-providers':
+        specifier: 3.1066.0
+        version: 3.1066.0
       '@babel/core':
         specifier: ^7.25.2
         version: 7.26.0
@@ -19738,7 +19741,7 @@ snapshots:
   '@aws-sdk/credential-providers@3.1066.0':
     dependencies:
       '@aws-sdk/client-cognito-identity': 3.1066.0
-      '@aws-sdk/core': 3.974.20
+      '@aws-sdk/core': 3.977.6
       '@aws-sdk/credential-provider-cognito-identity': 3.972.45
       '@aws-sdk/credential-provider-env': 3.972.46
       '@aws-sdk/credential-provider-http': 3.972.48
@@ -19749,8 +19752,8 @@ snapshots:
       '@aws-sdk/credential-provider-sso': 3.972.52
       '@aws-sdk/credential-provider-web-identity': 3.972.52
       '@aws-sdk/nested-clients': 3.997.20
-      '@aws-sdk/types': 3.973.12
-      '@smithy/core': 3.24.6
+      '@aws-sdk/types': 3.974.2
+      '@smithy/core': 3.31.1
       '@smithy/credential-provider-imds': 4.3.8
       '@smithy/types': 4.16.1
       tslib: 2.8.1
@@ -26839,9 +26842,7 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/metro-config@0.85.2(@babel/core@7.26.0)':
     dependencies:

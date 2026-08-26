@@ -20,6 +20,7 @@ import { execa } from "execa";
 
 import { dynamoDB } from "../src/dynamoDB";
 import { resolveAwsAuth } from "./awsAuth";
+import { getAwsV1SsmParameterName } from "./awsInfrastructureNames";
 import {
   assertAwsInfrastructureGeneration,
   assertAwsLambdaCanInitialize,
@@ -358,7 +359,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   // Create IAM role: Using IAMManager
   const iamManager = new IAMManager(bucketRegion, credentials);
-  const ssmParameterName = `/hot-updater/${bucketName}/keypair`;
+  const ssmParameterName = getAwsV1SsmParameterName(lambdaName);
   const lambdaRoleArn = await iamManager.createOrSelectRole({
     bucketName,
     dynamodbTableName: resolvedDynamoDBTableName,
@@ -368,9 +369,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   const ssmKeyPairManager = new SSMKeyPairManager(bucketRegion, credentials);
 
-  const keyPair = await ssmKeyPairManager.getOrCreateKeyPair(
-    `/hot-updater/${bucketName}/keypair`,
-  );
+  const keyPair = await ssmKeyPairManager.getOrCreateKeyPair(ssmParameterName);
 
   // Create CloudFront key group
   const { publicKeyId, keyGroupId } =
@@ -450,6 +449,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     }),
   );
   p.note(formatApiKeyNote(apiKey), "API Key");
+  p.log.message("Store this API key separately in a secure place.");
   p.log.message(
     `Next step: ${link("https://hot-updater.dev/docs/managed/aws#step-4-changeenv-file-optional")}`,
   );

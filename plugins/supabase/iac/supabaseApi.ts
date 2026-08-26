@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 
-export type SupabaseInfrastructureState = "fresh" | "v0" | "v1";
+import { SUPABASE_V1_TABLE_NAMES } from "../src/supabaseInfrastructureNames";
+
+export type SupabaseInfrastructureState = "fresh" | "incompatible" | "v1";
 
 export interface SupabaseApi {
   getInfrastructureState: () => Promise<SupabaseInfrastructureState>;
@@ -18,10 +20,6 @@ export interface SupabaseApi {
   ) => Promise<{
     name: string;
   }>;
-  updateBucket: (
-    bucketId: string,
-    options: { public: boolean },
-  ) => Promise<void>;
 }
 
 export const supabaseApi = (
@@ -32,24 +30,18 @@ export const supabaseApi = (
 
   return {
     getInfrastructureState: async () => {
-      const catalog = await supabase
-        .from("release_catalogs")
-        .select("scope_key")
-        .limit(1);
-      if (!catalog.error) return "v1";
-      if (catalog.error.code !== "42P01" && catalog.error.code !== "PGRST205") {
-        throw catalog.error;
+      const marker = await supabase
+        .from(SUPABASE_V1_TABLE_NAMES.settings)
+        .select("value")
+        .eq("key", "schema.core")
+        .maybeSingle();
+      if (!marker.error) {
+        return marker.data?.value === "1.0.0" ? "v1" : "incompatible";
       }
-
-      const bundles = await supabase
-        .from("bundles")
-        .select("target_app_version")
-        .limit(1);
-      if (!bundles.error) return "v0";
-      if (bundles.error.code === "42P01" || bundles.error.code === "PGRST205") {
+      if (marker.error.code === "42P01" || marker.error.code === "PGRST205") {
         return "fresh";
       }
-      throw bundles.error;
+      throw marker.error;
     },
     listBuckets: async () => {
       const { data, error } = await supabase.storage.listBuckets();
@@ -72,12 +64,6 @@ export const supabaseApi = (
         throw error;
       }
       return data;
-    },
-    updateBucket: async (bucketId, options) => {
-      const { error } = await supabase.storage.updateBucket(bucketId, options);
-      if (error) {
-        throw error;
-      }
     },
   };
 };

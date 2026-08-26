@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "@aws-sdk/credential-provider-sso": "^3.972.25",
+    "@aws-sdk/credential-providers": "3.1066.0",
     "@babel/core": "^7.25.2",
     "@babel/plugin-syntax-typescript": "7.28.6",
     "@babel/preset-env": "^7.25.3",
@@ -45,6 +46,7 @@
     "@types/jest": "^29.5.13",
     "@types/react": "^19.2.0",
     "@types/react-test-renderer": "^19.1.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "dotenv": "^16.4.5",
     "eslint": "^8.19.0",
     "firebase-admin": "catalog:firebase",
@@ -62,7 +64,6 @@
     "react-native-safe-area-context": "^5.5.2",
     "react-native-screens": "^4.25.2",
     "react-test-renderer": "19.2.3",
-    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "valtio": "^2.2.0",
     "wrangler": "^4.30.0"

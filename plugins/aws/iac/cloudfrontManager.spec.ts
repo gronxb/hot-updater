@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildDistributionConfig } from "./cloudfrontDistributionConfig";
 
@@ -49,6 +49,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 import { CloudFrontManager } from "./cloudfront";
 
 describe("CloudFrontManager", () => {
+  const mockFetch = vi.fn<typeof fetch>();
   const existingDistributionConfig = buildDistributionConfig({
     bucketName: "hot-updater-storage",
     bucketDomain: "hot-updater-storage.s3.ap-northeast-2.amazonaws.com",
@@ -59,9 +60,41 @@ describe("CloudFrontManager", () => {
     releaseCatalogCachePolicyId: "existing-release-catalog-cache-policy-id",
     sharedCachePolicyId: "existing-shared-cache-policy-id",
   });
+  const mockMatchingDistribution = ({
+    domainName,
+    id,
+  }: {
+    domainName: string;
+    id: string;
+  }) => {
+    mockCloudFront.listDistributions.mockResolvedValue({
+      DistributionList: {
+        Items: [
+          {
+            Id: id,
+            DomainName: domainName,
+            Origins: {
+              Items: [
+                {
+                  DomainName:
+                    "hot-updater-storage.s3.ap-northeast-2.amazonaws.com",
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal("fetch", mockFetch);
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ infrastructureGeneration: 1 }), {
+        status: 200,
+      }),
+    );
     mockPrompt.select.mockResolvedValue("dist-id");
 
     mockCloudFront.listOriginAccessControls.mockResolvedValue({
@@ -114,6 +147,10 @@ describe("CloudFrontManager", () => {
         ],
       },
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("paginates and updates an existing cache policy before reuse", async () => {
@@ -306,80 +343,173 @@ describe("CloudFrontManager", () => {
     );
   });
 
-  it("does not prompt for an ambiguous distribution in non-interactive mode", async () => {
-    // Given
-    mockCloudFront.listCachePolicies.mockResolvedValue({
-      CachePolicyList: {
-        Items: [
-          {
-            CachePolicy: {
-              Id: "shared-cache-policy-id",
-              CachePolicyConfig: {
-                Name: "HotUpdaterOriginCacheControlV2",
-              },
+  it.each([1, 2])(
+    "creates a new distribution instead of inferring one of %i same-bucket distributions",
+    async (distributionCount) => {
+      // Given
+      mockCloudFront.listDistributions.mockResolvedValue({
+        DistributionList: {
+          Items: Array.from({ length: distributionCount }, (_, index) => ({
+            Id: `existing-${index}-dist-id`,
+            DomainName: `existing-${index}.cloudfront.net`,
+            Origins: {
+              Items: [
+                {
+                  DomainName:
+                    "hot-updater-storage.s3.ap-northeast-2.amazonaws.com",
+                },
+              ],
             },
-          },
-        ],
-      },
-    });
-    mockCloudFront.listDistributions.mockResolvedValue({
-      DistributionList: {
-        Items: ["first", "second"].map((id) => ({
-          Id: `${id}-dist-id`,
-          DomainName: `${id}.cloudfront.net`,
-          Origins: {
-            Items: [
-              {
-                DomainName:
-                  "hot-updater-storage.s3.ap-northeast-2.amazonaws.com",
-              },
-            ],
-          },
-        })),
-      },
-    });
-    const manager = new CloudFrontManager("ap-northeast-2", {
-      accessKeyId: "test-access-key",
-      secretAccessKey: "test-secret-key",
-    });
+          })),
+        },
+      });
+      const manager = new CloudFrontManager("ap-northeast-2", {
+        accessKeyId: "test-access-key",
+        secretAccessKey: "test-secret-key",
+      });
 
-    // When
-    const updateDistribution = manager.createOrUpdateDistribution({
-      bucketName: "hot-updater-storage",
-      functionArn:
-        "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:2",
-      keyGroupId: "new-key-group-id",
-      nonInteractive: true,
-    });
+      // When / Then
+      await expect(
+        manager.selectDistribution({
+          bucketName: "hot-updater-storage",
+          nonInteractive: true,
+        }),
+      ).resolves.toBeNull();
+      expect(mockPrompt.select).not.toHaveBeenCalled();
+    },
+  );
 
-    // Then
-    await expect(updateDistribution).rejects.toMatchObject({
-      missingInputs: ["HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID"],
+  it("offers a new distribution first when the saved distribution is missing", async () => {
+    mockMatchingDistribution({
+      domainName: "legacy.cloudfront.net",
+      id: "legacy-dist-id",
     });
-    expect(mockPrompt.select).not.toHaveBeenCalled();
-  });
-
-  it("rejects a missing saved distribution before mutating CloudFront", async () => {
+    mockPrompt.select.mockImplementationOnce(
+      async ({ initialValue }) => initialValue,
+    );
     const manager = new CloudFrontManager("ap-northeast-2", {
       accessKeyId: "test-access-key",
       secretAccessKey: "test-secret-key",
     });
 
     await expect(
-      manager.createOrUpdateDistribution({
+      manager.selectDistribution({
         bucketName: "hot-updater-storage",
         distributionId: "deleted-dist-id",
-        functionArn:
-          "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:2",
-        keyGroupId: "new-key-group-id",
+        nonInteractive: false,
+      }),
+    ).resolves.toBeNull();
+    const prompt = mockPrompt.select.mock.calls[0]?.[0];
+    expect(prompt.options[0]).toEqual({
+      value: "__create-new-cloudfront-distribution__",
+      label: "Create New CloudFront Distribution",
+    });
+    expect(prompt.initialValue).toBe(prompt.options[0].value);
+    expect(mockPrompt.log.warn).toHaveBeenCalledWith(
+      "Saved CloudFront distribution was not found. A new distribution will be created unless another distribution is selected.",
+    );
+  });
+
+  it("labels and disables a v0 distribution that uses the selected bucket", async () => {
+    mockMatchingDistribution({
+      domainName: "legacy.cloudfront.net",
+      id: "legacy-dist-id",
+    });
+    mockFetch.mockResolvedValueOnce(new Response(null, { status: 403 }));
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ version: "0.36.0" }), { status: 200 }),
+    );
+    mockPrompt.select.mockImplementationOnce(
+      async ({ initialValue }) => initialValue,
+    );
+    const manager = new CloudFrontManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    await expect(
+      manager.selectDistribution({
+        bucketName: "hot-updater-storage",
+        distributionId: "legacy-dist-id",
+        nonInteractive: false,
+      }),
+    ).resolves.toBeNull();
+    const prompt = mockPrompt.select.mock.calls[0]?.[0];
+    expect(prompt.initialValue).toBe("__create-new-cloudfront-distribution__");
+    expect(prompt.options[1]).toEqual({
+      value: "legacy-dist-id",
+      label: "legacy-dist-id (legacy.cloudfront.net) (v0, deprecated)",
+      disabled: true,
+    });
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      1,
+      "https://legacy.cloudfront.net/version",
+    );
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      2,
+      "https://legacy.cloudfront.net/api/check-update/version",
+    );
+  });
+
+  it("keeps a distribution selectable when its generation cannot be verified", async () => {
+    mockMatchingDistribution({
+      domainName: "unverified.cloudfront.net",
+      id: "unverified-dist-id",
+    });
+    mockFetch.mockRejectedValue(new Error("network unavailable"));
+    mockPrompt.select.mockResolvedValueOnce("unverified-dist-id");
+    const manager = new CloudFrontManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    await expect(
+      manager.selectDistribution({
+        bucketName: "hot-updater-storage",
+        nonInteractive: false,
+      }),
+    ).resolves.toEqual({
+      Id: "unverified-dist-id",
+      DomainName: "unverified.cloudfront.net",
+    });
+    expect(mockPrompt.select.mock.calls[0]?.[0].options[1]).toEqual({
+      value: "unverified-dist-id",
+      label: "unverified-dist-id (unverified.cloudfront.net)",
+      disabled: false,
+    });
+  });
+
+  it("recreates a deleted saved distribution without inferring another same-bucket distribution", async () => {
+    mockCloudFront.listDistributions.mockResolvedValue({
+      DistributionList: {
+        Items: [
+          {
+            Id: "legacy-dist-id",
+            DomainName: "legacy.cloudfront.net",
+            Origins: {
+              Items: [
+                {
+                  DomainName:
+                    "hot-updater-storage.s3.ap-northeast-2.amazonaws.com",
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const manager = new CloudFrontManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    await expect(
+      manager.selectDistribution({
+        bucketName: "hot-updater-storage",
+        distributionId: "deleted-dist-id",
         nonInteractive: true,
       }),
-    ).rejects.toMatchObject({
-      missingInputs: ["HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID"],
-    });
-    expect(mockCloudFront.listOriginAccessControls).not.toHaveBeenCalled();
-    expect(mockCloudFront.listCachePolicies).not.toHaveBeenCalled();
-    expect(mockCloudFront.updateDistribution).not.toHaveBeenCalled();
+    ).resolves.toBeNull();
     expect(mockPrompt.select).not.toHaveBeenCalled();
   });
 

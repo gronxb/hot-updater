@@ -1,13 +1,13 @@
 -- HotUpdater.schema
 
-CREATE TABLE public.channels (
+CREATE TABLE public.hot_updater_v1_channels (
   id text COLLATE "C" PRIMARY KEY NOT NULL
     CHECK (pg_catalog.char_length(id) BETWEEN 1 AND 255),
   name text COLLATE "C" NOT NULL UNIQUE
     CHECK (pg_catalog.char_length(name) BETWEEN 1 AND 255)
 );
 
-CREATE TABLE public.bundles (
+CREATE TABLE public.hot_updater_v1_bundles (
   id uuid PRIMARY KEY NOT NULL,
   platform text NOT NULL,
   file_hash text NOT NULL,
@@ -22,7 +22,7 @@ CREATE TABLE public.bundles (
   asset_base_storage_uri text
 );
 
-CREATE TABLE public.bundle_patches (
+CREATE TABLE public.hot_updater_v1_bundle_patches (
   id varchar(255) PRIMARY KEY NOT NULL,
   bundle_id uuid NOT NULL,
   base_bundle_id uuid NOT NULL,
@@ -33,13 +33,13 @@ CREATE TABLE public.bundle_patches (
     byte_size BETWEEN 0 AND 9007199254740991
   ),
   order_index integer NOT NULL DEFAULT 0,
-  CONSTRAINT bundle_patches_bundle_id_fk FOREIGN KEY (bundle_id)
-    REFERENCES public.bundles(id) ON UPDATE RESTRICT ON DELETE CASCADE,
-  CONSTRAINT bundle_patches_base_bundle_id_fk FOREIGN KEY (base_bundle_id)
-    REFERENCES public.bundles(id) ON UPDATE RESTRICT ON DELETE CASCADE
+  CONSTRAINT hot_updater_v1_bundle_patches_bundle_id_fk FOREIGN KEY (bundle_id)
+    REFERENCES public.hot_updater_v1_bundles(id) ON UPDATE RESTRICT ON DELETE CASCADE,
+  CONSTRAINT hot_updater_v1_bundle_patches_base_bundle_id_fk FOREIGN KEY (base_bundle_id)
+    REFERENCES public.hot_updater_v1_bundles(id) ON UPDATE RESTRICT ON DELETE CASCADE
 );
 
-CREATE TABLE public.releases (
+CREATE TABLE public.hot_updater_v1_releases (
   id uuid PRIMARY KEY NOT NULL,
   revision integer NOT NULL CHECK (revision >= 1),
   scope_key varchar(2048) COLLATE "C" NOT NULL,
@@ -63,19 +63,19 @@ CREATE TABLE public.releases (
   source_release_id uuid,
   created_at_ms double precision NOT NULL,
   updated_at_ms double precision NOT NULL,
-  CONSTRAINT releases_strategy_target_check CHECK (
+  CONSTRAINT hot_updater_v1_releases_strategy_target_check CHECK (
     (strategy = 'APP_VERSION' AND target_app_version IS NOT NULL AND fingerprint_hash IS NULL)
     OR (strategy = 'FINGERPRINT' AND target_app_version IS NULL AND fingerprint_hash IS NOT NULL)
   ),
-  CONSTRAINT releases_channel_id_fk FOREIGN KEY (channel_id)
-    REFERENCES public.channels(id) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  CONSTRAINT releases_bundle_id_fk FOREIGN KEY (bundle_id)
-    REFERENCES public.bundles(id) ON UPDATE RESTRICT ON DELETE RESTRICT,
-  CONSTRAINT releases_source_release_id_fk FOREIGN KEY (source_release_id)
-    REFERENCES public.releases(id) ON UPDATE RESTRICT ON DELETE SET NULL
+  CONSTRAINT hot_updater_v1_releases_channel_id_fk FOREIGN KEY (channel_id)
+    REFERENCES public.hot_updater_v1_channels(id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT hot_updater_v1_releases_bundle_id_fk FOREIGN KEY (bundle_id)
+    REFERENCES public.hot_updater_v1_bundles(id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT hot_updater_v1_releases_source_release_id_fk FOREIGN KEY (source_release_id)
+    REFERENCES public.hot_updater_v1_releases(id) ON UPDATE RESTRICT ON DELETE SET NULL
 );
 
-CREATE TABLE public.release_catalogs (
+CREATE TABLE public.hot_updater_v1_release_catalogs (
   scope_key varchar(2048) COLLATE "C" PRIMARY KEY NOT NULL,
   authority_id varchar(255) COLLATE "C" NOT NULL,
   strategy text NOT NULL,
@@ -90,15 +90,15 @@ CREATE TABLE public.release_catalogs (
   byte_size integer NOT NULL CHECK (byte_size BETWEEN 0 AND 262144),
   is_tombstone boolean NOT NULL,
   updated_at_ms double precision NOT NULL,
-  CONSTRAINT release_catalogs_strategy_target_check CHECK (
+  CONSTRAINT hot_updater_v1_release_catalogs_strategy_target_check CHECK (
     (strategy = 'APP_VERSION' AND fingerprint_hash IS NULL)
     OR (strategy = 'FINGERPRINT' AND fingerprint_hash IS NOT NULL)
   ),
-  CONSTRAINT release_catalogs_channel_id_fk FOREIGN KEY (channel_id)
-    REFERENCES public.channels(id) ON UPDATE RESTRICT ON DELETE RESTRICT
+  CONSTRAINT hot_updater_v1_release_catalogs_channel_id_fk FOREIGN KEY (channel_id)
+    REFERENCES public.hot_updater_v1_channels(id) ON UPDATE RESTRICT ON DELETE RESTRICT
 );
 
-CREATE TABLE public.bundle_events (
+CREATE TABLE public.hot_updater_v1_bundle_events (
   id uuid PRIMARY KEY NOT NULL,
   type text NOT NULL,
   install_id text NOT NULL,
@@ -116,13 +116,13 @@ CREATE TABLE public.bundle_events (
   fingerprint_hash text,
   sdk_version text,
   received_at_ms double precision NOT NULL,
-  CONSTRAINT bundle_events_type_check CHECK (
+  CONSTRAINT hot_updater_v1_bundle_events_type_check CHECK (
     type IN ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED', 'UNCHANGED')
   ),
-  CONSTRAINT bundle_events_platform_check CHECK (
+  CONSTRAINT hot_updater_v1_bundle_events_platform_check CHECK (
     platform IN ('ios', 'android')
   ),
-  CONSTRAINT bundle_events_shape_check CHECK (
+  CONSTRAINT hot_updater_v1_bundle_events_shape_check CHECK (
     (type IN ('UPDATE_APPLIED', 'RECOVERED', 'RELEASE_ADOPTED')
       AND from_bundle_id IS NOT NULL
       AND update_strategy IS NOT NULL
@@ -131,10 +131,10 @@ CREATE TABLE public.bundle_events (
       AND from_bundle_id IS NULL
       AND update_strategy IS NULL)
   ),
-  CONSTRAINT bundle_events_received_at_check CHECK (received_at_ms >= 0)
+  CONSTRAINT hot_updater_v1_bundle_events_received_at_check CHECK (received_at_ms >= 0)
 );
 
-CREATE TABLE public.api_keys (
+CREATE TABLE public.hot_updater_v1_api_keys (
   id text PRIMARY KEY NOT NULL,
   hash text NOT NULL,
   name text NOT NULL,
@@ -146,57 +146,57 @@ CREATE TABLE public.api_keys (
   )
 );
 
-CREATE TABLE public.private_hot_updater_settings (
+CREATE TABLE public.hot_updater_v1_private_settings (
   key varchar(255) PRIMARY KEY NOT NULL,
   value text NOT NULL DEFAULT '1.0.0'
 );
 
-CREATE INDEX releases_scope_order_idx ON public.releases(scope_key, id);
-CREATE INDEX releases_channel_platform_order_idx
-  ON public.releases(channel_id, platform, id);
-CREATE INDEX releases_bundle_id_idx ON public.releases(bundle_id);
-CREATE INDEX releases_fingerprint_hash_idx ON public.releases(fingerprint_hash);
-CREATE INDEX releases_enabled_idx ON public.releases(enabled);
-CREATE INDEX release_catalogs_channel_idx ON public.release_catalogs(channel_id);
-CREATE INDEX release_catalogs_authority_strategy_idx
-  ON public.release_catalogs(authority_id, strategy);
-CREATE INDEX bundle_patches_bundle_id_idx ON public.bundle_patches(bundle_id);
-CREATE INDEX bundle_patches_base_bundle_id_idx
-  ON public.bundle_patches(base_bundle_id);
-CREATE INDEX bundle_events_received_at_idx
-  ON public.bundle_events(received_at_ms, id);
-CREATE INDEX bundle_events_install_idx
-  ON public.bundle_events(install_id, received_at_ms, id);
-CREATE INDEX bundle_events_user_id_idx
-  ON public.bundle_events(user_id, received_at_ms, id);
-CREATE INDEX bundle_events_username_idx
-  ON public.bundle_events(username, received_at_ms, id);
-CREATE INDEX bundle_events_to_bundle_idx
-  ON public.bundle_events(type, to_bundle_id, received_at_ms, id);
-CREATE INDEX bundle_events_from_bundle_idx
-  ON public.bundle_events(type, from_bundle_id, received_at_ms, id);
-CREATE INDEX bundle_events_to_release_idx
-  ON public.bundle_events(type, to_release_id, received_at_ms, id);
-CREATE INDEX bundle_events_from_release_idx
-  ON public.bundle_events(type, from_release_id, received_at_ms, id);
-CREATE UNIQUE INDEX api_keys_hash_key
-  ON public.api_keys(hash);
-CREATE INDEX api_keys_created_at_idx
-  ON public.api_keys(created_at_ms, id);
+CREATE INDEX hot_updater_v1_releases_scope_order_idx ON public.hot_updater_v1_releases(scope_key, id);
+CREATE INDEX hot_updater_v1_releases_channel_platform_order_idx
+  ON public.hot_updater_v1_releases(channel_id, platform, id);
+CREATE INDEX hot_updater_v1_releases_bundle_id_idx ON public.hot_updater_v1_releases(bundle_id);
+CREATE INDEX hot_updater_v1_releases_fingerprint_hash_idx ON public.hot_updater_v1_releases(fingerprint_hash);
+CREATE INDEX hot_updater_v1_releases_enabled_idx ON public.hot_updater_v1_releases(enabled);
+CREATE INDEX hot_updater_v1_release_catalogs_channel_idx ON public.hot_updater_v1_release_catalogs(channel_id);
+CREATE INDEX hot_updater_v1_release_catalogs_authority_strategy_idx
+  ON public.hot_updater_v1_release_catalogs(authority_id, strategy);
+CREATE INDEX hot_updater_v1_bundle_patches_bundle_id_idx ON public.hot_updater_v1_bundle_patches(bundle_id);
+CREATE INDEX hot_updater_v1_bundle_patches_base_bundle_id_idx
+  ON public.hot_updater_v1_bundle_patches(base_bundle_id);
+CREATE INDEX hot_updater_v1_bundle_events_received_at_idx
+  ON public.hot_updater_v1_bundle_events(received_at_ms, id);
+CREATE INDEX hot_updater_v1_bundle_events_install_idx
+  ON public.hot_updater_v1_bundle_events(install_id, received_at_ms, id);
+CREATE INDEX hot_updater_v1_bundle_events_user_id_idx
+  ON public.hot_updater_v1_bundle_events(user_id, received_at_ms, id);
+CREATE INDEX hot_updater_v1_bundle_events_username_idx
+  ON public.hot_updater_v1_bundle_events(username, received_at_ms, id);
+CREATE INDEX hot_updater_v1_bundle_events_to_bundle_idx
+  ON public.hot_updater_v1_bundle_events(type, to_bundle_id, received_at_ms, id);
+CREATE INDEX hot_updater_v1_bundle_events_from_bundle_idx
+  ON public.hot_updater_v1_bundle_events(type, from_bundle_id, received_at_ms, id);
+CREATE INDEX hot_updater_v1_bundle_events_to_release_idx
+  ON public.hot_updater_v1_bundle_events(type, to_release_id, received_at_ms, id);
+CREATE INDEX hot_updater_v1_bundle_events_from_release_idx
+  ON public.hot_updater_v1_bundle_events(type, from_release_id, received_at_ms, id);
+CREATE UNIQUE INDEX hot_updater_v1_api_keys_hash_key
+  ON public.hot_updater_v1_api_keys(hash);
+CREATE INDEX hot_updater_v1_api_keys_created_at_idx
+  ON public.hot_updater_v1_api_keys(created_at_ms, id);
 
-ALTER TABLE public.channels ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.bundles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.bundle_patches ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.releases ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.release_catalogs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.bundle_events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.api_keys ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.private_hot_updater_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hot_updater_v1_channels ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hot_updater_v1_bundles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hot_updater_v1_bundle_patches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hot_updater_v1_releases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hot_updater_v1_release_catalogs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hot_updater_v1_bundle_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hot_updater_v1_api_keys ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hot_updater_v1_private_settings ENABLE ROW LEVEL SECURITY;
 
-INSERT INTO public.private_hot_updater_settings (key, value)
+INSERT INTO public.hot_updater_v1_private_settings (key, value)
 VALUES ('schema.core', '1.0.0')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
-CREATE FUNCTION public.hot_updater_commit(p_commit jsonb)
+CREATE FUNCTION public.hot_updater_v1_commit(p_commit jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY INVOKER
@@ -209,13 +209,13 @@ DECLARE
   v_expected double precision;
   v_actual double precision;
   v_found boolean;
-  v_bundle public.bundles;
-  v_patch public.bundle_patches;
-  v_release public.releases;
-  v_catalog public.release_catalogs;
-  v_channel public.channels;
-  v_event public.bundle_events;
-  v_api_key public.api_keys;
+  v_bundle public.hot_updater_v1_bundles;
+  v_patch public.hot_updater_v1_bundle_patches;
+  v_release public.hot_updater_v1_releases;
+  v_catalog public.hot_updater_v1_release_catalogs;
+  v_channel public.hot_updater_v1_channels;
+  v_event public.hot_updater_v1_bundle_events;
+  v_api_key public.hot_updater_v1_api_keys;
 BEGIN
   IF pg_catalog.jsonb_typeof(p_commit) IS DISTINCT FROM 'object'
     OR pg_catalog.jsonb_typeof(p_commit->'changes') IS DISTINCT FROM 'array'
@@ -237,13 +237,13 @@ BEGIN
     IF v_expectation->>'model' = 'releases' THEN
       PERFORM pg_catalog.pg_advisory_xact_lock(
         pg_catalog.hashtextextended(
-          'release:' || (v_expectation->>'id'),
+          'hot_updater_v1:release:' || (v_expectation->>'id'),
           0
         )
       );
       SELECT release.revision::double precision
       INTO v_actual
-      FROM public.releases AS release
+      FROM public.hot_updater_v1_releases AS release
       WHERE release.id = (v_expectation->>'id')::uuid
       FOR UPDATE;
       v_found := FOUND;
@@ -251,13 +251,13 @@ BEGIN
     ELSIF v_expectation->>'model' = 'releaseCatalogs' THEN
       PERFORM pg_catalog.pg_advisory_xact_lock(
         pg_catalog.hashtextextended(
-          'catalog:' || (v_expectation->>'scopeKey'),
+          'hot_updater_v1:catalog:' || (v_expectation->>'scopeKey'),
           0
         )
       );
       SELECT catalog.generation
       INTO v_actual
-      FROM public.release_catalogs AS catalog
+      FROM public.hot_updater_v1_release_catalogs AS catalog
       WHERE catalog.scope_key = v_expectation->>'scopeKey'
       FOR UPDATE;
       v_found := FOUND;
@@ -303,15 +303,15 @@ BEGIN
                   USING ERRCODE = '22023';
               END IF;
               v_channel := pg_catalog.jsonb_populate_record(
-                NULL::public.channels,
+                NULL::public.hot_updater_v1_channels,
                 v_change->'row'
               );
-              INSERT INTO public.channels (id, name)
+              INSERT INTO public.hot_updater_v1_channels (id, name)
               VALUES (v_channel.id, v_channel.name)
               ON CONFLICT (name) DO NOTHING;
             WHEN 'delete' THEN
               BEGIN
-                DELETE FROM public.channels
+                DELETE FROM public.hot_updater_v1_channels
                 WHERE id = v_change->'where'->>'id';
                 IF NOT FOUND THEN RAISE no_data_found; END IF;
               EXCEPTION
@@ -326,10 +326,10 @@ BEGIN
           CASE v_change->>'operation'
             WHEN 'insert' THEN
               v_bundle := pg_catalog.jsonb_populate_record(
-                NULL::public.bundles,
+                NULL::public.hot_updater_v1_bundles,
                 v_change->'row'
               );
-              INSERT INTO public.bundles (
+              INSERT INTO public.hot_updater_v1_bundles (
                 id, platform, file_hash, git_commit_hash, storage_uri,
                 archive_byte_size, metadata, manifest_storage_uri, manifest_file_hash,
                 asset_base_storage_uri
@@ -342,7 +342,7 @@ BEGIN
               );
             WHEN 'update' THEN
               SELECT bundle.* INTO v_bundle
-              FROM public.bundles AS bundle
+              FROM public.hot_updater_v1_bundles AS bundle
               WHERE bundle.id = (v_change->'where'->>'id')::uuid
               FOR UPDATE;
               IF NOT FOUND THEN RAISE no_data_found; END IF;
@@ -350,7 +350,7 @@ BEGIN
                 v_bundle,
                 v_change->'update'
               );
-              UPDATE public.bundles SET
+              UPDATE public.hot_updater_v1_bundles SET
                 platform = v_bundle.platform,
                 file_hash = v_bundle.file_hash,
                 git_commit_hash = v_bundle.git_commit_hash,
@@ -363,7 +363,7 @@ BEGIN
               WHERE id = v_bundle.id;
             WHEN 'delete' THEN
               BEGIN
-                DELETE FROM public.bundles
+                DELETE FROM public.hot_updater_v1_bundles
                 WHERE id = (v_change->'where'->>'id')::uuid;
                 IF NOT FOUND THEN RAISE no_data_found; END IF;
               EXCEPTION
@@ -378,10 +378,10 @@ BEGIN
           CASE v_change->>'operation'
             WHEN 'insert' THEN
               v_patch := pg_catalog.jsonb_populate_record(
-                NULL::public.bundle_patches,
+                NULL::public.hot_updater_v1_bundle_patches,
                 v_change->'row'
               );
-              INSERT INTO public.bundle_patches (
+              INSERT INTO public.hot_updater_v1_bundle_patches (
                 id, bundle_id, base_bundle_id, base_file_hash,
                 patch_file_hash, patch_storage_uri, byte_size, order_index
               ) VALUES (
@@ -391,7 +391,7 @@ BEGIN
                 v_patch.order_index
               );
             WHEN 'delete' THEN
-              DELETE FROM public.bundle_patches
+              DELETE FROM public.hot_updater_v1_bundle_patches
               WHERE bundle_id = (v_change->'where'->>'bundleId')::uuid;
             ELSE
               RAISE EXCEPTION 'Unsupported Bundle patch change'
@@ -402,13 +402,13 @@ BEGIN
           CASE v_change->>'operation'
             WHEN 'insert' THEN
               v_release := pg_catalog.jsonb_populate_record(
-                NULL::public.releases,
+                NULL::public.hot_updater_v1_releases,
                 v_change->'row'
               );
-              INSERT INTO public.releases SELECT v_release.*;
+              INSERT INTO public.hot_updater_v1_releases SELECT v_release.*;
             WHEN 'update' THEN
               SELECT release.* INTO v_release
-              FROM public.releases AS release
+              FROM public.hot_updater_v1_releases AS release
               WHERE release.id = (v_change->'where'->>'id')::uuid
               FOR UPDATE;
               IF NOT FOUND THEN RAISE no_data_found; END IF;
@@ -416,7 +416,7 @@ BEGIN
                 v_release,
                 v_change->'update'
               );
-              UPDATE public.releases SET
+              UPDATE public.hot_updater_v1_releases SET
                 revision = v_release.revision,
                 scope_key = v_release.scope_key,
                 target_app_version = v_release.target_app_version,
@@ -429,7 +429,7 @@ BEGIN
                 updated_at_ms = v_release.updated_at_ms
               WHERE id = v_release.id;
             WHEN 'delete' THEN
-              DELETE FROM public.releases
+              DELETE FROM public.hot_updater_v1_releases
               WHERE id = (v_change->'where'->>'id')::uuid;
               IF NOT FOUND THEN RAISE no_data_found; END IF;
             ELSE
@@ -443,10 +443,10 @@ BEGIN
               USING ERRCODE = '22023';
           END IF;
           v_catalog := pg_catalog.jsonb_populate_record(
-            NULL::public.release_catalogs,
+            NULL::public.hot_updater_v1_release_catalogs,
             v_change->'row'
           );
-          INSERT INTO public.release_catalogs SELECT v_catalog.*
+          INSERT INTO public.hot_updater_v1_release_catalogs SELECT v_catalog.*
           ON CONFLICT (scope_key) DO UPDATE SET
             authority_id = EXCLUDED.authority_id,
             strategy = EXCLUDED.strategy,
@@ -467,10 +467,10 @@ BEGIN
               USING ERRCODE = '22023';
           END IF;
           v_event := pg_catalog.jsonb_populate_record(
-            NULL::public.bundle_events,
+            NULL::public.hot_updater_v1_bundle_events,
             v_change->'row'
           );
-          INSERT INTO public.bundle_events (
+          INSERT INTO public.hot_updater_v1_bundle_events (
             id, type, install_id, user_id, username, from_release_id,
             from_bundle_id, to_release_id, to_bundle_id, platform,
             app_version, channel, cohort, update_strategy, fingerprint_hash,
@@ -493,10 +493,10 @@ BEGIN
                   USING ERRCODE = '22023';
               END IF;
               v_api_key := pg_catalog.jsonb_populate_record(
-                NULL::public.api_keys,
+                NULL::public.hot_updater_v1_api_keys,
                 v_change->'row'
               );
-              INSERT INTO public.api_keys (
+              INSERT INTO public.hot_updater_v1_api_keys (
                 id, hash, name, prefix, role, created_at_ms, revoked_at_ms
               ) VALUES (
                 v_api_key.id, v_api_key.hash, v_api_key.name,
@@ -504,7 +504,7 @@ BEGIN
                 v_api_key.created_at_ms, v_api_key.revoked_at_ms
               ) ON CONFLICT (hash) DO NOTHING;
             WHEN 'update' THEN
-              UPDATE public.api_keys
+              UPDATE public.hot_updater_v1_api_keys
               SET revoked_at_ms = (
                 v_change->'update'->>'revokedAtMs'
               )::double precision
@@ -543,12 +543,12 @@ BEGIN
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.hot_updater_commit(jsonb)
+REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_commit(jsonb)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.hot_updater_commit(jsonb)
+GRANT EXECUTE ON FUNCTION public.hot_updater_v1_commit(jsonb)
   TO service_role;
 
-CREATE FUNCTION public.hot_updater_delete_channel(p_id text)
+CREATE FUNCTION public.hot_updater_v1_delete_channel(p_id text)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY INVOKER
@@ -556,7 +556,7 @@ SET search_path = pg_catalog
 AS $$
 BEGIN
   BEGIN
-    DELETE FROM public.channels
+    DELETE FROM public.hot_updater_v1_channels
     WHERE id = p_id;
 
     IF NOT FOUND THEN
@@ -577,7 +577,9 @@ BEGIN
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.hot_updater_delete_channel(text)
+REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_delete_channel(text)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.hot_updater_delete_channel(text)
+GRANT EXECUTE ON FUNCTION public.hot_updater_v1_delete_channel(text)
   TO service_role;
+
+NOTIFY pgrst, 'reload schema';

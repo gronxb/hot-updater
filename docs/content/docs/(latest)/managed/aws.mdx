@@ -87,12 +87,12 @@ npx hot-updater init
 3. **Choose AWS Login Method**: Select current AWS CLI/default session, a shared AWS profile, account access keys, or an AWS SSO profile
 4. **Enter AWS Credentials**: Provide a profile name for shared-profile or SSO mode, or credentials for account/access-key mode
 5. **Select Region**: Choose an AWS region for S3 and DynamoDB
-6. **Select S3 Bucket**: Choose an existing bucket or create a new one
+6. **Select S3 Bucket**: Reuse an existing bucket or create a new one
 7. **Create DynamoDB Table**: Enter a table name; init creates it or validates its schema
 8. **Provision API Key**: Create the first client API key or reuse the saved key
 9. **Create IAM Role**: Create or reuse a resource-scoped role for this Lambda installation
 10. **Deploy Lambda Function**: Deploy the Lambda@Edge function to handle updates
-11. **Create/Update CloudFront Distribution**: Create or update a CloudFront distribution
+11. **Create/Update CloudFront Distribution**: Create a new distribution by default, or update the exact distribution saved by a previous v1 init
 
   </Accordion>
 </Accordions>
@@ -103,9 +103,9 @@ reruns. AWS credentials are included only for account/access-key mode and only
 when you consent to storing them.
 
 ```
-HOT_UPDATER_DYNAMODB_TABLE_NAME=hot-updater
+HOT_UPDATER_DYNAMODB_TABLE_NAME=hot-updater-v1
 HOT_UPDATER_AWS_AUTH_MODE=local-session
-HOT_UPDATER_AWS_LAMBDA_NAME=hot-updater-edge
+HOT_UPDATER_AWS_LAMBDA_NAME=hot-updater-v1-edge
 HOT_UPDATER_S3_BUCKET_NAME=your-s3-bucket-name
 HOT_UPDATER_S3_REGION=your-region
 HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID=your-distribution-id
@@ -258,17 +258,25 @@ CloudFront provides the first 1,000 invalidation paths per account each month
 at no extra charge; see [invalidation pricing](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PayingForInvalidation.html).
 
 Rerunning init preserves unrelated CloudFront origins/cache behaviors and S3
-bucket-policy statements. Lambda roles are isolated by Lambda name and grant
-access only to the selected bucket, SSM parameter, DynamoDB table, and update
-index. Init provisions these resources through AWS APIs rather than a
-CloudFormation stack, so deletion and rollback remain operator-managed.
+bucket-policy statements. Lambda roles and signing keys are isolated by the v1
+Lambda name and grant access only to the selected bucket, SSM parameter,
+DynamoDB table, and update index. Init provisions these resources through AWS
+APIs rather than a CloudFormation stack, so deletion and rollback remain
+operator-managed.
 
 Init does not upgrade a v0 CloudFront endpoint in place. It checks the selected
 distribution's `/version` response before writing env files or changing AWS
-resources. If the generation-1 marker is missing, use new S3, DynamoDB, Lambda,
-and CloudFront resources and ship the new endpoint in a new native build. Keep
-the v0 distribution available for installed v0 binaries that still need OTA
-service.
+resources. The S3 bucket may be shared, but use the v1 DynamoDB and Lambda
+defaults and create a new CloudFront distribution. If an env file contains a
+v0 Lambda name or distribution ID, change `HOT_UPDATER_AWS_LAMBDA_NAME` to a
+fresh v1 name, remove `HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID`, and choose
+**Create New CloudFront Distribution**. Explicitly selecting a v0 Lambda or
+distribution remains blocked, and existing v0 resources are never mutated.
+
+Without `basePath`, a storage plugin treats the whole bucket as owned by its
+configured database. Do not run `hot-updater storage prune --yes` while the
+bucket is also used by another active Hot Updater database. Give each active
+database a distinct `basePath` before using prune.
 
 ## Generated Configuration and Operations
 

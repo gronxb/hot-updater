@@ -7,6 +7,15 @@ import { describe, expect, it } from "vitest";
 import { initProvider } from "./index";
 
 describe("AWS init provider", () => {
+  it("uses isolated v1 compute and metadata defaults", () => {
+    expect(initProvider.inputs.lambdaName.prompt.defaultValue).toBe(
+      "hot-updater-v1-edge",
+    );
+    expect(initProvider.inputs.dynamodbTableName.prompt.defaultValue).toBe(
+      "hot-updater-v1",
+    );
+  });
+
   it("always requires a DynamoDB metadata table", () => {
     const env = {
       HOT_UPDATER_AWS_AUTH_MODE: "local-session",

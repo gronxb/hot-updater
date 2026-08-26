@@ -27,6 +27,15 @@ it("parses SQLite JSON into an artifact-only Bundle row", () => {
   });
 });
 
+it("defaults a legacy bundle's missing archive byte size", () => {
+  const row: Record<string, unknown> = { ...bundleD1Row };
+  delete row["archive_byte_size"];
+
+  expect(parseD1Row("bundles", row)).toMatchObject({
+    archive_byte_size: 0,
+  });
+});
+
 it("rejects an invalid artifact platform", () => {
   expect(() =>
     parseD1Row("bundles", { ...bundleD1Row, platform: "web" }),

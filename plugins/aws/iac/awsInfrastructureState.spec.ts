@@ -4,7 +4,60 @@ import { describe, expect, it, vi } from "vitest";
 import {
   assertAwsInfrastructureGeneration,
   assertAwsLambdaCanInitialize,
+  resolveAwsDistributionGeneration,
 } from "./awsInfrastructureState";
+
+describe("resolveAwsDistributionGeneration", () => {
+  it("recognizes a v1 distribution at the current version path", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (input) =>
+      String(input).endsWith("/version") &&
+      !String(input).includes("/api/check-update/")
+        ? new Response(
+            JSON.stringify({ infrastructureGeneration: 1, version: "1.0.0" }),
+            { status: 200 },
+          )
+        : new Response(null, { status: 403 }),
+    );
+
+    await expect(
+      resolveAwsDistributionGeneration({
+        domainName: "updates.example.com",
+        fetchImpl,
+      }),
+    ).resolves.toBe("v1");
+  });
+
+  it("recognizes a v0 distribution at the legacy AWS base path", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (input) =>
+      String(input).endsWith("/api/check-update/version")
+        ? new Response(JSON.stringify({ version: "0.36.0" }), { status: 200 })
+        : new Response(null, { status: 403 }),
+    );
+
+    await expect(
+      resolveAwsDistributionGeneration({
+        domainName: "legacy.example.com",
+        fetchImpl,
+      }),
+    ).resolves.toBe("v0");
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://legacy.example.com/api/check-update/version",
+    );
+  });
+
+  it("does not classify unrelated error responses as v0", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(null, { status: 403 }));
+
+    await expect(
+      resolveAwsDistributionGeneration({
+        domainName: "unknown.example.com",
+        fetchImpl,
+      }),
+    ).resolves.toBe("unknown");
+  });
+});
 
 describe("assertAwsInfrastructureGeneration", () => {
   it("accepts an existing v1 distribution", async () => {

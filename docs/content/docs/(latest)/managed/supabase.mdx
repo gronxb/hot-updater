@@ -54,10 +54,10 @@ During the setup, you will be prompted to:
 
 1. **Select a Supabase Organization**: Select an existing organization. If none exists, create one in the Supabase Dashboard before running init.
 2. **Create or Select a Project**: Choose an existing project or create a new one within the selected organization.
-3. **Configure Storage**: Select a bucket or create a new private bucket. Init asks before converting a selected public bucket to private.
+3. **Configure Storage**: Select an existing bucket or create a new private bucket. Init preserves the access level of an existing bucket so installed apps are not affected.
 4. **Database Migration**: Apply the generated migrations to the selected project.
 5. **Provision API Key**: Create the first client API key or reuse the saved key.
-6. **Deploy Edge Function**: Deploy a Supabase Edge Function called `update-server`.
+6. **Deploy Edge Function**: Deploy a Supabase Edge Function called `hot-updater-v1`.
 
   </Accordion>
 </Accordions>
@@ -70,7 +70,7 @@ project is created.
 
 ```
 HOT_UPDATER_SUPABASE_PROJECT_ID=your-project-id
-HOT_UPDATER_SUPABASE_FUNCTION_NAME=update-server
+HOT_UPDATER_SUPABASE_FUNCTION_NAME=hot-updater-v1
 HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY=your-service-role-or-secret-key
 HOT_UPDATER_SUPABASE_BUCKET_NAME=your-bucket-name
 HOT_UPDATER_SUPABASE_URL=https://your-project-id.supabase.co
@@ -194,12 +194,17 @@ the CLI and deployed Edge Function.
 
 ### Upgrade and rollback
 
-Managed Supabase does not upgrade a v0 schema in place. Init checks for the v1
-Release Catalog schema before changing bucket privacy, applying migrations, or
-deploying the Edge Function. A schema with v0 Bundles but no Release Catalogs
-is rejected without mutation. Create a new Supabase project for v1 and ship its
-Edge Function endpoint in a new native build. Keep the v0 project available
-for installed v0 binaries that still need OTA service.
+Managed Supabase keeps v0 and v1 infrastructure isolated inside the same
+project. V1 tables, indexes, settings, and RPC functions use the fixed
+`hot_updater_v1_*` namespace, and the managed Edge Function defaults to
+`hot-updater-v1`. Existing v0 tables and functions are not read or modified by
+v1 init, so installed v0 binaries can continue using them while a new native
+build moves to the v1 endpoint.
+
+The same Storage bucket can be reused because each bundle has its own object
+key. Init does not change an existing bucket between public and private; doing
+so could break an already installed app. A reused public bucket therefore
+remains public, while a newly created bucket is private.
 
 ### Release catalog cache
 

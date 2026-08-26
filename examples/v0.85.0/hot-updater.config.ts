@@ -1,6 +1,5 @@
-import { fromSSO } from "@aws-sdk/credential-provider-sso";
-import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
+import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 import { localSigning } from "hot-updater/signing";
@@ -8,13 +7,6 @@ import { localSigning } from "hot-updater/signing";
 config({
   path: process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH ?? ".env.hotupdater",
 });
-
-const providerNamespace = process.env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE;
-
-const awsOptions = {
-  region: process.env.HOT_UPDATER_S3_REGION!,
-  credentials: fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! }),
-};
 
 export default defineConfig({
   nativeBuild: {
@@ -47,17 +39,18 @@ export default defineConfig({
   },
 
   build: bare({ enableHermes: true, resetCache: false }),
-  storage: s3Storage({
-    ...awsOptions,
-    bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
-    basePath: providerNamespace,
+  storage: r2Storage({
+    bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    credentials: {
+      accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
+    },
   }),
-  database: dynamoDB({
-    ...awsOptions,
-    tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
-    cloudfrontDistributionId:
-      process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
-    shouldWaitForInvalidation: true,
+  database: d1Database({
+    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
   fingerprint: {
     debug: true,
@@ -72,4 +65,6 @@ export default defineConfig({
   signing: localSigning({
     privateKeyPath: "./keys/private-key.pem",
   }),
+
+  authorityId: "9bfb9f0b-37a8-412c-a8f4-c1a949237fb3",
 });

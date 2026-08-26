@@ -69,9 +69,9 @@ export const initProvider = {
       envKey: "HOT_UPDATER_DYNAMODB_TABLE_NAME",
       help: "DynamoDB metadata table name",
       prompt: {
-        defaultValue: "hot-updater",
+        defaultValue: "hot-updater-v1",
         message: "Enter the DynamoDB table name",
-        placeholder: "hot-updater",
+        placeholder: "hot-updater-v1",
         type: "text",
       },
     },
@@ -143,9 +143,9 @@ export const initProvider = {
       envKey: "HOT_UPDATER_AWS_LAMBDA_NAME",
       help: "Lambda@Edge function name",
       prompt: {
-        defaultValue: "hot-updater-edge",
+        defaultValue: "hot-updater-v1-edge",
         message: "Enter the name of the Lambda@Edge function",
-        placeholder: "hot-updater-edge",
+        placeholder: "hot-updater-v1-edge",
         type: "text",
       },
     },

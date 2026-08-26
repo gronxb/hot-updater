@@ -11,11 +11,13 @@ const { mockCli, mockExeca } = vi.hoisted(() => ({
       log: {
         error: vi.fn(),
         info: vi.fn(),
+        message: vi.fn(),
         success: vi.fn(),
         warn: vi.fn(),
       },
       confirm: vi.fn(),
       isCancel: vi.fn(() => false),
+      note: vi.fn(),
       select: vi.fn(),
       spinner: vi.fn(() => ({
         start: vi.fn(),
@@ -59,10 +61,13 @@ import {
   getSupabaseProjectAccess,
   getSupabaseReactNativeSource,
   getLegacySupabaseConfigReference,
+  reportSupabaseApiKey,
   reportSupabaseOriginCatalogReady,
   resolveEdgeFunctionDenoConfig,
   selectBucket,
   selectProject,
+  withSupabaseCliMetadataCleanup,
+  waitForSupabaseSchemaReady,
   waitForSupabaseProjectReady,
 } from "./index";
 import type { SupabaseApi } from "./supabaseApi";
@@ -136,6 +141,18 @@ describe("Supabase React Native init output", () => {
       "Catalog checks still invoke the Supabase Edge Function.",
     );
     expect(mockCli.p.log.warn).not.toHaveBeenCalled();
+  });
+
+  it("prints API key storage guidance after the API key note", () => {
+    reportSupabaseApiKey("api-key");
+
+    expect(mockCli.p.note).toHaveBeenCalledWith("api-key", "API Key");
+    expect(mockCli.p.log.message).toHaveBeenCalledWith(
+      "Store this API key separately in a secure place.",
+    );
+    expect(mockCli.p.note.mock.invocationCallOrder[0]).toBeLessThan(
+      mockCli.p.log.message.mock.invocationCallOrder[0]!,
+    );
   });
 });
 
@@ -322,7 +339,6 @@ describe("selectBucket", () => {
           name: "public-bucket",
         },
       ]),
-      updateBucket: vi.fn(),
     };
     mockCli.p.select.mockResolvedValue("public-bucket-id");
 
@@ -356,7 +372,6 @@ describe("selectBucket", () => {
           name: "private-bucket",
         },
       ]),
-      updateBucket: vi.fn(),
     };
 
     // When
@@ -387,7 +402,6 @@ describe("selectBucket", () => {
             name: "saved-bucket",
           },
         ]),
-      updateBucket: vi.fn(),
     };
 
     const selection = await selectBucket(api, "saved-bucket", true);
@@ -427,7 +441,6 @@ describe("selectBucket", () => {
           name: "new-bucket",
         },
       ]),
-      updateBucket: vi.fn(),
     };
 
     const creation = createSelectedBucket(api, {
@@ -451,7 +464,6 @@ describe("selectBucket", () => {
       createBucket: vi.fn().mockRejectedValue(new Error("Unauthorized")),
       getInfrastructureState: vi.fn().mockResolvedValue("fresh"),
       listBuckets: vi.fn(),
-      updateBucket: vi.fn(),
     };
 
     await expect(
@@ -699,18 +711,113 @@ describe("Supabase CLI authentication", () => {
     }
   });
 
-  it("uses stored CLI credentials when pushing migrations without an access token", async () => {
+  it("syncs remote migration history before pushing v1 migrations", async () => {
+    const workdir = "/tmp/hot-updater-supabase-push";
     mockExeca.mockResolvedValue({ stdout: "" });
 
-    await pushDB("/tmp/hot-updater-supabase-push", {});
+    await pushDB(workdir, {});
 
-    expect(mockExeca).toHaveBeenCalledWith(
+    expect(mockExeca).toHaveBeenNthCalledWith(
+      1,
       "npx",
-      ["supabase", "db", "push", "--include-all", "--yes"],
+      [
+        "supabase",
+        "migration",
+        "fetch",
+        "--linked",
+        "--yes",
+        "--workdir",
+        workdir,
+      ],
       expect.objectContaining({
         env: undefined,
       }),
     );
+    expect(mockExeca).toHaveBeenNthCalledWith(
+      2,
+      "npx",
+      [
+        "supabase",
+        "db",
+        "push",
+        "--include-all",
+        "--yes",
+        "--workdir",
+        workdir,
+      ],
+      expect.objectContaining({
+        env: undefined,
+      }),
+    );
+  });
+});
+
+describe("Supabase CLI metadata cleanup", () => {
+  it("removes metadata created during a failed init", async () => {
+    const cwd = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-supabase-cleanup-"),
+    );
+    const cliDirectory = path.join(cwd, "supabase");
+
+    try {
+      await expect(
+        withSupabaseCliMetadataCleanup(cwd, async () => {
+          await fs.mkdir(path.join(cliDirectory, ".temp"), {
+            recursive: true,
+          });
+          throw new Error("init failed");
+        }),
+      ).rejects.toThrow("init failed");
+      await expect(fs.access(cliDirectory)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves an existing Supabase project directory", async () => {
+    const cwd = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-supabase-cleanup-"),
+    );
+    const configPath = path.join(cwd, "supabase", "config.toml");
+    await fs.mkdir(path.dirname(configPath), { recursive: true });
+    await fs.writeFile(configPath, 'project_id = "existing"');
+
+    try {
+      await withSupabaseCliMetadataCleanup(cwd, async () => {
+        await fs.mkdir(path.join(cwd, "supabase", ".temp"));
+      });
+      await expect(fs.readFile(configPath, "utf8")).resolves.toBe(
+        'project_id = "existing"',
+      );
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("Supabase database schema readiness", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("waits for PostgREST to expose the migrated v1 schema", async () => {
+    vi.useFakeTimers();
+    const getInfrastructureState = vi
+      .fn<SupabaseApi["getInfrastructureState"]>()
+      .mockResolvedValueOnce("fresh")
+      .mockResolvedValueOnce("v1");
+
+    const readiness = waitForSupabaseSchemaReady({
+      getInfrastructureState,
+      maxAttempts: 2,
+      pollIntervalMs: 1000,
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+
+    await expect(readiness).resolves.toBeUndefined();
+    expect(getInfrastructureState).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -734,9 +841,18 @@ describe("Supabase database password failures", () => {
     });
 
     // Then
-    expect(mockExeca).toHaveBeenCalledWith(
+    expect(mockExeca).toHaveBeenNthCalledWith(
+      2,
       "npx",
-      ["supabase", "db", "push", "--include-all", "--yes"],
+      [
+        "supabase",
+        "db",
+        "push",
+        "--include-all",
+        "--yes",
+        "--workdir",
+        "/tmp/hot-updater-supabase-push",
+      ],
       expect.anything(),
     );
   });
@@ -839,7 +955,9 @@ describe("Supabase database password failures", () => {
       "--password",
       secret,
     ]);
-    mockExeca.mockRejectedValue(error);
+    mockExeca
+      .mockResolvedValueOnce({ stdout: "" })
+      .mockRejectedValueOnce(error);
     expectExit();
 
     // When
@@ -857,7 +975,15 @@ describe("Supabase database password failures", () => {
     expect(output).not.toContain("--password");
     expect(mockExeca).toHaveBeenCalledWith(
       "npx",
-      ["supabase", "db", "push", "--include-all", "--yes"],
+      [
+        "supabase",
+        "db",
+        "push",
+        "--include-all",
+        "--yes",
+        "--workdir",
+        "/tmp/hot-updater-supabase-push",
+      ],
       expect.objectContaining({
         env: {
           SUPABASE_ACCESS_TOKEN: "test-access-token",
@@ -883,7 +1009,9 @@ describe("Supabase database password failures", () => {
       ["node", "-e", "process.exit(1)", "--password", secret],
       stderr,
     );
-    mockExeca.mockRejectedValue(error);
+    mockExeca
+      .mockResolvedValueOnce({ stdout: "" })
+      .mockRejectedValueOnce(error);
     expectExit();
 
     // When
@@ -908,7 +1036,9 @@ describe("Supabase database password failures", () => {
       ["node", "-e", "process.exit(1)"],
       "Remote migration failed",
     );
-    mockExeca.mockRejectedValue(error);
+    mockExeca
+      .mockResolvedValueOnce({ stdout: "" })
+      .mockRejectedValueOnce(error);
     expectExit();
 
     // When

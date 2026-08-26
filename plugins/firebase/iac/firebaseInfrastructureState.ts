@@ -3,7 +3,6 @@ import fs from "fs/promises";
 import {
   assertInfrastructureGenerationAtUrl,
   InitError,
-  LegacyInfrastructureError,
 } from "@hot-updater/cli-tools";
 import {
   applicationDefault,
@@ -13,7 +12,12 @@ import {
 } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
-export type FirebaseInfrastructureState = "fresh" | "v0" | "v1";
+import {
+  FIREBASE_V1_COLLECTION_NAMES,
+  FIREBASE_V1_FUNCTION_NAME,
+} from "../src/firebaseInfrastructureNames";
+
+export type FirebaseInfrastructureState = "fresh" | "incompatible" | "v1";
 
 export const resolveFirebaseInfrastructureState = ({
   adapterVersion,
@@ -23,7 +27,7 @@ export const resolveFirebaseInfrastructureState = ({
   readonly hasData: boolean;
 }): FirebaseInfrastructureState => {
   if (adapterVersion === 4) return "v1";
-  if (adapterVersion !== undefined || hasData) return "v0";
+  if (adapterVersion !== undefined || hasData) return "incompatible";
   return "fresh";
 };
 
@@ -44,20 +48,25 @@ export const assertFirebaseInfrastructureCanInitialize = async ({
   try {
     const db = getFirestore(app);
     const version = await db
-      .collection("private_hot_updater_settings")
+      .collection(FIREBASE_V1_COLLECTION_NAMES.settings)
       .doc("database_adapter_version")
       .get();
     const collections = await Promise.all(
-      ["bundles", "bundle_patches", "channels", "release_catalogs"].map(
-        (name) => db.collection(name).limit(1).get(),
-      ),
+      [
+        FIREBASE_V1_COLLECTION_NAMES.bundles,
+        FIREBASE_V1_COLLECTION_NAMES.bundlePatches,
+        FIREBASE_V1_COLLECTION_NAMES.channels,
+        FIREBASE_V1_COLLECTION_NAMES.releaseCatalogs,
+      ].map((name) => db.collection(name).limit(1).get()),
     );
     const state = resolveFirebaseInfrastructureState({
       adapterVersion: version.exists ? version.data()?.version : undefined,
       hasData: collections.some((snapshot) => !snapshot.empty),
     });
-    if (state === "v0") {
-      throw new LegacyInfrastructureError("Firebase", `project ${projectId}`);
+    if (state === "incompatible") {
+      throw new InitError(
+        `Firebase v1 infrastructure in project ${projectId} is incomplete or uses an unsupported database version.`,
+      );
     }
   } catch (error) {
     if (error instanceof InitError) throw error;
@@ -82,11 +91,13 @@ export const assertFirebaseFunctionCanInitialize = async ({
     readonly uri?: string;
   }[];
 }): Promise<void> => {
-  const existingFunctions = functions.filter(({ id }) => id === "hot-updater");
+  const existingFunctions = functions.filter(
+    ({ id }) => id === FIREBASE_V1_FUNCTION_NAME,
+  );
   for (const existingFunction of existingFunctions) {
     if (!existingFunction.uri) {
       throw new InitError(
-        "Could not verify the Firebase infrastructure generation at Function hot-updater: endpoint URL was not reported.",
+        `Could not verify the Firebase infrastructure generation at Function ${FIREBASE_V1_FUNCTION_NAME}: endpoint URL was not reported.`,
       );
     }
     const versionUrl = new URL(
@@ -96,7 +107,7 @@ export const assertFirebaseFunctionCanInitialize = async ({
     await assertInfrastructureGenerationAtUrl({
       fetchImpl,
       provider: "Firebase",
-      resource: "Function hot-updater",
+      resource: `Function ${FIREBASE_V1_FUNCTION_NAME}`,
       versionUrl,
     });
   }

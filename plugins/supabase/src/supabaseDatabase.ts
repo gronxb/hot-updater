@@ -22,6 +22,10 @@ import {
   type SupabaseServiceRoleConfig,
 } from "./supabaseConfig";
 import { buildSupabaseFilter } from "./supabaseFilter";
+import {
+  SUPABASE_V1_FUNCTION_NAMES,
+  SUPABASE_V1_TABLE_NAMES,
+} from "./supabaseInfrastructureNames";
 import { SupabaseMissingDataError, throwSupabaseError } from "./supabaseResult";
 import type { Database } from "./types";
 
@@ -40,7 +44,7 @@ const createSupabaseImplementation = (
       switch (input.model) {
         case "bundles": {
           const { data, error } = await supabase
-            .from("bundles")
+            .from(SUPABASE_V1_TABLE_NAMES.bundles)
             .insert(input.data)
             .select("*")
             .single();
@@ -51,7 +55,7 @@ const createSupabaseImplementation = (
         }
         case "bundle_patches": {
           const { data, error } = await supabase
-            .from("bundle_patches")
+            .from(SUPABASE_V1_TABLE_NAMES.bundlePatches)
             .insert(input.data)
             .select("*")
             .single();
@@ -64,7 +68,7 @@ const createSupabaseImplementation = (
         case "channels": {
           if (input.onConflict === "ignore") {
             const { data, error } = await supabase
-              .from("channels")
+              .from(SUPABASE_V1_TABLE_NAMES.channels)
               .upsert(input.data, {
                 onConflict: "name",
                 ignoreDuplicates: true,
@@ -75,7 +79,7 @@ const createSupabaseImplementation = (
             return data ?? input.data;
           }
           const { data, error } = await supabase
-            .from("channels")
+            .from(SUPABASE_V1_TABLE_NAMES.channels)
             .insert(input.data)
             .select("*")
             .single();
@@ -87,7 +91,7 @@ const createSupabaseImplementation = (
         }
         case "bundle_events": {
           const { data, error } = await supabase
-            .from("bundle_events")
+            .from(SUPABASE_V1_TABLE_NAMES.bundleEvents)
             .insert(input.data)
             .select("*")
             .single();
@@ -99,7 +103,7 @@ const createSupabaseImplementation = (
         }
         case "releases": {
           const { data, error } = await supabase
-            .from("releases")
+            .from(SUPABASE_V1_TABLE_NAMES.releases)
             .insert(input.data)
             .select("*")
             .single();
@@ -110,7 +114,7 @@ const createSupabaseImplementation = (
         }
         case "release_catalogs": {
           const { data, error } = await supabase
-            .from("release_catalogs")
+            .from(SUPABASE_V1_TABLE_NAMES.releaseCatalogs)
             .insert(input.data)
             .select("*")
             .single();
@@ -123,11 +127,15 @@ const createSupabaseImplementation = (
         case "api_keys": {
           const query =
             input.onConflict === "ignore"
-              ? supabase.from("api_keys").upsert(input.data, {
-                  onConflict: "hash",
-                  ignoreDuplicates: true,
-                })
-              : supabase.from("api_keys").insert(input.data);
+              ? supabase
+                  .from(SUPABASE_V1_TABLE_NAMES.apiKeys)
+                  .upsert(input.data, {
+                    onConflict: "hash",
+                    ignoreDuplicates: true,
+                  })
+              : supabase
+                  .from(SUPABASE_V1_TABLE_NAMES.apiKeys)
+                  .insert(input.data);
           const { data, error } = await query.select("*").maybeSingle();
           throwSupabaseError("create api_keys", error);
           if (data === null && input.onConflict !== "ignore") {
@@ -140,27 +148,35 @@ const createSupabaseImplementation = (
     async update(input: UpdateDatabaseImplementationInput) {
       const filter = buildSupabaseFilter(input.where);
       if (input.model === "api_keys") {
-        let query = supabase.from("api_keys").update(input.update);
+        let query = supabase
+          .from(SUPABASE_V1_TABLE_NAMES.apiKeys)
+          .update(input.update);
         if (filter !== undefined) query = query.or(filter);
         const { data, error } = await query.select("*").maybeSingle();
         throwSupabaseError("update api_keys", error);
         return data;
       }
       if (input.model === "releases") {
-        let query = supabase.from("releases").update(input.update);
+        let query = supabase
+          .from(SUPABASE_V1_TABLE_NAMES.releases)
+          .update(input.update);
         if (filter !== undefined) query = query.or(filter);
         const { data, error } = await query.select("*").maybeSingle();
         throwSupabaseError("update releases", error);
         return data;
       }
       if (input.model === "release_catalogs") {
-        let query = supabase.from("release_catalogs").update(input.update);
+        let query = supabase
+          .from(SUPABASE_V1_TABLE_NAMES.releaseCatalogs)
+          .update(input.update);
         if (filter !== undefined) query = query.or(filter);
         const { data, error } = await query.select("*").maybeSingle();
         throwSupabaseError("update release_catalogs", error);
         return data;
       }
-      let query = supabase.from("bundles").update(input.update);
+      let query = supabase
+        .from(SUPABASE_V1_TABLE_NAMES.bundles)
+        .update(input.update);
       if (filter !== undefined) query = query.or(filter);
       const { data, error } = await query.select("*").maybeSingle();
       throwSupabaseError("update bundles", error);
@@ -170,21 +186,23 @@ const createSupabaseImplementation = (
       const filter = buildSupabaseFilter(input.where);
       switch (input.model) {
         case "bundles": {
-          let query = supabase.from("bundles").delete();
+          let query = supabase.from(SUPABASE_V1_TABLE_NAMES.bundles).delete();
           if (filter !== undefined) query = query.or(filter);
           const { error } = await query;
           throwSupabaseError("delete bundles", error);
           return;
         }
         case "bundle_patches": {
-          let query = supabase.from("bundle_patches").delete();
+          let query = supabase
+            .from(SUPABASE_V1_TABLE_NAMES.bundlePatches)
+            .delete();
           if (filter !== undefined) query = query.or(filter);
           const { error } = await query;
           throwSupabaseError("delete bundle_patches", error);
           return;
         }
         case "channels": {
-          let query = supabase.from("channels").delete();
+          let query = supabase.from(SUPABASE_V1_TABLE_NAMES.channels).delete();
           if (filter !== undefined) query = query.or(filter);
           const { error } = await query;
           if (isForeignKeyViolation(error)) {
@@ -193,7 +211,7 @@ const createSupabaseImplementation = (
           throwSupabaseError("delete channels", error);
         }
         case "releases": {
-          let query = supabase.from("releases").delete();
+          let query = supabase.from(SUPABASE_V1_TABLE_NAMES.releases).delete();
           if (filter !== undefined) query = query.or(filter);
           const { error } = await query;
           throwSupabaseError("delete releases", error);
@@ -208,7 +226,7 @@ const createSupabaseImplementation = (
       switch (input.model) {
         case "bundles": {
           let query = supabase
-            .from("bundles")
+            .from(SUPABASE_V1_TABLE_NAMES.bundles)
             .select("*", { count: "exact", head: true });
           if (filter !== undefined) query = query.or(filter);
           const { count, error } = await query;
@@ -217,7 +235,7 @@ const createSupabaseImplementation = (
         }
         case "bundle_patches": {
           let query = supabase
-            .from("bundle_patches")
+            .from(SUPABASE_V1_TABLE_NAMES.bundlePatches)
             .select("*", { count: "exact", head: true });
           if (filter !== undefined) query = query.or(filter);
           const { count, error } = await query;
@@ -226,7 +244,7 @@ const createSupabaseImplementation = (
         }
         case "releases": {
           let query = supabase
-            .from("releases")
+            .from(SUPABASE_V1_TABLE_NAMES.releases)
             .select("*", { count: "exact", head: true });
           if (filter !== undefined) query = query.or(filter);
           const { count, error } = await query;
@@ -239,42 +257,54 @@ const createSupabaseImplementation = (
       const filter = buildSupabaseFilter(input.where);
       switch (input.model) {
         case "bundles": {
-          let query = supabase.from("bundles").select("*");
+          let query = supabase
+            .from(SUPABASE_V1_TABLE_NAMES.bundles)
+            .select("*");
           if (filter !== undefined) query = query.or(filter);
           const { data, error } = await query.limit(1).maybeSingle();
           throwSupabaseError("findOne bundles", error);
           return data;
         }
         case "api_keys": {
-          let query = supabase.from("api_keys").select("*");
+          let query = supabase
+            .from(SUPABASE_V1_TABLE_NAMES.apiKeys)
+            .select("*");
           if (filter !== undefined) query = query.or(filter);
           const { data, error } = await query.limit(1).maybeSingle();
           throwSupabaseError("findOne api_keys", error);
           return data;
         }
         case "channels": {
-          let query = supabase.from("channels").select("*");
+          let query = supabase
+            .from(SUPABASE_V1_TABLE_NAMES.channels)
+            .select("*");
           if (filter !== undefined) query = query.or(filter);
           const { data, error } = await query.limit(1).maybeSingle();
           throwSupabaseError("findOne channels", error);
           return data;
         }
         case "bundle_patches": {
-          let query = supabase.from("bundle_patches").select("*");
+          let query = supabase
+            .from(SUPABASE_V1_TABLE_NAMES.bundlePatches)
+            .select("*");
           if (filter !== undefined) query = query.or(filter);
           const { data, error } = await query.limit(1).maybeSingle();
           throwSupabaseError("findOne bundle_patches", error);
           return data;
         }
         case "releases": {
-          let query = supabase.from("releases").select("*");
+          let query = supabase
+            .from(SUPABASE_V1_TABLE_NAMES.releases)
+            .select("*");
           if (filter !== undefined) query = query.or(filter);
           const { data, error } = await query.limit(1).maybeSingle();
           throwSupabaseError("findOne releases", error);
           return data;
         }
         case "release_catalogs": {
-          let query = supabase.from("release_catalogs").select("*");
+          let query = supabase
+            .from(SUPABASE_V1_TABLE_NAMES.releaseCatalogs)
+            .select("*");
           if (filter !== undefined) query = query.or(filter);
           const { data, error } = await query.limit(1).maybeSingle();
           throwSupabaseError("findOne release_catalogs", error);
@@ -292,7 +322,9 @@ const createSupabaseImplementation = (
       const orderBy = input.orderBy ?? [];
       switch (input.model) {
         case "bundles": {
-          let query = supabase.from("bundles").select("*");
+          let query = supabase
+            .from(SUPABASE_V1_TABLE_NAMES.bundles)
+            .select("*");
           if (filter !== undefined) query = query.or(filter);
           for (const clause of orderBy) {
             query = query.order(clause.field, {
@@ -305,7 +337,9 @@ const createSupabaseImplementation = (
           return data ?? [];
         }
         case "bundle_events": {
-          let query = supabase.from("bundle_events").select("*");
+          let query = supabase
+            .from(SUPABASE_V1_TABLE_NAMES.bundleEvents)
+            .select("*");
           if (filter !== undefined) query = query.or(filter);
           for (const clause of orderBy) {
             query = query.order(clause.field, {
@@ -318,7 +352,9 @@ const createSupabaseImplementation = (
           return data ?? [];
         }
         case "api_keys": {
-          let query = supabase.from("api_keys").select("*");
+          let query = supabase
+            .from(SUPABASE_V1_TABLE_NAMES.apiKeys)
+            .select("*");
           if (filter !== undefined) query = query.or(filter);
           for (const clause of orderBy) {
             query = query.order(clause.field, {
@@ -331,7 +367,9 @@ const createSupabaseImplementation = (
           return data ?? [];
         }
         case "bundle_patches": {
-          let query = supabase.from("bundle_patches").select("*");
+          let query = supabase
+            .from(SUPABASE_V1_TABLE_NAMES.bundlePatches)
+            .select("*");
           if (filter !== undefined) query = query.or(filter);
           for (const clause of orderBy) {
             query = query.order(clause.field, {
@@ -344,7 +382,9 @@ const createSupabaseImplementation = (
           return data ?? [];
         }
         case "channels": {
-          let query = supabase.from("channels").select("*");
+          let query = supabase
+            .from(SUPABASE_V1_TABLE_NAMES.channels)
+            .select("*");
           if (filter !== undefined) query = query.or(filter);
           for (const clause of orderBy) {
             query = query.order(clause.field, {
@@ -357,7 +397,9 @@ const createSupabaseImplementation = (
           return data ?? [];
         }
         case "releases": {
-          let query = supabase.from("releases").select("*");
+          let query = supabase
+            .from(SUPABASE_V1_TABLE_NAMES.releases)
+            .select("*");
           if (filter !== undefined) query = query.or(filter);
           for (const clause of orderBy) {
             query = query.order(clause.field, {
@@ -370,7 +412,9 @@ const createSupabaseImplementation = (
           return data ?? [];
         }
         case "release_catalogs": {
-          let query = supabase.from("release_catalogs").select("*");
+          let query = supabase
+            .from(SUPABASE_V1_TABLE_NAMES.releaseCatalogs)
+            .select("*");
           if (filter !== undefined) query = query.or(filter);
           for (const clause of orderBy) {
             query = query.order(clause.field, {
@@ -386,7 +430,7 @@ const createSupabaseImplementation = (
     },
     async insertChannel(input) {
       const { data: inserted, error: insertError } = await supabase
-        .from("channels")
+        .from(SUPABASE_V1_TABLE_NAMES.channels)
         .upsert(input.row, { onConflict: "name", ignoreDuplicates: true })
         .select("*")
         .maybeSingle();
@@ -394,7 +438,7 @@ const createSupabaseImplementation = (
       if (inserted !== null) return { row: inserted, inserted: true };
 
       const { data: existing, error: findError } = await supabase
-        .from("channels")
+        .from(SUPABASE_V1_TABLE_NAMES.channels)
         .select("*")
         .eq("name", input.row.name)
         .single();
@@ -405,9 +449,12 @@ const createSupabaseImplementation = (
       return { row: existing, inserted: false };
     },
     async deleteChannel(input) {
-      const { data, error } = await supabase.rpc("hot_updater_delete_channel", {
-        p_id: input.id,
-      });
+      const { data, error } = await supabase.rpc(
+        SUPABASE_V1_FUNCTION_NAMES.deleteChannel,
+        {
+          p_id: input.id,
+        },
+      );
       throwSupabaseError("delete channel", error);
       if (
         data === null ||
@@ -421,9 +468,12 @@ const createSupabaseImplementation = (
     },
   };
   implementation.commit = async (input) => {
-    const { data, error } = await supabase.rpc("hot_updater_commit", {
-      p_commit: input,
-    });
+    const { data, error } = await supabase.rpc(
+      SUPABASE_V1_FUNCTION_NAMES.commit,
+      {
+        p_commit: input,
+      },
+    );
     throwSupabaseError("commit database changes", error);
     if (
       data === null ||

@@ -26,6 +26,7 @@ import {
 } from "./firebaseDatabaseParser";
 import type { FirebaseDatabaseSnapshot } from "./firebaseDatabaseState";
 import { FirebaseDatabaseConstraintError } from "./firebaseDatabaseState";
+import { FIREBASE_V1_COLLECTION_NAMES } from "./firebaseInfrastructureNames";
 
 export interface FirebaseDatabaseCollections {
   readonly bundles: CollectionReference<DocumentData>;
@@ -49,14 +50,14 @@ export class FirebaseDatabaseAdapterVersionError extends Error {
 export const createFirebaseDatabaseCollections = (
   db: Firestore,
 ): FirebaseDatabaseCollections => ({
-  bundles: db.collection("bundles"),
-  bundlePatches: db.collection("bundle_patches"),
-  bundleEvents: db.collection("bundle_events"),
-  channels: db.collection("channels"),
-  apiKeys: db.collection("api_keys"),
-  releaseCatalogs: db.collection("release_catalogs"),
-  releases: db.collection("releases"),
-  settings: db.collection("private_hot_updater_settings"),
+  bundles: db.collection(FIREBASE_V1_COLLECTION_NAMES.bundles),
+  bundlePatches: db.collection(FIREBASE_V1_COLLECTION_NAMES.bundlePatches),
+  bundleEvents: db.collection(FIREBASE_V1_COLLECTION_NAMES.bundleEvents),
+  channels: db.collection(FIREBASE_V1_COLLECTION_NAMES.channels),
+  apiKeys: db.collection(FIREBASE_V1_COLLECTION_NAMES.apiKeys),
+  releaseCatalogs: db.collection(FIREBASE_V1_COLLECTION_NAMES.releaseCatalogs),
+  releases: db.collection(FIREBASE_V1_COLLECTION_NAMES.releases),
+  settings: db.collection(FIREBASE_V1_COLLECTION_NAMES.settings),
 });
 
 type FixedRow =
