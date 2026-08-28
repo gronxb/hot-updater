@@ -1,11 +1,12 @@
 {
-  "$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
+  "$schema": "https://unpkg.com/@changesets/config@4.0.0/schema.json",
   "changelog": "@changesets/cli/changelog",
   "commit": false,
   "ignore": ["hot-updater-docs", "@examples/*", "@examples-server/*"],
   "linked": [],
-  "fixed": [["hot-updater", "@hot-updater/*"]],
+  "fixed": [],
   "access": "public",
+  "privatePackages": { "version": true, "tag": false },
   "baseBranch": "next",
   "bumpVersionsWithWorkspaceProtocolOnly": true,
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {

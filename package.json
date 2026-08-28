@@ -25,13 +25,14 @@
     "release": "pnpm clear && pnpm build && nx release --skip-publish",
     "publish:all": "nx release publish",
     "publish:rc": "nx release publish --tag rc",
-    "changeset": "changeset"
+    "changeset": "changeset",
+    "changeset:minor": "node ./scripts/changeset-minor.mjs"
   },
   "devDependencies": {
     "@babel/core": "7.26.0",
     "@babel/plugin-transform-modules-commonjs": "7.25.9",
     "@babel/preset-typescript": "7.28.5",
-    "@changesets/cli": "^2.29.8",
+    "@changesets/cli": "^3.0.1",
     "@cloudflare/vitest-pool-workers": "0.13.0",
     "@hono/node-server": "catalog:hono",
     "@nx/js": "22.6.3",
