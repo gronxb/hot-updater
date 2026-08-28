@@ -45,9 +45,9 @@
     "test:type": "tsc --noEmit"
   },
   "devDependencies": {
-    "@hot-updater/core": "workspace:*",
-    "@hot-updater/mock": "workspace:*",
-    "@hot-updater/test-utils": "workspace:*",
+    "@hot-updater/core": "workspace:^",
+    "@hot-updater/mock": "workspace:^",
+    "@hot-updater/test-utils": "workspace:^",
     "@types/aws-lambda": "^8.10.147",
     "@types/node": "catalog:",
     "aws-sdk-client-mock": "^4.1.0",
@@ -56,7 +56,7 @@
     "mime": "^4.0.4"
   },
   "dependencies": {
-    "@hot-updater/cli-tools": "workspace:*",
+    "@hot-updater/cli-tools": "workspace:^",
     "@aws-sdk/client-cloudfront": "3.1066.0",
     "@aws-sdk/client-dynamodb": "3.1066.0",
     "@aws-sdk/client-iam": "3.1066.0",
@@ -68,8 +68,8 @@
     "@aws-sdk/credential-providers": "3.1066.0",
     "@aws-sdk/lib-storage": "3.1066.0",
     "@aws-sdk/lib-dynamodb": "3.1066.0",
-    "@hot-updater/plugin-core": "workspace:*",
-    "@hot-updater/server": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:^",
+    "@hot-updater/server": "workspace:^",
     "hono": "catalog:hono",
     "aws-lambda": "1.0.7"
   }

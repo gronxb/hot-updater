@@ -45,18 +45,18 @@
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@hot-updater/cli-tools": "workspace:*",
-    "@hot-updater/core": "workspace:*",
-    "@hot-updater/plugin-core": "workspace:*",
-    "@hot-updater/server": "workspace:*",
+    "@hot-updater/cli-tools": "workspace:^",
+    "@hot-updater/core": "workspace:^",
+    "@hot-updater/plugin-core": "workspace:^",
+    "@hot-updater/server": "workspace:^",
     "hono": "catalog:hono"
   },
   "publishConfig": {
     "access": "public"
   },
   "devDependencies": {
-    "@hot-updater/mock": "workspace:*",
-    "@hot-updater/test-utils": "workspace:*",
+    "@hot-updater/mock": "workspace:^",
+    "@hot-updater/test-utils": "workspace:^",
     "@types/node": "catalog:",
     "es-toolkit": "^1.32.0",
     "execa": "catalog:tools",

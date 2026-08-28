@@ -55,20 +55,20 @@
     "make-migrations": "node --experimental-strip-types ./scripts/make-migrations.ts"
   },
   "dependencies": {
-    "@hot-updater/core": "workspace:*",
-    "@hot-updater/plugin-core": "workspace:*",
-    "@hot-updater/cli-tools": "workspace:*",
-    "@hot-updater/server": "workspace:*",
+    "@hot-updater/core": "workspace:^",
+    "@hot-updater/plugin-core": "workspace:^",
+    "@hot-updater/cli-tools": "workspace:^",
+    "@hot-updater/server": "workspace:^",
     "@supabase/supabase-js": "catalog:supabase",
     "hono": "catalog:hono",
     "uuidv7": "catalog:"
   },
   "devDependencies": {
     "@electric-sql/pglite": "catalog:db",
-    "@hot-updater/mock": "workspace:*",
-    "@hot-updater/test-utils": "workspace:*",
+    "@hot-updater/mock": "workspace:^",
+    "@hot-updater/test-utils": "workspace:^",
     "camelcase-keys": "^9.1.3",
-    "@hot-updater/postgres": "workspace:*",
+    "@hot-updater/postgres": "workspace:^",
     "dayjs": "^1.11.13",
     "es-toolkit": "^1.32.0",
     "execa": "catalog:tools",

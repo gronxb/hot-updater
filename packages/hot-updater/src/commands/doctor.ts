@@ -172,7 +172,7 @@ export function areVersionsCompatible(
     (parsedVersionA.prerelease?.length ?? 0) === 0 &&
     (parsedVersionB.prerelease?.length ?? 0) === 0 &&
     parsedVersionA.major === parsedVersionB.major &&
-    parsedVersionA.minor === parsedVersionB.minor
+    (parsedVersionA.major > 0 || parsedVersionA.minor === parsedVersionB.minor)
   ) {
     return true;
   }

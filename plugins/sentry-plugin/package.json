@@ -43,9 +43,9 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/cli-tools": "workspace:*",
-    "@hot-updater/core": "workspace:*",
-    "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/cli-tools": "workspace:^",
+    "@hot-updater/core": "workspace:^",
+    "@hot-updater/plugin-core": "workspace:^",
     "@sentry/cli": "2.46.0"
   },
   "devDependencies": {
