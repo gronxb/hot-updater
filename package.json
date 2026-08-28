@@ -25,7 +25,8 @@
     "release": "pnpm clear && pnpm build && nx release --skip-publish",
     "publish:all": "nx release publish",
     "publish:rc": "nx release publish --tag rc",
-    "changeset": "changeset"
+    "changeset": "changeset",
+    "changeset:minor": "node ./scripts/changeset-minor.mjs"
   },
   "devDependencies": {
     "@babel/core": "7.26.0",
