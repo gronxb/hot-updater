@@ -26,13 +26,12 @@ message to sign.
 | Firebase project        | `@hot-updater/firebase`   | Non-exportable Google Cloud KMS key               |
 | Cloudflare Worker       | `@hot-updater/cloudflare` | Non-extractable Worker `CryptoKey` binding        |
 | Supabase Edge Function  | `@hot-updater/supabase`   | Runtime-readable project secret                   |
-| Azure Key Vault         | `@hot-updater/azure`      | Non-exportable Key Vault or Managed HSM key       |
-| Vault / OpenBao Transit | `@hot-updater/vault`      | Non-exportable Transit RSA key                    |
 
-Signer support is not limited to the storage or database provider. GitHub
-Actions is an identity source rather than a signing service, so use its OIDC
-token with a compatible KMS signer. Cloudflare and Supabase provide official
-provider-hosted signers below, with different custody guarantees.
+Official provider signers follow Hot Updater's managed infrastructure
+integrations. GitHub Actions is an identity source rather than a signing
+service, so use its OIDC token with a compatible KMS signer. Cloudflare and
+Supabase provide official provider-hosted signers below, with different custody
+guarantees.
 
 > **Important**: Release a native app containing the public key before you
 > deploy signed bundles. An app without the matching public key rejects them.
@@ -41,14 +40,14 @@ provider-hosted signers below, with different custody guarantees.
 
 Signing is independent of storage and database selection. The AWS, Firebase,
 Cloudflare, and Supabase plugins are the natural choices when the same provider
-already owns your OTA infrastructure. Azure and Vault/OpenBao can sign bundles
-stored by any provider. Use the local plugin only when an exportable key is an
-acceptable custody model.
+already owns your OTA infrastructure. Use the local plugin only when an
+exportable key is an acceptable custody model.
 
 `hot-updater init` does not create or enable a signing key. Signing remains an
 explicit opt-in:
 
-1. Provision one dedicated RSA signing key and pin its immutable key version.
+1. Provision one dedicated RSA signing key and pin its exact identifier or
+   immutable version when the provider supports one.
 2. Export its SPKI public key to `keys/public-key.pem` and commit that file.
 3. Add the matching signing plugin to `hot-updater.config.ts`.
 4. Run `npx hot-updater keys export-public`, or `npx expo prebuild` for Expo.
@@ -231,10 +230,8 @@ RSA PKCS#1 v1.5 with SHA-256. The AWS KMS provider therefore uses:
 Do not substitute `DIGEST` or an RSA-PSS algorithm. Existing iOS and Android
 verifiers expect the exact protocol above.
 
-Other official providers preserve the same signature semantics through their
-native APIs: Firebase Cloud KMS submits `SHA-256(message)` to its digest API,
-Azure Key Vault uses `signData("RS256", message)`, and Vault Transit uses
-`prehashed: false` with `pkcs1v15` and `sha2-256`.
+Firebase Cloud KMS preserves the same signature semantics by submitting
+`SHA-256(message)` to its digest API.
 
 The Cloudflare and Supabase plugins use the authenticated
 `/_hot-updater/signing` protocol. Requests and responses pin the protocol
@@ -475,105 +472,8 @@ Supabase project secrets are available to the project's Edge Function runtime.
 Keep the signer in a dedicated function, restrict function deployment and
 secret-management access, and do not expose these values to the OTA client
 handler. Other code deployed to the same project can read project secrets, so
-use a dedicated Supabase project or an external KMS/Vault signer when that
+use a dedicated Supabase project or an external KMS-backed signer when that
 shared administrative boundary is too broad.
-
-## Azure Key Vault and Managed HSM
-
-[Azure Key Vault Keys](https://learn.microsoft.com/azure/key-vault/keys/about-keys)
-keeps HSM-backed private key material non-exportable. Pin the complete
-versioned key identifier. `DefaultAzureCredential` supports local Azure CLI
-credentials, managed identities, and workload identity without putting a
-client secret in the Hot Updater config.
-
-For example, create a non-exportable version and download only its public key:
-
-```bash
-mkdir -p keys
-
-KEY_ID=$(az keyvault key create \
-  --vault-name VAULT \
-  --name bundle-signing \
-  --kty RSA-HSM \
-  --size 4096 \
-  --ops sign verify \
-  --exportable false \
-  --query key.kid \
-  --output tsv)
-
-az keyvault key download \
-  --id "$KEY_ID" \
-  --file keys/public-key.pem \
-  --encoding PEM
-```
-
-```bash
-npm install @hot-updater/azure --save-dev
-```
-
-```ts title="hot-updater.config.ts"
-import { keyVaultSigning } from "@hot-updater/azure";
-import { defineConfig } from "hot-updater";
-
-export default defineConfig({
-  signing: keyVaultSigning({
-    keyId: "https://VAULT.vault.azure.net/keys/bundle-signing/VERSION",
-    publicKeyPath: "./keys/public-key.pem",
-  }),
-});
-```
-
-The key must be an enabled RSA or RSA-HSM key with `sign` permission. Grant the
-deploy identity only the Key Vault data-plane permissions needed to read the
-public key and sign. Hot Updater rejects an unversioned key URL, a response for
-another key version, an exportable key, or a signature that does not match the
-pinned public key.
-
-## HashiCorp Vault and OpenBao Transit
-
-[Vault Transit](https://developer.hashicorp.com/vault/docs/secrets/transit)
-and [OpenBao Transit](https://openbao.org/docs/secrets/transit/) provide signing
-as a service without returning the private key. Use a pinned RSA key version
-and a token policy limited to reading that key and calling its sign endpoint.
-
-```bash
-mkdir -p keys
-
-vault write transit/keys/bundle-signing \
-  type=rsa-4096 \
-  exportable=false \
-  allow_plaintext_backup=false
-
-vault read -format=json transit/keys/bundle-signing \
-  | jq -r '.data.keys["1"].public_key' \
-  > keys/public-key.pem
-```
-
-```bash
-npm install @hot-updater/vault --save-dev
-```
-
-```ts title="hot-updater.config.ts"
-import { transitSigning } from "@hot-updater/vault";
-import { defineConfig } from "hot-updater";
-
-export default defineConfig({
-  signing: transitSigning({
-    address: process.env.VAULT_ADDR,
-    token: process.env.VAULT_TOKEN,
-    keyName: "bundle-signing",
-    keyVersion: 1,
-    publicKeyPath: "./keys/public-key.pem",
-  }),
-});
-```
-
-`address`, `token`, and `namespace` default to `VAULT_ADDR`, `VAULT_TOKEN`, and
-`VAULT_NAMESPACE`. OpenBao's `BAO_ADDR` and `BAO_TOKEN` are also recognized.
-The default Transit mount is `transit`; set `mountPath` when it is mounted
-elsewhere. Only RSA-2048, RSA-3072, and RSA-4096 keys are accepted. Transit
-requires HTTPS; plain HTTP is accepted only for loopback development servers.
-Hot Updater rejects keys that permit export or plaintext backup.
 
 ## Expo and EAS Build
 
@@ -603,7 +503,8 @@ included in the build input.
 
 ## Local Private Key
 
-Use the local plugin for offline signing or when you manage the key yourself:
+Use the local plugin when you accept responsibility for an exportable private
+key:
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
@@ -737,10 +638,10 @@ provider and algorithm, and the public-key fingerprint. It does not call the
 remote signer or store, return, generate, activate, rotate, or delete private
 keys.
 
-A hosted Console does not need AWS KMS credentials for this inspection. In
-particular, do not grant its runtime `kms:Sign`. Provider and signature health
-are verified by the deploy command, which already runs inside the trusted
-signing boundary.
+A hosted Console does not need KMS credentials or remote signing tokens for
+this inspection. Do not grant its runtime permission to sign. Provider and
+signature health are verified by the deploy command, which already runs inside
+the trusted signing boundary.
 
 ## Configuration States
 
@@ -792,7 +693,7 @@ same key. Compare their SPKI SHA-256 fingerprints. With KMS, also verify that
 the configured key ARN was not replaced with an alias and that it is an RSA
 `SIGN_VERIFY` key.
 
-### KMS AccessDenied
+### AWS KMS AccessDenied
 
 Confirm that the deploy job received an OIDC role restricted to the expected
 repository and environment, and that the role has `kms:GetPublicKey` and

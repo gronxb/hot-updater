@@ -136,11 +136,6 @@ describe("packed provider entrypoints", () => {
 
   it.each([
     {
-      directory: "azure",
-      packageName: "@hot-updater/azure",
-      exports: ["keyVaultSigning"],
-    },
-    {
       directory: "aws",
       packageName: "@hot-updater/aws",
       exports: ["cloudFrontDownloadUrl", "kmsSigning", "s3Storage"],
@@ -172,11 +167,6 @@ describe("packed provider entrypoints", () => {
         "supabaseEdgeFunctionStorage",
         "supabaseStorageDelivery",
       ],
-    },
-    {
-      directory: "vault",
-      packageName: "@hot-updater/vault",
-      exports: ["transitSigning"],
     },
     {
       directory: "supabase",
