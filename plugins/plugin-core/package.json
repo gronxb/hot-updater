@@ -47,7 +47,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/core": "workspace:^",
+    "@hot-updater/core": "workspace:*",
     "es-toolkit": "^1.32.0",
     "mime": "^4.0.4",
     "verkit": "catalog:"

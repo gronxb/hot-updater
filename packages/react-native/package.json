@@ -126,8 +126,8 @@
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "dependencies": {
-    "@hot-updater/core": "workspace:^",
-    "@hot-updater/plugin-core": "workspace:^",
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
     "use-sync-external-store": "1.5.0"
   }
 }

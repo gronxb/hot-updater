@@ -54,9 +54,9 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/bsdiff": "workspace:^",
-    "@hot-updater/core": "workspace:^",
-    "@hot-updater/plugin-core": "workspace:^",
+    "@hot-updater/bsdiff": "workspace:*",
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
     "rou3": "0.7.9",
     "verkit": "catalog:"
   },
@@ -82,8 +82,8 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "catalog:db",
-    "@hot-updater/standalone": "workspace:^",
-    "@hot-updater/test-utils": "workspace:^",
+    "@hot-updater/standalone": "workspace:*",
+    "@hot-updater/test-utils": "workspace:*",
     "@types/express": "^5.0.0",
     "@types/node": "catalog:",
     "drizzle-orm": "catalog:db",

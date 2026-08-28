@@ -1358,13 +1358,13 @@ importers:
   packages/android-helper:
     dependencies:
       '@hot-updater/cli-tools':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../cli-tools
       '@hot-updater/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../core
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../plugins/plugin-core
       execa:
         specifier: catalog:tools
@@ -1377,10 +1377,10 @@ importers:
   packages/apple-helper:
     dependencies:
       '@hot-updater/cli-tools':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../cli-tools
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../plugins/plugin-core
       execa:
         specifier: catalog:tools
@@ -1417,10 +1417,10 @@ importers:
   packages/cli-tools:
     dependencies:
       '@hot-updater/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../core
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../plugins/plugin-core
       oxc-parser:
         specifier: 0.141.0
@@ -1436,7 +1436,7 @@ importers:
         specifier: catalog:tools
         version: 1.7.0
       '@hot-updater/test-utils':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../test-utils
       '@types/node':
         specifier: 'catalog:'
@@ -1478,16 +1478,16 @@ importers:
         specifier: ^5.2.8
         version: 5.2.8
       '@hot-updater/bsdiff':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../bsdiff
       '@hot-updater/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../core
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../plugins/plugin-core
       '@hot-updater/server':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../server
       '@tailwindcss/vite':
         specifier: ^4.2.1
@@ -1557,10 +1557,10 @@ importers:
         version: 0.3.2
     devDependencies:
       '@hot-updater/cli-tools':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../cli-tools
       '@hot-updater/mock':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../plugins/mock
       '@tanstack/devtools-vite':
         specifier: ^0.6.0
@@ -1638,25 +1638,25 @@ importers:
   packages/hot-updater:
     dependencies:
       '@hot-updater/android-helper':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../android-helper
       '@hot-updater/apple-helper':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../apple-helper
       '@hot-updater/cli-tools':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../cli-tools
       '@hot-updater/console':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../console
       '@hot-updater/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../core
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../plugins/plugin-core
       '@hot-updater/server':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../server
       jiti:
         specifier: 2.6.1
@@ -1672,22 +1672,22 @@ importers:
         specifier: ^0.15.4
         version: 0.15.5
       '@hot-updater/aws':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../plugins/aws
       '@hot-updater/cloudflare':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../plugins/cloudflare
       '@hot-updater/firebase':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../plugins/firebase
       '@hot-updater/mock':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../plugins/mock
       '@hot-updater/supabase':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../plugins/supabase
       '@hot-updater/test-utils':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../test-utils
       '@types/connect':
         specifier: ^3.4.38
@@ -1744,10 +1744,10 @@ importers:
   packages/react-native:
     dependencies:
       '@hot-updater/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../core
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../plugins/plugin-core
       use-sync-external-store:
         specifier: 1.5.0
@@ -1805,13 +1805,13 @@ importers:
   packages/server:
     dependencies:
       '@hot-updater/bsdiff':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../bsdiff
       '@hot-updater/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../core
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../plugins/plugin-core
       '@prisma/client':
         specifier: '*'
@@ -1827,10 +1827,10 @@ importers:
         specifier: catalog:db
         version: 0.4.1
       '@hot-updater/standalone':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../plugins/standalone
       '@hot-updater/test-utils':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../test-utils
       '@types/express':
         specifier: ^5.0.0
@@ -1866,13 +1866,13 @@ importers:
   packages/test-utils:
     devDependencies:
       '@hot-updater/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../core
       '@hot-updater/js':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../plugins/js
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../plugins/plugin-core
       '@types/node':
         specifier: 'catalog:'
@@ -1929,13 +1929,13 @@ importers:
         specifier: 3.1066.0
         version: 3.1066.0(@aws-sdk/client-s3@3.1066.0)
       '@hot-updater/cli-tools':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/cli-tools
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../plugin-core
       '@hot-updater/server':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/server
       aws-lambda:
         specifier: 1.0.7
@@ -1945,13 +1945,13 @@ importers:
         version: 4.12.34
     devDependencies:
       '@hot-updater/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/core
       '@hot-updater/mock':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../mock
       '@hot-updater/test-utils':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/test-utils
       '@types/aws-lambda':
         specifier: ^8.10.147
@@ -1975,10 +1975,10 @@ importers:
   plugins/bare:
     dependencies:
       '@hot-updater/cli-tools':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/cli-tools
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../plugin-core
       uuidv7:
         specifier: 'catalog:'
@@ -1994,10 +1994,10 @@ importers:
   plugins/bugsnag-plugin:
     dependencies:
       '@hot-updater/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/core
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../plugin-core
       execa:
         specifier: catalog:tools
@@ -2019,16 +2019,16 @@ importers:
         specifier: 3.1008.0
         version: 3.1008.0(@aws-sdk/client-s3@3.1066.0)
       '@hot-updater/cli-tools':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/cli-tools
       '@hot-updater/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/core
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../plugin-core
       '@hot-updater/server':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/server
       cloudflare:
         specifier: 4.2.0
@@ -2047,7 +2047,7 @@ importers:
         specifier: ^4.20260312.1
         version: 4.20260611.1
       '@hot-updater/test-utils':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/test-utils
       '@types/node':
         specifier: 'catalog:'
@@ -2086,10 +2086,10 @@ importers:
   plugins/datadog-plugin:
     dependencies:
       '@hot-updater/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/core
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../plugin-core
       execa:
         specifier: catalog:tools
@@ -2111,13 +2111,13 @@ importers:
         specifier: 7.26.0
         version: 7.26.0
       '@hot-updater/bare':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../bare
       '@hot-updater/cli-tools':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/cli-tools
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../plugin-core
       uuidv7:
         specifier: 'catalog:'
@@ -2133,7 +2133,7 @@ importers:
         specifier: ^50.0.0
         version: 50.0.21(@babel/core@7.26.0)(@react-native/babel-preset@0.85.2(@babel/core@7.26.0))(react-native@0.85.2(@babel/core@7.26.0)(@react-native-community/cli@20.1.0(typescript@7.0.2))(@react-native/jest-preset@0.85.2(@babel/core@7.26.0)(react@19.2.6))(@react-native/metro-config@0.85.2(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.2.6))(react@19.2.6)
       hot-updater:
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/hot-updater
       vitest:
         specifier: 'catalog:'
@@ -2142,26 +2142,26 @@ importers:
   plugins/firebase:
     dependencies:
       '@hot-updater/cli-tools':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/cli-tools
       '@hot-updater/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/core
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../plugin-core
       '@hot-updater/server':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/server
       hono:
         specifier: catalog:hono
         version: 4.12.34
     devDependencies:
       '@hot-updater/mock':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../mock
       '@hot-updater/test-utils':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/test-utils
       '@types/node':
         specifier: 'catalog:'
@@ -2203,10 +2203,10 @@ importers:
   plugins/mock:
     dependencies:
       '@hot-updater/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/core
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../plugin-core
     devDependencies:
       '@types/node':
@@ -2219,7 +2219,7 @@ importers:
   plugins/plugin-core:
     dependencies:
       '@hot-updater/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/core
       es-toolkit:
         specifier: ^1.32.0
@@ -2244,10 +2244,10 @@ importers:
   plugins/postgres:
     dependencies:
       '@hot-updater/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/core
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../plugin-core
       kysely:
         specifier: catalog:db
@@ -2260,7 +2260,7 @@ importers:
         specifier: catalog:db
         version: 0.4.1
       '@hot-updater/test-utils':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/test-utils
       '@types/node':
         specifier: 'catalog:'
@@ -2281,10 +2281,10 @@ importers:
   plugins/rock:
     dependencies:
       '@hot-updater/cli-tools':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/cli-tools
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../plugin-core
       uuidv7:
         specifier: 'catalog:'
@@ -2300,13 +2300,13 @@ importers:
   plugins/sentry-plugin:
     dependencies:
       '@hot-updater/cli-tools':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/cli-tools
       '@hot-updater/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/core
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../plugin-core
       '@sentry/cli':
         specifier: 2.46.0
@@ -2319,10 +2319,10 @@ importers:
   plugins/standalone:
     dependencies:
       '@hot-updater/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/core
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../plugin-core
     devDependencies:
       '@types/mime':
@@ -2347,16 +2347,16 @@ importers:
   plugins/supabase:
     dependencies:
       '@hot-updater/cli-tools':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/cli-tools
       '@hot-updater/core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/core
       '@hot-updater/plugin-core':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../plugin-core
       '@hot-updater/server':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/server
       '@supabase/supabase-js':
         specifier: catalog:supabase
@@ -2372,13 +2372,13 @@ importers:
         specifier: catalog:db
         version: 0.4.1
       '@hot-updater/mock':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../mock
       '@hot-updater/postgres':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../postgres
       '@hot-updater/test-utils':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../packages/test-utils
       '@types/node':
         specifier: 'catalog:'

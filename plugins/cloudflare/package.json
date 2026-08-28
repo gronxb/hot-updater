@@ -60,10 +60,10 @@
   "dependencies": {
     "@aws-sdk/client-s3": "catalog:aws",
     "@aws-sdk/lib-storage": "3.1008.0",
-    "@hot-updater/cli-tools": "workspace:^",
-    "@hot-updater/core": "workspace:^",
-    "@hot-updater/plugin-core": "workspace:^",
-    "@hot-updater/server": "workspace:^",
+    "@hot-updater/cli-tools": "workspace:*",
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/server": "workspace:*",
     "cloudflare": "4.2.0",
     "hono": "catalog:hono",
     "uuidv7": "catalog:"
@@ -71,7 +71,7 @@
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.13.0",
     "@cloudflare/workers-types": "^4.20260312.1",
-    "@hot-updater/test-utils": "workspace:^",
+    "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "dayjs": "^1.11.13",
     "execa": "catalog:tools",
