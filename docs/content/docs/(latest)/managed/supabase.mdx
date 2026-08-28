@@ -103,11 +103,11 @@ For more details, see:
 ## Optional: Bundle Signing
 
 Managed Supabase init does not create or enable a signing key. After
-provisioning the OTA infrastructure, configure the official
-[Supabase Edge Function signer](/docs/guides/bundle-signing#supabase-edge-functions),
+provisioning the OTA infrastructure, configure
+[local PEM, AWS KMS, or Google Cloud KMS signing](/docs/guides/bundle-signing),
 embed its public key in a native release, and only then deploy signed bundles.
-Use a dedicated signing function and token; do not reuse the service-role,
-client API, or anon key.
+Storage and database selection does not constrain the signer. Call KMS directly
+from the protected deploy job rather than proxying it through an Edge Function.
 
 ## Step 3: Add HotUpdater to Your Project
 

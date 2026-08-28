@@ -34,12 +34,15 @@ type ResolvedPublicKey = Readonly<{
   publicKey: string;
 }>;
 
-export interface RemoteBundleSigningPluginOptions {
+export interface RemoteSigningOptions {
   readonly endpoint: string;
   readonly fetch?: Fetch;
-  readonly name: string;
   readonly publicKeyPath: string;
-  readonly resolveToken: () => string | Promise<string>;
+  /**
+   * Dedicated signing token or a lazy resolver for provider integrations.
+   * Defaults to HOT_UPDATER_SIGNING_TOKEN.
+   */
+  readonly signingToken?: string | (() => string | Promise<string>);
 }
 
 export interface BundleSigningHandlerOptions {
@@ -287,7 +290,7 @@ const parseMetadata = async (value: unknown): Promise<ResolvedPublicKey> => {
 const remoteRequest = async (
   fetchImplementation: Fetch,
   endpoint: string,
-  resolveToken: RemoteBundleSigningPluginOptions["resolveToken"],
+  resolveToken: () => string | Promise<string>,
   init: RequestInit,
 ) => {
   const token = await resolveToken();
@@ -311,17 +314,13 @@ const remoteRequest = async (
   return parseJsonBody(response.body, response.headers, RESPONSE_BODY_LIMIT);
 };
 
-/** Creates a Node-side signing plugin backed by the managed signing protocol. */
-export const createRemoteBundleSigningPlugin = ({
+/** Signs through a server implementing the Hot Updater signing protocol. */
+export const remoteSigning = ({
   endpoint,
   fetch: fetchImplementation = globalThis.fetch,
-  name,
   publicKeyPath,
-  resolveToken,
-}: RemoteBundleSigningPluginOptions): BundleSigningPlugin => {
-  if (!name.trim()) {
-    throw new Error("Remote bundle signing provider name is required.");
-  }
+  signingToken,
+}: RemoteSigningOptions): BundleSigningPlugin => {
   if (!publicKeyPath.trim()) {
     throw new Error("Remote bundle signing public key path is required.");
   }
@@ -330,6 +329,18 @@ export const createRemoteBundleSigningPlugin = ({
   }
   const normalizedEndpoint = normalizeEndpoint(endpoint);
   let resolvedKey: Promise<ResolvedPublicKey> | undefined;
+  const resolveToken = async () => {
+    const token =
+      typeof signingToken === "function"
+        ? await signingToken()
+        : (signingToken ?? process.env.HOT_UPDATER_SIGNING_TOKEN);
+    if (!token?.trim()) {
+      throw new Error(
+        "remoteSigning requires signingToken or HOT_UPDATER_SIGNING_TOKEN.",
+      );
+    }
+    return token;
+  };
 
   const getResolvedKey = () => {
     if (resolvedKey) return resolvedKey;
@@ -348,7 +359,7 @@ export const createRemoteBundleSigningPlugin = ({
   };
 
   return {
-    name,
+    name: "remoteSigning",
     publicKeyPath,
     async getPublicKey() {
       const { publicKey } = await getResolvedKey();

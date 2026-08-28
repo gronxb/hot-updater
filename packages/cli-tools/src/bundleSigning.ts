@@ -2,10 +2,7 @@ import crypto, { type KeyObject } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import type {
-  BundleSigningPlugin,
-  SigningConfig,
-} from "@hot-updater/plugin-core";
+import type { BundleSigningPlugin } from "@hot-updater/plugin-core";
 
 import { getCwd } from "./cwd.js";
 
@@ -169,7 +166,7 @@ const preparePluginSigning = async (
 };
 
 export const prepareBundleSigning = async (
-  signing: SigningConfig | undefined,
+  signing: BundleSigningPlugin | undefined,
   options: { readonly cwd?: string } = {},
 ): Promise<BundleSigningSession | null> => {
   if (!signing) {

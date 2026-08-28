@@ -2,7 +2,7 @@ import { defineConfig } from "tsdown";
 
 export default defineConfig([
   {
-    entry: ["src/index.ts", "src/edge.ts", "src/edgeSigning.ts"],
+    entry: ["src/index.ts", "src/edge.ts"],
     format: ["esm", "cjs"],
     outDir: "dist",
     dts: true,

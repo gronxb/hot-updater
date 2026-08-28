@@ -409,8 +409,16 @@ export interface BundleSigningPlugin {
   }) => Promise<{ readonly signature: Uint8Array }>;
 }
 
+/** Explicit local private-key configuration normalized by the config loader. */
+export interface LocalSigningConfig {
+  /** Path to an RSA private key in PEM format. */
+  readonly privateKeyPath: string;
+  /** Path to the matching, checked-in RSA SPKI public key. */
+  readonly publicKeyPath: string;
+}
+
 /** Plugin used to sign bundles. Omit `signing` to disable bundle signing. */
-export type SigningConfig = BundleSigningPlugin;
+export type SigningConfig = BundleSigningPlugin | LocalSigningConfig;
 
 /**
  * Extra fingerprint sources.
@@ -535,11 +543,10 @@ export type ConfigInput = {
    *
    * @example
    * ```ts
-   * import { localSigning } from 'hot-updater/signing';
-   *
-   * signing: localSigning({
+   * signing: {
    *   privateKeyPath: './keys/private-key.pem',
-   * })
+   *   publicKeyPath: './keys/public-key.pem',
+   * }
    * ```
    */
   signing?: SigningConfig;

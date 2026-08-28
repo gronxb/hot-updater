@@ -5,21 +5,25 @@ import {
   sign as signWithPrivateKey,
 } from "node:crypto";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createBundleSigningHandler,
-  createRemoteBundleSigningPlugin,
   REMOTE_BUNDLE_SIGNING_ALGORITHM,
   REMOTE_BUNDLE_SIGNING_PATH,
   REMOTE_BUNDLE_SIGNING_PROTOCOL_VERSION,
   REMOTE_BUNDLE_SIGNING_TOKEN_HEADER,
+  remoteSigning,
 } from "./remoteBundleSigning";
 
 const TOKEN = "dedicated-signing-token";
 const ENDPOINT = "https://updates.example.com/functions/v1/update-server";
 const ENDPOINT_PATH = `/functions/v1/update-server${REMOTE_BUNDLE_SIGNING_PATH}`;
 const PUBLIC_KEY_PATH = "keys/public-key.pem";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const createKeys = (modulusLength = 2048) => {
   const { privateKey, publicKey } = generateKeyPairSync("rsa", {
@@ -64,12 +68,11 @@ const createServerFetch = ({
   });
 
 const createPlugin = (fetch: typeof globalThis.fetch) =>
-  createRemoteBundleSigningPlugin({
+  remoteSigning({
     endpoint: ENDPOINT,
     fetch,
-    name: "edgeFunctionSigning",
     publicKeyPath: PUBLIC_KEY_PATH,
-    resolveToken: () => TOKEN,
+    signingToken: () => TOKEN,
   });
 
 const metadata = (overrides: Record<string, unknown> = {}) => ({
@@ -112,6 +115,26 @@ describe("remote bundle signing client", () => {
     });
   });
 
+  it("resolves the default signing token only when an operation runs", async () => {
+    const fetch = createServerFetch();
+    const plugin = remoteSigning({
+      endpoint: ENDPOINT,
+      fetch,
+      publicKeyPath: PUBLIC_KEY_PATH,
+    });
+
+    expect(fetch).not.toHaveBeenCalled();
+    vi.stubEnv("HOT_UPDATER_SIGNING_TOKEN", TOKEN);
+    await expect(plugin.getPublicKey()).resolves.toEqual({
+      publicKey: keys.publicKey,
+    });
+    expect(
+      new Headers(fetch.mock.calls[0]![1]?.headers).get(
+        REMOTE_BUNDLE_SIGNING_TOKEN_HEADER,
+      ),
+    ).toBe(TOKEN);
+  });
+
   it("caches valid metadata and retries after a redacted load failure", async () => {
     const serverFetch = createServerFetch();
     const fetch = vi
@@ -143,30 +166,27 @@ describe("remote bundle signing client", () => {
     "https://signer.example.com/a/%2f/b",
   ])("rejects unsafe endpoints without reflecting them: %s", (endpoint) => {
     expect(() =>
-      createRemoteBundleSigningPlugin({
+      remoteSigning({
         endpoint,
-        name: "remote",
         publicKeyPath: PUBLIC_KEY_PATH,
-        resolveToken: () => TOKEN,
+        signingToken: () => TOKEN,
       }),
     ).toThrow("Remote bundle signing requires a valid endpoint.");
   });
 
   it("allows HTTP only for exact loopback hosts", () => {
     expect(() =>
-      createRemoteBundleSigningPlugin({
+      remoteSigning({
         endpoint: "http://127.0.0.1:8787/provider",
-        name: "remote",
         publicKeyPath: PUBLIC_KEY_PATH,
-        resolveToken: () => TOKEN,
+        signingToken: () => TOKEN,
       }),
     ).not.toThrow();
     expect(() =>
-      createRemoteBundleSigningPlugin({
+      remoteSigning({
         endpoint: "http://localhost:8787/provider",
-        name: "remote",
         publicKeyPath: PUBLIC_KEY_PATH,
-        resolveToken: () => TOKEN,
+        signingToken: () => TOKEN,
       }),
     ).not.toThrow();
   });
@@ -258,12 +278,11 @@ describe("remote bundle signing client", () => {
     const resolveToken = vi.fn(() => {
       throw new Error(`missing ${TOKEN}`);
     });
-    const plugin = createRemoteBundleSigningPlugin({
+    const plugin = remoteSigning({
       endpoint: ENDPOINT,
       fetch: createServerFetch(),
-      name: "remote",
       publicKeyPath: PUBLIC_KEY_PATH,
-      resolveToken,
+      signingToken: resolveToken,
     });
     expect(resolveToken).not.toHaveBeenCalled();
     await expect(plugin.getPublicKey()).rejects.toThrow(

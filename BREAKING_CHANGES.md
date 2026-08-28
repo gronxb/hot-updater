@@ -41,8 +41,8 @@ for the parallel-cutover procedure.
 
 ## Bundle Signing configuration
 
-The legacy inline signing object is replaced by a signing plugin. Migrate local
-PEM signing as follows:
+The legacy `enabled` flag is removed. Local PEM signing remains an explicit
+inline config and now requires the checked-in public key path:
 
 ```ts
 // Before
@@ -52,12 +52,10 @@ signing: {
 }
 
 // After
-import { localSigning } from "hot-updater/signing";
-
-signing: localSigning({
+signing: {
   privateKeyPath: "./keys/private-key.pem",
   publicKeyPath: "./keys/public-key.pem",
-})
+}
 ```
 
 Replace `enabled: false` by omitting `signing`. Do not ignore the entire
@@ -65,8 +63,9 @@ Replace `enabled: false` by omitting `signing`. Do not ignore the entire
 SPKI public key so Expo, Console, and native trust-anchor checks do not need
 private-key or provider credentials.
 
-The AWS, Firebase, Cloudflare, Supabase, Azure, and Vault packages now export
-provider-backed signers. See the
+`hot-updater/signing` exports `remoteSigning`, `awsKmsSigning`, and
+`googleCloudKmsSigning`. Signing remains independent of the configured storage
+and database provider. See the
 [Bundle Signing guide](<./docs/content/docs/(latest)/guides/bundle-signing.mdx>)
 for their imports and custody differences.
 

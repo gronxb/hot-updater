@@ -18,7 +18,7 @@ Build plugins handle the bundling process when you run the `hot-updater deploy` 
   [Rock CLI](https://github.com/callstack/rock) `bundle` command.
 - **`@hot-updater/expo`**: Executes the bundle command through Expo.
 
-## Signing Plugin
+## Bundle Signing
 
 Signing plugins authorize immutable OTA artifact content during
 `hot-updater deploy`. They expose a checked-in public-key path, resolve the
@@ -30,16 +30,17 @@ Signing is independent of the storage and database plugins. Omit `signing` for
 unsigned deployments; Hot Updater never falls back from a configured signer to
 an unsigned deployment.
 
-### Supported Plugins
+### Supported Options
 
-- **`hot-updater/signing`**: Local PEM signing with `localSigning`.
-- **`@hot-updater/aws`**: AWS KMS signing with `kmsSigning`.
-- **`@hot-updater/firebase`**: Google Cloud KMS signing with
-  `firebaseKmsSigning`.
-- **`@hot-updater/cloudflare`**: Cloudflare Worker signing with
-  `workerSigning`.
-- **`@hot-updater/supabase`**: Supabase Edge Function signing with
-  `edgeFunctionSigning`.
+- **Built-in local signing**: Set `signing` to explicit `privateKeyPath` and
+  `publicKeyPath` values. Hot Updater does not discover or enable a key
+  automatically.
+- **`hot-updater/signing`**: Use a compatible signing endpoint with
+  `remoteSigning`, or hardened managed-key custody with `awsKmsSigning` and
+  `googleCloudKmsSigning`.
+
+Signing is independent of the storage and database provider. The cloud KMS
+SDKs are optional peer dependencies and load only when their signer is used.
 
 See [Bundle Signing](/docs/guides/bundle-signing) for custody differences,
 provider setup, native trust-anchor rollout, and rotation guidance.

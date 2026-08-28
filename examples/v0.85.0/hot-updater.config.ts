@@ -2,7 +2,6 @@ import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
-import { localSigning } from "hot-updater/signing";
 
 config({
   path: process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH ?? ".env.hotupdater",
@@ -62,9 +61,10 @@ export default defineConfig({
   },
   /* E2E_AUTO_PATCH_CONFIG_END */
   updateStrategy: "appVersion",
-  signing: localSigning({
+  signing: {
     privateKeyPath: "./keys/private-key.pem",
-  }),
+    publicKeyPath: "./keys/public-key.pem",
+  },
 
   authorityId: "9bfb9f0b-37a8-412c-a8f4-c1a949237fb3",
 });

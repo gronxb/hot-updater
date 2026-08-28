@@ -99,11 +99,11 @@ For more details, see:
 ## Optional: Bundle Signing
 
 Managed Cloudflare init does not create or enable a signing key. After
-provisioning the OTA infrastructure, configure the official
-[Cloudflare Worker signer](/docs/guides/bundle-signing#cloudflare-workers),
+provisioning the OTA infrastructure, configure
+[local PEM, AWS KMS, or Google Cloud KMS signing](/docs/guides/bundle-signing),
 embed its public key in a native release, and only then deploy signed bundles.
-Use a dedicated signing Worker and token; do not reuse the managed OTA Worker's
-client API key.
+Storage and database selection does not constrain the signer. Call KMS directly
+from the protected deploy job rather than proxying it through a Worker.
 
 ## Step 3: Add HotUpdater to Your Project
 

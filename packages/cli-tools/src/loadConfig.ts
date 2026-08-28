@@ -1,6 +1,7 @@
 import path from "path";
 
 import type {
+  BundleSigningPlugin,
   ConfigInput,
   Platform,
   RequiredDeep,
@@ -14,6 +15,7 @@ import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
 
 import { getCwd } from "./cwd.js";
+import { normalizeSigningConfig } from "./localBundleSigning.js";
 
 export type HotUpdaterConfigOptions = {
   platform: Platform;
@@ -194,7 +196,9 @@ const getDefaultConfig = (): ConfigInput => {
 export type ConfigResponse = RequiredDeep<
   Omit<ConfigInput, "database" | "signing" | "storage">
 > &
-  Pick<ConfigInput, "database" | "signing" | "storage">;
+  Pick<ConfigInput, "database" | "storage"> & {
+    signing?: BundleSigningPlugin;
+  };
 
 const mergeConfigSources = (
   ...sources: Array<ConfigInput | null | undefined>
@@ -247,5 +251,10 @@ export const loadConfig = async (
     getConfigLoaderOptions(options),
   );
 
-  return mergeConfigSources(config, getDefaultConfig()) as ConfigResponse;
+  const mergedConfig = mergeConfigSources(config, getDefaultConfig());
+  const signing = normalizeSigningConfig(mergedConfig.signing);
+  return {
+    ...mergedConfig,
+    ...(signing === undefined ? {} : { signing }),
+  } as ConfigResponse;
 };

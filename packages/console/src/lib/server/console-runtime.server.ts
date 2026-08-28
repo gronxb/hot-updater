@@ -14,7 +14,11 @@ const readString = (value: unknown, key: string): string | undefined => {
 };
 
 const getProviderName = (signing: unknown): string => {
-  return readString(signing, "name")?.slice(0, 80) ?? "Configured provider";
+  return (
+    readString(signing, "name")?.slice(0, 80) ??
+    (readString(signing, "privateKeyPath") ? "localSigning" : undefined) ??
+    "Configured provider"
+  );
 };
 
 export const sanitizeConsoleSigningConfig = (

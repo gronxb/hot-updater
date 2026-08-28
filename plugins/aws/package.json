@@ -60,7 +60,6 @@
     "@aws-sdk/client-cloudfront": "3.1066.0",
     "@aws-sdk/client-dynamodb": "3.1066.0",
     "@aws-sdk/client-iam": "3.1066.0",
-    "@aws-sdk/client-kms": "3.1066.0",
     "@aws-sdk/client-lambda": "3.1066.0",
     "@aws-sdk/client-s3": "catalog:aws",
     "@aws-sdk/cloudfront-signer": "3.1064.0",

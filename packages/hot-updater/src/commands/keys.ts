@@ -123,8 +123,7 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
         ui.kv(
           "Code",
           ui.code(
-            'import { localSigning } from "hot-updater/signing";\n' +
-              'signing: localSigning({ privateKeyPath: "./keys/private-key.pem" })',
+            'signing: {\n  privateKeyPath: "./keys/private-key.pem",\n  publicKeyPath: "./keys/public-key.pem",\n}',
           ),
         ),
         ui.kv("Run", ui.command("hot-updater keys export-public")),

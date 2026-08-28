@@ -2,7 +2,10 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
-import type { ConfigInput } from "@hot-updater/plugin-core";
+import type {
+  BundleSigningPlugin,
+  ConfigInput,
+} from "@hot-updater/plugin-core";
 import {
   afterEach,
   beforeEach,
@@ -32,7 +35,7 @@ describe("ConfigResponse", () => {
     >();
     expectTypeOf<ConfigResponse["console"]["port"]>().toEqualTypeOf<number>();
     expectTypeOf<ConfigResponse["signing"]>().toEqualTypeOf<
-      ConfigInput["signing"]
+      BundleSigningPlugin | undefined
     >();
 
     expectTypeOf<ConfigResponse["storage"]["getDownloadUrl"]>().toEqualTypeOf<
@@ -180,6 +183,32 @@ describe("loadConfig", () => {
     expect(signing).toBe(
       Reflect.get(globalThis, "__HOT_UPDATER_TEST_SIGNING_PROVIDER__"),
     );
+  });
+
+  it("normalizes explicit local signing config without reading the private key", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        "export default {",
+        "  signing: {",
+        "    privateKeyPath: './private-key-canary.pem',",
+        "    publicKeyPath: './keys/public-key.pem',",
+        "  },",
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    const config = await loadConfig(null);
+
+    expect(config.signing?.name).toBe("localSigning");
+    expect(config.signing?.publicKeyPath).toBe("./keys/public-key.pem");
+    expect(config.signing).not.toHaveProperty("privateKeyPath");
+    await expect(
+      config.signing?.getPublicKey({ cwd: projectRoot }),
+    ).rejects.toThrow("Failed to load the local bundle signing private key.");
   });
 
   it("preserves legacy merge semantics for arrays in user config", async () => {

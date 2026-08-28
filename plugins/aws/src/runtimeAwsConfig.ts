@@ -1,4 +1,3 @@
-import type { KMSClientConfig } from "@aws-sdk/client-kms";
 import type { S3ClientConfig } from "@aws-sdk/client-s3";
 import type { SSMClientConfig } from "@aws-sdk/client-ssm";
 
@@ -51,18 +50,5 @@ export const applySsmRuntimeAwsConfig = (
   return {
     ...config,
     endpoint,
-  };
-};
-
-export const applyKmsRuntimeAwsConfig = (
-  config: KMSClientConfig,
-): KMSClientConfig => {
-  return {
-    ...config,
-    // A global AWS_ENDPOINT_URL is often set for S3-compatible storage or
-    // LocalStack. Signing must not silently send KMS requests to that ambient
-    // endpoint. Tests and private endpoints remain available via the explicit
-    // KMS client `endpoint` option.
-    ignoreConfiguredEndpointUrls: true,
   };
 };

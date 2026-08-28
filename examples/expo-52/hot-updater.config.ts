@@ -2,7 +2,6 @@ import { expo } from "@hot-updater/expo";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
-import { localSigning } from "hot-updater/signing";
 
 config({ path: ".env.hotupdater" });
 
@@ -24,7 +23,8 @@ export default defineConfig({
   },
   // Bundle signing is enabled for this example.
   // Run: npx hot-updater keys generate
-  signing: localSigning({
+  signing: {
     privateKeyPath: "./keys/private-key.pem",
-  }),
+    publicKeyPath: "./keys/public-key.pem",
+  },
 });

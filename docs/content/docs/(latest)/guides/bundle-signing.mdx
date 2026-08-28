@@ -15,48 +15,49 @@ Signing authenticates artifact content. It does not authorize release
 targeting, prevent rollback to an older correctly signed artifact, or replace
 review and access controls around publishing.
 
-The private key is the deployment authority. Prefer a remote signing service
-where the private key is non-exportable and the deploy process submits only a
-message to sign.
+The private key is the deployment authority. Local PEM signing is the standard
+baseline when the deploy environment protects that key. When your threat model
+requires stronger custody, prefer a remote signing service where the private
+key is non-exportable and the deploy process submits only a message to sign.
 
-| Official signer         | Import                    | Custody                                           |
-| ----------------------- | ------------------------- | ------------------------------------------------- |
-| Local PEM               | `hot-updater/signing`     | Exportable key managed by your deploy environment |
-| AWS KMS                 | `@hot-updater/aws`        | Non-exportable AWS KMS key                        |
-| Firebase project        | `@hot-updater/firebase`   | Non-exportable Google Cloud KMS key               |
-| Cloudflare Worker       | `@hot-updater/cloudflare` | Non-extractable Worker `CryptoKey` binding        |
-| Supabase Edge Function  | `@hot-updater/supabase`   | Runtime-readable project secret                   |
+| Signer           | Use case            | Custody                                           |
+| ---------------- | ------------------- | ------------------------------------------------- |
+| Local PEM        | Standard baseline   | Exportable key managed by your deploy environment |
+| AWS KMS          | Hardened production | Non-exportable AWS KMS key                        |
+| Google Cloud KMS | Hardened production | Non-exportable Google Cloud KMS key               |
+| Remote endpoint  | Service-dependent   | Defined by the compatible signing service         |
 
-Official provider signers follow Hot Updater's managed infrastructure
-integrations. GitHub Actions is an identity source rather than a signing
-service, so use its OIDC token with a compatible KMS signer. Cloudflare and
-Supabase provide official provider-hosted signers below, with different custody
-guarantees.
+Local PEM signing is the normal industry baseline used by systems such as Expo
+and CodePush when the deploy environment protects the private key. KMS signing
+is a hardened option when non-exportable custody and workload identity justify
+the additional provider setup. GitHub Actions is an identity source rather
+than a signing service; use its OIDC token with a compatible KMS signer.
 
 > **Important**: Release a native app containing the public key before you
 > deploy signed bundles. An app without the matching public key rejects them.
 
 ## Choose and Roll Out a Signer
 
-Signing is independent of storage and database selection. The AWS, Firebase,
-Cloudflare, and Supabase plugins are the natural choices when the same provider
-already owns your OTA infrastructure. Use the local plugin only when an
-exportable key is an acceptable custody model.
+Signing is independent of storage and database selection. Cloudflare and
+Supabase users can call AWS KMS or Google Cloud KMS directly from the protected
+deploy job; do not proxy KMS through a Worker or Edge Function. Use local PEM
+signing when its simpler exportable-key custody fits your threat model.
 
 `hot-updater init` does not create or enable a signing key. Signing remains an
 explicit opt-in:
 
-1. Provision one dedicated RSA signing key and pin its exact identifier or
-   immutable version when the provider supports one.
+1. Provision a dedicated RSA signing key for each app and environment, and pin
+   its exact identifier or immutable version when the provider supports one.
 2. Export its SPKI public key to `keys/public-key.pem` and commit that file.
-3. Add the matching signing plugin to `hot-updater.config.ts`.
+3. Add explicit local key paths or the matching signing plugin to
+   `hot-updater.config.ts`.
 4. Run `npx hot-updater keys export-public`, or `npx expo prebuild` for Expo.
 5. Release the native app, then begin signed OTA deployments.
 
 All official signers require RSA keys of at least 2048 bits. Prefer 3072 or
 4096 bits for newly provisioned keys.
 
-## Recommended: AWS KMS
+## Hardened: AWS KMS
 
 [AWS KMS asymmetric keys](https://docs.aws.amazon.com/kms/latest/developerguide/symmetric-asymmetric.html)
 perform signing without returning the private key. Create an RSA key with
@@ -104,19 +105,19 @@ contains `keys/`, remove that entry or add an exception for the public key.
 
 ### 3. Configure the provider
 
-Install the AWS provider in the project that runs the deploy command:
+Install the optional AWS KMS SDK in the project that runs the deploy command:
 
 ```bash
-npm install @hot-updater/aws --save-dev
+npm install @aws-sdk/client-kms --save-dev
 ```
 
 ```ts title="hot-updater.config.ts"
-import { kmsSigning } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
+import { awsKmsSigning } from "hot-updater/signing";
 
 export default defineConfig({
   // ...other config
-  signing: kmsSigning({
+  signing: awsKmsSigning({
     // A key ARN is an identifier, not a secret. Pin the exact key.
     keyId:
       "arn:aws:kms:ap-northeast-2:123456789012:key/00000000-0000-0000-0000-000000000000",
@@ -126,10 +127,10 @@ export default defineConfig({
 });
 ```
 
-`kmsSigning` also accepts AWS SDK v3 KMS client options such as
-`credentials` and `endpoint`. Prefer the default credential chain with a
-short-lived workload identity instead of putting long-lived credentials in
-`hot-updater.config.ts`.
+`awsKmsSigning` uses the AWS SDK default credential chain. Prefer a short-lived
+workload identity instead of putting long-lived credentials in
+`hot-updater.config.ts`. An explicit HTTPS `endpoint` is available for private
+KMS endpoints; HTTP is accepted only for loopback testing.
 
 Hot Updater compares provider signatures with `publicKeyPath` before upload.
 A mismatched provider, public key, or algorithm fails the deployment.
@@ -168,8 +169,19 @@ and database permissions separately for the providers used by your project.
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": ["kms:GetPublicKey", "kms:Sign"],
+      "Action": "kms:GetPublicKey",
       "Resource": "arn:aws:kms:ap-northeast-2:123456789012:key/00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "kms:Sign",
+      "Resource": "arn:aws:kms:ap-northeast-2:123456789012:key/00000000-0000-0000-0000-000000000000",
+      "Condition": {
+        "StringEquals": {
+          "kms:MessageType": "RAW",
+          "kms:SigningAlgorithm": "RSASSA_PKCS1_V1_5_SHA_256"
+        }
+      }
     }
   ]
 }
@@ -230,13 +242,60 @@ RSA PKCS#1 v1.5 with SHA-256. The AWS KMS provider therefore uses:
 Do not substitute `DIGEST` or an RSA-PSS algorithm. Existing iOS and Android
 verifiers expect the exact protocol above.
 
-Firebase Cloud KMS preserves the same signature semantics by submitting
+Google Cloud KMS preserves the same signature semantics by submitting
 `SHA-256(message)` to its digest API.
 
-The Cloudflare and Supabase plugins use the authenticated
-`/_hot-updater/signing` protocol. Requests and responses pin the protocol
-version, RSA-SHA256 algorithm, and SHA-256 fingerprint of the SPKI public key.
-The client rejects redirects and locally verifies every returned signature.
+`remoteSigning` uses the authenticated `/_hot-updater/signing` protocol.
+Requests and responses pin the protocol version, RSA-SHA256 algorithm, and
+SHA-256 fingerprint of the SPKI public key. The client rejects redirects and
+locally verifies every returned signature.
+
+Use `remoteSigning` for a compatible signing service that is not represented by
+an official provider plugin. The endpoint URL is normalized to the managed
+signing path, and the dedicated token defaults to
+`HOT_UPDATER_SIGNING_TOKEN`.
+
+Use a separate signing key and token for each app and environment. Possession
+of a remote signing token grants an online signing oracle for arbitrary
+32-byte content-hash messages. The signature authenticates only artifact
+content; app, environment, platform, channel, targeting, release context, and
+rollback policy are not included in the signed message. Enforce those controls
+in the protected deployment workflow and do not share a signer across trust
+boundaries.
+
+```ts title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+import { remoteSigning } from "hot-updater/signing";
+
+export default defineConfig({
+  // ...other config
+  signing: remoteSigning({
+    endpoint: "https://signer.example.com",
+    publicKeyPath: "./keys/public-key.pem",
+  }),
+});
+```
+
+A custom service can mount the matching Web API handler from the root
+`@hot-updater/plugin-core` entrypoint. Keep key access inside the `sign`
+callback and return `404` for unrelated routes:
+
+```ts title="signing-service.ts"
+import { createBundleSigningHandler } from "@hot-updater/plugin-core";
+
+export const handleRequest = async (request: Request, env: Env) =>
+  (await createBundleSigningHandler({
+    request,
+    publicKey: env.HOT_UPDATER_SIGNING_PUBLIC_KEY,
+    token: env.HOT_UPDATER_SIGNING_TOKEN,
+    sign: (message) => env.signWithKmsOrHsm(message),
+  })) ?? new Response("Not found", { status: 404 });
+```
+
+The handler authenticates both metadata and signing requests, accepts only the
+versioned 32-byte signing contract, and verifies the returned signature before
+responding. Key isolation, authorization, rate limits, and audit logging remain
+the responsibility of the service and its `sign` implementation.
 
 Remote providers receive one request for each distinct signed hash. Repeated
 identical hashes are memoized, including hashes shared by multiple artifact
@@ -244,9 +303,9 @@ references. Resolving the provider public key adds a separate request. Account
 for KMS latency, request quotas, availability, and cost. Provider errors fail
 the deployment; Hot Updater does not fall back to an unsigned bundle.
 
-## Firebase projects: Google Cloud KMS
+## Hardened: Google Cloud KMS
 
-Firebase projects are Google Cloud projects, so they can use Cloud KMS without
+Google Cloud projects, including Firebase projects, can use Cloud KMS without
 exporting the private key. Pin a full CryptoKeyVersion resource name; a moving
 alias would stop matching the public key embedded in installed apps.
 
@@ -270,16 +329,20 @@ gcloud kms keys versions get-public-key 1 \
 ```
 
 ```bash
-npm install @hot-updater/firebase --save-dev
+npm install @google-cloud/kms --save-dev
 ```
 
+`@google-cloud/kms` 6 requires Node.js 22 or later. This requirement applies
+only to deploy environments that use `googleCloudKmsSigning`; the other signing
+options retain Hot Updater's Node.js 20.19 baseline.
+
 ```ts title="hot-updater.config.ts"
-import { firebaseKmsSigning } from "@hot-updater/firebase";
 import { defineConfig } from "hot-updater";
+import { googleCloudKmsSigning } from "hot-updater/signing";
 
 export default defineConfig({
   // ...other config
-  signing: firebaseKmsSigning({
+  signing: googleCloudKmsSigning({
     keyVersion:
       "projects/PROJECT/locations/LOCATION/keyRings/RING/cryptoKeys/KEY/cryptoKeyVersions/1",
     publicKeyPath: "./keys/public-key.pem",
@@ -293,195 +356,16 @@ Workload Identity Federation. Grant the key-level
 `roles/cloudkms.signerVerifier` role, or a custom role limited to signing and
 reading the public key. Only RSA PKCS#1 SHA-256 key versions are accepted.
 
-## Cloudflare Workers
-
-Cloudflare can hold the RSA private key as a Workers `secret_key` binding.
-The Worker receives a non-extractable `CryptoKey` with only the `sign`
-usage. This is a stronger boundary than a text secret, but it is not a KMS or
-HSM.
-
-Install the provider and configure the deploy-side plugin with the base URL of
-a dedicated signing Worker:
-
-```bash
-npm install @hot-updater/cloudflare --save-dev
-```
-
-```ts title="hot-updater.config.ts"
-import { workerSigning } from "@hot-updater/cloudflare";
-import { defineConfig } from "hot-updater";
-
-export default defineConfig({
-  signing: workerSigning({
-    workerUrl: "https://hot-updater-signer.example.workers.dev",
-    publicKeyPath: "./keys/public-key.pem",
-  }),
-});
-```
-
-The plugin reads `HOT_UPDATER_CLOUDFLARE_SIGNING_TOKEN` only when it loads the
-public key or signs. You may pass `signingToken` explicitly, but do not put it
-in source control.
-
-Create a dedicated Worker and mount the official handler:
-
-```ts title="src/index.ts"
-import { createWorkerSigningHandler } from "@hot-updater/cloudflare/worker";
-
-interface Env {
-  HOT_UPDATER_SIGNING_KEY: CryptoKey;
-  HOT_UPDATER_SIGNING_PUBLIC_KEY: string;
-  HOT_UPDATER_SIGNING_TOKEN: string;
-}
-
-export default {
-  async fetch(request: Request, env: Env) {
-    return (
-      (await createWorkerSigningHandler({
-        request,
-        privateKey: env.HOT_UPDATER_SIGNING_KEY,
-        publicKey: env.HOT_UPDATER_SIGNING_PUBLIC_KEY,
-        signingToken: env.HOT_UPDATER_SIGNING_TOKEN,
-      })) ?? new Response("Not found", { status: 404 })
-    );
-  },
-};
-```
-
-Provision `HOT_UPDATER_SIGNING_KEY` through the
-[Workers Script Secrets API](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/secrets/methods/update/)
-as `type: "secret_key"`, `format: "pkcs8"`, algorithm
-`RSASSA-PKCS1-v1_5` with `SHA-256`, and `usages: ["sign"]`. The required
-`key_base64` value is the base64 encoding of PKCS#8 DER, not the PEM text:
-
-```bash
-openssl pkcs8 -topk8 -nocrypt \
-  -in keys/private-key.pem \
-  -outform DER \
-  | openssl base64 -A
-```
-
-```json title="Workers Script Secrets API body"
-{
-  "name": "HOT_UPDATER_SIGNING_KEY",
-  "type": "secret_key",
-  "format": "pkcs8",
-  "algorithm": {
-    "name": "RSASSA-PKCS1-v1_5",
-    "hash": "SHA-256"
-  },
-  "usages": ["sign"],
-  "key_base64": "BASE64_ENCODED_PKCS8_DER"
-}
-```
-
-Store the SPKI PEM public key as a plain-text binding. Store the separate
-random signing token as a `secret_text` binding, for example with
-`wrangler secret put`; never place the token in `[vars]` or another plain-text
-binding. The deploy environment needs only the same signing token; it does not
-need the Cloudflare management API token.
-
-Possession of the signing token grants an online signing oracle, and anyone who
-can deploy code to the Worker can request signatures with its key. Use a
-dedicated Worker and token, restrict deployments to reviewed protected refs,
-rate-limit the signing route, redact authorization headers and request bodies,
-and revoke the token immediately if it is exposed.
-
-For a Worker mounted below a custom path, use that base path in `workerUrl`
-and pass the resulting full signing pathname as `endpointPath` to the handler.
-The private key binding is validated as private, non-extractable, RSA-SHA256,
-and sign-only before each signature.
-
-## Supabase Edge Functions
-
-Supabase does not expose an arbitrary-data KMS signing primitive. The official
-plugin therefore hosts signing in a dedicated Edge Function and stores the
-PKCS#8 PEM in a project secret. The function imports it as a non-extractable
-`CryptoKey`, but the original PEM remains readable to Edge Function code and
-project members who can manage secrets. Treat this as secret-backed custody,
-not KMS/HSM isolation.
-
-```bash
-npm install @hot-updater/supabase --save-dev
-```
-
-```ts title="hot-updater.config.ts"
-import { edgeFunctionSigning } from "@hot-updater/supabase";
-import { defineConfig } from "hot-updater";
-
-export default defineConfig({
-  signing: edgeFunctionSigning({
-    functionUrl:
-      "https://PROJECT_REF.supabase.co/functions/v1/hot-updater-signer",
-    publicKeyPath: "./keys/public-key.pem",
-  }),
-});
-```
-
-The deploy process reads `HOT_UPDATER_SUPABASE_SIGNING_TOKEN` lazily. Use a
-dedicated random token; never reuse the Supabase anon key, service-role key, or
-Hot Updater client API key.
-
-Pin the signing-only runtime in the function-local `deno.json`. Keep the exact
-version and generated `deno.lock` under review; do not use an unversioned npm
-specifier or a floating tag in a process that can read the private key.
-
-```json title="supabase/functions/hot-updater-signer/deno.json"
-{
-  "imports": {
-    "@hot-updater/supabase/edge/signing": "npm:@hot-updater/supabase@<exact-version>/edge/signing"
-  }
-}
-```
-
-Create the dedicated Edge Function:
-
-```ts title="supabase/functions/hot-updater-signer/index.ts"
-import { createEdgeFunctionSigningHandler } from "@hot-updater/supabase/edge/signing";
-
-Deno.serve(async (request) => {
-  return (
-    (await createEdgeFunctionSigningHandler({
-      request,
-      privateKey: Deno.env.get("HOT_UPDATER_SIGNING_PRIVATE_KEY") ?? "",
-      publicKey: Deno.env.get("HOT_UPDATER_SIGNING_PUBLIC_KEY") ?? "",
-      signingToken: Deno.env.get("HOT_UPDATER_SIGNING_TOKEN") ?? "",
-    })) ?? new Response("Not found", { status: 404 })
-  );
-});
-```
-
-Set the private PKCS#8 PEM, public SPKI PEM, and token with
-`supabase secrets set --env-file <protected-file>`, then delete the local
-protected file. Disable Supabase JWT verification only for this function so
-the official handler can enforce its dedicated token:
-
-```toml title="supabase/config.toml"
-[functions.hot-updater-signer]
-verify_jwt = false
-```
-
-Replace `<exact-version>` with the exact installed package version, commit the
-generated `deno.lock`, and deploy the signer explicitly:
-
-```bash
-supabase functions deploy hot-updater-signer --project-ref PROJECT_REF
-```
-
-Supabase project secrets are available to the project's Edge Function runtime.
-Keep the signer in a dedicated function, restrict function deployment and
-secret-management access, and do not expose these values to the OTA client
-handler. Other code deployed to the same project can read project secrets, so
-use a dedicated Supabase project or an external KMS-backed signer when that
-shared administrative boundary is too broad.
-
 ## Expo and EAS Build
 
 Expo embeds the public key during `expo prebuild`:
 
 ```ts title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+import { awsKmsSigning } from "hot-updater/signing";
+
 export default defineConfig({
-  signing: kmsSigning({
+  signing: awsKmsSigning({
     keyId: "arn:aws:kms:REGION:ACCOUNT_ID:key/KEY_ID",
     region: "REGION",
     publicKeyPath: "./keys/public-key.pem",
@@ -503,20 +387,20 @@ included in the build input.
 
 ## Local Private Key
 
-Use the local plugin when you accept responsibility for an exportable private
-key:
+Use the built-in local config when you accept responsibility for an exportable
+private key. Both paths are required; Hot Updater does not discover keys or
+derive a public-key path automatically:
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
-import { localSigning } from "hot-updater/signing";
 
 export default defineConfig({
-  signing: localSigning({
+  signing: {
     privateKeyPath:
       process.env.HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH ??
       "./keys/private-key.pem",
     publicKeyPath: "./keys/public-key.pem",
-  }),
+  },
   // ...other config
 });
 ```
@@ -538,15 +422,19 @@ only outside the workspace for the duration of the trusted signing job. A PEM
 retrieved from a secret manager is still available to that process and is less
 isolated than a KMS or HSM-backed remote signer.
 
-If local PEM custody is required in GitHub Actions, write the secret beneath
+If local PEM custody is required in GitHub Actions, store it as a secret in a
+protected GitHub Environment with required reviewers. Write the secret beneath
 `runner.temp`, keep the checked-in public key path explicit, and remove the
-temporary file even when deployment fails:
+temporary file even when deployment fails. Avoid a broadly available
+repository or organization secret for production signing authority.
 
 ```yaml title=".github/workflows/deploy.yml"
 jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
     env:
       HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH: ${{ runner.temp }}/hot-updater-signing/private-key.pem
     steps:
@@ -649,8 +537,8 @@ the trusted signing boundary.
 | ---------------- | --------------------- | ----------------------------- |
 | Omitted          | Not present           | Normal unsigned updates       |
 | Omitted          | Present               | Updates rejected              |
-| Plugin           | Present and matching  | Signed updates verified       |
-| Plugin           | Missing or mismatched | Deployment or update rejected |
+| Configured       | Present and matching  | Signed updates verified       |
+| Configured       | Missing or mismatched | Deployment or update rejected |
 
 Config and native files must match. Hot Updater fails closed rather than
 installing an unsigned or unverifiable update.

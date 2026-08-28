@@ -151,7 +151,7 @@ please refer to the article below for more details:
 
 Managed AWS init does not create or enable a signing key. After provisioning
 the OTA infrastructure, configure the official
-[AWS KMS signer](/docs/guides/bundle-signing#recommended-aws-kms), embed its
+[AWS KMS signer](/docs/guides/bundle-signing#hardened-aws-kms), embed its
 public key in a native release, and only then deploy signed bundles. Signing
 credentials belong in the deploy environment, never in the React Native app.
 

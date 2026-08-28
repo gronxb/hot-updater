@@ -21,11 +21,6 @@
       "import": "./dist/edge.mjs",
       "require": "./dist/edge.cjs"
     },
-    "./edge/signing": {
-      "types": "./dist/edgeSigning.d.cts",
-      "import": "./dist/edgeSigning.mjs",
-      "require": "./dist/edgeSigning.cjs"
-    },
     "./scaffold": {
       "import": "./supabase/index.ts",
       "require": "./supabase/index.ts"

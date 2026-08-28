@@ -95,7 +95,7 @@ For more details, see:
 
 Managed Firebase init does not create or enable a signing key. After
 provisioning the OTA infrastructure, configure the official
-[Google Cloud KMS signer](/docs/guides/bundle-signing#firebase-projects-google-cloud-kms),
+[Google Cloud KMS signer](/docs/guides/bundle-signing#hardened-google-cloud-kms),
 embed its public key in a native release, and only then deploy signed bundles.
 Signing credentials belong in the deploy environment, never in the React
 Native app.

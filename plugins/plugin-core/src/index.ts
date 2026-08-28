@@ -10,7 +10,6 @@ export {
   type CreateDatabasePluginOptions,
   type DatabasePluginInputErrorCode,
 } from "./createDatabasePlugin";
-export * from "./createBundleSigningPlugin";
 export * from "./createStorageKeyBuilder";
 export * from "./createStoragePlugin";
 export * from "./databaseClient";
@@ -25,6 +24,7 @@ export { createRequestBundleResolver } from "./requestBundleCache";
 export * from "./releaseCatalogCompiler";
 export * from "./releaseManagement";
 export * from "./releaseCatalogMutation";
+export * from "./remoteBundleSigning";
 export * from "./semverSatisfies";
 export * from "./storageDownloadPath";
 export * from "./types";
