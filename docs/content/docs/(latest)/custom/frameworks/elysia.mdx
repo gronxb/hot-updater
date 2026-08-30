@@ -15,7 +15,7 @@ npm install elysia @elysiajs/bearer
 
 ## Setup and Security
 
-Set up a [database adapter](../database/drizzle), generate its Hot Updater
+Set up a [database adapter](/docs/custom/database/drizzle), generate its Hot Updater
 schema, and apply the schema before starting the server.
 
 The recommended self-hosted client policy uses built-in API key authentication
@@ -106,18 +106,23 @@ their feature or storage provider is configured:
 | Admin   | `GET /hot-updater/admin/installations/*`  | Optional Analytics queries                       |
 
 Admin route groups exist only where `handlers.admin` is explicitly mounted.
-See the [Standalone Repository server contract](../../database-plugins/standalone#server-contract)
+See the [Standalone Repository server contract](/docs/database-plugins/standalone#server-contract)
 for the exact admin request and response shapes.
 
 ## React Native Setup
 
-Configure your React Native app to connect to this server.
+For `clientAccess: { type: "api-key" }`, first [create a client API key](/docs/custom/quick-start#bootstrap-the-schema-and-api-key)
+and send it as `x-api-key`. Omit this header only when the server explicitly
+uses `clientAccess: { type: "public" }`; never use the admin token in the app.
 
 ```typescript title="App.tsx"
 import { HotUpdater } from '@hot-updater/react-native';
 
 export default HotUpdater.wrap({
   baseURL: 'http://localhost:3000/hot-updater', // [!code ++]
+  requestHeaders: {
+    'x-api-key': '<API key printed by api-key create>',
+  },
   updateStrategy: 'appVersion', // or "fingerprint" // [!code ++]
   fallbackComponent: ({ progress, status }) => (
     // ... Custom loading UI

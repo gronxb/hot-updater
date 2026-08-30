@@ -10,9 +10,9 @@ Catalogs. The v0 update-check protocol and database layout are not compatible
 with this model.
 
 <Callout type="warn">
-  There is no in-place v0 to v1 infrastructure upgrade. Do not point v1 init at
-  v0 resources. Create new provider resources and ship their endpoint in a new
-  native app build.
+  There is no in-place v0 database or protocol upgrade. Keep v0 metadata and
+  endpoints intact, scaffold v1 alongside them, and ship the v1 endpoint in a
+  new native app build.
 </Callout>
 
 ## Compatibility boundary
@@ -22,7 +22,7 @@ with this model.
 | v0 native app → v0 infrastructure     | Yes       | Keep the old endpoint running while those binaries need OTA updates. |
 | v0 native app → v1 infrastructure     | No        | v1 does not expose the v0 app-version or fingerprint routes.         |
 | v1 native app → v0 infrastructure     | No        | Release Catalog and artifact routes are required.                    |
-| v1 init → existing v0 resources       | No        | Init stops before changing detected v0 resources.                    |
+| v1 init → v0 database layout or endpoint | No      | Use a separate v1 database namespace and endpoint.                    |
 | v1 native app → new v1 infrastructure | Yes       | This is the supported target.                                        |
 
 Do not deliver v1 `@hot-updater/react-native` JavaScript to a v0 native binary
@@ -36,7 +36,7 @@ Record the v0 public endpoint, provider resource identifiers, configuration,
 and credentials. Back up its metadata database. Do not delete or repurpose the
 old resources: installed v0 binaries may still call that endpoint.
 
-### 2. Scaffold v1 with new resources
+### 2. Scaffold v1 alongside v0
 
 Upgrade all `hot-updater` and `@hot-updater/*` packages together, then run:
 
@@ -44,10 +44,16 @@ Upgrade all `hot-updater` and `@hot-updater/*` packages together, then run:
 npx hot-updater init
 ```
 
-Choose new database, storage, function/worker, and CDN resources. If init
-detects a v0 D1 database, Firestore database, Supabase schema, or AWS endpoint,
-it exits without modifying that infrastructure. Select or create different
-resources and rerun init.
+Use a separate v1 database namespace and endpoint. Firebase and Supabase can
+reuse the existing project: v1 uses `hot_updater_v1_*` collections or tables and
+a separate `hot-updater-v1` function. Their init checks the v1 namespace rather
+than rejecting a project merely because it contains v0 data. Cloudflare needs
+a separate D1 database; init rejects a v0 D1 database or an existing v0 endpoint
+instead of upgrading it.
+
+Storage buckets do not have to be new, but preserve the access policies and
+objects still needed by v0. Do not prune shared storage using only the v1
+database while v0 binaries still need those artifacts.
 
 The v1 scaffold starts with an empty Release history. Redeploy the releases you
 want to serve from their source artifacts; v0 policy is not backfilled.

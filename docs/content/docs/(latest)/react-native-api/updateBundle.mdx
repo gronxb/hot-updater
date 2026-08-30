@@ -20,20 +20,28 @@ HotUpdater.init({
 
 async function stageAppUpdate() {
   try {
+    let checkError: Error | null = null;
     const updateInfo = await HotUpdater.checkForUpdate({
       updateStrategy: "appVersion", // or "fingerprint"
       requestHeaders: {
         "x-api-key": "<your-api-key>",
       },
+      onError: (error) => {
+        checkError = error;
+      },
     });
+
+    if (checkError) {
+      throw checkError;
+    }
 
     if (!updateInfo) {
       return {
-        status: "UP_TO_DATE",
+        status: "NO_UPDATE",
       };
     }
 
-    // Recommended: use the helper with all update arguments pre-filled.
+    // Recommended: let the helper resolve the artifact and stage the selection.
     const didUpdate = await updateInfo.updateBundle();
 
     if (!didUpdate) {
@@ -59,21 +67,14 @@ The `updateBundle` function accepts the following parameters:
 | Parameter  | Type                     | Required | Description                                       |
 | ---------- | ------------------------ | -------- | ------------------------------------------------- |
 | `bundleId` | `string`                 | ✅       | Unique identifier of the update bundle.           |
-| `fileUrl`  | `string \| null`         | ✅       | Bundle archive URL, or `null` when none is used.  |
+| `fileUrl`  | `string \| null`         | ✅       | Bundle archive URL, or `null` to reset to the built-in bundle. |
 | `fileHash` | `string \| null`         | ✅       | SHA256 hash, `sig:<base64_signature>`, or `null`. |
 | `status`   | `"UPDATE" \| "ROLLBACK"` | ✅       | Update transition to apply.                       |
 
-For a direct rollback transition with no archive, pass the required nullable
-properties explicitly:
-
-```tsx
-await HotUpdater.updateBundle({
-  bundleId: "<rollback-bundle-id>",
-  fileUrl: null,
-  fileHash: null,
-  status: "ROLLBACK",
-});
-```
+Passing `fileUrl: null` resets to the built-in bundle; it does not roll back to
+the OTA bundle named by `bundleId`. For a catalog-selected rollback, call the
+returned `updateInfo.updateBundle()` helper so the selected release and artifact
+are preserved.
 
 ### Behavior
 
@@ -81,8 +82,9 @@ await HotUpdater.updateBundle({
 - When `fileHash` is a hexadecimal hash, verifies the downloaded file's SHA256
   hash. A `sig:` value verifies its RSA-SHA256 signature with the configured
   public key. A failed verification aborts the update and deletes the download.
-- A `null` URL or hash represents a transition that does not use that archive
-  value; the properties must still be present in the object.
+- A `null` URL resets the native bundle selection to the built-in bundle and
+  runs downloaded-bundle cleanup. The nullable properties must still be present
+  in the object.
 - Stages the selected bundle transition for the next React Native runtime start
   without replacing the code already running.
 - Never reloads the app by itself. Call `HotUpdater.reload()` explicitly to
@@ -93,15 +95,17 @@ await HotUpdater.updateBundle({
 
 ### Security Recommendation
 
-Use the `fileHash` returned by `checkForUpdate()` whenever an update has a
-bundle archive. A plain SHA256 hash checks integrity but does not authenticate
-the publisher; a `sig:` value also verifies publisher authenticity with the
-configured public key.
+Use `updateInfo.updateBundle()` to resolve the artifact and pass its verification
+hash to the native updater. The `fileUrl` and `fileHash` fields returned by
+`checkForUpdate()` are `null` in v1 and must not be copied into a direct call.
+A plain SHA256 hash checks integrity but does not authenticate the publisher;
+a `sig:` value also verifies publisher authenticity with the configured public key.
 
 #### Recommended Approach
 
-Use `updateInfo.updateBundle()` whenever possible. The helper preserves the
-complete update context selected by `checkForUpdate()` without manual copying.
+Use `updateInfo.updateBundle()` whenever possible. The helper resolves the
+artifact when needed and preserves the complete update context selected by
+`checkForUpdate()` without manual copying.
 
 ```tsx
 const updateInfo = await HotUpdater.checkForUpdate({

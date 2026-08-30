@@ -1,6 +1,6 @@
 ---
 title: "When to Submit Your App for Review"
-description: "`HotUpdater` enables seamless updates to JavaScript (JS) files and assets required by your app, bypassing the app store review process in many cases. However, certain changes, particularly those involving native code (e.g., written in Swift/Objective-C for iOS or Kotlin/Java for Android), require app store review. Below, we outline when you need to submit your app for review and when `HotUpdater` can handle updates independently."
+description: "`HotUpdater` updates JavaScript (JS) files and assets without replacing the native binary. Native changes require a new app build, and every update must comply with the applicable app store policies."
 icon: FileCheck
 ---
 
@@ -20,13 +20,23 @@ icon: FileCheck
    ```
 
 
-## Scenarios Compatible with HotUpdater (No App Store Review)
+## Scenarios Compatible with HotUpdater (No Native Code Changes)
 
-Certain updates can be performed entirely via HotUpdater, allowing you to bypass the app store review process:
+Certain updates can be performed entirely via HotUpdater when they remain compatible with the installed native binary. Technical compatibility does not guarantee that an update can bypass app store review.
+
+<Callout type="warn">
+  JavaScript-only updates are not exempt from store policies. Apple's
+  [App Review Guidelines, including section 2.5.2](https://developer.apple.com/app-store/review/guidelines/#software-requirements),
+  restrict downloaded code that introduces or changes app features or
+  functionality. Google's
+  [Device and Network Abuse policy](https://support.google.com/googleplay/android-developer/answer/16559646?hl=en)
+  also requires runtime-loaded interpreted code to comply with Google Play
+  policies. Review the applicable policies before distributing an OTA update.
+</Callout>
 
 ### JavaScript Code Updates
 
-Updates that only modify JS code can be handled by HotUpdater without review.
+Updates that only modify JS code can be handled by HotUpdater if they are compatible with the installed native binary and comply with store policies.
 
 ```tsx
    export default function App() {
@@ -61,23 +71,13 @@ Updates that involve only JS library changes are compatible with HotUpdater:
 
 ## Understanding HotUpdater Package Versioning
 
-The HotUpdater versioning system helps determine whether app store review is necessary:
-| **Version Type** | **Example**       | **Changes**                                                                 | **Review Required?**        |
-|-------------------|-------------------|-----------------------------------------------------------------------------|-----------------------------|
-| Patch Version     | `0.5.10 → 0.5.11` | Only JS logic is updated.                                                  | No                          |
-| Minor Version     | `0.5.10 → 0.6.0` | Updates include JS changes and minor optimizations in the native code.     | Yes                         |
-| Major Version     | `0.5.10 → 1.0.0` | Significant changes to native code, often involving feature enhancements.  | Yes                         |
+The package version number does not determine native compatibility or app store review requirements. Even a patch release of `@hot-updater/react-native` can include native changes.
 
-If the version change only affects the `0.5.x` part of the package (patch version), you can update the `hot-updater` package without requiring an app store review, as the updates are limited to JS logic. However, if the `0.x.0` portion changes (major or minor version), it indicates changes in the native code. In these cases, the app must go through the app store review process.
-
-### Key Notes on Versioning
--	Patch Versions (x.x.Patch): Updates limited to JS logic (e.g., bug fixes or performance improvements). No app store review required.
--	Minor Versions (x.Minor.x): May include minor changes to native code, requiring app store review.
--	Major Versions (Major.x.x): Introduce significant updates to native code, always requiring app store review.
+Check the release notes and native dependency changes before upgrading. Changes to the native runtime require a new native build distributed through the app store; an OTA bundle cannot install those changes. JS-only changes still need to be compatible with the installed runtime and comply with store policies.
 
 ### Summary
 
 To ensure a smooth update process:
--	Use HotUpdater for JS updates and asset changes to avoid app store reviews.
+-	Use HotUpdater for native-compatible JS updates and asset changes that comply with store policies.
 -	Submit your app for review when native code changes or third-party libraries affecting native code are integrated.
--	Follow HotUpdater versioning guidelines to determine when a review is required.
+-	Check actual native changes and current store policies, not only the package version number.
