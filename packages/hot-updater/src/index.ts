@@ -1,4 +1,4 @@
-#!/usr/bin/env -S node --
+#!/usr/bin/env node
 import {
   Command,
   InvalidArgumentError,
@@ -116,11 +116,13 @@ program
     ).choices(["bare", "rock", "expo"]),
   )
   .option(
-    "--env-file <path>",
+    "--from-env-file <path>",
     "load saved init inputs and fail if any are missing",
   )
   .addHelpText("after", initHelp)
-  .action((options) => init(options));
+  .action(({ fromEnvFile, ...options }) =>
+    init({ ...options, envFile: fromEnvFile }),
+  );
 
 program
   .command("doctor")
