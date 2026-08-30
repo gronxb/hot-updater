@@ -1,5 +1,22 @@
 # hot-updater
 
+## 0.36.7
+
+### Patch Changes
+
+- d33eeaf: Restore the plain `#!/usr/bin/env node` shebang on the CLI entry so Yarn Classic generates a working `hot-updater.cmd` shim on Windows.
+- 855cfab: Rename the CLI's `init --env-file` option to `init --from-env-file` to avoid Node.js interpreting replay files as its own startup configuration. This keeps the portable shebang required by Yarn Classic on Windows without allowing `NODE_OPTIONS` in a replay file to run preloads before the CLI starts.
+
+  Breaking change: update replay commands to `hot-updater init --from-env-file .env.hotupdater`. The old `--env-file` CLI option is no longer supported. The programmatic `envFile` option is unchanged.
+
+  - @hot-updater/android-helper@0.36.7
+  - @hot-updater/apple-helper@0.36.7
+  - @hot-updater/cli-tools@0.36.7
+  - @hot-updater/console@0.36.7
+  - @hot-updater/core@0.36.7
+  - @hot-updater/server@0.36.7
+  - @hot-updater/plugin-core@0.36.7
+
 ## 0.36.6
 
 ### Patch Changes
