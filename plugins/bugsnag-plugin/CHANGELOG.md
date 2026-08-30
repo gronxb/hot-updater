@@ -1,5 +1,12 @@
 # @hot-updater/bugsnag-plugin
 
+## 0.36.7
+
+### Patch Changes
+
+- @hot-updater/core@0.36.7
+- @hot-updater/plugin-core@0.36.7
+
 ## 0.36.6
 
 ### Patch Changes

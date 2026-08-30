@@ -1,5 +1,19 @@
 # @hot-updater/cloudflare
 
+## 0.36.7
+
+### Patch Changes
+
+- 855cfab: Rename the CLI's `init --env-file` option to `init --from-env-file` to avoid Node.js interpreting replay files as its own startup configuration. This keeps the portable shebang required by Yarn Classic on Windows without allowing `NODE_OPTIONS` in a replay file to run preloads before the CLI starts.
+
+  Breaking change: update replay commands to `hot-updater init --from-env-file .env.hotupdater`. The old `--env-file` CLI option is no longer supported. The programmatic `envFile` option is unchanged.
+
+  - @hot-updater/cli-tools@0.36.7
+  - @hot-updater/core@0.36.7
+  - @hot-updater/server@0.36.7
+  - @hot-updater/js@0.36.7
+  - @hot-updater/plugin-core@0.36.7
+
 ## 0.36.6
 
 ### Patch Changes

@@ -1,5 +1,7 @@
 # @hot-updater/test-utils
 
+## 0.36.7
+
 ## 0.36.6
 
 ## 0.36.5
