@@ -7,6 +7,24 @@ export interface KeyPair {
   publicKey: string; // PEM format (SubjectPublicKeyInfo)
 }
 
+export function getPrivateKeyGitignorePath(
+  cwd: string,
+  outputDir: string,
+): string | null {
+  const relativePath = path.relative(
+    cwd,
+    path.join(outputDir, "private-key.pem"),
+  );
+  if (
+    path.isAbsolute(relativePath) ||
+    relativePath === ".." ||
+    relativePath.startsWith(`..${path.sep}`)
+  ) {
+    return null;
+  }
+  return relativePath.split(path.sep).join("/");
+}
+
 /**
  * Generate RSA key pair for bundle signing.
  * @param keySize Key size in bits (2048 or 4096)
@@ -50,10 +68,33 @@ export async function saveKeyPair(
 
   const privateKeyPath = path.join(outputDir, "private-key.pem");
   const publicKeyPath = path.join(outputDir, "public-key.pem");
+  let privateKeyFile: Awaited<ReturnType<typeof fs.open>> | undefined;
+  let publicKeyFile: Awaited<ReturnType<typeof fs.open>> | undefined;
 
-  // Write with secure permissions (private key readable only by owner)
-  await fs.writeFile(privateKeyPath, keyPair.privateKey, { mode: 0o600 });
-  await fs.writeFile(publicKeyPath, keyPair.publicKey, { mode: 0o644 });
+  try {
+    privateKeyFile = await fs.open(privateKeyPath, "wx", 0o600);
+    publicKeyFile = await fs.open(publicKeyPath, "wx", 0o644);
+
+    await Promise.all([
+      privateKeyFile.writeFile(keyPair.privateKey),
+      publicKeyFile.writeFile(keyPair.publicKey),
+    ]);
+  } catch (error) {
+    await Promise.allSettled([privateKeyFile?.close(), publicKeyFile?.close()]);
+    await Promise.allSettled([
+      privateKeyFile && fs.rm(privateKeyPath, { force: true }),
+      publicKeyFile && fs.rm(publicKeyPath, { force: true }),
+    ]);
+
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw new Error(
+        `Signing keys already exist in ${outputDir}. Move them before generating a new key pair.`,
+      );
+    }
+    throw error;
+  }
+
+  await Promise.all([privateKeyFile.close(), publicKeyFile.close()]);
 }
 
 /**

@@ -1,6 +1,13 @@
+import { createHash, createPublicKey } from "node:crypto";
+import fs from "node:fs/promises";
 import path from "node:path";
 
-import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
+import {
+  getBundleSigningPublicKey,
+  getCwd,
+  loadConfig,
+  p,
+} from "@hot-updater/cli-tools";
 
 import { AndroidConfigParser } from "@/utils/configParser/androidParser";
 import { IosConfigParser } from "@/utils/configParser/iosParser";
@@ -8,6 +15,7 @@ import { warnIfExpoCNG } from "@/utils/expoDetection";
 import { appendToProjectRootGitignore } from "@/utils/git";
 import {
   generateKeyPair,
+  getPrivateKeyGitignorePath,
   getPublicKeyFromPrivate,
   loadPrivateKey,
   saveKeyPair,
@@ -17,6 +25,52 @@ import { ui } from "../utils/cli-ui";
 
 export const ANDROID_KEY = "hot_updater_public_key";
 export const IOS_KEY = "HOT_UPDATER_PUBLIC_KEY";
+
+const canonicalizeRsaSpkiPublicKey = (publicKeyPem: string): string => {
+  const trimmed = publicKeyPem.replaceAll("\\n", "\n").trim();
+  if (
+    !trimmed.startsWith("-----BEGIN PUBLIC KEY-----") ||
+    !trimmed.endsWith("-----END PUBLIC KEY-----") ||
+    trimmed.includes("PRIVATE KEY")
+  ) {
+    throw new Error("Bundle signing public key must be an SPKI PEM key.");
+  }
+
+  const publicKey = createPublicKey(trimmed);
+  if (
+    publicKey.asymmetricKeyType !== "rsa" ||
+    (publicKey.asymmetricKeyDetails?.modulusLength ?? 0) < 2048
+  ) {
+    throw new Error("Bundle signing public key must be an RSA key.");
+  }
+
+  return publicKey.export({ format: "pem", type: "spki" }).toString();
+};
+
+const getPublicKeyIdentity = (publicKeyPem: string) => {
+  const publicKey = createPublicKey(canonicalizeRsaSpkiPublicKey(publicKeyPem));
+  const der = publicKey.export({ format: "der", type: "spki" });
+  return {
+    der,
+    fingerprint: `sha256:${createHash("sha256").update(der).digest("hex")}`,
+  };
+};
+
+const getTrustAnchorChange = (
+  platform: "android" | "ios",
+  existingPublicKey: string | null,
+  nextPublicKey: ReturnType<typeof getPublicKeyIdentity>,
+) => {
+  if (!existingPublicKey) return null;
+
+  try {
+    const existing = getPublicKeyIdentity(existingPublicKey);
+    if (existing.der.equals(nextPublicKey.der)) return null;
+    return { platform, fingerprint: existing.fingerprint };
+  } catch {
+    return { platform, fingerprint: "invalid public key" };
+  }
+};
 
 export interface KeysGenerateOptions {
   output?: string;
@@ -46,18 +100,27 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
 
     spinner.stop("Keys generated");
 
-    // Add keys directory to .gitignore
-    const keysDir = path.basename(outputDir);
-    const gitignoreUpdated = appendToProjectRootGitignore({
-      cwd,
-      globLines: [`${keysDir}/`],
-    });
+    // The public key is safe to commit and is required by native builds.
+    const privateKeyGitignorePath = getPrivateKeyGitignorePath(cwd, outputDir);
+    const gitignoreUpdated = privateKeyGitignorePath
+      ? appendToProjectRootGitignore({
+          cwd,
+          globLines: [privateKeyGitignorePath],
+        })
+      : false;
 
     p.log.message(
       ui.block("Keys", [
         ui.kv("Private", ui.path(path.join(outputDir, "private-key.pem"))),
         ui.kv("Public", ui.path(path.join(outputDir, "public-key.pem"))),
-        ui.kv("Gitignore", gitignoreUpdated ? `${keysDir}/` : "unchanged"),
+        ui.kv(
+          "Gitignore",
+          privateKeyGitignorePath === null
+            ? "outside project"
+            : gitignoreUpdated
+              ? privateKeyGitignorePath
+              : "unchanged",
+        ),
       ]),
     );
     p.log.message(
@@ -65,7 +128,7 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
         ui.kv(
           "Code",
           ui.code(
-            'signing: { enabled: true, privateKeyPath: "./keys/private-key.pem" }',
+            'signing: {\n  enabled: true,\n  privateKeyPath: "./keys/private-key.pem",\n}',
           ),
         ),
         ui.kv("Run", ui.command("hot-updater keys export-public")),
@@ -179,8 +242,8 @@ const formatNativeTarget = (
  * By default, writes the public key to iOS Info.plist and AndroidManifest.xml.
  * Use --print-only to only display the key without modifying files.
  *
- * The private key path is read from hot-updater.config.ts (signing.privateKeyPath)
- * unless overridden with --input.
+ * The public key is read from the configured signing source unless --input
+ * overrides it with a legacy private key path.
  *
  * Usage: npx hot-updater keys export-public [--input ./keys/private-key.pem] [--print-only] [--yes]
  */
@@ -190,27 +253,37 @@ export const keysExportPublic = async (
   warnIfExpoCNG();
   const cwd = getCwd();
 
-  // Load config to get the private key path from signing.privateKeyPath
   const config = await loadConfig(null);
-  const configPrivateKeyPath = config.signing?.privateKeyPath;
-
-  // Priority: CLI --input > config signing.privateKeyPath > default fallback
-  let privateKeyPath: string;
-  if (options.input) {
-    privateKeyPath = path.isAbsolute(options.input)
-      ? options.input
-      : path.join(cwd, options.input);
-  } else if (configPrivateKeyPath) {
-    privateKeyPath = path.isAbsolute(configPrivateKeyPath)
-      ? configPrivateKeyPath
-      : path.join(cwd, configPrivateKeyPath);
-  } else {
-    privateKeyPath = path.join(cwd, "keys", "private-key.pem");
-  }
-
   try {
-    const privateKeyPEM = await loadPrivateKey(privateKeyPath);
-    const publicKeyPEM = getPublicKeyFromPrivate(privateKeyPEM);
+    let publicKeyPEM: string;
+    if (options.input) {
+      const privateKeyPath = path.isAbsolute(options.input)
+        ? options.input
+        : path.join(cwd, options.input);
+      publicKeyPEM = getPublicKeyFromPrivate(
+        await loadPrivateKey(privateKeyPath),
+      );
+    } else if (config.signing) {
+      publicKeyPEM = (await getBundleSigningPublicKey(config.signing, {
+        cwd,
+      }))!;
+    } else {
+      const privateKeyPath = path.join(cwd, "keys", "private-key.pem");
+      const publicKeyPath = path.join(
+        path.dirname(privateKeyPath),
+        "public-key.pem",
+      );
+
+      try {
+        publicKeyPEM = createPublicKey(await fs.readFile(publicKeyPath, "utf8"))
+          .export({ format: "pem", type: "spki" })
+          .toString();
+      } catch {
+        publicKeyPEM = getPublicKeyFromPrivate(
+          await loadPrivateKey(privateKeyPath),
+        );
+      }
+    }
 
     // PRINT-ONLY MODE: Show key and instructions without writing
     if (options.printOnly) {
@@ -246,11 +319,43 @@ export const keysExportPublic = async (
       );
     }
 
+    const [androidPublicKey, iosPublicKey] = await Promise.all([
+      androidExists
+        ? androidParser.get(ANDROID_KEY)
+        : Promise.resolve({ value: null }),
+      iosExists ? iosParser.get(IOS_KEY) : Promise.resolve({ value: null }),
+    ]);
+    const nextPublicKey = getPublicKeyIdentity(publicKeyPEM);
+    const trustAnchorChanges = [
+      getTrustAnchorChange("android", androidPublicKey.value, nextPublicKey),
+      getTrustAnchorChange("ios", iosPublicKey.value, nextPublicKey),
+    ].filter((change) => change !== null);
+
+    if (trustAnchorChanges.length > 0) {
+      p.log.warn(
+        "Replacing a native bundle signing key is not a transparent rotation.",
+      );
+      p.log.message(
+        ui.block("Trust anchor change", [
+          ui.kv("New", nextPublicKey.fingerprint),
+          ...trustAnchorChanges.map(({ platform, fingerprint }) =>
+            ui.kv(platform, fingerprint),
+          ),
+        ]),
+      );
+      p.log.warn(
+        "Installed apps using the previous key will reject bundles signed by the new key.",
+      );
+    }
+
     // Confirmation prompt (unless --yes)
     if (!options.yes) {
       const shouldContinue = await p.confirm({
-        message: "Write public key?",
-        initialValue: true,
+        message:
+          trustAnchorChanges.length > 0
+            ? "Replace the existing public key?"
+            : "Write public key?",
+        initialValue: trustAnchorChanges.length === 0,
       });
 
       if (p.isCancel(shouldContinue) || !shouldContinue) {

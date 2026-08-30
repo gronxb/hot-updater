@@ -471,7 +471,7 @@ keysCommand
   .description("Export public key for native configuration")
   .option(
     "-i, --input <path>",
-    "path to private key file (default: from config signing.privateKeyPath in hot-updater.config.ts)",
+    "path to a legacy private key file (default: configured public signing key)",
   )
   .option(
     "-p, --print-only",

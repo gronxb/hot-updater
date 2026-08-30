@@ -17,7 +17,12 @@
       "import": "./dist/config.mjs",
       "require": "./dist/config.mjs"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./signing": {
+      "types": "./dist/signing.d.mts",
+      "import": "./dist/signing.mjs",
+      "require": "./dist/signing.mjs"
+    }
   },
   "files": [
     "dist",
@@ -59,9 +64,11 @@
     "jiti": "2.6.1"
   },
   "devDependencies": {
+    "@aws-sdk/client-kms": "3.1066.0",
     "@bacons/xcode": "1.0.0-alpha.33",
     "@commander-js/extra-typings": "^14.0.0",
     "@expo/fingerprint": "^0.15.4",
+    "@google-cloud/kms": "6.0.0",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
     "@hot-updater/firebase": "workspace:*",
@@ -88,14 +95,22 @@
     "verkit": "catalog:"
   },
   "peerDependencies": {
+    "@aws-sdk/client-kms": "^3.1066.0",
     "@expo/fingerprint": "*",
+    "@google-cloud/kms": "^6.0.0",
     "@hot-updater/aws": "*",
     "@hot-updater/cloudflare": "*",
     "@hot-updater/firebase": "*",
     "@hot-updater/supabase": "*"
   },
   "peerDependenciesMeta": {
+    "@aws-sdk/client-kms": {
+      "optional": true
+    },
     "@expo/fingerprint": {
+      "optional": true
+    },
+    "@google-cloud/kms": {
       "optional": true
     },
     "@hot-updater/supabase": {

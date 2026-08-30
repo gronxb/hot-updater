@@ -1,18 +1,13 @@
-import {
-  createPrivateKey,
-  createPublicKey,
-  generateKeyPairSync,
-} from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { generateKeyPairSync } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { transformAndroid, transformIOS } from "./transformers";
 import { getPublicKeyFromConfig } from "./withHotUpdater";
 
-const originalPrivateKeyEnv = process.env.HOT_UPDATER_PRIVATE_KEY;
 const tempDirs: string[] = [];
 
 const createKeyPair = () =>
@@ -28,66 +23,185 @@ const createKeyPair = () =>
     },
   });
 
-vi.mock("hot-updater", () => ({
-  getPublicKeyFromPrivate: (privateKeyPEM: string) => {
-    const privateKey = createPrivateKey(privateKeyPEM);
-    return createPublicKey(privateKey).export({
-      type: "spki",
-      format: "pem",
-    });
-  },
-  loadPrivateKey: async (privateKeyPath: string) =>
-    readFile(privateKeyPath, "utf-8"),
-}));
-
 afterEach(async () => {
-  if (originalPrivateKeyEnv === undefined) {
-    delete process.env.HOT_UPDATER_PRIVATE_KEY;
-  } else {
-    process.env.HOT_UPDATER_PRIVATE_KEY = originalPrivateKeyEnv;
-  }
-
+  vi.unstubAllEnvs();
   await Promise.all(
     tempDirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })),
   );
 });
 
 describe("getPublicKeyFromConfig", () => {
-  it("reads HOT_UPDATER_PRIVATE_KEY as a file path", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-env-key-"));
-    tempDirs.push(dir);
-    const { privateKey, publicKey } = createKeyPair();
-    const privateKeyPath = path.join(dir, "eas-secret");
-
-    await writeFile(privateKeyPath, privateKey);
-    process.env.HOT_UPDATER_PRIVATE_KEY = privateKeyPath;
-
-    await expect(getPublicKeyFromConfig({ enabled: true })).resolves.toBe(
-      publicKey.trim(),
-    );
-  });
-
-  it("keeps inline private key env support", async () => {
-    const { privateKey, publicKey } = createKeyPair();
-
-    process.env.HOT_UPDATER_PRIVATE_KEY = privateKey;
-
-    await expect(getPublicKeyFromConfig({ enabled: true })).resolves.toBe(
-      publicKey.trim(),
-    );
-  });
-
-  it("falls back to signing.privateKeyPath", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-file-key-"));
-    tempDirs.push(dir);
-    const { privateKey, publicKey } = createKeyPair();
-    const privateKeyPath = path.join(dir, "private-key.pem");
-
-    await writeFile(privateKeyPath, privateKey);
-
+  beforeEach(() => vi.stubEnv("HOT_UPDATER_PRIVATE_KEY", ""));
+  it("returns null when signing is omitted", async () => {
+    await expect(getPublicKeyFromConfig(undefined)).resolves.toBeNull();
+    vi.stubEnv("HOT_UPDATER_PRIVATE_KEY", "invalid-private-key");
     await expect(
-      getPublicKeyFromConfig({ enabled: true, privateKeyPath }),
-    ).resolves.toBe(publicKey.trim());
+      getPublicKeyFromConfig({ enabled: false }),
+    ).resolves.toBeNull();
+    await expect(
+      getPublicKeyFromConfig({
+        enabled: false,
+        privateKeyPath: "/missing/key.pem",
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it.each(["private", "public"])(
+    "supports v0 local config with only the %s key file",
+    async (source) => {
+      const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-local-key-"));
+      tempDirs.push(dir);
+      const { privateKey, publicKey } = createKeyPair();
+      await writeFile(
+        path.join(dir, `${source}-key.pem`),
+        source === "private" ? privateKey : publicKey,
+      );
+      await expect(
+        getPublicKeyFromConfig({
+          enabled: true,
+          privateKeyPath: path.join(dir, "private-key.pem"),
+        }),
+      ).resolves.toBe(publicKey.trim());
+    },
+  );
+
+  it.each(["pem", "path"])(
+    "preserves the v0 EAS environment key supplied as %s",
+    async (source) => {
+      const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-env-key-"));
+      tempDirs.push(dir);
+      const { privateKey, publicKey } = createKeyPair();
+      const privateKeyPath = path.join(dir, "env-key.pem");
+      await writeFile(privateKeyPath, privateKey);
+      vi.stubEnv(
+        "HOT_UPDATER_PRIVATE_KEY",
+        source === "pem" ? privateKey : privateKeyPath,
+      );
+      await expect(
+        getPublicKeyFromConfig({
+          enabled: true,
+          privateKeyPath: "/missing/private-key.pem",
+        }),
+      ).resolves.toBe(publicKey.trim());
+    },
+  );
+
+  it("honors an explicit local public pin instead of environment or private keys", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-local-pin-"));
+    tempDirs.push(dir);
+    const { publicKey } = createKeyPair();
+    const other = createKeyPair();
+    const publicKeyPath = path.join(dir, "public-key.pem");
+    await writeFile(publicKeyPath, publicKey);
+    vi.stubEnv("HOT_UPDATER_PRIVATE_KEY", other.privateKey);
+    const signing = {
+      enabled: true,
+      privateKeyPath: "/missing/key.pem",
+      publicKeyPath,
+    } as const;
+    await expect(getPublicKeyFromConfig(signing)).resolves.toBe(
+      publicKey.trim(),
+    );
+    await expect(
+      getPublicKeyFromConfig({
+        ...signing,
+        publicKeyPath: path.join(dir, "missing.pem"),
+      }),
+    ).rejects.toThrow("Failed to load publicKeyPath");
+  });
+
+  it("uses publicKeyPath without accessing the signing provider", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-public-key-"));
+    tempDirs.push(dir);
+    const { publicKey } = createKeyPair();
+    const publicKeyPath = path.join(dir, "public-key.pem");
+    const provider = {
+      getPublicKey: vi.fn(),
+      name: "remoteSigner",
+      publicKeyPath,
+      sign: vi.fn(),
+    };
+
+    await writeFile(publicKeyPath, publicKey);
+
+    await expect(getPublicKeyFromConfig(provider)).resolves.toBe(
+      publicKey.trim(),
+    );
+    expect(provider.getPublicKey).not.toHaveBeenCalled();
+    expect(provider.sign).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid publicKeyPath without accessing the signer", async () => {
+    const provider = {
+      getPublicKey: vi.fn(),
+      name: "remoteSigner",
+      publicKeyPath: "/missing/provider-public-key.pem",
+      sign: vi.fn(),
+    };
+
+    await expect(getPublicKeyFromConfig(provider)).rejects.toThrow(
+      "Failed to load publicKeyPath for bundle signing.",
+    );
+    expect(provider.getPublicKey).not.toHaveBeenCalled();
+    expect(provider.sign).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty publicKeyPath", async () => {
+    const provider = {
+      getPublicKey: vi.fn(),
+      name: "remoteSigner",
+      publicKeyPath: "",
+      sign: vi.fn(),
+    };
+
+    await expect(getPublicKeyFromConfig(provider)).rejects.toThrow(
+      "Failed to load publicKeyPath for bundle signing.",
+    );
+    expect(provider.getPublicKey).not.toHaveBeenCalled();
+    expect(provider.sign).not.toHaveBeenCalled();
+  });
+
+  it("rejects a private PEM passed as publicKeyPath", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-public-key-"));
+    tempDirs.push(dir);
+    const { privateKey } = createKeyPair();
+    const publicKeyPath = path.join(dir, "public-key.pem");
+    const provider = {
+      getPublicKey: vi.fn(),
+      name: "remoteSigner",
+      publicKeyPath,
+      sign: vi.fn(),
+    };
+    await writeFile(publicKeyPath, privateKey);
+
+    await expect(getPublicKeyFromConfig(provider)).rejects.toThrow(
+      "Failed to load publicKeyPath for bundle signing.",
+    );
+    expect(provider.getPublicKey).not.toHaveBeenCalled();
+    expect(provider.sign).not.toHaveBeenCalled();
+  });
+
+  it("rejects an RSA public key weaker than 2048 bits", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-public-key-"));
+    tempDirs.push(dir);
+    const { publicKey } = generateKeyPairSync("rsa", {
+      modulusLength: 1024,
+      privateKeyEncoding: { format: "pem", type: "pkcs8" },
+      publicKeyEncoding: { format: "pem", type: "spki" },
+    });
+    const publicKeyPath = path.join(dir, "public-key.pem");
+    const provider = {
+      getPublicKey: vi.fn(),
+      name: "remoteSigner",
+      publicKeyPath,
+      sign: vi.fn(),
+    };
+    await writeFile(publicKeyPath, publicKey);
+
+    await expect(getPublicKeyFromConfig(provider)).rejects.toThrow(
+      "Failed to load publicKeyPath for bundle signing.",
+    );
+    expect(provider.getPublicKey).not.toHaveBeenCalled();
   });
 });
 

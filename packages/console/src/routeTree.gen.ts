@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SigningRouteImport } from './routes/signing'
 import { Route as InstallationsRouteImport } from './routes/installations'
 import { Route as ApiKeysRouteImport } from './routes/api-keys'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
@@ -16,6 +17,11 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiBundlesBundleIdDownloadRouteImport } from './routes/api/bundles/$bundleId/download'
 
+const SigningRoute = SigningRouteImport.update({
+  id: '/signing',
+  path: '/signing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InstallationsRoute = InstallationsRouteImport.update({
   id: '/installations',
   path: '/installations',
@@ -53,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/analytics': typeof AnalyticsRoute
   '/api-keys': typeof ApiKeysRoute
   '/installations': typeof InstallationsRoute
+  '/signing': typeof SigningRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
 }
@@ -61,6 +68,7 @@ export interface FileRoutesByTo {
   '/analytics': typeof AnalyticsRoute
   '/api-keys': typeof ApiKeysRoute
   '/installations': typeof InstallationsRoute
+  '/signing': typeof SigningRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
 }
@@ -70,6 +78,7 @@ export interface FileRoutesById {
   '/analytics': typeof AnalyticsRoute
   '/api-keys': typeof ApiKeysRoute
   '/installations': typeof InstallationsRoute
+  '/signing': typeof SigningRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
 }
@@ -80,6 +89,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/api-keys'
     | '/installations'
+    | '/signing'
     | '/api/auth/$'
     | '/api/bundles/$bundleId/download'
   fileRoutesByTo: FileRoutesByTo
@@ -88,6 +98,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/api-keys'
     | '/installations'
+    | '/signing'
     | '/api/auth/$'
     | '/api/bundles/$bundleId/download'
   id:
@@ -96,6 +107,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/api-keys'
     | '/installations'
+    | '/signing'
     | '/api/auth/$'
     | '/api/bundles/$bundleId/download'
   fileRoutesById: FileRoutesById
@@ -105,12 +117,20 @@ export interface RootRouteChildren {
   AnalyticsRoute: typeof AnalyticsRoute
   ApiKeysRoute: typeof ApiKeysRoute
   InstallationsRoute: typeof InstallationsRoute
+  SigningRoute: typeof SigningRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiBundlesBundleIdDownloadRoute: typeof ApiBundlesBundleIdDownloadRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/signing': {
+      id: '/signing'
+      path: '/signing'
+      fullPath: '/signing'
+      preLoaderRoute: typeof SigningRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/installations': {
       id: '/installations'
       path: '/installations'
@@ -161,6 +181,7 @@ const rootRouteChildren: RootRouteChildren = {
   AnalyticsRoute: AnalyticsRoute,
   ApiKeysRoute: ApiKeysRoute,
   InstallationsRoute: InstallationsRoute,
+  SigningRoute: SigningRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiBundlesBundleIdDownloadRoute: ApiBundlesBundleIdDownloadRoute,
 }

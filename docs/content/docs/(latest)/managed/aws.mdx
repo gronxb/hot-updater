@@ -147,6 +147,17 @@ please refer to the article below for more details:
 
 </Callout>
 
+## Optional: Bundle Signing
+
+Managed AWS init does not create or enable a signing key. The
+[built-in local config](/docs/guides/bundle-signing#local-private-key) works
+without a signing plugin. For non-exportable key custody, use the
+[AWS KMS signer](/docs/guides/bundle-signing#hardened-aws-kms) from
+`hot-updater/signing`; signing is independent of storage and database choice.
+Embed the chosen public key in a native release before deploying signed
+bundles. Signing credentials belong in the deploy environment, never in the
+React Native app.
+
 ## Step 3: Add HotUpdater to Your Project
 
 Configure the endpoint and API key once, then check when your app is ready.
