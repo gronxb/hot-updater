@@ -45,7 +45,6 @@ interface CatalogDatabaseReader {
 const scopeFromCatalog = (catalog: ReleaseCatalogRow): ReleaseCatalogScope => {
   const parsed = parseReleaseCatalogScopeKey(catalog.scope_key);
   return {
-    authorityId: parsed.authorityId,
     channelId: catalog.channel_id,
     channelName: decodeChannelKey(parsed.channelKey),
     fingerprintHash:
@@ -97,7 +96,6 @@ const scopeFromReleases = (
   }
 
   return {
-    authorityId: parsed.authorityId,
     channelId: first.channel_id,
     channelName,
     fingerprintHash: expectedFingerprintHash,
@@ -287,7 +285,11 @@ export const handleCatalogPreflight = async (
     );
     console.log(
       options.json
-        ? JSON.stringify(results, null, 2)
+        ? JSON.stringify(
+            results,
+            (key, value) => (key === "catalog_id" ? undefined : value),
+            2,
+          )
         : ui.table(
             [
               { key: "scope", label: "Scope" },
@@ -356,7 +358,11 @@ export const handleCatalogRebuild = async (
     );
     console.log(
       options.json
-        ? JSON.stringify(results, null, 2)
+        ? JSON.stringify(
+            results,
+            (key, value) => (key === "catalog_id" ? undefined : value),
+            2,
+          )
         : ui.table(
             [
               { key: "scope", label: "Scope" },

@@ -263,7 +263,7 @@ const releaseCatalogRow = (row: Record<string, unknown>): ReleaseCatalogRow => {
   }
   return {
     scope_key: stringValue(row, "scope_key", "release_catalogs"),
-    authority_id: stringValue(row, "authority_id", "release_catalogs"),
+    catalog_id: stringValue(row, "catalog_id", "release_catalogs"),
     strategy,
     channel_id: stringValue(row, "channel_id", "release_catalogs"),
     channel_key: stringValue(row, "channel_key", "release_catalogs"),

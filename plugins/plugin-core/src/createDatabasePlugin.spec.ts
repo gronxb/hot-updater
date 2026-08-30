@@ -78,7 +78,7 @@ const patchRow = {
 const releaseRow = {
   id: "00000000-0000-7000-8000-000000000001",
   revision: 1,
-  scope_key: "v1:app-version:project-a:ios:cHJvZHVjdGlvbg",
+  scope_key: "v1:app-version:ios:cHJvZHVjdGlvbg",
   channel_id: channelRow.id,
   platform: "ios" as const,
   kind: "BUNDLE" as const,

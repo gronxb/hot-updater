@@ -31,35 +31,31 @@ describe("Release catalog scope identity", () => {
 
     expect(
       createReleaseCatalogScopeKey({
-        authorityId: "project-a",
         channelKey,
         platform: "ios",
         strategy: "APP_VERSION",
       }),
-    ).toBe(`v1:app-version:project-a:ios:${channelKey}`);
+    ).toBe(`v1:app-version:ios:${channelKey}`);
 
     expect(
       createReleaseCatalogScopeKey({
-        authorityId: "project-a",
         channelKey,
         fingerprintHash: "sha256-deadbeef",
         platform: "android",
         strategy: "FINGERPRINT",
       }),
-    ).toBe(`v1:fingerprint:project-a:android:${channelKey}:sha256-deadbeef`);
+    ).toBe(`v1:fingerprint:android:${channelKey}:sha256-deadbeef`);
   });
 
   it("parses canonical scope keys back to their exact inputs", () => {
     const channelKey = encodeChannelKey("프로덕션/β");
     const inputs = [
       {
-        authorityId: "project-a",
         channelKey,
         platform: "ios",
         strategy: "APP_VERSION",
       },
       {
-        authorityId: "project-a",
         channelKey,
         fingerprintHash: "sha256-deadbeef",
         platform: "android",
@@ -77,33 +73,31 @@ describe("Release catalog scope identity", () => {
   it.each([
     "",
     "v2:app-version:project-a:ios:cHJvZHVjdGlvbg",
-    "v1:app-version:project-a:web:cHJvZHVjdGlvbg",
-    "v1:app-version:project-a:ios",
-    "v1:app-version:project-a:ios:cHJvZHVjdGlvbg:extra",
-    "v1:fingerprint:project-a:ios:cHJvZHVjdGlvbg",
-    "v1:fingerprint:project-a:ios:cHJvZHVjdGlvbg:",
+    "v1:app-version:web:cHJvZHVjdGlvbg",
+    "v1:app-version:ios",
+    "v1:app-version:ios:cHJvZHVjdGlvbg:extra",
+    "v1:fingerprint:ios:cHJvZHVjdGlvbg",
+    "v1:fingerprint:ios:cHJvZHVjdGlvbg:",
     "v1:fingerprint:project:a:ios:cHJvZHVjdGlvbg:hash",
-    "v1:app-version:project-a:ios:cHJvZHVjdGlvbg==",
+    "v1:app-version:ios:cHJvZHVjdGlvbg==",
   ])("rejects a malformed or non-canonical scope key: %s", (scopeKey) => {
     expect(() => parseReleaseCatalogScopeKey(scopeKey)).toThrow();
   });
 
   it("bounds scope segments to printable ASCII that fits provider keys", () => {
     const channelKey = encodeChannelKey("production");
-    const createScope = (authorityId: string, fingerprintHash = "hash") =>
+    const createScope = (fingerprintHash: string) =>
       createReleaseCatalogScopeKey({
-        authorityId,
         channelKey,
         fingerprintHash,
         platform: "android",
         strategy: "FINGERPRINT",
       });
 
-    expect(createScope("a".repeat(255), "f".repeat(255))).toHaveLength(549);
-    expect(() => createScope("a".repeat(256))).toThrow("1-255");
-    expect(() => createScope("project:one")).toThrow("URL-safe ASCII");
-    expect(() => createScope("project/one")).toThrow("URL-safe ASCII");
-    expect(() => createScope("project-한글")).toThrow("URL-safe ASCII");
-    expect(() => createScope("project", "f".repeat(256))).toThrow("1-255");
+    expect(createScope("f".repeat(255))).toHaveLength(293);
+    expect(() => createScope("f".repeat(256))).toThrow("1-255");
+    expect(() => createScope("hash:one")).toThrow("URL-safe ASCII");
+    expect(() => createScope("hash/one")).toThrow("URL-safe ASCII");
+    expect(() => createScope("hash-한글")).toThrow("URL-safe ASCII");
   });
 });

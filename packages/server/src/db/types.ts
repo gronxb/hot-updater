@@ -34,7 +34,6 @@ export type ORMSQLProvider = (typeof sqlProviders)[number];
 export type RelationMode = "foreign-keys" | "fumadb";
 
 export interface MigrateOptions {
-  authorityId?: string;
   mode?: "from-schema" | "from-database";
   updateSettings?: boolean;
   unsafe?: boolean;

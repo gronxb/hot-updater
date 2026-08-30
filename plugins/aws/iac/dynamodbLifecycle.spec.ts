@@ -117,7 +117,7 @@ describe("DynamoDB lifecycle reconciliation", () => {
     );
     await expect(
       manager().ensureTable("hot-updater-metadata"),
-    ).resolves.toMatch(/^aws\./u);
+    ).resolves.toBeUndefined();
 
     expect(mocks.createTable).toHaveBeenCalledTimes(1);
     expect(mocks.updateContinuousBackups).toHaveBeenCalledTimes(2);

@@ -306,7 +306,7 @@ export const releaseCatalogsV100 = table(
     scope_key: idColumn("scope_key", varchar(2048)).collate(
       catalogKeyCollations,
     ),
-    authority_id: column("authority_id", varchar(255)),
+    catalog_id: column("catalog_id", varchar(255)),
     strategy: stringColumn("strategy"),
     channel_id: column("channel_id", varchar(255)).collate(
       channelIdentityCollations,
@@ -324,13 +324,7 @@ export const releaseCatalogsV100 = table(
     updated_at_ms: float("updated_at_ms"),
   },
   {
-    indexes: [
-      index("release_catalogs_channel_idx", ["channel_id"]),
-      index("release_catalogs_authority_strategy_idx", [
-        "authority_id",
-        "strategy",
-      ]),
-    ],
+    indexes: [index("release_catalogs_channel_idx", ["channel_id"])],
     checks: [
       check({
         name: "release_catalogs_strategy_target_check",

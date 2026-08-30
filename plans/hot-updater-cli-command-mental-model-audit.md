@@ -9,6 +9,11 @@
 > Bundle, Catalog, Storage 코드 및 문서. Console UI와 모바일 런타임 자체의
 > 완전한 감사는 범위 밖이다.
 
+> 2026-08-30 후속 변경: Catalog 식별자는 내부에서 영속 관리한다.
+> 아래의 generation 1 누락 행 복구 기록은 당시 검증 결과이며, 현재는
+> Releases가 남은 Catalog 행의 유실 시 새 ID를 만들지 않고 백업 복구를
+> 요구한다. 최신 설계는 [내부 Catalog 식별자 계획](./internal-catalog-identity.md)을 따른다.
+
 ## 합의된 개선 방향과 처리 결과
 
 4개 독립 검토 관점(Release lifecycle, artifact/GC, docs/tests, scope
@@ -17,7 +22,7 @@ challenge)이 초안을 검토한 뒤 2차 이견 확인을 거쳤다. 공통 �
 
 - 정책 mutation은 정확한 Release ID를 받는다.
 - Bundle은 불변 artifact와 native crash identity로만 다룬다.
-- Catalog는 Release에서 재생성하는 projection이며 누락도 진단·복구한다.
+- Catalog payload는 Release에서 재생성하지만 식별자와 generation은 영속 이력이다.
 - Storage GC의 live root는 Bundle 레코드이지만, exact patch/asset reference도
   함께 검사한다.
 - APP_VERSION scope에서는 기기 버전별 결과가 다를 수 있으므로 disable 이후
@@ -25,13 +30,13 @@ challenge)이 초안을 검토한 뒤 2차 이견 확인을 거쳤다. 공통 �
 
 | 항목 | 처리 | 구현 결과 |
 | --- | --- | --- |
-| deploy Release handle | 완료 | 플랫폼별 Release ID, Bundle ID, authority ID, scope key, generation을 출력하고 Bundle ID로 commit 결과를 안전하게 매핑한다. |
+| deploy Release handle | 완료 | 플랫폼별 Release ID, Bundle ID, scope key, generation을 출력하고 Bundle ID로 commit 결과를 안전하게 매핑한다. |
 | top-level `rollback` | 완료 | Bundle/channel 추론 mutation을 제거했다. 정식 경로는 `release disable <release-id>`이며 v1 migration 문서에 이전 절차를 추가했다. |
 | Release read/disable UX | 완료 | `release list --bundle-id`, Created, 상세 policy/provenance, scope 기반 disable preview와 CAS를 추가했다. 결과는 previous compatible enabled Release 또는 `BUILTIN`이라고 표현한다. |
 | promote policy reset | 완료 | 기존 enabled/100%/target cohorts 없음/새 Release seed 동작은 유지하되 mutation 전에 모두 표시한다. `move`의 source disable도 표시하고 preview revision으로 CAS한다. |
 | Bundle reference UX | 부분 완료 | `bundle show` human/JSON과 `bundle delete` preflight에 Release 참조 count/ID를 추가했다. `bundle list` batch count는 provider-neutral count API가 없어 보류했다. |
 | `storage prune` | 완료 | 유지한다. writer 경고를 deploy+patch로 고치고, live target Bundle 아래의 exact-unreferenced canonical patch object도 2차 reference scan 후 회수한다. |
-| missing Catalog | 완료 | Catalog와 Release scope 합집합을 탐색하며 missing projection을 표시하고 generation 1로 rebuild한다. canonical scope-key parser와 불일치 검증을 추가했다. |
+| missing Catalog | 완료 | Catalog와 Release scope 합집합으로 유실을 탐지한다. 기존 Releases의 Catalog 행이 없으면 ID/generation을 초기화하지 않고 백업 복구를 요구한다. |
 | stale docs/help | 완료 | 운영 policy는 Release, artifact/crash identity는 Bundle로 분리했다. native automatic crash rollback 문서는 Bundle 기반으로 유지했다. |
 | command tests | 완료 | deploy, Release, promote, Bundle, Storage, Catalog의 위험 시나리오 중심 테스트를 추가했다. |
 
@@ -161,7 +166,7 @@ Storage provider에서는 같은 GC 흐름을 쓸 수 없다.
 
 | 명령 | 판정 | 조사 결과 |
 | --- | --- | --- |
-| `deploy` | **필수 수정** | 필수 명령이다. Bundle + Release + Catalog commit은 맞지만 Release ID, authority ID, scope key, generation을 출력하지 않는다. help의 `deploy a new version`, `disable the update`, `deployed bundle rollout`도 Release 생성 의미로 바꿔야 한다. |
+| `deploy` | **필수 수정** | 필수 명령이다. Bundle + Release + Catalog commit은 맞지만 Release ID, scope key, generation을 출력하지 않는다. help의 `deploy a new version`, `disable the update`, `deployed bundle rollout`도 Release 생성 의미로 바꿔야 한다. |
 | `release list` | 유지 + 출력 보강 | 정책 운영의 기본 목록이다. channel/platform 필터가 맞다. Created, scope/strategy 구분 또는 target cohort 요약이 없고 JSON 외에는 provenance가 약하다. |
 | `release show <release-id>` | **수정** | revision, channel, target, enabled, force, rollout은 보이지만 `target_cohorts`, `source_release_id`, `scope_key`, timestamps가 보이지 않는다. 정책 상세 명령으로 불완전하다. |
 | `release update <release-id>` | 유지 | mutable policy를 revision/catalog CAS로 갱신한다. `--message`와 `--clear-message`, `--target-cohorts`와 `--clear-target-cohorts`는 Commander conflict로 명시하는 편이 안전하다. |
@@ -208,11 +213,11 @@ Storage provider에서는 같은 GC 흐름을 쓸 수 없다.
 ### [CLI-01] `deploy`가 생성한 Release handle을 반환하고 출력하게 한다
 
 **처리: 완료.** Single/multi-platform commit 결과를 Bundle ID로 매핑하고
-Release/Bundle/authority/scope/generation을 함께 출력한다.
+Release/Bundle/scope/generation을 함께 출력한다.
 
 - **Evidence**:
   `docs/architecture/release-catalog-plan.md:1210-1232`는 deploy 출력에
-  Release, Bundle, authority ID, scope key, generation을 요구한다.
+  Release, Bundle, scope key, generation을 요구한다.
   `packages/hot-updater/src/commands/deploy.ts:88-92`의 결과 타입은 Bundle
   ID만 보관하고, `deploy.ts:1003-1024`는 commit 결과를 버린다.
   `deploy.ts:1136-1140`과 `deploy.ts:1224-1239`의 성공 출력도 Bundle ID만
@@ -226,7 +231,7 @@ Release/Bundle/authority/scope/generation을 함께 출력한다.
   매핑을 깨뜨리지 않아야 한다.
 - **Confidence**: HIGH.
 - **Fix sketch**: `ReleaseCatalogMutationResult`를 버리지 말고 platform별
-  `{ releaseId, bundleId, authorityId, scopeKey, generation }`으로 전파한다.
+  `{ releaseId, bundleId, scopeKey, generation }`으로 전파한다.
   interactive Console URL도 가능하면 `releaseId`를 기준으로 연다.
 
 ### [CLI-02] Bundle 기반 최상위 `rollback`을 폐기하고 Release disable로 통합한다
@@ -414,7 +419,7 @@ orphan patch recheck를 검증한다.
 ```text
 deploy
   Build bytes -> create Bundle -> create Release -> compile Catalog
-  Output: Release ID + Bundle ID + authority/scope/generation
+  Output: Release ID + Bundle ID + scope/generation
 
 release ...
   Delivery policy and chronology

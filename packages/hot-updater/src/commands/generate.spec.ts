@@ -89,7 +89,6 @@ describe("generate command", () => {
       dispose,
       hotUpdater: {
         adapterName: "mongodb",
-        authorityId: "default",
       },
     };
 
@@ -156,7 +155,6 @@ describe("generate command", () => {
       dispose,
       hotUpdater: {
         adapterName: "drizzle",
-        authorityId: "default",
       },
     };
     mockServer.generateSchema.mockReturnValue({
@@ -201,7 +199,6 @@ describe("generate command", () => {
       dispose,
       hotUpdater: {
         adapterName: "drizzle",
-        authorityId: "default",
       },
     };
     mockServer.generateSchema.mockReturnValue({

@@ -10,7 +10,6 @@ import { createReleaseCatalogRouteHandlers } from "./handlerReleaseCatalogRoutes
 import { createReleaseManagementRouteHandlers } from "./handlerReleaseManagementRoutes";
 import type {
   HandlerAPI,
-  HandlerOptions,
   HotUpdaterHandler,
   HotUpdaterHandlers,
   RouteHandler,
@@ -20,7 +19,6 @@ import { addRoute, createRouter, findRoute } from "./internalRouter";
 
 export type {
   HandlerAPI,
-  HandlerOptions,
   HotUpdaterHandler,
   HotUpdaterHandlers,
 } from "./handlerTypes";
@@ -138,16 +136,12 @@ const createDownloadStorageRouteHandler =
     });
   };
 
-export function createHandlers(
-  api: HandlerAPI,
-  options: HandlerOptions = {},
-): HotUpdaterHandlers {
-  return createHotUpdaterHandlers(api, options);
+export function createHandlers(api: HandlerAPI): HotUpdaterHandlers {
+  return createHotUpdaterHandlers(api);
 }
 
 export function createHotUpdaterHandlers(
   api: HandlerAPI,
-  options: HandlerOptions = {},
   analytics?: AnalyticsProvider,
   apiKeyAuth?: {
     readonly authenticate: (request: Request) => Promise<boolean>;
@@ -158,10 +152,9 @@ export function createHotUpdaterHandlers(
     signature: string,
   ) => Promise<Response | null>,
 ): HotUpdaterHandlers {
-  const authorityId = options.authorityId ?? "default";
   const routeHandlers: Record<string, RouteHandler> = {
     ...createVersionRouteHandlers(),
-    ...createReleaseCatalogRouteHandlers(authorityId, apiKeyAuth?.headerName),
+    ...createReleaseCatalogRouteHandlers(apiKeyAuth?.headerName),
     ...createReleaseManagementRouteHandlers(),
     ...createBundleRouteHandlers(),
     ...(analytics === undefined ? {} : createAnalyticsRouteHandlers(analytics)),

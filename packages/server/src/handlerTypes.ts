@@ -82,11 +82,6 @@ export interface HandlerAPI {
   deleteChannel: (input: ChannelDeleteInput) => Promise<ChannelDeleteResult>;
 }
 
-export interface HandlerOptions {
-  /** Internal authority used to look up and identify Release Catalogs. */
-  readonly authorityId?: string;
-}
-
 export type HotUpdaterHandler = (request: Request) => Promise<Response>;
 
 export interface HotUpdaterHandlers {

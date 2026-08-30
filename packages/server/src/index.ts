@@ -1,7 +1,6 @@
 export { createHandlers } from "./handler";
 export type {
   HandlerAPI,
-  HandlerOptions,
   HotUpdaterHandler,
   HotUpdaterHandlers,
 } from "./handler";

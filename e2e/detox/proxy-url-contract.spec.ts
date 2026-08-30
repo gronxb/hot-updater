@@ -464,13 +464,13 @@ describe("Detox remote asset proxy URLs", () => {
         }
         return new Response(
           JSON.stringify({
-            authorityId: "provider-project",
+            catalogId: "provider-project",
             catalogHash: `sha256:${generation.toString().padStart(64, "0")}`,
             fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
             generation,
             releases: [],
             schemaVersion: 1,
-            scopeKey: "v1:app-version:provider-project:ios:am9iLXByb2R1Y3Rpb24",
+            scopeKey: "v1:app-version:ios:am9iLXByb2R1Y3Rpb24",
           }),
           {
             headers: {
@@ -505,7 +505,7 @@ describe("Detox remote asset proxy URLs", () => {
         ).json(),
       ).toMatchObject({
         generation: 1,
-        scopeKey: "v1:app-version:provider-project:ios:cHJvZHVjdGlvbg",
+        scopeKey: "v1:app-version:ios:cHJvZHVjdGlvbg",
       });
       generation = 2;
       expect(
@@ -514,7 +514,7 @@ describe("Detox remote asset proxy URLs", () => {
         ).json(),
       ).toMatchObject({
         generation: 2,
-        scopeKey: "v1:app-version:provider-project:ios:cHJvZHVjdGlvbg",
+        scopeKey: "v1:app-version:ios:cHJvZHVjdGlvbg",
       });
       const notModifiedResponse = await controller.handleProxyUpdateRequest(
         new Request(url, {
@@ -534,7 +534,7 @@ describe("Detox remote asset proxy URLs", () => {
         ).json(),
       ).toMatchObject({
         generation: 1,
-        scopeKey: "v1:app-version:provider-project:ios:cHJvZHVjdGlvbg",
+        scopeKey: "v1:app-version:ios:cHJvZHVjdGlvbg",
       });
       expect(
         controller.handleAssertProxy({ artifactRequests: 0 }),

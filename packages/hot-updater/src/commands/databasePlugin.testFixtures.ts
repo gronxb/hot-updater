@@ -19,7 +19,7 @@ import { vi } from "vitest";
 
 import type { DeploymentWrite } from "./deployTransaction";
 
-export type DeploymentSeed = Omit<DeploymentWrite, "authorityId">;
+export type DeploymentSeed = Omit<DeploymentWrite, "catalogId">;
 
 const createdAtMsFromId = (id: string): number => {
   try {
@@ -31,7 +31,7 @@ const createdAtMsFromId = (id: string): number => {
 };
 
 const compileSeedCatalogs = async (
-  authorityId: string,
+  catalogId: string,
   deployments: readonly DeploymentSeed[],
 ): Promise<{
   readonly catalogs: readonly {
@@ -63,13 +63,11 @@ const compileSeedCatalogs = async (
     const scopeKey =
       strategy === "APP_VERSION"
         ? createReleaseCatalogScopeKey({
-            authorityId,
             channelKey,
             platform: bundle.platform,
             strategy,
           })
         : createReleaseCatalogScopeKey({
-            authorityId,
             channelKey,
             fingerprintHash: policy.fingerprintHash ?? "",
             platform: bundle.platform,
@@ -137,7 +135,7 @@ const compileSeedCatalogs = async (
       channelName: scope.channelName,
       row: {
         scope_key: scopeKey,
-        authority_id: authorityId,
+        catalog_id: catalogId,
         strategy: scope.strategy,
         channel_id: scope.channelName,
         channel_key: encodeChannelKey(scope.channelName),
@@ -271,7 +269,7 @@ export const createDatabasePluginHarness = () => {
     setBundles,
     seedDeployments: async (
       deployments: readonly DeploymentSeed[],
-      authorityId = "default",
+      catalogId = "default",
     ): Promise<void> => {
       setBundles(deployments.map(({ bundle }) => bundle));
       const channels = [
@@ -281,7 +279,7 @@ export const createDatabasePluginHarness = () => {
       const channelIds = new Map(
         [...data.channels.values()].map(({ id, name }) => [name, id]),
       );
-      const compiled = await compileSeedCatalogs(authorityId, deployments);
+      const compiled = await compileSeedCatalogs(catalogId, deployments);
       for (const release of compiled.releases) {
         data.releases.set(release.row.id, {
           ...release.row,

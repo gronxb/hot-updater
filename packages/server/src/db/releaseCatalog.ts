@@ -22,14 +22,12 @@ type ReadStorageText = (storageUri: string) => Promise<string | null>;
 export type ReleaseCatalogRequest =
   | {
       readonly strategy: "APP_VERSION";
-      readonly authorityId: string;
       readonly platform: "ios" | "android";
       readonly channelKey: string;
       readonly appVersion: string;
     }
   | {
       readonly strategy: "FINGERPRINT";
-      readonly authorityId: string;
       readonly platform: "ios" | "android";
       readonly channelKey: string;
       readonly fingerprintHash: string;
@@ -66,19 +64,16 @@ const parseCompiledCatalog = (
 };
 
 export const createReleaseCatalogReader =
-  (database: DatabasePlugin, authorityId: string) =>
+  (database: DatabasePlugin) =>
   async (input: ReleaseCatalogRequest): Promise<ReleaseCatalog | null> => {
-    if (input.authorityId !== authorityId) return null;
     const scopeKey =
       input.strategy === "APP_VERSION"
         ? createReleaseCatalogScopeKey({
-            authorityId,
             channelKey: input.channelKey,
             platform: input.platform,
             strategy: "APP_VERSION",
           })
         : createReleaseCatalogScopeKey({
-            authorityId,
             channelKey: input.channelKey,
             fingerprintHash: input.fingerprintHash,
             platform: input.platform,
@@ -87,7 +82,6 @@ export const createReleaseCatalogReader =
     const row = await database.models.releaseCatalogs.findByScopeKey(scopeKey);
     if (
       row === null ||
-      row.authority_id !== authorityId ||
       row.platform !== input.platform ||
       row.strategy !== input.strategy ||
       row.channel_key !== input.channelKey ||
@@ -107,7 +101,7 @@ export const createReleaseCatalogReader =
       input.strategy === "APP_VERSION" ? input.appVersion : undefined,
     );
     return {
-      authorityId,
+      catalogId: row.catalog_id,
       catalogHash: row.catalog_hash,
       fallbackPolicy: RELEASE_CATALOG_FALLBACK_POLICY,
       generation: row.generation,

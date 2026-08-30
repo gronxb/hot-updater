@@ -46,7 +46,6 @@ const __dirname = path.dirname(__filename);
 const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
 const FUNCTION_NAME = "hot-updater-function";
 const FUNCTION_BASE_PATH = `/${FUNCTION_NAME}`;
-const AUTHORITY_ID = "supabase.runtime-acceptance";
 const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 const BUCKET_NAME = "hot-updater-bundles";
 const DENO_DOCKER_IMAGE = "denoland/deno:alpine";
@@ -133,7 +132,6 @@ const seedProductionRelease = async ({
     })
   ).row;
   const scopeKey = createReleaseCatalogScopeKey({
-    authorityId: AUTHORITY_ID,
     channelKey,
     platform: bundle.platform,
     strategy: "APP_VERSION",
@@ -168,7 +166,6 @@ const seedProductionRelease = async ({
           },
         },
         scope: {
-          authorityId: AUTHORITY_ID,
           channelId: channel.id,
           channelName,
           fingerprintHash: null,
@@ -321,7 +318,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
     databaseClient = createDatabaseClient(database);
 
     seedHotUpdater = createHotUpdater({
-      authorityId: AUTHORITY_ID,
       database,
       clientAccess: { type: "public" },
       storage: [
@@ -729,7 +725,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
     expect(response.ok).toBe(true);
     await expect(response.json()).resolves.toMatchObject({
-      authorityId: AUTHORITY_ID,
+      catalogId: expect.stringMatching(/^[0-9a-f-]{36}$/),
       releases: [{ bundleId: "00000000-0000-0000-0000-000000000001" }],
     });
   });
@@ -1142,7 +1138,6 @@ const writeSupabaseRuntimeFiles = async ({
       "plugins/supabase/supabase/edge-functions/index.ts",
     ),
     {
-      AUTHORITY_ID,
       BUCKET_NAME,
       FUNCTION_NAME,
     },

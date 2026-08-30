@@ -60,7 +60,6 @@ const S3_BUCKET_NAME = `hot-updater-aws-${process.pid}-${Date.now()}`
 const SSM_PARAMETER_NAME = `/hot-updater/aws/${process.pid}/${Date.now()}`;
 const DYNAMODB_TABLE_NAME = `hot-updater-aws-${process.pid}-${Date.now()}`;
 const CLOUDFRONT_KEY_PAIR_ID = "KTEST";
-const AUTHORITY_ID = "aws.runtime-acceptance";
 const LOCALSTACK_IMAGE = "localstack/localstack:3";
 const LAMBDA_IMAGE = "public.ecr.aws/lambda/nodejs:22";
 const ORIGIN_HOST = `${S3_BUCKET_NAME}.s3.${REGION}.amazonaws.com`;
@@ -245,7 +244,6 @@ const seedProductionRelease = async ({
     })
   ).row;
   const scopeKey = createReleaseCatalogScopeKey({
-    authorityId: AUTHORITY_ID,
     channelKey,
     platform: bundle.platform,
     strategy: "APP_VERSION",
@@ -280,7 +278,6 @@ const seedProductionRelease = async ({
           },
         },
         scope: {
-          authorityId: AUTHORITY_ID,
           channelId: channel.id,
           channelName,
           fingerprintHash: null,
@@ -374,7 +371,6 @@ describe.sequential("aws lambda runtime acceptance", () => {
       },
     });
     seedHotUpdater = createHotUpdater({
-      authorityId: AUTHORITY_ID,
       database,
       clientAccess: { type: "api-key" },
       storage: [
@@ -404,7 +400,6 @@ describe.sequential("aws lambda runtime acceptance", () => {
     await cp(lambdaDistDir, runtimeDir, { recursive: true });
 
     const transformedCode = transformEnv(path.join(runtimeDir, "index.cjs"), {
-      AUTHORITY_ID,
       CLOUDFRONT_KEY_PAIR_ID,
       DYNAMODB_REGION: REGION,
       DYNAMODB_TABLE_NAME,
@@ -508,12 +503,12 @@ describe.sequential("aws lambda runtime acceptance", () => {
 
     expect(unauthorizedPayload.status).toBe("401");
     const body = (await readLambdaJson(payload)) as {
-      authorityId?: string;
+      catalogId?: string;
       releases?: { bundleId?: string }[];
     };
 
     expect(body).toMatchObject({
-      authorityId: AUTHORITY_ID,
+      catalogId: expect.stringMatching(/^[0-9a-f-]{36}$/),
       releases: [{ bundleId: "00000000-0000-0000-0000-000000000001" }],
     });
   });

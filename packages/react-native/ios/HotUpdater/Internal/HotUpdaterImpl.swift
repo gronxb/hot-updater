@@ -396,7 +396,7 @@ private func hotUpdaterGetMinBundleId() -> String {
             kind: kind,
             releaseId: data["releaseId"] as? String,
             bundleId: bundleId,
-            authorityId: data["authorityId"] as? String,
+            catalogId: data["catalogId"] as? String,
             scopeKey: data["scopeKey"] as? String,
             generation: (data["generation"] as? NSNumber)?.int64Value,
             catalogHash: data["catalogHash"] as? String,
@@ -407,7 +407,7 @@ private func hotUpdaterGetMinBundleId() -> String {
 
     public func acceptReleaseCatalog(_ params: NSDictionary?) -> Bool {
         guard let data = params as? [String: Any],
-              let authorityId = data["authorityId"] as? String,
+              let catalogId = data["catalogId"] as? String,
               let scopeKey = data["scopeKey"] as? String,
               let generation = data["generation"] as? NSNumber,
               let catalogHash = data["catalogHash"] as? String,
@@ -416,7 +416,7 @@ private func hotUpdaterGetMinBundleId() -> String {
             return false
         }
         return bundleStorage.acceptReleaseCatalog(
-            authorityId: authorityId,
+            catalogId: catalogId,
             scopeKey: scopeKey,
             generation: generation.int64Value,
             catalogHash: catalogHash,
@@ -466,7 +466,7 @@ private func hotUpdaterGetMinBundleId() -> String {
 
     public func isReleaseSelectionCurrent(_ params: NSDictionary?) -> Bool {
         guard let data = params as? [String: Any],
-              let authorityId = data["authorityId"] as? String,
+              let catalogId = data["catalogId"] as? String,
               let scopeKey = data["scopeKey"] as? String,
               let generation = data["generation"] as? NSNumber,
               let catalogHash = data["catalogHash"] as? String,
@@ -475,7 +475,7 @@ private func hotUpdaterGetMinBundleId() -> String {
             return false
         }
         return bundleStorage.isReleaseSelectionCurrent(
-            authorityId: authorityId,
+            catalogId: catalogId,
             scopeKey: scopeKey,
             generation: generation.int64Value,
             catalogHash: catalogHash,

@@ -56,10 +56,9 @@ Additional route and handler changes:
 
 - Client routes are unversioned. Managed provider base URLs now point at the
   public deployment root; incompatible generations use different base URLs.
-- `authorityId` remains stable server and deployment configuration for Release
-  Catalog compilation and persistence. React Native clients neither configure
-  it nor include it in Catalog paths.
-- `HandlerOptions.routes` is removed. The client handler always owns the v1
+- `authorityId` is removed from CLI and server configuration. Catalog identity
+  is allocated and persisted automatically, with no replacement setting.
+- `HandlerOptions` is removed. The client handler always owns the v1
   update protocol and Analytics ingestion. API key authentication is configured
   explicitly through the required `clientAccess` policy.
 - The unified `createHandler` and `createHotUpdater().handler` surfaces are
@@ -224,7 +223,6 @@ plugin object directly.
 
 ```ts
 createHotUpdater({
-  authorityId,
   database,
   clientAccess: { type: "api-key" },
   storage: [storagePlugin],
@@ -370,9 +368,9 @@ for the complete operation requirements.
 network source. The `resolver` and client-side `authorityId` options,
 `HotUpdaterResolver`, its parameter/result helper types, and
 `createDefaultResolver` are removed. Existing `baseURL` configuration remains
-valid only when it points to a v1 client handler. Catalog client paths no longer
-contain authority; authority remains server-owned deployment and persistence
-state.
+valid only when it points to a v1 client handler. Catalog client paths contain no
+identity parameter. Catalog bookkeeping is internal and is not returned by the
+public `HotUpdater.getActiveUpdateState()` API.
 
 Custom GraphQL, RPC, and other transports must expose the v1 Release Catalog,
 artifact, Analytics-event, and `/version` HTTP protocol through an adapter or

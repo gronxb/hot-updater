@@ -17,10 +17,7 @@ import {
 
 const tempDirs: string[] = [];
 
-const createSupabaseScaffold = (
-  build: BuildType,
-  authorityIdInitializer?: string,
-) => {
+const createSupabaseScaffold = (build: BuildType) => {
   const storage: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
     configString: `supabaseStorage({
@@ -42,7 +39,6 @@ const createSupabaseScaffold = (
       .setBuildType(build)
       .setStorage(storage)
       .setDatabase(database),
-    { authorityIdInitializer },
   );
 };
 
@@ -118,25 +114,19 @@ afterEach(async () => {
 });
 
 describe("writeHotUpdaterConfig", () => {
-  it("creates and updates a managed Release Catalog authority", async () => {
+  it("creates and updates config without a user-managed Catalog identity", async () => {
     const tempDir = await fs.mkdtemp(
-      path.join(os.tmpdir(), "hot-updater-config-authority-"),
+      path.join(os.tmpdir(), "hot-updater-config-identity-"),
     );
     tempDirs.push(tempDir);
     const configPath = path.join(tempDir, "hot-updater.config.ts");
 
-    await writeHotUpdaterConfig(
-      createSupabaseScaffold("bare", '"project-a"'),
-      configPath,
-    );
-    await writeHotUpdaterConfig(
-      createSupabaseScaffold("bare", '"project-b"'),
-      configPath,
-    );
+    await writeHotUpdaterConfig(createSupabaseScaffold("bare"), configPath);
+    await writeHotUpdaterConfig(createSupabaseScaffold("bare"), configPath);
 
     const config = await fs.readFile(configPath, "utf-8");
-    expect(config).toContain('authorityId: "project-b"');
-    expect(config).not.toContain('authorityId: "project-a"');
+    expect(config).not.toContain("authorityId");
+    expect(config).not.toContain("catalogId");
   });
 
   it("creates a new config file when one does not exist", async () => {

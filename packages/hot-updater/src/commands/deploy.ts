@@ -100,7 +100,6 @@ type DeployPlatformResult = {
 };
 
 type CommittedDeployPlatformResult = DeployPlatformResult & {
-  readonly authorityId: string;
   readonly generation: number;
   readonly releaseId: string;
   readonly scopeKey: string;
@@ -579,7 +578,6 @@ const resolveCommittedDeployments = (
     commitsByBundleId.delete(prepared.bundleId);
     return {
       ...prepared,
-      authorityId: matched.commit.catalog.authority_id,
       generation: matched.commit.catalog.generation,
       releaseId: matched.releaseId,
       scopeKey: matched.commit.catalog.scope_key,
@@ -601,7 +599,6 @@ const summarizeDeploymentResult = (
   ui.block(`${getPlatformName(result.platform)} Deployment`, [
     ui.kv("Release ID", ui.id(result.releaseId)),
     ui.kv("Bundle ID", ui.id(result.bundleId)),
-    ui.kv("Authority ID", result.authorityId),
     ui.kv("Scope key", ui.code(result.scopeKey)),
     ui.kv("Generation", String(result.generation)),
   ]);
@@ -1181,7 +1178,6 @@ const deployPlatform = async ({
 
           try {
             await persistDeployment({
-              authorityId: config.authorityId ?? "default",
               bundle: {
                 platform,
                 fileHash,

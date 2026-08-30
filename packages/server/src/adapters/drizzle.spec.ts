@@ -58,7 +58,7 @@ const releases = pgTable("releases", {
 });
 const releaseCatalogs = pgTable("release_catalogs", {
   scope_key: text("scope_key").primaryKey(),
-  authority_id: text("authority_id").notNull(),
+  catalog_id: text("catalog_id").notNull(),
   strategy: text("strategy").notNull(),
   channel_id: text("channel_id").notNull(),
   channel_key: text("channel_key").notNull(),

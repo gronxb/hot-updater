@@ -29,7 +29,7 @@ public struct PersistedSelection: Codable {
     let kind: String
     let releaseId: String?
     let bundleId: String
-    let authorityId: String?
+    let catalogId: String?
     let scopeKey: String?
     let generation: Int64?
     let catalogHash: String?
@@ -41,7 +41,7 @@ public struct PersistedSelection: Codable {
             kind: "BUNDLE",
             releaseId: nil,
             bundleId: bundleId,
-            authorityId: nil,
+            catalogId: nil,
             scopeKey: nil,
             generation: nil,
             catalogHash: nil,
@@ -55,7 +55,7 @@ public struct PersistedSelection: Codable {
             "kind": kind,
             "releaseId": releaseId ?? NSNull(),
             "bundleId": bundleId,
-            "authorityId": authorityId ?? NSNull(),
+            "catalogId": catalogId ?? NSNull(),
             "scopeKey": scopeKey ?? NSNull(),
             "generation": generation.map(NSNumber.init(value:)) ?? NSNull(),
             "catalogHash": catalogHash ?? NSNull(),

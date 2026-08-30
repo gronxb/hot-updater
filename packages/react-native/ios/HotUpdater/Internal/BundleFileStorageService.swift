@@ -282,9 +282,9 @@ public protocol BundleStorageService {
     // Bundle update
     func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, manifestUrl: URL?, manifestFileHash: String?, changedAssets: [String: ChangedAssetDescriptor]?, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
     func stageReleaseSelection(_ selection: PersistedSelection) -> Bool
-    func acceptReleaseCatalog(authorityId: String, scopeKey: String, generation: Int64, catalogHash: String, channel: String, selectionContextHash: String) -> Bool
+    func acceptReleaseCatalog(catalogId: String, scopeKey: String, generation: Int64, catalogHash: String, channel: String, selectionContextHash: String) -> Bool
     func getActiveUpdateState() -> [String: Any]
-    func isReleaseSelectionCurrent(authorityId: String, scopeKey: String, generation: Int64, catalogHash: String, channel: String, selectionContextHash: String) -> Bool
+    func isReleaseSelectionCurrent(catalogId: String, scopeKey: String, generation: Int64, catalogHash: String, channel: String, selectionContextHash: String) -> Bool
     func commitReleaseSelection(_ selection: PersistedSelection) -> Bool
 
     // Rollback support
@@ -325,9 +325,9 @@ public protocol BundleStorageService {
 
 public extension BundleStorageService {
     func stageReleaseSelection(_: PersistedSelection) -> Bool { false }
-    func acceptReleaseCatalog(authorityId _: String, scopeKey _: String, generation _: Int64, catalogHash _: String, channel _: String, selectionContextHash _: String) -> Bool { false }
+    func acceptReleaseCatalog(catalogId _: String, scopeKey _: String, generation _: Int64, catalogHash _: String, channel _: String, selectionContextHash _: String) -> Bool { false }
     func getActiveUpdateState() -> [String: Any] { [:] }
-    func isReleaseSelectionCurrent(authorityId _: String, scopeKey _: String, generation _: Int64, catalogHash _: String, channel _: String, selectionContextHash _: String) -> Bool { false }
+    func isReleaseSelectionCurrent(catalogId _: String, scopeKey _: String, generation _: Int64, catalogHash _: String, channel _: String, selectionContextHash _: String) -> Bool { false }
     func commitReleaseSelection(_: PersistedSelection) -> Bool { false }
 }
 
@@ -1398,8 +1398,8 @@ class BundleFileStorageService: BundleStorageService {
         _ = rollbackPendingBundle(stagingBundleId)
     }
 
-    private func releaseScopeStateKey(authorityId: String, scopeKey: String) -> String {
-        "\(authorityId)|\(scopeKey)"
+    private func releaseScopeStateKey(catalogId: String, scopeKey: String) -> String {
+        "\(catalogId)|\(scopeKey)"
     }
 
     private func selectionContextValue(channel: String, selectionContextHash: String) -> String {
@@ -1407,7 +1407,7 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     func acceptReleaseCatalog(
-        authorityId: String,
+        catalogId: String,
         scopeKey: String,
         generation: Int64,
         catalogHash: String,
@@ -1417,7 +1417,7 @@ class BundleFileStorageService: BundleStorageService {
         releaseStateLock.lock()
         defer { releaseStateLock.unlock() }
         var metadata = loadMetadataOrNull() ?? createInitialMetadata()
-        let stateKey = releaseScopeStateKey(authorityId: authorityId, scopeKey: scopeKey)
+        let stateKey = releaseScopeStateKey(catalogId: catalogId, scopeKey: scopeKey)
         if let highestSeen = metadata.highestSeenCatalogs[stateKey] {
             if generation < highestSeen.generation { return false }
             if generation == highestSeen.generation, catalogHash != highestSeen.catalogHash {
@@ -1469,7 +1469,7 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     func isReleaseSelectionCurrent(
-        authorityId: String,
+        catalogId: String,
         scopeKey: String,
         generation: Int64,
         catalogHash: String,
@@ -1479,7 +1479,7 @@ class BundleFileStorageService: BundleStorageService {
         releaseStateLock.lock()
         defer { releaseStateLock.unlock() }
         guard let metadata = loadMetadataOrNull() else { return false }
-        let stateKey = releaseScopeStateKey(authorityId: authorityId, scopeKey: scopeKey)
+        let stateKey = releaseScopeStateKey(catalogId: catalogId, scopeKey: scopeKey)
         return metadata.highestSeenCatalogs[stateKey] == CatalogHighWater(
             generation: generation,
             catalogHash: catalogHash
@@ -1490,7 +1490,7 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     private func isSelectionCurrent(_ selection: PersistedSelection) -> Bool {
-        guard let authorityId = selection.authorityId,
+        guard let catalogId = selection.catalogId,
               let scopeKey = selection.scopeKey,
               let generation = selection.generation,
               let catalogHash = selection.catalogHash,
@@ -1498,7 +1498,7 @@ class BundleFileStorageService: BundleStorageService {
             return false
         }
         return isReleaseSelectionCurrent(
-            authorityId: authorityId,
+            catalogId: catalogId,
             scopeKey: scopeKey,
             generation: generation,
             catalogHash: catalogHash,

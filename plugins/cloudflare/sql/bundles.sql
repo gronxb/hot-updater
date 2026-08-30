@@ -84,7 +84,7 @@ CREATE TABLE releases (
 
 CREATE TABLE release_catalogs (
   scope_key TEXT COLLATE BINARY PRIMARY KEY NOT NULL,
-  authority_id TEXT NOT NULL,
+  catalog_id TEXT NOT NULL,
   strategy TEXT NOT NULL,
   channel_id TEXT COLLATE BINARY NOT NULL,
   channel_key TEXT COLLATE BINARY NOT NULL,
@@ -178,7 +178,6 @@ CREATE INDEX releases_bundle_id_idx ON releases(bundle_id);
 CREATE INDEX releases_fingerprint_hash_idx ON releases(fingerprint_hash);
 CREATE INDEX releases_enabled_idx ON releases(enabled);
 CREATE INDEX release_catalogs_channel_idx ON release_catalogs(channel_id);
-CREATE INDEX release_catalogs_authority_strategy_idx ON release_catalogs(authority_id, strategy);
 CREATE INDEX bundle_events_received_at_idx ON bundle_events(received_at_ms, id);
 CREATE INDEX bundle_events_install_idx ON bundle_events(install_id, received_at_ms, id);
 CREATE INDEX bundle_events_user_id_idx ON bundle_events(user_id, received_at_ms, id);

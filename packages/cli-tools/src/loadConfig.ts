@@ -167,7 +167,6 @@ const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
 
 const getDefaultConfig = (): ConfigInput => {
   return {
-    authorityId: "default",
     cacheDir: path.join("node_modules", ".hot-updater"),
     updateStrategy: "appVersion",
     compressStrategy: "zip",
@@ -244,6 +243,14 @@ export const loadConfig = async (
   const { config } = await loadUnconfig<ConfigInput>(
     getConfigLoaderOptions(options),
   );
+
+  for (const key of ["authorityId", "catalogId"]) {
+    if (config && Object.hasOwn(config, key)) {
+      throw new Error(
+        `Remove ${key} from hot-updater.config. Catalog identity is managed internally.`,
+      );
+    }
+  }
 
   return mergeConfigSources(config, getDefaultConfig()) as ConfigResponse;
 };

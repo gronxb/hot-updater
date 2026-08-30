@@ -93,7 +93,6 @@ const loadedConfig = (
   hotUpdater: {
     adapterName: "kysely",
     apiKeys,
-    authorityId: "default",
   },
 });
 

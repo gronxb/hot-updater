@@ -172,7 +172,6 @@ config({ path: ".env.hotupdater" });
 const credential = applicationDefault();
 
 export default defineConfig({
-  authorityId: "your-project-id",
   build: bare({
     enableHermes: true,
   }),
@@ -188,9 +187,6 @@ export default defineConfig({
   }),
 });
 ```
-
-Keep the generated `authorityId` unchanged. Managed Firebase uses the Firebase
-project ID as the Release Catalog authority.
 
 ### Upgrade and rollback
 

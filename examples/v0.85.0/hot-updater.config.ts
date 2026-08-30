@@ -65,6 +65,4 @@ export default defineConfig({
     enabled: true,
     privateKeyPath: "./keys/private-key.pem",
   },
-
-  authorityId: "9bfb9f0b-37a8-412c-a8f4-c1a949237fb3",
 });

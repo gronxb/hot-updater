@@ -91,14 +91,12 @@ const createForwardReleaseId = (
 };
 
 const prepareTargetScope = async ({
-  authorityId,
   channelName,
   database,
   fingerprintHash,
   platform,
   strategy,
 }: {
-  readonly authorityId: string;
   readonly channelName: string;
   readonly database: BundleRepository;
   readonly fingerprintHash: string | null;
@@ -122,13 +120,11 @@ const prepareTargetScope = async ({
   const scopeKey =
     strategy === "APP_VERSION"
       ? createReleaseCatalogScopeKey({
-          authorityId,
           channelKey,
           platform,
           strategy,
         })
       : createReleaseCatalogScopeKey({
-          authorityId,
           channelKey,
           fingerprintHash: fingerprintHash ?? "",
           platform,
@@ -136,7 +132,6 @@ const prepareTargetScope = async ({
         });
   return {
     scope: {
-      authorityId,
       channelId: channel.id,
       channelName,
       fingerprintHash,
@@ -183,7 +178,6 @@ const loadReleaseTarget = async (
   return {
     release,
     scope: {
-      authorityId: catalog.authority_id,
       channelId: release.channel_id,
       channelName: decodeChannelKey(catalog.channel_key),
       fingerprintHash: release.fingerprint_hash,
@@ -308,7 +302,6 @@ export async function promoteRelease(
     );
   }
   const { scope: targetScope } = await prepareTargetScope({
-    authorityId: sourceScope.authorityId,
     channelName: targetChannel,
     database: input.database,
     fingerprintHash: source.fingerprint_hash,

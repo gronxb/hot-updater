@@ -111,11 +111,9 @@ const toRuntimeBundle = (bundle: Bundle, storageBucket: string): Bundle => {
 };
 
 const seedProductionRelease = async ({
-  authorityId,
   bundle,
   database,
 }: {
-  readonly authorityId: string;
   readonly bundle: Bundle;
   readonly database: ReturnType<typeof firebaseDatabase>;
 }) => {
@@ -128,7 +126,6 @@ const seedProductionRelease = async ({
     })
   ).row;
   const scopeKey = createReleaseCatalogScopeKey({
-    authorityId,
     channelKey,
     platform: bundle.platform,
     strategy: "APP_VERSION",
@@ -163,7 +160,6 @@ const seedProductionRelease = async ({
           },
         },
         scope: {
-          authorityId,
           channelId: channel.id,
           channelName,
           fingerprintHash: null,
@@ -283,7 +279,6 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
           "plugins/firebase/dist/firebase/functions/index.cjs",
         ),
         {
-          AUTHORITY_ID: projectId,
           REGION,
         },
       ),
@@ -297,14 +292,13 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       storageBucket,
     };
 
-    database = firebaseDatabase({ ...adminOptions, authorityId: projectId });
+    database = firebaseDatabase({ ...adminOptions });
     await registerApiKey({
       apiKey: API_KEY,
       apiKeys: database.models.apiKeys,
       name: "Runtime acceptance",
     });
     seedHotUpdater = createHotUpdater({
-      authorityId: projectId,
       database,
       clientAccess: { type: "public" },
       storage: [
@@ -399,7 +393,6 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     );
     await seedHotUpdater.insertBundle(bundle);
     await seedProductionRelease({
-      authorityId: projectId,
       bundle,
       database,
     });
@@ -415,7 +408,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     );
 
     await expect(response.json()).resolves.toMatchObject({
-      authorityId: projectId,
+      catalogId: expect.stringMatching(/^[0-9a-f-]{36}$/),
       releases: [{ bundleId: "00000000-0000-0000-0000-000000000001" }],
     });
   });

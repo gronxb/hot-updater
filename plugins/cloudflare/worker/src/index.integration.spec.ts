@@ -23,7 +23,6 @@ declare module "vitest" {
 declare module "cloudflare:test" {
   interface ProvidedEnv {
     DB: D1Database;
-    AUTHORITY_ID: string;
     BUCKET: R2Bucket;
     BUCKET_NAME: string;
     STORAGE_DOWNLOAD_URL_SIGNING_KEY: string;
@@ -43,7 +42,6 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
 const seedBundles = async (bundles: Bundle[]) => {
   const database = d1Database(env.DB);
   const seedHotUpdater = createHotUpdater({
-    authorityId: env.AUTHORITY_ID,
     database,
     clientAccess: { type: "public" },
   });
@@ -63,7 +61,6 @@ const seedBundles = async (bundles: Bundle[]) => {
       })
     ).row;
     const scopeKey = createReleaseCatalogScopeKey({
-      authorityId: env.AUTHORITY_ID,
       channelKey,
       platform: bundle.platform,
       strategy: "APP_VERSION",
@@ -99,7 +96,6 @@ const seedBundles = async (bundles: Bundle[]) => {
             },
           },
           scope: {
-            authorityId: env.AUTHORITY_ID,
             channelId: channel.id,
             channelName,
             fingerprintHash: null,
@@ -163,7 +159,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     );
 
     await expect(response.json()).resolves.toMatchObject({
-      authorityId: env.AUTHORITY_ID,
+      catalogId: expect.stringMatching(/^[0-9a-f-]{36}$/),
       releases: [{ bundleId: "00000000-0000-0000-0000-000000000001" }],
     });
   });

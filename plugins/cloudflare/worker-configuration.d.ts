@@ -4,7 +4,6 @@ declare namespace Cloudflare {
   interface Env {
     DB: D1Database;
     BUCKET: R2Bucket;
-    AUTHORITY_ID: string;
     BUCKET_NAME: string;
     STORAGE_DOWNLOAD_URL_SIGNING_KEY: string;
   }

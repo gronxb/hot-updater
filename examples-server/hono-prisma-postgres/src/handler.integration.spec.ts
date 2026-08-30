@@ -222,7 +222,6 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
     const channelName = "prisma-concurrency";
     const channelKey = encodeChannelKey(channelName);
     const scopeKey = createReleaseCatalogScopeKey({
-      authorityId: hotUpdater.authorityId,
       channelKey,
       platform: "ios",
       strategy: "APP_VERSION",
@@ -271,7 +270,6 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
             },
           },
           scope: {
-            authorityId: hotUpdater.authorityId,
             channelId: channel.id,
             channelName,
             fingerprintHash: null,

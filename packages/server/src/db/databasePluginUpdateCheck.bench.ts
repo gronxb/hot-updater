@@ -14,10 +14,9 @@ import { bench, describe } from "vitest";
 
 import { createHotUpdater } from "../index";
 
-const AUTHORITY_ID = "bench";
+const CATALOG_ID = "bench";
 const CHANNEL_KEY = encodeChannelKey("production");
 const SCOPE_KEY = createReleaseCatalogScopeKey({
-  authorityId: AUTHORITY_ID,
   channelKey: CHANNEL_KEY,
   platform: "ios",
   strategy: "APP_VERSION",
@@ -30,7 +29,7 @@ const PAYLOAD = JSON.stringify({
   strategy: "APP_VERSION",
 } satisfies CompiledReleaseCatalog);
 const CATALOG: ReleaseCatalogRow = {
-  authority_id: AUTHORITY_ID,
+  catalog_id: CATALOG_ID,
   byte_size: Buffer.byteLength(PAYLOAD),
   catalog_hash: `sha256:${"0".repeat(64)}`,
   channel_id: "channel-production",
@@ -86,7 +85,6 @@ const database = createDatabasePlugin({
   models: adapter.models,
 });
 const hotUpdater = createHotUpdater({
-  authorityId: AUTHORITY_ID,
   database,
   clientAccess: { type: "public" },
 });

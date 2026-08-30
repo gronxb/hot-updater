@@ -1,6 +1,7 @@
 import {
   createStoragePlugin,
   type DatabasePlugin,
+  type ConfigInput,
 } from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
@@ -11,7 +12,6 @@ import type {
   ClientAccessPolicy,
   CreateHotUpdaterOptions,
   HandlerAPI,
-  HandlerOptions,
 } from "./index";
 import {
   createRuntimeDatabase,
@@ -25,6 +25,16 @@ const publicClientAccess = {
 } satisfies ClientAccessPolicy;
 
 describe("runtime createHotUpdater", () => {
+  it.each(["authorityId", "catalogId"])("rejects a user-supplied %s", (key) => {
+    expect(() =>
+      createHotUpdater({
+        clientAccess: publicClientAccess,
+        database: createInMemoryDatabasePlugin(),
+        [key]: "user-controlled",
+      }),
+    ).toThrow(`Remove ${key}`);
+  });
+
   it("publishes only the supported runtime and database subpaths", () => {
     const packageExports = packageJson.exports;
 
@@ -36,10 +46,11 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("exports runtime-safe handler types from the root entry", () => {
+    expectTypeOf<ConfigInput>().not.toHaveProperty("authorityId");
+    expectTypeOf<ConfigInput>().not.toHaveProperty("catalogId");
     expectTypeOf<HandlerAPI>().toHaveProperty("getBundles");
-    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<"authorityId">();
     expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
-      "authorityId" | "clientAccess" | "database" | "storage"
+      "clientAccess" | "database" | "storage"
     >();
     expectTypeOf<CreateHotUpdaterOptions>().toHaveProperty("clientAccess");
     expectTypeOf<
@@ -72,6 +83,8 @@ describe("runtime createHotUpdater", () => {
     expect(hotUpdater.handlers.admin).toEqual(expect.any(Function));
     expect("createMigrator" in hotUpdater).toBe(false);
     expect("generateSchema" in hotUpdater).toBe(false);
+    expect(hotUpdater).not.toHaveProperty("authorityId");
+    expect(hotUpdater).not.toHaveProperty("catalogId");
     expectTypeOf(hotUpdater).not.toHaveProperty("createMigrator");
     expectTypeOf(hotUpdater).not.toHaveProperty("generateSchema");
     expectTypeOf(hotUpdater.handlers.client)

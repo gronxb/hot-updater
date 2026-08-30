@@ -383,7 +383,7 @@ class BundleFileStorageServiceTest {
 
             assertTrue(
                 service.acceptReleaseCatalog(
-                    authorityId = "project-a",
+                    catalogId = "project-a",
                     scopeKey = "scope-production",
                     generation = 2,
                     catalogHash = "hash-2",
@@ -393,7 +393,7 @@ class BundleFileStorageServiceTest {
             )
             assertFalse(
                 service.acceptReleaseCatalog(
-                    authorityId = "project-a",
+                    catalogId = "project-a",
                     scopeKey = "scope-production",
                     generation = 1,
                     catalogHash = "hash-1",
@@ -403,7 +403,7 @@ class BundleFileStorageServiceTest {
             )
             assertFalse(
                 service.acceptReleaseCatalog(
-                    authorityId = "project-a",
+                    catalogId = "project-a",
                     scopeKey = "scope-production",
                     generation = 2,
                     catalogHash = "different-hash",
@@ -446,7 +446,7 @@ class BundleFileStorageServiceTest {
             )
             assertTrue(
                 service.acceptReleaseCatalog(
-                    authorityId = "project-a",
+                    catalogId = "project-a",
                     scopeKey = "scope-production",
                     generation = 2,
                     catalogHash = "hash-2",
@@ -621,7 +621,7 @@ class BundleFileStorageServiceTest {
             kind = "BUNDLE",
             releaseId = releaseId,
             bundleId = bundleId,
-            authorityId = "project-a",
+            catalogId = "project-a",
             scopeKey = "scope-production",
             generation = generation,
             catalogHash = catalogHash,

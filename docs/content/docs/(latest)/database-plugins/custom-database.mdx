@@ -338,7 +338,6 @@ Use the same provider in the CLI and self-hosted server:
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  authorityId: "project-01",
   database: myDatabase({ db }),
   // build: ...
   // storage: ...
@@ -347,15 +346,14 @@ export default defineConfig({
 
 ```ts title="server.ts"
 export const hotUpdater = createHotUpdater({
-  authorityId: "project-01",
   database: myDatabase({ db }),
   clientAccess: { type: "api-key" },
   storage,
 });
 ```
 
-Every endpoint serving the same catalogs must use the same stable
-`authorityId`.
+The CLI and server use the same database. Catalog identity is managed
+automatically; there is no additional identifier to configure or synchronize.
 
 ## Standalone repositories
 

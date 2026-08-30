@@ -299,7 +299,6 @@ const storageOptions = {
 };
 
 export default defineConfig({
-  authorityId: "aws.<generated-authority-id>",
   build: bare({ enableHermes: true }),
   updateStrategy: "appVersion",
   storage: s3Storage(storageOptions),
@@ -315,8 +314,7 @@ export default defineConfig({
 If you choose **shared AWS profile**, `fromNodeProviderChain()` is replaced with
 `fromIni({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })`. SSO uses
 `fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })`; only
-account/access-key mode emits a literal access-key credential block. Keep the
-generated `authorityId`: it is derived from the selected DynamoDB table.
+account/access-key mode emits a literal access-key credential block.
 
 ### Replace Account Access Keys (Optional)
 

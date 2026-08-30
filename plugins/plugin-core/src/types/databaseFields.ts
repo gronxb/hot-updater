@@ -44,7 +44,7 @@ export const databaseFields = {
   ],
   release_catalogs: [
     "scope_key",
-    "authority_id",
+    "catalog_id",
     "strategy",
     "channel_id",
     "channel_key",

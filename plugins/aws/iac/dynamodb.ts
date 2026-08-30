@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import {
   type AttributeDefinition,
   DynamoDB,
@@ -104,17 +102,6 @@ const isResourceNotFound = (error: unknown): boolean =>
   error !== null &&
   Reflect.get(error, "name") === "ResourceNotFoundException";
 
-const getAuthorityId = (
-  tableName: string,
-  table: TableDescription | undefined,
-): string => {
-  const tableArn = table?.TableArn;
-  if (!tableArn) {
-    throw new DynamoDBTableSchemaError(tableName);
-  }
-  return `aws.${createHash("sha256").update(tableArn).digest("base64url")}`;
-};
-
 export class DynamoDBManager {
   private readonly client: DynamoDB;
 
@@ -128,7 +115,7 @@ export class DynamoDBManager {
     this.client = new DynamoDB({ credentials, region });
   }
 
-  async ensureTable(tableName: string): Promise<string> {
+  async ensureTable(tableName: string): Promise<void> {
     try {
       const { Table } = await this.client.describeTable({
         TableName: tableName,
@@ -137,7 +124,7 @@ export class DynamoDBManager {
         throw new DynamoDBTableSchemaError(tableName);
       }
       await this.ensureLifecycle(tableName);
-      return getAuthorityId(tableName, Table);
+      return;
     } catch (error) {
       if (
         error instanceof Error &&
@@ -149,7 +136,7 @@ export class DynamoDBManager {
       if (!isResourceNotFound(error)) throw error;
     }
 
-    const created = await this.client.createTable({
+    await this.client.createTable({
       AttributeDefinitions: [
         { AttributeName: "pk", AttributeType: "S" },
         { AttributeName: "sk", AttributeType: "S" },
@@ -175,10 +162,6 @@ export class DynamoDBManager {
       { TableName: tableName },
     );
     await this.ensureLifecycle(tableName);
-    const table =
-      created.TableDescription ??
-      (await this.client.describeTable({ TableName: tableName })).Table;
-    return getAuthorityId(tableName, table);
   }
 
   private async ensureLifecycle(tableName: string): Promise<void> {

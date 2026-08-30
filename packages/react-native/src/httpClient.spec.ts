@@ -27,7 +27,7 @@ const artifact: ArtifactInfo = {
 };
 
 const catalog: ReleaseCatalog = {
-  authorityId: "server-owned-project",
+  catalogId: "server-owned-project",
   catalogHash: `sha256:${"a".repeat(64)}`,
   fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
   generation: 1,
@@ -43,7 +43,7 @@ describe("private HotUpdater HTTP client", () => {
     mocks.fetchJSON.mockResolvedValue(artifact);
   });
 
-  it("fetches a catalog without putting the server-owned authority in the route", async () => {
+  it("fetches a catalog without putting its internal identity in the route", async () => {
     const session = await createHttpClient(
       "https://updates.example.com/hot-updater/",
     ).createSession();

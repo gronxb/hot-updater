@@ -20,7 +20,7 @@ export type ConsoleAuthAdapter = Readonly<{
 }>;
 
 export type HotUpdaterConsoleConfig = Readonly<
-  Pick<ConfigInput, "authorityId" | "console" | "database" | "storage">
+  Pick<ConfigInput, "console" | "database" | "storage">
 >;
 
 export type HotUpdaterConsoleConfigSource =

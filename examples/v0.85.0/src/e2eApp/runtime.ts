@@ -1,5 +1,10 @@
 import { HOT_UPDATER_API_KEY } from "@env";
+import type {
+  CatalogHighWater,
+  PersistedSelectionReceipt,
+} from "@hot-updater/core";
 import { HotUpdater } from "@hot-updater/react-native";
+import { TurboModuleRegistry, type TurboModule } from "react-native";
 import { proxy } from "valtio";
 
 import {
@@ -21,7 +26,7 @@ export const notify = proxy<{
 export type RuntimeSnapshot = {
   readonly activeReleaseId: string | null;
   readonly appVersion: string | null;
-  readonly authorityId: string | null;
+  readonly catalogId: string | null;
   readonly baseURL: string;
   readonly bundleId: string;
   readonly channel: string;
@@ -75,7 +80,7 @@ HotUpdater.init({
 export const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   activeReleaseId: null,
   appVersion: HotUpdater.getAppVersion(),
-  authorityId: null,
+  catalogId: null,
   baseURL: fallbackHotUpdaterBaseURL,
   bundleId: HotUpdater.getBundleId(),
   channel: HotUpdater.getChannel(),
@@ -94,15 +99,27 @@ export const readRuntimeSnapshot = (): RuntimeSnapshot => ({
 });
 
 export const refreshRuntimeSnapshot = async (): Promise<RuntimeSnapshot> => {
+  // E2E diagnostics deliberately inspect the native protocol, not the public SDK state.
+  const rawState = TurboModuleRegistry.getEnforcing<
+    TurboModule & {
+      getActiveUpdateState(): unknown;
+    }
+  >("HotUpdater").getActiveUpdateState();
+  const internalState = (
+    typeof rawState === "string" ? JSON.parse(rawState) : rawState
+  ) as {
+    activeSelection: PersistedSelectionReceipt | null;
+    highestSeenCatalogs: Readonly<Record<string, CatalogHighWater>>;
+  };
   const [baseURL, updateState] = await Promise.all([
     resolveHotUpdaterBaseURL(),
-    HotUpdater.getActiveUpdateState(),
+    Promise.resolve(internalState),
   ]);
   const active = updateState.activeSelection;
   return {
     ...readRuntimeSnapshot(),
     activeReleaseId: active?.releaseId ?? null,
-    authorityId: active?.authorityId ?? null,
+    catalogId: active?.catalogId ?? null,
     baseURL,
     generation: active?.generation ?? null,
     highWater: JSON.stringify(updateState.highestSeenCatalogs),

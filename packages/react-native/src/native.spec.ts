@@ -6,6 +6,7 @@ const nativeModuleMock = vi.hoisted(() => {
   const getCrashHistory = vi.fn<() => string[] | string>(() => []);
 
   return {
+    getActiveUpdateState: vi.fn<() => unknown>(),
     clearCrashHistory: vi.fn(() => true),
     getBaseURL: vi.fn<() => string | null>(() => null),
     getBundleId: vi.fn<() => string | null>(() => "bundle-id"),
@@ -82,6 +83,43 @@ describe("notifyAppReady", () => {
     nativeModuleMock.setCohort.mockReset();
     nativeModuleMock.setUser.mockReset();
     nativeModuleMock.updateBundle.mockReset();
+  });
+
+  it("exposes active Release state without internal Catalog identity or history", async () => {
+    const receipt = {
+      bundleId: "bundle-123",
+      releaseId: "release-123",
+      kind: "BUNDLE",
+      channel: "production",
+      catalogId: "private-catalog",
+      scopeKey: "private-scope",
+      generation: 10,
+      catalogHash: "private-hash",
+      selectionContextHash: "private-context",
+    };
+    nativeModuleMock.getActiveUpdateState.mockReturnValue({
+      activeSelection: receipt,
+      stableSelection: receipt,
+      verificationPending: true,
+      highestSeenCatalogs: {
+        "private-catalog|private-scope": {
+          generation: 10,
+          catalogHash: "private-hash",
+        },
+      },
+    });
+    const { getPublicActiveUpdateState } = await import("./native");
+    const selection = {
+      bundleId: "bundle-123",
+      releaseId: "release-123",
+      kind: "BUNDLE",
+      channel: "production",
+    };
+    expect(getPublicActiveUpdateState()).toEqual({
+      activeSelection: selection,
+      stableSelection: selection,
+      verificationPending: true,
+    });
   });
 
   it("normalizes legacy PROMOTED launch reports to UPDATE_APPLIED", async () => {

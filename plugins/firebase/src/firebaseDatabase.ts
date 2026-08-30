@@ -53,15 +53,11 @@ const exactId = (
     : undefined;
 };
 
-export type FirebaseDatabaseConfig = AppOptions & {
-  /** Stable project identity used in Release catalog scope keys. */
-  readonly authorityId?: string;
-};
+export type FirebaseDatabaseConfig = AppOptions;
 
 export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
   const implementation: DatabasePluginImplementation = (() => {
-    const { authorityId: _authorityId, ...appOptions } = config;
-    const app = getApps().length ? getApp() : initializeApp(appOptions);
+    const app = getApps().length ? getApp() : initializeApp(config);
     const db = getFirestore(app);
     const collections = createFirebaseDatabaseCollections(db);
     let migration: Promise<void> | undefined;

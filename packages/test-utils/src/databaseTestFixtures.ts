@@ -62,7 +62,7 @@ export const createReleaseRowFixture = (
   channel: ChannelRow,
 ): ReleaseRow => ({
   id: fixtureId(`${Number(suffix) + 5000}`),
-  scope_key: `v1:app-version:test:ios:${channel.name}`,
+  scope_key: `v1:app-version:ios:${channel.name}`,
   channel_id: channel.id,
   platform: bundle.platform,
   kind: "BUNDLE",

@@ -157,7 +157,6 @@ import { config } from "dotenv";
 config({ path: ".env.hotupdater" });
 
 export default defineConfig({
-  authorityId: "your-d1-database-id",
   build: bare({ enableHermes: true }),
   updateStrategy: "appVersion",
   storage: r2Storage({
@@ -176,8 +175,7 @@ export default defineConfig({
 });
 ```
 
-Keep the generated `authorityId` unchanged. Managed Cloudflare uses the D1
-database ID as the Release Catalog authority. The persisted
+The persisted
 `HOT_UPDATER_CLOUDFLARE_R2_PRIVATE` value replays the privacy choice on later
 init runs.
 

@@ -6,7 +6,7 @@ import {
 import { createHttpClient, type HotUpdaterHttpClient } from "./httpClient";
 import {
   addListener,
-  getActiveUpdateState,
+  getPublicActiveUpdateState,
   clearCrashHistory,
   getAppVersion,
   getBaseURL,
@@ -329,8 +329,8 @@ function createHotUpdaterClient() {
      */
     getAppVersion,
 
-    /** Reads the active Release/Bundle receipt and accepted catalog state. */
-    getActiveUpdateState: async () => getActiveUpdateState(),
+    /** Reads the active and stable Release/Bundle state. */
+    getActiveUpdateState: async () => getPublicActiveUpdateState(),
 
     /**
      * Fetches the current bundle ID of the app.

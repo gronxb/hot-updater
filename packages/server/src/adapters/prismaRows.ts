@@ -279,7 +279,7 @@ export const parsePrismaReleaseCatalogRow = (
     throw new PrismaAdapterError("invalid catalog fields");
   }
   return {
-    authority_id: readString(value, "authority_id"),
+    catalog_id: readString(value, "catalog_id"),
     byte_size: readNumber(value, "byte_size"),
     catalog_hash: readString(value, "catalog_hash"),
     channel_id: readString(value, "channel_id"),

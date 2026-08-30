@@ -37,7 +37,6 @@ if (!adminToken) {
 }
 
 export default defineConfig({
-  authorityId: "project-01",
   build: /* your build plugin */,
   storage: /* your storage plugin */,
   database: standaloneRepository({
@@ -71,7 +70,6 @@ if (!adminToken) {
 }
 
 export default defineConfig({
-  authorityId: "project-01",
   build: bare({ enableHermes: true }),
   database: standaloneRepository({
     baseUrl: "https://api.example.com/hot-updater/admin",
@@ -399,7 +397,6 @@ If you want this contract without implementing it yourself, use
 import { createHotUpdater } from "@hot-updater/server";
 
 const hotUpdater = createHotUpdater({
-  authorityId: "project-01",
   database,
   clientAccess: { type: "api-key" },
   storage: [storage],

@@ -53,7 +53,7 @@ create table releases (
 
 create table release_catalogs (
   scope_key varchar(2048) primary key not null,
-  authority_id varchar(255) not null,
+  catalog_id varchar(255) not null,
   strategy text not null,
   channel_id varchar(255) not null,
   channel_key varchar(1400) not null,
@@ -111,7 +111,6 @@ create index releases_bundle_id_idx on releases(bundle_id);
 create index releases_fingerprint_hash_idx on releases(fingerprint_hash);
 create index releases_enabled_idx on releases(enabled);
 create index release_catalogs_channel_idx on release_catalogs(channel_id);
-create index release_catalogs_authority_strategy_idx on release_catalogs(authority_id, strategy);
 create index bundle_events_received_at_idx on bundle_events(received_at_ms, id);
 create index bundle_events_install_idx on bundle_events(install_id, received_at_ms, id);
 create index bundle_events_user_id_idx on bundle_events(user_id, received_at_ms, id);

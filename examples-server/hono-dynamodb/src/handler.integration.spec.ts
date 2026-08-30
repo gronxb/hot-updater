@@ -291,7 +291,6 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
       })
     ).row;
     const scopeKey = createReleaseCatalogScopeKey({
-      authorityId: "default",
       channelKey,
       platform: "ios",
       strategy: "APP_VERSION",
@@ -335,7 +334,6 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
             },
           },
           scope: {
-            authorityId: "default",
             channelId: channel.id,
             channelName,
             fingerprintHash: null,

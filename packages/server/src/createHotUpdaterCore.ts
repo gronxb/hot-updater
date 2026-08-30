@@ -23,7 +23,6 @@ import { createHotUpdaterHandlers, type HotUpdaterHandlers } from "./handler";
 import { createStorageAccess } from "./storageAccess";
 
 export type RuntimeHotUpdaterAPI = DatabaseAPI & {
-  readonly authorityId: string;
   readonly handlers: HotUpdaterHandlers;
   readonly adapterName: string;
   /**
@@ -65,8 +64,6 @@ export type ClientAccessPolicy =
     };
 
 export interface CreateHotUpdaterOptions {
-  /** Stable project/server identity used to isolate Release catalog history. */
-  readonly authorityId?: string;
   readonly database: DatabasePlugin;
   /**
    * Required client-route access policy. This choice is explicit so a server
@@ -140,8 +137,14 @@ export function getHotUpdaterCoreMetadata(
 export function createHotUpdaterCore(
   options: CreateHotUpdaterOptions,
 ): HotUpdaterCore {
+  for (const key of ["authorityId", "catalogId"]) {
+    if (Object.hasOwn(options, key)) {
+      throw new TypeError(
+        `Remove ${key} from createHotUpdater options. Catalog identity is managed internally.`,
+      );
+    }
+  }
   const database = options.database;
-  const authorityId = options.authorityId ?? "default";
   const storagePlugins = (options.storage ?? []).map((storage) => {
     assertStorageOperations(storage, ["get", "getDownloadUrl"]);
     return storage;
@@ -161,7 +164,6 @@ export function createHotUpdaterCore(
     adapterCapabilities.createMigrator,
   );
   const core = createDatabasePluginCore(plugin, resolveFileUrl, {
-    authorityId,
     beforeOperation: assertSchemaReady,
     readStorageText,
   });
@@ -183,9 +185,6 @@ export function createHotUpdaterCore(
 
   const handlers = createHotUpdaterHandlers(
     core.api,
-    {
-      authorityId,
-    },
     analytics,
     clientAccess.type === "api-key"
       ? {
@@ -204,7 +203,6 @@ export function createHotUpdaterCore(
 
   const api: RuntimeHotUpdaterAPI = Object.assign(
     {
-      authorityId,
       adapterName: adapterCapabilities.adapterName ?? core.adapterName,
       analytics,
       apiKeys,

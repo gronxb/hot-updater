@@ -511,8 +511,9 @@ describe("deploy rollout wiring", () => {
     expect(summary).toContain(release.id);
     expect(summary).toContain(`Bundle ID:`);
     expect(summary).toContain("bundle-123");
-    expect(summary).toContain(`Authority ID:`);
-    expect(summary).toContain("default");
+    expect(summary).not.toContain("Authority ID:");
+    expect(summary).not.toContain("Catalog ID:");
+    expect(summary).not.toContain(catalog!.catalog_id);
     expect(summary).toContain(release.scope_key);
     expect(summary).toContain(`Generation:`);
     expect(summary).toContain(String(catalog?.generation));
@@ -590,7 +591,9 @@ describe("deploy rollout wiring", () => {
         .find((message) => message.includes(`${platformName} Deployment`));
       expect(summary).toContain(release!.id);
       expect(summary).toContain(bundleId);
-      expect(summary).toContain("default");
+      expect(summary).not.toContain("Authority ID:");
+      expect(summary).not.toContain("Catalog ID:");
+      expect(summary).not.toContain(catalog!.catalog_id);
       expect(summary).toContain(release!.scope_key);
       expect(summary).toContain(String(catalog?.generation));
     }

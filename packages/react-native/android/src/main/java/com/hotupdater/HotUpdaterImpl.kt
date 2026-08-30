@@ -377,7 +377,7 @@ class HotUpdaterImpl {
     fun notifyAppReady(): Map<String, Any?> = bundleStorage.notifyAppReady()
 
     fun acceptReleaseCatalog(
-        authorityId: String,
+        catalogId: String,
         scopeKey: String,
         generation: Long,
         catalogHash: String,
@@ -385,7 +385,7 @@ class HotUpdaterImpl {
         selectionContextHash: String,
     ): Boolean =
         bundleStorage.acceptReleaseCatalog(
-            authorityId,
+            catalogId,
             scopeKey,
             generation,
             catalogHash,
@@ -405,7 +405,7 @@ class HotUpdaterImpl {
     fun removeReleaseCatalogCache(partition: String): Boolean = releaseCatalogCache.remove(partition)
 
     fun isReleaseSelectionCurrent(
-        authorityId: String,
+        catalogId: String,
         scopeKey: String,
         generation: Long,
         catalogHash: String,
@@ -413,7 +413,7 @@ class HotUpdaterImpl {
         selectionContextHash: String,
     ): Boolean =
         bundleStorage.isReleaseSelectionCurrent(
-            authorityId,
+            catalogId,
             scopeKey,
             generation,
             catalogHash,

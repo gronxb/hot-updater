@@ -15,12 +15,12 @@ import type {
   ReleaseRow,
   ReleaseRowUpdate,
 } from "./types";
+import { createUUIDv7 } from "./uuidv7";
 
 const RELEASE_PAGE_SIZE = 1_000;
 const DEFAULT_MAX_ATTEMPTS = 3;
 
 export interface ReleaseCatalogScope {
-  readonly authorityId: string;
   readonly channelId: string;
   readonly channelName: string;
   readonly platform: "ios" | "android";
@@ -50,6 +50,7 @@ export class ReleaseCatalogMutationError extends Error {
   constructor(
     readonly code:
       | "CATALOG_GENERATION_EXHAUSTED"
+      | "CATALOG_IDENTITY_MISSING"
       | "INVALID_SCOPE"
       | "NON_MONOTONIC_RELEASE_ID"
       | "RELEASE_NOT_FOUND"
@@ -111,13 +112,11 @@ const validateScope = (scope: ReleaseCatalogScope): void => {
   const expectedScopeKey =
     scope.strategy === "APP_VERSION"
       ? createReleaseCatalogScopeKey({
-          authorityId: scope.authorityId,
           channelKey,
           platform: scope.platform,
           strategy: "APP_VERSION",
         })
       : createReleaseCatalogScopeKey({
-          authorityId: scope.authorityId,
           channelKey,
           fingerprintHash: scope.fingerprintHash ?? "",
           platform: scope.platform,
@@ -232,6 +231,40 @@ export interface ReleaseCatalogMutationPreflight {
   readonly release: ReleaseRow | null;
 }
 
+const catalogIdentity = (
+  current: ReleaseCatalogRow | null,
+  rows: readonly ReleaseRow[],
+): string => {
+  if (current !== null) return current.catalog_id;
+  if (rows.length > 0) {
+    throw new ReleaseCatalogMutationError(
+      "CATALOG_IDENTITY_MISSING",
+      "Catalog history is missing. Restore its catalog row from backup before rebuilding or deploying.",
+    );
+  }
+  return createUUIDv7();
+};
+
+const readCatalogScope = async (
+  database: BundleRepository,
+  scopeKey: string,
+) => {
+  // Read the generation before its Releases so any intervening commit makes
+  // our compare-and-set fail instead of publishing an older projection.
+  let currentCatalog =
+    await database.models.releaseCatalogs.findByScopeKey(scopeKey);
+  let rows = await readScopeReleases(database, scopeKey);
+  if (currentCatalog === null && rows.length > 0) {
+    // A first writer may have committed between those reads. Adopt its identity
+    // and reread its Releases before treating the missing row as lost history.
+    currentCatalog =
+      await database.models.releaseCatalogs.findByScopeKey(scopeKey);
+    if (currentCatalog !== null)
+      rows = await readScopeReleases(database, scopeKey);
+  }
+  return { currentCatalog, rows };
+};
+
 const prepareReleaseCatalogMutation = async (
   database: BundleRepository,
   mutationInput: ReleaseCatalogMutationInput,
@@ -242,12 +275,10 @@ const prepareReleaseCatalogMutation = async (
   readonly currentCatalog: ReleaseCatalogRow | null;
   readonly mutationInput: ReleaseCatalogMutationInput;
 }> => {
-  const [rows, currentCatalog] = await Promise.all([
-    readScopeReleases(database, mutationInput.scope.scopeKey),
-    database.models.releaseCatalogs.findByScopeKey(
-      mutationInput.scope.scopeKey,
-    ),
-  ]);
+  const { rows, currentCatalog } = await readCatalogScope(
+    database,
+    mutationInput.scope.scopeKey,
+  );
   const applied = applyMutation(
     rows,
     mutationInput.scope,
@@ -266,7 +297,7 @@ const prepareReleaseCatalogMutation = async (
   }
   const catalog: ReleaseCatalogRow = {
     scope_key: mutationInput.scope.scopeKey,
-    authority_id: mutationInput.scope.authorityId,
+    catalog_id: catalogIdentity(currentCatalog, rows),
     strategy: mutationInput.scope.strategy,
     channel_id: mutationInput.scope.channelId,
     channel_key: encodeChannelKey(mutationInput.scope.channelName),
@@ -415,7 +446,6 @@ const catalogProjectionMatches = (
   scope: ReleaseCatalogScope,
   compilation: ReleaseCatalogCompilation,
 ): boolean =>
-  current.authority_id === scope.authorityId &&
   current.strategy === scope.strategy &&
   current.channel_id === scope.channelId &&
   current.channel_key === encodeChannelKey(scope.channelName) &&
@@ -433,10 +463,10 @@ export async function preflightReleaseCatalogRebuild(input: {
   readonly updatedAtMs?: number;
 }): Promise<ReleaseCatalogRebuildPreflight> {
   validateScope(input.scope);
-  const [rows, currentCatalog] = await Promise.all([
-    readScopeReleases(input.database, input.scope.scopeKey),
-    input.database.models.releaseCatalogs.findByScopeKey(input.scope.scopeKey),
-  ]);
+  const { rows, currentCatalog } = await readCatalogScope(
+    input.database,
+    input.scope.scopeKey,
+  );
   const compilation = await compileReleaseCatalog({
     releases: rows.map(releaseRowToRelease),
     strategy: input.scope.strategy,
@@ -458,7 +488,7 @@ export async function preflightReleaseCatalogRebuild(input: {
     currentCatalog,
     diagnostics: compilation.diagnostics,
     projectedCatalog: {
-      authority_id: input.scope.authorityId,
+      catalog_id: catalogIdentity(currentCatalog, rows),
       byte_size: compilation.byteSize,
       catalog_hash: compilation.catalogHash,
       channel_id: input.scope.channelId,
@@ -491,12 +521,10 @@ export async function rebuildReleaseCatalog(input: {
   }
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const [rows, currentCatalog] = await Promise.all([
-      readScopeReleases(input.database, input.scope.scopeKey),
-      input.database.models.releaseCatalogs.findByScopeKey(
-        input.scope.scopeKey,
-      ),
-    ]);
+    const { rows, currentCatalog } = await readCatalogScope(
+      input.database,
+      input.scope.scopeKey,
+    );
     const compilation = await compileReleaseCatalog({
       releases: rows.map(releaseRowToRelease),
       strategy: input.scope.strategy,
@@ -520,7 +548,7 @@ export async function rebuildReleaseCatalog(input: {
       );
     }
     const catalog: ReleaseCatalogRow = {
-      authority_id: input.scope.authorityId,
+      catalog_id: catalogIdentity(currentCatalog, rows),
       byte_size: compilation.byteSize,
       catalog_hash: compilation.catalogHash,
       channel_id: input.scope.channelId,
