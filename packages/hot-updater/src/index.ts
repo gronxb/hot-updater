@@ -116,12 +116,12 @@ program
     ).choices(["bare", "rock", "expo"]),
   )
   .option(
-    "--init-env-file <path>",
+    "--from-env-file <path>",
     "load saved init inputs and fail if any are missing",
   )
   .addHelpText("after", initHelp)
-  .action(({ initEnvFile, ...options }) =>
-    init({ ...options, envFile: initEnvFile }),
+  .action(({ fromEnvFile, ...options }) =>
+    init({ ...options, envFile: fromEnvFile }),
   );
 
 program

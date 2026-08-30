@@ -35,7 +35,7 @@ const getCredentialRemediation = (
     case "env-file":
       return [
         `Update HOT_UPDATER_CLOUDFLARE_API_TOKEN in ${source.envFile}, then rerun init.`,
-        "Alternatively, rerun without --init-env-file to enter a new token.",
+        "Alternatively, rerun without --from-env-file to enter a new token.",
       ];
     case "prompt":
       return ["Create a new API token, then rerun init and enter it again."];
