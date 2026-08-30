@@ -1,5 +1,5 @@
 ---
-"hot-updater": minor
+"hot-updater": patch
 "@hot-updater/cloudflare": patch
 "@hot-updater/supabase": patch
 ---
