@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.36.6
+
+### Patch Changes
+
+- 99f4590: Preserve nested iOS bundle paths when installing and resolving cached updates.
+  - @hot-updater/cli-tools@0.36.6
+  - @hot-updater/core@0.36.6
+  - @hot-updater/js@0.36.6
+  - @hot-updater/plugin-core@0.36.6
+
 ## 0.36.5
 
 ### Patch Changes
