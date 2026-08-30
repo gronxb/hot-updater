@@ -7,20 +7,24 @@ version: "v0.22.0"
 
 ## Installation
 
-Install all required dependencies at once.
+Install the server dependencies in your server project.
 
 ```package-install
 npm install @hot-updater/server @hot-updater/aws hono @hono/node-server kysely better-sqlite3 dotenv
 ```
 
 ```package-install
-npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater @types/better-sqlite3 tsx
+npm install --save-dev hot-updater @types/better-sqlite3 tsx
 ```
 
-In your React Native app, install the client package separately:
+In your React Native project, install the client and CLI dependencies:
 
 ```package-install
 npm install @hot-updater/react-native
+```
+
+```package-install
+npm install --save-dev @hot-updater/bare @hot-updater/aws @hot-updater/standalone hot-updater dotenv
 ```
 
 ## Database Setup
@@ -44,7 +48,7 @@ export const db = new Kysely({
 
 ## Hot Updater Configuration
 
-Create the Hot Updater instance with your database adapter and storage plugin (see [Storage Plugins](./overview#storage-plugins)).
+Create the Hot Updater instance with your database adapter and storage plugin (see [Storage Plugins](/docs/custom/overview#storage-plugins)).
 
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
@@ -129,7 +133,7 @@ only where `handlers.admin` is explicitly mounted, and your framework
 middleware must protect every request before that mount. The server example
 above uses Bearer authentication for `/hot-updater/admin/*`.
 Create `.env.hotupdater` with the storage credentials, download URL signing
-key, and admin token used by this example:
+key, and admin token used by this example. Add this file to `.gitignore`:
 
 ```bash
 R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
@@ -176,11 +180,18 @@ Your Hot Updater server is now running at `http://localhost:3000/hot-updater`!
 
 Configure your Hot Updater CLI to connect to this self-hosted server.
 
+Create this configuration in the React Native project. Its `.env.hotupdater`
+must contain the same `R2_*` storage values and `HOT_UPDATER_ADMIN_TOKEN` as the
+server, and must also be excluded from Git.
+
 ```typescript title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
+import { config } from "dotenv";
+
+config({ path: ".env.hotupdater" });
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 if (!adminToken) {
@@ -272,6 +283,6 @@ its framework authentication remains required.
 
 ## Next Steps
 
-- Configure your CLI to use this server (see [Overview](./overview#cli-configuration))
-- Explore other [Database Adapters](./database/drizzle) (Drizzle, Prisma, MongoDB)
-- Try different [Server Frameworks](./frameworks/hono) (Express, Elysia)
+- Configure your CLI to use this server (see [Overview](/docs/custom/overview#cli-configuration))
+- Explore other [Database Adapters](/docs/custom/database/drizzle) (Drizzle, Prisma, MongoDB)
+- Try different [Server Frameworks](/docs/custom/frameworks/hono) (Express, Elysia)

@@ -20,7 +20,10 @@ npx hot-updater init
 
 This interactive command will guide you through the setup process. For details on what the init command does, see the [Supabase](/docs/managed/supabase) documentation.
 
-For manual configuration, use the settings below.
+The settings below connect to an initialized v1 database; they do not create
+its tables or RPC functions. Complete `hot-updater init` first, or apply the
+SQL migrations from the installed `@hot-updater/supabase` package's
+`supabase/migrations` directory to the selected project before using the plugin.
 
 ## Configuration
 

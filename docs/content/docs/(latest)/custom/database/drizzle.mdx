@@ -155,6 +155,6 @@ The configuration above enables the update-check routes:
 | GET    | `/hot-updater/artifacts/:targetBundleId/from/:currentBundleId`                                  | Resolve an artifact                    |
 
 `handlers.admin` owns the Bundle, Channel, Release, Release Catalog, and
-database-commit admin routes under `/hot-updater/admin/*`. See [CLI Configuration](../cli-configuration#api-endpoints) for their complete
+database-commit admin routes under `/hot-updater/admin/*`. See [CLI Configuration](/docs/custom/cli-configuration#api-endpoints) for their complete
 request and response contract. These admin routes do not authenticate themselves; keep the fail-closed
 framework middleware described above.

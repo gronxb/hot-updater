@@ -122,10 +122,13 @@ describe("areVersionsCompatible", () => {
   });
 
   // Test cases for non-compatible versions/ranges
-  it("should ignore patch differences for package versions", () => {
+  it("should follow semver compatibility for stable package versions", () => {
     expect(areVersionsCompatible("1.0.0", "1.0.1")).toBe(true);
+    expect(areVersionsCompatible("1.0.0", "1.1.0")).toBe(true);
+    expect(areVersionsCompatible("^1.0.0", "^1.1.0")).toBe(true);
     expect(areVersionsCompatible("0.31.4", "0.31.9")).toBe(true);
     expect(areVersionsCompatible("^0.31.4", "0.31.9")).toBe(true);
+    expect(areVersionsCompatible("0.31.4", "0.32.0")).toBe(false);
   });
 
   it("should return false when versionA does not satisfy versionB range", () => {
@@ -409,8 +412,8 @@ describe("doctor", () => {
       packageJson: {
         dependencies: {
           "hot-updater": "^1.0.0",
-          "@hot-updater/core": "1.0.1",
-          "@hot-updater/plugin-react-native": "1.0.5",
+          "@hot-updater/core": "1.1.0",
+          "@hot-updater/plugin-react-native": "^1.2.0",
         },
         devDependencies: {
           "some-other-package": "2.0.0",

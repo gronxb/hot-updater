@@ -484,8 +484,18 @@ keys/*
 !keys/public-key.pem
 ```
 
-If you use `.easignore`, apply the same public-file inclusion there. Existing
-ignore rules are not rewritten automatically.
+For EAS uploads, copy your existing `.gitignore` rules into `.easignore`, then
+append these rules to include only the public key ([EAS ignore-file
+documentation](https://docs.expo.dev/build-reference/easignore/)):
+
+```txt title=".easignore"
+# Keep your existing ignore rules above
+!/keys/
+/keys/*
+!/keys/public-key.pem
+```
+
+Existing ignore rules are not rewritten automatically.
 
 For CI, use a protected secret manager and materialize the private file
 only outside the workspace for the duration of the trusted signing job. A PEM
@@ -593,6 +603,11 @@ Remove embedded public keys with:
 npx hot-updater keys remove [--yes]
 ```
 
+Removing the key from local native files does not change already installed
+apps; they still require signed bundles. To disable verification for a future
+native release, remove the key, rebuild, and release that app before targeting
+it with unsigned bundles.
+
 ## Console
 
 The Hot Updater Console provides read-only inspection of bundle signing. It
@@ -635,7 +650,8 @@ For a planned migration:
 1. Create a new signing key without changing the active key
 2. Export and record its public-key fingerprint
 3. Release a new native app containing the new public key
-4. Keep the old signer available for updates targeting old app versions
+4. Keep the old signer available for updates targeting old app versions, using
+   matching signing keys and non-overlapping app-version or fingerprint targets
 5. Switch each supported app cohort only after it trusts the new public key
 6. Retire the old signer after those cohorts no longer receive updates
 
