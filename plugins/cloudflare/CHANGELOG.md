@@ -1,5 +1,16 @@
 # @hot-updater/cloudflare
 
+## 0.36.6
+
+### Patch Changes
+
+- 7143c0a: Use patched Hono versions and pin the Supabase Edge Function runtime import.
+  - @hot-updater/cli-tools@0.36.6
+  - @hot-updater/core@0.36.6
+  - @hot-updater/server@0.36.6
+  - @hot-updater/js@0.36.6
+  - @hot-updater/plugin-core@0.36.6
+
 ## 0.36.5
 
 ### Patch Changes
