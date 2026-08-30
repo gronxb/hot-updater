@@ -28,10 +28,13 @@ const loadPrivateKey = async (privateKeyPath: string): Promise<KeyObject> => {
   }
 };
 
-const createLocalSigningPlugin = ({
+export const createLocalSigningPlugin = ({
   privateKeyPath,
   publicKeyPath,
-}: LocalSigningConfig): BundleSigningPlugin => {
+}: Extract<LocalSigningConfig, { enabled: true }>): Omit<
+  BundleSigningPlugin,
+  "publicKeyPath"
+> & { readonly publicKeyPath?: string } => {
   const privateKeys = new Map<string, Promise<KeyObject>>();
   const getPrivateKey = (cwd = process.cwd()) => {
     const resolvedPath = resolvePath(cwd, privateKeyPath);
@@ -79,51 +82,61 @@ const invalidSigningConfig = () =>
 
 export const normalizeSigningConfig = (
   signing: SigningConfig | undefined,
-): BundleSigningPlugin | undefined => {
+):
+  | BundleSigningPlugin
+  | Extract<LocalSigningConfig, { enabled: true }>
+  | undefined => {
   if (signing === undefined) return undefined;
   if (typeof signing !== "object" || signing === null) {
     throw invalidSigningConfig();
   }
 
   const hasPrivateKeyPath = Reflect.has(signing, "privateKeyPath");
-  const hasPublicKeyPath = Reflect.has(signing, "publicKeyPath");
+  const hasEnabled = Reflect.has(signing, "enabled");
   const hasPluginMembers = ["name", "getPublicKey", "sign"].some((key) =>
     Reflect.has(signing, key),
   );
-  if (hasPrivateKeyPath && hasPluginMembers) {
+  if ((hasPrivateKeyPath || hasEnabled) && hasPluginMembers) {
     throw new Error(
-      "Bundle signing config cannot combine a local private key with signing plugin fields.",
+      "Bundle signing config cannot combine local signing fields with signing plugin fields.",
     );
   }
 
-  if (hasPrivateKeyPath) {
+  if (!hasPluginMembers) {
     const hasUnsupportedMembers = Object.keys(signing).some(
-      (key) => key !== "privateKeyPath" && key !== "publicKeyPath",
+      (key) =>
+        key !== "enabled" &&
+        key !== "privateKeyPath" &&
+        key !== "publicKeyPath",
     );
     if (hasUnsupportedMembers) {
       throw new Error(
-        "Local bundle signing accepts only privateKeyPath and publicKeyPath.",
+        "Local bundle signing accepts only enabled, privateKeyPath and publicKeyPath.",
       );
     }
+    const enabled = Reflect.get(signing, "enabled");
+    // v0 never enables signing merely because key paths are present.
+    if (enabled === false || enabled === undefined) return undefined;
+    if (enabled !== true) throw invalidSigningConfig();
+
     const privateKeyPath = Reflect.get(signing, "privateKeyPath");
     const publicKeyPath = Reflect.get(signing, "publicKeyPath");
+    if (typeof privateKeyPath !== "string" || !privateKeyPath.trim()) {
+      throw new Error("Enabled local bundle signing requires privateKeyPath.");
+    }
     if (
-      typeof privateKeyPath !== "string" ||
-      !privateKeyPath.trim() ||
-      typeof publicKeyPath !== "string" ||
-      !publicKeyPath.trim()
+      publicKeyPath !== undefined &&
+      (typeof publicKeyPath !== "string" || !publicKeyPath.trim())
     ) {
       throw new Error(
-        "Local bundle signing requires privateKeyPath and publicKeyPath.",
+        "Local bundle signing publicKeyPath must be a non-empty path when provided.",
       );
     }
-    return createLocalSigningPlugin({ privateKeyPath, publicKeyPath });
-  }
-
-  if (hasPublicKeyPath && !hasPluginMembers) {
-    throw new Error(
-      "Local bundle signing requires privateKeyPath and publicKeyPath.",
-    );
+    return {
+      enabled: true,
+      privateKeyPath,
+      ...(publicKeyPath === undefined ? {} : { publicKeyPath }),
+    };
   }
 
   if (

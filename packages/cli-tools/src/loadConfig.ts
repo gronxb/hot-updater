@@ -1,7 +1,6 @@
 import path from "path";
 
 import type {
-  BundleSigningPlugin,
   ConfigInput,
   Platform,
   RequiredDeep,
@@ -197,7 +196,7 @@ export type ConfigResponse = RequiredDeep<
   Omit<ConfigInput, "database" | "signing" | "storage">
 > &
   Pick<ConfigInput, "database" | "storage"> & {
-    signing?: BundleSigningPlugin;
+    signing?: ReturnType<typeof normalizeSigningConfig>;
   };
 
 const mergeConfigSources = (
@@ -255,6 +254,6 @@ export const loadConfig = async (
   const signing = normalizeSigningConfig(mergedConfig.signing);
   return {
     ...mergedConfig,
-    ...(signing === undefined ? {} : { signing }),
+    signing,
   } as ConfigResponse;
 };

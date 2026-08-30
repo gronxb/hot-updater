@@ -3,6 +3,7 @@ import path from "path";
 
 import {
   type ConfigResponse,
+  getBundleSigningPublicKey,
   getCwd,
   loadConfig,
   p,
@@ -569,11 +570,10 @@ async function checkNativeStatus({
   const config = await loadConfig(null);
   const localFingerprint = await readLocalFingerprintFile(cwd);
   const requireFingerprint = config.updateStrategy === "fingerprint";
-  const expectedSigningPublicKey = config.signing
-    ? await fs.promises
-        .readFile(path.resolve(cwd, config.signing.publicKeyPath), "utf8")
-        .catch(() => "invalid configured bundle signing public key")
-    : undefined;
+  const expectedSigningPublicKey =
+    (await getBundleSigningPublicKey(config.signing, { cwd }).catch(
+      () => "invalid configured bundle signing public key",
+    )) ?? undefined;
 
   const [ios, android, signing] = await Promise.all([
     checkIosNativeStatus({

@@ -1,4 +1,4 @@
-import { createPublicKey } from "node:crypto";
+import { createPrivateKey, createPublicKey } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "path";
 
@@ -115,27 +115,48 @@ const getFingerprint = async () => {
   return fingerprintCache;
 };
 
-/** Reads the checked-in public key without accessing signing credentials. */
+/** Uses public-key-only configuration, or the v0 local key sources when omitted. */
 export const getPublicKeyFromConfig = async (
   signingConfig: SigningConfig | undefined,
 ): Promise<string | null> => {
-  if (!signingConfig) {
+  if (
+    !signingConfig ||
+    ("enabled" in signingConfig && !signingConfig.enabled)
+  ) {
     return null;
   }
 
-  try {
-    if (!signingConfig.publicKeyPath.trim()) {
-      throw new Error("missing public key path");
+  // Retain the v0 EAS key source only for local configs without an explicit pin.
+  if ("enabled" in signingConfig && signingConfig.publicKeyPath === undefined) {
+    const envPrivateKey = process.env.HOT_UPDATER_PRIVATE_KEY;
+    if (envPrivateKey) {
+      try {
+        const pem = envPrivateKey.includes("-----BEGIN")
+          ? envPrivateKey
+          : await readFile(path.resolve(process.cwd(), envPrivateKey), "utf8");
+        return canonicalizeRsaSpkiPublicKey(
+          createPublicKey(createPrivateKey(pem))
+            .export({ format: "pem", type: "spki" })
+            .toString(),
+        );
+      } catch {
+        // As in v0, try the configured local files if the environment source fails.
+      }
     }
-    return canonicalizeRsaSpkiPublicKey(
-      await readFile(
-        path.resolve(process.cwd(), signingConfig.publicKeyPath),
-        "utf8",
-      ),
+  }
+
+  try {
+    const { getBundleSigningPublicKey } = await loadCliTools();
+    return (
+      (
+        await getBundleSigningPublicKey(signingConfig, { cwd: process.cwd() })
+      )?.trim() ?? null
     );
   } catch {
     throw new Error(
-      "[hot-updater] Failed to load publicKeyPath for bundle signing.",
+      signingConfig.publicKeyPath !== undefined
+        ? "[hot-updater] Failed to load publicKeyPath for bundle signing."
+        : "[hot-updater] Failed to load public key for bundle signing.",
     );
   }
 };

@@ -24,7 +24,10 @@ const mocks = vi.hoisted(() => ({
   logWarn: vi.fn(),
 }));
 
-vi.mock("@hot-updater/cli-tools", () => ({
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  getBundleSigningPublicKey: (
+    await importOriginal<typeof import("@hot-updater/cli-tools")>()
+  ).getBundleSigningPublicKey,
   colors: {
     blue: (value: string) => value,
     bold: (value: string) => value,
@@ -204,6 +207,28 @@ describe("keysExportPublic", () => {
     expect(mocks.androidSet).toHaveBeenCalledWith(
       "hot_updater_public_key",
       next.publicKey.trim(),
+    );
+  });
+
+  it("exports the public key from unchanged v0 local config without a public file", async () => {
+    const { privateKey, publicKey } = createKeyPair();
+    const cwd = await createProject();
+    await fs.writeFile(path.join(cwd, "private.pem"), privateKey);
+    mocks.getCwd.mockReturnValue(cwd);
+    mocks.loadConfig.mockResolvedValue({
+      signing: { enabled: true, privateKeyPath: "private.pem" },
+      platform: {
+        android: {
+          androidManifestPaths: ["android/app/src/main/AndroidManifest.xml"],
+        },
+        ios: { infoPlistPaths: [] },
+      },
+    });
+    mocks.androidGet.mockResolvedValue({ value: null, paths: [] });
+    await keysExportPublic({ yes: true });
+    expect(mocks.androidSet).toHaveBeenCalledWith(
+      "hot_updater_public_key",
+      publicKey.trim(),
     );
   });
 });

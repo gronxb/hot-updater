@@ -6,7 +6,10 @@ import path from "node:path";
 import type { BundleSigningPlugin } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { prepareBundleSigning } from "./bundleSigning";
+import {
+  getBundleSigningPublicKey,
+  prepareBundleSigning,
+} from "./bundleSigning";
 
 const tempDirs: string[] = [];
 
@@ -32,13 +35,68 @@ afterEach(async () => {
 });
 
 describe("prepareBundleSigning", () => {
-  it("uses omission to disable signing and rejects the legacy shape", async () => {
+  it("disables signing when omitted or explicitly disabled without reading keys", async () => {
     await expect(prepareBundleSigning(undefined)).resolves.toBeNull();
     await expect(
-      prepareBundleSigning({ enabled: false } as never),
-    ).rejects.toThrow(
-      "Bundle signing must be configured with a signing plugin. Omit signing to disable it.",
+      prepareBundleSigning({
+        enabled: false,
+        privateKeyPath: "/missing/key.pem",
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("signs with v0 local config without requiring a public key file", async () => {
+    const cwd = await createTempDir();
+    const { privateKey, publicKey } = createKeyPair();
+    await fs.writeFile(path.join(cwd, "custom-private.pem"), privateKey);
+    const session = await prepareBundleSigning(
+      { enabled: true, privateKeyPath: "custom-private.pem" },
+      { cwd },
     );
+    const fileHash = "ab".repeat(32);
+    const signature = await session!.signFileHash(fileHash);
+    expect(session!.name).toBe("localSigning");
+    expect(session!.publicKey).toBe(publicKey);
+    expect(signature).toBe(
+      crypto
+        .sign("RSA-SHA256", Buffer.from(fileHash, "hex"), privateKey)
+        .toString("base64"),
+    );
+  });
+
+  it("checks an explicit local public key pin and never falls back from a bad pin", async () => {
+    const cwd = await createTempDir();
+    const local = createKeyPair();
+    await fs.writeFile(path.join(cwd, "private.pem"), local.privateKey);
+    const signing = {
+      enabled: true,
+      privateKeyPath: "private.pem",
+      publicKeyPath: "public.pem",
+    } as const;
+    await expect(prepareBundleSigning(signing, { cwd })).rejects.toThrow(
+      "Failed to read",
+    );
+    await fs.writeFile(path.join(cwd, "public.pem"), createKeyPair().publicKey);
+    await expect(prepareBundleSigning(signing, { cwd })).rejects.toThrow(
+      "does not match publicKeyPath",
+    );
+    await fs.writeFile(path.join(cwd, "public.pem"), local.publicKey);
+    await expect(prepareBundleSigning(signing, { cwd })).resolves.toMatchObject(
+      { publicKey: local.publicKey },
+    );
+  });
+
+  it("still requires a public key pin for signing plugins", async () => {
+    const plugin = {
+      name: "unconfigured",
+      getPublicKey: vi.fn(),
+      sign: vi.fn(),
+    };
+    await expect(prepareBundleSigning(plugin as never)).rejects.toThrow(
+      "Bundle signing must be",
+    );
+    expect(plugin.getPublicKey).not.toHaveBeenCalled();
+    expect(plugin.sign).not.toHaveBeenCalled();
   });
 
   it("pins the provider public key and memoizes each file hash", async () => {
@@ -206,5 +264,51 @@ describe("prepareBundleSigning", () => {
     await expect(session?.signFileHash("ab".repeat(32))).rejects.not.toThrow(
       "PRIVATE KEY CANARY",
     );
+  });
+});
+
+describe("getBundleSigningPublicKey", () => {
+  it("resolves the v0 local private key and then the generated public-only fallback", async () => {
+    const cwd = await createTempDir();
+    const { privateKey, publicKey } = createKeyPair();
+    const signing = {
+      enabled: true,
+      privateKeyPath: "private-key.pem",
+    } as const;
+    await fs.writeFile(path.join(cwd, "private-key.pem"), privateKey);
+    await expect(getBundleSigningPublicKey(signing, { cwd })).resolves.toBe(
+      publicKey,
+    );
+    await fs.unlink(path.join(cwd, "private-key.pem"));
+    await fs.writeFile(path.join(cwd, "public-key.pem"), publicKey);
+    await expect(getBundleSigningPublicKey(signing, { cwd })).resolves.toBe(
+      publicKey,
+    );
+    await expect(prepareBundleSigning(signing, { cwd })).rejects.toThrow(
+      "Failed to resolve",
+    );
+  });
+
+  it("uses an explicit local public key without private-key access and fails closed", async () => {
+    const cwd = await createTempDir();
+    const { publicKey } = createKeyPair();
+    const signing = {
+      enabled: true,
+      privateKeyPath: "/missing/private-key.pem",
+      publicKeyPath: "public.pem",
+    } as const;
+    await fs.writeFile(path.join(cwd, "public.pem"), publicKey);
+    await expect(getBundleSigningPublicKey(signing, { cwd })).resolves.toBe(
+      publicKey,
+    );
+    await expect(
+      getBundleSigningPublicKey(
+        { ...signing, publicKeyPath: "missing.pem" },
+        { cwd },
+      ),
+    ).rejects.toThrow("Failed to read");
+    await expect(
+      getBundleSigningPublicKey({ enabled: false }, { cwd }),
+    ).resolves.toBeNull();
   });
 });

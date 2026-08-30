@@ -2,9 +2,13 @@ import crypto, { type KeyObject } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import type { BundleSigningPlugin } from "@hot-updater/plugin-core";
+import type { SigningConfig } from "@hot-updater/plugin-core";
 
 import { getCwd } from "./cwd.js";
+import {
+  createLocalSigningPlugin,
+  normalizeSigningConfig,
+} from "./localBundleSigning.js";
 
 const FILE_HASH_PATTERN = /^[a-f\d]{64}$/iu;
 
@@ -62,7 +66,7 @@ const readKeyFile = async (cwd: string, filePath: string) => {
 };
 
 const getProviderPublicKey = async (
-  provider: BundleSigningPlugin,
+  provider: ReturnType<typeof createLocalSigningPlugin>,
   cwd: string,
 ) => {
   try {
@@ -137,14 +141,19 @@ const createMemoizedSigner = ({
 };
 
 const preparePluginSigning = async (
-  signing: BundleSigningPlugin,
+  signing: ReturnType<typeof createLocalSigningPlugin>,
   cwd: string,
 ): Promise<BundleSigningSession> => {
   const [configuredPublicKeyPEM, providerPublicKey] = await Promise.all([
-    readKeyFile(cwd, signing.publicKeyPath),
+    signing.publicKeyPath === undefined
+      ? undefined
+      : readKeyFile(cwd, signing.publicKeyPath),
     getProviderPublicKey(signing, cwd),
   ]);
-  const configuredPublicKey = parseRsaPublicKey(configuredPublicKeyPEM);
+  const configuredPublicKey =
+    configuredPublicKeyPEM === undefined
+      ? providerPublicKey
+      : parseRsaPublicKey(configuredPublicKeyPEM);
 
   if (!publicKeysMatch(configuredPublicKey, providerPublicKey)) {
     throw new Error(
@@ -166,25 +175,54 @@ const preparePluginSigning = async (
 };
 
 export const prepareBundleSigning = async (
-  signing: BundleSigningPlugin | undefined,
+  signing: SigningConfig | undefined,
   options: { readonly cwd?: string } = {},
 ): Promise<BundleSigningSession | null> => {
-  if (!signing) {
+  const normalized = normalizeSigningConfig(signing);
+  if (!normalized) {
     return null;
   }
 
-  if (
-    typeof signing.name !== "string" ||
-    typeof signing.publicKeyPath !== "string" ||
-    signing.publicKeyPath.trim().length === 0 ||
-    typeof signing.getPublicKey !== "function" ||
-    typeof signing.sign !== "function"
-  ) {
-    throw new Error(
-      "Bundle signing must be configured with a signing plugin. Omit signing to disable it.",
+  const cwd = options.cwd ?? getCwd();
+  return preparePluginSigning(
+    "enabled" in normalized ? createLocalSigningPlugin(normalized) : normalized,
+    cwd,
+  );
+};
+
+/** Resolves the native trust anchor without calling a remote signing provider. */
+export const getBundleSigningPublicKey = async (
+  signing: SigningConfig | undefined,
+  options: { readonly cwd?: string } = {},
+): Promise<string | null> => {
+  const normalized = normalizeSigningConfig(signing);
+  if (!normalized) return null;
+  const cwd = options.cwd ?? getCwd();
+  if (normalized.publicKeyPath !== undefined) {
+    return exportPublicKey(
+      parseRsaPublicKey(await readKeyFile(cwd, normalized.publicKeyPath)),
     );
   }
-
-  const cwd = options.cwd ?? getCwd();
-  return preparePluginSigning(signing, cwd);
+  if ("enabled" in normalized) {
+    try {
+      const { publicKey } = await createLocalSigningPlugin(
+        normalized,
+      ).getPublicKey({ cwd });
+      return exportPublicKey(parseRsaPublicKey(publicKey));
+    } catch {
+      // v0 local builds can use the generated sibling public key without the private key.
+      return exportPublicKey(
+        parseRsaPublicKey(
+          await readKeyFile(
+            cwd,
+            path.join(
+              path.dirname(normalized.privateKeyPath),
+              "public-key.pem",
+            ),
+          ),
+        ),
+      );
+    }
+  }
+  throw new Error("Bundle signing plugins require publicKeyPath.");
 };

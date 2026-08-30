@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import type {
   ConsoleAuthAdapter,
   ConsoleSigningConfig,
@@ -25,8 +27,19 @@ export const sanitizeConsoleSigningConfig = (
   signing: unknown,
 ): ConsoleSigningConfig | undefined => {
   if (typeof signing !== "object" || signing === null) return undefined;
+  const privateKeyPath = readString(signing, "privateKeyPath");
+  if (
+    Reflect.get(signing, "enabled") === false ||
+    (privateKeyPath && Reflect.get(signing, "enabled") !== true)
+  )
+    return undefined;
 
-  const publicKeyPath = readString(signing, "publicKeyPath");
+  // Console never reads private material, even for legacy local configs.
+  const publicKeyPath =
+    readString(signing, "publicKeyPath") ??
+    (privateKeyPath
+      ? path.join(path.dirname(privateKeyPath), "public-key.pem")
+      : undefined);
   return {
     enabled: true,
     provider: getProviderName(signing),

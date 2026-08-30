@@ -252,6 +252,7 @@ export default defineConfig({
     ...commonOptions,
   }),
   signing: {
+    enabled: true,
     privateKeyPath: "./keys/private-key.pem",
     publicKeyPath: "./keys/public-key.pem",
   },
@@ -276,6 +277,7 @@ export default defineConfig({
     expect(updatedConfig).toContain("customSetting");
     expect(updatedConfig).toContain('packageName: "com.example.app"');
     expect(updatedConfig).toContain('privateKeyPath: "./keys/private-key.pem"');
+    expect(updatedConfig).toContain("enabled: true");
     expect(updatedConfig).toContain('publicKeyPath: "./keys/public-key.pem"');
     expect(updatedConfig).not.toContain("localSigning");
     expect(updatedConfig).not.toMatch(/\n{3,}/);

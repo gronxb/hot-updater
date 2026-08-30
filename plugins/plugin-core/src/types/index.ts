@@ -409,15 +409,23 @@ export interface BundleSigningPlugin {
   }) => Promise<{ readonly signature: Uint8Array }>;
 }
 
-/** Explicit local private-key configuration normalized by the config loader. */
-export interface LocalSigningConfig {
-  /** Path to an RSA private key in PEM format. */
-  readonly privateKeyPath: string;
-  /** Path to the matching, checked-in RSA SPKI public key. */
-  readonly publicKeyPath: string;
-}
+/** Built-in local PEM signing, compatible with the v0 configuration. */
+export type LocalSigningConfig = {
+  /** Optional pinned RSA SPKI public key. Also enables public-key-only builds. */
+  readonly publicKeyPath?: string;
+} & (
+  | {
+      readonly enabled: true;
+      /** Path to an RSA private key in PEM format. */
+      readonly privateKeyPath: string;
+    }
+  | {
+      readonly enabled: false;
+      readonly privateKeyPath?: string;
+    }
+);
 
-/** Plugin used to sign bundles. Omit `signing` to disable bundle signing. */
+/** Local config or signing plugin. Signing is disabled when omitted. */
 export type SigningConfig = BundleSigningPlugin | LocalSigningConfig;
 
 /**
@@ -544,8 +552,8 @@ export type ConfigInput = {
    * @example
    * ```ts
    * signing: {
+   *   enabled: true,
    *   privateKeyPath: './keys/private-key.pem',
-   *   publicKeyPath: './keys/public-key.pem',
    * }
    * ```
    */

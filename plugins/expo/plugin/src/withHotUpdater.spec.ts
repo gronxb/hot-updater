@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { transformAndroid, transformIOS } from "./transformers";
 import { getPublicKeyFromConfig } from "./withHotUpdater";
@@ -24,14 +24,90 @@ const createKeyPair = () =>
   });
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(
     tempDirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })),
   );
 });
 
 describe("getPublicKeyFromConfig", () => {
+  beforeEach(() => vi.stubEnv("HOT_UPDATER_PRIVATE_KEY", ""));
   it("returns null when signing is omitted", async () => {
     await expect(getPublicKeyFromConfig(undefined)).resolves.toBeNull();
+    vi.stubEnv("HOT_UPDATER_PRIVATE_KEY", "invalid-private-key");
+    await expect(
+      getPublicKeyFromConfig({ enabled: false }),
+    ).resolves.toBeNull();
+    await expect(
+      getPublicKeyFromConfig({
+        enabled: false,
+        privateKeyPath: "/missing/key.pem",
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it.each(["private", "public"])(
+    "supports v0 local config with only the %s key file",
+    async (source) => {
+      const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-local-key-"));
+      tempDirs.push(dir);
+      const { privateKey, publicKey } = createKeyPair();
+      await writeFile(
+        path.join(dir, `${source}-key.pem`),
+        source === "private" ? privateKey : publicKey,
+      );
+      await expect(
+        getPublicKeyFromConfig({
+          enabled: true,
+          privateKeyPath: path.join(dir, "private-key.pem"),
+        }),
+      ).resolves.toBe(publicKey.trim());
+    },
+  );
+
+  it.each(["pem", "path"])(
+    "preserves the v0 EAS environment key supplied as %s",
+    async (source) => {
+      const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-env-key-"));
+      tempDirs.push(dir);
+      const { privateKey, publicKey } = createKeyPair();
+      const privateKeyPath = path.join(dir, "env-key.pem");
+      await writeFile(privateKeyPath, privateKey);
+      vi.stubEnv(
+        "HOT_UPDATER_PRIVATE_KEY",
+        source === "pem" ? privateKey : privateKeyPath,
+      );
+      await expect(
+        getPublicKeyFromConfig({
+          enabled: true,
+          privateKeyPath: "/missing/private-key.pem",
+        }),
+      ).resolves.toBe(publicKey.trim());
+    },
+  );
+
+  it("honors an explicit local public pin instead of environment or private keys", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-local-pin-"));
+    tempDirs.push(dir);
+    const { publicKey } = createKeyPair();
+    const other = createKeyPair();
+    const publicKeyPath = path.join(dir, "public-key.pem");
+    await writeFile(publicKeyPath, publicKey);
+    vi.stubEnv("HOT_UPDATER_PRIVATE_KEY", other.privateKey);
+    const signing = {
+      enabled: true,
+      privateKeyPath: "/missing/key.pem",
+      publicKeyPath,
+    } as const;
+    await expect(getPublicKeyFromConfig(signing)).resolves.toBe(
+      publicKey.trim(),
+    );
+    await expect(
+      getPublicKeyFromConfig({
+        ...signing,
+        publicKeyPath: path.join(dir, "missing.pem"),
+      }),
+    ).rejects.toThrow("Failed to load publicKeyPath");
   });
 
   it("uses publicKeyPath without accessing the signing provider", async () => {

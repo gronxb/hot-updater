@@ -34,6 +34,7 @@ describe("Console signing config sanitization", () => {
 
   it("labels raw local config without exposing its private path", () => {
     const sanitized = sanitizeConsoleSigningConfig({
+      enabled: true,
       privateKeyPath: "/secret/private-key-canary.pem",
       publicKeyPath: "keys/public-key.pem",
     });
@@ -48,5 +49,28 @@ describe("Console signing config sanitization", () => {
 
   it("uses omission to represent disabled signing", () => {
     expect(sanitizeConsoleSigningConfig(undefined)).toBeUndefined();
+    expect(sanitizeConsoleSigningConfig({ enabled: false })).toBeUndefined();
+    expect(
+      sanitizeConsoleSigningConfig({
+        enabled: false,
+        privateKeyPath: "/secret/key.pem",
+      }),
+    ).toBeUndefined();
+    expect(
+      sanitizeConsoleSigningConfig({ privateKeyPath: "/secret/key.pem" }),
+    ).toBeUndefined();
+  });
+
+  it("uses only the sibling public file for legacy local inspection", () => {
+    const sanitized = sanitizeConsoleSigningConfig({
+      enabled: true,
+      privateKeyPath: "keys/private-canary.pem",
+    });
+    expect(sanitized).toEqual({
+      enabled: true,
+      provider: "localSigning",
+      publicKeyPath: "keys/public-key.pem",
+    });
+    expect(JSON.stringify(sanitized)).not.toContain("private-canary");
   });
 });

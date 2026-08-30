@@ -24,7 +24,9 @@ export default defineConfig({
   // Bundle signing is enabled for this example.
   // Run: npx hot-updater keys generate
   signing: {
+    enabled: true,
     privateKeyPath: "./keys/private-key.pem",
+    // Optional: let prebuild use only the checked-in public key.
     publicKeyPath: "./keys/public-key.pem",
   },
 });

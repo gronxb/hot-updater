@@ -6,8 +6,9 @@
 "hot-updater": patch
 ---
 
-Add Bundle Signing with explicit built-in local PEM config plus plugins for a
-generic remote signing endpoint, AWS KMS, and Google Cloud KMS; require a pinned
-public key for native and Expo builds; and expose only sanitized signing status
-in Console. Local PEM is the standard baseline, while AWS KMS and Google Cloud
+Extend Bundle Signing with plugins for a generic remote signing endpoint, AWS
+KMS, and Google Cloud KMS while preserving v0 local `enabled`/`privateKeyPath`
+configuration. Local `publicKeyPath` is optional; signing plugins require it.
+Support public-key-only native/Expo builds and sanitized read-only Console
+inspection. Local PEM is the standard baseline, while AWS KMS and Google Cloud
 KMS provide hardened, non-exportable key custody through optional SDK peers.

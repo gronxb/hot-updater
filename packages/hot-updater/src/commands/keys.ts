@@ -2,7 +2,12 @@ import { createHash, createPublicKey } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
+import {
+  getBundleSigningPublicKey,
+  getCwd,
+  loadConfig,
+  p,
+} from "@hot-updater/cli-tools";
 
 import { AndroidConfigParser } from "@/utils/configParser/androidParser";
 import { IosConfigParser } from "@/utils/configParser/iosParser";
@@ -123,7 +128,7 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
         ui.kv(
           "Code",
           ui.code(
-            'signing: {\n  privateKeyPath: "./keys/private-key.pem",\n  publicKeyPath: "./keys/public-key.pem",\n}',
+            'signing: {\n  enabled: true,\n  privateKeyPath: "./keys/private-key.pem",\n}',
           ),
         ),
         ui.kv("Run", ui.command("hot-updater keys export-public")),
@@ -259,10 +264,9 @@ export const keysExportPublic = async (
         await loadPrivateKey(privateKeyPath),
       );
     } else if (config.signing) {
-      const publicKeyPath = path.resolve(cwd, config.signing.publicKeyPath);
-      publicKeyPEM = canonicalizeRsaSpkiPublicKey(
-        await fs.readFile(publicKeyPath, "utf8"),
-      );
+      publicKeyPEM = (await getBundleSigningPublicKey(config.signing, {
+        cwd,
+      }))!;
     } else {
       const privateKeyPath = path.join(cwd, "keys", "private-key.pem");
       const publicKeyPath = path.join(

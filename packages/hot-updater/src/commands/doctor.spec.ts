@@ -20,7 +20,10 @@ import {
   resolveVersionEndpoint,
 } from "./doctor";
 
-vi.mock("@hot-updater/cli-tools", () => ({
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  getBundleSigningPublicKey: (
+    await importOriginal<typeof import("@hot-updater/cli-tools")>()
+  ).getBundleSigningPublicKey,
   getCwd: vi.fn(() => "/mock/cwd"),
   loadConfig: vi.fn(),
   p: {},
@@ -845,94 +848,105 @@ describe("doctor", () => {
     });
   });
 
-  it("detects native signing keys that differ from the checked-in trust anchor", async () => {
-    const cwd = await createTempProject();
-    tempProjects.push(cwd);
-    mockGetCwd.mockReturnValue(cwd);
-    mockReadPackageUp.mockResolvedValue({
-      packageJson: {
-        dependencies: {
-          "hot-updater": "0.31.0",
-          "@hot-updater/react-native": "0.31.0",
-        },
-      },
-      path: path.join(cwd, "package.json"),
-    });
-    const configured = crypto.generateKeyPairSync("rsa", {
-      modulusLength: 2048,
-      privateKeyEncoding: { format: "pem", type: "pkcs8" },
-      publicKeyEncoding: { format: "pem", type: "spki" },
-    });
-    const embedded = crypto.generateKeyPairSync("rsa", {
-      modulusLength: 2048,
-      privateKeyEncoding: { format: "pem", type: "pkcs8" },
-      publicKeyEncoding: { format: "pem", type: "spki" },
-    });
-    const getPublicKey = vi.fn();
-    mockLoadConfig.mockResolvedValue(
-      createConfig({
-        signing: {
-          name: "credential-free-doctor-test",
-          publicKeyPath: "keys/public-key.pem",
-          getPublicKey,
-          sign: vi.fn(),
-        },
-        platform: {
-          ios: {
-            infoPlistPaths: ["ios/App/Info.plist"],
-          },
-          android: {
-            androidManifestPaths: ["android/app/src/main/AndroidManifest.xml"],
+  it.each(["plugin", "local"])(
+    "detects native signing keys that differ from the %s trust anchor",
+    async (mode) => {
+      const cwd = await createTempProject();
+      tempProjects.push(cwd);
+      mockGetCwd.mockReturnValue(cwd);
+      mockReadPackageUp.mockResolvedValue({
+        packageJson: {
+          dependencies: {
+            "hot-updater": "0.31.0",
+            "@hot-updater/react-native": "0.31.0",
           },
         },
-      }),
-    );
-    await writeFile(
-      path.join(cwd, "keys/public-key.pem"),
-      configured.publicKey,
-    );
-    await writeInfoPlist(
-      cwd,
-      [
-        "<key>HOT_UPDATER_PUBLIC_KEY</key>",
-        `<string>${embedded.publicKey.trim().replaceAll("\n", "\\n")}</string>`,
-      ].join("\n"),
-    );
-    await writeFile(
-      path.join(cwd, "ios/App/AppDelegate.swift"),
-      "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
-    );
-    await writeAndroidManifest(
-      cwd,
-      `    <meta-data android:name="com.hotupdater.PUBLIC_KEY" android:value="${embedded.publicKey.trim().replaceAll("\n", "\\n")}" />`,
-    );
-    await writeFile(
-      path.join(
-        cwd,
-        "android/app/src/main/java/com/example/MainApplication.kt",
-      ),
-      "import com.hotupdater.HotUpdater\nval bundle = HotUpdater.getJSBundleFile(applicationContext)\n",
-    );
-
-    const result = await doctor();
-
-    expect(result).not.toBe(true);
-    if (result !== true) {
-      expect(result.details?.native?.issues).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            code: "PUBLIC_KEY_MISMATCH",
-            platform: "ios",
-          }),
-          expect.objectContaining({
-            code: "PUBLIC_KEY_MISMATCH",
-            platform: "android",
-          }),
-        ]),
+        path: path.join(cwd, "package.json"),
+      });
+      const configured = crypto.generateKeyPairSync("rsa", {
+        modulusLength: 2048,
+        privateKeyEncoding: { format: "pem", type: "pkcs8" },
+        publicKeyEncoding: { format: "pem", type: "spki" },
+      });
+      const embedded = crypto.generateKeyPairSync("rsa", {
+        modulusLength: 2048,
+        privateKeyEncoding: { format: "pem", type: "pkcs8" },
+        publicKeyEncoding: { format: "pem", type: "spki" },
+      });
+      const getPublicKey = vi.fn();
+      mockLoadConfig.mockResolvedValue(
+        createConfig({
+          signing:
+            mode === "local"
+              ? { enabled: true, privateKeyPath: "keys/private-key.pem" }
+              : {
+                  name: "credential-free-doctor-test",
+                  publicKeyPath: "keys/public-key.pem",
+                  getPublicKey,
+                  sign: vi.fn(),
+                },
+          platform: {
+            ios: {
+              infoPlistPaths: ["ios/App/Info.plist"],
+            },
+            android: {
+              androidManifestPaths: [
+                "android/app/src/main/AndroidManifest.xml",
+              ],
+            },
+          },
+        }),
       );
-    }
-    expect(getPublicKey).not.toHaveBeenCalled();
-  });
+      await writeFile(
+        path.join(
+          cwd,
+          mode === "local" ? "keys/private-key.pem" : "keys/public-key.pem",
+        ),
+        mode === "local" ? configured.privateKey : configured.publicKey,
+      );
+      await writeInfoPlist(
+        cwd,
+        [
+          "<key>HOT_UPDATER_PUBLIC_KEY</key>",
+          `<string>${embedded.publicKey.trim().replaceAll("\n", "\\n")}</string>`,
+        ].join("\n"),
+      );
+      await writeFile(
+        path.join(cwd, "ios/App/AppDelegate.swift"),
+        "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
+      );
+      await writeAndroidManifest(
+        cwd,
+        `    <meta-data android:name="com.hotupdater.PUBLIC_KEY" android:value="${embedded.publicKey.trim().replaceAll("\n", "\\n")}" />`,
+      );
+      await writeFile(
+        path.join(
+          cwd,
+          "android/app/src/main/java/com/example/MainApplication.kt",
+        ),
+        "import com.hotupdater.HotUpdater\nval bundle = HotUpdater.getJSBundleFile(applicationContext)\n",
+      );
+
+      const result = await doctor();
+
+      expect(result).not.toBe(true);
+      if (result !== true) {
+        expect(result.details?.native?.issues).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              code: "PUBLIC_KEY_MISMATCH",
+              platform: "ios",
+            }),
+            expect.objectContaining({
+              code: "PUBLIC_KEY_MISMATCH",
+              platform: "android",
+            }),
+          ]),
+        );
+      }
+      expect(getPublicKey).not.toHaveBeenCalled();
+    },
+  );
 
   it("accepts Java Companion Android bundle provider calls", async () => {
     const cwd = await createTempProject();

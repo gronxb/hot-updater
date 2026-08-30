@@ -62,8 +62,8 @@ export default defineConfig({
   /* E2E_AUTO_PATCH_CONFIG_END */
   updateStrategy: "appVersion",
   signing: {
+    enabled: true,
     privateKeyPath: "./keys/private-key.pem",
-    publicKeyPath: "./keys/public-key.pem",
   },
 
   authorityId: "9bfb9f0b-37a8-412c-a8f4-c1a949237fb3",

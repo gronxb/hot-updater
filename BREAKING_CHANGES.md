@@ -41,35 +41,32 @@ for the parallel-cutover procedure.
 
 ## Bundle Signing configuration
 
-The legacy `enabled` flag is removed. Local PEM signing remains an explicit
-inline config and now requires the checked-in public key path:
+Local PEM configuration remains compatible with v0; no configuration migration
+is required:
 
 ```ts
-// Before
 signing: {
   enabled: true,
   privateKeyPath: "./keys/private-key.pem",
 }
 
-// After
-signing: {
-  privateKeyPath: "./keys/private-key.pem",
-  publicKeyPath: "./keys/public-key.pem",
-}
 ```
 
-Replace `enabled: false` by omitting `signing`. Do not ignore the entire
-`keys/` directory: keep the private key out of source control, but commit the
-SPKI public key so Expo, Console, and native trust-anchor checks do not need
-private-key or provider credentials.
+`enabled: false` and omitting `signing` still disable signing. The optional
+local `publicKeyPath` pins an expected SPKI public key and enables native builds
+without private-key access. Without it, local signing derives the public key
+from the private key. Expo also retains the v0 environment/private/public-file
+fallbacks. Keep private keys out of source control; commit the public key and
+set `publicKeyPath` for public-key-only native builds and Console inspection.
 
 `hot-updater/signing` exports `remoteSigning`, `awsKmsSigning`, and
 `googleCloudKmsSigning`. Signing remains independent of the configured storage
-and database provider. See the
+and database provider. These signing plugins require an explicit
+`publicKeyPath`; this requirement does not apply to the built-in local config. See the
 [Bundle Signing guide](<./docs/content/docs/(latest)/guides/bundle-signing.mdx>)
 for their imports and custody differences.
 
-If the public key is unchanged, this configuration migration does not require
+If the public key is unchanged, the signing extension does not require
 a new native trust anchor. If the key changes, release the native app with the
 new public key before deploying artifacts signed by it. `keys export-public`
 now defaults to cancelling a different or invalid embedded-key replacement;
