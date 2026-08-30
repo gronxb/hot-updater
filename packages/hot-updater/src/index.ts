@@ -102,11 +102,13 @@ program
     ).choices(["bare", "rock", "expo"]),
   )
   .option(
-    "--env-file <path>",
+    "--init-env-file <path>",
     "load saved init inputs and fail if any are missing",
   )
   .addHelpText("after", initHelp)
-  .action((options) => init(options));
+  .action(({ initEnvFile, ...options }) =>
+    init({ ...options, envFile: initEnvFile }),
+  );
 
 program
   .command("doctor")

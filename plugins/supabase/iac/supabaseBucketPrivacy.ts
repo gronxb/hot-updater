@@ -22,7 +22,7 @@ export class PublicSupabaseBucketError extends InitError {
       [
         `Supabase bucket "${bucketName}" is public.`,
         "Make the bucket private in Supabase Storage, then rerun init.",
-        "Alternatively, rerun without --env-file to approve the change interactively.",
+        "Alternatively, rerun without --init-env-file to approve the change interactively.",
       ].join("\n"),
     );
   }
