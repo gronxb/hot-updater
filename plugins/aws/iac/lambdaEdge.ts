@@ -10,6 +10,37 @@ import {
   transformEnv,
 } from "@hot-updater/cli-tools";
 
+import { resolveLambdaDir } from "./lambdaAsset";
+
+const LAMBDA_EDGE_MEMORY_SIZE = 256;
+const LAMBDA_EDGE_TIMEOUT = 10;
+
+const waitForFunctionUpdate = async (
+  lambdaClient: Lambda,
+  lambdaName: string,
+) => {
+  while (true) {
+    try {
+      const status = await lambdaClient.getFunctionConfiguration({
+        FunctionName: lambdaName,
+      });
+      if (status.LastUpdateStatus === "Successful") {
+        return;
+      }
+      if (status.LastUpdateStatus === "Failed") {
+        throw new Error(
+          `Lambda update failed: ${status.LastUpdateStatusReason}`,
+        );
+      }
+    } catch (err) {
+      if (!(err instanceof Error && err.name === "ResourceConflictException")) {
+        throw err;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+};
+
 export class LambdaEdgeDeployer {
   private credentials: { accessKeyId: string; secretAccessKey: string };
 
@@ -29,8 +60,7 @@ export class LambdaEdgeDeployer {
   ): Promise<{ lambdaName: string; functionArn: string }> {
     const cwd = getCwd();
 
-    const lambdaPath = require.resolve("@hot-updater/aws/lambda");
-    const lambdaDir = path.dirname(lambdaPath);
+    const lambdaDir = resolveLambdaDir();
     const { tmpDir, removeTmpDir } = await copyDirToTmp(lambdaDir);
 
     // Transform Lambda code with CloudFront key pair details and SSM config
@@ -79,7 +109,8 @@ export class LambdaEdgeDeployer {
               Code: { ZipFile: await fs.readFile(zipFilePath) },
               Description: "Hot Updater Lambda@Edge function",
               Publish: true,
-              Timeout: 10,
+              MemorySize: LAMBDA_EDGE_MEMORY_SIZE,
+              Timeout: LAMBDA_EDGE_TIMEOUT,
             });
             functionArn.arn = createResp.FunctionArn || null;
             functionArn.version = createResp.Version || "1";
@@ -92,51 +123,30 @@ export class LambdaEdgeDeployer {
               message(
                 `Function "${lambdaName}" already exists. Updating function code...`,
               );
-              const updateResp = await lambdaClient.updateFunctionCode({
+              // Publish only after the configuration is applied: a published
+              // version is an immutable snapshot, so publishing here would pin
+              // the previous deploy's memory/timeout.
+              await lambdaClient.updateFunctionCode({
                 FunctionName: lambdaName,
                 ZipFile: await fs.readFile(zipFilePath),
-                Publish: true,
+                Publish: false,
               });
               message("Waiting for Lambda function update to complete...");
-              let isUpdateComplete = false;
-              while (!isUpdateComplete) {
-                try {
-                  const status = await lambdaClient.getFunctionConfiguration({
-                    FunctionName: lambdaName,
-                  });
-                  if (status.LastUpdateStatus === "Successful") {
-                    isUpdateComplete = true;
-                  } else if (status.LastUpdateStatus === "Failed") {
-                    throw new Error(
-                      `Lambda update failed: ${status.LastUpdateStatusReason}`,
-                    );
-                  } else {
-                    await new Promise((resolve) => setTimeout(resolve, 2000));
-                  }
-                } catch (err) {
-                  if (
-                    err instanceof Error &&
-                    err.name === "ResourceConflictException"
-                  ) {
-                    await new Promise((resolve) => setTimeout(resolve, 2000));
-                  } else {
-                    throw err;
-                  }
-                }
-              }
-              try {
-                await lambdaClient.updateFunctionConfiguration({
-                  FunctionName: lambdaName,
-                  MemorySize: 256,
-                  Timeout: 10,
-                });
-              } catch (error) {
-                p.log.error(
-                  `Failed to update Lambda configuration: ${error instanceof Error ? error.message : String(error)}`,
-                );
-              }
-              functionArn.arn = updateResp.FunctionArn || null;
-              functionArn.version = updateResp.Version || "1";
+              await waitForFunctionUpdate(lambdaClient, lambdaName);
+
+              await lambdaClient.updateFunctionConfiguration({
+                FunctionName: lambdaName,
+                MemorySize: LAMBDA_EDGE_MEMORY_SIZE,
+                Timeout: LAMBDA_EDGE_TIMEOUT,
+              });
+              message("Waiting for Lambda configuration update to complete...");
+              await waitForFunctionUpdate(lambdaClient, lambdaName);
+
+              const publishResp = await lambdaClient.publishVersion({
+                FunctionName: lambdaName,
+              });
+              functionArn.arn = publishResp.FunctionArn || null;
+              functionArn.version = publishResp.Version || "1";
             } else {
               if (error instanceof Error) {
                 p.log.error(
