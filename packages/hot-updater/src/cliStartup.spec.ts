@@ -31,7 +31,7 @@ describe("CLI init environment file", () => {
 
     return spawnSync(
       process.execPath,
-      [cliPath, "init", "--init-env-file", envFile],
+      [cliPath, "init", "--from-env-file", envFile],
       {
         cwd,
         encoding: "utf-8",
