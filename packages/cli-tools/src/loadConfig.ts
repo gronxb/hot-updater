@@ -14,6 +14,7 @@ import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
 
 import { getCwd } from "./cwd.js";
+import { normalizeSigningConfig } from "./localBundleSigning.js";
 
 export type HotUpdaterConfigOptions = {
   platform: Platform;
@@ -191,9 +192,11 @@ const getDefaultConfig = (): ConfigInput => {
 };
 
 export type ConfigResponse = RequiredDeep<
-  Omit<ConfigInput, "database" | "storage">
+  Omit<ConfigInput, "database" | "signing" | "storage">
 > &
-  Pick<ConfigInput, "database" | "storage">;
+  Pick<ConfigInput, "database" | "storage"> & {
+    signing?: ReturnType<typeof normalizeSigningConfig>;
+  };
 
 const mergeConfigSources = (
   ...sources: Array<ConfigInput | null | undefined>
@@ -204,10 +207,12 @@ const mergeConfigSources = (
   );
 
   const database = sources.find((source) => source?.database)?.database;
+  const signing = sources.find((source) => source?.signing)?.signing;
   const storage = sources.find((source) => source?.storage)?.storage;
   return {
     ...mergedConfig,
     ...(database ? { database } : {}),
+    ...(signing ? { signing } : {}),
     ...(storage ? { storage } : {}),
   };
 };
@@ -252,5 +257,10 @@ export const loadConfig = async (
     }
   }
 
-  return mergeConfigSources(config, getDefaultConfig()) as ConfigResponse;
+  const mergedConfig = mergeConfigSources(config, getDefaultConfig());
+  const signing = normalizeSigningConfig(mergedConfig.signing);
+  return {
+    ...mergedConfig,
+    signing,
+  } as ConfigResponse;
 };

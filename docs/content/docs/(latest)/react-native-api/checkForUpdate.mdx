@@ -21,20 +21,28 @@ HotUpdater.init({
 // Use checkForUpdate - it reuses the configured baseURL
 async function checkForAppUpdate() {
   try {
+    let checkError: Error | null = null;
     const updateInfo = await HotUpdater.checkForUpdate({
       updateStrategy: "appVersion",
       requestHeaders: {
         "x-api-key": "<your-api-key>",
       },
+      onError: (error) => {
+        checkError = error;
+      },
     });
+
+    if (checkError) {
+      throw checkError;
+    }
 
     if (!updateInfo) {
       return {
-        status: "UP_TO_DATE",
+        status: "NO_UPDATE",
       };
     }
 
-    // The returned helper includes all required update arguments.
+    // The helper resolves the artifact and preserves the selected transition.
     const didUpdate = await updateInfo.updateBundle();
 
     if (didUpdate && updateInfo.shouldForceUpdate) {
@@ -64,6 +72,9 @@ function App() {
       updateStrategy: "appVersion",
       requestHeaders: {
         "x-api-key": "<your-api-key>",
+      },
+      onError: (error) => {
+        console.error("Failed to check for update:", error);
       },
     })
       .then(async (updateInfo) => {
@@ -111,7 +122,7 @@ The `checkForUpdate` function accepts the following parameters:
 | `channel`        | `string`                          | ❌       | Channel to check. Defaults to the currently active channel. |
 | `requestHeaders` | `Record<string, string>`          | ❌       | Optional headers to include in the update request.          |
 | `requestTimeout` | `number`                          | ❌       | Request timeout in milliseconds (default: 5000).            |
-| `onError`        | `(error: Error) => void`          | ❌       | Error callback.                                             |
+| `onError`        | `(error: Error) => void`          | ❌       | Called when a check fails, including failures that return `null`. |
 
 The update source is always from `HotUpdater.wrap()` or `HotUpdater.init()`; it
 cannot be overridden in `checkForUpdate`.
@@ -122,8 +133,9 @@ successfully. If a different runtime channel is already active, call
 
 ## How It Works
 
-The client fetches a shared Release Catalog, evaluates it on the device, and
-resolves the selected artifact:
+The client fetches a shared Release Catalog and evaluates it on the device.
+When installation is needed, the returned `updateBundle()` helper resolves the
+selected artifact when called:
 
 - App version catalog: `GET {baseURL}/release-catalogs/app-version/:platform/:channelKey/:appVersion`
 - Fingerprint catalog: `GET {baseURL}/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash`
@@ -133,6 +145,12 @@ resolves the selected artifact:
 
 ## Return Value
 
-The function returns `null` when the app is up to date. Otherwise, it returns
-the selected bundle ID, status, message, nullable download URL and hash, and a
-pre-filled `updateBundle()` helper.
+The function returns `null` when no transition is selected, when checks are
+skipped in development, or after a check fails and calls `onError`. Do not
+interpret `null` alone as a successful up-to-date check. Use `onError` to track
+check failures and `try/catch` for rejected calls, such as a channel conflict.
+
+When a transition is selected, the result includes its bundle ID, status,
+message, and an `updateBundle()` helper. In v1, `fileUrl` and `fileHash` are
+`null` in this result: the helper resolves the artifact lazily when needed.
+Call the helper instead of copying these fields into `HotUpdater.updateBundle`.

@@ -2,7 +2,11 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
-import type { ConfigInput } from "@hot-updater/plugin-core";
+import type {
+  BundleSigningPlugin,
+  ConfigInput,
+  LocalSigningConfig,
+} from "@hot-updater/plugin-core";
 import {
   afterEach,
   beforeEach,
@@ -31,6 +35,11 @@ describe("ConfigResponse", () => {
       "zip" | "tar.br" | "tar.gz"
     >();
     expectTypeOf<ConfigResponse["console"]["port"]>().toEqualTypeOf<number>();
+    expectTypeOf<ConfigResponse["signing"]>().toEqualTypeOf<
+      | BundleSigningPlugin
+      | Extract<LocalSigningConfig, { enabled: true }>
+      | undefined
+    >();
 
     expectTypeOf<ConfigResponse["storage"]["getDownloadUrl"]>().toEqualTypeOf<
       ConfigInput["storage"]["getDownloadUrl"]
@@ -64,6 +73,7 @@ describe("loadConfig", () => {
 
   afterEach(async () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
+    Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_SIGNING_PROVIDER__");
     vi.restoreAllMocks();
   });
 
@@ -150,6 +160,90 @@ describe("loadConfig", () => {
     const config = await loadConfig(null);
 
     expect(config.cacheDir).toBe("from-null-context");
+  });
+
+  it("preserves the configured signing provider identity", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        "const provider = {",
+        "  name: 'test-signer',",
+        "  publicKeyPath: './public-key.pem',",
+        "  getPublicKey: async () => ({ publicKey: 'public-key' }),",
+        "  sign: async ({ message }) => ({ signature: message }),",
+        "};",
+        "globalThis.__HOT_UPDATER_TEST_SIGNING_PROVIDER__ = provider;",
+        "export default {",
+        "  signing: provider,",
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    const config = await loadConfig(null);
+    const signing = config.signing;
+
+    expect(signing).toBe(
+      Reflect.get(globalThis, "__HOT_UPDATER_TEST_SIGNING_PROVIDER__"),
+    );
+  });
+
+  it("normalizes explicit local signing config without reading the private key", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        "export default {",
+        "  signing: {",
+        "    enabled: true,",
+        "    privateKeyPath: './private-key-canary.pem',",
+        "    publicKeyPath: './keys/public-key.pem',",
+        "  },",
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    const config = await loadConfig(null);
+
+    expect(config.signing).toEqual({
+      enabled: true,
+      privateKeyPath: "./private-key-canary.pem",
+      publicKeyPath: "./keys/public-key.pem",
+    });
+  });
+
+  it.each([
+    "{ enabled: false }",
+    "{ enabled: false, privateKeyPath: '/missing/key.pem' }",
+    "{ privateKeyPath: '/missing/key.pem' }",
+  ])(
+    "removes inactive local signing from the merged config: %s",
+    async (signing) => {
+      await writeProjectFile(
+        projectRoot,
+        "hot-updater.config.ts",
+        `export default { signing: ${signing} };`,
+      );
+      const { loadConfig } = await import("./loadConfig");
+      expect((await loadConfig(null)).signing).toBeUndefined();
+    },
+  );
+
+  it("loads the unchanged v0 local config without requiring publicKeyPath", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      "export default { signing: { enabled: true, privateKeyPath: './private.pem' } };",
+    );
+    const { loadConfig } = await import("./loadConfig");
+    expect((await loadConfig(null)).signing).toEqual({
+      enabled: true,
+      privateKeyPath: "./private.pem",
+    });
   });
 
   it("preserves legacy merge semantics for arrays in user config", async () => {

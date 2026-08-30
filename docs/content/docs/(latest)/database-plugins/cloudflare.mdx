@@ -21,7 +21,10 @@ npx hot-updater init
 
 This interactive command will guide you through the setup process. For details on what the init command does, see the [Cloudflare](/docs/managed/cloudflare) documentation.
 
-For manual configuration, use the settings below.
+The settings below connect to an initialized v1 database; they do not create
+its schema. Complete `hot-updater init` first, or apply the SQL migrations in
+the installed `@hot-updater/cloudflare` package's `worker/migrations`
+directory in order. Do not apply v1 migrations to a v0 D1 database.
 
 ## Configuration
 

@@ -92,8 +92,8 @@ export default defineConfig({
 </Callout>
 
 <Callout type="warn">
-  The environment variables in `.env.hotupdater` are used only during deployment, not in
-  your app bundle. However, if you're using `react-native-dotenv`, review the
+  Provider credentials in `.env.hotupdater` belong in the CLI/server configuration,
+  not in your app bundle. If you're using `react-native-dotenv`, review the
   [Security guidelines](/docs/policy/security#plugin-token-protection).
 </Callout>
 
@@ -117,7 +117,7 @@ export default HotUpdater.wrap({
   baseURL: "https://your-update-server-url", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
-    // Optional: Add custom headers if needed
+    "x-api-key": "<HOT_UPDATER_API_KEY from init>", // Required for managed providers
   },
   fallbackComponent: ({ progress, status }) => (
     <View
@@ -145,7 +145,11 @@ export default HotUpdater.wrap({
 
 <Callout type="info">
   The update server URL will be provided after running `npx hot-updater init`.
-  Check your terminal output or provider console for the correct URL.
+  Check your terminal output or provider console for the correct URL. Managed
+  providers require the client API key saved as `HOT_UPDATER_API_KEY` in
+  `.env.hotupdater`; supply it through your app's build-time configuration.
+  That file is not automatically loaded into the app. Never use a provider,
+  service-role, or admin credential as the client API key.
 </Callout>
 
 React Native clients identify the client handler only through `baseURL`.

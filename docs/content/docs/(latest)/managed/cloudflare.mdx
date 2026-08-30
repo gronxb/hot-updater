@@ -96,6 +96,16 @@ For more details, see:
 
 </Callout>
 
+## Optional: Bundle Signing
+
+Managed Cloudflare init does not create or enable a signing key. After
+provisioning the OTA infrastructure, configure
+[local PEM, AWS KMS, or Google Cloud KMS signing](/docs/guides/bundle-signing),
+embed its public key in a native release, and only then deploy signed bundles.
+Storage and database selection does not constrain the signer. KMS signing runs
+directly in the protected deploy job; no Worker proxy is required. A compatible
+signing service can also be used through `remoteSigning`.
+
 ## Step 3: Add HotUpdater to Your Project
 
 Configure the endpoint and API key once, then check when your app is ready.

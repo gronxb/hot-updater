@@ -1,6 +1,7 @@
 export * from "./BuildLogger";
 export * from "./apiKeyNote";
 export * from "./banner";
+export * from "./bundleSigning";
 export * from "./ConfigBuilder";
 export * from "./colors";
 export * from "./copyDirToTmp";

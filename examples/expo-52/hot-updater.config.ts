@@ -26,5 +26,7 @@ export default defineConfig({
   signing: {
     enabled: true,
     privateKeyPath: "./keys/private-key.pem",
+    // Optional: let prebuild use only the checked-in public key.
+    publicKeyPath: "./keys/public-key.pem",
   },
 });

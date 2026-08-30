@@ -388,42 +388,45 @@ export interface StoragePlugin {
   readonly deleteObjects?: (keys: readonly string[]) => Promise<void>;
 }
 
-/**
- * Signing configuration type with conditional required fields.
- * When enabled is true, privateKeyPath is required.
- * When enabled is false, privateKeyPath is optional.
- */
-export type SigningConfig =
+export interface BundleSigningPlugin {
+  readonly name: string;
+  /** Path to the pinned RSA public key embedded in native builds. */
+  readonly publicKeyPath: string;
+  /** Returns the RSA public key used by this provider in SPKI PEM format. */
+  readonly getPublicKey: (input?: {
+    readonly cwd?: string;
+  }) => Promise<{ readonly publicKey: string }>;
+  /**
+   * Signs `message` with RSA PKCS#1 v1.5 SHA-256.
+   *
+   * Hot Updater passes the 32 raw bytes decoded from a SHA-256 file hash.
+   * Remote signing services must treat this value as the raw message, not as
+   * an already-computed digest.
+   */
+  readonly sign: (input: {
+    readonly message: Uint8Array;
+    readonly cwd?: string;
+  }) => Promise<{ readonly signature: Uint8Array }>;
+}
+
+/** Built-in local PEM signing, compatible with the v0 configuration. */
+export type LocalSigningConfig = {
+  /** Optional pinned RSA SPKI public key. Also enables public-key-only builds. */
+  readonly publicKeyPath?: string;
+} & (
   | {
-      /**
-       * Enable bundle signing during deployment.
-       * When false, signing is disabled and privateKeyPath is optional.
-       */
-      enabled: false;
-      /**
-       * Path to RSA private key file in PEM format (PKCS#8).
-       * Optional when signing is disabled.
-       */
-      privateKeyPath?: string;
+      readonly enabled: true;
+      /** Path to an RSA private key in PEM format. */
+      readonly privateKeyPath: string;
     }
   | {
-      /**
-       * Enable bundle signing during deployment.
-       * When true, bundles will be signed with privateKeyPath.
-       */
-      enabled: true;
-      /**
-       * Path to RSA private key file in PEM format (PKCS#8).
-       * Generate with: npx hot-updater keys:generate
-       *
-       * Security: Never commit this key to version control!
-       * Use secure storage (AWS Secrets Manager, etc.) for CI/CD.
-       *
-       * @example "./keys/private-key.pem"
-       * @example "/secure/path/to/private-key.pem"
-       */
-      privateKeyPath: string;
-    };
+      readonly enabled: false;
+      readonly privateKeyPath?: string;
+    }
+);
+
+/** Local config or signing plugin. Signing is disabled when omitted. */
+export type SigningConfig = BundleSigningPlugin | LocalSigningConfig;
 
 /**
  * Extra fingerprint sources.
@@ -537,19 +540,13 @@ export type ConfigInput = {
    * Code signing configuration for bundle verification.
    * Enables RSA-SHA256 cryptographic signatures for bundle integrity.
    *
-   * @optional Feature is opt-in for backward compatibility
+   * @optional Feature is opt-in.
    *
    * @example
    * ```ts
-   * // Signing enabled - privateKeyPath is required
    * signing: {
    *   enabled: true,
-   *   privateKeyPath: './keys/private-key.pem'
-   * }
-   *
-   * // Signing disabled - privateKeyPath is optional
-   * signing: {
-   *   enabled: false
+   *   privateKeyPath: './keys/private-key.pem',
    * }
    * ```
    */

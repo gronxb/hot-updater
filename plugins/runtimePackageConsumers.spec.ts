@@ -139,18 +139,20 @@ describe("packed provider entrypoints", () => {
       directory: "aws",
       packageName: "@hot-updater/aws",
       exports: ["cloudFrontDownloadUrl", "s3Storage"],
+      absentExports: ["kmsSigning"],
       handler: "@hot-updater/aws/lambda",
     },
     {
       directory: "cloudflare",
       packageName: "@hot-updater/cloudflare",
       exports: ["d1Database", "r2Storage"],
+      absentExports: ["workerSigning"],
     },
     {
       directory: "firebase",
       packageName: "@hot-updater/firebase",
       exports: ["firebaseDatabase", "firebaseStorage"],
-      absentExports: ["firebaseStorageDelivery"],
+      absentExports: ["firebaseKmsSigning", "firebaseStorageDelivery"],
       handler: "@hot-updater/firebase/functions",
     },
     {
@@ -163,6 +165,7 @@ describe("packed provider entrypoints", () => {
       packageName: "@hot-updater/supabase",
       exports: ["supabaseDatabase", "supabaseStorage"],
       absentExports: [
+        "edgeFunctionSigning",
         "supabaseEdgeFunctionDatabase",
         "supabaseEdgeFunctionStorage",
         "supabaseStorageDelivery",
@@ -173,6 +176,7 @@ describe("packed provider entrypoints", () => {
       packageName: "@hot-updater/supabase/edge",
       exports: ["supabaseDatabase", "supabaseStorage"],
       absentExports: [
+        "createEdgeFunctionSigningHandler",
         "supabaseEdgeFunctionDatabase",
         "supabaseEdgeFunctionStorage",
         "supabaseStorageDelivery",
@@ -252,6 +256,7 @@ const databaseBinding = {
   batch: async (statements) => Promise.all(statements.map((statement) => statement.all())),
 };
 const database = runtime.d1Database(databaseBinding);
+if ("createWorkerSigningHandler" in runtime) throw new Error("unexpected Worker signing handler");
 if (database.name !== "d1Database") throw new Error("invalid d1Database name");
 if (typeof database.models.analytics.append !== "function") throw new Error("missing analytics model");
 if (typeof database.models.apiKeys.create !== "function") throw new Error("missing apiKeys model");
@@ -303,6 +308,8 @@ const config = {
   supabaseServiceRoleKey: "test-service-role-key",
 };
 for (const runtime of [rootRuntime, edgeRuntime]) {
+  if ("edgeFunctionSigning" in runtime) throw new Error("unexpected Edge Function signer");
+  if ("createEdgeFunctionSigningHandler" in runtime) throw new Error("unexpected Edge Function signing handler");
   const database = runtime.supabaseDatabase(config);
   if (database.name !== "supabaseDatabase") throw new Error("invalid supabaseDatabase name");
   if (typeof database.models.channels.list !== "function") throw new Error("missing channels model");

@@ -28,6 +28,7 @@ import {
 import JSZip from "jszip";
 import * as tar from "tar";
 
+import { prepareBundleSigning } from "./bundleSigning";
 import { createTarBrTargetFiles } from "./createTarBr";
 import { createTarGzTargetFiles } from "./createTarGz";
 import { createZipTargetFiles } from "./createZip";
@@ -46,6 +47,7 @@ type PromoteStoragePlugin = StoragePluginWith<
 const LEGACY_BUNDLE_ERROR =
   "This OTA bundle was created by a version that does not support manifest.json. Copy bundle is not available.";
 const SIGNED_HASH_PREFIX = "sig:";
+const PROMOTE_ASSET_CONCURRENCY = 8;
 
 interface BundleManifest {
   bundleId?: string;
@@ -76,14 +78,44 @@ async function getFileHash(filepath: string) {
   return crypto.createHash("sha256").update(file).digest("hex");
 }
 
-async function signFileHash(fileHash: string, privateKeyPath: string) {
-  const privateKeyPEM = await fs.readFile(privateKeyPath, "utf8");
-  const sign = crypto.createSign("RSA-SHA256");
+async function runWithConcurrency<T>(
+  items: readonly T[],
+  concurrency: number,
+  task: (item: T) => Promise<void>,
+) {
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
 
-  sign.update(Buffer.from(fileHash, "hex"));
-  sign.end();
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const itemIndex = nextIndex;
+        nextIndex += 1;
+        await task(items[itemIndex]!);
+      }
+    }),
+  );
+}
 
-  return `${SIGNED_HASH_PREFIX}${sign.sign(privateKeyPEM).toString("base64")}`;
+function verifySignedFileHash({
+  actualFileHash,
+  publicKey,
+  signedFileHash,
+}: {
+  actualFileHash: string;
+  publicKey: string;
+  signedFileHash: string;
+}) {
+  try {
+    return crypto.verify(
+      "RSA-SHA256",
+      Buffer.from(actualFileHash, "hex"),
+      publicKey,
+      Buffer.from(signedFileHash.slice(SIGNED_HASH_PREFIX.length), "base64"),
+    );
+  } catch {
+    return false;
+  }
 }
 
 function getArchiveFilename(storageUri: string) {
@@ -438,12 +470,79 @@ export async function createCopiedBundleArchive({
 
   try {
     await downloadArchive(bundle.storageUri, storagePlugin, sourceArchivePath);
+    const actualSourceFileHash = await getFileHash(sourceArchivePath);
+    const signingSession = await prepareBundleSigning(config.signing);
+
+    if (isSignedFileHash(bundle.fileHash)) {
+      if (!signingSession) {
+        throw new Error(
+          "Cannot copy a signed bundle without enabled bundle signing configuration.",
+        );
+      }
+      if (
+        !verifySignedFileHash({
+          actualFileHash: actualSourceFileHash,
+          publicKey: signingSession.publicKey,
+          signedFileHash: bundle.fileHash,
+        })
+      ) {
+        throw new Error("Source bundle signature verification failed.");
+      }
+    } else if (actualSourceFileHash !== bundle.fileHash.toLowerCase()) {
+      throw new Error("Source bundle file hash verification failed.");
+    }
+
     const format = await extractArchive(sourceArchivePath, extractDir);
 
     const { manifest, manifestPath } = await readCopiedBundleManifest(
       extractDir,
       nextBundleId,
     );
+    const assetPaths = Object.keys(manifest.assets ?? {}).sort((left, right) =>
+      left.localeCompare(right),
+    );
+    const sourceIsSigned = [bundle.fileHash, getManifestFileHash(bundle)]
+      .filter((hash): hash is string => Boolean(hash))
+      .some((hash) => isSignedFileHash(hash));
+    const manifestHasSignatures = assetPaths.some((assetPath) =>
+      Boolean(manifest.assets?.[assetPath]?.signature),
+    );
+
+    if (!signingSession && (sourceIsSigned || manifestHasSignatures)) {
+      throw new Error(
+        "Cannot copy a signed bundle without enabled bundle signing configuration.",
+      );
+    }
+
+    if (signingSession) {
+      await runWithConcurrency(
+        assetPaths,
+        PROMOTE_ASSET_CONCURRENCY,
+        async (assetPath) => {
+          const asset = manifest.assets?.[assetPath];
+          if (!asset?.fileHash) {
+            throw new Error(`Manifest file hash not found for ${assetPath}`);
+          }
+          const sourcePath = resolveExtractedPath(extractDir, assetPath);
+          const actualFileHash = await getFileHash(sourcePath);
+          if (actualFileHash !== asset.fileHash.toLowerCase()) {
+            throw new Error(`Manifest file hash mismatch for ${assetPath}`);
+          }
+        },
+      );
+      await runWithConcurrency(
+        assetPaths,
+        PROMOTE_ASSET_CONCURRENCY,
+        async (assetPath) => {
+          const asset = manifest.assets?.[assetPath];
+          if (!asset?.fileHash) {
+            throw new Error(`Manifest file hash not found for ${assetPath}`);
+          }
+          asset.signature = await signingSession.signFileHash(asset.fileHash);
+        },
+      );
+    }
+
     const assetUploadTargets = await prepareManifestAssetUploadTargets({
       extractDir,
       manifest,
@@ -455,25 +554,11 @@ export async function createCopiedBundleArchive({
 
     const fileHash = await getFileHash(outputArchivePath);
     const manifestHash = await getFileHash(manifestPath);
-    const requiresSigningKey = [bundle.fileHash, getManifestFileHash(bundle)]
-      .filter((hash): hash is string => Boolean(hash))
-      .some((hash) => isSignedFileHash(hash));
-
-    if (requiresSigningKey && !config.signing?.privateKeyPath) {
-      throw new Error(
-        "Cannot copy a signed bundle without signing.privateKeyPath in hot-updater.config.ts",
-      );
-    }
-
-    const signingKeyPath =
-      config.signing?.enabled && config.signing.privateKeyPath
-        ? config.signing.privateKeyPath
-        : null;
-    const nextFileHash = signingKeyPath
-      ? await signFileHash(fileHash, signingKeyPath)
+    const nextFileHash = signingSession
+      ? `${SIGNED_HASH_PREFIX}${await signingSession.signFileHash(fileHash)}`
       : fileHash;
-    const nextManifestFileHash = signingKeyPath
-      ? await signFileHash(manifestHash, signingKeyPath)
+    const nextManifestFileHash = signingSession
+      ? `${SIGNED_HASH_PREFIX}${await signingSession.signFileHash(manifestHash)}`
       : manifestHash;
 
     const archiveUpload = await putStorageFile(

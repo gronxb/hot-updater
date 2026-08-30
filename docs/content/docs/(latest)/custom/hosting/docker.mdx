@@ -97,6 +97,7 @@ export const hotUpdater = createHotUpdater({
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
       },
       bucketName: process.env.R2_BUCKET_NAME!,
+      downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
     }),
   ],
 });
@@ -141,7 +142,9 @@ both to deploy a client-only server.
 
 ## Schema Generation
 
-Generate the Drizzle schema for Hot Updater tables.
+Generate the Drizzle schema for Hot Updater tables. Run these commands in the
+server project with `DATABASE_URL` and the storage environment variables from
+the container configuration below available to the local process as well.
 
 ```bash
 npx hot-updater db generate src/hotUpdater.ts --yes
@@ -166,6 +169,10 @@ export default defineConfig({
 ```bash
 npx drizzle-kit push
 ```
+
+Because this server uses `clientAccess: { type: "api-key" }`, also
+[create a client API key and configure `x-api-key` in the app](/docs/custom/quick-start#bootstrap-the-schema-and-api-key)
+against this same database before the first update check.
 
 ## Dockerfile
 
@@ -220,6 +227,7 @@ Run the container with environment variables.
 docker run -p 3000:3000 \
   -e DATABASE_URL="postgresql://user:password@host:5432/dbname" \
   -e HOT_UPDATER_ADMIN_TOKEN="replace-with-a-secret" \
+  -e HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY="replace-with-a-separate-secret" \
   -e R2_ENDPOINT="https://<account-id>.r2.cloudflarestorage.com" \
   -e R2_ACCESS_KEY_ID="<access-key-id>" \
   -e R2_SECRET_ACCESS_KEY="<secret-access-key>" \
@@ -258,6 +266,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/hot_updater
       HOT_UPDATER_ADMIN_TOKEN: replace-with-a-secret
+      HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY: replace-with-a-separate-secret
       R2_ENDPOINT: https://<account-id>.r2.cloudflarestorage.com
       R2_ACCESS_KEY_ID: <access-key-id>
       R2_SECRET_ACCESS_KEY: <secret-access-key>

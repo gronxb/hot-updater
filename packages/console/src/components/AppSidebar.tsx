@@ -4,6 +4,7 @@ import {
   KeyRound,
   Moon,
   Package,
+  ShieldCheck,
   Sun,
 } from "lucide-react";
 
@@ -23,6 +24,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { useApiKeyCapabilityQuery } from "@/lib/api-keys-api";
+
 export function AppSidebar() {
   const analyticsCapability = useAnalyticsCapability();
   const apiKeyCapability = useApiKeyCapabilityQuery();
@@ -34,6 +36,7 @@ export function AppSidebar() {
   const isAnalyticsActive =
     currentPath === "/analytics" || currentPath === "/installations";
   const isApiKeysActive = currentPath === "/api-keys";
+  const isSigningActive = currentPath === "/signing";
 
   return (
     <Sidebar collapsible="icon">
@@ -119,6 +122,16 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ) : null}
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isSigningActive}
+                  render={<Link to="/signing" />}
+                  tooltip="Bundle signing"
+                >
+                  <ShieldCheck />
+                  <span>Bundle signing</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

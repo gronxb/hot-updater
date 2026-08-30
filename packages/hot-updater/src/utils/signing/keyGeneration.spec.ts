@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   generateKeyPair,
+  getPrivateKeyGitignorePath,
   getPublicKeyFromPrivate,
   loadPrivateKey,
   saveKeyPair,
@@ -16,6 +17,20 @@ const RSA_4096_TIMEOUT = 40000;
 const SAVE_KEY_PAIR_TIMEOUT = 30000;
 
 describe("Key Generation", () => {
+  describe("getPrivateKeyGitignorePath", () => {
+    it("uses the complete project-relative path for nested output", () => {
+      expect(
+        getPrivateKeyGitignorePath("/project", "/project/secrets/signing"),
+      ).toBe("secrets/signing/private-key.pem");
+    });
+
+    it("does not claim an external key is covered by project gitignore", () => {
+      expect(
+        getPrivateKeyGitignorePath("/project", "/secure/signing"),
+      ).toBeNull();
+    });
+  });
+
   let testDir: string;
 
   beforeEach(async () => {
@@ -117,6 +132,40 @@ describe("Key Generation", () => {
       },
       SAVE_KEY_PAIR_TIMEOUT,
     );
+
+    it("does not overwrite either key when a key pair already exists", async () => {
+      const originalKeyPair = await generateKeyPair(2048);
+      const replacementKeyPair = await generateKeyPair(2048);
+      await saveKeyPair(originalKeyPair, testDir);
+
+      await expect(saveKeyPair(replacementKeyPair, testDir)).rejects.toThrow(
+        "Signing keys already exist",
+      );
+
+      await expect(
+        fs.readFile(path.join(testDir, "private-key.pem"), "utf8"),
+      ).resolves.toBe(originalKeyPair.privateKey);
+      await expect(
+        fs.readFile(path.join(testDir, "public-key.pem"), "utf8"),
+      ).resolves.toBe(originalKeyPair.publicKey);
+    });
+
+    it("leaves an existing public key untouched when the private key is missing", async () => {
+      const keyPair = await generateKeyPair(2048);
+      const publicKeyPath = path.join(testDir, "public-key.pem");
+      await fs.writeFile(publicKeyPath, "existing-public-key", { mode: 0o644 });
+
+      await expect(saveKeyPair(keyPair, testDir)).rejects.toThrow(
+        "Signing keys already exist",
+      );
+
+      await expect(fs.readFile(publicKeyPath, "utf8")).resolves.toBe(
+        "existing-public-key",
+      );
+      await expect(
+        fs.access(path.join(testDir, "private-key.pem")),
+      ).rejects.toThrow();
+    });
   });
 
   describe("loadPrivateKey", () => {

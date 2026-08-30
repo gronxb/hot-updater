@@ -38,7 +38,7 @@ export default defineConfig({
 
 ## Clarification
 
-The `hot-updater.config.ts` file is not included in the app’s build. Instead, it serves as a configuration layer specifically for communicating with the `hot-updater` CLI. As a result, sensitive tokens defined in this file are not part of the distributed application code.
+The `hot-updater.config.ts` file is not included in the app’s build. Instead, it serves as a configuration layer specifically for communicating with the `hot-updater` CLI. Sensitive tokens kept in this configuration are not part of the distributed application code unless you separately import or inject them into the app.
 
 What is actually included in the app’s build is as follows:
 ```ts
@@ -47,15 +47,18 @@ import { HotUpdater } from "@hot-updater/react-native";
 export default HotUpdater.wrap({
   baseURL: "https://<your-update-server-url>",
   updateStrategy: "appVersion", // or "fingerprint",
+  requestHeaders: {
+    "x-api-key": "<client API key>", // Required by managed providers
+  },
 });
 ```
 
-Here, the source URL is included in the app code, but sensitive environment variables, such as `HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY` tokens, are not bundled.
+Here, `baseURL` and the client API key are included in the app code. An embedded client API key can be extracted; it controls OTA reads and Analytics writes, not admin access. Provider credentials such as `HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY` must stay in the CLI/server configuration and must never be used as the client API key. See [API key authentication](/docs/custom/api-key-authentication#security-boundary).
 
 ## Potential Token Exposure
 
 <Callout type="warn">
-If you're **not** using react-native-dotenv, tokens won't be included in your app by default. This is a guideline for projects using react-native-dotenv.
+Hot Updater does not bundle CLI credentials by default, but any environment-variable inliner or native key manager can expose values that you include in the app. This risk is not limited to react-native-dotenv.
 
 Using tools like react-native-dotenv can expose sensitive tokens in your app build. To avoid this, only include non-sensitive or publicly safe variables in your configuration.
 </Callout>
@@ -87,4 +90,4 @@ module.exports = {
 1. Restrict Exposure: Only include environment variables that are safe for public access in your app build.
 2. Use Whitelists: Use tools like react-native-dotenv to define a whitelist of allowed environment variables.
 3. Keep Sensitive Data Out of Builds: Store sensitive data securely on your server or backend, and ensure it is only accessed during server-side operations.
-4. Use `react-native-keys` to manage keys.
+4. Do not rely on `react-native-keys` or another client-side key manager to keep provider credentials, admin tokens, or signing private keys secret in a distributed app.
