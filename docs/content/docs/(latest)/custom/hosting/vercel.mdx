@@ -43,6 +43,7 @@ your Vercel project settings:
 
 ```dotenv title=".env.local"
 HOT_UPDATER_ADMIN_TOKEN=replace-with-a-secret
+HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY=replace-with-a-separate-secret
 R2_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
 R2_ACCESS_KEY_ID=your-access-key-id
 R2_SECRET_ACCESS_KEY=your-secret-access-key
@@ -86,6 +87,7 @@ export const hotUpdater = createHotUpdater({
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
       },
       bucketName: process.env.R2_BUCKET_NAME!,
+      downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
     }),
   ],
 });
@@ -124,7 +126,9 @@ the broader client mount. Omit both to deploy a client-only server.
 
 ## Schema Generation
 
-Generate the Drizzle schema for Hot Updater tables.
+Generate the Drizzle schema for Hot Updater tables. The local command process
+must have `DATABASE_URL` and the storage environment variables above available;
+`hot-updater` does not load `.env.local` automatically.
 
 ```bash
 npx hot-updater db generate src/hotUpdater.ts --yes
@@ -154,6 +158,10 @@ npx vercel env pull .env.local
 npx drizzle-kit push
 ```
 
+Because this server uses `clientAccess: { type: "api-key" }`, also
+[create a client API key and configure `x-api-key` in the app](/docs/custom/quick-start#bootstrap-the-schema-and-api-key)
+against the target Vercel environment's database before the first update check.
+
 ## Development
 
 Run the development server locally.
@@ -166,7 +174,7 @@ Server runs at `http://localhost:3000`.
 
 ## Deploy
 
-Set `HOT_UPDATER_ADMIN_TOKEN`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`,
+Set `HOT_UPDATER_ADMIN_TOKEN`, `HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`,
 `R2_SECRET_ACCESS_KEY`, and `R2_BUCKET_NAME` in the target Vercel environment.
 
 Deploy to Vercel.

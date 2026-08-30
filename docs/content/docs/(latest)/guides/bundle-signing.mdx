@@ -48,7 +48,7 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
     npx hot-updater deploy -p ios
     ```
 
-    The Expo config plugin automatically extracts the public key from your private key during `expo prebuild`.
+    The Expo config plugin automatically embeds the public key during `expo prebuild`. The build can use `public-key.pem` without access to the private key.
   </Tab>
 </Tabs>
 
@@ -151,35 +151,25 @@ export default defineConfig({
 
 When you run `expo prebuild`, the plugin:
 1. Reads the signing config
-2. Loads `./keys/public-key.pem` (derived from `privateKeyPath`)
+2. Extracts the public key from the private key, or loads `./keys/public-key.pem` when the private key is unavailable
 3. Embeds it in native files automatically
 
 **No need to run `npx hot-updater keys export-public` manually for Expo projects.**
 
 ### EAS Build
 
-For EAS builds, the Expo plugin needs access to the private key to extract and embed the public key during prebuild. Store the private key as an environment variable:
+EAS prebuild only needs the public key. Keep the private key in the environment that runs `hot-updater deploy`; do not upload it just to build the native app.
 
-#### Using EAS Secrets
-
-```bash
-# Store private key in EAS Secrets
-eas env:create --name HOT_UPDATER_PRIVATE_KEY --value "$(cat keys/private-key.pem)"
-```
-
-The plugin automatically extracts the public key from `HOT_UPDATER_PRIVATE_KEY` during prebuild.
-
-#### Using .easignore (Alternative)
-
-For simpler setup, include the keys directory in EAS builds:
+For `privateKeyPath: "./keys/private-key.pem"`, include only `keys/public-key.pem` in the EAS upload. Copy your existing `.gitignore` rules into `.easignore`, then append these rules ([EAS ignore-file documentation](https://docs.expo.dev/build-reference/easignore/)):
 
 ```txt title=".easignore"
-!/keys
+# Keep your existing ignore rules above
+!/keys/
+/keys/*
+!/keys/public-key.pem
 ```
 
-This tells EAS to include the `keys/` directory even though it's in `.gitignore`. The plugin will use the private key file directly during prebuild.
-
-> **Note**: This approach is especially useful for local EAS builds (`eas build --local`) where you don't need to configure environment variables.
+Leave `signing.enabled: true` and `privateKeyPath` configured. With no `HOT_UPDATER_PRIVATE_KEY` environment variable or private key file in the build, the plugin loads the public key by replacing the `private-key.pem` filename with `public-key.pem`.
 
 #### How It Works
 
@@ -231,9 +221,13 @@ Store keys in:
 
 **Fix**:
 ```bash
-# Enable signing OR remove keys
+# Enable signing to update apps that already contain the public key.
+# To disable verification in a future native release:
 npx hot-updater keys remove
+# Rebuild and release the native app before targeting it with unsigned bundles.
 ```
+
+Removing the key from local native files does not change apps already installed on users' devices; those apps still require signed bundles.
 
 ### PublicKeyNotConfigured Error
 
@@ -257,8 +251,10 @@ npx hot-updater keys export-public --print-only
 
 ## Key Rotation
 
-1. Generate new key pair
+1. Generate a new key pair in a separate directory; retain the old private key while supporting existing native builds
 2. Update `privateKeyPath` in config
 3. Export new public key
 4. Release new app version
-5. Maintain compatibility until users update
+5. Deploy bundles separately for the old and new native builds, using their matching signing keys and non-overlapping app-version or fingerprint targets
+
+Each native build embeds one public key and rejects bundles signed with a different key. Replacing the key does not make existing installs trust the new key.

@@ -15,7 +15,7 @@ npm install @hot-updater/server @hot-updater/aws
 ```
 
 ```package-install
-npm install --save-dev @hot-updater/bare @hot-updater/standalone hot-updater
+npm install --save-dev @hot-updater/bare @hot-updater/aws @hot-updater/standalone hot-updater dotenv
 ```
 
 ## Architecture
@@ -34,11 +34,17 @@ This approach gives you full control over metadata while leveraging reliable clo
 
 Configure your Hot Updater CLI to use the self-hosted database.
 
+In the React Native project, create `.env.hotupdater` with the server's `R2_*`
+storage values and `HOT_UPDATER_ADMIN_TOKEN`, and add it to `.gitignore`.
+
 ```typescript title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
+import { config } from "dotenv";
+
+config({ path: ".env.hotupdater" });
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 if (!adminToken) {
@@ -183,18 +189,18 @@ This ensures consistency and simplifies configuration. Only use multiple plugins
 
 **Available official plugins:**
 
-- [s3Storage](../storage-plugins/aws) - AWS S3 and Cloudflare R2
-- [supabaseStorage](../storage-plugins/supabase) - Supabase Storage
-- [firebaseStorage](../storage-plugins/firebase) - Firebase Cloud Storage
+- [s3Storage](/docs/storage-plugins/aws) - AWS S3 and Cloudflare R2
+- [supabaseStorage](/docs/storage-plugins/supabase) - Supabase Storage
+- [firebaseStorage](/docs/storage-plugins/firebase) - Firebase Cloud Storage
 
 ## Database Adapters
 
 Start by setting up your database adapter. Choose the ORM that fits your project:
 
-- [Drizzle](./database/drizzle) - TypeScript ORM with SQL-like syntax
-- [Prisma](./database/prisma) - Next-generation ORM with intuitive data modeling
-- [Kysely](./database/kysely) - Type-safe SQL query builder
-- [MongoDB](./database/mongodb) - Native MongoDB driver
+- [Drizzle](/docs/custom/database/drizzle) - TypeScript ORM with SQL-like syntax
+- [Prisma](/docs/custom/database/prisma) - Next-generation ORM with intuitive data modeling
+- [Kysely](/docs/custom/database/kysely) - Type-safe SQL query builder
+- [MongoDB](/docs/custom/database/mongodb) - Native MongoDB driver
 
 Generate and apply the adapter's schema before serving requests. The exact
 workflow differs by adapter: Kysely and MongoDB use `hot-updater db migrate`,
@@ -205,9 +211,9 @@ into `prisma/schema.prisma` before `prisma db push` applies them.
 
 After configuring your database, choose the framework that fits your stack:
 
-- [Hono](./frameworks/hono) - Lightweight Web Standard framework
-- [Express](./frameworks/express) - Popular Node.js framework
-- [Elysia](./frameworks/elysia) - Modern Bun-first framework
+- [Hono](/docs/custom/frameworks/hono) - Lightweight Web Standard framework
+- [Express](/docs/custom/frameworks/express) - Popular Node.js framework
+- [Elysia](/docs/custom/frameworks/elysia) - Modern Bun-first framework
 
 ## Key Features
 

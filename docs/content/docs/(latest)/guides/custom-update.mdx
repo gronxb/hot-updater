@@ -60,17 +60,29 @@ Call `checkForUpdate` only when your app is ready for the decision.
 
 ```tsx
 async function checkForAppUpdate() {
+  let checkError: Error | null = null;
   const updateInfo = await HotUpdater.checkForUpdate({
     updateStrategy: "appVersion",
+    onError: (error) => {
+      checkError = error;
+    },
   });
 
+  if (checkError) {
+    throw checkError;
+  }
+
   if (!updateInfo) {
-    return { status: "UP_TO_DATE" as const };
+    return { status: "NO_UPDATE" as const };
   }
 
   return updateInfo;
 }
 ```
+
+`null` means no transition was selected, not necessarily that the check
+succeeded. Failed checks can call `onError` and return `null`; development
+checks are skipped. Capture callback errors as above before reporting a result.
 
 Common places to check:
 
@@ -82,8 +94,9 @@ Common places to check:
 
 ## Download and Apply
 
-The return value includes an `updateBundle` helper with all required update
-metadata pre-filled.
+The return value includes an `updateBundle` helper that resolves the artifact
+when needed and preserves the selected transition. Do not pass the result's
+`fileUrl` or `fileHash` to a direct call: both fields are `null` in v1.
 
 ```tsx
 const updateInfo = await HotUpdater.checkForUpdate({
@@ -146,9 +159,17 @@ function SettingsUpdateRow() {
 
     async function prepareUpdate() {
       try {
+        let checkError: Error | null = null;
         const updateInfo = await HotUpdater.checkForUpdate({
           updateStrategy: "appVersion",
+          onError: (error) => {
+            checkError = error;
+          },
         });
+
+        if (checkError) {
+          throw checkError;
+        }
 
         if (!isActive) {
           return;
@@ -203,7 +224,7 @@ function SettingsUpdateRow() {
     appUpdate.status === "checking"
       ? "checking"
       : appUpdate.status === "current"
-        ? "current"
+        ? "no update selected"
         : appUpdate.status === "downloading"
           ? `downloading ${Math.round(progress * 100)}%`
           : appUpdate.status === "ready"
@@ -295,15 +316,24 @@ if (reset) {
 
 ## Error Handling
 
-Wrap your custom flow in one boundary and keep the app usable when an update
-check fails.
+Capture `onError` as well as rejected promises: check failures can call the
+callback and return `null`, so `try/catch` alone does not report every failure.
+Keep the app usable when an update check fails.
 
 ```tsx
 async function runUpdateFlow() {
   try {
+    let checkError: Error | null = null;
     const updateInfo = await HotUpdater.checkForUpdate({
       updateStrategy: "appVersion",
+      onError: (error) => {
+        checkError = error;
+      },
     });
+
+    if (checkError) {
+      throw checkError;
+    }
 
     if (!updateInfo) {
       return;
