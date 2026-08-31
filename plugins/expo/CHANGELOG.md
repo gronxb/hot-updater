@@ -1,5 +1,22 @@
 # @hot-updater/expo
 
+## 1.0.0-rc.2
+
+### Patch Changes
+
+- 8145d48: Separate bundle signer identity from the native trust anchor. Signing providers
+  now expose public identity only through `getPublicKey()`, while Expo reads its
+  public trust-anchor file exclusively from the app config plugin and includes it
+  in native fingerprints. Add public-key materialization for Expo and validate
+  Expo CNG trust anchors during deploy and doctor without loading signing
+  credentials during prebuild.
+- Updated dependencies [6d0cdc7]
+- Updated dependencies [8145d48]
+  - @hot-updater/plugin-core@1.0.0-rc.1
+  - @hot-updater/cli-tools@1.0.0-rc.1
+  - hot-updater@1.0.0-rc.2
+  - @hot-updater/bare@1.0.0-rc.1
+
 ## 1.0.0-rc.1
 
 ### Patch Changes

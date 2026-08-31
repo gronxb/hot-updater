@@ -1,5 +1,27 @@
 # @hot-updater/plugin-core
 
+## 1.0.0-rc.1
+
+### Minor Changes
+
+- 6d0cdc7: Rename the built-in Analytics domain to Insights across the database model,
+  server provider and HTTP query route, React Native option and transport,
+  Console route and UI, and provider contracts. This is a breaking pre-release
+  rename with no compatibility aliases; use `database.models.insights`,
+  `createInsightsProvider`, `/bundles/:id/events/insights`, and `insights`.
+
+  Enable React Native Insights reporting by default for both `HotUpdater.init`
+  and `HotUpdater.wrap`. Set `insights: false` to opt out.
+
+### Patch Changes
+
+- 8145d48: Separate bundle signer identity from the native trust anchor. Signing providers
+  now expose public identity only through `getPublicKey()`, while Expo reads its
+  public trust-anchor file exclusively from the app config plugin and includes it
+  in native fingerprints. Add public-key materialization for Expo and validate
+  Expo CNG trust anchors during deploy and doctor without loading signing
+  credentials during prebuild.
+
 ## 1.0.0-rc.0
 
 ### Major Changes
