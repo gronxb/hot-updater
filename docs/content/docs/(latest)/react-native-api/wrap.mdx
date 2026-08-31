@@ -44,7 +44,7 @@ export default HotUpdater.wrap({
   // [!code hl:9]
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion", // or "fingerprint"
-  analytics: true,
+  insights: true,
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "x-api-key": "<your-api-key>",
@@ -52,9 +52,9 @@ export default HotUpdater.wrap({
 })(App);
 ```
 
-Set `analytics: true` to send automatic app-ready transition and Release
-adoption events. Omitting it or setting it to `false` sends no Analytics
-events. The server routes remain available either way.
+Automatic app-ready transition and Release adoption Insights are enabled by
+default. Set `insights: false` to send no Insights events. The server routes
+remain available either way.
 
 ### Manual Updates
 
@@ -122,7 +122,7 @@ export default App;
 | Option             | Type                                        | Required | Description                                                 |
 | ------------------ | ------------------------------------------- | -------- | ----------------------------------------------------------- |
 | `baseURL`          | `string \| () => string \| Promise<string>` | Yes      | Your v1 client handler URL                                  |
-| `analytics`        | `boolean`                                   | No       | Send app-ready and Release adoption events (default: false) |
+| `insights`         | `boolean`                                   | No       | Send app-ready and Release adoption events (default: true)  |
 | `requestHeaders`   | `Record<string, string>`                    | No       | Custom HTTP headers for update requests                     |
 | `requestTimeout`   | `number`                                    | No       | Request timeout in milliseconds (default: 5000)             |
 | `onNotifyAppReady` | `(result) => void`                          | No       | Callback invoked after native app-ready state is read       |
@@ -360,7 +360,7 @@ For advanced use cases where you need full control over network operations,
 such as GraphQL, RPC, or custom authentication, expose the v1 HTTP protocol
 through an adapter or proxy and point `baseURL` at that endpoint. The adapter
 may use any upstream protocol internally, but the React Native client always
-uses the standard Release Catalog, artifact, Analytics-event, and `/version`
+uses the standard Release Catalog, artifact, Insights-event, and `/version`
 routes. This keeps catalog selection and native transition guards on one
 transport contract.
 

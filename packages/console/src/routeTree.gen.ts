@@ -11,8 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SigningRouteImport } from './routes/signing'
 import { Route as InstallationsRouteImport } from './routes/installations'
+import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as ApiKeysRouteImport } from './routes/api-keys'
-import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiBundlesBundleIdDownloadRouteImport } from './routes/api/bundles/$bundleId/download'
@@ -27,14 +27,14 @@ const InstallationsRoute = InstallationsRouteImport.update({
   path: '/installations',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InsightsRoute = InsightsRouteImport.update({
+  id: '/insights',
+  path: '/insights',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiKeysRoute = ApiKeysRouteImport.update({
   id: '/api-keys',
   path: '/api-keys',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AnalyticsRoute = AnalyticsRouteImport.update({
-  id: '/analytics',
-  path: '/analytics',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -56,8 +56,8 @@ const ApiBundlesBundleIdDownloadRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/analytics': typeof AnalyticsRoute
   '/api-keys': typeof ApiKeysRoute
+  '/insights': typeof InsightsRoute
   '/installations': typeof InstallationsRoute
   '/signing': typeof SigningRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -65,8 +65,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/analytics': typeof AnalyticsRoute
   '/api-keys': typeof ApiKeysRoute
+  '/insights': typeof InsightsRoute
   '/installations': typeof InstallationsRoute
   '/signing': typeof SigningRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -75,8 +75,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/analytics': typeof AnalyticsRoute
   '/api-keys': typeof ApiKeysRoute
+  '/insights': typeof InsightsRoute
   '/installations': typeof InstallationsRoute
   '/signing': typeof SigningRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -86,8 +86,8 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/analytics'
     | '/api-keys'
+    | '/insights'
     | '/installations'
     | '/signing'
     | '/api/auth/$'
@@ -95,8 +95,8 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/analytics'
     | '/api-keys'
+    | '/insights'
     | '/installations'
     | '/signing'
     | '/api/auth/$'
@@ -104,8 +104,8 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
-    | '/analytics'
     | '/api-keys'
+    | '/insights'
     | '/installations'
     | '/signing'
     | '/api/auth/$'
@@ -114,8 +114,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AnalyticsRoute: typeof AnalyticsRoute
   ApiKeysRoute: typeof ApiKeysRoute
+  InsightsRoute: typeof InsightsRoute
   InstallationsRoute: typeof InstallationsRoute
   SigningRoute: typeof SigningRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
@@ -138,18 +138,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InstallationsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/insights': {
+      id: '/insights'
+      path: '/insights'
+      fullPath: '/insights'
+      preLoaderRoute: typeof InsightsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api-keys': {
       id: '/api-keys'
       path: '/api-keys'
       fullPath: '/api-keys'
       preLoaderRoute: typeof ApiKeysRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/analytics': {
-      id: '/analytics'
-      path: '/analytics'
-      fullPath: '/analytics'
-      preLoaderRoute: typeof AnalyticsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -178,8 +178,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AnalyticsRoute: AnalyticsRoute,
   ApiKeysRoute: ApiKeysRoute,
+  InsightsRoute: InsightsRoute,
   InstallationsRoute: InstallationsRoute,
   SigningRoute: SigningRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,

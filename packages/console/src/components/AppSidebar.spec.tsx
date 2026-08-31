@@ -3,12 +3,12 @@ import type { ReactNode } from "react";
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { AnalyticsCapabilityState } from "@/lib/analytics-api";
+import type { InsightsCapabilityState } from "@/lib/insights-api";
 
 import { AppSidebar } from "./AppSidebar";
 
 let pathname = "/";
-let analyticsCapability: AnalyticsCapabilityState = { status: "unresolved" };
+let insightsCapability: InsightsCapabilityState = { status: "unresolved" };
 let apiKeysSupported = false;
 
 vi.mock("@tanstack/react-router", () => ({
@@ -32,8 +32,8 @@ vi.mock("@/components/ThemeProvider", () => ({
   useTheme: () => ({ theme: "dark", setTheme: vi.fn() }),
 }));
 
-vi.mock("@/components/features/analytics/AnalyticsCapabilityContext", () => ({
-  useAnalyticsCapability: () => analyticsCapability,
+vi.mock("@/components/features/insights/InsightsCapabilityContext", () => ({
+  useInsightsCapability: () => insightsCapability,
 }));
 
 vi.mock("@/lib/api-keys-api", () => ({
@@ -84,8 +84,8 @@ vi.mock("@/components/ui/sidebar", () => {
 });
 
 const capability = (
-  status: AnalyticsCapabilityState["status"],
-): AnalyticsCapabilityState => {
+  status: InsightsCapabilityState["status"],
+): InsightsCapabilityState => {
   switch (status) {
     case "error":
       return { status, error: new Error("offline") };
@@ -97,12 +97,12 @@ const capability = (
   }
 };
 
-const renderSidebar = (capabilityState: AnalyticsCapabilityState) => {
-  analyticsCapability = capabilityState;
+const renderSidebar = (capabilityState: InsightsCapabilityState) => {
+  insightsCapability = capabilityState;
   return render(<AppSidebar />);
 };
 
-describe("AppSidebar analytics navigation", () => {
+describe("AppSidebar insights navigation", () => {
   afterEach(() => {
     cleanup();
     pathname = "/";
@@ -116,7 +116,7 @@ describe("AppSidebar analytics navigation", () => {
 
       expect(screen.getByRole("link", { name: /bundles/i })).toBeDefined();
       expect(screen.queryByRole("link", { name: /releases/i })).toBeNull();
-      expect(screen.queryByRole("link", { name: /analytics/i })).toBeNull();
+      expect(screen.queryByRole("link", { name: /insights/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /installations/i })).toBeNull();
     },
   );
@@ -155,24 +155,24 @@ describe("AppSidebar analytics navigation", () => {
     expect(signing.getAttribute("data-active")).toBe("true");
   });
 
-  it("shows one Analytics destination after support is confirmed", () => {
+  it("shows one Insights destination after support is confirmed", () => {
     renderSidebar(capability("supported"));
 
     expect(
-      screen.getByRole("link", { name: /analytics/i }).getAttribute("href"),
-    ).toBe("/analytics");
+      screen.getByRole("link", { name: /insights/i }).getAttribute("href"),
+    ).toBe("/insights");
     expect(screen.queryByRole("link", { name: /installations/i })).toBeNull();
   });
 
-  it.each(["/analytics", "/installations"])(
-    "marks Analytics active on %s",
+  it.each(["/insights", "/installations"])(
+    "marks Insights active on %s",
     (route) => {
       pathname = route;
       renderSidebar(capability("supported"));
 
       expect(
         screen
-          .getByRole("link", { name: /analytics/i })
+          .getByRole("link", { name: /insights/i })
           .getAttribute("data-active"),
       ).toBe("true");
     },

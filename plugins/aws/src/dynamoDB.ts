@@ -18,7 +18,7 @@ import {
   type BundleEventRow,
   type BundlePatchRow,
   type BundleRow,
-  type AnalyticsModel,
+  type InsightsModel,
   type ChannelDeleteInput,
   type ChannelDeleteResult,
   type ChannelInsertInput,
@@ -2358,7 +2358,7 @@ const compileAndCommitDynamoDBChanges = async (
   const originalApiKeys = new Map<string, VersionedApiKey>();
   const apiKeys = new Map<string, VersionedApiKey>();
   const apiKeyHashes = new Map<string, string>();
-  const analytics = new Map<string, BundleEventRow>();
+  const insights = new Map<string, BundleEventRow>();
 
   const rememberApiKey = (value: VersionedApiKey | null): void => {
     if (value === null || apiKeys.has(value.row.id)) return;
@@ -2545,14 +2545,14 @@ const compileAndCommitDynamoDBChanges = async (
           }
         }
         break;
-      case "analytics": {
-        const key = analyticsSortKey(change.row);
-        if (analytics.has(key)) {
+      case "insights": {
+        const key = insightsSortKey(change.row);
+        if (insights.has(key)) {
           throw new DynamoDBCommitStateError(
-            `Analytics event "${change.row.id}" is duplicated`,
+            `Insights event "${change.row.id}" is duplicated`,
           );
         }
-        analytics.set(key, change.row);
+        insights.set(key, change.row);
         break;
       }
       case "apiKeys":
@@ -2872,12 +2872,12 @@ const compileAndCommitDynamoDBChanges = async (
   });
   if (counter !== undefined) actions.push(counter);
 
-  for (const [key, row] of analytics) {
+  for (const [key, row] of insights) {
     actions.push({
       Put: {
         TableName: store.tableName,
         Item: boundedDynamoDBMetadataItem({
-          pk: DYNAMODB_ANALYTICS_PARTITION,
+          pk: DYNAMODB_INSIGHTS_PARTITION,
           sk: key,
           version: 1,
           row,
@@ -2950,7 +2950,7 @@ const createDynamoDBCommit =
       return compileAndCommitDynamoDBChanges(store, input);
     }
   };
-export const DYNAMODB_ANALYTICS_PARTITION = "bundle_events";
+export const DYNAMODB_INSIGHTS_PARTITION = "bundle_events";
 export const DYNAMODB_API_KEY_PARTITION = "api_keys";
 export const DYNAMODB_API_KEY_HASH_PARTITION = "_hot-updater#api-key-hashes";
 
@@ -3012,20 +3012,20 @@ const parseOfficialRowItem = <TRow>(
 const timestampSortKey = (timestampMs: number): string =>
   Math.trunc(timestampMs).toString().padStart(16, "0");
 
-const analyticsSortKey = (
+const insightsSortKey = (
   row: Pick<BundleEventRow, "id" | "received_at_ms">,
 ): string => `${timestampSortKey(row.received_at_ms)}#${row.id}`;
 
-export const createDynamoDBAnalyticsTable = (
+export const createDynamoDBInsightsTable = (
   store: DynamoDBStore,
-): AnalyticsModel => ({
+): InsightsModel => ({
   async append(row) {
     await store.client.send(
       new PutCommand({
         TableName: store.tableName,
         Item: boundedDynamoDBMetadataItem({
-          pk: DYNAMODB_ANALYTICS_PARTITION,
-          sk: analyticsSortKey(row),
+          pk: DYNAMODB_INSIGHTS_PARTITION,
+          sk: insightsSortKey(row),
           version: 1,
           row,
         }),
@@ -3060,7 +3060,7 @@ export const createDynamoDBAnalyticsTable = (
           ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
           ExpressionAttributeValues: {
             ":before": `${timestampSortKey(input.beforeReceivedAtMs)}#`,
-            ":pk": DYNAMODB_ANALYTICS_PARTITION,
+            ":pk": DYNAMODB_INSIGHTS_PARTITION,
             ...(afterKey === undefined ? {} : { ":after": afterKey }),
           },
           Limit: input.limit - rows.length + (afterKey === undefined ? 0 : 1),
@@ -3072,7 +3072,7 @@ export const createDynamoDBAnalyticsTable = (
         rows.push(
           parseOfficialRowItem(
             item,
-            DYNAMODB_ANALYTICS_PARTITION,
+            DYNAMODB_INSIGHTS_PARTITION,
             isBundleEventRow,
           ).row,
         );
@@ -3284,7 +3284,7 @@ export const dynamoDB = (config: DynamoDBConfig) => {
         store,
         DYNAMODB_UPDATE_INDEX_NAME,
       ),
-      analytics: createDynamoDBAnalyticsTable(store),
+      insights: createDynamoDBInsightsTable(store),
       apiKeys: createDynamoDBApiKeyTable(store),
     },
     async commit(input) {

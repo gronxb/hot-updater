@@ -78,12 +78,13 @@ export const hotUpdater = createHotUpdater({
 ```
 
 `createHotUpdater` mounts update-check routes and `/version`. This example uses
-the recommended `api-key` policy for update checks and Analytics ingestion.
+the recommended `api-key` policy for update checks and Insights ingestion.
 Admin routes used by the CLI `standaloneRepository` live on a separate handler;
 mount that handler only behind framework authentication.
 
-Server Analytics routes are always available. React Native clients decide
-whether to send lifecycle events with `HotUpdater.init({ analytics })`.
+Server Insights routes are always available. React Native clients send
+lifecycle events by default and can opt out with
+`HotUpdater.init({ insights: false })`.
 `clientAccess` is required so the client authentication policy is never
 selected implicitly.
 
@@ -119,7 +120,7 @@ serve({ fetch: app.fetch, port: 3000 }, (info) => {
 ## Security Settings
 
 The recommended self-hosted policy requires an API key for update-check and
-Analytics ingestion routes. Always protect admin routes separately before
+Insights ingestion routes. Always protect admin routes separately before
 mounting `handlers.admin`.
 
 Update-check routes are usually exposed for React Native clients, but that is a
@@ -239,7 +240,6 @@ HotUpdater.init({
   requestHeaders: {
     "x-api-key": "<API key printed by api-key create>", // [!code ++]
   },
-  analytics: true,
 });
 
 function App() {
@@ -267,7 +267,7 @@ export default App;
 
 The React Native `baseURL` always points to the client root. Never put the
 admin bearer token in the app. The API key is scoped to client update and
-Analytics ingestion routes and is sent using `x-api-key`.
+Insights ingestion routes and is sent using `x-api-key`.
 
 `HotUpdater.init` initializes the client but does not start an update check.
 The example calls `HotUpdater.checkForUpdate()` when the app mounts. See the
@@ -276,7 +276,7 @@ timing or update UI.
 
 ## Unauthenticated Alternative
 
-If you intentionally want client update and Analytics ingestion routes to be
+If you intentionally want client update and Insights ingestion routes to be
 unauthenticated, set `clientAccess: { type: "public" }` and omit `x-api-key`
 from React Native `requestHeaders`. This does not make the admin handler public;
 its framework authentication remains required.

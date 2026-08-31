@@ -77,14 +77,14 @@ it.each(["null", "[]", "1", '"metadata"'])(
   },
 );
 
-it("preserves explicit null Release ids on an Analytics row", () => {
+it("preserves explicit null Release ids on an Insights row", () => {
   expect(
     parseD1Row("bundle_events", createBundleEventRowFixture("1", 1)),
   ).toMatchObject({ from_release_id: null, to_release_id: null });
 });
 
 it.each(["from_release_id", "to_release_id"])(
-  "rejects an omitted Analytics field: %s",
+  "rejects an omitted Insights field: %s",
   (field) => {
     const row: Record<string, unknown> = {
       ...createBundleEventRowFixture("1", 1),
@@ -101,7 +101,7 @@ it.each([
   { from_bundle_id: null },
   { to_bundle_id: null },
   { type: "UNCHANGED", from_bundle_id: "bundle-old", update_strategy: null },
-])("rejects an invalid Analytics direction shape", (overrides) => {
+])("rejects an invalid Insights direction shape", (overrides) => {
   expect(() =>
     parseD1Row("bundle_events", {
       ...createBundleEventRowFixture("1", 1),

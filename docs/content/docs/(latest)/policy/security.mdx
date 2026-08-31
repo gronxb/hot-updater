@@ -53,7 +53,7 @@ export default HotUpdater.wrap({
 });
 ```
 
-Here, `baseURL` and the client API key are included in the app code. An embedded client API key can be extracted; it controls OTA reads and Analytics writes, not admin access. Provider credentials such as `HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY` must stay in the CLI/server configuration and must never be used as the client API key. See [API key authentication](/docs/custom/api-key-authentication#security-boundary).
+Here, `baseURL` and the client API key are included in the app code. An embedded client API key can be extracted; it controls OTA reads and Insights writes, not admin access. Provider credentials such as `HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY` must stay in the CLI/server configuration and must never be used as the client API key. See [API key authentication](/docs/custom/api-key-authentication#security-boundary).
 
 ## Potential Token Exposure
 

@@ -70,7 +70,7 @@ const missingDatabase = createDatabasePlugin({
         throw new Error("database plugin is required");
       },
     },
-    analytics: {
+    insights: {
       append: async () => {
         throw new Error("database plugin is required");
       },

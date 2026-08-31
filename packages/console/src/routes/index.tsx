@@ -96,7 +96,7 @@ function BundleMovementSummary({
       <span
         aria-label="30-day Bundle activity unavailable"
         className="text-sm text-muted-foreground"
-        title="Analytics are unavailable for this Bundle."
+        title="Insights are unavailable for this Bundle."
       >
         —
       </span>

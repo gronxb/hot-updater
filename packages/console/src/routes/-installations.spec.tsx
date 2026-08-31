@@ -33,8 +33,8 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@/components/BundleIdDisplay", () => ({
   BundleIdDisplay: ({ bundleId }: { bundleId: string }) => bundleId,
 }));
-vi.mock("@/components/features/analytics/AnalyticsCapabilityContext", () => ({
-  useAnalyticsCapability: () => ({
+vi.mock("@/components/features/insights/InsightsCapabilityContext", () => ({
+  useInsightsCapability: () => ({
     status: "supported",
     mode: "bounded",
     maxMatchingRows: 50_000,
@@ -43,8 +43,8 @@ vi.mock("@/components/features/analytics/AnalyticsCapabilityContext", () => ({
 vi.mock("@/components/ui/sidebar", () => ({
   SidebarTrigger: () => null,
 }));
-vi.mock("@/lib/analytics-api", () => ({
-  isAnalyticsQueryEnabled: () => true,
+vi.mock("@/lib/insights-api", () => ({
+  isInsightsQueryEnabled: () => true,
 }));
 vi.mock("@/lib/api", () => ({
   useInstallationHistoryQuery: mocks.history,
@@ -115,14 +115,14 @@ describe("InstallationsPage", () => {
     );
   });
 
-  it("provides a clear route back to Analytics", () => {
+  it("provides a clear route back to Insights", () => {
     render(<InstallationsPage />);
 
     expect(
       screen
-        .getByRole("link", { name: "Back to Analytics" })
+        .getByRole("link", { name: "Back to Insights" })
         .getAttribute("href"),
-    ).toBe("/analytics");
+    ).toBe("/insights");
   });
 
   it("labels the history search for either a user ID or install ID", () => {

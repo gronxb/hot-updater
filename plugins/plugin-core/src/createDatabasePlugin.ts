@@ -265,7 +265,7 @@ const applyChange = async (
           return;
         }
       }
-    case "analytics":
+    case "insights":
       await database.create({ model: "bundle_events", data: change.row });
       return;
     case "apiKeys":
@@ -480,7 +480,7 @@ const validateDatabaseChange = (change: unknown): void => {
         default:
           throw new DatabasePluginInputError("invalid-operation");
       }
-    case "analytics":
+    case "insights":
       if (
         change.operation !== "insert" ||
         !hasOnlyKeys(change, ["model", "operation", "row"])
@@ -856,7 +856,7 @@ export const createDatabasePluginAdapter = (
           return result;
         },
       },
-      analytics: {
+      insights: {
         async append(row) {
           await crud.create({ model: "bundle_events", data: row });
         },

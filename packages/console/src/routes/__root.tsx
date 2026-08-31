@@ -9,20 +9,20 @@ import { useEffect, useState } from "react";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import { ConsoleAccessPage } from "@/components/ConsoleAccessPage";
-import { AnalyticsCapabilityProvider } from "@/components/features/analytics/AnalyticsCapabilityContext";
+import { InsightsCapabilityProvider } from "@/components/features/insights/InsightsCapabilityContext";
 import { NotFoundPage } from "@/components/NotFoundPage";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
-  getAnalyticsCapabilityState,
-  useAnalyticsCapabilitiesQuery,
-} from "@/lib/analytics-api";
-import {
   getConsoleAccessRpc,
   getConsoleAuthProvidersRpc,
 } from "@/lib/auth-rpc";
+import {
+  getInsightsCapabilityState,
+  useInsightsCapabilitiesQuery,
+} from "@/lib/insights-api";
 
 import appCss from "../styles.css?url";
 
@@ -149,8 +149,8 @@ function RootLayout() {
 }
 
 function AuthorizedConsole() {
-  const capabilityQuery = useAnalyticsCapabilitiesQuery();
-  const capability = getAnalyticsCapabilityState(capabilityQuery);
+  const capabilityQuery = useInsightsCapabilitiesQuery();
+  const capability = getInsightsCapabilityState(capabilityQuery);
 
   useEffect(() => {
     if (
@@ -162,13 +162,13 @@ function AuthorizedConsole() {
     }
   }, []);
   return (
-    <AnalyticsCapabilityProvider value={capability}>
+    <InsightsCapabilityProvider value={capability}>
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
           <Outlet />
         </SidebarInset>
       </SidebarProvider>
-    </AnalyticsCapabilityProvider>
+    </InsightsCapabilityProvider>
   );
 }

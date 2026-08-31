@@ -656,7 +656,7 @@ const supabaseMock = vi.hoisted(() => {
               staged.bundle_patches.set(String(patch.id), patch);
               continue;
             }
-            if (model === "analytics" && operation === "insert") {
+            if (model === "insights" && operation === "insert") {
               const event = change.row as Row;
               if (staged.bundle_events.has(String(event.id))) {
                 return { data: null, error: { message: "duplicate id" } };
@@ -770,11 +770,11 @@ describe("supabase edge database", () => {
 
     expect(Object.keys(database).sort()).toEqual(["commit", "models", "name"]);
     expect(Object.keys(database.models).sort()).toEqual([
-      "analytics",
       "apiKeys",
       "bundlePatches",
       "bundles",
       "channels",
+      "insights",
       "releaseCatalogs",
       "releases",
     ]);

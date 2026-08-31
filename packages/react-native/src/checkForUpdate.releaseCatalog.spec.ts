@@ -81,16 +81,16 @@ const createClient = (catalog = createCatalog()) => {
     fileHash: "bundle-hash",
     fileUrl: "https://updates.example.com/bundle.zip",
   }));
-  const sendAnalyticsEvent = vi.fn(async () => undefined);
+  const sendInsightsEvent = vi.fn(async () => undefined);
   const session = {
     fetchReleaseCatalog,
     resolveArtifact,
-    sendAnalyticsEvent,
+    sendInsightsEvent,
   };
   const client: HotUpdaterHttpClient = {
     createSession: vi.fn(async () => session),
   };
-  return { client, fetchReleaseCatalog, resolveArtifact, sendAnalyticsEvent };
+  return { client, fetchReleaseCatalog, resolveArtifact, sendInsightsEvent };
 };
 
 describe("checkForUpdate Release catalog protocol", () => {
@@ -182,7 +182,7 @@ describe("checkForUpdate Release catalog protocol", () => {
         },
       ],
     });
-    const { client, resolveArtifact, sendAnalyticsEvent } =
+    const { client, resolveArtifact, sendInsightsEvent } =
       createClient(forceCatalog);
 
     const result = await checkForUpdate({
@@ -197,7 +197,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     await expect(result?.updateBundle()).resolves.toBe(true);
     expect(resolveArtifact).not.toHaveBeenCalled();
     expect(mocks.updateBundle).not.toHaveBeenCalled();
-    expect(sendAnalyticsEvent).not.toHaveBeenCalled();
+    expect(sendInsightsEvent).not.toHaveBeenCalled();
     expect(mocks.commitReleaseSelection).toHaveBeenCalledWith({
       guard: expect.objectContaining({ generation: 2, scopeKey: SCOPE_KEY }),
       selection: expect.objectContaining({
@@ -207,7 +207,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
   });
 
-  it("sends RELEASE_ADOPTED only when analytics is enabled", async () => {
+  it("sends RELEASE_ADOPTED only when insights is enabled", async () => {
     const active: PersistedSelectionReceipt = {
       catalogId: CATALOG_ID,
       bundleId: TARGET_BUNDLE_ID,
@@ -227,16 +227,16 @@ describe("checkForUpdate Release catalog protocol", () => {
       verificationPending: false,
     });
     const { checkForUpdate } = await import("./checkForUpdate");
-    const { client, sendAnalyticsEvent } = createClient();
+    const { client, sendInsightsEvent } = createClient();
 
     const result = await checkForUpdate({
-      analytics: true,
+      insights: true,
       client,
       updateStrategy: "appVersion",
     });
     await result?.updateBundle();
 
-    expect(sendAnalyticsEvent).toHaveBeenCalledWith(
+    expect(sendInsightsEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         fromReleaseId: MINIMUM_RELEASE_ID,
         toReleaseId: RELEASE_ID,

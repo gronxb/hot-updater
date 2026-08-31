@@ -59,7 +59,7 @@ HotUpdater.setUser({
 });
 
 HotUpdater.init({
-  analytics: true,
+  insights: true,
   baseURL: resolveHotUpdaterBaseURL,
   requestHeaders: HOT_UPDATER_API_KEY
     ? { "x-api-key": HOT_UPDATER_API_KEY }

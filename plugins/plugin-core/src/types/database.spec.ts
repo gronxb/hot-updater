@@ -41,7 +41,7 @@ describe("database plugin types", () => {
       readonly row: BundleRow;
     }>().not.toMatchTypeOf<DatabaseChange>();
     expectTypeOf<{
-      readonly model: "analytics";
+      readonly model: "insights";
       readonly operation: "append";
       readonly row: never;
     }>().not.toMatchTypeOf<DatabaseChange>();
@@ -49,7 +49,7 @@ describe("database plugin types", () => {
 
   it("matches BundleRepository commits to the standalone atomic boundary", () => {
     expectTypeOf<{
-      readonly model: "analytics";
+      readonly model: "insights";
       readonly operation: "insert";
       readonly row: never;
     }>().not.toMatchTypeOf<BundleRepositoryChange>();
@@ -85,7 +85,7 @@ describe("database plugin types", () => {
     expectTypeOf<{
       readonly changes: readonly [
         {
-          readonly model: "analytics";
+          readonly model: "insights";
           readonly operation: "insert";
           readonly row: never;
         },
@@ -103,7 +103,7 @@ describe("database plugin types", () => {
       readonly where: { readonly id: "channel-1" };
     }>().toMatchTypeOf<BundleRepositoryChange>();
     expectTypeOf<{
-      readonly model: "analytics";
+      readonly model: "insights";
       readonly operation: "insert";
       readonly row: never;
     }>().not.toMatchTypeOf<BundleRepositoryChange>();

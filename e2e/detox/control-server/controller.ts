@@ -19,9 +19,9 @@ import {
 } from "../../../packages/core/src/releaseCatalogScope.ts";
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
 import type { Bundle } from "../../../packages/core/src/types.ts";
-import { createAnalyticsProvider } from "../../../packages/server/dist/index.mjs";
+import { createInsightsProvider } from "../../../packages/server/dist/index.mjs";
 import {
-  type AnalyticsModel,
+  type InsightsModel,
   type BundleRepository,
   createUUIDv7After,
   commitReleaseCatalogMutation,
@@ -31,14 +31,14 @@ import {
   type ReleaseRow,
   updateReleasePolicy,
 } from "../../../plugins/plugin-core/dist/index.mjs";
-import { createConsoleAnalyticsHttpClient } from "../analytics-http-client.ts";
-import { createConsoleAnalyticsProviderClient } from "../analytics-provider-client.ts";
+import { createConsoleInsightsHttpClient } from "../insights-http-client.ts";
+import { createConsoleInsightsProviderClient } from "../insights-provider-client.ts";
 import {
-  ConsoleAnalyticsQaError,
-  readObservedAnalyticsEvent,
-  verifyConsoleAnalytics,
-  type ObservedAnalyticsEvent,
-} from "../console-analytics-qa.ts";
+  ConsoleInsightsQaError,
+  readObservedInsightsEvent,
+  verifyConsoleInsights,
+  type ObservedInsightsEvent,
+} from "../console-insights-qa.ts";
 import {
   PAX_LONG_ASSET_ANDROID_MANIFEST_PATH,
   PAX_LONG_ASSET_MANIFEST_PATH,
@@ -130,7 +130,7 @@ type SessionState = {
   largeArchiveAssetBackupPath: string | null;
   largeArchiveAssetPath: string;
   multiAssetBackupPaths: Record<string, string | null>;
-  observedAnalyticsEvents: ObservedAnalyticsEvent[];
+  observedInsightsEvents: ObservedInsightsEvent[];
   platform: Platform;
   resultsDir: string;
   sizeAwareLargeAssetBackupCaptured: boolean;
@@ -504,7 +504,7 @@ const fixtureSession: SessionState = {
     LARGE_ARCHIVE_ASSET_RELATIVE_PATH,
   ),
   multiAssetBackupPaths: {},
-  observedAnalyticsEvents: [],
+  observedInsightsEvents: [],
   platform,
   resultsDir,
   sizeAwareLargeAssetBackupCaptured: false,
@@ -1492,42 +1492,42 @@ async function withConfiguredDatabase<T>(
   }
 }
 
-function readAnalyticsModel(database: BundleRepository): AnalyticsModel | null {
+function readInsightsModel(database: BundleRepository): InsightsModel | null {
   const models: unknown = Reflect.get(database, "models");
-  const analytics: unknown =
+  const insights: unknown =
     typeof models === "object" && models !== null
-      ? Reflect.get(models, "analytics")
+      ? Reflect.get(models, "insights")
       : undefined;
-  return typeof analytics === "object" &&
-    analytics !== null &&
-    typeof Reflect.get(analytics, "append") === "function" &&
-    typeof Reflect.get(analytics, "scan") === "function"
-    ? (analytics as AnalyticsModel)
+  return typeof insights === "object" &&
+    insights !== null &&
+    typeof Reflect.get(insights, "append") === "function" &&
+    typeof Reflect.get(insights, "scan") === "function"
+    ? (insights as InsightsModel)
     : null;
 }
 
-async function verifyConfiguredConsoleAnalytics(args: {
+async function verifyConfiguredConsoleInsights(args: {
   bundleIds: readonly string[];
   sinceMs: number;
 }) {
   return withConfiguredDatabase(async (database) => {
-    const analytics = readAnalyticsModel(database);
-    const client = analytics
-      ? createConsoleAnalyticsProviderClient(createAnalyticsProvider(analytics))
-      : createConsoleAnalyticsHttpClient({
+    const insights = readInsightsModel(database);
+    const client = insights
+      ? createConsoleInsightsProviderClient(createInsightsProvider(insights))
+      : createConsoleInsightsHttpClient({
           baseUrl: `${getControllerReachableAppBaseUrl()}/admin`,
           headers: getHotUpdaterAdminHeaders(),
         });
     for (let attempt = 1; attempt <= 30; attempt += 1) {
       try {
-        const evidence = await verifyConsoleAnalytics(client, args.bundleIds, {
-          observedEvents: fixtureSession.observedAnalyticsEvents,
+        const evidence = await verifyConsoleInsights(client, args.bundleIds, {
+          observedEvents: fixtureSession.observedInsightsEvents,
           sinceMs: args.sinceMs,
         });
         return { skipped: false, ...evidence };
       } catch (error) {
         if (
-          !(error instanceof ConsoleAnalyticsQaError) ||
+          !(error instanceof ConsoleInsightsQaError) ||
           error.code === "unsupported" ||
           attempt === 30
         ) {
@@ -1536,7 +1536,7 @@ async function verifyConfiguredConsoleAnalytics(args: {
         await sleep(1_000);
       }
     }
-    throw new Error("Console Analytics verification exhausted its retries.");
+    throw new Error("Console Insights verification exhausted its retries.");
   });
 }
 
@@ -4021,13 +4021,13 @@ export async function handleProxyUpdateRequest(request: Request) {
 
   if (requestUrl.pathname.endsWith("/events") && response.ok && requestBody) {
     try {
-      const event = readObservedAnalyticsEvent(
+      const event = readObservedInsightsEvent(
         JSON.parse(new TextDecoder().decode(requestBody)),
         Date.now(),
       );
-      if (event) fixtureSession.observedAnalyticsEvents.push(event);
+      if (event) fixtureSession.observedInsightsEvents.push(event);
     } catch (error) {
-      logDetoxFixture("analytics event observation skipped", {
+      logDetoxFixture("insights event observation skipped", {
         error: formatErrorMessage(error),
       });
     }
@@ -5330,7 +5330,7 @@ async function bootstrap() {
 
   fixtureSession.builtInBundleId = null;
   fixtureSession.deployedBundles = [];
-  fixtureSession.observedAnalyticsEvents = [];
+  fixtureSession.observedInsightsEvents = [];
   fixtureSession.storePath = null;
   handleConfigureProxy({
     artifactDelayMs: 0,
@@ -6702,7 +6702,7 @@ async function resetRemoteBundles() {
 
 async function resetLocalAppState() {
   resetE2eScreenState();
-  fixtureSession.observedAnalyticsEvents = [];
+  fixtureSession.observedInsightsEvents = [];
   if (fixtureSession.platform === "ios") {
     await clearIosLocalBundleState();
   } else {
@@ -7220,9 +7220,9 @@ export async function handleCleanup() {
   return cleanup();
 }
 
-export async function handleVerifyConsoleAnalytics(args: {
+export async function handleVerifyConsoleInsights(args: {
   bundleIds: readonly string[];
   sinceMs: number;
 }) {
-  return verifyConfiguredConsoleAnalytics(args);
+  return verifyConfiguredConsoleInsights(args);
 }

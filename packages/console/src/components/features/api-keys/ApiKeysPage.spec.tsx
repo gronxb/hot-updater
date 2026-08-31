@@ -249,7 +249,7 @@ describe("ApiKeysPage", () => {
     expect(within(row).getByText("Production app")).toBeDefined();
     expect(within(row).getByText("abcdef…")).toBeDefined();
     expect(screen.queryByText("OTA read")).toBeNull();
-    expect(screen.queryByText("Analytics write")).toBeNull();
+    expect(screen.queryByText("Insights write")).toBeNull();
   });
 
   it("offers a useful empty state and a retryable error state", () => {

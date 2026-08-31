@@ -23,7 +23,7 @@ function ApiKeysRoute() {
           <h1 className="text-sm font-medium">API keys</h1>
         </div>
         <p className="basis-full pl-9 text-xs text-muted-foreground sm:basis-auto sm:pl-0">
-          API keys can download OTA updates and submit analytics only.
+          API keys can download OTA updates and submit insights only.
         </p>
       </header>
 

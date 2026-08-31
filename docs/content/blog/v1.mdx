@@ -1,6 +1,6 @@
 ---
 title: "Hot Updater 1.0: The Read Path Should Be Boring"
-description: "Release Catalogs replace per-installation decisions with shared reads, while Analytics shows the latest Bundle reported by each installation."
+description: "Release Catalogs replace per-installation decisions with shared reads, while Insights shows the latest Bundle reported by each installation."
 date: "2026-08-19"
 author: "Hot Updater Team"
 image: "/blog/release-catalog.webp"
@@ -19,7 +19,7 @@ installation should receive. It worked, but the answer was difficult to share.
 Hot Updater 1.0 moves that decision to the moment Release policy changes. The
 result is compiled into a **Release Catalog** that can be cached and shared.
 The device applies its local state after receiving the Catalog, and built-in
-Analytics reports what happened after the app is ready.
+Insights reports what happened after the app is ready.
 
 ## What changed in 1.0
 
@@ -27,7 +27,7 @@ Analytics reports what happened after the app is ready.
   channel, and compatibility scope request the same Release Catalog.
 - **Policy is separate from bytes.** Bundles remain immutable artifacts;
   Releases own rollout, targeting, promotion, and rollback.
-- **The result is observable.** Analytics shows the latest Bundle reported by
+- **The result is observable.** Insights shows the latest Bundle reported by
   each installation and whether updates were applied or recovered.
 
 Together, these changes remove installation-specific selection from the
@@ -111,15 +111,15 @@ rollout recompiles the Catalog without rewriting the artifact. Disabling a
 Release moves affected devices to the previous compatible enabled Release—or
 back to the built-in Bundle.
 
-## Analytics closes the loop
+## Insights closes the loop
 
 Moving installation-specific selection to the device makes the read path
 cheaper, but operators still need to know what devices actually did.
 
-After enabling Analytics on the server, set
-`HotUpdater.init({ analytics: true })` in the app. It then reports its outcome
-after it is ready. Reporting is best-effort: a reporting failure never blocks
-startup or triggers a rollback.
+Insights reporting is enabled by default in the app. After the app is ready,
+it reports its outcome to the server. Reporting is best-effort: a reporting
+failure never blocks startup or triggers a rollback. Set `insights: false` to
+opt out.
 
 The Console answers three kinds of questions:
 

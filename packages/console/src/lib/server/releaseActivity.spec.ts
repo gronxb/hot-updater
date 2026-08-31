@@ -36,7 +36,7 @@ describe("getReleaseActivity30d", () => {
     });
   });
 
-  it("keeps the Release list available when Analytics cannot be read", async () => {
+  it("keeps the Release list available when Insights cannot be read", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const getBundleEventSummaries = vi
       .fn()

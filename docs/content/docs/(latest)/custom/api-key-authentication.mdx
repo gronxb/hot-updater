@@ -1,6 +1,6 @@
 ---
 title: "API key authentication"
-description: Protect OTA reads and Analytics writes with the built-in API key domain.
+description: Protect OTA reads and Insights writes with the built-in API key domain.
 icon: KeyRound
 ---
 
@@ -32,7 +32,7 @@ export const hotUpdater = createHotUpdater({
 
 The `api-key` policy requires `x-api-key` for update-check routes and
 `POST /events`. `/version` stays public. API keys do not grant access to
-Analytics queries, admin routes, or API key management.
+Insights queries, admin routes, or API key management.
 
 To use a different header, set it explicitly and send the same header from the
 client:
@@ -123,7 +123,7 @@ for its configured short TTL.
 ## Security boundary
 
 An API key embedded in a mobile binary can be extracted. Treat this feature as
-an abuse-control boundary for OTA reads and Analytics writes, not as an admin
+an abuse-control boundary for OTA reads and Insights writes, not as an admin
 credential. Protect `handlers.admin`, Console access, and API key management
 with your application or framework authentication.
 
@@ -131,14 +131,14 @@ Missing, malformed, unknown, and revoked API keys return `401`. A database
 failure during credential lookup returns `503` and does not fall back to public
 access.
 
-Client update and Analytics ingestion routes are always available on
-`handlers.client`, while Analytics queries live on `handlers.admin`.
+Client update and Insights ingestion routes are always available on
+`handlers.client`, while Insights queries live on `handlers.admin`.
 `clientAccess` is required and applies its policy to update checks and
-Analytics ingestion. It does not authenticate the admin handler.
+Insights ingestion. It does not authenticate the admin handler.
 
 ## Unauthenticated alternative
 
-If you intentionally want client update and Analytics ingestion routes to be
+If you intentionally want client update and Insights ingestion routes to be
 public, use `clientAccess: { type: "public" }` and omit `x-api-key` from the
 React Native request headers. Admin handler authentication remains a separate,
 required framework boundary.

@@ -2,7 +2,7 @@ import type React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
-  NotifyAppReadyAnalyticsEvent,
+  NotifyAppReadyInsightsEvent,
   NotifyAppReadyResult,
 } from "./native";
 import type { HotUpdaterOptions } from "./wrap";
@@ -15,14 +15,14 @@ vi.mock("react-native", () => ({
 
 const createNotifyReadResult = (
   result: NotifyAppReadyResult = { status: "UNCHANGED" },
-  analyticsEvent: NotifyAppReadyAnalyticsEvent | null = null,
+  insightsEvent: NotifyAppReadyInsightsEvent | null = null,
   pending = false,
 ): {
-  analyticsEvent: NotifyAppReadyAnalyticsEvent | null;
+  insightsEvent: NotifyAppReadyInsightsEvent | null;
   pending: boolean;
   result: NotifyAppReadyResult;
 } => ({
-  analyticsEvent,
+  insightsEvent,
   pending,
   result,
 });
@@ -39,7 +39,7 @@ const mocks = vi.hoisted(() => ({
   getPersistedUserIdentity: vi.fn(() => ({})),
   readNotifyAppReady: vi.fn<
     () => {
-      analyticsEvent: NotifyAppReadyAnalyticsEvent | null;
+      insightsEvent: NotifyAppReadyInsightsEvent | null;
       pending: boolean;
       result: NotifyAppReadyResult;
     }
@@ -65,16 +65,16 @@ vi.mock("./native", () => ({
 }));
 
 const createClient = (
-  sendAnalyticsEvent = vi.fn().mockResolvedValue(undefined),
+  sendInsightsEvent = vi.fn().mockResolvedValue(undefined),
 ) => ({
   client: {
     createSession: vi.fn(async () => ({
       fetchReleaseCatalog: vi.fn(),
       resolveArtifact: vi.fn(),
-      sendAnalyticsEvent,
+      sendInsightsEvent,
     })),
   },
-  sendAnalyticsEvent,
+  sendInsightsEvent,
 });
 
 describe("HotUpdater wrap initialization", () => {
@@ -110,7 +110,7 @@ describe("HotUpdater wrap initialization", () => {
     );
     vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
 
-    const { client, sendAnalyticsEvent } = createClient();
+    const { client, sendInsightsEvent } = createClient();
     const { init } = await import("./wrap");
 
     const result = init({
@@ -123,17 +123,17 @@ describe("HotUpdater wrap initialization", () => {
 
     expect(result).toBeUndefined();
     expect(mocks.readNotifyAppReady).not.toHaveBeenCalled();
-    expect(sendAnalyticsEvent).not.toHaveBeenCalled();
+    expect(sendInsightsEvent).not.toHaveBeenCalled();
 
     expect(requestAnimationFrame).toHaveBeenCalled();
 
     await vi.runOnlyPendingTimersAsync();
 
     expect(mocks.readNotifyAppReady).toHaveBeenCalledWith();
-    expect(sendAnalyticsEvent).not.toHaveBeenCalled();
+    expect(sendInsightsEvent).not.toHaveBeenCalled();
   });
 
-  it("waits for native launch verification before sending analytics", async () => {
+  it("waits for native launch verification before sending insights", async () => {
     vi.useFakeTimers();
 
     vi.stubGlobal(
@@ -162,18 +162,18 @@ describe("HotUpdater wrap initialization", () => {
         ),
       );
 
-    const { client, sendAnalyticsEvent } = createClient();
+    const { client, sendInsightsEvent } = createClient();
     const { init } = await import("./wrap");
 
-    init({ analytics: true, client });
+    init({ insights: true, client });
 
     await vi.runAllTimersAsync();
 
     expect(mocks.readNotifyAppReady).toHaveBeenCalledTimes(2);
-    expect(sendAnalyticsEvent).toHaveBeenCalledTimes(1);
+    expect(sendInsightsEvent).toHaveBeenCalledTimes(1);
   });
 
-  it("sends automatic analytics only from init when enabled", async () => {
+  it("sends automatic insights only from init when enabled", async () => {
     vi.useFakeTimers();
 
     vi.stubGlobal(
@@ -205,11 +205,11 @@ describe("HotUpdater wrap initialization", () => {
       username: "alice",
     });
 
-    const { client, sendAnalyticsEvent } = createClient();
+    const { client, sendInsightsEvent } = createClient();
     const { init } = await import("./wrap");
 
     init({
-      analytics: true,
+      insights: true,
       requestHeaders: {
         Authorization: "Bearer token",
       },
@@ -219,7 +219,7 @@ describe("HotUpdater wrap initialization", () => {
 
     await vi.runOnlyPendingTimersAsync();
 
-    expect(sendAnalyticsEvent).toHaveBeenCalledWith({
+    expect(sendInsightsEvent).toHaveBeenCalledWith({
       appVersion: "1.0.0",
       channel: "production",
       cohort: "123",
@@ -241,7 +241,7 @@ describe("HotUpdater wrap initialization", () => {
     });
   });
 
-  it("guards automatic analytics to a single delivery attempt per runtime", async () => {
+  it("guards automatic insights to a single delivery attempt per runtime", async () => {
     vi.useFakeTimers();
 
     vi.stubGlobal(
@@ -268,18 +268,18 @@ describe("HotUpdater wrap initialization", () => {
       ),
     );
 
-    const { client, sendAnalyticsEvent } = createClient();
+    const { client, sendInsightsEvent } = createClient();
     const { init } = await import("./wrap");
 
-    init({ analytics: true, client });
-    init({ analytics: true, client });
+    init({ insights: true, client });
+    init({ insights: true, client });
 
     await vi.runOnlyPendingTimersAsync();
 
-    expect(sendAnalyticsEvent).toHaveBeenCalledTimes(1);
+    expect(sendInsightsEvent).toHaveBeenCalledTimes(1);
   });
 
-  it("warns without interrupting app readiness when analytics transport fails", async () => {
+  it("warns without interrupting app readiness when insights transport fails", async () => {
     vi.useFakeTimers();
 
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -312,7 +312,7 @@ describe("HotUpdater wrap initialization", () => {
     const { init } = await import("./wrap");
 
     init({
-      analytics: true,
+      insights: true,
       onError,
       onNotifyAppReady,
       client,
@@ -322,7 +322,7 @@ describe("HotUpdater wrap initialization", () => {
 
     expect(onError).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledWith(
-      "[HotUpdater] Automatic notifyAppReady analytics failed:",
+      "[HotUpdater] Automatic notifyAppReady insights failed:",
       error,
     );
     expect(onNotifyAppReady).toHaveBeenCalledWith({

@@ -83,7 +83,7 @@ export type ReleaseTransitionKind =
   | "USE_BUILTIN";
 
 export interface InternalCheckForUpdateOptions extends CheckForUpdateOptions {
-  analytics?: boolean;
+  insights?: boolean;
   client: HotUpdaterHttpClient;
 }
 
@@ -142,7 +142,7 @@ const notifyReleaseAdoption = async (input: {
 }): Promise<void> => {
   const { userId, username } = getPersistedUserIdentity();
   try {
-    await input.session.sendAnalyticsEvent({
+    await input.session.sendInsightsEvent({
       appVersion: input.appVersion,
       channel: input.desired.channel,
       cohort: input.cohort,
@@ -161,7 +161,7 @@ const notifyReleaseAdoption = async (input: {
       ...(username === undefined ? {} : { username }),
     });
   } catch (error) {
-    console.warn("[HotUpdater] Release adoption analytics failed:", error);
+    console.warn("[HotUpdater] Release adoption insights failed:", error);
   }
 };
 
@@ -340,11 +340,7 @@ async function checkForReleaseCatalogUpdate(input: {
         guard,
         selection: receipt,
       });
-      if (
-        committed &&
-        transitionKind === "ADOPT_RELEASE" &&
-        options.analytics
-      ) {
+      if (committed && transitionKind === "ADOPT_RELEASE" && options.insights) {
         await notifyReleaseAdoption({
           active,
           appVersion: input.currentAppVersion,

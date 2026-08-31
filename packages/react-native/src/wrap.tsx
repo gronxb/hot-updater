@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { checkForUpdate } from "./checkForUpdate";
 import { useEventCallback } from "./hooks/useEventCallback";
 import { getBundleId, reload } from "./native";
-import { handleNotifyAppReady } from "./notifyAppReadyAnalytics";
+import { handleNotifyAppReady } from "./notifyAppReadyInsights";
 import { useHotUpdaterStore } from "./store";
 import type {
   InternalInitOptions,
@@ -46,7 +46,7 @@ export function wrap(
           setUpdateStatus("CHECK_FOR_UPDATE");
 
           const updateInfo = await checkForUpdate({
-            analytics: restOptions.analytics,
+            insights: restOptions.insights,
             client: restOptions.client,
             updateStrategy: restOptions.updateStrategy,
             requestHeaders: restOptions.requestHeaders,

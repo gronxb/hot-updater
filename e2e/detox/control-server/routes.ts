@@ -29,7 +29,7 @@ import {
   handleRuntimeConfig,
   handleSeedCrashHistory,
   handleSeedLegacyMetadata,
-  handleVerifyConsoleAnalytics,
+  handleVerifyConsoleInsights,
   handleWaitForCrashRecovery,
   handleWaitForMetadata,
   handleWriteSummary,
@@ -81,7 +81,7 @@ app.post("/e2e/screen-state", async (c) => {
   return c.json(handlePatchE2eScreenState(await c.req.json()));
 });
 
-app.post("/e2e/verify-console-analytics", async (c) => {
+app.post("/e2e/verify-console-insights", async (c) => {
   const payload = (await c.req.json()) as {
     bundleIds?: unknown;
     sinceMs?: unknown;
@@ -95,7 +95,7 @@ app.post("/e2e/verify-console-analytics", async (c) => {
     return c.json({ error: "bundleIds and sinceMs are required" }, 400);
   }
   return c.json(
-    await handleVerifyConsoleAnalytics({
+    await handleVerifyConsoleInsights({
       bundleIds: payload.bundleIds,
       sinceMs: payload.sinceMs,
     }),

@@ -1,12 +1,12 @@
 import type {
-  AnalyticsModel,
+  InsightsModel,
   ApiKeyModel,
   BundleRepository,
 } from "@hot-updater/plugin-core";
 import {
   type ActiveInstallationInput,
-  type AnalyticsProvider,
-  createAnalyticsProvider,
+  type InsightsProvider,
+  createInsightsProvider,
   type InstallationHistoryRow,
   type InstallationSearchRow,
   type OffsetPaginationResult,
@@ -14,11 +14,11 @@ import {
 
 import {
   parseActiveInstallationInput,
-  parseBundleEventAnalyticsInput,
+  parseBundleEventInsightsInput,
   parseBundleEventSummaryInput,
   parseInstallationHistoryInput,
   parseSearchInstallationsInput,
-} from "../analytics-input";
+} from "../insights-input";
 
 export type InstallationSearchResult =
   OffsetPaginationResult<InstallationSearchRow>;
@@ -27,21 +27,21 @@ export type InstallationHistoryResult =
 
 export function createRuntimeHotUpdater(config: {
   readonly database: BundleRepository;
-}): AnalyticsProvider | null {
+}): InsightsProvider | null {
   const models: unknown = Reflect.get(config.database, "models");
-  const analytics: unknown =
+  const insights: unknown =
     typeof models === "object" && models !== null
-      ? Reflect.get(models, "analytics")
+      ? Reflect.get(models, "insights")
       : undefined;
   if (
-    typeof analytics !== "object" ||
-    analytics === null ||
-    typeof Reflect.get(analytics, "append") !== "function" ||
-    typeof Reflect.get(analytics, "scan") !== "function"
+    typeof insights !== "object" ||
+    insights === null ||
+    typeof Reflect.get(insights, "append") !== "function" ||
+    typeof Reflect.get(insights, "scan") !== "function"
   ) {
     return null;
   }
-  return createAnalyticsProvider(analytics as AnalyticsModel);
+  return createInsightsProvider(insights as InsightsModel);
 }
 
 export function createApiKeyStore(config: {
@@ -69,14 +69,14 @@ const providerMethods = [
   "appendBundleEvent",
   "getBundleEventSummary",
   "getBundleEventSummaries",
-  "getBundleEventAnalytics",
+  "getBundleEventInsights",
   "getBundleEventOverview",
   "getActiveInstallationOverview",
   "searchInstallations",
   "getInstallationHistory",
 ] as const;
 
-const parseAnalyticsProvider = (value: unknown): AnalyticsProvider | null => {
+const parseInsightsProvider = (value: unknown): InsightsProvider | null => {
   if (
     typeof value !== "object" ||
     value === null ||
@@ -88,33 +88,33 @@ const parseAnalyticsProvider = (value: unknown): AnalyticsProvider | null => {
   ) {
     return null;
   }
-  return value as AnalyticsProvider;
+  return value as InsightsProvider;
 };
 
-export const getAnalyticsCapability = async (provider: unknown) => {
-  const parsed = parseAnalyticsProvider(provider);
+export const getInsightsCapability = async (provider: unknown) => {
+  const parsed = parseInsightsProvider(provider);
   return parsed === null
     ? ({
-        analytics: false,
-        analyticsQueries: false,
+        insights: false,
+        insightsQueries: false,
         eventIngestion: false,
       } as const)
     : ({
-        analytics: true,
-        analyticsQueries: true,
+        insights: true,
+        insightsQueries: true,
         eventIngestion: true,
         maxMatchingRows: parsed.maxMatchingRows,
         mode: "bounded",
       } as const);
 };
 
-const requireAnalyticsSupport = async (
+const requireInsightsSupport = async (
   provider: unknown,
-): Promise<AnalyticsProvider> => {
-  const parsedProvider = parseAnalyticsProvider(provider);
+): Promise<InsightsProvider> => {
+  const parsedProvider = parseInsightsProvider(provider);
   if (parsedProvider === null) {
     throw new Error(
-      "Analytics are not supported by the configured database plugin.",
+      "Insights are not supported by the configured database plugin.",
     );
   }
   return parsedProvider;
@@ -122,7 +122,7 @@ const requireAnalyticsSupport = async (
 
 export async function getBundleEventSummary(provider: unknown, input: unknown) {
   const { bundleId } = parseBundleEventSummaryInput(input);
-  return (await requireAnalyticsSupport(provider)).getBundleEventSummary(
+  return (await requireInsightsSupport(provider)).getBundleEventSummary(
     bundleId,
   );
 }
@@ -132,17 +132,17 @@ export async function getActiveInstallationOverview(
   input: unknown,
 ) {
   const parsed: ActiveInstallationInput = parseActiveInstallationInput(input);
-  return (
-    await requireAnalyticsSupport(provider)
-  ).getActiveInstallationOverview(parsed);
+  return (await requireInsightsSupport(provider)).getActiveInstallationOverview(
+    parsed,
+  );
 }
 
-export async function getBundleEventAnalytics(
+export async function getBundleEventInsights(
   provider: unknown,
   input: unknown,
 ) {
-  const parsed = parseBundleEventAnalyticsInput(input);
-  return (await requireAnalyticsSupport(provider)).getBundleEventAnalytics(
+  const parsed = parseBundleEventInsightsInput(input);
+  return (await requireInsightsSupport(provider)).getBundleEventInsights(
     parsed.bundleId,
     parsed.window,
     parsed.limit ?? 50,
@@ -152,7 +152,7 @@ export async function getBundleEventAnalytics(
 
 export async function searchInstallations(provider: unknown, input: unknown) {
   const parsed = parseSearchInstallationsInput(input);
-  return (await requireAnalyticsSupport(provider)).searchInstallations(
+  return (await requireInsightsSupport(provider)).searchInstallations(
     parsed.query,
     parsed.limit ?? 50,
     parsed.offset ?? 0,
@@ -164,7 +164,7 @@ export async function getInstallationHistory(
   input: unknown,
 ) {
   const parsed = parseInstallationHistoryInput(input);
-  return (await requireAnalyticsSupport(provider)).getInstallationHistory(
+  return (await requireInsightsSupport(provider)).getInstallationHistory(
     parsed.installId,
     parsed.limit ?? 50,
     parsed.offset ?? 0,

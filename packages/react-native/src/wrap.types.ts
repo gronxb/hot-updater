@@ -31,9 +31,10 @@ export type HotUpdaterFallbackComponentProps = {
 interface CommonHotUpdaterOptions {
   /**
    * Sends app-ready transitions and same-Bundle Release adoptions to the
-   * configured server. Omit or set to `false` to disable client reporting.
+   * configured server. Defaults to `true`; set to `false` to disable client
+   * reporting.
    */
-  analytics?: boolean;
+  insights?: boolean;
   /** Base URL of a server exposing the Hot Updater v1 client HTTP protocol. */
   baseURL: HotUpdaterBaseURL;
   requestHeaders?: Record<string, string>;
@@ -55,7 +56,7 @@ export type HotUpdaterInitOptions = CommonHotUpdaterOptions;
 export type HotUpdaterOptions = AutoUpdateOptions;
 
 type InternalCommonOptions = {
-  analytics?: boolean;
+  insights?: boolean;
   client: HotUpdaterHttpClient;
   requestHeaders?: Record<string, string>;
   requestTimeout?: number;
@@ -71,8 +72,6 @@ type InternalAutoUpdateOptions = InternalCommonOptions & {
   onUpdateProcessCompleted?: (response: RunUpdateProcessResponse) => void;
 };
 
-export type InternalInitOptions = InternalCommonOptions & {
-  analytics?: boolean;
-};
+export type InternalInitOptions = InternalCommonOptions;
 
 export type InternalWrapOptions = InternalAutoUpdateOptions;

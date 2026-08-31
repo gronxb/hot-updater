@@ -30,7 +30,7 @@ describe("standalone-dynamodb local infrastructure contract", () => {
     expect(dbSource).toMatch(
       /createHotUpdater\(\{\n  database,\n  clientAccess: \{ type: "api-key" \},/,
     );
-    expect(dbSource).not.toContain("analytics:");
+    expect(dbSource).not.toContain("insights:");
     expect(dbSource).not.toContain("features:");
     expect(dbSource).not.toContain("routes:");
     expect(dbSource).not.toContain("plugins:");

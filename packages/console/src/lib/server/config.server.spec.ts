@@ -49,7 +49,7 @@ const createTestDatabasePlugin = (name: string) =>
         list: vi.fn(async () => ({ channels: [] })),
         delete: vi.fn(async () => ({ deleted: true as const })),
       },
-      analytics: {
+      insights: {
         append: vi.fn(async () => undefined),
         scan: vi.fn(async () => []),
       },

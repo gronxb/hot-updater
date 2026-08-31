@@ -98,7 +98,7 @@ The pull request is complete only when all of the following are true:
   its artifact download finishes later.
 - Deploy, rollout, target cohorts, force update, disable, rollback, promote,
   channels, runtime channel switching, patches, manifests, signing, crash
-  recovery, analytics, authentication, and custom HTTP adapters have an
+  recovery, insights, authentication, and custom HTTP adapters have an
   explicit preserved or intentionally changed behavior in this document.
 - All 14 existing Detox scenarios are migrated to Release semantics and remain
   meaningful on both iOS and Android.
@@ -354,7 +354,7 @@ even if filtered bytes happen to be identical. A no-op verification rebuild
 preserves generation. Removing the last eligible Release writes an empty
 catalog with a newer generation; it never removes the row.
 
-### Analytics rows
+### Insights rows
 
 Launch and transition rows add nullable directional identities:
 
@@ -405,7 +405,7 @@ interface DatabaseModels {
   readonly releases: ReleaseModel;
   readonly releaseCatalogs: ReleaseCatalogModel;
   readonly channels: ChannelModel;
-  readonly analytics: AnalyticsModel;
+  readonly insights: InsightsModel;
   readonly apiKeys: ApiKeyModel;
 }
 
@@ -1007,7 +1007,7 @@ separate and that high-water is not crash-rollback state.
 
 `HotUpdater.init` and `HotUpdater.wrap` accept `baseURL` as their only network
 source. The client always implements the Release Catalog, artifact,
-Analytics-event, and `/version` HTTP protocol. A custom backend exposes that
+Insights-event, and `/version` HTTP protocol. A custom backend exposes that
 protocol through an adapter or proxy instead of injecting transport callbacks
 into the React Native runtime.
 
@@ -1135,14 +1135,14 @@ Recovery restores the complete safe selection receipt and channel.
 - `sourceReleaseId` uses `ON DELETE SET NULL`; provenance text may be retained
   separately for audit display.
 
-### Analytics
+### Insights
 
 Launch reports retain #1141 statuses and add optional from/to Release IDs.
 Recovery reports R2/B2 -> R1/B1. Old events keep null Release identity.
 
 Same-Bundle adoption does not emit `UPDATE_APPLIED`. It emits a distinct
-best-effort `RELEASE_ADOPTED` analytics event immediately after atomic native
-adoption. Its directional Bundle IDs may be equal. Analytics failure never
+best-effort `RELEASE_ADOPTED` insights event immediately after atomic native
+adoption. Its directional Bundle IDs may be equal. Insights failure never
 rolls back device state. Console labels Release adoption separately from Bundle
 application.
 
@@ -1159,7 +1159,7 @@ a v0 native binary.
 ### Navigation and responsibility
 
 `Releases` becomes the operational default. `Artifacts` contains immutable
-Bundle, manifest, Storage, and patch information. Analytics and API Keys
+Bundle, manifest, Storage, and patch information. Insights and API Keys
 stay top-level.
 
 ### Releases table and detail
@@ -1223,11 +1223,11 @@ preflightReleaseMutation, getReleaseCatalogDiagnostics
 
 Bundle RPCs remain for artifact listing, download, lineage, and safe deletion.
 React Query invalidation follows Release detail/list, diagnostics, channel
-counts, and analytics; it never mutates cached Bundle objects as policy.
+counts, and insights; it never mutates cached Bundle objects as policy.
 
 Console route/component tests cover tables, forms, conflicts, warnings,
 rollback/promote dialogs, diagnostics, and reference-safe delete. The existing
-Detox `console-analytics-qa` verifies provider analytics data, not this UI, and
+Detox `console-insights-qa` verifies provider insights data, not this UI, and
 cannot substitute for these tests.
 
 ## CLI changes
@@ -1370,7 +1370,7 @@ deduplicated/clamped to ten.
 
 The v1 SDK uses the unversioned Release Catalog routes only. Existing v0 binaries remain on a separate v0
 endpoint during cutover. Runtime startup/doctor rejects a schema with
-missing/inconsistent catalog projections. Analytics columns remain nullable.
+missing/inconsistent catalog projections. Insights columns remain nullable.
 
 ## Implementation sequence inside the single PR
 
@@ -1386,7 +1386,7 @@ missing/inconsistent catalog projections. Analytics columns remain nullable.
 ### 2. Introduce Release domain, canonical scope, and schema migration
 
 - Split Bundle artifact and Release policy types.
-- Add Releases, catalogs, persistent tombstones, analytics IDs, constraints,
+- Add Releases, catalogs, persistent tombstones, insights IDs, constraints,
   and strongly consistent access paths.
 - Add migration preflight and backfill.
 - Update channel references to Releases.
@@ -1422,7 +1422,7 @@ missing/inconsistent catalog projections. Analytics columns remain nullable.
 ### 7. Move every management feature to Release
 
 - Deploy, rollout, target, enable, force, message, rollback, promote, channels,
-  deletion, analytics, and artifact resolution adopt the documented boundary.
+  deletion, insights, and artifact resolution adopt the documented boundary.
 - Keep patch/manifest/signing/storage logic Bundle-keyed.
 
 ### 8. Rebuild Console, CLI, examples, and E2E fixtures
@@ -1558,7 +1558,7 @@ The exact #1141 suite contains 14 scenarios. All remain in the one-PR gate:
 | `disabled-bundle-rollback-to-builtin`      | Rename policy semantics to disabled Release; newer complete empty catalog authorizes persisted local BUILTIN.                                                                            |
 | `disabled-bundle-rollback-to-previous-ota` | Disable latest Release and select previous Release; artifact and patch assertions remain Bundle-based.                                                                                   |
 
-`console-analytics-qa` is retained after scenarios and accepts nullable
+`console-insights-qa` is retained after scenarios and accepts nullable
 directional Release IDs. It verifies provider data, not Console rendering.
 
 ### E2E harness and example changes

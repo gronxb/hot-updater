@@ -169,7 +169,7 @@ class DetoxAppDriver {
     throw new Error(`Missing Detox scenario value: ${key}`);
   }
 
-  async verifyConsoleAnalytics(sinceMs) {
+  async verifyConsoleInsights(sinceMs) {
     const bundleIds = [
       ...new Set(
         Object.values(this.stageValues).filter(
@@ -182,11 +182,11 @@ class DetoxAppDriver {
       ),
     ];
     const evidence = await this.controlClient.postJson(
-      "verify Console Analytics",
-      "/e2e/verify-console-analytics",
+      "verify Console Insights",
+      "/e2e/verify-console-insights",
       { bundleIds, sinceMs },
     );
-    console.log(`[detox-console-analytics] ${JSON.stringify(evidence)}`);
+    console.log(`[detox-console-insights] ${JSON.stringify(evidence)}`);
     return evidence;
   }
 

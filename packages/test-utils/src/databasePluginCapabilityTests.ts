@@ -27,7 +27,7 @@ export const registerDatabasePluginCapabilityTests = (
       const plugin = state.getPlugin();
       expect(Object.keys(plugin.models).sort()).toEqual(
         [
-          "analytics",
+          "insights",
           "bundlePatches",
           "bundles",
           "channels",
@@ -42,7 +42,7 @@ export const registerDatabasePluginCapabilityTests = (
         "bundles",
         "bundlePatches",
         "channels",
-        "analytics",
+        "insights",
         "apiKeys",
         "getChannels",
         "getUpdateInfo",
@@ -72,7 +72,7 @@ export const registerDatabasePluginCapabilityTests = (
           { model: "bundles", operation: "insert", row: base },
           { model: "bundles", operation: "insert", row: bundle },
           { model: "bundlePatches", operation: "insert", row: patch },
-          { model: "analytics", operation: "insert", row: event },
+          { model: "insights", operation: "insert", row: event },
           {
             model: "apiKeys",
             operation: "insert",
@@ -91,7 +91,7 @@ export const registerDatabasePluginCapabilityTests = (
         plugin.models.bundlePatches.findByBundleIds([bundle.id]),
       ).resolves.toEqual([patch]);
       await expect(
-        plugin.models.analytics.scan({ beforeReceivedAtMs: 101, limit: 10 }),
+        plugin.models.insights.scan({ beforeReceivedAtMs: 101, limit: 10 }),
       ).resolves.toEqual([event]);
       await expect(
         plugin.models.apiKeys.findByHash(apiKey.hash),
@@ -314,7 +314,7 @@ export const registerDatabasePluginCapabilityTests = (
             },
             { model: "bundles", operation: "insert", row: first },
             { model: "bundles", operation: "insert", row: second },
-            { model: "analytics", operation: "insert", row: event },
+            { model: "insights", operation: "insert", row: event },
             {
               model: "apiKeys",
               operation: "insert",
@@ -339,7 +339,7 @@ export const registerDatabasePluginCapabilityTests = (
         channels: [],
       });
       await expect(
-        plugin.models.analytics.scan({ beforeReceivedAtMs: 101, limit: 10 }),
+        plugin.models.insights.scan({ beforeReceivedAtMs: 101, limit: 10 }),
       ).resolves.toEqual([]);
       await expect(
         plugin.models.apiKeys.findByHash(apiKey.hash),

@@ -459,9 +459,9 @@ BEGIN
             is_tombstone = EXCLUDED.is_tombstone,
             updated_at_ms = EXCLUDED.updated_at_ms;
 
-        WHEN 'analytics' THEN
+        WHEN 'insights' THEN
           IF v_change->>'operation' <> 'insert' THEN
-            RAISE EXCEPTION 'Unsupported analytics change'
+            RAISE EXCEPTION 'Unsupported insights change'
               USING ERRCODE = '22023';
           END IF;
           v_event := pg_catalog.jsonb_populate_record(

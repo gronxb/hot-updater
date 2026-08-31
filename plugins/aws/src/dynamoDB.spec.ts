@@ -53,7 +53,7 @@ const commitBundle = (plugin: ReturnType<typeof dynamoDB>) =>
     ],
   });
 
-const analyticsEvent = (index: number): BundleEventRow => ({
+const insightsEvent = (index: number): BundleEventRow => ({
   id: `00000000-0000-0000-0000-${String(index).padStart(12, "0")}`,
   type: "UPDATE_APPLIED",
   install_id: `install-${index}`,
@@ -161,13 +161,13 @@ describe("dynamoDB CloudFront lifecycle", () => {
     expect(plugin.models.bundles).toBeDefined();
     expect(plugin.models.bundlePatches).toBeDefined();
     expect(plugin.models.channels).toBeDefined();
-    expect(plugin.models.analytics).toBeDefined();
+    expect(plugin.models.insights).toBeDefined();
     expect(plugin.models.apiKeys).toBeDefined();
     expect(plugin).not.toHaveProperty("queries");
     expect(typeof plugin.commit).toBe("function");
     expect(plugin).not.toHaveProperty("bundles");
     expect(plugin).not.toHaveProperty("bundlePatches");
-    expect(plugin).not.toHaveProperty("analytics");
+    expect(plugin).not.toHaveProperty("insights");
     expect(plugin).not.toHaveProperty("apiKeys");
     expect(plugin).not.toHaveProperty("getUpdateInfo");
     expect(plugin).not.toHaveProperty("componentData");
@@ -213,9 +213,9 @@ describe("dynamoDB CloudFront lifecycle", () => {
     await expect(
       plugin.commit({
         changes: Array.from({ length: 101 }, (_, index) => ({
-          model: "analytics" as const,
+          model: "insights" as const,
           operation: "insert" as const,
-          row: analyticsEvent(index),
+          row: insightsEvent(index),
         })),
       }),
     ).rejects.toMatchObject({
@@ -232,14 +232,14 @@ describe("dynamoDB CloudFront lifecycle", () => {
     { from_bundle_id: null },
     { to_bundle_id: null },
     { type: "UNCHANGED", from_bundle_id: bundleRow.id, update_strategy: null },
-  ])("rejects an invalid stored Analytics row", async (overrides) => {
+  ])("rejects an invalid stored Insights row", async (overrides) => {
     documentClient.on(QueryCommand).resolves({
       Items: [
         {
           pk: "bundle_events",
           sk: "0000000000000001#event",
           version: 1,
-          row: { ...analyticsEvent(1), ...overrides },
+          row: { ...insightsEvent(1), ...overrides },
         },
       ],
     });
@@ -249,7 +249,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
     });
 
     await expect(
-      plugin.models.analytics.scan({
+      plugin.models.insights.scan({
         beforeReceivedAtMs: 2,
         limit: 1,
       }),
@@ -258,8 +258,8 @@ describe("dynamoDB CloudFront lifecycle", () => {
     await plugin.dispose?.();
   });
 
-  it("preserves explicit null Release ids on a stored Analytics row", async () => {
-    const row = analyticsEvent(1);
+  it("preserves explicit null Release ids on a stored Insights row", async () => {
+    const row = insightsEvent(1);
     documentClient.on(QueryCommand).resolves({
       Items: [
         {
@@ -276,7 +276,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
     });
 
     await expect(
-      plugin.models.analytics.scan({
+      plugin.models.insights.scan({
         beforeReceivedAtMs: 2,
         limit: 1,
       }),

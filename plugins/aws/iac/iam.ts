@@ -5,7 +5,7 @@ import { STS } from "@aws-sdk/client-sts";
 import { p } from "@hot-updater/cli-tools";
 
 import {
-  DYNAMODB_ANALYTICS_PARTITION,
+  DYNAMODB_INSIGHTS_PARTITION,
   DYNAMODB_CHANNEL_NAME_PARTITION,
   DYNAMODB_CHANNEL_PARTITION,
   DYNAMODB_API_KEY_HASH_PARTITION,
@@ -84,7 +84,7 @@ export class IAMManager {
                   "bundle_patches",
                   DYNAMODB_CHANNEL_PARTITION,
                   DYNAMODB_CHANNEL_NAME_PARTITION,
-                  DYNAMODB_ANALYTICS_PARTITION,
+                  DYNAMODB_INSIGHTS_PARTITION,
                   DYNAMODB_API_KEY_PARTITION,
                   DYNAMODB_API_KEY_HASH_PARTITION,
                 ],

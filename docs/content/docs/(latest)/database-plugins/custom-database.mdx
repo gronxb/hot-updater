@@ -30,7 +30,7 @@ createDatabasePlugin({
     releases,
     releaseCatalogs,
     channels,
-    analytics,
+    insights,
     apiKeys,
   },
   commit,
@@ -51,7 +51,7 @@ The fixed domains are:
   artifact Bundle or the embedded app.
 - `release_catalogs`: deterministic, rebuildable projections keyed by scope.
 - `channels`: persistent deployment-channel identity.
-- `bundle_events`: Release- and Bundle-aware Analytics transitions.
+- `bundle_events`: Release- and Bundle-aware Insights transitions.
 - `api_keys`: hashed API key records.
 
 `private_hot_updater_settings` remains the schema-version marker managed by
@@ -63,7 +63,7 @@ Use the exported interfaces rather than redeclaring them:
 
 ```ts
 import type {
-  AnalyticsModel,
+  InsightsModel,
   BundleModel,
   BundlePatchModel,
   ChannelModel,
@@ -156,13 +156,13 @@ the JSON payload. Only an atomic commit may write `releaseCatalogs`.
 Never delete the last catalog for a scope. Removing the last eligible Release
 writes a tombstone catalog with a higher generation.
 
-### Channels, Analytics, and API keys
+### Channels, Insights, and API keys
 
 Channel names are exact and case-sensitive. Concurrent insert returns the
 canonical stored row. Empty Channels persist until explicit deletion, and the
 reference check plus deletion must be atomic.
 
-Analytics scans return rows in ascending `(received_at_ms, id)` order, start
+Insights scans return rows in ascending `(received_at_ms, id)` order, start
 strictly after the optional cursor, and exclude rows at or after the requested
 upper bound. API key creation is idempotent by hash; revocation updates only
 `revoked_at_ms`.
@@ -276,7 +276,7 @@ export const myDatabase = ({ db }: { db: MyDatabaseClient }) => {
       releases: createReleaseModel(db),
       releaseCatalogs: createReleaseCatalogModel(db),
       channels: createChannelModel(db),
-      analytics: createAnalyticsModel(db),
+      insights: createInsightsModel(db),
       apiKeys: createApiKeyModel(db),
     },
     commit,
@@ -328,7 +328,7 @@ setupDatabaseClientTestSuite({
 
 The suites verify exact model semantics, strong Release paging, catalog point
 reads, Release/catalog CAS conflicts, all-model rollback, Channel safety,
-Analytics ordering, and the absence of a public `queries` surface.
+Insights ordering, and the absence of a public `queries` surface.
 
 ## Configure Hot Updater
 
@@ -359,5 +359,5 @@ automatically; there is no additional identifier to configure or synchronize.
 
 A Standalone management repository exposes Bundle, patch, Release, catalog,
 and Channel models through the canonical server routes. It is not a complete
-database plugin because the server owns Analytics, API keys, compilation,
+database plugin because the server owns Insights, API keys, compilation,
 and the actual atomic transaction.

@@ -123,13 +123,13 @@ export function isDatabasePlugin(plugin: unknown): plugin is DatabasePlugin {
     typeof plugin.models.channels.list === "function" &&
     "delete" in plugin.models.channels &&
     typeof plugin.models.channels.delete === "function" &&
-    "analytics" in plugin.models &&
-    typeof plugin.models.analytics === "object" &&
-    plugin.models.analytics !== null &&
-    "append" in plugin.models.analytics &&
-    typeof plugin.models.analytics.append === "function" &&
-    "scan" in plugin.models.analytics &&
-    typeof plugin.models.analytics.scan === "function" &&
+    "insights" in plugin.models &&
+    typeof plugin.models.insights === "object" &&
+    plugin.models.insights !== null &&
+    "append" in plugin.models.insights &&
+    typeof plugin.models.insights.append === "function" &&
+    "scan" in plugin.models.insights &&
+    typeof plugin.models.insights.scan === "function" &&
     "apiKeys" in plugin.models &&
     typeof plugin.models.apiKeys === "object" &&
     plugin.models.apiKeys !== null &&

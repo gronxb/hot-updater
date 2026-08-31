@@ -4,9 +4,9 @@ export type {
   ReleaseRowUpdate,
 } from "./databaseOperations";
 export type {
-  AnalyticsModel,
-  AnalyticsScanCursor,
-  AnalyticsScanInput,
+  InsightsModel,
+  InsightsScanCursor,
+  InsightsScanInput,
   BundleModel,
   BundleModelQuery,
   BundlePatchModel,

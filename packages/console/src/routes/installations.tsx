@@ -1,23 +1,23 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 
-import { useAnalyticsCapability } from "@/components/features/analytics/AnalyticsCapabilityContext";
-import { InstallationHistoryCard } from "@/components/features/analytics/InstallationHistoryCard";
-import { InstallationMatchesCard } from "@/components/features/analytics/InstallationMatchesCard";
+import { useInsightsCapability } from "@/components/features/insights/InsightsCapabilityContext";
+import { InstallationHistoryCard } from "@/components/features/insights/InstallationHistoryCard";
+import { InstallationMatchesCard } from "@/components/features/insights/InstallationMatchesCard";
 import {
   InstallationPageHeader,
   InstallationResultsSkeleton,
   InstallationSearchPanel,
-} from "@/components/features/analytics/InstallationPageHeader";
-import {
-  ensureAnalyticsRouteAccess,
-  isAnalyticsQueryEnabled,
-} from "@/lib/analytics-api";
+} from "@/components/features/insights/InstallationPageHeader";
 import {
   type InstallationSearchRow,
   useInstallationHistoryQuery,
   useInstallationSearchQuery,
 } from "@/lib/api";
+import {
+  ensureInsightsRouteAccess,
+  isInsightsQueryEnabled,
+} from "@/lib/insights-api";
 
 import { validateInstallationsSearch } from "./-installations-search";
 
@@ -25,14 +25,14 @@ const SEARCH_LIMIT = 20;
 const HISTORY_LIMIT = 50;
 
 export const Route = createFileRoute("/installations")({
-  beforeLoad: ({ context }) => ensureAnalyticsRouteAccess(context.queryClient),
+  beforeLoad: ({ context }) => ensureInsightsRouteAccess(context.queryClient),
   component: InstallationsPage,
   validateSearch: validateInstallationsSearch,
 });
 
 function InstallationsPage() {
-  const capability = useAnalyticsCapability();
-  const analyticsQueriesEnabled = isAnalyticsQueryEnabled(capability);
+  const capability = useInsightsCapability();
+  const insightsQueriesEnabled = isInsightsQueryEnabled(capability);
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const [draftQuery, setDraftQuery] = useState(search.query ?? "");
@@ -52,7 +52,7 @@ function InstallationsPage() {
       limit: SEARCH_LIMIT,
       offset: search.searchOffset,
     },
-    analyticsQueriesEnabled,
+    insightsQueriesEnabled,
   );
   const selectedInstallId = search.installId ?? "";
   const firstMatchingInstallId = results?.data[0]?.installId;
@@ -87,7 +87,7 @@ function InstallationsPage() {
       limit: HISTORY_LIMIT,
       offset: search.historyOffset,
     },
-    analyticsQueriesEnabled,
+    insightsQueriesEnabled,
   );
   const selectedInstallation = useMemo(
     () =>

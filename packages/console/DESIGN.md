@@ -4,7 +4,7 @@
 
 The Console is a compact operational workspace, not a marketing dashboard.
 It uses warm stone neutrals, restrained orange emphasis, quiet borders, and
-dense but readable information layouts. Analytics must feel native to the
+dense but readable information layouts. Insights must feel native to the
 existing bundle table and detail sheet rather than like a separate product.
 
 The primary operator needs to answer three questions quickly: how many
@@ -12,9 +12,9 @@ installations are active in the selected period, how those installations are
 distributed by bundle, and where a specific installation currently points.
 Supporting context stays subordinate to exact values and actions.
 
-### Analytics dashboard reference
+### Insights dashboard reference
 
-The Analytics composition takes its information hierarchy from Expo's public
+The Insights composition takes its information hierarchy from Expo's public
 EAS Observe > EAS Update dashboard without copying Expo branding or metrics:
 
 - a compact status-and-filter toolbar precedes the report;
@@ -44,7 +44,7 @@ structure only.
 - `muted-foreground` or `chart-1` is the neutral secondary-series treatment.
   Labels, values, and tooltips always communicate meaning without color.
 - Destructive color is reserved for genuine errors and destructive actions,
-  never normal analytics status.
+  never normal insights status.
 
 ### Typography
 
@@ -65,12 +65,12 @@ structure only.
 - The shadcn Mira small-radius scale is authoritative. Cards use the existing
   `rounded-xl`; controls use `rounded-md`.
 - Borders and subtle tonal shifts provide depth. Existing card shadow is the
-  maximum elevation; analytics adds no glow, glass, or decorative shadow.
+  maximum elevation; insights adds no glow, glass, or decorative shadow.
 
 ## 3. Layout Grammar
 
 - The fixed sidebar and route-owned scrolling shell remain unchanged.
-- Analytics uses one primary content column at 375 px and 768 px. At 1280 px,
+- Insights uses one primary content column at 375 px and 768 px. At 1280 px,
   the installation activity chart remains full width and carries the leading
   value. Its supporting values form one bordered footer rail. A searchable
   bundle selector then introduces the selected-bundle detail. Installation
@@ -85,9 +85,9 @@ structure only.
 ## 4. Capability and Data States
 
 - Bundles is always available.
-- Analytics navigation, protected route content, protected queries, and
-  per-bundle activity are absent until `supportsAnalytics` is confirmed true.
-  Installation history remains a drill-down route under the single Analytics
+- Insights navigation, protected route content, protected queries, and
+  per-bundle activity are absent until `supportsInsights` is confirmed true.
+  Installation history remains a drill-down route under the single Insights
   navigation state.
 - An unresolved protected route shows only a neutral, layout-stable shell
   loading state. Unsupported routes redirect to Bundles without mounting or
@@ -95,7 +95,7 @@ structure only.
   diagnostic state and a Bundles escape path, with no protected query.
 - Data surfaces define loading, empty, success, and genuine error states.
   Unsupported capability is absence, not an error or empty-state card.
-- Analytics language is direct and evidentiary: use Active installations,
+- Insights language is direct and evidentiary: use Active installations,
   Latest bundle share, Newly applied, Recovered away, Configured rollout, and
   Last known bundle. Daily, Weekly, and Monthly active installations mean
   unique install IDs that sent at least one update status in the selected 24
@@ -128,7 +128,7 @@ Primitive states are default, hover/focus for interactive controls, disabled
 while submitting/loading when relevant, loading, empty, error, and supported
 success. Capability-unavailable primitives do not render.
 
-## 6. Analytics-Specific Composition
+## 6. Insights-Specific Composition
 
 - **Selected bundle activity:** one full-width operational card below the
   installation activity card. Its header contains the searchable selector so
@@ -154,7 +154,7 @@ success. Capability-unavailable primitives do not render.
   human-readable platform, channel, and target-version identity.
 - **Configured rollout:** configuration is presented beside the selected
   bundle's latest bundle share, never as reported completion.
-- **Installation history:** the analytics toolbar accepts a user ID or install
+- **Installation history:** the insights toolbar accepts a user ID or install
   ID and routes to the installation history drill-down. A user ID may match
   multiple installations; the drill-down keeps those matches visible while an
   install ID identifies one history. Every history event shows the app version
