@@ -39,6 +39,9 @@ setupDatabasePluginTestSuite({
     await client.exec(
       await fs.readFile("plugins/postgres/sql/insights-source-v1.sql", "utf8"),
     );
+    await client.exec(
+      await fs.readFile("plugins/postgres/sql/insights-live-v1.sql", "utf8"),
+    );
   },
   createPlugin: () => postgres({ dialect: new PGliteDialect(getClient()) }),
   reset: async () => {
@@ -61,6 +64,9 @@ const createPostgresTestPlugin = async () => {
   await database.exec(schema);
   await database.exec(
     await fs.readFile("plugins/postgres/sql/insights-source-v1.sql", "utf8"),
+  );
+  await database.exec(
+    await fs.readFile("plugins/postgres/sql/insights-live-v1.sql", "utf8"),
   );
   return {
     database,
