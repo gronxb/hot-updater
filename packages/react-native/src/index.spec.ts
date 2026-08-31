@@ -30,7 +30,7 @@ const mocks = vi.hoisted(() => {
     getFingerprintHash: vi.fn(() => null),
     getInstallId: vi.fn(() => "install-id"),
     getManifest: vi.fn(() => null),
-    getMinimumReleaseId: vi.fn(() => "min-bundle-id"),
+    getMinBundleId: vi.fn(() => "min-bundle-id"),
     getReleaseId: vi.fn(async () => null),
     init: vi.fn(),
     isChannelSwitched: vi.fn(() => false),
@@ -67,7 +67,7 @@ vi.mock("./native", () => ({
   getFingerprintHash: mocks.getFingerprintHash,
   getInstallId: mocks.getInstallId,
   getManifest: mocks.getManifest,
-  getMinimumReleaseId: mocks.getMinimumReleaseId,
+  getMinBundleId: mocks.getMinBundleId,
   getReleaseId: mocks.getReleaseId,
   isChannelSwitched: mocks.isChannelSwitched,
   notifyAppReady: mocks.notifyAppReady,
@@ -283,7 +283,7 @@ describe("HotUpdater client initialization", () => {
     const HotUpdater = await importHotUpdater();
 
     expect(HotUpdater.getInstallId()).toBe("install-id");
-    expect(HotUpdater.getMinimumReleaseId()).toBe("min-bundle-id");
+    expect(HotUpdater.getMinBundleId()).toBe("min-bundle-id");
     HotUpdater.setUser({ userId: "user-123", username: "alice" });
     expect(mocks.setUser).toHaveBeenCalledWith({
       userId: "user-123",

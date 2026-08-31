@@ -23,7 +23,7 @@ import {
   getDefaultChannel,
   getFingerprintHash,
   getInstallId,
-  getMinimumReleaseId,
+  getMinBundleId,
   getCrashHistory,
   getPersistedUserIdentity,
   isReleaseSelectionCurrent,
@@ -421,7 +421,7 @@ export async function checkForUpdate(
   const currentAppVersion = getAppVersion();
   const platform = Platform.OS as "ios" | "android";
   const currentBundleId = getBundleId();
-  const minimumReleaseId = getMinimumReleaseId();
+  const minimumReleaseId = getMinBundleId();
   const defaultChannel = getDefaultChannel();
   const isSwitched = isChannelSwitched();
   const currentChannel = isSwitched ? getChannel() : defaultChannel;

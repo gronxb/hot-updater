@@ -18,7 +18,7 @@ import {
   getFingerprintHash,
   getInstallId,
   getManifest,
-  getMinimumReleaseId,
+  getMinBundleId,
   getReleaseId,
   isChannelSwitched,
   notifyAppReady,
@@ -337,8 +337,8 @@ function createHotUpdaterClient() {
      */
     getBundleId,
 
-    /** Preferred Release-catalog name for the build-time UUIDv7 floor. */
-    getMinimumReleaseId,
+    /** Returns the minimum bundle ID based on the native app build time. */
+    getMinBundleId,
 
     /** Returns the active Release identity, or null for BUILTIN/legacy state. */
     getReleaseId,
