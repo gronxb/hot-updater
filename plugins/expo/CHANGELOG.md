@@ -1,5 +1,12 @@
 # @hot-updater/expo
 
+## 1.0.0-rc.3
+
+### Patch Changes
+
+- f4de12f: Load the Expo config module through dynamic imports so the published build
+  plugin resolves both the legacy and current Expo SDK layouts in ESM.
+
 ## 1.0.0-rc.2
 
 ### Patch Changes
