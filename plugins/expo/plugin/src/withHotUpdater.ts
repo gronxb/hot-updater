@@ -5,6 +5,7 @@ import path from "path";
 import type { SigningConfig } from "@hot-updater/plugin-core";
 import type { ExpoConfig } from "expo/config";
 import {
+  XML,
   createRunOncePlugin,
   withAndroidManifest,
   withAppDelegate,
@@ -282,7 +283,7 @@ const withHotUpdaterConfigAsync =
         upsertAndroidMetaData(
           application,
           ANDROID_META_DATA_KEYS.publicKey,
-          publicKey,
+          XML.escapeAndroidString(publicKey),
         );
       } else {
         removeAndroidMetaData(application, ANDROID_META_DATA_KEYS.publicKey);
