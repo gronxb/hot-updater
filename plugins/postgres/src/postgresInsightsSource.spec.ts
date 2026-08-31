@@ -9,8 +9,12 @@ import {
   createBundleEventRowFixture,
   createBundleRowFixture,
 } from "../../../packages/test-utils/src/databaseTestFixtures";
-import { migratePostgresInsightsSource } from "./db";
+import {
+  migratePostgresInsightsLive,
+  migratePostgresInsightsSource,
+} from "./db";
 import { postgres } from "./postgres";
+import { createPostgresInsightsLiveTools } from "./postgresInsightsLive";
 import {
   createPostgresInsightsSourceTools,
   postgresEventSourceShard,
@@ -68,6 +72,11 @@ describe("PostgreSQL committed Insights source", () => {
   const ready = async () => {
     await migratePostgresInsightsSource(db);
     expect(await source.backfillStep(2)).toEqual({ ready: true, processed: 0 });
+    await migratePostgresInsightsLive(db);
+    expect(await createPostgresInsightsLiveTools(db).backfillStep(2)).toEqual({
+      ready: true,
+      processed: 0,
+    });
   };
 
   beforeEach(async () => {
@@ -239,7 +248,7 @@ describe("PostgreSQL committed Insights source", () => {
     expect(await read()).toEqual([{ sequence: "1", event: row }]);
   });
 
-  it("backfills bounded PK pages atomically, fences old writers and preserves extensions while accepting new events", async () => {
+  it("backfills bounded PK pages atomically, fences old writers and preserves extensions before the live writer cutover", async () => {
     const legacy = [10, 20, 30].map((id) => event(id));
     await db.insertInto("bundle_events").values(legacy).execute();
     await client.exec(
@@ -274,13 +283,18 @@ describe("PostgreSQL committed Insights source", () => {
       ready: false,
       processed: 2,
     });
-    await plugin.models.insights.append(event(5));
-    await plugin.models.insights.append(event(40));
     expect(await source.backfillStep(2)).toEqual({ ready: true, processed: 1 });
     expect((await state()).upper_id).toBe(legacy[2]!.id);
     const completed = await state();
     expect(await source.backfillStep(2)).toEqual({ ready: true, processed: 0 });
     expect(await state()).toEqual(completed);
+    await migratePostgresInsightsLive(db);
+    const live = createPostgresInsightsLiveTools(db);
+    while (!(await live.backfillStep(2)).ready) {
+      // Live backfill begins only after the earlier source cutover is complete.
+    }
+    await plugin.models.insights.append(event(5));
+    await plugin.models.insights.append(event(40));
     expect(
       (await client.query("select extension from bundle_events")).rows,
     ).toEqual(Array(5).fill({ extension: { keep: [1, null, true] } }));

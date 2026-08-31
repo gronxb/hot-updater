@@ -16,10 +16,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { findOpenPort } from "../../../packages/test-utils/src/runtimeProcess";
 import {
+  migratePostgresInsightsLive,
   migratePostgresInsightsReports,
   migratePostgresInsightsSource,
 } from "./db";
 import { createPostgresInsightsJobs } from "./postgresInsightsJobs";
+import { createPostgresInsightsLiveTools } from "./postgresInsightsLive";
 import {
   readPostgresInsightsReportOrderRange,
   stepPostgresInsightsReportOrder,
@@ -154,6 +156,8 @@ describe("PostgreSQL frozen contains search and native read bounds", () => {
     await migratePostgresInsightsSource(db);
     await migratePostgresInsightsReports(db);
     await createPostgresInsightsSourceTools(db).backfillStep(1);
+    await migratePostgresInsightsLive(db);
+    await createPostgresInsightsLiveTools(db).backfillStep(1);
     await pool.query("create table readonly_probe(id integer primary key)");
     queries = [];
     pageQueries = [];

@@ -11,6 +11,11 @@ import {
 } from "@hot-updater/plugin-core/internal";
 import { sql, type Kysely, type QueryExecutorProvider } from "kysely";
 
+import {
+  POSTGRES_INSIGHTS_LIVE_TABLE,
+  postgresInsightsInstallKey,
+} from "./postgresInsightsLive";
+
 // The shard layout is part of source generation v1, never caller configuration.
 export const POSTGRES_SOURCE_SHARDS = 16;
 const clocks = "private_hot_updater_insights_source_clocks";
@@ -81,15 +86,30 @@ export const appendPostgresInsightsEvent = async (
   row: BundleEventRow,
 ): Promise<BundleEventRow> => {
   const shard = postgresEventSourceShard(row.id);
+  const installKey = postgresInsightsInstallKey(row.install_id);
   // The UPDATE lock lasts until the surrounding commit. Unlike nextval(), a
   // later counter value cannot commit while an earlier allocation is pending.
   const result = await sql<BundleEventRow>`with allocated as (
     update ${sql.table(clocks)} set committed_seq = committed_seq + 1
     where shard = ${shard} returning committed_seq
-  ) insert into bundle_events (${eventColumns()}, insights_source_shard, insights_source_seq)
+  ), inserted as (insert into bundle_events (${eventColumns()}, insights_source_shard, insights_source_seq, insights_live_version)
     select ${sql.join(databaseFields.bundle_events.map((field) => row[field]))},
-      ${shard}, committed_seq from allocated
-    returning ${eventColumns()}`.execute(db);
+      ${shard}, committed_seq, 1 from allocated
+    returning ${eventColumns()}), latest as (
+      insert into ${sql.table(POSTGRES_INSIGHTS_LIVE_TABLE)}
+        (install_key,install_id,event_id,received_at_ms,event)
+      select ${installKey},install_id,id,received_at_ms,${JSON.stringify(row)}::jsonb
+        from inserted
+      on conflict (install_key) do update set
+        install_id = case when ${sql.table(POSTGRES_INSIGHTS_LIVE_TABLE)}.install_id = excluded.install_id
+          then excluded.install_id else null end,
+        event_id=excluded.event_id,received_at_ms=excluded.received_at_ms,event=excluded.event
+      where ${sql.table(POSTGRES_INSIGHTS_LIVE_TABLE)}.install_id <> excluded.install_id
+        or (${sql.table(POSTGRES_INSIGHTS_LIVE_TABLE)}.received_at_ms,
+          ${sql.table(POSTGRES_INSIGHTS_LIVE_TABLE)}.event_id)
+          < (excluded.received_at_ms,excluded.event_id)
+      returning install_key
+    ) select ${eventColumns()} from inserted`.execute(db);
   if (result.rows.length !== 1) throw new InsightsQueryNotReadyError();
   return result.rows[0]!;
 };

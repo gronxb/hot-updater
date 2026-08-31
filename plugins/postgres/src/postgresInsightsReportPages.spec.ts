@@ -14,11 +14,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { collectActiveInstallationOverview } from "../../../packages/server/src/insights/bounded/activeOverview";
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import {
+  migratePostgresInsightsLive,
   migratePostgresInsightsReports,
   migratePostgresInsightsSource,
 } from "./db";
 import { postgres } from "./postgres";
 import { createPostgresInsightsJobs } from "./postgresInsightsJobs";
+import { createPostgresInsightsLiveTools } from "./postgresInsightsLive";
 import { createPostgresInsightsReportPages } from "./postgresInsightsReportPages";
 import { createPostgresInsightsReportWorker } from "./postgresInsightsReports";
 import { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
@@ -77,6 +79,8 @@ describe("immutable PostgreSQL report section pages", () => {
     await migratePostgresInsightsSource(db);
     await migratePostgresInsightsReports(db);
     await createPostgresInsightsSourceTools(db).backfillStep(1);
+    await migratePostgresInsightsLive(db);
+    await createPostgresInsightsLiveTools(db).backfillStep(1);
     jobs = createPostgresInsightsJobs(db);
     worker = createPostgresInsightsReportWorker(db);
     pages = createPostgresInsightsReportPages(db);

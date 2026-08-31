@@ -8,6 +8,12 @@ import { assertPostgresInsightsReportDataIndexes } from "./postgresInsightsRepor
 import { assertPostgresInsightsReportOrderIndexes } from "./postgresInsightsReportOrder";
 import { assertPostgresInsightsSourceIndex } from "./postgresInsightsSource";
 
+export {
+  createPostgresInsightsLiveTools,
+  getPostgresInsightsLiveMigrationSQL,
+  migratePostgresInsightsLive,
+} from "./postgresInsightsLive";
+
 export { createPostgresInsightsReportWorker } from "./postgresInsightsReports";
 export { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
 export {

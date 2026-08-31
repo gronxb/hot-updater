@@ -14,13 +14,17 @@ that a report can safely consume.
    source fields, counters, state and a partial index. Creating the index scans
    the existing table and holds a write-blocking lock. Its duration depends on
    the database size; this migration is not a zero-downtime operation.
-3. Deploy the new writer. Every accepted event and its source counter commit in
-   the same transaction, including mixed catalog/event commits. Old writers are
-   fenced by a `NOT VALID` check constraint: they cannot insert unmarked events.
-   Do not restore an old writer while leaving this source protocol enabled.
-4. Run bounded backfill steps through maintenance tooling. New writers can
-   continue accepting events during backfill. Captures remain unavailable until
-   every legacy row in the fixed primary-key range has been processed.
+3. Run bounded source backfill steps during this maintenance phase. Captures
+   remain unavailable until every legacy row in the fixed primary-key range has
+   been processed. The current writer also requires the live-installation layout,
+   whose migration deliberately refuses an incomplete source. Starting from only
+   the base schema therefore requires completing this source phase before the
+   live writer cutover; there is no source-only compatibility writer.
+4. Apply the live-installation migration, deploy the upgraded writer, and follow
+   its bounded backfill sequence. Every accepted event, source counter and live
+   latest row then commit in the same statement/transaction, including mixed
+   catalog/event commits. Both `NOT VALID` fences reject an older binary that
+   omits either marker.
 
 For an existing root `Kysely` connection:
 
@@ -39,10 +43,10 @@ const progress = await source.backfillStep(200);
 ```
 
 `backfillStep` accepts 1–200 rows. Its first invocation captures the upper raw ID;
-subsequent calls read at most the requested number of raw rows, including rows
-already assigned by new writers. It never scans until it fills a batch of only
-unassigned rows. Source assignments, counters and checkpoint advance in one
-transaction. A failed step can be retried without replacing raw event fields.
+subsequent calls read at most the requested number of raw rows. It never scans
+until it fills a batch of only unassigned rows. Source assignments, counters and
+checkpoint advance in one transaction. A failed step can be retried without
+replacing raw event fields.
 The shared `runStep({ maxItems, maxRequests })` runner is still a later integration
 step; this provider method must not be presented as that completed runner.
 

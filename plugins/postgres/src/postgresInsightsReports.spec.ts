@@ -12,12 +12,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { collectActiveInstallationOverview } from "../../../packages/server/src/insights/bounded/activeOverview";
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import {
+  migratePostgresInsightsLive,
   migratePostgresInsightsReports,
   migratePostgresInsightsSource,
 } from "./db";
 import { postgres } from "./postgres";
 import { readPostgresInsightsAliasPage } from "./postgresInsightsAliases";
 import { createPostgresInsightsJobs } from "./postgresInsightsJobs";
+import { createPostgresInsightsLiveTools } from "./postgresInsightsLive";
 import { readPostgresInsightsLatestByKey } from "./postgresInsightsReportData";
 import { createPostgresInsightsReportWorker } from "./postgresInsightsReports";
 import { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
@@ -76,6 +78,8 @@ describe("resumable PostgreSQL exact report accumulation", () => {
     await migratePostgresInsightsReports(db);
     await migratePostgresInsightsReports(db);
     await createPostgresInsightsSourceTools(db).backfillStep(1);
+    await migratePostgresInsightsLive(db);
+    await createPostgresInsightsLiveTools(db).backfillStep(1);
     jobs = createPostgresInsightsJobs(db);
     worker = createPostgresInsightsReportWorker(db);
     largestStep = { requests: 0, rows: 0 };
@@ -568,9 +572,8 @@ describe("resumable PostgreSQL exact report accumulation", () => {
         'type', case when n = 50001 then 'UPDATE_APPLIED' else 'UNCHANGED' end,
         'from_bundle_id', case when n = 50001 then ${bundleB}::text else null end,
         'update_strategy', case when n = 50001 then 'appVersion' else null end,
-        'insights_source_shard', shard, 'insights_source_seq', sequence))).* from source`.execute(
-      db,
-    );
+        'insights_source_shard', shard, 'insights_source_seq', sequence,
+        'insights_live_version', 1))).* from source`.execute(db);
     await sql`update private_hot_updater_insights_source_clocks c set committed_seq = s.last_sequence
       from (select insights_source_shard, max(insights_source_seq) as last_sequence
         from bundle_events group by insights_source_shard) s where c.shard = s.insights_source_shard`.execute(

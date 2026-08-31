@@ -9,11 +9,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { searchEventInstallations } from "../../../packages/server/src/insights/bounded/installationSearch";
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import {
+  migratePostgresInsightsLive,
   migratePostgresInsightsReports,
   migratePostgresInsightsSource,
 } from "./db";
 import { postgres } from "./postgres";
 import { createPostgresInsightsJobs } from "./postgresInsightsJobs";
+import { createPostgresInsightsLiveTools } from "./postgresInsightsLive";
 import { createPostgresInsightsReportWorker } from "./postgresInsightsReports";
 import { createPostgresInsightsSearchPages } from "./postgresInsightsSearchPages";
 import { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
@@ -66,6 +68,8 @@ describe("durable historical contains and immutable installation pages", () => {
     await migratePostgresInsightsSource(db);
     await migratePostgresInsightsReports(db);
     await createPostgresInsightsSourceTools(db).backfillStep(1);
+    await migratePostgresInsightsLive(db);
+    await createPostgresInsightsLiveTools(db).backfillStep(1);
     jobs = createPostgresInsightsJobs(db);
     worker = createPostgresInsightsReportWorker(db);
     pages = createPostgresInsightsSearchPages(db);
@@ -367,16 +371,15 @@ describe("durable historical contains and immutable installation pages", () => {
       select *, row_number() over (partition by shard order by n) as sequence from sharded
     ) insert into bundle_events select (jsonb_populate_record(null::bundle_events,
       ${JSON.stringify(template)}::jsonb || jsonb_build_object('id',id,'install_id',install_id,
-      'insights_source_shard',shard,'insights_source_seq',sequence))).* from source`.execute(
-      db,
-    );
+      'insights_source_shard',shard,'insights_source_seq',sequence,
+      'insights_live_version',1))).* from source`.execute(db);
     await sql`update private_hot_updater_insights_source_clocks c set committed_seq=s.last_sequence from
       (select insights_source_shard,max(insights_source_seq) as last_sequence from bundle_events group by insights_source_shard)s
       where c.shard=s.insights_source_shard`.execute(db);
     const generation = await createPostgresInsightsSourceTools(db).capture();
     await sql`insert into private_hot_updater_insights_report_latest(job_id,install_key,bucket_index,install_id,event)
       select ${baseId}::uuid,encode(sha256(convert_to(to_json(install_id)::text,'UTF8')),'hex'),-1,install_id,
-        to_jsonb(e)-'insights_source_shard'-'insights_source_seq' from bundle_events e`.execute(
+        to_jsonb(e)-'insights_source_shard'-'insights_source_seq'-'insights_live_version' from bundle_events e`.execute(
       db,
     );
     await sql`insert into private_hot_updater_insights_report_aliases(job_id,alias_key,install_key,identity)

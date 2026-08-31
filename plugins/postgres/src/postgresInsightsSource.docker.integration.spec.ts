@@ -12,8 +12,12 @@ import {
   createBundleRowFixture,
 } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { findOpenPort } from "../../../packages/test-utils/src/runtimeProcess";
-import { migratePostgresInsightsSource } from "./db";
+import {
+  migratePostgresInsightsLive,
+  migratePostgresInsightsSource,
+} from "./db";
 import { postgres } from "./postgres";
+import { createPostgresInsightsLiveTools } from "./postgresInsightsLive";
 import {
   createPostgresInsightsSourceTools,
   postgresEventSourceShard,
@@ -90,6 +94,11 @@ describe("PostgreSQL committed source with concurrent transactions", () => {
     await migratePostgresInsightsSource(db);
     source = createPostgresInsightsSourceTools(db);
     expect(await source.backfillStep(2)).toEqual({ ready: true, processed: 0 });
+    await migratePostgresInsightsLive(db);
+    expect(await createPostgresInsightsLiveTools(db).backfillStep(2)).toEqual({
+      ready: true,
+      processed: 0,
+    });
   });
 
   afterAll(async () => {

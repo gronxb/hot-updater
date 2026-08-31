@@ -1,0 +1,62 @@
+{
+  "date": "2026-09-01",
+  "node": "v24.15.0",
+  "scope": "Internal PostgreSQL live all-installation projection, bounded maintenance backfill, atomic source/raw/latest writer and binary cursor pages; public server/Console cutover and other providers remain unfinished",
+  "sourceHashes": {
+    "plugins/postgres/src/postgresInsightsLive.ts": "4b599321803bacf98da337b8757f82eb2651d528582d29ae59aff500d3911110",
+    "plugins/postgres/src/postgresInsightsSource.ts": "eda0ccd16b15ee821e9ce7661992414ce12dd9727e6d821dd195ef071888dec0",
+    "plugins/postgres/src/postgresInsightsQueries.ts": "a8ce1f7a02a7de8548f4ef84f9265508c1ca4a25ac361a12c6041b8f4dcdaf8e",
+    "plugins/postgres/src/db.ts": "66e2dc1f445e53952588037efd3d5342b1a78a6181b54b64c93c25bf626ba787",
+    "plugins/postgres/sql/insights-live-v1.sql": "5b23f517842e65c0d7ae2e6c9fbe2ec6aa89c084199de1cb34375fbb5a8f8cf8"
+  },
+  "testHashes": {
+    "plugins/postgres/src/postgresInsightsLive.spec.ts": "826ee4bd03e9d22742968590104569f163ca1da1b3c8ba01e40d2612160d2392",
+    "plugins/postgres/src/postgresInsightsLive.docker.integration.spec.ts": "9fdb5802817574fa8e4f622c7a8214d7dada453e7cdc8d3a810679de2e597856"
+  },
+  "logHashes": {
+    "failedAliasShadowPlan": "1cc8937a6c44372f39045f47626cfc28af4dd479340ae88ecb4ad9b2f46e91f9",
+    "finalPostgres15And17Plans": "204614c94f0356de3ebab4317aa6427d666c33cc112343b5834d4b28c773822c",
+    "liveUnit": "d4890c3746515180fabde2e062f57e73ff26a564a3bfa317b85a2f8e3d349e37",
+    "relatedFocusedUnit": "3c83f1e8c9cafa5afd22f4b07842b288e4749bb1f55496fcf1b485d1188e448c",
+    "sourceReportSearchIntegration": "13200ec61a94630095468a14687f7e22f7e24b53a8f46a5634ea7bb6a729c79c",
+    "postgresTypesEmptySuccessLog": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "validation": {
+    "postgresTypes": "passed",
+    "liveUnit": {
+      "tests": 5,
+      "result": "passed"
+    },
+    "relatedFocusedUnit": {
+      "files": 5,
+      "tests": 34,
+      "result": "passed"
+    },
+    "postgres15And17Native": {
+      "tests": 2,
+      "result": "passed",
+      "rawRows": 50005,
+      "projectedInstallations": 50004,
+      "backfill": {
+        "index": "bundle_events_pkey",
+        "maximumCandidates": 200
+      },
+      "pageCustomAndForcedGeneric": {
+        "index": "private_hot_updater_insights_live_installations_pkey",
+        "maximumCandidates": 101
+      },
+      "forbiddenPlanNodes": ["Seq Scan", "Sort", "Bitmap Scan"],
+      "rowsRemovedByFilter": 0
+    },
+    "sourceReportSearchIntegration": {
+      "files": 3,
+      "tests": 13,
+      "result": "passed"
+    },
+    "adversarialRegression": {
+      "before": "An unqualified ORDER BY install_key resolved to the encoded output alias, scanning 50004 rows and sorting them.",
+      "after": "Qualifying live.install_key preserves bytea primary-key order; PostgreSQL 15 and 17 custom and forced-generic plans each read 101 candidates."
+    }
+  },
+  "operationalBoundary": "Complete committed-source preparation first. Drain old writers, install the transactional live layout/fence and deploy the upgraded writer together. The live backfill may then run with upgraded ingestion. Manual concurrent DDL and old binaries are outside the supported window."
+}
