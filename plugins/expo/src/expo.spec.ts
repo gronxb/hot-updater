@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   getConfig: vi.fn(),
 }));
 
-vi.mock("expo/config", () => ({
+vi.mock("./expoConfig", () => ({
   getConfig: mocks.getConfig,
 }));
 
@@ -83,7 +83,7 @@ describe("getExpoFingerprintExtraSources", () => {
   it("includes the configured trust anchor in native fingerprints", async () => {
     const cwd = await createProject("keys/public-key.pem");
 
-    expect(getExpoFingerprintExtraSources(cwd)).toEqual([
+    await expect(getExpoFingerprintExtraSources(cwd)).resolves.toEqual([
       "keys/public-key.pem",
     ]);
   });
@@ -91,6 +91,6 @@ describe("getExpoFingerprintExtraSources", () => {
   it("adds no source when bundle signing is not configured", async () => {
     const cwd = await createProject();
 
-    expect(getExpoFingerprintExtraSources(cwd)).toEqual([]);
+    await expect(getExpoFingerprintExtraSources(cwd)).resolves.toEqual([]);
   });
 });

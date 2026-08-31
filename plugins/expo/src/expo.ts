@@ -9,9 +9,9 @@ import type {
   BuildPluginConfig,
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
-import { getConfig } from "expo/config";
 import { uuidv7 } from "uuidv7";
 
+import { getConfig } from "./expoConfig";
 import { resolveMain } from "./resolveMain";
 import { runExpoPrebuild } from "./util/prebuild";
 
@@ -28,7 +28,7 @@ type HotUpdaterExpoPluginProps = {
 };
 
 const getHotUpdaterExpoPluginProps = (
-  plugins: ReturnType<typeof getConfig>["exp"]["plugins"],
+  plugins: Awaited<ReturnType<typeof getConfig>>["exp"]["plugins"],
 ): HotUpdaterExpoPluginProps | undefined => {
   const entry = plugins?.find(
     (plugin) =>
@@ -43,8 +43,10 @@ const getHotUpdaterExpoPluginProps = (
     : undefined;
 };
 
-export const getExpoFingerprintExtraSources = (cwd: string): string[] => {
-  const { exp } = getConfig(cwd, {
+export const getExpoFingerprintExtraSources = async (
+  cwd: string,
+): Promise<string[]> => {
+  const { exp } = await getConfig(cwd, {
     skipSDKVersionRequirement: true,
   });
   const publicKeyPath = getHotUpdaterExpoPluginProps(
@@ -62,7 +64,7 @@ export const getExpoFingerprintExtraSources = (cwd: string): string[] => {
 export const getExpoBundleSigningPublicKey = async (
   cwd: string,
 ): Promise<{ readonly publicKey: string } | null> => {
-  const { exp } = getConfig(cwd, {
+  const { exp } = await getConfig(cwd, {
     skipSDKVersionRequirement: true,
   });
   const publicKeyPath = getHotUpdaterExpoPluginProps(
