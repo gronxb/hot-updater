@@ -82,9 +82,10 @@ export interface InsightsInstallationPublication extends InsightsPublication {
  * exact installation can also use an indexed latest-event point lookup.
  * Explicit installation IDs retain their full value, including an empty string.
  * Contains matches any historical alias and freezes both membership and latest
- * metadata at its publication's source generation. Order by install ID using JS
- * string comparison. Cursors bind the query and live/snapshot choice; snapshot
- * cursors also bind the publication. Live pages have no exact total.
+ * metadata at its publication's source generation. Installation pages use the
+ * opaque order of SHA-256(JSON.stringify(full install ID)) bytes. The cursor
+ * binds that ordering revision and the live/snapshot choice; snapshot cursors
+ * also bind the publication. Live pages have no exact total.
  */
 export type InsightsInstallationPage =
   | (InsightsPageRows<InsightsInstallationRow> & {

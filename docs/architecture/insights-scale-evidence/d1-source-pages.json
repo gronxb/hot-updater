@@ -1,0 +1,118 @@
+{
+  "date": "2026-09-01",
+  "runtime": {
+    "node": "v24.15.0",
+    "wrangler": "4.99.0",
+    "vitestPoolWorkers": "0.13.0",
+    "requestedCompatibilityDate": "2026-08-13",
+    "effectiveLocalCompatibilityDate": "2026-03-12"
+  },
+  "scope": "Internal D1 v2 committed source, native event pages, and live installation pages; public four-port wiring, report/search jobs, remote REST evidence, and deployed Worker evidence remain incomplete",
+  "sourceHashes": {
+    "plugins/cloudflare/sql/bundles.sql": "ca26d2bc6cfc0eccbe02e816638c80cd92a4ab9764cd80370930b8513c3b53cb",
+    "plugins/cloudflare/worker/migrations/0002_hot-updater_insights-v2.sql": "ff55fc5e071a52227026eab8e75abc7edbcb83462c0c6d313616eccd0e7c39c4",
+    "plugins/cloudflare/src/d1InsightsSource.ts": "0375a71be92012745361d81cc2be4564b778b810ebbe92521788bcdbce7a2eac",
+    "plugins/cloudflare/src/d1InsightsPages.ts": "ae40527ec33d4a986c62f5527099f65ba9ed5097ebd38e2f8cde375c5557525f",
+    "plugins/cloudflare/src/d1Implementation.ts": "a0acfce636ba4b4da1bf2abf65184eecadb938b5c5d82d764a9dbf609c20544f",
+    "plugins/plugin-core/src/types/insightsQueries.ts": "ce1d906646136ae7e3951d68c8620f1e67a27dd785e2583f8b9dc208ccd6b4c2"
+  },
+  "testHashes": {
+    "plugins/cloudflare/src/d1Implementation.spec.ts": "6d879d78a226f0af53a3657539d29e501de21d7300d028b402d44a967eeb63e7",
+    "plugins/cloudflare/worker/src/databaseMigration.integration.spec.ts": "87ef3006506fc64ebb492cd7a7dd2c6eb74fd2ee114159ff57eeed5c1377c556",
+    "plugins/cloudflare/worker/src/databasePlugins.integration.spec.ts": "a4f512eeae554da89db59bfac75798d581f99b7a464b659bf7bbba11563f7c70"
+  },
+  "focusedVerification": {
+    "typecheck": "passed",
+    "files": 3,
+    "tests": 108,
+    "result": "passed"
+  },
+  "migration": {
+    "legacyRows": 50001,
+    "testedStepItems": 6,
+    "worstMovementStep": {
+      "preBatchQueries": 3,
+      "batchStatements": 32,
+      "totalQueries": 35,
+      "rawRowsReadMaximum": 7,
+      "index": "bundle_events_received_at_idx",
+      "temporarySort": false
+    },
+    "uncertainResponseCheckpointRetry": "passed"
+  },
+  "runtimePages": {
+    "sourceGeneration": {
+      "returned": 100,
+      "rowsReadMaximum": 100
+    },
+    "allEvents": {
+      "returned": 101,
+      "rowsReadMaximum": 101
+    },
+    "exactInstallationEvents": {
+      "returned": 1,
+      "rowsReadMaximum": 2
+    },
+    "bundleEvents": {
+      "returned": 101,
+      "rowsReadMaximum": 101
+    },
+    "liveInstallations": {
+      "returned": 101,
+      "rowsReadMaximum": 101
+    },
+    "exactLiveInstallation": {
+      "returned": 1,
+      "rowsReadMaximum": 1
+    },
+    "rawEventPoints": {
+      "selected": 100,
+      "returned": 100,
+      "rowsReadMaximum": 300
+    },
+    "temporarySorts": 0
+  },
+  "commitBudgets": {
+    "withoutExpectations": {
+      "maximumBatchStatements": 50
+    },
+    "withExpectations": {
+      "changes": 48,
+      "transactionGuardStatements": 1,
+      "reconciliationQueries": 1,
+      "totalQueries": 50,
+      "rejects49ChangesBeforeIo": true
+    },
+    "packedExpectations": 101,
+    "observedMaximumParamsPerStatement": 5,
+    "providerMaximumParamsPerStatement": 100
+  },
+  "responseBudgets": {
+    "eventPageBytes": 1048576,
+    "maximumD1RowOrValueBytes": 2000000,
+    "longIdentityCharacters": 1100006,
+    "candidateResponseBytesMaximumExclusive": 1024,
+    "mixedLargeEvents": 2,
+    "mixedCommitReturningRows": 0
+  },
+  "identity": {
+    "eventId": "Core non-empty 1-1024 character ID with binary ordering",
+    "nonUuidMigrationDirectMixedAndPage": "passed",
+    "emptyWriteRejected": true,
+    "emptyLegacyBackfillFailsClosed": true,
+    "installationKey": "SHA-256(JSON.stringify(full installation ID))",
+    "digestCollisionFails": true
+  },
+  "atomicity": {
+    "directAppendTrigger": true,
+    "mixedCommitBatch": true,
+    "duplicateRollback": true,
+    "generationOverflowRollback": true
+  },
+  "limitations": [
+    "No real remote D1 REST database evidence yet",
+    "No deployed Worker binding evidence yet",
+    "No public four-port, report, search, or contains cutover yet",
+    "No standalone E2E evidence for this commit yet"
+  ]
+}
