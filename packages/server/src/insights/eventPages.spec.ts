@@ -71,6 +71,7 @@ describe("native Insights page boundary", () => {
       { sinceReceivedAtMs: Number.NaN },
       { scope: { kind: "installation", installId: "a" } },
       { scope: { kind: "bundle", bundleId: "" } },
+      { scope: { kind: "bundle", bundleId: 1 } as never, cursor: "cursor" },
       { cursor: "x".repeat(8193) },
     ];
     for (const patch of invalid) {

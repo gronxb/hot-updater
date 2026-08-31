@@ -17,6 +17,7 @@ export {
   createIndexedInsightsEventQueries,
   readInsightsEventPageCursor,
   createInsightsEventPageCursor,
+  getInsightsEventPageCursorLimit,
   compareInsightsEventRows,
   assertInsightsEventRow,
 } from "./insightsEventQueries";

@@ -4,7 +4,10 @@ import type {
 } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
-import { createIndexedInsightsEventQueries } from "../../../plugin-core/src/insightsEventQueries";
+import {
+  createIndexedInsightsEventQueries,
+  getInsightsEventPageCursorLimit,
+} from "../../../plugin-core/src/insightsEventQueries";
 import {
   createMockDatabaseData,
   createMockDatabaseState,
@@ -231,6 +234,50 @@ describe("indexed Insights event pages", () => {
     }
     expect(findMany).not.toHaveBeenCalled();
   });
+
+  it.each(["", '\\"\0😀'.repeat(3000)])(
+    "preserves exact installation identities across escaped bookmarks",
+    async (installId) => {
+      const { queries, findMany } = harness(
+        [1, 2, 3].map((time) => ({
+          ...event(`event-${time}`, time),
+          install_id: installId,
+          from_bundle_id: "previous-bundle",
+          type: "UPDATE_APPLIED",
+          update_strategy: "appVersion",
+        })),
+      );
+      const input = {
+        scope: { kind: "installation", installId },
+        beforeReceivedAtMs: 4,
+        limit: 1,
+      } as const;
+      const first = await queries.page(input);
+      expect(first.rows[0]?.id).toBe("event-3");
+      const last = await queries.page({
+        ...input,
+        limit: 3,
+        cursor: first.nextCursor!,
+      });
+      expect(last.rows.map(({ id }) => id)).toEqual(["event-2", "event-1"]);
+      expect(last.nextCursor).toBeNull();
+      findMany.mockClear();
+      await expect(
+        queries.page({
+          ...input,
+          scope: { kind: "installation", installId: `${installId}different` },
+          cursor: first.nextCursor!,
+        }),
+      ).rejects.toMatchObject({ code: "invalid-query" });
+      await expect(
+        queries.page({
+          ...input,
+          cursor: " ".repeat(getInsightsEventPageCursorLimit(input.scope) + 1),
+        }),
+      ).rejects.toMatchObject({ code: "invalid-query" });
+      expect(findMany).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not silently enable an unsupported scope or accept malformed provider ordering", async () => {
     const { data, findMany } = harness([]);

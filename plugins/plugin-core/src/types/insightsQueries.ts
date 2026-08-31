@@ -78,8 +78,10 @@ export interface InsightsInstallationPublication extends InsightsPublication {
 }
 
 /**
- * Empty user search maps to all. All/exact reads use the live latest projection;
- * contains matches any historical alias and freezes both membership and latest
+ * Empty user search maps to all. All reads use the live latest projection; an
+ * exact installation can also use an indexed latest-event point lookup.
+ * Explicit installation IDs retain their full value, including an empty string.
+ * Contains matches any historical alias and freezes both membership and latest
  * metadata at its publication's source generation. Order by install ID using JS
  * string comparison. Cursors bind the query and live/snapshot choice; snapshot
  * cursors also bind the publication. Live pages have no exact total.

@@ -2,6 +2,7 @@ import {
   DatabasePluginInputError,
   InsightsQueryNotReadyError,
 } from "@hot-updater/plugin-core";
+import { getInsightsEventPageCursorLimit } from "@hot-updater/plugin-core/internal";
 
 import { HotUpdaterSchemaMigrationRequiredError } from "../db/schemaReadiness";
 import type { RouteHandler } from "../handlerTypes";
@@ -42,9 +43,7 @@ const parseInput = (request: Request): EventHistoryPageInput => {
     limit < 1 ||
     limit > 100 ||
     (cursor !== null &&
-      (cursor.length === 0 ||
-        cursor.length > 8_192 ||
-        !params.has("beforeReceivedAtMs")))
+      (cursor.length === 0 || !params.has("beforeReceivedAtMs")))
   )
     invalid();
   const beforeReceivedAtMs = integer("beforeReceivedAtMs", Date.now());
@@ -67,14 +66,14 @@ const parseInput = (request: Request): EventHistoryPageInput => {
   } else if (
     kind === "installation" &&
     bundleId === null &&
-    installId !== null &&
-    installId.length > 0 &&
-    installId.length <= 1_024
+    installId !== null
   ) {
     scope = { kind, installId };
   } else {
     return invalid();
   }
+  if (cursor !== null && cursor.length > getInsightsEventPageCursorLimit(scope))
+    invalid();
   return {
     scope,
     limit,

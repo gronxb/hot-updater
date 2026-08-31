@@ -10,6 +10,10 @@ import { assertPostgresInsightsSourceIndex } from "./postgresInsightsSource";
 
 export { createPostgresInsightsReportWorker } from "./postgresInsightsReports";
 export { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
+export {
+  getPostgresInsightsInstallationEventsMigrationSQL,
+  migratePostgresInsightsInstallationEvents,
+} from "./postgresInsightsEventMigration";
 
 export const getPostgresInsightsSourceMigrationSQL = (): Promise<string> =>
   readFile(new URL("../sql/insights-source-v1.sql", import.meta.url), "utf8");

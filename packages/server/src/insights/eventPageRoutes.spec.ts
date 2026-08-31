@@ -12,7 +12,10 @@ import { API_KEY_HEADER_NAME } from "../apiKeys";
 import { createHotUpdater } from "../createHotUpdaterCore";
 import { HotUpdaterSchemaMigrationRequiredError } from "../db/schemaReadiness";
 
-const setup = (native = true) => {
+const setup = (
+  native = true,
+  scopes: InsightsEventQueries["scopes"] = ["all"],
+) => {
   const database = createInMemoryDatabasePlugin();
   const page = vi
     .fn<InsightsEventQueries["page"]>()
@@ -28,7 +31,7 @@ const setup = (native = true) => {
           ...database.models.insights,
           ...(native
             ? {
-                events: { version: 1 as const, scopes: ["all" as const], page },
+                events: { version: 1 as const, scopes, page },
               }
             : {}),
         },
@@ -46,6 +49,42 @@ const request = (query = "") =>
 afterEach(() => vi.useRealTimers());
 
 describe("versioned admin event pages", () => {
+  it.each(["", '\\"😀'.repeat(4000)])(
+    "preserves installation identities and their full continuation in HTTP",
+    async (installId) => {
+      const { server, page, scan } = setup(true, ["installation"]);
+      const cursor = JSON.stringify([
+        1,
+        JSON.stringify(["installation", installId]),
+        1000,
+        0,
+        1,
+        "event",
+      ]);
+      page.mockResolvedValueOnce({ rows: [], nextCursor: cursor });
+      const params = new URLSearchParams({
+        scope: "installation",
+        installId,
+        beforeReceivedAtMs: "1000",
+      });
+      const first = await server.handlers.admin(request(params.toString()));
+      expect(first.status).toBe(200);
+      expect(await first.json()).toMatchObject({
+        pagination: { nextCursor: cursor },
+      });
+      params.set("cursor", cursor);
+      const next = await server.handlers.admin(request(params.toString()));
+      expect(next.status).toBe(200);
+      expect(page).toHaveBeenLastCalledWith({
+        scope: { kind: "installation", installId },
+        limit: 50,
+        beforeReceivedAtMs: 1000,
+        cursor,
+      });
+      expect(page).toHaveBeenCalledTimes(2);
+      expect(scan).not.toHaveBeenCalled();
+    },
+  );
   it("requires the host admin credential even when the caller holds a valid client API key", async () => {
     const { server, page } = setup();
     const { apiKey } = await server.apiKeys.create({ name: "Test client" });

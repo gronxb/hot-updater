@@ -42,21 +42,31 @@ read budget still need implementation evidence.
 
 ### Current validation
 
-The historical contains additions passed the full workspace build (26 projects),
-type checks (34 projects), root lint, changeset validation and all 2,664 unit tests
-in 298 files. A standard PostgreSQL integration run passed all 19 source, job,
-ordering, page, alias and search tests across seven files. The prior preparation
+The current PostgreSQL installation additions passed the full workspace build
+(26 projects), type checks (34 projects), root lint, changeset validation and all
+2,678 unit tests in 299 files. A standard PostgreSQL integration run passed all
+41 source, job, report, alias, search, exact-installation and movement-page tests
+across nine files. The prior preparation
 slice at `35e0e81d6` also passed 28 MongoDB preparation/native-reader integration
 tests; those are historical results, not another MongoDB run for this update.
 
-Built PostgreSQL DB tooling loads the shipped search/reference/order schema,
-retries migration and runs an idle worker under both ESM and CommonJS. Executing
+The [MongoDB committed-source plan](./insights-mongodb-source-plan.md) now records
+the required atomic writer, one-ID ledger/markers, bounded preparation and causal
+source consumption. It is unimplemented architecture rather than validation.
+It also keeps near-16 MiB command acceptance, the current event-ID domain mismatch,
+legacy EJSON checkpoints and real lag/stepdown proof as explicit release gates.
+
+Built PostgreSQL DB tooling additionally loads and repeats the two concurrent
+installation index statements and serves a native movement page under both ESM
+and CommonJS. It also loads the shipped search/reference/order schema, retries
+report migration and runs an idle worker. Executing
 the documented derived-state reset preserves an actual raw event and its source
 generation in both formats. Independent review approved only the internal
-PostgreSQL report, identity and contains implementation. The final all-provider
-implementation and standalone E2E remain pending. The [current validation record](./insights-scale-evidence/contains-validation.json)
-includes 18 source hashes, 17 test hashes, 18 actual native plans, fixture sizes
-and explicit limits. The [identity record](./insights-scale-evidence/identity-validation.json),
+PostgreSQL report, identity, contains and installation-detail implementation. The
+final all-provider implementation and standalone E2E remain pending. The
+[current validation record](./insights-scale-evidence/installations-validation.json)
+includes current source/test hashes, 52 actual native plans, fixture sizes and
+explicit limits. The [contains record](./insights-scale-evidence/contains-validation.json), [identity record](./insights-scale-evidence/identity-validation.json),
 [report-page record](./insights-scale-evidence/report-pages-validation.json) and
 [preparation record](./insights-scale-evidence/report-preparation-validation.json)
 retain their preceding verification without relabeling it as current.
@@ -109,6 +119,49 @@ Private storage revision 2 directly replaces the unreleased draft layout, with
 an explicit derived-only reset and no old-format decoder. This is still internal
 PostgreSQL code: public provider/HTTP/RPC/Console wiring, live all/exact browsing,
 other providers and bounded retention remain release gates.
+
+### Native PostgreSQL installation detail
+
+Exact installation lookup now uses the existing three-key installation index to
+read one latest event across all four types. It samples the database clock during
+readiness and excludes future-dated events with a strict upper bound. Results
+retain empty, long, case-sensitive and normalization-distinct IDs. NUL and lone
+surrogate requests safely return no row instead of being changed by the driver.
+
+A first actual PostgreSQL plan exposed a correctness-of-budget problem rather
+than a semantic mismatch. After statistics described one busy installation,
+50,003 newer unrelated events arrived without a new `ANALYZE`. Scalar equality
+let PostgreSQL discard the installation key from ordering, choose the global time
+index and filter all 50,003 rows. A singleton array predicate plus complete
+three-key ordering keeps the native installation path. Final PostgreSQL 15 and
+17 custom/generic plans read zero or one row with no filter, sort, bitmap or
+sequential scan. The original global index remains present and scan-method
+settings are not forced.
+
+Installation movement pages merge only `UPDATE_APPLIED` and `RECOVERED`. Two
+type-specific partial indexes keep the old three-key width; a four-key replacement
+could newly reject a long identity that already fits. The native executor fixes
+event types as SQL literals and binds all caller values. The same statistics-lag
+case initially made one movement stream filter 50,003 global rows; retaining the
+complete installation-key order fixed its custom and generic plans too.
+
+The explicit online migration creates these two indexes outside a transaction.
+Its first blocking advisory-lock design deadlocked: its lock query held an old
+snapshot that concurrent index creation needed to drain. Preparation now uses a
+fail-fast session lock. Native concurrency verifies one winner, one visible busy
+result and a successful explicit retry. Missing, wrong-predicate or mismatched
+collation indexes stop before raw reads.
+
+Shared, server and route cursor validators now accept the stored installation ID
+domain, including empty and long values, and use one bound that accounts for the
+scope's outer JSON escaping. Bundle and event-ID validation remain separately
+bounded; this slice does not claim to resolve their broader legacy-domain gates.
+The [deployment and semantic details](./insights-postgres-installations.md) record
+the explicit preparation and current limits.
+
+These helpers are still behind the prototype event-page path or internal-only.
+The required public installation port, live all-installation enumeration and the
+coordinated provider/HTTP/RPC/Console cutover remain unfinished.
 
 ### Immutable historical aliases and latest installation lookup
 

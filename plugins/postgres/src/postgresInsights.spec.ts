@@ -1,11 +1,13 @@
 import fs from "node:fs/promises";
 
 import { PGlite } from "@electric-sql/pglite";
+import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createHotUpdater } from "../../../packages/server/src/createHotUpdaterCore";
 import { postgres } from "./postgres";
+import { migratePostgresInsightsInstallationEvents } from "./postgresInsightsEventMigration";
 
 const bundleId = "00000000-0000-0000-0000-000000000001";
 const otherBundleId = "00000000-0000-0000-0000-000000000002";
@@ -26,6 +28,7 @@ const nodes = (plan: QueryPlan): readonly QueryPlan[] => [
 describe("PostgreSQL native Insights pages", () => {
   const client = new PGlite();
   const plugin = postgres({ dialect: new PGliteDialect(client) });
+  const db = new Kysely<object>({ dialect: new PGliteDialect(client) });
   const server = createHotUpdater({
     database: plugin,
     clientAccess: { type: "public" },
@@ -50,6 +53,21 @@ describe("PostgreSQL native Insights pages", () => {
       from generate_series(0,102) n;
       analyze bundle_events;
     `);
+    for (const [index, installId] of [
+      "",
+      '\\"😀'.repeat(4000),
+      "\uFFFD",
+    ].entries()) {
+      await client.query(
+        `insert into bundle_events (id,type,install_id,from_bundle_id,to_bundle_id,platform,app_version,channel,cohort,update_strategy,received_at_ms)
+        select ('30000000-0000-0000-0000-' || lpad(($1::int * 10+n)::text,12,'0'))::uuid,
+          case when n = 1 then 'UPDATE_APPLIED' else 'RECOVERED' end,
+          $2, $3::uuid, $3::uuid, 'ios','1.0.0','production','default','appVersion',70000
+        from generate_series(1,2)n`,
+        [index, installId, bundleId],
+      );
+    }
+    await migratePostgresInsightsInstallationEvents(db);
     await client.exec(
       await fs.readFile("plugins/postgres/sql/insights-source-v1.sql", "utf8"),
     );
@@ -254,10 +272,136 @@ describe("PostgreSQL native Insights pages", () => {
       await expect(
         plugin.models.insights.events!.page(input),
       ).resolves.toMatchObject({ rows: [expect.any(Object)] });
-      expect(plugin.models.insights.events!.scopes).toEqual(["all", "bundle"]);
+      expect(plugin.models.insights.events!.scopes).toEqual([
+        "all",
+        "bundle",
+        "installation",
+      ]);
     } finally {
       query.mockRestore();
     }
+  });
+
+  it("pages only installation movements with exact inclusive/exclusive boundaries and timestamp ties", async () => {
+    const input = {
+      scope: { kind: "installation", installId: "install-a" },
+      sinceReceivedAtMs: 60000,
+      beforeReceivedAtMs: 60001,
+      limit: 17,
+    } as const;
+    const ids: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await server.insights.eventPages!.getPage({
+        ...input,
+        cursor,
+      });
+      ids.push(...page.data.map(({ id }) => id));
+      expect(
+        page.data.every(
+          (row) =>
+            row.installId === "install-a" &&
+            ["UPDATE_APPLIED", "RECOVERED"].includes(row.type),
+        ),
+      ).toBe(true);
+      cursor = page.pagination.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+    expect(ids).toEqual(
+      Array.from(
+        { length: 103 },
+        (_, n) =>
+          `20000000-0000-0000-0000-${String(102 - n).padStart(12, "0")}`,
+      ),
+    );
+    const empty = await server.insights.eventPages!.getPage({
+      ...input,
+      beforeReceivedAtMs: 60000,
+    });
+    expect(empty.data).toEqual([]);
+  });
+
+  it.each(["", '\\"😀'.repeat(4000)])(
+    "keeps empty and long installation IDs exact through server continuation",
+    async (installId) => {
+      const input = {
+        scope: { kind: "installation", installId },
+        beforeReceivedAtMs: 70001,
+        limit: 1,
+      } as const;
+      const first = await server.insights.eventPages!.getPage(input);
+      expect(first.data).toHaveLength(1);
+      expect(first.data[0]?.installId).toBe(installId);
+      const last = await server.insights.eventPages!.getPage({
+        ...input,
+        cursor: first.pagination.nextCursor!,
+      });
+      expect(last.data).toHaveLength(1);
+      expect(last.data[0]?.id).not.toBe(first.data[0]?.id);
+      expect(last.pagination.nextCursor).toBeNull();
+    },
+  );
+
+  it("returns no match for unrepresentable PostgreSQL text without driver replacement or event reads", async () => {
+    const query = vi.spyOn(client, "query");
+    try {
+      for (const installId of ["\0", "\uD800", "\uDC00"])
+        expect(
+          await plugin.models.insights.events!.page({
+            scope: { kind: "installation", installId },
+            beforeReceivedAtMs: 70001,
+            limit: 1,
+          }),
+        ).toEqual({ rows: [], nextCursor: null });
+      expect(query.mock.calls).toHaveLength(3);
+      expect(
+        query.mock.calls.some(([statement]) =>
+          statement.includes('from "bundle_events"'),
+        ),
+      ).toBe(false);
+    } finally {
+      query.mockRestore();
+    }
+  });
+
+  it("fails before events for incomplete or wrong movement indexes and keeps migration explicit", async () => {
+    await client.exec("drop index bundle_events_install_applied_idx");
+    const query = vi.spyOn(client, "query");
+    const input = {
+      scope: { kind: "installation", installId: "install-a" },
+      beforeReceivedAtMs: 60001,
+      limit: 1,
+    } as const;
+    try {
+      await expect(
+        plugin.models.insights.events!.page(input),
+      ).rejects.toMatchObject({ code: "INSIGHTS_QUERY_NOT_READY" });
+      await expect(
+        migratePostgresInsightsInstallationEvents(db),
+      ).rejects.toMatchObject({ code: "INSIGHTS_QUERY_NOT_READY" });
+      await client.exec(
+        "create index bundle_events_install_applied_idx on bundle_events(install_id,received_at_ms,id) where type='UNCHANGED'",
+      );
+      await expect(
+        plugin.models.insights.events!.page(input),
+      ).rejects.toMatchObject({ code: "INSIGHTS_QUERY_NOT_READY" });
+      expect(
+        query.mock.calls.some(([statement]) =>
+          statement.includes('from "bundle_events"'),
+        ),
+      ).toBe(false);
+    } finally {
+      query.mockRestore();
+      await client.exec(
+        "drop index bundle_events_install_applied_idx; drop index bundle_events_install_recovered_idx",
+      );
+      await migratePostgresInsightsInstallationEvents(db);
+    }
+    await migratePostgresInsightsInstallationEvents(db);
+    await expect(
+      db
+        .transaction()
+        .execute((tx) => migratePostgresInsightsInstallationEvents(tx)),
+    ).rejects.toThrow("root database connection");
   });
 
   it("rejects noncanonical UUID scope and cursor input before catalog or event queries", async () => {

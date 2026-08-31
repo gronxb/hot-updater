@@ -1,4 +1,5 @@
 import type { InsightsEventQueries } from "@hot-updater/plugin-core";
+import { getInsightsEventPageCursorLimit } from "@hot-updater/plugin-core/internal";
 
 import { compareEventNewest } from "./bounded/scan";
 import type { InsightsEventPages } from "./domain";
@@ -24,18 +25,22 @@ export const createInsightsEventPages = (
           input.sinceReceivedAtMs < 0 ||
           input.sinceReceivedAtMs > input.beforeReceivedAtMs)) ||
       !queries.scopes.includes(input.scope?.kind) ||
-      (input.cursor !== undefined &&
-        (typeof input.cursor !== "string" ||
-          input.cursor.length === 0 ||
-          input.cursor.length > 8_192)) ||
       (input.scope.kind !== "all" &&
         (() => {
           const id =
             input.scope.kind === "bundle"
               ? input.scope.bundleId
               : input.scope.installId;
-          return typeof id !== "string" || id.length === 0 || id.length > 1_024;
-        })())
+          return (
+            typeof id !== "string" ||
+            (input.scope.kind === "bundle" &&
+              (id.length === 0 || id.length > 1_024))
+          );
+        })()) ||
+      (input.cursor !== undefined &&
+        (typeof input.cursor !== "string" ||
+          input.cursor.length === 0 ||
+          input.cursor.length > getInsightsEventPageCursorLimit(input.scope)))
     ) {
       throw new InsightsBadRequestError("Invalid event page input.");
     }
@@ -81,7 +86,8 @@ export const createInsightsEventPages = (
       (page.nextCursor !== null &&
         (typeof page.nextCursor !== "string" ||
           page.nextCursor.length === 0 ||
-          page.nextCursor.length > 8_192 ||
+          page.nextCursor.length >
+            getInsightsEventPageCursorLimit(input.scope) ||
           page.nextCursor === input.cursor))
     ) {
       throw new Error(

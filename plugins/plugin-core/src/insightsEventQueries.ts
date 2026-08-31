@@ -38,13 +38,25 @@ const scopeKey = (scope: InsightsEventScope): string => {
     throw new DatabasePluginInputError("invalid-query");
   }
   if (scope.kind === "all") return JSON.stringify(["all"]);
-  if (scope.kind === "installation" && isIdentifier(scope.installId)) {
+  if (scope.kind === "installation" && typeof scope.installId === "string") {
     return JSON.stringify([scope.kind, scope.installId]);
   }
   if (scope.kind === "bundle" && isIdentifier(scope.bundleId)) {
     return JSON.stringify([scope.kind, scope.bundleId]);
   }
   throw new DatabasePluginInputError("invalid-query");
+};
+
+// The bookmark repeats the exact scope. Account for its outer JSON escaping,
+// without imposing a new length restriction on stored installation identities.
+export const getInsightsEventPageCursorLimit = (
+  scope: InsightsEventScope,
+): number => {
+  const key = scopeKey(scope);
+  return (
+    MAX_CURSOR_LENGTH +
+    (scope.kind === "installation" ? JSON.stringify(key).length : 0)
+  );
 };
 
 export const compareInsightsEventRows = (
@@ -61,7 +73,7 @@ const readCursor = (
   if (input.cursor === undefined) return undefined;
   if (
     typeof input.cursor !== "string" ||
-    input.cursor.length > MAX_CURSOR_LENGTH
+    input.cursor.length > getInsightsEventPageCursorLimit(input.scope)
   ) {
     throw new DatabasePluginInputError("invalid-query");
   }
@@ -121,7 +133,7 @@ export const createInsightsEventPageCursor = (
     last.receivedAtMs,
     last.id,
   ]);
-  if (cursor.length > MAX_CURSOR_LENGTH) {
+  if (cursor.length > getInsightsEventPageCursorLimit(input.scope)) {
     throw new DatabasePluginInputError("invalid-result");
   }
   return cursor;
