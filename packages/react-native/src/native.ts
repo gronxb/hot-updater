@@ -687,7 +687,7 @@ export const isChannelSwitched = (): boolean => {
  */
 export const getFingerprintHash = (): string | null => {
   const constants = HotUpdaterNative.getConstants();
-  return constants.FINGERPRINT_HASH;
+  return constants.FINGERPRINT_HASH ?? null;
 };
 
 export const getInstallId = (): string => {

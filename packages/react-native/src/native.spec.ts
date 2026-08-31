@@ -728,6 +728,20 @@ describe("notifyAppReady", () => {
     expect(getInstallId()).toBe("install-123");
   });
 
+  it("normalizes an omitted native fingerprint constant to null", async () => {
+    nativeModuleMock.getConstants.mockReturnValue({
+      APP_VERSION: null,
+      CHANNEL: "production",
+      DEFAULT_CHANNEL: "production",
+      FINGERPRINT_HASH: undefined as unknown as null,
+      MIN_BUNDLE_ID: "min-bundle-id",
+    });
+
+    const { getFingerprintHash } = await import("./native");
+
+    expect(getFingerprintHash()).toBeNull();
+  });
+
   it("throws when native SDK does not expose getInstallId", async () => {
     const nativeModule = nativeModuleMock as typeof nativeModuleMock & {
       getInstallId?: typeof nativeModuleMock.getInstallId;
