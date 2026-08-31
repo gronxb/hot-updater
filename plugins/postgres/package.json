@@ -10,6 +10,10 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
+    "./db": {
+      "import": "./dist/db.mjs",
+      "require": "./dist/db.cjs"
+    },
     "./package.json": "./package.json"
   },
   "types": "./dist/index.d.cts",

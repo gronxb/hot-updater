@@ -50,6 +50,9 @@ describe("PostgreSQL native Insights pages", () => {
       from generate_series(0,102) n;
       analyze bundle_events;
     `);
+    await client.exec(
+      await fs.readFile("plugins/postgres/sql/insights-source-v1.sql", "utf8"),
+    );
   });
 
   afterAll(async () => {
@@ -164,6 +167,53 @@ describe("PostgreSQL native Insights pages", () => {
         );
       }
       expect(examined).toBeLessThanOrEqual(8);
+    } finally {
+      query.mockRestore();
+    }
+  });
+
+  it("does not read older history while exhausting an inclusive window", async () => {
+    const query = vi.spyOn(client, "query");
+    try {
+      const input = {
+        scope: { kind: "all" },
+        sinceReceivedAtMs: 60_000,
+        beforeReceivedAtMs: 60_001,
+        limit: 100,
+      } as const;
+      const first = await server.insights.eventPages!.getPage(input);
+      const last = await server.insights.eventPages!.getPage({
+        ...input,
+        cursor: first.pagination.nextCursor!,
+      });
+      expect(first.data).toHaveLength(100);
+      expect(last.data).toHaveLength(3);
+      expect(last.pagination.nextCursor).toBeNull();
+      const reads = query.mock.calls.filter(([statement]) =>
+        statement.includes('from "bundle_events"'),
+      );
+      expect(reads).toHaveLength(3);
+      for (const [statement, parameters] of reads) {
+        const explain = await client.query<{
+          "QUERY PLAN": readonly { Plan: QueryPlan }[];
+        }>(`EXPLAIN (ANALYZE, FORMAT JSON) ${statement}`, parameters);
+        const plan = nodes(explain.rows[0]!["QUERY PLAN"][0]!.Plan);
+        expect(
+          plan.some((node) => /Sort|Seq Scan/.test(node["Node Type"])),
+        ).toBe(false);
+        expect(
+          plan.every((node) => (node["Rows Removed by Filter"] ?? 0) === 0),
+        ).toBe(true);
+      }
+      query.mockClear();
+      await expect(
+        server.insights.eventPages!.getPage({
+          ...input,
+          sinceReceivedAtMs: 59_999,
+          cursor: first.pagination.nextCursor!,
+        }),
+      ).rejects.toMatchObject({ code: "invalid-query" });
+      expect(query).not.toHaveBeenCalled();
     } finally {
       query.mockRestore();
     }

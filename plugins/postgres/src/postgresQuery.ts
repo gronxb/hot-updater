@@ -3,6 +3,7 @@ import type {
   DatabaseImplementationResult,
   FindManyDatabaseImplementationInput,
 } from "@hot-updater/plugin-core/internal";
+import { databaseFields } from "@hot-updater/plugin-core/internal";
 import type { Kysely, OrderByItemBuilder, RawBuilder } from "kysely";
 
 import type { Database } from "./types";
@@ -95,7 +96,9 @@ export const findManyPostgresRows = async (
       return query.limit(input.limit).offset(input.offset).execute();
     }
     case "bundle_events": {
-      let query = db.selectFrom("bundle_events").selectAll();
+      let query = db
+        .selectFrom("bundle_events")
+        .select(databaseFields.bundle_events);
       if (where !== undefined) query = query.where(where);
       if (input.distinctOn !== undefined) {
         query = query.distinctOn(input.distinctOn.fields);

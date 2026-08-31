@@ -1,0 +1,46 @@
+import { readFile } from "node:fs/promises";
+
+import { sql, type Kysely } from "kysely";
+
+import { assertPostgresInsightsSourceIndex } from "./postgresInsightsSource";
+
+export { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
+
+export const getPostgresInsightsSourceMigrationSQL = (): Promise<string> =>
+  readFile(new URL("../sql/insights-source-v1.sql", import.meta.url), "utf8");
+
+/** Explicit DB tooling: schema cutover only, never a data backfill. */
+export const migratePostgresInsightsSource = async <TDatabase extends object>(
+  db: Kysely<TDatabase>,
+): Promise<void> => {
+  if (db.isTransaction)
+    throw new Error("Source migration requires a root database connection.");
+  const migration = await getPostgresInsightsSourceMigrationSQL();
+  await db.transaction().execute(async (transaction) => {
+    await sql`select pg_advisory_xact_lock(hashtext('hot-updater:insights-source:v1'))`.execute(
+      transaction,
+    );
+    const installed = await sql<{ present: boolean }>`select
+      to_regclass('private_hot_updater_insights_source_state') is not null as present`.execute(
+      transaction,
+    );
+    if (installed.rows[0]?.present) {
+      const version = await sql<{ version: number }>`select version from
+        private_hot_updater_insights_source_state where id = 1`.execute(
+        transaction,
+      );
+      if (version.rows[0]?.version !== 1)
+        throw new Error("Invalid PostgreSQL Insights source layout.");
+      await assertPostgresInsightsSourceIndex(transaction);
+      return;
+    }
+    // This owned migration consists only of plain DDL, without function bodies.
+    for (const statement of migration
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)) {
+      await sql.raw(statement).execute(transaction);
+    }
+    await assertPostgresInsightsSourceIndex(transaction);
+  });
+};

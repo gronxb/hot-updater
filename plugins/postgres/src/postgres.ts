@@ -1,4 +1,7 @@
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  createDatabasePlugin,
+  type DatabaseCommit,
+} from "@hot-updater/plugin-core";
 import type {
   CreateDatabaseImplementationInput,
   DatabaseModel,
@@ -22,6 +25,10 @@ import {
 import pg, { type PoolConfig } from "pg";
 
 import { createPostgresInsightsEventQueries } from "./postgresInsights";
+import {
+  appendPostgresInsightsEvent,
+  lockPostgresEventSourceShards,
+} from "./postgresInsightsSource";
 import { countPostgresRows, findManyPostgresRows } from "./postgresQuery";
 import type { Database } from "./types";
 
@@ -140,6 +147,7 @@ const buildWhere = (
 
 const createPostgresImplementation = (
   db: Kysely<Database>,
+  commitInput?: DatabaseCommit,
 ): DatabasePluginImplementation => ({
   async create(input: CreateDatabaseImplementationInput) {
     switch (input.model) {
@@ -156,11 +164,7 @@ const createPostgresImplementation = (
           .returningAll()
           .executeTakeFirstOrThrow();
       case "bundle_events":
-        return db
-          .insertInto("bundle_events")
-          .values(input.data)
-          .returningAll()
-          .executeTakeFirstOrThrow();
+        return appendPostgresInsightsEvent(db, input.data);
       case "releases":
         return db
           .insertInto("releases")
@@ -341,11 +345,17 @@ const createPostgresImplementation = (
     }
   },
   transaction: (callback) =>
-    db
-      .transaction()
-      .execute((transaction) =>
-        callback(createPostgresImplementation(transaction)),
-      ),
+    db.transaction().execute(async (transaction) => {
+      // Adapter validation runs before this callback. Lock every event shard
+      // in a consistent order before mixed changes can acquire other locks.
+      await lockPostgresEventSourceShards(
+        transaction,
+        commitInput?.changes.flatMap((change) =>
+          change.model === "insights" ? [change.row.id] : [],
+        ) ?? [],
+      );
+      return callback(createPostgresImplementation(transaction));
+    }),
   dispose: () => db.destroy(),
 });
 
@@ -371,7 +381,11 @@ export const postgres = (config: PostgresConfig) => {
         events: createPostgresInsightsEventQueries(db, implementation),
       },
     },
-    commit: adapter.commit,
+    commit: (input) =>
+      createDatabasePluginAdapter(
+        "postgres",
+        createPostgresImplementation(db, input),
+      ).commit(input),
     dispose: adapter.dispose,
   });
 };
