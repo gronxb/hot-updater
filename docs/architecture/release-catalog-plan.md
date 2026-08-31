@@ -1011,10 +1011,11 @@ Insights-event, and `/version` HTTP protocol. A custom backend exposes that
 protocol through an adapter or proxy instead of injecting transport callbacks
 into the React Native runtime.
 
-Public/internal observability adds:
+The public update ID matches the console. Receipt state remains an internal
+diagnostic surface:
 
 ```ts
-HotUpdater.getReleaseId(): Promise<string | null>;
+HotUpdater.getBundleId(): string;
 HotUpdater.getActiveUpdateState(): Promise<ActiveUpdateState>;
 ```
 
@@ -1167,9 +1168,12 @@ stay top-level.
 Columns:
 
 ```text
-Release ID | Bundle ID | Channel | Platform | Target
+ID | Channel | Platform | Target
 Enabled | Force | Rollout | Operation | Message | Created
 ```
+
+ID is `release.id`, matching `HotUpdater.getBundleId()`. File IDs appear only
+in Advanced diagnostics and downloads.
 
 Editable policy is message, target, enabled, force, rollout, and target cohorts.
 Identity/provenance is read-only. Every editor/action calls Release RPCs and

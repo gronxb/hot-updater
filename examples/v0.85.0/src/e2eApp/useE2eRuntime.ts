@@ -158,15 +158,14 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
       }
 
       const installed = await updateInfo.updateBundle();
-      const releaseLabel = updateInfo.releaseId ?? "legacy";
       const appliedResult =
         updateInfo.transitionKind === "ADOPT_RELEASE"
-          ? `${actionLabel} -> adopted Release ${releaseLabel} / Bundle ${updateInfo.id}`
+          ? `${actionLabel} -> adopted ID ${updateInfo.id}`
           : updateInfo.transitionKind === "USE_EMBEDDED"
-            ? `${actionLabel} -> selected EMBEDDED Release ${releaseLabel}`
+            ? `${actionLabel} -> selected EMBEDDED ID ${updateInfo.id}`
             : updateInfo.transitionKind === "USE_BUILTIN"
               ? `${actionLabel} -> selected BUILTIN`
-              : `${actionLabel} -> installed Release ${releaseLabel} / Bundle ${updateInfo.id}`;
+              : `${actionLabel} -> installed ID ${updateInfo.id}`;
       await setUpdateActionResult(
         installed ? appliedResult : `${actionLabel} -> skipped`,
       );

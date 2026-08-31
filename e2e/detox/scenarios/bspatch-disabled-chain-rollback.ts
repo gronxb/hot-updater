@@ -247,7 +247,7 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert chain bundle B rollback action result",
       "update-action-result",
-      "current-channel -> installed Release $releaseB / Bundle $bundleB",
+      "current-channel -> installed ID $releaseB",
       { exactText: true },
     );
     await app.control(
@@ -304,7 +304,7 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert chain bundle A rollback action result",
       "update-action-result",
-      "current-channel -> installed Release $releaseA / Bundle $bundleA",
+      "current-channel -> installed ID $releaseA",
       { exactText: true },
     );
     await app.control(

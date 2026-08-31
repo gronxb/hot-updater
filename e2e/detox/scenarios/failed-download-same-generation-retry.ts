@@ -40,7 +40,7 @@ export const failedDownloadSameGenerationRetryScenario: DetoxScenarioDefinition 
       await app.assertText(
         "assert same generation retry installed",
         "update-action-result",
-        "current-channel -> installed Release $retryReleaseId / Bundle $retryBundleId",
+        "current-channel -> installed ID $retryReleaseId",
         { exactText: true },
       );
       await app.control(

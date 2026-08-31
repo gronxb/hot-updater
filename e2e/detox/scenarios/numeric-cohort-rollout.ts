@@ -61,7 +61,7 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert rollout action result",
       "update-action-result",
-      "current-channel -> installed Release $releaseId / Bundle $bundleId",
+      "current-channel -> installed ID $releaseId",
       { exactText: true },
     );
     await app.control(

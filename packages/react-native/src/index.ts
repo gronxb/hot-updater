@@ -10,7 +10,7 @@ import {
   clearCrashHistory,
   getAppVersion,
   getBaseURL,
-  getBundleId,
+  getUpdateId,
   getChannel,
   getCohort,
   getCrashHistory,
@@ -19,7 +19,6 @@ import {
   getInstallId,
   getManifest,
   getMinBundleId,
-  getReleaseId,
   isChannelSwitched,
   notifyAppReady,
   reload,
@@ -336,15 +335,13 @@ function createHotUpdaterClient() {
     getActiveUpdateState: async () => getPublicActiveUpdateState(),
 
     /**
-     * Fetches the current bundle ID of the app.
+     * Returns the selected update ID, matching the ID shown in the console.
+     * A staged update can change this ID before the app reloads.
      */
-    getBundleId,
+    getBundleId: getUpdateId,
 
     /** Returns the minimum bundle ID based on the native app build time. */
     getMinBundleId,
-
-    /** Returns the active Release identity, or null for BUILTIN/legacy state. */
-    getReleaseId,
 
     /**
      * Fetches the current manifest for the active bundle.

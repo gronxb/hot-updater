@@ -98,16 +98,19 @@ When `withBugsnag()` wraps your build plugin, all generated sourcemaps are uploa
 
 ## Step 2: Set the `codeBundleId` in Your App
 
-BugSnag matches errors from OTA-updated apps to the uploaded sourcemaps through the `codeBundleId`. Pass the current hot-updater bundle id when starting BugSnag:
+BugSnag matches errors from OTA-updated apps to the uploaded sourcemaps through the `codeBundleId`. Pass the file identifier from the current manifest when starting BugSnag:
 
 ```tsx title="App.tsx"
 import Bugsnag from "@bugsnag/react-native";
 import { HotUpdater } from "@hot-updater/react-native";
 
 Bugsnag.start({
-  codeBundleId: HotUpdater.getBundleId(), // [!code ++]
+  codeBundleId: HotUpdater.getManifest().bundleId, // [!code ++]
 });
 ```
+
+This keeps sourcemap matching tied to the running code, including when the
+same files are promoted to another channel.
 
 ## Step 3: Deploy
 

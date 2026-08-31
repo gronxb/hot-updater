@@ -27,7 +27,7 @@ export const fingerprintInitialInstallScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert fingerprint install",
       "update-action-result",
-      "fingerprint -> installed Release $fingerprintReleaseId / Bundle $fingerprintBundleId",
+      "fingerprint -> installed ID $fingerprintReleaseId",
       { exactText: true },
     );
     await app.control(

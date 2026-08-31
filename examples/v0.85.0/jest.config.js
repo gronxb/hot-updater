@@ -11,7 +11,7 @@ module.exports = {
   },
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
   transformIgnorePatterns: [
-    `${path.resolve(__dirname, "../../node_modules/.pnpm")}/(?!(react-native|jest-react-native|@react-native\\+.*|@react-native-community\\+.*)@)`,
-    "node_modules/(?!.pnpm|((jest-)?react-native|@react-native(-community)?)/)",
+    `${path.resolve(__dirname, "../../node_modules/.pnpm")}/(?!(react-native|jest-react-native|@react-native\\+.*|@react-native-community\\+.*|@react-navigation\\+.*)@)`,
+    "node_modules/(?!.pnpm|((jest-)?react-native|@react-native(-community)?|@react-navigation)/)",
   ],
 };

@@ -68,8 +68,7 @@ const releaseTable = (
 ): string =>
   ui.table(
     [
-      { key: "release", label: "Release ID", format: ui.id },
-      { key: "bundle", label: "Bundle / Embedded", format: ui.id },
+      { key: "release", label: "ID", format: ui.id },
       { key: "channel", label: "Channel", format: ui.channel },
       { key: "platform", label: "Platform", format: ui.platform },
       { key: "target", label: "Target", format: ui.version },
@@ -81,7 +80,6 @@ const releaseTable = (
       { key: "created", label: "Created" },
     ],
     releases.map((release) => ({
-      bundle: release.bundle_id ?? "Embedded",
       channel: channels.get(release.channel_id) ?? release.channel_id,
       created: new Date(release.created_at_ms).toISOString(),
       enabled: release.enabled ? "yes" : "no",
@@ -97,11 +95,7 @@ const releaseTable = (
 
 const releaseSummary = (release: ReleaseRow, channelName: string): string =>
   ui.block("Release", [
-    ui.kv("Release ID", ui.id(release.id)),
-    ui.kv(
-      "Bundle",
-      release.bundle_id === null ? "Embedded" : ui.id(release.bundle_id),
-    ),
+    ui.kv("ID", ui.id(release.id)),
     ui.kv("Revision", String(release.revision)),
     ui.kv("Scope", ui.muted(release.scope_key)),
     ui.kv("Channel", ui.channel(channelName)),

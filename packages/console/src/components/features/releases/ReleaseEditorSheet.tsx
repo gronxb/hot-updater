@@ -1,4 +1,5 @@
 import {
+  getPatchBaseBundleId,
   INVALID_COHORT_ERROR_MESSAGE,
   isValidCohort,
   normalizeCohortValue,
@@ -215,6 +216,7 @@ export function ReleaseEditorSheet({
   const release = releaseQuery.data;
   const bundleQuery = useBundleQuery(release?.bundle_id ?? "");
   const bundle = bundleQuery.data;
+  const patchBaseBundleId = bundle ? getPatchBaseBundleId(bundle) : null;
   const diagnostics = useReleaseCatalogDiagnosticsQuery(
     release?.scope_key ?? "",
   );
@@ -340,9 +342,9 @@ export function ReleaseEditorSheet({
       >
         <SheetContent className="min-w-0 overflow-hidden data-[side=right]:w-full sm:max-w-[600px]">
           <SheetHeader className="shrink-0 pr-12">
-            <SheetTitle>Bundle Detail</SheetTitle>
+            <SheetTitle>Release Detail</SheetTitle>
             <SheetDescription className="sr-only">
-              Edit bundle delivery settings.
+              Edit release delivery settings.
             </SheetDescription>
             {release ? (
               <div className="mt-1 flex min-w-0 flex-col gap-3 text-sm">
@@ -358,21 +360,18 @@ export function ReleaseEditorSheet({
                   </div>
                 </div>
                 <div className="flex flex-wrap items-start gap-2">
-                  <span className="font-medium text-muted-foreground">
-                    Bundle
-                  </span>
+                  <span className="font-medium text-muted-foreground">ID</span>
                   <span className="min-w-0 basis-full sm:basis-auto">
-                    {release.bundle_id ? (
-                      <BundleIdDisplay
-                        bundleId={release.bundle_id}
-                        fullOnMobile
-                        maxLength={18}
-                      />
-                    ) : (
+                    <BundleIdDisplay
+                      bundleId={release.id}
+                      fullOnMobile
+                      maxLength={18}
+                    />
+                    {!release.bundle_id ? (
                       <span className="text-xs text-foreground">
                         Built-in app
                       </span>
-                    )}
+                    ) : null}
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -656,9 +655,9 @@ export function ReleaseEditorSheet({
                   </summary>
                   <dl className="mt-4 grid gap-3 text-muted-foreground sm:grid-cols-2">
                     <div className="sm:col-span-2">
-                      <dt>Release ID</dt>
+                      <dt>File ID</dt>
                       <dd className="mt-1 break-all font-mono text-foreground">
-                        {release.id}
+                        {release.bundle_id ?? "Built-in app"}
                       </dd>
                     </div>
                     <div>
@@ -667,6 +666,14 @@ export function ReleaseEditorSheet({
                         {release.revision}
                       </dd>
                     </div>
+                    {patchBaseBundleId ? (
+                      <div className="sm:col-span-2">
+                        <dt>Patch base file ID</dt>
+                        <dd className="mt-1 break-all font-mono text-foreground">
+                          {patchBaseBundleId}
+                        </dd>
+                      </div>
+                    ) : null}
                     <div>
                       <dt>Catalog generation</dt>
                       <dd className="mt-1 font-mono text-foreground">
@@ -851,9 +858,6 @@ export function ReleaseEditorSheet({
                     isCopyPromotion
                       ? `Bundle copied to ${normalizedTargetChannel}`
                       : `Bundle moved to ${normalizedTargetChannel}`,
-                    release.bundle_id
-                      ? { description: `bundleId: ${release.bundle_id}` }
-                      : undefined,
                   );
                 } catch (caught) {
                   toast.error(

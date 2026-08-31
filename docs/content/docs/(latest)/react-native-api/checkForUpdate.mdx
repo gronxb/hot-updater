@@ -150,7 +150,7 @@ skipped in development, or after a check fails and calls `onError`. Do not
 interpret `null` alone as a successful up-to-date check. Use `onError` to track
 check failures and `try/catch` for rejected calls, such as a channel conflict.
 
-When a transition is selected, the result includes its bundle ID, status,
+When a transition is selected, the result includes its ID from the console, status,
 message, and an `updateBundle()` helper. In v1, `fileUrl` and `fileHash` are
 `null` in this result: the helper resolves the artifact lazily when needed.
 Call the helper instead of copying these fields into `HotUpdater.updateBundle`.
