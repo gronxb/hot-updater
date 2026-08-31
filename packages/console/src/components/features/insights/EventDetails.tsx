@@ -48,9 +48,11 @@ export function useInsightsTimeFormat() {
 export function EventTimestamp({
   value,
   formatter,
+  touch = false,
 }: {
   readonly value: number;
   readonly formatter: Intl.DateTimeFormat;
+  readonly touch?: boolean;
 }) {
   const date = new Date(value);
   const parts = Object.fromEntries(
@@ -59,7 +61,9 @@ export function EventTimestamp({
   const localTime = `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
   return (
     <details className="group/time">
-      <summary className="cursor-pointer list-none rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring/30 [&::-webkit-details-marker]:hidden">
+      <summary
+        className={`cursor-pointer list-none rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring/30 [&::-webkit-details-marker]:hidden ${touch ? "flex min-h-11 items-center" : ""}`}
+      >
         <span className="flex items-center gap-1">
           <time dateTime={date.toISOString()} className="whitespace-nowrap">
             {localTime}
@@ -102,8 +106,10 @@ export function EventTypeBadge({
 
 export function EventBundleTransition({
   event,
+  touch = false,
 }: {
   readonly event: Pick<EventHistoryRow, "type" | "fromBundleId" | "toBundleId">;
+  readonly touch?: boolean;
 }) {
   return (
     <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2">
@@ -111,7 +117,10 @@ export function EventBundleTransition({
         <>
           <dt className="text-muted-foreground">From</dt>
           <dd>
-            <HashValueDisplay value={event.fromBundleId} />
+            <HashValueDisplay
+              value={event.fromBundleId}
+              buttonClassName={touch ? "min-h-11 px-3" : undefined}
+            />
           </dd>
         </>
       ) : null}
@@ -119,7 +128,10 @@ export function EventBundleTransition({
         {event.type === "UNCHANGED" ? "Current" : "To"}
       </dt>
       <dd>
-        <HashValueDisplay value={event.toBundleId} />
+        <HashValueDisplay
+          value={event.toBundleId}
+          buttonClassName={touch ? "min-h-11 px-3" : undefined}
+        />
       </dd>
     </dl>
   );

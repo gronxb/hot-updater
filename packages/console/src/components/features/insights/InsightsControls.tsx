@@ -17,15 +17,9 @@ export function InsightsControls({
   readonly window: ActiveInstallationWindow;
 }) {
   return (
-    <section
-      aria-label="Insights controls"
-      className="rounded-xl border bg-background px-4 py-3"
-    >
-      <Field
-        orientation="horizontal"
-        className="flex-col items-start gap-3 sm:flex-row sm:items-center"
-      >
-        <FieldLabel>Reporting period</FieldLabel>
+    <section aria-label="Insights controls" className="flex">
+      <Field orientation="horizontal" className="w-full">
+        <FieldLabel className="sr-only">Reporting period</FieldLabel>
         <ToggleGroup
           aria-label="Reporting period"
           className="w-full sm:w-fit"
@@ -42,7 +36,7 @@ export function InsightsControls({
           {windows.map((item) => (
             <ToggleGroupItem
               aria-label={item.label}
-              className="flex-1 sm:flex-none"
+              className="h-11 flex-1 px-4 sm:flex-none lg:h-8 lg:px-2.5"
               key={item.value}
               value={item.value}
             >

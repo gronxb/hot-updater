@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import type { ComponentType, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,14 +30,30 @@ vi.mock("@tanstack/react-router", () => ({
     children,
     className,
     to,
+    search,
     ...props
   }: {
     readonly children: ReactNode;
     readonly className?: string;
     readonly to: string;
+    readonly search?: Record<string, string | number | undefined>;
     readonly "aria-current"?: "page";
+    readonly "aria-label"?: string;
   }) => (
-    <a className={className} href={to} aria-current={props["aria-current"]}>
+    <a
+      className={className}
+      href={`${to}${
+        search
+          ? `?${new URLSearchParams(
+              Object.entries(search)
+                .filter(([, value]) => value !== undefined)
+                .map(([key, value]) => [key, String(value)]),
+            )}`
+          : ""
+      }`}
+      aria-current={props["aria-current"]}
+      aria-label={props["aria-label"]}
+    >
       {children}
     </a>
   ),
@@ -177,7 +194,10 @@ describe("InstallationsPage", () => {
       "Release adopted",
       "Activity reported",
     ]) {
-      expect(screen.getByText(label)).toBeDefined();
+      expect(within(screen.getByRole("table")).getByText(label)).toBeDefined();
+      expect(
+        within(screen.getByRole("list", { name: "Events" })).getByText(label),
+      ).toBeDefined();
     }
     expect(
       screen.queryByRole("heading", { name: "Matching installations" }),
@@ -316,22 +336,23 @@ describe("InstallationsPage", () => {
     });
     try {
       render(<InstallationsPage />);
+      const desktop = within(screen.getByRole("table"));
       expect(
         screen.getByRole("columnheader", { name: "Time (America/New_York)" }),
       ).toBeDefined();
-      expect(screen.getByText("2026/07/18 06:02:03")).toBeDefined();
-      expect(screen.getByText("2026/01/18 05:02:03")).toBeDefined();
-      const time = screen.getByText("2026/07/18 06:02:03");
+      expect(desktop.getByText("2026/07/18 06:02:03")).toBeDefined();
+      expect(desktop.getByText("2026/01/18 05:02:03")).toBeDefined();
+      const time = desktop.getByText("2026/07/18 06:02:03");
       expect(time.getAttribute("datetime")).toBe("2026-07-18T10:02:03.000Z");
       fireEvent.click(time.closest("summary")!);
       expect(time.closest("details")?.open).toBe(true);
-      expect(screen.getByText("2026-07-18 10:02:03.000 UTC")).toBeDefined();
+      expect(desktop.getByText("2026-07-18 10:02:03.000 UTC")).toBeDefined();
       expect(
-        screen.getAllByRole("button", {
+        desktop.getAllByRole("button", {
           name: "Copy full value: 01972030-1aa1-7445-8b8c-121212121212",
         }),
       ).toHaveLength(2);
-      expect(screen.getAllByText("01972030…1212")).toHaveLength(2);
+      expect(desktop.getAllByText("01972030…1212")).toHaveLength(2);
       expect(screen.queryByText("From")).toBeNull();
     } finally {
       vi.unstubAllEnvs();
@@ -349,6 +370,82 @@ describe("InstallationsPage", () => {
     expect(screen.getByText("Insights report limit reached")).toBeDefined();
     expect(screen.getByText(/The data is still stored/)).toBeDefined();
     expect(screen.getByRole("searchbox")).toBeDefined();
+  });
+
+  it("keeps identity navigation, full ID copying, and exact time available in the compact event list", async () => {
+    const installId = "019f635d-0007-7000-8000-000000000007";
+    const bundleId = "01972030-1aa1-7445-8b8c-121212121212";
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(
+      navigator,
+      "clipboard",
+    );
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    mocks.search.mockReturnValue({ searchOffset: 0, historyOffset: 50 });
+    mocks.events.mockReturnValue({
+      data: {
+        data: [
+          {
+            id: "event-activity",
+            type: "UNCHANGED",
+            installId,
+            fromBundleId: null,
+            toBundleId: bundleId,
+            userId: "customer-with-a-long-readable-identifier",
+            username: null,
+            appVersion: "1.4.2",
+            platform: "ios",
+            channel: "production",
+            receivedAtMs: Date.UTC(2026, 6, 18, 10, 2, 3),
+          },
+        ],
+        pagination: { total: 51, limit: 50, offset: 50 },
+      },
+      error: null,
+      isLoading: false,
+      isFetching: false,
+    });
+    try {
+      render(<InstallationsPage />);
+      const list = within(screen.getByRole("list", { name: "Events" }));
+      expect(list.getByText("Activity reported")).toBeDefined();
+      expect(list.getByText("iOS 1.4.2")).toBeDefined();
+      expect(list.getByText("production")).toBeDefined();
+      expect(list.getByText("Current")).toBeDefined();
+      expect(list.queryByText("From")).toBeNull();
+      const link = list.getByRole("link", {
+        name: /View history for customer/,
+      });
+      const destination = new URL(
+        link.getAttribute("href")!,
+        "http://localhost",
+      );
+      expect(destination.searchParams.get("installId")).toBe(installId);
+      expect(destination.searchParams.get("eventsOffset")).toBe("50");
+      const timestamp = list.getByText(/2026\/07\/18/);
+      fireEvent.click(timestamp.closest("summary")!);
+      expect(timestamp.closest("details")?.open).toBe(true);
+      expect(list.getByText("2026-07-18 10:02:03.000 UTC")).toBeDefined();
+      fireEvent.click(
+        list.getByRole("button", { name: `Copy full value: ${installId}` }),
+      );
+      fireEvent.click(
+        list.getByRole("button", { name: `Copy full value: ${bundleId}` }),
+      );
+      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+      expect(writeText).toHaveBeenNthCalledWith(1, installId);
+      expect(writeText).toHaveBeenNthCalledWith(2, bundleId);
+      expect(mocks.navigate).not.toHaveBeenCalled();
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
   });
 
   it("restores the source scroll position after event data finishes loading", () => {

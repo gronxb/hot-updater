@@ -1,7 +1,7 @@
 import { Search, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Field, FieldLabel } from "@/components/ui/field";
 import {
   InputGroup,
   InputGroupAddon,
@@ -35,13 +35,13 @@ export function InstallationSearchPanel({
           User ID or install ID
         </FieldLabel>
         <div className="flex flex-wrap gap-2">
-          <InputGroup className="h-8 w-auto min-w-0 flex-1 basis-44">
+          <InputGroup className="h-11 w-auto min-w-0 flex-1 basis-44 lg:h-8">
             <InputGroupAddon>
               <Search aria-hidden="true" />
             </InputGroupAddon>
             <InputGroupInput
-              aria-describedby="installation-lookup-description"
               autoComplete="off"
+              className="h-11 text-base md:text-base lg:h-8 lg:text-xs"
               id="installation-history-search"
               maxLength={1024}
               name="installation"
@@ -55,6 +55,7 @@ export function InstallationSearchPanel({
               <InputGroupAddon align="inline-end">
                 <InputGroupButton
                   aria-label="Clear installation lookup"
+                  className="size-11 lg:size-5"
                   onClick={onClear}
                   size="icon-xs"
                 >
@@ -64,17 +65,16 @@ export function InstallationSearchPanel({
             ) : null}
           </InputGroup>
           <Button
+            aria-label="Find installation"
+            className="h-11 px-3 lg:h-8"
             disabled={draftQuery.trim().length === 0}
             size="lg"
             type="submit"
             variant="outline"
           >
-            Find installation
+            Find
           </Button>
         </div>
-        <FieldDescription id="installation-lookup-description">
-          Opens installation history for a user ID or install ID.
-        </FieldDescription>
       </Field>
     </form>
   );

@@ -8,6 +8,7 @@ interface HashValueDisplayProps {
   value: string;
   maxLength?: number;
   className?: string;
+  buttonClassName?: string;
 }
 
 export const shortenIdentifier = (value: string, maxLength = 12) =>
@@ -19,6 +20,7 @@ export function HashValueDisplay({
   value,
   maxLength = 12,
   className,
+  buttonClassName,
 }: HashValueDisplayProps) {
   const isTruncated = value.length > maxLength;
   const truncated = shortenIdentifier(value, maxLength);
@@ -73,6 +75,7 @@ export function HashValueDisplay({
               "hover:bg-muted/70 active:scale-[0.98] active:bg-muted/85 focus-visible:ring-[2px]",
               "touch-manipulation select-none motion-reduce:transition-none motion-reduce:active:scale-100",
               !isTruncated && "cursor-copy",
+              buttonClassName,
             )}
             onClick={handleClick}
             onKeyDown={handleKeyDown}

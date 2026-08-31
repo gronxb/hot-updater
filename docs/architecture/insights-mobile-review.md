@@ -1,57 +1,147 @@
-# Insights responsive review — 2026-08-31
+# Insights responsive review — 2026-09-01
 
-Reviewed the running Console at 375 × 813, 768 × 900, and 1280 × 960 CSS pixels in the in-app browser. The mobile and tablet review covered Overview, its selected-bundle inspector and picker, all Events, matching installations, a selected installation with applied/recovered events, and the no-match state. This is a UI review, not a scalability approval.
+This revision responds to the repeated text and awkward mobile reading flow in
+the previous review. It separates source and test evidence from browser evidence.
+The previous blanket 100-point assessment and acceptance of horizontally scrolled
+mobile tables are superseded. This review does not approve 50,000 MAU support.
 
-## Verified changes
+## Implemented hierarchy and interaction
 
-- The Overview footer stays stacked until `lg`, preserving the complete local time and UTC disclosure at 768px with the sidebar open. Before the fix its timestamp exceeded a 114px cell; afterward the cell is 422px wide. [InsightsOverview.tsx:160](../../packages/console/src/components/features/insights/InsightsOverview.tsx#L160)
-- The two-column bundle metric rows now share baselines, with no unmatched lower border. The measured label tops are 558px/558px and 663px/663px. [UpdateOutcomes.tsx:105](../../packages/console/src/components/features/insights/UpdateOutcomes.tsx#L105)
-- Installation history places its count beside the title, eliminating “1 events” and the crowded action group. Refresh uses the same icon and size as Events. Long user IDs wrap in the metadata; table time/app/bundle text uses the same density as Events. [InstallationHistoryCard.tsx:82](../../packages/console/src/components/features/insights/InstallationHistoryCard.tsx#L82), [metadata:137](../../packages/console/src/components/features/insights/InstallationHistoryCard.tsx#L137), [table:195](../../packages/console/src/components/features/insights/InstallationHistoryCard.tsx#L195)
-- The empty bundle chart uses “No bundle changes” and names the selected 24-hour, 7-day, or 30-day window. [BundleActivityChart.tsx:102](../../packages/console/src/components/features/bundles/BundleActivityChart.tsx#L102)
-- Empty bundle searches explain how to try again, and matching rows respect reduced-motion preferences. [BundleSelector.tsx:96](../../packages/console/src/components/features/insights/BundleSelector.tsx#L96), [InstallationMatchesCard.tsx:80](../../packages/console/src/components/features/insights/InstallationMatchesCard.tsx#L80)
-- The shared picker clear button now has the accessible name “Clear selection”. [combobox.tsx:42](../../packages/console/src/components/ui/combobox.tsx#L42)
+- Overview now presents one period-aware title and one active-installation count.
+  The repeated description, Active installations label, reporting-window footer,
+  and Activity over time title were removed. Exact deduplication semantics remain
+  accessible in the metric and chart table. [InsightsOverview.tsx:130](../../packages/console/src/components/features/insights/InsightsOverview.tsx#L130),
+  [ActivityChart.tsx:127](../../packages/console/src/components/features/insights/ActivityChart.tsx#L127)
+- A zero-activity period collapses to **No activity** and a direct **View events**
+  link. Populated charts retain the bucket interval and UTC label without a
+  second title or explanatory paragraph. [ActivityChart.tsx:59](../../packages/console/src/components/features/insights/ActivityChart.tsx#L59)
+- Selected-bundle metrics use two columns on narrow screens, with compact units
+  instead of repeated definitions under each value. The selector stays in its
+  card header. [UpdateOutcomes.tsx:49](../../packages/console/src/components/features/insights/UpdateOutcomes.tsx#L49),
+  [metric list:91](../../packages/console/src/components/features/insights/UpdateOutcomes.tsx#L91)
+- Navigation, period, lookup, and paging actions are at least 44px tall below
+  `lg`. Both lookup and picker search inputs use 16px text and 44px input height
+  in that range. These are implementation values; browser measurements are
+  recorded separately below. [navigation:15](../../packages/console/src/components/features/insights/InsightsPageHeader.tsx#L15),
+  [period:37](../../packages/console/src/components/features/insights/InsightsControls.tsx#L37),
+  [lookup:38](../../packages/console/src/components/features/insights/InstallationPageHeader.tsx#L38),
+  [picker:89](../../packages/console/src/components/features/insights/BundleSelector.tsx#L89),
+  [pagination:27](../../packages/console/src/components/features/insights/InstallationPagination.tsx#L27)
+- Matching installations form a collapsed chooser below `lg`, so many matches
+  cannot bury the selected history on first arrival. Selecting a match closes
+  the chooser and returns focus to its trigger. Desktop keeps the sidebar open;
+  errors and empty results do not collapse. **No matches** provides an **Edit
+  search** action. [InstallationMatchesCard.tsx:40](../../packages/console/src/components/features/insights/InstallationMatchesCard.tsx#L40),
+  [selection:109](../../packages/console/src/components/features/insights/InstallationMatchesCard.tsx#L109),
+  [empty state:155](../../packages/console/src/components/features/insights/InstallationMatchesCard.tsx#L155)
+- Event history switches by available card width: All Events below 58rem and
+  installation history below 48rem use a vertical list. Status and time lead,
+  followed by identity, app, and bundle values. Each field remains readable
+  without horizontal table scrolling. [EventHistoryCard.tsx:154](../../packages/console/src/components/features/insights/EventHistoryCard.tsx#L154),
+  [InstallationHistoryCard.tsx:172](../../packages/console/src/components/features/insights/InstallationHistoryCard.tsx#L172),
+  [EventHistoryList.tsx:24](../../packages/console/src/components/features/insights/EventHistoryList.tsx#L24)
+- **Activity reported** remains neutral. Applied/adopted events use success and
+  recovery uses warning, all with text and icons. Local times retain the named
+  browser zone, `YYYY/MM/DD HH:mm:ss`, and an exact UTC disclosure. Identifier
+  buttons copy the full value. [EventDetails.tsx:16](../../packages/console/src/components/features/insights/EventDetails.tsx#L16),
+  [timestamp:48](../../packages/console/src/components/features/insights/EventDetails.tsx#L48),
+  [HashValueDisplay.tsx:28](../../packages/console/src/components/HashValueDisplay.tsx#L28)
 
-The agreed vocabulary and presentation remain intact: **Activity reported** is neutral, applied/adopted events use success, and recovery uses warning, all with text and icons. The input reads **User ID or install ID** and the Events column reads **User ID / install ID**. Times use `YYYY/MM/DD HH:mm:ss` with the browser's named zone; opening a timestamp revealed `2026-07-16 12:00:00.000 UTC`. Keyboard Enter copied the complete seeded install ID rather than the shortened display. [EventDetails.tsx:16](../../packages/console/src/components/features/insights/EventDetails.tsx#L16), [time:59](../../packages/console/src/components/features/insights/EventDetails.tsx#L59)
+## StyleSeed assessment
 
-## StyleSeed score
+The review uses coherence (20), color (16), hierarchy (16), layout (12), states
+(12), writing (12), and motion (12). The Console's 4px grid, Mira radius scale,
+and semantic status colors take precedence over generic rubric defaults.
 
-Scores use the seven-category StyleSeed rubric. The Console's specified 4px grid, Mira radius scale, and required semantic status colors take precedence over generic rubric defaults. A score of 100 means no additional rubric deduction was supported by this review; it is not an accessibility certification.
+The source review and available 375px, 768px, and 1280px captures support the
+deductions below. Browser measurements were made in the parent task; this review
+independently inspected the saved captures. No unmeasured accessibility property
+is converted into full marks, and no blanket 100-point score is issued.
 
-| Rendered component/file | Score | Exact remaining deduction |
-| --- | ---: | --- |
-| InsightsPageHeader | 100 / A | None; native navigation and current-page state. |
-| InsightsControls | 100 / A | None; consistent labeled period controls. |
-| InsightsOverview | 100 / A | None after the footer fix. |
-| ActivityChart | 100 / A | None; named chart, empty explanation, exact table equivalent. |
-| UpdateOutcomes | 100 / A | None after the metric alignment fix. |
-| BundleSelector | 100 / A | States −4 resolved: empty search now suggests another bundle ID or description. [line 96](../../packages/console/src/components/features/insights/BundleSelector.tsx#L96) |
-| BundleActivityChart | 100 / A | UX writing −2 resolved: empty wording now refers to bundle changes. [line 102](../../packages/console/src/components/features/bundles/BundleActivityChart.tsx#L102) |
-| EventHistoryCard | 100 / A | None; explicit loading/error/empty states and refresh. |
-| EventDetails | 100 / A | None; shared time, status, and bundle presentation. |
-| InstallationPageHeader | 100 / A | None; named lookup, Enter submission, clear action. |
-| InstallationMatchesCard | 100 / A | Motion −3 resolved: matching rows use `motion-reduce:transition-none`. [line 80](../../packages/console/src/components/features/insights/InstallationMatchesCard.tsx#L80) |
-| InstallationHistoryCard | 100 / A | None after header and metadata fixes. |
-| InstallationPagination | 100 / A | None; named paging region and disabled boundary actions. |
-| InsightsErrorAlert | 100 / A | None; semantic alert with recovery copy. |
+| Component               | Source evidence and remaining check                                                                                                                                                                                                                                                                                              |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| InsightsPageHeader      | No observed deduction: native links, current-page state, 44px mobile navigation, and one-row fit at 375px. [line 15](../../packages/console/src/components/features/insights/InsightsPageHeader.tsx#L15)                                                                                                                         |
+| InsightsControls        | One named period group without a duplicate visible label. [line 20](../../packages/console/src/components/features/insights/InsightsControls.tsx#L20)                                                                                                                                                                            |
+| InsightsOverview        | No observed deduction: one leading metric and two supporting values; opening UTC did not cause 375px page overflow. The replacement mobile capture also fits correctly. [line 130](../../packages/console/src/components/features/insights/InsightsOverview.tsx#L130)                                                            |
+| ActivityChart           | No observed deduction: compact empty state/action, UTC interval, exact table, no animation, and a readable populated chart at 375px. [line 59](../../packages/console/src/components/features/insights/ActivityChart.tsx#L59)                                                                                                    |
+| UpdateOutcomes          | Two-column metric hierarchy with numeric units; no repeated cell descriptions. [line 91](../../packages/console/src/components/features/insights/UpdateOutcomes.tsx#L91)                                                                                                                                                         |
+| BundleSelector          | No observed deduction: 16px/44px search input, contained popup, and Clear restores options from an empty search. The empty-state capture shows the final short wording. [line 89](../../packages/console/src/components/features/insights/BundleSelector.tsx#L89)                                                                |
+| BundleActivityChart     | No observed deduction: visible Applied / Recovered legend and UTC label; the populated mobile tooltip shows both named values. [UTC:111](../../packages/console/src/components/features/bundles/BundleActivityChart.tsx#L111), [legend:138](../../packages/console/src/components/features/bundles/BundleActivityChart.tsx#L138) |
+| EventHistoryCard        | Coherence −3 resolved: first-page recovery stays 44px until lg. Width-based list/table, loading/error/empty, and Refresh remain. [line 227](../../packages/console/src/components/features/insights/EventHistoryCard.tsx#L227)                                                                                                   |
+| EventHistoryList        | No observed deduction: text/icon statuses, 44px time/copy controls, readable metadata, and no horizontal scrolling at 375px/768px. [line 24](../../packages/console/src/components/features/insights/EventHistoryList.tsx#L24)                                                                                                   |
+| EventDetails            | Shared status meanings, local time and exact UTC, full bundle copy. [line 48](../../packages/console/src/components/features/insights/EventDetails.tsx#L48)                                                                                                                                                                      |
+| InstallationPageHeader  | Named Enter-submit lookup with 16px mobile input and 44px actions. [line 25](../../packages/console/src/components/features/insights/InstallationPageHeader.tsx#L25)                                                                                                                                                             |
+| InstallationMatchesCard | No observed deduction: six matches collapse after selection, trigger focus returns, and desktop remains open. Empty/error handling has test coverage. [line 60](../../packages/console/src/components/features/insights/InstallationMatchesCard.tsx#L60)                                                                         |
+| InstallationHistoryCard | Writing −2 resolved: unselected instruction appears once. Compact metadata and width-based history fit all three inspected widths. [line 80](../../packages/console/src/components/features/insights/InstallationHistoryCard.tsx#L80)                                                                                            |
+| InstallationPagination  | Named region, explicit Previous/Next, disabled boundaries, 44px mobile controls. [line 19](../../packages/console/src/components/features/insights/InstallationPagination.tsx#L19)                                                                                                                                               |
+| InsightsErrorAlert      | Semantic alert and shared actionable error copy. [line 13](../../packages/console/src/components/features/insights/InsightsErrorAlert.tsx#L13)                                                                                                                                                                                   |
 
-The previously lowest component, **BundleSelector, now scores 100/100**: coherence 20/20; color 16/16; hierarchy 16/16; layout 12/12; states 12/12; writing 12/12; motion 12/12. Its recovery guidance (+4), matching-row reduced-motion handling (+3), and bundle-chart wording (+2) were all completed. No further rubric deductions were supported by this review; all inspected components clear the 80-point gate. The limits below remain material despite the rubric score.
+Both scored source findings are resolved: **+3 coherence** for the tablet
+recovery target and **+2 writing** for removing the duplicate instruction. The
+inspected design uses one icon family, semantic colors, a leading numeric
+hierarchy, a shared inset grid, explicit data states, short action labels, and
+reduced-motion handling. Formal contrast and assistive-technology coverage
+remain separate limitations, not assumed passes.
 
-## Verification and limits
+## Verification and limitations
 
-- Document width equaled viewport width on every inspected page at 375px and 768px. At 375px the Events table intentionally remains 928px wide inside its 349px container; a 390px horizontal scroll revealed the user/app columns without moving the page. Mobile screenshots therefore show only part of the table at once. At 1280px the table and its container both measured 974px.
-- Final focused verification passed **6 test files / 28 tests**: installation history, Overview, selected-bundle outcomes, Insights controls, bundle chart, and the installations route. This includes Events loading/error/empty behavior, exact UTC and browser-zone handling, selected-history retry behavior, and all three empty-chart periods. [history retry scenario](../../packages/console/src/components/features/insights/InstallationHistoryCard.spec.tsx#L95), [period cases](../../packages/console/src/components/features/bundles/BundleActivityChart.spec.tsx#L30)
-- Loading and error states were checked through the existing/component tests and source, not by forcing backend failures in the browser. Overview and no-match empty states were inspected live. The seeded Events list contains 18 July records, so recent-period Overview values are zero; nonzero chart values remain covered by component tests.
-- Captures use the current dark theme and include development-tool launchers. Browser JPEG captures were re-encoded as PNG; no cropping, resizing, or retouching. All nine PNG files retain the original dimensions, and SHA-256 comparisons of decoded RGB pixels were identical before and after conversion. Original JPEG captures are preserved locally in `/tmp/hot-updater-insights-browser-jpeg`. This pass did not perform a formal contrast audit, screen-reader session, or an independent 200% browser-zoom test.
-- The 50,000-record aggregate scan limit is still a product/backend constraint. Installation lookup does not bypass it. These screenshots do not establish support for 50,000 MAU or remove that limit.
+- Focused verification passed **6 files / 12 tests** for ActivityChart,
+  InsightsOverview, UpdateOutcomes, InsightsControls, BundleSelector, and
+  InstallationMatchesCard. The new chooser scenarios verify disclosure state,
+  selection, focus return, and visible empty/error handling. Tests do not prove
+  CSS visibility or viewport geometry. [chooser scenarios:27](../../packages/console/src/components/features/insights/InstallationMatchesCard.spec.tsx#L27)
+- Parent browser QA measured page width equal to viewport width on Overview,
+  Events, and installation history at 375px, 768px, and 1280px. Events had no
+  visible table at 375px/768px; the 1280px table measured 974px and fit its card.
+- At 375px, event/history primary links, buttons, and timestamp disclosures
+  measured at least 44px tall. Search input text measured 16px and input height
+  44px. The bundle popup occupied x=29px to x=346px (317px wide); clearing an
+  unmatched search restored 26 options.
+- Browser interaction verified six matching installations collapse after
+  choosing one and focus returns to the disclosure. Returning from detail to
+  Events preserved the source scroll position, **329px → 329px**. Expanding
+  Overview UTC retained the 375px document width.
+- Final parent verification passed Console **235 tests / 55 files**, root
+  **2,470 tests / 278 files**, formatting/lint, type checks, the production
+  Console build, and changeset status.
+- Loading and backend error coverage uses component/route tests rather than
+  manufactured live failures. Formal contrast measurement, a screen-reader
+  session, iOS-device testing, and independent 200% browser zoom are not yet
+  established by this review.
+- The checked-in seed contains July records, so recent-period Overview values
+  are zero. For two supplementary populated-chart captures, only seed event
+  timestamps were temporarily shifted by
+  `Date.now() - Date.UTC(2026, 6, 18, 11)`. This produced 8 active installations
+  and 3 reported bundles. The configuration is restored;
+  `git diff` shows no change to `packages/console/hot-updater.config.ts`. These
+  two images are explicitly fixture evidence, not production data.
+- The 50,000-record aggregate scan limit remains a backend constraint.
+  Installation lookup does not bypass it. Scalability planning is a separate
+  task; these UI changes do not establish 50,000 MAU support.
 
 ## Screenshot evidence
 
-| View | 375px phone | 768px tablet |
-| --- | --- | --- |
-| Overview | [Phone](../public/docs/console/insights-overview-mobile.png) | [Tablet footer and selected bundle](../public/docs/console/insights-overview-tablet.png) |
-| Events | [Phone](../public/docs/console/insights-events-mobile.png) | [Tablet](../public/docs/console/insights-events-tablet.png) |
-| Installation history | [Phone](../public/docs/console/insights-installation-mobile.png) | [Tablet](../public/docs/console/insights-installation-tablet.png) |
+All 14 final captures were inspected. A browser viewport artifact in an early
+Overview capture was corrected before publication. Dimensions are 375 × 844,
+768 × 1024, and 1280 × 900. The nine primary captures use the restored July
+fixture; the two populated-chart supplements disclose their temporary fixture.
 
-The existing 1280px evidence files were also refreshed: [Overview](../public/docs/console/insights-events-entry.png) and [Events](../public/docs/console/insights-event-history.png).
+| View                 | 375px phone                                                      | 768px tablet                                                      | 1280px desktop                                                      |
+| -------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Overview             | [Phone](../public/docs/console/insights-overview-mobile.png)     | [Tablet](../public/docs/console/insights-overview-tablet.png)     | [Desktop](../public/docs/console/insights-events-entry.png)         |
+| Events               | [Phone](../public/docs/console/insights-events-mobile.png)       | [Tablet](../public/docs/console/insights-events-tablet.png)       | [Desktop](../public/docs/console/insights-event-history.png)        |
+| Installation history | [Phone](../public/docs/console/insights-installation-mobile.png) | [Tablet](../public/docs/console/insights-installation-tablet.png) | [Desktop](../public/docs/console/insights-installation-desktop.png) |
 
-The final search recovery guidance is shown in the [375px empty bundle picker](../public/docs/console/insights-bundle-picker-empty-mobile.png).
+Supplementary 375px evidence:
+
+- [Empty bundle picker](../public/docs/console/insights-bundle-picker-empty-mobile.png)
+- [Populated Overview — temporary recent-date fixture](../public/docs/console/insights-overview-populated-mobile.png)
+- [Populated bundle chart and tooltip — temporary recent-date fixture](../public/docs/console/insights-bundle-activity-populated-mobile.png)
+- [Light Overview](../public/docs/console/insights-overview-light-mobile.png) and [light Events](../public/docs/console/insights-events-light-mobile.png)
+
+Browser JPEG captures were re-encoded as PNG; no cropping, resizing, or
+retouching. All 14 PNG files retain the original dimensions, and SHA-256
+comparisons of decoded RGB pixels were identical before and after conversion.
+Original JPEG captures are retained locally in
+`/tmp/hot-updater-insights-mobile-20260831`. Captures include development-tool
+launchers.

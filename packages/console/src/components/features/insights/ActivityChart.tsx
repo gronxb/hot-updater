@@ -2,8 +2,10 @@ import type {
   ActiveInstallationOverview,
   ActiveInstallationWindow,
 } from "@hot-updater/server";
+import { Link } from "@tanstack/react-router";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
+import { buttonVariants } from "@/components/ui/button";
 import {
   type ChartConfig,
   ChartContainer,
@@ -54,30 +56,29 @@ export function ActivityChart({
   const hasReports = series.some(({ value }) => value > 0);
   const bucketName = window === "24h" ? "hour" : "day";
 
+  if (!hasReports) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+        <p className="text-sm text-muted-foreground">No activity</p>
+        <Link
+          className={buttonVariants({
+            variant: "outline",
+            className: "h-11 px-3 lg:h-8",
+          })}
+          to="/installations"
+        >
+          View events
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <div>
-          <h3 className="text-sm font-medium">Activity over time</h3>
-          <p className="text-xs text-muted-foreground">
-            Unique active installations per {bucketName}
-          </p>
-        </div>
-        <span className="text-xs text-muted-foreground">UTC</span>
-      </div>
-      {!hasReports && (
-        <div className="flex flex-col gap-1">
-          <p className="text-sm text-muted-foreground">
-            No installations reported during this period.
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Use the Events view to browse activity outside this period.
-          </p>
-        </div>
-      )}
+      <p className="text-xs text-muted-foreground">Per {bucketName} · UTC</p>
       <ChartContainer
         aria-label={`Active installations per ${bucketName}`}
-        className="h-64 w-full aspect-auto"
+        className="h-40 w-full aspect-auto sm:h-56"
         config={chartConfig}
         role="img"
       >
@@ -123,16 +124,12 @@ export function ActivityChart({
           />
         </AreaChart>
       </ChartContainer>
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        Each point counts an installation once in that {bucketName}. The total
-        above counts it once across the whole period, so the points do not add
-        up to the total.
-      </p>
       <div className="sr-only">
         <table aria-label={`Exact active installations per ${bucketName}`}>
           <caption>
             Unique installations that reported an update status in each UTC
-            {` ${bucketName}`}.
+            {` ${bucketName}`}. Each bucket deduplicates installations
+            separately; the period total deduplicates across the whole period.
           </caption>
           <thead>
             <tr>

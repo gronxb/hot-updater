@@ -181,11 +181,6 @@ describe("InsightsPage", () => {
       }),
     );
     expect(container.querySelector("main")).toBeNull();
-    expect(
-      screen.getByText(
-        "This database scans up to 50,000 event records per query.",
-      ),
-    ).toBeDefined();
 
     fireEvent.click(screen.getByRole("button", { name: "Select bundle" }));
     fireEvent.click(screen.getByRole("button", { name: "Select window" }));

@@ -3,13 +3,7 @@ import { RefreshCw } from "lucide-react";
 import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -32,6 +26,7 @@ import {
   EventTypeBadge,
   useInsightsTimeFormat,
 } from "./EventDetails";
+import { EventHistoryList } from "./EventHistoryList";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InstallationPagination } from "./InstallationPagination";
 
@@ -77,10 +72,10 @@ export function InstallationHistoryCard({
     : undefined;
 
   return (
-    <Card className="min-h-0 min-w-0 shadow-sm">
-      <CardHeader className="p-6 pb-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-1 basis-48 flex-col gap-1.5">
+    <Card className="@container min-h-0 min-w-0 shadow-sm">
+      <CardHeader className="p-4 sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-1.5">
             <CardTitle className="text-sm font-medium">
               <h2 className="flex flex-wrap items-center gap-2">
                 {selectedInstallId
@@ -93,14 +88,10 @@ export function InstallationHistoryCard({
                 ) : null}
               </h2>
             </CardTitle>
-            <CardDescription>
-              {selectedInstallId
-                ? "Recorded bundle changes for this installation."
-                : "Choose a match to view its recorded bundle changes."}
-            </CardDescription>
           </div>
           {onRefresh && selectedInstallId ? (
             <Button
+              className="h-11 lg:h-8"
               size="lg"
               variant="outline"
               onClick={onRefresh}
@@ -117,25 +108,25 @@ export function InstallationHistoryCard({
           <>
             <section
               aria-labelledby="latest-installation-state"
-              className="px-6 pb-6"
+              className="px-4 pb-4 sm:px-6 sm:pb-6"
             >
-              <h3
-                className="text-xs font-medium"
-                id="latest-installation-state"
-              >
+              <h3 className="sr-only" id="latest-installation-state">
                 Latest reported state
               </h3>
-              <dl className="mt-4 grid gap-6 xl:grid-cols-3">
-                <div className="min-w-0">
-                  <dt className="text-xs text-muted-foreground">Install ID</dt>
-                  <dd className="mt-1 font-mono text-xs">
-                    <HashValueDisplay value={selectedInstallId} />
+              <dl className="grid grid-cols-2 gap-4 @[36rem]:grid-cols-3">
+                <div className="col-span-2 min-w-0 @[36rem]:col-span-1">
+                  <dt className="text-xs text-muted-foreground">User ID</dt>
+                  <dd className="mt-1 text-sm font-medium wrap-anywhere">
+                    {getUserLabel(selectedEvent)}
                   </dd>
                 </div>
                 <div className="min-w-0">
-                  <dt className="text-xs text-muted-foreground">User ID</dt>
-                  <dd className="mt-1 text-xs font-medium wrap-anywhere">
-                    {selectedEvent ? getUserLabel(selectedEvent) : "—"}
+                  <dt className="text-xs text-muted-foreground">Install ID</dt>
+                  <dd className="mt-1 font-mono text-xs">
+                    <HashValueDisplay
+                      value={selectedInstallId}
+                      buttonClassName="min-h-11 px-3 lg:min-h-0 lg:px-1.5"
+                    />
                   </dd>
                 </div>
                 <div className="min-w-0">
@@ -144,7 +135,10 @@ export function InstallationHistoryCard({
                   </dt>
                   <dd className="mt-1 font-mono text-xs">
                     {lastKnownBundleId ? (
-                      <HashValueDisplay value={lastKnownBundleId} />
+                      <HashValueDisplay
+                        value={lastKnownBundleId}
+                        buttonClassName="min-h-11 px-3 lg:min-h-0 lg:px-1.5"
+                      />
                     ) : (
                       "—"
                     )}
@@ -175,50 +169,58 @@ export function InstallationHistoryCard({
             </div>
           ) : history && history.data.length > 0 ? (
             <>
-              <Table className="min-w-3xl table-fixed">
-                <TableHeader>
-                  <TableRow className="[&>th]:px-4 sm:[&>th]:px-6">
-                    <TableHead className="w-52">
-                      Time ({dateTimeFormat.resolvedOptions().timeZone})
-                    </TableHead>
-                    <TableHead className="w-48">Event</TableHead>
-                    <TableHead className="w-32">App</TableHead>
-                    <TableHead className="w-52">Bundle</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {history.data.map((event) => (
-                    <TableRow
-                      className="[&>td]:px-4 [&>td]:py-4 [&>td]:align-top sm:[&>td]:px-6"
-                      key={event.id}
-                    >
-                      <TableCell className="whitespace-normal text-xs tabular-nums">
-                        <EventTimestamp
-                          value={event.receivedAtMs}
-                          formatter={dateTimeFormat}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <EventTypeBadge type={event.type} />
-                      </TableCell>
-                      <TableCell className="whitespace-normal text-xs">
-                        <div className="flex flex-col gap-2">
-                          <span>
-                            {event.platform === "ios" ? "iOS" : "Android"}{" "}
-                            {event.appVersion}
-                          </span>
-                          <span className="text-muted-foreground">
-                            {event.channel}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="whitespace-normal text-xs">
-                        <EventBundleTransition event={event} />
-                      </TableCell>
+              <div className="@[48rem]:hidden">
+                <EventHistoryList
+                  events={history.data}
+                  formatter={dateTimeFormat}
+                />
+              </div>
+              <div className="hidden @[48rem]:block">
+                <Table className="min-w-3xl table-fixed">
+                  <TableHeader>
+                    <TableRow className="[&>th]:px-4 sm:[&>th]:px-6">
+                      <TableHead className="w-52">
+                        Time ({dateTimeFormat.resolvedOptions().timeZone})
+                      </TableHead>
+                      <TableHead className="w-48">Event</TableHead>
+                      <TableHead className="w-32">App</TableHead>
+                      <TableHead className="w-52">Bundle</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {history.data.map((event) => (
+                      <TableRow
+                        className="[&>td]:px-4 [&>td]:py-4 [&>td]:align-top sm:[&>td]:px-6"
+                        key={event.id}
+                      >
+                        <TableCell className="whitespace-normal text-xs tabular-nums">
+                          <EventTimestamp
+                            value={event.receivedAtMs}
+                            formatter={dateTimeFormat}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <EventTypeBadge type={event.type} />
+                        </TableCell>
+                        <TableCell className="whitespace-normal text-xs">
+                          <div className="flex flex-col gap-2">
+                            <span>
+                              {event.platform === "ios" ? "iOS" : "Android"}{" "}
+                              {event.appVersion}
+                            </span>
+                            <span className="text-muted-foreground">
+                              {event.channel}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="whitespace-normal text-xs">
+                          <EventBundleTransition event={event} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
               <InstallationPagination
                 label="Installation history"
                 limit={limit}
@@ -230,15 +232,10 @@ export function InstallationHistoryCard({
             </>
           ) : (
             <div className="p-6 text-sm text-muted-foreground">
-              No bundle changes recorded yet. Return to Events to view activity
-              reports.
+              No bundle changes recorded yet.
             </div>
           )
-        ) : (
-          <div className="p-6 text-sm text-muted-foreground">
-            Choose an installation to inspect its update history.
-          </div>
-        )}
+        ) : null}
       </CardContent>
     </Card>
   );

@@ -22,6 +22,8 @@ vi.mock("@/components/ui/chart", () => ({
   ),
   ChartTooltip: () => null,
   ChartTooltipContent: () => null,
+  ChartLegend: () => null,
+  ChartLegendContent: () => null,
 }));
 
 describe("BundleActivityChart", () => {

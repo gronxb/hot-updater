@@ -78,14 +78,6 @@ function InsightsPage() {
 
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 p-3 sm:p-6">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-          {capability.status === "supported" &&
-          capability.mode === "bounded" ? (
-            <p className="text-xs text-muted-foreground">
-              This database scans up to{" "}
-              {capability.maxMatchingRows.toLocaleString()} event records per
-              query.
-            </p>
-          ) : null}
           <InsightsControls onWindowChange={setWindow} window={window} />
           {active.isLoading || catalog.isLoading ? (
             <InsightsOverview status="loading" />

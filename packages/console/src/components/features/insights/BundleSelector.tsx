@@ -33,7 +33,7 @@ export function BundleSelector({
       className="w-full min-w-0 sm:max-w-md"
       data-disabled={!bundles.length}
     >
-      <FieldLabel htmlFor="insights-bundle-selector">
+      <FieldLabel className="sr-only" htmlFor="insights-bundle-selector">
         Bundle to inspect
       </FieldLabel>
       <Combobox
@@ -88,13 +88,12 @@ export function BundleSelector({
         <ComboboxContent className="min-w-(--anchor-width)">
           <ComboboxInput
             aria-label="Search bundles"
-            placeholder="Search by bundle ID or description"
+            className="h-11 [&_input]:h-11 [&_input]:text-base [&_[data-slot=combobox-clear]]:size-11 md:[&_input]:text-base lg:h-8 lg:[&_input]:h-8 lg:[&_input]:text-xs lg:[&_[data-slot=combobox-clear]]:size-5"
+            placeholder="Bundle ID or description"
             showClear
             showTrigger={false}
           />
-          <ComboboxEmpty>
-            No bundles found. Try another bundle ID or description.
-          </ComboboxEmpty>
+          <ComboboxEmpty>No bundles found</ComboboxEmpty>
           <ComboboxList>
             {(bundle) => (
               <ComboboxItem

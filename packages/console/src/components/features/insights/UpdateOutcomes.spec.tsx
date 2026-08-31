@@ -57,7 +57,7 @@ describe("UpdateOutcomes", () => {
     expect(
       screen.getByText("Latest bundle share").nextElementSibling?.textContent,
     ).toBe("75%");
-    expect(screen.getByText("3 of 4 reporting installs")).toBeDefined();
+    expect(screen.getByText("3 / 4 installs")).toBeDefined();
     expect(screen.getByText("Newly applied")).toBeDefined();
     expect(screen.getByText("Recovered away")).toBeDefined();
     expect(screen.getByText("Configured rollout")).toBeDefined();
