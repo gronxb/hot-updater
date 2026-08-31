@@ -111,7 +111,10 @@ const scopeFilters = (
 export const createIndexedInsightsEventQueries = (
   implementation: TransactionDatabasePluginImplementation,
   scopes: readonly InsightsEventScope["kind"][],
-  beforePage?: (input: InsightsEventPageInput) => Promise<void>,
+  beforePage?: (
+    input: InsightsEventPageInput,
+    cursor: InsightsScanCursor | undefined,
+  ) => Promise<void>,
 ): InsightsEventQueries => {
   const { findMany } = createDatabasePluginCrud(implementation);
   return {
@@ -129,7 +132,7 @@ export const createIndexedInsightsEventQueries = (
         throw new DatabasePluginInputError("invalid-query");
       }
       const cursor = readCursor(input, key);
-      await beforePage?.(input);
+      await beforePage?.(input, cursor);
       const candidateLimit = input.limit + 1;
       const streams = await Promise.all(
         scopeFilters(input.scope).map(async (filters) => {

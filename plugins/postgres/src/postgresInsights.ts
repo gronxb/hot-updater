@@ -1,4 +1,7 @@
-import { InsightsQueryNotReadyError } from "@hot-updater/plugin-core";
+import {
+  DatabasePluginInputError,
+  InsightsQueryNotReadyError,
+} from "@hot-updater/plugin-core";
 import {
   createIndexedInsightsEventQueries,
   type DatabasePluginImplementation,
@@ -10,6 +13,8 @@ const BUNDLE_INDEXES = [
   ["type", "to_bundle_id", "received_at_ms", "id"],
   ["type", "from_bundle_id", "received_at_ms", "id"],
 ];
+const CANONICAL_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export const createPostgresInsightsEventQueries = (
   db: QueryExecutorProvider,
@@ -18,7 +23,14 @@ export const createPostgresInsightsEventQueries = (
   createIndexedInsightsEventQueries(
     implementation,
     ["all", "bundle"],
-    async (input) => {
+    async (input, cursor) => {
+      if (
+        (input.scope.kind === "bundle" &&
+          !CANONICAL_UUID.test(input.scope.bundleId)) ||
+        (cursor !== undefined && !CANONICAL_UUID.test(cursor.id))
+      ) {
+        throw new DatabasePluginInputError("invalid-query");
+      }
       // One catalog read per logical page, after validating its input/cursor. Do
       // not cache readiness indefinitely: an index can disappear during deployment.
       // UUIDs share canonical string order; arbitrary text collations may not.

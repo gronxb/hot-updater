@@ -209,4 +209,37 @@ describe("PostgreSQL native Insights pages", () => {
       query.mockRestore();
     }
   });
+
+  it("rejects noncanonical UUID scope and cursor input before catalog or event queries", async () => {
+    const query = vi.spyOn(client, "query");
+    try {
+      for (const input of [
+        {
+          scope: { kind: "bundle" as const, bundleId: "not-a-uuid" },
+          beforeReceivedAtMs: 60001,
+          limit: 1,
+        },
+        {
+          scope: { kind: "all" as const },
+          beforeReceivedAtMs: 60001,
+          limit: 1,
+          cursor: JSON.stringify([1, '["all"]', 60001, 60000, "not-a-uuid"]),
+        },
+      ]) {
+        await expect(
+          plugin.models.insights.events!.page(input),
+        ).rejects.toMatchObject({ code: "invalid-query" });
+      }
+      expect(query).not.toHaveBeenCalled();
+      const response = await server.handlers.admin(
+        new Request(
+          "https://example.com/insights/v1/events?scope=bundle&bundleId=not-a-uuid",
+        ),
+      );
+      expect(response.status).toBe(400);
+      expect(query).not.toHaveBeenCalled();
+    } finally {
+      query.mockRestore();
+    }
+  });
 });

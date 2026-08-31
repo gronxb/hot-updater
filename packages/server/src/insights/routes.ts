@@ -5,6 +5,7 @@ import {
   InsightsScanLimitExceededError,
 } from "./errors";
 import { parseBundleEventRequest } from "./eventInput";
+import { createEventPageRouteHandler } from "./eventPageRoutes";
 import {
   parseActiveInstallationInput,
   parseInsightsQuery,
@@ -61,6 +62,7 @@ const query = (operation: () => Promise<unknown>): Promise<Response> =>
 export const createInsightsRouteHandlers = (
   provider: InsightsProvider,
 ): Record<string, RouteHandler> => ({
+  getInsightsEventPageV1: createEventPageRouteHandler(provider),
   appendBundleEvent: async (_params, request) =>
     run(async () => {
       await provider.appendBundleEvent(await parseBundleEventRequest(request));
@@ -114,6 +116,7 @@ export const registerInsightsClientRoutes = (
 export const registerInsightsAdminRoutes = (
   add: (method: string, path: string, handler: string) => void,
 ): void => {
+  add("GET", "/insights/v1/events", "getInsightsEventPageV1");
   add("GET", "/bundles/:id/events/summary", "getBundleEventSummary");
   add("GET", "/bundles/:id/events/insights", "getBundleEventInsights");
   add("GET", "/installations/overview", "getBundleEventOverview");

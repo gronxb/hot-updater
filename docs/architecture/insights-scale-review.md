@@ -8,6 +8,10 @@ This is a staged rollout, separate from the mobile Console work in PR #1233.
 - Optional version 1 native event-page capability in plugin-core and the typed
   server API. Existing append/scan plugins and bounded aggregate methods retain
   their behavior. No raw events are removed or sampled.
+- Additive admin `GET /insights/v1/events` with a strict query parser and versioned
+  errors. It is not registered on the client handler. Mount it behind the same
+  host-owned authentication as other admin routes; `handlers.admin` does not
+  perform authentication by itself.
 - PostgreSQL opts in for global events and bundle movement events. Installation
   movement is deliberately not enabled until its type/time index is migrated.
 - The provider receives the final page size (1–100), performs lookahead and
@@ -59,8 +63,23 @@ An independent read-only reviewer challenged the implementation before approval:
    and continuation validation independently of adapter implementation.
 
 The reviewer approved only this PostgreSQL global/bundle typed API slice after
-re-running its tests. Other providers, HTTP/Console integration, and the full
-eight-operation matrix are not covered by that approval.
+re-running its tests, then separately reviewed and approved the additive admin
+HTTP path. Other providers, Console integration, and the full eight-operation
+matrix are not covered by those approvals.
+
+## HTTP usage
+
+For a host that mounts protected admin routes at `/hot-updater/admin`, request
+`GET /hot-updater/admin/insights/v1/events?limit=50`. The first response supplies
+`pagination.beforeReceivedAtMs`; send it with the returned `cursor` to continue.
+The optional `scope=bundle&bundleId=<canonical-lowercase-uuid>` selects bundle
+movement. Unknown/duplicate fields, `offset`, conflicting scope IDs, malformed
+bookmarks and missing continuation cutoffs fail before data queries.
+
+Errors use `{ "error": { "code": "..." } }`: invalid page input is 400,
+unsupported native scope/provider is 501, missing indexes or schema is 503, and
+unexpected storage/adapter failures are a sanitized 500. No error triggers a
+legacy scan fallback. Existing HTTP routes retain their response shapes.
 
 ## Reproducible verification
 
@@ -81,12 +100,17 @@ pnpm --filter @hot-updater/plugin-core --filter @hot-updater/server --filter @ho
   exercise index removal, mixed ordering, and recovery on the same warm instance.
 - Server boundary tests cover short/empty continuation without automatic refill,
   invalid inputs/version, malformed results, and nonadvancing continuation.
+- HTTP tests cover a Hono bearer-auth admin mount (missing credentials and valid
+  client API keys cannot read admin events), client-route isolation, input
+  validation before reads, unsupported providers/scopes without fallback, fixed
+  cutoff continuation and sanitized structured errors. PostgreSQL additionally
+  rejects noncanonical UUID scope/bookmark input before even the catalog query.
 
 ## Remaining release gates
 
 The 50,000-row ceiling still applies to legacy methods and aggregates. This slice
 does not remove that ceiling across Insights. Next stages must implement the
-versioned HTTP/Console path, installation browsing/index migrations, remaining
+Console path, installation browsing/index migrations, remaining
 official providers, exact reports/search and durable maintenance, existing-data
 backfill, and the full provider/operation correctness and cost matrix. The
 standalone E2E series checks OTA integration; it does not replace large-scale

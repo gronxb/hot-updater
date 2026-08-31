@@ -103,6 +103,8 @@ describe("indexed Insights event pages", () => {
       {
         ...changes[0]!,
         id: "unrelated",
+        type: "UPDATE_APPLIED",
+        update_strategy: "appVersion",
         from_bundle_id: "bundle-b",
         to_bundle_id: "bundle-b",
       },
