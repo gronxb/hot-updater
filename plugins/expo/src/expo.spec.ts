@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   getConfig: vi.fn(),
 }));
 
-vi.mock("expo/config", () => ({
+vi.mock("./expoConfig", () => ({
   getConfig: mocks.getConfig,
 }));
 

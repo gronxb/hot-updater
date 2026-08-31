@@ -9,9 +9,9 @@ import type {
   BuildPluginConfig,
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
-import { getConfig } from "expo/config";
 import { uuidv7 } from "uuidv7";
 
+import { getConfig } from "./expoConfig";
 import { resolveMain } from "./resolveMain";
 import { runExpoPrebuild } from "./util/prebuild";
 
