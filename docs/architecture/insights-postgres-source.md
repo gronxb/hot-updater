@@ -65,8 +65,15 @@ public plugin contract. Mixed commits acquire shard locks in ascending order.
 The throughput of this layout still needs a concurrent ingest benchmark; its
 existence alone does not prove a particular MAU or writes-per-second capacity.
 
-Raw-event retention is unchanged. Do not delete counters, change the source
-identity, or rewrite source assignments to recover a failed report job.
+Raw-event retention is unchanged. After capture, event content, IDs and source
+assignments must remain immutable. Out-of-band UPDATE, DELETE or TRUNCATE of raw
+events is unsupported; the ordinary event API is append-only. Do not delete
+counters, change the source identity or rewrite assignments to recover a failed
+report job. The prefix certifies committed ingestion, not arbitrary later edits.
+
+The [report accumulator](./insights-postgres-reports.md) now consumes these pages
+with durable leases/checkpoints. Its summary publications are implemented as an
+internal building block; section pages and runtime query replacement remain open.
 
 Capture, source pages, backfill and migration retries check the required source
 index. A missing or incompatible index produces a preparation error before raw
