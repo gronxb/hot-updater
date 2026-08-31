@@ -16,6 +16,7 @@ import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTes
 import { findOpenPort } from "../../../test-utils/src/runtimeProcess";
 import { createMongoInsightsQueries } from "../adapters/mongodbInsights";
 import { createMongoInsightsPreparation } from "./mongoInsightsPreparation";
+import { createMongoInsightsSource } from "./mongoInsightsSource";
 
 const docker = (args: string[]) => {
   const result = spawnSync("docker", args, { encoding: "utf8" });
@@ -24,35 +25,8 @@ const docker = (args: string[]) => {
 };
 const encode = (value: unknown) =>
   BSON.EJSON.stringify(value, { relaxed: false });
-const mixedIds = () => [
-  new BSON.MinKey(),
-  null,
-  -50,
-  new BSON.Int32(2),
-  BSON.Decimal128.fromString("3.25"),
-  BSON.Long.fromString("9007199254740993"),
-  "row-2",
-  "row-10",
-  { tag: "old" },
-  new BSON.Binary(Buffer.from([1, 2, 3])),
-  new BSON.ObjectId("100000000000000000000000"),
-  false,
-  true,
-  new Date("2020-01-01"),
-  new BSON.Timestamp({ t: 2, i: 1 }),
-  new BSON.MaxKey(),
-];
-const findStages = (value: unknown): string[] => {
-  if (Array.isArray(value)) return value.flatMap(findStages);
-  if (typeof value !== "object" || value === null) return [];
-  return [
-    ...(typeof Reflect.get(value, "stage") === "string"
-      ? [String(Reflect.get(value, "stage"))]
-      : []),
-    ...Object.values(value).flatMap(findStages),
-  ];
-};
-
+const objectId = (value: number) =>
+  new BSON.ObjectId(value.toString(16).padStart(24, "0"));
 describe("MongoDB durable native-event preparation", () => {
   const container = `hot-updater-mongo-preparation-${randomUUID().slice(0, 8)}`;
   let client: MongoClient;
@@ -117,14 +91,13 @@ describe("MongoDB durable native-event preparation", () => {
   });
 
   const insert = async (id: unknown, suffix: number, change: Document = {}) => {
-    // insertOne replaces _id:null with an ObjectId; command insertion preserves
-    // the actual legacy BSON value being tested.
+    // The command form preserves explicit legacy BSON values such as null.
     const result = await client.db().command({
       insert: "bundle_events",
       documents: [
         {
           ...createBundleEventRowFixture(String(suffix), suffix),
-          _id: id,
+          _id: typeof id === "number" ? objectId(id) : id,
           ...change,
         },
       ],
@@ -168,6 +141,18 @@ describe("MongoDB durable native-event preparation", () => {
       first,
     );
     await tools().ensureReady();
+  });
+
+  it("does not fall back to non-atomic source preparation on standalone MongoDB", async () => {
+    await expect(
+      createMongoInsightsSource(client).prepare({ writersDrained: true }),
+    ).rejects.toMatchObject({ code: 20 });
+    expect(
+      await client
+        .db()
+        .collection("private_hot_updater_insights_source")
+        .countDocuments(),
+    ).toBe(0);
   });
 
   it("uses primary-local reads and acknowledged fences independently of caller defaults", async () => {
@@ -217,58 +202,22 @@ describe("MongoDB durable native-event preparation", () => {
   });
 
   it.each([
-    { locale: "simple" },
-    { locale: "en", strength: 2, numericOrdering: true },
+    [{ locale: "simple" }, "legacy-id"],
+    [{ locale: "en", strength: 2, numericOrdering: true }, new BSON.Int32(2)],
+    [{ locale: "simple" }, new BSON.MaxKey()],
   ])(
-    "audits mixed BSON _ids through native bounds with %j collation",
-    async (collation) => {
+    "rejects an existing non-ObjectId under %j collation without rewriting it",
+    async (collation, invalidId) => {
       await client.db().createCollection("bundle_events", { collation });
-      const ids = mixedIds();
-      for (const [index, id] of ids.entries()) await insert(id, 100 + index);
+      await insert(invalidId, 100);
       const original = await digest();
-      expect(await tools().prepare({ writersDrained: true })).toEqual({
-        state: "auditing",
-        processed: 0,
-      });
+      await expect(
+        tools().prepare({ writersDrained: true }),
+      ).rejects.toMatchObject({ code: "invalid-result" });
       await expect(tools().ensureReady()).rejects.toMatchObject({
         code: "INSIGHTS_QUERY_NOT_READY",
       });
-      let result;
-      for (let step = 0; step < 20; step++) {
-        commands = [];
-        recording = true;
-        result = await tools().runStep({ maxItems: 3, maxRequests: 4 });
-        recording = false;
-        expect(commands.length).toBeLessThanOrEqual(4);
-        expect(commands.filter((command) => "getMore" in command)).toHaveLength(
-          0,
-        );
-        expect(result.itemsRead).toBeLessThanOrEqual(3);
-        const read = commands.find(
-          (command) => command.find === "bundle_events",
-        );
-        expect(read).toBeDefined();
-        expect(read!.skip ?? 0).toBe(0);
-        const { lsid: _lsid, $db: _db, ...query } = read!;
-        const plan = await client
-          .db()
-          .command({ explain: query, verbosity: "executionStats" });
-        expect(findStages(plan.executionStats.executionStages)).toContain(
-          "IXSCAN",
-        );
-        expect(findStages(plan.executionStats.executionStages)).not.toContain(
-          "SORT",
-        );
-        expect(findStages(plan.executionStats.executionStages)).not.toContain(
-          "COLLSCAN",
-        );
-        expect(plan.executionStats.totalDocsExamined).toBeLessThanOrEqual(3);
-        expect(plan.executionStats.totalKeysExamined).toBeLessThanOrEqual(4);
-        if (result.state === "ready") break;
-      }
-      expect(result).toMatchObject({ state: "ready", processed: ids.length });
       expect(await digest()).toBe(original);
-      await tools().ensureReady();
     },
   );
 
@@ -282,7 +231,7 @@ describe("MongoDB durable native-event preparation", () => {
             String(100_000 + offset + index),
             offset + index,
           ),
-          _id: offset + index,
+          _id: objectId(offset + index),
           extension: { keep: true },
         }),
       );
@@ -333,11 +282,14 @@ describe("MongoDB durable native-event preparation", () => {
   });
 
   it.each([new BSON.MinKey(), null, new BSON.MaxKey()])(
-    "includes a singleton captured upper BSON boundary %j",
+    "rejects a singleton legacy BSON boundary %j without rewriting it",
     async (id) => {
       await insert(id, 200);
-      await tools().prepare({ writersDrained: true });
-      expect(await finish(2)).toMatchObject({ state: "ready", processed: 1 });
+      const original = await digest();
+      await expect(
+        tools().prepare({ writersDrained: true }),
+      ).rejects.toMatchObject({ code: "invalid-result" });
+      expect(await digest()).toBe(original);
     },
   );
 
@@ -350,8 +302,8 @@ describe("MongoDB durable native-event preparation", () => {
     await client.db().command({
       delete: "bundle_events",
       deletes: [
-        { q: { _id: 2 }, limit: 1 },
-        { q: { _id: 4 }, limit: 1 },
+        { q: { _id: objectId(2) }, limit: 1 },
+        { q: { _id: objectId(4) }, limit: 1 },
       ],
     });
     expect(await finish(3)).toMatchObject({ state: "ready", processed: 4 });
@@ -359,7 +311,7 @@ describe("MongoDB durable native-event preparation", () => {
       (await events().find({}).sort({ _id: 1 }).limit(10).toArray()).map(
         (row) => row._id,
       ),
-    ).toEqual([0, 1, 3]);
+    ).toEqual([objectId(0), objectId(1), objectId(3)]);
   });
 
   it.each([
@@ -372,7 +324,7 @@ describe("MongoDB durable native-event preparation", () => {
     "fails safely on old invalid rows and leaves the raw data unchanged: %j",
     async (change) => {
       await insert(0, 400);
-      await insert(new BSON.MaxKey(), 401, change);
+      await insert(1, 401, change);
       const original = await digest();
       await tools().prepare({ writersDrained: true });
       await expect(finish(3)).rejects.toMatchObject({ code: "invalid-result" });
@@ -406,7 +358,7 @@ describe("MongoDB durable native-event preparation", () => {
       ).rejects.toMatchObject({ code: 121 });
     }
     await expect(
-      events().updateOne({ _id: 0 } as never, {
+      events().updateOne({ _id: objectId(0) } as never, {
         $set: { received_at_ms: 1.5 },
       }),
     ).rejects.toMatchObject({ code: 121 });
@@ -507,7 +459,7 @@ describe("MongoDB durable native-event preparation", () => {
   });
 
   it("serves native pages only after the persisted audit completes", async () => {
-    await insert("legacy", 700);
+    await insert(0, 700);
     await tools().prepare({ writersDrained: true });
     const queries = createMongoInsightsQueries(
       client.db().collection("bundle_events"),

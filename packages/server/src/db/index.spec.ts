@@ -599,7 +599,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         }),
       } as unknown as MongoClient;
       const mongoHotUpdater = createHotUpdater({
-        database: mongoAdapter({ client }),
+        database: mongoAdapter({ client, transactions: true }),
       });
       const result = await createMigrator(mongoHotUpdater).migrateToLatest({
         mode: "from-schema",
@@ -743,7 +743,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         }),
       } as unknown as MongoClient;
       const mongoHotUpdater = createHotUpdater({
-        database: mongoAdapter({ client }),
+        database: mongoAdapter({ client, transactions: true }),
       });
 
       await expect(mongoHotUpdater.getBundles({ limit: 10 })).rejects.toThrow(
@@ -962,7 +962,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
             name === "bundle_patches" ? patches : bundles,
         }),
       } as unknown as MongoClient;
-      const adapter = mongoAdapter({ client });
+      const adapter = mongoAdapter({ client, transactions: true });
 
       expect(Reflect.has(adapter, "transaction")).toBe(false);
     });

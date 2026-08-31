@@ -10,6 +10,10 @@ export {
   createMongoInsightsPreparation,
   MongoInsightsPreparationConflictError,
 } from "./mongoInsightsPreparation";
+export {
+  createMongoInsightsSource,
+  MongoInsightsSourceConflictError,
+} from "./mongoInsightsSource";
 export type { Migrator, SchemaGenerator } from "./types";
 export { HotUpdaterSchemaMigrationRequiredError } from "./schemaReadiness";
 export { HOT_UPDATER_SERVER_VERSION } from "../version";

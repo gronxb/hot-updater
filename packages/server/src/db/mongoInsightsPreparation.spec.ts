@@ -8,6 +8,7 @@ import {
 import { mongoAdapter } from "../adapters/mongodb";
 import { createMongoTestHarness } from "../adapters/mongodbTestClient";
 import { createMongoInsightsPreparation } from "./mongoInsightsPreparation";
+import { createMongoInsightsSource } from "./mongoInsightsSource";
 
 describe("MongoDB Insights event write fence", () => {
   it("loads generic DB tooling without loading the optional MongoDB peer", async () => {
@@ -19,6 +20,7 @@ describe("MongoDB Insights event write fence", () => {
     try {
       const db = await import("./index");
       expect(typeof db.createMongoInsightsPreparation).toBe("function");
+      expect(typeof db.createMongoInsightsSource).toBe("function");
       expect(loadMongo).not.toHaveBeenCalled();
     } finally {
       vi.doUnmock("mongodb");
@@ -94,5 +96,32 @@ describe("MongoDB Insights event write fence", () => {
       });
     expect(createCollection).not.toHaveBeenCalled();
     expect(listCollections).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid source preparation, step, and page budgets before I/O", async () => {
+    const collection = vi.fn(() => ({}));
+    const db = vi.fn(() => ({ collection }));
+    const client = { db } as unknown as MongoClient;
+    const source = createMongoInsightsSource(client);
+    await expect(
+      source.prepare({ writersDrained: false } as never),
+    ).rejects.toMatchObject({ code: "invalid-query" });
+    for (const input of [
+      { maxItems: 1, maxRequests: 13 },
+      { maxItems: 201, maxRequests: 13 },
+      { maxItems: 2, maxRequests: 12 },
+      { maxItems: 2, maxRequests: 1001 },
+    ])
+      await expect(source.runStep(input)).rejects.toMatchObject({
+        code: "invalid-query",
+      });
+    await expect(
+      source.readPage({
+        sourceGeneration: "not-a-generation",
+        shard: 0,
+        limit: 1,
+      }),
+    ).rejects.toMatchObject({ code: "invalid-query" });
+    expect(collection).toHaveBeenCalledTimes(6);
   });
 });

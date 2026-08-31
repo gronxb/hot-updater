@@ -1,10 +1,6 @@
 import { createDatabaseClient } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
-import {
-  createBundlePatchRowFixture,
-  createBundleRowFixture,
-} from "../../../test-utils/src/databaseTestFixtures";
 import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import { mongoAdapter } from "./mongodb";
 import { createMongoBundleWhere } from "./mongodbQuery";
@@ -22,45 +18,24 @@ setupDatabasePluginTestSuite({
 });
 
 describe("mongoAdapter capabilities", () => {
-  it("returns an adapter without an unsafe atomic-batch fallback", () => {
-    const plugin = mongoAdapter({ client: harness.client });
+  it("requires the transaction-capable adapter", () => {
+    const plugin = mongoAdapter({ client: harness.client, transactions: true });
     expect(plugin.name).toBe("mongodb");
     expect(plugin.adapterName).toBe("mongodb");
     expect(plugin.provider).toBe("mongodb");
     expect(Reflect.has(plugin, "transaction")).toBe(false);
-  });
-
-  it("rejects a cross-table commit when transactions are disabled", async () => {
-    const plugin = mongoAdapter({ client: harness.client });
-    const owner = createBundleRowFixture("970");
-    const patch = createBundlePatchRowFixture(
-      "971",
-      owner.id,
-      createBundleRowFixture("972").id,
-    );
-
-    await expect(
-      plugin.commit({
-        changes: [
-          {
-            model: "bundles",
-            operation: "insert",
-            row: owner,
-          },
-          {
-            model: "bundlePatches",
-            operation: "insert",
-            row: patch,
-          },
-        ],
-      }),
-    ).rejects.toMatchObject({ name: "DatabaseAtomicCommitUnsupportedError" });
+    expect(() =>
+      mongoAdapter({
+        client: harness.client,
+        transactions: false,
+      } as never),
+    ).toThrow("requires replica-set or sharded-cluster transactions");
   });
 
   it("recovers a tombstoned bundle when an aggregate delete is retried", async () => {
     harness.reset();
     const client = createDatabaseClient(
-      mongoAdapter({ client: harness.client }),
+      mongoAdapter({ client: harness.client, transactions: true }),
     );
     const bundle = {
       id: "bundle-retry",

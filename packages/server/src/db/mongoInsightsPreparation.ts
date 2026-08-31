@@ -20,13 +20,14 @@ const AUDIT_PROJECTION = {
   _id: 1,
 };
 const nullableString = { bsonType: ["string", "null"] };
-const eventValidator = {
+export const mongoInsightsEventValidator = {
   $and: [
     {
       $jsonSchema: {
         bsonType: "object",
-        required: databaseFields.bundle_events,
+        required: [...databaseFields.bundle_events, "_id"],
         properties: {
+          _id: { bsonType: "objectId" },
           id: {
             bsonType: "string",
             pattern:
@@ -254,8 +255,13 @@ export const createMongoInsightsPreparation = (client: MongoClient) => {
           current && (await sameValidator(current, collection))
             ? current.validator
             : Object.keys(collection.options.validator ?? {}).length === 0
-              ? eventValidator
-              : { $and: [collection.options.validator, eventValidator] };
+              ? mongoInsightsEventValidator
+              : {
+                  $and: [
+                    collection.options.validator,
+                    mongoInsightsEventValidator,
+                  ],
+                };
         const replacement: Preparation = {
           _id: STATE_ID,
           version: 1,
@@ -322,6 +328,8 @@ export const createMongoInsightsPreparation = (client: MongoClient) => {
           .sort({ _id: -1 })
           .limit(1)
           .toArray();
+        if (upper[0] && !(upper[0]._id instanceof (await bson()).ObjectId))
+          throw new DatabasePluginInputError("invalid-result");
         const upperId = upper[0]
           ? EJSON.stringify(upper[0]._id, { relaxed: false })
           : null;
@@ -363,7 +371,7 @@ export const createMongoInsightsPreparation = (client: MongoClient) => {
         throw new InsightsQueryNotReadyError();
       if (current.phase === "ready")
         return { ...view(current), itemsRead: 0, requests: 2 };
-      const { EJSON, MinKey } = await bson();
+      const { EJSON, MinKey, ObjectId } = await bson();
       const upper = EJSON.parse(current.upperId!, { relaxed: false });
       const after =
         current.afterId === null
@@ -399,7 +407,11 @@ export const createMongoInsightsPreparation = (client: MongoClient) => {
         throw new DatabasePluginInputError("invalid-result");
       let afterId: string | null = null;
       try {
-        for (const row of rows) assertMongoInsightsEventRow(row);
+        for (const row of rows) {
+          if (!(row._id instanceof ObjectId))
+            throw new DatabasePluginInputError("invalid-result");
+          assertMongoInsightsEventRow(row);
+        }
         if (rows.length > 0) {
           afterId = EJSON.stringify(rows.at(-1)!._id, { relaxed: false });
           if (typeof afterId !== "string")

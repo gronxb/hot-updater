@@ -16,10 +16,12 @@ import type { Collection, Filter } from "mongodb";
 
 const EVENT_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const isMongoInsightsEventId = (value: unknown): value is string =>
+  typeof value === "string" && EVENT_ID.test(value);
 export const assertMongoInsightsEventRow = (value: unknown): void => {
   assertInsightsEventRow(value);
   if (
-    !EVENT_ID.test(value.id) ||
+    !isMongoInsightsEventId(value.id) ||
     [value.install_id, value.to_bundle_id, value.from_bundle_id].some(
       (identity) => identity !== null && /[\uD800-\uDFFF]/u.test(identity),
     )

@@ -16,6 +16,7 @@ import {
   WITHOUT_INTERNAL_FIELDS,
 } from "./mongodbCollections";
 import { assertMongoInsightsEventRow } from "./mongodbInsights";
+import { appendMongoInsightsSourceEvent } from "./mongodbInsightsSource";
 import {
   createMongoBundleWhere,
   createMongoChannelWhere,
@@ -122,11 +123,7 @@ export const createMongoWrites = (
             throw new DatabasePluginInputError("invalid-data");
           throw error;
         }
-        await collections.bundleEvents.insertOne(
-          input.data,
-          mongoSessionOptions(session),
-        );
-        return input.data;
+        return appendMongoInsightsSourceEvent(collections, input.data, session);
       case "releases":
         await collections.releases.insertOne(
           input.data,

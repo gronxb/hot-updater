@@ -14,7 +14,7 @@ import { createMongoWrites } from "./mongodbWrites";
 
 export interface MongoDBConfig {
   readonly client: MongoClient;
-  readonly transactions?: boolean;
+  readonly transactions: true;
 }
 
 const createMongoImplementation = (
@@ -30,34 +30,56 @@ const createMongoImplementation = (
 
 const createTransactionalMongoImplementation = (
   client: MongoClient,
-): DatabasePluginImplementation => ({
-  ...createMongoImplementation(client),
-  deleteChannel: (input) =>
-    client.withSession((session) =>
-      session.withTransaction(() =>
-        createMongoImplementation(client, session).deleteChannel(input),
+): DatabasePluginImplementation => {
+  const direct = createMongoImplementation(client);
+  const transactionOptions = {
+    readPreference: "primary" as const,
+    readConcern: { level: "snapshot" as const },
+    writeConcern: { w: "majority" as const },
+  };
+  return {
+    ...direct,
+    create: (input) =>
+      input.model !== "bundle_events"
+        ? direct.create(input)
+        : client.withSession((session) =>
+            session.withTransaction(
+              () => createMongoImplementation(client, session).create(input),
+              transactionOptions,
+            ),
+          ),
+    deleteChannel: (input) =>
+      client.withSession((session) =>
+        session.withTransaction(
+          () => createMongoImplementation(client, session).deleteChannel(input),
+          transactionOptions,
+        ),
       ),
-    ),
-  transaction: <TResult>(
-    callback: (
-      transaction: TransactionDatabasePluginImplementation,
-    ) => Promise<TResult>,
-  ): Promise<TResult> =>
-    client.withSession((session) =>
-      session.withTransaction(() =>
-        callback(createMongoImplementation(client, session)),
+    transaction: <TResult>(
+      callback: (
+        transaction: TransactionDatabasePluginImplementation,
+      ) => Promise<TResult>,
+    ): Promise<TResult> =>
+      client.withSession((session) =>
+        session.withTransaction(
+          () => callback(createMongoImplementation(client, session)),
+          transactionOptions,
+        ),
       ),
-    ),
-});
+  };
+};
 
 export const mongoAdapter = (
   config: MongoDBConfig,
 ): DatabaseAdapterWithCapabilities => {
+  if (config.transactions !== true) {
+    throw new Error(
+      "MongoDB Insights requires replica-set or sharded-cluster transactions.",
+    );
+  }
   const adapter = createDatabasePluginAdapter(
     "mongodb",
-    config.transactions === true
-      ? createTransactionalMongoImplementation(config.client)
-      : createMongoImplementation(config.client),
+    createTransactionalMongoImplementation(config.client),
   );
   return Object.assign(
     createDatabasePlugin({

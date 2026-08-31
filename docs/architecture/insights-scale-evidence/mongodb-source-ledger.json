@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-01",
+  "topology": {
+    "server": "MongoDB 7 (mongo:7-jammy)",
+    "wiredTigerCacheSizeGB": 0.5,
+    "sourceTests": "single-member replica set",
+    "standaloneRejectionTest": "standalone mongod"
+  },
+  "sourceHashes": {
+    "packages/server/src/adapters/mongodb.ts": "ba170f3251a3e517e49ef9353b7baab2fa3724dbf7f5dbb892362fdbff5fd60e",
+    "packages/server/src/adapters/mongodbCollections.ts": "3325c10c4e67c1d31cd46be20af8c66e81cfe3adcad764f471b81ccff7b7cb34",
+    "packages/server/src/adapters/mongodbInsights.ts": "f80cc3ce72c6384460bb71368b4b1f49368a1758c60a4d0f80518afbed66ad6a",
+    "packages/server/src/adapters/mongodbInsightsSource.ts": "a2bf6b778510731d5d668aa971fc307d8aa2d34d36edc7a7d344060316c5453c",
+    "packages/server/src/adapters/mongodbInsightsSourceSchema.ts": "0824d2689ebfe2244e4c1ab95898fa4d9fde5c823f52b5f792a3949a21a66d61",
+    "packages/server/src/adapters/mongodbWrites.ts": "10b795f0a2a157dd418c86488db6be56d9f4d228b9bdde8374c18c7b5a43245e",
+    "packages/server/src/db/mongoInsightsPreparation.ts": "2187a85e0b97bbf419cfcf166659ba0f445de1f52019222d112795b3d7efe6a6",
+    "packages/server/src/db/mongoInsightsSource.ts": "bcd0f2c1eabcb3bce1cfe9c48bdfdf2b3ff3be3cf5c1e80c3eccb8d90ccd53aa",
+    "packages/server/src/db/index.ts": "f15fb16ef60b48c1597e521b0ba34f9b39603494b6a3ff2397ba7e1e504adbaf"
+  },
+  "testHashes": {
+    "packages/server/src/adapters/mongodb.spec.ts": "a786aa0df30dd7a2f6fb802e22e473cdb00c1fca56f799c2d6de757ae79bb9b1",
+    "packages/server/src/adapters/mongodbInsightsSource.spec.ts": "811f7618e59a1547f36870130a6b2eac72f442b4d356f31f6af1d4f279d6a6a1",
+    "packages/server/src/adapters/mongodbTestClient.ts": "600d86b6763aaeb308934fc819b66c20bb6676a72bf6eead11ac249014b633b4",
+    "packages/server/src/adapters/mongodbTestFilter.ts": "579b748b6be1f61bbfd31f2920a04879a2d3fd5611a353d30e3f2c90fc0a2fa1",
+    "packages/server/src/db/mongoInsightsPreparation.spec.ts": "452db9583dedc62d6ce9cd340b37f66ddaaf3acc65e92eb6be8acf43b71974e2",
+    "packages/server/src/db/mongoInsightsPreparation.docker.integration.spec.ts": "81990c210911e5e6b70077f69d2c99d1cc93591f915bd4e6ac573a9acdc2876e",
+    "packages/server/src/db/mongoInsightsSource.docker.integration.spec.ts": "834deeadeb333b6b159414f3a58e7c214f13cec1ea7a494613eda920fba857ff",
+    "packages/server/src/db/index.spec.ts": "25e6be4a3b02134fe4527d24b9bd97e04fc85154469aa9ed7dd419aa49428d3b"
+  },
+  "focusedVerification": {
+    "serverUnitTestsPassed": 81,
+    "standalonePreparationTestsPassed": 22,
+    "replicaSetSourceTestsPassed": 10,
+    "serverTypecheck": "passed",
+    "ownedSourceLint": "passed"
+  },
+  "admission": {
+    "eventId": "lowercase canonical 36-character UUID",
+    "rawId": "ObjectId",
+    "legacyRewrite": false
+  },
+  "preparation": {
+    "existingRows": 50001,
+    "maxItemsPerSourceStep": 200,
+    "maxLogicalRequestsPerMeasuredSourceStep": 610,
+    "hiddenGetMoreCommands": 0,
+    "rawExtensionsRetained": true,
+    "existingMaximumRawBsonBytesBackfilledWithoutRewrite": 16777216,
+    "sourceIndex": {
+      "name": "insights_source_sequence_idx",
+      "stagesContain": ["IXSCAN"],
+      "stagesExclude": ["COLLSCAN", "SORT"],
+      "maxDocsExaminedForLimit100": 100,
+      "maxKeysExaminedForLimit100": 100
+    }
+  },
+  "twoRowBudget": {
+    "itemsRead": 2,
+    "reportedLogicalOperations": 16,
+    "observedLogicalCommandsExcludingCommit": 16,
+    "hiddenGetMoreCommands": 0
+  },
+  "nearLimitPage": {
+    "storedRawBsonBytes": 16777216,
+    "returnedPublicEventBsonBytes": 16777199,
+    "eventPayloadBudgetBytes": 16777216,
+    "ledgerFindCommands": 1,
+    "rawFindCommands": 2,
+    "nonEmittedRawRows": 1,
+    "hiddenGetMoreCommands": 0,
+    "continuation": "last emitted ledger sequence"
+  },
+  "atomicity": {
+    "directRawClockLedgerCommit": true,
+    "laterMixedMutationRollback": true,
+    "counterOverflowRollsBack": true,
+    "standaloneFallback": false,
+    "validShapedLedgerCollisionFails": true,
+    "hiddenSourceIndexFailsReadiness": true,
+    "missingClockFailsReadiness": true,
+    "weakenedPrivateValidatorFailsReadiness": true,
+    "reopenedEventPreparationPreventsReadyResult": true,
+    "incompatiblePrivateCollationPreventsFirstReadyResult": true
+  },
+  "causalPrefix": {
+    "laterCommitExcludedFromOldGeneration": true,
+    "laterCommitIncludedInNewGeneration": true,
+    "firstTransactionalReadConcern": "snapshot + afterClusterTime"
+  },
+  "limitations": [
+    "No replica lag or election stepdown simulation",
+    "No unknown-commit-result fault injection",
+    "A 0.25-GiB WiredTiger cache rejected the exact 16-MiB transaction with code 388; production cache sizing is required",
+    "No public MongoDB report/search/provider wiring",
+    "No standalone-mongodb profile E2E in this focused evidence"
+  ]
+}

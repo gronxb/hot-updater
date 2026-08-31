@@ -7,6 +7,7 @@ import type {
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import { Long } from "mongodb";
 
 export type MongoTestRow =
   | BundleEventRow
@@ -24,6 +25,9 @@ export const readMongoTestField = (row: MongoTestRow, field: string): unknown =>
   Object.entries(row).find(([key]) => key === field)?.[1];
 
 const compare = (left: unknown, right: unknown): number => {
+  if (Long.isLong(left) && Long.isLong(right)) {
+    return left.compare(right);
+  }
   if (typeof left === "number" && typeof right === "number") {
     return left - right;
   }
