@@ -205,7 +205,7 @@
     "supports-color": "7.2.0",
     "to-regex-range": "5.0.1",
     "unicorn-magic": "0.3.0",
-    "verkit": "0.3.2",
+    "verkit": "0.4.0",
     "which": "2.0.2",
     "wsl-utils": "0.1.0",
     "xml-naming": "0.1.0",

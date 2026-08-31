@@ -34,7 +34,7 @@ allowBuilds:
 catalog:
   "@types/node": ^20
   uuidv7: ^1.0.2
-  verkit: 0.3.2
+  verkit: 0.4.0
   vitest: 4.1.4
 catalogs:
   aws:
@@ -60,7 +60,7 @@ catalogs:
   tools:
     "@clack/prompts": 1.7.0
     "execa": 9.5.2
-    tsdown: 0.21.6
+    tsdown: 0.22.14
 
 onlyBuiltDependencies:
   - "@bugsnag/cli"

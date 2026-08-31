@@ -18,6 +18,7 @@ import {
   coerce,
   compare,
   normalize,
+  normalizeFull,
   parseRange,
   satisfies,
   type SemVerComparator,
@@ -683,7 +684,8 @@ function versionInSegment(
 }
 
 export function canonicalizeAppVersion(appVersion: string): string | null {
-  return coerce(appVersion);
+  const version = coerce(appVersion);
+  return version ? normalizeFull(version) : null;
 }
 
 export function projectCompiledCatalog(

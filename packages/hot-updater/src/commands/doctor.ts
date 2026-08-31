@@ -15,7 +15,6 @@ import {
   findMinimumForRange,
   normalize,
   normalizeRange,
-  parse,
   satisfies,
 } from "verkit";
 
@@ -158,14 +157,12 @@ export function areVersionsCompatible(
 
   const normalizedRangeA = normalizeRange(versionA);
   const normalizedRangeB = normalizeRange(versionB);
-  const comparableVersionA = normalizedRangeA
+  const parsedVersionA = normalizedRangeA
     ? findMinimumForRange(normalizedRangeA)
     : null;
-  const comparableVersionB = normalizedRangeB
+  const parsedVersionB = normalizedRangeB
     ? findMinimumForRange(normalizedRangeB)
     : null;
-  const parsedVersionA = comparableVersionA ? parse(comparableVersionA) : null;
-  const parsedVersionB = comparableVersionB ? parse(comparableVersionB) : null;
   const prereleaseChannelA = parsedVersionA?.prerelease?.[0];
   const prereleaseChannelB = parsedVersionB?.prerelease?.[0];
 
