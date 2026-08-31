@@ -5,7 +5,10 @@ import {
   createDatabasePluginHarness,
   type DeploymentSeed,
 } from "./databasePlugin.testFixtures";
-import type { DeployReleasePolicy } from "./deployTransaction";
+import {
+  commitDeployment,
+  type DeployReleasePolicy,
+} from "./deployTransaction";
 
 const { confirm, loadConfig, log } = vi.hoisted(() => ({
   confirm: vi.fn(),
@@ -88,20 +91,22 @@ describe("Release commands", () => {
     expect(rendered).not.toContain(second.bundle.id);
   });
 
-  it("shows complete Release policy, scope, and provenance", async () => {
+  it("shows console ID and policy without file or catalog internals", async () => {
     const seeded = deployment("01900000-0000-7000-8000-000000000001");
-    await databaseHarness.seedDeployments([seeded]);
+    const { release } = await commitDeployment({
+      database: databaseHarness.plugin,
+      ...seeded,
+    });
     const output = vi.spyOn(console, "log").mockImplementation(() => {});
     const { handleReleaseShow } = await import("./release");
 
-    await handleReleaseShow(seeded.bundle.id);
+    await handleReleaseShow(release!.id);
 
     const rendered = String(output.mock.calls[0]?.[0]);
     for (const field of [
-      "Scope",
       "Strategy",
       "Target cohorts",
-      "Source Release",
+      "Source ID",
       "Created",
       "Updated",
     ]) {
@@ -109,6 +114,62 @@ describe("Release commands", () => {
     }
     expect(rendered).toContain("staff");
     expect(rendered).toContain("APP_VERSION");
+    expect(rendered).toMatch(/\bID:\s+/);
+    expect(rendered).toContain(release!.id);
+    expect(rendered).not.toContain(seeded.bundle.id);
+    expect(rendered).not.toContain(release!.scope_key);
+    expect(rendered).toMatch(/Revision:\s+1/);
+    expect(rendered).not.toMatch(/Release ID|Scope|Generation/);
+  });
+
+  it("keeps the same console ID through policy edits, rollback, and deletion", async () => {
+    const seeded = deployment("01900000-0000-7000-8000-000000000001");
+    const { release } = await commitDeployment({
+      database: databaseHarness.plugin,
+      ...seeded,
+    });
+    const id = release!.id;
+    const output = vi.spyOn(console, "log").mockImplementation(() => {});
+    const {
+      handleReleaseDelete,
+      handleReleaseEnablement,
+      handleReleaseUpdate,
+    } = await import("./release");
+
+    await handleReleaseUpdate(id, { message: "verified update", yes: true });
+    await expect(
+      databaseHarness.plugin.models.releases.findById(id),
+    ).resolves.toMatchObject({ message: "verified update", revision: 2 });
+    await handleReleaseEnablement(id, false, { yes: true });
+    await handleReleaseEnablement(id, true, { yes: true });
+    await handleReleaseEnablement(id, false, { yes: true });
+    await handleReleaseDelete(id, { yes: true });
+
+    expect(
+      output.mock.calls.map(([rendered]) => String(rendered).split("\n")[0]),
+    ).toEqual([
+      "Release updated",
+      "Release disabled",
+      "Release enabled",
+      "Release disabled",
+      "Release deleted",
+    ]);
+    for (const [rendered] of [
+      ...output.mock.calls,
+      ...log.message.mock.calls,
+    ]) {
+      expect(rendered).toMatch(/\bID:\s+/);
+      expect(rendered).toContain(id);
+      expect(rendered).not.toContain(seeded.bundle.id);
+      expect(rendered).not.toContain(release!.scope_key);
+      expect(rendered).not.toMatch(/Release ID|Scope|Generation/);
+    }
+    await expect(
+      databaseHarness.plugin.models.releases.findById(id),
+    ).resolves.toBeNull();
+    await expect(
+      databaseHarness.plugin.models.bundles.findById(seeded.bundle.id),
+    ).resolves.not.toBeNull();
   });
 
   it("previews device-dependent fallback and warns for the sole enabled Release", async () => {
@@ -165,11 +226,14 @@ describe("Release commands", () => {
 
   it("keeps JSON disable output machine-readable without a human preview", async () => {
     const seeded = deployment("01900000-0000-7000-8000-000000000001");
-    await databaseHarness.seedDeployments([seeded]);
+    const { release } = await commitDeployment({
+      database: databaseHarness.plugin,
+      ...seeded,
+    });
     const output = vi.spyOn(console, "log").mockImplementation(() => {});
     const { handleReleaseEnablement } = await import("./release");
 
-    await handleReleaseEnablement(seeded.bundle.id, false, {
+    await handleReleaseEnablement(release!.id, false, {
       json: true,
       yes: true,
     });
@@ -177,11 +241,15 @@ describe("Release commands", () => {
     const payload = JSON.parse(String(output.mock.calls[0]?.[0]));
     expect(payload.release).toMatchObject({
       enabled: false,
-      id: seeded.bundle.id,
+      bundle_id: seeded.bundle.id,
+      id: release!.id,
       revision: 2,
     });
     expect(payload.catalog).toEqual(
-      expect.objectContaining({ scope_key: expect.any(String) }),
+      expect.objectContaining({
+        generation: 2,
+        scope_key: release!.scope_key,
+      }),
     );
     expect(log.message).not.toHaveBeenCalled();
     expect(log.warn).not.toHaveBeenCalled();

@@ -57,7 +57,7 @@ safe `npx hot-updater ...` flows.
   setup automatically. It should summarize the failed command, the likely
   cause, and the next checks for you to decide.
 - For state-changing operations such as deploy, Release enable/disable, or
-  database migration, the agent should identify the Release ID and affected
+  database migration, the agent should identify the console ID and affected
   scope first and verify the result afterward. Operational rollback uses
-  `release disable <release-id>`; Bundle IDs remain artifact and native crash
-  identities.
+  `release disable <id>`; file IDs are used only for artifact operations and
+  native crash diagnostics.

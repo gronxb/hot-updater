@@ -43,11 +43,11 @@ npx hot-updater deploy -p ios -r 100
 - `-r 25` targets 250 of 1000 numeric cohorts.
 - `-r 100`, or omitting `-r`, targets the full audience.
 
-Hot Updater hashes the stable Release ID when selecting numeric cohorts. That
+Hot Updater hashes the stable update ID when selecting numeric cohorts. That
 means increasing one Release from `10%` to `25%` expands that Release's
 eligible set instead of reshuffling everyone.
 
-Promoting a Bundle creates a new Release with a new Release ID and independent
+Promoting a Bundle creates a new Release with a new ID and independent
 rollout seed, even though the Bundle bytes are reused.
 
 ## Scenario 1: Numeric Rollout Flow
@@ -93,7 +93,7 @@ This opens the numeric cohort preview for that Release:
 <img src={"/docs/rollout-cohorts/preview_cohort.png"} />
 
 If rollout is `50.0%`, Hot Updater selects `500` numeric cohorts out of
-`1..1000`. That selection is based on the Release ID, so the result remains
+`1..1000`. That selection is based on the update ID, so the result remains
 stable when you update that Release's rollout policy.
 
 <Callout type="info">
@@ -205,15 +205,15 @@ You can set either kind of cohort:
 If you want numeric rollout and a fixed tester group at the same time, keep
 both on the same Release. A common flow is:
 
-1. Deploy a Release with `-r 0` and record its Release ID.
+1. Deploy a Release with `-r 0` and record its ID.
 2. Add `qa` to `Target Cohorts`.
 3. After QA verifies it, increase the same Release to `50%` rollout.
 
 You can do the same thing from the CLI:
 
 ```package-install
-npx hot-updater release update <release-id> --target-cohorts qa -y
-npx hot-updater release update <release-id> --rollout-cohort-count 500 -y
+npx hot-updater release update <id> --target-cohorts qa -y
+npx hot-updater release update <id> --rollout-cohort-count 500 -y
 ```
 
 `--rollout-cohort-count 500` is equivalent to a `50%` rollout because Hot
@@ -271,7 +271,7 @@ such as `411`.
 1. Read the current cohort on the tester device with `HotUpdater.getCohort()`.
 2. Change it to `qa` with `HotUpdater.setCohort()`. If you want to match a
    numeric rollout instead, use a value such as `411`.
-3. Deploy with `npx hot-updater deploy -p ios -r 0`, record the Release ID, and set
+3. Deploy with `npx hot-updater deploy -p ios -r 0`, record the update ID, and set
    `Target Cohorts = qa` so only QA devices receive it first.
 4. After QA confirms the Release, increase rollout to `50%` and keep `qa` in
    `Target Cohorts` on the same Release.

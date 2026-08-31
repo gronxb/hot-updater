@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Script } from "node:vm";
 
-import { transformFileSync } from "@babel/core";
+import { transformFileSync, transformSync } from "@babel/core";
 import { describe, expect, it } from "vitest";
 
 import type { JsonObject } from "./control-client.ts";
@@ -659,6 +659,141 @@ describe("Detox scenario contract", () => {
       "const builtInBundleId = E2E_MIN_BUNDLE_ID;",
     );
   });
+
+  it("resolves deployed console IDs to files and keeps artifact cleanup independent of Releases", async () => {
+    const { createDatabasePluginHarness } =
+      await import("../../packages/hot-updater/src/commands/databasePlugin.testFixtures.ts");
+    const { commitDeployment } =
+      await import("../../packages/hot-updater/src/commands/deployTransaction.ts");
+    const { createDatabaseClient, deleteRelease, updateReleasePolicy } =
+      await import("../../plugins/plugin-core/dist/index.mjs");
+    const harness = createDatabasePluginHarness();
+    const base = {
+      archiveByteSize: 100,
+      fileHash: "base-hash",
+      gitCommitHash: null,
+      id: "01900000-0000-7000-8000-000000000001",
+      platform: "ios" as const,
+      storageUri: "storage://artifacts/base.zip",
+    };
+    const file = {
+      ...base,
+      fileHash: "target-hash",
+      id: "01900000-0000-7000-8000-000000000002",
+      storageUri: "storage://artifacts/target.zip",
+      patches: [
+        {
+          baseBundleId: base.id,
+          baseFileHash: base.fileHash,
+          byteSize: 10,
+          patchFileHash: "patch-hash",
+          patchStorageUri: "storage://patches/target.patch",
+        },
+      ],
+    };
+    harness.setBundles([
+      base,
+      { ...base, id: "android-file", platform: "android" },
+    ]);
+    const { release } = await commitDeployment({
+      database: harness.plugin,
+      bundle: file,
+      release: {
+        channel: "production",
+        enabled: true,
+        fingerprintHash: null,
+        message: "fixture",
+        shouldForceUpdate: false,
+        targetAppVersion: "1.0.x",
+      },
+    });
+    const source = await fs.readFile(detoxControlServerControllerPath, "utf8");
+    const helpers = [
+      source.slice(
+        source.indexOf("function stripAnsi("),
+        source.indexOf("async function readTextIfExists("),
+      ),
+      source.slice(
+        source.indexOf("async function fetchProviderBundlesPage("),
+        source.indexOf("async function fetchProviderReleaseById("),
+      ),
+      "({ extractDeployReleaseId, resolveDeployedRelease, fetchProviderBundleById, fetchProviderBundlesPage, isBundleVisible })",
+    ].join("\n");
+    const transformed = transformSync(helpers, {
+      babelrc: false,
+      configFile: false,
+      filename: "controller.ts",
+      presets: ["@babel/preset-typescript"],
+    })!.code!;
+    const controller = new Script(transformed).runInNewContext({
+      createDatabaseClient,
+      fixtureSession: { platform: "ios" },
+      logDetoxFixture: () => {},
+      withConfiguredDatabase: (
+        callback: (database: typeof harness.plugin) => unknown,
+      ) => callback(harness.plugin),
+    });
+    const buildOutput = ["Release ID", "Bundle ID", "File ID", "Build ID"]
+      .map((label) => `│  ${label}: ${file.id}`)
+      .join("\n");
+    const output = `${buildOutput}\n│  iOS Deployment\n│      \u001b[2mID:      \u001b[22m \u001b[33m${release!.id}\u001b[39m\n└  Deployment successful\n`;
+
+    expect(release!.id).not.toBe(file.id);
+    expect(controller.extractDeployReleaseId(buildOutput)).toBeNull();
+    const id = controller.extractDeployReleaseId(output);
+    expect(id).toBe(release!.id);
+    const deployed = await controller.resolveDeployedRelease(id, "production");
+    expect(deployed.release.bundle_id).toBe(file.id);
+    await expect(
+      controller.fetchProviderBundleById(deployed.release.bundle_id),
+    ).resolves.toMatchObject(file);
+    await expect(controller.fetchProviderBundleById(id)).rejects.toThrow(
+      "bundle not found",
+    );
+
+    await updateReleasePolicy({
+      database: harness.plugin,
+      releaseId: id,
+      patch: { enabled: false },
+    });
+    await deleteRelease({ database: harness.plugin, releaseId: id });
+    expect(await harness.releases()).toEqual([]);
+    const files = await controller.fetchProviderBundlesPage({
+      limit: 100,
+      offset: 0,
+    });
+    expect(
+      files.data.map((bundle: { id: string }) => bundle.id).sort(),
+    ).toEqual([base.id, file.id]);
+    await expect(controller.isBundleVisible(file.id)).resolves.toBe(true);
+    await createDatabaseClient(harness.plugin).deleteBundleById(file.id);
+    await expect(controller.isBundleVisible(file.id)).resolves.toBe(false);
+  });
+
+  it.each([
+    [
+      "Verification failed: 1 bundle record(s) still exist (file IDs: file-1).",
+      true,
+    ],
+    ["Verification failed: bundle file-1 still exists.", true],
+    ["Cannot delete Bundle records referenced by Releases.", false],
+  ])(
+    "recognizes retryable file deletion verification: %s",
+    async (output, retryable) => {
+      const source = await fs.readFile(
+        detoxControlServerControllerPath,
+        "utf8",
+      );
+      const declaration = source.slice(
+        source.indexOf("const DELETE_VERIFY_STILL_EXISTS_PATTERN ="),
+        source.indexOf("const E2E_POLL_INTERVAL_MS ="),
+      );
+      const pattern = new Script(
+        `${declaration}\nDELETE_VERIFY_STILL_EXISTS_PATTERN;`,
+      ).runInNewContext();
+      expect(pattern.test(output)).toBe(retryable);
+    },
+  );
 
   it.each([
     ["running-file", "staged-update"],
@@ -2273,9 +2408,8 @@ describe("Detox scenario contract", () => {
   });
 
   it("resolves auto patch metadata from the provider-visible bundle record", async () => {
-    // Given: standalone providers can expose a just-deployed bundle through the
-    // same CLI surface used by provider assertions before a direct database
-    // plugin read observes it.
+    // Given: the configured provider can be a standalone repository, and CLI
+    // bundle show now returns Release policy instead of file metadata.
     const controllerSource = await fs.readFile(
       detoxControlServerControllerPath,
       "utf8",
@@ -2286,8 +2420,8 @@ describe("Detox scenario contract", () => {
     );
 
     // When: the auto-patch metadata resolver waits for patch fields.
-    // Then: it must use the provider-visible bundle record, not a direct
-    // database-only read that can race or diverge from the provider surface.
+    // Then: it must hydrate the file through the configured provider, including
+    // patch rows, rather than interpreting a Release row as file metadata.
     expect(resolverSource).toContain(
       "const bundle = await fetchProviderBundleById(bundleId);",
     );

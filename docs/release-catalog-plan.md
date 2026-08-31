@@ -1023,8 +1023,9 @@ public status.
 Deploy uploads one immutable Bundle and creates one Release per platform. The
 Bundle, available patch rows, Release, Channel creation, and affected catalogs
 commit through the atomic mutation boundary. Failed DB commit cleans only newly
-uploaded exclusive objects. Output returns both Release/Bundle IDs plus scope and
-generation.
+uploaded exclusive objects. Default output shows one ID per platform
+(`release.id`), matching the Console and public runtime getter. File IDs and catalog scope/generation remain
+available through explicit artifact or catalog diagnostics.
 
 ### Rollout and target cohorts
 

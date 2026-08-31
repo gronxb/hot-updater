@@ -6,10 +6,9 @@ icon: Upload
 
 <video src={"/docs/deploy/deploy.mov"} controls autoPlay loop muted />
 
-Deploy builds and uploads one immutable Bundle per platform, creates a Release
-that owns its delivery policy, and atomically recompiles the affected Release
-Catalog. Bundle IDs identify bytes; Release IDs identify delivery chronology,
-rollout, compatibility, enabled state, force update, and message policy.
+Deploy builds and uploads the update files for each platform and publishes its
+delivery policy. Each platform gets one **ID**, shared by the deployment output,
+the console, and [`HotUpdater.getBundleId()`](/docs/react-native-api/getBundleId).
 
 ## Checklist
 
@@ -55,15 +54,16 @@ npx hot-updater deploy
 
 ### Deployment Result
 
-After the database commit succeeds, deploy prints the identity of each
-platform result:
+After the database commit succeeds, deploy prints one ID per platform:
 
-- Release ID
-- Bundle ID
-- Release Catalog scope key
-- Catalog generation
+```text
+iOS Deployment
+    ID:       01a0586e-a286-7a74-a959-6d2c770b8793
 
-Use the ID shown in the console or returned by `HotUpdater.getBundleId()` with
+Deployment successful
+```
+
+Interactive deploy opens that exact update in the console. Use this ID with
 `bundle show`, `release show`, `release update`, `release disable`, or
 `release promote`. File operations such as `patch` and `bundle delete` use the
 file ID available in the console's Advanced diagnostics.
@@ -154,7 +154,7 @@ edit the same Release later.
 
 Hot Updater maps rollout percentages to `1..1000` numeric cohorts internally.
 For example, `-r 25` means 250 of 1000 numeric cohorts are eligible for that
-Release. Numeric cohort selection is seeded by Release ID and remains stable
+Release. Numeric cohort selection is seeded by its ID and remains stable
 when that Release's rollout policy changes.
 
 If you omit `-r`, the default value is `100`, so the new Release is eligible for

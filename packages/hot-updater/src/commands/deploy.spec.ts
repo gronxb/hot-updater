@@ -235,6 +235,8 @@ import {
   createStorageUri,
   DatabaseAtomicCommitUnsupportedError,
 } from "@hot-updater/plugin-core";
+import isPortReachable from "is-port-reachable";
+import open from "open";
 
 import {
   createBundleManifest,
@@ -248,7 +250,7 @@ import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
-import { getConsolePort } from "./console";
+import { getConsolePort, openConsole } from "./console";
 import {
   deploy,
   getRolloutCohortCountFromPercentage,
@@ -361,6 +363,10 @@ describe("deploy rollout wiring", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     databaseHarness.reset();
+    vi.mocked(open).mockReset();
+    vi.mocked(openConsole).mockReset();
+    vi.mocked(isPortReachable).mockResolvedValue(false);
+    mockCli.p.confirm.mockResolvedValue(false);
 
     mockCli.getCwd.mockReturnValue("/mock/cwd");
     mockCli.appendToProjectRootGitignore.mockReturnValue(false);
@@ -502,7 +508,7 @@ describe("deploy rollout wiring", () => {
     });
   });
 
-  it("prints the committed Release identity with the deployment result", async () => {
+  it("prints only the committed update ID, matching the console and runtime", async () => {
     await deploy({
       channel: "production",
       forceUpdate: false,
@@ -521,19 +527,80 @@ describe("deploy rollout wiring", () => {
     );
     const summary = mockCli.p.log.message.mock.calls[0]?.[0];
     expect(summary).toContain("iOS Deployment");
-    expect(summary).toContain(`Release ID:`);
+    expect(release.id).not.toBe(release.bundle_id);
+    expect(summary).toContain(`ID:`);
     expect(summary).toContain(release.id);
-    expect(summary).toContain(`Bundle ID:`);
-    expect(summary).toContain("bundle-123");
-    expect(summary).not.toContain("Authority ID:");
-    expect(summary).not.toContain("Catalog ID:");
+    expect(summary).not.toContain("Release ID");
+    expect(summary).not.toContain("Bundle ID");
+    expect(summary).not.toContain("bundle-123");
     expect(summary).not.toContain(catalog!.catalog_id);
-    expect(summary).toContain(release.scope_key);
-    expect(summary).toContain(`Generation:`);
-    expect(summary).toContain(String(catalog?.generation));
-    expect(mockCli.p.outro).toHaveBeenCalledWith(
-      "🚀 Deployment Successful (bundle-123)",
-    );
+    expect(summary).not.toContain(release.scope_key);
+    expect(summary).not.toContain("Generation");
+    expect(mockCli.p.outro).toHaveBeenCalledWith("Deployment successful");
+  });
+
+  it.each([true, false])(
+    "opens the committed update in the console (already running: %s)",
+    async (alreadyRunning) => {
+      vi.mocked(getConsolePort).mockResolvedValue(3000);
+      vi.mocked(isPortReachable).mockResolvedValue(alreadyRunning);
+      mockCli.p.confirm.mockResolvedValue(true);
+      vi.mocked(openConsole).mockImplementation(async (port, onListening) => {
+        onListening?.({ port });
+      });
+      vi.mocked(open).mockResolvedValue({} as Awaited<ReturnType<typeof open>>);
+
+      await deploy({
+        channel: "production",
+        forceUpdate: false,
+        interactive: true,
+        platform: "ios",
+        targetAppVersion: "1.0.x",
+      });
+
+      const release = (await databaseHarness.releases())[0]!;
+      expect(open).toHaveBeenCalledOnce();
+      expect(databaseHarness.commit.mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(open).mock.invocationCallOrder[0]!,
+      );
+      const url = new URL(vi.mocked(open).mock.calls[0]![0]);
+      expect(url.origin).toBe("http://localhost:3000");
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        platform: "ios",
+        releaseId: release.id,
+      });
+      expect(mockCli.p.note).toHaveBeenCalledWith(`Console: ${url}`);
+      expect(openConsole).toHaveBeenCalledTimes(alreadyRunning ? 0 : 1);
+    },
+  );
+
+  it("does not open the console or announce success after a failed interactive commit", async () => {
+    databaseHarness.commit.mockRejectedValueOnce(new Error("commit failed"));
+    const exit = vi.spyOn(process, "exit").mockImplementationOnce(() => {
+      throw new Error("process.exit");
+    });
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(
+        deploy({
+          channel: "production",
+          forceUpdate: false,
+          interactive: true,
+          platform: "ios",
+          targetAppVersion: "1.0.x",
+        }),
+      ).rejects.toThrow("process.exit");
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(await databaseHarness.releases()).toEqual([]);
+      expect(getConsolePort).not.toHaveBeenCalled();
+      expect(openConsole).not.toHaveBeenCalled();
+      expect(open).not.toHaveBeenCalled();
+      expect(mockCli.p.log.message).not.toHaveBeenCalled();
+      expect(mockCli.p.outro).not.toHaveBeenCalled();
+    } finally {
+      exit.mockRestore();
+      errorLog.mockRestore();
+    }
   });
 
   it("deploys both platforms sequentially when platform is omitted", async () => {
@@ -580,12 +647,6 @@ describe("deploy rollout wiring", () => {
         outfile: "/mock/cwd/.hot-updater/output/android/bundle/bundle.tar.br",
       }),
     );
-    expect(mockCli.p.log.success).toHaveBeenCalledWith(
-      "✅ iOS Deployment Successful (bundle-ios)",
-    );
-    expect(mockCli.p.log.success).toHaveBeenCalledWith(
-      "✅ Android Deployment Successful (bundle-android)",
-    );
     const releases = await databaseHarness.releases();
     for (const [platform, platformName, bundleId] of [
       ["ios", "iOS", "bundle-ios"],
@@ -604,16 +665,15 @@ describe("deploy rollout wiring", () => {
         .map(([message]) => message)
         .find((message) => message.includes(`${platformName} Deployment`));
       expect(summary).toContain(release!.id);
-      expect(summary).toContain(bundleId);
+      expect(summary).not.toContain(bundleId);
+      expect(summary).toContain("ID:");
       expect(summary).not.toContain("Authority ID:");
       expect(summary).not.toContain("Catalog ID:");
       expect(summary).not.toContain(catalog!.catalog_id);
-      expect(summary).toContain(release!.scope_key);
-      expect(summary).toContain(String(catalog?.generation));
+      expect(summary).not.toContain(release!.scope_key);
+      expect(summary).not.toContain("Generation");
     }
-    expect(mockCli.p.outro).toHaveBeenCalledWith(
-      "🚀 Deployment Successful (iOS, Android)",
-    );
+    expect(mockCli.p.outro).toHaveBeenCalledWith("Deployment successful");
     expect(
       (await databaseHarness.bundles()).map(({ id }) => id).sort(),
     ).toEqual(["bundle-android", "bundle-ios"]);
@@ -815,11 +875,9 @@ describe("deploy rollout wiring", () => {
     expect(mockBuildPlugin.build).toHaveBeenCalledTimes(2);
     expect(mockCli.createTarBrTargetFiles).toHaveBeenCalledTimes(2);
     expect(mockStoragePlugin.put).toHaveBeenCalledTimes(6);
-    expect(mockCli.p.log.success).toHaveBeenCalledTimes(2);
+    expect(mockCli.p.log.message).toHaveBeenCalledTimes(2);
     expect(mockCli.p.outro).toHaveBeenCalledTimes(1);
-    expect(mockCli.p.outro).toHaveBeenCalledWith(
-      "🚀 Deployment Successful (iOS, Android)",
-    );
+    expect(mockCli.p.outro).toHaveBeenCalledWith("Deployment successful");
     expect(
       (await databaseHarness.bundles()).map(({ id }) => id).sort(),
     ).toEqual(["bundle-android", "bundle-ios"]);
@@ -1521,11 +1579,9 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockCli.p.outro).toHaveBeenCalledWith(
-      `🚀 Deployment Successful (${DEPLOY_BUNDLE_ID})`,
-    );
+    expect(mockCli.p.outro).toHaveBeenCalledWith("Deployment successful");
     expect(mockCli.p.log.warn).toHaveBeenCalledWith(
-      `Partial update skipped for ${fixtureBundleId(122).slice(0, 8)}: storage unavailable`,
+      `Partial update skipped for file ${fixtureBundleId(122).slice(0, 8)}: storage unavailable`,
     );
   });
 

@@ -2,7 +2,6 @@ import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
-import type { DeployReleasePolicy } from "./deployTransaction";
 
 const { loadConfig, log } = vi.hoisted(() => ({
   loadConfig: vi.fn(),
@@ -40,19 +39,6 @@ const artifact = (
   storageUri: `storage://artifacts/${id}.zip`,
   gitCommitHash: "1234567890abcdef",
 });
-
-const releasePolicy = (): DeployReleasePolicy => ({
-  channel: "production",
-  enabled: true,
-  fingerprintHash: null,
-  message: null,
-  shouldForceUpdate: false,
-  targetAppVersion: "1.0.x",
-  rolloutCohortCount: 1_000,
-  targetCohorts: [],
-});
-
-const deployment = (bundle: Bundle) => ({ bundle, release: releasePolicy() });
 
 const releaseReference = (id: string, bundleId: string): ReleaseRow => ({
   bundle_id: bundleId,
@@ -196,19 +182,32 @@ describe("Bundle commands", () => {
     ).resolves.toBeNull();
     expect(log.success).toHaveBeenCalledWith("Deleted bundle record.");
     expect(log.info).toHaveBeenCalledWith(
+      expect.stringMatching(/File ID:\s+B1/),
+    );
+    expect(log.info).toHaveBeenCalledWith(
       expect.stringContaining("storage prune --dry-run"),
     );
   });
 
   it("preserves an artifact referenced by a Release", async () => {
     const bundleId = "00000000-0000-7000-8000-000000000001";
-    await databaseHarness.seedDeployments([deployment(artifact(bundleId))]);
-    const [release] = await databaseHarness.releases();
+    databaseHarness.setBundles([artifact(bundleId)]);
+    await databaseHarness.plugin.models.channels.insert({
+      row: { id: "channel-production", name: "production" },
+      onConflict: "returnExisting",
+    });
+    const release = releaseReference(
+      "00000000-0000-7000-8000-000000000002",
+      bundleId,
+    );
+    await databaseHarness.plugin.commit({
+      changes: [{ model: "releases", operation: "insert", row: release }],
+    });
     databaseHarness.commit.mockClear();
     const { handleBundleDelete } = await import("./bundle");
 
     await expect(handleBundleDelete([bundleId], { yes: true })).rejects.toThrow(
-      `Cannot delete Bundle records referenced by Releases. Disable and delete these Releases first:\n${bundleId}: ${release!.id}`,
+      `Cannot delete Bundle records referenced by Releases. Disable and delete these Releases first:\nFile ID ${bundleId}: referenced by IDs ${release.id}`,
     );
     expect(databaseHarness.commit).not.toHaveBeenCalled();
     await expect(

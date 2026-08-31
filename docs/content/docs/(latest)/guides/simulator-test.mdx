@@ -94,11 +94,11 @@ npx hot-updater console
 ```
 
 The same operational action is available from the CLI when you already know
-the Release ID:
+the ID shown in the console or deployment output:
 
 ```package-install
-npx hot-updater release disable <release-id>
+npx hot-updater release disable <id>
 ```
 
 This policy rollback is different from automatic startup-crash recovery, which
-continues to track failed Bundle IDs on the device.
+continues to track failed file IDs on the device.

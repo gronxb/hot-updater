@@ -69,7 +69,8 @@ Hot Updater keeps a crash history for bundles that failed startup and triggered 
 
 ### getCrashHistory()
 
-Returns the bundle IDs that were marked as failed and rolled back.
+Returns the file IDs that were marked as failed and rolled back. These match
+**File ID** in the console's Advanced diagnostics.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -87,12 +88,12 @@ function checkCrashedBundles() {
 You can use this to:
 
 - monitor deployment health
-- identify which bundle IDs failed in production
+- identify which file IDs failed in production
 - send rollback events to analytics or error tracking tools
 
 ### clearCrashHistory()
 
-Clears the crash history so a previously failed bundle ID can be retried again.
+Clears the crash history so a previously failed file ID can be retried again.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -109,15 +110,18 @@ Only clear crash history after fixing the underlying issue. Otherwise the same b
 
 ### Crash History Blocking
 
-When a bundle fails startup, Hot Updater adds that exact bundle ID to crash history and blocks it from being applied again. This prevents repeated crash loops from the same broken deployment.
+When a bundle fails startup, Hot Updater adds that exact file ID to crash history and blocks it from being applied again. This prevents repeated crash loops from the same broken deployment.
 
 To deploy a fixed version:
 
 1. Fix the bug in your code
-2. Deploy again with a new bundle ID
-3. The new bundle ID bypasses the crash history
+2. Deploy again with a new file ID
+3. The new file ID bypasses the crash history
 
-If you need to retry the same bundle ID:
+Promoting the same files or editing delivery policy does not clear a file's
+crash history.
+
+If you need to retry the same file ID:
 
 1. Verify the bundle is fixed
 2. Call `clearCrashHistory()` to reset the blocked list

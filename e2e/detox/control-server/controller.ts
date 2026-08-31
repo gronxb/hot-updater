@@ -23,6 +23,7 @@ import { createInsightsProvider } from "../../../packages/server/dist/index.mjs"
 import {
   type InsightsModel,
   type BundleRepository,
+  createDatabaseClient,
   createUUIDv7After,
   commitReleaseCatalogMutation,
   deleteRelease,
@@ -168,15 +169,6 @@ type PatchReleaseRequest = {
 type BundleListEntry = {
   id: string;
   platform?: Platform;
-};
-
-type BundleListPage = {
-  data: BundleListEntry[];
-  pagination: {
-    limit: number | null;
-    offset: number | null;
-    total: number | null;
-  };
 };
 
 type LaunchReportAssertion = {
@@ -369,7 +361,7 @@ const AUTO_PATCH_METADATA_WAIT_DELAY_MS = Number(
   process.env.HOT_UPDATER_E2E_AUTO_PATCH_METADATA_WAIT_DELAY_MS || 500,
 );
 const DELETE_VERIFY_STILL_EXISTS_PATTERN =
-  /Verification failed: .+ still exists\./i;
+  /Verification failed: .+ still exists?\b/i;
 const E2E_POLL_INTERVAL_MS = Number(
   process.env.HOT_UPDATER_E2E_POLL_INTERVAL_MS || 250,
 );
@@ -741,10 +733,10 @@ function stripAnsi(value: string) {
   );
 }
 
-function extractDeployBundleId(output: string) {
+function extractDeployReleaseId(output: string) {
   const plainOutput = stripAnsi(output);
   const match = plainOutput.match(
-    /Deployment Successful \(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/i,
+    /^[ \t│]*ID:[ \t]+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[ \t]*$/im,
   );
 
   return match?.[1] ?? null;
@@ -1342,111 +1334,6 @@ async function waitForFile(filePath: string, attempts = 360) {
   throw new Error(`Timed out waiting for ${filePath}`);
 }
 
-function normalizeBundleListEntries(value: unknown): BundleListEntry[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.flatMap((entry) => {
-    if (!entry || typeof entry !== "object") {
-      return [];
-    }
-
-    const bundleId = (entry as { id?: unknown }).id;
-    if (typeof bundleId !== "string" || bundleId.length === 0) {
-      return [];
-    }
-
-    const bundle = entry as Partial<BundleListEntry> & { id: string };
-
-    return [
-      {
-        id: bundle.id,
-        platform:
-          bundle.platform === "ios" || bundle.platform === "android"
-            ? bundle.platform
-            : undefined,
-      },
-    ];
-  });
-}
-
-function normalizeBundleListResponse(payload: unknown): BundleListPage {
-  if (Array.isArray(payload)) {
-    return {
-      data: normalizeBundleListEntries(payload),
-      pagination: {
-        limit: null,
-        offset: null,
-        total: null,
-      },
-    };
-  }
-
-  if (!payload || typeof payload !== "object") {
-    throw new Error("Unexpected bundle list response from hot-updater CLI");
-  }
-
-  const response = payload as {
-    data?: unknown;
-    pagination?: {
-      limit?: unknown;
-      offset?: unknown;
-      total?: unknown;
-    };
-  };
-
-  return {
-    data: normalizeBundleListEntries(response.data),
-    pagination: {
-      limit:
-        typeof response.pagination?.limit === "number"
-          ? response.pagination.limit
-          : null,
-      offset:
-        typeof response.pagination?.offset === "number"
-          ? response.pagination.offset
-          : null,
-      total:
-        typeof response.pagination?.total === "number"
-          ? response.pagination.total
-          : null,
-    },
-  };
-}
-
-function parseHotUpdaterCliJson<T>(label: string, output: string): T {
-  try {
-    return JSON.parse(output) as T;
-  } catch (error) {
-    throw new Error(
-      `Failed to parse hot-updater CLI ${label} JSON: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-  }
-}
-
-function runHotUpdaterCliCapture(args: string[]) {
-  logDetoxFixture("hot-updater cli request", {
-    command: `node ${[HOT_UPDATER_CLI_PATH, ...args].join(" ")}`,
-    controlBaseUrl: getControllerReachableAppBaseUrl(),
-  });
-
-  const output = captureCommand("node", [HOT_UPDATER_CLI_PATH, ...args], {
-    cwd: fixtureSession.exampleDir,
-    env: getHotUpdaterControlEnv(),
-    maxBuffer: 16 * 1024 * 1024,
-  });
-
-  logDetoxFixture("hot-updater cli response", {
-    command: args.join(" "),
-    stdout: output,
-  });
-
-  return output;
-}
-
 async function runHotUpdaterCliLogged(args: string[], logName: string) {
   const logPath = path.join(fixtureSession.resultsDir, logName);
   logDetoxFixture("hot-updater cli start", {
@@ -1544,26 +1431,15 @@ async function fetchProviderBundlesPage(args: {
   limit: number;
   offset: number;
 }) {
-  if (args.offset !== 0) {
-    throw new Error("hot-updater CLI bundle list does not support offset");
-  }
-
-  const cliArgs = [
-    "bundle",
-    "list",
-    "--json",
-    "-p",
-    fixtureSession.platform,
-    "--limit",
-    String(args.limit),
-  ];
-  const response = parseHotUpdaterCliJson<BundleListPage>(
-    "bundle list",
-    runHotUpdaterCliCapture(cliArgs),
+  const bundles = await withConfiguredDatabase((database) =>
+    createDatabaseClient(database).getBundles({
+      where: { platform: fixtureSession.platform },
+      limit: args.limit,
+      offset: args.offset,
+    }),
   );
 
-  const bundles = normalizeBundleListResponse(response);
-  logDetoxFixture("hot-updater cli bundle list", {
+  logDetoxFixture("provider file list", {
     count: bundles.data.length,
     limit: args.limit,
     platform: fixtureSession.platform,
@@ -1582,16 +1458,15 @@ async function isBundleVisible(bundleId: string) {
 }
 
 async function fetchProviderBundleById(bundleId: string) {
-  const bundle = parseHotUpdaterCliJson<Bundle>(
-    "bundle show",
-    runHotUpdaterCliCapture(["bundle", "show", bundleId, "--json"]),
+  const bundle = await withConfiguredDatabase((database) =>
+    createDatabaseClient(database).getBundleById(bundleId),
   );
 
   if (!bundle) {
     throw new Error(`Failed to fetch bundle ${bundleId}: bundle not found`);
   }
 
-  logDetoxFixture("hot-updater cli bundle show", {
+  logDetoxFixture("provider file details", {
     bundleId: bundle.id,
     fileHash: bundle.fileHash,
     platform: bundle.platform,
@@ -1608,10 +1483,10 @@ type DeployedRelease = {
 };
 
 async function resolveDeployedRelease(
-  bundleId: string,
+  releaseId: string,
   channel: string,
 ): Promise<DeployedRelease> {
-  let lastObserved: readonly ReleaseRow[] = [];
+  let lastObserved: ReleaseRow | null = null;
   for (let attempt = 1; attempt <= 30; attempt += 1) {
     const result = await withConfiguredDatabase(
       async (database): Promise<DeployedRelease | null> => {
@@ -1620,15 +1495,14 @@ async function resolveDeployedRelease(
           (candidate) => candidate.name === channel,
         )?.id;
         if (channelId === undefined) return null;
-        const releases = await database.models.releases.findMany({
-          bundleId,
-          channelId,
-          limit: 100,
-          platform: fixtureSession.platform,
-        });
-        lastObserved = releases;
-        const release = releases[0];
-        if (release === undefined) return null;
+        const release = await database.models.releases.findById(releaseId);
+        lastObserved = release;
+        if (
+          release === null ||
+          release.channel_id !== channelId ||
+          release.platform !== fixtureSession.platform
+        )
+          return null;
         const catalog = await database.models.releaseCatalogs.findByScopeKey(
           release.scope_key,
         );
@@ -1642,8 +1516,8 @@ async function resolveDeployedRelease(
   }
 
   throw createEndpointError(
-    `Failed to resolve Release for deployed Bundle ${bundleId}`,
-    { bundleId, channel, lastObserved },
+    `Failed to resolve deployed update ID ${releaseId}`,
+    { releaseId, channel, lastObserved },
   );
 }
 
@@ -5655,14 +5529,19 @@ async function deployFixtureBundle(
       await deployProcessLock.release();
     }
   })();
-  const bundleId = extractDeployBundleId(deployOutput);
-  if (!bundleId) {
+  const releaseId = extractDeployReleaseId(deployOutput);
+  if (!releaseId) {
     throw new Error(
       [
-        "Failed to resolve deployed bundle id from hot-updater deploy output.",
+        "Failed to resolve deployed update ID from hot-updater deploy output.",
         `See ${deployLogPath}`,
       ].join("\n"),
     );
+  }
+  let deployed = await resolveDeployedRelease(releaseId, remoteChannel);
+  const bundleId = deployed.release.bundle_id;
+  if (bundleId === null) {
+    throw new Error(`Deployed update ${releaseId} does not reference a file.`);
   }
 
   const archiveDetails = await (async () => {
@@ -5731,7 +5610,6 @@ async function deployFixtureBundle(
     }
   })();
 
-  let deployed = await resolveDeployedRelease(bundleId, remoteChannel);
   if (request.targetCohorts && request.targetCohorts.length > 0) {
     const updated = await patchProviderRelease(deployed.release.id, {
       targetCohorts: request.targetCohorts,

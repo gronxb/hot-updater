@@ -108,7 +108,8 @@ const formatReferenceBlockers = (
 ): string =>
   entries
     .map(
-      ({ bundle, references }) => `${bundle.id}: ${references.ids.join(", ")}`,
+      ({ bundle, references }) =>
+        `File ID ${bundle.id}: referenced by IDs ${references.ids.join(", ")}`,
     )
     .join("\n");
 
@@ -139,7 +140,7 @@ export const handleBundleDelete = async (
 
   const ids = [...new Set(bundleIds ?? [])];
   if (ids.length === 0) {
-    p.log.error("Provide at least one bundle id.");
+    p.log.error("Provide at least one file ID.");
     process.exit(1);
   }
 
@@ -177,7 +178,7 @@ export const handleBundleDelete = async (
     const targets = ids.flatMap((id) => {
       const bundle = matchedById.get(id);
       if (!bundle) {
-        p.log.info(`No bundle with id ${id}. Skipping.`);
+        p.log.info(`No bundle with file ID ${id}. Skipping.`);
         return [];
       }
       return [bundle];
@@ -241,14 +242,14 @@ export const handleBundleDelete = async (
     }
     if (stillPresent.length > 0) {
       p.log.error(
-        `Verification failed: ${stillPresent.length} bundle record(s) still exist (${stillPresent.join(", ")}).`,
+        `Verification failed: ${stillPresent.length} bundle record(s) still exist (file IDs: ${stillPresent.join(", ")}).`,
       );
       process.exit(1);
     }
 
     if (firstTarget && targets.length === 1) {
       p.log.success("Deleted bundle record.");
-      p.log.info(`  ${ui.id(firstTarget.id)}`);
+      p.log.info(ui.kv("File ID", ui.id(firstTarget.id)));
     } else {
       p.log.success(`Deleted ${targets.length} bundle records.`);
     }

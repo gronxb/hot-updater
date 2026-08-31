@@ -12,8 +12,8 @@ selects only objects that are no longer referenced.
 
 It can remove:
 
-- Orphaned bundle objects in both the legacy `<bundle-id>/...` layout and the
-  current `bundles/<bundle-id>/...` layout.
+- Orphaned bundle objects in both the legacy `<file-id>/...` layout and the
+  current `bundles/<file-id>/...` layout.
 - Patch objects that are no longer referenced, including orphaned patches under
   a target Bundle that is still live.
 - Unreferenced content-addressed assets under `assets/sha256/...`.
@@ -41,8 +41,8 @@ from operational rollback and is required only when you intend to make the
 referenced Bundle eligible for garbage collection.
 
 ```package-install
-npx hot-updater release disable <release-id> --yes
-npx hot-updater release delete <release-id> --yes
+npx hot-updater release disable <id> --yes
+npx hot-updater release delete <id> --yes
 ```
 
 A Bundle can be reused by multiple Releases, including Releases in other
@@ -51,8 +51,8 @@ channels. Obtain the file ID from Advanced diagnostics (or `bundle_id` in
 reference before deleting the immutable artifact record:
 
 ```package-install
-npx hot-updater release list --bundle-id <bundle-id> --limit 1000 --json
-npx hot-updater bundle delete <bundle-id> <another-bundle-id> --yes
+npx hot-updater release list --bundle-id <file-id> --limit 1000 --json
+npx hot-updater bundle delete <file-id> <another-file-id> --yes
 ```
 
 `bundle delete` is rejected while any Release still references the Bundle. A

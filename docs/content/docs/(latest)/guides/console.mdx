@@ -75,13 +75,12 @@ Use the Release CLI for delivery-policy automation and CI scripts:
 
 ```package-install
 npx hot-updater release list --platform ios
-npx hot-updater release list --bundle-id <bundle-id>
-npx hot-updater release show <release-id>
-npx hot-updater release disable <release-id> -y
-npx hot-updater release enable <release-id> -y
-npx hot-updater release update <release-id> --force-update true -y
-npx hot-updater release update <release-id> --rollout-cohort-count 500 -y
-npx hot-updater release update <release-id> --target-cohorts qa,dogfood -y
+npx hot-updater release show <id>
+npx hot-updater release disable <id> -y
+npx hot-updater release enable <id> -y
+npx hot-updater release update <id> --force-update true -y
+npx hot-updater release update <id> --rollout-cohort-count 500 -y
+npx hot-updater release update <id> --target-cohorts qa,dogfood -y
 ```
 
 Add `--json` to `release list`, `release show`, or `release update` when
@@ -91,6 +90,15 @@ use the same IDs and query the same updates:
 ```package-install
 npx hot-updater bundle list --platform ios
 npx hot-updater bundle show <id>
+```
+
+### Advanced file diagnostics
+
+File operations use the **File ID** from Advanced diagnostics. To find every
+update referencing a file:
+
+```package-install
+npx hot-updater release list --bundle-id <file-id>
 ```
 
 After deleting bundle records, use the [Storage Cleanup](/docs/guides/storage-cleanup)
@@ -121,7 +129,7 @@ Promotion creates a new Release in the target channel while reusing the source
 Release's Bundle:
 
 ```package-install
-npx hot-updater release promote <source-release-id> --target <channel>
+npx hot-updater release promote <source-id> --target <channel>
 ```
 
 No Storage object is uploaded or copied. The promoted update has a new ID

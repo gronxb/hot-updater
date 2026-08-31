@@ -67,11 +67,11 @@ scripts before writers resume:
 | --- | --- |
 | `bundle list --channel ... --target-app-version ...` | Use `release list --channel ... --platform ...` for channel filtering. `bundle list` shows the same update IDs as the console. |
 | `bundle show <bundle-id>` for rollout or enabled state | Use `bundle show <id>` or `release show <id>` with the console ID, also returned by `HotUpdater.getBundleId()`. |
-| `bundle update <bundle-id>` | `release update <release-id>` |
-| `bundle enable <bundle-id>` | `release enable <release-id>` |
-| `bundle disable <bundle-id>` | `release disable <release-id>` |
-| `bundle promote <bundle-id>` | `release promote <source-release-id> --target <channel>` |
-| top-level `rollback <channel>` or `--target <bundle-id>` | Identify the exact Release and run `release disable <release-id>`. The Bundle-targeted rollback command is removed. |
+| `bundle update <bundle-id>` | `release update <id>` |
+| `bundle enable <bundle-id>` | `release enable <id>` |
+| `bundle disable <bundle-id>` | `release disable <id>` |
+| `bundle promote <bundle-id>` | `release promote <source-id> --target <channel>` |
+| top-level `rollback <channel>` or `--target <bundle-id>` | Identify the exact Release and run `release disable <id>`. The Bundle-targeted rollback command is removed. |
 | Delete an old Bundle directly | Disable and hard-delete every referencing Release, then run `bundle delete` and preview `storage prune`. |
 
 Deploy and promote create independent update IDs. Multiple updates can reuse

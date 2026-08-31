@@ -20,6 +20,10 @@ Hot Updater separates immutable update bytes from mutable delivery policy:
 Storage and Database are configured using plugins in `hot-updater.config.ts`.
 The Server is initialized and deployed with `hot-updater init`.
 
+The deployment output, console, and `HotUpdater.getBundleId()` use the same
+update ID. File identifiers are reserved for Advanced diagnostics and artifact
+operations.
+
 ## Bundle, Release, and Catalog
 
 ### Bundle
@@ -33,7 +37,7 @@ force-update, or message policy.
 
 A Release references a Bundle and owns delivery policy: Channel, platform,
 compatibility target, enabled state, rollout, target cohorts, force update, and
-message. Release ID also controls delivery chronology and the stable numeric
+message. Its ID also controls delivery chronology and the stable numeric
 rollout seed.
 
 Multiple Releases can reuse the same Bundle. For example, `release promote`
@@ -65,11 +69,11 @@ the Bundle bytes.
 ## Two Different Rollback Mechanisms
 
 Operational rollback disables a Release with
-`hot-updater release disable <release-id>`. Affected installations then select
+`hot-updater release disable <id>`. Affected installations then select
 a previous compatible enabled Release or `BUILTIN`; the result can differ by
 app version, fingerprint, and cohort.
 
 Automatic crash rollback is a separate native safety mechanism. It rejects a
 Bundle that failed startup and restores the last safe local Bundle. Crash
-history therefore remains Bundle-ID based. See
+history therefore records file IDs. See
 [Automatic Rollback](/docs/concepts/automatic-rollback) for that lifecycle.

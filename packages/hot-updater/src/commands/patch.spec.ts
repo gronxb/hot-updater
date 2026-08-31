@@ -30,7 +30,8 @@ const { mockCli, mockServer, mockStoragePlugin } = vi.hoisted(() => {
   };
 });
 
-vi.mock("@hot-updater/cli-tools", () => ({
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   loadConfig: mockCli.loadConfig,
   p: mockCli.p,
 }));
@@ -80,10 +81,12 @@ describe("createPatch", () => {
       channel: "production",
       platform: "ios",
     });
-    expect(mockCli.p.note).toHaveBeenCalledWith(
-      "Channel: production\nPlatform: iOS\nBase bundle: base-bundle\nTarget bundle: target-bundle",
-      "Patch",
-    );
+    const [summary, title] = mockCli.p.note.mock.calls[0]!;
+    expect(title).toBe("Patch");
+    expect(summary).toMatch(/Channel:\s+production/);
+    expect(summary).toMatch(/Platform:\s+ios/);
+    expect(summary).toMatch(/Base file ID:\s+base-bundle/);
+    expect(summary).toMatch(/Target file ID:\s+target-bundle/);
     expect(mockServer.createBundleDiff).toHaveBeenCalledWith(
       {
         baseBundleId: "base-bundle",
@@ -97,9 +100,7 @@ describe("createPatch", () => {
         makePrimary: true,
       },
     );
-    expect(mockCli.p.outro).toHaveBeenCalledWith(
-      "⚡ Patch Ready (target-bundle)",
-    );
+    expect(mockCli.p.outro).toHaveBeenCalledWith("Patch ready.");
     expect(databaseHarness.dispose).toHaveBeenCalledOnce();
   });
 });

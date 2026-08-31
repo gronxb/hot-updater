@@ -224,7 +224,7 @@ bundleCommand
   .command("delete")
   .description("Delete Bundle records that have no Release references")
   .argument(
-    "<bundle-ids...>",
+    "<file-ids...>",
     "the file ID(s) from Advanced diagnostics to delete",
   )
   .option("-y, --yes", "skip confirmation prompt")
@@ -240,7 +240,10 @@ releaseCommand
   .command("list")
   .description("List Releases, most recent first")
   .option("-c, --channel <channel>", "filter by channel")
-  .option("--bundle-id <bundle-id>", "filter by referenced Bundle id")
+  .option(
+    "--bundle-id <file-id>",
+    "filter by file ID from Advanced diagnostics",
+  )
   .option("--json", "output raw Release rows as JSON")
   .addOption(platformCommandOption)
   .option(
@@ -260,7 +263,7 @@ releaseCommand
 releaseCommand
   .command("show")
   .description("Show one Release")
-  .argument("<release-id>", "the Release id")
+  .argument("<id>", "the ID shown in the console or HotUpdater.getBundleId()")
   .option("--json", "output the raw Release row as JSON")
   .action(handleReleaseShow);
 
@@ -310,7 +313,7 @@ addReleasePolicyOptions(
   releaseCommand
     .command("update")
     .description("Update mutable Release delivery policy")
-    .argument("<release-id>", "the Release id")
+    .argument("<id>", "the ID shown in the console or HotUpdater.getBundleId()")
     .option("-y, --yes", "skip confirmation prompt"),
 ).action(handleReleaseUpdate);
 
@@ -318,7 +321,10 @@ addReleasePolicyOptions(
   releaseCommand
     .command("preflight")
     .description("Compile and size-check a Release mutation without saving")
-    .argument("<release-id>", "the Release id"),
+    .argument(
+      "<id>",
+      "the ID shown in the console or HotUpdater.getBundleId()",
+    ),
 ).action(handleReleasePreflight);
 
 for (const [name, enabled] of [
@@ -332,7 +338,7 @@ for (const [name, enabled] of [
         ? "Enable an exact Release"
         : "Disable an exact Release and re-resolve compatible delivery",
     )
-    .argument("<release-id>", "the Release id")
+    .argument("<id>", "the ID shown in the console or HotUpdater.getBundleId()")
     .option(
       "--expected-revision <revision>",
       "expected Release revision",
@@ -354,7 +360,7 @@ for (const [name, enabled] of [
 releaseCommand
   .command("delete")
   .description("Hard-delete a disabled Release")
-  .argument("<release-id>", "the Release id")
+  .argument("<id>", "the ID shown in the console or HotUpdater.getBundleId()")
   .option(
     "--expected-revision <revision>",
     "expected Release revision",
@@ -373,7 +379,7 @@ releaseCommand
 releaseCommand
   .command("promote")
   .description("Create a target-channel Release reusing the same Bundle")
-  .argument("<source-release-id>", "the source Release id")
+  .argument("<source-id>", "the source ID shown in the console")
   .requiredOption("-t, --target <channel>", "target channel")
   .addOption(
     new Option(
@@ -560,12 +566,12 @@ program
   .command("patch")
   .description("create patch artifacts for a deployed bundle")
   .requiredOption(
-    "-b, --bundle-id <bundleId>",
-    "target bundle id that should receive the patch artifact",
+    "-b, --bundle-id <file-id>",
+    "target file ID from Advanced diagnostics",
   )
   .requiredOption(
-    "--base-bundle-id <baseBundleId>",
-    "older bundle id to use as the patch base",
+    "--base-bundle-id <file-id>",
+    "older file ID from Advanced diagnostics to use as the patch base",
   )
   .addOption(platformCommandOption)
   .addOption(interactiveCommandOption)

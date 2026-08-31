@@ -8,6 +8,8 @@ import { createBundleDiff } from "@hot-updater/server/db";
 import { getPlatform } from "@/prompts/getPlatform";
 import { printBanner } from "@/utils/printBanner";
 
+import { ui } from "../utils/cli-ui";
+
 export interface PatchOptions {
   baseBundleId: string;
   bundleId: string;
@@ -44,15 +46,15 @@ export const createPatch = async (options: PatchOptions) => {
   try {
     p.note(
       [
-        `Channel: ${options.channel}`,
-        `Platform: ${platform === "ios" ? "iOS" : "Android"}`,
-        `Base bundle: ${options.baseBundleId}`,
-        `Target bundle: ${options.bundleId}`,
+        ui.kv("Channel", ui.channel(options.channel)),
+        ui.kv("Platform", ui.platform(platform)),
+        ui.kv("Base file ID", ui.id(options.baseBundleId)),
+        ui.kv("Target file ID", ui.id(options.bundleId)),
       ].join("\n"),
       "Patch",
     );
 
-    const updatedBundle = await createBundleDiff(
+    await createBundleDiff(
       {
         baseBundleId: options.baseBundleId,
         bundleId: options.bundleId,
@@ -66,7 +68,7 @@ export const createPatch = async (options: PatchOptions) => {
       },
     );
 
-    p.outro(`⚡ Patch Ready (${updatedBundle.id})`);
+    p.outro("Patch ready.");
   } catch (error) {
     console.error(error);
     process.exit(1);

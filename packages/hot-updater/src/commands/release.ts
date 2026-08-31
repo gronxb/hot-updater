@@ -97,7 +97,6 @@ const releaseSummary = (release: ReleaseRow, channelName: string): string =>
   ui.block("Release", [
     ui.kv("ID", ui.id(release.id)),
     ui.kv("Revision", String(release.revision)),
-    ui.kv("Scope", ui.muted(release.scope_key)),
     ui.kv("Channel", ui.channel(channelName)),
     ui.kv("Platform", ui.platform(release.platform)),
     ui.kv("Kind", release.kind),
@@ -114,7 +113,7 @@ const releaseSummary = (release: ReleaseRow, channelName: string): string =>
     ),
     ui.kv("Operation", release.operation),
     ui.kv(
-      "Source Release",
+      "Source ID",
       release.source_release_id === null
         ? ui.muted("(none)")
         : ui.id(release.source_release_id),
@@ -152,9 +151,8 @@ const releaseDisablePreview = (
   channelName: string,
 ): string =>
   ui.block("Disable Release", [
-    ui.kv("Release ID", ui.id(release.id)),
+    ui.kv("ID", ui.id(release.id)),
     ui.kv("Revision", String(release.revision)),
-    ui.kv("Scope", ui.muted(release.scope_key)),
     ui.kv("Channel", ui.channel(channelName)),
     ui.kv("Platform", ui.platform(release.platform)),
     ui.kv("Target", ui.version(releaseTarget(release))),
@@ -305,9 +303,8 @@ export const handleReleaseUpdate = async (
       options.json
         ? JSON.stringify(result, null, 2)
         : ui.block("Release updated", [
-            ui.kv("Release ID", ui.id(releaseId)),
+            ui.kv("ID", ui.id(releaseId)),
             ui.kv("Revision", String(result.release?.revision ?? "")),
-            ui.kv("Generation", String(result.catalog.generation)),
           ]),
     );
   } finally {
@@ -377,8 +374,7 @@ export const handleReleaseEnablement = async (
       options.json
         ? JSON.stringify(result, null, 2)
         : ui.block(enabled ? "Release enabled" : "Release disabled", [
-            ui.kv("Release ID", ui.id(releaseId)),
-            ui.kv("Generation", String(result.catalog.generation)),
+            ui.kv("ID", ui.id(releaseId)),
           ]),
     );
   } finally {
@@ -447,10 +443,7 @@ export const handleReleaseDelete = async (
     console.log(
       options.json
         ? JSON.stringify(result, null, 2)
-        : ui.block("Release deleted", [
-            ui.kv("Release ID", ui.id(releaseId)),
-            ui.kv("Generation", String(result.catalog.generation)),
-          ]),
+        : ui.block("Release deleted", [ui.kv("ID", ui.id(releaseId))]),
     );
   } finally {
     await safeDispose(database);

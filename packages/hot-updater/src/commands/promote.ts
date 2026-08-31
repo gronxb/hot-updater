@@ -31,8 +31,7 @@ const summarizePlan = (
   action: PromoteAction,
 ) =>
   ui.block(`Promote Release (${action})`, [
-    ui.kv("Source Release", ui.id(source.id)),
-    ui.kv("Bundle", ui.id(source.bundle_id ?? "Embedded")),
+    ui.kv("Source ID", ui.id(source.id)),
     ui.kv("Platform", ui.platform(source.platform)),
     ui.kv("From", ui.channel(sourceChannel)),
     ui.kv("To", ui.channel(targetChannel)),
@@ -40,7 +39,7 @@ const summarizePlan = (
     ui.kv("Target enabled", "yes"),
     ui.kv("Target rollout", "100%"),
     ui.kv("Target cohorts", ui.muted("(none)")),
-    ui.kv("Rollout seed", ui.muted("new Release ID")),
+    ui.kv("Rollout seed", ui.muted("new ID")),
     ui.kv(
       "Source Release",
       action === "move" ? "disabled atomically" : "remains unchanged",
@@ -104,8 +103,7 @@ export const handlePromote = async (
         ? `Promoted Release to ${targetChannel}.`
         : `Moved delivery policy to ${targetChannel}.`,
     );
-    p.log.info(`  Release ${ui.id(promoted.id)}`);
-    p.log.info(`  Bundle ${ui.id(promoted.bundle_id ?? "Embedded")} (reused)`);
+    p.log.info(ui.kv("ID", ui.id(promoted.id)));
   } finally {
     await safeDispose(database);
   }
