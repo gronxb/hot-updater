@@ -6,6 +6,10 @@ export {
 export { databaseFields } from "./types/databaseFields";
 export { readInsightsReportQuery } from "./insightsReportQuery";
 export {
+  readInsightsReportPageQuery,
+  createInsightsReportPageCursor,
+} from "./insightsReportPageQuery";
+export {
   createInsightsReportProjection,
   type InsightsReportProjection,
 } from "./insightsReportProjection";
