@@ -6,6 +6,10 @@ import { generateSchemaFromHotUpdaterSchema } from "./schemaGenerators";
 import { type Migrator, type SchemaGenerator } from "./types";
 
 export * from "./createBundleDiff";
+export {
+  createMongoInsightsPreparation,
+  MongoInsightsPreparationConflictError,
+} from "./mongoInsightsPreparation";
 export type { Migrator, SchemaGenerator } from "./types";
 export { HotUpdaterSchemaMigrationRequiredError } from "./schemaReadiness";
 export { HOT_UPDATER_SERVER_VERSION } from "../version";

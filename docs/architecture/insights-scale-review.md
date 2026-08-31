@@ -40,6 +40,51 @@ read budget still need implementation evidence.
 
 ## Implemented subset
 
+### Current validation
+
+The report/preparation additions passed the full workspace build (26 projects),
+type checks (34 projects), root lint, changeset validation and all 2,588 unit tests
+in 290 files. Standard integration runs passed the PostgreSQL source/job suites
+(3 tests) and MongoDB preparation/native reader suites (28 tests). Owned test
+containers and emulator processes were cleaned up.
+
+Built PostgreSQL DB tooling loads its shipped SQL, retries migration and runs an
+idle worker under both ESM and CommonJS. The built server DB entry also imports in
+both formats while a module hook rejects any attempted MongoDB peer load.
+Independent review approved only these internal job/accumulator/preparation
+slices. The final all-provider implementation and standalone E2E remain pending.
+The [validation record](./insights-scale-evidence/report-preparation-validation.json)
+includes source hashes, fixture sizes, checks and the explicit limits of this run.
+
+### Durable PostgreSQL report accumulation
+
+The [report implementation](./insights-postgres-reports.md) now reserves and
+reuses actual jobs, captures one committed source prefix, resumes bounded
+projection batches and atomically publishes small exact summaries. A previous
+publication remains immutable while its successor prepares. A database-clock
+lease/epoch fences both writes and publication; poison data fails visibly rather
+than creating an endless series of retry jobs.
+
+Worker regressions cover independent distinct dimensions, long old cohort labels,
+latest-user filtering after window reduction, all 30 rolling buckets, timestamp
+ties, late old-timestamp commits, previous-result reuse and atomic batch rollback.
+A 50,001-event fixture finishes with exactly 50,001 processed source rows, at most
+200 per step. Instrumentation checks SQL request and returned-row budgets.
+
+Independent review reproduced three issues before acceptance: full Unicode label
+keys exceeded PostgreSQL's B-tree limit, a volatile claim cutoff examined 50,001
+future leases, and colliding summary request identities could overwrite one
+another before validation. The label index was removed without restricting old
+raw data, claim selection now has an indexable fixed boundary and one locked
+candidate, and every hashed identity is checked in full. Real PostgreSQL tests
+verify concurrent reservation/claims and publication rollback after a head-lock
+wait exceeds the lease.
+
+This is accumulator/job-store evidence only. Correctly ordered section pages,
+terminal-failure recovery, retention/expiry, historical search, public provider
+wiring and other-provider report engines remain release gates. Existing runtime
+methods still have the old cap until the required contract and consumers change.
+
 ### Window-bound event pages and report request identity
 
 Event requests now accept an inclusive `sinceReceivedAtMs` boundary (zero when
@@ -74,19 +119,26 @@ a scoped review, not approval of the unfinished required-port implementation.
 
 ### Native event readers and ordered SQL
 
+MongoDB now has [explicit preparation tooling](./insights-mongodb-preparation.md)
+for its internal reader: persisted audit state, strict writer/database guards,
+preserved existing validators and bounded `_id_` traversal across BSON types.
+A 50,001-row audit and a large-public-string response-cap regression verify that
+neither a type boundary nor a short batch silently finishes the audit. Native
+source capture and public provider wiring are still separate unfinished work.
+
 These are implementation building blocks, not the completed required runtime
 contract. Supabase and Firebase page executors remain internal until that direct
 replacement. Firebase's existing `scan` now uses an ordered native query with a
 maximum batch of 1,000 instead of loading the event collection.
 
-| Operation | Event queries | Maximum returned candidates |
-| --- | ---: | ---: |
-| Firebase global page | 1 | N + 1 |
-| Firebase installation or bundle movement | 2 | 2 × (N + 1) |
-| Firebase backfill initialization | 2 | 2 |
-| Firebase backfill step | 1 | 200 |
-| Supabase global page | 1 active SQL stream | N + 1 |
-| Supabase installation or bundle movement | 2 active SQL streams | 2 × (N + 1) |
+| Operation                                |        Event queries | Maximum returned candidates |
+| ---------------------------------------- | -------------------: | --------------------------: |
+| Firebase global page                     |                    1 |                       N + 1 |
+| Firebase installation or bundle movement |                    2 |                 2 × (N + 1) |
+| Firebase backfill initialization         |                    2 |                           2 |
+| Firebase backfill step                   |                    1 |                         200 |
+| Supabase global page                     |  1 active SQL stream |                       N + 1 |
+| Supabase installation or bundle movement | 2 active SQL streams |                 2 × (N + 1) |
 
 Firebase also checks its persisted index-preparation state; backfill transactions
 read one checkpoint document. Supabase also checks index metadata. Those metadata
@@ -287,10 +339,10 @@ page on future capped providers; consumers must offer an explicit next action.
 
 ## Read budgets and limits
 
-| Native scope | Data queries per page | Candidate rows returned to the adapter |
-| --- | --- | --- |
-| Global | At most 2 | At most N + 1 total |
-| Bundle movement | At most 4 across two streams | At most 2 × (N + 1) total |
+| Native scope    | Data queries per page        | Candidate rows returned to the adapter |
+| --------------- | ---------------------------- | -------------------------------------- |
+| Global          | At most 2                    | At most N + 1 total                    |
+| Bundle movement | At most 4 across two streams | At most 2 × (N + 1) total              |
 
 PostgreSQL also performs one catalog query per logical page, plus the existing
 schema readiness wrapper. The limits above describe data query/candidate budgets,

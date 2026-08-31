@@ -1,0 +1,88 @@
+{
+  "date": "2026-09-01",
+  "node": "v24.15.0",
+  "scope": "PostgreSQL durable report jobs/accumulation and MongoDB event-page preparation; not the completed required Insights runtime",
+  "sourceHashes": {
+    "plugins/plugin-core/src/insightsReportProjection.ts": "29342f84320c807a88868f384af494b4487b8516c7f390ad763445be45a289a5",
+    "plugins/plugin-core/src/insightsReportQuery.ts": "531f50b572e923934e002e74bb33d3264b2dae7cf8cce906c371ea82d82d383e",
+    "plugins/postgres/src/postgresInsightsJobs.ts": "1110143cd77248f1d9df6609f597eaf4b3f8c694592f22b78c109c027e44891c",
+    "plugins/postgres/src/postgresInsightsReportData.ts": "7290f926f620b28bb314b494103b900293d0f0492c854c80cf33b10dbdedf9ae",
+    "plugins/postgres/src/postgresInsightsReports.ts": "37e6a787a61f6baaf6dcaeb4ed1af884cc7f916633a27f1b160775f49b2da377",
+    "plugins/postgres/src/db.ts": "3b668b2ebfec3bfd3f95b35400ce88a5250f9ec81c8512ff5e309a035432a906",
+    "plugins/postgres/sql/insights-reports-v1.sql": "84825d91cd696a8b71e8986d6035dba077214ea6d8f21415e045dd82a2e4df68",
+    "plugins/postgres/sql/insights-report-data-v1.sql": "dd7839f483f2e5fcf4c20c7ef6602e1d55c6c82cffa80c1c7ff8be0a9ef8b974",
+    "packages/server/src/adapters/mongodbInsights.ts": "bd0b8a827747e0f6ed08478393ffdbded89ac19e9eedefcd9bfa410426673fe3",
+    "packages/server/src/adapters/mongodbWrites.ts": "df4e10795582006f2b9efea5bfd89daf72cd95c299a5931c99ca274c85ad7763",
+    "packages/server/src/db/mongoInsightsPreparation.ts": "e7a6aeb65ae0f79cb5af4ad159a3405ed2696311c594effacd6b77f3576d0be2"
+  },
+  "validation": {
+    "workspaceBuild": {
+      "projects": 26,
+      "result": "passed"
+    },
+    "workspaceTypes": {
+      "projects": 34,
+      "result": "passed"
+    },
+    "workspaceUnit": {
+      "files": 290,
+      "tests": 2588,
+      "result": "passed"
+    },
+    "lint": "passed",
+    "changesets": "passed",
+    "postgresJobsUnit": {
+      "tests": 14,
+      "result": "passed"
+    },
+    "postgresWorkerUnit": {
+      "tests": 8,
+      "result": "passed",
+      "consumedSourceRows": 50001,
+      "maximumSourcePage": 200,
+      "defaultBudgetAssertions": {
+        "items": 256,
+        "requests": 128
+      },
+      "largeFixtureBudgetAssertions": {
+        "items": 4096,
+        "requests": 4096
+      }
+    },
+    "postgresStandardIntegration": {
+      "files": 2,
+      "tests": 3,
+      "result": "passed"
+    },
+    "mongodbFocusedUnit": {
+      "tests": 80,
+      "result": "passed"
+    },
+    "mongodbStandardIntegration": {
+      "files": 2,
+      "tests": 28,
+      "server": "MongoDB 7.0.31",
+      "result": "passed",
+      "nativeFixtureRows": 50104,
+      "auditFixtureRows": 50001
+    },
+    "builtExports": {
+      "esm": "passed",
+      "commonjs": "passed",
+      "checks": [
+        "PostgreSQL shipped SQL and idempotent migration",
+        "Built report worker invocation",
+        "Server DB import with MongoDB peer resolution blocked"
+      ]
+    },
+    "adversarialReview": "Scoped approval by independent external-plugin-developer reviewer after fixes and result inspection"
+  },
+  "limits": [
+    "Legacy 50000-row runtime, optional eventPages and v1 prototype still await direct replacement; no full-goal approval.",
+    "Report section pages, historical search, other-provider report engines and common maintenance integration remain unfinished.",
+    "No raw event deletion, rewriting, new retention limit or new raw label-length restriction.",
+    "Budgets describe SQL requests/returned rows or documented native candidates, not unconditional disk I/O, bytes or network retry attempts.",
+    "MongoDB tests use standalone MongoDB; transmitted primary/local/majority options are verified, not replica lag/failover behavior.",
+    "Final standalone profiles not rerun; implementation is incomplete and disk remains below runner preflight minimum."
+  ]
+}

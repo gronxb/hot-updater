@@ -1,5 +1,8 @@
 import type { BundlePatchRow } from "@hot-updater/plugin-core";
-import { createUUIDv7 } from "@hot-updater/plugin-core";
+import {
+  createUUIDv7,
+  DatabasePluginInputError,
+} from "@hot-updater/plugin-core";
 import type { DatabasePluginImplementation } from "@hot-updater/plugin-core/internal";
 import type { ClientSession, Collection } from "mongodb";
 
@@ -12,6 +15,7 @@ import {
   mongoSessionOptions,
   WITHOUT_INTERNAL_FIELDS,
 } from "./mongodbCollections";
+import { assertMongoInsightsEventRow } from "./mongodbInsights";
 import {
   createMongoBundleWhere,
   createMongoChannelWhere,
@@ -111,6 +115,13 @@ export const createMongoWrites = (
         }
         return input.data;
       case "bundle_events":
+        try {
+          assertMongoInsightsEventRow(input.data);
+        } catch (error) {
+          if (error instanceof DatabasePluginInputError)
+            throw new DatabasePluginInputError("invalid-data");
+          throw error;
+        }
         await collections.bundleEvents.insertOne(
           input.data,
           mongoSessionOptions(session),
