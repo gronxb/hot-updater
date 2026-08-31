@@ -1,5 +1,6 @@
 import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -7,7 +8,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ReleaseEditorSheet } from "./ReleaseEditorSheet";
@@ -136,6 +137,42 @@ describe("ReleaseEditorSheet", () => {
     expect(preflight.mock.invocationCallOrder[0]).toBeLessThan(
       update.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it("closes the sheet only after saving and refreshing queries completes", async () => {
+    let finishUpdate!: () => void;
+    update.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishUpdate = resolve;
+      }),
+    );
+    function Editor() {
+      const [open, setOpen] = useState(true);
+      return (
+        <ReleaseEditorSheet
+          channels={[{ id: "channel-1", name: "production" }]}
+          onOpenChange={setOpen}
+          open={open}
+          releaseId={release.id}
+        />
+      );
+    }
+    render(<Editor />);
+
+    fireEvent.change(screen.getByLabelText("Message"), {
+      target: { value: "Updated message" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    expect(
+      screen.getByRole("heading", { name: "Bundle Detail" }),
+    ).toBeDefined();
+
+    await act(async () => finishUpdate());
+
+    expect(screen.queryByRole("heading", { name: "Bundle Detail" })).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
   it("keeps Insights, editing, and readable metadata in one familiar detail flow", () => {
@@ -376,28 +413,36 @@ describe("ReleaseEditorSheet", () => {
     );
   });
 
-  it("keeps the draft and skips the update when preflight fails", async () => {
-    preflight.mockRejectedValue(new Error("Catalog exceeds its size limit"));
-    render(
-      <ReleaseEditorSheet
-        channels={[{ id: "channel-1", name: "production" }]}
-        onOpenChange={vi.fn()}
-        open
-        releaseId={release.id}
-      />,
-    );
+  it.each([
+    ["preflight", "Catalog exceeds its size limit"],
+    ["update", "Release revision conflict"],
+  ])(
+    "keeps the sheet open and preserves the draft when %s fails",
+    async (stage, message) => {
+      const onOpenChange = vi.fn();
+      (stage === "preflight" ? preflight : update).mockRejectedValue(
+        new Error(message),
+      );
+      render(
+        <ReleaseEditorSheet
+          channels={[{ id: "channel-1", name: "production" }]}
+          onOpenChange={onOpenChange}
+          open
+          releaseId={release.id}
+        />,
+      );
 
-    fireEvent.change(screen.getByLabelText("Message"), {
-      target: { value: "Keep this draft" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+      fireEvent.change(screen.getByLabelText("Message"), {
+        target: { value: "Keep this draft" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
-    expect(
-      await screen.findByText("Catalog exceeds its size limit"),
-    ).not.toBeNull();
-    expect(update).not.toHaveBeenCalled();
-    expect(
-      (screen.getByLabelText("Message") as HTMLTextAreaElement).value,
-    ).toBe("Keep this draft");
-  });
+      expect(await screen.findByText(message)).not.toBeNull();
+      expect(update).toHaveBeenCalledTimes(stage === "preflight" ? 0 : 1);
+      expect(onOpenChange).not.toHaveBeenCalled();
+      expect(
+        (screen.getByLabelText("Message") as HTMLTextAreaElement).value,
+      ).toBe("Keep this draft");
+    },
+  );
 });
