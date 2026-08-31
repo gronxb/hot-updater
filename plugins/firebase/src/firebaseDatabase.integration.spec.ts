@@ -6,8 +6,13 @@ import {
   setupDatabaseClientTestSuite,
   setupDatabasePluginTestSuite,
 } from "@hot-updater/test-utils";
+import { Query, Transaction } from "firebase-admin/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  createBundleEventRowFixture,
+  createBundleRowFixture,
+} from "../../../packages/test-utils/src/databaseTestFixtures";
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
 import { firebaseDatabase } from "./firebaseDatabase";
 import { firebaseChannelDocumentId } from "./firebaseDatabasePersistence";
@@ -15,6 +20,7 @@ import { firebaseChannelDocumentId } from "./firebaseDatabasePersistence";
 const PROJECT_ID = "firebase-database-test";
 
 const {
+  bundleEventsCollection,
   bundlePatchesCollection,
   bundlesCollection,
   channelsCollection,
@@ -181,6 +187,177 @@ describe("firebase bounded reads", () => {
     await expect(
       createPlugin().models.bundles.findById(documentKey),
     ).rejects.toThrow("bundles.id.document-key");
+  });
+});
+
+describe("firebase event write isolation", () => {
+  beforeEach(clearCollections);
+
+  it("appends without reading history or unrelated catalog documents", async () => {
+    await settingsCollection
+      .doc("database_adapter_version")
+      .set({ version: 4 });
+    await bundlesCollection.doc("unrelated-malformed").set({ invalid: true });
+    await bundleEventsCollection
+      .doc("unrelated-malformed")
+      .set({ invalid: true });
+    const event = createBundleEventRowFixture("810", 100);
+    const reads = vi.spyOn(Query.prototype, "get");
+    const transactionReads = vi.spyOn(Transaction.prototype, "get");
+    try {
+      await createPlugin().models.insights.append(event);
+      expect(reads).not.toHaveBeenCalled();
+      expect(transactionReads).not.toHaveBeenCalled();
+      expect((await bundleEventsCollection.doc(event.id).get()).data()).toEqual(
+        event,
+      );
+    } finally {
+      reads.mockRestore();
+      transactionReads.mockRestore();
+    }
+  });
+
+  it("keeps history out of catalog reads, mutations and mixed commits", async () => {
+    await settingsCollection
+      .doc("database_adapter_version")
+      .set({ version: 4 });
+    const untouched = { invalid: true, extension: "preserve" };
+    await bundleEventsCollection.doc("unrelated-malformed").set(untouched);
+    const plugin = createPlugin();
+    const bundle = createBundleRowFixture("811");
+    const event = createBundleEventRowFixture("812", 100);
+    const reads = vi.spyOn(Query.prototype, "get");
+    const transactionReads = vi.spyOn(Transaction.prototype, "get");
+    try {
+      await expect(
+        plugin.commit({
+          changes: [
+            { model: "bundles", operation: "insert", row: bundle },
+            { model: "insights", operation: "insert", row: event },
+          ],
+        }),
+      ).resolves.toEqual({ committed: true });
+      await expect(
+        plugin.commit({
+          changes: [
+            {
+              model: "bundles",
+              operation: "update",
+              where: { id: bundle.id },
+              update: { metadata: { updated: true } },
+            },
+          ],
+        }),
+      ).resolves.toEqual({ committed: true });
+      await expect(findAllBundles(plugin)).resolves.toMatchObject([
+        { id: bundle.id, metadata: { updated: true } },
+      ]);
+      expect(
+        reads.mock.contexts.some(
+          (query) =>
+            query instanceof Query && query.isEqual(bundleEventsCollection),
+        ),
+      ).toBe(false);
+      expect(
+        transactionReads.mock.calls.some(
+          ([reference]) =>
+            reference instanceof Query &&
+            reference.isEqual(bundleEventsCollection),
+        ),
+      ).toBe(false);
+      expect(
+        (await bundleEventsCollection.doc("unrelated-malformed").get()).data(),
+      ).toEqual(untouched);
+      expect((await bundleEventsCollection.doc(event.id).get()).data()).toEqual(
+        event,
+      );
+    } finally {
+      reads.mockRestore();
+      transactionReads.mockRestore();
+    }
+  });
+
+  it("rejects duplicate events and rolls back every change in a mixed commit", async () => {
+    const plugin = createPlugin();
+    const event = createBundleEventRowFixture("813", 100);
+    await plugin.models.insights.append(event);
+    const stored = { ...event, extension: "preserve" };
+    await bundleEventsCollection.doc(event.id).set(stored);
+    const bundle = createBundleRowFixture("814");
+    await plugin.commit({
+      changes: [{ model: "bundles", operation: "insert", row: bundle }],
+    });
+    const replacement = { ...event, install_id: "different-installation" };
+
+    await expect(plugin.models.insights.append(replacement)).rejects.toThrow();
+    await expect(
+      plugin.commit({
+        changes: [
+          {
+            model: "bundles",
+            operation: "update",
+            where: { id: bundle.id },
+            update: { metadata: { incorrect: true } },
+          },
+          { model: "insights", operation: "insert", row: replacement },
+        ],
+      }),
+    ).rejects.toThrow();
+    expect(
+      (await bundlesCollection.doc(bundle.id).get()).data()?.metadata,
+    ).toEqual(bundle.metadata);
+    expect((await bundleEventsCollection.doc(event.id).get()).data()).toEqual(
+      stored,
+    );
+
+    const fresh = createBundleEventRowFixture("815", 200);
+    await expect(
+      plugin.commit({
+        changes: [
+          {
+            model: "bundles",
+            operation: "update",
+            where: { id: bundle.id },
+            update: { metadata: { incorrect: true } },
+          },
+          { model: "insights", operation: "insert", row: fresh },
+          { model: "insights", operation: "insert", row: fresh },
+        ],
+      }),
+    ).rejects.toThrow();
+    expect(
+      (await bundlesCollection.doc(bundle.id).get()).data()?.metadata,
+    ).toEqual(bundle.metadata);
+    expect((await bundleEventsCollection.doc(fresh.id).get()).exists).toBe(
+      false,
+    );
+  });
+
+  it("allows only one writer when append races a mixed commit for the same event ID", async () => {
+    const plugin = createPlugin();
+    await plugin.models.channels.list({});
+    const event = createBundleEventRowFixture("816", 100);
+    const competing = { ...event, install_id: "competing-installation" };
+    const bundle = createBundleRowFixture("817");
+    const results = await Promise.allSettled([
+      plugin.models.insights.append(event),
+      plugin.commit({
+        changes: [
+          { model: "bundles", operation: "insert", row: bundle },
+          { model: "insights", operation: "insert", row: competing },
+        ],
+      }),
+    ]);
+    expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(
+      1,
+    );
+    const commitWon = results[1].status === "fulfilled";
+    expect((await bundleEventsCollection.doc(event.id).get()).data()).toEqual(
+      commitWon ? competing : event,
+    );
+    expect((await bundlesCollection.doc(bundle.id).get()).exists).toBe(
+      commitWon,
+    );
   });
 });
 

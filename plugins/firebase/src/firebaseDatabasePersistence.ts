@@ -143,7 +143,7 @@ const patchMap = (
     })),
   );
 
-const eventMap = (
+export const parseFirebaseEventDocuments = (
   snapshot: QuerySnapshot<DocumentData>,
 ): Map<string, BundleEventRow> =>
   documentMap(
@@ -231,7 +231,6 @@ type CoreSnapshotDocuments = readonly [
   QuerySnapshot<DocumentData>,
   QuerySnapshot<DocumentData>,
   QuerySnapshot<DocumentData>,
-  QuerySnapshot<DocumentData>,
 ];
 
 const toSnapshot = (
@@ -240,11 +239,13 @@ const toSnapshot = (
   const snapshot: FirebaseDatabaseSnapshot = {
     bundles: bundleMap(documents[0]),
     bundlePatches: patchMap(documents[1]),
-    bundleEvents: eventMap(documents[2]),
-    channels: channelMap(documents[3]),
-    apiKeys: apiKeyMap(documents[4]),
-    releases: releaseMap(documents[5]),
-    releaseCatalogs: releaseCatalogMap(documents[6]),
+    // Events are append-only and are not referenced by catalog constraints.
+    // In a mutation this map contains only the inserts staged by its callback.
+    bundleEvents: new Map(),
+    channels: channelMap(documents[2]),
+    apiKeys: apiKeyMap(documents[3]),
+    releases: releaseMap(documents[4]),
+    releaseCatalogs: releaseCatalogMap(documents[5]),
   };
   return snapshot;
 };
@@ -252,27 +253,18 @@ const toSnapshot = (
 export const loadFirebaseDatabaseSnapshot = async (
   collections: FirebaseDatabaseCollections,
 ): Promise<FirebaseDatabaseSnapshot> => {
-  const [
-    bundles,
-    patches,
-    events,
-    channels,
-    apiKeys,
-    releases,
-    releaseCatalogs,
-  ] = await Promise.all([
-    collections.bundles.get(),
-    collections.bundlePatches.get(),
-    collections.bundleEvents.get(),
-    collections.channels.get(),
-    collections.apiKeys.get(),
-    collections.releases.get(),
-    collections.releaseCatalogs.get(),
-  ]);
+  const [bundles, patches, channels, apiKeys, releases, releaseCatalogs] =
+    await Promise.all([
+      collections.bundles.get(),
+      collections.bundlePatches.get(),
+      collections.channels.get(),
+      collections.apiKeys.get(),
+      collections.releases.get(),
+      collections.releaseCatalogs.get(),
+    ]);
   return toSnapshot([
     bundles,
     patches,
-    events,
     channels,
     apiKeys,
     releases,
@@ -284,27 +276,18 @@ export const loadFirebaseTransactionSnapshot = async (
   transaction: Transaction,
   collections: FirebaseDatabaseCollections,
 ): Promise<FirebaseDatabaseSnapshot> => {
-  const [
-    bundles,
-    patches,
-    events,
-    channels,
-    apiKeys,
-    releases,
-    releaseCatalogs,
-  ] = await Promise.all([
-    transaction.get(collections.bundles),
-    transaction.get(collections.bundlePatches),
-    transaction.get(collections.bundleEvents),
-    transaction.get(collections.channels),
-    transaction.get(collections.apiKeys),
-    transaction.get(collections.releases),
-    transaction.get(collections.releaseCatalogs),
-  ]);
+  const [bundles, patches, channels, apiKeys, releases, releaseCatalogs] =
+    await Promise.all([
+      transaction.get(collections.bundles),
+      transaction.get(collections.bundlePatches),
+      transaction.get(collections.channels),
+      transaction.get(collections.apiKeys),
+      transaction.get(collections.releases),
+      transaction.get(collections.releaseCatalogs),
+    ]);
   return toSnapshot([
     bundles,
     patches,
-    events,
     channels,
     apiKeys,
     releases,
@@ -364,13 +347,11 @@ export const persistFirebaseDatabaseSnapshot = ({
     after: after.bundlePatches,
     documentId: (row) => row.id,
   });
-  persistCollection({
-    transaction,
-    collection: collections.bundleEvents,
-    before: before.bundleEvents,
-    after: after.bundleEvents,
-    documentId: (row) => row.id,
-  });
+  // create supplies the absent-document precondition without reading history.
+  // A duplicate aborts the entire transaction, including catalog changes.
+  for (const row of after.bundleEvents.values()) {
+    transaction.create(collections.bundleEvents.doc(row.id), row);
+  }
   persistCollection({
     transaction,
     collection: collections.channels,

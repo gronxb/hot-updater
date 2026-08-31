@@ -40,6 +40,35 @@ read budget still need implementation evidence.
 
 ## Implemented subset
 
+### Firebase write isolation
+
+An independent adversarial reviewer approved the implementation plan, then the
+external plugin-developer persona reviewed the actual three-file diff and the
+emulator/type-check results, then approved this slice. This
+slice changes storage access without adding a compatibility API:
+
+- Direct event append uses immutable document creation after the existing input
+  validation and schema check. It does not load event history or catalog rows.
+- Catalog reads and mutations no longer load event history. Mixed commits stage
+  only new events and use `transaction.create` in the same transaction as catalog
+  writes; an existing event ID aborts the entire commit.
+- An explicit internal event query still reads history separately and sees staged
+  inserts. Queried history never enters the write maps or gets rewritten.
+
+Firebase emulator integration: **54 tests passed**, including four new scenarios
+covering unrelated malformed records/read-call isolation, duplicate event rollback
+of a bundle update, same-batch duplicates, and concurrent append versus a mixed
+commit for the same ID. Existing event extensions remain unchanged. Before the
+fix, the first two scenarios failed while parsing unrelated collections.
+Package type checks, root lint, and all 2,489 root unit tests also passed.
+
+This proves write/cross-model isolation, not scalable Firebase event browsing:
+explicit `findMany`/`scan` still read the event collection, and generic catalog
+commits still load six catalog collections. Required read ports, source counters,
+native event pages, report computation and migrations remain unfinished.
+
+### Historical PostgreSQL/additive API slice
+
 - Optional version 1 native event-page capability in plugin-core and the typed
   server API. Existing append/scan plugins and bounded aggregate methods retain
   their behavior. No raw events are removed or sampled.

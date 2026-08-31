@@ -26,6 +26,7 @@ import {
   loadFirebaseDatabaseSnapshot,
   loadFirebaseTransactionSnapshot,
   migrateFirebaseDatabase,
+  parseFirebaseEventDocuments,
   persistFirebaseDatabaseSnapshot,
   requireFirebaseDocumentKey,
 } from "./firebaseDatabasePersistence";
@@ -81,7 +82,27 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
         );
         const after = cloneFirebaseDatabaseSnapshot(before);
         const database = createFirebaseDatabaseState(after);
-        const result = await operation(database);
+        const result = await operation({
+          ...database,
+          async findMany(input) {
+            if (input.model !== "bundle_events")
+              return database.findMany(input);
+            // An explicit internal event query sees its staged inserts. Keep
+            // history out of the mutation maps so it is never written back.
+            const rows = parseFirebaseEventDocuments(
+              await transaction.get(collections.bundleEvents),
+            );
+            for (const [id, row] of after.bundleEvents) {
+              if (rows.has(id)) {
+                throw new FirebaseDatabaseConstraintError(
+                  "bundle_events.id.unique",
+                );
+              }
+              rows.set(id, row);
+            }
+            return queryFirebaseDatabaseRows([...rows.values()], input);
+          },
+        });
         persistFirebaseDatabaseSnapshot({
           transaction,
           collections,
@@ -101,7 +122,14 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
     };
 
     return {
-      create: (input) => mutate((database) => database.create(input)),
+      create: async (input) => {
+        if (input.model !== "bundle_events") {
+          return mutate((database) => database.create(input));
+        }
+        await ensureMigrated();
+        await collections.bundleEvents.doc(input.data.id).create(input.data);
+        return input.data;
+      },
       update: (input) => mutate((database) => database.update(input)),
       delete: (input) => mutate((database) => database.delete(input)),
       count: (input) => read((database) => database.count(input)),
@@ -156,6 +184,17 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
         }
       },
       findMany: async (input) => {
+        if (input.model === "bundle_events") {
+          await ensureMigrated();
+          return queryFirebaseDatabaseRows(
+            [
+              ...parseFirebaseEventDocuments(
+                await collections.bundleEvents.get(),
+              ).values(),
+            ],
+            input,
+          );
+        }
         if (input.model !== "channels") {
           return read((database) => database.findMany(input));
         }
