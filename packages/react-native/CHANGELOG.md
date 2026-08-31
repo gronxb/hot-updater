@@ -1,5 +1,25 @@
 # @hot-updater/react-native
 
+## 1.0.0-rc.2
+
+### Minor Changes
+
+- 6d0cdc7: Rename the built-in Analytics domain to Insights across the database model,
+  server provider and HTTP query route, React Native option and transport,
+  Console route and UI, and provider contracts. This is a breaking pre-release
+  rename with no compatibility aliases; use `database.models.insights`,
+  `createInsightsProvider`, `/bundles/:id/events/insights`, and `insights`.
+
+  Enable React Native Insights reporting by default for both `HotUpdater.init`
+  and `HotUpdater.wrap`. Set `insights: false` to opt out.
+
+### Patch Changes
+
+- daacef2: Normalize an omitted native fingerprint constant to `null` so app-version analytics events keep the required payload field.
+- Updated dependencies [6d0cdc7]
+- Updated dependencies [8145d48]
+  - @hot-updater/plugin-core@1.0.0-rc.1
+
 ## 1.0.0-rc.1
 
 ### Patch Changes

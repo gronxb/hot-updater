@@ -1,5 +1,14 @@
 # @hot-updater/sentry-plugin
 
+## 1.0.0-rc.1
+
+### Patch Changes
+
+- Updated dependencies [6d0cdc7]
+- Updated dependencies [8145d48]
+  - @hot-updater/plugin-core@1.0.0-rc.1
+  - @hot-updater/cli-tools@1.0.0-rc.1
+
 ## 1.0.0-rc.0
 
 ### Major Changes
