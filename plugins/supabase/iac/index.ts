@@ -77,10 +77,7 @@ const STATIC_IMPORT_SPECIFIER_PATTERN =
 const DYNAMIC_IMPORT_SPECIFIER_PATTERN =
   /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
 
-const getConfigScaffold = (
-  build: BuildType,
-  authorityId: string,
-): HotUpdaterConfigScaffold => {
+const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
     configString: `supabaseStorage({
@@ -102,7 +99,6 @@ const getConfigScaffold = (
       .setBuildType(build)
       .setStorage(storageConfig)
       .setDatabase(databaseConfig),
-    { authorityIdInitializer: JSON.stringify(authorityId) },
   );
 };
 
@@ -750,7 +746,6 @@ const deployEdgeFunction = async (
   const edgeFunctionsLibPath = path.join(workdir, "supabase", "edge-functions");
   const edgeFunctionsCodePath = path.join(edgeFunctionsLibPath, "index.ts");
   const edgeFunctionsCode = transformEnv(edgeFunctionsCodePath, {
-    AUTHORITY_ID: projectId,
     BUCKET_NAME: bucketName,
     FUNCTION_NAME: functionName,
   });
@@ -1207,7 +1202,7 @@ const runInitWithoutCliMetadata = async ({
   await removeTmpDir();
 
   const configWriteResult = await writeHotUpdaterConfig(
-    getConfigScaffold(build, project.id),
+    getConfigScaffold(build),
   );
   await assertSkippedConfigDoesNotUseLegacySupabaseKey(configWriteResult);
 

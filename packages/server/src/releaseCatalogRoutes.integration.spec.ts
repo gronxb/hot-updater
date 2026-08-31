@@ -8,9 +8,8 @@ import { createHotUpdater } from "./index";
 
 const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 
-const authorityId = "project-a";
 const channelKey = encodeChannelKey("production");
-const scopeKey = `v1:app-version:${authorityId}:ios:${channelKey}`;
+const scopeKey = `v1:app-version:ios:${channelKey}`;
 
 const createCatalogDatabase = async () => {
   const database = createInMemoryDatabasePlugin();
@@ -67,7 +66,6 @@ const createCatalogDatabase = async () => {
       },
     },
     scope: {
-      authorityId,
       channelId: channel.id,
       channelName: channel.name,
       fingerprintHash: null,
@@ -81,10 +79,11 @@ const createCatalogDatabase = async () => {
 };
 
 describe("Release catalog routes", () => {
-  it("serves the configured authority on the authority-free app-version path with cache identity and ETag revalidation", async () => {
+  it("serves persisted Catalog identity without configuration and keeps it across server restarts", async () => {
     const database = await createCatalogDatabase();
+    const storedCatalog =
+      await database.models.releaseCatalogs.findByScopeKey(scopeKey);
     const hotUpdater = createHotUpdater({
-      authorityId,
       database,
       clientAccess: { type: "public" },
     });
@@ -106,7 +105,7 @@ describe("Release catalog routes", () => {
     );
     const body = await response.json();
     expect(body).toMatchObject({
-      authorityId,
+      catalogId: storedCatalog!.catalog_id,
       fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
       generation: 1,
       releases: [
@@ -161,7 +160,7 @@ describe("Release catalog routes", () => {
     const legacyAuthorityPath = await hotUpdater.handlers.client(
       new Request(
         `https://updates.example.com/release-catalogs/app-version/` +
-          `${authorityId}/ios/${channelKey}/1.5.0`,
+          `old-authority/ios/${channelKey}/1.5.0`,
       ),
     );
     expect(legacyAuthorityPath.status).toBe(404);
@@ -169,6 +168,16 @@ describe("Release catalog routes", () => {
       "private, no-store",
     );
     expect(catalogRead).toHaveBeenCalledTimes(2);
+    const commit = vi.spyOn(database, "commit");
+    const restarted = createHotUpdater({
+      database,
+      clientAccess: { type: "public" },
+    });
+    const relocated = await restarted.handlers.client(
+      new Request(url.replace("updates.example.com", "new.example.com")),
+    );
+    expect(await relocated.json()).toEqual(body);
+    expect(commit).not.toHaveBeenCalled();
   });
 
   it("singleflights concurrent cold requests into one exact catalog read", async () => {
@@ -178,7 +187,6 @@ describe("Release catalog routes", () => {
       "findByScopeKey",
     );
     const hotUpdater = createHotUpdater({
-      authorityId,
       database,
       clientAccess: { type: "public" },
     });
@@ -204,7 +212,6 @@ describe("Release catalog routes", () => {
       name: "App",
     });
     const hotUpdater = createHotUpdater({
-      authorityId,
       clientAccess: {
         headerName: "X-Hot-Updater-Key",
         type: "api-key",

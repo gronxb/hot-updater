@@ -49,7 +49,6 @@ const catalogResponse = async (
 };
 
 export const createReleaseCatalogRouteHandlers = (
-  authorityId: string,
   clientAccessHeaderName = "x-api-key",
 ): Record<string, RouteHandler> => {
   const cache = new Map<
@@ -106,7 +105,6 @@ export const createReleaseCatalogRouteHandlers = (
       }
       const input = {
         appVersion,
-        authorityId,
         channelKey: requireRouteParam(params, "channelKey"),
         platform: requirePlatformParam(params),
         strategy: "APP_VERSION",
@@ -123,7 +121,6 @@ export const createReleaseCatalogRouteHandlers = (
     fingerprintReleaseCatalog: async (params, request, api) => {
       if (api.getReleaseCatalog === undefined) return privateNotFound();
       const input = {
-        authorityId,
         channelKey: requireRouteParam(params, "channelKey"),
         fingerprintHash: requireRouteParam(params, "fingerprintHash"),
         platform: requirePlatformParam(params),

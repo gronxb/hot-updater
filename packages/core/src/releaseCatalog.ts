@@ -52,7 +52,7 @@ export interface ReleaseCatalogDescriptor {
 
 export interface ReleaseCatalog {
   readonly schemaVersion: typeof RELEASE_CATALOG_SCHEMA_VERSION;
-  readonly authorityId: string;
+  readonly catalogId: string;
   readonly scopeKey: string;
   readonly generation: number;
   readonly catalogHash: string;
@@ -72,7 +72,7 @@ export interface PersistedSelectionReceipt {
   readonly kind: SelectionKind;
   readonly releaseId: string | null;
   readonly bundleId: string;
-  readonly authorityId: string | null;
+  readonly catalogId: string | null;
   readonly scopeKey: string | null;
   readonly generation: number | null;
   readonly catalogHash: string | null;
@@ -347,7 +347,7 @@ export function authorizeReleaseTransition(input: {
   }
 
   if (
-    desired.authorityId !== active.authorityId ||
+    desired.catalogId !== active.catalogId ||
     desired.scopeKey !== active.scopeKey
   ) {
     if (!explicitScopeSwitch) {

@@ -13,11 +13,10 @@ const RELEASE_ID = "00000000-0000-7000-8000-000000000002";
 const ACTIVE_RELEASE_ID = "00000000-0000-7000-8000-000000000003";
 const CURRENT_BUNDLE_ID = "00000000-0000-7001-8000-000000000001";
 const TARGET_BUNDLE_ID = "00000000-0000-7001-8000-000000000002";
-const AUTHORITY_ID = "project-a";
+const CATALOG_ID = "project-a";
 const CHANNEL = "production";
 const CATALOG_HASH = `sha256:${"a".repeat(64)}`;
 const SCOPE_KEY = createReleaseCatalogScopeKey({
-  authorityId: AUTHORITY_ID,
   channelKey: encodeChannelKey(CHANNEL),
   platform: "ios",
   strategy: "APP_VERSION",
@@ -56,7 +55,7 @@ vi.mock("./native", () => mocks);
 const createCatalog = (
   overrides: Partial<ReleaseCatalog> = {},
 ): ReleaseCatalog => ({
-  authorityId: AUTHORITY_ID,
+  catalogId: CATALOG_ID,
   catalogHash: CATALOG_HASH,
   fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
   generation: 2,
@@ -147,7 +146,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       expect.objectContaining({
         bundleId: TARGET_BUNDLE_ID,
         selection: expect.objectContaining({
-          authorityId: AUTHORITY_ID,
+          catalogId: CATALOG_ID,
           releaseId: RELEASE_ID,
           scopeKey: SCOPE_KEY,
         }),
@@ -157,7 +156,7 @@ describe("checkForUpdate Release catalog protocol", () => {
 
   it("adopts a newer Release for the same Bundle without resolving bytes", async () => {
     const active: PersistedSelectionReceipt = {
-      authorityId: AUTHORITY_ID,
+      catalogId: CATALOG_ID,
       bundleId: TARGET_BUNDLE_ID,
       catalogHash: `sha256:${"b".repeat(64)}`,
       channel: CHANNEL,
@@ -210,7 +209,7 @@ describe("checkForUpdate Release catalog protocol", () => {
 
   it("sends RELEASE_ADOPTED only when analytics is enabled", async () => {
     const active: PersistedSelectionReceipt = {
-      authorityId: AUTHORITY_ID,
+      catalogId: CATALOG_ID,
       bundleId: TARGET_BUNDLE_ID,
       catalogHash: `sha256:${"b".repeat(64)}`,
       channel: CHANNEL,
@@ -249,13 +248,12 @@ describe("checkForUpdate Release catalog protocol", () => {
   it("selects a lower-id Release when explicitly switching scopes", async () => {
     const betaChannel = "beta";
     const betaScopeKey = createReleaseCatalogScopeKey({
-      authorityId: AUTHORITY_ID,
       channelKey: encodeChannelKey(betaChannel),
       platform: "ios",
       strategy: "APP_VERSION",
     });
     const active: PersistedSelectionReceipt = {
-      authorityId: AUTHORITY_ID,
+      catalogId: CATALOG_ID,
       bundleId: CURRENT_BUNDLE_ID,
       catalogHash: `sha256:${"b".repeat(64)}`,
       channel: CHANNEL,
@@ -291,7 +289,7 @@ describe("checkForUpdate Release catalog protocol", () => {
 
   it("refreshes the same Release receipt when catalog provenance changes", async () => {
     const active: PersistedSelectionReceipt = {
-      authorityId: AUTHORITY_ID,
+      catalogId: CATALOG_ID,
       bundleId: TARGET_BUNDLE_ID,
       catalogHash: `sha256:${"b".repeat(64)}`,
       channel: CHANNEL,
@@ -359,7 +357,7 @@ describe("checkForUpdate Release catalog protocol", () => {
 
   it("installs an older enabled Release as a forced rollback", async () => {
     const active: PersistedSelectionReceipt = {
-      authorityId: AUTHORITY_ID,
+      catalogId: CATALOG_ID,
       bundleId: CURRENT_BUNDLE_ID,
       catalogHash: `sha256:${"b".repeat(64)}`,
       channel: CHANNEL,
@@ -415,7 +413,7 @@ describe("checkForUpdate Release catalog protocol", () => {
   it("uses current Bundle identity when migrating an unauthenticated receipt", async () => {
     const migratedCurrentBundleId = "00000000-0000-7001-8000-000000000003";
     const active: PersistedSelectionReceipt = {
-      authorityId: null,
+      catalogId: null,
       bundleId: migratedCurrentBundleId,
       catalogHash: null,
       channel: CHANNEL,
@@ -459,7 +457,7 @@ describe("checkForUpdate Release catalog protocol", () => {
 
   it("returns a forced built-in rollback only for an active OTA", async () => {
     const active: PersistedSelectionReceipt = {
-      authorityId: AUTHORITY_ID,
+      catalogId: CATALOG_ID,
       bundleId: CURRENT_BUNDLE_ID,
       catalogHash: `sha256:${"b".repeat(64)}`,
       channel: CHANNEL,
@@ -536,7 +534,6 @@ describe("checkForUpdate Release catalog protocol", () => {
 
   it("rejects mismatched catalog scope before native catalog state mutates", async () => {
     const wrongScope = createReleaseCatalogScopeKey({
-      authorityId: AUTHORITY_ID,
       channelKey: encodeChannelKey("beta"),
       platform: "ios",
       strategy: "APP_VERSION",
@@ -559,9 +556,9 @@ describe("checkForUpdate Release catalog protocol", () => {
     expect(mocks.updateBundle).not.toHaveBeenCalled();
   });
 
-  it("rejects an unsolicited server authority before accepting catalog state", async () => {
+  it("rejects an unexpected Catalog identity before accepting catalog state", async () => {
     const active: PersistedSelectionReceipt = {
-      authorityId: "existing-project",
+      catalogId: "existing-project",
       bundleId: CURRENT_BUNDLE_ID,
       catalogHash: `sha256:${"b".repeat(64)}`,
       channel: CHANNEL,
@@ -569,7 +566,6 @@ describe("checkForUpdate Release catalog protocol", () => {
       kind: "BUNDLE",
       releaseId: ACTIVE_RELEASE_ID,
       scopeKey: createReleaseCatalogScopeKey({
-        authorityId: "existing-project",
         channelKey: encodeChannelKey(CHANNEL),
         platform: "ios",
         strategy: "APP_VERSION",

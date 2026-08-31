@@ -122,7 +122,6 @@ export const hasExpectedReleaseCatalogScope = (
   try {
     const parsed = parseReleaseCatalogScopeKey(catalog.scopeKey);
     return (
-      parsed.authorityId === catalog.authorityId &&
       parsed.channelKey === expected.channelKey &&
       parsed.platform === expected.platform &&
       parsed.strategy === expected.strategy &&
@@ -145,7 +144,8 @@ const parseValidatedCatalog = (
     const catalog = JSON.parse(value) as Partial<ReleaseCatalog>;
     if (
       catalog.schemaVersion !== 1 ||
-      typeof catalog.authorityId !== "string" ||
+      typeof catalog.catalogId !== "string" ||
+      catalog.catalogId.length === 0 ||
       typeof catalog.scopeKey !== "string" ||
       !Number.isSafeInteger(catalog.generation) ||
       (catalog.generation ?? 0) < 1 ||

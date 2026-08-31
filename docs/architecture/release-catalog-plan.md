@@ -56,7 +56,7 @@ cost location but not the scaling shape.
 
 The objective is:
 
-> Make routine update checks share one response per authority, platform,
+> Make routine update checks share one response per database, platform,
 > channel, and app-version/fingerprint scope, so shared-cache providers grow at
 > the CDN boundary and origin-only providers avoid the database decision path.
 
@@ -304,16 +304,20 @@ rejects alternate/non-canonical encodings.
 Catalog scope keys are:
 
 ```text
-v1:app-version:<authorityId>:<platform>:<channelKey>
-v1:fingerprint:<authorityId>:<platform>:<channelKey>:<fingerprintHash>
+v1:app-version:<platform>:<channelKey>
+v1:fingerprint:<platform>:<channelKey>:<fingerprintHash>
 ```
 
-`authorityId` is a stable project/server identity owned by deployment
-configuration and embedded in the Catalog. React Native does not configure or
-send it. Two servers that both call a channel `production` must return distinct
-authorities so they never share generation high-water. There is no separately
-issued dynamic `runtimeKey`. The complete catalog identity combines authority,
-strategy, platform, channel key, and app version or fingerprint.
+`catalogId` is an opaque identity allocated on the Catalog row's first atomic
+commit. It is retained across every mutation, rebuild, and tombstone. Neither
+deployment configuration nor server construction supplies it. Independent
+databases allocate different IDs even for the same lookup scope; server restarts
+and endpoint changes reuse the persisted row. Native uses this internal protocol
+metadata to keep generation history separate. Public SDK state omits it.
+
+Catalog rows are part of persistent history, not disposable caches. If a row is
+lost while Releases remain, restore that row from backup; rebuilding must not
+silently allocate a new identity and reset generation.
 
 Channel deletion does not delete its catalog identity. An empty tombstone row
 retains generation so delete/recreate or disaster repair cannot restart at 1.
@@ -324,7 +328,7 @@ high-water map.
 
 ```text
 scope_key PK
-authority_id
+catalog_id
 strategy
 channel_id
 channel_key
@@ -657,7 +661,7 @@ GET /release-catalogs/app-version/:platform/:channelKey/:canonicalAppVersion
 GET /release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash
 ```
 
-The server selects the authority from its deployment configuration. It is not
+The server reads identity from the persisted Catalog row. It is not
 caller-selected tenancy and does not appear in the client path. The URL
 excludes every installation-state field.
 
@@ -666,8 +670,8 @@ Expected complete response:
 ```json
 {
   "schemaVersion": 1,
-  "authorityId": "project_01",
-  "scopeKey": "v1:app-version:project_01:ios:cHJvZHVjdGlvbg",
+  "catalogId": "01900000-0000-7000-8000-000000000001",
+  "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
   "generation": 42,
   "catalogHash": "sha256:...",
   "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
@@ -754,7 +758,7 @@ Vary: Accept-Encoding, x-api-key
 Requirements:
 
 - The actual provider cache key isolates host, canonical path, `x-api-key`, and
-  supported content encoding. A host serves one configured Catalog authority.
+  supported content encoding. A host serves Catalogs from its configured database.
 - Invalid keys cannot receive a valid-key object.
 - `401`, `403`, `404`, malformed/incomplete catalog errors, and `5xx` are
   `private, no-store`.
@@ -776,7 +780,7 @@ configuration when available or report edge-shell invocations separately.
 
 ### Persistent receipts
 
-For each catalog authority/scope, native stores a monotonic high-water:
+For each catalog identity/scope, native stores a monotonic high-water:
 
 ```ts
 interface CatalogHighWater {
@@ -792,7 +796,7 @@ interface PersistedSelection {
   kind: "BUNDLE" | "EMBEDDED" | "BUILTIN";
   releaseId: string | null;
   bundleId: string; // native built-in identity for EMBEDDED/BUILTIN
-  authorityId: string | null;
+  catalogId: string | null;
   scopeKey: string | null;
   generation: number | null;
   catalogHash: string | null;
@@ -820,7 +824,7 @@ custom isolation namespace.
 
 ### Catalog acceptance table
 
-High-water is compared within `authorityId + scopeKey` only:
+High-water is compared within `catalogId + scopeKey` only:
 
 | Incoming catalog                  | Action                                          |
 | --------------------------------- | ----------------------------------------------- |
@@ -829,7 +833,7 @@ High-water is compared within `authorityId + scopeKey` only:
 | `G == H.generation`, hash matches | Accept for selection; do not change H           |
 | `G > H.generation` or no H        | Atomically persist `{G, hash}` before selection |
 
-An unsolicited scope/authority change is rejected. A different scope is usable
+An unsolicited scope/Catalog identity change is rejected. A different scope is usable
 only for an explicit runtime-channel check. Recording the target high-water is
 allowed even if an empty first target scope remains unapplied.
 
@@ -910,7 +914,7 @@ Every artifact resolution start, native install, metadata adoption, EMBEDDED,
 and BUILTIN side effect must atomically recheck:
 
 ```text
-incomingGeneration == highestSeenGeneration[authority + scope]
+incomingGeneration == highestSeenGeneration[catalogId + scope]
 selectionContextHash == current live selectionContextHash
 explicit target scope is still requested
 ```
@@ -1057,7 +1061,7 @@ public status.
 Deploy uploads one immutable Bundle and creates one Release per platform. The
 Bundle, available patch rows, Release, Channel creation, and affected catalogs
 commit through the atomic mutation boundary. Failed DB commit cleans only newly
-uploaded exclusive objects. Output returns both IDs plus authority, scope, and
+uploaded exclusive objects. Output returns both Release/Bundle IDs plus scope and
 generation.
 
 ### Rollout and target cohorts
@@ -1196,7 +1200,7 @@ Before saving, Console runs server-authoritative preflight and shows:
 - exact affected scopes;
 - mutation rejection without partial save.
 
-Scope diagnostics show authority, canonical scope key, generation, catalog
+Scope diagnostics show canonical scope key, generation, catalog
 hash, response ETag, byte size, counts, last compile, and tombstone state.
 Raw canonical JSON is downloadable for debugging but not editable.
 
@@ -1244,7 +1248,7 @@ Rollout, target, force, enabled, message, channel, and compatibility output move
 to Release commands. Bundle commands show artifacts/reference counts and only
 perform reference-safe artifact deletion.
 
-Deploy prints `{release, bundle, authorityId, scopeKey, generation}`. Rollback
+Deploy prints `{release, bundle, scopeKey, generation}`. Rollback
 uses `--to-release` as the unambiguous target; Bundle targeting is explicitly
 advanced. Promote accepts source Release and reports Bundle reuse with no
 Storage copy. Preflight shows current/projected catalog complexity and blocks
@@ -1348,7 +1352,7 @@ Bundles; only new promote operations reuse artifacts.
 
 Then:
 
-1. create canonical channels/authority scope keys and persistent tombstones;
+1. create canonical channel scope keys and persistent tombstones;
 2. compile every scope;
 3. compare optimized and reference selector results;
 4. verify catalog hashes/limits;
@@ -1408,7 +1412,7 @@ missing/inconsistent catalog projections. Analytics columns remain nullable.
 
 ### 6. Implement local selector and native metadata-v2
 
-- Add authority/scope high-water, context hash, stable/staging receipts, atomic
+- Add Catalog identity/scope high-water, context hash, stable/staging receipts, atomic
   files, commit-time CAS, channel-in-receipt, and v1 migration.
 - Add same-Bundle adoption, catalog-authorized BUILTIN, and
   Bundle-keyed crash recovery.
@@ -1558,7 +1562,7 @@ directional Release IDs. It verifies provider data, not Console rendering.
 
 ### E2E harness and example changes
 
-- Deploy fixture returns `{bundleId, releaseId, authorityId, scopeKey,
+- Deploy fixture returns `{bundleId, releaseId, catalogId, scopeKey,
 generation}` and scenario context stores both identities.
 - Policy endpoint `/patch-bundle` becomes `/patch-release`; artifact endpoints
   remain Bundle-based.
@@ -1569,7 +1573,7 @@ generation}` and scenario context stores both identities.
 - Replace the legacy `update-check-request-bundle-id` helper/spec with a Release Catalog URL
   assertion proving current/minimum/cohort/crash state is absent.
 - Runtime Snapshot focused routes expose active Release ID, selection kind,
-  authority/scope/generation/high-water, channel, and context. Manifest display
+  Catalog identity/scope/generation/high-water, channel, and context. Manifest display
   remains Bundle-only.
 - Visibility probe reads catalog Release identity, then separately observes
   artifact resolution.
@@ -1680,7 +1684,7 @@ Management write
   -> short-lived authenticated shared-cache or origin-only response
 
 Device check
-  -> shared authority/scope catalog URL
+  -> shared scope catalog URL
   -> high-water/hash acceptance
   -> local desired-state selection
   -> native generation/context CAS

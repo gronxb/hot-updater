@@ -64,7 +64,7 @@ export interface ReleaseRow {
 
 export interface ReleaseCatalogRow {
   readonly scope_key: string;
-  readonly authority_id: string;
+  readonly catalog_id: string;
   readonly strategy: "APP_VERSION" | "FINGERPRINT";
   readonly channel_id: string;
   readonly channel_key: string;

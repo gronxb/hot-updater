@@ -697,13 +697,11 @@ for (const bundle of bundles) {
   const scopeKey =
     strategy === "APP_VERSION"
       ? createReleaseCatalogScopeKey({
-          authorityId: "console-demo",
           channelKey,
           platform: bundle.platform,
           strategy,
         })
       : createReleaseCatalogScopeKey({
-          authorityId: "console-demo",
           channelKey,
           fingerprintHash: bundle.fingerprintHash ?? "",
           platform: bundle.platform,
@@ -768,7 +766,7 @@ for (const [scopeKey, scope] of [...scopes].sort(([left], [right]) =>
     channelName: scope.channelName,
     row: {
       scope_key: scopeKey,
-      authority_id: "console-demo",
+      catalog_id: "console-demo",
       strategy: scope.strategy,
       channel_id: scope.channelName,
       channel_key: encodeChannelKey(scope.channelName),
@@ -1055,7 +1053,6 @@ const database = mockDatabase({
 
 export default {
   projectPath: __dirname,
-  authorityId: "console-demo",
   updateStrategy: "fingerprint" as const,
   build: async () => null,
   storage: mockStorage({}),

@@ -26,7 +26,6 @@ const {
 
 const createPlugin = (): DatabasePlugin =>
   firebaseDatabase({
-    authorityId: "test",
     projectId: PROJECT_ID,
     storageBucket: `${PROJECT_ID}.appspot.com`,
   });

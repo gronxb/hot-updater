@@ -13,9 +13,8 @@ vi.mock("./specs/NativeHotUpdater", () => ({ default: nativeModule }));
 
 import { fetchReleaseCatalogWithCache } from "./releaseCatalogCache";
 
-const authorityId = "project-a";
+const catalogId = "project-a";
 const scopeKey = createReleaseCatalogScopeKey({
-  authorityId,
   channelKey: encodeChannelKey("production"),
   platform: "ios",
   strategy: "APP_VERSION",
@@ -31,7 +30,7 @@ const input = {
   url: "https://updates.example.com/catalog",
 };
 const catalog: ReleaseCatalog = {
-  authorityId,
+  catalogId,
   catalogHash: `sha256:${"a".repeat(64)}`,
   fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
   generation: 1,

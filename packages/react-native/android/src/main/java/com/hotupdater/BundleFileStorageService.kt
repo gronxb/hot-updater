@@ -102,7 +102,7 @@ interface BundleStorageService {
     fun stageReleaseSelection(selection: PersistedSelection): Boolean = false
 
     fun acceptReleaseCatalog(
-        authorityId: String,
+        catalogId: String,
         scopeKey: String,
         generation: Long,
         catalogHash: String,
@@ -113,7 +113,7 @@ interface BundleStorageService {
     fun getActiveUpdateState(): Map<String, Any?> = emptyMap()
 
     fun isReleaseSelectionCurrent(
-        authorityId: String,
+        catalogId: String,
         scopeKey: String,
         generation: Long,
         catalogHash: String,
@@ -1156,9 +1156,9 @@ class BundleFileStorageService(
     }
 
     private fun releaseScopeStateKey(
-        authorityId: String,
+        catalogId: String,
         scopeKey: String,
-    ): String = "$authorityId|$scopeKey"
+    ): String = "$catalogId|$scopeKey"
 
     private fun selectionContextValue(
         channel: String,
@@ -1166,7 +1166,7 @@ class BundleFileStorageService(
     ): String = "$channel\n$selectionContextHash"
 
     override fun acceptReleaseCatalog(
-        authorityId: String,
+        catalogId: String,
         scopeKey: String,
         generation: Long,
         catalogHash: String,
@@ -1175,7 +1175,7 @@ class BundleFileStorageService(
     ): Boolean =
         synchronized(releaseStateLock) {
             val metadata = loadMetadataOrNull() ?: createInitialMetadata()
-            val stateKey = releaseScopeStateKey(authorityId, scopeKey)
+            val stateKey = releaseScopeStateKey(catalogId, scopeKey)
             val highestSeen = metadata.highestSeenCatalogs[stateKey]
             if (highestSeen != null && generation < highestSeen.generation) {
                 return@synchronized false
@@ -1225,7 +1225,7 @@ class BundleFileStorageService(
         }
 
     override fun isReleaseSelectionCurrent(
-        authorityId: String,
+        catalogId: String,
         scopeKey: String,
         generation: Long,
         catalogHash: String,
@@ -1234,20 +1234,20 @@ class BundleFileStorageService(
     ): Boolean =
         synchronized(releaseStateLock) {
             val metadata = loadMetadataOrNull() ?: return@synchronized false
-            val stateKey = releaseScopeStateKey(authorityId, scopeKey)
+            val stateKey = releaseScopeStateKey(catalogId, scopeKey)
             metadata.highestSeenCatalogs[stateKey] == CatalogHighWater(generation, catalogHash) &&
                 metadata.currentSelectionContexts[stateKey] ==
                 selectionContextValue(channel, selectionContextHash)
         }
 
     private fun isSelectionCurrent(selection: PersistedSelection): Boolean {
-        val authorityId = selection.authorityId ?: return false
+        val catalogId = selection.catalogId ?: return false
         val scopeKey = selection.scopeKey ?: return false
         val generation = selection.generation ?: return false
         val catalogHash = selection.catalogHash ?: return false
         val selectionContextHash = selection.selectionContextHash ?: return false
         return isReleaseSelectionCurrent(
-            authorityId = authorityId,
+            catalogId = catalogId,
             scopeKey = scopeKey,
             generation = generation,
             catalogHash = catalogHash,

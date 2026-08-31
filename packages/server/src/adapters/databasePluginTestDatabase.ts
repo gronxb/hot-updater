@@ -52,7 +52,7 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
   );
   create table release_catalogs (
     scope_key text primary key,
-    authority_id text not null,
+    catalog_id text not null,
     strategy text not null,
     channel_id text not null references channels(id),
     channel_key text not null,

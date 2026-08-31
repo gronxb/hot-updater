@@ -232,7 +232,7 @@ const isReleaseCatalogRow = (value: unknown): value is ReleaseCatalogRow =>
   typeof value === "object" &&
   value !== null &&
   typeof field(value, "scope_key") === "string" &&
-  typeof field(value, "authority_id") === "string" &&
+  typeof field(value, "catalog_id") === "string" &&
   (field(value, "strategy") === "APP_VERSION" ||
     field(value, "strategy") === "FINGERPRINT") &&
   typeof field(value, "channel_id") === "string" &&

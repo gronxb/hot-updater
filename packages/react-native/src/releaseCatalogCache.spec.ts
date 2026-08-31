@@ -31,10 +31,9 @@ vi.mock("./catalogCacheNative", () => ({
   writeNativeReleaseCatalogCache: nativeMocks.write,
 }));
 
-const AUTHORITY_ID = "project-a";
+const CATALOG_ID = "project-a";
 const CHANNEL_KEY = encodeChannelKey("production");
 const SCOPE_KEY = createReleaseCatalogScopeKey({
-  authorityId: AUTHORITY_ID,
   channelKey: CHANNEL_KEY,
   platform: "ios",
   strategy: "APP_VERSION",
@@ -47,7 +46,7 @@ const EXPECTED_SCOPE = {
 } as const;
 
 const catalog: ReleaseCatalog = {
-  authorityId: AUTHORITY_ID,
+  catalogId: CATALOG_ID,
   catalogHash: `sha256:${"a".repeat(64)}`,
   fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
   generation: 1,
@@ -140,7 +139,6 @@ describe("Release Catalog persistent cache", () => {
 
   it("isolates base URL, scope, and case-insensitive API-key partitions", async () => {
     const betaScope = createReleaseCatalogScopeKey({
-      authorityId: AUTHORITY_ID,
       channelKey: encodeChannelKey("beta"),
       platform: "ios",
       strategy: "APP_VERSION",
@@ -233,14 +231,14 @@ describe("Release Catalog persistent cache", () => {
     expect(nativeMocks.write).not.toHaveBeenCalled();
   });
 
-  it("rejects a catalog whose authority does not own its scope key", async () => {
+  it("rejects a catalog with no persisted identity", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
         response(
           200,
-          JSON.stringify({ ...catalog, authorityId: "tampered-project" }),
-          '"wrong-authority"',
+          JSON.stringify({ ...catalog, catalogId: "" }),
+          '"missing-identity"',
         ),
       );
     vi.stubGlobal("fetch", fetchMock);

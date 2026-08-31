@@ -13,7 +13,7 @@ Hot Updater separates immutable update bytes from mutable delivery policy:
 - **Database** holds Bundle metadata, canonical Releases, Channels, and Release
   Catalog rows.
 - **Release Catalog** is a deterministic, derived projection of Release policy
-  for one authority, channel, platform, and compatibility scope.
+  for one channel, platform, and compatibility scope.
 - **Server** serves the exact Catalog for an app's scope and resolves the
   selected Bundle artifact.
 
@@ -51,7 +51,7 @@ clients never observe policy without its matching projection.
 
 1. `hot-updater deploy` builds and uploads an immutable Bundle.
 2. Deploy creates a Release for that Bundle and compiles the affected Catalog.
-3. The app requests the Catalog for its authority, channel, platform, and
+3. The app requests the Catalog for its channel, platform, and
    app-version or fingerprint scope.
 4. The client evaluates compatibility, Release chronology, rollout, and target
    cohorts, then resolves the selected Bundle artifact.

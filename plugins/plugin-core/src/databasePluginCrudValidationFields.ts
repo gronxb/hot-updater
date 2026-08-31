@@ -105,7 +105,7 @@ export const modelValidators: ValidatorMap = {
   },
   release_catalogs: {
     scope_key: (value) => typeof value === "string" && value.length > 0,
-    authority_id: (value) => typeof value === "string" && value.length > 0,
+    catalog_id: (value) => typeof value === "string" && value.length > 0,
     strategy: (value) => value === "APP_VERSION" || value === "FINGERPRINT",
     channel_id: isChannelText,
     channel_key: (value) => typeof value === "string" && value.length > 0,
@@ -181,7 +181,7 @@ export const stringFields = new Set<string>([
   "patch_file_hash",
   "patch_storage_uri",
   "scope_key",
-  "authority_id",
+  "catalog_id",
   "channel_key",
   "kind",
   "bundle_id",
@@ -276,7 +276,7 @@ export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
   ]),
   release_catalogs: new Set([
     "scope_key",
-    "authority_id",
+    "catalog_id",
     "strategy",
     "channel_id",
     "channel_key",

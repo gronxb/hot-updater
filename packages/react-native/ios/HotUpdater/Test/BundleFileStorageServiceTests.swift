@@ -469,7 +469,7 @@ struct BundleFileStorageServiceTests {
         let service = makeStorageService(documentsDirectory: workingDirectory)
 
         #expect(service.acceptReleaseCatalog(
-            authorityId: "project-a",
+            catalogId: "project-a",
             scopeKey: "scope-production",
             generation: 2,
             catalogHash: "hash-2",
@@ -477,7 +477,7 @@ struct BundleFileStorageServiceTests {
             selectionContextHash: "context-2"
         ))
         #expect(service.acceptReleaseCatalog(
-            authorityId: "project-a",
+            catalogId: "project-a",
             scopeKey: "scope-production",
             generation: 1,
             catalogHash: "hash-1",
@@ -485,7 +485,7 @@ struct BundleFileStorageServiceTests {
             selectionContextHash: "context-1"
         ) == false)
         #expect(service.acceptReleaseCatalog(
-            authorityId: "project-a",
+            catalogId: "project-a",
             scopeKey: "scope-production",
             generation: 2,
             catalogHash: "different-hash",
@@ -527,7 +527,7 @@ struct BundleFileStorageServiceTests {
             )
         )
         #expect(service.acceptReleaseCatalog(
-            authorityId: "project-a",
+            catalogId: "project-a",
             scopeKey: "scope-production",
             generation: 2,
             catalogHash: "hash-2",
@@ -796,7 +796,7 @@ private func releaseSelection(
         kind: "BUNDLE",
         releaseId: releaseId,
         bundleId: bundleId,
-        authorityId: "project-a",
+        catalogId: "project-a",
         scopeKey: "scope-production",
         generation: generation,
         catalogHash: catalogHash,

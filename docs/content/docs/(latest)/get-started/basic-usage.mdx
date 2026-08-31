@@ -63,7 +63,6 @@ import { config } from "dotenv";
 config({ path: ".env.hotupdater" });
 
 export default defineConfig({
-  authorityId: "your-project-id",
   build: bare({ enableHermes: true }),
   updateStrategy: "appVersion",
   storage: supabaseStorage({
@@ -153,8 +152,7 @@ export default HotUpdater.wrap({
   service-role, or admin credential as the client API key.
 </Callout>
 
-The generated `authorityId` remains private deployment configuration. React
-Native clients identify the client handler only through `baseURL`.
+React Native clients identify the client handler only through `baseURL`.
 
 ## Build Configuration
 

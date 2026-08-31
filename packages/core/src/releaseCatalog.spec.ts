@@ -35,13 +35,13 @@ const catalog = (
   releases: readonly ReleaseCatalogDescriptor[],
   overrides: Partial<ReleaseCatalog> = {},
 ): ReleaseCatalog => ({
-  authorityId: "project-a",
+  catalogId: "project-a",
   catalogHash: "hash-10",
   fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
   generation: 10,
   releases,
   schemaVersion: 1,
-  scopeKey: "v1:app-version:project-a:ios:production",
+  scopeKey: "v1:app-version:ios:production",
   ...overrides,
 });
 
@@ -325,7 +325,7 @@ const receipt = (
   releaseSequence: number,
   overrides: Partial<PersistedSelectionReceipt> = {},
 ): PersistedSelectionReceipt => ({
-  authorityId: "project-a",
+  catalogId: "project-a",
   bundleId: bundleId(releaseSequence),
   catalogHash: "hash-10",
   channel: "production",

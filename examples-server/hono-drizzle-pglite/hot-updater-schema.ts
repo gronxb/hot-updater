@@ -146,7 +146,7 @@ export const releasesRelations = relations(releases, ({ one, many }) => ({
 
 export const release_catalogs = pgTable("release_catalogs", {
   scope_key: varchar("scope_key", { length: 2048 }).primaryKey().notNull(),
-  authority_id: varchar("authority_id", { length: 255 }).notNull(),
+  catalog_id: varchar("catalog_id", { length: 255 }).notNull(),
   strategy: text("strategy").notNull(),
   channel_id: varchar("channel_id", { length: 255 }).notNull(),
   channel_key: varchar("channel_key", { length: 1400 }).notNull(),
@@ -164,8 +164,7 @@ export const release_catalogs = pgTable("release_catalogs", {
     foreignColumns: [channels.id],
     name: "release_catalogs_channel_id_fk"
   }).onUpdate("restrict").onDelete("restrict"),
-  index("release_catalogs_channel_idx").on(table.channel_id),
-  index("release_catalogs_authority_strategy_idx").on(table.authority_id, table.strategy)
+  index("release_catalogs_channel_idx").on(table.channel_id)
 ])
 
 export const release_catalogsRelations = relations(release_catalogs, ({ one }) => ({

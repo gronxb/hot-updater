@@ -322,6 +322,17 @@ export type UpdateParams = UpdateBundleParams & {
 };
 
 export interface ActiveUpdateState {
+  readonly activeSelection: ActiveUpdateSelection | null;
+  readonly stableSelection: ActiveUpdateSelection | null;
+  readonly verificationPending: boolean;
+}
+
+type ActiveUpdateSelection = Pick<
+  PersistedSelectionReceipt,
+  "kind" | "releaseId" | "bundleId" | "channel"
+>;
+
+export interface InternalActiveUpdateState {
   readonly activeSelection: PersistedSelectionReceipt | null;
   readonly stableSelection: PersistedSelectionReceipt | null;
   readonly verificationPending: boolean;
@@ -329,7 +340,7 @@ export interface ActiveUpdateState {
 }
 
 export interface ReleaseSelectionGuard {
-  readonly authorityId: string;
+  readonly catalogId: string;
   readonly scopeKey: string;
   readonly generation: number;
   readonly catalogHash: string;
@@ -350,7 +361,7 @@ const requireReleaseCatalogNativeMethod = <T extends (...args: any[]) => any>(
 };
 
 export const acceptReleaseCatalog = (input: {
-  readonly authorityId: string;
+  readonly catalogId: string;
   readonly scopeKey: string;
   readonly generation: number;
   readonly catalogHash: string;
@@ -361,14 +372,34 @@ export const acceptReleaseCatalog = (input: {
     "acceptReleaseCatalog",
   )(input);
 
-export const getActiveUpdateState = (): ActiveUpdateState => {
+export const getActiveUpdateState = (): InternalActiveUpdateState => {
   const value = requireReleaseCatalogNativeMethod<() => unknown>(
     "getActiveUpdateState",
   )();
   if (typeof value === "string") {
-    return JSON.parse(value) as ActiveUpdateState;
+    return JSON.parse(value) as InternalActiveUpdateState;
   }
-  return value as ActiveUpdateState;
+  return value as InternalActiveUpdateState;
+};
+
+export const getPublicActiveUpdateState = (): ActiveUpdateState => {
+  const state = getActiveUpdateState();
+  const selection = (
+    receipt: PersistedSelectionReceipt | null,
+  ): ActiveUpdateSelection | null =>
+    receipt === null
+      ? null
+      : {
+          kind: receipt.kind,
+          releaseId: receipt.releaseId,
+          bundleId: receipt.bundleId,
+          channel: receipt.channel,
+        };
+  return {
+    activeSelection: selection(state.activeSelection),
+    stableSelection: selection(state.stableSelection),
+    verificationPending: state.verificationPending,
+  };
 };
 
 export const isReleaseSelectionCurrent = (

@@ -171,7 +171,6 @@ import { config } from "dotenv";
 config({ path: ".env.hotupdater" });
 
 export default defineConfig({
-  authorityId: "your-project-id",
   build: bare({ enableHermes: true }),
   updateStrategy: "appVersion",
   storage: supabaseStorage({
@@ -185,9 +184,6 @@ export default defineConfig({
   }),
 });
 ```
-
-Keep the generated `authorityId` unchanged. Managed Supabase uses the project
-reference as the Release Catalog authority.
 
 The generated Supabase migrations enable Row Level Security on Hot Updater
 tables and keep direct table/function access limited to the service role used by

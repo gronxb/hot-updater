@@ -55,7 +55,6 @@ import { initProvider as CLOUDFLARE_INIT_PROVIDER } from "./init/index";
 
 const getConfigScaffold = (
   build: RunInitOptions["build"],
-  authorityId: string,
 ): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
@@ -82,7 +81,6 @@ const getConfigScaffold = (
       .setBuildType(build)
       .setStorage(storageConfig)
       .setDatabase(databaseConfig),
-    { authorityIdInitializer: JSON.stringify(authorityId) },
   );
 };
 
@@ -155,7 +153,6 @@ const deployWorker = async (
     ];
 
     wranglerConfig.vars = {
-      AUTHORITY_ID: d1DatabaseId,
       BUCKET_NAME: r2BucketName,
     };
 
@@ -761,7 +758,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
 
   const configWriteResult = await writeHotUpdaterConfig(
-    getConfigScaffold(build, selectedD1DatabaseId),
+    getConfigScaffold(build),
   );
 
   p.log.success("Generated '.env.hotupdater' file with Cloudflare settings.");

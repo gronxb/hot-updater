@@ -95,7 +95,7 @@ const sameReceipt = (
   first.kind === second.kind &&
   first.releaseId === second.releaseId &&
   first.bundleId === second.bundleId &&
-  first.authorityId === second.authorityId &&
+  first.catalogId === second.catalogId &&
   first.scopeKey === second.scopeKey &&
   first.generation === second.generation &&
   first.catalogHash === second.catalogHash &&
@@ -214,7 +214,7 @@ async function checkForReleaseCatalogUpdate(input: {
     updateStrategy: options.updateStrategy,
   });
   validateCatalog(catalog, expectedScope);
-  const authorityId = catalog.authorityId;
+  const catalogId = catalog.catalogId;
   const scopeKey = catalog.scopeKey;
 
   const crashedBundleIds = getCrashHistory();
@@ -223,12 +223,12 @@ async function checkForReleaseCatalogUpdate(input: {
     input.explicitChannel !== undefined &&
     input.explicitChannel !== input.currentChannel;
   const activeInTargetScope =
-    active?.authorityId === authorityId && active.scopeKey === scopeKey
+    active?.catalogId === catalogId && active.scopeKey === scopeKey
       ? active
       : null;
   const hasAuthenticatedActive =
     active !== null &&
-    active.authorityId !== null &&
+    active.catalogId !== null &&
     active.scopeKey !== null &&
     active.generation !== null;
   if (
@@ -257,7 +257,7 @@ async function checkForReleaseCatalogUpdate(input: {
   });
   if (
     !acceptReleaseCatalog({
-      authorityId,
+      catalogId,
       catalogHash: catalog.catalogHash,
       channel: input.targetChannel,
       generation: catalog.generation,
@@ -288,7 +288,7 @@ async function checkForReleaseCatalogUpdate(input: {
   }
 
   const receipt: PersistedSelectionReceipt = {
-    authorityId,
+    catalogId,
     bundleId: desired.bundleId,
     catalogHash: catalog.catalogHash,
     channel: input.targetChannel,
@@ -322,7 +322,7 @@ async function checkForReleaseCatalogUpdate(input: {
           ? "ADOPT_RELEASE"
           : "INSTALL";
   const guard = {
-    authorityId,
+    catalogId,
     catalogHash: catalog.catalogHash,
     channel: input.targetChannel,
     generation: catalog.generation,

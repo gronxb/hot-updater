@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createMemoryDatabasePlugin } from "./databasePluginMemory.testFixtures";
 import type { ReleaseCatalogRow, ReleaseRow } from "./types";
 
-const scopeKey = "v1:app-version:project-a:ios:cHJvZHVjdGlvbg";
+const scopeKey = "v1:app-version:ios:cHJvZHVjdGlvbg";
 
 const releaseRow = (revision: number): ReleaseRow => ({
   bundle_id: null,
@@ -28,7 +28,7 @@ const releaseRow = (revision: number): ReleaseRow => ({
 });
 
 const catalogRow = (generation: number): ReleaseCatalogRow => ({
-  authority_id: "project-a",
+  catalog_id: "project-a",
   byte_size: 2,
   catalog_hash: `sha256:generation-${generation}`,
   channel_id: "channel-production",

@@ -77,7 +77,7 @@ CREATE TABLE public.hot_updater_v1_releases (
 
 CREATE TABLE public.hot_updater_v1_release_catalogs (
   scope_key varchar(2048) COLLATE "C" PRIMARY KEY NOT NULL,
-  authority_id varchar(255) COLLATE "C" NOT NULL,
+  catalog_id varchar(255) COLLATE "C" NOT NULL,
   strategy text NOT NULL,
   channel_id text COLLATE "C" NOT NULL,
   channel_key varchar(1400) COLLATE "C" NOT NULL,
@@ -158,8 +158,6 @@ CREATE INDEX hot_updater_v1_releases_bundle_id_idx ON public.hot_updater_v1_rele
 CREATE INDEX hot_updater_v1_releases_fingerprint_hash_idx ON public.hot_updater_v1_releases(fingerprint_hash);
 CREATE INDEX hot_updater_v1_releases_enabled_idx ON public.hot_updater_v1_releases(enabled);
 CREATE INDEX hot_updater_v1_release_catalogs_channel_idx ON public.hot_updater_v1_release_catalogs(channel_id);
-CREATE INDEX hot_updater_v1_release_catalogs_authority_strategy_idx
-  ON public.hot_updater_v1_release_catalogs(authority_id, strategy);
 CREATE INDEX hot_updater_v1_bundle_patches_bundle_id_idx ON public.hot_updater_v1_bundle_patches(bundle_id);
 CREATE INDEX hot_updater_v1_bundle_patches_base_bundle_id_idx
   ON public.hot_updater_v1_bundle_patches(base_bundle_id);
@@ -448,7 +446,7 @@ BEGIN
           );
           INSERT INTO public.hot_updater_v1_release_catalogs SELECT v_catalog.*
           ON CONFLICT (scope_key) DO UPDATE SET
-            authority_id = EXCLUDED.authority_id,
+            catalog_id = EXCLUDED.catalog_id,
             strategy = EXCLUDED.strategy,
             channel_id = EXCLUDED.channel_id,
             channel_key = EXCLUDED.channel_key,

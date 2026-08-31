@@ -39,7 +39,7 @@ export type ScenarioReleaseIds = {
 };
 
 export type DetoxScenarioContext = {
-  readonly authorityId?: string;
+  readonly catalogId?: string;
   readonly artifactsDir: string;
   readonly bundleIds: ScenarioBundleIds;
   readonly channel: string;
@@ -53,7 +53,7 @@ export type DetoxScenarioContext = {
 
 export type CreateScenarioContextInput = {
   readonly artifactsDir: string;
-  readonly authorityId?: string;
+  readonly catalogId?: string;
   readonly bundleIds?: ScenarioBundleIds;
   readonly channel: string;
   readonly platform: DetoxPlatform;
@@ -81,7 +81,7 @@ export function createScenarioContext(
   input: CreateScenarioContextInput,
 ): DetoxScenarioContext {
   return {
-    authorityId: input.authorityId,
+    catalogId: input.catalogId,
     artifactsDir: input.artifactsDir,
     bundleIds: input.bundleIds ?? {},
     channel: input.channel,

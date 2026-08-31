@@ -171,7 +171,6 @@ export function decodeChannelKey(channelKey: string): string {
 }
 
 export type ReleaseCatalogScopeKeyInput = {
-  readonly authorityId: string;
   readonly platform: Platform;
   readonly channelKey: string;
 } & (
@@ -189,24 +188,22 @@ export function createReleaseCatalogScopeKey(
   input: ReleaseCatalogScopeKeyInput,
 ): string {
   decodeChannelKey(input.channelKey);
-  assertCatalogSegment(input.authorityId, "Catalog authority ID");
 
   if (input.strategy === "APP_VERSION") {
-    return `v1:app-version:${input.authorityId}:${input.platform}:${input.channelKey}`;
+    return `v1:app-version:${input.platform}:${input.channelKey}`;
   }
 
   assertCatalogSegment(input.fingerprintHash, "Fingerprint hash");
-  return `v1:fingerprint:${input.authorityId}:${input.platform}:${input.channelKey}:${input.fingerprintHash}`;
+  return `v1:fingerprint:${input.platform}:${input.channelKey}:${input.fingerprintHash}`;
 }
 
 export function parseReleaseCatalogScopeKey(
   scopeKey: string,
 ): ReleaseCatalogScopeKeyInput {
   const segments = scopeKey.split(":");
-  const [version, strategy, authorityId, platform, channelKey] = segments;
+  const [version, strategy, platform, channelKey] = segments;
   if (
     version !== "v1" ||
-    authorityId === undefined ||
     (platform !== "ios" && platform !== "android") ||
     channelKey === undefined
   ) {
@@ -214,20 +211,18 @@ export function parseReleaseCatalogScopeKey(
   }
 
   const input: ReleaseCatalogScopeKeyInput =
-    strategy === "app-version" && segments.length === 5
+    strategy === "app-version" && segments.length === 4
       ? {
-          authorityId,
           channelKey,
           platform,
           strategy: "APP_VERSION",
         }
       : strategy === "fingerprint" &&
-          segments.length === 6 &&
-          segments[5] !== undefined
+          segments.length === 5 &&
+          segments[4] !== undefined
         ? {
-            authorityId,
             channelKey,
-            fingerprintHash: segments[5],
+            fingerprintHash: segments[4],
             platform,
             strategy: "FINGERPRINT",
           }

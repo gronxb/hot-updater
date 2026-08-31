@@ -181,7 +181,7 @@ data class PersistedSelection(
     val kind: String,
     val releaseId: String?,
     val bundleId: String,
-    val authorityId: String?,
+    val catalogId: String?,
     val scopeKey: String?,
     val generation: Long?,
     val catalogHash: String?,
@@ -194,7 +194,7 @@ data class PersistedSelection(
                 kind = "BUNDLE",
                 releaseId = null,
                 bundleId = bundleId,
-                authorityId = null,
+                catalogId = null,
                 scopeKey = null,
                 generation = null,
                 catalogHash = null,
@@ -207,7 +207,7 @@ data class PersistedSelection(
                 kind = json.getString("kind"),
                 releaseId = json.optNullableString("releaseId"),
                 bundleId = json.getString("bundleId"),
-                authorityId = json.optNullableString("authorityId"),
+                catalogId = json.optNullableString("catalogId"),
                 scopeKey = json.optNullableString("scopeKey"),
                 generation = if (json.has("generation") && !json.isNull("generation")) json.getLong("generation") else null,
                 catalogHash = json.optNullableString("catalogHash"),
@@ -221,7 +221,7 @@ data class PersistedSelection(
             put("kind", kind)
             put("releaseId", releaseId ?: JSONObject.NULL)
             put("bundleId", bundleId)
-            put("authorityId", authorityId ?: JSONObject.NULL)
+            put("catalogId", catalogId ?: JSONObject.NULL)
             put("scopeKey", scopeKey ?: JSONObject.NULL)
             put("generation", generation ?: JSONObject.NULL)
             put("catalogHash", catalogHash ?: JSONObject.NULL)
@@ -234,7 +234,7 @@ data class PersistedSelection(
             "kind" to kind,
             "releaseId" to releaseId,
             "bundleId" to bundleId,
-            "authorityId" to authorityId,
+            "catalogId" to catalogId,
             "scopeKey" to scopeKey,
             "generation" to generation?.toDouble(),
             "catalogHash" to catalogHash,

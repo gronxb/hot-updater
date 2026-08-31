@@ -26,10 +26,7 @@ export type ConsoleSigningConfig = Readonly<{
 }>;
 
 export type HotUpdaterConsoleConfig = Readonly<
-  Pick<
-    ConfigInput,
-    "authorityId" | "console" | "database" | "signing" | "storage"
-  >
+  Pick<ConfigInput, "console" | "database" | "signing" | "storage">
 >;
 
 export type ResolvedHotUpdaterConsoleConfig = Readonly<

@@ -105,7 +105,6 @@ const commitTestRelease = async (
     row: { id: uuidv7(), name: channelName },
   });
   const scopeKey = createReleaseCatalogScopeKey({
-    authorityId: "default",
     channelKey: encodeChannelKey(channelName),
     platform: bundle.platform,
     strategy: "APP_VERSION",
@@ -145,7 +144,6 @@ const commitTestRelease = async (
       },
     },
     scope: {
-      authorityId: "default",
       channelId: channel.row.id,
       channelName,
       fingerprintHash: null,

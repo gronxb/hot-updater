@@ -235,7 +235,7 @@ export const parseFirebaseReleaseCatalogRow = (
   }
   return {
     scope_key: string(property(input, "scope_key"), source),
-    authority_id: string(property(input, "authority_id"), source),
+    catalog_id: string(property(input, "catalog_id"), source),
     strategy,
     channel_id: string(property(input, "channel_id"), source),
     channel_key: string(property(input, "channel_key"), source),

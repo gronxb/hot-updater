@@ -56,7 +56,7 @@ vi.mock("./checkForUpdate", () => ({
 vi.mock("./native", () => ({
   addListener: mocks.addListener,
   clearCrashHistory: mocks.clearCrashHistory,
-  getActiveUpdateState: mocks.getActiveUpdateState,
+  getPublicActiveUpdateState: mocks.getActiveUpdateState,
   getAppVersion: mocks.getAppVersion,
   getBaseURL: mocks.getBaseURL,
   getBundleId: mocks.getBundleId,
@@ -142,7 +142,7 @@ describe("HotUpdater client initialization", () => {
     expect(mocks.init).not.toHaveBeenCalled();
   });
 
-  it("types init and wrap with baseURL but no resolver or authorityId", () => {
+  it("types init and wrap with baseURL but no resolver or catalogId", () => {
     const initOptions = {
       baseURL: "https://updates.example.com",
     } satisfies HotUpdaterInitOptions;
@@ -156,14 +156,14 @@ describe("HotUpdater client initialization", () => {
       const missingBaseURL: HotUpdaterInitOptions = {};
       // @ts-expect-error resolver is no longer a public input
       const customResolver: HotUpdaterInitOptions = { resolver: {} };
-      const clientAuthority: HotUpdaterInitOptions = {
-        // @ts-expect-error authorityId is server-owned
-        authorityId: "project-a",
+      const clientCatalog: HotUpdaterInitOptions = {
+        // @ts-expect-error catalogId is internal protocol metadata
+        catalogId: "project-a",
         baseURL: "https://updates.example.com",
       };
       void missingBaseURL;
       void customResolver;
-      void clientAuthority;
+      void clientCatalog;
     };
 
     expect(assertRemovedInputsStayRejected).toBeTypeOf("function");

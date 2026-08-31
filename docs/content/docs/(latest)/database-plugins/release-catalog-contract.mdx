@@ -159,7 +159,7 @@ The runtime read is an exact point lookup by scope key. The ordered list exists
 for preflight, migration, and deterministic rebuild. Providers treat `payload`
 as canonical opaque JSON and do not evaluate it.
 
-Catalog rows include authority, strategy, Channel identity, platform,
+Catalog rows include an automatically allocated opaque identity, strategy, Channel identity, platform,
 optional fingerprint, generation, canonical hash, byte size, tombstone state,
 and update time. A logical Release mutation increments every affected catalog
 generation. An empty scope remains as a newer tombstone row; generation never
@@ -301,8 +301,11 @@ short-lived shared-cacheable and vary by content encoding and `x-api-key`.
 Authentication errors, missing/incomplete catalogs, and server errors are
 `private, no-store`. Artifact resolution remains Bundle-keyed and private.
 
-Catalog authority remains server-owned compiler and persistence state. It is
-not supplied by React Native clients and does not appear in client route paths.
+Catalog identity is allocated by the shared compiler on the first atomic commit
+and retained across mutations, rebuilds, and tombstones. Plugins persist it
+unchanged; applications and server configuration do not supply it. Backups must
+include Catalog rows: rebuilding a missing row from existing Releases would lose
+its identity and generation history, so that operation requires restoring the row.
 Custom GraphQL, RPC, or other transports must sit behind an HTTP adapter or
 proxy that exposes these v1 routes. Successful shared responses must keep a
 stable cache partition; responses affected by arbitrary request context must

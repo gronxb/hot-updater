@@ -11,14 +11,12 @@ export type CloudflareWorkerEnv = {
   };
   BUCKET: R2Bucket;
   BUCKET_NAME: string;
-  AUTHORITY_ID: string;
   STORAGE_DOWNLOAD_URL_SIGNING_KEY: string;
 };
 
 export const HOT_UPDATER_BASE_PATH = "/";
 
 const hotUpdater = createHotUpdater({
-  authorityId: env.AUTHORITY_ID,
   database: d1Database(env.DB),
   clientAccess: { type: "api-key" },
   storage: [

@@ -1467,12 +1467,11 @@ async function runHotUpdaterCliLogged(args: string[], logName: string) {
 }
 
 async function withConfiguredDatabase<T>(
-  callback: (database: BundleRepository, authorityId: string) => Promise<T>,
+  callback: (database: BundleRepository) => Promise<T>,
 ): Promise<T> {
   const { loadConfig } =
     (await import("../../../packages/cli-tools/dist/index.mjs")) as {
       loadConfig: (options: null) => Promise<{
-        authorityId: string;
         database: BundleRepository;
       }>;
     };
@@ -1483,7 +1482,7 @@ async function withConfiguredDatabase<T>(
     return await withHotUpdaterControlEnv(async () => {
       const config = await loadConfig(null);
       try {
-        return await callback(config.database, config.authorityId);
+        return await callback(config.database);
       } finally {
         await config.database.dispose?.();
       }
@@ -1603,7 +1602,7 @@ async function fetchProviderBundleById(bundleId: string) {
 }
 
 type DeployedRelease = {
-  readonly authorityId: string;
+  readonly catalogId: string;
   readonly catalog: ReleaseCatalogRow;
   readonly release: ReleaseRow;
 };
@@ -1615,7 +1614,7 @@ async function resolveDeployedRelease(
   let lastObserved: readonly ReleaseRow[] = [];
   for (let attempt = 1; attempt <= 30; attempt += 1) {
     const result = await withConfiguredDatabase(
-      async (database, authorityId): Promise<DeployedRelease | null> => {
+      async (database): Promise<DeployedRelease | null> => {
         const channels = await database.models.channels.list({});
         const channelId = channels.channels.find(
           (candidate) => candidate.name === channel,
@@ -1633,7 +1632,9 @@ async function resolveDeployedRelease(
         const catalog = await database.models.releaseCatalogs.findByScopeKey(
           release.scope_key,
         );
-        return catalog === null ? null : { authorityId, catalog, release };
+        return catalog === null
+          ? null
+          : { catalogId: catalog.catalog_id, catalog, release };
       },
     );
     if (result !== null) return result;
@@ -2391,7 +2392,7 @@ function assertMetadataState(
   }
   if (
     selection.releaseId === null ||
-    selection.authorityId === null ||
+    selection.catalogId === null ||
     selection.scopeKey === null ||
     selection.generation === null ||
     selection.catalogHash === null ||
@@ -2402,7 +2403,7 @@ function assertMetadataState(
   }
   const highWater =
     metadataState.highestSeenCatalogs[
-      `${selection.authorityId}|${selection.scopeKey}`
+      `${selection.catalogId}|${selection.scopeKey}`
     ];
   if (
     highWater === undefined ||
@@ -2434,7 +2435,7 @@ function assertMetadataReset(metadata: Record<string, unknown>) {
   if (
     selection?.kind !== "BUILTIN" ||
     selection.releaseId !== null ||
-    selection.authorityId === null ||
+    selection.catalogId === null ||
     selection.scopeKey === null ||
     selection.generation === null ||
     selection.catalogHash === null ||
@@ -2577,7 +2578,7 @@ function normalizeMetadataBoolean(value: unknown) {
 }
 
 type MetadataSelection = {
-  authorityId: string | null;
+  catalogId: string | null;
   bundleId: string | null;
   catalogHash: string | null;
   channel: string | null;
@@ -2600,7 +2601,7 @@ function normalizeMetadataSelection(value: unknown): MetadataSelection | null {
   }
   const selection = value as Record<string, unknown>;
   return {
-    authorityId: normalizeMetadataString(selection.authorityId),
+    catalogId: normalizeMetadataString(selection.catalogId),
     bundleId: normalizeMetadataString(selection.bundleId),
     catalogHash: normalizeMetadataString(selection.catalogHash),
     channel: normalizeMetadataString(selection.channel),
@@ -3638,8 +3639,8 @@ function rewriteReleaseCatalogScope(
     return payload;
   }
 
-  const authorityId = Reflect.get(payload, "authorityId");
-  if (typeof authorityId !== "string" || authorityId.length === 0) {
+  const catalogId = Reflect.get(payload, "catalogId");
+  if (typeof catalogId !== "string" || catalogId.length === 0) {
     return payload;
   }
 
@@ -3647,13 +3648,11 @@ function rewriteReleaseCatalogScope(
   const scopeKey = createReleaseCatalogScopeKey(
     segments[2] === "app-version"
       ? {
-          authorityId,
           channelKey,
           platform: segments[3],
           strategy: "APP_VERSION",
         }
       : {
-          authorityId,
           channelKey,
           fingerprintHash: decodeURIComponent(segments[5]),
           platform: segments[3],
@@ -5782,7 +5781,7 @@ async function deployFixtureBundle(
 
   return {
     archiveSizeBytes: archiveDetails.sizeBytes,
-    authorityId: deployed.authorityId,
+    catalogId: deployed.catalogId,
     bundleId,
     bundleProfile,
     channel: remoteChannel,
@@ -5864,73 +5863,70 @@ async function createFixtureRepublishedRelease(input: {
   sourceReleaseId: string;
   bundleId: string;
 }) {
-  const created = await withConfiguredDatabase(
-    async (database, authorityId) => {
-      const source = await database.models.releases.findById(
-        input.sourceReleaseId,
-      );
-      if (source === null) {
-        throw new Error(`Release ${input.sourceReleaseId} was not found.`);
-      }
-      const catalog = await database.models.releaseCatalogs.findByScopeKey(
-        source.scope_key,
-      );
-      if (catalog === null) {
-        throw new Error(`Catalog ${source.scope_key} was not found.`);
-      }
-      const channel = (await database.models.channels.list({})).channels.find(
-        (candidate) => candidate.id === source.channel_id,
-      );
-      if (channel === undefined) {
-        throw new Error(`Channel ${source.channel_id} was not found.`);
-      }
-      const bundle = await database.models.bundles.findById(input.bundleId);
-      if (bundle === null || bundle.platform !== source.platform) {
-        throw new Error(`Bundle ${input.bundleId} was not found.`);
-      }
-      const releases = await database.models.releases.findManyByScope({
-        consistency: "strong",
-        limit: 1_000,
-        scopeKey: source.scope_key,
-      });
-      const updatedAtMs = Date.now();
-      const release: ReleaseRow = {
-        ...source,
-        bundle_id: input.bundleId,
-        created_at_ms: updatedAtMs,
-        enabled: true,
-        id: createUUIDv7After(releases.at(-1)?.id ?? source.id, updatedAtMs),
-        kind: "BUNDLE",
-        operation: "DEPLOY",
-        revision: 1,
-        source_release_id: null,
-        updated_at_ms: updatedAtMs,
-      };
-      const result = await commitReleaseCatalogMutation({
-        database,
-        mutation: { operation: "insert", row: release },
-        scope: {
-          authorityId,
-          channelId: catalog.channel_id,
-          channelName: channel.name,
-          fingerprintHash: catalog.fingerprint_hash,
-          platform: catalog.platform,
-          scopeKey: catalog.scope_key,
-          strategy: catalog.strategy,
-        },
-        updatedAtMs,
-      });
-      if (result.release === null) {
-        throw new Error("Republish did not create a Release.");
-      }
-      return {
-        authorityId,
-        catalog: result.catalog,
-        channel,
-        release: result.release,
-      };
-    },
-  );
+  const created = await withConfiguredDatabase(async (database) => {
+    const source = await database.models.releases.findById(
+      input.sourceReleaseId,
+    );
+    if (source === null) {
+      throw new Error(`Release ${input.sourceReleaseId} was not found.`);
+    }
+    const catalog = await database.models.releaseCatalogs.findByScopeKey(
+      source.scope_key,
+    );
+    if (catalog === null) {
+      throw new Error(`Catalog ${source.scope_key} was not found.`);
+    }
+    const channel = (await database.models.channels.list({})).channels.find(
+      (candidate) => candidate.id === source.channel_id,
+    );
+    if (channel === undefined) {
+      throw new Error(`Channel ${source.channel_id} was not found.`);
+    }
+    const bundle = await database.models.bundles.findById(input.bundleId);
+    if (bundle === null || bundle.platform !== source.platform) {
+      throw new Error(`Bundle ${input.bundleId} was not found.`);
+    }
+    const releases = await database.models.releases.findManyByScope({
+      consistency: "strong",
+      limit: 1_000,
+      scopeKey: source.scope_key,
+    });
+    const updatedAtMs = Date.now();
+    const release: ReleaseRow = {
+      ...source,
+      bundle_id: input.bundleId,
+      created_at_ms: updatedAtMs,
+      enabled: true,
+      id: createUUIDv7After(releases.at(-1)?.id ?? source.id, updatedAtMs),
+      kind: "BUNDLE",
+      operation: "DEPLOY",
+      revision: 1,
+      source_release_id: null,
+      updated_at_ms: updatedAtMs,
+    };
+    const result = await commitReleaseCatalogMutation({
+      database,
+      mutation: { operation: "insert", row: release },
+      scope: {
+        channelId: catalog.channel_id,
+        channelName: channel.name,
+        fingerprintHash: catalog.fingerprint_hash,
+        platform: catalog.platform,
+        scopeKey: catalog.scope_key,
+        strategy: catalog.strategy,
+      },
+      updatedAtMs,
+    });
+    if (result.release === null) {
+      throw new Error("Republish did not create a Release.");
+    }
+    return {
+      catalogId: result.catalog.catalog_id,
+      catalog: result.catalog,
+      channel,
+      release: result.release,
+    };
+  });
 
   await waitForReleaseCatalogVisibility({
     bundleId: created.release.bundle_id,
@@ -6017,7 +6013,6 @@ async function seedCrashedBundleFrontier(input: {
         database,
         mutation: { operation: "insert", row: release },
         scope: {
-          authorityId: catalog.authority_id,
           channelId: catalog.channel_id,
           channelName: decodeChannelKey(catalog.channel_key),
           fingerprintHash: catalog.fingerprint_hash,

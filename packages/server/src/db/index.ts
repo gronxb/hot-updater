@@ -12,7 +12,6 @@ export { HOT_UPDATER_SERVER_VERSION } from "../version";
 
 export type HotUpdaterDBTarget = {
   readonly adapterName: string;
-  readonly authorityId: string;
 };
 
 const getDBMetadata = (hotUpdater: HotUpdaterDBTarget) => {
@@ -29,22 +28,7 @@ const getDBMetadata = (hotUpdater: HotUpdaterDBTarget) => {
 
 export function createMigrator(hotUpdater: HotUpdaterDBTarget): Migrator {
   const { adapterCapabilities, core } = getDBMetadata(hotUpdater);
-  const migrator = (
-    adapterCapabilities.createMigrator ?? core.createMigrator
-  )();
-  const options = (
-    input: Parameters<Migrator["up"]>[0],
-  ): NonNullable<Parameters<Migrator["up"]>[0]> => ({
-    ...input,
-    authorityId: hotUpdater.authorityId,
-  });
-  return {
-    ...migrator,
-    up: (input) => migrator.up(options(input)),
-    down: (input) => migrator.down(options(input)),
-    migrateTo: (version, input) => migrator.migrateTo(version, options(input)),
-    migrateToLatest: (input) => migrator.migrateToLatest(options(input)),
-  };
+  return (adapterCapabilities.createMigrator ?? core.createMigrator)();
 }
 
 export function generateSchema(

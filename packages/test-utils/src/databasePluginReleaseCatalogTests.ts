@@ -18,7 +18,7 @@ const catalogRow = (
   channelId: string,
   generation: number,
 ): ReleaseCatalogRow => ({
-  authority_id: "test",
+  catalog_id: "test",
   byte_size: 2,
   catalog_hash: `sha256:generation-${generation}`,
   channel_id: channelId,

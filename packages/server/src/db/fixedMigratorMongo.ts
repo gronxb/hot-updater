@@ -180,7 +180,7 @@ const mongoReleaseCatalogValidator = {
   $jsonSchema: {
     bsonType: "object",
     properties: {
-      authority_id: { bsonType: "string" },
+      catalog_id: { bsonType: "string" },
       byte_size: { bsonType: ["int", "long"] },
       catalog_hash: { bsonType: "string" },
       channel_id: { bsonType: "string" },
@@ -196,7 +196,7 @@ const mongoReleaseCatalogValidator = {
     },
     required: [
       "scope_key",
-      "authority_id",
+      "catalog_id",
       "strategy",
       "channel_id",
       "channel_key",

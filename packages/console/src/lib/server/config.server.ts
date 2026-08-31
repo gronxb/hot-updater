@@ -11,7 +11,6 @@ import { requireConsoleAccess } from "./auth.server";
 import { resolveConsoleConfig } from "./console-runtime.server";
 
 type ResolvedConsoleConfig = ResolvedHotUpdaterConsoleConfig & {
-  readonly authorityId: string;
   readonly console: NonNullable<ResolvedHotUpdaterConsoleConfig["console"]>;
 };
 
@@ -33,7 +32,6 @@ const loadCachedConfig = async (request: Request) => {
     configPromise = resolveConsoleConfig(request)
       .then((config) => ({
         ...config,
-        authorityId: config.authorityId ?? "default",
         console: config.console ?? {},
       }))
       .catch((error) => {

@@ -82,7 +82,8 @@ describe("loadConfig", () => {
 
     const config = await loadConfig(null);
 
-    expect(config.authorityId).toBe("default");
+    expect(config).not.toHaveProperty("catalogId");
+    expect(config).not.toHaveProperty("authorityId");
     expect(config.cacheDir).toBe(path.join("node_modules", ".hot-updater"));
     expect(config.updateStrategy).toBe("appVersion");
     expect(config.compressStrategy).toBe("zip");
@@ -94,18 +95,19 @@ describe("loadConfig", () => {
     expect(typeof config.database).toBe("object");
   });
 
-  it("preserves an explicit Release catalog authority", async () => {
-    await writeProjectFile(
-      projectRoot,
-      "hot-updater.config.ts",
-      "export default { authorityId: 'project-a' };\n",
-    );
+  it.each(["authorityId", "catalogId"])(
+    "rejects user-managed %s",
+    async (key) => {
+      await writeProjectFile(
+        projectRoot,
+        "hot-updater.config.ts",
+        `export default { ${key}: 'project-a' };\n`,
+      );
 
-    const { loadConfig } = await import("./loadConfig");
-    const config = await loadConfig(null);
-
-    expect(config.authorityId).toBe("project-a");
-  });
+      const { loadConfig } = await import("./loadConfig");
+      await expect(loadConfig(null)).rejects.toThrow(`Remove ${key}`);
+    },
+  );
 
   it("allows disabling the local CLI cache", async () => {
     await writeProjectFile(
@@ -148,7 +150,7 @@ describe("loadConfig", () => {
       "hot-updater.config.ts",
       [
         "export default (options) => ({",
-        "  authorityId: options === null ? 'from-null-context' : 'wrong',",
+        "  cacheDir: options === null ? 'from-null-context' : 'wrong',",
         "});",
         "",
       ].join("\n"),
@@ -157,7 +159,7 @@ describe("loadConfig", () => {
     const { loadConfig } = await import("./loadConfig");
     const config = await loadConfig(null);
 
-    expect(config.authorityId).toBe("from-null-context");
+    expect(config.cacheDir).toBe("from-null-context");
   });
 
   it("preserves the configured signing provider identity", async () => {
@@ -260,7 +262,7 @@ describe("loadConfig", () => {
       "hot-updater.config.ts",
       [
         "export default (options) => ({",
-        "  authorityId: options?.channel ?? 'staging',",
+        "  cacheDir: options?.channel ?? 'staging',",
         "  updateStrategy: 'fingerprint',",
         "  console: {",
         "    port: 3001,",
@@ -285,7 +287,7 @@ describe("loadConfig", () => {
     const { loadConfig } = await import("./loadConfig");
     const config = await loadConfig({ platform: "android", channel: "beta" });
 
-    expect(config.authorityId).toBe("beta");
+    expect(config.cacheDir).toBe("beta");
     expect(config.updateStrategy).toBe("fingerprint");
     expect(config.console.port).toBe(3001);
     expect(config.fingerprint.extraSources).toEqual(["src/custom.ts"]);

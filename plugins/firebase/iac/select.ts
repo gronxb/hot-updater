@@ -20,10 +20,7 @@ import {
   isFirebaseProjectId,
 } from "./init/index";
 
-const getConfigScaffold = (
-  build: BuildType,
-  projectId: string,
-): HotUpdaterConfigScaffold => {
+const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/firebase", named: ["firebaseStorage"] }],
     configString: `firebaseStorage({
@@ -35,7 +32,6 @@ const getConfigScaffold = (
   const databaseConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/firebase", named: ["firebaseDatabase"] }],
     configString: `firebaseDatabase({
-    authorityId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
     credential,
   })`,
@@ -64,7 +60,6 @@ const credential = applicationDefault();`.trim(),
     );
 
   return createHotUpdaterConfigScaffoldFromBuilder(builder, {
-    authorityIdInitializer: JSON.stringify(projectId),
     helperStatements,
   });
 };
@@ -105,7 +100,7 @@ export const setEnv = async ({
 
   try {
     const configWriteResult = await writeHotUpdaterConfig(
-      getConfigScaffold(build, projectId),
+      getConfigScaffold(build),
     );
     if (configWriteResult.status === "created") {
       p.log.success(

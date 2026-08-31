@@ -88,7 +88,6 @@ export class LambdaEdgeDeployer {
     lambdaRoleArn: string,
     lambdaName: string,
     config: {
-      authorityId: string;
       bucketName: string;
       dynamodbRegion: string;
       dynamodbTableName: string;
@@ -106,7 +105,6 @@ export class LambdaEdgeDeployer {
     // Transform Lambda code with CloudFront key pair details and SSM config
     const indexPath = path.join(tmpDir, "index.cjs");
     const code = transformEnv(indexPath, {
-      AUTHORITY_ID: config.authorityId,
       CLOUDFRONT_KEY_PAIR_ID: config.publicKeyId,
       DYNAMODB_REGION: config.dynamodbRegion,
       DYNAMODB_TABLE_NAME: config.dynamodbTableName,

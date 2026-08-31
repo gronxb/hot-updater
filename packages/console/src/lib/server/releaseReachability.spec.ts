@@ -68,7 +68,7 @@ const catalogRow = (
   payload: string,
   scopeKey = "scope-production",
 ): ReleaseCatalogRow => ({
-  authority_id: "authority",
+  catalog_id: "catalog-a",
   byte_size: payload.length,
   catalog_hash: "sha256:test",
   channel_id: "production",

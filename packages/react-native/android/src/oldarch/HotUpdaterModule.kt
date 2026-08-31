@@ -115,7 +115,7 @@ class HotUpdaterModule internal constructor(
             kind = selection.getString("kind") ?: return null,
             releaseId = selection.getString("releaseId"),
             bundleId = bundleId,
-            authorityId = selection.getString("authorityId"),
+            catalogId = selection.getString("catalogId"),
             scopeKey = selection.getString("scopeKey"),
             generation =
                 if (selection.hasKey("generation") && !selection.isNull("generation")) {
@@ -257,13 +257,13 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod(isBlockingSynchronousMethod = true)
     override fun acceptReleaseCatalog(params: ReadableMap): Boolean {
-        val authorityId = params.getString("authorityId") ?: return false
+        val catalogId = params.getString("catalogId") ?: return false
         val scopeKey = params.getString("scopeKey") ?: return false
         val catalogHash = params.getString("catalogHash") ?: return false
         val channel = params.getString("channel") ?: return false
         val selectionContextHash = params.getString("selectionContextHash") ?: return false
         return getInstance().acceptReleaseCatalog(
-            authorityId = authorityId,
+            catalogId = catalogId,
             scopeKey = scopeKey,
             generation = params.getDouble("generation").toLong(),
             catalogHash = catalogHash,
@@ -308,13 +308,13 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod(isBlockingSynchronousMethod = true)
     override fun isReleaseSelectionCurrent(params: ReadableMap): Boolean {
-        val authorityId = params.getString("authorityId") ?: return false
+        val catalogId = params.getString("catalogId") ?: return false
         val scopeKey = params.getString("scopeKey") ?: return false
         val catalogHash = params.getString("catalogHash") ?: return false
         val channel = params.getString("channel") ?: return false
         val selectionContextHash = params.getString("selectionContextHash") ?: return false
         return getInstance().isReleaseSelectionCurrent(
-            authorityId = authorityId,
+            catalogId = catalogId,
             scopeKey = scopeKey,
             generation = params.getDouble("generation").toLong(),
             catalogHash = catalogHash,

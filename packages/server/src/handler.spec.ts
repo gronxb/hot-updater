@@ -55,24 +55,23 @@ describe("createHandlers client routes", () => {
     expect(response.status).toBe(404);
   });
 
-  it("uses the configured authority for an authority-free fingerprint path", async () => {
+  it("returns the stored Catalog identity without accepting identity parameters", async () => {
     const catalog = {
-      authorityId: "project-a",
+      catalogId: "project-a",
       catalogHash: "sha256:catalog",
       fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
       generation: 1,
       releases: [],
       schemaVersion: 1,
-      scopeKey:
-        "v1:fingerprint:project-a:android:cHJvZHVjdGlvbg:fingerprint-123",
+      scopeKey: "v1:fingerprint:android:cHJvZHVjdGlvbg:fingerprint-123",
     } satisfies ReleaseCatalog;
     const getReleaseCatalog = vi
       .fn<NonNullable<HandlerAPI["getReleaseCatalog"]>>()
       .mockResolvedValue(catalog);
-    const handler = createHandlers(
-      { ...createApi(), getReleaseCatalog },
-      { authorityId: "project-a" },
-    ).client;
+    const handler = createHandlers({
+      ...createApi(),
+      getReleaseCatalog,
+    }).client;
     const url =
       "http://localhost/release-catalogs/fingerprint/android/" +
       "cHJvZHVjdGlvbg/fingerprint-123";
@@ -81,10 +80,9 @@ describe("createHandlers client routes", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      authorityId: "project-a",
+      catalogId: "project-a",
     });
     expect(getReleaseCatalog).toHaveBeenCalledWith({
-      authorityId: "project-a",
       channelKey: "cHJvZHVjdGlvbg",
       fingerprintHash: "fingerprint-123",
       platform: "android",
@@ -125,7 +123,6 @@ describe("createHandlers client routes", () => {
     };
     const handlers = createHotUpdaterHandlers(
       api,
-      {},
       undefined,
       undefined,
       async () => new Response("bundle archive"),

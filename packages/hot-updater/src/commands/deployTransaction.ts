@@ -22,7 +22,6 @@ const RELEASE_PAGE_SIZE = 1_000;
 const MAX_RELEASE_ID_ATTEMPTS = 3;
 
 export interface DeploymentWrite {
-  readonly authorityId: string;
   readonly bundle: Bundle;
   readonly release: DeployReleasePolicy;
 }
@@ -58,7 +57,7 @@ const findLatestReleaseId = async (
 
 const prepareDeploymentMutation = async (
   database: BundleRepository,
-  { authorityId, bundle, release: policy }: DeploymentWrite,
+  { bundle, release: policy }: DeploymentWrite,
 ): Promise<ReleaseCatalogMutationInput> => {
   const channelKey = encodeChannelKey(policy.channel);
   const existingChannel = (
@@ -77,13 +76,11 @@ const prepareDeploymentMutation = async (
   const scopeKey =
     fingerprintHash === null
       ? createReleaseCatalogScopeKey({
-          authorityId,
           channelKey,
           platform: bundle.platform,
           strategy: "APP_VERSION",
         })
       : createReleaseCatalogScopeKey({
-          authorityId,
           channelKey,
           fingerprintHash,
           platform: bundle.platform,
@@ -132,7 +129,6 @@ const prepareDeploymentMutation = async (
     ],
     mutation: { operation: "insert", row: release },
     scope: {
-      authorityId,
       channelId: channel.id,
       channelName: channel.name,
       fingerprintHash,

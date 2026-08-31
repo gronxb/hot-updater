@@ -16,7 +16,6 @@ export type { ApiKeyManagementAPI, ApiKeyMetadata } from "@hot-updater/server";
 
 export interface HotUpdaterInstance {
   adapterName: string;
-  authorityId: string;
   apiKeys?: ApiKeyManagementAPI;
 }
 

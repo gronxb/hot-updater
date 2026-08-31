@@ -14,6 +14,6 @@ and `HotUpdater.wrap`. Use `init + checkForUpdate` for custom or manual update
 flows, or use `wrap` for the automatic HOC flow; do not combine them.
 
 Remove authority from the public Release Catalog client paths. Catalog
-authority remains server-owned compilation and persistence state, while the
+identity is managed automatically in persistence, while the
 client fetches `/release-catalogs/app-version/:platform/:channelKey/:appVersion`
 or `/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash`.

@@ -19,7 +19,6 @@ export function createDatabasePluginCore(
   database: DatabasePlugin,
   resolveFileUrl: (storageUri: string | null) => Promise<string | null>,
   options?: {
-    authorityId?: string;
     beforeOperation?: () => Promise<void>;
     readStorageText?: (storageUri: string) => Promise<string | null>;
   },
@@ -31,8 +30,7 @@ export function createDatabasePluginCore(
 } {
   const client = createDatabaseClient(database);
   const beforeOperation = options?.beforeOperation;
-  const authorityId = options?.authorityId ?? "default";
-  const getReleaseCatalog = createReleaseCatalogReader(database, authorityId);
+  const getReleaseCatalog = createReleaseCatalogReader(database);
   const getArtifact = createArtifactResolver({
     database,
     readStorageText: options?.readStorageText,
@@ -107,7 +105,6 @@ export function createDatabasePluginCore(
       return rebuildReleaseCatalogProjection({
         database,
         scope: {
-          authorityId: catalog.authority_id,
           channelId: catalog.channel_id,
           channelName: decodeChannelKey(catalog.channel_key),
           fingerprintHash: catalog.fingerprint_hash,

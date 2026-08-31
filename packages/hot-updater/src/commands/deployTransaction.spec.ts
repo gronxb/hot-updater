@@ -12,11 +12,10 @@ import {
   prepareAndCommitBundles,
 } from "./deployTransaction";
 
-const authorityId = "project-a";
 const createDeployment = (
   id: string,
   platform: Bundle["platform"],
-): Omit<DeploymentWrite, "authorityId"> => ({
+): DeploymentWrite => ({
   bundle: {
     archiveByteSize: 1024,
     fileHash: `${id}-hash`,
@@ -41,7 +40,6 @@ const iosBundle = () =>
 
 const scopeKey = (platform: Bundle["platform"]) =>
   createReleaseCatalogScopeKey({
-    authorityId,
     channelKey: encodeChannelKey("production"),
     platform,
     strategy: "APP_VERSION",
@@ -52,11 +50,49 @@ describe("Release deployment transaction", () => {
 
   beforeEach(() => harness.reset());
 
+  it("concurrent first deployments converge on one persisted Catalog identity", async () => {
+    const first = iosBundle();
+    const second = createDeployment(
+      "01900000-0000-7000-8000-000000000002",
+      "ios",
+    );
+    const results = await Promise.all([
+      commitDeployment({ database: harness.plugin, ...first }),
+      commitDeployment({ database: harness.plugin, ...second }),
+    ]);
+
+    expect(results[0]!.catalog.catalog_id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(results[1]!.catalog.catalog_id).toBe(results[0]!.catalog.catalog_id);
+    expect(results.map(({ catalog }) => catalog.generation).sort()).toEqual([
+      1, 2,
+    ]);
+    await expect(
+      harness.plugin.models.releaseCatalogs.findByScopeKey(scopeKey("ios")),
+    ).resolves.toMatchObject({
+      catalog_id: results[0]!.catalog.catalog_id,
+      generation: 2,
+    });
+  });
+
+  it("independent databases get different identities for the same lookup scope", async () => {
+    const other = createDatabasePluginHarness();
+    const first = await commitDeployment({
+      database: harness.plugin,
+      ...iosBundle(),
+    });
+    const second = await commitDeployment({
+      database: other.plugin,
+      ...iosBundle(),
+    });
+
+    expect(first.catalog.scope_key).toBe(second.catalog.scope_key);
+    expect(first.catalog.catalog_id).not.toBe(second.catalog.catalog_id);
+  });
+
   it("atomically commits Bundle bytes, Release policy, and the compiled catalog", async () => {
     const deployment = iosBundle();
 
     const result = await commitDeployment({
-      authorityId,
       ...deployment,
       database: harness.plugin,
     });
@@ -125,7 +161,6 @@ describe("Release deployment transaction", () => {
     };
 
     const result = await commitDeployment({
-      authorityId,
       ...deployment,
       database,
     });
@@ -150,7 +185,7 @@ describe("Release deployment transaction", () => {
       prepare: async (persistDeployment) => {
         for (const deployment of deployments) {
           prepared.push(deployment.bundle.id);
-          await persistDeployment({ authorityId, ...deployment });
+          await persistDeployment({ ...deployment });
         }
         expect(harness.commit).not.toHaveBeenCalled();
         return prepared;
@@ -194,7 +229,6 @@ describe("Release deployment transaction", () => {
 
     await expect(
       commitDeployment({
-        authorityId,
         ...invalidDeployment,
         database: harness.plugin,
       }),

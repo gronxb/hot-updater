@@ -10,7 +10,6 @@ import { s3Storage } from "../src/s3Storage";
 
 declare global {
   var HotUpdater: {
-    AUTHORITY_ID: string;
     CLOUDFRONT_KEY_PAIR_ID: string;
     DYNAMODB_REGION: string;
     DYNAMODB_TABLE_NAME: string;
@@ -23,7 +22,6 @@ declare global {
 export const HOT_UPDATER_BASE_PATH = "/";
 
 const CLOUDFRONT_KEY_PAIR_ID = HotUpdater.CLOUDFRONT_KEY_PAIR_ID;
-const AUTHORITY_ID = HotUpdater.AUTHORITY_ID;
 const DYNAMODB_REGION = HotUpdater.DYNAMODB_REGION;
 const DYNAMODB_TABLE_NAME = HotUpdater.DYNAMODB_TABLE_NAME;
 const SSM_PARAMETER_NAME = HotUpdater.SSM_PARAMETER_NAME;
@@ -53,7 +51,6 @@ const getHotUpdater = (distributionDomainName: string) => {
   if (cached) return cached;
 
   const hotUpdater = createHotUpdater({
-    authorityId: AUTHORITY_ID,
     database,
     clientAccess: { type: "api-key" },
     storage: [

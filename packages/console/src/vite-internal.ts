@@ -133,7 +133,6 @@ const createConsoleModulesPlugin = (mode: ConsoleModuleMode): Plugin => {
             "export default async () => {",
             "  const config = await loadConfig(null);",
             "  return {",
-            "    authorityId: config.authorityId,",
             "    console: { gitUrl: config.console.gitUrl },",
             "    database: config.database,",
             "    signing: config.signing,",

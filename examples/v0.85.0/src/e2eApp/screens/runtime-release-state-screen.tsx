@@ -21,7 +21,7 @@ export const RuntimeReleaseStateScreen = () => {
       testID="runtime-release-state"
       value={JSON.stringify({
         activeReleaseId: snapshot.activeReleaseId,
-        authorityId: snapshot.authorityId,
+        catalogId: snapshot.catalogId,
         channel: snapshot.channel,
         generation: snapshot.generation,
         highWater: JSON.parse(snapshot.highWater),

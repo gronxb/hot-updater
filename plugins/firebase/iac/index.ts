@@ -539,7 +539,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     return;
   }
   const functionsCode = transformEnv(functionsIndexPath, {
-    AUTHORITY_ID: initializeVariable.projectId,
     REGION: currentRegion,
   });
   await fs.promises.writeFile(functionsIndexPath, functionsCode);
@@ -592,7 +591,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     : applicationDefault();
   const existingApps = new Set(getApps());
   const databasePlugin = firebaseDatabase({
-    authorityId: initializeVariable.projectId,
     credential,
     projectId: initializeVariable.projectId,
   });

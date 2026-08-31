@@ -89,7 +89,7 @@ model releases {
 }
 model release_catalogs {
   scope_key String @id
-  authority_id String
+  catalog_id String
   strategy String
   channel_id String
   channel_key String
@@ -103,7 +103,6 @@ model release_catalogs {
   updated_at_ms Float
   channelRecord channels @relation("release_catalogs_channels", fields: [channel_id], references: [id], onUpdate: Restrict, onDelete: Restrict)
   @@index([channel_id], map: "release_catalogs_channel_idx")
-  @@index([authority_id, strategy], map: "release_catalogs_authority_strategy_idx")
 }
 model bundle_events {
   id String @id
