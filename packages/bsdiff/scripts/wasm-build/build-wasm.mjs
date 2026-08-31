@@ -2,7 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,6 +24,8 @@ if (missingRustTools.length > 0) {
       `[wasm] missing Rust toolchain binaries (${missingRustTools.join(", ")}). Install rustup/cargo or restore precompiled wasm at ${target.outputWasm}`,
     );
   }
+
+  chmodSync(target.outputWasm, 0o644);
 
   console.log(
     `[wasm] skipping Rust build; missing binaries: ${missingRustTools.join(", ")}`,
@@ -55,6 +57,7 @@ if (!existsSync(target.sourceWasm)) {
 
 mkdirSync(path.dirname(target.outputWasm), { recursive: true });
 cpSync(target.sourceWasm, target.outputWasm);
+chmodSync(target.outputWasm, 0o644);
 
 console.log(`[wasm] copied ${target.sourceWasm} -> ${target.outputWasm}`);
 console.log(`[wasm] sha256 ${sha256File(target.outputWasm)}`);
