@@ -47,12 +47,12 @@ describe("PostgreSQL bounded external report ordering", () => {
             label,
             -1,
           ]);
-          return sql`(${jobId}::uuid,${hash(identity)},${identity}::jsonb,${section.section},${metric(section)},${label},-1,${(index % 4) + 1})`;
+          return sql`(${jobId}::uuid,${hash(identity)},${identity}::jsonb,${section.section},${metric(section)},${label},-1,${section.section === "installationIds" ? 1 : (index % 4) + 1})`;
         }),
       )}`.execute(db);
     return input.map((label, index) => ({
       label,
-      value: (index % 4) + 1,
+      value: section.section === "installationIds" ? 1 : (index % 4) + 1,
       countKey: hash(
         JSON.stringify([section.section, metric(section), label, -1]),
       ),
@@ -128,6 +128,7 @@ describe("PostgreSQL bounded external report ordering", () => {
     { section: "movementCohorts", metric: "recovered" },
     { section: "bundleDistribution" },
     { section: "activeBundleTotals" },
+    { section: "installationIds" },
   ])(
     "sorts multiple passes of long labels using exact UTF-16 and count tie order: %j",
     async (section) => {
@@ -342,7 +343,7 @@ describe("PostgreSQL bounded external report ordering", () => {
     await seed(cohorts, labels.slice(0, 2));
     await client.exec(`drop index insights_report_counts_order_input_idx;
       create index insights_report_counts_order_input_idx on ${counts}(job_id,section,count_key,metric)
-      where section in ('movementCohorts', 'bundleDistribution', 'activeBundleTotals')`);
+      where section in ('movementCohorts', 'bundleDistribution', 'activeBundleTotals', 'installationIds')`);
     const calls = vi.spyOn(client, "query");
     await expect(step()).rejects.toMatchObject({
       code: "INSIGHTS_QUERY_NOT_READY",
@@ -364,7 +365,7 @@ describe("PostgreSQL bounded external report ordering", () => {
     ).toBe(false);
     await client.exec(
       `create index insights_report_counts_order_input_idx on ${counts}(job_id,section,metric,count_key)
-      where section in ('movementCohorts', 'bundleDistribution', 'activeBundleTotals')`,
+      where section in ('movementCohorts', 'bundleDistribution', 'activeBundleTotals', 'installationIds')`,
     );
     expect(await step()).toEqual({ ready: true, processed: 2 });
   });

@@ -1,9 +1,10 @@
-# PostgreSQL report accumulation, section pages and identity preparation
+# PostgreSQL reports and historical installation searches
 
 This implements durable report jobs and bounded accumulation for the four finite
-report kinds and all five section-page families. It is a building block, not the
-completed Insights runtime: retention/expiry tooling, historical search, other providers and the
-required server/Console contract replacement remain unfinished. The legacy
+report kinds, all five section-page families and historical contains searches.
+It is a building block, not the completed Insights runtime: live installation
+pages, retention/expiry tooling, other providers and the required server/Console
+contract replacement remain unfinished. The legacy
 50,000-row runtime path has not been removed by this change.
 
 ## Durable request and publication
@@ -14,8 +15,8 @@ detect mismatches. Freshness is a selector, not part of that key. Concurrent pol
 reuse one active job; a previous publication remains readable during a refresh.
 Future freshness requirements fail validation against the database clock.
 
-Each job fixes `asOfMs` at reservation. The worker captures and saves the committed
-source prefix once after claiming that job. Later commits, even with earlier
+Each report job fixes `asOfMs` at reservation. The worker captures and saves the
+committed source prefix once after claiming that job. Later commits, even with earlier
 event timestamps, do not enter that publication. Event content, IDs and source
 assignments must remain immutable after capture. Out-of-band raw UPDATE, DELETE
 or TRUNCATE is unsupported; the ordinary plugin event API is append-only.
@@ -88,20 +89,49 @@ publication's whole-period latest records. Duplicate matches are collapsed and
 missing/corrupt latest records fail rather than shortening the result. Neither
 read accesses raw events. Index readiness is checked before either data query.
 
-This is the shared input for future historical contains jobs, not a working
-public search implementation. Those jobs still need durable reservation, a
-reference that prevents deletion of their base publication, exact match totals,
-JS install-ID ordering and immutable result cursors. Search freshness must be
-the base publication's actual `asOfMs/sourceGeneration`, not the search request's
-arrival time. Before connecting that consumer, advance the current private job
-storage revision and explicitly recreate the unreleased derived layout; an old
-alias-free or partly prepared overview must not be accepted as a search base.
-Do not add an optional compatibility marker or an old-format fallback.
+`getSearch` now reserves one private contains job for the complete JS-lowercased
+query and current storage revision. Page size, requested freshness and base ID
+are excluded from that semantic key. Search and global-overview reservations,
+including the base foreign-key reference, commit together. Existing searches
+return before reserving another base. The public report-query union stays at
+four report kinds; this is not a new general-purpose job or query API.
+
+A search waits for its pinned base, then copies that publication's actual
+`asOfMs/sourceGeneration` once. It never labels old data with the search request's
+arrival time or silently switches to a new base. A higher freshness request
+reuses a running generation; if its eventual publication is too old, the next
+poll reserves the next generation and retains the old one as `previous`.
+Failed bases fail their dependent searches visibly, without an implicit retry.
+
+The worker scans alias pages, applies literal substring matching, validates all
+matched alias-to-installation identities, and stores one `installationIds` set
+entry per installation. Its value must remain exactly one. Repeated aliases or
+replayed batches cannot inflate the count. A page without matches still advances
+by its final alias; the worker never refills it in the same step. It validates
+frozen latest metadata before committing matches and progress together.
+
+After the complete alias set is consumed, the existing fixed-size merge stages
+sort full installation IDs with JS string comparison. Only a complete ordered
+set can publish an exact total. Internal `pageContains` then returns at most 100
+installation rows through ordinal ranges and frozen latest points in one
+read-only, repeatable-read transaction. Cursors bind normalized query, snapshot
+mode, publication and ordinal while allowing page-size changes. A pinned request
+never creates work; a conflicting freshness requirement is an input error.
+
+The base reference uses `ON DELETE RESTRICT` and a referencing index. Cleanup
+must delete derived rows and their job in the same transaction so a live search
+reference rolls the whole deletion back. It does not protect arbitrary manual
+deletion of individual derived rows. `FOR NO KEY UPDATE` preserves job fencing
+while allowing foreign-key pins without a head/job lock-order deadlock.
+
+These internal helpers are not yet connected to the required public provider,
+HTTP/RPC or Console ports. Live all/exact installation browsing is separate and
+still unfinished.
 
 ## Ordered preparation and immutable pages
 
-Each cohort/distribution section first copies at most 32 counters through a
-`(job_id, section, metric, count_key)` index. It sorts that small run using
+Each cohort/distribution/installation-ID section first copies at most 32 records
+through a `(job_id, section, metric, count_key)` index. It sorts that small run using
 JavaScript string comparison. Subsequent steps merge two persisted runs, reading
 at most 32 rows from each and emitting at most 32. Checkpoints advance only by
 consumed input; unused candidates are read again next time. Run rows and merge
@@ -110,7 +140,7 @@ uses SQL OFFSET, or scans raw history. Distribution ranks use count descending,
 then the full label ascending; cohorts use label ascending.
 
 The UTC bucket index covers only movement-series counters; the sort-input index
-covers only the three ordered sections. A generic bucket index was shown to make
+covers only the four ordered sections. A generic bucket index was shown to make
 PostgreSQL read 137 cohort counters and sort them to return 32. Conversely, the
 generic sort-input index introduced an unnecessary sort for a movement bucket.
 Restricting both indexes removes these unrelated competing access paths;
@@ -165,11 +195,31 @@ const worker = createPostgresInsightsReportWorker(db);
 const result = await worker.runStep({ maxItems: 256, maxRequests: 128 });
 ```
 
-The report schema is unreleased derived storage. An older draft layout without
-the ordering or alias tables/indexes fails readiness and must be deliberately
-recreated and prepared again before use. There is no compatibility decoder, automatic
-table replacement, or raw-event rewrite. Do not run schema DDL concurrently with
-workers or readers.
+The current private job storage revision is 2. Older draft schema/jobs must be
+deliberately recreated and prepared again; current readers do not decode old
+query keys or reuse alias-free overviews. Readiness requires the base reference,
+its native index and the nullable pre-binding cutoff. There is no compatibility
+marker, automatic table replacement or raw-event rewrite.
+
+For an unreleased draft installation only, stop workers/readers and explicitly
+drop these derived tables together before applying the current report migration:
+
+```sql
+DROP TABLE IF EXISTS
+  private_hot_updater_insights_report_aliases,
+  private_hot_updater_insights_report_order_rows,
+  private_hot_updater_insights_report_order_states,
+  private_hot_updater_insights_report_counts,
+  private_hot_updater_insights_report_latest,
+  private_hot_updater_insights_report_members,
+  private_hot_updater_insights_report_heads,
+  private_hot_updater_insights_report_jobs;
+```
+
+This invalidates draft report/search publications. Keep `bundle_events` and every
+`private_hot_updater_insights_source_*` table intact. Run
+`migratePostgresInsightsReports(db)` afterwards, then resume preparation. No
+schema DDL or manual derived-row mutation may race running readers/workers.
 
 The budgets count returned database rows and SQL requests, including transaction
 boundaries and control reads. This provider requires at least 256 items and 128
@@ -185,6 +235,13 @@ within the existing source-step budget. An alias page or frozen-latest lookup
 uses two SQL requests and at most 201 returned rows including index readiness.
 Latest lookup accepts at most 200 input keys before deduplication; empty input
 performs no SQL. These helpers do not perform hidden refills or raw-history reads.
+
+A contains alias step reads N aliases, M distinct matching latest rows and M
+stored match identities (M ≤ N). Its six data statements return at most 3N+2
+rows. Including the control reserve, it chooses
+`min(200, floor((maxItems - 34) / 3))` aliases. The 256-item minimum allows 74;
+the full 200-alias page requires at least 634 items. A zero-match page skips
+latest and membership queries. Sorting retains the same 32-row output budget.
 
 An ordering step uses at most eight SQL requests and 67 returned rows, excluding
 the caller's reserved lease/transaction overhead. It emits at most 32 rows.

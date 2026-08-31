@@ -11,6 +11,7 @@ import {
 } from "./postgresInsightsAliases";
 import {
   createPostgresInsightsJobs,
+  isPostgresInsightsContainsJob,
   PostgresInsightsLeaseLostError,
 } from "./postgresInsightsJobs";
 import {
@@ -26,13 +27,14 @@ import {
   stepPostgresInsightsReportOrder,
 } from "./postgresInsightsReportOrder";
 import { getPostgresInsightsReportOrderSections } from "./postgresInsightsReportSections";
+import { stepPostgresInsightsSearch } from "./postgresInsightsSearchWorker";
 import {
   createPostgresInsightsSourceTools,
   POSTGRES_SOURCE_SHARDS,
 } from "./postgresInsightsSource";
 
 /**
- * Internal report worker. Budgets include control statements, transaction
+ * Internal report and historical-search worker. Budgets include control statements, transaction
  * boundaries and returned DB rows, not just raw events. Reserve 32 requests/rows
  * for job/source control; a final installation can return 30 bucket rows and
  * perform 92 counter upserts. No phase reads until its worst case fits.
@@ -65,17 +67,28 @@ export const createPostgresInsightsReportWorker = <TDatabase extends object>(
       const { token, job } = lease;
       let processed = 0;
       try {
+        if (isPostgresInsightsContainsJob(job))
+          return await stepPostgresInsightsSearch(
+            jobs,
+            token,
+            job,
+            input.maxItems,
+          );
         if (job.sourceGeneration === null) {
           const sourceGeneration = await source.capture();
-          await jobs.withLease(token, async (_transaction, current) => ({
-            kind: "progress",
-            sourceGeneration,
-            checkpoint:
-              current.query.kind === "bundleSummaries" &&
-              current.query.bundleIds.length === 0
-                ? { phase: "complete" }
-                : current.checkpoint,
-          }));
+          await jobs.withLease(token, async (_transaction, current) => {
+            if (isPostgresInsightsContainsJob(current))
+              throw new DatabasePluginInputError("invalid-result");
+            return {
+              kind: "progress",
+              sourceGeneration,
+              checkpoint:
+                current.query.kind === "bundleSummaries" &&
+                current.query.bundleIds.length === 0
+                  ? { phase: "complete" }
+                  : current.checkpoint,
+            };
+          });
           return { state: "progress", processed, jobId: job.id };
         }
         if (job.checkpoint.phase === "source") {
@@ -98,7 +111,10 @@ export const createPostgresInsightsReportWorker = <TDatabase extends object>(
             job.asOfMs,
           );
           await jobs.withLease(token, async (transaction, current) => {
-            if (current.checkpoint.phase !== "source")
+            if (
+              isPostgresInsightsContainsJob(current) ||
+              current.checkpoint.phase !== "source"
+            )
               throw new Error("Invalid report phase.");
             for (const row of page) {
               const projected = projection.project(row.event);
@@ -144,7 +160,10 @@ export const createPostgresInsightsReportWorker = <TDatabase extends object>(
             Math.floor((input.maxRequests - 32) / 93),
           );
           await jobs.withLease(token, async (transaction, current) => {
-            if (current.checkpoint.phase !== "installations")
+            if (
+              isPostgresInsightsContainsJob(current) ||
+              current.checkpoint.phase !== "installations"
+            )
               throw new Error("Invalid report phase.");
             const page = await readPostgresInsightsInstallations(
               transaction,
@@ -172,7 +191,10 @@ export const createPostgresInsightsReportWorker = <TDatabase extends object>(
           });
         } else if (job.checkpoint.phase === "ordering") {
           await jobs.withLease(token, async (transaction, current) => {
-            if (current.checkpoint.phase !== "ordering")
+            if (
+              isPostgresInsightsContainsJob(current) ||
+              current.checkpoint.phase !== "ordering"
+            )
               throw new Error("Invalid report phase.");
             const sections = getPostgresInsightsReportOrderSections(
               current.query,
@@ -198,6 +220,8 @@ export const createPostgresInsightsReportWorker = <TDatabase extends object>(
           });
         } else {
           await jobs.withLease(token, async (transaction, current) => {
+            if (isPostgresInsightsContainsJob(current))
+              throw new DatabasePluginInputError("invalid-result");
             for (const section of getPostgresInsightsReportOrderSections(
               current.query,
             )) {

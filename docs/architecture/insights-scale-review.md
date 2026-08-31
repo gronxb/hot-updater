@@ -42,23 +42,73 @@ read budget still need implementation evidence.
 
 ### Current validation
 
-The identity-preparation additions passed the full workspace build (26 projects),
-type checks (34 projects), root lint, changeset validation and all 2,641 unit tests
-in 295 files. A standard PostgreSQL integration run passed all 11 source, job,
-ordering, page and alias tests across five files. Owned test containers and emulator
-processes were cleaned up. The prior preparation slice at `35e0e81d6` also passed
-28 MongoDB preparation/native-reader integration tests; those are historical
-results, not another MongoDB run for this update.
+The historical contains additions passed the full workspace build (26 projects),
+type checks (34 projects), root lint, changeset validation and all 2,664 unit tests
+in 298 files. A standard PostgreSQL integration run passed all 19 source, job,
+ordering, page, alias and search tests across seven files. The prior preparation
+slice at `35e0e81d6` also passed 28 MongoDB preparation/native-reader integration
+tests; those are historical results, not another MongoDB run for this update.
 
-Built PostgreSQL DB tooling loads its shipped alias/ordering SQL and exact partial
-index predicates, retries migration and runs an idle worker under both ESM and
-CommonJS. Independent review approved only these internal PostgreSQL report
-pages and identity preparation stages. The final all-provider implementation and
-standalone E2E remain pending. The [current validation record](./insights-scale-evidence/identity-validation.json)
-includes 15 source hashes, 12 test hashes, 14 actual native plans, fixture sizes
-and explicit limits. The [previous report-page record](./insights-scale-evidence/report-pages-validation.json)
-retains the preceding validation. The [previous preparation record](./insights-scale-evidence/report-preparation-validation.json)
-preserves earlier MongoDB and built-server optional-peer verification.
+Built PostgreSQL DB tooling loads the shipped search/reference/order schema,
+retries migration and runs an idle worker under both ESM and CommonJS. Executing
+the documented derived-state reset preserves an actual raw event and its source
+generation in both formats. Independent review approved only the internal
+PostgreSQL report, identity and contains implementation. The final all-provider
+implementation and standalone E2E remain pending. The [current validation record](./insights-scale-evidence/contains-validation.json)
+includes 18 source hashes, 17 test hashes, 18 actual native plans, fixture sizes
+and explicit limits. The [identity record](./insights-scale-evidence/identity-validation.json),
+[report-page record](./insights-scale-evidence/report-pages-validation.json) and
+[preparation record](./insights-scale-evidence/report-preparation-validation.json)
+retain their preceding verification without relabeling it as current.
+
+### Immutable historical contains searches
+
+A private contains job pins one global overview and waits for that actual base
+publication. It copies the base's cutoff and source generation once; it cannot
+silently rebind or label an old result with a newer request time. Search and base
+reservations commit together. Concurrent and repeated polls reuse their work;
+higher freshness leaves a running generation intact and can reserve a successor
+after it finishes. Failed bases fail their dependent searches visibly.
+
+Bounded alias pages apply literal substring matching to whole JS-lowercased
+strings. Matching former users and legacy usernames returns the pinned base's
+latest installation metadata. One immutable set entry per installation prevents
+duplicate aliases and replay from inflating totals. The existing 32-row merge
+stages sort complete installation IDs with JS comparison before publication.
+Pages read at most 100 results through ordinal ranges and latest hash points in
+one read-only snapshot. Cursors bind the normalized query and publication, allow
+page-size changes, and never refresh or reserve work when explicitly pinned.
+
+At the minimum 256-item worker budget, an alias step reads at most 74 aliases,
+74 frozen latest records and 74 set-validation rows, plus two readiness rows and
+reserved control work. There is no hidden refill for an alias page with no
+matches. A 50,001-alias fixture whose only match is last proves full traversal
+without raw reads or OFFSET. That fixture prebuilds consistent base projections;
+it is not a benchmark of preparing 50,001 raw events. Separate worker tests cover
+the raw-to-base transaction and source cutoff.
+
+Twelve search-job tests, six search scenarios and four set-storage tests cover
+actual freshness, historical matching, literal wildcards, Unicode normalization,
+lowercase expansion, long queries, cursor boundaries and failed output rollback.
+Native PostgreSQL tests additionally cover concurrent reservation, a new base
+pin while its publisher holds a lease, read-only write rejection, refresh/cleanup
+isolation, missing indexes and custom/generic plans over 50,001 matching rows.
+One combined-run failure exposed a fixture's one-second priority assumption;
+the fixture now gives only its requested job deterministic priority. Production
+claim ordering and the actual concurrent pin/publication proof are unchanged.
+
+The external plugin-developer review approved this scope after checking query
+identity, source binding, exact set semantics, bounded reads and snapshot safety.
+The base foreign key prevents deleting a referenced job. Cleanup must delete
+derived rows and the job in the same transaction for that protection to cover
+the complete base; arbitrary direct derived-row deletion is unsupported.
+The job lock uses `FOR NO KEY UPDATE` to permit foreign-key pins while preserving
+lease fencing, avoiding a head/job lock-order deadlock.
+
+Private storage revision 2 directly replaces the unreleased draft layout, with
+an explicit derived-only reset and no old-format decoder. This is still internal
+PostgreSQL code: public provider/HTTP/RPC/Console wiring, live all/exact browsing,
+other providers and bounded retention remain release gates.
 
 ### Immutable historical aliases and latest installation lookup
 
@@ -67,7 +117,7 @@ username aliases alongside latest metadata under the same source prefix, event
 cutoff and leased checkpoint. Matching a former user can therefore resolve the
 latest installation state without reading raw history or mixing publications.
 Repeated activities do not add duplicate aliases or update existing alias rows.
-This is input preparation for the future contains worker, not public search.
+This supplies the internal contains worker above; public search wiring is pending.
 
 Alias preparation uses at most two SQL statements and three returned identity
 rows per event. Alias pages read at most 200 entries; frozen latest lookup reads
@@ -91,12 +141,10 @@ and all 200 requested hashes into the native index, returning exactly 200 rows
 without a full scan, sort or post-filter. The separate alias seek tests include
 deep pages and full JSON identities longer than 6 KB.
 
-Contains jobs still need base-publication lifetime references, match accumulation,
-exact ordering/totals and cursors. Their public freshness must come from the base
-publication. Before that consumer ships, replace the unreleased private storage
-revision and recreate derived state explicitly; do not reuse old alias-free
-overviews through a compatibility marker. Live all/exact installation browsing
-is also still unfinished.
+The contains implementation above now supplies base references, match accumulation,
+exact ordering/totals and cursors. Its freshness comes from the base publication,
+and the single current storage revision rejects old alias-free overviews. Live
+all/exact installation browsing is still unfinished.
 
 ### Immutable PostgreSQL section pages
 
@@ -119,7 +167,7 @@ plans verify bounded input/range seeks, including prepared generic plans and
 50,001 matching counters. The generic-plan test does not force scan methods.
 
 Six page tests cover semantics, cursor changes, long Unicode labels, numeric
-boundaries, immutable refresh and missing output. Eleven ordering tests cover
+boundaries, immutable refresh and missing output. Twelve ordering tests cover
 multiple passes, replay, corrupt rows/state and incompatible index predicates.
 Five real PostgreSQL page tests additionally verify read-only/RR settings, write
 rejection, concurrent refresh/cleanup, earliest-metric seeks and missing metadata
@@ -150,9 +198,9 @@ candidate, and every hashed identity is checked in full. Real PostgreSQL tests
 verify concurrent reservation/claims and publication rollback after a head-lock
 wait exceeds the lease.
 
-This is accumulator/job-store evidence only. Correctly ordered section pages,
-terminal-failure recovery, retention/expiry, historical search, public provider
-wiring and other-provider report engines remain release gates. Existing runtime
+This is accumulator/job-store evidence only; the later sections above record
+ordered pages and historical search. Terminal-failure recovery, retention/expiry,
+public provider wiring and other-provider report engines remain release gates. Existing runtime
 methods still have the old cap until the required contract and consumers change.
 
 ### Window-bound event pages and report request identity

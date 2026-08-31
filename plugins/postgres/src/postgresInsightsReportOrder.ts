@@ -20,7 +20,12 @@ export type PostgresInsightsReportOrderSection =
       readonly section: "movementCohorts";
       readonly metric: "installed" | "recovered";
     }
-  | { readonly section: "bundleDistribution" | "activeBundleTotals" };
+  | {
+      readonly section:
+        | "bundleDistribution"
+        | "activeBundleTotals"
+        | "installationIds";
+    };
 
 export interface PostgresInsightsReportOrderRow {
   readonly ordinal: string;
@@ -108,7 +113,8 @@ const scope = (
     return descriptor;
   if (
     (descriptor.section === "bundleDistribution" ||
-      descriptor.section === "activeBundleTotals") &&
+      descriptor.section === "activeBundleTotals" ||
+      descriptor.section === "installationIds") &&
     Object.keys(descriptor).every((key) => key === "section")
   )
     return { section: descriptor.section, metric: "" };
@@ -150,7 +156,7 @@ export const assertPostgresInsightsReportOrderIndexes = async (
       and i.indnkeyatts = cardinality(required.columns) and i.indnatts = cardinality(required.columns)
       and i.indexprs is null and am.amname = 'btree'
       and case when required.index_name = 'insights_report_counts_order_input_idx'
-        then pg_get_expr(i.indpred, i.indrelid) = '(section = ANY (ARRAY[''movementCohorts''::text, ''bundleDistribution''::text, ''activeBundleTotals''::text]))'
+        then pg_get_expr(i.indpred, i.indrelid) = '(section = ANY (ARRAY[''movementCohorts''::text, ''bundleDistribution''::text, ''activeBundleTotals''::text, ''installationIds''::text]))'
         else i.indpred is null end
       and not exists (select 1 from unnest(required.columns) with ordinality col(name, position)
         where pg_get_indexdef(i.indexrelid, col.position::int, false) <> col.name)
@@ -243,7 +249,11 @@ const compare = (
   a: PostgresInsightsReportOrderRow,
   b: PostgresInsightsReportOrderRow,
 ): number => {
-  if (descriptor.section !== "movementCohorts" && a.value !== b.value)
+  if (
+    (descriptor.section === "bundleDistribution" ||
+      descriptor.section === "activeBundleTotals") &&
+    a.value !== b.value
+  )
     return a.value > b.value ? -1 : 1;
   return a.label < b.label ? -1 : a.label > b.label ? 1 : 0;
 };
@@ -257,6 +267,7 @@ const parseRow = (
     typeof row.label !== "string" ||
     !Number.isSafeInteger(value) ||
     value < 1 ||
+    (descriptor.section === "installationIds" && value !== 1) ||
     !hash.test(row.count_key)
   )
     return invalid();
@@ -353,7 +364,7 @@ export const stepPostgresInsightsReportOrder = async <TDatabase>(
       StoredRow & { identity: unknown }
     >`select '0' as ordinal, label, value::text, count_key, identity
       from ${sql.table(counts)} where ${predicate(jobId, descriptor)}
-      and section in ('movementCohorts', 'bundleDistribution', 'activeBundleTotals')
+      and section in ('movementCohorts', 'bundleDistribution', 'activeBundleTotals', 'installationIds')
       ${state.afterCountKey === null ? sql`` : sql`and count_key > ${state.afterCountKey}`}
       order by count_key limit ${runSize}`.execute(db);
     if (result.rows.length > runSize) return invalid();

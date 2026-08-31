@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createPostgresInsightsJobs,
+  isPostgresInsightsContainsJob,
   readPostgresInsightsReportPublication,
   type PostgresInsightsReportCheckpoint,
 } from "./postgresInsightsJobs";
@@ -46,7 +47,9 @@ describe("PostgreSQL durable report jobs", () => {
   const acquire = async () => {
     const lease = await store.leaseNext();
     expect(lease).not.toBeNull();
-    return lease!;
+    if (lease === null || isPostgresInsightsContainsJob(lease.job))
+      throw new Error("Expected a report lease.");
+    return { ...lease, job: lease.job };
   };
   const sourceComplete = async (captured = generation) => {
     for (let shard = 0; shard < 16; shard++) {
@@ -736,7 +739,7 @@ describe("PostgreSQL durable report jobs", () => {
   it("bounds the actual claim plan with 50,001 future leases and refuses a missing claim index", async () => {
     await client.exec(`create temporary table seeded_jobs as
       select ('10000000-0000-0000-0000-' || lpad(n::text,12,'0'))::uuid id,
-        encode(sha256(convert_to('[1,' || to_json('[1,"activeOverview","7d","' || n::text || '"]')::text || ']', 'UTF8')), 'hex') query_key,
+        encode(sha256(convert_to('[2,' || to_json('[1,"activeOverview","7d","' || n::text || '"]')::text || ']', 'UTF8')), 'hex') query_key,
         jsonb_build_object('kind','activeOverview','window','7d','userId',n::text) canonical_query
       from generate_series(0,50000)n;
       insert into ${headTable}(query_key,canonical_query) select query_key,canonical_query from seeded_jobs;
