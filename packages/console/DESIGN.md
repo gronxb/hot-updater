@@ -120,7 +120,7 @@ structure only.
 - **History lookup:** shadcn `Field`, `InputGroup`, and `Button`, an explicit
   label, Enter submission, trimmed query, and visible focus. The lookup accepts
   either a user ID or install ID and opens the existing installation history
-  drill-down, where matching installations use the shadcn `Table`.
+  drill-down, where matching installations remain alongside the history.
 - **Feedback:** shadcn `Skeleton` for loading and `Alert` for genuine errors;
   compact explanatory copy for empty states.
 
@@ -154,12 +154,24 @@ success. Capability-unavailable primitives do not render.
   human-readable platform, channel, and target-version identity.
 - **Configured rollout:** configuration is presented beside the selected
   bundle's latest bundle share, never as reported completion.
-- **All events:** the Insights toolbar provides a direct View all events link.
+- **All events:** shared Overview / Events navigation makes event history a
+  primary Insights destination. Native links retain page-navigation semantics.
   The installation route without a search or selected installation shows every
   recorded event type, newest first, with no reporting-period or bundle filter.
-  Pagination respects the existing Insights scan limit. Each installation links
-  to its history; clearing the search returns to all events.
-- **Installation history:** the insights toolbar accepts a user ID or install
+  The title, total count, refresh action, and compact installation lookup sit
+  inside the list header. The lookup is not an event filter. Pagination respects
+  the existing Insights scan limit. Queries fail above the limit; this is not a
+  storage limit, and installation lookup does not bypass it. Each installation
+  links to its history; returning restores the source event page and scroll
+  position.
+  Columns follow time, event, user ID / install ID, app, and bundle. Times use
+  YYYY/MM/DD HH:mm:ss in the browser's named time zone, with expandable exact UTC
+  values. User IDs lead; shortened install and bundle IDs reveal and copy their
+  full values. UNCHANGED is presented as Activity reported, a neutral activity
+  observation on the current bundle. Applied/adopted events use the semantic
+  success color; recovery uses warning. Text and icons remain present so color
+  is never the only distinction.
+- **Installation history:** the Events lookup accepts a user ID or install
   ID and routes to the installation history drill-down. A user ID may match
   multiple installations; the drill-down keeps those matches visible while an
   install ID identifies one history. Every history event shows the app version
@@ -171,7 +183,7 @@ success. Capability-unavailable primitives do not render.
 - Existing focus, hover, sidebar, and sheet behavior remains authoritative.
 - Controls use existing transition utilities only for meaningful state
   feedback. Reduced-motion behavior from the shared stack is preserved.
-- History lookup is keyboard-operable in source order: input, Search button,
+- History lookup is keyboard-operable in source order: input, Find installation,
   then the matching installations and history controls on the drill-down.
 
 ## 8. Accessibility, Personas, and Accepted Debt

@@ -119,7 +119,7 @@ describe("InsightsOverview", () => {
     ).toBeDefined();
     expect(within(activityOverview).getByText("last 7 days")).toBeDefined();
     expect(activityOverview.textContent).toContain(
-      "reported an update status in the last 7 days",
+      "reported activity or an update in the last 7 days",
     );
     expect(
       within(activityOverview).getByTestId("activity-chart"),
@@ -128,7 +128,9 @@ describe("InsightsOverview", () => {
     expect(screen.getAllByText("Recovered away").length).toBeGreaterThan(0);
     expect(screen.getAllByText("8").length).toBeGreaterThan(0);
     expect(screen.getAllByText("2").length).toBeGreaterThan(0);
-    expect(screen.getByText("25%")).toBeDefined();
+    expect(
+      screen.getByText("Configured rollout").nextElementSibling?.textContent,
+    ).toBe("25%");
     expect(
       screen.getByTestId("activity-chart").getAttribute("data-points"),
     ).toBe("2");
@@ -180,7 +182,7 @@ describe("InsightsOverview", () => {
       />,
     );
     expect(screen.getByRole("alert").textContent).toContain(
-      "Active request failed",
+      "Refresh to try again",
     );
   });
 
@@ -195,7 +197,7 @@ describe("InsightsOverview", () => {
     expect(screen.getByRole("alert").textContent).toContain(
       "Insights report limit reached",
     );
-    expect(screen.getByRole("alert").textContent).toContain("50,000 reports");
+    expect(screen.getByRole("alert").textContent).toContain("50,000 events");
   });
 
   it("names the 30-day metric as monthly active installations", () => {

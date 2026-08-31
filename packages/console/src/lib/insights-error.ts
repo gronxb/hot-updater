@@ -9,11 +9,15 @@ export const getInsightsErrorCopy = (
 ): InsightsErrorCopy => {
   const match = /^Bundle event scan exceeded (\d+) rows\.$/.exec(error.message);
   if (!match) {
-    return { title: fallbackTitle, description: error.message };
+    return {
+      title: fallbackTitle,
+      description:
+        "Refresh to try again. If this keeps happening, check your Insights provider connection.",
+    };
   }
   const limit = Number(match[1]);
   return {
     title: "Insights report limit reached",
-    description: `This query matched more than ${limit.toLocaleString()} reports. Narrow the query and try again.`,
+    description: `This view needs to read more than ${limit.toLocaleString()} events. The data is still stored, but this provider cannot query it at this volume.`,
   };
 };

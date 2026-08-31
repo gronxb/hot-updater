@@ -10,12 +10,14 @@ describe("validateInstallationsSearch", () => {
         installId: "install-1",
         searchOffset: 20,
         historyOffset: 50,
+        eventsOffset: 100,
       }),
     ).toEqual({
       query: "ada",
       installId: "install-1",
       searchOffset: 20,
       historyOffset: 50,
+      eventsOffset: 100,
     });
   });
 
@@ -26,8 +28,14 @@ describe("validateInstallationsSearch", () => {
         validateInstallationsSearch({
           searchOffset: offset,
           historyOffset: offset,
+          eventsOffset: offset,
         }),
-      ).toMatchObject({ searchOffset: 0, historyOffset: 0 });
+      ).toEqual({
+        query: undefined,
+        installId: undefined,
+        searchOffset: 0,
+        historyOffset: 0,
+      });
     },
   );
 });

@@ -54,12 +54,16 @@ describe("UpdateOutcomes", () => {
       screen.getByRole("heading", { name: "Selected bundle activity" }),
     ).toBeDefined();
     expect(screen.getByText("Latest bundle share")).toBeDefined();
-    expect(screen.getByText("75%")).toBeDefined();
+    expect(
+      screen.getByText("Latest bundle share").nextElementSibling?.textContent,
+    ).toBe("75%");
     expect(screen.getByText("3 of 4 reporting installs")).toBeDefined();
     expect(screen.getByText("Newly applied")).toBeDefined();
     expect(screen.getByText("Recovered away")).toBeDefined();
     expect(screen.getByText("Configured rollout")).toBeDefined();
-    expect(screen.getByText("25%")).toBeDefined();
+    expect(
+      screen.getByText("Configured rollout").nextElementSibling?.textContent,
+    ).toBe("25%");
     expect(screen.getByText("8")).toBeDefined();
     expect(screen.getByText("2")).toBeDefined();
     const chart = screen.getByTestId("outcome-activity-chart");

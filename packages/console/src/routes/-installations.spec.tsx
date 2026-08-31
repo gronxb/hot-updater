@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   history: vi.fn(),
+  scrollEntry: vi.fn(),
   events: vi.fn(),
   refreshEvents: vi.fn(),
   navigate: vi.fn(),
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@tanstack/react-router", () => ({
+  useElementScrollRestoration: mocks.scrollEntry,
   createFileRoute: () => (options: Record<string, unknown>) => ({
     ...options,
     useNavigate: () => mocks.navigate,
@@ -27,12 +29,14 @@ vi.mock("@tanstack/react-router", () => ({
     children,
     className,
     to,
+    ...props
   }: {
     readonly children: ReactNode;
     readonly className?: string;
     readonly to: string;
+    readonly "aria-current"?: "page";
   }) => (
-    <a className={className} href={to}>
+    <a className={className} href={to} aria-current={props["aria-current"]}>
       {children}
     </a>
   ),
@@ -68,6 +72,7 @@ const InstallationsPage = (
 
 describe("InstallationsPage", () => {
   beforeEach(() => {
+    mocks.scrollEntry.mockReturnValue(undefined);
     mocks.search.mockReturnValue({
       query: "user-1",
       installId: undefined,
@@ -125,6 +130,7 @@ describe("InstallationsPage", () => {
           installId: "install-1",
           searchOffset: 0,
           historyOffset: 0,
+          eventsOffset: undefined,
         },
         replace: true,
       }),
@@ -164,12 +170,12 @@ describe("InstallationsPage", () => {
 
     expect(mocks.events).toHaveBeenCalledWith({ limit: 50, offset: 0 }, true);
     expect(mocks.navigate).not.toHaveBeenCalled();
-    expect(screen.getByRole("heading", { name: "All events" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: /All events/ })).toBeDefined();
     for (const label of [
       "Bundle applied",
       "Recovered",
       "Release adopted",
-      "Unchanged",
+      "Activity reported",
     ]) {
       expect(screen.getByText(label)).toBeDefined();
     }
@@ -184,6 +190,7 @@ describe("InstallationsPage", () => {
         installId: undefined,
         searchOffset: 0,
         historyOffset: 50,
+        eventsOffset: undefined,
       },
       replace: false,
     });
@@ -198,7 +205,7 @@ describe("InstallationsPage", () => {
     });
     render(<InstallationsPage />);
     expect(mocks.events).toHaveBeenCalledWith({ limit: 50, offset: 50 }, false);
-    fireEvent.click(screen.getByRole("button", { name: "View all events" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to all events" }));
     expect(mocks.navigate).toHaveBeenCalledWith({
       to: "/installations",
       search: {
@@ -206,16 +213,168 @@ describe("InstallationsPage", () => {
         installId: undefined,
         searchOffset: 0,
         historyOffset: 0,
+        eventsOffset: undefined,
       },
       replace: false,
     });
+  });
+
+  it("opens a trimmed installation lookup and remembers the event page", () => {
+    mocks.search.mockReturnValue({ searchOffset: 0, historyOffset: 50 });
+    render(<InstallationsPage />);
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "  install-1  " },
+    });
+    fireEvent.submit(screen.getByRole("search", { name: "Find installation" }));
+    expect(mocks.navigate).toHaveBeenLastCalledWith({
+      to: "/installations",
+      search: {
+        query: "install-1",
+        installId: undefined,
+        searchOffset: 0,
+        historyOffset: 0,
+        eventsOffset: 50,
+      },
+      replace: false,
+    });
+  });
+
+  it("returns to the source event page after paging through installation history", () => {
+    mocks.search.mockReturnValue({
+      query: "install-1",
+      installId: "install-1",
+      searchOffset: 0,
+      historyOffset: 100,
+      eventsOffset: 50,
+    });
+    render(<InstallationsPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Back to all events" }));
+    expect(mocks.navigate).toHaveBeenLastCalledWith({
+      to: "/installations",
+      search: {
+        query: undefined,
+        installId: undefined,
+        searchOffset: 0,
+        historyOffset: 50,
+        eventsOffset: undefined,
+      },
+      replace: false,
+    });
+  });
+
+  it("keeps lookup available while events load and offers a retry after an error", () => {
+    mocks.search.mockReturnValue({ searchOffset: 0, historyOffset: 0 });
+    mocks.events.mockReturnValue({ isLoading: true, isFetching: true });
+    const { rerender } = render(<InstallationsPage />);
+    expect(
+      screen.getByRole("status", { name: "Loading events" }),
+    ).toBeDefined();
+    expect(screen.getByRole("searchbox")).toBeDefined();
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Refresh" })
+        .disabled,
+    ).toBe(true);
+
+    mocks.events.mockReturnValue({
+      isLoading: false,
+      isFetching: false,
+      error: new Error("Connection lost"),
+      refetch: mocks.refreshEvents,
+    });
+    rerender(<InstallationsPage />);
+    expect(screen.getByRole("alert")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(mocks.refreshEvents).toHaveBeenCalledOnce();
+  });
+
+  it("uses the browser time zone, preserves seconds, and keeps UTC details and full IDs", () => {
+    vi.stubEnv("TZ", "America/New_York");
+    mocks.search.mockReturnValue({ searchOffset: 0, historyOffset: 0 });
+    mocks.events.mockReturnValue({
+      data: {
+        data: [
+          Date.UTC(2026, 6, 18, 10, 2, 3),
+          Date.UTC(2026, 0, 18, 10, 2, 3),
+        ].map((receivedAtMs, index) => ({
+          id: `event-${index}`,
+          type: "UNCHANGED",
+          installId: "019f635d-0007-7000-8000-000000000007",
+          fromBundleId: null,
+          toBundleId: "01972030-1aa1-7445-8b8c-121212121212",
+          userId: "user-readable",
+          username: null,
+          appVersion: "1.4.2",
+          platform: "ios",
+          channel: "production",
+          receivedAtMs,
+        })),
+        pagination: { total: 2, limit: 50, offset: 0 },
+      },
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    });
+    try {
+      render(<InstallationsPage />);
+      expect(
+        screen.getByRole("columnheader", { name: "Time (America/New_York)" }),
+      ).toBeDefined();
+      expect(screen.getByText("2026/07/18 06:02:03")).toBeDefined();
+      expect(screen.getByText("2026/01/18 05:02:03")).toBeDefined();
+      const time = screen.getByText("2026/07/18 06:02:03");
+      expect(time.getAttribute("datetime")).toBe("2026-07-18T10:02:03.000Z");
+      fireEvent.click(time.closest("summary")!);
+      expect(time.closest("details")?.open).toBe(true);
+      expect(screen.getByText("2026-07-18 10:02:03.000 UTC")).toBeDefined();
+      expect(
+        screen.getAllByRole("button", {
+          name: "Copy full value: 01972030-1aa1-7445-8b8c-121212121212",
+        }),
+      ).toHaveLength(2);
+      expect(screen.getAllByText("01972030…1212")).toHaveLength(2);
+      expect(screen.queryByText("From")).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("explains the all-event query limit without promising lookup bypasses it", () => {
+    mocks.search.mockReturnValue({ searchOffset: 0, historyOffset: 0 });
+    mocks.events.mockReturnValue({
+      isLoading: false,
+      isFetching: false,
+      error: new Error("Bundle event scan exceeded 50000 rows."),
+    });
+    render(<InstallationsPage />);
+    expect(screen.getByText("Insights report limit reached")).toBeDefined();
+    expect(screen.getByText(/The data is still stored/)).toBeDefined();
+    expect(screen.getByRole("searchbox")).toBeDefined();
+  });
+
+  it("restores the source scroll position after event data finishes loading", () => {
+    mocks.search.mockReturnValue({ searchOffset: 0, historyOffset: 50 });
+    mocks.scrollEntry.mockReturnValue({ scrollX: 0, scrollY: 320 });
+    mocks.events.mockReturnValue({ isLoading: true, isFetching: true });
+    const { container, rerender } = render(<InstallationsPage />);
+    expect(container.querySelector("#insights-events-scroll")?.scrollTop).toBe(
+      0,
+    );
+    mocks.events.mockReturnValue({
+      isLoading: false,
+      isFetching: false,
+      data: { data: [], pagination: { total: 0, offset: 50, limit: 50 } },
+    });
+    rerender(<InstallationsPage />);
+    expect(container.querySelector("#insights-events-scroll")?.scrollTop).toBe(
+      320,
+    );
   });
 
   it("provides a refresh action when no events have been recorded", () => {
     mocks.search.mockReturnValue({ searchOffset: 0, historyOffset: 0 });
     render(<InstallationsPage />);
     expect(screen.getByText("No events recorded yet")).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Refresh events" }));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     expect(mocks.refreshEvents).toHaveBeenCalled();
   });
 
@@ -223,10 +382,11 @@ describe("InstallationsPage", () => {
     render(<InstallationsPage />);
 
     expect(
-      screen
-        .getByRole("link", { name: "Back to Insights" })
-        .getAttribute("href"),
+      screen.getByRole("link", { name: "Overview" }).getAttribute("href"),
     ).toBe("/insights");
+    expect(
+      screen.getByRole("link", { name: "Events" }).getAttribute("aria-current"),
+    ).toBe("page");
   });
 
   it("labels the history search for either a user ID or install ID", () => {
@@ -236,10 +396,10 @@ describe("InstallationsPage", () => {
       screen
         .getByRole("searchbox", { name: "User ID or install ID" })
         .getAttribute("placeholder"),
-    ).toBe("Enter a user ID or install ID");
+    ).toBe("User ID or install ID");
     expect(
       screen.getByRole<HTMLButtonElement>("button", {
-        name: "Search history",
+        name: "Find installation",
       }).disabled,
     ).toBe(false);
   });
@@ -256,7 +416,7 @@ describe("InstallationsPage", () => {
 
     expect(
       screen.getByRole<HTMLButtonElement>("button", {
-        name: "Search history",
+        name: "Find installation",
       }).disabled,
     ).toBe(true);
   });
@@ -273,7 +433,7 @@ describe("InstallationsPage", () => {
 
     expect(
       screen
-        .getByRole("button", { name: /install-1/ })
+        .getByRole("button", { name: "user-1, install ID install-1" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
   });

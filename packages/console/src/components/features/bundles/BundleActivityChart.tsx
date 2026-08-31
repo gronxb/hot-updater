@@ -99,7 +99,7 @@ export function BundleActivityChart({
   if (!hasWindowActivity) {
     return (
       <div className="flex h-16 items-center justify-center border-t px-4 pt-3 text-center text-xs text-muted-foreground sm:h-20 sm:pt-4">
-        No device activity in the last 30 days.
+        No bundle changes in {windowLabels[window]}.
       </div>
     );
   }

@@ -56,16 +56,17 @@ export function UpdateOutcomes({
             <h2 id="bundle-detail-heading">Selected bundle activity</h2>
           </CardTitle>
           <CardDescription>
-            Select a bundle to inspect its latest presence, applies, and
+            Select a bundle to review active installations, applied updates, and
             recoveries during this period.
           </CardDescription>
         </div>
         {bundleSelector}
       </CardHeader>
-      <CardContent className="pt-10">
+      <CardContent className="pt-4">
         {state.status === "idle" ? (
           <p className="text-sm text-muted-foreground">
-            No active bundle is available.
+            No bundles are available for this period. Choose a longer reporting
+            period or view Events for all recorded activity.
           </p>
         ) : state.status === "loading" ? (
           <div
@@ -93,14 +94,15 @@ export function UpdateOutcomes({
                   Latest bundle share
                 </dt>
                 <dd className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">
-                  {Math.round(latestBundleShare)}%
+                  {Math.round(latestBundleShare)}
+                  <span className="text-xs">%</span>
                 </dd>
                 <dd className="mt-1 text-xs text-muted-foreground tabular-nums">
                   {latestBundleInstallations.toLocaleString()} of{" "}
                   {reportingInstallations.toLocaleString()} reporting installs
                 </dd>
               </div>
-              <div className="border-b py-4 sm:pl-4 lg:border-b-0 lg:py-0 lg:pr-4">
+              <div className="border-b py-4 sm:pt-0 sm:pl-4 lg:border-b-0 lg:py-0 lg:pr-4">
                 <dt className="text-xs text-muted-foreground">Newly applied</dt>
                 <dd className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">
                   {state.data.summary.installed.toLocaleString()}
@@ -109,7 +111,7 @@ export function UpdateOutcomes({
                   Distinct installations
                 </dd>
               </div>
-              <div className="border-b py-4 sm:pr-4 lg:border-b-0 lg:py-0 lg:pl-4">
+              <div className="border-b py-4 sm:border-b-0 sm:pr-4 lg:py-0 lg:pl-4">
                 <dt className="text-xs text-muted-foreground">
                   Recovered away
                 </dt>
@@ -125,9 +127,14 @@ export function UpdateOutcomes({
                   Configured rollout
                 </dt>
                 <dd className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">
-                  {configuredPercentage === null
-                    ? "—"
-                    : `${configuredPercentage}%`}
+                  {configuredPercentage === null ? (
+                    "—"
+                  ) : (
+                    <>
+                      {configuredPercentage}
+                      <span className="text-xs">%</span>
+                    </>
+                  )}
                 </dd>
                 <dd className="mt-1 text-xs text-muted-foreground">
                   Eligibility setting

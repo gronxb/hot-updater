@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -7,13 +8,24 @@ const mocks = vi.hoisted(() => ({
   capability: vi.fn(),
   catalog: vi.fn(),
   controls: vi.fn(),
-  navigate: vi.fn(),
   overview: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (options: unknown) => ({ options }),
-  useNavigate: () => mocks.navigate,
+  Link: ({
+    children,
+    to,
+    ...props
+  }: {
+    children: ReactNode;
+    to: string;
+    "aria-current"?: "page";
+  }) => (
+    <a href={to} aria-current={props["aria-current"]}>
+      {children}
+    </a>
+  ),
 }));
 
 vi.mock("@/components/features/insights/InsightsCapabilityContext", () => ({
@@ -21,15 +33,11 @@ vi.mock("@/components/features/insights/InsightsCapabilityContext", () => ({
 }));
 vi.mock("@/components/features/insights/InsightsControls", () => ({
   InsightsControls: (props: {
-    onInstallationSearch: (query: string) => void;
     onWindowChange: (window: "24h" | "7d" | "30d") => void;
   }) => {
     mocks.controls(props);
     return (
       <>
-        <button onClick={() => props.onInstallationSearch("user-1")}>
-          Search installation history
-        </button>
         <button onClick={() => props.onWindowChange("7d")}>
           Select window
         </button>
@@ -175,7 +183,7 @@ describe("InsightsPage", () => {
     expect(container.querySelector("main")).toBeNull();
     expect(
       screen.getByText(
-        "This database scans up to 50,000 matching insights records per query.",
+        "This database scans up to 50,000 event records per query.",
       ),
     ).toBeDefined();
 
@@ -196,21 +204,16 @@ describe("InsightsPage", () => {
     });
   });
 
-  it("opens matching installation history from one user or install ID", () => {
+  it("shows Overview as the current view and a direct Events destination", () => {
     render(<InsightsPage />);
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Search installation history" }),
-    );
-
-    expect(mocks.navigate).toHaveBeenCalledWith({
-      to: "/installations",
-      search: {
-        query: "user-1",
-        installId: undefined,
-        searchOffset: 0,
-        historyOffset: 0,
-      },
-    });
+    expect(
+      screen
+        .getByRole("link", { name: "Overview" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    expect(
+      screen.getByRole("link", { name: "Events" }).getAttribute("href"),
+    ).toBe("/installations");
+    expect(screen.queryByRole("searchbox")).toBeNull();
   });
 });

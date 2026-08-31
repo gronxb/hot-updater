@@ -27,12 +27,16 @@ vi.mock("@/components/ui/chart", () => ({
 describe("BundleActivityChart", () => {
   afterEach(cleanup);
 
-  it("explains the empty 30-day activity window", () => {
-    render(<BundleActivityChart installed={[]} recovered={[]} window="30d" />);
+  it.each([
+    ["24h", "24 hours"],
+    ["7d", "7 days"],
+    ["30d", "30 days"],
+  ] as const)("explains the empty %s activity window", (window, label) => {
+    render(
+      <BundleActivityChart installed={[]} recovered={[]} window={window} />,
+    );
 
-    expect(
-      screen.getByText("No device activity in the last 30 days."),
-    ).toBeDefined();
+    expect(screen.getByText(`No bundle changes in ${label}.`)).toBeDefined();
   });
 
   it("keeps exact per-bucket values in a non-overflowing hidden wrapper", () => {

@@ -66,9 +66,14 @@ export function ActivityChart({
         <span className="text-xs text-muted-foreground">UTC</span>
       </div>
       {!hasReports && (
-        <p className="text-sm text-muted-foreground">
-          No installations reported during this period.
-        </p>
+        <div className="flex flex-col gap-1">
+          <p className="text-sm text-muted-foreground">
+            No installations reported during this period.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Use the Events view to browse activity outside this period.
+          </p>
+        </div>
       )}
       <ChartContainer
         aria-label={`Active installations per ${bucketName}`}

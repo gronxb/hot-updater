@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 
 import { ActivityChart } from "./ActivityChart";
 import { BundleSelector } from "./BundleSelector";
+import { EventTimestamp, useInsightsTimeFormat } from "./EventDetails";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { UpdateOutcomes, type UpdateOutcomeState } from "./UpdateOutcomes";
 
@@ -33,12 +34,6 @@ type InsightsOverviewProps =
       readonly onBundleChange: (bundleId: string) => void;
       readonly outcomes: UpdateOutcomeState;
     };
-
-const asOfFormatter = new Intl.DateTimeFormat("en", {
-  dateStyle: "medium",
-  timeStyle: "short",
-  timeZone: "UTC",
-});
 
 const activityWindowCopy = {
   "24h": {
@@ -76,6 +71,7 @@ function LoadingCard({
 }
 
 export function InsightsOverview(props: InsightsOverviewProps) {
+  const dateTimeFormat = useInsightsTimeFormat();
   if (props.status === "loading") {
     return (
       <div
@@ -138,8 +134,8 @@ export function InsightsOverview(props: InsightsOverviewProps) {
               <h2>{activityCopy.label}</h2>
             </CardTitle>
             <CardDescription>
-              Unique app installations that reported an update status in the{" "}
-              {activityCopy.period}.
+              Unique app installations that reported activity or an update in
+              the {activityCopy.period}.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-5">
@@ -147,11 +143,11 @@ export function InsightsOverview(props: InsightsOverviewProps) {
               <p className="text-xs font-medium text-muted-foreground">
                 Active installations
               </p>
-              <div className="flex items-end gap-2">
+              <div className="flex flex-wrap items-end gap-2">
                 <span className="text-4xl font-semibold tracking-tight tabular-nums">
                   {active.activeInstallations.toLocaleString()}
                 </span>
-                <span className="pb-1 text-xs text-muted-foreground">
+                <span className="pb-1 text-lg text-muted-foreground">
                   unique in {activityCopy.period}
                 </span>
               </div>
@@ -161,7 +157,7 @@ export function InsightsOverview(props: InsightsOverviewProps) {
             </div>
           </CardContent>
           <CardFooter className="border-t bg-muted/15 p-0">
-            <dl className="grid w-full sm:grid-cols-3 sm:divide-x sm:divide-border/70">
+            <dl className="grid w-full lg:grid-cols-3 lg:divide-x lg:divide-border/70">
               <div className="flex flex-col gap-1 px-5 py-4">
                 <dt className="text-xs text-muted-foreground">
                   Reported bundles
@@ -170,16 +166,21 @@ export function InsightsOverview(props: InsightsOverviewProps) {
                   {active.bundles.length.toLocaleString()}
                 </dd>
               </div>
-              <div className="flex flex-col gap-1 border-t px-5 py-4 sm:border-t-0">
+              <div className="flex flex-col gap-1 border-t px-5 py-4 lg:border-t-0">
                 <dt className="text-xs text-muted-foreground">
                   Reporting window
                 </dt>
                 <dd className="text-sm font-medium">{activityCopy.period}</dd>
               </div>
-              <div className="flex flex-col gap-1 border-t px-5 py-4 sm:border-t-0">
-                <dt className="text-xs text-muted-foreground">As of</dt>
+              <div className="flex flex-col gap-1 border-t px-5 py-4 lg:border-t-0">
+                <dt className="text-xs text-muted-foreground">
+                  As of ({dateTimeFormat.resolvedOptions().timeZone})
+                </dt>
                 <dd className="text-xs font-medium tabular-nums">
-                  {asOfFormatter.format(new Date(active.asOfMs))} UTC
+                  <EventTimestamp
+                    value={active.asOfMs}
+                    formatter={dateTimeFormat}
+                  />
                 </dd>
               </div>
             </dl>

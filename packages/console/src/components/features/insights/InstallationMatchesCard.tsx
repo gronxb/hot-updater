@@ -1,7 +1,6 @@
-import { Check, TriangleAlert } from "lucide-react";
+import { Check } from "lucide-react";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { shortenIdentifier } from "@/components/HashValueDisplay";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -15,6 +14,7 @@ import type {
   InstallationSearchRow,
 } from "@/lib/api";
 
+import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InstallationPagination } from "./InstallationPagination";
 
 const getLastKnownBundleId = (event: InstallationSearchRow) =>
@@ -41,7 +41,7 @@ export function InstallationMatchesCard({
   readonly selectedInstallId: string;
 }) {
   return (
-    <Card className="min-h-0 min-w-0">
+    <Card className="min-h-0 min-w-0 shadow-sm">
       <CardHeader className="p-6 pb-5">
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 flex-col gap-1.5">
@@ -52,11 +52,22 @@ export function InstallationMatchesCard({
               Select a row to review its bundle history.
             </CardDescription>
           </div>
-          <Badge variant="outline">{results?.pagination.total ?? 0}</Badge>
+          {results && !error ? (
+            <Badge variant="secondary" className="tabular-nums">
+              {results.pagination.total.toLocaleString()}
+            </Badge>
+          ) : null}
         </div>
       </CardHeader>
       <CardContent className="min-h-0 p-0">
-        {results && results.data.length > 0 ? (
+        {error ? (
+          <div className="p-6">
+            <InsightsErrorAlert
+              error={error instanceof Error ? error : new Error()}
+              fallbackTitle="Installation search unavailable"
+            />
+          </div>
+        ) : results && results.data.length > 0 ? (
           <ul aria-label="Matching installations" className="divide-y">
             {results.data.map((event) => {
               const currentBundleId = getLastKnownBundleId(event);
@@ -64,8 +75,9 @@ export function InstallationMatchesCard({
               return (
                 <li key={event.installId}>
                   <button
+                    aria-label={`${getUserLabel(event)}, install ID ${event.installId}`}
                     aria-pressed={isSelected}
-                    className="group flex w-full min-w-0 flex-col gap-4 border-l-2 border-transparent px-6 py-5 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30 aria-pressed:border-primary aria-pressed:bg-muted/60"
+                    className="group flex w-full min-w-0 flex-col gap-4 border-l-2 border-transparent px-6 py-5 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30 aria-pressed:border-primary aria-pressed:bg-muted/60 motion-reduce:transition-none"
                     onClick={() => onSelect(event.installId)}
                     type="button"
                   >
@@ -80,16 +92,28 @@ export function InstallationMatchesCard({
                         </span>
                       ) : null}
                     </span>
-                    <BundleIdDisplay
-                      bundleId={event.installId}
-                      className="block text-muted-foreground"
-                    />
+                    <span className="flex flex-col gap-1">
+                      <span className="text-xs text-muted-foreground">
+                        Install ID
+                      </span>
+                      <span
+                        className="font-mono text-xs"
+                        title={event.installId}
+                      >
+                        {shortenIdentifier(event.installId)}
+                      </span>
+                    </span>
                     <span className="min-w-0">
                       <span className="mb-1 block text-xs text-muted-foreground">
                         Last known bundle
                       </span>
                       {currentBundleId ? (
-                        <BundleIdDisplay bundleId={currentBundleId} />
+                        <span
+                          className="font-mono text-xs"
+                          title={currentBundleId}
+                        >
+                          {shortenIdentifier(currentBundleId)}
+                        </span>
                       ) : (
                         <span className="text-sm text-muted-foreground">—</span>
                       )}
@@ -99,21 +123,10 @@ export function InstallationMatchesCard({
               );
             })}
           </ul>
-        ) : error ? (
-          <div className="p-5">
-            <Alert variant="destructive">
-              <TriangleAlert aria-hidden="true" />
-              <AlertTitle>Installation search unavailable</AlertTitle>
-              <AlertDescription>
-                {error instanceof Error
-                  ? error.message
-                  : "Failed to load installations."}
-              </AlertDescription>
-            </Alert>
-          </div>
         ) : (
-          <div className="p-5 text-sm text-muted-foreground">
-            No installations matched that query.
+          <div className="p-6 text-sm text-muted-foreground">
+            No installations matched this ID. Check the user ID or install ID
+            and try again.
           </div>
         )}
         {results && results.pagination.total > 0 ? (

@@ -1,3 +1,4 @@
+import { shortenIdentifier } from "@/components/HashValueDisplay";
 import { Button } from "@/components/ui/button";
 import {
   Combobox,
@@ -68,12 +69,15 @@ export function BundleSelector({
         >
           {selectedBundle ? (
             <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
-              <code className="max-w-full truncate text-xs/4">
-                {selectedBundle.bundleId}
-              </code>
-              <span className="max-w-full truncate text-xs/4 text-muted-foreground">
+              <span className="max-w-full truncate text-xs/4">
                 {selectedBundle.description}
               </span>
+              <code
+                className="max-w-full truncate text-xs/4 text-muted-foreground"
+                title={selectedBundle.bundleId}
+              >
+                {shortenIdentifier(selectedBundle.bundleId)}
+              </code>
             </span>
           ) : (
             <span className="truncate text-muted-foreground">
@@ -88,7 +92,9 @@ export function BundleSelector({
             showClear
             showTrigger={false}
           />
-          <ComboboxEmpty>No bundles found.</ComboboxEmpty>
+          <ComboboxEmpty>
+            No bundles found. Try another bundle ID or description.
+          </ComboboxEmpty>
           <ComboboxList>
             {(bundle) => (
               <ComboboxItem
@@ -97,12 +103,15 @@ export function BundleSelector({
                 value={bundle}
               >
                 <span className="flex min-w-0 flex-col gap-1 pr-5">
-                  <code className="max-w-72 truncate text-xs/4">
-                    {bundle.bundleId}
-                  </code>
-                  <span className="truncate text-xs/4 text-muted-foreground">
+                  <span className="truncate text-xs/4">
                     {bundle.description}
                   </span>
+                  <code
+                    className="max-w-72 truncate text-xs/4 text-muted-foreground"
+                    title={bundle.bundleId}
+                  >
+                    {shortenIdentifier(bundle.bundleId)}
+                  </code>
                 </span>
               </ComboboxItem>
             )}
