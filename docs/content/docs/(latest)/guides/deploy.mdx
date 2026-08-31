@@ -63,9 +63,10 @@ platform result:
 - Release Catalog scope key
 - Catalog generation
 
-Use the Release ID with `release show`, `release update`, `release disable`, or
-`release promote`. Use the Bundle ID with artifact commands such as
-`bundle show`, `patch`, and `bundle delete`.
+Use the ID shown in the console or returned by `HotUpdater.getBundleId()` with
+`bundle show`, `release show`, `release update`, `release disable`, or
+`release promote`. File operations such as `patch` and `bundle delete` use the
+file ID available in the console's Advanced diagnostics.
 
 ### Bundle Diffing
 

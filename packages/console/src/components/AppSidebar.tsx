@@ -92,10 +92,10 @@ export function AppSidebar() {
                       }}
                     />
                   }
-                  tooltip="Bundles"
+                  tooltip="Releases"
                 >
                   <Package />
-                  <span>Bundles</span>
+                  <span>Releases</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               {insightsCapability.status === "supported" ? (

@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => {
     })),
     getAppVersion: vi.fn(() => "1.0.0"),
     getBaseURL: vi.fn(() => null),
-    getBundleId: vi.fn(() => "bundle-id"),
+    getUpdateId: vi.fn(() => "release-id"),
     getChannel: vi.fn(() => "production"),
     getCohort: vi.fn(() => "123"),
     getCrashHistory: vi.fn(() => []),
@@ -31,7 +31,6 @@ const mocks = vi.hoisted(() => {
     getInstallId: vi.fn(() => "install-id"),
     getManifest: vi.fn(() => null),
     getMinBundleId: vi.fn(() => "min-bundle-id"),
-    getReleaseId: vi.fn(async () => null),
     init: vi.fn(),
     isChannelSwitched: vi.fn(() => false),
     notifyAppReady: vi.fn(() => ({ status: "UNCHANGED" as const })),
@@ -59,7 +58,7 @@ vi.mock("./native", () => ({
   getPublicActiveUpdateState: mocks.getActiveUpdateState,
   getAppVersion: mocks.getAppVersion,
   getBaseURL: mocks.getBaseURL,
-  getBundleId: mocks.getBundleId,
+  getUpdateId: mocks.getUpdateId,
   getChannel: mocks.getChannel,
   getCohort: mocks.getCohort,
   getCrashHistory: mocks.getCrashHistory,
@@ -68,7 +67,6 @@ vi.mock("./native", () => ({
   getInstallId: mocks.getInstallId,
   getManifest: mocks.getManifest,
   getMinBundleId: mocks.getMinBundleId,
-  getReleaseId: mocks.getReleaseId,
   isChannelSwitched: mocks.isChannelSwitched,
   notifyAppReady: mocks.notifyAppReady,
   reload: mocks.reload,
@@ -95,6 +93,14 @@ describe("HotUpdater client initialization", () => {
     }));
     mocks.checkForUpdate.mockResolvedValue(null);
     mocks.wrap.mockImplementation((Component: unknown) => Component);
+  });
+
+  it("exposes the console ID through the existing getter only", async () => {
+    const HotUpdater = await importHotUpdater();
+
+    expect(HotUpdater.getBundleId()).toBe("release-id");
+    expect(HotUpdater).not.toHaveProperty("getReleaseId");
+    expect(HotUpdater).not.toHaveProperty("getUpdateId");
   });
 
   it("initializes a private HTTP client from the required baseURL", async () => {

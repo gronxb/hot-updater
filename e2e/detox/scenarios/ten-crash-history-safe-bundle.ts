@@ -42,7 +42,7 @@ export const tenCrashHistorySafeBundleScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert 11th safe Bundle selected",
       "update-action-result",
-      "current-channel -> installed Release $crashHistorySafeReleaseId / Bundle $crashHistorySafeBundleId",
+      "current-channel -> installed ID $crashHistorySafeReleaseId",
       { exactText: true },
     );
     await app.control(

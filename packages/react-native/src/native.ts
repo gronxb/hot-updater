@@ -599,8 +599,9 @@ export const getMinBundleId = (): string => {
   return constants.MIN_BUNDLE_ID;
 };
 
-export const getReleaseId = async (): Promise<string | null> =>
-  getActiveUpdateState().activeSelection?.releaseId ?? null;
+/** Returns the selected update ID shown in the console, including staged updates. */
+export const getUpdateId = (): string =>
+  getActiveUpdateState().activeSelection?.releaseId ?? getBundleId();
 
 /**
  * Fetches the current bundle version id.

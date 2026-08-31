@@ -107,7 +107,7 @@ export const republishedCrashedBundleSkippedScenario: DetoxScenarioDefinition =
       await app.assertText(
         "assert republished crash skipped",
         "update-action-result",
-        "current-channel -> adopted Release $republishStableReleaseId / Bundle $republishStableBundleId",
+        "current-channel -> adopted ID $republishStableReleaseId",
         { exactText: true },
       );
       await app.assertText(

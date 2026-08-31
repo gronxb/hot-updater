@@ -642,8 +642,8 @@ describe("Detox scenario contract", () => {
   });
 
   it("captures the built-in bundle id with the minimum-id suffix contract", async () => {
-    // Given: HotUpdater.getBundleId() can expose a platform-generated UUID
-    // with the built-in minimum id suffix.
+    // Given: the running manifest can expose a platform-generated UUID with
+    // the built-in minimum id suffix.
     const controllerSource = await fs.readFile(
       path.join(repoDir, "e2e/detox/control-server/controller.ts"),
       "utf8",
@@ -659,6 +659,106 @@ describe("Detox scenario contract", () => {
       "const builtInBundleId = E2E_MIN_BUNDLE_ID;",
     );
   });
+
+  it.each([
+    ["running-file", "staged-update"],
+    ["019f0000-0000-7000-8000-000000000000", "embedded-update"],
+  ])(
+    "keeps runtime file diagnostics on %s when the selected ID is %s",
+    (bundleId, updateId) => {
+      const minBundleId = "019f0000-0000-7000-8000-000000000000";
+      const manifest = { bundleId, assets: {} };
+      const modules: Record<string, unknown> = {
+        "@env": { HOT_UPDATER_API_KEY: "" },
+        "@hot-updater/react-native": {
+          HotUpdater: {
+            init: () => {},
+            setUser: () => {},
+            getAppVersion: () => "1.0.0",
+            getBundleId: () => updateId,
+            getChannel: () => "production",
+            getCohort: () => "123",
+            getCrashHistory: () => [],
+            getDefaultChannel: () => "production",
+            getFingerprintHash: () => null,
+            getManifest: () => manifest,
+            getMinBundleId: () => minBundleId,
+            isChannelSwitched: () => false,
+          },
+        },
+        "react-native": {},
+        valtio: { proxy: (value: unknown) => value },
+        "../e2eRuntimeConfig": {
+          fallbackHotUpdaterBaseURL: "https://updates.example.com",
+        },
+      };
+      const runtime = {} as {
+        readRuntimeSnapshot(): { bundleId: string; minBundleId: string };
+      };
+      const transformed = transformFileSync(exampleE2eAppRuntimePath, {
+        babelrc: false,
+        configFile: false,
+        plugins: ["@babel/plugin-transform-modules-commonjs"],
+        presets: ["@babel/preset-typescript"],
+      })?.code;
+      expect(transformed).toBeDefined();
+
+      new Script(transformed!).runInNewContext({
+        exports: runtime,
+        require: (name: string) => {
+          if (!(name in modules)) throw new Error(`Unexpected import: ${name}`);
+          return modules[name];
+        },
+      });
+
+      expect(runtime.readRuntimeSnapshot()).toMatchObject({
+        bundleId,
+        manifest,
+        minBundleId,
+      });
+    },
+  );
+
+  it.each([
+    ["safe-file", "promoted-update", false],
+    ["crash-file", "safe-file", true],
+    ["019f0000-0000-7000-8000-000000000000", "embedded-update", false],
+  ])(
+    "checks the crash guard against file %s independently of selected ID %s",
+    async (bundleId, updateId, shouldCrash) => {
+      const source = await fs.readFile(
+        detoxControlServerControllerPath,
+        "utf8",
+      );
+      const guardFactory = source.slice(
+        source.indexOf("  const crashGuardSource ="),
+        source.indexOf("  const deployAssetSource ="),
+      );
+      const guardSource = new Script(
+        `${guardFactory}\ncrashGuardSource;`,
+      ).runInNewContext({
+        mode: "crash",
+        safeBundleIds: ["safe-file"],
+        BUILT_IN_MIN_BUNDLE_ID_SUFFIX: "7000-8000-000000000000",
+        CRASH_GUARD_START: "/* E2E_CRASH_GUARD_START */",
+        CRASH_GUARD_END: "/* E2E_CRASH_GUARD_END */",
+      });
+      const guard = new Script(guardSource);
+      const runGuard = () =>
+        guard.runInNewContext({
+          HotUpdater: {
+            getBundleId: () => updateId,
+            getManifest: () => ({ bundleId }),
+          },
+        });
+
+      if (shouldCrash) {
+        expect(runGuard).toThrow("hot-updater e2e crash bundle");
+      } else {
+        expect(runGuard).not.toThrow();
+      }
+    },
+  );
 
   it("seeds Detox scenario values from the bootstrap contract", async () => {
     // Given: Maestro exposes bootstrap outputs like output.initialMarker to every
@@ -2289,8 +2389,7 @@ describe("Detox scenario contract", () => {
           call.stage === "assert stable update installed",
       ),
     ).toMatchObject({
-      contains:
-        "current-channel -> installed Release $stableReleaseId / Bundle $stableBundleId",
+      contains: "current-channel -> installed ID $stableReleaseId",
       options: { exactText: true },
       testID: "update-action-result",
     });
@@ -2301,8 +2400,7 @@ describe("Detox scenario contract", () => {
           call.stage === "assert crash update installed",
       ),
     ).toMatchObject({
-      contains:
-        "current-channel -> installed Release $crashReleaseId / Bundle $crashBundleId",
+      contains: "current-channel -> installed ID $crashReleaseId",
       options: { exactText: true },
       testID: "update-action-result",
     });
@@ -2313,8 +2411,7 @@ describe("Detox scenario contract", () => {
           call.stage === "assert same-generation safe reselection",
       ),
     ).toMatchObject({
-      contains:
-        "current-channel -> adopted Release $stableReleaseId / Bundle $stableBundleId",
+      contains: "current-channel -> adopted ID $stableReleaseId",
       options: { exactText: true },
       testID: "update-action-result",
     });
@@ -2350,8 +2447,7 @@ describe("Detox scenario contract", () => {
           call.stage === "assert republished crash skipped",
       ),
     ).toMatchObject({
-      contains:
-        "current-channel -> adopted Release $republishStableReleaseId / Bundle $republishStableBundleId",
+      contains: "current-channel -> adopted ID $republishStableReleaseId",
       options: { exactText: true },
       testID: "update-action-result",
     });
@@ -2905,8 +3001,7 @@ describe("Detox scenario contract", () => {
           call.stage === "assert chain bundle B rollback action result",
       ),
     ).toMatchObject({
-      contains:
-        "current-channel -> installed Release $releaseB / Bundle $bundleB",
+      contains: "current-channel -> installed ID $releaseB",
       options: { exactText: true },
       testID: "update-action-result",
     });
@@ -2926,8 +3021,7 @@ describe("Detox scenario contract", () => {
           call.stage === "assert chain bundle A rollback action result",
       ),
     ).toMatchObject({
-      contains:
-        "current-channel -> installed Release $releaseA / Bundle $bundleA",
+      contains: "current-channel -> installed ID $releaseA",
       options: { exactText: true },
       testID: "update-action-result",
     });

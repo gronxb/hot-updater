@@ -119,7 +119,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
 
     expect(result).toMatchObject({
-      id: TARGET_BUNDLE_ID,
+      id: RELEASE_ID,
       releaseId: RELEASE_ID,
       transitionKind: "INSTALL",
     });
@@ -191,6 +191,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
 
     expect(result).toMatchObject({
+      id: RELEASE_ID,
       shouldForceUpdate: false,
       transitionKind: "ADOPT_RELEASE",
     });
@@ -238,7 +239,9 @@ describe("checkForUpdate Release catalog protocol", () => {
 
     expect(sendInsightsEvent).toHaveBeenCalledWith(
       expect.objectContaining({
+        fromBundleId: TARGET_BUNDLE_ID,
         fromReleaseId: MINIMUM_RELEASE_ID,
+        toBundleId: TARGET_BUNDLE_ID,
         toReleaseId: RELEASE_ID,
         type: "RELEASE_ADOPTED",
       }),
@@ -280,7 +283,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
 
     expect(result).toMatchObject({
-      id: TARGET_BUNDLE_ID,
+      id: RELEASE_ID,
       releaseId: RELEASE_ID,
       status: "UPDATE",
       transitionKind: "INSTALL",
@@ -315,7 +318,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
 
     expect(result).toMatchObject({
-      id: TARGET_BUNDLE_ID,
+      id: RELEASE_ID,
       releaseId: RELEASE_ID,
       transitionKind: "ADOPT_RELEASE",
     });
@@ -395,7 +398,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
 
     expect(result).toMatchObject({
-      id: TARGET_BUNDLE_ID,
+      id: RELEASE_ID,
       releaseId: RELEASE_ID,
       shouldForceUpdate: true,
       status: "ROLLBACK",
@@ -448,58 +451,70 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
 
     expect(result).toMatchObject({
-      id: TARGET_BUNDLE_ID,
+      id: RELEASE_ID,
       shouldForceUpdate: true,
       status: "ROLLBACK",
       transitionKind: "INSTALL",
     });
   });
 
-  it("returns a forced built-in rollback only for an active OTA", async () => {
-    const active: PersistedSelectionReceipt = {
-      catalogId: CATALOG_ID,
-      bundleId: CURRENT_BUNDLE_ID,
-      catalogHash: `sha256:${"b".repeat(64)}`,
-      channel: CHANNEL,
-      generation: 1,
-      kind: "BUNDLE",
-      releaseId: ACTIVE_RELEASE_ID,
-      scopeKey: SCOPE_KEY,
-      selectionContextHash: "old-context",
-    };
-    mocks.getActiveUpdateState.mockReturnValueOnce({
-      activeSelection: active,
-      highestSeenCatalogs: {},
-      stableSelection: active,
-      verificationPending: false,
-    });
-    const { checkForUpdate } = await import("./checkForUpdate");
-    const { client } = createClient(
-      createCatalog({ releases: [], rollbackReleases: [] }),
-    );
-
-    const result = await checkForUpdate({
-      client,
-      updateStrategy: "appVersion",
-    });
-
-    expect(result).toMatchObject({
-      id: MINIMUM_RELEASE_ID,
-      releaseId: null,
-      shouldForceUpdate: true,
-      status: "ROLLBACK",
-      transitionKind: "USE_BUILTIN",
-    });
-    await expect(result?.updateBundle()).resolves.toBe(true);
-    expect(mocks.commitReleaseSelection).toHaveBeenCalledWith(
-      expect.objectContaining({
-        selection: expect.objectContaining({
-          kind: "BUILTIN",
-          releaseId: null,
+  it.each(["EMBEDDED", "BUILTIN"] as const)(
+    "returns a forced %s rollback with its console ID or built-in fallback",
+    async (kind) => {
+      const active: PersistedSelectionReceipt = {
+        catalogId: CATALOG_ID,
+        bundleId: CURRENT_BUNDLE_ID,
+        catalogHash: `sha256:${"b".repeat(64)}`,
+        channel: CHANNEL,
+        generation: 1,
+        kind: "BUNDLE",
+        releaseId: MINIMUM_RELEASE_ID,
+        scopeKey: SCOPE_KEY,
+        selectionContextHash: "old-context",
+      };
+      mocks.getActiveUpdateState.mockReturnValueOnce({
+        activeSelection: active,
+        highestSeenCatalogs: {},
+        stableSelection: active,
+        verificationPending: false,
+      });
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const { client, resolveArtifact } = createClient(
+        createCatalog({
+          releases:
+            kind === "EMBEDDED"
+              ? [{ ...createCatalog().releases[0]!, kind, bundleId: null }]
+              : [],
+          rollbackReleases: [],
         }),
-      }),
-    );
-  });
+      );
+
+      const result = await checkForUpdate({
+        client,
+        updateStrategy: "appVersion",
+      });
+
+      expect(result).toMatchObject({
+        id: kind === "EMBEDDED" ? RELEASE_ID : MINIMUM_RELEASE_ID,
+        releaseId: kind === "EMBEDDED" ? RELEASE_ID : null,
+        shouldForceUpdate: true,
+        status: "ROLLBACK",
+        transitionKind: kind === "EMBEDDED" ? "USE_EMBEDDED" : "USE_BUILTIN",
+      });
+      await expect(result?.updateBundle()).resolves.toBe(true);
+      expect(mocks.commitReleaseSelection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          selection: expect.objectContaining({
+            bundleId: MINIMUM_RELEASE_ID,
+            kind,
+            releaseId: kind === "EMBEDDED" ? RELEASE_ID : null,
+          }),
+        }),
+      );
+      expect(resolveArtifact).not.toHaveBeenCalled();
+      expect(mocks.updateBundle).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not surface a rollback when the app already uses built-in bytes", async () => {
     mocks.getBundleId.mockReturnValueOnce(MINIMUM_RELEASE_ID);

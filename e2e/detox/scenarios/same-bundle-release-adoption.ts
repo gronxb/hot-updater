@@ -62,7 +62,7 @@ export const sameBundleReleaseAdoptionScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert metadata-only adoption",
       "update-action-result",
-      "current-channel -> adopted Release $adoptedReleaseId / Bundle $adoptionBundleId",
+      "current-channel -> adopted ID $adoptedReleaseId",
       { exactText: true },
     );
     await app.assertText(

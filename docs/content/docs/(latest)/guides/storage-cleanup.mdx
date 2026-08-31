@@ -46,11 +46,12 @@ npx hot-updater release delete <release-id> --yes
 ```
 
 A Bundle can be reused by multiple Releases, including Releases in other
-channels. Inspect its references and remove every Release reference before
-deleting the immutable artifact record:
+channels. Obtain the file ID from Advanced diagnostics (or `bundle_id` in
+`bundle show <id> --json`). Inspect its references and remove every Release
+reference before deleting the immutable artifact record:
 
 ```package-install
-npx hot-updater bundle show <bundle-id>
+npx hot-updater release list --bundle-id <bundle-id> --limit 1000 --json
 npx hot-updater bundle delete <bundle-id> <another-bundle-id> --yes
 ```
 

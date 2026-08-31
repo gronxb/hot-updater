@@ -43,7 +43,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
       await app.assertText(
         "assert previous bundle action result",
         "update-action-result",
-        "current-channel -> installed Release $previousReleaseId / Bundle $previousBundleId",
+        "current-channel -> installed ID $previousReleaseId",
         { exactText: true },
       );
       await app.control(
@@ -108,7 +108,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
       await app.assertText(
         "assert next bundle action result",
         "update-action-result",
-        "current-channel -> installed Release $nextReleaseId / Bundle $nextBundleId",
+        "current-channel -> installed ID $nextReleaseId",
         { exactText: true },
       );
       await app.control(
@@ -159,7 +159,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
       await app.assertText(
         "assert previous ota rollback action result",
         "update-action-result",
-        "current-channel -> installed Release $previousReleaseId / Bundle $previousBundleId",
+        "current-channel -> installed ID $previousReleaseId",
         { exactText: true },
       );
       await app.control(

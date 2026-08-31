@@ -4,41 +4,17 @@ import { loadConfig, p } from "@hot-updater/cli-tools";
 import type {
   Bundle,
   BundleRepository,
-  Platform,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
 import { createDatabaseClient } from "@hot-updater/plugin-core";
 
-import { printBanner } from "@/utils/printBanner";
-
 import { ui } from "../utils/cli-ui";
-const LIST_FIELDS = [
-  "id",
-  "platform",
-  "fileHash",
-  "storageUri",
-  "gitCommitHash",
-] as const satisfies readonly (keyof Bundle)[];
+import { printBanner } from "../utils/printBanner";
 
-type ListField = (typeof LIST_FIELDS)[number];
-
-const LIST_COLUMNS = [
-  { key: "id", label: "ID", format: ui.id },
-  { key: "platform", label: "Platform", format: ui.platform },
-  { key: "fileHash", label: "File Hash", format: ui.muted },
-  { key: "storageUri", label: "Storage", format: ui.muted },
-  { key: "gitCommitHash", label: "Commit", format: ui.muted },
-] as const satisfies readonly {
-  key: ListField;
-  label: string;
-  format?: (value: string) => string;
-}[];
-
-export interface BundleListOptions {
-  json?: boolean;
-  platform?: Platform;
-  limit?: number;
-}
+export {
+  handleReleaseList as handleBundleList,
+  handleReleaseShow as handleBundleShow,
+} from "./release";
 
 export interface BundleMutationOptions {
   json?: boolean;
@@ -47,71 +23,27 @@ export interface BundleMutationOptions {
 
 export type BundleDeleteOptions = BundleMutationOptions;
 
-const DEFAULT_LIMIT = 20;
 const DELETE_VERIFY_ATTEMPTS = 12;
 const DELETE_VERIFY_DELAY_MS = 1000;
 const STANDALONE_DATABASE_NAME = "standalone-repository";
 const STANDALONE_DELETE_LOOKUP_LIMIT = 100;
 const RELEASE_REFERENCE_PAGE_SIZE = 1_000;
-const RELEASE_REFERENCE_ID_PREVIEW_LIMIT = 5;
 
 interface BundleReleaseReferences {
   readonly count: number;
   readonly ids: readonly string[];
 }
 
-const formatRow = (bundle: Bundle): Record<ListField, string> => {
-  const out = {} as Record<ListField, string>;
-  for (const field of LIST_FIELDS) {
-    const v = bundle[field];
-    if (field === "gitCommitHash" && typeof v === "string") {
-      out[field] = v.slice(0, 7);
-    } else if (field === "fileHash" && typeof v === "string") {
-      out[field] = v.slice(0, 12);
-    } else if (v == null) {
-      out[field] = "";
-    } else {
-      out[field] = String(v);
-    }
-  }
-  return out;
-};
-
-const tabulate = (bundles: Bundle[]): string => {
-  if (bundles.length === 0) {
-    return ui.muted("(no bundles)");
-  }
-  return ui.table(LIST_COLUMNS, bundles.map(formatRow));
-};
-
-const formatReleaseReferenceIds = (
-  references: BundleReleaseReferences,
-): string => {
-  if (references.count === 0) return "-";
-  const visible = references.ids.slice(0, RELEASE_REFERENCE_ID_PREVIEW_LIMIT);
-  const remaining = references.count - visible.length;
-  return `${visible.map(ui.id).join(", ")}${
-    remaining > 0 ? ` (+${remaining} more)` : ""
-  }`;
-};
-
-const formatBundleSummary = (
-  bundle: Bundle,
-  references: BundleReleaseReferences,
-): string => {
+const formatBundleSummary = (bundle: Bundle): string => {
   const lines = [
     ui.kv("Platform", ui.platform(bundle.platform)),
-    ui.kv("ID", ui.id(bundle.id)),
+    ui.kv("File ID", ui.id(bundle.id)),
     ui.kv("File hash", ui.muted(bundle.fileHash)),
     ui.kv("Storage", ui.muted(bundle.storageUri)),
     bundle.manifestStorageUri
       ? ui.kv("Manifest", ui.muted(bundle.manifestStorageUri))
       : null,
     ui.kv("Patches", String(bundle.patches?.length ?? 0)),
-    ui.kv("Release references", String(references.count)),
-    references.count > 0
-      ? ui.kv("Release IDs", formatReleaseReferenceIds(references))
-      : null,
   ].filter((line): line is string => line !== null);
   return ui.block("Artifact", lines);
 };
@@ -199,66 +131,6 @@ const safeDispose = async (databasePlugin: BundleRepository): Promise<void> => {
   }
 };
 
-export const handleBundleList = async (options: BundleListOptions = {}) => {
-  if (!options.json) {
-    printBanner();
-  }
-
-  const config = await loadConfig(null);
-
-  const databasePlugin = config.database;
-  const database = createDatabaseClient(databasePlugin);
-  try {
-    const limit =
-      Number.isInteger(options.limit) && options.limit! > 0
-        ? options.limit!
-        : DEFAULT_LIMIT;
-    const result = await database.getBundles({
-      where: {
-        platform: options.platform,
-      },
-      limit,
-    });
-    console.log(
-      options.json ? JSON.stringify(result, null, 2) : tabulate(result.data),
-    );
-  } finally {
-    await safeDispose(databasePlugin);
-  }
-};
-
-export const handleBundleShow = async (
-  bundleId: string,
-  options: Pick<BundleMutationOptions, "json"> = {},
-) => {
-  if (!options.json) {
-    printBanner();
-  }
-
-  const config = await loadConfig(null);
-  const databasePlugin = config.database;
-  const database = createDatabaseClient(databasePlugin);
-  try {
-    const bundle = await database.getBundleById(bundleId);
-    if (!bundle) {
-      p.log.error(`No bundle with id ${bundleId}.`);
-      process.exit(1);
-    }
-
-    const references = await loadReleaseReferences(databasePlugin, bundleId);
-    if (options.json) {
-      console.log(
-        JSON.stringify({ ...bundle, releaseReferences: references }, null, 2),
-      );
-      return;
-    }
-
-    p.log.message(formatBundleSummary(bundle, references));
-  } finally {
-    await safeDispose(databasePlugin);
-  }
-};
-
 export const handleBundleDelete = async (
   bundleIds: string[],
   options: BundleDeleteOptions = {},
@@ -332,9 +204,7 @@ export const handleBundleDelete = async (
 
     const [firstTarget] = targets;
     if (firstTarget && targets.length === 1) {
-      p.log.message(
-        formatBundleSummary(firstTarget, targetReferences[0]!.references),
-      );
+      p.log.message(formatBundleSummary(firstTarget));
     } else {
       p.log.message(`${targets.length} bundle records will be deleted.`);
     }

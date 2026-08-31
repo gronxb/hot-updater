@@ -52,6 +52,13 @@ vi.mock("./specs/NativeHotUpdater", () => ({
 describe("notifyAppReady", () => {
   beforeEach(() => {
     vi.resetModules();
+    nativeModuleMock.getActiveUpdateState.mockReset();
+    nativeModuleMock.getActiveUpdateState.mockReturnValue({
+      activeSelection: null,
+      stableSelection: null,
+      verificationPending: false,
+      highestSeenCatalogs: {},
+    });
     nativeModuleMock.notifyAppReady.mockReset();
     nativeModuleMock.getBaseURL.mockReset();
     nativeModuleMock.getBundleId.mockReset();
@@ -120,6 +127,89 @@ describe("notifyAppReady", () => {
       stableSelection: selection,
       verificationPending: true,
     });
+  });
+
+  it("tracks same-file promotions without changing artifact or crash identities", async () => {
+    const state = {
+      activeSelection: {
+        kind: "BUNDLE",
+        bundleId: "bundle-123",
+        releaseId: "release-1",
+      },
+    };
+    nativeModuleMock.getActiveUpdateState.mockImplementation(() => state);
+    nativeModuleMock.getBundleId.mockReturnValue("bundle-123");
+    nativeModuleMock.getManifest.mockReturnValue({ assets: {} });
+    nativeModuleMock.getCrashHistory.mockReturnValue(["bundle-failed"]);
+    const { getUpdateId, getBundleId, getManifest, getCrashHistory } =
+      await import("./native");
+
+    expect(getUpdateId()).toBe("release-1");
+    state.activeSelection.releaseId = "release-2";
+    expect(getUpdateId()).toBe("release-2");
+    expect(getBundleId()).toBe("bundle-123");
+    expect(getManifest().bundleId).toBe("bundle-123");
+    expect(getCrashHistory()).toEqual(["bundle-failed"]);
+  });
+
+  it.each([
+    [null, "min-bundle-id"],
+    ["legacy-bundle", "legacy-bundle"],
+  ])(
+    "preserves the fallback ID for native bundle %s",
+    async (bundleId, expected) => {
+      nativeModuleMock.getBundleId.mockReturnValue(bundleId);
+      const { getUpdateId } = await import("./native");
+
+      expect(getUpdateId()).toBe(expected);
+    },
+  );
+
+  it("reports a staged update while the manifest still identifies the running file", async () => {
+    const runningSelection = {
+      kind: "BUNDLE",
+      bundleId: "running-file",
+      releaseId: "running-update",
+    };
+    const state = {
+      activeSelection: runningSelection,
+      stableSelection: runningSelection,
+    };
+    nativeModuleMock.getActiveUpdateState.mockImplementation(() => state);
+    nativeModuleMock.getBundleId.mockReturnValue("running-file");
+    nativeModuleMock.getManifest.mockReturnValue({
+      assets: {},
+      bundleId: "running-file",
+    });
+    const { getUpdateId, getBundleId, getManifest } = await import("./native");
+
+    expect(getUpdateId()).toBe("running-update");
+    state.activeSelection = {
+      kind: "BUNDLE",
+      bundleId: "staged-file",
+      releaseId: "staged-update",
+    };
+
+    expect(getUpdateId()).toBe("staged-update");
+    expect(getBundleId()).toBe("running-file");
+    expect(getManifest().bundleId).toBe("running-file");
+  });
+
+  it("reports an explicit built-in rollback by its update ID", async () => {
+    nativeModuleMock.getActiveUpdateState.mockReturnValue(
+      JSON.stringify({
+        activeSelection: {
+          kind: "EMBEDDED",
+          releaseId: "rollback-1",
+          bundleId: "min-bundle-id",
+        },
+      }),
+    );
+    nativeModuleMock.getBundleId.mockReturnValue(null);
+    const { getUpdateId, getBundleId } = await import("./native");
+
+    expect(getUpdateId()).toBe("rollback-1");
+    expect(getBundleId()).toBe("min-bundle-id");
   });
 
   it("normalizes legacy PROMOTED launch reports to UPDATE_APPLIED", async () => {

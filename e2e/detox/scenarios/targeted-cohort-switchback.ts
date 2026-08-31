@@ -72,7 +72,7 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert numeric cohort action result",
       "update-action-result",
-      "current-channel -> installed Release $numericReleaseId / Bundle $numericBundleId",
+      "current-channel -> installed ID $numericReleaseId",
       { exactText: true },
     );
     await app.control(

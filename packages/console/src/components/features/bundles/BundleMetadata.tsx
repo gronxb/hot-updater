@@ -1,12 +1,7 @@
-import {
-  getPatchBaseBundleId,
-  getPatchBaseFileHash,
-  getPatchFileHash,
-} from "@hot-updater/core";
+import { getPatchBaseFileHash, getPatchFileHash } from "@hot-updater/core";
 import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
 import { ExternalLink } from "lucide-react";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConfigQuery } from "@/lib/api";
@@ -28,7 +23,6 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 
 export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
   const { data: configData, isFetched } = useConfigQuery();
-  const patchBaseBundleId = bundle ? getPatchBaseBundleId(bundle) : null;
   const hbcPatchFileHash = bundle ? getPatchFileHash(bundle) : null;
   const hbcPatchBaseFileHash = bundle ? getPatchBaseFileHash(bundle) : null;
   const gitCommitUrl =
@@ -43,7 +37,6 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
     target ||
     bundle?.gitCommitHash ||
     bundle?.fileHash ||
-    patchBaseBundleId ||
     hbcPatchBaseFileHash ||
     hbcPatchFileHash;
 
@@ -98,18 +91,6 @@ export function BundleMetadata({ bundle, release }: BundleMetadataProps) {
               label="Bundle hash"
               value={
                 <HashValueDisplay maxLength={16} value={bundle.fileHash} />
-              }
-            />
-          ) : null}
-          {patchBaseBundleId ? (
-            <Row
-              label="Patch base"
-              value={
-                <BundleIdDisplay
-                  bundleId={patchBaseBundleId}
-                  fullOnMobile
-                  maxLength={18}
-                />
               }
             />
           ) : null}
