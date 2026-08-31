@@ -17,8 +17,6 @@ const SUPPORTED_ALGORITHMS = new Set<unknown>([
 export interface GoogleCloudKmsSigningOptions {
   /** Version-pinned Google Cloud KMS asymmetric signing key resource name. */
   readonly keyVersion: string;
-  /** Checked-in RSA SPKI public key used as the native trust anchor. */
-  readonly publicKeyPath: string;
 }
 
 interface GoogleCloudKmsClient {
@@ -152,17 +150,12 @@ const loadPublicKey = async (
 /** Creates a bundle signer backed by a version-pinned Google Cloud KMS key. */
 export const googleCloudKmsSigning = ({
   keyVersion,
-  publicKeyPath,
 }: GoogleCloudKmsSigningOptions): BundleSigningPlugin => {
   if (!KEY_VERSION_PATTERN.test(keyVersion)) {
     throw new Error(
       "Google Cloud KMS signing requires a version-pinned key resource name.",
     );
   }
-  if (!publicKeyPath.trim()) {
-    throw new Error("Google Cloud KMS signing public key path is required.");
-  }
-
   let clientPromise: Promise<GoogleCloudKmsClient> | undefined;
   const resolveClient = () => {
     if (clientPromise) return clientPromise;
@@ -189,7 +182,6 @@ export const googleCloudKmsSigning = ({
 
   return {
     name: "googleCloudKmsSigning",
-    publicKeyPath,
     async getPublicKey() {
       const { publicKey } = await resolveKey();
       return { publicKey };

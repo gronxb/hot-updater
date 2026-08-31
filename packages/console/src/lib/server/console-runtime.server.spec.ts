@@ -5,21 +5,19 @@ import { describe, expect, it, vi } from "vitest";
 import { sanitizeConsoleSigningConfig } from "./console-runtime.server";
 
 describe("Console signing config sanitization", () => {
-  it("keeps only the provider display name and public path", () => {
+  it("keeps only the provider display name", () => {
     const sign = vi.fn();
     const getPublicKey = vi.fn();
     const sanitized = sanitizeConsoleSigningConfig({
       getPublicKey,
       keyRef: "provider-secret-reference",
       name: "Managed signing",
-      publicKeyPath: "keys/public-key.pem",
       sign,
     });
 
     expect(sanitized).toEqual({
       enabled: true,
       provider: "Managed signing",
-      publicKeyPath: "keys/public-key.pem",
     });
     expect(sanitized).not.toHaveProperty("keyRef");
     expect(sanitized).not.toHaveProperty("privateKeyPath");
@@ -36,13 +34,11 @@ describe("Console signing config sanitization", () => {
     const sanitized = sanitizeConsoleSigningConfig({
       enabled: true,
       privateKeyPath: "/secret/private-key-canary.pem",
-      publicKeyPath: "keys/public-key.pem",
     });
 
     expect(sanitized).toEqual({
       enabled: true,
       provider: "localSigning",
-      publicKeyPath: "keys/public-key.pem",
     });
     expect(JSON.stringify(sanitized)).not.toContain("private-key-canary.pem");
   });
@@ -61,7 +57,7 @@ describe("Console signing config sanitization", () => {
     ).toBeUndefined();
   });
 
-  it("uses only the sibling public file for legacy local inspection", () => {
+  it("does not expose a local private key path", () => {
     const sanitized = sanitizeConsoleSigningConfig({
       enabled: true,
       privateKeyPath: "keys/private-canary.pem",
@@ -69,7 +65,6 @@ describe("Console signing config sanitization", () => {
     expect(sanitized).toEqual({
       enabled: true,
       provider: "localSigning",
-      publicKeyPath: "keys/public-key.pem",
     });
     expect(JSON.stringify(sanitized)).not.toContain("private-canary");
   });

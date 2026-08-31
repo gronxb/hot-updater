@@ -55,7 +55,10 @@ export interface SigningValidationResult {
  */
 export async function validateSigningConfig(
   config: ConfigResponse,
-  options: { readonly expectedPublicKey?: string } = {},
+  options: {
+    readonly expectedPublicKey?: string;
+    readonly nativePublicKey?: string | null;
+  } = {},
 ): Promise<SigningValidationResult> {
   const signingEnabled = config.signing !== undefined;
 
@@ -69,7 +72,7 @@ export async function validateSigningConfig(
     androidParser.exists(),
   ]);
 
-  const [iosResult, androidResult] = await Promise.all([
+  let [iosResult, androidResult] = await Promise.all([
     iosExists
       ? iosParser.get(IOS_KEY)
       : Promise.resolve({ value: null, paths: [] }),
@@ -77,6 +80,16 @@ export async function validateSigningConfig(
       ? androidParser.get(ANDROID_KEY)
       : Promise.resolve({ value: null, paths: [] }),
   ]);
+
+  const usesExternalNativeConfig = Object.hasOwn(options, "nativePublicKey");
+  if (!iosExists && !androidExists && usesExternalNativeConfig) {
+    const externalResult = {
+      value: options.nativePublicKey ?? null,
+      paths: ["Expo app config"],
+    };
+    iosResult = externalResult;
+    androidResult = externalResult;
+  }
 
   const issues: SigningConfigIssue[] = [];
 
@@ -98,29 +111,37 @@ export async function validateSigningConfig(
 
   if (signingEnabled) {
     // Signing enabled - check for missing public keys
-    if (!iosResult.value && iosExists) {
+    if (!iosResult.value && (iosExists || usesExternalNativeConfig)) {
       issues.push({
         type: "error",
         platform: "ios",
         code: "MISSING_PUBLIC_KEY",
-        message:
-          "Signing is enabled but HOT_UPDATER_PUBLIC_KEY is missing from Info.plist",
-        resolution:
-          "Run `npx hot-updater keys export-public` to add the public key, then rebuild your iOS app.",
+        message: usesExternalNativeConfig
+          ? "Signing is enabled but @hot-updater/expo publicKeyPath is missing"
+          : "Signing is enabled but HOT_UPDATER_PUBLIC_KEY is missing from Info.plist",
+        resolution: usesExternalNativeConfig
+          ? "Run `npx hot-updater keys export-public --output <path>`, configure that path in the Expo app plugin, then rebuild your app."
+          : "Run `npx hot-updater keys export-public` to add the public key, then rebuild your iOS app.",
       });
     }
-    if (!androidResult.value && androidExists) {
+    if (!androidResult.value && (androidExists || usesExternalNativeConfig)) {
       issues.push({
         type: "error",
         platform: "android",
         code: "MISSING_PUBLIC_KEY",
-        message:
-          "Signing is enabled but com.hotupdater.PUBLIC_KEY is missing from AndroidManifest.xml",
-        resolution:
-          "Run `npx hot-updater keys export-public` to add the public key, then rebuild your Android app.",
+        message: usesExternalNativeConfig
+          ? "Signing is enabled but @hot-updater/expo publicKeyPath is missing"
+          : "Signing is enabled but com.hotupdater.PUBLIC_KEY is missing from AndroidManifest.xml",
+        resolution: usesExternalNativeConfig
+          ? "Run `npx hot-updater keys export-public --output <path>`, configure that path in the Expo app plugin, then rebuild your app."
+          : "Run `npx hot-updater keys export-public` to add the public key, then rebuild your Android app.",
       });
     }
-    if (iosResult.value && iosExists && !publicKeysMatch(iosResult.value)) {
+    if (
+      iosResult.value &&
+      (iosExists || usesExternalNativeConfig) &&
+      !publicKeysMatch(iosResult.value)
+    ) {
       issues.push({
         type: "error",
         platform: "ios",
@@ -133,7 +154,7 @@ export async function validateSigningConfig(
     }
     if (
       androidResult.value &&
-      androidExists &&
+      (androidExists || usesExternalNativeConfig) &&
       !publicKeysMatch(androidResult.value)
     ) {
       issues.push({

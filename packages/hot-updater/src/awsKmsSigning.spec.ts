@@ -37,7 +37,6 @@ import { awsKmsSigning } from "./awsKmsSigning";
 
 const canonicalKeyId =
   "arn:aws:kms:us-east-1:123456789012:key/11111111-2222-3333-4444-555555555555";
-const publicKeyPath = "./keys/public-key.pem";
 const keyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const publicKeyDer = keyPair.publicKey.export({
   format: "der",
@@ -71,11 +70,10 @@ describe("awsKmsSigning", () => {
 
     const provider = awsKmsSigning({
       keyId: "alias/hot-updater-bundle-signing",
-      publicKeyPath,
       region: "us-east-1",
     });
 
-    expect(provider).toMatchObject({ name: "awsKmsSigning", publicKeyPath });
+    expect(provider).toMatchObject({ name: "awsKmsSigning" });
     expect(mocks.clientConstructor).not.toHaveBeenCalled();
 
     await expect(provider.sign({ message })).resolves.toEqual({
@@ -101,7 +99,6 @@ describe("awsKmsSigning", () => {
   it("caches the validated public key", async () => {
     const provider = awsKmsSigning({
       keyId: canonicalKeyId,
-      publicKeyPath,
       region: "us-east-1",
     });
 
@@ -121,7 +118,6 @@ describe("awsKmsSigning", () => {
     });
     const provider = awsKmsSigning({
       keyId: canonicalKeyId,
-      publicKeyPath,
       region: "us-east-1",
     });
 
@@ -143,7 +139,6 @@ describe("awsKmsSigning", () => {
       });
     const provider = awsKmsSigning({
       keyId: canonicalKeyId,
-      publicKeyPath,
       region: "us-east-1",
     });
 
@@ -156,7 +151,6 @@ describe("awsKmsSigning", () => {
     expect(() =>
       awsKmsSigning({
         keyId: canonicalKeyId,
-        publicKeyPath,
         region: " ",
       }),
     ).toThrow("region is required");
@@ -164,7 +158,6 @@ describe("awsKmsSigning", () => {
       awsKmsSigning({
         endpoint: "http://kms.example.com",
         keyId: canonicalKeyId,
-        publicKeyPath,
         region: "us-east-1",
       }),
     ).toThrow("must use HTTPS or an HTTP loopback URL");
@@ -172,7 +165,6 @@ describe("awsKmsSigning", () => {
       awsKmsSigning({
         endpoint: "http://127.0.0.1:4566",
         keyId: canonicalKeyId,
-        publicKeyPath,
         region: "us-east-1",
       }),
     ).not.toThrow();
@@ -182,7 +174,6 @@ describe("awsKmsSigning", () => {
   it("rejects messages outside the signing contract without loading the SDK", async () => {
     const provider = awsKmsSigning({
       keyId: canonicalKeyId,
-      publicKeyPath,
       region: "us-east-1",
     });
 

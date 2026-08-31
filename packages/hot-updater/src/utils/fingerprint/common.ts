@@ -1,4 +1,4 @@
-import { loadConfig, p } from "@hot-updater/cli-tools";
+import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
 import type { FingerprintExtraSources } from "@hot-updater/plugin-core";
 
 import { isExpo } from "../expoDetection";
@@ -8,7 +8,29 @@ import {
   resolveExtraSources,
 } from "./processExtraSources";
 
-export const ensureFingerprintConfig = async () => {
+export const appendFingerprintExtraSources = (
+  extraSources: FingerprintExtraSources | undefined,
+  additions: readonly string[],
+): FingerprintExtraSources | undefined => {
+  if (additions.length === 0) return extraSources;
+
+  const append = (sources: readonly string[] = []) => [
+    ...new Set([...sources, ...additions]),
+  ];
+
+  if (!extraSources || Array.isArray(extraSources)) {
+    return append(extraSources);
+  }
+
+  return {
+    ios: append(extraSources.ios),
+    android: append(extraSources.android),
+  };
+};
+
+export const ensureFingerprintConfig = async (
+  additionalExtraSources?: readonly string[],
+) => {
   const config = await loadConfig(null);
   if (config.updateStrategy === "appVersion") {
     p.log.error(
@@ -16,7 +38,20 @@ export const ensureFingerprintConfig = async () => {
     );
     process.exit(1);
   }
-  return config.fingerprint;
+  let nativeExtraSources = additionalExtraSources;
+  if (nativeExtraSources === undefined) {
+    const buildPlugin = await config.build({ cwd: getCwd() });
+    nativeExtraSources =
+      (await buildPlugin.nativeBuild?.getFingerprintExtraSources?.()) ?? [];
+  }
+
+  return {
+    ...config.fingerprint,
+    extraSources: appendFingerprintExtraSources(
+      config.fingerprint.extraSources,
+      nativeExtraSources,
+    ),
+  };
 };
 
 /**

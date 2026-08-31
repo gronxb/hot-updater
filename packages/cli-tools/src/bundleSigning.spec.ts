@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getBundleSigningPublicKey,
   prepareBundleSigning,
+  readBundleSigningPublicKeyFile,
 } from "./bundleSigning";
 
 const tempDirs: string[] = [];
@@ -64,51 +65,14 @@ describe("prepareBundleSigning", () => {
     );
   });
 
-  it("checks an explicit local public key pin and never falls back from a bad pin", async () => {
-    const cwd = await createTempDir();
-    const local = createKeyPair();
-    await fs.writeFile(path.join(cwd, "private.pem"), local.privateKey);
-    const signing = {
-      enabled: true,
-      privateKeyPath: "private.pem",
-      publicKeyPath: "public.pem",
-    } as const;
-    await expect(prepareBundleSigning(signing, { cwd })).rejects.toThrow(
-      "Failed to read",
-    );
-    await fs.writeFile(path.join(cwd, "public.pem"), createKeyPair().publicKey);
-    await expect(prepareBundleSigning(signing, { cwd })).rejects.toThrow(
-      "does not match publicKeyPath",
-    );
-    await fs.writeFile(path.join(cwd, "public.pem"), local.publicKey);
-    await expect(prepareBundleSigning(signing, { cwd })).resolves.toMatchObject(
-      { publicKey: local.publicKey },
-    );
-  });
-
-  it("still requires a public key pin for signing plugins", async () => {
-    const plugin = {
-      name: "unconfigured",
-      getPublicKey: vi.fn(),
-      sign: vi.fn(),
-    };
-    await expect(prepareBundleSigning(plugin as never)).rejects.toThrow(
-      "Bundle signing must be",
-    );
-    expect(plugin.getPublicKey).not.toHaveBeenCalled();
-    expect(plugin.sign).not.toHaveBeenCalled();
-  });
-
-  it("pins the provider public key and memoizes each file hash", async () => {
+  it("uses the provider public key and memoizes each file hash", async () => {
     const dir = await createTempDir();
     const { privateKey, publicKey } = createKeyPair();
-    await fs.writeFile(path.join(dir, "public.pem"), publicKey);
     const sign = vi.fn(async ({ message }: { message: Uint8Array }) => ({
       signature: crypto.sign("RSA-SHA256", message, privateKey),
     }));
     const provider = {
       name: "test-provider",
-      publicKeyPath: "public.pem",
       getPublicKey: vi.fn(async () => ({ publicKey })),
       sign,
     } satisfies BundleSigningPlugin;
@@ -130,24 +94,6 @@ describe("prepareBundleSigning", () => {
     expect(provider.getPublicKey).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects a provider that does not match publicKeyPath", async () => {
-    const dir = await createTempDir();
-    const configured = createKeyPair();
-    const providerKey = createKeyPair();
-    await fs.writeFile(path.join(dir, "public.pem"), configured.publicKey);
-    const provider = {
-      name: "wrong-provider",
-      publicKeyPath: "public.pem",
-      getPublicKey: async () => ({ publicKey: providerKey.publicKey }),
-      sign: vi.fn(async () => ({ signature: new Uint8Array([1]) })),
-    } satisfies BundleSigningPlugin;
-
-    await expect(prepareBundleSigning(provider, { cwd: dir })).rejects.toThrow(
-      "Bundle signing provider public key does not match publicKeyPath.",
-    );
-    expect(provider.sign).not.toHaveBeenCalled();
-  });
-
   it("rejects non-SPKI provider public keys", async () => {
     const dir = await createTempDir();
     const keyPair = crypto.generateKeyPairSync("rsa", {
@@ -159,10 +105,8 @@ describe("prepareBundleSigning", () => {
       .createPublicKey(keyPair.privateKey)
       .export({ type: "pkcs1", format: "pem" })
       .toString();
-    await fs.writeFile(path.join(dir, "public.pem"), keyPair.publicKey);
     const provider = {
       name: "pkcs1-provider",
-      publicKeyPath: "public.pem",
       getPublicKey: async () => ({ publicKey: pkcs1PublicKey }),
       sign: async () => ({ signature: new Uint8Array([1]) }),
     } satisfies BundleSigningPlugin;
@@ -179,10 +123,8 @@ describe("prepareBundleSigning", () => {
       publicKeyEncoding: { type: "spki", format: "pem" },
       privateKeyEncoding: { type: "pkcs8", format: "pem" },
     });
-    await fs.writeFile(path.join(dir, "public.pem"), weakKeyPair.publicKey);
     const provider = {
       name: "weak-provider",
-      publicKeyPath: "public.pem",
       getPublicKey: async () => ({ publicKey: weakKeyPair.publicKey }),
       sign: async ({ message }) => ({
         signature: crypto.sign("RSA-SHA256", message, weakKeyPair.privateKey),
@@ -197,10 +139,8 @@ describe("prepareBundleSigning", () => {
   it("validates hashes and verifies every provider signature", async () => {
     const dir = await createTempDir();
     const { publicKey } = createKeyPair();
-    await fs.writeFile(path.join(dir, "public.pem"), publicKey);
     const provider = {
       name: "invalid-signature",
-      publicKeyPath: "public.pem",
       getPublicKey: async () => ({ publicKey }),
       sign: vi.fn(async () => ({ signature: new Uint8Array([1, 2, 3]) })),
     } satisfies BundleSigningPlugin;
@@ -215,14 +155,9 @@ describe("prepareBundleSigning", () => {
     );
   });
 
-  it("does not include key material or paths in provider errors", async () => {
-    const dir = await createTempDir();
-    const publicKeyPath = path.join(dir, "public-secret-name.pem");
-    const { publicKey } = createKeyPair();
-    await fs.writeFile(publicKeyPath, publicKey);
+  it("does not include provider key material in errors", async () => {
     const provider = {
       name: "test-provider",
-      publicKeyPath,
       getPublicKey: async () => {
         throw new Error("PRIVATE KEY CANARY");
       },
@@ -241,16 +176,13 @@ describe("prepareBundleSigning", () => {
       "Failed to resolve the bundle signing provider public key.",
     );
     expect((error as Error).message).not.toContain("PRIVATE KEY CANARY");
-    expect((error as Error).message).not.toContain(publicKeyPath);
   });
 
   it("redacts signing provider failures", async () => {
     const dir = await createTempDir();
     const { publicKey } = createKeyPair();
-    await fs.writeFile(path.join(dir, "public.pem"), publicKey);
     const provider = {
       name: "test-provider",
-      publicKeyPath: "public.pem",
       getPublicKey: async () => ({ publicKey }),
       sign: async () => {
         throw new Error("PRIVATE KEY CANARY");
@@ -268,7 +200,7 @@ describe("prepareBundleSigning", () => {
 });
 
 describe("getBundleSigningPublicKey", () => {
-  it("resolves the v0 local private key and then the generated public-only fallback", async () => {
+  it("derives the local public key only from the configured private key", async () => {
     const cwd = await createTempDir();
     const { privateKey, publicKey } = createKeyPair();
     const signing = {
@@ -281,34 +213,39 @@ describe("getBundleSigningPublicKey", () => {
     );
     await fs.unlink(path.join(cwd, "private-key.pem"));
     await fs.writeFile(path.join(cwd, "public-key.pem"), publicKey);
-    await expect(getBundleSigningPublicKey(signing, { cwd })).resolves.toBe(
-      publicKey,
-    );
-    await expect(prepareBundleSigning(signing, { cwd })).rejects.toThrow(
+    await expect(getBundleSigningPublicKey(signing, { cwd })).rejects.toThrow(
       "Failed to resolve",
     );
   });
 
-  it("uses an explicit local public key without private-key access and fails closed", async () => {
+  it("returns null when signing is disabled", async () => {
     const cwd = await createTempDir();
-    const { publicKey } = createKeyPair();
-    const signing = {
-      enabled: true,
-      privateKeyPath: "/missing/private-key.pem",
-      publicKeyPath: "public.pem",
-    } as const;
-    await fs.writeFile(path.join(cwd, "public.pem"), publicKey);
-    await expect(getBundleSigningPublicKey(signing, { cwd })).resolves.toBe(
-      publicKey,
-    );
-    await expect(
-      getBundleSigningPublicKey(
-        { ...signing, publicKeyPath: "missing.pem" },
-        { cwd },
-      ),
-    ).rejects.toThrow("Failed to read");
     await expect(
       getBundleSigningPublicKey({ enabled: false }, { cwd }),
     ).resolves.toBeNull();
+  });
+});
+
+describe("readBundleSigningPublicKeyFile", () => {
+  it("loads and canonicalizes an Expo native trust anchor", async () => {
+    const cwd = await createTempDir();
+    const { publicKey } = createKeyPair();
+    await fs.writeFile(path.join(cwd, "public.pem"), publicKey);
+
+    await expect(
+      readBundleSigningPublicKeyFile("public.pem", { cwd }),
+    ).resolves.toBe(publicKey);
+  });
+
+  it("rejects missing and invalid public key files without exposing paths", async () => {
+    const cwd = await createTempDir();
+    await fs.writeFile(path.join(cwd, "invalid.pem"), "not a public key");
+
+    await expect(
+      readBundleSigningPublicKeyFile("invalid.pem", { cwd }),
+    ).rejects.toThrow("Failed to read the bundle signing public key file.");
+    await expect(
+      readBundleSigningPublicKeyFile("secret-path.pem", { cwd }),
+    ).rejects.not.toThrow("secret-path.pem");
   });
 });

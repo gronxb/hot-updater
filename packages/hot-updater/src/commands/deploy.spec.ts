@@ -7,6 +7,12 @@ const { mockBuildPlugin, mockCli, mockServer, mockStoragePlugin } = vi.hoisted(
     const mockBuildPlugin = {
       build: vi.fn(),
       name: "mock-build",
+      nativeBuild: undefined as
+        | {
+            getBundleSigningPublicKey: ReturnType<typeof vi.fn>;
+            getFingerprintExtraSources?: ReturnType<typeof vi.fn>;
+          }
+        | undefined,
     };
     const mockStoragePlugin = {
       delete: vi.fn(),
@@ -173,6 +179,11 @@ vi.mock("@/utils/bundleManifest", () => ({
 }));
 
 vi.mock("@/utils/fingerprint", () => ({
+  appendFingerprintExtraSources: vi.fn((extraSources, additions) =>
+    additions.length > 0
+      ? [...(Array.isArray(extraSources) ? extraSources : []), ...additions]
+      : extraSources,
+  ),
   isFingerprintEquals: vi.fn(),
   nativeFingerprint: vi.fn(),
   readLocalFingerprint: vi.fn(),
@@ -259,7 +270,6 @@ const TRANSFER_FILE_HASH = "b".repeat(64);
 const mockSigningPlugin = {
   getPublicKey: vi.fn(async () => ({ publicKey: "public-key" })),
   name: "mock-signing",
-  publicKeyPath: "/mock/public.pem",
   sign: vi.fn(async () => ({ signature: new Uint8Array([1]) })),
 };
 
@@ -371,6 +381,7 @@ describe("deploy rollout wiring", () => {
       bundleId: "bundle-123",
       stdout: null,
     });
+    mockBuildPlugin.nativeBuild = undefined;
     mockStoragePlugin.put.mockImplementation(async ({ key }) => ({
       storageUri: `s3://bundles/${key}`,
     }));
@@ -1223,6 +1234,42 @@ describe("deploy rollout wiring", () => {
 
     expect(buildOutputOrder).toBeGreaterThanOrEqual(0);
     expect(signingOrder).toBeGreaterThanOrEqual(0);
+  });
+
+  it("validates an Expo CNG trust anchor against the signing provider", async () => {
+    const getBundleSigningPublicKey = vi.fn(async () => ({
+      publicKey: "expo-public-key",
+    }));
+    mockBuildPlugin.nativeBuild = { getBundleSigningPublicKey };
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      compressStrategy: "tar.br",
+      database: databasePlugin,
+      fingerprint: {},
+      patch: { enabled: true, maxBaseBundles: 3 },
+      signing: mockSigningPlugin,
+      storage: mockStoragePlugin,
+      updateStrategy: "appVersion",
+    });
+    mockCli.prepareBundleSigning.mockResolvedValue({
+      name: "provider",
+      publicKey: "provider-public-key",
+      signFileHash: vi.fn(async () => "signature"),
+    });
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(getBundleSigningPublicKey).toHaveBeenCalledOnce();
+    expect(validateSigningConfig).toHaveBeenCalledWith(expect.anything(), {
+      expectedPublicKey: "provider-public-key",
+      nativePublicKey: "expo-public-key",
+    });
   });
 
   it("fails before build or upload when the signing provider cannot be prepared", async () => {

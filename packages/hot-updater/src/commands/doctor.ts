@@ -578,7 +578,27 @@ async function checkNativeStatus({
     fs.existsSync(path.join(cwd, "android"));
 
   if (!hasNativeDirectories) {
-    return undefined;
+    const config = await loadConfig(null);
+    const buildPlugin = await config.build({ cwd });
+    const getNativeSigningPublicKey =
+      buildPlugin.nativeBuild?.getBundleSigningPublicKey;
+    if (!getNativeSigningPublicKey) return undefined;
+
+    const [nativeSigningPublicKey, expectedSigningPublicKey] =
+      await Promise.all([
+        getNativeSigningPublicKey(),
+        getBundleSigningPublicKey(config.signing, { cwd }).catch(
+          () => "invalid configured bundle signing public key",
+        ),
+      ]);
+    const signing = await validateSigningConfig(config, {
+      expectedPublicKey: expectedSigningPublicKey ?? undefined,
+      nativePublicKey: nativeSigningPublicKey?.publicKey ?? null,
+    });
+    return {
+      updateStrategy: config.updateStrategy,
+      issues: signing.issues.map(toNativeIssue),
+    };
   }
 
   const config = await loadConfig(null);

@@ -7,8 +7,6 @@ const SIGNING_ALGORITHM = "RSASSA_PKCS1_V1_5_SHA_256" as const;
 export interface AwsKmsSigningOptions {
   /** AWS KMS asymmetric RSA signing key ARN, ID, or alias. */
   readonly keyId: string;
-  /** Checked-in RSA SPKI public key used as the native trust anchor. */
-  readonly publicKeyPath: string;
   /** AWS region containing the signing key. */
   readonly region: string;
   /** Explicit HTTPS KMS endpoint, or an HTTP loopback endpoint for tests. */
@@ -167,14 +165,10 @@ const loadPublicKey = async (
 export const awsKmsSigning = ({
   endpoint,
   keyId,
-  publicKeyPath,
   region,
 }: AwsKmsSigningOptions): BundleSigningPlugin => {
   if (!keyId.trim()) {
     throw new Error("AWS KMS signing key ID is required.");
-  }
-  if (!publicKeyPath.trim()) {
-    throw new Error("AWS KMS signing public key path is required.");
   }
   if (!region.trim()) {
     throw new Error("AWS KMS signing region is required.");
@@ -216,7 +210,6 @@ export const awsKmsSigning = ({
 
   return {
     name: "awsKmsSigning",
-    publicKeyPath,
     async getPublicKey() {
       const { publicKey } = await resolveKey();
       return { publicKey };

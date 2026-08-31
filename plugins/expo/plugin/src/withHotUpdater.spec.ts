@@ -5,7 +5,7 @@ import path from "node:path";
 
 import * as cliTools from "@hot-updater/cli-tools";
 import { XML } from "expo/config-plugins";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { transformAndroid, transformIOS } from "./transformers";
 import withHotUpdater, { getPublicKeyFromConfig } from "./withHotUpdater";
@@ -34,134 +34,33 @@ afterEach(async () => {
 });
 
 describe("getPublicKeyFromConfig", () => {
-  beforeEach(() => vi.stubEnv("HOT_UPDATER_PRIVATE_KEY", ""));
-  it("returns null when signing is omitted", async () => {
+  it("returns null when the Expo plugin public key is omitted", async () => {
     await expect(getPublicKeyFromConfig(undefined)).resolves.toBeNull();
-    vi.stubEnv("HOT_UPDATER_PRIVATE_KEY", "invalid-private-key");
-    await expect(
-      getPublicKeyFromConfig({ enabled: false }),
-    ).resolves.toBeNull();
-    await expect(
-      getPublicKeyFromConfig({
-        enabled: false,
-        privateKeyPath: "/missing/key.pem",
-      }),
-    ).resolves.toBeNull();
+    vi.stubEnv("HOT_UPDATER_PRIVATE_KEY", createKeyPair().privateKey);
+    await expect(getPublicKeyFromConfig(undefined)).resolves.toBeNull();
   });
 
-  it.each(["private", "public"])(
-    "supports v0 local config with only the %s key file",
-    async (source) => {
-      const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-local-key-"));
-      tempDirs.push(dir);
-      const { privateKey, publicKey } = createKeyPair();
-      await writeFile(
-        path.join(dir, `${source}-key.pem`),
-        source === "private" ? privateKey : publicKey,
-      );
-      await expect(
-        getPublicKeyFromConfig({
-          enabled: true,
-          privateKeyPath: path.join(dir, "private-key.pem"),
-        }),
-      ).resolves.toBe(publicKey.trim());
-    },
-  );
-
-  it.each(["pem", "path"])(
-    "preserves the v0 EAS environment key supplied as %s",
-    async (source) => {
-      const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-env-key-"));
-      tempDirs.push(dir);
-      const { privateKey, publicKey } = createKeyPair();
-      const privateKeyPath = path.join(dir, "env-key.pem");
-      await writeFile(privateKeyPath, privateKey);
-      vi.stubEnv(
-        "HOT_UPDATER_PRIVATE_KEY",
-        source === "pem" ? privateKey : privateKeyPath,
-      );
-      await expect(
-        getPublicKeyFromConfig({
-          enabled: true,
-          privateKeyPath: "/missing/private-key.pem",
-        }),
-      ).resolves.toBe(publicKey.trim());
-    },
-  );
-
-  it("honors an explicit local public pin instead of environment or private keys", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-local-pin-"));
-    tempDirs.push(dir);
-    const { publicKey } = createKeyPair();
-    const other = createKeyPair();
-    const publicKeyPath = path.join(dir, "public-key.pem");
-    await writeFile(publicKeyPath, publicKey);
-    vi.stubEnv("HOT_UPDATER_PRIVATE_KEY", other.privateKey);
-    const signing = {
-      enabled: true,
-      privateKeyPath: "/missing/key.pem",
-      publicKeyPath,
-    } as const;
-    await expect(getPublicKeyFromConfig(signing)).resolves.toBe(
-      publicKey.trim(),
-    );
-    await expect(
-      getPublicKeyFromConfig({
-        ...signing,
-        publicKeyPath: path.join(dir, "missing.pem"),
-      }),
-    ).rejects.toThrow("Failed to load publicKeyPath");
-  });
-
-  it("uses publicKeyPath without accessing the signing provider", async () => {
+  it("loads publicKeyPath relative to the Expo project root", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-public-key-"));
     tempDirs.push(dir);
     const { publicKey } = createKeyPair();
-    const publicKeyPath = path.join(dir, "public-key.pem");
-    const provider = {
-      getPublicKey: vi.fn(),
-      name: "remoteSigner",
-      publicKeyPath,
-      sign: vi.fn(),
-    };
+    await writeFile(path.join(dir, "public-key.pem"), publicKey);
 
-    await writeFile(publicKeyPath, publicKey);
-
-    await expect(getPublicKeyFromConfig(provider)).resolves.toBe(
+    await expect(getPublicKeyFromConfig("public-key.pem", dir)).resolves.toBe(
       publicKey.trim(),
     );
-    expect(provider.getPublicKey).not.toHaveBeenCalled();
-    expect(provider.sign).not.toHaveBeenCalled();
   });
 
-  it("rejects an invalid publicKeyPath without accessing the signer", async () => {
-    const provider = {
-      getPublicKey: vi.fn(),
-      name: "remoteSigner",
-      publicKeyPath: "/missing/provider-public-key.pem",
-      sign: vi.fn(),
-    };
-
-    await expect(getPublicKeyFromConfig(provider)).rejects.toThrow(
-      "Failed to load publicKeyPath for bundle signing.",
-    );
-    expect(provider.getPublicKey).not.toHaveBeenCalled();
-    expect(provider.sign).not.toHaveBeenCalled();
+  it("rejects a missing publicKeyPath", async () => {
+    await expect(
+      getPublicKeyFromConfig("/missing/provider-public-key.pem"),
+    ).rejects.toThrow("Failed to load publicKeyPath for bundle signing.");
   });
 
   it("rejects an empty publicKeyPath", async () => {
-    const provider = {
-      getPublicKey: vi.fn(),
-      name: "remoteSigner",
-      publicKeyPath: "",
-      sign: vi.fn(),
-    };
-
-    await expect(getPublicKeyFromConfig(provider)).rejects.toThrow(
+    await expect(getPublicKeyFromConfig("")).rejects.toThrow(
       "Failed to load publicKeyPath for bundle signing.",
     );
-    expect(provider.getPublicKey).not.toHaveBeenCalled();
-    expect(provider.sign).not.toHaveBeenCalled();
   });
 
   it("rejects a private PEM passed as publicKeyPath", async () => {
@@ -169,19 +68,11 @@ describe("getPublicKeyFromConfig", () => {
     tempDirs.push(dir);
     const { privateKey } = createKeyPair();
     const publicKeyPath = path.join(dir, "public-key.pem");
-    const provider = {
-      getPublicKey: vi.fn(),
-      name: "remoteSigner",
-      publicKeyPath,
-      sign: vi.fn(),
-    };
     await writeFile(publicKeyPath, privateKey);
 
-    await expect(getPublicKeyFromConfig(provider)).rejects.toThrow(
+    await expect(getPublicKeyFromConfig(publicKeyPath)).rejects.toThrow(
       "Failed to load publicKeyPath for bundle signing.",
     );
-    expect(provider.getPublicKey).not.toHaveBeenCalled();
-    expect(provider.sign).not.toHaveBeenCalled();
   });
 
   it("rejects an RSA public key weaker than 2048 bits", async () => {
@@ -193,39 +84,33 @@ describe("getPublicKeyFromConfig", () => {
       publicKeyEncoding: { format: "pem", type: "spki" },
     });
     const publicKeyPath = path.join(dir, "public-key.pem");
-    const provider = {
-      getPublicKey: vi.fn(),
-      name: "remoteSigner",
-      publicKeyPath,
-      sign: vi.fn(),
-    };
     await writeFile(publicKeyPath, publicKey);
 
-    await expect(getPublicKeyFromConfig(provider)).rejects.toThrow(
+    await expect(getPublicKeyFromConfig(publicKeyPath)).rejects.toThrow(
       "Failed to load publicKeyPath for bundle signing.",
     );
-    expect(provider.getPublicKey).not.toHaveBeenCalled();
   });
 });
 
 describe("withHotUpdater - Test Cases", () => {
   describe("Android", () => {
     it("escapes signing key newlines in AndroidManifest metadata", async () => {
-      const { privateKey, publicKey } = createKeyPair();
-      vi.stubEnv("HOT_UPDATER_PRIVATE_KEY", privateKey);
+      const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-expo-mod-"));
+      tempDirs.push(dir);
+      const { publicKey } = createKeyPair();
+      await writeFile(path.join(dir, "public-key.pem"), publicKey);
       vi.spyOn(cliTools, "loadConfig").mockResolvedValue({
-        signing: {
-          enabled: true,
-          privateKeyPath: "/missing/private-key.pem",
-        },
         updateStrategy: "appVersion",
       } as Awaited<ReturnType<typeof cliTools.loadConfig>>);
 
-      const config = withHotUpdater({
-        _internal: { projectRoot: "/tmp/hot-updater-test" },
-        name: "Hot Updater Test",
-        slug: "hot-updater-test",
-      });
+      const config = withHotUpdater(
+        {
+          _internal: { projectRoot: dir },
+          name: "Hot Updater Test",
+          slug: "hot-updater-test",
+        },
+        { publicKeyPath: "public-key.pem" },
+      );
       const manifestMod = config.mods?.android?.manifest;
       expect(manifestMod).toBeTypeOf("function");
       if (!manifestMod) {
@@ -245,8 +130,8 @@ describe("withHotUpdater - Test Cases", () => {
           introspect: true,
           modName: "manifest",
           platform: "android",
-          platformProjectRoot: "/tmp/hot-updater-test/android",
-          projectRoot: "/tmp/hot-updater-test",
+          platformProjectRoot: path.join(dir, "android"),
+          projectRoot: dir,
         },
         modResults,
       });

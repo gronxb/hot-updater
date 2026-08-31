@@ -1,8 +1,3 @@
-import { createPrivateKey, createPublicKey } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import path from "path";
-
-import type { SigningConfig } from "@hot-updater/plugin-core";
 import type { ExpoConfig } from "expo/config";
 import {
   XML,
@@ -20,27 +15,6 @@ import { transformAndroid, transformIOS } from "./transformers";
 
 const loadCliTools = () => import("@hot-updater/cli-tools");
 const loadHotUpdater = () => import("hot-updater");
-
-const canonicalizeRsaSpkiPublicKey = (publicKeyPem: string): string => {
-  const trimmed = publicKeyPem.trim();
-  if (
-    !trimmed.startsWith("-----BEGIN PUBLIC KEY-----") ||
-    !trimmed.endsWith("-----END PUBLIC KEY-----") ||
-    trimmed.includes("PRIVATE KEY")
-  ) {
-    throw new Error("not spki");
-  }
-
-  const publicKey = createPublicKey(trimmed);
-  if (
-    publicKey.asymmetricKeyType !== "rsa" ||
-    (publicKey.asymmetricKeyDetails?.modulusLength ?? 0) < 2048
-  ) {
-    throw new Error("not rsa");
-  }
-
-  return publicKey.export({ format: "pem", type: "spki" }).toString().trim();
-};
 
 const ANDROID_META_DATA_KEYS = {
   channel: "com.hotupdater.CHANNEL",
@@ -102,62 +76,42 @@ type Fingerprints = Awaited<
   ReturnType<Awaited<ReturnType<typeof loadHotUpdater>>["generateFingerprints"]>
 >;
 
-let fingerprintCache: Fingerprints | null = null;
+let fingerprintCache: {
+  readonly publicKeyPath: string | undefined;
+  readonly value: Fingerprints;
+} | null = null;
 
-const getFingerprint = async () => {
-  if (fingerprintCache) {
-    return fingerprintCache;
+const getFingerprint = async (publicKeyPath: string | undefined) => {
+  const cached = fingerprintCache;
+  if (cached && cached.publicKeyPath === publicKeyPath) {
+    return cached.value;
   }
 
   const { createFingerprintJSON, generateFingerprints } =
     await loadHotUpdater();
-  fingerprintCache = await generateFingerprints();
-  await createFingerprintJSON(fingerprintCache);
-  return fingerprintCache;
+  const value = await generateFingerprints(
+    publicKeyPath === undefined ? [] : [publicKeyPath],
+  );
+  fingerprintCache = { publicKeyPath, value };
+  await createFingerprintJSON(value);
+  return value;
 };
 
-/** Uses public-key-only configuration, or the v0 local key sources when omitted. */
+/** Reads the native trust anchor configured by the Expo app. */
 export const getPublicKeyFromConfig = async (
-  signingConfig: SigningConfig | undefined,
+  publicKeyPath: string | undefined,
+  projectRoot = process.cwd(),
 ): Promise<string | null> => {
-  if (
-    !signingConfig ||
-    ("enabled" in signingConfig && !signingConfig.enabled)
-  ) {
-    return null;
-  }
-
-  // Retain the v0 EAS key source only for local configs without an explicit pin.
-  if ("enabled" in signingConfig && signingConfig.publicKeyPath === undefined) {
-    const envPrivateKey = process.env.HOT_UPDATER_PRIVATE_KEY;
-    if (envPrivateKey) {
-      try {
-        const pem = envPrivateKey.includes("-----BEGIN")
-          ? envPrivateKey
-          : await readFile(path.resolve(process.cwd(), envPrivateKey), "utf8");
-        return canonicalizeRsaSpkiPublicKey(
-          createPublicKey(createPrivateKey(pem))
-            .export({ format: "pem", type: "spki" })
-            .toString(),
-        );
-      } catch {
-        // As in v0, try the configured local files if the environment source fails.
-      }
-    }
-  }
+  if (publicKeyPath === undefined) return null;
 
   try {
-    const { getBundleSigningPublicKey } = await loadCliTools();
+    const { readBundleSigningPublicKeyFile } = await loadCliTools();
     return (
-      (
-        await getBundleSigningPublicKey(signingConfig, { cwd: process.cwd() })
-      )?.trim() ?? null
-    );
+      await readBundleSigningPublicKeyFile(publicKeyPath, { cwd: projectRoot })
+    ).trim();
   } catch {
     throw new Error(
-      signingConfig.publicKeyPath !== undefined
-        ? "[hot-updater] Failed to load publicKeyPath for bundle signing."
-        : "[hot-updater] Failed to load public key for bundle signing.",
+      "[hot-updater] Failed to load publicKeyPath for bundle signing.",
     );
   }
 };
@@ -165,6 +119,7 @@ export const getPublicKeyFromConfig = async (
 // Type definitions
 type HotUpdaterConfig = {
   channel?: string;
+  publicKeyPath?: string;
 };
 
 /**
@@ -213,10 +168,11 @@ const withHotUpdaterConfigAsync =
       return hotUpdaterConfigPromise;
     };
     let publicKeyPromise: Promise<string | null> | undefined;
-    const getPublicKey = async () => {
+    const getPublicKey = async (projectRoot: string) => {
       if (!publicKeyPromise) {
-        publicKeyPromise = getHotUpdaterConfig().then(($config) =>
-          getPublicKeyFromConfig($config.signing),
+        publicKeyPromise = getPublicKeyFromConfig(
+          props.publicKeyPath,
+          projectRoot,
         );
       }
       return publicKeyPromise;
@@ -229,12 +185,12 @@ const withHotUpdaterConfigAsync =
       let fingerprintHash = null;
       const hotUpdaterConfig = await getHotUpdaterConfig();
       if (hotUpdaterConfig.updateStrategy !== "appVersion") {
-        const fingerprint = await getFingerprint();
+        const fingerprint = await getFingerprint(props.publicKeyPath);
         fingerprintHash = fingerprint.ios.hash;
       }
 
       // Load public key if signing is enabled
-      const publicKey = await getPublicKey();
+      const publicKey = await getPublicKey(cfg.modRequest.projectRoot);
 
       cfg.modResults.HOT_UPDATER_CHANNEL = channel;
       if (fingerprintHash) {
@@ -253,12 +209,12 @@ const withHotUpdaterConfigAsync =
       let fingerprintHash = null;
       const hotUpdaterConfig = await getHotUpdaterConfig();
       if (hotUpdaterConfig.updateStrategy !== "appVersion") {
-        const fingerprint = await getFingerprint();
+        const fingerprint = await getFingerprint(props.publicKeyPath);
         fingerprintHash = fingerprint.android.hash;
       }
 
       // Load public key if signing is enabled
-      const publicKey = await getPublicKey();
+      const publicKey = await getPublicKey(cfg.modRequest.projectRoot);
 
       const application = cfg.modResults.manifest.application?.[0];
       if (!application) {

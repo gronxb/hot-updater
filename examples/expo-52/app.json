@@ -27,7 +27,8 @@
       [
         "@hot-updater/expo",
         {
-          "channel": "production"
+          "channel": "production",
+          "publicKeyPath": "./keys/public-key.pem"
         }
       ]
     ],

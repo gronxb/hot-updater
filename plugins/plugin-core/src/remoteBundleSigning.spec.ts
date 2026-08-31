@@ -19,7 +19,6 @@ import {
 const TOKEN = "dedicated-signing-token";
 const ENDPOINT = "https://updates.example.com/functions/v1/update-server";
 const ENDPOINT_PATH = `/functions/v1/update-server${REMOTE_BUNDLE_SIGNING_PATH}`;
-const PUBLIC_KEY_PATH = "keys/public-key.pem";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -71,7 +70,6 @@ const createPlugin = (fetch: typeof globalThis.fetch) =>
   remoteSigning({
     endpoint: ENDPOINT,
     fetch,
-    publicKeyPath: PUBLIC_KEY_PATH,
     signingToken: () => TOKEN,
   });
 
@@ -120,7 +118,6 @@ describe("remote bundle signing client", () => {
     const plugin = remoteSigning({
       endpoint: ENDPOINT,
       fetch,
-      publicKeyPath: PUBLIC_KEY_PATH,
     });
 
     expect(fetch).not.toHaveBeenCalled();
@@ -168,7 +165,6 @@ describe("remote bundle signing client", () => {
     expect(() =>
       remoteSigning({
         endpoint,
-        publicKeyPath: PUBLIC_KEY_PATH,
         signingToken: () => TOKEN,
       }),
     ).toThrow("Remote bundle signing requires a valid endpoint.");
@@ -178,14 +174,12 @@ describe("remote bundle signing client", () => {
     expect(() =>
       remoteSigning({
         endpoint: "http://127.0.0.1:8787/provider",
-        publicKeyPath: PUBLIC_KEY_PATH,
         signingToken: () => TOKEN,
       }),
     ).not.toThrow();
     expect(() =>
       remoteSigning({
         endpoint: "http://localhost:8787/provider",
-        publicKeyPath: PUBLIC_KEY_PATH,
         signingToken: () => TOKEN,
       }),
     ).not.toThrow();
@@ -281,7 +275,6 @@ describe("remote bundle signing client", () => {
     const plugin = remoteSigning({
       endpoint: ENDPOINT,
       fetch: createServerFetch(),
-      publicKeyPath: PUBLIC_KEY_PATH,
       signingToken: resolveToken,
     });
     expect(resolveToken).not.toHaveBeenCalled();

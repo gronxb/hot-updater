@@ -27,7 +27,6 @@ import { googleCloudKmsSigning } from "./googleCloudKmsSigning";
 
 const keyVersion =
   "projects/google-cloud-project/locations/global/keyRings/hot-updater/cryptoKeys/bundle-signing/cryptoKeyVersions/1";
-const publicKeyPath = "./keys/public-key.pem";
 const keyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const publicKey = keyPair.publicKey
   .export({ format: "pem", type: "spki" })
@@ -69,11 +68,10 @@ describe("googleCloudKmsSigning", () => {
         verifiedDigestCrc32c: true,
       },
     ]);
-    const provider = googleCloudKmsSigning({ keyVersion, publicKeyPath });
+    const provider = googleCloudKmsSigning({ keyVersion });
 
     expect(provider).toMatchObject({
       name: "googleCloudKmsSigning",
-      publicKeyPath,
     });
     expect(mocks.clientConstructor).not.toHaveBeenCalled();
 
@@ -90,7 +88,7 @@ describe("googleCloudKmsSigning", () => {
   });
 
   it("caches the validated public key", async () => {
-    const provider = googleCloudKmsSigning({ keyVersion, publicKeyPath });
+    const provider = googleCloudKmsSigning({ keyVersion });
 
     const first = await provider.getPublicKey();
     const second = await provider.getPublicKey();
@@ -108,7 +106,7 @@ describe("googleCloudKmsSigning", () => {
       ]);
 
       await expect(
-        googleCloudKmsSigning({ keyVersion, publicKeyPath }).getPublicKey(),
+        googleCloudKmsSigning({ keyVersion }).getPublicKey(),
       ).rejects.toThrow(
         "Google Cloud KMS key does not support RSA-SHA256 bundle signing.",
       );
@@ -122,7 +120,7 @@ describe("googleCloudKmsSigning", () => {
     ]);
 
     await expect(
-      googleCloudKmsSigning({ keyVersion, publicKeyPath }).getPublicKey(),
+      googleCloudKmsSigning({ keyVersion }).getPublicKey(),
     ).resolves.toMatchObject({ publicKey: expect.any(String) });
   });
 
@@ -142,7 +140,7 @@ describe("googleCloudKmsSigning", () => {
     ]);
 
     await expect(
-      googleCloudKmsSigning({ keyVersion, publicKeyPath }).getPublicKey(),
+      googleCloudKmsSigning({ keyVersion }).getPublicKey(),
     ).rejects.toThrow(
       "Google Cloud KMS returned an invalid signing public key response.",
     );
@@ -161,7 +159,7 @@ describe("googleCloudKmsSigning", () => {
     ]);
 
     await expect(
-      googleCloudKmsSigning({ keyVersion, publicKeyPath }).sign({ message }),
+      googleCloudKmsSigning({ keyVersion }).sign({ message }),
     ).rejects.toThrow(
       "Google Cloud KMS returned an unverifiable bundle signature.",
     );
@@ -171,11 +169,10 @@ describe("googleCloudKmsSigning", () => {
     expect(() =>
       googleCloudKmsSigning({
         keyVersion: "projects/p/locations/global/keyRings/r/cryptoKeys/k",
-        publicKeyPath,
       }),
     ).toThrow("version-pinned key resource name");
 
-    const provider = googleCloudKmsSigning({ keyVersion, publicKeyPath });
+    const provider = googleCloudKmsSigning({ keyVersion });
     await expect(
       provider.sign({ message: new Uint8Array(31) }),
     ).rejects.toThrow("messages must be exactly 32 bytes");
@@ -184,7 +181,7 @@ describe("googleCloudKmsSigning", () => {
 
   it("redacts provider errors and retries public-key resolution", async () => {
     mocks.getPublicKey.mockRejectedValue(new Error("token=super-secret"));
-    const provider = googleCloudKmsSigning({ keyVersion, publicKeyPath });
+    const provider = googleCloudKmsSigning({ keyVersion });
 
     const first = await provider.getPublicKey().catch((error) => error);
     const second = await provider.getPublicKey().catch((error) => error);

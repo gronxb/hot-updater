@@ -31,8 +31,12 @@ export async function nativeFingerprint(
   );
 }
 
-export const generateFingerprints = async () => {
-  const fingerprintConfig = await ensureFingerprintConfig();
+export const generateFingerprints = async (
+  additionalExtraSources?: readonly string[],
+) => {
+  const fingerprintConfig = await ensureFingerprintConfig(
+    additionalExtraSources,
+  );
 
   const projectPath = getCwd();
   const [ios, android] = await Promise.all([

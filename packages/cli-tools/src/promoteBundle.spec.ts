@@ -409,11 +409,6 @@ describe("createCopiedBundleArchive", () => {
         nextKeys.privateKey,
       )
       .toString("base64")}`;
-    const publicKeyPath = path.join(
-      path.dirname(archivePath),
-      "provider-public.pem",
-    );
-    await fs.writeFile(publicKeyPath, nextKeys.publicKey);
     let activeSignCalls = 0;
     let maxActiveSignCalls = 0;
     const providerSign = vi.fn(async ({ message }: { message: Uint8Array }) => {
@@ -450,7 +445,6 @@ describe("createCopiedBundleArchive", () => {
       ...config,
       signing: {
         name: "test-provider",
-        publicKeyPath,
         getPublicKey: async () => ({ publicKey: nextKeys.publicKey }),
         sign: providerSign,
       },
@@ -559,11 +553,6 @@ describe("createCopiedBundleArchive", () => {
       publicKeyEncoding: { type: "spki", format: "pem" },
       privateKeyEncoding: { type: "pkcs8", format: "pem" },
     });
-    const publicKeyPath = path.join(
-      path.dirname(archivePath),
-      "public-key.pem",
-    );
-    await fs.writeFile(publicKeyPath, keys.publicKey);
     const signedSourceFileHash = `sig:${crypto
       .sign("RSA-SHA256", Buffer.from(sourceFileHash, "hex"), keys.privateKey)
       .toString("base64")}`;
@@ -582,7 +571,6 @@ describe("createCopiedBundleArchive", () => {
       ...config,
       signing: {
         name: "test-provider",
-        publicKeyPath,
         getPublicKey: async () => ({ publicKey: keys.publicKey }),
         sign,
       },
@@ -677,11 +665,6 @@ describe("createCopiedBundleArchive", () => {
       publicKeyEncoding: { type: "spki", format: "pem" },
       privateKeyEncoding: { type: "pkcs8", format: "pem" },
     });
-    const publicKeyPath = path.join(
-      path.dirname(archivePath),
-      "public-key.pem",
-    );
-    await fs.writeFile(publicKeyPath, keys.publicKey);
     const sign = vi.fn(async ({ message }: { message: Uint8Array }) => ({
       signature: crypto.sign("RSA-SHA256", message, keys.privateKey),
     }));
@@ -697,7 +680,6 @@ describe("createCopiedBundleArchive", () => {
       ...config,
       signing: {
         name: "test-provider",
-        publicKeyPath,
         getPublicKey: async () => ({ publicKey: keys.publicKey }),
         sign,
       },

@@ -22,7 +22,6 @@ export type ConsoleAuthAdapter = Readonly<{
 export type ConsoleSigningConfig = Readonly<{
   enabled: boolean;
   provider?: string;
-  publicKeyPath?: string;
 }>;
 
 export type HotUpdaterConsoleConfig = Readonly<

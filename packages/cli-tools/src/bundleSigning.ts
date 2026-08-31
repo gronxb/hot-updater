@@ -12,14 +12,14 @@ import {
 
 const FILE_HASH_PATTERN = /^[a-f\d]{64}$/iu;
 
+const resolvePath = (cwd: string, filePath: string) =>
+  path.isAbsolute(filePath) ? filePath : path.resolve(cwd, filePath);
+
 export interface BundleSigningSession {
   readonly name: string;
   readonly publicKey: string;
   readonly signFileHash: (fileHash: string) => Promise<string>;
 }
-
-const resolvePath = (cwd: string, filePath: string) =>
-  path.isAbsolute(filePath) ? filePath : path.resolve(cwd, filePath);
 
 const parseRsaPublicKey = (publicKeyPEM: string): KeyObject => {
   try {
@@ -48,18 +48,19 @@ const parseRsaPublicKey = (publicKeyPEM: string): KeyObject => {
 const exportPublicKey = (publicKey: KeyObject) =>
   publicKey.export({ type: "spki", format: "pem" }).toString();
 
-const publicKeysMatch = (left: KeyObject, right: KeyObject) => {
-  const leftDer = left.export({ type: "spki", format: "der" });
-  const rightDer = right.export({ type: "spki", format: "der" });
-  return (
-    leftDer.byteLength === rightDer.byteLength &&
-    crypto.timingSafeEqual(leftDer, rightDer)
-  );
-};
-
-const readKeyFile = async (cwd: string, filePath: string) => {
+export const readBundleSigningPublicKeyFile = async (
+  publicKeyPath: string,
+  options: { readonly cwd?: string } = {},
+): Promise<string> => {
+  if (!publicKeyPath.trim()) {
+    throw new Error("Bundle signing public key path is required.");
+  }
   try {
-    return await fs.readFile(resolvePath(cwd, filePath), "utf8");
+    const publicKeyPEM = await fs.readFile(
+      resolvePath(options.cwd ?? getCwd(), publicKeyPath),
+      "utf8",
+    );
+    return exportPublicKey(parseRsaPublicKey(publicKeyPEM));
   } catch {
     throw new Error("Failed to read the bundle signing public key file.");
   }
@@ -144,22 +145,7 @@ const preparePluginSigning = async (
   signing: ReturnType<typeof createLocalSigningPlugin>,
   cwd: string,
 ): Promise<BundleSigningSession> => {
-  const [configuredPublicKeyPEM, providerPublicKey] = await Promise.all([
-    signing.publicKeyPath === undefined
-      ? undefined
-      : readKeyFile(cwd, signing.publicKeyPath),
-    getProviderPublicKey(signing, cwd),
-  ]);
-  const configuredPublicKey =
-    configuredPublicKeyPEM === undefined
-      ? providerPublicKey
-      : parseRsaPublicKey(configuredPublicKeyPEM);
-
-  if (!publicKeysMatch(configuredPublicKey, providerPublicKey)) {
-    throw new Error(
-      "Bundle signing provider public key does not match publicKeyPath.",
-    );
-  }
+  const providerPublicKey = await getProviderPublicKey(signing, cwd);
 
   return {
     name: signing.name,
@@ -190,7 +176,7 @@ export const prepareBundleSigning = async (
   );
 };
 
-/** Resolves the native trust anchor without calling a remote signing provider. */
+/** Resolves the public identity of the configured bundle signer. */
 export const getBundleSigningPublicKey = async (
   signing: SigningConfig | undefined,
   options: { readonly cwd?: string } = {},
@@ -198,31 +184,7 @@ export const getBundleSigningPublicKey = async (
   const normalized = normalizeSigningConfig(signing);
   if (!normalized) return null;
   const cwd = options.cwd ?? getCwd();
-  if (normalized.publicKeyPath !== undefined) {
-    return exportPublicKey(
-      parseRsaPublicKey(await readKeyFile(cwd, normalized.publicKeyPath)),
-    );
-  }
-  if ("enabled" in normalized) {
-    try {
-      const { publicKey } = await createLocalSigningPlugin(
-        normalized,
-      ).getPublicKey({ cwd });
-      return exportPublicKey(parseRsaPublicKey(publicKey));
-    } catch {
-      // v0 local builds can use the generated sibling public key without the private key.
-      return exportPublicKey(
-        parseRsaPublicKey(
-          await readKeyFile(
-            cwd,
-            path.join(
-              path.dirname(normalized.privateKeyPath),
-              "public-key.pem",
-            ),
-          ),
-        ),
-      );
-    }
-  }
-  throw new Error("Bundle signing plugins require publicKeyPath.");
+  const provider =
+    "enabled" in normalized ? createLocalSigningPlugin(normalized) : normalized;
+  return exportPublicKey(await getProviderPublicKey(provider, cwd));
 };
