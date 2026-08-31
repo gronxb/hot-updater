@@ -1,5 +1,60 @@
 # @hot-updater/expo
 
+## 1.0.0-rc.0
+
+### Major Changes
+
+- adb0e40: Release HotUpdater 1.0 with the Release Catalog architecture.
+
+### Minor Changes
+
+- f5f7de7: Move the Expo config plugin from `@hot-updater/react-native` to
+  `@hot-updater/expo`. Configure Expo apps with `@hot-updater/expo` in the
+  `plugins` array of `app.json` or `app.config.js`.
+
+### Patch Changes
+
+- a5ac9e0: Preserve Metro as the JavaScript bundle source for Android debug builds, migrate previously generated config-plugin output, and continue using Hot Updater bundles for release builds.
+- c355c26: Extend Bundle Signing with plugins for a generic remote signing endpoint, AWS
+  KMS, and Google Cloud KMS while preserving v0 local `enabled`/`privateKeyPath`
+  configuration. Local `publicKeyPath` is optional; signing plugins require it.
+  Support public-key-only native/Expo builds and sanitized read-only Console
+  inspection. Local PEM is the standard baseline, while AWS KMS and Google Cloud
+  KMS provide hardened, non-exportable key custody through optional SDK peers.
+
+  Require RSA keys of at least 2048 bits, validate explicit public-key pins and
+  native key matches before deployment, and verify signatures before upload.
+  Prevent key generation from overwriting existing files and default to
+  cancelling replacement of a different or invalid embedded public key. Existing
+  v0 CLI-generated keys meet the key requirements; signing-key changes still
+  require a native-first rollout.
+
+- Updated dependencies [3b367e7]
+- Updated dependencies [353e1ca]
+- Updated dependencies [b424d47]
+- Updated dependencies [3b367e7]
+- Updated dependencies [9650748]
+- Updated dependencies [88c163a]
+- Updated dependencies [a9ffb2a]
+- Updated dependencies [a9ffb2a]
+- Updated dependencies [5a2e1cd]
+- Updated dependencies [adb0e40]
+- Updated dependencies [c387b0b]
+- Updated dependencies [e2455c5]
+- Updated dependencies [c06c7df]
+- Updated dependencies [c8e24cd]
+- Updated dependencies [25af6ef]
+- Updated dependencies [c06c7df]
+- Updated dependencies [c355c26]
+- Updated dependencies [7ec1a46]
+- Updated dependencies [3b367e7]
+- Updated dependencies [a9ffb2a]
+- Updated dependencies [a9ffb2a]
+  - @hot-updater/plugin-core@1.0.0-rc.0
+  - @hot-updater/cli-tools@1.0.0-rc.0
+  - hot-updater@1.0.0-rc.0
+  - @hot-updater/bare@1.0.0-rc.0
+
 ## 0.36.0
 
 ### Patch Changes

@@ -1,5 +1,326 @@
 # @hot-updater/server
 
+## 1.0.0-rc.0
+
+### Major Changes
+
+- adb0e40: Release HotUpdater 1.0 with the Release Catalog architecture.
+
+### Minor Changes
+
+- 3b367e7: Add built-in API key authentication backed by the official
+  `database.models.apiKeys` domain. Every `createHotUpdater` call must set
+  `clientAccess` explicitly. `{ type: "api-key" }` protects OTA reads and
+  Analytics ingestion with `x-api-key` by default; it does not grant Analytics
+  query, Bundle management, or API key management access.
+
+  Add `hot-updater api-key create`, `list`, and `revoke` for self-hosted
+  deployments. Creation returns the plaintext API key exactly once, while the
+  database stores only its SHA-256 hash and non-secret metadata. Managed AWS,
+  Cloudflare, Firebase, and Supabase init use the same API key domain and persist
+  the plaintext only in the local `HOT_UPDATER_API_KEY` environment entry.
+  Console API key management uses the same domain directly.
+  `createHotUpdater(...).apiKeys` exposes the common local create, list, and
+  revoke management API without adding an HTTP management route.
+  Self-hosted setup now recommends the `api-key` client policy: migrate the direct
+  database, create a key from the same config, then pass the one-time plaintext to
+  React Native through `x-api-key`. The `public` policy remains an explicit
+  unauthenticated alternative.
+
+  Rename the pre-release public API and storage terminology from Client Access
+  Key to API Key, including `database.models.apiKeys`, `ApiKeyModel`,
+  `ApiKeyRow`, `createApiKey`, and `registerApiKey`. Fresh v1 provider schemas use
+  the canonical API key naming and do not migrate or reuse v0 databases.
+
+  Remove the separate Better Auth package, generic authentication provider,
+  managed route policy, universal component schema, and provisioning preset.
+
+- 467e5f6: Show when a Release cannot currently be selected first by any catalog segment
+  or cohort, and surface batched 30-day Bundle movement in the Release list.
+- b424d47: Replace the legacy database plugin API with the fixed official-domain contract:
+
+  ```ts
+  createDatabasePlugin({
+    name,
+    models: {
+      bundles,
+      bundlePatches,
+      releases,
+      releaseCatalogs,
+      channels,
+      analytics,
+      apiKeys,
+    },
+    commit,
+    dispose,
+  });
+  ```
+
+  Provider callback transactions, generic CRUD, factories, runtime contexts,
+  capability registries, `commitBatch`, and the former top-level model and query
+  members are no longer public. `commit({ changes })` is now a declarative,
+  ordered, atomic write boundary across every official model. Expected missing-row
+  and live-reference conflicts identify the original change index; failed commits
+  roll back all earlier changes. Providers without a suitable atomic primitive
+  reject a multi-change commit before its first write.
+
+  Add Channels as a normalized, persistent model with opaque `id` and exact,
+  case-sensitive `name`. Channel IDs and names are non-empty and limited to 255
+  Unicode code points. Releases reference `channel_id`; immutable Bundle rows do
+  not carry Channel or delivery-policy fields. Channel listing reads the Channel
+  model directly instead of scanning Bundles. Channels remain after their last
+  Release is removed and can be deleted explicitly only when no Release references
+  them.
+
+  Schema `1.0.0` creates Channel, Bundle, Bundle patch, Release, Release Catalog,
+  Analytics, and API key storage on an empty database. It rejects v0
+  schema markers and does not backfill Bundle policy. Kysely, Drizzle, Prisma,
+  MongoDB, Cloudflare D1, PostgreSQL, Supabase, Firebase, DynamoDB, and Mock
+  implement the same logical contract.
+
+  Add mount-relative Channel admin routes: `GET /channels`, `POST /channels`, and
+  empty-only `DELETE /channels/:id`. With the recommended mount these are exposed
+  under `/hot-updater/admin/channels`. Remove the legacy
+  `/api/bundles/channels` route. Standalone remains a narrower remote
+  `BundleRepository`, while self-hosted `createHotUpdater` owns the full database
+  contract. The Console can create Channels and request safe deletion; a concurrent
+  Release reference is reported as `not_empty` without losing data.
+
+  Official providers implement the fixed access patterns used by the shared
+  client: exact domain filters, id ordering, bounded pagination, row counts,
+  patch lookup by owner IDs, exact Catalog reads, strongly consistent Release
+  scope reads, and atomic ordered changes across official models. Provider-owned
+  update selection and arbitrary distinct, projection, connector, and
+  string-comparison query DSL operations are no longer part of the public
+  database plugin contract. Cloudflare D1 rejects malformed count results instead
+  of returning zero.
+
+  The shared database client resolves the canonical Channel row before Release
+  writes and compiles affected Catalogs in the same atomic commit. The v0
+  `queries.getUpdateInfo` optimization and combined Bundle-policy writes are
+  removed. `@hot-updater/test-utils` publishes conformance coverage for all-model
+  commits, rollback, Channel persistence, canonical concurrent inserts, safe
+  deletion, and the absence of bundle-scan Channel reads.
+
+  Runtime-specific composition entrypoints keep the same provider names behind
+  explicit package subpaths. `@hot-updater/cloudflare/worker` accepts a native D1
+  binding through `d1Database(database)`, while `@hot-updater/supabase/edge`
+  exports the Edge-compatible `supabaseDatabase` and `supabaseStorage`. Root
+  entrypoints remain the configuration-time providers.
+
+  Self-hosted runtimes always expose Analytics ingestion and query capabilities
+  backed by `database.models.analytics`. Every `createHotUpdater` call explicitly
+  sets the required `clientAccess` policy, which can protect update checks and
+  Analytics ingestion through
+  `database.models.apiKeys`. Client update routes are always available
+  on `handlers.client`, while admin routes are exposed only by explicitly
+  mounting `handlers.admin`. The CLI-only
+  `standaloneRepository` stays a bundle repository; the physical database passed
+  to the self-hosted `createHotUpdater` instance owns the full official contract.
+
+- 5a2e1cd: Separate immutable Bundle artifacts from mutable Release policy and compile
+  policy changes ahead of time into deterministic Release catalogs.
+  Database plugins now expose Release and catalog models plus atomic Release
+  revision/catalog generation expectations, and no longer expose provider update
+  decision queries.
+
+  Add canonical v2 Release-catalog and Bundle-artifact routes, short-lived
+  authenticated shared caching, a v1-only device protocol boundary, Release
+  management commands, catalog preflight/rebuild tooling, and a familiar Bundle
+  management view backed by Releases. The Console keeps Bundle content, delivery settings,
+  promote, and download actions in one workflow while Release identity stays
+  secondary. Deploy and promote create Releases; rollback disables the current
+  Release so clients select the previous compatible enabled Release or the
+  built-in app. Rollout, targeting, enablement, and messages mutate Releases
+  while patch, manifest, signing, and storage behavior remain Bundle-keyed.
+  Release IDs are canonical UUIDv7 values. Console shadcn primitives now use Base
+  UI instead of Radix while preserving the existing management flow and visual
+  density.
+
+  React Native clients select desired Releases locally, persist authority/scope
+  generation high-water and full Release/Bundle receipts, support same-Bundle
+  adoption and authenticated BUILTIN fallback, and use generation/context CAS so
+  stale artifact work cannot commit. New catalogs retain an 11-artifact update
+  frontier plus the complete compatible enabled rollback spine, so rollback keeps
+  v0 predecessor semantics even for old active clients. The 256 KiB catalog cap
+  remains atomic: an oversized history rejects the Release mutation instead of
+  silently truncating rollback candidates. Analytics events now carry directional
+  Release identity alongside Bundle identity.
+
+  Migrate SQL, DynamoDB, D1, Firestore, Supabase, MongoDB, Drizzle, Kysely,
+  Prisma, Standalone, mock, and in-memory implementations to schema `1.0.0`.
+  Managed AWS and Cloudflare deployments place Release catalogs behind their
+  supported pre-origin cache. Firebase and Supabase use their direct Function
+  URLs as supported origin-only modes and report Function invocations separately
+  from database catalog reads.
+
+- e2455c5: Remove user-managed Catalog authority from configuration, generated provider
+  environments, deployment output, and public React Native update state. Catalogs
+  receive an opaque identity on their first atomic commit and preserve it across
+  updates, rebuilds, and tombstones. CLI and server share the persisted identity
+  without configuration. Native stale-generation and unexpected-Catalog guards
+  remain in place.
+
+  This changes the unreleased v1 database schema and internal JS/native protocol
+  together. Catalog rows are part of persistent history and must be included in
+  backups; a missing row with retained Releases cannot be regenerated safely.
+
+- ebe1f64: Add Analytics as a built-in `createHotUpdater` domain backed directly by the
+  official `database.models.analytics` port. Event ingestion, bounded aggregation,
+  installation search, HTTP routes, and Console views now live with the server;
+  there is no Analytics plugin, provider override, universal component schema, or
+  separate `@hot-updater/analytics` package.
+
+  Runtime Analytics ingestion and query routes are always available. The former
+  server-side `analytics` and `routes` options are removed.
+
+  Database providers own the physical `bundle_events` table through the shared
+  database contract and schema version.
+  Event ingestion lives on `handlers.client`; queries live on
+  `handlers.admin` and rely on the framework middleware protecting that mount.
+
+  React Native clients can enable automatic OTA transition and Release adoption
+  reporting by setting `analytics: true` in either `HotUpdater.init` or
+  `HotUpdater.wrap`. Omitting the option or setting it to `false` sends no events.
+  App-ready transitions retain stable installation and optional user identity
+  across launches, and analytics delivery failures remain warning-only so they
+  never block application startup.
+
+- c8e24cd: Make Hot Updater v1 infrastructure a clean generation boundary. Managed init
+  now rejects selected v0 compute resources before mutation. Supabase tables and
+  RPCs plus Firebase collections and Functions use fixed v1 namespaces, allowing
+  v0 and v1 to coexist in one project while doctor identifies missing generation
+  markers and gives the parallel-cutover remediation.
+
+  AWS fresh installs use v1 Lambda and DynamoDB names plus a Lambda-scoped v1
+  signing-key path. S3 buckets can be shared across generations: init no longer
+  treats a matching bucket origin as CloudFront ownership, creates a new
+  distribution by default, and only updates the exact saved distribution after
+  its generation check passes.
+
+  Remove the v0 app-version and fingerprint HTTP routes, the legacy SDK-version
+  header contract, CDN forwarding and cache paths for those routes, and managed
+  provider Release Catalog backfills. Existing v0 native binaries must remain on
+  their unchanged v0 endpoint; new v1 native builds use the unversioned catalog
+  and artifact routes on fresh v1 infrastructure.
+
+  Normalize managed provider base URLs to their public deployment roots. AWS,
+  Cloudflare, and Firebase now serve `/version`, `/release-catalogs/*`,
+  `/artifacts/*`, and `/events` directly; Supabase retains only its
+  provider-owned Edge Function prefix. Client routes do not carry a library or
+  protocol version prefix because incompatible generations use a fresh base URL.
+
+- 25af6ef: Replace runtime-profiled storage plugins with the flat, runtime-independent
+  `createStoragePlugin({ name, protocol, put, get, getDownloadUrl, exists, delete
+})` contract. Every operation uses an object input and object result. `put`
+  accepts a complete object key and a one-shot Web stream, `get` returns a Web
+  `Response`,
+  `getDownloadUrl` returns the URL sent to update clients, and `delete` always
+  targets exactly one object and resolves to the idempotent `{ deleted: true }`
+  postcondition. Remove file paths, factory thunks, runtime contexts, prefix
+  deletion, and lifecycle hooks from the core storage boundary.
+
+  Standardize persisted locations as hierarchical
+  `protocol://bucket/encoded/slash/key` URIs. `createStorageUri` encodes each key
+  segment without flattening slash hierarchy, while `parseStorageUri` performs
+  the matching validation and decoding. Empty and dot segments, query strings,
+  and fragments are rejected.
+
+  Pass server storage implementations directly through
+  `createHotUpdater({ storage: [...] })`. URL policy belongs to each storage
+  implementation: AWS S3 can use its CloudFront resolver or a server-signed URL,
+  Firebase and Supabase generate provider URLs, and private Cloudflare R2 returns
+  a signed handler-relative URL. Remove `storageDelivery`, public base-URL and
+  top-level signing-key configuration, and the separate provider delivery
+  helpers. Cloudflare Worker storage uses the same `r2Storage` export name from
+  the `/worker` subpath and captures its native R2 binding at construction.
+
+  Resolve persisted URIs by registered scheme ownership first, including `http`
+  and `https`. Only an HTTP(S) URI without an owner uses direct fetch or redirect;
+  other unowned schemes are unsupported. Runtime composition accepts at most one
+  storage plugin for each scheme.
+
+  Update every built-in storage provider, CLI and Console consumer, managed
+  runtime, package entrypoint, and custom-hosting guide to the new contract.
+  Remove the storage-only JWT URL helpers and obsolete runtime-specific storage
+  creators. Route-group flags are removed; Analytics is always available and the
+  required `clientAccess` policy controls client authentication.
+
+- 3b367e7: Make `baseURL` the only React Native network source. Remove the `resolver` and
+  client-side `authorityId` options, `HotUpdaterResolver`, its public
+  parameter/result helper types, and `createDefaultResolver`. Custom GraphQL,
+  RPC, and other backends must expose the v1 HTTP protocol through an adapter or
+  proxy and pass that endpoint as `baseURL`.
+
+  Report a one-time `console.error` when an app configures both `HotUpdater.init`
+  and `HotUpdater.wrap`. Use `init + checkForUpdate` for custom or manual update
+  flows, or use `wrap` for the automatic HOC flow; do not combine them.
+
+  Remove authority from the public Release Catalog client paths. Catalog
+  identity is managed automatically in persistence, while the
+  client fetches `/release-catalogs/app-version/:platform/:channelKey/:appVersion`
+  or `/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash`.
+
+- 7ec1a46: Persist required immutable archive and patch byte sizes across the initial v1
+  Bundle contract and official database providers. This pre-release change has no
+  general cross-provider backfill for earlier unreleased `1.0.0` schemas. DynamoDB
+  readers default a missing archive byte size on existing Bundle rows to zero,
+  while Cloudflare applies an incremental D1 migration that backfills missing
+  Bundle and patch byte sizes with zero.
+
+  Record optional exact served-object sizes and hashes in Bundle manifests,
+  content-address new Brotli payloads by their compressed hash, and let the
+  server select the archive when known normal diff bytes are equal to or larger
+  than it. Unknown optional manifest metadata preserves the existing
+  manifest-first path, with no native protocol change or request-time storage
+  metadata probe.
+
+- 3b367e7: Split the self-hosted HTTP runtime into mount-relative
+  `handlers.client` and `handlers.admin` surfaces. Admin authentication now
+  belongs entirely to framework middleware, mounting the admin handler is the
+  explicit opt-in, and admin responses are marked private and non-cacheable.
+
+  Move the canonical admin root from `/hot-updater/api` to
+  `/hot-updater/admin`. `standaloneRepository.baseUrl` now points directly to
+  that root and sends mount-relative Bundle, Release, Release Catalog, Channel,
+  and database-commit requests. Managed runtimes mount only the client handler.
+
+  Remove `features`, including `features.bundles`, `features.updateCheck`, and
+  `features.clientAccessKeys`, plus Analytics `queryAccess`. The required
+  top-level `clientAccess` policy now selects public or API-key authenticated
+  client routes. The client handler always owns update routes and Analytics
+  ingestion, while Analytics queries move to the admin surface. React Native
+  clients independently opt into automatic transition reporting.
+  `toNodeHandler` now accepts one handler function. React Native keeps the same
+  client `baseURL` and resolves handler-relative storage paths against it,
+  removing the server's `basePath` option. Client authentication uses `x-api-key`,
+  not an admin bearer token.
+
+  Resolve Expo fingerprint mode from the target app's dependencies so bare React
+  Native fingerprints stay stable across monorepo and isolated installs.
+
+- a9ffb2a: Remove leftover v0 aliases that are not field compatibility. `HotUpdater.wrap({ updateMode: "manual" })` throws, findMany accepts only `orderBy`, and Supabase plugins require `supabaseServiceRoleKey`. Managed init still detects leftover `supabaseAnonKey` so skipped v0 configs fail closed.
+- a9ffb2a: Create schema 1.0.0 from empty databases only. `db migrate` and `db generate` no longer accept or upgrade v0 schema markers, and managed SQL templates are a single 1.0.0 CREATE.
+
+### Patch Changes
+
+- Updated dependencies [3b367e7]
+- Updated dependencies [b424d47]
+- Updated dependencies [9650748]
+- Updated dependencies [88c163a]
+- Updated dependencies [a9ffb2a]
+- Updated dependencies [a9ffb2a]
+- Updated dependencies [5a2e1cd]
+- Updated dependencies [adb0e40]
+- Updated dependencies [e2455c5]
+- Updated dependencies [25af6ef]
+- Updated dependencies [c355c26]
+- Updated dependencies [7ec1a46]
+- Updated dependencies [a9ffb2a]
+  - @hot-updater/plugin-core@1.0.0-rc.0
+  - @hot-updater/core@1.0.0-rc.0
+  - @hot-updater/bsdiff@1.0.0-rc.0
+
 ## 0.36.0
 
 ### Patch Changes

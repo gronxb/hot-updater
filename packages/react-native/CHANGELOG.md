@@ -1,5 +1,172 @@
 # @hot-updater/react-native
 
+## 1.0.0-rc.0
+
+### Major Changes
+
+- adb0e40: Release HotUpdater 1.0 with the Release Catalog architecture.
+
+### Minor Changes
+
+- a9ffb2a: Require R2 S3 credentials, drop Wrangler `r2Storage` and Android `stringResourcePaths`. Doctor only targets infrastructure generation 1.0.0. Channel, fingerprint, and signing keys live in AndroidManifest.xml.
+- 5a2e1cd: Separate immutable Bundle artifacts from mutable Release policy and compile
+  policy changes ahead of time into deterministic Release catalogs.
+  Database plugins now expose Release and catalog models plus atomic Release
+  revision/catalog generation expectations, and no longer expose provider update
+  decision queries.
+
+  Add canonical v2 Release-catalog and Bundle-artifact routes, short-lived
+  authenticated shared caching, a v1-only device protocol boundary, Release
+  management commands, catalog preflight/rebuild tooling, and a familiar Bundle
+  management view backed by Releases. The Console keeps Bundle content, delivery settings,
+  promote, and download actions in one workflow while Release identity stays
+  secondary. Deploy and promote create Releases; rollback disables the current
+  Release so clients select the previous compatible enabled Release or the
+  built-in app. Rollout, targeting, enablement, and messages mutate Releases
+  while patch, manifest, signing, and storage behavior remain Bundle-keyed.
+  Release IDs are canonical UUIDv7 values. Console shadcn primitives now use Base
+  UI instead of Radix while preserving the existing management flow and visual
+  density.
+
+  React Native clients select desired Releases locally, persist authority/scope
+  generation high-water and full Release/Bundle receipts, support same-Bundle
+  adoption and authenticated BUILTIN fallback, and use generation/context CAS so
+  stale artifact work cannot commit. New catalogs retain an 11-artifact update
+  frontier plus the complete compatible enabled rollback spine, so rollback keeps
+  v0 predecessor semantics even for old active clients. The 256 KiB catalog cap
+  remains atomic: an oversized history rejects the Release mutation instead of
+  silently truncating rollback candidates. Analytics events now carry directional
+  Release identity alongside Bundle identity.
+
+  Migrate SQL, DynamoDB, D1, Firestore, Supabase, MongoDB, Drizzle, Kysely,
+  Prisma, Standalone, mock, and in-memory implementations to schema `1.0.0`.
+  Managed AWS and Cloudflare deployments place Release catalogs behind their
+  supported pre-origin cache. Firebase and Supabase use their direct Function
+  URLs as supported origin-only modes and report Function invocations separately
+  from database catalog reads.
+
+- e2455c5: Remove user-managed Catalog authority from configuration, generated provider
+  environments, deployment output, and public React Native update state. Catalogs
+  receive an opaque identity on their first atomic commit and preserve it across
+  updates, rebuilds, and tombstones. CLI and server share the persisted identity
+  without configuration. Native stale-generation and unexpected-Catalog guards
+  remain in place.
+
+  This changes the unreleased v1 database schema and internal JS/native protocol
+  together. Catalog rows are part of persistent history and must be included in
+  backups; a missing row with retained Releases cannot be regenerated safely.
+
+- ebe1f64: Add Analytics as a built-in `createHotUpdater` domain backed directly by the
+  official `database.models.analytics` port. Event ingestion, bounded aggregation,
+  installation search, HTTP routes, and Console views now live with the server;
+  there is no Analytics plugin, provider override, universal component schema, or
+  separate `@hot-updater/analytics` package.
+
+  Runtime Analytics ingestion and query routes are always available. The former
+  server-side `analytics` and `routes` options are removed.
+
+  Database providers own the physical `bundle_events` table through the shared
+  database contract and schema version.
+  Event ingestion lives on `handlers.client`; queries live on
+  `handlers.admin` and rely on the framework middleware protecting that mount.
+
+  React Native clients can enable automatic OTA transition and Release adoption
+  reporting by setting `analytics: true` in either `HotUpdater.init` or
+  `HotUpdater.wrap`. Omitting the option or setting it to `false` sends no events.
+  App-ready transitions retain stable installation and optional user identity
+  across launches, and analytics delivery failures remain warning-only so they
+  never block application startup.
+
+- c8e24cd: Make Hot Updater v1 infrastructure a clean generation boundary. Managed init
+  now rejects selected v0 compute resources before mutation. Supabase tables and
+  RPCs plus Firebase collections and Functions use fixed v1 namespaces, allowing
+  v0 and v1 to coexist in one project while doctor identifies missing generation
+  markers and gives the parallel-cutover remediation.
+
+  AWS fresh installs use v1 Lambda and DynamoDB names plus a Lambda-scoped v1
+  signing-key path. S3 buckets can be shared across generations: init no longer
+  treats a matching bucket origin as CloudFront ownership, creates a new
+  distribution by default, and only updates the exact saved distribution after
+  its generation check passes.
+
+  Remove the v0 app-version and fingerprint HTTP routes, the legacy SDK-version
+  header contract, CDN forwarding and cache paths for those routes, and managed
+  provider Release Catalog backfills. Existing v0 native binaries must remain on
+  their unchanged v0 endpoint; new v1 native builds use the unversioned catalog
+  and artifact routes on fresh v1 infrastructure.
+
+  Normalize managed provider base URLs to their public deployment roots. AWS,
+  Cloudflare, and Firebase now serve `/version`, `/release-catalogs/*`,
+  `/artifacts/*`, and `/events` directly; Supabase retains only its
+  provider-owned Edge Function prefix. Client routes do not carry a library or
+  protocol version prefix because incompatible generations use a fresh base URL.
+
+- 3b367e7: Make `baseURL` the only React Native network source. Remove the `resolver` and
+  client-side `authorityId` options, `HotUpdaterResolver`, its public
+  parameter/result helper types, and `createDefaultResolver`. Custom GraphQL,
+  RPC, and other backends must expose the v1 HTTP protocol through an adapter or
+  proxy and pass that endpoint as `baseURL`.
+
+  Report a one-time `console.error` when an app configures both `HotUpdater.init`
+  and `HotUpdater.wrap`. Use `init + checkForUpdate` for custom or manual update
+  flows, or use `wrap` for the automatic HOC flow; do not combine them.
+
+  Remove authority from the public Release Catalog client paths. Catalog
+  identity is managed automatically in persistence, while the
+  client fetches `/release-catalogs/app-version/:platform/:channelKey/:appVersion`
+  or `/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash`.
+
+- a9ffb2a: Remove leftover v0 aliases that are not field compatibility. `HotUpdater.wrap({ updateMode: "manual" })` throws, findMany accepts only `orderBy`, and Supabase plugins require `supabaseServiceRoleKey`. Managed init still detects leftover `supabaseAnonKey` so skipped v0 configs fail closed.
+- f5f7de7: Move the Expo config plugin from `@hot-updater/react-native` to
+  `@hot-updater/expo`. Configure Expo apps with `@hot-updater/expo` in the
+  `plugins` array of `app.json` or `app.config.js`.
+
+### Patch Changes
+
+- 19b7e67: Reject incomplete manifest-driven bundles before installing or launching them.
+- dd659b5: Handle standard trailing slashes on Android archive directory entries without treating them as malicious paths.
+- e69c128: Preserve nested iOS bundle paths when installing and resolving cached updates.
+- 3b367e7: Split the self-hosted HTTP runtime into mount-relative
+  `handlers.client` and `handlers.admin` surfaces. Admin authentication now
+  belongs entirely to framework middleware, mounting the admin handler is the
+  explicit opt-in, and admin responses are marked private and non-cacheable.
+
+  Move the canonical admin root from `/hot-updater/api` to
+  `/hot-updater/admin`. `standaloneRepository.baseUrl` now points directly to
+  that root and sends mount-relative Bundle, Release, Release Catalog, Channel,
+  and database-commit requests. Managed runtimes mount only the client handler.
+
+  Remove `features`, including `features.bundles`, `features.updateCheck`, and
+  `features.clientAccessKeys`, plus Analytics `queryAccess`. The required
+  top-level `clientAccess` policy now selects public or API-key authenticated
+  client routes. The client handler always owns update routes and Analytics
+  ingestion, while Analytics queries move to the admin surface. React Native
+  clients independently opt into automatic transition reporting.
+  `toNodeHandler` now accepts one handler function. React Native keeps the same
+  client `baseURL` and resolves handler-relative storage paths against it,
+  removing the server's `basePath` option. Client authentication uses `x-api-key`,
+  not an admin bearer token.
+
+  Resolve Expo fingerprint mode from the target app's dependencies so bare React
+  Native fingerprints stay stable across monorepo and isolated installs.
+
+- b56a75a: Fix Android TAR extraction for long paths stored in POSIX PAX headers.
+- Updated dependencies [3b367e7]
+- Updated dependencies [b424d47]
+- Updated dependencies [9650748]
+- Updated dependencies [88c163a]
+- Updated dependencies [a9ffb2a]
+- Updated dependencies [a9ffb2a]
+- Updated dependencies [5a2e1cd]
+- Updated dependencies [adb0e40]
+- Updated dependencies [e2455c5]
+- Updated dependencies [25af6ef]
+- Updated dependencies [c355c26]
+- Updated dependencies [7ec1a46]
+- Updated dependencies [a9ffb2a]
+  - @hot-updater/plugin-core@1.0.0-rc.0
+  - @hot-updater/core@1.0.0-rc.0
+
 ## 0.36.0
 
 ### Patch Changes
@@ -277,7 +444,6 @@
   `baseURL` can now be a string or a function returning a string or promise. The
   default resolver calls the function before each update check so apps can resolve
   the update server URL at runtime.
-
   - @hot-updater/cli-tools@0.30.12
   - @hot-updater/core@0.30.12
   - @hot-updater/js@0.30.12

@@ -1,5 +1,11 @@
 # @hot-updater/bsdiff
 
+## 1.0.0-rc.0
+
+### Major Changes
+
+- adb0e40: Release HotUpdater 1.0 with the Release Catalog architecture.
+
 ## 0.36.0
 
 ## 0.35.12
