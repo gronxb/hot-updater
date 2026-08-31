@@ -86,7 +86,7 @@ The current [admin HTTP routes](../../packages/server/src/insights/routes.ts)
 expose six of these methods. `getEventHistory` currently exists through the
 provider/Console RPC only; `getBundleEventSummaries` is also not a standalone HTTP
 route. Do not describe them as existing HTTP endpoints. Add the global admin
-admin `GET /events` route explicitly when replacing the page contract; keep
+`GET /events` route explicitly when replacing the page contract; keep
 batch summaries available through the typed server API and Console RPC. Ingestion
 remains client `POST /events`.
 
@@ -495,6 +495,32 @@ a transactional per-partition epoch fence: writers either commit into the old
 epoch before closure or retry into the new one. Process all markers in closed
 epochs before publishing their generation. A maximum UUID/timestamp alone, or
 an eventually consistent index observed once, does not establish completeness.
+
+The plugin-developer follow-up agreed on a concrete minimum: writers atomically
+advance a transactional source counter with their event, and a job captures a
+committed counter prefix once. All sections process exactly events within that
+prefix and the job's event-time cutoff. The counter is not an ordinary SQL
+sequence allocated before commit. Its shard count and physical representation
+remain provider-owned, behind the opaque `sourceGeneration` value.
+
+Reserve the per-query job/lease first, capture the source with a short consistent
+read, then save the capture under that lease. A reservation awaiting capture has
+a job ID but no source generation yet. After the capture is saved, retries reuse
+it; a displaced lease holder cannot replace it or publish. Capture and reservation
+need not share a transaction, and advancing counters do not invalidate the saved
+prefix. Do not recheck every source clock when reserving/polling a report. Ordinary
+polling reads the query head/job only.
+
+SQLite/D1 can use one transactional counter because their writes are serialized;
+do not impose 64 shards on them. SQL can index source sequence on the raw event
+instead of duplicating it in an outbox. DynamoDB may need separate strong-readable
+source records; eventually consistent GSI pages cannot prove a captured prefix
+has been fully consumed. Its atomic commit must group updates to each shard clock
+and remain within the native action limit, never split one public commit. MongoDB
+multi-document source writes require a transaction-capable deployment; the
+current optional/default-off transaction path cannot implement this guarantee.
+Provider implementation must resolve that requirement explicitly, without a
+non-atomic fallback. Existing event backfill and actual budgets remain gates.
 
 Reports declare both their event-time `asOfMs` and included source generation.
 Late commits in a later generation are reconciled into subsequent reports; they
