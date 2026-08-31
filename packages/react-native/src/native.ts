@@ -215,7 +215,7 @@ const getNativeBundleId = (): string | null => {
 };
 
 const resolveBundleId = (bundleId: string | null): string => {
-  return !bundleId || bundleId === NIL_UUID ? getMinimumReleaseId() : bundleId;
+  return !bundleId || bundleId === NIL_UUID ? getMinBundleId() : bundleId;
 };
 
 const getFreshBundleId = (): string => {
@@ -588,11 +588,13 @@ export function setReloadBehavior(
 }
 
 /**
- * Fetches the build-time minimum Release id.
+ * Fetches the minimum bundle id created from the native app build time.
  *
- * @returns {string} The minimum Release id.
+ * Release Catalog selection uses this value as its minimum Release id.
+ *
+ * @returns {string} The minimum bundle id.
  */
-export const getMinimumReleaseId = (): string => {
+export const getMinBundleId = (): string => {
   const constants = HotUpdaterNative.getConstants();
   return constants.MIN_BUNDLE_ID;
 };

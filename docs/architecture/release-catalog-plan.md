@@ -850,8 +850,9 @@ UUIDv7 timestamp floor generated with the native build. Backfilled Releases
 keep old Bundle IDs, and every post-build deploy receives a newer Release ID.
 Rollback disables a Release and reveals its predecessor. This preserves native
 compatibility without requiring the server to know the built-in Bundle ID.
-`getMinBundleId()` and native configuration names remain deprecated aliases;
-new selector/API language uses `getMinimumReleaseId()`.
+The public `getMinBundleId()` API and native configuration names remain
+unchanged. Release Catalog selection interprets that value internally as
+`minimumReleaseId`.
 
 The JavaScript selector evaluates Release descriptors in v0 order:
 

@@ -444,11 +444,9 @@ App-ready transition and Release adoption reporting use the configured
 `HotUpdater.wrap`; omission or `false` sends nothing. The server routes and
 backing model remain available regardless.
 
-The v0 `HotUpdater.getMinBundleId()` alias is removed; use
-`HotUpdater.getMinimumReleaseId()`. The deprecated positional
-`HotUpdater.updateBundle(bundleId, fileUrl)` overload is also removed. Pass the
-complete parameter object or call `updateInfo.updateBundle()` on the result of
-`HotUpdater.checkForUpdate()`.
+The deprecated positional `HotUpdater.updateBundle(bundleId, fileUrl)` overload
+is removed. Pass the complete parameter object or call
+`updateInfo.updateBundle()` on the result of `HotUpdater.checkForUpdate()`.
 
 ## Removed provider exports
 
