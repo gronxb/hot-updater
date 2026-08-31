@@ -25,7 +25,7 @@ jest.mock("@hot-updater/react-native", () => ({
       bundleId: "00000000-0000-0000-0000-000000000000",
     })),
     init: jest.fn(),
-    getMinimumReleaseId: jest.fn(
+    getMinBundleId: jest.fn(
       () => "00000000-0000-0000-0000-000000000000",
     ),
     isChannelSwitched: jest.fn(() => false),
@@ -34,6 +34,7 @@ jest.mock("@hot-updater/react-native", () => ({
     resetChannel: jest.fn(() => Promise.resolve(true)),
     setCohort: jest.fn(),
     setReloadBehavior: jest.fn(),
+    setUser: jest.fn(),
     wrap: jest.fn(() => (Component) => Component),
   },
   useHotUpdaterStore: jest.fn((selector = (state) => state) =>
@@ -44,3 +45,13 @@ jest.mock("@hot-updater/react-native", () => ({
 jest.mock("react-native-bootsplash", () => ({
   hide: jest.fn(() => Promise.resolve()),
 }));
+
+jest.mock("react-native-launch-arguments", () => ({
+  LaunchArguments: { value: jest.fn(() => ({})) },
+}));
+
+jest.mock("react-native-screens", () =>
+  Object.create(jest.requireActual("react-native-screens"), {
+    enableScreens: { value: jest.fn() },
+  }),
+);
