@@ -40,6 +40,87 @@ read budget still need implementation evidence.
 
 ## Implemented subset
 
+### Native event readers and ordered SQL
+
+These are implementation building blocks, not the completed required runtime
+contract. Supabase and Firebase page executors remain internal until that direct
+replacement. Firebase's existing `scan` now uses an ordered native query with a
+maximum batch of 1,000 instead of loading the event collection.
+
+| Operation | Event queries | Maximum returned candidates |
+| --- | ---: | ---: |
+| Firebase global page | 1 | N + 1 |
+| Firebase installation or bundle movement | 2 | 2 × (N + 1) |
+| Firebase backfill initialization | 2 | 2 |
+| Firebase backfill step | 1 | 200 |
+| Supabase global page | 1 active SQL stream | N + 1 |
+| Supabase installation or bundle movement | 2 active SQL streams | 2 × (N + 1) |
+
+Firebase also checks its persisted index-preparation state; backfill transactions
+read one checkpoint document. Supabase also checks index metadata. Those metadata
+reads are separate from the event counts. These are query/result bounds, not
+unconditional disk-I/O or Firestore billing guarantees.
+
+Firebase hashes exact UTF-8 scope values for indexing and checks the original
+value on every match. This preserves long identities without normalizing case,
+whitespace, or Unicode; hash mismatches fail instead of silently filtering a
+page. Canonical lowercase UUIDs keep timestamp/ID ordering identical across
+Firestore and JavaScript. Lone-surrogate identities are rejected rather than
+silently replaced during UTF-8 encoding. Direct append rejects them before reads;
+mixed commits preserve atomic rollback but still read the existing catalog.
+
+The internal backfill helper requires old writers to be drained first. It saves a
+fixed upper ID, applies only derived key fields, and commits each bounded batch
+together with its checkpoint. Source update-time preconditions and a transactional
+checkpoint prevent partial advancement. It does not remove or rewrite raw fields.
+Initialization uses the descending `id` field index, then an ascending document-key
+probe in the same transaction to detect missing or mismatched IDs beyond that
+bound. A pure descending document-key query failed in the real emulator and was
+removed. Invalid source records stop preparation, including records inside the
+captured range. Deployment readiness and public maintenance tooling remain part
+of the unfinished provider rollout.
+
+The Supabase RPC returns one JSON value containing the bounded page, avoiding
+PostgREST's table-row cap. Anonymous/authenticated roles cannot execute it. Missing
+RPC/index preparation maps to not-ready; permission errors and unrelated SQL
+failures retain their original operational classification. There is no scan
+fallback. The migration generator includes the RPC and its installation/type
+index without changing the original event data.
+
+Kysely and Drizzle now omit computed null-sort expressions only for the two
+non-null event ordering columns. Actual SQLite execution and query-plan tests
+cover 50,001 unrelated events, equal-time cursors, and preserved nullable-field
+sorting. Other columns and models retain their existing ordering behavior.
+
+Validation performed after pulling `73e73b0cf` (which already contains `next`):
+
+- Full build: 26 projects; type checks: 34 projects; root lint passed.
+- Root unit suite: 2,525 tests, including the RPC-readiness regression.
+- Firebase event reads/writes: 64 tests passed on the emulator, including 50,104
+  events, asymmetric movement directions, a fixed cutoff, and long Unicode scopes.
+- Firebase backfill: 11 tests passed after fixing the descending-key query,
+  including missing IDs before/after the boundary, durable resume, raw extension
+  preservation, invalid-row rollback, and an injected stale write precondition
+  rejected by a real Firestore commit. The latter is not a timing-based race test.
+- Standard repository integration setup also passed the backfill and scalar-RPC
+  suites together: 13 tests, with its emulator cleaned up after completion.
+- Supabase scalar RPC: 2 real PostgreSQL 15/PostgREST 14.6 tests passed in each of
+  three fresh-container runs with `PGRST_DB_MAX_ROWS=1`. TCP readiness avoids the
+  image's temporary initialization-server race. CI prepares both required images.
+- Independent Supabase generic-plan review: six executions of the actual SQL
+  body on 50,104 rows. With `limit=1`, active index scans examined at most 2 rows
+  globally and 4 for movement; inactive branches executed zero times. The
+  [recorded plans](./insights-scale-evidence/supabase-generic-plan.jsonl) include
+  the SQL source hash, engine version, fixture size, and executed statements.
+
+The independent reviewer approved these implementation slices after checking
+cursor boundaries, exact scope semantics, error classification and backfill
+atomicity. Full-provider/report implementation approval is still outstanding.
+The review also reproduced a pre-existing PostgreSQL/Supabase raw-text index
+limit: some 1,024-character multibyte identities exceed a B-tree entry's byte
+limit. This is an existing storage prerequisite, not a page-executor regression;
+do not claim uniform long-identity support across all providers yet.
+
 ### Firebase write isolation
 
 An independent adversarial reviewer approved the implementation plan, then the
@@ -62,10 +143,10 @@ commit for the same ID. Existing event extensions remain unchanged. Before the
 fix, the first two scenarios failed while parsing unrelated collections.
 Package type checks, root lint, and all 2,489 root unit tests also passed.
 
-This proves write/cross-model isolation, not scalable Firebase event browsing:
-explicit `findMany`/`scan` still read the event collection, and generic catalog
-commits still load six catalog collections. Required read ports, source counters,
-native event pages, report computation and migrations remain unfinished.
+At that commit, explicit `findMany`/`scan` still read the event collection. The
+native reader work above replaces `scan`; private generic event `findMany` and
+the six-collection catalog snapshot remain. Required read ports, source counters,
+report computation and the complete migration/tooling rollout are unfinished.
 
 ### Historical PostgreSQL/additive API slice
 

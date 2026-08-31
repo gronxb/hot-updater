@@ -26,6 +26,7 @@ import {
 } from "./firebaseDatabaseParser";
 import type { FirebaseDatabaseSnapshot } from "./firebaseDatabaseState";
 import { FirebaseDatabaseConstraintError } from "./firebaseDatabaseState";
+import { toFirebaseEventDocument } from "./firebaseEventIndex";
 import { FIREBASE_V1_COLLECTION_NAMES } from "./firebaseInfrastructureNames";
 
 export interface FirebaseDatabaseCollections {
@@ -350,7 +351,10 @@ export const persistFirebaseDatabaseSnapshot = ({
   // create supplies the absent-document precondition without reading history.
   // A duplicate aborts the entire transaction, including catalog changes.
   for (const row of after.bundleEvents.values()) {
-    transaction.create(collections.bundleEvents.doc(row.id), row);
+    transaction.create(
+      collections.bundleEvents.doc(row.id),
+      toFirebaseEventDocument(row),
+    );
   }
   persistCollection({
     transaction,

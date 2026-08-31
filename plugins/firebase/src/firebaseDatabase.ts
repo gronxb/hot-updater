@@ -1,4 +1,7 @@
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  createDatabasePlugin,
+  InsightsQueryNotReadyError,
+} from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
   type DatabasePluginImplementation,
@@ -36,7 +39,12 @@ import {
   createFirebaseDatabaseState,
   FirebaseDatabaseConstraintError,
 } from "./firebaseDatabaseState";
+import {
+  FIREBASE_EVENT_INDEX_STATE,
+  toFirebaseEventDocument,
+} from "./firebaseEventIndex";
 import { FIREBASE_V1_COLLECTION_NAMES } from "./firebaseInfrastructureNames";
+import { createFirebaseInsightsQueries } from "./firebaseInsights";
 
 type FirebaseMutation<TResult> = (
   database: TransactionDatabasePluginImplementation,
@@ -57,7 +65,7 @@ const exactId = (
 export type FirebaseDatabaseConfig = AppOptions;
 
 export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
-  const implementation: DatabasePluginImplementation = (() => {
+  const { implementation, insights } = (() => {
     const app = getApps().length ? getApp() : initializeApp(config);
     const db = getFirestore(app);
     const collections = createFirebaseDatabaseCollections(db);
@@ -121,13 +129,14 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
       return operation(createFirebaseDatabaseState(snapshot));
     };
 
-    return {
+    const implementation: DatabasePluginImplementation = {
       create: async (input) => {
         if (input.model !== "bundle_events") {
           return mutate((database) => database.create(input));
         }
+        const document = toFirebaseEventDocument(input.data);
         await ensureMigrated();
-        await collections.bundleEvents.doc(input.data.id).create(input.data);
+        await collections.bundleEvents.doc(input.data.id).create(document);
         return input.data;
       },
       update: (input) => mutate((database) => database.update(input)),
@@ -283,6 +292,22 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
       },
       transaction: (callback) => mutate(callback),
     };
+    return {
+      implementation,
+      insights: createFirebaseInsightsQueries(
+        collections.bundleEvents,
+        ensureMigrated,
+        async () => {
+          await ensureMigrated();
+          const index = await collections.settings
+            .doc(FIREBASE_EVENT_INDEX_STATE)
+            .get();
+          if (index.data()?.version !== 1 || index.data()?.state !== "ready") {
+            throw new InsightsQueryNotReadyError();
+          }
+        },
+      ),
+    };
   })();
   const adapter = createDatabasePluginAdapter(
     "firebaseDatabase",
@@ -290,7 +315,10 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
   );
   return createDatabasePlugin({
     name: "firebaseDatabase",
-    models: adapter.models,
+    models: {
+      ...adapter.models,
+      insights: { ...adapter.models.insights, scan: insights.scan },
+    },
     commit: adapter.commit,
   });
 };

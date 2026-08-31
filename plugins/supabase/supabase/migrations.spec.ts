@@ -24,11 +24,17 @@ const readMigrations = async () => {
 };
 
 describe("Supabase v1 schema", () => {
-  it("ships a single 1.0.0 CREATE migration", async () => {
+  it("ships the initial schema and additive native Insights migration", async () => {
     const migrations = await readMigrations();
     expect(migrations.map(({ file }) => file)).toEqual([
       "20260818000000_hot-updater_1.0.0.sql",
+      "20260901015057_hot-updater_insights-event-pages.sql",
     ]);
+    expect(migrations[1]!.sql.trim()).toBe(
+      (
+        await fs.readFile("plugins/supabase/src/insightsEventPage.sql", "utf8")
+      ).trim(),
+    );
   });
 
   it("creates namespaced tables, RLS, and functions", async () => {

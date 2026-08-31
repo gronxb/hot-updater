@@ -6,6 +6,36 @@ import { describe, expect, it } from "vitest";
 import { FIREBASE_V1_COLLECTION_NAMES } from "../src/firebaseInfrastructureNames";
 
 describe("firebase firestore index template", () => {
+  it("ships every native Insights scope and the ascending processing scan", async () => {
+    const indexFile = JSON.parse(
+      await readFile(
+        path.resolve(__dirname, "../firebase/public/firestore.indexes.json"),
+        "utf8",
+      ),
+    );
+    const indexes = indexFile.indexes.filter(
+      (index: { collectionGroup: string }) =>
+        index.collectionGroup === FIREBASE_V1_COLLECTION_NAMES.bundleEvents,
+    );
+    for (const { equality, order } of [
+      { equality: [], order: "ASCENDING" },
+      { equality: [], order: "DESCENDING" },
+      { equality: ["_insights_install_key", "type"], order: "DESCENDING" },
+      { equality: ["type", "_insights_to_bundle_key"], order: "DESCENDING" },
+      { equality: ["type", "_insights_from_bundle_key"], order: "DESCENDING" },
+    ]) {
+      expect(indexes).toContainEqual({
+        collectionGroup: FIREBASE_V1_COLLECTION_NAMES.bundleEvents,
+        queryScope: "COLLECTION",
+        fields: [
+          ...equality.map((fieldPath) => ({ fieldPath, order: "ASCENDING" })),
+          { fieldPath: "received_at_ms", order },
+          { fieldPath: "id", order },
+        ],
+      });
+    }
+  });
+
   it("includes ascending indexes for update-check fast paths", async () => {
     const indexFilePath = path.resolve(
       __dirname,

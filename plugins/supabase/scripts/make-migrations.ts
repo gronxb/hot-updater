@@ -109,6 +109,13 @@ async function main() {
 
   // Extract all HotUpdater blocks from new SQL files
   const newMigrations = await readNewMigrations(postgresPath);
+  const insightsSql = await fs.readFile(
+    new URL("../src/insightsEventPage.sql", import.meta.url),
+    "utf8",
+  );
+  for (const [key, block] of parseHotUpdaterContents(insightsSql)) {
+    newMigrations.set(key, block);
+  }
   console.log("New migration contents:", Array.from(newMigrations.keys()));
 
   const newBlocks: string[] = [];

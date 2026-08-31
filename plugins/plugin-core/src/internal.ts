@@ -4,5 +4,11 @@ export {
   type DatabasePluginAdapter,
 } from "./createDatabasePlugin";
 export { databaseFields } from "./types/databaseFields";
-export { createIndexedInsightsEventQueries } from "./insightsEventQueries";
+export {
+  createIndexedInsightsEventQueries,
+  readInsightsEventPageCursor,
+  createInsightsEventPageCursor,
+  compareInsightsEventRows,
+  assertInsightsEventRow,
+} from "./insightsEventQueries";
 export type * from "./types/internal";

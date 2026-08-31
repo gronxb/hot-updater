@@ -1,5 +1,6 @@
 import { createDatabasePluginCrud } from "./databasePluginCrud";
 import { DatabasePluginInputError } from "./databasePluginCrudValidation";
+import { validateResult } from "./databasePluginCrudValidationRows";
 import type {
   BundleEventRow,
   DatabaseWhere,
@@ -22,6 +23,16 @@ const isIdentifier = (value: unknown): value is string =>
 const isTimestamp = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
+export function assertInsightsEventRow(
+  value: unknown,
+): asserts value is BundleEventRow {
+  validateResult("bundle_events", value as BundleEventRow, undefined);
+  const row = value as BundleEventRow;
+  if (!isIdentifier(row.id) || !isTimestamp(row.received_at_ms)) {
+    throw new DatabasePluginInputError("invalid-result");
+  }
+}
+
 const scopeKey = (scope: InsightsEventScope): string => {
   if (typeof scope !== "object" || scope === null) {
     throw new DatabasePluginInputError("invalid-query");
@@ -36,7 +47,7 @@ const scopeKey = (scope: InsightsEventScope): string => {
   throw new DatabasePluginInputError("invalid-query");
 };
 
-const compareRows = (
+export const compareInsightsEventRows = (
   left: Pick<BundleEventRow, "received_at_ms" | "id">,
   right: Pick<BundleEventRow, "received_at_ms" | "id">,
 ): number =>
@@ -73,6 +84,41 @@ const readCursor = (
     throw new DatabasePluginInputError("invalid-query");
   }
   return { receivedAtMs: value[3], id: value[4] };
+};
+
+export const readInsightsEventPageCursor = (
+  input: InsightsEventPageInput,
+): InsightsScanCursor | undefined => {
+  if (typeof input !== "object" || input === null) {
+    throw new DatabasePluginInputError("invalid-query");
+  }
+  const key = scopeKey(input.scope);
+  if (
+    !isTimestamp(input.beforeReceivedAtMs) ||
+    !Number.isSafeInteger(input.limit) ||
+    input.limit < 1 ||
+    input.limit > MAX_PAGE_SIZE
+  ) {
+    throw new DatabasePluginInputError("invalid-query");
+  }
+  return readCursor(input, key);
+};
+
+export const createInsightsEventPageCursor = (
+  input: InsightsEventPageInput,
+  last: InsightsScanCursor,
+): string => {
+  const cursor = JSON.stringify([
+    1,
+    scopeKey(input.scope),
+    input.beforeReceivedAtMs,
+    last.receivedAtMs,
+    last.id,
+  ]);
+  if (cursor.length > MAX_CURSOR_LENGTH) {
+    throw new DatabasePluginInputError("invalid-result");
+  }
+  return cursor;
 };
 
 const scopeFilters = (
@@ -121,17 +167,10 @@ export const createIndexedInsightsEventQueries = (
     version: 1,
     scopes: [...scopes],
     async page(input) {
-      const key = scopeKey(input.scope);
-      if (
-        !scopes.includes(input.scope.kind) ||
-        !isTimestamp(input.beforeReceivedAtMs) ||
-        !Number.isSafeInteger(input.limit) ||
-        input.limit < 1 ||
-        input.limit > MAX_PAGE_SIZE
-      ) {
+      const cursor = readInsightsEventPageCursor(input);
+      if (!scopes.includes(input.scope.kind)) {
         throw new DatabasePluginInputError("invalid-query");
       }
-      const cursor = readCursor(input, key);
       await beforePage?.(input, cursor);
       const candidateLimit = input.limit + 1;
       const streams = await Promise.all(
@@ -163,7 +202,8 @@ export const createIndexedInsightsEventQueries = (
                     (filter) => row[filter.field] !== filter.value,
                   ) ||
                   !matchesRange(row) ||
-                  (previous !== undefined && compareRows(previous, row) >= 0)
+                  (previous !== undefined &&
+                    compareInsightsEventRows(previous, row) >= 0)
                 );
               })
             ) {
@@ -200,7 +240,7 @@ export const createIndexedInsightsEventQueries = (
           return [...ties, ...older];
         }),
       );
-      const candidates = streams.flat().sort(compareRows);
+      const candidates = streams.flat().sort(compareInsightsEventRows);
       if (new Set(candidates.map((row) => row.id)).size !== candidates.length) {
         throw new DatabasePluginInputError("invalid-result");
       }
@@ -210,13 +250,10 @@ export const createIndexedInsightsEventQueries = (
         rows,
         nextCursor:
           candidates.length > input.limit && last
-            ? JSON.stringify([
-                1,
-                key,
-                input.beforeReceivedAtMs,
-                last.received_at_ms,
-                last.id,
-              ])
+            ? createInsightsEventPageCursor(input, {
+                receivedAtMs: last.received_at_ms,
+                id: last.id,
+              })
             : null,
       };
     },

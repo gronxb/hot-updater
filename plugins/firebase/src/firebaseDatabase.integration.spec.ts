@@ -16,6 +16,7 @@ import {
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
 import { firebaseDatabase } from "./firebaseDatabase";
 import { firebaseChannelDocumentId } from "./firebaseDatabasePersistence";
+import { toFirebaseEventDocument } from "./firebaseEventIndex";
 
 const PROJECT_ID = "firebase-database-test";
 
@@ -193,6 +194,42 @@ describe("firebase bounded reads", () => {
 describe("firebase event write isolation", () => {
   beforeEach(clearCollections);
 
+  it("rejects identities that cannot retain exact index ordering or UTF-8 equality on both write paths", async () => {
+    const plugin = createPlugin();
+    const bundle = createBundleRowFixture("818");
+    await plugin.commit({
+      changes: [{ model: "bundles", operation: "insert", row: bundle }],
+    });
+    const valid = createBundleEventRowFixture("819", 100);
+    for (const event of [
+      { ...valid, id: "\uE000" },
+      { ...valid, id: "\u{10000}" },
+      { ...valid, id: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF" },
+      { ...valid, install_id: "unpaired-\uD800" },
+    ]) {
+      await expect(plugin.models.insights.append(event)).rejects.toMatchObject({
+        code: "invalid-data",
+      });
+      await expect(
+        plugin.commit({
+          changes: [
+            {
+              model: "bundles",
+              operation: "update",
+              where: { id: bundle.id },
+              update: { metadata: { incorrect: true } },
+            },
+            { model: "insights", operation: "insert", row: event },
+          ],
+        }),
+      ).rejects.toMatchObject({ code: "invalid-data" });
+      expect(
+        (await bundlesCollection.doc(bundle.id).get()).data()?.metadata,
+      ).toEqual(bundle.metadata);
+    }
+    expect((await bundleEventsCollection.get()).empty).toBe(true);
+  });
+
   it("appends without reading history or unrelated catalog documents", async () => {
     await settingsCollection
       .doc("database_adapter_version")
@@ -209,7 +246,7 @@ describe("firebase event write isolation", () => {
       expect(reads).not.toHaveBeenCalled();
       expect(transactionReads).not.toHaveBeenCalled();
       expect((await bundleEventsCollection.doc(event.id).get()).data()).toEqual(
-        event,
+        toFirebaseEventDocument(event),
       );
     } finally {
       reads.mockRestore();
@@ -269,7 +306,7 @@ describe("firebase event write isolation", () => {
         (await bundleEventsCollection.doc("unrelated-malformed").get()).data(),
       ).toEqual(untouched);
       expect((await bundleEventsCollection.doc(event.id).get()).data()).toEqual(
-        event,
+        toFirebaseEventDocument(event),
       );
     } finally {
       reads.mockRestore();
@@ -353,7 +390,7 @@ describe("firebase event write isolation", () => {
     );
     const commitWon = results[1].status === "fulfilled";
     expect((await bundleEventsCollection.doc(event.id).get()).data()).toEqual(
-      commitWon ? competing : event,
+      toFirebaseEventDocument(commitWon ? competing : event),
     );
     expect((await bundlesCollection.doc(bundle.id).get()).exists).toBe(
       commitWon,

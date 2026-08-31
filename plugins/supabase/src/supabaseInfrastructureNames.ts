@@ -14,4 +14,5 @@ export const SUPABASE_V1_TABLE_NAMES = {
 export const SUPABASE_V1_FUNCTION_NAMES = {
   commit: "hot_updater_v1_commit",
   deleteChannel: "hot_updater_v1_delete_channel",
+  insightsEventPage: "hot_updater_v1_insights_event_page",
 } as const;

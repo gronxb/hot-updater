@@ -33,5 +33,9 @@ jobs:
         run: pnpm lint
       - name: Unit test
         run: pnpm test
+      - name: Prepare Insights RPC test services
+        run: |
+          docker pull postgres:15-alpine
+          docker pull postgrest/postgrest:v14.6
       - name: Integration test
         run: pnpm test:integration

@@ -1,6 +1,52 @@
 {
   "indexes": [
     {
+      "collectionGroup": "hot_updater_v1_bundle_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "received_at_ms", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "hot_updater_v1_bundle_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "received_at_ms", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "hot_updater_v1_bundle_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "_insights_install_key", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "received_at_ms", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "hot_updater_v1_bundle_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "_insights_to_bundle_key", "order": "ASCENDING" },
+        { "fieldPath": "received_at_ms", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "hot_updater_v1_bundle_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "_insights_from_bundle_key", "order": "ASCENDING" },
+        { "fieldPath": "received_at_ms", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "hot_updater_v1_bundles",
       "queryScope": "COLLECTION",
       "fields": [
