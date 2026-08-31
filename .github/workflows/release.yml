@@ -81,12 +81,11 @@ jobs:
 
       - name: Create and publish versions
         if: steps.release-lane.outputs.enabled == 'true'
-        # Pinned from changesets/action@v1 to avoid mutable release action
+        # Pinned from changesets/action@v2 to avoid mutable release action
         # code running with repository write access.
-        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d
+        uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1
         with:
-          commit: ${{ steps.release-lane.outputs.title }}
-          title: ${{ steps.release-lane.outputs.title }}
-          publish: ${{ steps.release-lane.outputs.publish }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: ${{ steps.release-lane.outputs.title }}
+          pr-title: ${{ steps.release-lane.outputs.title }}
+          publish-script: ${{ steps.release-lane.outputs.publish }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
