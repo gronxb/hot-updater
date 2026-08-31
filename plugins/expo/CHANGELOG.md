@@ -1,5 +1,11 @@
 # @hot-updater/expo
 
+## 1.0.0-rc.1
+
+### Patch Changes
+
+- 4ae1bd1: Escape bundle signing public key newlines when writing AndroidManifest metadata.
+
 ## 1.0.0-rc.0
 
 ### Major Changes

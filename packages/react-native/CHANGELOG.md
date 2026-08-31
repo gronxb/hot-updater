@@ -1,5 +1,11 @@
 # @hot-updater/react-native
 
+## 1.0.0-rc.1
+
+### Patch Changes
+
+- eafb30c: Keep `HotUpdater.getMinBundleId()` as the public build-time bundle floor API.
+
 ## 1.0.0-rc.0
 
 ### Major Changes

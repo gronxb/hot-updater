@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/expo",
-  "version": "1.0.0-rc.0",
+  "version": "1.0.0-rc.1",
   "description": "Hot Updater build and config plugin for Expo",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
