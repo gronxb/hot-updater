@@ -26,6 +26,23 @@ const invalid = (): never => {
 };
 const key = (identity: string) =>
   createHash("sha256").update(identity).digest("hex");
+const hashKey = /^[0-9a-f]{64}$/;
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+type StoredInstallation = {
+  install_key: string;
+  install_id: string;
+  event: BundleEventRow;
+};
+const readInstallation = (row: StoredInstallation) => {
+  assertInsightsEventRow(row.event);
+  if (
+    row.install_id !== row.event.install_id ||
+    key(JSON.stringify(row.install_id)) !== row.install_key
+  )
+    invalid();
+  return { installKey: row.install_key, event: row.event };
+};
 
 export const assertPostgresInsightsReportDataIndexes = async (
   db: QueryExecutorProvider,
@@ -202,11 +219,7 @@ export const readPostgresInsightsInstallations = async (
   after: string | null,
   limit: number,
 ): Promise<readonly { installKey: string; event: BundleEventRow }[]> => {
-  const result = await sql<{
-    install_key: string;
-    install_id: string;
-    event: BundleEventRow;
-  }>`
+  const result = await sql<StoredInstallation>`
     select install_key, install_id, event from ${sql.table(latest)}
     where job_id = ${jobId}::uuid and bucket_index = -1
       ${after === null ? sql`` : sql`and install_key > ${after}`}
@@ -214,16 +227,44 @@ export const readPostgresInsightsInstallations = async (
   if (result.rows.length > limit) invalid();
   let previous = after;
   return result.rows.map((row) => {
-    assertInsightsEventRow(row.event);
-    if (
-      row.install_id !== row.event.install_id ||
-      key(JSON.stringify(row.install_id)) !== row.install_key ||
-      (previous !== null && row.install_key <= previous)
-    )
-      invalid();
+    if (previous !== null && row.install_key <= previous) invalid();
     previous = row.install_key;
-    return { installKey: row.install_key, event: row.event };
+    return readInstallation(row);
   });
+};
+
+/**
+ * Resolve a bounded alias page against the same immutable publication's latest
+ * rows. Repeated aliases may name one installation; missing rows are corruption,
+ * not permission to silently shorten the search result.
+ */
+export const readPostgresInsightsLatestByKey = async (
+  db: QueryExecutorProvider,
+  jobId: string,
+  installKeys: readonly string[],
+): Promise<readonly { installKey: string; event: BundleEventRow }[]> => {
+  if (
+    typeof jobId !== "string" ||
+    !uuid.test(jobId) ||
+    !Array.isArray(installKeys) ||
+    installKeys.length > 200 ||
+    Array.from(installKeys).some(
+      (value) => typeof value !== "string" || !hashKey.test(value),
+    )
+  )
+    throw new DatabasePluginInputError("invalid-query");
+  if (installKeys.length === 0) return [];
+  const requested = [...new Set(installKeys)];
+  await assertPostgresInsightsReportDataIndexes(db);
+  const result = await sql<StoredInstallation>`
+    select install_key, install_id, event from ${sql.table(latest)}
+    where job_id = ${jobId}::uuid and bucket_index = -1
+      and install_key in (${sql.join(requested)})`.execute(db);
+  if (result.rows.length !== requested.length) invalid();
+  const byKey = new Map(
+    result.rows.map((row) => [row.install_key, readInstallation(row)]),
+  );
+  return requested.map((installKey) => byKey.get(installKey) ?? invalid());
 };
 
 export const countPostgresInsightsInstallation = async (

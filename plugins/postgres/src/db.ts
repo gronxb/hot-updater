@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { sql, type Kysely } from "kysely";
 
+import { assertPostgresInsightsAliasIndex } from "./postgresInsightsAliases";
 import { assertPostgresInsightsReportClaimIndex } from "./postgresInsightsJobs";
 import { assertPostgresInsightsReportDataIndexes } from "./postgresInsightsReportData";
 import { assertPostgresInsightsReportOrderIndexes } from "./postgresInsightsReportOrder";
@@ -63,7 +64,11 @@ export const getPostgresInsightsReportMigrationSQL =
       new URL("../sql/insights-report-order-v1.sql", import.meta.url),
       "utf8",
     );
-    return `${jobs}\n${data}\n${order}`;
+    const aliases = await readFile(
+      new URL("../sql/insights-aliases-v1.sql", import.meta.url),
+      "utf8",
+    );
+    return `${jobs}\n${data}\n${order}\n${aliases}`;
   };
 
 /** Creates empty report storage. Does not reserve jobs or read raw events. */
@@ -93,5 +98,6 @@ export const migratePostgresInsightsReports = async <TDatabase extends object>(
     await assertPostgresInsightsReportClaimIndex(transaction);
     await assertPostgresInsightsReportDataIndexes(transaction);
     await assertPostgresInsightsReportOrderIndexes(transaction);
+    await assertPostgresInsightsAliasIndex(transaction);
   });
 };

@@ -6,6 +6,10 @@ import { createInsightsReportProjection } from "@hot-updater/plugin-core/interna
 import type { Kysely } from "kysely";
 
 import {
+  assertPostgresInsightsAliasIndex,
+  savePostgresInsightsAliases,
+} from "./postgresInsightsAliases";
+import {
   createPostgresInsightsJobs,
   PostgresInsightsLeaseLostError,
 } from "./postgresInsightsJobs";
@@ -55,6 +59,7 @@ export const createPostgresInsightsReportWorker = <TDatabase extends object>(
         throw new DatabasePluginInputError("invalid-query");
       await assertPostgresInsightsReportDataIndexes(db);
       await assertPostgresInsightsReportOrderIndexes(db);
+      await assertPostgresInsightsAliasIndex(db);
       const lease = await jobs.leaseNext();
       if (lease === null) return { state: "idle", processed: 0 };
       const { token, job } = lease;
@@ -75,6 +80,8 @@ export const createPostgresInsightsReportWorker = <TDatabase extends object>(
         }
         if (job.checkpoint.phase === "source") {
           // One event: raw row plus at most six membership/count result rows.
+          // The global overview instead returns one latest row and up to three
+          // alias identities across three write/read statements.
           const limit = Math.min(
             200,
             Math.floor((input.maxItems - 32) / 7),
@@ -95,12 +102,19 @@ export const createPostgresInsightsReportWorker = <TDatabase extends object>(
               throw new Error("Invalid report phase.");
             for (const row of page) {
               const projected = projection.project(row.event);
-              if (projected !== null)
+              if (projected !== null) {
                 await savePostgresInsightsProjection(
                   transaction,
                   current,
                   projected,
                 );
+                if (current.query.kind === "installationOverview")
+                  await savePostgresInsightsAliases(
+                    transaction,
+                    current.id,
+                    row.event,
+                  );
+              }
             }
             const exhausted = page.length < limit;
             const lastShard =

@@ -1,4 +1,4 @@
-# PostgreSQL report accumulation and section pages
+# PostgreSQL report accumulation, section pages and identity preparation
 
 This implements durable report jobs and bounded accumulation for the four finite
 report kinds and all five section-page families. It is a building block, not the
@@ -43,7 +43,9 @@ poison data. Explicit terminal-failure recovery tooling is still pending.
   Batches do not create unused cohort or bucket memberships.
 - Bundle detail counts summary, UTC bucket and cohort memberships independently.
   Applying **to** and recovering **from** a bundle remain separate metrics.
-- Installation overview keeps the newest `(event time, ID)` per installation.
+- Installation overview keeps the newest `(event time, ID)` per installation and
+  distinct historical installation/user/legacy-username aliases from that same
+  captured source and event-time cutoff.
 - Active overview keeps the newest row per installation and per rolling bucket.
   The final phase applies the user filter to the newest window identity, then
   counts all stored bucket activity for selected installations, including events
@@ -63,6 +65,38 @@ An empty bundle batch captures a real source generation and completes without
 reading events. Its zero result needs no membership scan. Query and publication
 JSON also preserve valid zero-match NUL/surrogate strings rather than failing on
 PostgreSQL JSONB conversion; raw event fields are not changed to accommodate them.
+
+## Historical identity preparation
+
+The global installation overview now prepares an immutable alias set alongside
+its latest-installation records. Each raw event contributes at most three
+identities: `(kind, JS-lowercase value, original install ID)`. Null values are
+omitted; empty strings, whitespace and Unicode normalization forms are preserved.
+An activity event with unchanged identities does not create more alias records
+or update their existing versions. Identity payloads use JSON, with fixed-size
+hash keys and full identity checks; long valid values are not placed in a B-tree.
+
+Alias writes, latest metadata and source checkpoints commit in the same leased
+transaction. A failed alias insert rolls back the latest record and checkpoint.
+Aliases at or after the event-time cutoff and late commits outside the captured
+source prefix do not enter that publication. Refreshing produces another set;
+it never changes the old set or its latest metadata.
+
+An internal alias page reads at most 200 rows through `(job_id, alias_key)`.
+Matched installations resolve through at most 200 hash points in the same
+publication's whole-period latest records. Duplicate matches are collapsed and
+missing/corrupt latest records fail rather than shortening the result. Neither
+read accesses raw events. Index readiness is checked before either data query.
+
+This is the shared input for future historical contains jobs, not a working
+public search implementation. Those jobs still need durable reservation, a
+reference that prevents deletion of their base publication, exact match totals,
+JS install-ID ordering and immutable result cursors. Search freshness must be
+the base publication's actual `asOfMs/sourceGeneration`, not the search request's
+arrival time. Before connecting that consumer, advance the current private job
+storage revision and explicitly recreate the unreleased derived layout; an old
+alias-free or partly prepared overview must not be accepted as a search base.
+Do not add an optional compatibility marker or an old-format fallback.
 
 ## Ordered preparation and immutable pages
 
@@ -132,8 +166,8 @@ const result = await worker.runStep({ maxItems: 256, maxRequests: 128 });
 ```
 
 The report schema is unreleased derived storage. An older draft layout without
-the ordering tables/indexes fails readiness and must be deliberately recreated
-and prepared again before use. There is no compatibility decoder, automatic
+the ordering or alias tables/indexes fails readiness and must be deliberately
+recreated and prepared again before use. There is no compatibility decoder, automatic
 table replacement, or raw-event rewrite. Do not run schema DDL concurrently with
 workers or readers.
 
@@ -145,6 +179,12 @@ caps source/finalization pages by the remaining worst-case budget. Each source
 page is also capped at 200 events. Larger budgets do not remove that cap. A failed
 transaction may consume its original budget before recording failure; that final
 control write is included in the reserved overhead.
+
+An alias write uses at most two SQL requests and three returned identity rows,
+within the existing source-step budget. An alias page or frozen-latest lookup
+uses two SQL requests and at most 201 returned rows including index readiness.
+Latest lookup accepts at most 200 input keys before deduplication; empty input
+performs no SQL. These helpers do not perform hidden refills or raw-history reads.
 
 An ordering step uses at most eight SQL requests and 67 returned rows, excluding
 the caller's reserved lease/transaction overhead. It emits at most 32 rows.

@@ -42,22 +42,61 @@ read budget still need implementation evidence.
 
 ### Current validation
 
-The report-page additions passed the full workspace build (26 projects), type
-checks (34 projects), root lint, changeset validation and all 2,625 unit tests in
-293 files. A standard PostgreSQL integration run passed all nine source, job,
-ordering and page tests across four files. Owned test containers and emulator
+The identity-preparation additions passed the full workspace build (26 projects),
+type checks (34 projects), root lint, changeset validation and all 2,641 unit tests
+in 295 files. A standard PostgreSQL integration run passed all 11 source, job,
+ordering, page and alias tests across five files. Owned test containers and emulator
 processes were cleaned up. The prior preparation slice at `35e0e81d6` also passed
 28 MongoDB preparation/native-reader integration tests; those are historical
 results, not another MongoDB run for this update.
 
-Built PostgreSQL DB tooling loads its shipped ordering SQL and exact partial
+Built PostgreSQL DB tooling loads its shipped alias/ordering SQL and exact partial
 index predicates, retries migration and runs an idle worker under both ESM and
 CommonJS. Independent review approved only these internal PostgreSQL report
-pages and preparation stages. The final all-provider implementation and standalone
-E2E remain pending. The [current validation record](./insights-scale-evidence/report-pages-validation.json)
-includes 13 source hashes, nine test hashes, eight actual native plans, fixture
-sizes and explicit limits. The [previous preparation record](./insights-scale-evidence/report-preparation-validation.json)
+pages and identity preparation stages. The final all-provider implementation and
+standalone E2E remain pending. The [current validation record](./insights-scale-evidence/identity-validation.json)
+includes 15 source hashes, 12 test hashes, 14 actual native plans, fixture sizes
+and explicit limits. The [previous report-page record](./insights-scale-evidence/report-pages-validation.json)
+retains the preceding validation. The [previous preparation record](./insights-scale-evidence/report-preparation-validation.json)
 preserves earlier MongoDB and built-server optional-peer verification.
+
+### Immutable historical aliases and latest installation lookup
+
+The global installation overview now saves distinct installation/user/legacy
+username aliases alongside latest metadata under the same source prefix, event
+cutoff and leased checkpoint. Matching a former user can therefore resolve the
+latest installation state without reading raw history or mixing publications.
+Repeated activities do not add duplicate aliases or update existing alias rows.
+This is input preparation for the future contains worker, not public search.
+
+Alias preparation uses at most two SQL statements and three returned identity
+rows per event. Alias pages read at most 200 entries; frozen latest lookup reads
+at most 200 distinct hash points. Each read also checks index readiness. Full
+identity/hash validation rejects corruption and missing latest rows. An empty
+match batch performs no SQL. JavaScript lowercase behavior, whitespace, empty
+strings, Unicode forms and long values remain intact.
+
+The external plugin-developer reviewer found that sparse input arrays could
+bypass `.some()` validation and reach storage. Validation now uses `Array.from`,
+and a regression checks rejection before I/O. They approved this implementation
+slice after reviewing alias/source atomicity and its worst-case budget.
+
+Ten alias tests, four latest-point tests and two added worker scenarios passed.
+The worker scenarios preserve former identities, exclude cutoff and late
+backdated events, keep previous generations unchanged, and roll back both latest
+metadata and source progress on an injected alias failure. Real PostgreSQL tests
+use 50,001 aliases and 50,001 latest installations, plus other buckets and
+publications. Both ordinary and prepared generic plans push publication, bucket
+and all 200 requested hashes into the native index, returning exactly 200 rows
+without a full scan, sort or post-filter. The separate alias seek tests include
+deep pages and full JSON identities longer than 6 KB.
+
+Contains jobs still need base-publication lifetime references, match accumulation,
+exact ordering/totals and cursors. Their public freshness must come from the base
+publication. Before that consumer ships, replace the unreleased private storage
+revision and recreate derived state explicitly; do not reuse old alias-free
+overviews through a compatibility marker. Live all/exact installation browsing
+is also still unfinished.
 
 ### Immutable PostgreSQL section pages
 

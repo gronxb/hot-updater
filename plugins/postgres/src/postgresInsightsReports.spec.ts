@@ -16,7 +16,9 @@ import {
   migratePostgresInsightsSource,
 } from "./db";
 import { postgres } from "./postgres";
+import { readPostgresInsightsAliasPage } from "./postgresInsightsAliases";
 import { createPostgresInsightsJobs } from "./postgresInsightsJobs";
+import { readPostgresInsightsLatestByKey } from "./postgresInsightsReportData";
 import { createPostgresInsightsReportWorker } from "./postgresInsightsReports";
 import { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
 import type { Database } from "./types";
@@ -350,6 +352,121 @@ describe("resumable PostgreSQL exact report accumulation", () => {
       id,
       summary: { trackedInstallations: 1 },
     });
+  });
+
+  it("freezes historical aliases and latest metadata at the same source prefix and time cutoff", async () => {
+    const old = event(100, asOfMs - 100, {
+      install_id: "Installation-A",
+      user_id: "Former-User",
+      username: "Legacy Name",
+    });
+    const latest = event(101, asOfMs - 10, {
+      install_id: old.install_id,
+      user_id: "Current-User",
+      username: null,
+      to_bundle_id: bundleB,
+    });
+    // The user changed, but searching their former identity must still return
+    // this installation with its latest metadata, not the old matching event.
+    await plugin.models.insights.append(old);
+    await plugin.models.insights.append(latest);
+    for (let i = 0; i < 40; i++)
+      await plugin.models.insights.append({ ...old, id: event(200 + i, 1).id });
+    await plugin.models.insights.append(
+      event(300, asOfMs, {
+        install_id: old.install_id,
+        user_id: "Cutoff-User",
+      }),
+    );
+    const input = { query: { kind: "installationOverview" } } as const;
+    const id = await reserve(input);
+    await step(); // Capture committed source before the late, backdated append.
+    await plugin.models.insights.append(
+      event(301, asOfMs - 1, {
+        install_id: old.install_id,
+        user_id: "Late-User",
+      }),
+    );
+    const first = await finish(input);
+    expect(first).toMatchObject({
+      id,
+      asOfMs,
+      summary: { trackedInstallations: 1 },
+    });
+    rawQueries = 0;
+    const aliases = await readPostgresInsightsAliasPage(db, id, null, 200);
+    expect(aliases.map((row) => row.normalizedAlias).sort()).toEqual([
+      "current-user",
+      "former-user",
+      "installation-a",
+      "legacy name",
+    ]);
+    expect(
+      await readPostgresInsightsLatestByKey(
+        db,
+        id,
+        aliases
+          .filter((row) => row.normalizedAlias.includes("former"))
+          .map((row) => row.installKey),
+      ),
+    ).toEqual([{ installKey: aliases[0]!.installKey, event: latest }]);
+    expect(rawQueries).toBe(0);
+
+    const refreshed = { ...input, minAsOfMs: asOfMs + 1 };
+    const nextId = await reserve(refreshed, asOfMs + 1);
+    await finish(refreshed);
+    expect(
+      (await readPostgresInsightsAliasPage(db, nextId, null, 200)).map(
+        (row) => row.normalizedAlias,
+      ),
+    ).toEqual(expect.arrayContaining(["cutoff-user", "late-user"]));
+    expect(await readPostgresInsightsAliasPage(db, id, null, 200)).toEqual(
+      aliases,
+    );
+    expect(
+      await readPostgresInsightsLatestByKey(db, id, [aliases[0]!.installKey]),
+    ).toEqual([{ installKey: aliases[0]!.installKey, event: latest }]);
+  });
+
+  it("rolls back latest metadata and the source checkpoint when alias preparation fails", async () => {
+    await plugin.models.insights.append(event(1, asOfMs - 1));
+    const input = { query: { kind: "installationOverview" } } as const;
+    const id = await reserve(input);
+    await step();
+    await client.exec(`create function fail_alias() returns trigger language plpgsql as $$
+      begin raise exception 'injected alias failure'; end $$;
+      create trigger fail_alias before insert on private_hot_updater_insights_report_aliases for each row execute function fail_alias();`);
+    let thrown: unknown;
+    for (let i = 0; i < 17; i++) {
+      try {
+        await step();
+      } catch (error) {
+        thrown = error;
+        break;
+      }
+    }
+    expect(thrown).toMatchObject({ message: "injected alias failure" });
+    expect(await jobs.getReport(input)).toMatchObject({ state: "failed" });
+    const stored = await sql<{ checkpoint: { afterSequence: string } }>`
+      select checkpoint from private_hot_updater_insights_report_jobs where id = ${id}::uuid`.execute(
+      db,
+    );
+    expect(stored.rows[0]!.checkpoint.afterSequence).toBe("0");
+    expect(
+      (
+        await sql`select * from private_hot_updater_insights_report_latest where job_id = ${id}::uuid`.execute(
+          db,
+        )
+      ).rows,
+    ).toEqual([]);
+    expect(
+      (
+        await sql`select * from private_hot_updater_insights_report_aliases where job_id = ${id}::uuid`.execute(
+          db,
+        )
+      ).rows,
+    ).toEqual([]);
+    expect(await step()).toMatchObject({ state: "idle" });
   });
 
   it("preserves valid zero-match query strings that PostgreSQL event text cannot contain", async () => {
