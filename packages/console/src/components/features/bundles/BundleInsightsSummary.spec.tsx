@@ -26,6 +26,8 @@ vi.mock("@/components/ui/chart", () => ({
   ),
   ChartTooltip: () => null,
   ChartTooltipContent: () => null,
+  ChartLegend: () => null,
+  ChartLegendContent: () => null,
 }));
 
 vi.mock("recharts", () => ({
@@ -112,7 +114,7 @@ describe("BundleInsightsSummary", () => {
     render(<BundleInsightsSummary bundleId={bundleId} />);
 
     expect(screen.getByRole("alert").textContent).toContain(
-      "Insights request failed.",
+      "Refresh to try again",
     );
   });
 });

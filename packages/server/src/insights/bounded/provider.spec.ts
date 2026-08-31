@@ -65,6 +65,55 @@ const inMemoryPersistence = (
 };
 
 describe("createInsightsProvider", () => {
+  it("paginates every event type across installations and all time, newest first", async () => {
+    const rows: BundleEventPersistenceRow[] = [
+      eventRow("old-applied", 1, "install-old"),
+      {
+        ...eventRow("recovered", 2),
+        type: "RECOVERED",
+        from_bundle_id: "new",
+        update_strategy: "fingerprint",
+        platform: "android",
+        channel: "beta",
+      },
+      {
+        ...eventRow("adopted", 3),
+        type: "RELEASE_ADOPTED",
+        from_bundle_id: "old",
+        update_strategy: "fingerprint",
+      },
+      {
+        ...eventRow("unchanged", 3),
+        type: "UNCHANGED",
+        from_bundle_id: null,
+        update_strategy: null,
+      },
+    ];
+    const provider = createInsightsProvider(inMemoryPersistence(rows, 2));
+    const first = await provider.getEventHistory(2, 0);
+    const second = await provider.getEventHistory(2, 2);
+
+    expect(first.pagination).toEqual({ total: 4, limit: 2, offset: 0 });
+    expect(second.pagination).toEqual({ total: 4, limit: 2, offset: 2 });
+    expect(
+      [...first.data, ...second.data].map(({ id, type, installId }) => ({
+        id,
+        type,
+        installId,
+      })),
+    ).toEqual([
+      { id: "unchanged", type: "UNCHANGED", installId: "install-unchanged" },
+      { id: "adopted", type: "RELEASE_ADOPTED", installId: "install-adopted" },
+      { id: "recovered", type: "RECOVERED", installId: "install-recovered" },
+      { id: "old-applied", type: "UPDATE_APPLIED", installId: "install-old" },
+    ]);
+    expect(first.data[0]?.fromBundleId).toBeNull();
+    expect(second.data[0]).toMatchObject({
+      platform: "android",
+      channel: "beta",
+    });
+  });
+
   it("starts windowed insights scans at the storage lower boundary", async () => {
     // Given
     const now = Date.UTC(2026, 1, 2, 12);
@@ -213,6 +262,9 @@ describe("createInsightsProvider", () => {
     const provider = createInsightsProvider(persistence);
 
     await expect(provider.getBundleEventSummary("new")).rejects.toBeInstanceOf(
+      InsightsScanLimitExceededError,
+    );
+    await expect(provider.getEventHistory(50, 0)).rejects.toBeInstanceOf(
       InsightsScanLimitExceededError,
     );
   });

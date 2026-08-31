@@ -3,6 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ActivityChart } from "./ActivityChart";
 
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
+    <a href={to}>{children}</a>
+  ),
+}));
+
 vi.mock("recharts", () => ({
   Area: () => null,
   AreaChart: ({
@@ -55,9 +61,7 @@ describe("ActivityChart", () => {
     expect(
       screen.getByTestId("activity-chart-data").getAttribute("data-item-count"),
     ).toBe("3");
-    expect(
-      screen.getByText("Unique active installations per day"),
-    ).toBeDefined();
+    expect(screen.getByText("Per day · UTC")).toBeDefined();
     const table = screen.getByRole("table", {
       name: "Exact active installations per day",
     });
@@ -69,21 +73,35 @@ describe("ActivityChart", () => {
       }),
     ).toBeDefined();
     expect(within(table).getByRole("cell", { name: "0" })).toBeDefined();
-    expect(
-      screen.getByText(
-        "Each point counts an installation once in that day. The total above counts it once across the whole period, so the points do not add up to the total.",
-      ),
-    ).toBeDefined();
+    expect(table.textContent).toContain(
+      "the period total deduplicates across the whole period",
+    );
   });
 
-  it("uses hourly language for the 24-hour window", () => {
+  it("replaces an empty chart with a direct Events action", () => {
     render(<ActivityChart series={[]} window="24h" />);
 
+    expect(screen.getByText("No activity")).toBeDefined();
+    expect(screen.queryByRole("img")).toBeNull();
     expect(
-      screen.getByText("Unique active installations per hour"),
+      screen.getByRole("link", { name: "View events" }).getAttribute("href"),
+    ).toBe("/installations");
+  });
+
+  it("keeps hourly units and UTC explicit for a populated 24-hour chart", () => {
+    render(
+      <ActivityChart
+        series={[{ bucketStartMs: Date.UTC(2026, 6, 18, 10), value: 2 }]}
+        window="24h"
+      />,
+    );
+
+    expect(screen.getByText("Per hour · UTC")).toBeDefined();
+    expect(
+      screen.getByRole("img", { name: "Active installations per hour" }),
     ).toBeDefined();
     expect(
-      screen.getByText("No installations reported during this period."),
+      screen.getByRole("columnheader", { name: "UTC hour" }),
     ).toBeDefined();
   });
 });

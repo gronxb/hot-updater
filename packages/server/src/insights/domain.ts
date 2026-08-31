@@ -87,6 +87,15 @@ export type OffsetPaginationResult<TData> = {
   };
 };
 
+export type EventHistoryRow = Omit<
+  InstallationHistoryRow,
+  "type" | "fromBundleId"
+> & {
+  readonly installId: string;
+  readonly type: InstallationSearchRow["latestStatus"];
+  readonly fromBundleId: string | null;
+};
+
 export type InsightsSeriesPoint = {
   readonly bucketStartMs: number;
   readonly value: number;

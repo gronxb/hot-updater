@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -15,6 +14,7 @@ import { cn } from "@/lib/utils";
 
 import { ActivityChart } from "./ActivityChart";
 import { BundleSelector } from "./BundleSelector";
+import { EventTimestamp, useInsightsTimeFormat } from "./EventDetails";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { UpdateOutcomes, type UpdateOutcomeState } from "./UpdateOutcomes";
 
@@ -33,12 +33,6 @@ type InsightsOverviewProps =
       readonly onBundleChange: (bundleId: string) => void;
       readonly outcomes: UpdateOutcomeState;
     };
-
-const asOfFormatter = new Intl.DateTimeFormat("en", {
-  dateStyle: "medium",
-  timeStyle: "short",
-  timeZone: "UTC",
-});
 
 const activityWindowCopy = {
   "24h": {
@@ -76,17 +70,17 @@ function LoadingCard({
 }
 
 export function InsightsOverview(props: InsightsOverviewProps) {
+  const dateTimeFormat = useInsightsTimeFormat();
   if (props.status === "loading") {
     return (
       <div
         aria-label="Loading reporting insights"
-        className="flex min-w-0 flex-col gap-8"
+        className="flex min-w-0 flex-col gap-4 sm:gap-6"
       >
         <LoadingCard label="Loading installation activity">
           <Skeleton className="h-10 w-24" />
-          <Skeleton className="mt-5 h-64 w-full" />
-          <div className="mt-5 grid gap-4 border-t pt-5 sm:grid-cols-3">
-            <Skeleton className="h-10 w-full" />
+          <Skeleton className="mt-4 h-40 w-full sm:h-56" />
+          <div className="mt-4 grid grid-cols-2 gap-4 border-t pt-4">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
           </div>
@@ -130,39 +124,26 @@ export function InsightsOverview(props: InsightsOverviewProps) {
     )?.configuredPercentage ?? null;
 
   return (
-    <div className="flex min-w-0 flex-col gap-8">
+    <div className="flex min-w-0 flex-col gap-4 sm:gap-6">
       <section aria-label="Installation activity">
         <Card className="min-w-0 overflow-hidden shadow-sm">
-          <CardHeader className="pb-4">
+          <CardHeader className="px-4 pt-4 pb-2 sm:px-6 sm:pt-6">
             <CardTitle className="text-sm font-medium">
               <h2>{activityCopy.label}</h2>
             </CardTitle>
-            <CardDescription>
-              Unique app installations that reported an update status in the{" "}
-              {activityCopy.period}.
-            </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-5">
-            <div className="flex flex-col gap-1">
-              <p className="text-xs font-medium text-muted-foreground">
-                Active installations
-              </p>
-              <div className="flex items-end gap-2">
-                <span className="text-4xl font-semibold tracking-tight tabular-nums">
-                  {active.activeInstallations.toLocaleString()}
-                </span>
-                <span className="pb-1 text-xs text-muted-foreground">
-                  unique in {activityCopy.period}
-                </span>
-              </div>
-            </div>
-            <div className="border-t pt-5">
-              <ActivityChart series={active.series} window={active.window} />
-            </div>
+          <CardContent className="flex flex-col gap-4 px-4 pb-4 sm:px-6 sm:pb-6">
+            <p className="text-4xl font-semibold tracking-tight tabular-nums">
+              {active.activeInstallations.toLocaleString()}
+              <span className="sr-only">
+                {` unique installations that reported activity or an update in the ${activityCopy.period}`}
+              </span>
+            </p>
+            <ActivityChart series={active.series} window={active.window} />
           </CardContent>
           <CardFooter className="border-t bg-muted/15 p-0">
-            <dl className="grid w-full sm:grid-cols-3 sm:divide-x sm:divide-border/70">
-              <div className="flex flex-col gap-1 px-5 py-4">
+            <dl className="grid w-full grid-cols-[auto_minmax(0,1fr)] gap-x-6 px-4 py-3 sm:px-6">
+              <div className="flex flex-col gap-1">
                 <dt className="text-xs text-muted-foreground">
                   Reported bundles
                 </dt>
@@ -170,16 +151,16 @@ export function InsightsOverview(props: InsightsOverviewProps) {
                   {active.bundles.length.toLocaleString()}
                 </dd>
               </div>
-              <div className="flex flex-col gap-1 border-t px-5 py-4 sm:border-t-0">
+              <div className="flex min-w-0 flex-col gap-1">
                 <dt className="text-xs text-muted-foreground">
-                  Reporting window
+                  As of ({dateTimeFormat.resolvedOptions().timeZone})
                 </dt>
-                <dd className="text-sm font-medium">{activityCopy.period}</dd>
-              </div>
-              <div className="flex flex-col gap-1 border-t px-5 py-4 sm:border-t-0">
-                <dt className="text-xs text-muted-foreground">As of</dt>
                 <dd className="text-xs font-medium tabular-nums">
-                  {asOfFormatter.format(new Date(active.asOfMs))} UTC
+                  <EventTimestamp
+                    touch
+                    value={active.asOfMs}
+                    formatter={dateTimeFormat}
+                  />
                 </dd>
               </div>
             </dl>

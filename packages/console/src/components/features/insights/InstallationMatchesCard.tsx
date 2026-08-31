@@ -1,20 +1,17 @@
-import { Check, TriangleAlert } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
+import { useId, useRef, useState } from "react";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { shortenIdentifier } from "@/components/HashValueDisplay";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type {
   InstallationSearchResult,
   InstallationSearchRow,
 } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
+import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InstallationPagination } from "./InstallationPagination";
 
 const getLastKnownBundleId = (event: InstallationSearchRow) =>
@@ -40,23 +37,65 @@ export function InstallationMatchesCard({
   readonly results: InstallationSearchResult | undefined;
   readonly selectedInstallId: string;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const contentId = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const canCollapse = !error && results && results.data.length > 0;
+
   return (
-    <Card className="min-h-0 min-w-0">
-      <CardHeader className="p-6 pb-5">
-        <div className="flex items-start justify-between gap-4">
+    <Card className="min-h-0 min-w-0 shadow-sm">
+      <CardHeader className="p-4 sm:px-6">
+        <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-1.5">
             <CardTitle className="text-sm font-medium">
               <h2>Matching installations</h2>
             </CardTitle>
-            <CardDescription>
-              Select a row to review its bundle history.
-            </CardDescription>
           </div>
-          <Badge variant="outline">{results?.pagination.total ?? 0}</Badge>
+          <div className="flex shrink-0 items-center gap-2">
+            {results && !error ? (
+              <Badge variant="secondary" className="tabular-nums">
+                {results.pagination.total.toLocaleString()}
+              </Badge>
+            ) : null}
+            {canCollapse ? (
+              <Button
+                aria-controls={contentId}
+                aria-expanded={expanded}
+                aria-label={
+                  expanded
+                    ? "Hide matching installations"
+                    : "Show matching installations"
+                }
+                className="size-11 lg:hidden"
+                onClick={() => setExpanded(!expanded)}
+                ref={triggerRef}
+                size="icon-lg"
+                variant="ghost"
+              >
+                <ChevronDown
+                  aria-hidden="true"
+                  className={cn(expanded && "rotate-180")}
+                />
+              </Button>
+            ) : null}
+          </div>
         </div>
       </CardHeader>
-      <CardContent className="min-h-0 p-0">
-        {results && results.data.length > 0 ? (
+      <CardContent
+        className={cn(
+          "min-h-0 p-0",
+          canCollapse && !expanded && "hidden lg:block",
+        )}
+        id={contentId}
+      >
+        {error ? (
+          <div className="p-6">
+            <InsightsErrorAlert
+              error={error instanceof Error ? error : new Error()}
+              fallbackTitle="Installation search unavailable"
+            />
+          </div>
+        ) : results && results.data.length > 0 ? (
           <ul aria-label="Matching installations" className="divide-y">
             {results.data.map((event) => {
               const currentBundleId = getLastKnownBundleId(event);
@@ -64,9 +103,14 @@ export function InstallationMatchesCard({
               return (
                 <li key={event.installId}>
                   <button
+                    aria-label={`${getUserLabel(event)}, install ID ${event.installId}`}
                     aria-pressed={isSelected}
-                    className="group flex w-full min-w-0 flex-col gap-4 border-l-2 border-transparent px-6 py-5 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30 aria-pressed:border-primary aria-pressed:bg-muted/60"
-                    onClick={() => onSelect(event.installId)}
+                    className="group flex w-full min-w-0 flex-col gap-2 border-l-2 border-transparent px-4 py-4 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30 aria-pressed:border-primary aria-pressed:bg-muted/60 motion-reduce:transition-none sm:px-6"
+                    onClick={() => {
+                      onSelect(event.installId);
+                      setExpanded(false);
+                      triggerRef.current?.focus();
+                    }}
                     type="button"
                   >
                     <span className="flex w-full min-w-0 items-center justify-between gap-3">
@@ -76,20 +120,29 @@ export function InstallationMatchesCard({
                       {isSelected ? (
                         <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-primary">
                           <Check aria-hidden="true" className="size-3.5" />
-                          Selected
+                          <span className="sr-only">Selected</span>
                         </span>
                       ) : null}
                     </span>
-                    <BundleIdDisplay
-                      bundleId={event.installId}
-                      className="block text-muted-foreground"
-                    />
-                    <span className="min-w-0">
-                      <span className="mb-1 block text-xs text-muted-foreground">
-                        Last known bundle
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span
+                        className="font-mono text-xs"
+                        title={event.installId}
+                      >
+                        {shortenIdentifier(event.installId)}
+                      </span>
+                    </span>
+                    <span className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        Bundle
                       </span>
                       {currentBundleId ? (
-                        <BundleIdDisplay bundleId={currentBundleId} />
+                        <span
+                          className="font-mono text-xs"
+                          title={currentBundleId}
+                        >
+                          {shortenIdentifier(currentBundleId)}
+                        </span>
                       ) : (
                         <span className="text-sm text-muted-foreground">—</span>
                       )}
@@ -99,21 +152,18 @@ export function InstallationMatchesCard({
               );
             })}
           </ul>
-        ) : error ? (
-          <div className="p-5">
-            <Alert variant="destructive">
-              <TriangleAlert aria-hidden="true" />
-              <AlertTitle>Installation search unavailable</AlertTitle>
-              <AlertDescription>
-                {error instanceof Error
-                  ? error.message
-                  : "Failed to load installations."}
-              </AlertDescription>
-            </Alert>
-          </div>
         ) : (
-          <div className="p-5 text-sm text-muted-foreground">
-            No installations matched that query.
+          <div className="flex flex-wrap items-center justify-between gap-3 p-4 sm:px-6">
+            <p className="text-sm text-muted-foreground">No matches</p>
+            <a
+              className={buttonVariants({
+                variant: "outline",
+                className: "h-11 px-3 lg:h-8",
+              })}
+              href="#installation-history-search"
+            >
+              Edit search
+            </a>
           </div>
         )}
         {results && results.pagination.total > 0 ? (

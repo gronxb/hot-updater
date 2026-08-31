@@ -12,7 +12,6 @@ import {
 } from "./databasePluginCrudValidationRows";
 import { createTransactionDatabasePlugin } from "./databasePluginTransaction";
 import type {
-  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelInsertInput,
@@ -861,36 +860,58 @@ export const createDatabasePluginAdapter = (
           await crud.create({ model: "bundle_events", data: row });
         },
         async scan(input) {
-          const rows: BundleEventRow[] = [];
-          for (let offset = 0; rows.length < input.limit; offset += PAGE_SIZE) {
-            const page = await crud.findMany({
-              model: "bundle_events",
-              where: [
-                {
-                  field: "received_at_ms",
-                  operator: "lt",
-                  value: input.beforeReceivedAtMs,
-                },
-              ],
-              orderBy: [
-                { field: "received_at_ms", direction: "asc" },
-                { field: "id", direction: "asc" },
-              ],
-              limit: PAGE_SIZE,
-              offset,
-            });
-            rows.push(
-              ...page.filter(
-                (row) =>
-                  input.after === undefined ||
-                  row.received_at_ms > input.after.receivedAtMs ||
-                  (row.received_at_ms === input.after.receivedAtMs &&
-                    row.id > input.after.id),
-              ),
-            );
-            if (page.length < PAGE_SIZE) break;
-          }
-          return rows.slice(0, input.limit);
+          if (
+            input.limit <= 0 ||
+            (input.after !== undefined &&
+              input.after.receivedAtMs >= input.beforeReceivedAtMs)
+          )
+            return [];
+
+          // Split the cursor into disjoint ranges so every adapter can apply
+          // it in the database without nested OR predicates or offset scans.
+          const sameTimestamp =
+            input.after === undefined
+              ? []
+              : await crud.findMany({
+                  model: "bundle_events",
+                  where: [
+                    {
+                      field: "received_at_ms",
+                      value: input.after.receivedAtMs,
+                    },
+                    { field: "id", operator: "gt", value: input.after.id },
+                  ],
+                  orderBy: [{ field: "id", direction: "asc" }],
+                  limit: input.limit,
+                  offset: 0,
+                });
+          if (sameTimestamp.length === input.limit) return sameTimestamp;
+          const later = await crud.findMany({
+            model: "bundle_events",
+            where: [
+              {
+                field: "received_at_ms",
+                operator: "lt",
+                value: input.beforeReceivedAtMs,
+              },
+              ...(input.after === undefined
+                ? []
+                : [
+                    {
+                      field: "received_at_ms" as const,
+                      operator: "gt" as const,
+                      value: input.after.receivedAtMs,
+                    },
+                  ]),
+            ],
+            orderBy: [
+              { field: "received_at_ms", direction: "asc" },
+              { field: "id", direction: "asc" },
+            ],
+            limit: input.limit - sameTimestamp.length,
+            offset: 0,
+          });
+          return [...sameTimestamp, ...later];
         },
       },
       apiKeys: {

@@ -6,6 +6,12 @@ import type { InsightsOverview as CatalogOverview } from "@/lib/insights-overvie
 
 import { InsightsOverview } from "./InsightsOverview";
 
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
+    <a href={to}>{children}</a>
+  ),
+}));
+
 vi.mock("./ActivityChart", () => ({
   ActivityChart: ({ series }: { series: readonly unknown[] }) => (
     <div data-testid="activity-chart" data-points={series.length} />
@@ -114,21 +120,22 @@ describe("InsightsOverview", () => {
       within(activityOverview).getByText("Reported bundles"),
     ).toBeDefined();
     expect(within(activityOverview).getByText("2")).toBeDefined();
-    expect(
-      within(activityOverview).getByText("Reporting window"),
-    ).toBeDefined();
-    expect(within(activityOverview).getByText("last 7 days")).toBeDefined();
+    expect(within(activityOverview).queryByText("Reporting window")).toBeNull();
     expect(activityOverview.textContent).toContain(
-      "reported an update status in the last 7 days",
+      "reported activity or an update in the last 7 days",
     );
     expect(
       within(activityOverview).getByTestId("activity-chart"),
     ).toBeDefined();
     expect(screen.getAllByText("Newly applied").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Recovered away").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("8").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("8", { exact: false }).length).toBeGreaterThan(
+      0,
+    );
     expect(screen.getAllByText("2").length).toBeGreaterThan(0);
-    expect(screen.getByText("25%")).toBeDefined();
+    expect(
+      screen.getByText("Configured rollout").nextElementSibling?.textContent,
+    ).toBe("25%");
     expect(
       screen.getByTestId("activity-chart").getAttribute("data-points"),
     ).toBe("2");
@@ -180,7 +187,7 @@ describe("InsightsOverview", () => {
       />,
     );
     expect(screen.getByRole("alert").textContent).toContain(
-      "Active request failed",
+      "Refresh to try again",
     );
   });
 
@@ -195,7 +202,7 @@ describe("InsightsOverview", () => {
     expect(screen.getByRole("alert").textContent).toContain(
       "Insights report limit reached",
     );
-    expect(screen.getByRole("alert").textContent).toContain("50,000 reports");
+    expect(screen.getByRole("alert").textContent).toContain("50,000 events");
   });
 
   it("names the 30-day metric as monthly active installations", () => {

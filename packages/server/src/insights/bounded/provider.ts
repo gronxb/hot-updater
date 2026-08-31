@@ -226,4 +226,28 @@ export const createInsightsProvider = (
         pagination: { total: ordered.length, limit, offset },
       };
     },
+    async getEventHistory(limit, offset) {
+      const rows = await materializeEventRows({
+        persistence,
+        cutoffMs: Date.now(),
+      });
+      const ordered = rows.toSorted(compareEventNewest);
+      return {
+        data: ordered.slice(offset, offset + limit).map((row) => ({
+          id: row.id,
+          installId: row.install_id,
+          type: row.type,
+          fromBundleId: row.from_bundle_id,
+          toBundleId: row.to_bundle_id,
+          username: row.username,
+          userId: row.user_id,
+          platform: row.platform,
+          appVersion: row.app_version,
+          channel: row.channel,
+          cohort: row.cohort,
+          receivedAtMs: row.received_at_ms,
+        })),
+        pagination: { total: ordered.length, limit, offset },
+      };
+    },
   } satisfies InsightsProvider);

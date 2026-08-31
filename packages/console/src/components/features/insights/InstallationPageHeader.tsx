@@ -1,130 +1,82 @@
-import { Link } from "@tanstack/react-router";
-import { ArrowLeft, Search, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 
-import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Button } from "@/components/ui/button";
+import { Field, FieldLabel } from "@/components/ui/field";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
-
-export function InstallationPageHeader() {
-  return (
-    <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b bg-background px-3 py-3 sm:min-h-12 sm:flex-nowrap sm:bg-card/70 sm:px-4 sm:backdrop-blur-sm">
-      <SidebarTrigger className="-ml-1" />
-      <Link
-        className={buttonVariants({ size: "sm", variant: "ghost" })}
-        to="/insights"
-      >
-        <ArrowLeft aria-hidden="true" data-icon="inline-start" />
-        Back to Insights
-      </Link>
-      <Separator className="mx-1 hidden h-4 sm:block" orientation="vertical" />
-      <div className="basis-full pl-9 sm:basis-auto sm:pl-0">
-        <h1 className="text-sm font-medium">Installation history</h1>
-        <p className="text-xs text-muted-foreground">
-          Review the last known bundle and recorded changes.
-        </p>
-      </div>
-    </header>
-  );
-}
 
 export function InstallationSearchPanel({
   draftQuery,
   onDraftQueryChange,
   onSubmit,
   onClear,
-  hasQuery,
 }: {
   readonly draftQuery: string;
   readonly onDraftQueryChange: (value: string) => void;
   readonly onSubmit: () => void;
   readonly onClear: () => void;
-  readonly hasQuery: boolean;
 }) {
   return (
-    <Card>
-      <CardContent className="grid gap-4 p-4 lg:grid-cols-[minmax(12rem,0.45fr)_minmax(0,1.55fr)] lg:items-start">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <CardTitle className="text-sm font-medium">
-            <h2>Find an installation</h2>
-          </CardTitle>
-          <CardDescription>
-            Search by either identifier to inspect its bundle history.
-          </CardDescription>
-        </div>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            onSubmit();
-          }}
-          role="search"
-        >
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="installation-history-search">
-                User ID or install ID
-              </FieldLabel>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <InputGroup className="h-8">
-                  <InputGroupAddon>
-                    <Search aria-hidden="true" />
-                  </InputGroupAddon>
-                  <InputGroupInput
-                    id="installation-history-search"
-                    onChange={(event) => onDraftQueryChange(event.target.value)}
-                    placeholder="Enter a user ID or install ID"
-                    type="search"
-                    value={draftQuery}
-                  />
-                  {draftQuery.length > 0 || hasQuery ? (
-                    <InputGroupAddon align="inline-end">
-                      <InputGroupButton
-                        aria-label="Clear search"
-                        onClick={onClear}
-                        size="icon-xs"
-                      >
-                        <X aria-hidden="true" />
-                      </InputGroupButton>
-                    </InputGroupAddon>
-                  ) : null}
-                </InputGroup>
-                <Button
-                  className="w-full sm:w-auto"
-                  disabled={draftQuery.trim().length === 0}
-                  size="lg"
-                  type="submit"
+    <form
+      aria-label="Find installation"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (draftQuery.trim()) onSubmit();
+      }}
+      role="search"
+    >
+      <Field className="gap-2">
+        <FieldLabel className="sr-only" htmlFor="installation-history-search">
+          User ID or install ID
+        </FieldLabel>
+        <div className="flex flex-wrap gap-2">
+          <InputGroup className="h-11 w-auto min-w-0 flex-1 basis-44 lg:h-8">
+            <InputGroupAddon>
+              <Search aria-hidden="true" />
+            </InputGroupAddon>
+            <InputGroupInput
+              autoComplete="off"
+              className="h-11 text-base md:text-base lg:h-8 lg:text-xs"
+              id="installation-history-search"
+              maxLength={1024}
+              name="installation"
+              onChange={(event) => onDraftQueryChange(event.target.value)}
+              placeholder="User ID or install ID"
+              spellCheck={false}
+              type="search"
+              value={draftQuery}
+            />
+            {draftQuery.length > 0 ? (
+              <InputGroupAddon align="inline-end">
+                <InputGroupButton
+                  aria-label="Clear installation lookup"
+                  className="size-11 lg:size-5"
+                  onClick={onClear}
+                  size="icon-xs"
                 >
-                  <Search aria-hidden="true" data-icon="inline-start" />
-                  Search history
-                </Button>
-              </div>
-              <FieldDescription>
-                A user ID may return more than one installation. An install ID
-                opens one installation directly.
-              </FieldDescription>
-            </Field>
-          </FieldGroup>
-        </form>
-      </CardContent>
-    </Card>
+                  <X aria-hidden="true" />
+                </InputGroupButton>
+              </InputGroupAddon>
+            ) : null}
+          </InputGroup>
+          <Button
+            aria-label="Find installation"
+            className="h-11 px-3 lg:h-8"
+            disabled={draftQuery.trim().length === 0}
+            size="lg"
+            type="submit"
+            variant="outline"
+          >
+            Find
+          </Button>
+        </div>
+      </Field>
+    </form>
   );
 }
 

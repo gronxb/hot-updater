@@ -5,6 +5,8 @@ import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import {
   type ChartConfig,
   ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
@@ -99,17 +101,18 @@ export function BundleActivityChart({
   if (!hasWindowActivity) {
     return (
       <div className="flex h-16 items-center justify-center border-t px-4 pt-3 text-center text-xs text-muted-foreground sm:h-20 sm:pt-4">
-        No device activity in the last 30 days.
+        No bundle changes in {windowLabels[window]}.
       </div>
     );
   }
 
   return (
     <div className="border-t pt-3 sm:pt-4">
+      <p className="mb-2 text-right text-xs text-muted-foreground">UTC</p>
       <ChartContainer
         aria-describedby={captionId}
         aria-label={`Bundle movement over ${windowLabels[window]}`}
-        className="h-24 w-full aspect-auto sm:h-32"
+        className="h-32 w-full aspect-auto sm:h-40"
         config={chartConfig}
         role="img"
       >
@@ -132,6 +135,7 @@ export function BundleActivityChart({
             tickLine={false}
             width={32}
           />
+          <ChartLegend content={<ChartLegendContent />} />
           <ChartTooltip
             content={
               <ChartTooltipContent

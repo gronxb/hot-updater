@@ -27,6 +27,7 @@ import {
   getChannels,
   getConfig,
   getConfigLoaded,
+  getEventHistory as getEventHistoryApi,
   getInstallationHistory as getInstallationHistoryApi,
   getRelease,
   getReleaseCatalogDiagnostics,
@@ -63,6 +64,7 @@ export type InstallationHistoryResult = Awaited<
 >;
 export type InstallationSearchRow = InstallationSearchResult["data"][number];
 export type InstallationHistoryRow = InstallationHistoryResult["data"][number];
+export type EventHistoryResult = Awaited<ReturnType<typeof getEventHistoryApi>>;
 
 const bundleListQueryKey = ["bundles"] as const;
 const releaseListQueryKey = ["releases"] as const;
@@ -105,6 +107,8 @@ export const queryKeys = {
     history: (input: { installId: string; limit?: number; offset?: number }) =>
       ["installations", "history", input] as const,
   },
+  eventHistory: (input: { limit?: number; offset?: number }) =>
+    ["event-history", input] as const,
 };
 
 export type ReleaseFilters = {
@@ -264,6 +268,19 @@ export function useInstallationSearchQuery(
     staleTime: INSIGHTS_STALE_TIME_MS,
     refetchOnWindowFocus: true,
     enabled: enabled && input.query.trim().length > 0,
+  });
+}
+
+export function useEventHistoryQuery(
+  input: { limit?: number; offset?: number },
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: queryKeys.eventHistory(input),
+    queryFn: () => getEventHistoryApi({ data: input }),
+    staleTime: INSIGHTS_STALE_TIME_MS,
+    refetchOnWindowFocus: true,
+    enabled,
   });
 }
 

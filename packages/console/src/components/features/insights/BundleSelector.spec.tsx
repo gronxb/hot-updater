@@ -6,7 +6,7 @@ import { BundleSelector } from "./BundleSelector";
 describe("BundleSelector", () => {
   afterEach(cleanup);
 
-  it("filters by metadata and selects the bundle to inspect", () => {
+  it("recovers an empty search, filters by metadata, and selects a bundle", () => {
     Element.prototype.scrollIntoView = vi.fn();
     const onBundleChange = vi.fn();
     render(
@@ -23,6 +23,15 @@ describe("BundleSelector", () => {
     fireEvent.click(
       screen.getByRole("combobox", { name: "Bundle to inspect" }),
     );
+    fireEvent.change(screen.getByRole("combobox", { name: "Search bundles" }), {
+      target: { value: "no-matching-bundle" },
+    });
+    expect(screen.getByText("No bundles found")).toBeDefined();
+    expect(screen.queryAllByRole("option")).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
+    expect(screen.getAllByRole("option")).toHaveLength(2);
+
     fireEvent.change(screen.getByRole("combobox", { name: "Search bundles" }), {
       target: { value: "Android" },
     });

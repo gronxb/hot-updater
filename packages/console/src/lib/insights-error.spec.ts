@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { getInsightsErrorCopy } from "./insights-error";
 
 describe("getInsightsErrorCopy", () => {
-  it("returns narrowing guidance for the bounded Insights scan limit", () => {
+  it("explains the query limit without implying stored data is lost", () => {
     // Given
     const error = new Error("Bundle event scan exceeded 50000 rows.");
 
@@ -14,11 +14,11 @@ describe("getInsightsErrorCopy", () => {
     expect(copy).toEqual({
       title: "Insights report limit reached",
       description:
-        "This query matched more than 50,000 reports. Narrow the query and try again.",
+        "This view needs to read more than 50,000 events. The data is still stored, but this provider cannot query it at this volume.",
     });
   });
 
-  it("preserves ordinary Insights errors", () => {
+  it("offers a next action without exposing internal error messages", () => {
     // Given
     const error = new Error("Request failed");
 
@@ -28,7 +28,8 @@ describe("getInsightsErrorCopy", () => {
     // Then
     expect(copy).toEqual({
       title: "Insights unavailable",
-      description: "Request failed",
+      description:
+        "Refresh to try again. If this keeps happening, check your Insights provider connection.",
     });
   });
 });

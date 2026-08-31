@@ -16,6 +16,7 @@ import { DEFAULT_PAGE_LIMIT } from "./constants";
 import {
   parseBundleEventInsightsInput,
   parseBundleEventSummaryInput,
+  parseEventHistoryInput,
   parseInstallationHistoryInput,
   parseSearchInstallationsInput,
 } from "./insights-input";
@@ -363,6 +364,16 @@ export const searchInstallations = createServerFn({ method: "GET" })
       console.error("Error during installation search:", error);
       throw error;
     }
+  });
+
+export const getEventHistory = createServerFn({ method: "GET" })
+  .inputValidator(parseEventHistoryInput)
+  .handler(async ({ data }) => {
+    const { prepareConfig } = await import("./server/config.server");
+    const { getEventHistory: getEventHistoryWithRuntime } =
+      await import("./server/runtime.server");
+    const { hotUpdater } = await prepareConfig();
+    return getEventHistoryWithRuntime(hotUpdater, data);
   });
 
 export const getInstallationHistory = createServerFn({ method: "GET" })

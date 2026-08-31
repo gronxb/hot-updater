@@ -1,16 +1,24 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import {
+  createFileRoute,
+  useElementScrollRestoration,
+} from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
+import { EventHistoryCard } from "@/components/features/insights/EventHistoryCard";
 import { useInsightsCapability } from "@/components/features/insights/InsightsCapabilityContext";
+import { InsightsPageHeader } from "@/components/features/insights/InsightsPageHeader";
 import { InstallationHistoryCard } from "@/components/features/insights/InstallationHistoryCard";
 import { InstallationMatchesCard } from "@/components/features/insights/InstallationMatchesCard";
 import {
-  InstallationPageHeader,
   InstallationResultsSkeleton,
   InstallationSearchPanel,
 } from "@/components/features/insights/InstallationPageHeader";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   type InstallationSearchRow,
+  useEventHistoryQuery,
   useInstallationHistoryQuery,
   useInstallationSearchQuery,
 } from "@/lib/api";
@@ -19,7 +27,10 @@ import {
   isInsightsQueryEnabled,
 } from "@/lib/insights-api";
 
-import { validateInstallationsSearch } from "./-installations-search";
+import {
+  getInsightsScrollRestorationKey,
+  validateInstallationsSearch,
+} from "./-installations-search";
 
 const SEARCH_LIMIT = 20;
 const HISTORY_LIMIT = 50;
@@ -58,7 +69,7 @@ function InstallationsPage() {
   const firstMatchingInstallId = results?.data[0]?.installId;
 
   useEffect(() => {
-    if (selectedInstallId || !firstMatchingInstallId) return;
+    if (!query || selectedInstallId || !firstMatchingInstallId) return;
     void navigate({
       to: "/installations",
       search: {
@@ -66,12 +77,15 @@ function InstallationsPage() {
         installId: firstMatchingInstallId,
         searchOffset: search.searchOffset,
         historyOffset: 0,
+        eventsOffset: search.eventsOffset,
       },
       replace: true,
     });
   }, [
     firstMatchingInstallId,
     navigate,
+    query,
+    search.eventsOffset,
     search.query,
     search.searchOffset,
     selectedInstallId,
@@ -81,6 +95,7 @@ function InstallationsPage() {
     data: history,
     error: historyError,
     isLoading: isHistoryLoading,
+    refetch: refreshHistory,
   } = useInstallationHistoryQuery(
     {
       installId: selectedInstallId,
@@ -104,6 +119,7 @@ function InstallationsPage() {
       installId?: string;
       searchOffset?: number;
       historyOffset?: number;
+      eventsOffset?: number;
     },
     replace = false,
   ) => {
@@ -114,38 +130,98 @@ function InstallationsPage() {
         installId: nextSearch.installId,
         searchOffset: nextSearch.searchOffset ?? 0,
         historyOffset: nextSearch.historyOffset ?? 0,
+        eventsOffset:
+          nextSearch.query || nextSearch.installId
+            ? (nextSearch.eventsOffset ?? search.eventsOffset)
+            : undefined,
       },
       replace,
     });
   };
 
   const hasQuery = query.length > 0 || selectedInstallId.length > 0;
+  const eventsOffset = hasQuery
+    ? (search.eventsOffset ?? 0)
+    : search.historyOffset;
+  const scrollRestorationId = `${hasQuery ? "installation-history" : "all-events"}-${search.historyOffset}`;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollEntry = useElementScrollRestoration({
+    id: scrollRestorationId,
+    getKey: getInsightsScrollRestorationKey,
+  });
+  const events = useEventHistoryQuery(
+    { limit: HISTORY_LIMIT, offset: search.historyOffset },
+    insightsQueriesEnabled && !hasQuery,
+  );
+  useLayoutEffect(() => {
+    if (!hasQuery && !events.isLoading && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollEntry?.scrollY ?? 0;
+    }
+  }, [hasQuery, events.isLoading, scrollEntry?.scrollY, scrollRestorationId]);
+
+  const clearLookup = () => {
+    setDraftQuery("");
+    updateSearch({ historyOffset: eventsOffset });
+  };
+  const installationLookup = (
+    <InstallationSearchPanel
+      draftQuery={draftQuery}
+      onClear={clearLookup}
+      onDraftQueryChange={setDraftQuery}
+      onSubmit={() => {
+        updateSearch({
+          query: draftQuery.trim(),
+          eventsOffset,
+        });
+      }}
+    />
+  );
 
   return (
     <div className="flex h-svh min-h-0 flex-col">
-      <InstallationPageHeader />
-      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 p-3 sm:p-6">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-          <InstallationSearchPanel
-            draftQuery={draftQuery}
-            hasQuery={hasQuery}
-            onClear={() => {
-              setDraftQuery("");
-              updateSearch({ query: undefined, installId: undefined });
-            }}
-            onDraftQueryChange={setDraftQuery}
-            onSubmit={() => {
-              const nextQuery = draftQuery.trim();
-              updateSearch({
-                query: nextQuery || undefined,
-                installId: undefined,
-              });
-            }}
-          />
-          {!hasQuery ? null : isSearchLoading ? (
+      <InsightsPageHeader view="events" eventsOffset={eventsOffset} />
+      <div
+        key={scrollRestorationId}
+        ref={scrollRef}
+        data-scroll-restoration-id={scrollRestorationId}
+        id="insights-events-scroll"
+        className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 p-3 sm:p-6"
+      >
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-6">
+          {hasQuery ? (
+            <Card className="shadow-sm">
+              <CardContent className="flex flex-col gap-3 p-4 sm:p-6">
+                <Button
+                  className="-ml-2 h-11 self-start lg:h-8"
+                  onClick={clearLookup}
+                  variant="ghost"
+                >
+                  <ArrowLeft aria-hidden="true" data-icon="inline-start" />
+                  Back to all events
+                </Button>
+                {installationLookup}
+              </CardContent>
+            </Card>
+          ) : null}
+          {!hasQuery ? (
+            <EventHistoryCard
+              error={events.error}
+              history={events.data}
+              isLoading={events.isLoading}
+              limit={HISTORY_LIMIT}
+              offset={search.historyOffset}
+              onOffsetChange={(historyOffset) =>
+                updateSearch({ historyOffset })
+              }
+              onRefresh={() => void events.refetch()}
+              isFetching={events.isFetching}
+            >
+              {installationLookup}
+            </EventHistoryCard>
+          ) : isSearchLoading ? (
             <InstallationResultsSkeleton />
           ) : (
-            <div className="grid min-h-0 min-w-0 items-stretch gap-6 lg:min-h-96 lg:grid-cols-[minmax(18rem,20rem)_minmax(0,1fr)]">
+            <div className="grid min-h-0 min-w-0 items-stretch gap-4 sm:gap-6 lg:min-h-96 lg:grid-cols-[minmax(18rem,20rem)_minmax(0,1fr)]">
               <InstallationMatchesCard
                 error={searchError}
                 limit={SEARCH_LIMIT}
@@ -169,6 +245,7 @@ function InstallationsPage() {
                 }
               />
               <InstallationHistoryCard
+                onRefresh={() => void refreshHistory()}
                 error={historyError}
                 history={history}
                 isLoading={isHistoryLoading}

@@ -185,3 +185,6 @@ export const parseInstallationHistoryInput = (
     ...parsePagination(record),
   };
 };
+
+export const parseEventHistoryInput = (input: unknown): InsightsPagination =>
+  parsePagination(parseRecord(input));
