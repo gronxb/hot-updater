@@ -13,6 +13,8 @@ import {
   useDeleteBundleMutation,
   useDeleteBundlesMutation,
   useEventHistoryQuery,
+  useReleasesQuery,
+  useUpdateReleaseMutation,
 } from "./api";
 import {
   createChannel as createChannelApi,
@@ -22,6 +24,8 @@ import {
   getBundleEventSummary as getBundleEventSummaryApi,
   getBundleEventInsights as getBundleEventInsightsApi,
   getEventHistory as getEventHistoryApi,
+  getReleases as getReleasesApi,
+  updateRelease as updateReleaseApi,
 } from "./api-rpc";
 
 vi.mock("./api-rpc", () => ({
@@ -67,6 +71,117 @@ const timeout = (ms: number) =>
   new Promise((resolve) => {
     setTimeout(() => resolve("timeout"), ms);
   });
+
+it("refreshes the active release table before a successful update resolves", async () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
+  const filters = { channelId: "channel-1", platform: "ios" as const };
+  const page: Awaited<ReturnType<typeof getReleasesApi>> = {
+    data: [
+      {
+        activity30d: null,
+        bundle_id: bundle.id,
+        channel_id: "channel-1",
+        created_at_ms: 1,
+        currentlyUnreachable: false,
+        enabled: true,
+        fingerprint_hash: null,
+        id: "release-1",
+        kind: "BUNDLE",
+        message: "Initial message",
+        operation: "DEPLOY",
+        platform: "ios",
+        revision: 1,
+        rollout_cohort_count: 1_000,
+        scope_key: "scope-1",
+        should_force_update: false,
+        source_release_id: null,
+        strategy: "APP_VERSION",
+        target_app_version: "1.2.x",
+        target_cohorts: [],
+        updated_at_ms: 1,
+      },
+    ],
+    pagination: { currentPage: 1, hasNextPage: false, hasPreviousPage: false },
+  };
+  queryClient.setQueryData(queryKeys.releases.list(filters), page);
+  const refreshedPage = {
+    ...page,
+    data: page.data.map((release) => ({
+      ...release,
+      message: "Updated message",
+      revision: 2,
+    })),
+  };
+  let finishRefresh!: () => void;
+  vi.mocked(getReleasesApi).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishRefresh = () => resolve(refreshedPage);
+      }),
+  );
+  vi.mocked(updateReleaseApi).mockResolvedValueOnce({
+    attempts: 1,
+    catalog: {
+      scope_key: "scope-1",
+      catalog_id: "catalog-1",
+      strategy: "APP_VERSION",
+      channel_id: "channel-1",
+      channel_key: "production",
+      platform: "ios",
+      fingerprint_hash: null,
+      generation: 2,
+      payload: "{}",
+      catalog_hash: "catalog-hash",
+      byte_size: 2,
+      is_tombstone: false,
+      updated_at_ms: 2,
+    },
+    release: refreshedPage.data[0]!,
+  });
+  const wrapper = ({ children }: PropsWithChildren) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+  const { result, unmount } = renderHook(
+    () => ({
+      releases: useReleasesQuery(filters),
+      update: useUpdateReleaseMutation(),
+    }),
+    { wrapper },
+  );
+
+  try {
+    const input = {
+      expectedRevision: 1,
+      patch: { message: "Updated message" },
+      releaseId: "release-1",
+    };
+    let saved!: Promise<unknown>;
+    act(() => {
+      saved = result.current.update.mutateAsync(input);
+    });
+    await waitFor(() =>
+      expect(getReleasesApi).toHaveBeenCalledWith({ data: filters }),
+    );
+    expect(updateReleaseApi).toHaveBeenCalledWith({ data: input });
+    expect(result.current.update.isPending).toBe(true);
+    expect(result.current.releases.data?.data[0]?.message).toBe(
+      "Initial message",
+    );
+
+    await act(async () => {
+      finishRefresh();
+      await saved;
+    });
+
+    await waitFor(() => expect(result.current.update.isSuccess).toBe(true));
+    expect(result.current.releases.data).toEqual(refreshedPage);
+  } finally {
+    unmount();
+    queryClient.clear();
+  }
+});
 
 describe("protected bundle-event queries", () => {
   it("loads unfiltered events only when Insights access is enabled", async () => {

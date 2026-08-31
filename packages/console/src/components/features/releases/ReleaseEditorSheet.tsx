@@ -295,6 +295,7 @@ export function ReleaseEditorSheet({
       await preflight.mutateAsync(input);
       await update.mutateAsync(input);
       toast.success("Bundle settings saved");
+      onOpenChange(false);
     } catch (caught) {
       setError(
         caught instanceof Error
