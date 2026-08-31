@@ -1,5 +1,6 @@
 import { DatabasePluginInputError } from "@hot-updater/plugin-core";
 import type {
+  DatabaseModel,
   DatabasePluginImplementation,
   TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
@@ -81,6 +82,7 @@ const executeInsert = async (
 const toOrderBy = (
   table: DrizzleTable,
   input: {
+    model: DatabaseModel;
     orderBy?: readonly {
       field: string;
       direction: "asc" | "desc";
@@ -91,13 +93,21 @@ const toOrderBy = (
   const clauses = input.orderBy;
   return clauses?.flatMap((clause) => {
     const column = getDrizzleColumn(table, clause.field);
+    const valueOrder = clause.direction === "asc" ? asc(column) : desc(column);
+    // These NOT NULL event columns can use their index order directly.
+    if (
+      input.model === "bundle_events" &&
+      (clause.field === "id" || clause.field === "received_at_ms")
+    ) {
+      return [valueOrder];
+    }
     const nulls =
       clause.nulls ?? (clause.direction === "asc" ? "last" : "first");
     return [
       nulls === "first"
         ? sql`${column} is null desc`
         : sql`${column} is null asc`,
-      clause.direction === "asc" ? asc(column) : desc(column),
+      valueOrder,
     ];
   });
 };

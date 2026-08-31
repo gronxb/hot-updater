@@ -7,6 +7,7 @@ import {
   type ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
 import type {
+  DatabaseModel,
   DatabasePluginImplementation,
   DatabaseWhere,
   TransactionDatabasePluginImplementation,
@@ -54,6 +55,7 @@ const whereClause = (
 const orderClause = (
   input:
     | {
+        readonly model: DatabaseModel;
         readonly orderBy?: readonly {
           readonly direction: "asc" | "desc";
           readonly field: string;
@@ -67,14 +69,21 @@ const orderClause = (
   return sql` order by ${sql.join(
     clauses.map((clause) => {
       const field = sql.ref(clause.field);
+      const valueOrder =
+        clause.direction === "asc" ? sql`${field} asc` : sql`${field} desc`;
+      // These NOT NULL event columns can use their index order directly.
+      if (
+        input?.model === "bundle_events" &&
+        (clause.field === "id" || clause.field === "received_at_ms")
+      ) {
+        return valueOrder;
+      }
       const nulls =
         clause.nulls ?? (clause.direction === "asc" ? "last" : "first");
       const nullOrder =
         nulls === "first"
           ? sql`${field} is null desc`
           : sql`${field} is null asc`;
-      const valueOrder =
-        clause.direction === "asc" ? sql`${field} asc` : sql`${field} desc`;
       return sql`${nullOrder}, ${valueOrder}`;
     }),
     sql`, `,
