@@ -1,5 +1,6 @@
 {
   "name": "@hot-updater/test-utils",
+  "private": true,
   "version": "1.0.0-rc.0",
   "type": "module",
   "description": "Test utilities for Hot Updater packages",
@@ -35,9 +36,6 @@
   },
   "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
-  "publishConfig": {
-    "access": "public"
-  },
   "peerDependencies": {
     "@hot-updater/core": "*",
     "@hot-updater/plugin-core": "*",
