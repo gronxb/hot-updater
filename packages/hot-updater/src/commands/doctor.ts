@@ -166,6 +166,20 @@ export function areVersionsCompatible(
     : null;
   const parsedVersionA = comparableVersionA ? parse(comparableVersionA) : null;
   const parsedVersionB = comparableVersionB ? parse(comparableVersionB) : null;
+  const prereleaseChannelA = parsedVersionA?.prerelease?.[0];
+  const prereleaseChannelB = parsedVersionB?.prerelease?.[0];
+
+  if (
+    parsedVersionA &&
+    parsedVersionB &&
+    parsedVersionA.major === parsedVersionB.major &&
+    parsedVersionA.minor === parsedVersionB.minor &&
+    parsedVersionA.patch === parsedVersionB.patch &&
+    prereleaseChannelA !== undefined &&
+    prereleaseChannelA === prereleaseChannelB
+  ) {
+    return true;
+  }
 
   if (
     parsedVersionA &&

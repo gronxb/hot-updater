@@ -165,6 +165,12 @@ describe("areVersionsCompatible", () => {
     expect(areVersionsCompatible("^1.0.0-alpha.1", "1.0.0")).toBe(true);
     expect(areVersionsCompatible("2.0.0-alpha.1", "^1.0.0")).toBe(false);
   });
+
+  it("should accept increments within the same pre-release channel", () => {
+    expect(areVersionsCompatible("1.0.0-rc.1", "1.0.0-rc.0")).toBe(true);
+    expect(areVersionsCompatible("1.0.0-rc.0", "1.0.0-rc.1")).toBe(true);
+    expect(areVersionsCompatible("1.0.1-rc.0", "1.0.0-rc.0")).toBe(false);
+  });
 });
 
 describe("infrastructure version helpers", () => {
@@ -515,6 +521,23 @@ describe("doctor", () => {
         dependencies: {
           "hot-updater": "1.0.0",
           "@hot-updater/core": "1.0.1",
+        },
+      },
+      path: "/mock/cwd/package.json",
+    });
+
+    const result = await doctor();
+    expect(result).toBe(true);
+  });
+
+  it("should accept independently released packages in the same RC", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "1.0.0-rc.0",
+          "@hot-updater/cloudflare": "1.0.0-rc.0",
+          "@hot-updater/expo": "1.0.0-rc.1",
+          "@hot-updater/react-native": "1.0.0-rc.1",
         },
       },
       path: "/mock/cwd/package.json",
