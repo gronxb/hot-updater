@@ -1,3 +1,5 @@
+import { stripVTControlCharacters } from "node:util";
+
 import { updateReleasePolicy } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -85,7 +87,9 @@ describe("Release commands", () => {
 
     await handleReleaseList({ bundleId: first.bundle.id });
 
-    const rendered = String(output.mock.calls[0]?.[0]);
+    const rendered = stripVTControlCharacters(
+      String(output.mock.calls[0]?.[0]),
+    );
     expect(rendered).toContain("Created");
     expect(rendered).toContain(first.bundle.id);
     expect(rendered).not.toContain(second.bundle.id);
@@ -102,7 +106,9 @@ describe("Release commands", () => {
 
     await handleReleaseShow(release!.id);
 
-    const rendered = String(output.mock.calls[0]?.[0]);
+    const rendered = stripVTControlCharacters(
+      String(output.mock.calls[0]?.[0]),
+    );
     for (const field of [
       "Strategy",
       "Target cohorts",
@@ -146,7 +152,10 @@ describe("Release commands", () => {
     await handleReleaseDelete(id, { yes: true });
 
     expect(
-      output.mock.calls.map(([rendered]) => String(rendered).split("\n")[0]),
+      output.mock.calls.map(
+        ([rendered]) =>
+          stripVTControlCharacters(String(rendered)).split("\n")[0],
+      ),
     ).toEqual([
       "Release updated",
       "Release disabled",
@@ -154,10 +163,11 @@ describe("Release commands", () => {
       "Release disabled",
       "Release deleted",
     ]);
-    for (const [rendered] of [
+    for (const [rawRendered] of [
       ...output.mock.calls,
       ...log.message.mock.calls,
     ]) {
+      const rendered = stripVTControlCharacters(String(rawRendered));
       expect(rendered).toMatch(/\bID:\s+/);
       expect(rendered).toContain(id);
       expect(rendered).not.toContain(seeded.bundle.id);

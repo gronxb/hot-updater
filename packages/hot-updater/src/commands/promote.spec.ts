@@ -1,3 +1,5 @@
+import { stripVTControlCharacters } from "node:util";
+
 import type { Bundle } from "@hot-updater/plugin-core";
 import { updateReleasePolicy } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -108,12 +110,16 @@ describe("handlePromote", () => {
     expect(sourceReleaseId).not.toBe(sourceBundle.id);
     expect(promoted!.id).not.toBe(sourceReleaseId);
     expect(promoted!.id).not.toBe(sourceBundle.id);
-    const result = String(log.info.mock.calls[0]?.[0]);
+    const result = stripVTControlCharacters(
+      String(log.info.mock.calls[0]?.[0]),
+    );
     expect(result).toMatch(/\bID:\s+/);
     expect(result).toContain(promoted!.id);
     expect(result).not.toContain(sourceBundle.id);
     expect(result).not.toContain("Release ID");
-    const preview = String(log.message.mock.calls[0]?.[0]);
+    const preview = stripVTControlCharacters(
+      String(log.message.mock.calls[0]?.[0]),
+    );
     expect(preview).toContain("Source ID:");
     expect(preview).toContain(sourceReleaseId);
     expect(preview).not.toContain(sourceBundle.id);
@@ -142,9 +148,9 @@ describe("handlePromote", () => {
       operation: "PROMOTE",
     });
     expect(databaseHarness.commit).toHaveBeenCalledTimes(1);
-    expect(String(log.message.mock.calls[0]?.[0])).toContain(
-      "disabled atomically",
-    );
+    expect(
+      stripVTControlCharacters(String(log.message.mock.calls[0]?.[0])),
+    ).toContain("disabled atomically");
   });
 
   it("rejects promotion when the previewed source revision changes", async () => {

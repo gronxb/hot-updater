@@ -1,3 +1,5 @@
+import { stripVTControlCharacters } from "node:util";
+
 import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -112,7 +114,9 @@ describe("Bundle commands", () => {
 
     await handleBundleList({ platform: "ios", limit: 5 });
 
-    const table = String(output.mock.calls.at(-1)?.[0]);
+    const table = stripVTControlCharacters(
+      String(output.mock.calls.at(-1)?.[0]),
+    );
     expect(table).toContain(source.id);
     expect(table).toContain(promoted.id);
     expect(table).not.toContain(bundle.id);
@@ -127,7 +131,9 @@ describe("Bundle commands", () => {
     ]);
 
     await handleBundleShow(promoted.id);
-    const summary = String(output.mock.calls.at(-1)?.[0]);
+    const summary = stripVTControlCharacters(
+      String(output.mock.calls.at(-1)?.[0]),
+    );
     expect(summary).toContain(`ID:`);
     expect(summary).toContain(promoted.id);
     expect(summary).toContain("staging");
@@ -181,9 +187,11 @@ describe("Bundle commands", () => {
       databaseHarness.plugin.models.bundles.findById("B1"),
     ).resolves.toBeNull();
     expect(log.success).toHaveBeenCalledWith("Deleted bundle record.");
-    expect(log.info).toHaveBeenCalledWith(
-      expect.stringMatching(/File ID:\s+B1/),
-    );
+    expect(
+      log.info.mock.calls.map(([message]) =>
+        stripVTControlCharacters(String(message)),
+      ),
+    ).toContainEqual(expect.stringMatching(/File ID:\s+B1/));
     expect(log.info).toHaveBeenCalledWith(
       expect.stringContaining("storage prune --dry-run"),
     );

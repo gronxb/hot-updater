@@ -1,3 +1,5 @@
+import { stripVTControlCharacters } from "node:util";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockCli, mockServer, mockStoragePlugin } = vi.hoisted(() => {
@@ -81,7 +83,8 @@ describe("createPatch", () => {
       channel: "production",
       platform: "ios",
     });
-    const [summary, title] = mockCli.p.note.mock.calls[0]!;
+    const [rendered, title] = mockCli.p.note.mock.calls[0]!;
+    const summary = stripVTControlCharacters(String(rendered));
     expect(title).toBe("Patch");
     expect(summary).toMatch(/Channel:\s+production/);
     expect(summary).toMatch(/Platform:\s+ios/);
