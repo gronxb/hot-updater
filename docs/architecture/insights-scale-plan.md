@@ -1,6 +1,8 @@
 # Insights beyond 50,000 events
 
-Status: staged implementation in progress, 2026-09-01. Source baseline: `4fd801be`.
+Status: pre-release contract replacement in progress, 2026-09-01.
+Source baseline: `4fd801be`. The user explicitly requires no backward API
+compatibility. The initial additive draft is being replaced, not grandfathered.
 This document defines the full target; it is not a claim that every stage ships.
 See [implementation evidence](./insights-scale-review.md) for the verified subset.
 It is independent of the Console mobile work in PR #1233, which targets `next`.
@@ -19,7 +21,7 @@ Assumptions and recommended decisions:
 | --- | --- | --- |
 | Is 50,000 a storage limit? | No. Keep raw event ingestion independent of report limits. | Do not drop older events, add a TTL, sample `Activity reported`, or raise the constant as the fix. Provider storage quotas still apply. |
 | What does MAU mean here? | Unique **installation IDs** reporting within the rolling 30-day window. | This is not account-level MAU. Multiple installations for one user remain distinct. Do not sum daily counts. |
-| Must every request synchronously recompute an exact report? | No. Return a completed exact report with its actual reporting time, or an explicit preparing state. | Freshness and response latency become separate guarantees in a versioned API. |
+| Must every request synchronously recompute an exact report? | No. Return a completed exact report with its actual reporting time, or an explicit preparing state. | Freshness and response latency are separate guarantees in the normal API. |
 | Can pagination require an exact total? | No for the new page contract. | Return `hasNext` and a cursor immediately; request an exact total separately if needed. |
 | Can search quietly become prefix-only? | No. Preserve historical, case-insensitive contains search as an explicit potentially asynchronous operation. | Offer exact ID lookup first; prefix search is a separately named mode, not a substitute for contains. |
 | Can active chart buckets silently switch to UTC calendar boundaries? | No. Preserve the current rolling bucket calculation at the report's declared `asOfMs`. | Fixed daily/hourly scalar rollups are not sufficient. Any later calendar-bucket change needs its own contract and release note. |
@@ -27,7 +29,8 @@ Assumptions and recommended decisions:
 
 Completion means the whole provider/operation matrix below is supported, including
 Firebase and DynamoDB. A partial provider rollout is useful, but is not completion
-of this plan. Custom plugins may explicitly retain the legacy bounded capability.
+of this plan. Third-party plugins implement the same required contract; there is
+no append/scan-only compatibility fallback or permanently capped provider path.
 
 ## Current behavior and verified bottlenecks
 
@@ -83,7 +86,7 @@ The current [admin HTTP routes](../../packages/server/src/insights/routes.ts)
 expose six of these methods. `getEventHistory` currently exists through the
 provider/Console RPC only; `getBundleEventSummaries` is also not a standalone HTTP
 route. Do not describe them as existing HTTP endpoints. Add the global admin
-event-page route explicitly when introducing the versioned page contract; keep
+admin `GET /events` route explicitly when replacing the page contract; keep
 batch summaries available through the typed server API and Console RPC. Ingestion
 remains client `POST /events`.
 
@@ -152,7 +155,7 @@ original value retained where required. No unbounded n-gram/prefix expansion and
 no required external search service. A contains request can still be expensive:
 budget and expose its completion status rather than pretending it is a cheap
 key lookup. This preserves functionality while explicitly changing cold-query
-latency in the versioned contract.
+latency in the replacement contract.
 
 Normalization initially means the current JavaScript lowercase behavior, not
 locale-sensitive folding or a new Unicode normalization policy. Treat `%`, `_`,
@@ -160,37 +163,73 @@ and other query-language characters literally when translating contains to SQL
 or another backend; keep the existing validated input length. If a native query
 cannot preserve these rules within platform limits, use the alias-job path.
 
-## Contracts, pagination, and compatibility
+## One query contract, without backward API compatibility
 
-Extend `database.models.insights` with a versioned native query capability while
-retaining `append`/`scan` for legacy plugins, backfill, and reference tests. Define
+Replace `database.models.insights` query contracts directly. All providers must
+implement the required event pages, installation lookup/pages and finite typed
+report operations. Keep `append` for ingestion. If a raw `scan` is needed for
+backfill, expose it only through maintenance tooling, outside the runtime read
+provider's dependencies; a read cannot silently fall back to it. Define
 the finite storage request/result types in plugin-core or an existing lower-level
 shared boundary. Do not import server domain types into plugin-core or introduce
 a general query language. Physical SQL, Firestore, and DynamoDB decisions stay in
 their adapters; server validation, metric definitions, and response mapping stay
 in the server.
 
-The contract PR should define explicit typed operations for event pages,
+The contract must define explicit typed operations for event pages,
 installation lookup/pages, bundle summary batches, bundle detail reports,
 installation overview, and active overview. Storage responses use bounded rows
 or report references/status, never an unbounded raw array for the server to group.
 Maintenance is a separate internal/tooling capability, not an admin-free query
 side effect or a public migrator on the root server instance.
 
-Readiness is per operation: `ready`, `preparing`, `stale`, `unsupported`, or
-`failed`, with schema/query version and projection generation where relevant.
+The plugin-developer adversarial review agreed to **append plus four required
+read ports**, without public capability negotiation:
+
+| Port | Required behavior |
+| --- | --- |
+| `pageEvents` | One bounded all/installation/bundle event page. Provider owns lookahead and continuation. |
+| `pageInstallations` | Historical contains, or all installations for an empty query, with latest metadata. Bind live/snapshot choice and search scope into the cursor. |
+| `getReport` | A finite query kind: bundle summary batch, bundle detail, installation overview, or active overview. Return a small typed summary/publication, or an actual durable job state with the previous publication. |
+| `pageReport` | One bounded section of one immutable publication: series, cohorts, bundle distribution, or flat active bundle-series rows. Never nested unbounded arrays. |
+
+Single bundle summaries use a batch of one; bundle detail recent events use
+`pageEvents(bundle)`. Neither needs another storage port. Batch bundle IDs are
+deduplicated/sorted and limited to 100. The server maps already aggregated rows;
+it never recollects raw history to compute a report. Raw scans, leases, checkpoints
+and backfill live behind DB/tooling `runStep({ maxItems, maxRequests })` only.
+
+Report reuse keys contain the semantic/storage revision and canonical query,
+within the database namespace. Never include `Date.now()`, `minAsOfMs`, page size
+or cursor in that key. `minAsOfMs` selects freshness, not a new cache entry.
+Atomically reuse one active job per query; `queued`/`preparing` requires that job
+to exist. A publication fixes its ID, `asOfMs`, committed source generation and
+completion time. Section pages cannot switch publications midway. Expired
+publications fail with an explicit restart state.
+
+This is agreement on the port shape and responsibilities, not approval of the
+implementation. Before storage changes, settle the provider-specific commit
+boundary for source generations, lease/replay/publication atomicity, historical
+search snapshots, fixed section ordering and real read budgets. Timestamp cutoffs
+alone must not be promoted to committed snapshots to avoid this work.
+
+Readiness is per operation: `ready`, `preparing`, `stale`, or `failed`, with
+schema/storage version and projection generation where relevant. Missing required
+plugin methods are configuration errors, not an optional legacy mode. A missing
+index is not evidence that a background preparation job is running.
 Completed reports include `asOfMs`, computation completion time, source generation,
 and `accuracy: exact`. A previously completed report may be displayed while its
 successor runs, with its age visible. Preparing/failed is never converted to zero.
-Capability discovery must distinguish ingestion, native event browsing, identity
-lookup, and aggregate readiness; one aggregate backfill cannot disable event pages.
+Readiness distinguishes event browsing, identity lookup and aggregates; one
+aggregate backfill cannot disable event pages. Public capability-version
+negotiation, `mode: bounded`, and `maxMatchingRows` are not part of the new API.
 
 Propagate this through
 [`createHotUpdaterCore.ts`](../../packages/server/src/createHotUpdaterCore.ts),
 [`runtime.server.ts`](../../packages/console/src/lib/server/runtime.server.ts),
 [`insights-api.ts`](../../packages/console/src/lib/insights-api.ts), and
 [`insights-rpc.ts`](../../packages/console/src/lib/insights-rpc.ts). They currently
-construct or accept only the bounded provider. Forward native capabilities through
+construct or accept only the bounded provider. Replace that path and retain
 schema-readiness wrappers; testing an adapter directly is not enough.
 
 ### New page contract
@@ -217,8 +256,8 @@ schema-readiness wrappers; testing an adapter directly is not enough.
 - Total is independently `exact(value, sourceGeneration)`, `pending`, or
   `unavailable`. Never infer total from a full page, and never combine a stale
   total with live items as though both share a snapshot.
-- Do not implement native pages using a deep `OFFSET`/`skip` traversal. Legacy
-  random offsets require a result snapshot/rank index or background resolution.
+- Do not implement pages using a deep `OFFSET`/`skip` traversal or add an offset
+  compatibility resolver. Cursor navigation is the only supported list contract.
 
 Choose **live keyset browsing** for ordinary event pages. A fixed event-time
 cutoff prevents newer reports from continuously pushing the page boundary, but
@@ -234,35 +273,32 @@ generation and the adapter must support it; timestamp-only pagination cannot be
 relabeled as snapshot-consistent. Expired snapshots return a typed restart state.
 
 Keep list position in browser history and preserve search, selected installation,
-source list, and scroll position on return. New URLs carry cursors; old offset
-URLs remain accepted during migration. Resolve a saved offset against a prepared
-result when necessary, showing preparation instead of blocking the request or
-silently resetting to the first page. Browser Back/Previous uses stored prior
-cursors for the same view.
+source list, and scroll position on return. URLs carry cursors. Do not build an
+old-offset resolver, snapshot rank index or compatibility URL reader. Old offset
+inputs are rejected with a clear restart action; no preceding-page walk occurs.
+Browser Back/Previous uses stored prior cursors for the same view.
 
-### Versioned rollout
+### Direct replacement before release
 
-Add a new typed read surface and an explicitly versioned HTTP/RPC contract. Keep
-old offset/mandatory-total methods as deprecated compatibility wrappers. On an
-official native provider those wrappers use native queries or prepared exact
-results, not the 50,000-row collector. If the requested result is not ready, return
-a structured preparing/retry error; do not change the old success shape silently.
-Old clients that cannot handle preparation need a documented upgrade path.
-An old response without freshness metadata must not silently receive an earlier
-cached snapshot. It either completes the requested native calculation or returns
-the structured state pointing to the new report API. Asynchronous/freshness and
-cursor changes are explicitly versioned behavior, not transparent compatibility.
+Change the existing `getEventHistory`, `getInstallationHistory` and other query
+inputs/results directly. Update HTTP, Console RPC, hooks, DTOs and consumers in
+the same change. Use admin `GET /events`; remove the draft's separate
+`eventPages` public surface and `/insights/v1/events` route. Do not keep deprecated
+offset/total overloads, dual serializers, opt-in switches or old-provider shims.
 
-For legacy/custom append/scan-only plugins, advertise `legacy-bounded` with the
-actual limit. Do not remove their safeguard or pretend they support native reads.
-Missing schema and unsupported capability are distinct conditions.
+Cursor format tags, schema/storage layout versions and report source generations
+remain: they validate persisted state and data correctness, not old public API
+compatibility. Preserve metric semantics and raw data while replacing contracts.
+Reference collectors may live in tests as correctness oracles; production code
+must not import a bounded compatibility collector.
 
 Replace message regex parsing with structured errors end to end. Currently the
 [server error](../../packages/server/src/insights/errors.ts) says
 `Insights event scan exceeded ...`, while the
 [Console parser](../../packages/console/src/lib/insights-error.ts) expects
-`Bundle event scan exceeded ...`. Preserve `INSIGHTS_SCAN_LIMIT_EXCEEDED` for legacy
-reads; add typed preparing, cursor-expired, schema, and storage failure states.
+`Bundle event scan exceeded ...`. Remove both the old limit error and regex path
+when their callers are replaced. Use one structured error contract for invalid
+input, readiness, expired cursors, schema and storage failures.
 
 ## Exact reports without request-sized memory growth
 
@@ -341,7 +377,7 @@ Actual index order must follow predicates and be confirmed with query plans.
 | Firebase Firestore | Dedicated native event collection and identity/latest projections | Persisted exact membership and resumable reports; no SQL-style group-by assumption | Emulator correctness plus Standard production read/write/index cost and transaction tests |
 | AWS DynamoDB | Scoped keys, time buckets/write shards, finite stream merge | Conditional membership/latest updates and durable jobs; no table Scan in interactive reads | Local correctness plus real consumed capacity, hot-partition and GSI-lag tests |
 | Mock | Deterministic implementation of the same native contract | Small reference oracle plus controllable jobs/clock/failures | Semantic conformance; not a substitute for physical-provider benchmarks |
-| Legacy/custom | Explicit capability negotiation | Native opt-in, otherwise labeled bounded compatibility | Missing/partial/new capability compatibility tests |
+| Third-party plugins | Same required typed query ports | No old-provider shim or scan fallback | Shared conformance tests and a concise implementation guide |
 
 ### SQL, Supabase, D1, and MongoDB details
 
@@ -499,12 +535,12 @@ Migration sequence for an existing database larger than the current cap:
 5. Publish ready generations atomically. Enable event pages independently as soon
    as their native access paths are ready; enable each report family after its
    own validation. Never hide preparation behind an empty chart.
-6. Switch native query capability per operation. Retain old physical data/read
-   versions for rollback; do not delete raw history. If rolling back to bounded
-   code, explicitly show its limitation instead of claiming continued large-data
-   support. Reject incompatible writers rather than silently losing markers.
-7. After the compatibility window, retire obsolete derived indexes/job results
-   with a separate migration. Raw retention changes require a separate decision.
+6. Publish each ready read path. Preserve raw data and migration checkpoints for
+   recovery; do not retain old application read implementations. Reject writers
+   that cannot maintain the new data protocol rather than silently losing markers.
+7. Remove obsolete derived indexes/job results only through a data-safe migration.
+   There is no API compatibility window. Raw retention changes require a separate
+   decision and are not part of this task.
 
 Authentication remains unchanged: admin Insights reads require the host's admin
 authorization; client ingestion keys do not grant read/maintenance access. Scope
@@ -520,17 +556,16 @@ may advertise a method before its conformance and storage-read checks pass.
 
 | Package | Changes | Depends on | Exit criterion |
 | --- | --- | --- | --- |
-| P0: contracts and oracle | Freeze semantics; native capability, pages, report states, structured errors, cursor/live consistency; versioned compatibility design | This plan | All eight operations have executable semantic cases, including identity changes, shifted buckets, and old client behavior. |
+| P0: contracts and oracle | Freeze semantics; mandatory physical query ports, pages, reports, structured errors and cursor/live consistency; direct API replacement | This plan | Plugin-developer adversarial agreement on one contract for all eight operations; semantic cases include identity changes and shifted buckets. |
 | P1: schema and durable processing | Additive schemas, provider query ports, source-generation protocol, runner/checkpoint primitives and readiness | P0 | Crash/replay/late-commit tests pass; no startup full backfill or runtime entry leakage. |
 | P2: native browsing on every provider | Global/install/bundle event pages, latest metadata, exact identity path; Firebase snapshot isolation; Dynamo key/access migration | P0, P1 where migration requires it | 50,001+ history is browsable with bounded application memory and measured indexed storage reads on every official provider. |
-| P3: exact reports on every provider | SQL/Mongo scoped aggregates; latest/alias projections; NoSQL exact membership jobs; active/movement/batch/cohort/all-time reports and contains compatibility | P1, P2 | Full operation/provider matrix produces exact results or durable preparing results that complete at target scale. No official provider remains capped. |
-| P4: Console and public adapters | Capability propagation, independent page/report loading, cursor URLs/Back, totals and freshness UI; explicit global admin event route | P0, staged P2/P3 | End-to-end HTTP/RPC/Console flows work for ready/preparing/stale/failed and old URLs without silently changing metric meaning. |
+| P3: exact reports on every provider | SQL/Mongo scoped aggregates; latest/alias projections; NoSQL exact membership jobs; active/movement/batch/cohort/all-time reports and historical contains semantics | P1, P2 | Full operation/provider matrix produces exact results or durable preparing results that complete at target scale. No official provider remains capped. |
+| P4: Console and public adapters | Replace existing contracts; independent page/report loading, cursor URLs/Back and freshness UI; admin GET /events | P0, staged P2/P3 | End-to-end HTTP/RPC/Console states work with no old API/URL path, hidden scan or silently changed metric meaning. |
 | P5: existing-data rollout and benchmarks | Backfill/cutover/rollback runbooks, capacity/freshness dashboards, full integration and performance evidence | P1–P4 | Large populated databases migrate online; acceptance matrix below passes; known provider limits and measured cost are published. |
 
-P2 should land before waiting for every expensive aggregate optimization: this
-unblocks investigation of individual events/installations. P3 is still required
-for completing the overall 50,000-limit task. Do not merge unrelated mobile design
-changes into these work packages.
+Implement P2 before the expensive report work, but do not publish or merge an
+incomplete required plugin contract. P3 and the full provider matrix remain release
+gates. Do not merge unrelated mobile design changes into these work packages.
 
 Console also needs to remove the hidden all-catalog reads in `collectBundles` and
 `collectReleases` in `insights-rpc.ts`. Resolve metadata only for visible/selected
@@ -554,7 +589,7 @@ missing bundle labels without collecting every release on each overview request.
 | No new events for more than 24h/7d/30d | Scheduled expiry produces correct new snapshots; a stopped runner surfaces old freshness instead of current zero or current stale counts. |
 | Many bundles/cohorts and years of history | Result pagination/resolution prevents huge responses without changing totals or silently omitting dimensions. |
 | First, middle, and deep pages with concurrent ingestion | No repeats; complete traversal for fixed data; late-commit behavior follows the documented live contract; snapshot traversal uses captured generation. |
-| Back/Previous, old offset URLs, expired or wrong-scope cursors | Position is retained or an explicit restart/preparing state appears. No cross-scope access or silent first-page reset. |
+| Back/Previous, rejected offset inputs, expired or wrong-scope cursors | Valid cursor position is retained; invalid input has an explicit restart action. No compatibility offset resolution, cross-scope access or silent reset. |
 | Backfill interrupted/retried while ingesting, failed index writes, lease takeover | No loss, double counts, false readiness, or unbounded restart; independent page readiness and rollback remain correct. |
 
 Run the semantic suite through the model, real server wrapper, admin HTTP where

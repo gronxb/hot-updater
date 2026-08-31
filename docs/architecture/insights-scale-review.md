@@ -3,6 +3,41 @@
 Date: 2026-09-01. Full target: [scale plan](./insights-scale-plan.md).
 This is a staged rollout, separate from the mobile Console work in PR #1233.
 
+**Design revision:** the user clarified that this is pre-release and backward API
+compatibility is unnecessary. The additive implementation below records commit
+`658329812`; its optional query surface, separate v1 route and retained offset API
+are being replaced. Passing tests for that commit do not approve the revised
+contract or the full provider/operation goal.
+
+## Plugin-developer adversarial review
+
+A separate reviewer explicitly adopted the persona of an external database plugin
+author. They rejected the additive design under the clarified requirements and
+agreed to direct replacement only under these conditions:
+
+- One required query contract, with event pages, historical installation search
+  and finite typed reports covering all eight operations; no old-plugin shim.
+- Provider-owned lookahead/continuation and measured physical queries on each DB.
+- Runtime read dependencies do not contain raw `scan`; maintenance owns backfill.
+- Existing HTTP/RPC/Console consumers change together, with no `.eventPages`,
+  `/insights/v1/events`, offset adapter or legacy response serializer left behind.
+- Preserve raw events, cursor format validation, schema/layout versions and report
+  generations; those are data-safety requirements, not API compatibility support.
+- All providers, report result bounds, readiness/reuse, and migrations need code
+  and execution evidence before final approval. An unsupported official provider
+  is not an acceptable finished implementation.
+
+The follow-up review agreed on append plus four required read ports:
+`pageEvents`, `pageInstallations`, `getReport`, `pageReport`. Report sections are
+bounded, single summaries reuse batch, and report cache keys exclude wall-clock
+request time/page state. The plan records their responsibilities and remaining
+storage correctness gates.
+
+This is agreement on the contract and responsibilities, **not approval of a
+rewritten implementation**. Commit boundaries, lease/replay/publication atomicity,
+historical snapshot construction, section ordering and each provider's physical
+read budget still need implementation evidence.
+
 ## Implemented subset
 
 - Optional version 1 native event-page capability in plugin-core and the typed
@@ -115,3 +150,9 @@ official providers, exact reports/search and durable maintenance, existing-data
 backfill, and the full provider/operation correctness and cost matrix. The
 standalone E2E series checks OTA integration; it does not replace large-scale
 Insights benchmarks. Its exact PR commit and task results will be recorded here.
+
+The first full `standalone-dynamodb` attempt on `658329812`, job
+`job-20260831160856-sjc1g3`, failed the runner's disk preflight (7.3 GiB available,
+20 GiB required). This is not a successful scenario run. Remaining profiles were
+not submitted; re-run the series after the contract replacement and disk preflight
+are ready. No disk-space safety threshold is bypassed.
