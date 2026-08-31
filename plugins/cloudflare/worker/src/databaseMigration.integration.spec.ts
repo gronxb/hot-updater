@@ -10,43 +10,33 @@ declare module "vitest" {
   }
 }
 
-it("ships ordered D1 1.0.0 migrations", () => {
+it("ships a single D1 1.0.0 CREATE migration", () => {
   expect(inject("d1Migrations").map(({ name }) => name)).toEqual([
     "0001_hot-updater_1.0.0.sql",
-    "0002_hot-updater_artifact_byte_sizes.sql",
   ]);
 });
 
-it("upgrades existing rows and accepts current artifact sizes", async () => {
-  const [createMigration, byteSizeMigration] = inject("d1Migrations");
+it("creates the current schema with required artifact sizes", async () => {
+  const [createMigration] = inject("d1Migrations");
   await env.DB.prepare(createMigration!.sql).run();
   await env.DB.prepare(`
     INSERT INTO bundles (
-      id, platform, file_hash, storage_uri, metadata
+      id, platform, file_hash, storage_uri, archive_byte_size, metadata
     ) VALUES (
       '00000000-0000-0000-0000-000000000001', 'ios', 'hash',
-      'storage://bundle', '{}'
+      'storage://bundle', 3000000001, '{}'
     )
   `).run();
   await env.DB.prepare(`
     INSERT INTO bundle_patches (
       id, bundle_id, base_bundle_id, base_file_hash, patch_file_hash,
-      patch_storage_uri
+      patch_storage_uri, byte_size
     ) VALUES (
       'patch-1', '00000000-0000-0000-0000-000000000001',
       '00000000-0000-0000-0000-000000000001', 'base-hash', 'patch-hash',
-      'storage://patch'
+      'storage://patch', 3000000002
     )
   `).run();
-
-  await env.DB.prepare(byteSizeMigration!.sql).run();
-
-  const legacySizes = await env.DB.prepare(`
-    SELECT bundle.archive_byte_size, patch.byte_size
-    FROM bundles AS bundle
-    JOIN bundle_patches AS patch ON patch.bundle_id = bundle.id
-  `).first();
-  expect(legacySizes).toEqual({ archive_byte_size: 0, byte_size: 0 });
 
   const tables = await env.DB.prepare(`
     SELECT name FROM sqlite_master
@@ -74,12 +64,6 @@ it("upgrades existing rows and accepts current artifact sizes", async () => {
 
   await env.DB.prepare(
     "INSERT INTO channels (id, name) VALUES ('channel-1', 'production')",
-  ).run();
-  await env.DB.prepare(
-    "UPDATE bundles SET archive_byte_size = 3000000001",
-  ).run();
-  await env.DB.prepare(
-    "UPDATE bundle_patches SET byte_size = 3000000002",
   ).run();
   await env.DB.prepare(`
     INSERT INTO releases (
@@ -111,4 +95,36 @@ it("upgrades existing rows and accepts current artifact sizes", async () => {
     archive_byte_size: 3_000_000_001,
     byte_size: 3_000_000_002,
   });
+
+  for (const size of [-1, Number.MAX_SAFE_INTEGER + 1, null]) {
+    await expect(
+      env.DB.prepare("UPDATE bundles SET archive_byte_size = ?")
+        .bind(size)
+        .run(),
+    ).rejects.toThrow(/constraint failed/);
+    await expect(
+      env.DB.prepare("UPDATE bundle_patches SET byte_size = ?")
+        .bind(size)
+        .run(),
+    ).rejects.toThrow(/constraint failed/);
+  }
+
+  await expect(
+    env.DB.prepare(`
+      INSERT INTO bundles (id, platform, file_hash, storage_uri)
+      VALUES ('missing-size', 'ios', 'hash', 'storage://bundle')
+    `).run(),
+  ).rejects.toThrow(/NOT NULL constraint failed/);
+  await expect(
+    env.DB.prepare(`
+      INSERT INTO bundle_patches (
+        id, bundle_id, base_bundle_id, base_file_hash, patch_file_hash,
+        patch_storage_uri
+      ) VALUES (
+        'missing-size', '00000000-0000-0000-0000-000000000001',
+        '00000000-0000-0000-0000-000000000001', 'base-hash', 'patch-hash',
+        'storage://patch'
+      )
+    `).run(),
+  ).rejects.toThrow(/NOT NULL constraint failed/);
 });
