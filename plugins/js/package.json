@@ -47,6 +47,6 @@
     "verkit": "catalog:"
   },
   "inlinedDependencies": {
-    "verkit": "0.3.2"
+    "verkit": "0.4.0"
   }
 }
