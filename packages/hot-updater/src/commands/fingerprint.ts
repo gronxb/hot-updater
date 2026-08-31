@@ -1,11 +1,12 @@
 import fs from "fs";
 import path from "path";
 
-import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
+import { getCwd, p } from "@hot-updater/cli-tools";
 
 import { warnIfExpoCNG } from "@/utils/expoDetection";
 import {
   createAndInjectFingerprintFiles,
+  ensureFingerprintConfig,
   type FingerprintResult,
   generateFingerprints,
   isFingerprintEquals,
@@ -63,8 +64,7 @@ export const handleFingerprint = async () => {
   );
   const localFingerprint = JSON.parse(readFingerprint);
 
-  const config = await loadConfig(null);
-  const fingerprintConfig = config.fingerprint;
+  const fingerprintConfig = await ensureFingerprintConfig();
 
   if (localFingerprint.ios.hash !== fingerPrintRef.ios?.hash) {
     p.log.error(
@@ -165,8 +165,7 @@ export const handleCreateFingerprint = async () => {
 
     // Show what changed
     if (localFingerprint && result.fingerprint) {
-      const config = await loadConfig(null);
-      const fingerprintConfig = config.fingerprint;
+      const fingerprintConfig = await ensureFingerprintConfig();
 
       try {
         // Show iOS changes

@@ -37,7 +37,6 @@ type ResolvedPublicKey = Readonly<{
 export interface RemoteSigningOptions {
   readonly endpoint: string;
   readonly fetch?: Fetch;
-  readonly publicKeyPath: string;
   /**
    * Dedicated signing token or a lazy resolver for provider integrations.
    * Defaults to HOT_UPDATER_SIGNING_TOKEN.
@@ -318,12 +317,8 @@ const remoteRequest = async (
 export const remoteSigning = ({
   endpoint,
   fetch: fetchImplementation = globalThis.fetch,
-  publicKeyPath,
   signingToken,
 }: RemoteSigningOptions): BundleSigningPlugin => {
-  if (!publicKeyPath.trim()) {
-    throw new Error("Remote bundle signing public key path is required.");
-  }
   if (typeof fetchImplementation !== "function") {
     throw new Error("Remote bundle signing requires fetch.");
   }
@@ -360,7 +355,6 @@ export const remoteSigning = ({
 
   return {
     name: "remoteSigning",
-    publicKeyPath,
     async getPublicKey() {
       const { publicKey } = await getResolvedKey();
       return { publicKey };

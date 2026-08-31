@@ -27,14 +27,11 @@ describe("bundle signing RPC", () => {
     const signing = {
       enabled: true,
       provider: "Local file",
-      publicKeyPath: "keys/public-key.pem",
     };
     prepareConfigMock.mockResolvedValue({ config: { signing } });
     inspectBundleSigningMock.mockResolvedValue({
       algorithm: "RSA-SHA256",
-      fingerprint: "a".repeat(64),
       provider: "Local file",
-      publicKey: "public-key",
       status: "enabled",
     });
 
@@ -44,11 +41,8 @@ describe("bundle signing RPC", () => {
     expect(inspectBundleSigningMock).toHaveBeenCalledWith(signing);
     expect(result).toEqual({
       algorithm: "RSA-SHA256",
-      fingerprint: "a".repeat(64),
       provider: "Local file",
-      publicKey: "public-key",
       status: "enabled",
     });
-    expect(result).not.toHaveProperty("publicKeyPath");
   });
 });

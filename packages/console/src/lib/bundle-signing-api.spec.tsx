@@ -14,9 +14,7 @@ describe("bundle signing inspection query", () => {
   it("loads the read-only signing inspection once", async () => {
     vi.mocked(getBundleSigningInspectionRpc).mockResolvedValueOnce({
       algorithm: "RSA-SHA256",
-      fingerprint: "a".repeat(64),
       provider: "Local file",
-      publicKey: "-----BEGIN PUBLIC KEY-----\npublic\n-----END PUBLIC KEY-----",
       status: "enabled",
     });
     const queryClient = new QueryClient({

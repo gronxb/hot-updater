@@ -21,10 +21,10 @@ Build plugins handle the bundling process when you run the `hot-updater deploy` 
 ## Bundle Signing
 
 Signing plugins authenticate immutable OTA artifact content during
-`hot-updater deploy`. They expose a checked-in public-key path, resolve the
-provider public key, and sign the 32 raw bytes decoded from each SHA-256 artifact
-hash. The deploy command verifies every returned RSA-SHA256 signature against
-the pinned public key before upload.
+`hot-updater deploy`. They resolve the provider public key and sign the 32 raw
+bytes decoded from each SHA-256 artifact hash. The deploy command verifies
+every returned RSA-SHA256 signature before upload and checks that the signer
+identity matches the native app trust anchor.
 
 Signing is independent of the storage and database plugins. Omit `signing` or
 set local `enabled: false` for unsigned deployments; Hot Updater never falls
@@ -32,12 +32,15 @@ back from an enabled signer to an unsigned deployment.
 
 ### Supported Options
 
-- **Built-in local signing**: Keep the v0 config with `enabled: true` and
-  `privateKeyPath`. An optional `publicKeyPath` pins the expected key and enables
-  public-key-only native builds. Signing is never enabled automatically.
+- **Built-in local signing**: Use `enabled: true` and `privateKeyPath`. Signing
+  is never enabled automatically.
 - **`hot-updater/signing`**: Use a compatible signing endpoint with
   `remoteSigning`, or hardened managed-key custody with `awsKmsSigning` and
-  `googleCloudKmsSigning`. These plugins require an explicit `publicKeyPath`.
+  `googleCloudKmsSigning`.
+
+Expo projects configure the native trust anchor independently through the
+`@hot-updater/expo` app plugin's `publicKeyPath`. This keeps EAS builds outside
+the private-key and KMS credential boundary.
 
 The cloud KMS SDKs are optional peer dependencies and load only when their
 signer is used for deployment.

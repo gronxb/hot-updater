@@ -30,11 +30,7 @@ const loadPrivateKey = async (privateKeyPath: string): Promise<KeyObject> => {
 
 export const createLocalSigningPlugin = ({
   privateKeyPath,
-  publicKeyPath,
-}: Extract<LocalSigningConfig, { enabled: true }>): Omit<
-  BundleSigningPlugin,
-  "publicKeyPath"
-> & { readonly publicKeyPath?: string } => {
+}: Extract<LocalSigningConfig, { enabled: true }>): BundleSigningPlugin => {
   const privateKeys = new Map<string, Promise<KeyObject>>();
   const getPrivateKey = (cwd = process.cwd()) => {
     const resolvedPath = resolvePath(cwd, privateKeyPath);
@@ -51,7 +47,6 @@ export const createLocalSigningPlugin = ({
 
   return {
     name: "localSigning",
-    publicKeyPath,
     async getPublicKey({ cwd } = {}) {
       const privateKey = await getPrivateKey(cwd);
       return {
@@ -104,45 +99,29 @@ export const normalizeSigningConfig = (
 
   if (!hasPluginMembers) {
     const hasUnsupportedMembers = Object.keys(signing).some(
-      (key) =>
-        key !== "enabled" &&
-        key !== "privateKeyPath" &&
-        key !== "publicKeyPath",
+      (key) => key !== "enabled" && key !== "privateKeyPath",
     );
     if (hasUnsupportedMembers) {
       throw new Error(
-        "Local bundle signing accepts only enabled, privateKeyPath and publicKeyPath.",
+        "Local bundle signing accepts only enabled and privateKeyPath.",
       );
     }
     const enabled = Reflect.get(signing, "enabled");
-    // v0 never enables signing merely because key paths are present.
-    if (enabled === false || enabled === undefined) return undefined;
+    if (enabled === false) return undefined;
     if (enabled !== true) throw invalidSigningConfig();
 
     const privateKeyPath = Reflect.get(signing, "privateKeyPath");
-    const publicKeyPath = Reflect.get(signing, "publicKeyPath");
     if (typeof privateKeyPath !== "string" || !privateKeyPath.trim()) {
       throw new Error("Enabled local bundle signing requires privateKeyPath.");
-    }
-    if (
-      publicKeyPath !== undefined &&
-      (typeof publicKeyPath !== "string" || !publicKeyPath.trim())
-    ) {
-      throw new Error(
-        "Local bundle signing publicKeyPath must be a non-empty path when provided.",
-      );
     }
     return {
       enabled: true,
       privateKeyPath,
-      ...(publicKeyPath === undefined ? {} : { publicKeyPath }),
     };
   }
 
   if (
     typeof Reflect.get(signing, "name") !== "string" ||
-    typeof Reflect.get(signing, "publicKeyPath") !== "string" ||
-    !(Reflect.get(signing, "publicKeyPath") as string).trim() ||
     typeof Reflect.get(signing, "getPublicKey") !== "function" ||
     typeof Reflect.get(signing, "sign") !== "function"
   ) {

@@ -479,6 +479,10 @@ keysCommand
     "-p, --print-only",
     "only print the public key without writing to native files",
   )
+  .option(
+    "-o, --output <path>",
+    "write the public key to an Expo trust-anchor file",
+  )
   .option("-y, --yes", "skip confirmation prompt when writing to native files")
   .action(keysExportPublic);
 

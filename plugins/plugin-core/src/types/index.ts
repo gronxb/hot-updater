@@ -95,6 +95,12 @@ export interface BuildPluginConfig {
 
 export interface BuildPlugin {
   nativeBuild?: {
+    /** Resolves the public key embedded by the native build configuration. */
+    getBundleSigningPublicKey?: () => Promise<{
+      readonly publicKey: string;
+    } | null>;
+    /** Resolves native configuration files that must affect the fingerprint. */
+    getFingerprintExtraSources?: () => Promise<readonly string[]>;
     prebuild?: (args: { platform: Platform }) => Promise<void>;
     postbuild?: (args: { platform: Platform }) => Promise<void>;
   };
@@ -390,8 +396,6 @@ export interface StoragePlugin {
 
 export interface BundleSigningPlugin {
   readonly name: string;
-  /** Path to the pinned RSA public key embedded in native builds. */
-  readonly publicKeyPath: string;
   /** Returns the RSA public key used by this provider in SPKI PEM format. */
   readonly getPublicKey: (input?: {
     readonly cwd?: string;
@@ -409,11 +413,8 @@ export interface BundleSigningPlugin {
   }) => Promise<{ readonly signature: Uint8Array }>;
 }
 
-/** Built-in local PEM signing, compatible with the v0 configuration. */
-export type LocalSigningConfig = {
-  /** Optional pinned RSA SPKI public key. Also enables public-key-only builds. */
-  readonly publicKeyPath?: string;
-} & (
+/** Built-in local PEM signing. */
+export type LocalSigningConfig =
   | {
       readonly enabled: true;
       /** Path to an RSA private key in PEM format. */
@@ -422,8 +423,7 @@ export type LocalSigningConfig = {
   | {
       readonly enabled: false;
       readonly privateKeyPath?: string;
-    }
-);
+    };
 
 /** Local config or signing plugin. Signing is disabled when omitted. */
 export type SigningConfig = BundleSigningPlugin | LocalSigningConfig;

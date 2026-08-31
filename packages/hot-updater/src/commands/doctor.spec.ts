@@ -36,6 +36,10 @@ const mockReadPackageUp = readPackageUp as ReturnType<typeof vi.fn>;
 const doctorDatabaseHarness = createDatabasePluginHarness();
 
 const createConfig = (overrides: Record<string, unknown> = {}) => ({
+  build: async () => ({
+    build: vi.fn(),
+    name: "test-build",
+  }),
   updateStrategy: "appVersion",
   platform: {
     ios: {
@@ -906,9 +910,10 @@ describe("doctor", () => {
             mode === "local"
               ? { enabled: true, privateKeyPath: "keys/private-key.pem" }
               : {
-                  name: "credential-free-doctor-test",
-                  publicKeyPath: "keys/public-key.pem",
-                  getPublicKey,
+                  name: "doctor-provider-test",
+                  getPublicKey: getPublicKey.mockResolvedValue({
+                    publicKey: configured.publicKey,
+                  }),
                   sign: vi.fn(),
                 },
           platform: {
@@ -923,13 +928,12 @@ describe("doctor", () => {
           },
         }),
       );
-      await writeFile(
-        path.join(
-          cwd,
-          mode === "local" ? "keys/private-key.pem" : "keys/public-key.pem",
-        ),
-        mode === "local" ? configured.privateKey : configured.publicKey,
-      );
+      if (mode === "local") {
+        await writeFile(
+          path.join(cwd, "keys/private-key.pem"),
+          configured.privateKey,
+        );
+      }
       await writeInfoPlist(
         cwd,
         [
@@ -970,9 +974,63 @@ describe("doctor", () => {
           ]),
         );
       }
-      expect(getPublicKey).not.toHaveBeenCalled();
+      expect(getPublicKey).toHaveBeenCalledTimes(mode === "plugin" ? 1 : 0);
     },
   );
+
+  it("detects an Expo CNG trust anchor that differs from the signer", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.31.0",
+          "@hot-updater/react-native": "0.31.0",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    const signer = crypto.generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      privateKeyEncoding: { format: "pem", type: "pkcs8" },
+      publicKeyEncoding: { format: "pem", type: "spki" },
+    });
+    const native = crypto.generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      privateKeyEncoding: { format: "pem", type: "pkcs8" },
+      publicKeyEncoding: { format: "pem", type: "spki" },
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        build: async () => ({
+          build: vi.fn(),
+          name: "expo",
+          nativeBuild: {
+            getBundleSigningPublicKey: async () => ({
+              publicKey: native.publicKey,
+            }),
+          },
+        }),
+        signing: {
+          getPublicKey: async () => ({ publicKey: signer.publicKey }),
+          name: "test-provider",
+          sign: vi.fn(),
+        },
+      }),
+    );
+
+    const result = await doctor();
+
+    expect(result).not.toBe(true);
+    if (result !== true) {
+      expect(result.details?.native?.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: "PUBLIC_KEY_MISMATCH" }),
+        ]),
+      );
+    }
+  });
 
   it("accepts Java Companion Android bundle provider calls", async () => {
     const cwd = await createTempProject();

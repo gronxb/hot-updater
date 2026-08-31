@@ -144,6 +144,7 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
 
 export interface KeysExportPublicOptions {
   input?: string;
+  output?: string;
   printOnly?: boolean;
   yes?: boolean;
 }
@@ -240,17 +241,17 @@ const formatNativeTarget = (
 /**
  * Export public key for embedding in native configuration.
  * By default, writes the public key to iOS Info.plist and AndroidManifest.xml.
- * Use --print-only to only display the key without modifying files.
+ * Use --output to write an Expo trust-anchor file, or --print-only to display
+ * the key without modifying files.
  *
  * The public key is read from the configured signing source unless --input
- * overrides it with a legacy private key path.
+ * provides a private key path explicitly.
  *
- * Usage: npx hot-updater keys export-public [--input ./keys/private-key.pem] [--print-only] [--yes]
+ * Usage: npx hot-updater keys export-public [--input ./keys/private-key.pem] [--output ./keys/public-key.pem] [--print-only] [--yes]
  */
 export const keysExportPublic = async (
   options: KeysExportPublicOptions = {},
 ) => {
-  warnIfExpoCNG();
   const cwd = getCwd();
 
   const config = await loadConfig(null);
@@ -268,21 +269,27 @@ export const keysExportPublic = async (
         cwd,
       }))!;
     } else {
-      const privateKeyPath = path.join(cwd, "keys", "private-key.pem");
-      const publicKeyPath = path.join(
-        path.dirname(privateKeyPath),
-        "public-key.pem",
+      throw new Error(
+        "Bundle signing is not configured. Pass --input or configure signing first.",
       );
+    }
 
-      try {
-        publicKeyPEM = createPublicKey(await fs.readFile(publicKeyPath, "utf8"))
-          .export({ format: "pem", type: "spki" })
-          .toString();
-      } catch {
-        publicKeyPEM = getPublicKeyFromPrivate(
-          await loadPrivateKey(privateKeyPath),
-        );
-      }
+    if (options.output && options.printOnly) {
+      throw new Error("--output and --print-only cannot be combined.");
+    }
+
+    if (options.output) {
+      const outputPath = path.isAbsolute(options.output)
+        ? options.output
+        : path.join(cwd, options.output);
+      await fs.mkdir(path.dirname(outputPath), { recursive: true });
+      await fs.writeFile(
+        outputPath,
+        canonicalizeRsaSpkiPublicKey(publicKeyPEM),
+        { flag: "wx", mode: 0o644 },
+      );
+      p.log.success(ui.line(["Public key", ui.path(outputPath)]));
+      return;
     }
 
     // PRINT-ONLY MODE: Show key and instructions without writing
@@ -290,6 +297,8 @@ export const keysExportPublic = async (
       printPublicKeyInstructions(publicKeyPEM);
       return;
     }
+
+    warnIfExpoCNG();
 
     const androidManifestPaths =
       config.platform.android.androidManifestPaths ?? [];

@@ -18,12 +18,10 @@ describe("remoteSigning", () => {
   it("exposes the generic managed signing protocol", () => {
     const signing = remoteSigning({
       endpoint: "https://signer.example.com",
-      publicKeyPath: "./keys/public-key.pem",
       signingToken: "dedicated-token",
     });
 
     expect(signing.name).toBe("remoteSigning");
-    expect(signing.publicKeyPath).toBe("./keys/public-key.pem");
   });
 });
 
@@ -32,7 +30,6 @@ describe("managed KMS signing", () => {
     expect(
       awsKmsSigning({
         keyId: "arn:aws:kms:us-east-1:123456789012:key/key-id",
-        publicKeyPath: "./keys/aws-public-key.pem",
         region: "us-east-1",
       }).name,
     ).toBe("awsKmsSigning");
@@ -40,7 +37,6 @@ describe("managed KMS signing", () => {
       googleCloudKmsSigning({
         keyVersion:
           "projects/project/locations/global/keyRings/ring/cryptoKeys/key/cryptoKeyVersions/1",
-        publicKeyPath: "./keys/google-public-key.pem",
       }).name,
     ).toBe("googleCloudKmsSigning");
   });

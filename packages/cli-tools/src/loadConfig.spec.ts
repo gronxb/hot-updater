@@ -169,7 +169,6 @@ describe("loadConfig", () => {
       [
         "const provider = {",
         "  name: 'test-signer',",
-        "  publicKeyPath: './public-key.pem',",
         "  getPublicKey: async () => ({ publicKey: 'public-key' }),",
         "  sign: async ({ message }) => ({ signature: message }),",
         "};",
@@ -199,7 +198,6 @@ describe("loadConfig", () => {
         "  signing: {",
         "    enabled: true,",
         "    privateKeyPath: './private-key-canary.pem',",
-        "    publicKeyPath: './keys/public-key.pem',",
         "  },",
         "};",
         "",
@@ -212,14 +210,12 @@ describe("loadConfig", () => {
     expect(config.signing).toEqual({
       enabled: true,
       privateKeyPath: "./private-key-canary.pem",
-      publicKeyPath: "./keys/public-key.pem",
     });
   });
 
   it.each([
     "{ enabled: false }",
     "{ enabled: false, privateKeyPath: '/missing/key.pem' }",
-    "{ privateKeyPath: '/missing/key.pem' }",
   ])(
     "removes inactive local signing from the merged config: %s",
     async (signing) => {
@@ -233,7 +229,20 @@ describe("loadConfig", () => {
     },
   );
 
-  it("loads the unchanged v0 local config without requiring publicKeyPath", async () => {
+  it("rejects a local signing config without an explicit enabled state", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      "export default { signing: { privateKeyPath: '/missing/key.pem' } };",
+    );
+    const { loadConfig } = await import("./loadConfig");
+
+    await expect(loadConfig(null)).rejects.toThrow(
+      "Bundle signing must be a local key config or signing plugin",
+    );
+  });
+
+  it("loads local signing config", async () => {
     await writeProjectFile(
       projectRoot,
       "hot-updater.config.ts",

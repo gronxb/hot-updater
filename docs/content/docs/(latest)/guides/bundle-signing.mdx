@@ -50,12 +50,12 @@ explicit opt-in:
 
 1. Provision a dedicated RSA signing key for each app and environment, and pin
    its exact identifier or immutable version when the provider supports one.
-2. Export its SPKI public key to `keys/public-key.pem` and commit that file
-   for public-key-only builds. Local signing can also derive it from the
-   private key.
+2. Export its SPKI public key to `keys/public-key.pem` and commit that file as
+   the native app's trust anchor.
 3. Enable the built-in local config or add the matching signing plugin to
    `hot-updater.config.ts`.
-4. Run `npx hot-updater keys export-public`, or `npx expo prebuild` for Expo.
+4. Run `npx hot-updater keys export-public` for bare projects. For Expo, set
+   `publicKeyPath` in the `@hot-updater/expo` app plugin and run prebuild.
 5. Release the native app, then begin signed OTA deployments.
 
 All official signers require RSA keys of at least 2048 bits. Prefer 3072 or
@@ -128,7 +128,6 @@ export default defineConfig({
     keyId:
       "arn:aws:kms:ap-northeast-2:123456789012:key/00000000-0000-0000-0000-000000000000",
     region: "ap-northeast-2",
-    publicKeyPath: "./keys/public-key.pem",
   }),
 });
 ```
@@ -138,8 +137,9 @@ workload identity instead of putting long-lived credentials in
 `hot-updater.config.ts`. An explicit HTTPS `endpoint` is available for private
 KMS endpoints; HTTP is accepted only for loopback testing.
 
-Hot Updater compares provider signatures with `publicKeyPath` before upload.
-A mismatched provider, public key, or algorithm fails the deployment.
+Hot Updater verifies every provider signature against the public key returned
+by KMS before upload. It also compares that signer identity with the public key
+configured in the native app.
 
 ### 4. Embed the public key and release the app
 
@@ -149,9 +149,22 @@ For React Native CLI projects, write the public key to the native projects:
 npx hot-updater keys export-public
 ```
 
-For Expo projects, run prebuild. The Expo config plugin reads only the checked-in
-public key in provider mode; it does not need AWS credentials or private key
-material.
+For Expo projects, configure the checked-in public key in app config, then run
+prebuild. The Expo config plugin does not load the signing provider and does
+not need AWS credentials or private key material.
+
+```json title="app.json"
+{
+  "expo": {
+    "plugins": [
+      [
+        "@hot-updater/expo",
+        { "publicKeyPath": "./keys/public-key.pem" }
+      ]
+    ]
+  }
+}
+```
 
 ```bash
 npx expo prebuild
@@ -280,7 +293,6 @@ export default defineConfig({
   // ...other config
   signing: remoteSigning({
     endpoint: "https://signer.example.com",
-    publicKeyPath: "./keys/public-key.pem",
   }),
 });
 ```
@@ -363,7 +375,6 @@ export default defineConfig({
   signing: googleCloudKmsSigning({
     keyVersion:
       "projects/PROJECT/locations/LOCATION/keyRings/RING/cryptoKeys/KEY/cryptoKeyVersions/1",
-    publicKeyPath: "./keys/public-key.pem",
   }),
 });
 ```
@@ -376,40 +387,44 @@ reading the public key. Only RSA PKCS#1 SHA-256 key versions are accepted.
 
 ## Expo and EAS Build
 
-Expo embeds the public key during `expo prebuild`:
+Expo owns the native trust anchor through its app config plugin:
 
-```ts title="hot-updater.config.ts"
-import { defineConfig } from "hot-updater";
-import { awsKmsSigning } from "hot-updater/signing";
-
-export default defineConfig({
-  signing: awsKmsSigning({
-    keyId: "arn:aws:kms:REGION:ACCOUNT_ID:key/KEY_ID",
-    region: "REGION",
-    publicKeyPath: "./keys/public-key.pem",
-  }),
-  // ...other config
-});
+```json title="app.json"
+{
+  "expo": {
+    "plugins": [
+      [
+        "@hot-updater/expo",
+        {
+          "channel": "production",
+          "publicKeyPath": "./keys/public-key.pem"
+        }
+      ]
+    ]
+  }
+}
 ```
 
-With a signing plugin, as above, or an explicit local `publicKeyPath`, the
-`@hot-updater/expo` config plugin:
+`publicKeyPath` is relative to the Expo project root. During prebuild, the
+plugin validates the RSA SPKI key and embeds it in the iOS and Android native
+configuration. The file is also included automatically in both native
+fingerprints, so changing the trust anchor requires a new native target. The
+plugin never reads `hot-updater.config.ts` signing credentials, private keys,
+or KMS providers.
 
-1. Reads `publicKeyPath`
-2. Validates the public key
-3. Embeds it in the iOS and Android native configuration
+The deploy and doctor commands resolve the evaluated Expo config and compare
+this trust anchor with the signing provider's `getPublicKey()` result. Missing
+or mismatched keys fail closed, including in CNG projects without checked-in
+`ios` or `android` directories.
 
-In this public-key-only setup, EAS does not need the private key or signing
-credentials. Do not upload a private key with EAS Secrets, add it to `eas.json`,
-or use `.easignore` to send `keys/private-key.pem` to the build worker. Ensure
-`keys/public-key.pem` is included in the build input. The v0 local config
-without `publicKeyPath` retains the [legacy sources below](#local-private-key).
+Do not upload a private key with EAS Secrets, add it to `eas.json`, or use
+`.easignore` to send `keys/private-key.pem` to the build worker. Ensure the
+public key file is included in the build input.
 
 ## Local Private Key
 
 Use the built-in local config when you accept responsibility for an exportable
-private key. The v0 usage is unchanged: enable signing and provide the private
-key path. No signing plugin or separate public key file is required to sign:
+private key. Enable signing and provide the private key path:
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
@@ -424,42 +439,8 @@ export default defineConfig({
 ```
 
 Omit `signing` or set `signing: { enabled: false }` to disable signing. A local
-config without `enabled: true` does not automatically enable signing.
-
-`publicKeyPath` is optional for local signing. Set it to pin the expected key
-and let Expo/native builds read only the public file. If supplied, the file
-must exist and match the signing private key; an invalid or mismatched pin is
-an error, not a reason to fall back. AWS/GCP/remote signing plugins still require
-this path.
-
-For a public-key-only build and a CI-specific private key location:
-
-```ts title="hot-updater.config.ts"
-import { defineConfig } from "hot-updater";
-
-export default defineConfig({
-  signing: {
-    enabled: true,
-    privateKeyPath:
-      process.env.HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH ??
-      "./keys/private-key.pem",
-    publicKeyPath: "./keys/public-key.pem",
-  },
-  // ...other config
-});
-```
-
-Without `publicKeyPath`, `keys export-public` and `doctor` derive the public
-key from `privateKeyPath`, falling back to the generated `public-key.pem` in
-the same directory when the private key cannot be read. Signing itself always
-requires the configured private key.
-
-Expo also preserves the v0 source order when `publicKeyPath` is omitted:
-`HOT_UPDATER_PRIVATE_KEY` (PEM or file path), then `privateKeyPath`, then the
-generated sibling public key. The environment variable is a prebuild
-compatibility feature, not a deploy signing-key override. Ensure it matches
-the deployment key. Prefer an explicit `publicKeyPath` for EAS so native builds
-do not need private material; it takes precedence over those legacy sources.
+config must set `enabled: true`; other shapes are rejected. Local signing
+derives its public identity only from `privateKeyPath`.
 
 Generate a local pair only when you accept responsibility for backing up and
 protecting the exportable private key:
@@ -471,9 +452,8 @@ npx hot-updater keys generate --output ./keys --key-size 4096
 The command creates `private-key.pem` with owner-only permissions and
 `public-key.pem`. It refuses to overwrite either existing file; use a fresh
 output directory for an intentional rotation. Keep the private file out of
-Git, EAS build inputs, artifacts, caches, and logs. For public-key-only builds,
-commit the public file and set `publicKeyPath` so Expo can embed it without
-reading the private key.
+Git, EAS build inputs, artifacts, caches, and logs. Commit the public file and
+reference it from the Expo app plugin when using Expo.
 
 Newly generated keys inside the project add only the private-key path to
 `.gitignore`. If v0 previously added `keys/`, replace that whole-directory rule
@@ -611,15 +591,9 @@ it with unsigned bundles.
 ## Console
 
 The Hot Updater Console provides read-only inspection of bundle signing. It
-reads the checked-in public key to show whether signing is configured, the
-provider and algorithm, and the public-key fingerprint. It does not call the
-remote signer or store, return, generate, activate, rotate, or delete private
-keys.
-
-For v0 local config without `publicKeyPath`, Console looks for the generated
-`public-key.pem` beside the private key path, but never reads the private key.
-If no public file is available, inspection is unavailable even though local
-signing can still work. Supply `publicKeyPath` when the public file is elsewhere.
+shows whether signing is configured, plus the provider and algorithm. It does
+not call the remote signer or store, return, generate, activate, rotate, or
+delete private keys.
 
 A hosted Console does not need KMS credentials or remote signing tokens for
 this inspection. Do not grant its runtime permission to sign. Provider and
@@ -673,11 +647,10 @@ key, rebuild the native app, and release it before deploying signed bundles.
 ### Signature Verification Failed
 
 The signer's public key and the embedded native public key must match. If
-`publicKeyPath` is configured, that file must match too; local signing without
-it derives the public key from the private key. Compare their SPKI SHA-256
-fingerprints. With AWS KMS, check the exact key ARN and RSA `SIGN_VERIFY` usage.
-With Google Cloud KMS, check the pinned key version and RSA PKCS#1 SHA-256
-algorithm.
+using Expo, verify `publicKeyPath` in the `@hot-updater/expo` app plugin.
+Compare its SPKI SHA-256 fingerprint with the signer identity. With AWS KMS,
+check the exact key ARN and RSA `SIGN_VERIFY` usage. With Google Cloud KMS,
+check the pinned key version and RSA PKCS#1 SHA-256 algorithm.
 
 ### AWS KMS AccessDenied
 

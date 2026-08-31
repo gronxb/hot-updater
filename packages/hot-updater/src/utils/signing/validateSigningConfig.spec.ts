@@ -43,7 +43,6 @@ const createConfig = (): ConfigResponse =>
     signing: {
       getPublicKey: async () => ({ publicKey: "public-key" }),
       name: "test-signing",
-      publicKeyPath: "public-key.pem",
       sign: async ({ message }) => ({ signature: message }),
     },
   }) as ConfigResponse;
@@ -149,6 +148,40 @@ describe("validateSigningConfig", () => {
     expect(result.issues.map(({ code }) => code)).toEqual([
       "PUBLIC_KEY_MISMATCH",
       "PUBLIC_KEY_MISMATCH",
+    ]);
+  });
+
+  it("validates an Expo CNG trust anchor when native files do not exist", async () => {
+    const publicKey = createPublicKey();
+    parser.android.exists.mockResolvedValue(false);
+    parser.ios.exists.mockResolvedValue(false);
+
+    const result = await validateSigningConfig(createConfig(), {
+      expectedPublicKey: publicKey,
+      nativePublicKey: publicKey,
+    });
+
+    expect(result.isValid).toBe(true);
+    expect(result.issues).toEqual([]);
+    expect(result.nativePublicKeys).toEqual({
+      android: { exists: true, paths: ["Expo app config"] },
+      ios: { exists: true, paths: ["Expo app config"] },
+    });
+  });
+
+  it("rejects signed Expo CNG builds without a trust anchor", async () => {
+    parser.android.exists.mockResolvedValue(false);
+    parser.ios.exists.mockResolvedValue(false);
+
+    const result = await validateSigningConfig(createConfig(), {
+      expectedPublicKey: createPublicKey(),
+      nativePublicKey: null,
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.issues.map(({ code }) => code)).toEqual([
+      "MISSING_PUBLIC_KEY",
+      "MISSING_PUBLIC_KEY",
     ]);
   });
 });

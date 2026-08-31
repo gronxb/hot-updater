@@ -31,7 +31,6 @@ describe("normalizeSigningConfig", () => {
   it("keeps an explicit signing plugin unchanged", () => {
     const plugin = {
       name: "test-signer",
-      publicKeyPath: "./keys/public-key.pem",
       getPublicKey: vi.fn(),
       sign: vi.fn(),
     } satisfies BundleSigningPlugin;
@@ -41,18 +40,15 @@ describe("normalizeSigningConfig", () => {
     expect(plugin.sign).not.toHaveBeenCalled();
   });
 
-  it("keeps v0 local config without reading keys during normalization", () => {
+  it("keeps local config without reading keys during normalization", () => {
     const local = {
       enabled: true,
       privateKeyPath: "/missing/private-key.pem",
     } as const;
     expect(normalizeSigningConfig(local)).toEqual(local);
-    expect(
-      normalizeSigningConfig({ ...local, publicKeyPath: "./public-key.pem" }),
-    ).toEqual({ ...local, publicKeyPath: "./public-key.pem" });
   });
 
-  it("keeps disabled and omitted local configurations inactive without keys", () => {
+  it("keeps disabled and omitted signing configurations inactive", () => {
     expect(normalizeSigningConfig(undefined)).toBeUndefined();
     expect(normalizeSigningConfig({ enabled: false })).toBeUndefined();
     expect(
@@ -61,9 +57,9 @@ describe("normalizeSigningConfig", () => {
         privateKeyPath: "/missing/key.pem",
       }),
     ).toBeUndefined();
-    expect(
+    expect(() =>
       normalizeSigningConfig({ privateKeyPath: "/missing/key.pem" } as never),
-    ).toBeUndefined();
+    ).toThrow("must be a local key config or signing plugin");
   });
 
   it("signs with the private key only on use", async () => {
@@ -79,12 +75,10 @@ describe("normalizeSigningConfig", () => {
     const signing = createLocalSigningPlugin({
       enabled: true,
       privateKeyPath: "./keys/private-key.pem",
-      publicKeyPath: "./keys/public-key.pem",
     });
     const message = crypto.randomBytes(32);
 
     expect(signing?.name).toBe("localSigning");
-    expect(signing?.publicKeyPath).toBe("./keys/public-key.pem");
     expect(signing).not.toHaveProperty("privateKeyPath");
     const { publicKey } = await signing!.getPublicKey({ cwd });
     const { signature } = await signing!.sign({ cwd, message });
@@ -98,15 +92,14 @@ describe("normalizeSigningConfig", () => {
       normalizeSigningConfig({
         enabled: true,
         privateKeyPath: "./private-key.pem",
-        publicKeyPath: "",
-      }),
-    ).toThrow("publicKeyPath must be a non-empty path");
+        publicKeyPath: "./public-key.pem",
+      } as never),
+    ).toThrow("accepts only enabled and privateKeyPath");
     expect(() =>
       normalizeSigningConfig({
         getPublicKey: vi.fn(),
         name: "ambiguous",
         privateKeyPath: "./private-key.pem",
-        publicKeyPath: "./public-key.pem",
         sign: vi.fn(),
       } as never),
     ).toThrow("cannot combine local signing fields");
@@ -123,7 +116,6 @@ describe("normalizeSigningConfig", () => {
     const signing = createLocalSigningPlugin({
       enabled: true,
       privateKeyPath: "private-key-canary.pem",
-      publicKeyPath: "public-key.pem",
     });
 
     await expect(signing?.getPublicKey({ cwd })).rejects.toThrow(
@@ -145,7 +137,6 @@ describe("normalizeSigningConfig", () => {
     const signing = createLocalSigningPlugin({
       enabled: true,
       privateKeyPath: "private-key.pem",
-      publicKeyPath: "public-key.pem",
     });
 
     await expect(signing?.getPublicKey({ cwd })).rejects.toThrow(

@@ -1,7 +1,10 @@
 import { getCwd } from "@hot-updater/cli-tools";
 import { describe, expect, it } from "vitest";
 
-import { getOtaFingerprintOptions } from "./common";
+import {
+  appendFingerprintExtraSources,
+  getOtaFingerprintOptions,
+} from "./common";
 
 const SHARED_SOURCE =
   "packages/hot-updater/src/utils/fingerprint/processExtraSources.ts";
@@ -50,5 +53,24 @@ describe("getOtaFingerprintOptions", () => {
     await expect(
       getExtraSourceIds("android", { ios: [IOS_ONLY_SOURCE] }),
     ).resolves.toEqual([]);
+  });
+});
+
+describe("appendFingerprintExtraSources", () => {
+  it("adds native config sources to both platform fingerprints", () => {
+    expect(
+      appendFingerprintExtraSources({ ios: [IOS_ONLY_SOURCE], android: [] }, [
+        SHARED_SOURCE,
+      ]),
+    ).toEqual({
+      ios: [IOS_ONLY_SOURCE, SHARED_SOURCE],
+      android: [SHARED_SOURCE],
+    });
+  });
+
+  it("does not duplicate an existing native config source", () => {
+    expect(
+      appendFingerprintExtraSources([SHARED_SOURCE], [SHARED_SOURCE]),
+    ).toEqual([SHARED_SOURCE]);
   });
 });

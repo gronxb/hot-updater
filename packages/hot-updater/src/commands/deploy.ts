@@ -46,6 +46,7 @@ import {
   writeBundleManifestFile,
 } from "@/utils/bundleManifest";
 import {
+  appendFingerprintExtraSources,
   isFingerprintEquals,
   nativeFingerprint,
   readLocalFingerprint,
@@ -715,11 +716,31 @@ const deployPlatform = async ({
     ? normalizePatchMaxBaseBundles(config.patch.maxBaseBundles)
     : 0;
 
-  const signingSession = await prepareBundleSigning(config.signing, { cwd });
+  const [buildPlugin, signingSession] = await Promise.all([
+    config.build({ cwd }),
+    prepareBundleSigning(config.signing, { cwd }),
+  ]);
+  const getNativeSigningPublicKey =
+    buildPlugin.nativeBuild?.getBundleSigningPublicKey;
+  const nativeSigningPublicKey = getNativeSigningPublicKey
+    ? await getNativeSigningPublicKey()
+    : undefined;
+  const nativeFingerprintExtraSources =
+    (await buildPlugin.nativeBuild?.getFingerprintExtraSources?.()) ?? [];
+  const fingerprintConfig = {
+    ...config.fingerprint,
+    extraSources: appendFingerprintExtraSources(
+      config.fingerprint.extraSources,
+      nativeFingerprintExtraSources,
+    ),
+  };
 
   // Validate signing configuration and the native key pinned by the app.
   const signingValidation = await validateSigningConfig(config, {
     expectedPublicKey: signingSession?.publicKey,
+    ...(getNativeSigningPublicKey === undefined
+      ? {}
+      : { nativePublicKey: nativeSigningPublicKey?.publicKey ?? null }),
   });
 
   if (signingValidation.issues.length > 0) {
@@ -772,7 +793,7 @@ const deployPlatform = async ({
     }
     const newFingerprint = await nativeFingerprint(cwd, {
       platform,
-      ...config.fingerprint,
+      ...fingerprintConfig,
     });
     const projectFingerprint = await readLocalFingerprint();
     if (!isFingerprintEquals(newFingerprint, projectFingerprint?.[platform])) {
@@ -785,7 +806,7 @@ const deployPlatform = async ({
         try {
           const diff = await getFingerprintDiff(projectFingerprint[platform], {
             platform,
-            ...config.fingerprint,
+            ...fingerprintConfig,
           });
           showFingerprintDiff(diff, platform === "ios" ? "iOS" : "Android");
         } catch {
@@ -894,12 +915,7 @@ const deployPlatform = async ({
     p.note(deploymentContext, deploymentTitle);
   }
 
-  const [buildPlugin, storagePlugin] = await Promise.all([
-    config.build({
-      cwd,
-    }),
-    config.storage,
-  ]);
+  const storagePlugin = config.storage;
   assertStorageOperations(storagePlugin, ["put", "get", "exists", "delete"]);
 
   try {

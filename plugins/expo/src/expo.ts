@@ -2,13 +2,14 @@ import fs from "fs";
 import path from "path";
 
 import { compileHermes } from "@hot-updater/bare";
-import { log } from "@hot-updater/cli-tools";
+import { log, readBundleSigningPublicKeyFile } from "@hot-updater/cli-tools";
 import type {
   BasePluginArgs,
   BuildPlugin,
   BuildPluginConfig,
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
+import { getConfig } from "expo/config";
 import { uuidv7 } from "uuidv7";
 
 import { resolveMain } from "./resolveMain";
@@ -21,6 +22,62 @@ interface RunBundleArgs {
   sourcemap: boolean;
   resetCache: boolean;
 }
+
+type HotUpdaterExpoPluginProps = {
+  publicKeyPath?: string;
+};
+
+const getHotUpdaterExpoPluginProps = (
+  plugins: ReturnType<typeof getConfig>["exp"]["plugins"],
+): HotUpdaterExpoPluginProps | undefined => {
+  const entry = plugins?.find(
+    (plugin) =>
+      Array.isArray(plugin) &&
+      (plugin[0] === "@hot-updater/expo" ||
+        plugin[0] === "@hot-updater/expo/app.plugin.js"),
+  );
+  if (!entry || !Array.isArray(entry)) return undefined;
+  const props = entry[1];
+  return typeof props === "object" && props !== null
+    ? (props as HotUpdaterExpoPluginProps)
+    : undefined;
+};
+
+export const getExpoFingerprintExtraSources = (cwd: string): string[] => {
+  const { exp } = getConfig(cwd, {
+    skipSDKVersionRequirement: true,
+  });
+  const publicKeyPath = getHotUpdaterExpoPluginProps(
+    exp.plugins,
+  )?.publicKeyPath;
+  if (publicKeyPath === undefined) return [];
+  if (typeof publicKeyPath !== "string" || !publicKeyPath.trim()) {
+    throw new Error(
+      "@hot-updater/expo publicKeyPath must be a non-empty path.",
+    );
+  }
+  return [publicKeyPath];
+};
+
+export const getExpoBundleSigningPublicKey = async (
+  cwd: string,
+): Promise<{ readonly publicKey: string } | null> => {
+  const { exp } = getConfig(cwd, {
+    skipSDKVersionRequirement: true,
+  });
+  const publicKeyPath = getHotUpdaterExpoPluginProps(
+    exp.plugins,
+  )?.publicKeyPath;
+  if (publicKeyPath === undefined) return null;
+  if (typeof publicKeyPath !== "string" || !publicKeyPath.trim()) {
+    throw new Error(
+      "@hot-updater/expo publicKeyPath must be a non-empty path.",
+    );
+  }
+  return {
+    publicKey: await readBundleSigningPublicKeyFile(publicKeyPath, { cwd }),
+  };
+};
 
 const isHermesEnabled = (cwd: string, platform: string): boolean => {
   try {
@@ -128,6 +185,9 @@ export const expo =
     const { outDir = "dist", sourcemap = false, resetCache = true } = config;
     return {
       nativeBuild: {
+        getBundleSigningPublicKey: () => getExpoBundleSigningPublicKey(cwd),
+        getFingerprintExtraSources: async () =>
+          getExpoFingerprintExtraSources(cwd),
         prebuild: async ({ platform }) => {
           await runExpoPrebuild({ platform });
         },

@@ -104,14 +104,11 @@ const createProject = async () => {
 };
 
 const configureProject = async (cwd: string, publicKey: string) => {
-  await fs.mkdir(path.join(cwd, "keys"), { recursive: true });
-  await fs.writeFile(path.join(cwd, "keys/public-key.pem"), publicKey);
   mocks.getCwd.mockReturnValue(cwd);
   mocks.loadConfig.mockResolvedValue({
     signing: {
       name: "test-signing",
-      publicKeyPath: "keys/public-key.pem",
-      getPublicKey: vi.fn(),
+      getPublicKey: vi.fn(async () => ({ publicKey })),
       sign: vi.fn(),
     },
     platform: {
@@ -210,7 +207,7 @@ describe("keysExportPublic", () => {
     );
   });
 
-  it("exports the public key from unchanged v0 local config without a public file", async () => {
+  it("exports the public key from local config", async () => {
     const { privateKey, publicKey } = createKeyPair();
     const cwd = await createProject();
     await fs.writeFile(path.join(cwd, "private.pem"), privateKey);
@@ -230,5 +227,19 @@ describe("keysExportPublic", () => {
       "hot_updater_public_key",
       publicKey.trim(),
     );
+  });
+
+  it("writes an Expo trust-anchor file without touching native files", async () => {
+    const { publicKey } = createKeyPair();
+    const cwd = await createProject();
+    await configureProject(cwd, publicKey);
+
+    await keysExportPublic({ output: "config/signing-public.pem" });
+
+    await expect(
+      fs.readFile(path.join(cwd, "config/signing-public.pem"), "utf8"),
+    ).resolves.toBe(publicKey);
+    expect(mocks.androidGet).not.toHaveBeenCalled();
+    expect(mocks.androidSet).not.toHaveBeenCalled();
   });
 });
