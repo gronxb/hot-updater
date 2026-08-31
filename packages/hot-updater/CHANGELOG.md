@@ -1,5 +1,11 @@
 # hot-updater
 
+## 1.0.0-rc.1
+
+### Patch Changes
+
+- 2aeccfb: Allow Doctor to accept package increments within the same prerelease channel.
+
 ## 1.0.0-rc.0
 
 ### Major Changes
