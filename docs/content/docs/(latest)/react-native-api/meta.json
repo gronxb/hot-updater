@@ -16,6 +16,7 @@
     "isChannelSwitched",
     "resetChannel",
     "getAppVersion",
+    "getBundleId",
     "useHotUpdaterStore",
     "addListener",
     "isUpdateDownloaded",

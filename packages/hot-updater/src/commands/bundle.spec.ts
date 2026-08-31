@@ -25,7 +25,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   },
 }));
 
-vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
+vi.mock("../utils/printBanner", () => ({ printBanner: vi.fn() }));
 
 const databaseHarness = createDatabasePluginHarness();
 
@@ -76,7 +76,7 @@ const releaseReference = (id: string, bundleId: string): ReleaseRow => ({
   updated_at_ms: 1,
 });
 
-describe("Bundle artifact commands", () => {
+describe("Bundle commands", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     databaseHarness.reset();
@@ -87,75 +87,71 @@ describe("Bundle artifact commands", () => {
     vi.restoreAllMocks();
   });
 
-  it("lists immutable artifact fields with a platform-only query", async () => {
-    databaseHarness.setBundles([
-      artifact("B2", "android"),
-      artifact("B1", "ios"),
-    ]);
-    const output = vi.spyOn(console, "log").mockImplementation(() => {});
-    const { handleBundleList } = await import("./bundle");
-
-    await handleBundleList({ json: true, limit: 5, platform: "ios" });
-
-    const payload = JSON.parse(String(output.mock.calls[0]?.[0]));
-    expect(payload.data).toEqual([
-      expect.objectContaining({
-        id: "B1",
-        platform: "ios",
-        fileHash: "hash-B1",
-        storageUri: "storage://artifacts/B1.zip",
-      }),
-    ]);
-    expect(payload.data[0]).not.toHaveProperty("channel");
-    expect(payload.data[0]).not.toHaveProperty("enabled");
-  });
-
-  it("shows artifact hashes, storage, and patch count without policy", async () => {
-    databaseHarness.setBundles([artifact("B1")]);
-    const { handleBundleShow } = await import("./bundle");
-
-    await handleBundleShow("B1");
-
-    expect(log.message).toHaveBeenCalledWith(expect.stringContaining("B1"));
-    expect(log.message).toHaveBeenCalledWith(
-      expect.stringContaining("storage://artifacts/B1.zip"),
+  it("lists separate console IDs for promotions sharing a file", async () => {
+    const bundle = artifact("00000000-0000-7000-8000-000000000001");
+    const androidBundle = artifact("android-file", "android");
+    databaseHarness.setBundles([bundle, androidBundle]);
+    for (const name of ["production", "staging"]) {
+      await databaseHarness.plugin.models.channels.insert({
+        row: { id: `channel-${name}`, name },
+        onConflict: "returnExisting",
+      });
+    }
+    const source = releaseReference(
+      "00000000-0000-7000-8000-000000000002",
+      bundle.id,
     );
-    expect(log.message).not.toHaveBeenCalledWith(
-      expect.stringContaining("Channel"),
-    );
-    expect(log.message).toHaveBeenCalledWith(
-      expect.stringContaining("Release references"),
-    );
-  });
-
-  it("shows referencing Release ids in human and JSON output", async () => {
-    const bundleId = "00000000-0000-7000-8000-000000000001";
-    await databaseHarness.seedDeployments([deployment(artifact(bundleId))]);
-    const existingRelease = (await databaseHarness.releases())[0]!;
-    const secondRelease = {
-      ...existingRelease,
-      id: "00000000-0000-7000-8000-000000000002",
+    const promoted = {
+      ...source,
+      id: "00000000-0000-7000-8000-000000000003",
+      channel_id: "channel-staging",
+      operation: "PROMOTE" as const,
+      source_release_id: source.id,
+    };
+    const android = {
+      ...source,
+      id: "00000000-0000-7000-8000-000000000004",
+      bundle_id: androidBundle.id,
+      platform: "android" as const,
     };
     await databaseHarness.plugin.commit({
-      changes: [{ model: "releases", operation: "insert", row: secondRelease }],
+      changes: [source, promoted, android].map((row) => ({
+        model: "releases",
+        operation: "insert",
+        row,
+      })),
     });
     const output = vi.spyOn(console, "log").mockImplementation(() => {});
-    const { handleBundleShow } = await import("./bundle");
+    const { handleBundleList, handleBundleShow } = await import("./bundle");
 
-    await handleBundleShow(bundleId);
+    await handleBundleList({ platform: "ios", limit: 5 });
 
-    const humanOutput = String(log.message.mock.calls[0]?.[0]);
-    expect(humanOutput).toContain("Release references");
-    expect(humanOutput).toContain("2");
-    expect(humanOutput).toContain(existingRelease.id);
-    expect(humanOutput).toContain(secondRelease.id);
+    const table = String(output.mock.calls.at(-1)?.[0]);
+    expect(table).toContain(source.id);
+    expect(table).toContain(promoted.id);
+    expect(table).not.toContain(bundle.id);
+    expect(table).not.toContain(android.id);
+    expect(table).not.toContain("Release ID");
+    expect(table).not.toContain("Bundle / Embedded");
 
-    await handleBundleShow(bundleId, { json: true });
+    await handleBundleList({ json: true, platform: "ios", limit: 5 });
+    expect(JSON.parse(String(output.mock.calls.at(-1)?.[0]))).toEqual([
+      expect.objectContaining({ id: promoted.id, bundle_id: bundle.id }),
+      expect.objectContaining({ id: source.id, bundle_id: bundle.id }),
+    ]);
 
-    const payload = JSON.parse(String(output.mock.calls.at(-1)?.[0]));
-    expect(payload.releaseReferences).toEqual({
-      count: 2,
-      ids: [secondRelease.id, existingRelease.id],
+    await handleBundleShow(promoted.id);
+    const summary = String(output.mock.calls.at(-1)?.[0]);
+    expect(summary).toContain(`ID:`);
+    expect(summary).toContain(promoted.id);
+    expect(summary).toContain("staging");
+    expect(summary).not.toContain(bundle.id);
+
+    await handleBundleShow(promoted.id, { json: true });
+    expect(JSON.parse(String(output.mock.calls.at(-1)?.[0]))).toMatchObject({
+      id: promoted.id,
+      bundle_id: bundle.id,
+      source_release_id: source.id,
     });
   });
 
@@ -177,15 +173,16 @@ describe("Bundle artifact commands", () => {
         expect(input.beforeReleaseId).toBe(releases[999]!.id);
         return releases.slice(1_000);
       });
-    const { handleBundleShow } = await import("./bundle");
+    const { handleBundleDelete } = await import("./bundle");
 
-    await handleBundleShow(bundleId);
+    await expect(handleBundleDelete([bundleId], { yes: true })).rejects.toThrow(
+      releases[1_000]!.id,
+    );
 
     expect(findMany).toHaveBeenCalledTimes(2);
-    expect(log.message).toHaveBeenCalledWith(expect.stringContaining("1001"));
-    expect(log.message).toHaveBeenCalledWith(
-      expect.stringContaining("(+996 more)"),
-    );
+    await expect(
+      databaseHarness.plugin.models.bundles.findById(bundleId),
+    ).resolves.not.toBeNull();
   });
 
   it("deletes an unreferenced artifact", async () => {

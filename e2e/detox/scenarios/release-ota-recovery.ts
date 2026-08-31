@@ -37,7 +37,7 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert stable update installed",
       "update-action-result",
-      "current-channel -> installed Release $stableReleaseId / Bundle $stableBundleId",
+      "current-channel -> installed ID $stableReleaseId",
       { exactText: true },
     );
     await app.control(
@@ -87,7 +87,7 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert crash update installed",
       "update-action-result",
-      "current-channel -> installed Release $crashReleaseId / Bundle $crashBundleId",
+      "current-channel -> installed ID $crashReleaseId",
       { exactText: true },
     );
     await app.control(
@@ -152,7 +152,7 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert same-generation safe reselection",
       "update-action-result",
-      "current-channel -> adopted Release $stableReleaseId / Bundle $stableBundleId",
+      "current-channel -> adopted ID $stableReleaseId",
       { exactText: true },
     );
     await app.control(

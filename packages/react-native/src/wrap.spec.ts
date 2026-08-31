@@ -1,5 +1,8 @@
-import type React from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+// @vitest-environment jsdom
+
+import { cleanup, render, waitFor } from "@testing-library/react";
+import { createElement, type ComponentType } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   NotifyAppReadyInsightsEvent,
@@ -32,6 +35,7 @@ const mocks = vi.hoisted(() => ({
   checkForUpdate: vi.fn(),
   getAppVersion: vi.fn(() => "1.0.0"),
   getBundleId: vi.fn(() => "bundle-id"),
+  getUpdateId: vi.fn(() => "release-id"),
   getChannel: vi.fn(() => "production"),
   getCohort: vi.fn(() => "123"),
   getFingerprintHash: vi.fn(() => "fingerprint-hash"),
@@ -55,6 +59,7 @@ vi.mock("./native", () => ({
   addListener: mocks.addListener,
   getAppVersion: mocks.getAppVersion,
   getBundleId: mocks.getBundleId,
+  getUpdateId: mocks.getUpdateId,
   getChannel: mocks.getChannel,
   getCohort: mocks.getCohort,
   getFingerprintHash: mocks.getFingerprintHash,
@@ -92,11 +97,45 @@ describe("HotUpdater wrap initialization", () => {
     mocks.getAppVersion.mockReturnValue("1.0.0");
     mocks.getPersistedUserIdentity.mockReturnValue({});
     mocks.getBundleId.mockReturnValue("bundle-id");
+    mocks.getUpdateId.mockReturnValue("release-id");
     mocks.getChannel.mockReturnValue("production");
     mocks.getCohort.mockReturnValue("123");
     mocks.getFingerprintHash.mockReturnValue("fingerprint-hash");
     mocks.getInstallId.mockReturnValue("install-id");
     mocks.readNotifyAppReady.mockReturnValue(createNotifyReadResult());
+  });
+
+  afterEach(cleanup);
+
+  it("reports the console ID when up to date while retaining file IDs in insights", async () => {
+    const onUpdateProcessCompleted = vi.fn();
+    const { client, sendInsightsEvent } = createClient();
+    const { wrap } = await import("./wrap");
+    const WrappedComponent = wrap({
+      insights: true,
+      client,
+      onUpdateProcessCompleted,
+      updateStrategy: "appVersion",
+    })(() => null);
+
+    render(createElement(WrappedComponent));
+
+    await waitFor(() =>
+      expect(onUpdateProcessCompleted).toHaveBeenCalledWith({
+        id: "release-id",
+        message: null,
+        shouldForceUpdate: false,
+        status: "UP_TO_DATE",
+      }),
+    );
+    await waitFor(() =>
+      expect(sendInsightsEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toBundleId: "bundle-id",
+          type: "UNCHANGED",
+        }),
+      ),
+    );
   });
 
   it("returns void from init and defers notifyAppReady to the next frame", async () => {
@@ -344,14 +383,14 @@ describe("HotUpdater wrap initialization", () => {
 
   it("preserves wrapped component prop inference", async () => {
     const { wrap } = await import("./wrap");
-    const Component: React.ComponentType<{ title: string }> = () => null;
+    const Component: ComponentType<{ title: string }> = () => null;
 
     const WrappedComponent = wrap({
       client: createClient().client,
       updateStrategy: "appVersion",
     })(Component);
 
-    const acceptsTitleProps: React.ComponentType<{ title: string }> =
+    const acceptsTitleProps: ComponentType<{ title: string }> =
       WrappedComponent;
     expect(acceptsTitleProps).toBe(WrappedComponent);
   });

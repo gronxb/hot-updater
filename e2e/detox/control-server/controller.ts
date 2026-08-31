@@ -1175,7 +1175,7 @@ async function applyAppScenario({
           CRASH_GUARD_START,
           `  const E2E_SAFE_BUNDLE_IDS = new Set(${JSON.stringify(safeBundleIds, null, 2)});`,
           `  const E2E_BUILT_IN_MIN_BUNDLE_ID_SUFFIX = ${JSON.stringify(BUILT_IN_MIN_BUNDLE_ID_SUFFIX)};`,
-          "  const E2E_CURRENT_BUNDLE_ID = HotUpdater.getBundleId();",
+          "  const E2E_CURRENT_BUNDLE_ID = HotUpdater.getManifest().bundleId;",
           "  const E2E_IS_BUILT_IN_BUNDLE =",
           '    typeof E2E_CURRENT_BUNDLE_ID === "string" &&',
           "    E2E_CURRENT_BUNDLE_ID.endsWith(E2E_BUILT_IN_MIN_BUNDLE_ID_SUFFIX);",

@@ -58,15 +58,15 @@ database while v0 binaries still need those artifacts.
 The v1 scaffold starts with an empty Release history. Redeploy the releases you
 want to serve from their source artifacts; v0 policy is not backfilled.
 
-### 3. Update CLI automation to use Release IDs
+### 3. Update CLI automation to use console IDs
 
 v1 separates immutable Bundle artifacts from mutable Release policy. Update
 scripts before writers resume:
 
 | v0 command or assumption | v1 command or meaning |
 | --- | --- |
-| `bundle list --channel ... --target-app-version ...` | Use `release list --channel ... --platform ...` for delivery policy. `bundle list` is an artifact inventory. |
-| `bundle show <bundle-id>` for rollout or enabled state | Use `release show <release-id>`. `bundle show` reports artifact data and Release references. |
+| `bundle list --channel ... --target-app-version ...` | Use `release list --channel ... --platform ...` for channel filtering. `bundle list` shows the same update IDs as the console. |
+| `bundle show <bundle-id>` for rollout or enabled state | Use `bundle show <id>` or `release show <id>` with the console ID, also returned by `HotUpdater.getBundleId()`. |
 | `bundle update <bundle-id>` | `release update <release-id>` |
 | `bundle enable <bundle-id>` | `release enable <release-id>` |
 | `bundle disable <bundle-id>` | `release disable <release-id>` |
@@ -74,12 +74,12 @@ scripts before writers resume:
 | top-level `rollback <channel>` or `--target <bundle-id>` | Identify the exact Release and run `release disable <release-id>`. The Bundle-targeted rollback command is removed. |
 | Delete an old Bundle directly | Disable and hard-delete every referencing Release, then run `bundle delete` and preview `storage prune`. |
 
-Deploy and promote create independent Release IDs. Multiple Releases can
-reference one Bundle.
+Deploy and promote create independent update IDs. Multiple updates can reuse
+the same files.
 
 Promotion reuses Bundle bytes and never copies Storage objects. Its target
 Release is enabled with a 100% numeric rollout, no target cohorts, and a new
-Release-ID rollout seed. Review that policy in the command preview before
+rollout seed. Review that policy in the command preview before
 confirming, especially when the source Release had a partial or QA-only rollout.
 
 ### 4. Verify the v1 endpoint

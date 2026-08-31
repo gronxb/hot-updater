@@ -101,7 +101,7 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
       await app.assertText(
         "assert included cohort action result",
         "update-action-result",
-        "current-channel -> installed Release $releaseId / Bundle $bundleId",
+        "current-channel -> installed ID $releaseId",
         { exactText: true },
       );
       await app.control(
@@ -175,7 +175,7 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
       await app.assertText(
         "assert qa cohort action result",
         "update-action-result",
-        "current-channel -> installed Release $releaseId / Bundle $bundleId",
+        "current-channel -> installed ID $releaseId",
         { exactText: true },
       );
       await app.control(

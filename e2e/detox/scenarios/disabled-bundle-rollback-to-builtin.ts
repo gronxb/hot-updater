@@ -43,7 +43,7 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
       await app.assertText(
         "assert current bundle action result",
         "update-action-result",
-        "current-channel -> installed Release $currentReleaseId / Bundle $currentBundleId",
+        "current-channel -> installed ID $currentReleaseId",
         { exactText: true },
       );
       await app.control(

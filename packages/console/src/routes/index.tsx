@@ -83,9 +83,6 @@ export const Route = createFileRoute("/")({
   validateSearch: validateReleaseSearch,
 });
 
-const shortId = (id: string) =>
-  id.length > 18 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
-
 function BundleMovementSummary({
   summary,
 }: {
@@ -168,7 +165,7 @@ function BundleFilterToolbar({
   return (
     <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-2 border-b bg-background px-3 py-3 sm:h-12 sm:flex-nowrap sm:bg-card/70 sm:px-4 sm:py-0 sm:backdrop-blur-sm">
       <SidebarTrigger className="-ml-1" />
-      <h1 className="sr-only">Bundles</h1>
+      <h1 className="sr-only">Releases</h1>
       <div className="ml-1 flex items-center gap-1.5 text-muted-foreground sm:ml-2">
         <Filter className="size-3.5" />
         <span className="text-xs font-medium">Filters</span>
@@ -247,9 +244,9 @@ function BundleFilterToolbar({
       </Button>
       {search.bundleId ? (
         <Badge className="max-w-48 gap-1" variant="secondary">
-          Bundle {shortId(search.bundleId)}
+          File filter
           <button
-            aria-label="Clear Bundle filter"
+            aria-label="Clear file filter"
             className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => onChange({ bundleId: undefined })}
             type="button"
@@ -284,9 +281,6 @@ function BundleEntry({
   onToggleExpand: () => void;
   release: ReleaseListRow;
 }) {
-  const bundleLabel = release.bundle_id
-    ? `bundle ${release.bundle_id}`
-    : "the built-in app deployment";
   const operationLabel =
     release.operation === "PROMOTE"
       ? "Promoted"
@@ -300,7 +294,12 @@ function BundleEntry({
         <Button
           aria-controls={`bundle-lineage-panel-${release.id}`}
           aria-expanded={expanded}
-          aria-label={expanded ? "Hide Lineage" : "Show Lineage"}
+          aria-label={
+            expanded
+              ? "Hide advanced file diagnostics"
+              : "Show advanced file diagnostics"
+          }
+          title="Advanced file diagnostics"
           className="size-8 shrink-0 touch-manipulation"
           onClick={onToggleExpand}
           size="icon"
@@ -313,19 +312,18 @@ function BundleEntry({
         <span aria-hidden="true" className="size-8 shrink-0" />
       )}
       <button
-        aria-label={`Open details for ${bundleLabel}`}
+        aria-label={`Open details for ID ${release.id}`}
         className="min-w-0 rounded-sm text-left text-foreground transition-colors underline-offset-4 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={onOpen}
-        title={release.bundle_id ?? release.id}
+        title={release.id}
         type="button"
       >
-        {release.bundle_id ? (
-          <BundleIdDisplay bundleId={release.bundle_id} fullOnMobile />
-        ) : (
+        <BundleIdDisplay bundleId={release.id} fullOnMobile />
+        {!release.bundle_id ? (
           <span className="inline-flex items-center gap-1.5 text-sm">
             <RotateCcw className="size-3.5" /> Built-in app
           </span>
-        )}
+        ) : null}
       </button>
       {operationLabel ? (
         <Badge className="shrink-0 font-normal" variant="secondary">
@@ -507,7 +505,7 @@ function BundlesPage() {
         {releasesQuery.isError ? (
           <Alert variant="destructive">
             <AlertTriangle />
-            <AlertTitle>Bundles could not be loaded</AlertTitle>
+            <AlertTitle>Releases could not be loaded</AlertTitle>
             <AlertDescription>{releasesQuery.error.message}</AlertDescription>
           </Alert>
         ) : (
@@ -653,8 +651,8 @@ function BundlesPage() {
                     search.enabled !== undefined ||
                     search.platform ||
                     search.targetAppVersion
-                      ? "No bundles match these filters."
-                      : "No bundles yet. Deploy a bundle to see it here."}
+                      ? "No releases match these filters."
+                      : "No releases yet. Deploy an update to see it here."}
                   </p>
                 )}
               </div>
@@ -662,7 +660,7 @@ function BundlesPage() {
               <Table className="min-w-max">
                 <TableHeader className="bg-muted/40">
                   <TableRow className="border-b border-border/60 hover:bg-transparent [&>th]:h-10 [&>th]:text-xs [&>th]:font-semibold [&>th]:uppercase [&>th]:text-muted-foreground/70">
-                    <TableHead>Bundle ID</TableHead>
+                    <TableHead>ID</TableHead>
                     <TableHead>Channel</TableHead>
                     <TableHead>Platform</TableHead>
                     <TableHead>Patches</TableHead>
@@ -693,7 +691,7 @@ function BundlesPage() {
                         return (
                           <Fragment key={release.id}>
                             <TableRow
-                              aria-label={`Open bundle ${release.bundle_id ?? release.id}`}
+                              aria-label={`Open release ${release.id}`}
                               className={cn(
                                 "cursor-pointer transition-[background-color,filter] hover:bg-muted/10 focus-within:bg-muted/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none data-[state=selected]:bg-muted/15 [&>td]:py-3",
                                 release.currentlyUnreachable &&
@@ -888,8 +886,8 @@ function BundlesPage() {
                         search.enabled !== undefined ||
                         search.platform ||
                         search.targetAppVersion
-                          ? "No bundles match these filters."
-                          : "No bundles yet. Deploy a bundle to see it here."}
+                          ? "No releases match these filters."
+                          : "No releases yet. Deploy an update to see it here."}
                       </TableCell>
                     </TableRow>
                   ) : null}
@@ -901,7 +899,7 @@ function BundlesPage() {
 
         {!releasesQuery.isError && !releasesQuery.isPending ? (
           <nav
-            aria-label="Bundle pagination"
+            aria-label="Release pagination"
             className="flex flex-col gap-3 px-2 sm:flex-row sm:items-center sm:justify-between"
           >
             <p className="text-xs font-medium text-muted-foreground">

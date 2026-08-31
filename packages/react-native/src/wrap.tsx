@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 
 import { checkForUpdate } from "./checkForUpdate";
 import { useEventCallback } from "./hooks/useEventCallback";
-import { getBundleId, reload } from "./native";
+import { getUpdateId, reload } from "./native";
 import { handleNotifyAppReady } from "./notifyAppReadyInsights";
 import { useHotUpdaterStore } from "./store";
 import type {
@@ -61,7 +61,7 @@ export function wrap(
               status: "UP_TO_DATE",
               shouldForceUpdate: false,
               message: null,
-              id: getBundleId(),
+              id: getUpdateId(),
             });
             setUpdateStatus("UPDATE_PROCESS_COMPLETED");
             return;

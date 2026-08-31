@@ -83,7 +83,7 @@ export const metadataV1MigrationScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert migrated Release adoption",
       "update-action-result",
-      "current-channel -> adopted Release $migrationStagingReleaseId / Bundle $migrationStagingBundleId",
+      "current-channel -> adopted ID $migrationStagingReleaseId",
       { exactText: true },
     );
     await app.assertText(

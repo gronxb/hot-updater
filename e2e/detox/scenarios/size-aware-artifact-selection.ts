@@ -29,7 +29,7 @@ export const sizeAwareArtifactSelectionScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert size-aware base Release installed",
       "update-action-result",
-      "current-channel -> installed Release $sizeAwareBaseReleaseId / Bundle $sizeAwareBaseBundleId",
+      "current-channel -> installed ID $sizeAwareBaseReleaseId",
       { exactText: true },
     );
     await app.control(
@@ -103,7 +103,7 @@ export const sizeAwareArtifactSelectionScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert size-aware small Release installed",
       "update-action-result",
-      "current-channel -> installed Release $sizeAwareSmallReleaseId / Bundle $sizeAwareSmallBundleId",
+      "current-channel -> installed ID $sizeAwareSmallReleaseId",
       { exactText: true },
     );
     await app.control(
@@ -192,7 +192,7 @@ export const sizeAwareArtifactSelectionScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert size-aware large Release installed",
       "update-action-result",
-      "current-channel -> installed Release $sizeAwareLargeReleaseId / Bundle $sizeAwareLargeBundleId",
+      "current-channel -> installed ID $sizeAwareLargeReleaseId",
       { exactText: true },
     );
     await app.control(

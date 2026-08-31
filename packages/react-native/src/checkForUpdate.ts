@@ -383,7 +383,7 @@ async function checkForReleaseCatalogUpdate(input: {
   return {
     fileHash: null,
     fileUrl: null,
-    id: desired.bundleId,
+    id: desired.releaseId ?? desired.bundleId,
     message: release?.message ?? null,
     releaseId: desired.releaseId,
     rolloutCohortCount: release?.rolloutCohortCount ?? 1000,

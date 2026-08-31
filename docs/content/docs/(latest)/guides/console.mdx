@@ -42,6 +42,10 @@ export default defineConfig({
 
 ## Usage
 
+The Releases list and its detail sheet show an **ID** that matches
+[`HotUpdater.getBundleId()`](/docs/react-native-api/getBundleId) on the device.
+Promoted updates have their own IDs even when they reuse the same files.
+
 Execute the following command:
 
 ```package-install
@@ -81,12 +85,12 @@ npx hot-updater release update <release-id> --target-cohorts qa,dogfood -y
 ```
 
 Add `--json` to `release list`, `release show`, or `release update` when
-another tool needs to read Release policy. Bundle commands remain available
-for immutable artifact inspection and reference-safe deletion:
+another tool needs to read Release policy. `bundle list` and `bundle show`
+use the same IDs and query the same updates:
 
 ```package-install
 npx hot-updater bundle list --platform ios
-npx hot-updater bundle show <bundle-id>
+npx hot-updater bundle show <id>
 ```
 
 After deleting bundle records, use the [Storage Cleanup](/docs/guides/storage-cleanup)
@@ -120,8 +124,8 @@ Release's Bundle:
 npx hot-updater release promote <source-release-id> --target <channel>
 ```
 
-No Storage object is uploaded or copied. The target Release has a new Release
-ID and rollout seed, is enabled, starts at a 100% numeric rollout, and has no
+No Storage object is uploaded or copied. The promoted update has a new ID
+and rollout seed, is enabled, starts at a 100% numeric rollout, and has no
 target cohorts. The command previews those defaults before confirmation. A
 `--action move` promotion also disables the source Release atomically.
 

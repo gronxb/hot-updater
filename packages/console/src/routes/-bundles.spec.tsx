@@ -10,6 +10,7 @@ import type { ComponentType, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  isMobile: vi.fn(() => false),
   navigate: vi.fn(),
   search: vi.fn(),
 }));
@@ -46,7 +47,7 @@ vi.mock("@/components/ui/select", () => ({
 vi.mock("@/components/ui/sidebar", () => ({
   SidebarTrigger: () => null,
 }));
-vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
+vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: mocks.isMobile }));
 
 const release = vi.hoisted(
   () =>
@@ -82,6 +83,7 @@ const childBundle = {
   id: "019ff642-01eb-72ea-8a03-a28aef188d33",
   platform: "ios",
 } as Bundle;
+let releases = [release];
 
 vi.mock("@/lib/api", () => ({
   useBundleChildCountsQuery: () => ({
@@ -107,7 +109,7 @@ vi.mock("@/lib/api", () => ({
   }),
   useReleasesQuery: () => ({
     data: {
-      data: [release],
+      data: releases,
       pagination: {
         currentPage: 1,
         hasNextPage: false,
@@ -127,6 +129,8 @@ const BundlesPage = (Route as unknown as { readonly component: ComponentType })
 
 describe("BundlesPage", () => {
   beforeEach(() => {
+    releases = [release];
+    mocks.isMobile.mockReturnValue(false);
     mocks.search.mockReturnValue({});
     release.currentlyUnreachable = false;
   });
@@ -139,7 +143,7 @@ describe("BundlesPage", () => {
   it("opens the Bundle edit sheet from the whole table row", () => {
     render(<BundlesPage />);
     const row = screen.getByRole("row", {
-      name: "Open bundle 019ff641-01eb-72ea-8a03-a28aef188d32",
+      name: "Open release release-1",
     });
 
     fireEvent.click(row);
@@ -163,12 +167,10 @@ describe("BundlesPage", () => {
   it("keeps a default Bundle row focused on delivery decisions", () => {
     render(<BundlesPage />);
     const row = screen.getByRole("row", {
-      name: "Open bundle 019ff641-01eb-72ea-8a03-a28aef188d32",
+      name: "Open release release-1",
     });
 
-    expect(
-      within(row).getByText("019ff641-01eb-72ea-8a03-a28aef188d32"),
-    ).toBeDefined();
+    expect(within(row).getByText("release-1")).toBeDefined();
     expect(
       within(row).getByText(
         "e2e-job-20260812132427-qy22fi-android-s2-production",
@@ -195,7 +197,7 @@ describe("BundlesPage", () => {
 
     render(<BundlesPage />);
     const row = screen.getByRole("row", {
-      name: "Open bundle 019ff641-01eb-72ea-8a03-a28aef188d32",
+      name: "Open release release-1",
     });
     const state = within(row).getByText("Unreachable");
 
@@ -211,19 +213,56 @@ describe("BundlesPage", () => {
   it("expands the base-to-patch relationship from the Bundle row", () => {
     render(<BundlesPage />);
     const row = screen.getByRole("row", {
-      name: "Open bundle 019ff641-01eb-72ea-8a03-a28aef188d32",
+      name: "Open release release-1",
     });
 
-    fireEvent.click(within(row).getByRole("button", { name: "Show Lineage" }));
+    expect(screen.queryByText("Base file ID")).toBeNull();
+    fireEvent.click(
+      within(row).getByRole("button", {
+        name: "Show advanced file diagnostics",
+      }),
+    );
 
-    expect(screen.getByText("Base bundle")).toBeDefined();
+    expect(screen.getByText("Advanced file diagnostics")).toBeDefined();
+    expect(screen.getByText("Base file ID")).toBeDefined();
     expect(screen.getByText("Patch bundles from this base")).toBeDefined();
     expect(screen.getAllByText(childBundle.id).length).toBeGreaterThan(0);
     expect(screen.getByText("bsdiff")).toBeDefined();
     expect(
-      within(row).getByRole("button", { name: "Hide Lineage" }),
+      within(row).getByRole("button", {
+        name: "Hide advanced file diagnostics",
+      }),
     ).toBeDefined();
   });
+
+  it.each([false, true])(
+    "distinguishes promoted updates sharing one file (mobile: %s)",
+    (mobile) => {
+      mocks.isMobile.mockReturnValue(mobile);
+      releases = [
+        release,
+        { ...release, id: "release-2", operation: "PROMOTE" },
+      ];
+      render(<BundlesPage />);
+
+      expect(screen.getByRole("heading", { name: "Releases" })).toBeDefined();
+      expect(
+        screen.getByRole("navigation", { name: "Release pagination" }),
+      ).toBeDefined();
+      expect(screen.queryByText(release.bundle_id!)).toBeNull();
+      for (const id of ["release-1", "release-2"]) {
+        expect(screen.getByText(id)).toBeDefined();
+        fireEvent.click(
+          screen.getByRole("button", { name: `Open details for ID ${id}` }),
+        );
+        expect(mocks.navigate).toHaveBeenLastCalledWith({
+          resetScroll: false,
+          search: { releaseId: id },
+          to: "/",
+        });
+      }
+    },
+  );
 
   it("keeps the main Console filters and pagination summary", () => {
     render(<BundlesPage />);

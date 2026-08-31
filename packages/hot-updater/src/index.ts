@@ -194,16 +194,16 @@ const bundleCommand = program.command("bundle").description("Manage bundles");
 
 bundleCommand
   .command("list")
-  .description("List immutable Bundle artifacts, most recent first")
-  .option("--json", "output raw bundle data as JSON")
+  .description("List updates by console ID, most recent first")
+  .option("--json", "output raw Release rows as JSON")
   .addOption(platformCommandOption)
   .option(
     "--limit <n>",
     "limit the number of results",
     (value) => {
       const n = Number.parseInt(value, 10);
-      if (!Number.isInteger(n) || n <= 0) {
-        throw new InvalidArgumentError("must be a positive integer");
+      if (!Number.isInteger(n) || n <= 0 || n > 1000) {
+        throw new InvalidArgumentError("must be an integer from 1 to 1000");
       }
       return n;
     },
@@ -213,17 +213,20 @@ bundleCommand
 
 bundleCommand
   .command("show")
-  .description("Show one Bundle artifact and its Release references")
-  .argument("<bundle-id>", "the bundle id to show")
-  .option("--json", "output raw bundle data as JSON")
-  .action((bundleId: string, options: { json?: boolean }) =>
-    handleBundleShow(bundleId, options),
+  .description("Show one update by console ID")
+  .argument("<id>", "the ID shown in the console or HotUpdater.getBundleId()")
+  .option("--json", "output the raw Release row as JSON")
+  .action((id: string, options: { json?: boolean }) =>
+    handleBundleShow(id, options),
   );
 
 bundleCommand
   .command("delete")
   .description("Delete Bundle records that have no Release references")
-  .argument("<bundle-ids...>", "the bundle id(s) to delete")
+  .argument(
+    "<bundle-ids...>",
+    "the file ID(s) from Advanced diagnostics to delete",
+  )
   .option("-y, --yes", "skip confirmation prompt")
   .action((bundleIds: string[], options: { yes?: boolean }) =>
     handleBundleDelete(bundleIds, options),
