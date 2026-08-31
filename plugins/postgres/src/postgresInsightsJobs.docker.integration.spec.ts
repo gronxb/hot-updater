@@ -150,17 +150,53 @@ describe("PostgreSQL report reservation and lease concurrency", () => {
     await store.getReport({
       query: { kind: "bundleDetail", bundleId: "publish", window: "all" },
     });
-    const lease = (await store.leaseNext())!;
+    let lease = (await store.leaseNext())!;
     const generation = JSON.stringify([
       1,
       "00000000-0000-0000-0000-000000000001",
       Array(16).fill("0"),
     ]);
-    // Preparation is covered through the public progress API in the unit suite.
+    for (let shard = 0; shard < 16; shard++) {
+      await store.withLease(lease.token, async () => ({
+        kind: "progress",
+        sourceGeneration: generation,
+        checkpoint: { phase: "source", shard, afterSequence: "0" },
+      }));
+      lease = (await store.leaseNext())!;
+    }
+    await expect(
+      store.withLease(lease.token, async () => ({
+        kind: "progress",
+        checkpoint: { phase: "ordering", section: 1 },
+      })),
+    ).rejects.toMatchObject({ code: "invalid-result" });
+    for (const section of [0, 1]) {
+      await store.withLease(lease.token, async () => ({
+        kind: "progress",
+        checkpoint: { phase: "ordering", section },
+      }));
+      lease = (await store.leaseNext())!;
+      expect(lease.job.checkpoint).toEqual({ phase: "ordering", section });
+      if (section === 0) {
+        await expect(
+          store.withLease(lease.token, async (transaction) => {
+            await sql`insert into derived_test values (1)`.execute(transaction);
+            return { kind: "progress", checkpoint: { phase: "complete" } };
+          }),
+        ).rejects.toMatchObject({ code: "invalid-result" });
+        expect((await pool.query("select * from derived_test")).rows).toEqual(
+          [],
+        );
+      }
+    }
+    await store.withLease(lease.token, async () => ({
+      kind: "progress",
+      checkpoint: { phase: "complete" },
+    }));
+    lease = (await store.leaseNext())!;
     await pool.query(
-      `update ${jobs} set source_generation=$2,checkpoint='{"phase":"complete"}'::jsonb,
-      claimable_at=clock_timestamp()+interval '2 seconds' where id=$1`,
-      [lease.job.id, generation],
+      `update ${jobs} set claimable_at=clock_timestamp()+interval '2 seconds' where id=$1`,
+      [lease.job.id],
     );
     const blocker = await pool.connect();
     let running: Promise<unknown> | undefined;

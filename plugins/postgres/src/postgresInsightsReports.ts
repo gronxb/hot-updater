@@ -17,6 +17,12 @@ import {
   savePostgresInsightsProjection,
 } from "./postgresInsightsReportData";
 import {
+  assertPostgresInsightsReportOrderIndexes,
+  getPostgresInsightsReportOrderReady,
+  stepPostgresInsightsReportOrder,
+} from "./postgresInsightsReportOrder";
+import { getPostgresInsightsReportOrderSections } from "./postgresInsightsReportSections";
+import {
   createPostgresInsightsSourceTools,
   POSTGRES_SOURCE_SHARDS,
 } from "./postgresInsightsSource";
@@ -48,6 +54,7 @@ export const createPostgresInsightsReportWorker = <TDatabase extends object>(
       )
         throw new DatabasePluginInputError("invalid-query");
       await assertPostgresInsightsReportDataIndexes(db);
+      await assertPostgresInsightsReportOrderIndexes(db);
       const lease = await jobs.leaseNext();
       if (lease === null) return { state: "idle", processed: 0 };
       const { token, job } = lease;
@@ -102,10 +109,11 @@ export const createPostgresInsightsReportWorker = <TDatabase extends object>(
               kind: "progress",
               checkpoint:
                 exhausted && lastShard
-                  ? current.query.kind === "bundleSummaries" ||
-                    current.query.kind === "bundleDetail"
+                  ? current.query.kind === "bundleSummaries"
                     ? { phase: "complete" }
-                    : { phase: "installations", afterInstallKey: null }
+                    : current.query.kind === "bundleDetail"
+                      ? { phase: "ordering", section: 0 }
+                      : { phase: "installations", afterInstallKey: null }
                   : {
                       phase: "source",
                       shard: current.checkpoint.shard + (exhausted ? 1 : 0),
@@ -141,18 +149,58 @@ export const createPostgresInsightsReportWorker = <TDatabase extends object>(
               kind: "progress",
               checkpoint:
                 page.length < limit
-                  ? { phase: "complete" }
+                  ? { phase: "ordering", section: 0 }
                   : {
                       phase: "installations",
                       afterInstallKey: page.at(-1)!.installKey,
                     },
             };
           });
+        } else if (job.checkpoint.phase === "ordering") {
+          await jobs.withLease(token, async (transaction, current) => {
+            if (current.checkpoint.phase !== "ordering")
+              throw new Error("Invalid report phase.");
+            const sections = getPostgresInsightsReportOrderSections(
+              current.query,
+            );
+            // A merge reads at most two 32-row runs and emits at most32 rows.
+            const result = await stepPostgresInsightsReportOrder(
+              transaction,
+              current.id,
+              sections[current.checkpoint.section]!,
+            );
+            processed = result.processed;
+            return {
+              kind: "progress",
+              checkpoint: !result.ready
+                ? current.checkpoint
+                : current.checkpoint.section + 1 === sections.length
+                  ? { phase: "complete" }
+                  : {
+                      phase: "ordering",
+                      section: current.checkpoint.section + 1,
+                    },
+            };
+          });
         } else {
-          await jobs.withLease(token, async (transaction, current) => ({
-            kind: "publish",
-            summary: await readPostgresInsightsSummary(transaction, current),
-          }));
+          await jobs.withLease(token, async (transaction, current) => {
+            for (const section of getPostgresInsightsReportOrderSections(
+              current.query,
+            )) {
+              if (
+                (await getPostgresInsightsReportOrderReady(
+                  transaction,
+                  current.id,
+                  section,
+                )) === null
+              )
+                throw new DatabasePluginInputError("invalid-result");
+            }
+            return {
+              kind: "publish",
+              summary: await readPostgresInsightsSummary(transaction, current),
+            };
+          });
           return { state: "published", processed, jobId: job.id };
         }
         return { state: "progress", processed, jobId: job.id };

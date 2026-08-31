@@ -29,4 +29,5 @@ CREATE TABLE private_hot_updater_insights_report_counts (
   PRIMARY KEY (job_id, count_key)
 );
 CREATE INDEX insights_report_counts_bucket_idx
-  ON private_hot_updater_insights_report_counts (job_id, section, metric, bucket_start_ms);
+  ON private_hot_updater_insights_report_counts (job_id, section, metric, bucket_start_ms)
+  WHERE section = 'movementSeries';

@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createPostgresInsightsJobs,
+  readPostgresInsightsReportPublication,
   type PostgresInsightsReportCheckpoint,
 } from "./postgresInsightsJobs";
 
@@ -47,7 +48,7 @@ describe("PostgreSQL durable report jobs", () => {
     expect(lease).not.toBeNull();
     return lease!;
   };
-  const complete = async (captured = generation) => {
+  const sourceComplete = async (captured = generation) => {
     for (let shard = 0; shard < 16; shard++) {
       const lease = await acquire();
       await store.withLease(lease.token, async () => ({
@@ -56,7 +57,10 @@ describe("PostgreSQL durable report jobs", () => {
         checkpoint: { phase: "source", shard, afterSequence: "0" },
       }));
     }
-    let lease = await acquire();
+    return acquire();
+  };
+  const complete = async (captured = generation) => {
+    let lease = await sourceComplete(captured);
     if (
       lease.job.query.kind === "installationOverview" ||
       lease.job.query.kind === "activeOverview"
@@ -64,6 +68,19 @@ describe("PostgreSQL durable report jobs", () => {
       await store.withLease(lease.token, async () => ({
         kind: "progress",
         checkpoint: { phase: "installations", afterInstallKey: null },
+      }));
+      lease = await acquire();
+    }
+    const sections =
+      lease.job.query.kind === "bundleSummaries"
+        ? 0
+        : lease.job.query.kind === "installationOverview"
+          ? 1
+          : 2;
+    for (let section = 0; section < sections; section++) {
+      await store.withLease(lease.token, async () => ({
+        kind: "progress",
+        checkpoint: { phase: "ordering", section },
       }));
       lease = await acquire();
     }
@@ -261,6 +278,163 @@ describe("PostgreSQL durable report jobs", () => {
     ]);
   });
 
+  it.each([
+    {
+      query: { kind: "bundleDetail", bundleId: "b", window: "all" },
+      path: [
+        { phase: "ordering", section: 0 },
+        { phase: "ordering", section: 1 },
+        { phase: "complete" },
+      ],
+    },
+    {
+      query: { kind: "installationOverview" },
+      path: [
+        { phase: "installations", afterInstallKey: null },
+        { phase: "ordering", section: 0 },
+        { phase: "complete" },
+      ],
+    },
+    {
+      query: { kind: "activeOverview", window: "7d" },
+      path: [
+        { phase: "installations", afterInstallKey: null },
+        { phase: "ordering", section: 0 },
+        { phase: "ordering", section: 1 },
+        { phase: "complete" },
+      ],
+    },
+    {
+      query: { kind: "bundleSummaries", bundleIds: ["b"], window: "all" },
+      path: [{ phase: "complete" }],
+    },
+  ] satisfies {
+    query: InsightsReportQuery;
+    path: PostgresInsightsReportCheckpoint[];
+  }[])(
+    "requires every family-specific materialization phase before completion: $query.kind",
+    async ({ query, path }) => {
+      await store.getReport({ query });
+      let lease = await sourceComplete();
+      const sections = path.filter(({ phase }) => phase === "ordering").length;
+      for (const [index, checkpoint] of path.entries()) {
+        const previous = lease.job.checkpoint;
+        for (const invalidCheckpoint of [
+          ...path.slice(index + 1),
+          ...(previous.phase === "ordering" && previous.section > 0
+            ? [{ phase: "ordering", section: previous.section - 1 }]
+            : []),
+          ...(previous.phase === "ordering" ||
+          query.kind === "bundleDetail" ||
+          query.kind === "bundleSummaries"
+            ? [{ phase: "installations", afterInstallKey: null }]
+            : []),
+          { phase: "source", shard: 14, afterSequence: "0" },
+          { phase: "ordering", section: sections },
+          { phase: "unknown" },
+        ]) {
+          await expect(
+            store.withLease(lease.token, async (transaction) => {
+              await sql`insert into derived_test values (1, 1)`.execute(
+                transaction,
+              );
+              return {
+                kind: "progress",
+                checkpoint:
+                  invalidCheckpoint as PostgresInsightsReportCheckpoint,
+              };
+            }),
+          ).rejects.toMatchObject({ code: "invalid-result" });
+          expect((await saved())[0]!.checkpoint).toEqual(previous);
+          expect(
+            (await client.query("select * from derived_test")).rows,
+          ).toEqual([]);
+        }
+        await store.withLease(lease.token, async () => ({
+          kind: "progress",
+          checkpoint,
+        }));
+        lease = await acquire();
+        expect(lease.job.checkpoint).toEqual(checkpoint);
+        if (checkpoint.phase === "ordering") {
+          // Several bounded ordering chunks may retain the same section.
+          await store.withLease(lease.token, async () => ({
+            kind: "progress",
+            checkpoint,
+          }));
+          lease = await acquire();
+          expect(lease.job.checkpoint).toEqual(checkpoint);
+        }
+      }
+      expect(lease.job.checkpoint).toEqual({ phase: "complete" });
+    },
+  );
+
+  it.each([
+    {
+      query: { kind: "installationOverview" },
+      checkpoint: { phase: "ordering", section: 1 },
+    },
+    {
+      query: { kind: "bundleSummaries", bundleIds: ["b"], window: "all" },
+      checkpoint: { phase: "ordering", section: 0 },
+    },
+    {
+      query: { kind: "activeOverview", window: "7d" },
+      checkpoint: { phase: "ordering", section: 2 },
+    },
+    {
+      query: { kind: "activeOverview", window: "7d" },
+      checkpoint: { phase: "ordering", section: -1 },
+    },
+    {
+      query: { kind: "activeOverview", window: "7d" },
+      checkpoint: { phase: "ordering", section: 0.5 },
+    },
+    {
+      query: { kind: "activeOverview", window: "7d" },
+      checkpoint: { phase: "ordering", section: "0" },
+    },
+    {
+      query: { kind: "activeOverview", window: "7d" },
+      checkpoint: { phase: "ordering", section: 0, after: "ignored" },
+    },
+    {
+      query: { kind: "activeOverview", window: "7d" },
+      checkpoint: { phase: "unknown" },
+    },
+  ] satisfies { query: InsightsReportQuery; checkpoint: unknown }[])(
+    "refuses corrupt persisted phases before work or lease advancement: %j",
+    async ({ query, checkpoint }) => {
+      await store.getReport({ query });
+      const lease = await acquire();
+      await client.query(
+        `update ${jobTable} set checkpoint=$1::jsonb where id=$2`,
+        [JSON.stringify(checkpoint), lease.job.id],
+      );
+      const work = vi.fn();
+      await expect(store.withLease(lease.token, work)).rejects.toMatchObject({
+        code: "invalid-result",
+      });
+      expect(work).not.toHaveBeenCalled();
+      await client.query(
+        `update ${jobTable} set claimable_at=clock_timestamp()-interval '1 second' where id=$1`,
+        [lease.job.id],
+      );
+      await expect(store.leaseNext()).rejects.toMatchObject({
+        code: "invalid-result",
+      });
+      expect(
+        (
+          await client.query<{ lease_epoch: string }>(
+            `select lease_epoch::text from ${jobTable} where id=$1`,
+            [lease.job.id],
+          )
+        ).rows,
+      ).toEqual([{ lease_epoch: lease.token.epoch }]);
+    },
+  );
+
   it("uses the database clock and fencing epoch to reject expired and displaced holders before invoking work", async () => {
     await store.getReport({ query });
     const first = await acquire();
@@ -454,6 +628,62 @@ describe("PostgreSQL durable report jobs", () => {
     expect(await store.getReport({ query })).toEqual(result);
     expect(await store.leaseNext()).toBeNull();
     expect(await saved()).toHaveLength(2);
+  });
+
+  it("looks up immutable publications independently of the current head and distinguishes missing from pending", async () => {
+    expect(
+      await readPostgresInsightsReportPublication(
+        db,
+        "00000000-0000-0000-0000-000000000099",
+      ),
+    ).toBeNull();
+    const queued = await store.getReport({ query });
+    if (queued.state !== "queued") throw new Error("Queued fixture missing");
+    await expect(
+      readPostgresInsightsReportPublication(db, queued.jobId),
+    ).rejects.toMatchObject({ code: "INSIGHTS_QUERY_NOT_READY" });
+    const publish = async (trackedInstallations: number) => {
+      const lease = await complete();
+      await expect(
+        readPostgresInsightsReportPublication(db, lease.job.id),
+      ).rejects.toMatchObject({ code: "INSIGHTS_QUERY_NOT_READY" });
+      await store.withLease(lease.token, async () => ({
+        kind: "publish",
+        summary: {
+          kind: "installationOverview",
+          summary: { trackedInstallations },
+        },
+      }));
+      const result = await readPostgresInsightsReportPublication(
+        db,
+        lease.job.id,
+      );
+      expect(result).toMatchObject({
+        job: lease.job,
+        publication: {
+          id: lease.job.id,
+          sourceGeneration: generation,
+          summary: { trackedInstallations },
+        },
+      });
+      return result!;
+    };
+    const first = await publish(8);
+    await store.getReport({ query, minAsOfMs: first.publication.asOfMs + 1 });
+    const second = await publish(9);
+    expect(second.publication.id).not.toBe(first.publication.id);
+    expect(await store.getReport({ query })).toEqual({
+      state: "ready",
+      publication: second.publication,
+    });
+    expect(
+      await readPostgresInsightsReportPublication(db, first.publication.id),
+    ).toEqual(first);
+    const calls = vi.spyOn(client, "query");
+    await expect(
+      readPostgresInsightsReportPublication(db, "not-a-publication"),
+    ).rejects.toMatchObject({ code: "invalid-query" });
+    expect(calls).not.toHaveBeenCalled();
   });
 
   it("rejects out-of-order or oversized bundle summaries and does not promote a publication after lease expiry", async () => {

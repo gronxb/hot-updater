@@ -40,6 +40,12 @@ export const assertPostgresInsightsReportDataIndexes = async (
       ["job_id", "bucket_index", "install_key"],
     ],
     [counts, `${counts}_pkey`, true, ["job_id", "count_key"]],
+    [
+      counts,
+      "insights_report_counts_bucket_idx",
+      false,
+      ["job_id", "section", "metric", "bucket_start_ms"],
+    ],
   ] as const;
   const result = await sql<{ ready: boolean }>`select bool_and(exists (
     select 1 from pg_index i join pg_class c on c.oid = i.indexrelid
@@ -49,7 +55,10 @@ export const assertPostgresInsightsReportDataIndexes = async (
       and i.indisvalid and i.indisready and i.indisunique = required.is_unique
       and i.indnkeyatts = cardinality(required.columns)
       and i.indnatts = cardinality(required.columns)
-      and i.indexprs is null and i.indpred is null and am.amname = 'btree'
+      and i.indexprs is null and am.amname = 'btree'
+      and case when required.index_name = 'insights_report_counts_bucket_idx'
+        then pg_get_expr(i.indpred, i.indrelid) = '(section = ''movementSeries''::text)'
+        else i.indpred is null end
       and not exists (select 1 from unnest(required.columns) with ordinality col(name, position)
         where pg_get_indexdef(i.indexrelid, col.position::int, false) <> col.name)
       and not exists (select 1 from unnest(i.indoption) bits where bits <> 0)
@@ -65,7 +74,7 @@ export const assertPostgresInsightsReportDataIndexes = async (
   if (!result.rows[0]?.ready) throw new InsightsQueryNotReadyError();
 };
 
-type Count =
+export type PostgresInsightsReportCount =
   | ["summary", InsightsMovementMetric, string, -1]
   | ["movementSeries", InsightsMovementMetric, "", number]
   | ["movementCohorts", InsightsMovementMetric, string, -1]
@@ -73,6 +82,8 @@ type Count =
   | ["bundleDistribution" | "activeBundleTotals", "", string, -1]
   | ["activeSeries", "", "", number]
   | ["activeBundleSeries", "", string, number];
+
+type Count = PostgresInsightsReportCount;
 
 const increment = async (
   db: QueryExecutorProvider,
@@ -276,6 +287,62 @@ export const countPostgresInsightsInstallation = async (
   }
 };
 
+/** Fixed hash point reads; never bind an opaque query ID as PostgreSQL text. */
+export const readPostgresInsightsReportCounts = async (
+  db: QueryExecutorProvider,
+  jobId: string,
+  requested: readonly Count[],
+): Promise<readonly number[]> => {
+  if (requested.length > 200) invalid();
+  const byKey = new Map<string, { identity: string; value: number }>();
+  for (const count of requested) {
+    const identity = JSON.stringify(count);
+    const countKey = key(identity);
+    const previous = byKey.get(countKey);
+    if (previous && previous.identity !== identity) invalid();
+    byKey.set(countKey, { identity, value: 0 });
+  }
+  if (byKey.size > 0) {
+    const rows = await sql<{
+      count_key: string;
+      identity: Count;
+      value: string;
+    }>`select count_key, identity, value::text
+      from ${sql.table(counts)} where job_id = ${jobId}::uuid and count_key in (${sql.join([...byKey.keys()])})
+      limit ${byKey.size}`.execute(db);
+    for (const row of rows.rows) {
+      const requestedCount = byKey.get(row.count_key);
+      if (!requestedCount) return invalid();
+      if (
+        JSON.stringify(row.identity) !== requestedCount.identity ||
+        !Number.isSafeInteger(Number(row.value)) ||
+        Number(row.value) < 1
+      )
+        invalid();
+      requestedCount.value = Number(row.value);
+    }
+  }
+  return requested.map((count) => byKey.get(key(JSON.stringify(count)))!.value);
+};
+
+/** All-time movement starts at this metric's first nonempty UTC bucket. */
+export const readPostgresInsightsFirstMovementBucket = async (
+  db: QueryExecutorProvider,
+  jobId: string,
+  metric: InsightsMovementMetric,
+): Promise<number | null> => {
+  const row = (
+    await sql<{ bucket_start_ms: string }>`
+    select bucket_start_ms::text from ${sql.table(counts)}
+    where job_id = ${jobId}::uuid and section = 'movementSeries' and metric = ${metric}
+    order by ${sql.table(counts)}.bucket_start_ms limit 1`.execute(db)
+  ).rows[0];
+  if (row === undefined) return null;
+  const value = Number(row.bucket_start_ms);
+  if (!Number.isSafeInteger(value) || value < 0) invalid();
+  return value;
+};
+
 export const readPostgresInsightsSummary = async (
   db: QueryExecutorProvider,
   job: PostgresInsightsReportJob,
@@ -293,35 +360,11 @@ export const readPostgresInsightsSummary = async (
           ["summary", "installed", id, -1],
           ["summary", "recovered", id, -1],
         ]);
-  const byKey = new Map<string, { identity: string; value: number }>();
-  for (const count of requested) {
-    const identity = JSON.stringify(count);
-    const countKey = key(identity);
-    const previous = byKey.get(countKey);
-    if (previous && previous.identity !== identity) invalid();
-    byKey.set(countKey, { identity, value: 0 });
-  }
-  if (byKey.size > 0) {
-    const rows = await sql<{
-      count_key: string;
-      identity: Count;
-      value: string;
-    }>`select count_key, identity, value::text
-      from ${sql.table(counts)} where job_id = ${job.id}::uuid and count_key in (${sql.join([...byKey.keys()])})
-      limit ${byKey.size}`.execute(db);
-    for (const row of rows.rows) {
-      const requestedCount = byKey.get(row.count_key);
-      if (!requestedCount) return invalid();
-      if (
-        JSON.stringify(row.identity) !== requestedCount.identity ||
-        !Number.isSafeInteger(Number(row.value)) ||
-        Number(row.value) < 1
-      )
-        invalid();
-      requestedCount.value = Number(row.value);
-    }
-  }
-  const value = (count: Count) => byKey.get(key(JSON.stringify(count)))!.value;
+  const values = await readPostgresInsightsReportCounts(db, job.id, requested);
+  const byIdentity = new Map(
+    requested.map((count, index) => [JSON.stringify(count), values[index]!]),
+  );
+  const value = (count: Count) => byIdentity.get(JSON.stringify(count))!;
   switch (job.query.kind) {
     case "bundleSummaries":
       return {

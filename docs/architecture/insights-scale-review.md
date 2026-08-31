@@ -42,19 +42,50 @@ read budget still need implementation evidence.
 
 ### Current validation
 
-The report/preparation additions passed the full workspace build (26 projects),
-type checks (34 projects), root lint, changeset validation and all 2,588 unit tests
-in 290 files. Standard integration runs passed the PostgreSQL source/job suites
-(3 tests) and MongoDB preparation/native reader suites (28 tests). Owned test
-containers and emulator processes were cleaned up.
+The report-page additions passed the full workspace build (26 projects), type
+checks (34 projects), root lint, changeset validation and all 2,625 unit tests in
+293 files. A standard PostgreSQL integration run passed all nine source, job,
+ordering and page tests across four files. Owned test containers and emulator
+processes were cleaned up. The prior preparation slice at `35e0e81d6` also passed
+28 MongoDB preparation/native-reader integration tests; those are historical
+results, not another MongoDB run for this update.
 
-Built PostgreSQL DB tooling loads its shipped SQL, retries migration and runs an
-idle worker under both ESM and CommonJS. The built server DB entry also imports in
-both formats while a module hook rejects any attempted MongoDB peer load.
-Independent review approved only these internal job/accumulator/preparation
-slices. The final all-provider implementation and standalone E2E remain pending.
-The [validation record](./insights-scale-evidence/report-preparation-validation.json)
-includes source hashes, fixture sizes, checks and the explicit limits of this run.
+Built PostgreSQL DB tooling loads its shipped ordering SQL and exact partial
+index predicates, retries migration and runs an idle worker under both ESM and
+CommonJS. Independent review approved only these internal PostgreSQL report
+pages and preparation stages. The final all-provider implementation and standalone
+E2E remain pending. The [current validation record](./insights-scale-evidence/report-pages-validation.json)
+includes 13 source hashes, nine test hashes, eight actual native plans, fixture
+sizes and explicit limits. The [previous preparation record](./insights-scale-evidence/report-preparation-validation.json)
+preserves earlier MongoDB and built-server optional-peer verification.
+
+### Immutable PostgreSQL section pages
+
+All five section families now read immutable derived data: movement series,
+movement cohorts, bundle distribution, active series and flat active-bundle
+series. Cursors bind publication, section, metric and exact bundle filter while
+allowing page-size changes. Series generate only the requested zero-filled
+buckets; active bundle ranking uses total observations, not current distribution.
+
+Ordering copies at most 32 counters, then merges persisted runs in bounded steps.
+Long labels remain intact and use JavaScript string comparison. Publication waits
+for every required ordered section. Missing ordinal rows are invalid output;
+missing publications expire rather than silently switching to the newest result.
+
+Adversarial review reproduced a metadata join scanning 50,001 rows after a primary
+key was lost, and a competing bucket index reading 137 cohort rows to sort 32.
+Metadata keys now have readiness guards; bucket and sort-input indexes cover only
+their actual section families, with exact predicate checks. Actual PostgreSQL
+plans verify bounded input/range seeks, including prepared generic plans and
+50,001 matching counters. The generic-plan test does not force scan methods.
+
+Six page tests cover semantics, cursor changes, long Unicode labels, numeric
+boundaries, immutable refresh and missing output. Eleven ordering tests cover
+multiple passes, replay, corrupt rows/state and incompatible index predicates.
+Five real PostgreSQL page tests additionally verify read-only/RR settings, write
+rejection, concurrent refresh/cleanup, earliest-metric seeks and missing metadata
+keys. Retention of intermediate passes and public/runtime integration remain
+unfinished; this is not approval of the complete scale plan.
 
 ### Durable PostgreSQL report accumulation
 

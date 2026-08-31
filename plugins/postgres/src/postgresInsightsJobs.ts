@@ -16,15 +16,40 @@ import {
   type Transaction,
 } from "kysely";
 
+import { getPostgresInsightsReportOrderSections } from "./postgresInsightsReportSections";
+
 const heads = "private_hot_updater_insights_report_heads";
 const jobs = "private_hot_updater_insights_report_jobs";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const decimal = /^(0|[1-9][0-9]{0,18})$/;
 const nowMs = sql<number>`floor(extract(epoch from clock_timestamp()) * 1000)::double precision`;
 
+export const assertPostgresInsightsReportMetadataIndexes = async (
+  db: QueryExecutorProvider,
+): Promise<void> => {
+  const result = await sql<{ ready: boolean }>`select bool_and(exists (
+    select 1 from pg_index i join pg_class c on c.oid = i.indexrelid
+    join pg_am am on am.oid = c.relam
+    where i.indexrelid = to_regclass(required.index_name)
+      and i.indrelid = to_regclass(required.table_name)
+      and i.indisvalid and i.indisready and i.indisprimary and i.indisunique
+      and i.indnkeyatts = 1 and i.indnatts = 1
+      and i.indexprs is null and i.indpred is null and am.amname = 'btree'
+      and pg_get_indexdef(i.indexrelid, 1, false) = required.column_name
+      and not exists (select 1 from unnest(i.indoption) bits where bits <> 0)
+      and not exists (select 1 from unnest(i.indclass) class_id
+        join pg_opclass opclass on opclass.oid = class_id where not opclass.opcdefault)
+  )) as ready from (values
+    (${heads}::text, ${`${heads}_pkey`}::text, 'query_key'),
+    (${jobs}::text, ${`${jobs}_pkey`}::text, 'id')
+  ) required(table_name, index_name, column_name)`.execute(db);
+  if (!result.rows[0]?.ready) throw new InsightsQueryNotReadyError();
+};
+
 export const assertPostgresInsightsReportClaimIndex = async (
   db: QueryExecutorProvider,
 ): Promise<void> => {
+  await assertPostgresInsightsReportMetadataIndexes(db);
   const result = await sql<{ ready: boolean }>`select exists (
     select 1 from pg_index i join pg_class c on c.oid = i.indexrelid
     join pg_am am on am.oid = c.relam
@@ -49,6 +74,7 @@ export type PostgresInsightsReportCheckpoint =
       readonly afterSequence: string;
     }
   | { readonly phase: "installations"; readonly afterInstallKey: string | null }
+  | { readonly phase: "ordering"; readonly section: number }
   | { readonly phase: "complete" };
 
 export interface PostgresInsightsReportJob {
@@ -178,6 +204,12 @@ const checkpointValid = (value: PostgresInsightsReportCheckpoint): boolean => {
       );
     case "complete":
       return only(value, ["phase"]);
+    case "ordering":
+      return (
+        only(value, ["phase", "section"]) &&
+        integer(value.section) &&
+        value.section < 2
+      );
     default:
       return false;
   }
@@ -190,15 +222,30 @@ const checkpointAdvances = (
 ): boolean => {
   if (!checkpointValid(after)) return false;
   if (before.phase === "complete") return after.phase === "complete";
+  const sections = getPostgresInsightsReportOrderSections(query);
   if (after.phase === "complete")
     return (
-      before.phase === "installations" ||
-      (query.kind === "bundleSummaries" &&
-        query.bundleIds.length === 0 &&
-        before.shard === 0 &&
-        before.afterSequence === "0") ||
-      (before.shard === 15 &&
-        (query.kind === "bundleSummaries" || query.kind === "bundleDetail"))
+      (before.phase === "ordering" && before.section === sections.length - 1) ||
+      (before.phase === "source" &&
+        query.kind === "bundleSummaries" &&
+        (before.shard === 15 ||
+          (query.bundleIds.length === 0 &&
+            before.shard === 0 &&
+            before.afterSequence === "0")))
+    );
+  if (after.phase === "ordering")
+    return (
+      after.section < sections.length &&
+      ((before.phase === "ordering" &&
+        (after.section === before.section ||
+          after.section === before.section + 1)) ||
+        (after.section === 0 &&
+          ((before.phase === "source" &&
+            before.shard === 15 &&
+            query.kind === "bundleDetail") ||
+            (before.phase === "installations" &&
+              (query.kind === "installationOverview" ||
+                query.kind === "activeOverview")))))
     );
   if (before.phase === "source") {
     if (after.phase === "installations")
@@ -209,6 +256,7 @@ const checkpointAdvances = (
           query.kind === "activeOverview")
       );
     return (
+      after.phase === "source" &&
       BigInt(after.afterSequence) <= BigInt(counters[after.shard]!) &&
       ((after.shard === before.shard + 1 && after.afterSequence === "0") ||
         (after.shard === before.shard &&
@@ -216,6 +264,7 @@ const checkpointAdvances = (
     );
   }
   return (
+    before.phase === "installations" &&
     after.phase === "installations" &&
     (before.afterInstallKey === null ||
       (after.afterInstallKey !== null &&
@@ -230,6 +279,9 @@ const toJob = (
     !uuid.test(row.id) ||
     !integer(row.as_of_ms) ||
     !checkpointValid(row.checkpoint) ||
+    (row.checkpoint.phase === "ordering" &&
+      row.checkpoint.section >=
+        getPostgresInsightsReportOrderSections(query).length) ||
     (row.source_generation !== null &&
       (typeof row.source_generation !== "string" ||
         row.source_generation.length < 1 ||
@@ -322,6 +374,8 @@ const publication = (
     query,
   );
   if (
+    row.checkpoint.phase !== "complete" ||
+    row.source_generation === null ||
     value.id !== row.id ||
     value.asOfMs !== row.as_of_ms ||
     value.sourceGeneration !== row.source_generation ||
@@ -333,6 +387,30 @@ const publication = (
   return value;
 };
 
+/** A primary-key lookup; old immutable publications need not be the current head. */
+export const readPostgresInsightsReportPublication = async (
+  db: QueryExecutorProvider,
+  publicationId: string,
+): Promise<{
+  job: PostgresInsightsReportJob;
+  publication: InsightsReportPublication;
+} | null> => {
+  if (!uuid.test(publicationId))
+    throw new DatabasePluginInputError("invalid-query");
+  await assertPostgresInsightsReportMetadataIndexes(db);
+  const row = (
+    await sql<StoredJob & { canonical_query: InsightsReportQuery }>`
+    select j.*, j.lease_epoch::text, h.canonical_query
+    from ${sql.table(jobs)} j join ${sql.table(heads)} h on h.query_key = j.query_key
+    where j.id = ${publicationId}::uuid`.execute(db)
+  ).rows[0];
+  if (row === undefined) return null;
+  const query = storedQuery(row.canonical_query, row.query_key);
+  const job = toJob(row, query);
+  if (row.status !== "ready") throw new InsightsQueryNotReadyError();
+  return { job, publication: publication(row, query) };
+};
+
 export const createPostgresInsightsJobs = <TDatabase extends object>(
   db: Kysely<TDatabase>,
 ) => {
@@ -341,6 +419,7 @@ export const createPostgresInsightsJobs = <TDatabase extends object>(
     async getReport(input: InsightsReportInput): Promise<InsightsReportResult> {
       const { query, key, minAsOfMs } = queryIdentity(input);
       return db.transaction().execute(async (transaction) => {
+        await assertPostgresInsightsReportMetadataIndexes(transaction);
         if (minAsOfMs !== undefined) {
           const current = (
             await sql<{ now_ms: number }>`select ${nowMs} as now_ms`.execute(
@@ -466,6 +545,7 @@ export const createPostgresInsightsJobs = <TDatabase extends object>(
       )
         throw new DatabasePluginInputError("invalid-query");
       await db.transaction().execute(async (transaction) => {
+        await assertPostgresInsightsReportMetadataIndexes(transaction);
         const row = (
           await sql<
             StoredJob & {

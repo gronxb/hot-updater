@@ -4,6 +4,7 @@ import { sql, type Kysely } from "kysely";
 
 import { assertPostgresInsightsReportClaimIndex } from "./postgresInsightsJobs";
 import { assertPostgresInsightsReportDataIndexes } from "./postgresInsightsReportData";
+import { assertPostgresInsightsReportOrderIndexes } from "./postgresInsightsReportOrder";
 import { assertPostgresInsightsSourceIndex } from "./postgresInsightsSource";
 
 export { createPostgresInsightsReportWorker } from "./postgresInsightsReports";
@@ -58,7 +59,11 @@ export const getPostgresInsightsReportMigrationSQL =
       new URL("../sql/insights-report-data-v1.sql", import.meta.url),
       "utf8",
     );
-    return `${jobs}\n${data}`;
+    const order = await readFile(
+      new URL("../sql/insights-report-order-v1.sql", import.meta.url),
+      "utf8",
+    );
+    return `${jobs}\n${data}\n${order}`;
   };
 
 /** Creates empty report storage. Does not reserve jobs or read raw events. */
@@ -87,5 +92,6 @@ export const migratePostgresInsightsReports = async <TDatabase extends object>(
     // table replacement or a raw-history fallback during a request.
     await assertPostgresInsightsReportClaimIndex(transaction);
     await assertPostgresInsightsReportDataIndexes(transaction);
+    await assertPostgresInsightsReportOrderIndexes(transaction);
   });
 };
