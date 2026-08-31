@@ -12,7 +12,7 @@
     "plugins/postgres/src/postgresInsightsReportSections.ts": "0ca6d5891f42bae9e6d46962bff06c98a041f33d939d678e66bd7517a3e01d9e",
     "plugins/postgres/src/postgresInsightsReportPages.ts": "acb63ddb99b7203af67e9e750418d7a345303551ab85f4fc42fa016a781347cb",
     "plugins/postgres/src/postgresInsightsReports.ts": "ec07540b9dc4dfc142ec08d4e4e47052bfc550c8b3f7db72c712afd578f84d84",
-    "plugins/postgres/src/db.ts": "31ef854719d2e7f2b2b205aeb7a541e3600431c39bdc08378c68b6031b0e8430",
+    "plugins/postgres/src/db.ts": "66e2dc1f445e53952588037efd3d5342b1a78a6181b54b64c93c25bf626ba787",
     "plugins/postgres/sql/insights-reports-v1.sql": "6eca8bc2cab35cb189e1e745e52c91671b1934606134b5b9d9c1bde01ad6f712",
     "plugins/postgres/sql/insights-report-data-v1.sql": "8c8b9e31bf398833fdae8fc2f8f6e0e2ec9a451f48268e115079057f5e77e119",
     "plugins/postgres/sql/insights-report-order-v1.sql": "47974fe61c708c8ff04c7f71679364a30acb83718cc078479c444cd7868ef2ef",
@@ -53,9 +53,9 @@
     "packages/server/src/insights/eventPages.spec.ts": "27869e594c58895874d179fec2c8fdd2b78225cbfdd3425803113a36632a32a5",
     "plugins/mock/src/test/insightsEventQueries.spec.ts": "7fe0b1419f275f25f714a50bb0111029401b21f7b70522207984c700a556bd07",
     "plugins/postgres/src/postgresInsights.spec.ts": "8186054bf05dc4c648c074b4b2e56fa8761379af5ef332481b8e55db6c3369bb",
-    "plugins/postgres/src/postgresInsightsEventPages.docker.integration.spec.ts": "d1fe34f9f1f480f4bfc86ceb46747f371d05b17fdec35fb646ef91f86787e368",
+    "plugins/postgres/src/postgresInsightsEventPages.docker.integration.spec.ts": "1ab92b59f14b8fd5e7c1bdcd32369b960fcd3c064b3356de677d4afe64f9169a",
     "plugins/postgres/src/postgresInsightsInstallation.spec.ts": "526f4c08905cfc81f55f2c839a2d3f80d2b88e37d4c827edc576b1e24e742f31",
-    "plugins/postgres/src/postgresInsightsInstallation.docker.integration.spec.ts": "48c90d1a9019484fdbb93942b887497d16219a5b5ef5cb02bb5813805e3c950d"
+    "plugins/postgres/src/postgresInsightsInstallation.docker.integration.spec.ts": "69b0480579c405c618be609ec38e44ffdd88044dedc957d90fb7137b754cc679"
   },
   "validation": {
     "workspaceBuild": {

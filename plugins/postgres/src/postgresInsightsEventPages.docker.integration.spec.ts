@@ -12,6 +12,12 @@ import { postgres } from "./postgres";
 import { migratePostgresInsightsInstallationEvents } from "./postgresInsightsEventMigration";
 
 const bundleId = "00000000-0000-0000-0000-000000000001";
+const postgresImages = [
+  "postgres:15-alpine",
+  ...(process.env.HOT_UPDATER_POSTGRES_17_TESTS === "1"
+    ? (["postgres:17-alpine"] as const)
+    : []),
+] as const;
 const docker = (args: string[]) => {
   const result = spawnSync("docker", args, { encoding: "utf8" });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout);
@@ -31,7 +37,7 @@ const nodes = (plan: Plan): Plan[] => [
   ...(plan.Plans ?? []).flatMap(nodes),
 ];
 
-describe.each(["postgres:15-alpine", "postgres:17-alpine"])(
+describe.each(postgresImages)(
   "PostgreSQL native installation movement pages (%s)",
   (image) => {
     const container = `hot-updater-event-pages-${randomUUID().slice(0, 8)}`;

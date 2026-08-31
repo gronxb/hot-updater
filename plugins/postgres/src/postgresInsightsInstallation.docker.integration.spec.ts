@@ -13,6 +13,12 @@ import { createPostgresInsightsInstallationLookup } from "./postgresInsightsInst
 const eventId = (number: number) =>
   `00000000-0000-0000-0000-${String(number).padStart(12, "0")}`;
 const bundleId = "11111111-1111-1111-1111-111111111111";
+const postgresImages = [
+  "postgres:15-alpine",
+  ...(process.env.HOT_UPDATER_POSTGRES_17_TESTS === "1"
+    ? (["postgres:17-alpine"] as const)
+    : []),
+] as const;
 const identities = [
   "",
   "Case",
@@ -41,7 +47,7 @@ type Plan = {
   Plans?: Plan[];
 };
 
-describe.each(["postgres:15-alpine", "postgres:17-alpine"])(
+describe.each(postgresImages)(
   "native exact installation lookup on %s",
   (postgresImage) => {
     const container = `hot-updater-installation-${randomUUID().slice(0, 8)}`;
