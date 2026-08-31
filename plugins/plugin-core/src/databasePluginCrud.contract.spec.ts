@@ -232,10 +232,10 @@ describe("database plugin CRUD runtime contract", () => {
     expect(create).toHaveBeenCalledOnce();
   });
 
-  it("accepts explicit null Release ids on an Analytics event", async () => {
+  it("accepts explicit null Release ids on an Insights event", async () => {
     const create = vi.fn(async ({ data }) => data);
     const plugin = createValidatedCrud({
-      name: "analytics-create-contract",
+      name: "insights-create-contract",
       plugin: () => ({ ...createMethods(), create }),
     });
 
@@ -251,11 +251,11 @@ describe("database plugin CRUD runtime contract", () => {
   });
 
   it.each(["from_release_id", "to_release_id"])(
-    "rejects an omitted Analytics create field: %s",
+    "rejects an omitted Insights create field: %s",
     async (field) => {
       const create = vi.fn(async ({ data }) => data);
       const plugin = createValidatedCrud({
-        name: "analytics-create-contract",
+        name: "insights-create-contract",
         plugin: () => ({ ...createMethods(), create }),
       });
       const data: Record<string, unknown> = { ...bundleEventRow };
@@ -279,10 +279,10 @@ describe("database plugin CRUD runtime contract", () => {
       from_bundle_id: "bundle-old",
       update_strategy: null,
     },
-  ])("rejects an invalid Analytics direction shape", async (overrides) => {
+  ])("rejects an invalid Insights direction shape", async (overrides) => {
     const create = vi.fn(async ({ data }) => data);
     const plugin = createValidatedCrud({
-      name: "analytics-direction-contract",
+      name: "insights-direction-contract",
       plugin: () => ({ ...createMethods(), create }),
     });
 
@@ -559,12 +559,12 @@ describe("database plugin CRUD runtime contract", () => {
   );
 
   it.each(["from_release_id", "to_release_id"])(
-    "rejects an omitted Analytics provider result field: %s",
+    "rejects an omitted Insights provider result field: %s",
     async (field) => {
       const row: Record<string, unknown> = { ...bundleEventRow };
       delete row[field];
       const plugin = createValidatedCrud({
-        name: "analytics-result-contract",
+        name: "insights-result-contract",
         plugin: () => ({
           ...createMethods(),
           findOne: async () => row,

@@ -22,8 +22,8 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@/components/AppSidebar", () => ({
   AppSidebar: () => null,
 }));
-vi.mock("@/components/features/analytics/AnalyticsCapabilityContext", () => ({
-  AnalyticsCapabilityProvider: ({
+vi.mock("@/components/features/insights/InsightsCapabilityContext", () => ({
+  InsightsCapabilityProvider: ({
     children,
   }: {
     readonly children: React.ReactNode;
@@ -40,9 +40,9 @@ vi.mock("@/components/ui/sidebar", () => ({
   SidebarProvider: ({ children }: { readonly children: React.ReactNode }) =>
     children,
 }));
-vi.mock("@/lib/analytics-api", () => ({
-  getAnalyticsCapabilityState: () => ({ status: "unsupported" }),
-  useAnalyticsCapabilitiesQuery: () => ({ status: "success" }),
+vi.mock("@/lib/insights-api", () => ({
+  getInsightsCapabilityState: () => ({ status: "unsupported" }),
+  useInsightsCapabilitiesQuery: () => ({ status: "success" }),
 }));
 vi.mock("@/lib/auth-rpc", () => ({
   getConsoleAccessRpc: vi.fn(),

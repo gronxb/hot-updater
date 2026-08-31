@@ -236,7 +236,7 @@ function RevokeApiKeyDialog({ record }: { record: ApiKeyView }) {
           <AlertDialogTitle>Revoke {record.name}?</AlertDialogTitle>
           <AlertDialogDescription>
             Apps using {record.prefix}… will immediately lose OTA update and
-            analytics access. This action cannot be undone.
+            insights access. This action cannot be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

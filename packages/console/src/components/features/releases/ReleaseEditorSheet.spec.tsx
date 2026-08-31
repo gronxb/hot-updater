@@ -54,8 +54,8 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }));
 
-vi.mock("@/components/features/bundles/BundleAnalyticsSummary", () => ({
-  BundleAnalyticsSummary: () => <div>Activity · 30 days</div>,
+vi.mock("@/components/features/bundles/BundleInsightsSummary", () => ({
+  BundleInsightsSummary: () => <div>Activity · 30 days</div>,
 }));
 
 vi.mock("@/components/ui/sheet", () => ({
@@ -138,7 +138,7 @@ describe("ReleaseEditorSheet", () => {
     );
   });
 
-  it("keeps Analytics, editing, and readable metadata in one familiar detail flow", () => {
+  it("keeps Insights, editing, and readable metadata in one familiar detail flow", () => {
     const { container } = render(
       <ReleaseEditorSheet
         channels={[{ id: "channel-1", name: "production" }]}

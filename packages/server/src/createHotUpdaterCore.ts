@@ -3,8 +3,6 @@ import {
   type StoragePlugin,
 } from "@hot-updater/plugin-core";
 
-import { createAnalyticsProvider } from "./analytics/bounded/provider";
-import type { AnalyticsProvider } from "./analytics/types";
 import {
   authenticateApiKey,
   createApiKeyManagement,
@@ -20,17 +18,19 @@ import {
   isDatabasePlugin,
 } from "./db/types";
 import { createHotUpdaterHandlers, type HotUpdaterHandlers } from "./handler";
+import { createInsightsProvider } from "./insights/bounded/provider";
+import type { InsightsProvider } from "./insights/types";
 import { createStorageAccess } from "./storageAccess";
 
 export type RuntimeHotUpdaterAPI = DatabaseAPI & {
   readonly handlers: HotUpdaterHandlers;
   readonly adapterName: string;
   /**
-   * Built-in Analytics provider. Client ingestion and admin query routes are
-   * always mounted; React Native clients independently opt into lifecycle
-   * reporting with `HotUpdater.init({ analytics: true })`.
+   * Built-in Insights provider. Client ingestion and admin query routes are
+   * always mounted; React Native clients report lifecycle events by default
+   * and can opt out with `HotUpdater.init({ insights: false })`.
    */
-  readonly analytics: AnalyticsProvider;
+  readonly insights: InsightsProvider;
   /**
    * In-process API key lifecycle operations for trusted server tooling.
    * Creation returns the plaintext once; list and revoke expose only metadata.
@@ -44,7 +44,7 @@ export type HotUpdaterAPI = RuntimeHotUpdaterAPI;
 export type ClientAccessPolicy =
   | {
       /**
-       * Leaves Release Catalog, artifact, and Analytics ingestion routes
+       * Leaves Release Catalog, artifact, and Insights ingestion routes
        * publicly accessible without a client credential.
        */
       readonly type: "public";
@@ -52,7 +52,7 @@ export type ClientAccessPolicy =
   | {
       /**
        * Requires a key registered in `database.models.apiKeys` for
-       * Release Catalog, artifact, and Analytics ingestion requests.
+       * Release Catalog, artifact, and Insights ingestion requests.
        */
       readonly type: "api-key";
       /**
@@ -168,14 +168,14 @@ export function createHotUpdaterCore(
     readStorageText,
   });
   const clientAccess = normalizeClientAccess(options.clientAccess);
-  const analytics = createAnalyticsProvider({
+  const insights = createInsightsProvider({
     async append(row) {
       await assertSchemaReady();
-      return plugin.models.analytics.append(row);
+      return plugin.models.insights.append(row);
     },
     async scan(input) {
       await assertSchemaReady();
-      return plugin.models.analytics.scan(input);
+      return plugin.models.insights.scan(input);
     },
   });
   const apiKeys = createApiKeyManagement({
@@ -185,7 +185,7 @@ export function createHotUpdaterCore(
 
   const handlers = createHotUpdaterHandlers(
     core.api,
-    analytics,
+    insights,
     clientAccess.type === "api-key"
       ? {
           authenticate: (request) =>
@@ -204,7 +204,7 @@ export function createHotUpdaterCore(
   const api: RuntimeHotUpdaterAPI = Object.assign(
     {
       adapterName: adapterCapabilities.adapterName ?? core.adapterName,
-      analytics,
+      insights,
       apiKeys,
       handlers,
     },

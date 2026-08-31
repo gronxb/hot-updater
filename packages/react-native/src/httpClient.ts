@@ -27,7 +27,7 @@ export interface ArtifactRequest {
   readonly requestTimeout?: number;
 }
 
-interface AnalyticsEventCommonParams {
+interface InsightsEventCommonParams {
   readonly installId: string;
   readonly userId?: string;
   readonly username?: string;
@@ -42,30 +42,30 @@ interface AnalyticsEventCommonParams {
   readonly requestTimeout?: number;
 }
 
-type AnalyticsTransitionEventParams = AnalyticsEventCommonParams & {
+type InsightsTransitionEventParams = InsightsEventCommonParams & {
   readonly type: "UPDATE_APPLIED" | "RECOVERED" | "RELEASE_ADOPTED";
   readonly fromBundleId: string;
   readonly toBundleId: string;
   readonly updateStrategy: "fingerprint" | "appVersion";
 };
 
-type AnalyticsUnchangedEventParams = AnalyticsEventCommonParams & {
+type InsightsUnchangedEventParams = InsightsEventCommonParams & {
   readonly type: "UNCHANGED";
   readonly fromBundleId: null;
   readonly toBundleId: string;
   readonly updateStrategy: null;
 };
 
-export type AnalyticsEventParams =
-  | AnalyticsTransitionEventParams
-  | AnalyticsUnchangedEventParams;
+export type InsightsEventParams =
+  | InsightsTransitionEventParams
+  | InsightsUnchangedEventParams;
 
 export interface HotUpdaterHttpSession {
   fetchReleaseCatalog: (
     params: ReleaseCatalogRequest,
   ) => Promise<ReleaseCatalog>;
   resolveArtifact: (params: ArtifactRequest) => Promise<ArtifactInfo>;
-  sendAnalyticsEvent: (params: AnalyticsEventParams) => Promise<void>;
+  sendInsightsEvent: (params: InsightsEventParams) => Promise<void>;
 }
 
 export interface HotUpdaterHttpClient {
@@ -147,9 +147,9 @@ const resolveArtifactUrls = (
       }),
 });
 
-const sendAnalyticsEvent = async (
+const sendInsightsEvent = async (
   baseURL: string,
-  params: AnalyticsEventParams,
+  params: InsightsEventParams,
 ): Promise<void> => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
@@ -250,7 +250,7 @@ const createSession = (baseURL: string): HotUpdaterHttpSession => ({
     });
     return resolveArtifactUrls(baseURL, info);
   },
-  sendAnalyticsEvent: (params) => sendAnalyticsEvent(baseURL, params),
+  sendInsightsEvent: (params) => sendInsightsEvent(baseURL, params),
 });
 
 /** Creates the private HTTP client used by HotUpdater.init and HotUpdater.wrap. */

@@ -624,7 +624,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     });
 
     await expect(
-      database.models.analytics.scan({
+      database.models.insights.scan({
         beforeReceivedAtMs: Date.now() + 1_000,
         limit: 10,
       }),

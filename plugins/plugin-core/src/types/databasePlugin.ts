@@ -60,20 +60,20 @@ export interface ReleaseCatalogModel {
   }): Promise<readonly ReleaseCatalogRow[]>;
 }
 
-export interface AnalyticsScanCursor {
+export interface InsightsScanCursor {
   readonly receivedAtMs: number;
   readonly id: string;
 }
 
-export interface AnalyticsScanInput {
+export interface InsightsScanInput {
   readonly beforeReceivedAtMs: number;
-  readonly after?: AnalyticsScanCursor;
+  readonly after?: InsightsScanCursor;
   readonly limit: number;
 }
 
-export interface AnalyticsModel {
+export interface InsightsModel {
   append(row: BundleEventRow): Promise<void>;
-  scan(input: AnalyticsScanInput): Promise<readonly BundleEventRow[]>;
+  scan(input: InsightsScanInput): Promise<readonly BundleEventRow[]>;
 }
 
 export interface ApiKeyModel {
@@ -173,7 +173,7 @@ export type DatabaseChange =
       readonly where: { readonly id: string };
     }
   | {
-      readonly model: "analytics";
+      readonly model: "insights";
       readonly operation: "insert";
       readonly row: BundleEventRow;
     }
@@ -257,7 +257,7 @@ export interface DatabaseModels {
   readonly releases: ReleaseModel;
   readonly releaseCatalogs: ReleaseCatalogModel;
   readonly channels: ChannelModel;
-  readonly analytics: AnalyticsModel;
+  readonly insights: InsightsModel;
   readonly apiKeys: ApiKeyModel;
 }
 

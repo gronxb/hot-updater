@@ -216,7 +216,7 @@ export const createDatabasePluginHarness = () => {
         },
         delete: (input) => basePlugin.models.channels.delete(input),
       },
-      analytics: basePlugin.models.analytics,
+      insights: basePlugin.models.insights,
       apiKeys: basePlugin.models.apiKeys,
     },
     commit,

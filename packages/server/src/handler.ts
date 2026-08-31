@@ -1,9 +1,3 @@
-import {
-  createAnalyticsRouteHandlers,
-  registerAnalyticsAdminRoutes,
-  registerAnalyticsClientRoutes,
-} from "./analytics/routes";
-import type { AnalyticsProvider } from "./analytics/types";
 import { createBundleRouteHandlers } from "./handlerBundleRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
 import { createReleaseCatalogRouteHandlers } from "./handlerReleaseCatalogRoutes";
@@ -15,6 +9,12 @@ import type {
   RouteHandler,
 } from "./handlerTypes";
 import { createVersionRouteHandlers } from "./handlerVersionRoutes";
+import {
+  createInsightsRouteHandlers,
+  registerInsightsAdminRoutes,
+  registerInsightsClientRoutes,
+} from "./insights/routes";
+import type { InsightsProvider } from "./insights/types";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 
 export type {
@@ -142,7 +142,7 @@ export function createHandlers(api: HandlerAPI): HotUpdaterHandlers {
 
 export function createHotUpdaterHandlers(
   api: HandlerAPI,
-  analytics?: AnalyticsProvider,
+  insights?: InsightsProvider,
   apiKeyAuth?: {
     readonly authenticate: (request: Request) => Promise<boolean>;
     readonly headerName: string;
@@ -157,7 +157,7 @@ export function createHotUpdaterHandlers(
     ...createReleaseCatalogRouteHandlers(apiKeyAuth?.headerName),
     ...createReleaseManagementRouteHandlers(),
     ...createBundleRouteHandlers(),
-    ...(analytics === undefined ? {} : createAnalyticsRouteHandlers(analytics)),
+    ...(insights === undefined ? {} : createInsightsRouteHandlers(insights)),
     ...(downloadStorageObject === undefined
       ? {}
       : {
@@ -196,8 +196,8 @@ export function createHotUpdaterHandlers(
     "/artifacts/:targetBundleId/from/:currentBundleId",
     "artifact",
   );
-  if (analytics !== undefined) {
-    registerAnalyticsClientRoutes(addClientRoute);
+  if (insights !== undefined) {
+    registerInsightsClientRoutes(addClientRoute);
   }
 
   const adminRouter = createRouter<string>();
@@ -224,8 +224,8 @@ export function createHotUpdaterHandlers(
   addAdminRoute("POST", "/bundles", "createBundles");
   addAdminRoute("PATCH", "/bundles/:id", "updateBundle");
   addAdminRoute("DELETE", "/bundles/:id", "deleteBundle");
-  if (analytics !== undefined) {
-    registerAnalyticsAdminRoutes(addAdminRoute);
+  if (insights !== undefined) {
+    registerInsightsAdminRoutes(addAdminRoute);
   }
 
   return Object.freeze({

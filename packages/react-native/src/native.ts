@@ -783,7 +783,7 @@ export type NotifyAppReadyResult =
       toReleaseId?: string;
     };
 
-export type NotifyAppReadyAnalyticsEvent = {
+export type NotifyAppReadyInsightsEvent = {
   type: "UPDATE_APPLIED" | "RECOVERED";
   fromBundleId: string;
   toBundleId: string;
@@ -891,9 +891,9 @@ const getNotifyAppReadyTransition = (
   return null;
 };
 
-const getNotifyAppReadyAnalyticsEvent = (
+const getNotifyAppReadyInsightsEvent = (
   result: RawNotifyAppReadyResult,
-): NotifyAppReadyAnalyticsEvent | null => {
+): NotifyAppReadyInsightsEvent | null => {
   const transition = getNotifyAppReadyTransition(result);
 
   if (!transition || !isPersistedUpdateStrategy(result.updateStrategy)) {
@@ -938,14 +938,14 @@ const normalizeNotifyAppReadyResult = (
 
 export const readNotifyAppReady = (): {
   result: NotifyAppReadyResult;
-  analyticsEvent: NotifyAppReadyAnalyticsEvent | null;
+  insightsEvent: NotifyAppReadyInsightsEvent | null;
   pending: boolean;
 } => {
   const rawResult = readRawNotifyAppReadyResult();
 
   return {
     result: normalizeNotifyAppReadyResult(rawResult),
-    analyticsEvent: getNotifyAppReadyAnalyticsEvent(rawResult),
+    insightsEvent: getNotifyAppReadyInsightsEvent(rawResult),
     pending: rawResult.status === "PENDING",
   };
 };

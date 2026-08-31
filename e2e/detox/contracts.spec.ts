@@ -74,10 +74,10 @@ describe("Detox E2E harness contract", () => {
 
   it("keeps the tracked E2E source surface Detox-first", async () => {
     const expectedE2eFiles = [
-      "e2e/detox/analytics-http-client.spec.ts",
-      "e2e/detox/analytics-http-client.ts",
-      "e2e/detox/analytics-provider-client.spec.ts",
-      "e2e/detox/analytics-provider-client.ts",
+      "e2e/detox/insights-http-client.spec.ts",
+      "e2e/detox/insights-http-client.ts",
+      "e2e/detox/insights-provider-client.spec.ts",
+      "e2e/detox/insights-provider-client.ts",
       "e2e/detox/control-server/android-instrumentation.spec.ts",
       "e2e/detox/control-server/android-instrumentation.ts",
       "e2e/detox/control-server/android-restart-wait.spec.ts",
@@ -102,8 +102,8 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/control-server/update-check-visibility.spec.ts",
       "e2e/detox/control-server/update-check-visibility.ts",
       "e2e/detox/android-native.spec.ts",
-      "e2e/detox/console-analytics-qa.spec.ts",
-      "e2e/detox/console-analytics-qa.ts",
+      "e2e/detox/console-insights-qa.spec.ts",
+      "e2e/detox/console-insights-qa.ts",
       "e2e/detox/contracts.spec.ts",
       "e2e/detox/control-client.spec.ts",
       "e2e/detox/control-client.ts",

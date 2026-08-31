@@ -101,12 +101,13 @@ function createHotUpdaterClient() {
 
   // Global configuration stored from wrap
   const globalConfig: {
-    analytics?: boolean;
+    insights: boolean;
     client: HotUpdaterHttpClient | null;
     requestHeaders?: Record<string, string>;
     requestTimeout?: number;
     onError?: (error: unknown) => void;
   } = {
+    insights: true,
     client: null,
   };
 
@@ -158,6 +159,7 @@ function createHotUpdaterClient() {
       const { baseURL, ...rest } = autoOptions;
       return {
         ...rest,
+        insights: rest.insights ?? true,
         client: createHttpClient(baseURL),
       };
     }
@@ -177,6 +179,7 @@ function createHotUpdaterClient() {
       const { baseURL, ...baseURLRest } = rest;
       return {
         ...baseURLRest,
+        insights: baseURLRest.insights ?? true,
         client: createHttpClient(baseURL),
       };
     }
@@ -188,7 +191,7 @@ function createHotUpdaterClient() {
     normalizedOptions: InternalInitOptions | InternalWrapOptions,
     options: HotUpdaterOptions | HotUpdaterInitOptions,
   ) => {
-    globalConfig.analytics = normalizedOptions.analytics;
+    globalConfig.insights = normalizedOptions.insights ?? true;
     globalConfig.client = normalizedOptions.client;
     globalConfig.requestHeaders = options.requestHeaders;
     globalConfig.requestTimeout = options.requestTimeout;
@@ -448,7 +451,7 @@ function createHotUpdaterClient() {
 
       const mergedConfig: InternalCheckForUpdateOptions = {
         ...config,
-        analytics: globalConfig.analytics,
+        insights: globalConfig.insights,
         client,
         requestHeaders: {
           ...globalConfig.requestHeaders,

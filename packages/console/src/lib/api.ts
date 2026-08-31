@@ -3,7 +3,7 @@ import type {
   ChannelInsertInput,
   ReleasePolicyPatch,
 } from "@hot-updater/plugin-core";
-import type { BundleEventAnalyticsWindow } from "@hot-updater/server";
+import type { BundleEventInsightsWindow } from "@hot-updater/server";
 import {
   type QueryClient,
   type QueryKey,
@@ -21,7 +21,7 @@ import {
   getBundle,
   getBundleChildCounts,
   getBundleChildren,
-  getBundleEventAnalytics as getBundleEventAnalyticsApi,
+  getBundleEventInsights as getBundleEventInsightsApi,
   getBundleEventSummary as getBundleEventSummaryApi,
   getBundles,
   getChannels,
@@ -47,13 +47,13 @@ type BundleFilters = {
 
 type BundlesQueryData = Awaited<ReturnType<typeof getBundles>>;
 
-const ANALYTICS_STALE_TIME_MS = 30_000;
+const INSIGHTS_STALE_TIME_MS = 30_000;
 
 export type BundleEventSummary = Awaited<
   ReturnType<typeof getBundleEventSummaryApi>
 >;
-export type BundleEventAnalytics = Awaited<
-  ReturnType<typeof getBundleEventAnalyticsApi>
+export type BundleEventInsights = Awaited<
+  ReturnType<typeof getBundleEventInsightsApi>
 >;
 export type InstallationSearchResult = Awaited<
   ReturnType<typeof searchInstallationsApi>
@@ -92,12 +92,12 @@ export const queryKeys = {
   bundle: (bundleId: string) => ["bundle", bundleId] as const,
   bundleEventSummary: (bundleId: string) =>
     ["bundle-event-summary", bundleId] as const,
-  bundleEventAnalytics: (input: {
+  bundleEventInsights: (input: {
     bundleId: string;
-    window: BundleEventAnalyticsWindow;
+    window: BundleEventInsightsWindow;
     limit?: number;
     offset?: number;
-  }) => ["bundle-event-analytics", input] as const,
+  }) => ["bundle-event-insights", input] as const,
 
   installations: {
     search: (input: { query: string; limit?: number; offset?: number }) =>
@@ -226,25 +226,25 @@ export function useBundleEventSummaryQuery(bundleId: string, enabled: boolean) {
   return useQuery({
     queryKey: queryKeys.bundleEventSummary(bundleId),
     queryFn: () => getBundleEventSummaryApi({ data: { bundleId } }),
-    staleTime: ANALYTICS_STALE_TIME_MS,
+    staleTime: INSIGHTS_STALE_TIME_MS,
     refetchOnWindowFocus: true,
     enabled: enabled && bundleId.length > 0,
   });
 }
 
-export function useBundleEventAnalyticsQuery(
+export function useBundleEventInsightsQuery(
   input: {
     bundleId: string;
-    window: BundleEventAnalyticsWindow;
+    window: BundleEventInsightsWindow;
     limit?: number;
     offset?: number;
   },
   enabled: boolean,
 ) {
   return useQuery({
-    queryKey: queryKeys.bundleEventAnalytics(input),
-    queryFn: () => getBundleEventAnalyticsApi({ data: input }),
-    staleTime: ANALYTICS_STALE_TIME_MS,
+    queryKey: queryKeys.bundleEventInsights(input),
+    queryFn: () => getBundleEventInsightsApi({ data: input }),
+    staleTime: INSIGHTS_STALE_TIME_MS,
     refetchOnWindowFocus: true,
     enabled: enabled && input.bundleId.length > 0,
   });
@@ -261,7 +261,7 @@ export function useInstallationSearchQuery(
   return useQuery({
     queryKey: queryKeys.installations.search(input),
     queryFn: () => searchInstallationsApi({ data: input }),
-    staleTime: ANALYTICS_STALE_TIME_MS,
+    staleTime: INSIGHTS_STALE_TIME_MS,
     refetchOnWindowFocus: true,
     enabled: enabled && input.query.trim().length > 0,
   });
@@ -278,7 +278,7 @@ export function useInstallationHistoryQuery(
   return useQuery({
     queryKey: queryKeys.installations.history(input),
     queryFn: () => getInstallationHistoryApi({ data: input }),
-    staleTime: ANALYTICS_STALE_TIME_MS,
+    staleTime: INSIGHTS_STALE_TIME_MS,
     refetchOnWindowFocus: true,
     enabled: enabled && input.installId.length > 0,
   });

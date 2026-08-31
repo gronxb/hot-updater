@@ -12,13 +12,13 @@ import {
 } from "@hot-updater/plugin-core";
 import { createServerFn } from "@tanstack/react-start";
 
+import { DEFAULT_PAGE_LIMIT } from "./constants";
 import {
-  parseBundleEventAnalyticsInput,
+  parseBundleEventInsightsInput,
   parseBundleEventSummaryInput,
   parseInstallationHistoryInput,
   parseSearchInstallationsInput,
-} from "./analytics-input";
-import { DEFAULT_PAGE_LIMIT } from "./constants";
+} from "./insights-input";
 import { listReleases } from "./server/listReleases";
 import { getReleaseActivity30d } from "./server/releaseActivity";
 import { addReleaseReachability } from "./server/releaseReachability";
@@ -333,18 +333,18 @@ export const getBundleEventSummary = createServerFn({ method: "GET" })
     }
   });
 
-export const getBundleEventAnalytics = createServerFn({ method: "GET" })
-  .inputValidator(parseBundleEventAnalyticsInput)
+export const getBundleEventInsights = createServerFn({ method: "GET" })
+  .inputValidator(parseBundleEventInsightsInput)
   .handler(async ({ data }) => {
     try {
       const { prepareConfig } = await import("./server/config.server");
-      const { getBundleEventAnalytics: getBundleEventAnalyticsWithRuntime } =
+      const { getBundleEventInsights: getBundleEventInsightsWithRuntime } =
         await import("./server/runtime.server");
       const { hotUpdater } = await prepareConfig();
 
-      return await getBundleEventAnalyticsWithRuntime(hotUpdater, data);
+      return await getBundleEventInsightsWithRuntime(hotUpdater, data);
     } catch (error) {
-      console.error("Error during bundle event analytics retrieval:", error);
+      console.error("Error during bundle event insights retrieval:", error);
       throw error;
     }
   });

@@ -439,7 +439,7 @@ const changeQuery = (change: DatabaseChange, guard: D1Guard): D1Statement => {
               ...guard.params,
             ],
           };
-    case "analytics":
+    case "insights":
       return insertQuery({ model: "bundle_events", data: change.row }, guard);
     case "apiKeys":
       return change.operation === "insert"

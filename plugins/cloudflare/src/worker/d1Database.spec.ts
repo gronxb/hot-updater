@@ -19,11 +19,11 @@ it("uses the D1 binding supplied at the Worker composition boundary", async () =
 
   expect(plugin.name).toBe("d1Database");
   expect(Object.keys(plugin.models).sort()).toEqual([
-    "analytics",
     "apiKeys",
     "bundlePatches",
     "bundles",
     "channels",
+    "insights",
     "releaseCatalogs",
     "releases",
   ]);

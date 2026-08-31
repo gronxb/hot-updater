@@ -114,14 +114,14 @@ Additional route and handler changes:
 - `authorityId` is removed from CLI and server configuration. Catalog identity
   is allocated and persisted automatically, with no replacement setting.
 - `HandlerOptions` is removed. The client handler always owns the v1
-  update protocol and Analytics ingestion. API key authentication is configured
+  update protocol and Insights ingestion. API key authentication is configured
   explicitly through the required `clientAccess` policy.
 - The unified `createHandler` and `createHotUpdater().handler` surfaces are
   replaced by `createHandlers(...).client/admin` and
   `createHotUpdater().handlers.client/admin`. The client handler owns
-  `/version`, Release Catalog, artifact, storage-download, and Analytics-event
+  `/version`, Release Catalog, artifact, storage-download, and Insights-event
   routes. The admin handler owns Bundle, Release, Release Catalog row, Channel,
-  database-commit, and Analytics-query routes. Neither handler matches the
+  database-commit, and Insights-query routes. Neither handler matches the
   other surface.
 - Handlers match mount-relative paths, and `basePath` is removed. The framework
   owns the external mount path. Built-in storage paths are relative to the
@@ -134,11 +134,11 @@ Additional route and handler changes:
 - `features`, including `features.bundles` and `features.updateCheck`, is
   removed. Explicitly mounting `handlers.admin` is the opt-in for admin routes,
   while mounting `handlers.client` exposes the complete client protocol.
-  Analytics ingestion is always available on the client handler and queries
-  are always available on the admin handler, so the server-side Analytics flag
-  and `queryAccess` are removed. React Native reporting remains opt-in by
-  setting `analytics: true` in either `HotUpdater.init` or `HotUpdater.wrap`;
-  omission or `false` sends no events. Client authentication moves to the
+  Insights ingestion is always available on the client handler and queries
+  are always available on the admin handler, so the server-side Insights flag
+  and `queryAccess` are removed. React Native reporting is enabled by default
+  in both `HotUpdater.init` and `HotUpdater.wrap`; set `insights: false` to
+  send no events. Client authentication moves to the
   required top-level `clientAccess` policy.
 - `standaloneRepository.baseUrl` now identifies the exact admin root, such as
   `https://example.com/hot-updater/admin`. Its default and fixed request paths
@@ -292,10 +292,9 @@ database plugin and are not HTTP routes on either handler.
 The following v0 options are removed or renamed:
 
 - `storages` and deprecated `storagePlugins` become `storage`.
-- Analytics ingestion and query routes are always available. React Native
-  clients independently enable automatic event reporting by setting
-  `analytics: true` in either `HotUpdater.init` or `HotUpdater.wrap`. Omission
-  or `false` sends no events.
+- Insights ingestion and query routes are always available. React Native
+  clients send automatic events by default from both `HotUpdater.init` and
+  `HotUpdater.wrap`. Set `insights: false` to send no events.
 - `features.clientAccessKeys: true` becomes
   `clientAccess: { type: "api-key" }`. API-key mode reads `x-api-key` by
   default. Set `headerName` to use another valid HTTP header; clients must send
@@ -303,7 +302,7 @@ The following v0 options are removed or renamed:
 - `features.clientAccessKeys: false` becomes the explicit unauthenticated
   alternative, `clientAccess: { type: "public" }`.
 - `clientAccess` is required. There is no implicit public or authenticated
-  default. It applies to Release Catalog, artifact, and Analytics ingestion
+  default. It applies to Release Catalog, artifact, and Insights ingestion
   routes; `/version`, signed storage downloads, and admin routes are
   unaffected.
 - Update routes are always present on `handlers.client`.
@@ -348,7 +347,7 @@ createDatabasePlugin({
     releases,
     releaseCatalogs,
     channels,
-    analytics,
+    insights,
     apiKeys,
   },
   commit,
@@ -373,7 +372,7 @@ This breaks custom database providers in the following ways:
   channel. Compatibility writes resolve the legacy `channel` value into the
   Release row.
 - Schema `1.0.0` adds Releases, Release Catalogs, normalized Channels,
-  Analytics events, API keys, and Bundle patch relations.
+  Insights events, API keys, and Bundle patch relations.
 
 `createBlobDatabasePlugin` is removed. Object storage cannot satisfy the atomic
 Release/Catalog contract.
@@ -428,7 +427,7 @@ identity parameter. Catalog bookkeeping is internal and is not returned by the
 public `HotUpdater.getActiveUpdateState()` API.
 
 Custom GraphQL, RPC, and other transports must expose the v1 Release Catalog,
-artifact, Analytics-event, and `/version` HTTP protocol through an adapter or
+artifact, Insights-event, and `/version` HTTP protocol through an adapter or
 proxy, then pass that endpoint as `baseURL`. There is no React Native callback
 escape hatch for replacing only part of the protocol.
 
@@ -447,9 +446,9 @@ toBundleId, ... }`.
   must handle the new discriminated union.
 
 App-ready transition and Release adoption reporting use the configured
-`baseURL`. `analytics: true` enables both event paths for `HotUpdater.init` and
-`HotUpdater.wrap`; omission or `false` sends nothing. The server routes and
-backing model remain available regardless.
+`baseURL` and are enabled by default for both `HotUpdater.init` and
+`HotUpdater.wrap`. Set `insights: false` to send nothing. The server routes
+and backing model remain available regardless.
 
 The deprecated positional `HotUpdater.updateBundle(bundleId, fileUrl)` overload
 is removed. Pass the complete parameter object or call

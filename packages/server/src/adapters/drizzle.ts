@@ -115,9 +115,9 @@ export const drizzleAdapter = (
         list: (input) => getAdapter().models.channels.list(input),
         delete: (input) => getAdapter().models.channels.delete(input),
       },
-      analytics: {
-        append: (row) => getAdapter().models.analytics.append(row),
-        scan: (input) => getAdapter().models.analytics.scan(input),
+      insights: {
+        append: (row) => getAdapter().models.insights.append(row),
+        scan: (input) => getAdapter().models.insights.scan(input),
       },
       apiKeys: {
         create: (row) => getAdapter().models.apiKeys.create(row),

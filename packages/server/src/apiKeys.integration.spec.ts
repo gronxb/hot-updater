@@ -31,7 +31,7 @@ describe("createHotUpdater API keys", () => {
     ).toThrow("clientAccess.headerName must be a valid header name.");
   });
 
-  it("protects only client OTA and Analytics write routes", async () => {
+  it("protects only client OTA and Insights write routes", async () => {
     const database = createInMemoryDatabasePlugin();
     await registerApiKey({
       apiKeys: database.models.apiKeys,
@@ -86,7 +86,7 @@ describe("createHotUpdater API keys", () => {
     expect(revoked).not.toHaveProperty("hash");
   });
 
-  it("authenticates before parsing Analytics event bodies", async () => {
+  it("authenticates before parsing Insights event bodies", async () => {
     const database = createInMemoryDatabasePlugin();
     await registerApiKey({
       apiKeys: database.models.apiKeys,

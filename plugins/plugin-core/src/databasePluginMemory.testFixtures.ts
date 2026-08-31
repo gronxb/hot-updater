@@ -187,7 +187,7 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
             }
           }
           break;
-        case "analytics":
+        case "insights":
           nextEvents.set(change.row.id, structuredClone(change.row));
           break;
         case "apiKeys":
@@ -360,7 +360,7 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
           return { deleted: true } as const;
         },
       },
-      analytics: {
+      insights: {
         async append(row) {
           events.set(row.id, structuredClone(row));
         },

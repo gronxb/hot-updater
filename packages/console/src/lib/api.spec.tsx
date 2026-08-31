@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   queryKeys,
-  useBundleEventAnalyticsQuery,
+  useBundleEventInsightsQuery,
   useBundleEventSummaryQuery,
   useCreateChannelMutation,
   useDeleteChannelMutation,
@@ -19,7 +19,7 @@ import {
   deleteBundle as deleteBundleApi,
   deleteBundles as deleteBundlesApi,
   getBundleEventSummary as getBundleEventSummaryApi,
-  getBundleEventAnalytics as getBundleEventAnalyticsApi,
+  getBundleEventInsights as getBundleEventInsightsApi,
 } from "./api-rpc";
 
 vi.mock("./api-rpc", () => ({
@@ -33,7 +33,7 @@ vi.mock("./api-rpc", () => ({
   getBundleChildCounts: vi.fn(),
   getBundleChildren: vi.fn(),
   getBundleEventSummary: vi.fn(),
-  getBundleEventAnalytics: vi.fn(),
+  getBundleEventInsights: vi.fn(),
   getBundles: vi.fn(),
   getChannels: vi.fn(),
   getConfig: vi.fn(),
@@ -84,7 +84,7 @@ describe("protected bundle-event queries", () => {
     queryClient.clear();
   });
 
-  it("does not request bundle-event analytics when explicitly disabled", async () => {
+  it("does not request bundle-event insights when explicitly disabled", async () => {
     // Given
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -96,7 +96,7 @@ describe("protected bundle-event queries", () => {
     // When
     renderHook(
       () =>
-        useBundleEventAnalyticsQuery(
+        useBundleEventInsightsQuery(
           { bundleId: bundle.id, window: "30d" },
           false,
         ),
@@ -105,7 +105,7 @@ describe("protected bundle-event queries", () => {
     await Promise.resolve();
 
     // Then
-    expect(getBundleEventAnalyticsApi).not.toHaveBeenCalled();
+    expect(getBundleEventInsightsApi).not.toHaveBeenCalled();
     queryClient.clear();
   });
 });

@@ -247,7 +247,7 @@ describe("standaloneRepository", () => {
       "function",
     );
     expect(repository.commit).toBeTypeOf("function");
-    expect(Reflect.has(repository, "analytics")).toBe(false);
+    expect(Reflect.has(repository, "insights")).toBe(false);
     expect(Reflect.has(repository, "apiKeys")).toBe(false);
   });
 

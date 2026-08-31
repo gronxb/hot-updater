@@ -50,7 +50,7 @@ const toBundleWhere = (
 /**
  * Bundle-only HTTP repository used by the CLI for a self-hosted server.
  *
- * This is intentionally not a database plugin: analytics and access-key
+ * This is intentionally not a database plugin: insights and access-key
  * persistence belong to the server's database provider.
  */
 export const standaloneRepository = (

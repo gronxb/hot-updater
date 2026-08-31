@@ -135,18 +135,18 @@ URL; an unowned non-HTTP scheme is unsupported.
 
 ## Runtime policy
 
-`createHotUpdater` always exposes Analytics ingestion and query capabilities.
-React Native clients independently decide whether to send lifecycle events
-with `HotUpdater.init({ analytics })`.
+`createHotUpdater` always exposes Insights ingestion and query capabilities.
+React Native clients send lifecycle events by default and can opt out with
+`HotUpdater.init({ insights: false })`.
 
 Every server must explicitly set `clientAccess`. Use `{ type: "api-key" }` to
-require authentication for update checks and Analytics ingestion through
+require authentication for update checks and Insights ingestion through
 `database.models.apiKeys`, or `{ type: "public" }` to keep those
 client routes public.
 
 Release Catalog, artifact, storage-download, and `/version` routes are always
 available on `handlers.client`. Bundle, Release, Release Catalog row, Channel,
-database-commit, and Analytics-query routes live exclusively on
+database-commit, and Insights-query routes live exclusively on
 `handlers.admin`. Expose that handler only through an authenticated framework
 mount.
 
@@ -162,7 +162,7 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-Analytics ingestion is available on `handlers.client` and queries are
+Insights ingestion is available on `handlers.client` and queries are
 available on `handlers.admin`. The server does not authenticate admin queries
 itself; the framework middleware protecting the admin mount owns that decision.
 

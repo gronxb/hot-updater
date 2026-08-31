@@ -8,7 +8,7 @@ import {
   Sun,
 } from "lucide-react";
 
-import { useAnalyticsCapability } from "@/components/features/analytics/AnalyticsCapabilityContext";
+import { useInsightsCapability } from "@/components/features/insights/InsightsCapabilityContext";
 import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
 import { useTheme } from "@/components/ThemeProvider";
 import {
@@ -26,15 +26,15 @@ import {
 import { useApiKeyCapabilityQuery } from "@/lib/api-keys-api";
 
 export function AppSidebar() {
-  const analyticsCapability = useAnalyticsCapability();
+  const insightsCapability = useInsightsCapability();
   const apiKeyCapability = useApiKeyCapabilityQuery();
   const { theme, setTheme } = useTheme();
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
   const isBundlesActive = currentPath === "/";
-  const isAnalyticsActive =
-    currentPath === "/analytics" || currentPath === "/installations";
+  const isInsightsActive =
+    currentPath === "/insights" || currentPath === "/installations";
   const isApiKeysActive = currentPath === "/api-keys";
   const isSigningActive = currentPath === "/signing";
 
@@ -98,15 +98,15 @@ export function AppSidebar() {
                   <span>Bundles</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              {analyticsCapability.status === "supported" ? (
+              {insightsCapability.status === "supported" ? (
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    isActive={isAnalyticsActive}
-                    render={<Link to="/analytics" />}
-                    tooltip="Analytics"
+                    isActive={isInsightsActive}
+                    render={<Link to="/insights" />}
+                    tooltip="Insights"
                   >
                     <ChartNoAxesCombined />
-                    <span>Analytics</span>
+                    <span>Insights</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ) : null}

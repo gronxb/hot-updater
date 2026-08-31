@@ -156,7 +156,7 @@ const commitTestRelease = async (
 };
 
 describe("Handler <-> Standalone Repository Integration", () => {
-  it("uses Standalone for bundle management and the server database for Analytics", async () => {
+  it("uses Standalone for bundle management and the server database for Insights", async () => {
     const bundleId = uuidv7();
     const installId = "standalone-install";
     await createStandaloneClient().insertBundle(

@@ -201,18 +201,18 @@ export const registerDatabasePluginOfficialDomainTests = (
       });
     });
 
-    it("appends and scans analytics events in stable cursor order", async () => {
+    it("appends and scans insights events in stable cursor order", async () => {
       const plugin = state.getPlugin();
       const first = createBundleEventRowFixture("701", 100);
       const second = createBundleEventRowFixture("702", 200);
-      await plugin.models.analytics.append(second);
-      await plugin.models.analytics.append(first);
+      await plugin.models.insights.append(second);
+      await plugin.models.insights.append(first);
 
       await expect(
-        plugin.models.analytics.scan({ beforeReceivedAtMs: 201, limit: 1 }),
+        plugin.models.insights.scan({ beforeReceivedAtMs: 201, limit: 1 }),
       ).resolves.toEqual([first]);
       await expect(
-        plugin.models.analytics.scan({
+        plugin.models.insights.scan({
           after: { receivedAtMs: first.received_at_ms, id: first.id },
           beforeReceivedAtMs: 201,
           limit: 1,

@@ -19,7 +19,7 @@ Set up a [database adapter](/docs/custom/database/drizzle), generate its Hot Upd
 schema, and apply the schema before starting the server.
 
 The recommended self-hosted client policy uses built-in API key authentication
-for update-check and Analytics ingestion routes. Always protect admin routes with
+for update-check and Insights ingestion routes. Always protect admin routes with
 framework middleware scoped to the admin handler. Update-check
 routes are usually exposed for React Native clients, but that is a deployment
 choice:
@@ -97,13 +97,13 @@ their feature or storage provider is configured:
 | Client  | `GET /hot-updater/release-catalogs/*`     | App-version and fingerprint catalogs             |
 | Client  | `GET /hot-updater/artifacts/*`            | Artifact resolution                              |
 | Client  | `GET /hot-updater/storage/*`              | Optional proxied storage download                |
-| Client  | `POST /hot-updater/events`                | Optional Analytics ingestion                     |
-| Admin   | `/hot-updater/admin/bundles/*`            | Bundle management and optional Analytics queries |
+| Client  | `POST /hot-updater/events`                | Optional Insights ingestion                     |
+| Admin   | `/hot-updater/admin/bundles/*`            | Bundle management and optional Insights queries |
 | Admin   | `/hot-updater/admin/releases/*`           | Release management and preflight                 |
 | Admin   | `/hot-updater/admin/release-catalogs/*`   | Catalog rows and rebuilds                        |
 | Admin   | `/hot-updater/admin/channels/*`           | Channel management                               |
 | Admin   | `POST /hot-updater/admin/database/commit` | Atomic database commit                           |
-| Admin   | `GET /hot-updater/admin/installations/*`  | Optional Analytics queries                       |
+| Admin   | `GET /hot-updater/admin/installations/*`  | Optional Insights queries                       |
 
 Admin route groups exist only where `handlers.admin` is explicitly mounted.
 See the [Standalone Repository server contract](/docs/database-plugins/standalone#server-contract)

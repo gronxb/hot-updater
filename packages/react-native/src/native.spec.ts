@@ -157,7 +157,7 @@ describe("notifyAppReady", () => {
       toBundleId: "bundle-122",
     });
     expect(readNotifyAppReady()).toEqual({
-      analyticsEvent: {
+      insightsEvent: {
         fromBundleId: "bundle-123",
         toBundleId: "bundle-122",
         type: "RECOVERED",
@@ -184,13 +184,13 @@ describe("notifyAppReady", () => {
 
     expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
     expect(readNotifyAppReady()).toEqual({
-      analyticsEvent: null,
+      insightsEvent: null,
       pending: false,
       result: { status: "UNCHANGED" },
     });
   });
 
-  it("returns UNCHANGED when automatic analytics metadata is incomplete", async () => {
+  it("returns UNCHANGED when automatic insights metadata is incomplete", async () => {
     nativeModuleMock.notifyAppReady.mockReturnValue({
       status: "UPDATE_APPLIED",
     });
@@ -199,7 +199,7 @@ describe("notifyAppReady", () => {
 
     expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
     expect(readNotifyAppReady()).toEqual({
-      analyticsEvent: null,
+      insightsEvent: null,
       pending: false,
       result: { status: "UNCHANGED" },
     });
@@ -212,7 +212,7 @@ describe("notifyAppReady", () => {
 
     expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
     expect(readNotifyAppReady()).toEqual({
-      analyticsEvent: null,
+      insightsEvent: null,
       pending: false,
       result: { status: "UNCHANGED" },
     });
@@ -225,7 +225,7 @@ describe("notifyAppReady", () => {
 
     expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
     expect(readNotifyAppReady()).toEqual({
-      analyticsEvent: null,
+      insightsEvent: null,
       pending: true,
       result: { status: "UNCHANGED" },
     });

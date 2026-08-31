@@ -404,7 +404,7 @@ const hotUpdater = createHotUpdater({
 ```
 
 Mount `hotUpdater.handlers.admin` at `/hot-updater/admin` to expose the Bundle,
-Release, Release Catalog, database-commit, Channel, and Analytics-query routes.
+Release, Release Catalog, database-commit, Channel, and Insights-query routes.
 Protect that mount with framework middleware and configure matching
 `commonHeaders` in `standaloneRepository`. Mounting the handler is the explicit
 opt-in; there is no built-in admin authenticator.
@@ -412,14 +412,14 @@ opt-in; there is no built-in admin authenticator.
 `standaloneRepository` remains an admin HTTP client used only in
 `hot-updater.config.ts`. Its Bundle-management boundary includes Bundles,
 patches, Releases, Release Catalogs, Channels, and the conditional commit that
-keeps those records consistent. It does not expose Analytics or client
+keeps those records consistent. It does not expose Insights or client
 API key administration. The server-side `database` passed to
-`createHotUpdater` owns those additional official domains. Analytics is always
+`createHotUpdater` owns those additional official domains. Insights is always
 available, while the required `clientAccess` policy decides whether client
 routes are public or require an API key.
 
 <Callout type="warn">
-  The Console cannot read Analytics or manage API keys through
+  The Console cannot read Insights or manage API keys through
   `standaloneRepository`. Local/direct-provider Console access is unaffected. A
   hosted Console must protect its browser session separately and keep the admin
   bearer token in server-side `commonHeaders`. Do not put that token in browser

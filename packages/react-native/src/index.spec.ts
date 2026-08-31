@@ -103,7 +103,7 @@ describe("HotUpdater client initialization", () => {
     const HotUpdater = await importHotUpdater();
 
     HotUpdater.init({
-      analytics: true,
+      insights: true,
       baseURL: "https://updates.example.com",
       requestHeaders: { Authorization: "Bearer token" },
       requestTimeout: 1000,
@@ -113,7 +113,7 @@ describe("HotUpdater client initialization", () => {
       "https://updates.example.com",
     );
     expect(mocks.init).toHaveBeenCalledWith({
-      analytics: true,
+      insights: true,
       client,
       requestHeaders: { Authorization: "Bearer token" },
       requestTimeout: 1000,
@@ -128,6 +128,44 @@ describe("HotUpdater client initialization", () => {
 
     expect(mocks.createHttpClient).toHaveBeenCalledWith(resolveBaseURL);
     expect(resolveBaseURL).not.toHaveBeenCalled();
+  });
+
+  it("enables insights by default for init and wrap", async () => {
+    const HotUpdater = await importHotUpdater();
+
+    HotUpdater.init({ baseURL: "https://updates.example.com" });
+    HotUpdater.wrap({
+      baseURL: "https://updates.example.com",
+      updateStrategy: "appVersion",
+    });
+
+    expect(mocks.init).toHaveBeenCalledWith(
+      expect.objectContaining({ insights: true }),
+    );
+    expect(mocks.wrap).toHaveBeenCalledWith(
+      expect.objectContaining({ insights: true }),
+    );
+  });
+
+  it("preserves an explicit insights opt-out", async () => {
+    const HotUpdater = await importHotUpdater();
+
+    HotUpdater.init({
+      baseURL: "https://updates.example.com",
+      insights: false,
+    });
+    HotUpdater.wrap({
+      baseURL: "https://updates.example.com",
+      insights: false,
+      updateStrategy: "appVersion",
+    });
+
+    expect(mocks.init).toHaveBeenCalledWith(
+      expect.objectContaining({ insights: false }),
+    );
+    expect(mocks.wrap).toHaveBeenCalledWith(
+      expect.objectContaining({ insights: false }),
+    );
   });
 
   it("requires baseURL and rejects the removed resolver shape", async () => {
@@ -171,13 +209,13 @@ describe("HotUpdater client initialization", () => {
     expect(wrapOptions.updateStrategy).toBe("appVersion");
   });
 
-  it("merges settings and carries the analytics gate to checks", async () => {
+  it("merges settings and carries the insights gate to checks", async () => {
     const client = { createSession: vi.fn() };
     mocks.createHttpClient.mockReturnValue(client as never);
     const checkOnError = vi.fn();
     const HotUpdater = await importHotUpdater();
     HotUpdater.init({
-      analytics: true,
+      insights: true,
       baseURL: "https://updates.example.com",
       requestHeaders: { Authorization: "Bearer token" },
       requestTimeout: 1000,
@@ -190,7 +228,7 @@ describe("HotUpdater client initialization", () => {
     });
 
     expect(mocks.checkForUpdate).toHaveBeenCalledWith({
-      analytics: true,
+      insights: true,
       client,
       onError: checkOnError,
       requestHeaders: {
@@ -208,13 +246,13 @@ describe("HotUpdater client initialization", () => {
     const HotUpdater = await importHotUpdater();
 
     HotUpdater.wrap({
-      analytics: true,
+      insights: true,
       baseURL: "https://updates.example.com",
       updateStrategy: "appVersion",
     });
 
     expect(mocks.wrap).toHaveBeenCalledWith({
-      analytics: true,
+      insights: true,
       client,
       updateStrategy: "appVersion",
     });

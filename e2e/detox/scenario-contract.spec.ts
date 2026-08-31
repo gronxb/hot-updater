@@ -258,20 +258,20 @@ async function controlStepDefinition(
 }
 
 describe("Detox scenario contract", () => {
-  it("keeps Console Analytics enabled for every standalone database profile", async () => {
-    // Given: Console Analytics is an acceptance checkpoint after each device
-    // scenario and every standalone adapter implements the analytics model.
+  it("keeps Console Insights enabled for every standalone database profile", async () => {
+    // Given: Console Insights is an acceptance checkpoint after each device
+    // scenario and every standalone adapter implements the insights model.
     const sources = await Promise.all(
       standaloneDatabaseProfileSources.map((sourcePath) =>
         fs.readFile(sourcePath, "utf8"),
       ),
     );
 
-    // When / Then: server Analytics needs no per-profile flag, while every
+    // When / Then: server Insights needs no per-profile flag, while every
     // profile still declares its client access policy explicitly.
     for (const source of sources) {
       expect(source).toContain("clientAccess: { type:");
-      expect(source).not.toContain("analytics: true");
+      expect(source).not.toContain("insights: true");
       expect(source).not.toContain("features:");
     }
   });
@@ -480,7 +480,7 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).toContain("device.terminateApp");
     expect(detoxRuntimeSource).toContain("/e2e/jobs/reset-remote-bundles");
     expect(detoxRuntimeSource).toContain("/e2e/reset-local-app-state");
-    expect(detoxRuntimeSource).toContain("verifyConsoleAnalytics");
+    expect(detoxRuntimeSource).toContain("verifyConsoleInsights");
   });
 
   it("clears Releases across all channels before deleting global Bundles", async () => {
@@ -810,7 +810,7 @@ describe("Detox scenario contract", () => {
 
     expect(exampleAppSource).toContain("./src/e2eApp");
     expect(e2eRuntimeSource).toContain("../e2eRuntimeConfig");
-    expect(e2eRuntimeSource).toContain("analytics: true");
+    expect(e2eRuntimeSource).toContain("insights: true");
     expect(e2eRuntimeSource).toContain('userId: "detox-e2e"');
     expect(e2eRuntimeSource).toContain('username: "hot-updater-e2e"');
     expect(exampleAppSource).not.toContain("react-native-launch-arguments");

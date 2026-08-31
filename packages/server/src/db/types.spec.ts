@@ -22,9 +22,9 @@ describe("isDatabasePlugin", () => {
         bundles: { ...plugin.models.bundles, findMany: null },
       },
     };
-    const missingAnalytics = {
+    const missingInsights = {
       ...plugin,
-      models: { ...plugin.models, analytics: undefined },
+      models: { ...plugin.models, insights: undefined },
     };
     const malformedChannels = {
       ...plugin,
@@ -47,7 +47,7 @@ describe("isDatabasePlugin", () => {
 
     expect(isDatabasePlugin(factory)).toBe(false);
     expect(isDatabasePlugin(malformedBundles)).toBe(false);
-    expect(isDatabasePlugin(missingAnalytics)).toBe(false);
+    expect(isDatabasePlugin(missingInsights)).toBe(false);
     expect(isDatabasePlugin(malformedChannels)).toBe(false);
     expect(isDatabasePlugin(malformedApiKeys)).toBe(false);
     expect(isDatabasePlugin(malformedDispose)).toBe(false);

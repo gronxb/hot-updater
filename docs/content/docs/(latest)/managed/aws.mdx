@@ -115,7 +115,7 @@ HOT_UPDATER_API_KEY=your-api-key
 Managed init reuses `HOT_UPDATER_API_KEY` when supplied or creates an API key,
 registers it in DynamoDB, and persists the plaintext value locally. Send this
 API key in the app's `x-api-key` request header. It does not authorize
-management or Analytics-query routes. Do not run `hot-updater api-key create`
+management or Insights-query routes. Do not run `hot-updater api-key create`
 for a managed installation; that command bootstraps direct self-hosted
 `createHotUpdater` configurations.
 
@@ -199,10 +199,10 @@ export default App;
 
 <Callout type="info">
   The managed AWS runtime exposes `/version` publicly. OTA update checks and
-  Analytics ingestion require `x-api-key: $HOT_UPDATER_API_KEY`, using a key
-  registered or created during init. Internally, Analytics is always available
+  Insights ingestion require `x-api-key: $HOT_UPDATER_API_KEY`, using a key
+  registered or created during init. Internally, Insights is always available
   and `clientAccess` uses the `api-key` policy; only `handlers.client` is
-  mounted. API keys do not authorize Analytics query routes, and bundle
+  mounted. API keys do not authorize Insights query routes, and bundle
   management endpoints are not mounted on the public function URL.
 </Callout>
 
@@ -214,19 +214,19 @@ dedicated CloudFront behavior whose cache key contains the canonical path,
 `x-api-key`, and supported content encoding. It excludes SDK version,
 Authorization, cookies, query strings, and installation state. A cold origin
 fill performs one exact DynamoDB catalog read; a warm CloudFront hit skips both
-Lambda@Edge and DynamoDB. Each authenticated Analytics event invokes
-Lambda@Edge and appends one event row; server-side Analytics queries read event
+Lambda@Edge and DynamoDB. Each authenticated Insights event invokes
+Lambda@Edge and appends one event row; server-side Insights queries read event
 pages from DynamoDB.
 Review the [DynamoDB pricing model](https://aws.amazon.com/dynamodb/pricing/) and
 [Lambda@Edge pricing](https://aws.amazon.com/lambda/pricing/).
 
 Each API key authorizes OTA selectors and event ingestion, but not
-Analytics query or management routes. Managed tables cap on-demand throughput
+Insights query or management routes. Managed tables cap on-demand throughput
 at 4,000 reads and 100 writes per second for both the table and update index.
 The cap is a cost guardrail and can throttle bursts; protect production
 distributions with AWS WAF rate-based rules and configure AWS Budgets for a
-monthly spending threshold. The AWS adapter does not impose an Analytics
-retention period. The bounded Analytics provider still rejects `all` reports
+monthly spending threshold. The AWS adapter does not impose an Insights
+retention period. The bounded Insights provider still rejects `all` reports
 above 50,000 events, while 24-hour, 7-day, and 30-day queries apply their query
 window independently of storage retention.
 

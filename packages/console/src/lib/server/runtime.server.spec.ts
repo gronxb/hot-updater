@@ -5,16 +5,16 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   parseActiveInstallationInput,
-  parseBundleEventAnalyticsInput,
+  parseBundleEventInsightsInput,
   parseInstallationHistoryInput,
   parseSearchInstallationsInput,
-} from "../analytics-input";
+} from "../insights-input";
 import {
   createApiKeyStore,
   createRuntimeHotUpdater,
   getActiveInstallationOverview,
-  getAnalyticsCapability,
-  getBundleEventAnalytics,
+  getInsightsCapability,
+  getBundleEventInsights,
   getBundleEventSummary,
   getInstallationHistory,
   searchInstallations,
@@ -54,17 +54,17 @@ const createRuntime = () => ({
   getActiveInstallationOverview: vi.fn(),
   getBundleEventSummary: vi.fn(),
   getBundleEventSummaries: vi.fn(),
-  getBundleEventAnalytics: vi.fn(),
+  getBundleEventInsights: vi.fn(),
   getBundleEventOverview: vi.fn(),
   searchInstallations: vi.fn(),
   getInstallationHistory: vi.fn(),
 });
 
-describe("analytics runtime input validation", () => {
-  it("composes Analytics from the official database domain", async () => {
+describe("insights runtime input validation", () => {
+  it("composes Insights from the official database domain", async () => {
     // Given
     const database = createDatabase();
-    const scan = vi.spyOn(database.models.analytics, "scan");
+    const scan = vi.spyOn(database.models.insights, "scan");
 
     // When
     const runtime = createRuntimeHotUpdater({
@@ -74,10 +74,10 @@ describe("analytics runtime input validation", () => {
     // Then
     expect(runtime).toMatchObject({ mode: "bounded" });
     expect(runtime).not.toBeNull();
-    if (runtime === null) throw new Error("Expected Analytics runtime");
-    await expect(getAnalyticsCapability(runtime)).resolves.toMatchObject({
-      analytics: true,
-      analyticsQueries: true,
+    if (runtime === null) throw new Error("Expected Insights runtime");
+    await expect(getInsightsCapability(runtime)).resolves.toMatchObject({
+      insights: true,
+      insightsQueries: true,
       mode: "bounded",
     });
     await expect(runtime.getBundleEventOverview()).resolves.toEqual({
@@ -87,7 +87,7 @@ describe("analytics runtime input validation", () => {
     expect(scan).toHaveBeenCalled();
   });
 
-  it("rejects an invalid Analytics runtime", async () => {
+  it("rejects an invalid Insights runtime", async () => {
     // Given
     const runtime = { mode: "bounded", maxMatchingRows: 50_000 };
 
@@ -114,16 +114,16 @@ describe("analytics runtime input validation", () => {
     { bundleId: 1, window: "24h" },
     { bundleId: "bundle-1", window: "24h", limit: "50" },
     { bundleId: "bundle-1", window: "24h", offset: "0" },
-  ])("rejects invalid bundle analytics input %#", async (input: unknown) => {
+  ])("rejects invalid bundle insights input %#", async (input: unknown) => {
     // Given
     const runtime = createRuntime();
 
     // When
-    const result = getBundleEventAnalytics(runtime, input);
+    const result = getBundleEventInsights(runtime, input);
 
     // Then
     await expect(result).rejects.toThrow();
-    expect(runtime.getBundleEventAnalytics).not.toHaveBeenCalled();
+    expect(runtime.getBundleEventInsights).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -134,7 +134,7 @@ describe("analytics runtime input validation", () => {
     [getInstallationHistory, { installId: " " }],
     [getInstallationHistory, { installId: 1 }],
     [getInstallationHistory, { installId: "install-1", offset: 1.5 }],
-  ])("rejects invalid paginated analytics input %#", async (fn, input) => {
+  ])("rejects invalid paginated insights input %#", async (fn, input) => {
     // Given
     const runtime = createRuntime();
 
@@ -147,12 +147,12 @@ describe("analytics runtime input validation", () => {
     expect(runtime.getInstallationHistory).not.toHaveBeenCalled();
   });
 
-  it("trims valid analytics strings and applies pagination defaults", async () => {
+  it("trims valid insights strings and applies pagination defaults", async () => {
     // Given
     const runtime = createRuntime();
 
     // When
-    await getBundleEventAnalytics(runtime, {
+    await getBundleEventInsights(runtime, {
       bundleId: " bundle-1 ",
       window: "all",
     });
@@ -164,7 +164,7 @@ describe("analytics runtime input validation", () => {
     });
 
     // Then
-    expect(runtime.getBundleEventAnalytics).toHaveBeenCalledWith(
+    expect(runtime.getBundleEventInsights).toHaveBeenCalledWith(
       "bundle-1",
       "all",
       50,
@@ -195,10 +195,10 @@ describe("analytics runtime input validation", () => {
   });
 });
 
-describe("analytics server function input parsers", () => {
+describe("insights server function input parsers", () => {
   it("accepts inclusive pagination boundaries", () => {
     // Given
-    const analyticsInput = {
+    const insightsInput = {
       bundleId: " bundle-1 ",
       window: "30d",
       limit: 100,
@@ -206,7 +206,7 @@ describe("analytics server function input parsers", () => {
     };
 
     // When
-    const analytics = parseBundleEventAnalyticsInput(analyticsInput);
+    const insights = parseBundleEventInsightsInput(insightsInput);
     const search = parseSearchInstallationsInput({
       query: " query ",
       limit: 1,
@@ -217,7 +217,7 @@ describe("analytics server function input parsers", () => {
     });
 
     // Then
-    expect(analytics).toEqual({
+    expect(insights).toEqual({
       bundleId: "bundle-1",
       window: "30d",
       limit: 100,
@@ -228,7 +228,7 @@ describe("analytics server function input parsers", () => {
   });
 
   it.each([null, [], "input"])(
-    "rejects a non-record analytics input %#",
+    "rejects a non-record insights input %#",
     (input) => {
       // Given / When
       const parse = () => parseSearchInstallationsInput(input);
