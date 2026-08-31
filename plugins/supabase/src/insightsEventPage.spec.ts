@@ -19,11 +19,12 @@ const cutoff = 60_001;
 const migrationsPath = "plugins/supabase/supabase/migrations";
 const rpcName = SUPABASE_V1_FUNCTION_NAMES.insightsEventPage;
 type Rpc = Database["public"]["Functions"][typeof rpcName];
-const rpcSql = `SELECT public.${rpcName}($1, $2, $3, $4, $5, $6) AS page`;
+const rpcSql = `SELECT public.${rpcName}($1, $2, $3, $4, $5, $6, $7) AS page`;
 const rpcValues = (args: Rpc["Args"]) => [
   args.p_scope,
   args.p_scope_id,
   args.p_before_received_at_ms,
+  args.p_since_received_at_ms,
   args.p_limit,
   args.p_cursor_received_at_ms,
   args.p_cursor_id,
@@ -102,6 +103,34 @@ describe("Supabase native Insights event RPC", () => {
     `);
   });
   afterAll(() => db.close());
+
+  it("applies the inclusive window boundary before paging and binds it into the cursor", async () => {
+    const input = {
+      scope: { kind: "all" },
+      sinceReceivedAtMs: 60_000,
+      beforeReceivedAtMs: cutoff,
+      limit: 100,
+    } as const;
+    const first = await page(input);
+    const last = await page({ ...input, cursor: first.nextCursor! });
+    expect(first.rows).toHaveLength(100);
+    expect(last.rows).toHaveLength(4);
+    expect(
+      [...first.rows, ...last.rows].every(
+        ({ received_at_ms }) => received_at_ms === 60_000,
+      ),
+    ).toBe(true);
+    expect(last.nextCursor).toBeNull();
+    rpc.mockClear();
+    await expect(
+      page({ ...input, sinceReceivedAtMs: 59_999, cursor: first.nextCursor! }),
+    ).rejects.toMatchObject({ code: "invalid-query" });
+    expect(rpc).not.toHaveBeenCalled();
+    expect(await page({ ...input, sinceReceivedAtMs: cutoff })).toEqual({
+      rows: [],
+      nextCursor: null,
+    });
+  });
 
   it("enumerates more than 50,000 events without losing same-time or lookahead rows", async () => {
     const ids = new Set<string>();
@@ -255,9 +284,10 @@ describe("Supabase native Insights event RPC", () => {
         v_boundary_id: "$4::uuid",
         p_limit: "$5::integer",
         v_bundle_id: "$6::uuid",
+        p_since_received_at_ms: "$7::double precision",
       };
       const statement = body.replace(
-        /\b(p_scope|p_scope_id|v_boundary_ms|v_boundary_id|p_limit|v_bundle_id)\b/g,
+        /\b(p_scope|p_scope_id|v_boundary_ms|v_boundary_id|p_limit|v_bundle_id|p_since_received_at_ms)\b/g,
         (name) => bindings[name]!,
       );
       for (const boundary of [
@@ -273,6 +303,7 @@ describe("Supabase native Insights event RPC", () => {
             boundary,
             1,
             scope === "bundle" ? bundleId : null,
+            0,
           ],
         );
         const plan = nodes(result.rows[0]!["QUERY PLAN"][0]!.Plan);
@@ -344,6 +375,7 @@ describe("Supabase native Insights event RPC", () => {
       p_scope: "all",
       p_scope_id: null,
       p_before_received_at_ms: cutoff,
+      p_since_received_at_ms: 0,
       p_limit: 2,
       p_cursor_received_at_ms: null,
       p_cursor_id: null,

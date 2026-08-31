@@ -44,6 +44,54 @@ const harness = (rows: readonly BundleEventRow[]) => {
 };
 
 describe("indexed Insights event pages", () => {
+  it("keeps both time boundaries fixed across lookahead and timestamp ties", async () => {
+    const { queries, findMany } = harness([
+      event("before", 19),
+      event("low-a", 20),
+      event("low-b", 20),
+      event("middle", 21),
+      event("cutoff", 22),
+    ]);
+    const input = {
+      scope: { kind: "all" },
+      sinceReceivedAtMs: 20,
+      beforeReceivedAtMs: 22,
+      limit: 1,
+    } as const;
+    const first = await queries.page(input);
+    expect(first.rows.map(({ id }) => id)).toEqual(["middle"]);
+    const last = await queries.page({
+      ...input,
+      limit: 3,
+      cursor: first.nextCursor!,
+    });
+    expect(last.rows.map(({ id }) => id)).toEqual(["low-b", "low-a"]);
+    expect(last.nextCursor).toBeNull();
+    expect(
+      findMany.mock.calls.every(([query]) =>
+        query.where?.some(
+          (filter) =>
+            filter.field === "received_at_ms" &&
+            filter.operator === "gte" &&
+            filter.value === 20,
+        ),
+      ),
+    ).toBe(true);
+    findMany.mockClear();
+    await expect(
+      queries.page({
+        ...input,
+        sinceReceivedAtMs: 19,
+        cursor: first.nextCursor!,
+      }),
+    ).rejects.toMatchObject({ code: "invalid-query" });
+    expect(findMany).not.toHaveBeenCalled();
+    expect(await queries.page({ ...input, sinceReceivedAtMs: 22 })).toEqual({
+      rows: [],
+      nextCursor: null,
+    });
+  });
+
   it("does not transfer old history or skip lookahead across timestamp ties", async () => {
     const { data, findMany, queries } = harness([
       ...Array.from({ length: 50_001 }, (_, index) =>
@@ -165,6 +213,9 @@ describe("indexed Insights event pages", () => {
       { limit: 101 },
       { limit: Number.NaN },
       { beforeReceivedAtMs: Number.POSITIVE_INFINITY },
+      { sinceReceivedAtMs: -1 },
+      { sinceReceivedAtMs: Number.NaN },
+      { sinceReceivedAtMs: 4 },
       { cursor: "not-json" },
       { cursor: "x".repeat(8_193) },
       { cursor: nextCursor!, scope: { kind: "bundle", bundleId: "bundle-a" } },

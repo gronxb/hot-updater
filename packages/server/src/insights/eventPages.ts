@@ -19,6 +19,10 @@ export const createInsightsEventPages = (
       input.limit > 100 ||
       !Number.isSafeInteger(input.beforeReceivedAtMs) ||
       input.beforeReceivedAtMs < 0 ||
+      (input.sinceReceivedAtMs !== undefined &&
+        (!Number.isSafeInteger(input.sinceReceivedAtMs) ||
+          input.sinceReceivedAtMs < 0 ||
+          input.sinceReceivedAtMs > input.beforeReceivedAtMs)) ||
       !queries.scopes.includes(input.scope?.kind) ||
       (input.cursor !== undefined &&
         (typeof input.cursor !== "string" ||
@@ -58,6 +62,7 @@ export const createInsightsEventPages = (
           ].includes(row.type) ||
           !Number.isSafeInteger(row.received_at_ms) ||
           row.received_at_ms < 0 ||
+          row.received_at_ms < (input.sinceReceivedAtMs ?? 0) ||
           row.received_at_ms >= input.beforeReceivedAtMs ||
           (previous !== undefined && compareEventNewest(previous, row) >= 0) ||
           (input.scope.kind === "installation" &&
@@ -101,6 +106,7 @@ export const createInsightsEventPages = (
       pagination: {
         limit: input.limit,
         beforeReceivedAtMs: input.beforeReceivedAtMs,
+        sinceReceivedAtMs: input.sinceReceivedAtMs ?? 0,
         nextCursor: page.nextCursor,
         hasNext: page.nextCursor !== null,
         consistency: "live",

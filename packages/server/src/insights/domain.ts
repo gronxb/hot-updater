@@ -10,6 +10,7 @@ export type EventHistoryPage = {
   readonly pagination: {
     readonly limit: number;
     readonly beforeReceivedAtMs: number;
+    readonly sinceReceivedAtMs: number;
     readonly nextCursor: string | null;
     /** More bounded work may be needed; a subsequent page can be empty. */
     readonly hasNext: boolean;

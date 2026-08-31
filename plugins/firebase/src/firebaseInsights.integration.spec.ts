@@ -77,6 +77,46 @@ describe("Firestore indexed Insights queries", () => {
     await clearCollections();
   }, 180_000);
 
+  it("keeps a window lower bound inclusive without reading older events on continuation", async () => {
+    const input = {
+      scope: { kind: "all" },
+      sinceReceivedAtMs: 60_000,
+      beforeReceivedAtMs: 60_001,
+      limit: 100,
+    } as const;
+    const reads = vi.spyOn(Query.prototype, "get");
+    try {
+      const first = await queries.pageEvents(input);
+      const last = await queries.pageEvents({
+        ...input,
+        cursor: first.nextCursor!,
+      });
+      expect(first.rows).toHaveLength(100);
+      expect(last.rows.map(({ id }) => id)).toEqual([
+        movement(2).id,
+        movement(1).id,
+        movement(0).id,
+      ]);
+      expect(last.nextCursor).toBeNull();
+      expect(
+        (await Promise.all(reads.mock.results.map(({ value }) => value))).map(
+          ({ size }) => size,
+        ),
+      ).toEqual([101, 3]);
+      reads.mockClear();
+      await expect(
+        queries.pageEvents({
+          ...input,
+          sinceReceivedAtMs: 59_999,
+          cursor: first.nextCursor!,
+        }),
+      ).rejects.toMatchObject({ code: "invalid-query" });
+      expect(reads).not.toHaveBeenCalled();
+    } finally {
+      reads.mockRestore();
+    }
+  });
+
   it("uses bounded global pages without losing equal-time events or lookahead", async () => {
     const reads = vi.spyOn(Query.prototype, "get");
     try {

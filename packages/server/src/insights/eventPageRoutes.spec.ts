@@ -88,6 +88,7 @@ describe("versioned admin event pages", () => {
       pagination: {
         limit: 50,
         beforeReceivedAtMs: 1_000,
+        sinceReceivedAtMs: 0,
         nextCursor: "continue",
         hasNext: true,
         consistency: "live",
@@ -119,6 +120,10 @@ describe("versioned admin event pages", () => {
       "limit=1e2",
       "beforeReceivedAtMs=-1",
       "beforeReceivedAtMs=9007199254740992",
+      "sinceReceivedAtMs=-1",
+      "sinceReceivedAtMs=1.5",
+      "sinceReceivedAtMs=20&beforeReceivedAtMs=19",
+      "sinceReceivedAtMs=1&sinceReceivedAtMs=2",
       "scope=all&bundleId=b",
       "scope=bundle",
       "scope=bundle&bundleId=b&installId=i",
@@ -136,6 +141,24 @@ describe("versioned admin event pages", () => {
       });
     }
     expect(page).not.toHaveBeenCalled();
+    expect(scan).not.toHaveBeenCalled();
+  });
+
+  it("passes both window boundaries to storage and returns them for continuation", async () => {
+    const { server, page, scan } = setup();
+    const response = await server.handlers.admin(
+      request("sinceReceivedAtMs=20&beforeReceivedAtMs=30&limit=2"),
+    );
+    expect(response.status).toBe(200);
+    expect(page).toHaveBeenCalledExactlyOnceWith({
+      scope: { kind: "all" },
+      sinceReceivedAtMs: 20,
+      beforeReceivedAtMs: 30,
+      limit: 2,
+    });
+    expect(await response.json()).toMatchObject({
+      pagination: { sinceReceivedAtMs: 20, beforeReceivedAtMs: 30 },
+    });
     expect(scan).not.toHaveBeenCalled();
   });
 

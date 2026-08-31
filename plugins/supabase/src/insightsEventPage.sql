@@ -7,6 +7,7 @@ CREATE FUNCTION public.hot_updater_v1_insights_event_page(
   p_scope text,
   p_scope_id text,
   p_before_received_at_ms double precision,
+  p_since_received_at_ms double precision,
   p_limit integer,
   p_cursor_received_at_ms double precision DEFAULT NULL,
   p_cursor_id uuid DEFAULT NULL
@@ -27,12 +28,15 @@ BEGIN
     OR p_before_received_at_ms IS NULL
     OR NOT (p_before_received_at_ms BETWEEN 0 AND 9007199254740991
       AND p_before_received_at_ms = trunc(p_before_received_at_ms))
+    OR p_since_received_at_ms IS NULL
+    OR NOT (p_since_received_at_ms BETWEEN 0 AND p_before_received_at_ms
+      AND p_since_received_at_ms = trunc(p_since_received_at_ms))
     OR (p_scope = 'all' AND p_scope_id IS NOT NULL)
     OR (p_scope <> 'all' AND (p_scope_id IS NULL
       OR char_length(p_scope_id) NOT BETWEEN 1 AND 1024))
     OR ((p_cursor_received_at_ms IS NULL) <> (p_cursor_id IS NULL))
     OR (p_cursor_received_at_ms IS NOT NULL AND NOT (
-      p_cursor_received_at_ms >= 0
+      p_cursor_received_at_ms >= p_since_received_at_ms
       AND p_cursor_received_at_ms < p_before_received_at_ms
       AND p_cursor_received_at_ms = trunc(p_cursor_received_at_ms)))
   THEN
@@ -91,29 +95,34 @@ BEGIN
     WITH candidates AS MATERIALIZED (
       (SELECT e.* FROM public.hot_updater_v1_bundle_events e
         WHERE p_scope = 'all'
+          AND e.received_at_ms >= p_since_received_at_ms
           AND (e.received_at_ms, e.id) < (v_boundary_ms, v_boundary_id)
         ORDER BY e.received_at_ms DESC, e.id DESC LIMIT p_limit + 1)
       UNION ALL
       (SELECT e.* FROM public.hot_updater_v1_bundle_events e
         WHERE p_scope = 'installation'
+          AND e.received_at_ms >= p_since_received_at_ms
           AND e.install_id = p_scope_id AND e.type = 'UPDATE_APPLIED'
           AND (e.received_at_ms, e.id) < (v_boundary_ms, v_boundary_id)
         ORDER BY e.received_at_ms DESC, e.id DESC LIMIT p_limit + 1)
       UNION ALL
       (SELECT e.* FROM public.hot_updater_v1_bundle_events e
         WHERE p_scope = 'installation'
+          AND e.received_at_ms >= p_since_received_at_ms
           AND e.install_id = p_scope_id AND e.type = 'RECOVERED'
           AND (e.received_at_ms, e.id) < (v_boundary_ms, v_boundary_id)
         ORDER BY e.received_at_ms DESC, e.id DESC LIMIT p_limit + 1)
       UNION ALL
       (SELECT e.* FROM public.hot_updater_v1_bundle_events e
         WHERE p_scope = 'bundle'
+          AND e.received_at_ms >= p_since_received_at_ms
           AND e.to_bundle_id = v_bundle_id AND e.type = 'UPDATE_APPLIED'
           AND (e.received_at_ms, e.id) < (v_boundary_ms, v_boundary_id)
         ORDER BY e.received_at_ms DESC, e.id DESC LIMIT p_limit + 1)
       UNION ALL
       (SELECT e.* FROM public.hot_updater_v1_bundle_events e
         WHERE p_scope = 'bundle'
+          AND e.received_at_ms >= p_since_received_at_ms
           AND e.from_bundle_id = v_bundle_id AND e.type = 'RECOVERED'
           AND (e.received_at_ms, e.id) < (v_boundary_ms, v_boundary_id)
         ORDER BY e.received_at_ms DESC, e.id DESC LIMIT p_limit + 1)
@@ -132,10 +141,10 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.hot_updater_v1_insights_event_page(
-  text, text, double precision, integer, double precision, uuid
+  text, text, double precision, double precision, integer, double precision, uuid
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.hot_updater_v1_insights_event_page(
-  text, text, double precision, integer, double precision, uuid
+  text, text, double precision, double precision, integer, double precision, uuid
 ) TO service_role;
 GRANT SELECT ON public.hot_updater_v1_bundle_events TO service_role;
 

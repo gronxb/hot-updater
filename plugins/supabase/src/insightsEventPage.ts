@@ -44,6 +44,7 @@ export const createSupabaseInsightsEventPage =
               ? input.scope.bundleId
               : input.scope.installId,
         p_before_received_at_ms: input.beforeReceivedAtMs,
+        p_since_received_at_ms: input.sinceReceivedAtMs ?? 0,
         p_limit: input.limit,
         p_cursor_received_at_ms: cursor?.receivedAtMs ?? null,
         p_cursor_id: cursor?.id ?? null,
@@ -73,6 +74,7 @@ export const createSupabaseInsightsEventPage =
       const previous = rows[index - 1];
       if (
         !canonicalUuid.test(row.id) ||
+        row.received_at_ms < (input.sinceReceivedAtMs ?? 0) ||
         row.received_at_ms >= input.beforeReceivedAtMs ||
         (cursor !== undefined &&
           (row.received_at_ms > cursor.receivedAtMs ||

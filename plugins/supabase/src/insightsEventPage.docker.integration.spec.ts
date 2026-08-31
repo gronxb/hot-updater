@@ -216,6 +216,7 @@ describe("Supabase Insights scalar RPC with PostgREST max_rows=1", () => {
           p_scope_id: null,
           p_limit: 2,
           p_before_received_at_ms: 101,
+          p_since_received_at_ms: 0,
           p_cursor_received_at_ms: null,
           p_cursor_id: null,
         },

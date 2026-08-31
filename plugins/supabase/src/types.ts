@@ -79,6 +79,7 @@ export type Database = {
           p_scope: "all" | "installation" | "bundle";
           p_scope_id: string | null;
           p_before_received_at_ms: number;
+          p_since_received_at_ms: number;
           p_limit: number;
           p_cursor_received_at_ms: number | null;
           p_cursor_id: string | null;

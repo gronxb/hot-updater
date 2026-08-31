@@ -4,6 +4,7 @@ export {
   type DatabasePluginAdapter,
 } from "./createDatabasePlugin";
 export { databaseFields } from "./types/databaseFields";
+export { readInsightsReportQuery } from "./insightsReportQuery";
 export {
   createIndexedInsightsEventQueries,
   readInsightsEventPageCursor,

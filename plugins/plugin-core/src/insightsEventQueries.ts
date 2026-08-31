@@ -73,17 +73,19 @@ const readCursor = (
   }
   if (
     !Array.isArray(value) ||
-    value.length !== 5 ||
+    value.length !== 6 ||
     value[0] !== 1 ||
     value[1] !== scope ||
     value[2] !== input.beforeReceivedAtMs ||
-    !isTimestamp(value[3]) ||
-    value[3] >= input.beforeReceivedAtMs ||
-    !isIdentifier(value[4])
+    value[3] !== (input.sinceReceivedAtMs ?? 0) ||
+    !isTimestamp(value[4]) ||
+    value[4] < (input.sinceReceivedAtMs ?? 0) ||
+    value[4] >= input.beforeReceivedAtMs ||
+    !isIdentifier(value[5])
   ) {
     throw new DatabasePluginInputError("invalid-query");
   }
-  return { receivedAtMs: value[3], id: value[4] };
+  return { receivedAtMs: value[4], id: value[5] };
 };
 
 export const readInsightsEventPageCursor = (
@@ -95,6 +97,9 @@ export const readInsightsEventPageCursor = (
   const key = scopeKey(input.scope);
   if (
     !isTimestamp(input.beforeReceivedAtMs) ||
+    (input.sinceReceivedAtMs !== undefined &&
+      !isTimestamp(input.sinceReceivedAtMs)) ||
+    (input.sinceReceivedAtMs ?? 0) > input.beforeReceivedAtMs ||
     !Number.isSafeInteger(input.limit) ||
     input.limit < 1 ||
     input.limit > MAX_PAGE_SIZE
@@ -112,6 +117,7 @@ export const createInsightsEventPageCursor = (
     1,
     scopeKey(input.scope),
     input.beforeReceivedAtMs,
+    input.sinceReceivedAtMs ?? 0,
     last.receivedAtMs,
     last.id,
   ]);
@@ -182,7 +188,15 @@ export const createIndexedInsightsEventQueries = (
           ) => {
             const rows = await findMany({
               model: "bundle_events",
-              where: [...filters, ...where],
+              where: [
+                ...filters,
+                {
+                  field: "received_at_ms",
+                  operator: "gte",
+                  value: input.sinceReceivedAtMs ?? 0,
+                },
+                ...where,
+              ],
               orderBy: [
                 { field: "received_at_ms", direction: "desc" },
                 { field: "id", direction: "desc" },
@@ -197,6 +211,7 @@ export const createIndexedInsightsEventQueries = (
                 return (
                   !isIdentifier(row.id) ||
                   !isTimestamp(row.received_at_ms) ||
+                  row.received_at_ms < (input.sinceReceivedAtMs ?? 0) ||
                   row.received_at_ms >= input.beforeReceivedAtMs ||
                   filters.some(
                     (filter) => row[filter.field] !== filter.value,

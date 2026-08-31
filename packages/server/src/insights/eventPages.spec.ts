@@ -66,6 +66,9 @@ describe("native Insights page boundary", () => {
       { limit: 0 },
       { limit: 101 },
       { limit: 1.5 },
+      { sinceReceivedAtMs: -1 },
+      { sinceReceivedAtMs: 4 },
+      { sinceReceivedAtMs: Number.NaN },
       { scope: { kind: "installation", installId: "a" } },
       { scope: { kind: "bundle", bundleId: "" } },
       { cursor: "x".repeat(8193) },
@@ -76,6 +79,38 @@ describe("native Insights page boundary", () => {
       ).rejects.toMatchObject({ name: "InsightsBadRequestError" });
     }
     expect(page).not.toHaveBeenCalled();
+  });
+
+  it("preserves an inclusive window and rejects an out-of-window provider row", async () => {
+    const page = vi
+      .fn<InsightsEventQueries["page"]>()
+      .mockResolvedValueOnce({
+        rows: [createBundleEventRowFixture("2", 20)],
+        nextCursor: null,
+      })
+      .mockResolvedValueOnce({
+        rows: [createBundleEventRowFixture("1", 19)],
+        nextCursor: null,
+      });
+    const events = createInsightsEventPages({
+      version: 1,
+      scopes: ["all"],
+      page,
+    });
+    const input = {
+      scope: { kind: "all" },
+      sinceReceivedAtMs: 20,
+      beforeReceivedAtMs: 30,
+      limit: 1,
+    } as const;
+    const result = await events.getPage(input);
+    expect(page).toHaveBeenLastCalledWith(input);
+    expect(result.data[0]?.receivedAtMs).toBe(20);
+    expect(result.pagination.sinceReceivedAtMs).toBe(20);
+    await expect(events.getPage(input)).rejects.toThrow(
+      "bounded continuation contract",
+    );
+    expect(page).toHaveBeenCalledTimes(2);
   });
 
   it("does not execute an incompatible native query version", async () => {

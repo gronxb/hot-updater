@@ -75,7 +75,9 @@ export const createFirebaseInsightsQueries = (
     )
       throw new DatabasePluginInputError("invalid-query");
     await ensureEventIndex();
-    const base = events.where("received_at_ms", "<", input.beforeReceivedAtMs);
+    const base = events
+      .where("received_at_ms", ">=", input.sinceReceivedAtMs ?? 0)
+      .where("received_at_ms", "<", input.beforeReceivedAtMs);
     const scoped =
       scope.kind === "all"
         ? [{ query: base, matches: () => true }]
@@ -129,6 +131,7 @@ export const createFirebaseInsightsQueries = (
             rows.some(
               (row, index) =>
                 !matches(row) ||
+                row.received_at_ms < (input.sinceReceivedAtMs ?? 0) ||
                 row.received_at_ms >= input.beforeReceivedAtMs ||
                 (cursor !== undefined &&
                   compareInsightsEventRows(row, {

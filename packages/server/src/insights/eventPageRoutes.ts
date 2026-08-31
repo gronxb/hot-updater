@@ -14,6 +14,7 @@ const FIELDS = [
   "bundleId",
   "installId",
   "beforeReceivedAtMs",
+  "sinceReceivedAtMs",
   "limit",
   "cursor",
 ];
@@ -47,6 +48,8 @@ const parseInput = (request: Request): EventHistoryPageInput => {
   )
     invalid();
   const beforeReceivedAtMs = integer("beforeReceivedAtMs", Date.now());
+  const sinceReceivedAtMs = integer("sinceReceivedAtMs", 0);
+  if (sinceReceivedAtMs > beforeReceivedAtMs) invalid();
   const kind = params.get("scope") ?? "all";
   const bundleId = params.get("bundleId");
   const installId = params.get("installId");
@@ -76,6 +79,7 @@ const parseInput = (request: Request): EventHistoryPageInput => {
     scope,
     limit,
     beforeReceivedAtMs,
+    ...(params.has("sinceReceivedAtMs") ? { sinceReceivedAtMs } : {}),
     ...(cursor === null ? {} : { cursor }),
   };
 };

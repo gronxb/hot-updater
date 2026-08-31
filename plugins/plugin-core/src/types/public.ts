@@ -45,3 +45,4 @@ export type {
   ReleaseCatalogRow,
   ReleaseRow,
 } from "./databaseRows";
+export type * from "./insightsQueries";

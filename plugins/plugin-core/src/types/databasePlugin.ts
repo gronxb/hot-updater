@@ -78,6 +78,8 @@ export type InsightsEventScope =
 
 export interface InsightsEventPageInput {
   readonly scope: InsightsEventScope;
+  /** Inclusive lower boundary. Omitted means the entire history. */
+  readonly sinceReceivedAtMs?: number;
   readonly beforeReceivedAtMs: number;
   /** Final response size, including neither lookahead nor merge candidates. */
   readonly limit: number;
