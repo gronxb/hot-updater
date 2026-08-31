@@ -16,6 +16,7 @@ import {
   parseActiveInstallationInput,
   parseBundleEventInsightsInput,
   parseBundleEventSummaryInput,
+  parseEventHistoryInput,
   parseInstallationHistoryInput,
   parseSearchInstallationsInput,
 } from "../insights-input";
@@ -74,6 +75,7 @@ const providerMethods = [
   "getActiveInstallationOverview",
   "searchInstallations",
   "getInstallationHistory",
+  "getEventHistory",
 ] as const;
 
 const parseInsightsProvider = (value: unknown): InsightsProvider | null => {
@@ -166,6 +168,14 @@ export async function getInstallationHistory(
   const parsed = parseInstallationHistoryInput(input);
   return (await requireInsightsSupport(provider)).getInstallationHistory(
     parsed.installId,
+    parsed.limit ?? 50,
+    parsed.offset ?? 0,
+  );
+}
+
+export async function getEventHistory(provider: unknown, input: unknown) {
+  const parsed = parseEventHistoryInput(input);
+  return (await requireInsightsSupport(provider)).getEventHistory(
     parsed.limit ?? 50,
     parsed.offset ?? 0,
   );

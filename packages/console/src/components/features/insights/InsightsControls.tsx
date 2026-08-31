@@ -1,8 +1,9 @@
 import type { ActiveInstallationWindow } from "@hot-updater/server";
-import { Search, X } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { History, Search, X } from "lucide-react";
 import { useState } from "react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
   InputGroup,
@@ -44,7 +45,7 @@ export function InsightsControls({
         }}
         role="search"
       >
-        <FieldGroup className="gap-3 md:grid md:grid-cols-[auto_minmax(18rem,1fr)] md:items-end">
+        <FieldGroup className="gap-3 lg:grid lg:grid-cols-[auto_minmax(18rem,1fr)] lg:items-end">
           <Field className="min-w-0">
             <FieldLabel>Reporting period</FieldLabel>
             <ToggleGroup
@@ -63,7 +64,7 @@ export function InsightsControls({
               {windows.map((item) => (
                 <ToggleGroupItem
                   aria-label={item.label}
-                  className="flex-1 md:flex-none"
+                  className="flex-1 lg:flex-none"
                   key={item.value}
                   value={item.value}
                 >
@@ -106,6 +107,23 @@ export function InsightsControls({
                 <Search aria-hidden="true" data-icon="inline-start" />
                 Search
               </Button>
+              <Link
+                className={buttonVariants({
+                  className: "w-full sm:w-auto",
+                  size: "lg",
+                  variant: "outline",
+                })}
+                to="/installations"
+                search={{
+                  query: undefined,
+                  installId: undefined,
+                  searchOffset: 0,
+                  historyOffset: 0,
+                }}
+              >
+                <History aria-hidden="true" data-icon="inline-start" />
+                View all events
+              </Link>
             </div>
           </Field>
         </FieldGroup>

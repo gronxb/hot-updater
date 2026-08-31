@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 
+import { EventHistoryCard } from "@/components/features/insights/EventHistoryCard";
 import { useInsightsCapability } from "@/components/features/insights/InsightsCapabilityContext";
 import { InstallationHistoryCard } from "@/components/features/insights/InstallationHistoryCard";
 import { InstallationMatchesCard } from "@/components/features/insights/InstallationMatchesCard";
@@ -11,6 +12,7 @@ import {
 } from "@/components/features/insights/InstallationPageHeader";
 import {
   type InstallationSearchRow,
+  useEventHistoryQuery,
   useInstallationHistoryQuery,
   useInstallationSearchQuery,
 } from "@/lib/api";
@@ -58,7 +60,7 @@ function InstallationsPage() {
   const firstMatchingInstallId = results?.data[0]?.installId;
 
   useEffect(() => {
-    if (selectedInstallId || !firstMatchingInstallId) return;
+    if (!query || selectedInstallId || !firstMatchingInstallId) return;
     void navigate({
       to: "/installations",
       search: {
@@ -72,6 +74,7 @@ function InstallationsPage() {
   }, [
     firstMatchingInstallId,
     navigate,
+    query,
     search.query,
     search.searchOffset,
     selectedInstallId,
@@ -120,10 +123,14 @@ function InstallationsPage() {
   };
 
   const hasQuery = query.length > 0 || selectedInstallId.length > 0;
+  const events = useEventHistoryQuery(
+    { limit: HISTORY_LIMIT, offset: search.historyOffset },
+    insightsQueriesEnabled && !hasQuery,
+  );
 
   return (
     <div className="flex h-svh min-h-0 flex-col">
-      <InstallationPageHeader />
+      <InstallationPageHeader hasQuery={hasQuery} />
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 p-3 sm:p-6">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
           <InstallationSearchPanel
@@ -142,7 +149,20 @@ function InstallationsPage() {
               });
             }}
           />
-          {!hasQuery ? null : isSearchLoading ? (
+          {!hasQuery ? (
+            <EventHistoryCard
+              error={events.error}
+              history={events.data}
+              isLoading={events.isLoading}
+              limit={HISTORY_LIMIT}
+              offset={search.historyOffset}
+              onOffsetChange={(historyOffset) =>
+                updateSearch({ historyOffset })
+              }
+              onRefresh={() => void events.refetch()}
+              isFetching={events.isFetching}
+            />
+          ) : isSearchLoading ? (
             <InstallationResultsSkeleton />
           ) : (
             <div className="grid min-h-0 min-w-0 items-stretch gap-6 lg:min-h-96 lg:grid-cols-[minmax(18rem,20rem)_minmax(0,1fr)]">

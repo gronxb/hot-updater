@@ -17,6 +17,7 @@ import {
   getBundleEventInsights,
   getBundleEventSummary,
   getInstallationHistory,
+  getEventHistory,
   searchInstallations,
 } from "./runtime.server";
 
@@ -58,9 +59,29 @@ const createRuntime = () => ({
   getBundleEventOverview: vi.fn(),
   searchInstallations: vi.fn(),
   getInstallationHistory: vi.fn(),
+  getEventHistory: vi.fn(),
 });
 
 describe("insights runtime input validation", () => {
+  it("requests all events with bounded pagination and no identity filter", async () => {
+    const runtime = createRuntime();
+    await getEventHistory(runtime, {});
+    await getEventHistory(runtime, { limit: 20, offset: 40 });
+    expect(runtime.getEventHistory.mock.calls).toEqual([
+      [50, 0],
+      [20, 40],
+    ]);
+  });
+
+  it.each([{ limit: 0 }, { limit: 101 }, { offset: -1 }, { offset: 1.5 }])(
+    "rejects invalid event pagination %j before scanning",
+    async (input) => {
+      const runtime = createRuntime();
+      await expect(getEventHistory(runtime, input)).rejects.toThrow();
+      expect(runtime.getEventHistory).not.toHaveBeenCalled();
+    },
+  );
+
   it("composes Insights from the official database domain", async () => {
     // Given
     const database = createDatabase();

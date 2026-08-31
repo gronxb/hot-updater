@@ -1,6 +1,6 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,6 +12,7 @@ import {
   useDeleteChannelMutation,
   useDeleteBundleMutation,
   useDeleteBundlesMutation,
+  useEventHistoryQuery,
 } from "./api";
 import {
   createChannel as createChannelApi,
@@ -20,6 +21,7 @@ import {
   deleteBundles as deleteBundlesApi,
   getBundleEventSummary as getBundleEventSummaryApi,
   getBundleEventInsights as getBundleEventInsightsApi,
+  getEventHistory as getEventHistoryApi,
 } from "./api-rpc";
 
 vi.mock("./api-rpc", () => ({
@@ -38,6 +40,7 @@ vi.mock("./api-rpc", () => ({
   getChannels: vi.fn(),
   getConfig: vi.fn(),
   getConfigLoaded: vi.fn(),
+  getEventHistory: vi.fn(),
   getRelease: vi.fn(),
   getReleaseCatalogDiagnostics: vi.fn(),
   getReleases: vi.fn(),
@@ -66,6 +69,33 @@ const timeout = (ms: number) =>
   });
 
 describe("protected bundle-event queries", () => {
+  it("loads unfiltered events only when Insights access is enabled", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    vi.mocked(getEventHistoryApi).mockResolvedValue({
+      data: [],
+      pagination: { total: 0, limit: 50, offset: 0 },
+    });
+    const { rerender } = renderHook(
+      ({ enabled }) => useEventHistoryQuery({ limit: 50, offset: 0 }, enabled),
+      { wrapper, initialProps: { enabled: false } },
+    );
+    await Promise.resolve();
+    expect(getEventHistoryApi).not.toHaveBeenCalled();
+
+    rerender({ enabled: true });
+    await waitFor(() =>
+      expect(getEventHistoryApi).toHaveBeenCalledWith({
+        data: { limit: 50, offset: 0 },
+      }),
+    );
+    queryClient.clear();
+  });
+
   it("does not request a bundle-event summary when explicitly disabled", async () => {
     // Given
     const queryClient = new QueryClient({

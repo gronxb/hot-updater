@@ -24,7 +24,11 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export function InstallationPageHeader() {
+export function InstallationPageHeader({
+  hasQuery,
+}: {
+  readonly hasQuery: boolean;
+}) {
   return (
     <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b bg-background px-3 py-3 sm:min-h-12 sm:flex-nowrap sm:bg-card/70 sm:px-4 sm:backdrop-blur-sm">
       <SidebarTrigger className="-ml-1" />
@@ -37,9 +41,13 @@ export function InstallationPageHeader() {
       </Link>
       <Separator className="mx-1 hidden h-4 sm:block" orientation="vertical" />
       <div className="basis-full pl-9 sm:basis-auto sm:pl-0">
-        <h1 className="text-sm font-medium">Installation history</h1>
+        <h1 className="text-sm font-medium">
+          {hasQuery ? "Installation history" : "Event history"}
+        </h1>
         <p className="text-xs text-muted-foreground">
-          Review the last known bundle and recorded changes.
+          {hasQuery
+            ? "Review the last known bundle and recorded changes."
+            : "All recorded events across installations."}
         </p>
       </div>
     </header>
@@ -115,6 +123,17 @@ export function InstallationSearchPanel({
                   <Search aria-hidden="true" data-icon="inline-start" />
                   Search history
                 </Button>
+                {hasQuery ? (
+                  <Button
+                    className="w-full sm:w-auto"
+                    onClick={onClear}
+                    size="lg"
+                    type="button"
+                    variant="outline"
+                  >
+                    View all events
+                  </Button>
+                ) : null}
               </div>
               <FieldDescription>
                 A user ID may return more than one installation. An install ID

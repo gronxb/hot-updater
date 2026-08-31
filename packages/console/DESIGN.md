@@ -154,6 +154,11 @@ success. Capability-unavailable primitives do not render.
   human-readable platform, channel, and target-version identity.
 - **Configured rollout:** configuration is presented beside the selected
   bundle's latest bundle share, never as reported completion.
+- **All events:** the Insights toolbar provides a direct View all events link.
+  The installation route without a search or selected installation shows every
+  recorded event type, newest first, with no reporting-period or bundle filter.
+  Pagination respects the existing Insights scan limit. Each installation links
+  to its history; clearing the search returns to all events.
 - **Installation history:** the insights toolbar accepts a user ID or install
   ID and routes to the installation history drill-down. A user ID may match
   multiple installations; the drill-down keeps those matches visible while an

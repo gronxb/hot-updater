@@ -7,6 +7,7 @@ import type {
   BundleEventSummary,
   BundleEventSummaryByBundle,
   CreateBundleEventRequest,
+  EventHistoryRow,
   InstallationHistoryRow,
   InstallationSearchRow,
   OffsetPaginationResult,
@@ -41,4 +42,8 @@ export type InsightsProvider = {
     limit: number,
     offset: number,
   ): Promise<OffsetPaginationResult<InstallationHistoryRow>>;
+  getEventHistory(
+    limit: number,
+    offset: number,
+  ): Promise<OffsetPaginationResult<EventHistoryRow>>;
 };

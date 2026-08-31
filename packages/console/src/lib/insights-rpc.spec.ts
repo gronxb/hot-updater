@@ -77,6 +77,7 @@ const createRuntime = () => ({
   getBundleEventOverview: vi.fn(),
   searchInstallations: vi.fn(),
   getInstallationHistory: vi.fn(),
+  getEventHistory: vi.fn(),
 });
 
 describe("getInsightsCapabilities", () => {
