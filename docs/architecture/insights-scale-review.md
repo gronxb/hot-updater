@@ -40,6 +40,38 @@ read budget still need implementation evidence.
 
 ## Implemented subset
 
+### Window-bound event pages and report request identity
+
+Event requests now accept an inclusive `sinceReceivedAtMs` boundary (zero when
+omitted) alongside the exclusive `beforeReceivedAtMs` cutoff. Both bounds are
+encoded in the cursor. Reusing a cursor with a different start time fails before
+storage reads. Generic SQL, Firebase, and each Supabase RPC stream push the lower
+bound into their native predicate; the server rejects out-of-window provider rows
+rather than silently dropping them. This supports the selected period in bundle
+detail without reading its older history. Consumers still await direct migration.
+The unreleased Supabase RPC signature and cursor shape changed directly; no old
+signature or cursor decoder is retained for compatibility.
+
+Finite installation/report/publication types are defined in plugin-core. The
+report query reader canonicalizes bounded bundle batches and constructs a stable
+semantic key, excluding freshness requests. It preserves exact user identity and
+separates query kinds and windows. Unknown fields and oversized batches fail;
+they cannot silently resolve to another report. Providers must combine the key
+with their storage revision, reserve an actual durable job, and implement its
+publication lifecycle. Types and key validation alone do not implement reports.
+
+Focused validation: 37 event-boundary tests passed across six Mock, PostgreSQL,
+Supabase, migration, and server suites. The PostgreSQL test executes real captured
+queries over 50,104 rows and checks that exhausting the window neither sorts nor
+sequentially scans nor post-filters older rows. Three report-key tests cover
+freshness reuse, identity collisions, unsupported filters and oversized batches.
+Firebase native-page integration and real PostgreSQL/PostgREST RPC integration
+passed together (12 tests), including the inclusive lower bound among 50,104
+Firestore events. Four affected package type checks and targeted lint passed.
+The independent plugin-author reviewer found no blocker in the lower-bound
+queries after rerunning the relevant Mock/PGlite/server scenarios. This remains
+a scoped review, not approval of the unfinished required-port implementation.
+
 ### Native event readers and ordered SQL
 
 These are implementation building blocks, not the completed required runtime
@@ -112,6 +144,8 @@ Validation performed after pulling `73e73b0cf` (which already contains `next`):
   globally and 4 for movement; inactive branches executed zero times. The
   [recorded plans](./insights-scale-evidence/supabase-generic-plan.jsonl) include
   the SQL source hash, engine version, fixture size, and executed statements.
+  This artifact records the SQL before the inclusive lower-bound addition; it
+  is historical evidence for its recorded hash, not a plan capture of later SQL.
 
 The independent reviewer approved these implementation slices after checking
 cursor boundaries, exact scope semantics, error classification and backfill
@@ -120,6 +154,83 @@ The review also reproduced a pre-existing PostgreSQL/Supabase raw-text index
 limit: some 1,024-character multibyte identities exceed a B-tree entry's byte
 limit. This is an existing storage prerequisite, not a page-executor regression;
 do not claim uniform long-identity support across all providers yet.
+
+### PostgreSQL committed-source storage
+
+The direct PostgreSQL plugin now writes an event and advances its source counter
+in one SQL statement. Mixed commits acquire the affected shard locks in sorted
+order before applying catalog/event changes. Duplicate inserts and later errors
+roll back both data and counter allocations. A source capture records a persisted
+layout identity and the committed per-shard prefixes; it cannot include an earlier
+allocation still waiting to commit. Late event timestamps do not change this rule.
+
+Explicit `@hot-updater/postgres/db` tooling installs the source schema and fences
+old writers, then backfills fixed primary-key pages of at most 200 raw rows.
+New writers can append during backfill. Existing raw fields are preserved, and
+source assignments, counters and the checkpoint commit atomically. Source reads
+require contiguous sequences and the correct layout identity. Private source
+columns are excluded from public event results.
+
+The plugin-author review found that removing the source index made a two-row
+query scan 50,001 rows and sort. Capture, reads, backfill and migration retries now
+check the index definition and readiness before proceeding, with no scan fallback.
+Concurrent manual DDL remains outside this guarantee.
+
+- Focused PostgreSQL suites: 54 tests passed, including rollback, bigint values,
+  missing source rows, fixed-range backfill, preserved extension fields and index
+  removal/replacement on an existing instance.
+- Actual queries over 50,001 rows: primary-key and source index plans had no sort
+  or sequential scan, with at most two examined rows in the tested leaf nodes.
+- Actual PostgreSQL 15, two fresh-container runs: the mixed adapter commit pauses
+  after allocation, another shard commits, and a same-shard writer waits. Capture
+  excludes the pending events; the next prefix contains their contiguous records.
+- PostgreSQL type checks passed. These tests do not measure production throughput
+  or implement the report engine, leases, publications or shared runner.
+
+[Deployment instructions](./insights-postgres-source.md) require a maintenance
+window for the initial DDL/index scan. This is data-preserving migration with
+bounded backfill, not a claim of zero-downtime schema installation.
+
+### MongoDB native event reader
+
+The internal MongoDB reader uses explicit simple collation, named index hints,
+and disjoint equal-time/older ranges. It returns at most N + 1 candidates globally
+or 2 × (N + 1) across movement streams, with no whole-history `toArray`, offsets,
+or automatic refill. Each page checks index keys, uniqueness, completeness and
+collation. Its public projection excludes internal fields while preserving the
+underlying raw document.
+
+Nineteen unit tests and eight real MongoDB integration tests passed. The latter
+use 50,104 rows and a locale-aware collection default; the native reader still
+uses exact simple-collation scopes. Global, movement and deep-cursor plans use
+IXSCAN without SORT/COLLSCAN, examining at most the requested candidate limit in
+documents and one additional terminating index key per query. Long-Unicode
+scope tests verify exact returned rows and request/getMore budgets separately
+from the short-scope physical plan assertions described below.
+
+This reader is not wired into the public provider yet. A mandatory preparation
+callback must certify canonical UUID IDs, safe integer timestamps, old-data audit
+and writer guards. The existing Mongo schema/version shortcut does not provide
+that certification; bounded preparation and direct API integration are still
+required. Index presence alone cannot make arbitrary BSON string ordering match
+JavaScript ordering.
+
+An isolated MongoDB 7.0.31 diagnostic found that a long Unicode identity round
+tripped correctly through native `find`, but `explain` returned malformed UTF-8 in
+truncated index-bound display strings. The [diagnostic artifact](./insights-scale-evidence/mongodb-long-scope-explain.json)
+records this distinction. Relaxed decoding was used only in the temporary
+diagnostic to identify those fields. Production BSON validation is unchanged;
+this artifact is not a performance benchmark of the production reader.
+
+### Verification of the combined source/readers changes
+
+The combined worktree passed the full build (26 projects), type checks (34
+projects), root lint, and 2,559 unit tests in 287 files. Firebase/Supabase window
+integration passed 12 tests; MongoDB standard integration passed eight; actual
+PostgreSQL concurrency passed in two fresh-container runs. Both ESM and CommonJS
+imports of the built PostgreSQL `/db` entry resolved the shipped migration SQL.
+Changeset validation passed. These checks are not the standalone OTA E2E series,
+which remains pending the completed implementation and runner prerequisites.
 
 ### Firebase write isolation
 

@@ -1,0 +1,104 @@
+{
+  "purpose": "Isolated MongoDB explain BSON encoding diagnosis; not a production-reader benchmark.",
+  "decoding": "Native find used strict BSON validation. Relaxed decoding was used only in a temporary diagnostic to locate malformed explain display fields; production validation is unchanged.",
+  "engine": "7.0.31",
+  "identityBytes": 1415,
+  "nativeRoundTripExact": true,
+  "strictExplain": {
+    "name": "BSONError",
+    "message": "Invalid UTF-8 string in BSON document"
+  },
+  "diagnosticReplacementFields": [
+    {
+      "path": "explain.queryPlanner.winningPlan.inputStage.inputStage.indexBounds.to_bundle_id.0",
+      "value": "[\"Case-sensitive-한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀�...\", \"Case-sensitive-한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀�...\"]"
+    },
+    {
+      "path": "explain.executionStats.executionStages.inputStage.inputStage.indexBounds.to_bundle_id.0",
+      "value": "[\"Case-sensitive-한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀�...\", \"Case-sensitive-한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀�...\"]"
+    }
+  ],
+  "executionStats": {
+    "executionSuccess": true,
+    "nReturned": 1,
+    "executionTimeMillis": 0,
+    "totalKeysExamined": 1,
+    "totalDocsExamined": 1,
+    "executionStages": {
+      "stage": "LIMIT",
+      "nReturned": 1,
+      "executionTimeMillisEstimate": 0,
+      "works": 2,
+      "advanced": 1,
+      "needTime": 0,
+      "needYield": 0,
+      "saveState": 0,
+      "restoreState": 0,
+      "isEOF": 1,
+      "limitAmount": 2,
+      "inputStage": {
+        "stage": "FETCH",
+        "nReturned": 1,
+        "executionTimeMillisEstimate": 0,
+        "works": 2,
+        "advanced": 1,
+        "needTime": 0,
+        "needYield": 0,
+        "saveState": 0,
+        "restoreState": 0,
+        "isEOF": 1,
+        "docsExamined": 1,
+        "alreadyHasObj": 0,
+        "inputStage": {
+          "stage": "IXSCAN",
+          "nReturned": 1,
+          "executionTimeMillisEstimate": 0,
+          "works": 2,
+          "advanced": 1,
+          "needTime": 0,
+          "needYield": 0,
+          "saveState": 0,
+          "restoreState": 0,
+          "isEOF": 1,
+          "keyPattern": {
+            "type": 1,
+            "to_bundle_id": 1,
+            "received_at_ms": 1,
+            "id": 1
+          },
+          "indexName": "event_page",
+          "isMultiKey": false,
+          "multiKeyPaths": {
+            "type": [],
+            "to_bundle_id": [],
+            "received_at_ms": [],
+            "id": []
+          },
+          "isUnique": false,
+          "isSparse": false,
+          "isPartial": false,
+          "indexVersion": 2,
+          "direction": "backward",
+          "indexBounds": {
+            "type": [
+              "[\"UPDATE_APPLIED\", \"UPDATE_APPLIED\"]"
+            ],
+            "to_bundle_id": [
+              "[\"Case-sensitive-한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀�...\", \"Case-sensitive-한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀한😀�...\"]"
+            ],
+            "received_at_ms": [
+              "(70001, 0]"
+            ],
+            "id": [
+              "[MaxKey, MinKey]"
+            ]
+          },
+          "keysExamined": 1,
+          "seeks": 1,
+          "dupsTested": 0,
+          "dupsDropped": 0
+        }
+      }
+    }
+  }
+}
