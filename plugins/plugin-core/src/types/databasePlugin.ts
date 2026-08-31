@@ -71,9 +71,40 @@ export interface InsightsScanInput {
   readonly limit: number;
 }
 
+export type InsightsEventScope =
+  | { readonly kind: "all" }
+  | { readonly kind: "installation"; readonly installId: string }
+  | { readonly kind: "bundle"; readonly bundleId: string };
+
+export interface InsightsEventPageInput {
+  readonly scope: InsightsEventScope;
+  readonly beforeReceivedAtMs: number;
+  /** Final response size, including neither lookahead nor merge candidates. */
+  readonly limit: number;
+  readonly cursor?: string;
+}
+
+export interface InsightsEventPage {
+  readonly rows: readonly BundleEventRow[];
+  /**
+   * null proves exhaustion. A continuation may require more bounded work even
+   * when this page is short or empty. Callers must not automatically drain it.
+   * It resumes after emitted rows, never after unconsumed lookahead candidates.
+   */
+  readonly nextCursor: string | null;
+}
+
+export interface InsightsEventQueries {
+  readonly version: 1;
+  readonly scopes: readonly InsightsEventScope["kind"][];
+  page(input: InsightsEventPageInput): Promise<InsightsEventPage>;
+}
+
 export interface InsightsModel {
   append(row: BundleEventRow): Promise<void>;
   scan(input: InsightsScanInput): Promise<readonly BundleEventRow[]>;
+  /** Present only for physically paginated, explicitly supported read paths. */
+  readonly events?: InsightsEventQueries;
 }
 
 export interface ApiKeyModel {

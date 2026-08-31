@@ -1,7 +1,8 @@
 # Insights beyond 50,000 events
 
-Status: implementation plan, 2026-09-01. Source baseline: `4fd801be`.
-This document does not implement or benchmark the proposed behavior.
+Status: staged implementation in progress, 2026-09-01. Source baseline: `4fd801be`.
+This document defines the full target; it is not a claim that every stage ships.
+See [implementation evidence](./insights-scale-review.md) for the verified subset.
 It is independent of the Console mobile work in PR #1233, which targets `next`.
 
 ## Outcome and boundaries
@@ -196,11 +197,20 @@ schema-readiness wrappers; testing an adapter directly is not enough.
 
 - Default page size 50, maximum 100. Validate the limit and cursor before querying.
 - Return `data`, `nextCursor`, `hasNext`, and the declared consistency/cutoff.
-  Fetch at most `limit + 1` candidates per indexed stream, with a bounded number
-  of streams. Installation/type and bundle/type queries may merge two streams.
+  The provider receives the final page size N, owns lookahead/stream merging,
+  and returns at most N rows. For strict indexed executors, fetch at most N + 1
+  candidates per stream across both timestamp-tie and older-row queries combined.
+  Installation/type and bundle/type queries may merge two streams. Never trim
+  provider results in the server or automatically refill a short/empty page:
+  only a null continuation proves exhaustion; a non-null cursor means more
+  bounded work may remain on providers with response/read caps.
 - Cursor binds version, database scope, query/filter, ordering, cutoff, and last
   emitted `(received_at_ms, id)`; installation result pages use install ID.
-  Authenticate opaque cursors or store them server-side. A cursor grants no access.
+  A live bookmark grants no access: validate it against the request's scope and
+  cutoff, bound its size, and authorize each request independently. Never accept
+  a table, physical partition, or database selected by the cursor. Signing a
+  bookmark is optional; snapshot/job references require ownership checks and
+  authentication or server-side storage because they reference persisted state.
 - For sharded storage retain each stream's last **emitted** position, not a fetched
   `LastEvaluatedKey` that would skip buffered candidates. Use bounded cursor state
   or a server-side cursor record if the partition list cannot fit safely in a URL.

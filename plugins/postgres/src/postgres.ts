@@ -21,6 +21,7 @@ import {
 } from "kysely";
 import pg, { type PoolConfig } from "pg";
 
+import { createPostgresInsightsEventQueries } from "./postgresInsights";
 import { countPostgresRows, findManyPostgresRows } from "./postgresQuery";
 import type { Database } from "./types";
 
@@ -350,19 +351,26 @@ const createPostgresImplementation = (
 
 export const postgres = (config: PostgresConfig) => {
   const { dialect, ...poolConfig } = config;
-  const implementation =
+  const db =
     dialect !== undefined
-      ? createPostgresImplementation(new Kysely<Database>({ dialect }))
+      ? new Kysely<Database>({ dialect })
       : (() => {
           const pool = new Pool(poolConfig);
-          return createPostgresImplementation(
-            new Kysely<Database>({ dialect: new PostgresDialect({ pool }) }),
-          );
+          return new Kysely<Database>({
+            dialect: new PostgresDialect({ pool }),
+          });
         })();
+  const implementation = createPostgresImplementation(db);
   const adapter = createDatabasePluginAdapter("postgres", implementation);
   return createDatabasePlugin({
     name: "postgres",
-    models: adapter.models,
+    models: {
+      ...adapter.models,
+      insights: {
+        ...adapter.models.insights,
+        events: createPostgresInsightsEventQueries(db, implementation),
+      },
+    },
     commit: adapter.commit,
     dispose: adapter.dispose,
   });

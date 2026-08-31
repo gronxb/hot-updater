@@ -177,6 +177,17 @@ export function createHotUpdaterCore(
       await assertSchemaReady();
       return plugin.models.insights.scan(input);
     },
+    ...(plugin.models.insights.events
+      ? {
+          events: {
+            ...plugin.models.insights.events,
+            async page(input) {
+              await assertSchemaReady();
+              return plugin.models.insights.events!.page(input);
+            },
+          },
+        }
+      : {}),
   });
   const apiKeys = createApiKeyManagement({
     apiKeys: plugin.models.apiKeys,

@@ -1,3 +1,28 @@
+import type {
+  InsightsEventPageInput,
+  InsightsEventScope,
+} from "@hot-updater/plugin-core";
+
+export type EventHistoryPageInput = InsightsEventPageInput;
+
+export type EventHistoryPage = {
+  readonly data: readonly EventHistoryRow[];
+  readonly pagination: {
+    readonly limit: number;
+    readonly beforeReceivedAtMs: number;
+    readonly nextCursor: string | null;
+    /** More bounded work may be needed; a subsequent page can be empty. */
+    readonly hasNext: boolean;
+    readonly consistency: "live";
+  };
+};
+
+export type InsightsEventPages = {
+  readonly version: 1;
+  readonly scopes: readonly InsightsEventScope["kind"][];
+  getPage(input: EventHistoryPageInput): Promise<EventHistoryPage>;
+};
+
 export type CreateBundleEventRequestBase = {
   readonly installId: string;
   readonly toBundleId: string;

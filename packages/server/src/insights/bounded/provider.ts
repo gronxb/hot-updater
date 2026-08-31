@@ -2,6 +2,7 @@ import type {
   BundleEventInsightsWindow,
   InstallationHistoryRow,
 } from "../domain";
+import { createInsightsEventPages } from "../eventPages";
 import type {
   InsightsPersistence,
   BundleEventPersistenceRow,
@@ -141,6 +142,9 @@ export const createInsightsProvider = (
   Object.freeze({
     mode: "bounded",
     maxMatchingRows: INSIGHTS_SCAN_MAX_ROWS,
+    ...(persistence.events?.version === 1
+      ? { eventPages: createInsightsEventPages(persistence.events) }
+      : {}),
     async appendBundleEvent(input) {
       await persistence.append(createBundleEventRow(input));
     },

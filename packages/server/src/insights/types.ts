@@ -8,6 +8,7 @@ import type {
   BundleEventSummaryByBundle,
   CreateBundleEventRequest,
   EventHistoryRow,
+  InsightsEventPages,
   InstallationHistoryRow,
   InstallationSearchRow,
   OffsetPaginationResult,
@@ -16,6 +17,8 @@ import type {
 export type InsightsProvider = {
   readonly mode: "bounded";
   readonly maxMatchingRows: number;
+  /** Native event browsing is independent of bounded aggregate support. */
+  readonly eventPages?: InsightsEventPages;
   appendBundleEvent(input: CreateBundleEventRequest): Promise<void>;
   getBundleEventSummary(bundleId: string): Promise<BundleEventSummary>;
   getBundleEventSummaries(
