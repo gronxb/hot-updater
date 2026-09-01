@@ -54,8 +54,12 @@ export const stepPostgresInsightsSearch = async <TDatabase extends object>(
       );
       const matches = new Map<string, string>();
       for (const alias of aliases) {
-        if (!alias.normalizedAlias.includes(current.query.normalizedQuery))
-          continue;
+        const matchesQuery =
+          current.query.kind === "installationContains"
+            ? alias.normalizedAlias.includes(current.query.normalizedQuery)
+            : alias.kind === "user" &&
+              alias.originalAlias === current.query.userId;
+        if (!matchesQuery) continue;
         const prior = matches.get(alias.installKey);
         if (prior !== undefined && prior !== alias.installId) return invalid();
         matches.set(alias.installKey, alias.installId);

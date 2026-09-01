@@ -8,14 +8,20 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { findOpenPort } from "../../../packages/test-utils/src/runtimeProcess";
+import { migratePostgresInsightsSource } from "./db";
 import {
   createPostgresInsightsJobs,
   isPostgresInsightsContainsJob,
   type PostgresInsightsJobUpdate,
   type PostgresInsightsSearchResult,
 } from "./postgresInsightsJobs";
+import { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
 
 const jobs = "private_hot_updater_insights_report_jobs";
+const postgresImage =
+  process.env.POSTGRES_INSIGHTS_TEST_VERSION_17 === "1"
+    ? "postgres:17-alpine"
+    : "postgres:15-alpine";
 const docker = (args: string[]) => {
   const result = spawnSync("docker", args, { encoding: "utf8" });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout);
@@ -41,8 +47,9 @@ describe("PostgreSQL search reservation and base publication concurrency", () =>
   let pool: pg.Pool;
   let db: Kysely<object>;
   let store: ReturnType<typeof createPostgresInsightsJobs>;
+  let generation: string;
   beforeAll(async () => {
-    docker(["image", "inspect", "postgres:15-alpine"]);
+    docker(["image", "inspect", postgresImage]);
     const port = await findOpenPort();
     docker([
       "run",
@@ -57,7 +64,7 @@ describe("PostgreSQL search reservation and base publication concurrency", () =>
       `127.0.0.1:${port}:5432`,
       "-e",
       "POSTGRES_HOST_AUTH_METHOD=trust",
-      "postgres:15-alpine",
+      postgresImage,
     ]);
     await waitUntil(
       () =>
@@ -81,6 +88,13 @@ describe("PostgreSQL search reservation and base publication concurrency", () =>
     });
     db = new Kysely<object>({ dialect: new PostgresDialect({ pool }) });
     await pool.query(
+      await readFile("plugins/postgres/sql/bundles.sql", "utf8"),
+    );
+    await migratePostgresInsightsSource(db);
+    const source = createPostgresInsightsSourceTools(db);
+    await source.backfillStep(1);
+    generation = await source.capture();
+    await pool.query(
       await readFile("plugins/postgres/sql/insights-reports-v1.sql", "utf8"),
     );
     store = createPostgresInsightsJobs(db);
@@ -93,7 +107,11 @@ describe("PostgreSQL search reservation and base publication concurrency", () =>
   it("coalesces concurrent searches and commits a new FK pin while that base holds its publication lease", async () => {
     const reservations = await Promise.all(
       Array.from({ length: 20 }, (_, i) =>
-        store.getSearch({ query: i % 2 ? "FORMER" : "former", minAsOfMs: i }),
+        store.getSearch({
+          kind: "contains",
+          query: i % 2 ? "FORMER" : "former",
+          minAsOfMs: i,
+        }),
       ),
     );
     const ids = new Set(reservations.map(queuedId));
@@ -118,15 +136,9 @@ describe("PostgreSQL search reservation and base publication concurrency", () =>
       const lease = await acquire(baseId);
       await store.withLease(lease.token, async () => next);
     };
-    const generation = JSON.stringify([
-      1,
-      "00000000-0000-0000-0000-000000000001",
-      Array(16).fill("0"),
-    ]);
-    for (let shard = 0; shard < 16; shard++)
+    for (let shard = 1; shard < 16; shard++)
       await update({
         kind: "progress",
-        sourceGeneration: generation,
         checkpoint: { phase: "source", shard, afterSequence: "0" },
       });
     await update({
@@ -170,14 +182,16 @@ describe("PostgreSQL search reservation and base publication concurrency", () =>
     await entered;
     let pinned: PostgresInsightsSearchResult | undefined;
     let pinError: unknown;
-    const pinning = store.getSearch({ query: "while publishing" }).then(
-      (result) => {
-        pinned = result;
-      },
-      (error: unknown) => {
-        pinError = error;
-      },
-    );
+    const pinning = store
+      .getSearch({ kind: "contains", query: "while publishing" })
+      .then(
+        (result) => {
+          pinned = result;
+        },
+        (error: unknown) => {
+          pinError = error;
+        },
+      );
     try {
       await waitUntil(
         async () =>
@@ -204,7 +218,7 @@ describe("PostgreSQL search reservation and base publication concurrency", () =>
           )
         ).rows,
       ).toEqual([
-        { base_job_id: baseId, as_of_ms: null, source_generation: null },
+        { base_job_id: baseId, as_of_ms: null, source_generation: generation },
       ]);
     } finally {
       releaseWork();

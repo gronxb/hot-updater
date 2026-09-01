@@ -86,13 +86,9 @@ describe("frozen installation point lookups", () => {
         event,
       })),
     );
-    expect(statements).toHaveLength(2);
-    expect(returned).toBe(201);
-    expect(
-      statements.some((statement) =>
-        /bundle_events|order by|offset/i.test(statement),
-      ),
-    ).toBe(false);
+    expect(statements).toHaveLength(3);
+    expect(returned).toBe(202);
+    expect(statements.at(-1)).not.toMatch(/bundle_events|order by|offset/i);
     expect(
       await readPostgresInsightsLatestByKey(db, first, [
         installKey(rows[0]!.install_id),
@@ -147,6 +143,6 @@ describe("frozen installation point lookups", () => {
       ]),
     ).rejects.toMatchObject({ code: "INSIGHTS_QUERY_NOT_READY" });
     expect(statements).toHaveLength(1);
-    expect(statements[0]).toContain("pg_index");
+    expect(statements[0]).toContain("pg_constraint");
   });
 });

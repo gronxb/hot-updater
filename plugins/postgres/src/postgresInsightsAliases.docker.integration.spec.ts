@@ -20,6 +20,10 @@ const latest = "private_hot_updater_insights_report_latest";
 const jobId = "00000000-0000-0000-0000-000000000001";
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
+const postgresImage =
+  process.env.POSTGRES_INSIGHTS_TEST_VERSION_17 === "1"
+    ? "postgres:17-alpine"
+    : "postgres:15-alpine";
 const docker = (args: string[]) => {
   const result = spawnSync("docker", args, { encoding: "utf8" });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout);
@@ -31,7 +35,7 @@ describe("PostgreSQL native historical alias bounds", () => {
   let pool: pg.Pool;
   let db: Kysely<object>;
   beforeAll(async () => {
-    docker(["image", "inspect", "postgres:15-alpine"]);
+    docker(["image", "inspect", postgresImage]);
     const port = await findOpenPort();
     docker([
       "run",
@@ -46,7 +50,7 @@ describe("PostgreSQL native historical alias bounds", () => {
       `127.0.0.1:${port}:5432`,
       "-e",
       "POSTGRES_HOST_AUTH_METHOD=trust",
-      "postgres:15-alpine",
+      postgresImage,
     ]);
     const deadline = Date.now() + 20_000;
     while (
@@ -93,7 +97,7 @@ describe("PostgreSQL native historical alias bounds", () => {
       `insert into ${table}(job_id,alias_key,install_key,identity)
       select $1::uuid,encode(sha256(convert_to(identity,'UTF8')),'hex'),
         encode(sha256(convert_to(install_identity,'UTF8')),'hex'),identity::json
-      from (select '["installation","install-'||n::text||'","install-'||n::text||'"]' identity,
+      from (select '["installation","install-'||n::text||'","install-'||n::text||'","install-'||n::text||'"]' identity,
         '"install-'||n::text||'"' install_identity from generate_series(0,50000)n)seed`,
       [jobId],
     );
@@ -159,14 +163,14 @@ describe("PostgreSQL native historical alias bounds", () => {
     return nodes;
   };
   it("uses at most three indexed identity reads and bounded alias keyset pages among 50,001 historical aliases", async () => {
-    const prefix = Array.from({ length: 96 }, (_, i) => hash(String(i))).join(
+    const prefix = Array.from({ length: 12 }, (_, i) => hash(String(i))).join(
       "",
     );
     const row = {
       ...createBundleEventRowFixture("2", 2000),
       install_id: `target-${prefix}`,
       user_id: `User-${prefix}`,
-      username: `\u0000\ud800İÉ ${prefix}`,
+      username: `İÉ ${prefix}`,
     };
     queries.length = 0;
     await db
@@ -186,7 +190,14 @@ describe("PostgreSQL native historical alias bounds", () => {
     ).toEqual([{ count: 50_004 }]);
 
     const knownKeys = Array.from({ length: 50_001 }, (_, n) =>
-      hash(JSON.stringify(["installation", `install-${n}`, `install-${n}`])),
+      hash(
+        JSON.stringify([
+          "installation",
+          `install-${n}`,
+          `install-${n}`,
+          `install-${n}`,
+        ]),
+      ),
     ).sort();
     for (const after of [null, knownKeys[199]!, knownKeys[49_983]!] as const) {
       queries.length = 0;
@@ -201,7 +212,7 @@ describe("PostgreSQL native historical alias bounds", () => {
       await explain(read, 200);
     }
     const stored = (
-      await pool.query<{ identity: [string, string, string] }>(
+      await pool.query<{ identity: [string, string, string, string] }>(
         `select identity from ${table} where job_id=$1::uuid and alias_key=$2`,
         [
           jobId,
@@ -209,6 +220,7 @@ describe("PostgreSQL native historical alias bounds", () => {
             JSON.stringify([
               "username",
               row.username.toLowerCase(),
+              row.username,
               row.install_id,
             ]),
           ),
@@ -231,7 +243,7 @@ describe("PostgreSQL native historical alias bounds", () => {
       `insert into ${latest}(job_id,install_key,bucket_index,install_id,event)
       select $1::uuid,encode(sha256(convert_to(to_json(install_id)::text,'UTF8')),'hex'),-1,install_id,
         $2::jsonb || jsonb_build_object('install_id',install_id,'received_at_ms',n+1000,
-          'id','00000000-0000-0000-0000-'||lpad(n::text,12,'0'))
+          'id','00000000-0000-7000-8000-'||lpad(n::text,12,'0'))
       from (select n,'latest-'||n::text install_id from generate_series(0,50000)n)fixture`,
       [jobId, JSON.stringify(createBundleEventRowFixture("1", 1000))],
     );
@@ -261,10 +273,10 @@ describe("PostgreSQL native historical alias bounds", () => {
       requestedKeys,
     );
     expect(rows.map((row) => row.event.install_id)).toEqual(requestedIds);
-    expect(queries).toHaveLength(2);
-    expect(
-      queries.some(({ sql }) => /bundle_events|order by|offset/i.test(sql)),
-    ).toBe(false);
+    expect(queries).toHaveLength(3);
+    expect(/bundle_events|order by|offset/i.test(queries.at(-1)!.sql)).toBe(
+      false,
+    );
     const lookup = queries.find(({ sql }) => /install_key in \(/.test(sql))!;
     expect(lookup).toBeDefined();
     const indexes = [

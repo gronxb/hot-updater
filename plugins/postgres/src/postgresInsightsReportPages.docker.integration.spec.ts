@@ -42,6 +42,10 @@ const day = 86_400_000;
 const asOfMs = Date.UTC(2026, 0, 11, 12);
 const bundleA = createBundleEventRowFixture("1", 1).to_bundle_id;
 const bundleB = createBundleEventRowFixture("2", 1).to_bundle_id;
+const postgresImage =
+  process.env.POSTGRES_INSIGHTS_TEST_VERSION_17 === "1"
+    ? "postgres:17-alpine"
+    : "postgres:15-alpine";
 const docker = (args: string[]) => {
   const result = spawnSync("docker", args, { encoding: "utf8" });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout);
@@ -57,10 +61,11 @@ describe("PostgreSQL report page snapshot and physical read bounds", () => {
   let pageQueries: string[] = [];
   let queries: { sql: string; parameters: readonly unknown[] }[] = [];
   const jobs = () => createPostgresInsightsJobs(db);
-  const pages = () => createPostgresInsightsReportPages(pageDb);
+  const pages = () =>
+    createPostgresInsightsReportPages(pageDb, "postgres-test");
 
   beforeAll(async () => {
-    docker(["image", "inspect", "postgres:15-alpine"]);
+    docker(["image", "inspect", postgresImage]);
     const port = await findOpenPort();
     docker([
       "run",
@@ -75,7 +80,7 @@ describe("PostgreSQL report page snapshot and physical read bounds", () => {
       `127.0.0.1:${port}:5432`,
       "-e",
       "POSTGRES_HOST_AUTH_METHOD=trust",
-      "postgres:15-alpine",
+      postgresImage,
     ]);
     const deadline = Date.now() + 20_000;
     while (
@@ -399,16 +404,27 @@ describe("PostgreSQL report page snapshot and physical read bounds", () => {
       const query = { kind: "installationOverview" } as const;
       const publicationId = await reserve(query);
       await finish(query);
+      const sourceGeneration = (
+        await pool.query<{ source_generation: string }>(
+          `select source_generation from ${jobsTable} where id=$1::uuid`,
+          [publicationId],
+        )
+      ).rows[0]!.source_generation;
       await pool.query(`create temporary table metadata_noise as
       select ('10000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid id,
         encode(sha256(convert_to('[1,'||to_json('[1,"activeOverview","7d","'||n::text||'"]')::text||']','UTF8')),'hex') query_key,
         json_build_object('kind','activeOverview','window','7d','userId',n::text) canonical_query
       from generate_series(0,50000)n;
-      insert into ${headsTable}(query_key,canonical_query) select query_key,canonical_query from metadata_noise;
-      insert into ${jobsTable}(id,query_key,as_of_ms,status,checkpoint)
-        select id,query_key,0,'failed','{"phase":"source","shard":0,"afterSequence":"0"}'::jsonb from metadata_noise;
-      update ${headsTable} h set active_job_id=n.id from metadata_noise n where n.query_key=h.query_key;
-      analyze ${headsTable}; analyze ${jobsTable}; drop table metadata_noise;`);
+      insert into ${headsTable}(query_key,canonical_query) select query_key,canonical_query from metadata_noise;`);
+      await pool.query(
+        `insert into ${jobsTable}(id,query_key,as_of_ms,status,source_generation,checkpoint)
+        select id,query_key,0,'failed',$1,
+          '{"phase":"source","shard":0,"afterSequence":"0"}'::jsonb from metadata_noise`,
+        [sourceGeneration],
+      );
+      await pool.query(
+        `analyze ${headsTable}; analyze ${jobsTable}; drop table metadata_noise`,
+      );
       const input = {
         publicationId,
         section: "bundleDistribution",

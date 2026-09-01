@@ -44,21 +44,34 @@ export const savePostgresInsightsSearchMatches = async <TDatabase>(
       row.event.install_id,
       -1,
     ]);
-    const key = hash(identity);
+    const key = row.installKey;
     const prior = expected.get(key);
     if (prior !== undefined && prior.identity !== identity) invalid();
     expected.set(key, { identity, installId: row.event.install_id });
   }
   if (expected.size === 0) return;
-  await sql`insert into private_hot_updater_insights_report_counts
-    (job_id, count_key, identity, section, metric, label, bucket_start_ms, value)
-    values ${sql.join(
-      [...expected].map(
-        ([key, { identity, installId }]) =>
-          sql`(${jobId}::uuid, ${key}, ${identity}::jsonb, 'installationIds', '', ${installId}, -1, 1)`,
-      ),
-    )}
-    on conflict (job_id, count_key) do nothing`.execute(db);
+  await sql`with input(count_key,identity,install_id) as (values ${sql.join(
+    [...expected].map(
+      ([key, { identity, installId }]) =>
+        sql`(${key}::text,${identity}::jsonb,${installId}::text)`,
+    ),
+  )}), manifest as (
+    insert into private_hot_updater_insights_report_count_manifest
+      (job_id,count_key,identity,section,metric,label,bucket_start_ms)
+      select ${jobId}::uuid,count_key,identity,'installationIds','',install_id,-1
+        from input
+    on conflict (job_id,count_key) do update set count_key=excluded.count_key
+      where private_hot_updater_insights_report_count_manifest.identity=excluded.identity
+        and private_hot_updater_insights_report_count_manifest.section=excluded.section
+        and private_hot_updater_insights_report_count_manifest.metric=excluded.metric
+        and private_hot_updater_insights_report_count_manifest.label=excluded.label
+        and private_hot_updater_insights_report_count_manifest.bucket_start_ms=excluded.bucket_start_ms
+    returning count_key
+  ) insert into private_hot_updater_insights_report_counts
+    (job_id,count_key,identity,section,metric,label,bucket_start_ms,value)
+    select ${jobId}::uuid,input.count_key,input.identity,'installationIds','',
+      input.install_id,-1,1 from input join manifest using(count_key)
+    on conflict (job_id,count_key) do nothing`.execute(db);
   const saved = await sql<{
     count_key: string;
     identity: unknown;

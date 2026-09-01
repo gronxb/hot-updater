@@ -40,11 +40,11 @@ describe("PostgreSQL native Insights pages", () => {
     );
     await client.exec(`
       insert into bundle_events (id,type,install_id,from_bundle_id,to_bundle_id,platform,app_version,channel,cohort,update_strategy,received_at_ms)
-      select ('10000000-0000-0000-0000-' || lpad(n::text,12,'0'))::uuid,
+      select ('10000000-0000-7000-8000-' || lpad(n::text,12,'0'))::uuid,
         'UNCHANGED', 'unrelated-install', null, '${otherBundleId}', 'ios','1.0.0','production','default',null,n
       from generate_series(0,50000) n;
       insert into bundle_events (id,type,install_id,from_bundle_id,to_bundle_id,platform,app_version,channel,cohort,update_strategy,received_at_ms)
-      select ('20000000-0000-0000-0000-' || lpad(n::text,12,'0'))::uuid,
+      select ('20000000-0000-7000-8000-' || lpad(n::text,12,'0'))::uuid,
         case when n % 2 = 0 then 'UPDATE_APPLIED' else 'RECOVERED' end,
         'install-a',
         case when n % 2 = 0 then '${otherBundleId}' else '${bundleId}' end::uuid,
@@ -55,12 +55,12 @@ describe("PostgreSQL native Insights pages", () => {
     `);
     for (const [index, installId] of [
       "",
-      '\\"😀'.repeat(4000),
+      '\\"😀'.repeat(200),
       "\uFFFD",
     ].entries()) {
       await client.query(
         `insert into bundle_events (id,type,install_id,from_bundle_id,to_bundle_id,platform,app_version,channel,cohort,update_strategy,received_at_ms)
-        select ('30000000-0000-0000-0000-' || lpad(($1::int * 10+n)::text,12,'0'))::uuid,
+        select ('30000000-0000-7000-8000-' || lpad(($1::int * 10+n)::text,12,'0'))::uuid,
           case when n = 1 then 'UPDATE_APPLIED' else 'RECOVERED' end,
           $2, $3::uuid, $3::uuid, 'ios','1.0.0','production','default','appVersion',70000
         from generate_series(1,2)n`,
@@ -99,10 +99,10 @@ describe("PostgreSQL native Insights pages", () => {
         cursor: page.pagination.nextCursor!,
       });
       expect(next.data.map((row) => row.id)).toEqual([
-        "20000000-0000-0000-0000-000000000002",
-        "20000000-0000-0000-0000-000000000001",
-        "20000000-0000-0000-0000-000000000000",
-        "10000000-0000-0000-0000-000000050000",
+        "20000000-0000-7000-8000-000000000002",
+        "20000000-0000-7000-8000-000000000001",
+        "20000000-0000-7000-8000-000000000000",
+        "10000000-0000-7000-8000-000000050000",
       ]);
       expect(scan).not.toHaveBeenCalled();
       const reads = query.mock.calls.filter(([statement]) =>
@@ -154,8 +154,8 @@ describe("PostgreSQL native Insights pages", () => {
         limit: 1,
         cursor: first.pagination.nextCursor!,
       });
-      expect(first.data[0]?.id).toBe("20000000-0000-0000-0000-000000000102");
-      expect(next.data[0]?.id).toBe("20000000-0000-0000-0000-000000000101");
+      expect(first.data[0]?.id).toBe("20000000-0000-7000-8000-000000000102");
+      expect(next.data[0]?.id).toBe("20000000-0000-7000-8000-000000000101");
       const reads = query.mock.calls.filter(([statement]) =>
         statement.includes('from "bundle_events"'),
       );
@@ -310,7 +310,7 @@ describe("PostgreSQL native Insights pages", () => {
       Array.from(
         { length: 103 },
         (_, n) =>
-          `20000000-0000-0000-0000-${String(102 - n).padStart(12, "0")}`,
+          `20000000-0000-7000-8000-${String(102 - n).padStart(12, "0")}`,
       ),
     );
     const empty = await server.insights.eventPages!.getPage({
@@ -320,7 +320,7 @@ describe("PostgreSQL native Insights pages", () => {
     expect(empty.data).toEqual([]);
   });
 
-  it.each(["", '\\"😀'.repeat(4000)])(
+  it.each(["", '\\"😀'.repeat(200)])(
     "keeps empty and long installation IDs exact through server continuation",
     async (installId) => {
       const input = {
@@ -341,18 +341,17 @@ describe("PostgreSQL native Insights pages", () => {
     },
   );
 
-  it("returns no match for unrepresentable PostgreSQL text without driver replacement or event reads", async () => {
+  it("rejects unrepresentable PostgreSQL text before event reads", async () => {
     const query = vi.spyOn(client, "query");
     try {
       for (const installId of ["\0", "\uD800", "\uDC00"])
-        expect(
-          await plugin.models.insights.events!.page({
+        await expect(
+          plugin.models.insights.events!.page({
             scope: { kind: "installation", installId },
             beforeReceivedAtMs: 70001,
             limit: 1,
           }),
-        ).toEqual({ rows: [], nextCursor: null });
-      expect(query.mock.calls).toHaveLength(3);
+        ).rejects.toMatchObject({ code: "invalid-query" });
       expect(
         query.mock.calls.some(([statement]) =>
           statement.includes('from "bundle_events"'),

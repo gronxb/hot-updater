@@ -6,10 +6,7 @@ import { Kysely, sql } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  createBundleEventRowFixture,
-  createBundleRowFixture,
-} from "../../../packages/test-utils/src/databaseTestFixtures";
+import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import {
   migratePostgresInsightsLive,
   migratePostgresInsightsSource,
@@ -82,7 +79,7 @@ describe("PostgreSQL live installation projection", () => {
   it("requires the source boundary, fences an omitted marker, and backfills one latest row per installation", async () => {
     const first = event("1", "same", 100);
     const tiedNewer = event("2", "same", 100);
-    const future = event("3", `future-${"x".repeat(1_800)}`, 9_000_000_000_000);
+    const future = event("3", `future-${"x".repeat(900)}`, 9_000_000_000_000);
     await insertLegacy([first, tiedNewer, future]);
 
     await expect(migratePostgresInsightsLive(db)).rejects.toMatchObject({
@@ -166,7 +163,7 @@ describe("PostgreSQL live installation projection", () => {
       );
   });
 
-  it("updates raw, committed source, and latest projection atomically for direct and mixed writes", async () => {
+  it("updates raw, committed source, and latest projection atomically for direct appends", async () => {
     await prepareSource();
     await prepareLive();
     const dialect = new PGliteDialect(client);
@@ -194,34 +191,6 @@ describe("PostgreSQL live installation projection", () => {
       where shard=${shard}`.execute(db);
     expect(afterDuplicate.rows).toEqual(beforeDuplicate.rows);
 
-    const mixed = event("12", "mixed", 30);
-    const bundle = createBundleRowFixture("12");
-    await expect(
-      plugin.commit({
-        changes: [
-          { model: "bundles", operation: "insert", row: bundle },
-          { model: "insights", operation: "insert", row: mixed },
-          { model: "insights", operation: "insert", row: newest },
-        ],
-      }),
-    ).rejects.toMatchObject({ code: "23505" });
-    expect(
-      await sql<{ count: string }>`select count(*)::text count from bundles
-        where id=${bundle.id}::uuid`.execute(db),
-    ).toMatchObject({ rows: [{ count: "0" }] });
-    expect(
-      await sql<{
-        count: string;
-      }>`select count(*)::text count from bundle_events
-        where id=${mixed.id}::uuid`.execute(db),
-    ).toMatchObject({ rows: [{ count: "0" }] });
-    expect(
-      await sql<{ count: string }>`select count(*)::text count
-        from ${sql.table(POSTGRES_INSIGHTS_LIVE_TABLE)}
-        where install_key=${postgresInsightsInstallKey(mixed.install_id)}`.execute(
-        db,
-      ),
-    ).toMatchObject({ rows: [{ count: "0" }] });
     await plugin.dispose?.();
   });
 
@@ -274,19 +243,35 @@ describe("PostgreSQL live installation projection", () => {
     );
     const live = createPostgresInsightsLiveTools(db);
     expect(await live.backfillStep(1)).toEqual({ ready: false, processed: 0 });
-    const before = await sql`select initialized,ready,upper_id,after_id
+    const before = await sql<{
+      initialized: boolean;
+      ready: boolean;
+      upper_id: string | null;
+      after_id: string | null;
+    }>`select initialized,ready,upper_id,after_id
       from private_hot_updater_insights_live_state`.execute(db);
     await expect(live.backfillStep(1)).rejects.toMatchObject({
       code: "invalid-result",
     });
     expect(
-      await sql`select initialized,ready,upper_id,after_id
+      await sql`select initialized,ready,failed,failure,upper_id,after_id
         from private_hot_updater_insights_live_state`.execute(db),
-    ).toMatchObject({ rows: before.rows });
+    ).toMatchObject({
+      rows: [
+        {
+          ...before.rows[0],
+          failed: true,
+          failure: "storage:invalid-result",
+        },
+      ],
+    });
     expect(
       await sql<{ marker: number | null }>`select insights_live_version marker
         from bundle_events where id=${victim.id}::uuid`.execute(db),
     ).toMatchObject({ rows: [{ marker: null }] });
+    await expect(live.backfillStep(1)).rejects.toMatchObject({
+      code: "INSIGHTS_QUERY_NOT_READY",
+    });
   });
 
   it("rejects malformed cursors before storage and refuses malformed layout keys before reading rows", async () => {

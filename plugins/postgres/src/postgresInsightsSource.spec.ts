@@ -5,10 +5,7 @@ import { Kysely, sql } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  createBundleEventRowFixture,
-  createBundleRowFixture,
-} from "../../../packages/test-utils/src/databaseTestFixtures";
+import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import {
   migratePostgresInsightsLive,
   migratePostgresInsightsSource,
@@ -16,6 +13,7 @@ import {
 import { postgres } from "./postgres";
 import { createPostgresInsightsLiveTools } from "./postgresInsightsLive";
 import {
+  appendPostgresInsightsEvent,
   createPostgresInsightsSourceTools,
   postgresEventSourceShard,
 } from "./postgresInsightsSource";
@@ -140,52 +138,114 @@ describe("PostgreSQL committed Insights source", () => {
     ).toEqual([row]);
   });
 
-  it("rolls back all event allocations and catalog changes after a late mixed-commit failure", async () => {
-    await ready();
-    const duplicate = event(1);
-    await plugin.models.insights.append(duplicate);
-    const before = await clocks();
-    const bundle = createBundleRowFixture("77");
-    const rows = [event(2), event(3)];
+  it("rejects a noncanonical or oversized append before database I/O", async () => {
+    const queries = vi.spyOn(client, "query");
     await expect(
-      plugin.commit({
-        changes: [
-          { model: "bundles", operation: "insert", row: bundle },
-          ...rows.map((row) => ({
-            model: "insights" as const,
-            operation: "insert" as const,
-            row,
-          })),
-          { model: "insights", operation: "insert", row: duplicate },
-        ],
+      appendPostgresInsightsEvent(db, {
+        ...event(1),
+        install_id: "x".repeat(1025),
       }),
-    ).rejects.toMatchObject({ code: "23505" });
-    expect(await clocks()).toEqual(before);
-    expect(await plugin.models.bundles.findById(bundle.id)).toBeNull();
+    ).rejects.toMatchObject({ reason: "string-too-long" });
+    await expect(
+      appendPostgresInsightsEvent(db, {
+        ...event(2),
+        id: "00000000-0000-4000-8000-000000000002",
+      }),
+    ).rejects.toMatchObject({ reason: "invalid-event-id" });
+    const escaped = "\u0001".repeat(1024);
+    await expect(
+      appendPostgresInsightsEvent(db, {
+        ...event(3),
+        install_id: escaped,
+        app_version: escaped,
+        channel: escaped,
+        cohort: escaped,
+      }),
+    ).rejects.toMatchObject({ reason: "event-too-large" });
+    expect(queries).not.toHaveBeenCalled();
+  });
+
+  it("marks legacy poison terminal without mutating the row, checkpoint, or clocks", async () => {
+    const poison = {
+      ...event(1),
+      id: "00000000-0000-4000-8000-000000000001",
+    };
+    await db.insertInto("bundle_events").values(poison).execute();
+    await migratePostgresInsightsSource(db);
+    expect(await source.backfillStep(2)).toEqual({
+      ready: false,
+      processed: 0,
+    });
+    const checkpoint = await state();
+    const beforeClocks = await clocks();
+    await expect(source.backfillStep(2)).rejects.toMatchObject({
+      reason: "invalid-event-id",
+    });
+    expect(await state()).toMatchObject({
+      ...checkpoint,
+      ready: false,
+      failed: true,
+      failure: "contract:invalid-event-id",
+    });
+    expect(await clocks()).toEqual(beforeClocks);
     expect(
-      await plugin.models.insights.scan({ beforeReceivedAtMs: 100, limit: 10 }),
-    ).toEqual([duplicate]);
-    await expect(
-      plugin.commit({
-        changes: rows.map((row) => ({
-          model: "insights",
-          operation: "insert",
-          row,
-        })),
-      }),
-    ).resolves.toEqual({ committed: true });
-    const prefix = await source.capture();
-    await plugin.models.insights.append(event(4, 0));
-    const captured = (
-      await Promise.all(
-        Array.from({ length: 16 }, (_, shard) =>
-          source.readPage({ sourceGeneration: prefix, shard, limit: 10 }),
-        ),
-      )
-    ).flat();
-    expect(captured.map(({ event }) => event.id).sort()).toEqual(
-      [duplicate, ...rows].map((row) => row.id).sort(),
-    );
+      await client.query(
+        "select insights_source_shard,insights_source_seq from bundle_events",
+      ),
+    ).toMatchObject({
+      rows: [{ insights_source_shard: null, insights_source_seq: null }],
+    });
+    await expect(source.backfillStep(2)).rejects.toMatchObject({
+      code: "INSIGHTS_QUERY_NOT_READY",
+    });
+  });
+
+  it("length-checks oversized legacy poison before fetching full event text", async () => {
+    const installId = "x".repeat(100_000);
+    const poison = { ...event(1), install_id: installId };
+    await db.insertInto("bundle_events").values(poison).execute();
+    await migratePostgresInsightsSource(db);
+    expect(await source.backfillStep(1)).toEqual({
+      ready: false,
+      processed: 0,
+    });
+    const checkpoint = await state();
+    const queries = vi.spyOn(client, "query");
+    await expect(source.backfillStep(1)).rejects.toMatchObject({
+      reason: "event-too-large",
+    });
+    expect(
+      queries.mock.calls.some(([query]) => query.includes("variable_bytes")),
+    ).toBe(true);
+    expect(
+      queries.mock.calls.some(([query]) =>
+        query.includes("insights_source_seq::text from bundle_events"),
+      ),
+    ).toBe(false);
+    expect(await state()).toMatchObject({
+      ...checkpoint,
+      ready: false,
+      failed: true,
+      failure: "contract:event-too-large",
+    });
+    expect(
+      await sql<{
+        install_bytes: number;
+        source_shard: number | null;
+        source_sequence: string | null;
+      }>`select octet_length(install_id) install_bytes,
+        insights_source_shard source_shard,
+        insights_source_seq::text source_sequence from bundle_events
+        where id=${poison.id}::uuid`.execute(db),
+    ).toMatchObject({
+      rows: [
+        {
+          install_bytes: 100_000,
+          source_shard: null,
+          source_sequence: null,
+        },
+      ],
+    });
   });
 
   it("rejects missing source rows and a generation from a recreated layout", async () => {
@@ -246,6 +306,61 @@ describe("PostgreSQL committed Insights source", () => {
       "drop index bundle_events_source_idx; create unique index bundle_events_source_idx on bundle_events(insights_source_shard,insights_source_seq) where insights_source_shard is not null",
     );
     expect(await read()).toEqual([{ sequence: "1", event: row }]);
+  });
+
+  it("rejects malformed source catalogs and keeps the new-writer fence exact", async () => {
+    await migratePostgresInsightsSource(db);
+    await source.backfillStep(2);
+    const generation = await source.capture();
+    const read = () =>
+      source.readPage({ sourceGeneration: generation, shard: 0, limit: 2 });
+    const queries = vi.spyOn(client, "query");
+
+    await client.exec(
+      "alter table bundle_events drop constraint bundle_events_source_required; alter table bundle_events add constraint bundle_events_source_required check (insights_source_shard is not null) not valid",
+    );
+    queries.mockClear();
+    await expect(migratePostgresInsightsSource(db)).rejects.toMatchObject({
+      code: "INSIGHTS_QUERY_NOT_READY",
+    });
+    await expect(read()).rejects.toMatchObject({
+      code: "INSIGHTS_QUERY_NOT_READY",
+    });
+    expect(
+      queries.mock.calls.some(([query]) =>
+        /from bundle_events where/.test(query),
+      ),
+    ).toBe(false);
+
+    await client.exec(
+      "alter table bundle_events drop constraint bundle_events_source_required; alter table bundle_events add constraint bundle_events_source_required check (insights_source_shard is not null and insights_source_shard between 0 and 15 and insights_source_seq is not null and insights_source_seq > 0 and insights_event is not null) not valid",
+    );
+    await expect(
+      db.insertInto("bundle_events").values(event(2)).execute(),
+    ).rejects.toMatchObject({ code: "23514" });
+
+    await client.exec(
+      "delete from private_hot_updater_insights_source_clocks where shard=15",
+    );
+    queries.mockClear();
+    await expect(read()).rejects.toMatchObject({
+      code: "INSIGHTS_QUERY_NOT_READY",
+    });
+    expect(
+      queries.mock.calls.some(([query]) =>
+        /from bundle_events where/.test(query),
+      ),
+    ).toBe(false);
+    await client.exec(
+      "insert into private_hot_updater_insights_source_clocks values (15,0); alter table bundle_events alter column insights_event set not null",
+    );
+    await expect(source.capture()).rejects.toMatchObject({
+      code: "INSIGHTS_QUERY_NOT_READY",
+    });
+    await client.exec(
+      "alter table bundle_events alter column insights_event drop not null",
+    );
+    expect(await read()).toEqual([]);
   });
 
   it("backfills bounded PK pages atomically, fences old writers and preserves extensions before the live writer cutover", async () => {
@@ -312,12 +427,19 @@ describe("PostgreSQL committed Insights source", () => {
   it("limits actual PK and source index reads among more than 50,000 already indexed events", async () => {
     await migratePostgresInsightsSource(db);
     await client.exec(`with identities as (
-      select ('10000000-0000-0000-0000-' || lpad(n::text,12,'0'))::uuid id,n from generate_series(0,50000)n
+      select ('10000000-0000-7000-8000-' || lpad(n::text,12,'0'))::uuid id,n from generate_series(0,50000)n
     ), sharded as (
       select *,get_byte(sha256(convert_to(id::text,'UTF8')),0)%16 shard from identities
     ), inserted as (
-      insert into bundle_events (id,type,install_id,from_bundle_id,to_bundle_id,platform,app_version,channel,cohort,update_strategy,received_at_ms,insights_source_shard,insights_source_seq)
-      select id,'UNCHANGED','installation',null,'00000000-0000-0000-0000-000000000001','ios','1.0','production','default',null,n,shard,row_number() over(partition by shard order by id) from sharded returning insights_source_shard
+      insert into bundle_events (id,type,install_id,from_bundle_id,to_bundle_id,platform,app_version,channel,cohort,update_strategy,received_at_ms,insights_source_shard,insights_source_seq,insights_event)
+      select id,'UNCHANGED','installation',null,'00000000-0000-0000-0000-000000000001','ios','1.0','production','default',null,n,shard,row_number() over(partition by shard order by id),
+        jsonb_build_object('id',id::text,'type','UNCHANGED','install_id','installation',
+          'user_id',null,'username',null,'from_release_id',null,'from_bundle_id',null,
+          'to_release_id',null,'to_bundle_id','00000000-0000-0000-0000-000000000001',
+          'platform','ios','app_version','1.0','channel','production','cohort','default',
+          'update_strategy',null,'fingerprint_hash',null,'sdk_version',null,
+          'received_at_ms',n)
+      from sharded returning insights_source_shard
     ) update private_hot_updater_insights_source_clocks c set committed_seq=(select count(*) from inserted where insights_source_shard=c.shard);
     analyze bundle_events;`);
     const queries = vi.spyOn(client, "query");

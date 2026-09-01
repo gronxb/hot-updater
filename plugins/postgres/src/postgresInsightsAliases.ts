@@ -8,6 +8,8 @@ import {
 import { assertInsightsEventRow } from "@hot-updater/plugin-core/internal";
 import { sql, type QueryExecutorProvider, type Transaction } from "kysely";
 
+import { assertPostgresInsightsTableLayouts } from "./postgresInsightsContract";
+
 const aliases = "private_hot_updater_insights_report_aliases";
 const hashPattern = /^[0-9a-f]{64}$/;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -27,6 +29,7 @@ export interface PostgresInsightsAliasRow {
   readonly installId: string;
   readonly kind: "installation" | "user" | "username";
   readonly normalizedAlias: string;
+  readonly originalAlias: string;
 }
 type StoredAlias = {
   alias_key: string;
@@ -37,29 +40,42 @@ const parseAlias = (row: StoredAlias): PostgresInsightsAliasRow => {
   const identity = row.identity;
   if (
     !Array.isArray(identity) ||
-    identity.length !== 3 ||
+    identity.length !== 4 ||
     !["installation", "user", "username"].includes(identity[0]) ||
     typeof identity[1] !== "string" ||
     typeof identity[2] !== "string" ||
+    typeof identity[3] !== "string" ||
     identity[1] !== identity[1].toLowerCase() ||
-    (identity[0] === "installation" &&
-      identity[1] !== identity[2].toLowerCase()) ||
+    identity[1] !== identity[2].toLowerCase() ||
     hash(JSON.stringify(identity)) !== row.alias_key ||
-    hash(JSON.stringify(identity[2])) !== row.install_key
+    hash(JSON.stringify(identity[3])) !== row.install_key
   )
     return invalid();
   return {
     aliasKey: row.alias_key,
     installKey: row.install_key,
-    installId: identity[2],
+    installId: identity[3],
     kind: identity[0],
     normalizedAlias: identity[1],
+    originalAlias: identity[2],
   };
 };
 
 export const assertPostgresInsightsAliasIndex = async (
   db: QueryExecutorProvider,
 ): Promise<void> => {
+  await assertPostgresInsightsTableLayouts(db, [
+    {
+      table: aliases,
+      columns: [
+        "job_id:uuid:true:false::::",
+        "alias_key:text:true:false::C::",
+        "install_key:text:true:false::default::",
+        "identity:json:true:false::::",
+      ],
+      constraints: ["PRIMARY KEY (job_id, alias_key)"],
+    },
+  ]);
   const result = await sql<{ ready: boolean }>`select exists (
     select 1 from pg_index i join pg_class c on c.oid = i.indexrelid
     join pg_am am on am.oid = c.relam
@@ -97,6 +113,7 @@ export const savePostgresInsightsAliases = async <TDatabase>(
     const identity = JSON.stringify([
       kind,
       value.toLowerCase(),
+      value,
       event.install_id,
     ]);
     const aliasKey = hash(identity);

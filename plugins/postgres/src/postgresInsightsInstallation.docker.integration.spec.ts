@@ -11,11 +11,11 @@ import { findOpenPort } from "../../../packages/test-utils/src/runtimeProcess";
 import { createPostgresInsightsInstallationLookup } from "./postgresInsightsInstallation";
 
 const eventId = (number: number) =>
-  `00000000-0000-0000-0000-${String(number).padStart(12, "0")}`;
+  `00000000-0000-7000-8000-${String(number).padStart(12, "0")}`;
 const bundleId = "11111111-1111-1111-1111-111111111111";
 const postgresImages = [
   "postgres:15-alpine",
-  ...(process.env.HOT_UPDATER_POSTGRES_17_TESTS === "1"
+  ...(process.env.POSTGRES_INSIGHTS_TEST_VERSION_17 === "1"
     ? (["postgres:17-alpine"] as const)
     : []),
 ] as const;
@@ -28,7 +28,7 @@ const identities = [
   "\u{10000}",
   "\ue000",
   "\ufffd",
-  "漢😀".repeat(1600),
+  "漢😀".repeat(300),
 ];
 const docker = (args: string[]) => {
   const result = spawnSync("docker", args, { encoding: "utf8" });
@@ -171,7 +171,7 @@ describe.each(postgresImages)(
       );
       await pool.query(`insert into bundle_events(id,type,install_id,to_bundle_id,
       platform,app_version,channel,cohort,received_at_ms)
-      select ('00000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,
+      select ('00000000-0000-7000-8000-'||lpad(n::text,12,'0'))::uuid,
         'UNCHANGED','busy','${bundleId}'::uuid,'ios','1.0.0','production','cohort',n
       from generate_series(1,50003)n`);
       await insert(50004, "busy", 50003, "UPDATE_APPLIED");
@@ -185,7 +185,7 @@ describe.each(postgresImages)(
       // finding one recent matching row would not prove a bounded identity seek.
       await pool.query(`insert into bundle_events(id,type,install_id,to_bundle_id,
       platform,app_version,channel,cohort,received_at_ms)
-      select ('00000000-0000-0000-0000-'||lpad((n+90000)::text,12,'0'))::uuid,
+      select ('00000000-0000-7000-8000-'||lpad((n+90000)::text,12,'0'))::uuid,
         'UNCHANGED','other-busy','${bundleId}'::uuid,'ios','1.0.0','production','cohort',1000000+n
       from generate_series(1,50003)n`);
     });

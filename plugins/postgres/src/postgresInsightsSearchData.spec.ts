@@ -22,8 +22,7 @@ const match = (id: string) => ({
   installKey: hash(JSON.stringify(id)),
   event: { ...createBundleEventRowFixture("1", 1000), install_id: id },
 });
-const countKey = (id: string) =>
-  hash(JSON.stringify(["installationIds", "", id, -1]));
+const countKey = (id: string) => hash(JSON.stringify(id));
 
 describe("historical contains installation membership", () => {
   let client: PGlite;
@@ -95,11 +94,11 @@ describe("historical contains installation membership", () => {
     expect(await saved()).toEqual(first);
   });
 
-  it("sorts complete long install IDs in JS order after matching and keeps ordinal pages bounded", async () => {
+  it("sorts complete long install IDs by their shared identity digest and keeps ordinal pages bounded", async () => {
     const labels = Array.from(
       { length: 137 },
       (_, i) =>
-        `${"가".repeat(1500)}${["Z", "z", "😀", "\ue000"][i % 4]}${String(i).padStart(3, "0")}`,
+        `${"가".repeat(900)}${["Z", "z", "😀", "\ue000"][i % 4]}${String(i).padStart(3, "0")}`,
     );
     await save(labels.map(match));
     for (let i = 0; i < 100; i++) {
@@ -125,7 +124,15 @@ describe("historical contains installation membership", () => {
       expect(rows.every((row) => row.value === 1)).toBe(true);
       actual.push(...rows.map((row) => row.label));
     }
-    expect(actual).toEqual(labels.sort());
+    expect(actual).toEqual(
+      labels.sort((left, right) =>
+        countKey(left) < countKey(right)
+          ? -1
+          : countKey(left) > countKey(right)
+            ? 1
+            : 0,
+      ),
+    );
   });
 
   it("rejects every corrupted membership field and rolls back newly inserted matches in that batch", async () => {

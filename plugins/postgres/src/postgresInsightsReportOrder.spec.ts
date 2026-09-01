@@ -14,6 +14,7 @@ import {
 } from "./postgresInsightsReportOrder";
 
 const counts = "private_hot_updater_insights_report_counts";
+const countManifest = "private_hot_updater_insights_report_count_manifest";
 const states = "private_hot_updater_insights_report_order_states";
 const runs = "private_hot_updater_insights_report_order_rows";
 const jobId = "00000000-0000-0000-0000-000000000001";
@@ -38,25 +39,31 @@ describe("PostgreSQL bounded external report ordering", () => {
     section: PostgresInsightsReportOrderSection,
     input = labels,
   ) => {
-    await sql`insert into ${sql.table(counts)} (job_id,count_key,identity,section,metric,label,bucket_start_ms,value)
-      values ${sql.join(
-        input.map((label, index) => {
-          const identity = JSON.stringify([
-            section.section,
-            metric(section),
-            label,
-            -1,
-          ]);
-          return sql`(${jobId}::uuid,${hash(identity)},${identity}::jsonb,${section.section},${metric(section)},${label},-1,${section.section === "installationIds" ? 1 : (index % 4) + 1})`;
-        }),
-      )}`.execute(db);
-    return input.map((label, index) => ({
+    const rows = input.map((label, index) => ({
       label,
       value: section.section === "installationIds" ? 1 : (index % 4) + 1,
-      countKey: hash(
-        JSON.stringify([section.section, metric(section), label, -1]),
-      ),
+      countKey:
+        section.section === "installationIds"
+          ? hash(JSON.stringify(label))
+          : hash(JSON.stringify([section.section, metric(section), label, -1])),
+      identity: JSON.stringify([section.section, metric(section), label, -1]),
     }));
+    await sql`insert into ${sql.table(countManifest)}
+      (job_id,count_key,identity,section,metric,label,bucket_start_ms)
+      values ${sql.join(
+        rows.map(
+          (row) =>
+            sql`(${jobId}::uuid,${row.countKey},${row.identity}::jsonb,${section.section},${metric(section)},${row.label},-1)`,
+        ),
+      )}`.execute(db);
+    await sql`insert into ${sql.table(counts)} (job_id,count_key,identity,section,metric,label,bucket_start_ms,value)
+      values ${sql.join(
+        rows.map(
+          (row) =>
+            sql`(${jobId}::uuid,${row.countKey},${row.identity}::jsonb,${section.section},${metric(section)},${row.label},-1,${row.value})`,
+        ),
+      )}`.execute(db);
+    return rows.map(({ identity: _identity, ...row }) => row);
   };
   const step = (section: PostgresInsightsReportOrderSection = cohorts) =>
     db
@@ -83,10 +90,10 @@ describe("PostgreSQL bounded external report ordering", () => {
         const dataCalls = results.filter(
           ({ query }) => !/^(begin|commit|rollback)/i.test(query),
         );
-        expect(dataCalls.length).toBeLessThanOrEqual(8);
+        expect(dataCalls.length).toBeLessThanOrEqual(9);
         expect(
           dataCalls.reduce((total, result) => total + result.rows, 0),
-        ).toBeLessThanOrEqual(67);
+        ).toBeLessThanOrEqual(68);
         for (const result of dataCalls.filter(({ query }) =>
           /order by (count_key|row_position)/.test(query),
         ))
@@ -136,6 +143,8 @@ describe("PostgreSQL bounded external report ordering", () => {
       const expected = [...input].sort((a, b) => {
         if (section.section !== "movementCohorts" && a.value !== b.value)
           return b.value - a.value;
+        if (section.section === "installationIds")
+          return a.countKey < b.countKey ? -1 : a.countKey > b.countKey ? 1 : 0;
         return a.label < b.label ? -1 : a.label > b.label ? 1 : 0;
       });
       expect(Buffer.byteLength(input[0]!.label)).toBeGreaterThan(4000);
@@ -339,10 +348,25 @@ describe("PostgreSQL bounded external report ordering", () => {
     expect(await state()).toEqual(before);
   });
 
+  it.each<PostgresInsightsReportOrderSection>([
+    cohorts,
+    { section: "bundleDistribution" },
+    { section: "activeBundleTotals" },
+    { section: "installationIds" },
+  ])("rejects a deleted positive count before sealing %j", async (section) => {
+    const seeded = await seed(section, labels.slice(0, 2));
+    await sql`delete from ${sql.table(counts)} where job_id=${jobId}::uuid
+      and count_key=${seeded[0]!.countKey}`.execute(db);
+    await expect(step(section)).rejects.toMatchObject({
+      code: "invalid-result",
+    });
+    expect(await state()).toEqual([]);
+  });
+
   it("rejects a wrong or removed input index before reading count or run data", async () => {
     await seed(cohorts, labels.slice(0, 2));
-    await client.exec(`drop index insights_report_counts_order_input_idx;
-      create index insights_report_counts_order_input_idx on ${counts}(job_id,section,count_key,metric)
+    await client.exec(`drop index insights_report_count_manifest_order_idx;
+      create index insights_report_count_manifest_order_idx on ${countManifest}(job_id,section,count_key,metric)
       where section in ('movementCohorts', 'bundleDistribution', 'activeBundleTotals', 'installationIds')`);
     const calls = vi.spyOn(client, "query");
     await expect(step()).rejects.toMatchObject({
@@ -353,7 +377,7 @@ describe("PostgreSQL bounded external report ordering", () => {
         /order by (count_key|row_position)/.test(query),
       ),
     ).toBe(false);
-    await client.exec("drop index insights_report_counts_order_input_idx");
+    await client.exec("drop index insights_report_count_manifest_order_idx");
     calls.mockClear();
     await expect(step()).rejects.toMatchObject({
       code: "INSIGHTS_QUERY_NOT_READY",
@@ -364,7 +388,7 @@ describe("PostgreSQL bounded external report ordering", () => {
       ),
     ).toBe(false);
     await client.exec(
-      `create index insights_report_counts_order_input_idx on ${counts}(job_id,section,metric,count_key)
+      `create index insights_report_count_manifest_order_idx on ${countManifest}(job_id,section,metric,count_key)
       where section in ('movementCohorts', 'bundleDistribution', 'activeBundleTotals', 'installationIds')`,
     );
     expect(await step()).toEqual({ ready: true, processed: 2 });
@@ -377,8 +401,8 @@ describe("PostgreSQL bounded external report ordering", () => {
     "rejects an %s input index predicate before scanning",
     async (_, predicate) => {
       await seed(cohorts, labels.slice(0, 2));
-      await client.exec(`drop index insights_report_counts_order_input_idx;
-      create index insights_report_counts_order_input_idx on ${counts}(job_id,section,metric,count_key) ${predicate}`);
+      await client.exec(`drop index insights_report_count_manifest_order_idx;
+      create index insights_report_count_manifest_order_idx on ${countManifest}(job_id,section,metric,count_key) ${predicate}`);
       const calls = vi.spyOn(client, "query");
       await expect(step()).rejects.toMatchObject({
         code: "INSIGHTS_QUERY_NOT_READY",

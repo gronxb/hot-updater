@@ -1,7 +1,6 @@
 import {
   DatabasePluginInputError,
   InsightsQueryNotReadyError,
-  type InsightsReportPage,
   type InsightsReportPageInput,
 } from "@hot-updater/plugin-core";
 import {
@@ -11,6 +10,8 @@ import {
 } from "@hot-updater/plugin-core/internal";
 import type { Kysely } from "kysely";
 
+import { fitPostgresInsightsInternalPage } from "./postgresInsightsContract";
+import type { PostgresInsightsReportPage } from "./postgresInsightsInternalTypes";
 import { readPostgresInsightsReportPublication } from "./postgresInsightsJobs";
 import {
   assertPostgresInsightsReportDataIndexes,
@@ -30,13 +31,14 @@ const maxOrdinal = 9_223_372_036_854_775_807n;
 /** Reads only immutable derived rows in one snapshot, including page metadata. */
 export const createPostgresInsightsReportPages = <TDatabase extends object>(
   db: Kysely<TDatabase>,
+  databaseNamespace: string,
 ) => {
   if (db.isTransaction) throw new DatabasePluginInputError("invalid-query");
   return {
     async pageReport(
       input: InsightsReportPageInput,
-    ): Promise<InsightsReportPage> {
-      const parsed = readInsightsReportPageQuery(input);
+    ): Promise<PostgresInsightsReportPage> {
+      const parsed = readInsightsReportPageQuery(input, databaseNamespace);
       const request = parsed.input;
       if (
         !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
@@ -45,7 +47,7 @@ export const createPostgresInsightsReportPages = <TDatabase extends object>(
       )
         throw new DatabasePluginInputError("invalid-query");
       const start = BigInt(parsed.nextOrdinal);
-      return db
+      const result = await db
         .transaction()
         .setIsolationLevel("repeatable read")
         .setAccessMode("read only")
@@ -55,12 +57,20 @@ export const createPostgresInsightsReportPages = <TDatabase extends object>(
             request.publicationId,
           );
           if (stored === null)
-            return { state: "expired", publicationId: request.publicationId };
+            return {
+              state: "expired" as const,
+              publicationId: request.publicationId,
+            };
           const { job } = stored;
           const base = { state: "ready" as const, publicationId: job.id };
           const window = createInsightsReportProjection(job.query, job.asOfMs);
           const page = (total: bigint) => {
-            if (total < 0n || total > maxOrdinal) invalid();
+            if (
+              total < 0n ||
+              total > maxOrdinal ||
+              total > BigInt(Number.MAX_SAFE_INTEGER)
+            )
+              invalid();
             if (start > total)
               throw new DatabasePluginInputError("invalid-query");
             const size = Number(
@@ -71,9 +81,14 @@ export const createPostgresInsightsReportPages = <TDatabase extends object>(
             const end = start + BigInt(size);
             return {
               size,
+              total: Number(total),
               nextCursor:
                 end < total
-                  ? createInsightsReportPageCursor(request, end.toString())
+                  ? createInsightsReportPageCursor(
+                      request,
+                      end.toString(),
+                      databaseNamespace,
+                    )
                   : null,
             };
           };
@@ -99,7 +114,7 @@ export const createPostgresInsightsReportPages = <TDatabase extends object>(
                 section,
               );
               if (ready === null) throw new InsightsQueryNotReadyError();
-              const { size, nextCursor } = page(BigInt(ready.totalRows));
+              const { size, total, nextCursor } = page(BigInt(ready.totalRows));
               const rows =
                 size === 0
                   ? []
@@ -116,6 +131,7 @@ export const createPostgresInsightsReportPages = <TDatabase extends object>(
                     ...base,
                     section: request.section,
                     metric: request.metric,
+                    total,
                     nextCursor,
                     rows: rows.map((row) => ({
                       cohort: row.label,
@@ -125,6 +141,7 @@ export const createPostgresInsightsReportPages = <TDatabase extends object>(
                 : {
                     ...base,
                     section: request.section,
+                    total,
                     nextCursor,
                     rows: rows.map((row) => ({
                       bundleId: row.label,
@@ -159,7 +176,7 @@ export const createPostgresInsightsReportPages = <TDatabase extends object>(
                 (BigInt(window.lastBucketMs) - BigInt(first)) /
                   BigInt(window.bucketSizeMs) +
                 1n;
-              const { size, nextCursor } = page(total);
+              const { size, total: totalRows, nextCursor } = page(total);
               const buckets = Array.from({ length: size }, (_, i) =>
                 Number(
                   BigInt(first) +
@@ -184,10 +201,17 @@ export const createPostgresInsightsReportPages = <TDatabase extends object>(
                     ...base,
                     section: request.section,
                     metric: request.metric,
+                    total: totalRows,
                     rows,
                     nextCursor,
                   }
-                : { ...base, section: request.section, rows, nextCursor };
+                : {
+                    ...base,
+                    section: request.section,
+                    total: totalRows,
+                    rows,
+                    nextCursor,
+                  };
             }
             case "activeBundleSeries": {
               requireKind("activeOverview");
@@ -212,7 +236,7 @@ export const createPostgresInsightsReportPages = <TDatabase extends object>(
                 );
                 total = observations === 0 ? 0n : bucketCount;
               } else total = BigInt(ready.totalRows) * bucketCount;
-              const { size, nextCursor } = page(total);
+              const { size, total: totalRows, nextCursor } = page(total);
               const firstRank = start / bucketCount;
               const ranks =
                 size === 0 || request.bundleId !== undefined
@@ -252,6 +276,7 @@ export const createPostgresInsightsReportPages = <TDatabase extends object>(
               return {
                 ...base,
                 section: request.section,
+                total: totalRows,
                 nextCursor,
                 rows: positions.map((row, i) => ({
                   ...row,
@@ -261,6 +286,22 @@ export const createPostgresInsightsReportPages = <TDatabase extends object>(
             }
           }
         });
+      if (result.state === "expired") return result;
+      return fitPostgresInsightsInternalPage(
+        result.rows as readonly unknown[],
+        (rows, shortened) =>
+          ({
+            ...result,
+            rows,
+            nextCursor: shortened
+              ? createInsightsReportPageCursor(
+                  request,
+                  (start + BigInt(rows.length)).toString(),
+                  databaseNamespace,
+                )
+              : result.nextCursor,
+          }) as PostgresInsightsReportPage,
+      );
     },
   };
 };

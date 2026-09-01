@@ -6,7 +6,10 @@ import {
 } from "@hot-updater/plugin-core";
 import { sql, type QueryExecutorProvider, type Transaction } from "kysely";
 
+import { assertPostgresInsightsTableLayouts } from "./postgresInsightsContract";
+
 const counts = "private_hot_updater_insights_report_counts";
+const countManifest = "private_hot_updater_insights_report_count_manifest";
 const states = "private_hot_updater_insights_report_order_states";
 const runs = "private_hot_updater_insights_report_order_rows";
 const maximum = 9_223_372_036_854_775_807n;
@@ -126,10 +129,63 @@ const predicate = (jobId: string, descriptor: Scope) =>
 export const assertPostgresInsightsReportOrderIndexes = async (
   db: QueryExecutorProvider,
 ): Promise<void> => {
+  const sectionCheck =
+    "CHECK ((((section = 'movementCohorts'::text) AND (metric = ANY (ARRAY['installed'::text, 'recovered'::text]))) OR ((section = ANY (ARRAY['bundleDistribution'::text, 'activeBundleTotals'::text, 'installationIds'::text])) AND (metric = ''::text))))";
+  await assertPostgresInsightsTableLayouts(db, [
+    {
+      table: states,
+      columns: [
+        "job_id:uuid:true:false::::",
+        "section:text:true:false::C::",
+        "metric:text:true:false::C::",
+        "phase:text:true:false::default::",
+        "after_count_key:text:false:false::C::",
+        "total_rows:bigint:true:false::::",
+        "sort_pass:smallint:true:false::::",
+        "pair:bigint:true:false::::",
+        "left_pos:bigint:true:false::::",
+        "right_pos:bigint:true:false::::",
+        "out_pos:bigint:true:false::::",
+      ],
+      constraints: [
+        sectionCheck,
+        "CHECK (((sort_pass >= 0) AND (sort_pass <= 58)))",
+        "CHECK ((left_pos >= 0))",
+        "CHECK ((out_pos >= 0))",
+        "CHECK ((pair >= 0))",
+        "CHECK ((phase = ANY (ARRAY['copy'::text, 'merge'::text, 'ready'::text])))",
+        "CHECK ((right_pos >= 0))",
+        "CHECK ((total_rows >= 0))",
+        "PRIMARY KEY (job_id, section, metric)",
+      ],
+    },
+    {
+      table: runs,
+      columns: [
+        "job_id:uuid:true:false::::",
+        "section:text:true:false::C::",
+        "metric:text:true:false::C::",
+        "sort_pass:smallint:true:false::::",
+        "run_number:bigint:true:false::::",
+        "row_position:bigint:true:false::::",
+        "label:text:true:false::default::",
+        "value:bigint:true:false::::",
+        "count_key:text:true:false::C::",
+      ],
+      constraints: [
+        sectionCheck,
+        "CHECK (((sort_pass >= 0) AND (sort_pass <= 58)))",
+        "CHECK ((row_position >= 0))",
+        "CHECK ((run_number >= 0))",
+        "CHECK ((value > 0))",
+        "PRIMARY KEY (job_id, section, metric, sort_pass, run_number, row_position)",
+      ],
+    },
+  ]);
   const required = [
     [
-      counts,
-      "insights_report_counts_order_input_idx",
+      countManifest,
+      "insights_report_count_manifest_order_idx",
       false,
       ["job_id", "section", "metric", "count_key"],
     ],
@@ -155,7 +211,7 @@ export const assertPostgresInsightsReportOrderIndexes = async (
       and i.indisvalid and i.indisready and i.indisunique = required.is_unique
       and i.indnkeyatts = cardinality(required.columns) and i.indnatts = cardinality(required.columns)
       and i.indexprs is null and am.amname = 'btree'
-      and case when required.index_name = 'insights_report_counts_order_input_idx'
+      and case when required.index_name = 'insights_report_count_manifest_order_idx'
         then pg_get_expr(i.indpred, i.indrelid) = '(section = ANY (ARRAY[''movementCohorts''::text, ''bundleDistribution''::text, ''activeBundleTotals''::text, ''installationIds''::text]))'
         else i.indpred is null end
       and not exists (select 1 from unnest(required.columns) with ordinality col(name, position)
@@ -255,6 +311,8 @@ const compare = (
     a.value !== b.value
   )
     return a.value > b.value ? -1 : 1;
+  if (descriptor.section === "installationIds")
+    return a.countKey < b.countKey ? -1 : a.countKey > b.countKey ? 1 : 0;
   return a.label < b.label ? -1 : a.label > b.label ? 1 : 0;
 };
 const parseRow = (
@@ -277,8 +335,11 @@ const parseRow = (
     row.label,
     -1,
   ]);
-  if (createHash("sha256").update(identity).digest("hex") !== row.count_key)
-    return invalid();
+  const expectedKey =
+    descriptor.section === "installationIds"
+      ? createHash("sha256").update(JSON.stringify(row.label)).digest("hex")
+      : createHash("sha256").update(identity).digest("hex");
+  if (expectedKey !== row.count_key) return invalid();
   return {
     ordinal: row.ordinal,
     label: row.label,
@@ -361,17 +422,37 @@ export const stepPostgresInsightsReportOrder = async <TDatabase>(
   if (state.phase === "ready") return { ready: true, processed: 0 };
   if (state.phase === "copy") {
     const result = await sql<
-      StoredRow & { identity: unknown }
-    >`select '0' as ordinal, label, value::text, count_key, identity
-      from ${sql.table(counts)} where ${predicate(jobId, descriptor)}
-      and section in ('movementCohorts', 'bundleDistribution', 'activeBundleTotals', 'installationIds')
-      ${state.afterCountKey === null ? sql`` : sql`and count_key > ${state.afterCountKey}`}
-      order by count_key limit ${runSize}`.execute(db);
+      StoredRow & {
+        identity: unknown;
+        count_identity: unknown;
+        count_section: string | null;
+        count_metric: string | null;
+        count_label: string | null;
+        count_bucket: string | null;
+      }
+    >`select '0' as ordinal,m.label,c.value::text,m.count_key,m.identity,
+        c.identity count_identity,c.section count_section,c.metric count_metric,
+        c.label count_label,c.bucket_start_ms::text count_bucket
+      from ${sql.table(countManifest)} m left join lateral (
+        select identity,section,metric,label,bucket_start_ms,value
+        from ${sql.table(counts)} c
+        where c.job_id=m.job_id and c.count_key=m.count_key limit 1
+      ) c on true
+      where m.job_id=${jobId}::uuid and m.section=${descriptor.section}
+        and m.metric=${descriptor.metric}
+        and m.section in ('movementCohorts','bundleDistribution','activeBundleTotals','installationIds')
+        ${state.afterCountKey === null ? sql`` : sql`and m.count_key > ${state.afterCountKey}`}
+      order by m.count_key limit ${runSize}`.execute(db);
     if (result.rows.length > runSize) return invalid();
     let previous = state.afterCountKey;
     const rows = result.rows.map((row) => {
       const parsed = parseRow(row, descriptor);
       if (
+        JSON.stringify(row.count_identity) !== JSON.stringify(row.identity) ||
+        row.count_section !== descriptor.section ||
+        row.count_metric !== descriptor.metric ||
+        row.count_label !== parsed.label ||
+        row.count_bucket !== "-1" ||
         JSON.stringify(row.identity) !==
           JSON.stringify([
             descriptor.section,

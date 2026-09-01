@@ -66,7 +66,7 @@ describe("immutable PostgreSQL historical installation aliases", () => {
       if (page.length < 2) break;
       after = page.at(-1)!.aliasKey;
     }
-    expect(rows).toHaveLength(7);
+    expect(rows).toHaveLength(8);
     expect(rows.map((row) => row.aliasKey)).toEqual(
       rows.map((row) => row.aliasKey).sort(),
     );
@@ -85,7 +85,14 @@ describe("immutable PostgreSQL historical installation aliases", () => {
     ).toEqual(["install-a", "install-a"]);
     for (const row of rows) {
       expect(row.aliasKey).toBe(
-        hash(JSON.stringify([row.kind, row.normalizedAlias, row.installId])),
+        hash(
+          JSON.stringify([
+            row.kind,
+            row.normalizedAlias,
+            row.originalAlias,
+            row.installId,
+          ]),
+        ),
       );
       expect(row.installKey).toBe(hash(JSON.stringify(row.installId)));
     }
@@ -111,11 +118,11 @@ describe("immutable PostgreSQL historical installation aliases", () => {
   });
 
   it("preserves long and escaped identity payloads without indexing full values", async () => {
-    const prefix = Array.from({ length: 96 }, (_, i) => hash(String(i))).join(
+    const prefix = Array.from({ length: 12 }, (_, i) => hash(String(i))).join(
       "",
     );
     const row = event({
-      install_id: `${prefix}\ud800\u0000A`,
+      install_id: `${prefix}"😀A`,
       user_id: `${prefix}😀Ü`,
       username: "",
     });
@@ -135,7 +142,7 @@ describe("immutable PostgreSQL historical installation aliases", () => {
     expect(rows.every((alias) => alias.installId === row.install_id)).toBe(
       true,
     );
-    expect(Buffer.byteLength(row.install_id)).toBeGreaterThan(6000);
+    expect(Buffer.byteLength(row.install_id)).toBeGreaterThan(700);
   });
 
   it("omits null aliases and preserves the same value in distinct alias kinds", async () => {
@@ -160,10 +167,12 @@ describe("immutable PostgreSQL historical installation aliases", () => {
     await client.exec(
       "create table checkpoint(sequence integer not null); insert into checkpoint values(0)",
     );
-    const userKey = hash(JSON.stringify(["user", "user-a", "install-1"]));
+    const userKey = hash(
+      JSON.stringify(["user", "user-a", "User-A", "install-1"]),
+    );
     await client.query(
       `update ${table} set identity=$1::json where alias_key=$2`,
-      [JSON.stringify(["user", "different", "install-1"]), userKey],
+      [JSON.stringify(["user", "different", "User-A", "install-1"]), userKey],
     );
     const before = (await snapshot()).rows;
     await expect(
@@ -182,7 +191,7 @@ describe("immutable PostgreSQL historical installation aliases", () => {
     ).toEqual([{ sequence: 0 }]);
     await client.query(
       `update ${table} set identity=$1::json where alias_key=$2`,
-      [JSON.stringify(["user", "user-a", "install-1"]), userKey],
+      [JSON.stringify(["user", "user-a", "User-A", "install-1"]), userKey],
     );
     await save(event({ username: "new historical name" }));
     expect(

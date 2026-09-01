@@ -3,11 +3,9 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   DatabasePluginInputError,
   InsightsQueryNotReadyError,
-  type InsightsInstallationPublication,
   type InsightsReportInput,
   type InsightsReportPublication,
   type InsightsReportQuery,
-  type InsightsReportResult,
 } from "@hot-updater/plugin-core";
 import { readInsightsReportQuery } from "@hot-updater/plugin-core/internal";
 import {
@@ -17,7 +15,16 @@ import {
   type Transaction,
 } from "kysely";
 
+import {
+  assertPostgresInsightsTableLayouts,
+  isPostgresInsightsTerminalPreparationError,
+} from "./postgresInsightsContract";
+import type {
+  PostgresInsightsInstallationPublication,
+  PostgresInsightsReportResult,
+} from "./postgresInsightsInternalTypes";
 import { getPostgresInsightsReportOrderSections } from "./postgresInsightsReportSections";
+import { readPostgresInsightsSourceGeneration } from "./postgresInsightsSource";
 
 const heads = "private_hot_updater_insights_report_heads";
 const jobs = "private_hot_updater_insights_report_jobs";
@@ -25,12 +32,57 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const decimal = /^(0|[1-9][0-9]{0,18})$/;
 const hashKey = /^[0-9a-f]{64}$/;
 // One current derived layout. Earlier draft jobs must be explicitly discarded.
-const storageRevision = 2;
+const storageRevision = 4;
 const nowMs = sql<number>`floor(extract(epoch from clock_timestamp()) * 1000)::double precision`;
 
 export const assertPostgresInsightsReportMetadataIndexes = async (
   db: QueryExecutorProvider,
 ): Promise<void> => {
+  await assertPostgresInsightsTableLayouts(db, [
+    {
+      table: heads,
+      columns: [
+        "query_key:text:true:false::default::",
+        "canonical_query:json:true:false::::",
+        "active_job_id:uuid:false:false::::",
+        "publication_job_id:uuid:false:false::::",
+      ],
+      constraints: [
+        "CHECK ((query_key ~ '^[0-9a-f]{64}$'::text))",
+        "FOREIGN KEY (active_job_id) REFERENCES private_hot_updater_insights_report_jobs(id)",
+        "FOREIGN KEY (publication_job_id) REFERENCES private_hot_updater_insights_report_jobs(id)",
+        "PRIMARY KEY (query_key)",
+      ],
+    },
+    {
+      table: jobs,
+      columns: [
+        "id:uuid:true:false::::",
+        "query_key:text:true:false::default::",
+        "as_of_ms:double precision:false:false::::",
+        "base_job_id:uuid:false:false::::",
+        "status:text:true:false::default::",
+        "source_generation:text:true:false::default::",
+        "checkpoint:jsonb:true:false::::",
+        "lease_epoch:bigint:true:true:0:::",
+        "claimable_at:timestamp with time zone:true:true:clock_timestamp():::",
+        "publication:json:false:false::::",
+      ],
+      constraints: [
+        "CHECK (((as_of_ms >= (0)::double precision) AND (as_of_ms <= ('9007199254740991'::bigint)::double precision) AND (as_of_ms = trunc(as_of_ms))))",
+        'CHECK (((as_of_ms IS NOT NULL) OR ((base_job_id IS NOT NULL) AND (checkpoint = \'{"phase": "awaitIdentity"}\'::jsonb))))',
+        "CHECK (((base_job_id IS NULL) OR (base_job_id <> id)))",
+        "CHECK (((length(source_generation) >= 1) AND (length(source_generation) <= 1024)))",
+        "CHECK (((status <> 'ready'::text) OR (as_of_ms IS NOT NULL)))",
+        "CHECK (((status = 'ready'::text) = (publication IS NOT NULL)))",
+        "CHECK ((lease_epoch >= 0))",
+        "CHECK ((status = ANY (ARRAY['queued'::text, 'preparing'::text, 'ready'::text, 'failed'::text])))",
+        "FOREIGN KEY (base_job_id) REFERENCES private_hot_updater_insights_report_jobs(id) ON DELETE RESTRICT",
+        "FOREIGN KEY (query_key) REFERENCES private_hot_updater_insights_report_heads(query_key)",
+        "PRIMARY KEY (id)",
+      ],
+    },
+  ]);
   const result = await sql<{ ready: boolean }>`select bool_and(exists (
     select 1 from pg_index i join pg_class c on c.oid = i.indexrelid
     join pg_am am on am.oid = c.relam
@@ -49,23 +101,13 @@ export const assertPostgresInsightsReportMetadataIndexes = async (
     join pg_attribute parent on parent.attrelid = c.confrelid and parent.attname = 'id'
     join pg_attribute child on child.attrelid = c.conrelid and child.attname = 'base_job_id'
     join pg_attribute cutoff on cutoff.attrelid = c.conrelid and cutoff.attname = 'as_of_ms'
+    join pg_attribute generation on generation.attrelid = c.conrelid and generation.attname = 'source_generation'
     where c.conrelid = to_regclass(${jobs}) and c.confrelid = c.conrelid
       and c.contype = 'f' and c.convalidated and not c.condeferrable
       and c.confdeltype = 'r' and c.conkey = array[child.attnum]
       and c.confkey = array[parent.attnum] and not cutoff.attnotnull
-  ) as ready from (values
-    (${heads}::text, ${`${heads}_pkey`}::text, 'query_key', true),
-    (${jobs}::text, ${`${jobs}_pkey`}::text, 'id', true),
-    (${jobs}::text, 'private_hot_updater_insights_report_base_idx', 'base_job_id', false)
-  ) required(table_name, index_name, column_name, is_primary)`.execute(db);
-  if (!result.rows[0]?.ready) throw new InsightsQueryNotReadyError();
-};
-
-export const assertPostgresInsightsReportClaimIndex = async (
-  db: QueryExecutorProvider,
-): Promise<void> => {
-  await assertPostgresInsightsReportMetadataIndexes(db);
-  const result = await sql<{ ready: boolean }>`select exists (
+      and generation.attnotnull and generation.atttypid = 'text'::regtype
+  ) and exists (
     select 1 from pg_index i join pg_class c on c.oid = i.indexrelid
     join pg_am am on am.oid = c.relam
     where i.indexrelid = to_regclass('private_hot_updater_insights_report_claim_idx')
@@ -78,8 +120,18 @@ export const assertPostgresInsightsReportClaimIndex = async (
       and not exists (select 1 from unnest(i.indoption) bits where bits <> 0)
       and not exists (select 1 from unnest(i.indclass) class_id
         join pg_opclass opclass on opclass.oid = class_id where not opclass.opcdefault)
-  ) as ready`.execute(db);
+  ) as ready from (values
+    (${heads}::text, ${`${heads}_pkey`}::text, 'query_key', true),
+    (${jobs}::text, ${`${jobs}_pkey`}::text, 'id', true),
+    (${jobs}::text, 'private_hot_updater_insights_report_base_idx', 'base_job_id', false)
+  ) required(table_name, index_name, column_name, is_primary)`.execute(db);
   if (!result.rows[0]?.ready) throw new InsightsQueryNotReadyError();
+};
+
+export const assertPostgresInsightsReportClaimIndex = async (
+  db: QueryExecutorProvider,
+): Promise<void> => {
+  await assertPostgresInsightsReportMetadataIndexes(db);
 };
 
 export type PostgresInsightsReportCheckpoint =
@@ -96,7 +148,7 @@ export interface PostgresInsightsReportJob {
   readonly id: string;
   readonly query: InsightsReportQuery;
   readonly asOfMs: number;
-  readonly sourceGeneration: string | null;
+  readonly sourceGeneration: string;
   readonly checkpoint: PostgresInsightsReportCheckpoint;
 }
 
@@ -104,7 +156,12 @@ type ContainsQuery = {
   readonly kind: "installationContains";
   readonly normalizedQuery: string;
 };
-type PrivateQuery = InsightsReportQuery | ContainsQuery;
+type UserIdQuery = {
+  readonly kind: "installationUserId";
+  readonly userId: string;
+};
+type SearchQuery = ContainsQuery | UserIdQuery;
+type PrivateQuery = InsightsReportQuery | SearchQuery;
 
 export type PostgresInsightsContainsCheckpoint =
   | { readonly phase: "awaitIdentity" }
@@ -114,11 +171,12 @@ export type PostgresInsightsContainsCheckpoint =
 
 export interface PostgresInsightsContainsJob {
   readonly id: string;
-  readonly query: ContainsQuery;
+  readonly query: SearchQuery;
   readonly baseJobId: string;
   /** Unset until the pinned base is published; never the search reservation time. */
   readonly asOfMs: number | null;
-  readonly sourceGeneration: string | null;
+  /** Reserved with the pinned base and verified again when it publishes. */
+  readonly sourceGeneration: string;
   readonly checkpoint: PostgresInsightsContainsCheckpoint;
 }
 export type PostgresInsightsJob =
@@ -133,18 +191,20 @@ type JobResult<TPublication> =
   | {
       state: "queued" | "preparing";
       jobId: string;
+      sourceGeneration: string;
       previous: TPublication | null;
     }
   | {
       state: "failed";
       error: { code: "preparation-failed"; jobId: string };
+      sourceGeneration: string;
       previous: TPublication | null;
     };
 export type PostgresInsightsSearchResult =
-  JobResult<InsightsInstallationPublication>;
+  JobResult<PostgresInsightsInstallationPublication>;
 type PrivatePublication =
   | InsightsReportPublication
-  | InsightsInstallationPublication;
+  | PostgresInsightsInstallationPublication;
 
 export interface PostgresInsightsReportLeaseToken {
   readonly jobId: string;
@@ -162,7 +222,7 @@ export type PostgresInsightsReportJobUpdate =
   | {
       readonly kind: "progress";
       readonly checkpoint: PostgresInsightsReportCheckpoint;
-      readonly sourceGeneration?: string;
+      readonly sourceGeneration?: never;
     }
   | {
       readonly kind: "publish";
@@ -234,7 +294,19 @@ const queryIdentity = (query: PrivateQuery) => {
             semanticKey: JSON.stringify([1, query.kind, query.normalizedQuery]),
           };
         })()
-      : readInsightsReportQuery({ query });
+      : query.kind === "installationUserId"
+        ? (() => {
+            if (
+              !only(query, ["kind", "userId"]) ||
+              typeof query.userId !== "string"
+            )
+              invalid();
+            return {
+              query,
+              semanticKey: JSON.stringify([1, query.kind, query.userId]),
+            };
+          })()
+        : readInsightsReportQuery({ query });
   const key = createHash("sha256")
     .update(JSON.stringify([storageRevision, parsed.semanticKey]))
     .digest("hex");
@@ -386,7 +458,7 @@ const checkpointAdvances = (
       BigInt(after.afterSequence) <= BigInt(counters[after.shard]!) &&
       ((after.shard === before.shard + 1 && after.afterSequence === "0") ||
         (after.shard === before.shard &&
-          BigInt(after.afterSequence) >= BigInt(before.afterSequence)))
+          BigInt(after.afterSequence) > BigInt(before.afterSequence)))
     );
   }
   return (
@@ -398,15 +470,15 @@ const checkpointAdvances = (
   );
 };
 const toJob = (row: StoredJob, query: PrivateQuery): PostgresInsightsJob => {
+  const sourceGeneration = row.source_generation;
+  if (!uuid.test(row.id)) return invalid();
+  if (sourceGeneration === null) return invalid();
+  if (sourceGeneration.length < 1 || sourceGeneration.length > 1024) invalid();
+  sourceCounters(sourceGeneration);
   if (
-    !uuid.test(row.id) ||
-    (row.source_generation !== null &&
-      (typeof row.source_generation !== "string" ||
-        row.source_generation.length < 1 ||
-        row.source_generation.length > 1024))
-  )
-    invalid();
-  if (query.kind === "installationContains") {
+    query.kind === "installationContains" ||
+    query.kind === "installationUserId"
+  ) {
     if (
       typeof row.base_job_id !== "string" ||
       !uuid.test(row.base_job_id) ||
@@ -415,18 +487,16 @@ const toJob = (row: StoredJob, query: PrivateQuery): PostgresInsightsJob => {
     )
       return invalid();
     if (row.checkpoint.phase === "awaitIdentity") {
-      if (row.as_of_ms !== null || row.source_generation !== null) invalid();
+      if (row.as_of_ms !== null) invalid();
     } else {
-      if (!integer(row.as_of_ms) || row.source_generation === null)
-        return invalid();
-      sourceCounters(row.source_generation);
+      if (!integer(row.as_of_ms)) return invalid();
     }
     return {
       id: row.id,
       query,
       baseJobId: row.base_job_id,
       asOfMs: row.as_of_ms,
-      sourceGeneration: row.source_generation,
+      sourceGeneration,
       checkpoint: row.checkpoint,
     };
   }
@@ -443,7 +513,7 @@ const toJob = (row: StoredJob, query: PrivateQuery): PostgresInsightsJob => {
     id: row.id,
     query,
     asOfMs: row.as_of_ms,
-    sourceGeneration: row.source_generation,
+    sourceGeneration,
     checkpoint: row.checkpoint,
   };
 };
@@ -517,8 +587,8 @@ function publication(
 ): InsightsReportPublication;
 function publication(
   row: StoredJob,
-  query: ContainsQuery,
-): InsightsInstallationPublication;
+  query: SearchQuery,
+): PostgresInsightsInstallationPublication;
 function publication(row: StoredJob, query: PrivateQuery): PrivatePublication;
 function publication(row: StoredJob, query: PrivateQuery): PrivatePublication {
   const value = row.publication;
@@ -534,7 +604,10 @@ function publication(row: StoredJob, query: PrivateQuery): PrivatePublication {
     value.accuracy !== "exact"
   )
     invalid();
-  if (query.kind === "installationContains") {
+  if (
+    query.kind === "installationContains" ||
+    query.kind === "installationUserId"
+  ) {
     if (
       !("total" in value) ||
       !integer(value.total) ||
@@ -593,53 +666,71 @@ export const readPostgresInsightsReportPublication = async (
   if (row === undefined) return null;
   const query = storedQuery(row.canonical_query, row.query_key);
   const job = toJob(row, query);
+  if (isPostgresInsightsContainsJob(job))
+    throw new DatabasePluginInputError("invalid-query");
   if (
-    isPostgresInsightsContainsJob(job) ||
-    query.kind === "installationContains"
+    query.kind === "installationContains" ||
+    query.kind === "installationUserId"
   )
     throw new DatabasePluginInputError("invalid-query");
   if (row.status !== "ready") throw new InsightsQueryNotReadyError();
-  return { job, publication: publication(row, query) };
+  return {
+    job,
+    publication: publication(row, query),
+  };
 };
 
 /** A pinned search lookup never reserves a search or refreshes its base. */
 export const readPostgresInsightsSearchPublication = async (
   db: QueryExecutorProvider,
   publicationId: string,
-  normalizedQuery: string,
+  kind: "contains" | "userId",
+  value: string,
 ): Promise<{
   job: PostgresInsightsContainsJob;
-  publication: InsightsInstallationPublication;
+  publication: PostgresInsightsInstallationPublication;
 } | null> => {
-  if (normalizePostgresInsightsSearchQuery(normalizedQuery) !== normalizedQuery)
+  if (
+    (kind === "contains" &&
+      normalizePostgresInsightsSearchQuery(value) !== value) ||
+    (kind === "userId" && typeof value !== "string")
+  )
     throw new DatabasePluginInputError("invalid-query");
   const row = await readJobRow(db, publicationId);
   if (row === undefined) return null;
   const query = storedQuery(row.canonical_query, row.query_key);
   const job = toJob(row, query);
-  if (
-    !isPostgresInsightsContainsJob(job) ||
-    query.kind !== "installationContains" ||
-    query.normalizedQuery !== normalizedQuery
-  )
-    throw new DatabasePluginInputError("invalid-query");
+  if (!isPostgresInsightsContainsJob(job)) return null;
   if (row.status !== "ready") throw new InsightsQueryNotReadyError();
+  if (kind === "contains") {
+    if (
+      query.kind !== "installationContains" ||
+      query.normalizedQuery !== value
+    )
+      return null;
+    return { job, publication: publication(row, query) };
+  }
+  if (query.kind !== "installationUserId" || query.userId !== value)
+    return null;
   return { job, publication: publication(row, query) };
 };
 
 function reserveQuery(
   db: QueryExecutorProvider,
   query: InsightsReportQuery,
+  captureSourceGeneration: () => Promise<string>,
   minAsOfMs?: number,
 ): Promise<JobResult<InsightsReportPublication>>;
 function reserveQuery(
   db: QueryExecutorProvider,
-  query: ContainsQuery,
+  query: SearchQuery,
+  captureSourceGeneration: () => Promise<string>,
   minAsOfMs?: number,
 ): Promise<PostgresInsightsSearchResult>;
 async function reserveQuery(
   db: QueryExecutorProvider,
   input: PrivateQuery,
+  captureSourceGeneration: () => Promise<string>,
   minAsOfMs?: number,
 ): Promise<JobResult<PrivatePublication>> {
   const { query, key } = queryIdentity(input);
@@ -683,25 +774,38 @@ async function reserveQuery(
     return { state: "ready", publication: previous };
   const active = rows.find((row) => row.id === head.active_job_id);
   if (active !== undefined) {
+    const activeJob = toJob(active, query);
     if (active.status === "queued" || active.status === "preparing")
-      return { state: active.status, jobId: active.id, previous };
+      return {
+        state: active.status,
+        jobId: active.id,
+        sourceGeneration: activeJob.sourceGeneration,
+        previous,
+      };
     if (active.status === "failed")
       return {
         state: "failed",
         error: { code: "preparation-failed", jobId: active.id },
+        sourceGeneration: activeJob.sourceGeneration,
         previous,
       };
     return invalid();
   }
 
   let baseJobId: string | null = null;
+  let requestedSourceGeneration: string;
   let status: "queued" | "failed" = "queued";
-  if (query.kind === "installationContains") {
+  let waitForBase = false;
+  if (
+    query.kind === "installationContains" ||
+    query.kind === "installationUserId"
+  ) {
     // Both heads and the FK pin commit together. Repeated searches return above
     // without touching the global head, let alone refreshing raw source data.
     const base = await reserveQuery(
       db,
       { kind: "installationOverview" },
+      captureSourceGeneration,
       minAsOfMs,
     );
     baseJobId =
@@ -711,15 +815,27 @@ async function reserveQuery(
           ? base.error.jobId
           : base.jobId;
     if (base.state === "failed") status = "failed";
-  }
+    waitForBase = base.state !== "ready" && base.state !== "failed";
+    requestedSourceGeneration =
+      base.state === "ready"
+        ? base.publication.sourceGeneration
+        : base.sourceGeneration;
+  } else requestedSourceGeneration = await captureSourceGeneration();
   const id = randomUUID();
   const checkpoint =
     baseJobId === null
-      ? { phase: "source", shard: 0, afterSequence: "0" }
+      ? query.kind === "bundleSummaries" && query.bundleIds.length === 0
+        ? { phase: "complete" }
+        : { phase: "source", shard: 0, afterSequence: "0" }
       : { phase: "awaitIdentity" };
-  await sql`insert into ${sql.table(jobs)} (id, query_key, base_job_id, as_of_ms, status, checkpoint)
-    values (${id}::uuid, ${key}, ${baseJobId}::uuid, ${baseJobId === null ? nowMs : sql`null`},
-      ${status}, ${JSON.stringify(checkpoint)}::jsonb)`.execute(db);
+  await sql`insert into ${sql.table(jobs)}
+    (id, query_key, base_job_id, as_of_ms, status, source_generation, checkpoint, claimable_at)
+    values (${id}::uuid, ${key}, ${baseJobId}::uuid,
+      ${baseJobId === null ? nowMs : sql`null`}, ${status},
+      ${requestedSourceGeneration}, ${JSON.stringify(checkpoint)}::jsonb,
+      ${waitForBase ? sql`'infinity'::timestamptz` : sql`clock_timestamp()`})`.execute(
+    db,
+  );
   await sql`update ${sql.table(heads)} set active_job_id = ${id}::uuid where query_key = ${key}`.execute(
     db,
   );
@@ -727,9 +843,15 @@ async function reserveQuery(
     ? {
         state: "failed",
         error: { code: "preparation-failed", jobId: id },
+        sourceGeneration: requestedSourceGeneration,
         previous,
       }
-    : { state: "queued", jobId: id, previous };
+    : {
+        state: "queued",
+        jobId: id,
+        sourceGeneration: requestedSourceGeneration,
+        previous,
+      };
 }
 
 const checkFreshness = async (
@@ -750,16 +872,24 @@ export const createPostgresInsightsJobs = <TDatabase extends object>(
 ) => {
   if (db.isTransaction) throw new DatabasePluginInputError("invalid-query");
   return {
-    async getReport(input: InsightsReportInput): Promise<InsightsReportResult> {
+    async getReport(
+      input: InsightsReportInput,
+    ): Promise<PostgresInsightsReportResult> {
       const { query, minAsOfMs } = readInsightsReportQuery(input);
       return db.transaction().execute(async (transaction) => {
         await assertPostgresInsightsReportMetadataIndexes(transaction);
         await checkFreshness(transaction, minAsOfMs);
-        return reserveQuery(transaction, query, minAsOfMs);
+        return reserveQuery(
+          transaction,
+          query,
+          () => readPostgresInsightsSourceGeneration(transaction),
+          minAsOfMs,
+        );
       });
     },
 
     async getSearch(input: {
+      kind: "contains" | "userId";
       query: string;
       minAsOfMs?: number;
     }): Promise<PostgresInsightsSearchResult> {
@@ -767,18 +897,103 @@ export const createPostgresInsightsJobs = <TDatabase extends object>(
         typeof input !== "object" ||
         input === null ||
         Array.isArray(input) ||
-        !only(input, ["query", "minAsOfMs"]) ||
+        !only(input, ["kind", "query", "minAsOfMs"]) ||
+        !["contains", "userId"].includes(input.kind) ||
+        typeof input.query !== "string" ||
         (input.minAsOfMs !== undefined && !integer(input.minAsOfMs))
       )
         throw new DatabasePluginInputError("invalid-query");
-      const query: ContainsQuery = {
-        kind: "installationContains",
-        normalizedQuery: normalizePostgresInsightsSearchQuery(input.query),
-      };
+      const query: SearchQuery =
+        input.kind === "contains"
+          ? {
+              kind: "installationContains",
+              normalizedQuery: normalizePostgresInsightsSearchQuery(
+                input.query,
+              ),
+            }
+          : { kind: "installationUserId", userId: input.query };
       return db.transaction().execute(async (transaction) => {
         await assertPostgresInsightsReportMetadataIndexes(transaction);
         await checkFreshness(transaction, input.minAsOfMs);
-        return reserveQuery(transaction, query, input.minAsOfMs);
+        return reserveQuery(
+          transaction,
+          query,
+          () => readPostgresInsightsSourceGeneration(transaction),
+          input.minAsOfMs,
+        );
+      });
+    },
+
+    async probeNextSource(
+      callback: (
+        transaction: Transaction<TDatabase>,
+        job: PostgresInsightsReportJob & {
+          readonly checkpoint: Extract<
+            PostgresInsightsReportCheckpoint,
+            { readonly phase: "source" }
+          >;
+        },
+      ) => Promise<number>,
+    ): Promise<
+      | { state: "idle"; processed: 0 }
+      | { state: "valid"; processed: number; jobId: string }
+      | { state: "failed"; processed: number; jobId: string; error: unknown }
+    > {
+      return db.transaction().execute(async (transaction) => {
+        await assertPostgresInsightsReportClaimIndex(transaction);
+        const row = (
+          await sql<StoredJob & Head>`
+            with candidate as materialized (
+              select id from ${sql.table(jobs)}
+              where status in ('queued', 'preparing')
+                and claimable_at <= statement_timestamp()
+              order by claimable_at, id limit 1
+            ) select j.*, j.lease_epoch::text, h.canonical_query,
+              h.active_job_id, h.publication_job_id
+            from ${sql.table(jobs)} j join candidate c on c.id=j.id
+            join ${sql.table(heads)} h on h.query_key=j.query_key
+            where j.status in ('queued', 'preparing')
+              and j.claimable_at <= statement_timestamp()
+            for no key update of j, h skip locked`.execute(transaction)
+        ).rows[0];
+        if (row === undefined) return { state: "idle", processed: 0 };
+        if (row.active_job_id !== row.id) invalid();
+        const job = toJob(row, storedQuery(row.canonical_query, row.query_key));
+        if (
+          isPostgresInsightsContainsJob(job) ||
+          job.checkpoint.phase !== "source"
+        )
+          return { state: "idle", processed: 0 };
+        const sourceJob = { ...job, checkpoint: job.checkpoint };
+        try {
+          return {
+            state: "valid",
+            processed: await callback(transaction, sourceJob),
+            jobId: job.id,
+          };
+        } catch (error) {
+          if (error instanceof InsightsQueryNotReadyError) throw error;
+          if (!isPostgresInsightsTerminalPreparationError(error)) throw error;
+          const failed = await sql<{ id: string }>`with failed as (
+              update ${sql.table(jobs)} set status='failed'
+              where id=${job.id}::uuid and status in ('queued','preparing')
+              returning id
+            ), dependents as (
+              update ${sql.table(jobs)} set status='failed',
+                claimable_at=clock_timestamp()
+              where base_job_id=${job.id}::uuid
+                and status in ('queued','preparing')
+                and checkpoint='{"phase":"awaitIdentity"}'::jsonb
+              returning id
+            ) select id from failed`.execute(transaction);
+          if (failed.rows.length !== 1) invalid();
+          return {
+            state: "failed",
+            processed: 1,
+            jobId: job.id,
+            error,
+          };
+        }
       });
     },
 
@@ -880,8 +1095,10 @@ export const createPostgresInsightsJobs = <TDatabase extends object>(
             if (base.status === "ready") {
               const snapshot = publication(base, baseQuery);
               sourceCounters(snapshot.sourceGeneration);
+              if (snapshot.sourceGeneration !== job.sourceGeneration)
+                return invalid();
               updated = await sql<{ id: string }>`update ${sql.table(jobs)}
-                set as_of_ms = ${snapshot.asOfMs}, source_generation = ${snapshot.sourceGeneration},
+                set as_of_ms = ${snapshot.asOfMs},
                   checkpoint = '{"phase":"aliases","afterAliasKey":null}'::jsonb,
                   status = 'queued', claimable_at = clock_timestamp()
                 where ${validLease} returning id`.execute(transaction);
@@ -906,7 +1123,6 @@ export const createPostgresInsightsJobs = <TDatabase extends object>(
             if (isPostgresInsightsContainsJob(job)) {
               if (
                 update.sourceGeneration !== undefined ||
-                job.sourceGeneration === null ||
                 !containsCheckpointAdvances(job.checkpoint, update.checkpoint)
               )
                 return invalid();
@@ -916,26 +1132,20 @@ export const createPostgresInsightsJobs = <TDatabase extends object>(
                 where ${validLease} returning id`.execute(transaction);
               break;
             }
-            const generation = update.sourceGeneration ?? job.sourceGeneration;
-            if (
-              typeof generation !== "string" ||
-              (job.sourceGeneration !== null &&
-                generation !== job.sourceGeneration)
-            )
-              return invalid();
             if (
               !checkpointAdvances(
                 job.checkpoint,
                 update.checkpoint,
                 job.query,
-                sourceCounters(generation),
+                sourceCounters(job.sourceGeneration),
               )
             )
               invalid();
             updated = await sql<{
               id: string;
-            }>`update ${sql.table(jobs)} set source_generation = ${generation},
-              checkpoint = ${JSON.stringify(update.checkpoint)}::jsonb, status = 'queued', claimable_at = clock_timestamp()
+            }>`update ${sql.table(jobs)} set
+              checkpoint = ${JSON.stringify(update.checkpoint)}::jsonb,
+              status = 'queued', claimable_at = clock_timestamp()
               where ${validLease} returning id`.execute(transaction);
             break;
           }
@@ -948,11 +1158,7 @@ export const createPostgresInsightsJobs = <TDatabase extends object>(
             break;
           case "publish":
           case "publishSearch": {
-            if (
-              job.sourceGeneration === null ||
-              job.asOfMs === null ||
-              job.checkpoint.phase !== "complete"
-            )
+            if (job.asOfMs === null || job.checkpoint.phase !== "complete")
               return invalid();
             let output: PostgresInsightsReportSummary | { total: number };
             if (update.kind === "publishSearch") {
@@ -998,6 +1204,20 @@ export const createPostgresInsightsJobs = <TDatabase extends object>(
         }
         if (updated.rows.length !== 1)
           throw new PostgresInsightsLeaseLostError();
+        if (!isPostgresInsightsContainsJob(job)) {
+          if (update.kind === "publish")
+            await sql`update ${sql.table(jobs)} set claimable_at=clock_timestamp()
+              where base_job_id=${job.id}::uuid and status='queued'
+                and checkpoint='{"phase":"awaitIdentity"}'::jsonb`.execute(
+              transaction,
+            );
+          else if (update.kind === "fail")
+            await sql`update ${sql.table(jobs)} set status='failed', claimable_at=clock_timestamp()
+              where base_job_id=${job.id}::uuid and status in ('queued','preparing')
+                and checkpoint='{"phase":"awaitIdentity"}'::jsonb`.execute(
+              transaction,
+            );
+        }
       });
     },
   };

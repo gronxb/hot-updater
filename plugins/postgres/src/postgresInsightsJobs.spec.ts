@@ -9,20 +9,17 @@ import { Kysely, sql } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { migratePostgresInsightsSource } from "./db";
 import {
   createPostgresInsightsJobs,
   isPostgresInsightsContainsJob,
   readPostgresInsightsReportPublication,
   type PostgresInsightsReportCheckpoint,
 } from "./postgresInsightsJobs";
+import { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
 
 const headTable = "private_hot_updater_insights_report_heads";
 const jobTable = "private_hot_updater_insights_report_jobs";
-const generation = JSON.stringify([
-  1,
-  "00000000-0000-0000-0000-000000000001",
-  Array(16).fill("2"),
-]);
 const initial: PostgresInsightsReportCheckpoint = {
   phase: "source",
   shard: 0,
@@ -33,6 +30,7 @@ describe("PostgreSQL durable report jobs", () => {
   let client: PGlite;
   let db: Kysely<object>;
   let store: ReturnType<typeof createPostgresInsightsJobs>;
+  let generation: string;
   const query: InsightsReportQuery = { kind: "installationOverview" };
   const saved = async () =>
     (
@@ -51,19 +49,18 @@ describe("PostgreSQL durable report jobs", () => {
       throw new Error("Expected a report lease.");
     return { ...lease, job: lease.job };
   };
-  const sourceComplete = async (captured = generation) => {
-    for (let shard = 0; shard < 16; shard++) {
+  const sourceComplete = async () => {
+    for (let shard = 1; shard < 16; shard++) {
       const lease = await acquire();
       await store.withLease(lease.token, async () => ({
         kind: "progress",
-        sourceGeneration: captured,
         checkpoint: { phase: "source", shard, afterSequence: "0" },
       }));
     }
     return acquire();
   };
-  const complete = async (captured = generation) => {
-    let lease = await sourceComplete(captured);
+  const complete = async () => {
+    let lease = await sourceComplete();
     if (
       lease.job.query.kind === "installationOverview" ||
       lease.job.query.kind === "activeOverview"
@@ -96,14 +93,20 @@ describe("PostgreSQL durable report jobs", () => {
 
   beforeEach(async () => {
     client = new PGlite();
-    // Deliberately no raw event or source clock tables: requests cannot depend on them.
+    await client.exec(
+      await readFile("plugins/postgres/sql/bundles.sql", "utf8"),
+    );
+    db = new Kysely<object>({ dialect: new PGliteDialect(client) });
+    await migratePostgresInsightsSource(db);
+    const source = createPostgresInsightsSourceTools(db);
+    await source.backfillStep(1);
+    generation = await source.capture();
     await client.exec(
       await readFile("plugins/postgres/sql/insights-reports-v1.sql", "utf8"),
     );
     await client.exec(
       "create table derived_test (id integer primary key, value integer not null)",
     );
-    db = new Kysely<object>({ dialect: new PGliteDialect(client) });
     store = createPostgresInsightsJobs(db);
   });
   afterEach(async () => {
@@ -136,7 +139,7 @@ describe("PostgreSQL durable report jobs", () => {
     ).toBe(1);
     const before = await saved();
     expect(before).toHaveLength(1);
-    expect(before[0]!.source_generation).toBeNull();
+    expect(before[0]!.source_generation).toBe(generation);
     const lease = await acquire();
     expect(lease.job.query).toEqual({
       kind: "bundleSummaries",
@@ -173,14 +176,9 @@ describe("PostgreSQL durable report jobs", () => {
     expect(await saved()).toHaveLength(1);
   });
 
-  it.each(["\u0000", "\ud800"])(
-    "preserves JSON-escaped identity %j through reservation, lease and zero-match publication",
+  it.each(["not-present"])(
+    "preserves a valid zero-match identity %j through reservation, lease and publication",
     async (identity) => {
-      const empty = JSON.stringify([
-        1,
-        "00000000-0000-0000-0000-000000000001",
-        Array(16).fill("0"),
-      ]);
       for (const query of [
         {
           kind: "bundleSummaries",
@@ -191,7 +189,7 @@ describe("PostgreSQL durable report jobs", () => {
       ] as const) {
         const queued = await store.getReport({ query });
         expect(queued.state).toBe("queued");
-        const lease = await complete(empty);
+        const lease = await complete();
         expect(lease.job.query).toEqual(query);
         await store.withLease(lease.token, async (_transaction, current) => ({
           kind: "publish",
@@ -212,7 +210,7 @@ describe("PostgreSQL durable report jobs", () => {
           state: "ready",
           publication: {
             id: lease.job.id,
-            sourceGeneration: empty,
+            sourceGeneration: generation,
             accuracy: "exact",
             summary:
               query.kind === "bundleSummaries"
@@ -225,6 +223,18 @@ describe("PostgreSQL durable report jobs", () => {
     },
   );
 
+  it("rejects an unpaired-surrogate report identity before storage access", async () => {
+    await expect(
+      store.getReport({
+        query: {
+          kind: "bundleSummaries",
+          bundleIds: ["bundle-\ud800"],
+          window: "all",
+        },
+      }),
+    ).rejects.toMatchObject({ code: "invalid-query" });
+  });
+
   it("commits source capture, derived writes and checkpoint together, never replaces capture, and rejects replay or backwards progress", async () => {
     await store.getReport({ query });
     let lease = await acquire();
@@ -236,15 +246,14 @@ describe("PostgreSQL durable report jobs", () => {
     ).rejects.toThrow("injected worker crash");
     expect((await client.query("select * from derived_test")).rows).toEqual([]);
     expect((await saved())[0]).toMatchObject({
-      source_generation: null,
+      source_generation: generation,
       checkpoint: initial,
     });
     await store.withLease(lease.token, async (transaction) => {
       await sql`insert into derived_test values (1, 1)`.execute(transaction);
       return {
         kind: "progress",
-        sourceGeneration: generation,
-        checkpoint: { phase: "source", shard: 0, afterSequence: "1" },
+        checkpoint: { phase: "source", shard: 1, afterSequence: "0" },
       };
     });
     const callback = vi.fn();
@@ -259,7 +268,7 @@ describe("PostgreSQL durable report jobs", () => {
       { phase: "source", shard: 3, afterSequence: "0" },
       { phase: "complete" },
       { phase: "installations", afterInstallKey: null },
-      { phase: "source", shard: 0, afterSequence: "3" },
+      { phase: "source", shard: 1, afterSequence: "3" },
     ] as PostgresInsightsReportCheckpoint[]) {
       await expect(
         store.withLease(lease.token, async () => ({
@@ -268,13 +277,6 @@ describe("PostgreSQL durable report jobs", () => {
         })),
       ).rejects.toMatchObject({ code: "invalid-result" });
     }
-    await expect(
-      store.withLease(lease.token, async () => ({
-        kind: "progress",
-        sourceGeneration: generation.replace("000000000001", "000000000002"),
-        checkpoint: lease.job.checkpoint,
-      })),
-    ).rejects.toMatchObject({ code: "invalid-result" });
     expect((await saved())[0]!.source_generation).toBe(generation);
     expect((await client.query("select * from derived_test")).rows).toEqual([
       { id: 1, value: 1 },
@@ -455,14 +457,10 @@ describe("PostgreSQL durable report jobs", () => {
     await expect(store.withLease(first.token, callback)).rejects.toMatchObject({
       code: "INSIGHTS_LEASE_LOST",
     });
-    await store.withLease(second.token, async () => ({
-      kind: "progress",
-      sourceGeneration: generation,
-      checkpoint: initial,
-    }));
+    await store.withLease(second.token, async () => ({ kind: "defer" }));
   });
 
-  it("defers an uncaptured job without resetting it, then captures under a new lease once the source is ready", async () => {
+  it("defers a job without resetting its reserved source generation", async () => {
     const first = await store.getReport({ query });
     const lease = await acquire();
     await store.withLease(lease.token, async () => ({ kind: "defer" }));
@@ -472,13 +470,12 @@ describe("PostgreSQL durable report jobs", () => {
     expect(next.token.epoch).not.toBe(lease.token.epoch);
     await store.withLease(next.token, async () => ({
       kind: "progress",
-      sourceGeneration: generation,
-      checkpoint: initial,
+      checkpoint: { phase: "source", shard: 1, afterSequence: "0" },
     }));
     const captured = await acquire();
     expect(captured.job).toEqual({
       ...lease.job,
-      sourceGeneration: generation,
+      checkpoint: { phase: "source", shard: 1, afterSequence: "0" },
     });
     await store.withLease(captured.token, async () => ({ kind: "defer" }));
     const resumed = await acquire();
@@ -492,46 +489,57 @@ describe("PostgreSQL durable report jobs", () => {
     expect(await saved()).toHaveLength(1);
   });
 
+  it("rolls back an operational source probe without poisoning the durable job", async () => {
+    const reserved = await store.getReport({ query });
+    if (reserved.state !== "queued") throw new Error("Expected queued job.");
+    await expect(
+      store.probeNextSource(async (transaction) => {
+        await sql`insert into derived_test values (1, 1)`.execute(transaction);
+        throw new Error("injected probe failure");
+      }),
+    ).rejects.toThrow("injected probe failure");
+    expect((await client.query("select * from derived_test")).rows).toEqual([]);
+    expect(await saved()).toEqual([
+      expect.objectContaining({
+        id: reserved.jobId,
+        status: "queued",
+        source_generation: generation,
+        checkpoint: initial,
+      }),
+    ]);
+    await expect(store.probeNextSource(async () => 1)).resolves.toEqual({
+      state: "valid",
+      processed: 1,
+      jobId: reserved.jobId,
+    });
+  });
+
   it.each([
-    { bundleIds: [], after: "0", allowed: true },
-    { bundleIds: ["bundle"], after: "0", allowed: false },
-    { bundleIds: [], after: "1", allowed: false },
+    { bundleIds: [], allowed: true },
+    { bundleIds: ["bundle"], allowed: false },
   ])(
     "permits immediate completion only for an initially empty batch: %j",
-    async ({ bundleIds, after, allowed }) => {
+    async ({ bundleIds, allowed }) => {
       const query = {
         kind: "bundleSummaries",
         bundleIds,
         window: "all",
       } as const;
       await store.getReport({ query });
-      let lease = await acquire();
-      if (after !== "0") {
-        await store.withLease(lease.token, async () => ({
-          kind: "progress",
-          sourceGeneration: generation,
-          checkpoint: { phase: "source", shard: 0, afterSequence: after },
-        }));
-        lease = await acquire();
-      }
-      const finish = (sourceGeneration: string) =>
+      const lease = await acquire();
+      const finish = () =>
         store.withLease(lease.token, async () => ({
           kind: "progress",
-          sourceGeneration,
           checkpoint: { phase: "complete" },
         }));
       if (!allowed) {
-        await expect(finish(generation)).rejects.toMatchObject({
+        await expect(finish()).rejects.toMatchObject({
           code: "invalid-result",
         });
         expect((await saved())[0]!.checkpoint.phase).toBe("source");
         return;
       }
-      await expect(finish("uncaptured")).rejects.toMatchObject({
-        code: "invalid-result",
-      });
-      await finish(generation);
-      const captured = await acquire();
+      const captured = lease;
       expect(captured.job).toMatchObject({
         sourceGeneration: generation,
         checkpoint: { phase: "complete" },
@@ -558,15 +566,14 @@ describe("PostgreSQL durable report jobs", () => {
         );
         return {
           kind: "progress",
-          sourceGeneration: generation,
-          checkpoint: initial,
+          checkpoint: { phase: "source", shard: 1, afterSequence: "0" },
         };
       }),
     ).rejects.toMatchObject({ code: "INSIGHTS_LEASE_LOST" });
     expect((await client.query("select * from derived_test")).rows).toEqual([]);
     expect((await saved())[0]).toMatchObject({
       status: "preparing",
-      source_generation: null,
+      source_generation: generation,
       checkpoint: initial,
     });
   });
@@ -626,6 +633,7 @@ describe("PostgreSQL durable report jobs", () => {
       ).toEqual({
         state: "failed",
         error: { code: "preparation-failed", jobId: failed.job.id },
+        sourceGeneration: generation,
         previous: result.publication,
       });
     expect(await store.getReport({ query })).toEqual(result);
@@ -742,10 +750,14 @@ describe("PostgreSQL durable report jobs", () => {
         encode(sha256(convert_to('[2,' || to_json('[1,"activeOverview","7d","' || n::text || '"]')::text || ']', 'UTF8')), 'hex') query_key,
         jsonb_build_object('kind','activeOverview','window','7d','userId',n::text) canonical_query
       from generate_series(0,50000)n;
-      insert into ${headTable}(query_key,canonical_query) select query_key,canonical_query from seeded_jobs;
-      insert into ${jobTable}(id,query_key,as_of_ms,status,checkpoint,lease_epoch,claimable_at)
-        select id,query_key,0,'preparing','{"phase":"source","shard":0,"afterSequence":"0"}'::jsonb,1,
-          clock_timestamp()+interval '1 day' from seeded_jobs;
+      insert into ${headTable}(query_key,canonical_query) select query_key,canonical_query from seeded_jobs;`);
+    await client.query(
+      `insert into ${jobTable}(id,query_key,as_of_ms,status,source_generation,checkpoint,lease_epoch,claimable_at)
+        select id,query_key,0,'preparing',$1,'{"phase":"source","shard":0,"afterSequence":"0"}'::jsonb,1,
+          clock_timestamp()+interval '1 day' from seeded_jobs`,
+      [generation],
+    );
+    await client.exec(`
       update ${headTable} h set active_job_id=s.id from seeded_jobs s where s.query_key=h.query_key;
       analyze ${jobTable}; analyze ${headTable};`);
     const queries = vi.spyOn(client, "query");

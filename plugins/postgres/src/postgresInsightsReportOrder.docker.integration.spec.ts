@@ -18,6 +18,10 @@ const counts = "private_hot_updater_insights_report_counts";
 const runs = "private_hot_updater_insights_report_order_rows";
 const jobId = "00000000-0000-0000-0000-000000000001";
 const section = { section: "movementCohorts", metric: "installed" } as const;
+const postgresImage =
+  process.env.POSTGRES_INSIGHTS_TEST_VERSION_17 === "1"
+    ? "postgres:17-alpine"
+    : "postgres:15-alpine";
 const docker = (args: string[]) => {
   const result = spawnSync("docker", args, { encoding: "utf8" });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout);
@@ -30,7 +34,7 @@ describe("PostgreSQL report ordering native index bounds", () => {
   let db: Kysely<object>;
 
   beforeAll(async () => {
-    docker(["image", "inspect", "postgres:15-alpine"]);
+    docker(["image", "inspect", postgresImage]);
     const port = await findOpenPort();
     docker([
       "run",
@@ -40,12 +44,12 @@ describe("PostgreSQL report ordering native index bounds", () => {
       "--name",
       container,
       "--tmpfs",
-      "/var/lib/postgresql/data:rw,size=256m",
+      "/var/lib/postgresql/data:rw,size=512m",
       "-p",
       `127.0.0.1:${port}:5432`,
       "-e",
       "POSTGRES_HOST_AUTH_METHOD=trust",
-      "postgres:15-alpine",
+      postgresImage,
     ]);
     const deadline = Date.now() + 20_000;
     while (
@@ -96,6 +100,9 @@ describe("PostgreSQL report ordering native index bounds", () => {
       select '${jobId}'::uuid,encode(sha256(convert_to(identity,'UTF8')),'hex'),identity::jsonb,
         'activeBundleTotals','','unrelated-'||n::text,-1,50001-n
       from (select n,'["activeBundleTotals","","unrelated-'||n::text||'",-1]' identity from generate_series(0,50000)n)seed;
+      insert into private_hot_updater_insights_report_count_manifest
+        (job_id,count_key,identity,section,metric,label,bucket_start_ms)
+      select job_id,count_key,identity,section,metric,label,bucket_start_ms from ${counts};
       insert into ${runs}(job_id,section,metric,sort_pass,run_number,row_position,label,value,count_key)
       select job_id,section,metric,0,((substring(label from 11))::bigint/32),((substring(label from 11))::bigint%32),label,value,count_key
       from ${counts};`);
@@ -126,7 +133,11 @@ describe("PostgreSQL report ordering native index bounds", () => {
           return sql`(${jobId}::uuid,${createHash("sha256").update(identity).digest("hex")},${identity}::jsonb,${section.section},${section.metric},${label},-1,1)`;
         }),
       )}`.execute(db);
-    await pool.query(`analyze ${counts}; analyze ${runs}`);
+    await pool.query(`insert into private_hot_updater_insights_report_count_manifest
+      (job_id,count_key,identity,section,metric,label,bucket_start_ms)
+      select job_id,count_key,identity,section,metric,label,bucket_start_ms from ${counts}
+      where job_id='${jobId}'::uuid on conflict do nothing;
+      analyze ${counts}; analyze private_hot_updater_insights_report_count_manifest; analyze ${runs}`);
     queries.length = 0;
     await db
       .transaction()
@@ -134,7 +145,7 @@ describe("PostgreSQL report ordering native index bounds", () => {
         stepPostgresInsightsReportOrder(transaction, jobId, section),
       );
     const copy = queries.find(({ sql }) =>
-      /order by count_key limit/.test(sql),
+      /order by m\.count_key limit/.test(sql),
     )!;
     expect(copy).toBeDefined();
     type Plan = {
@@ -178,7 +189,7 @@ describe("PostgreSQL report ordering native index bounds", () => {
       }
       return nodes;
     };
-    await explain(copy, "insights_report_counts_order_input_idx", 32);
+    await explain(copy, "insights_report_count_manifest_order_idx", 32);
     const connection = await pool.connect();
     try {
       await connection.query("begin");
@@ -190,7 +201,7 @@ describe("PostgreSQL report ordering native index bounds", () => {
           sql: `execute insights_order_copy(${copy.parameters.map((value) => pg.escapeLiteral(String(value))).join(",")})`,
           parameters: [],
         },
-        "insights_report_counts_order_input_idx",
+        "insights_report_count_manifest_order_idx",
         32,
         connection,
       );
@@ -240,7 +251,11 @@ describe("PostgreSQL report ordering native index bounds", () => {
       select '${largeJobId}'::uuid,encode(sha256(convert_to(identity,'UTF8')),'hex'),identity::jsonb,
         'movementCohorts','installed','matching-'||n::text,-1,1
       from (select n,'["movementCohorts","installed","matching-'||n::text||'",-1]' identity from generate_series(0,50000)n)seed`);
-    await pool.query(`analyze ${counts}`);
+    await pool.query(`insert into private_hot_updater_insights_report_count_manifest
+      (job_id,count_key,identity,section,metric,label,bucket_start_ms)
+      select job_id,count_key,identity,section,metric,label,bucket_start_ms from ${counts}
+      where job_id='${largeJobId}'::uuid; analyze ${counts};
+      analyze private_hot_updater_insights_report_count_manifest`);
     for (let i = 0; i < 2; i++) {
       queries.length = 0;
       expect(
@@ -251,11 +266,15 @@ describe("PostgreSQL report ordering native index bounds", () => {
           ),
       ).toEqual({ ready: false, processed: 32 });
       const boundedCopy = queries.find(({ sql }) =>
-        /order by count_key limit/.test(sql),
+        /order by m\.count_key limit/.test(sql),
       )!;
-      await explain(boundedCopy, "insights_report_counts_order_input_idx", 32);
+      await explain(
+        boundedCopy,
+        "insights_report_count_manifest_order_idx",
+        32,
+      );
     }
-    await pool.query("drop index insights_report_counts_order_input_idx");
+    await pool.query("drop index insights_report_count_manifest_order_idx");
     queries.length = 0;
     await expect(
       db

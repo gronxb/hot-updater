@@ -28,6 +28,18 @@ CREATE TABLE private_hot_updater_insights_report_counts (
   value bigint NOT NULL CHECK (value > 0),
   PRIMARY KEY (job_id, count_key)
 );
+-- One immutable identity marker for every positive count. Point reads can
+-- distinguish a legitimate sparse zero from a deleted published count row.
+CREATE TABLE private_hot_updater_insights_report_count_manifest (
+  job_id uuid NOT NULL,
+  count_key text COLLATE "C" NOT NULL,
+  identity jsonb NOT NULL,
+  section text COLLATE "C" NOT NULL,
+  metric text COLLATE "C" NOT NULL,
+  label text NOT NULL,
+  bucket_start_ms bigint NOT NULL,
+  PRIMARY KEY (job_id, count_key)
+);
 CREATE INDEX insights_report_counts_bucket_idx
   ON private_hot_updater_insights_report_counts (job_id, section, metric, bucket_start_ms)
   WHERE section = 'movementSeries';

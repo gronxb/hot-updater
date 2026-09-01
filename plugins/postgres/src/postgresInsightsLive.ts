@@ -6,14 +6,26 @@ import {
   InsightsQueryNotReadyError,
   type BundleEventRow,
   type InsightsInstallationRow,
-  type InsightsInstallationPage,
-  type InsightsInstallationPageInput,
 } from "@hot-updater/plugin-core";
 import {
+  assertInsightsEventContract,
   assertInsightsEventRow,
   databaseFields,
+  INSIGHTS_PAGE_MAX_ROWS,
 } from "@hot-updater/plugin-core/internal";
 import { sql, type Kysely, type QueryExecutorProvider } from "kysely";
+
+import {
+  assertPostgresInsightsEventCandidates,
+  fitPostgresInsightsInternalPage,
+  postgresInsightsEventVariableBytes,
+  recordPostgresInsightsPreparationFailure,
+  type PostgresInsightsEventCandidate,
+} from "./postgresInsightsContract";
+import type {
+  PostgresInsightsInstallationPage,
+  PostgresInsightsInstallationPageInput,
+} from "./postgresInsightsInternalTypes";
 
 export const POSTGRES_INSIGHTS_LIVE_TABLE =
   "private_hot_updater_insights_live_installations";
@@ -23,6 +35,15 @@ const hex = /^[0-9a-f]{64}$/;
 
 export const postgresInsightsInstallKey = (installId: string): Buffer =>
   createHash("sha256").update(JSON.stringify(installId)).digest();
+
+export const createPostgresInsightsLivePageCursor = (
+  installId: string,
+): string =>
+  JSON.stringify([
+    1,
+    cursorRevision,
+    postgresInsightsInstallKey(installId).toString("hex"),
+  ]);
 
 const invalid = (): never => {
   throw new DatabasePluginInputError("invalid-result");
@@ -38,6 +59,7 @@ type Stored = {
 
 const readStored = (row: Stored): BundleEventRow => {
   assertInsightsEventRow(row.event);
+  assertInsightsEventContract(row.event);
   if (
     !hex.test(row.install_key) ||
     postgresInsightsInstallKey(row.install_id).toString("hex") !==
@@ -117,7 +139,8 @@ export const assertPostgresInsightsLiveReady = async (
       where a.attrelid = to_regclass('private_hot_updater_insights_live_state')
         and a.attnum > 0 and not a.attisdropped) = array[
           'id:integer:true','version:integer:true','initialized:boolean:true',
-          'ready:boolean:true','upper_id:uuid:false','after_id:uuid:false',
+          'ready:boolean:true','failed:boolean:true','failure:text:false',
+          'upper_id:uuid:false','after_id:uuid:false',
           'revision:bigint:true']
     and exists (select 1 from pg_constraint
       where conrelid = to_regclass('bundle_events')
@@ -132,6 +155,7 @@ export const assertPostgresInsightsLiveReady = async (
   const state = await sql<{ ready: boolean; observed_at_ms: number }>`select
     exists (select 1 from ${sql.table(stateTable)}
       where id = 1 and version = 1
+        and not failed
         and (${requireBackfill} = false or ready)) as ready,
     floor(extract(epoch from statement_timestamp())*1000)::float8 observed_at_ms`.execute(
     db,
@@ -201,6 +225,7 @@ type State = {
   version: number;
   initialized: boolean;
   ready: boolean;
+  failed: boolean;
   upper_id: string | null;
   after_id: string | null;
 };
@@ -213,62 +238,100 @@ export const createPostgresInsightsLiveTools = <TDatabase extends object>(
   ): Promise<{ ready: boolean; processed: number }> {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200)
       throw new DatabasePluginInputError("invalid-query");
-    return db.transaction().execute(async (transaction) => {
-      await assertPostgresInsightsLiveReady(transaction, false);
-      const saved =
-        await sql<State>`select version,initialized,ready,upper_id,after_id
-        from ${sql.table(stateTable)} where id=1 for update`.execute(
-          transaction,
-        );
-      const state = saved.rows[0];
-      if (!state || state.version !== 1) throw new InsightsQueryNotReadyError();
-      if (state.ready) return { ready: true, processed: 0 };
-      if (!state.initialized) {
-        const upper = await sql<{ id: string }>`select id from bundle_events
+    try {
+      return await db.transaction().execute(async (transaction) => {
+        await assertPostgresInsightsLiveReady(transaction, false);
+        const saved =
+          await sql<State>`select version,initialized,ready,failed,upper_id,after_id
+          from ${sql.table(stateTable)} where id=1 for update`.execute(
+            transaction,
+          );
+        const state = saved.rows[0];
+        if (!state || state.version !== 1)
+          throw new InsightsQueryNotReadyError();
+        if (state.failed) throw new InsightsQueryNotReadyError();
+        if (state.ready) return { ready: true, processed: 0 };
+        if (!state.initialized) {
+          const upper = await sql<{ id: string }>`select id from bundle_events
           order by id desc limit 1`.execute(transaction);
-        const upperId = upper.rows[0]?.id ?? null;
-        await sql`update ${sql.table(stateTable)} set initialized=true,
+          const upperId = upper.rows[0]?.id ?? null;
+          await sql`update ${sql.table(stateTable)} set initialized=true,
           upper_id=${upperId}::uuid, ready=${upperId === null}, revision=revision+1
           where id=1`.execute(transaction);
-        return { ready: upperId === null, processed: 0 };
-      }
-      if (state.upper_id === null) invalid();
-      const result = await sql<
-        BundleEventRow & { live_marker: number | null }
-      >`select
-        ${sql.join(databaseFields.bundle_events.map((field) => sql.ref(field)))},
-        insights_live_version live_marker
+          return { ready: upperId === null, processed: 0 };
+        }
+        if (state.upper_id === null) invalid();
+        const candidates = await sql<PostgresInsightsEventCandidate>`select id,
+        (${postgresInsightsEventVariableBytes})::text variable_bytes
         from bundle_events where id <= ${state.upper_id}::uuid
         ${state.after_id === null ? sql`` : sql`and id > ${state.after_id}::uuid`}
         order by id asc limit ${limit}`.execute(transaction);
-      for (const event of result.rows) {
-        assertInsightsEventRow(event);
-        if (event.live_marker !== null && event.live_marker !== 1) invalid();
-      }
-      await upsertLatest(
-        transaction,
-        result.rows.map(({ live_marker: _, ...event }) => event),
-      );
-      const pending = result.rows.filter((event) => event.live_marker === null);
-      if (pending.length > 0) {
-        const updated = await sql<{ id: string }>`update bundle_events
+        assertPostgresInsightsEventCandidates(candidates.rows);
+        const result =
+          candidates.rows.length === 0
+            ? {
+                rows: [] as (BundleEventRow & {
+                  live_marker: number | null;
+                  insights_event: BundleEventRow | null;
+                })[],
+              }
+            : await sql<
+                BundleEventRow & {
+                  live_marker: number | null;
+                  insights_event: BundleEventRow | null;
+                }
+              >`select
+            ${sql.join(databaseFields.bundle_events.map((field) => sql.ref(field)))},
+            insights_event, insights_live_version live_marker from bundle_events
+            where id in (${sql.join(candidates.rows.map(({ id }) => sql`${id}::uuid`))})
+            order by id asc limit ${limit}`.execute(transaction);
+        if (result.rows.length !== candidates.rows.length) invalid();
+        for (const event of result.rows) {
+          const publicEvent =
+            event.insights_event ??
+            Object.fromEntries(
+              databaseFields.bundle_events.map((field) => [
+                field,
+                event[field],
+              ]),
+            );
+          assertInsightsEventContract(publicEvent);
+          assertInsightsEventRow(publicEvent);
+          if (event.live_marker !== null && event.live_marker !== 1) invalid();
+        }
+        await upsertLatest(
+          transaction,
+          result.rows.map(
+            ({ live_marker: _, insights_event, ...stored }) =>
+              insights_event ?? stored,
+          ),
+        );
+        const pending = result.rows.filter(
+          (event) => event.live_marker === null,
+        );
+        if (pending.length > 0) {
+          const updated = await sql<{ id: string }>`update bundle_events
           set insights_live_version=1 where id in (${sql.join(pending.map(({ id }) => sql`${id}::uuid`))})
           and insights_live_version is null returning id`.execute(transaction);
-        if (updated.rows.length !== pending.length) invalid();
-      }
-      const afterId = result.rows.at(-1)?.id ?? state.after_id;
-      const ready = result.rows.length < limit || afterId === state.upper_id;
-      await sql`update ${sql.table(stateTable)} set after_id=${afterId}::uuid,
+          if (updated.rows.length !== pending.length) invalid();
+        }
+        const afterId = result.rows.at(-1)?.id ?? state.after_id;
+        const ready = result.rows.length < limit || afterId === state.upper_id;
+        await sql`update ${sql.table(stateTable)} set after_id=${afterId}::uuid,
         ready=${ready}, revision=revision+1 where id=1`.execute(transaction);
-      return { ready, processed: result.rows.length };
-    });
+        return { ready, processed: result.rows.length };
+      });
+    } catch (error) {
+      await recordPostgresInsightsPreparationFailure(db, stateTable, error);
+      throw error;
+    }
   },
 });
 
-type AllInput = Extract<InsightsInstallationPageInput, { kind: "all" }>;
+type AllInput = Extract<PostgresInsightsInstallationPageInput, { kind: "all" }>;
 
 export const createPostgresInsightsLivePages = (db: QueryExecutorProvider) => ({
-  async pageAll(input: AllInput): Promise<InsightsInstallationPage> {
+  async pageAll(input: AllInput): Promise<PostgresInsightsInstallationPage> {
     if (
       typeof input !== "object" ||
       input === null ||
@@ -279,7 +342,7 @@ export const createPostgresInsightsLivePages = (db: QueryExecutorProvider) => ({
       input.kind !== "all" ||
       !Number.isSafeInteger(input.limit) ||
       input.limit < 1 ||
-      input.limit > 100
+      input.limit > INSIGHTS_PAGE_MAX_ROWS
     )
       throw new DatabasePluginInputError("invalid-query");
     let after: string | null = null;
@@ -316,17 +379,21 @@ export const createPostgresInsightsLivePages = (db: QueryExecutorProvider) => ({
       previous = row.install_key;
       readStored(row);
     }
-    const emitted = result.rows.slice(0, input.limit);
-    return {
-      state: "ready",
-      consistency: "live",
-      observedAtMs,
-      rows: emitted.map((row) => toInstallationRow(readStored(row))),
-      nextCursor:
-        result.rows.length > input.limit
-          ? JSON.stringify([1, cursorRevision, emitted.at(-1)!.install_key])
-          : null,
-    };
+    const candidates = result.rows.slice(0, input.limit);
+    const hasLookahead = result.rows.length > input.limit;
+    return fitPostgresInsightsInternalPage(
+      candidates,
+      (emitted, shortened) => ({
+        state: "ready" as const,
+        consistency: "live" as const,
+        observedAtMs,
+        rows: emitted.map((row) => toInstallationRow(readStored(row))),
+        nextCursor:
+          (shortened || hasLookahead) && emitted.length > 0
+            ? JSON.stringify([1, cursorRevision, emitted.at(-1)!.install_key])
+            : null,
+      }),
+    );
   },
 });
 
@@ -357,7 +424,7 @@ export const migratePostgresInsightsLive = async <TDatabase extends object>(
     if (!sourceLayout.rows[0]?.present) throw new InsightsQueryNotReadyError();
     const source = await sql<{ ready: boolean }>`select exists (
       select 1 from private_hot_updater_insights_source_state
-      where id=1 and version=1 and initialized and ready
+      where id=1 and version=1 and initialized and ready and not failed
     ) ready`.execute(transaction);
     if (!source.rows[0]?.ready) throw new InsightsQueryNotReadyError();
     if (!installed.rows[0]?.present)

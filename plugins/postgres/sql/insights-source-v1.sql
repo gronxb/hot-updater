@@ -3,6 +3,7 @@
 -- Schedule a maintenance window: transactional DDL/index creation blocks writes.
 alter table bundle_events add column insights_source_shard smallint;
 alter table bundle_events add column insights_source_seq bigint;
+alter table bundle_events add column insights_event jsonb;
 
 create table private_hot_updater_insights_source_clocks (
   shard smallint primary key check (shard between 0 and 15),
@@ -17,12 +18,17 @@ create table private_hot_updater_insights_source_state (
   source_id uuid not null default gen_random_uuid(),
   initialized boolean not null,
   ready boolean not null,
+  failed boolean not null,
+  failure text check (failure is null or octet_length(failure) <= 64),
   upper_id uuid,
   after_id uuid,
-  revision bigint not null check (revision > 0)
+  revision bigint not null check (revision > 0),
+  check ((failed and not ready and failure is not null)
+    or (not failed and failure is null))
 );
 insert into private_hot_updater_insights_source_state
-  (id, version, initialized, ready, revision) values (1, 1, false, false, 1);
+  (id, version, initialized, ready, failed, revision)
+  values (1, 1, false, false, false, 1);
 
 create unique index bundle_events_source_idx
   on bundle_events (insights_source_shard, insights_source_seq)
@@ -30,4 +36,5 @@ create unique index bundle_events_source_idx
 alter table bundle_events add constraint bundle_events_source_required check (
   insights_source_shard is not null and insights_source_shard between 0 and 15
   and insights_source_seq is not null and insights_source_seq > 0
+  and insights_event is not null
 ) not valid;

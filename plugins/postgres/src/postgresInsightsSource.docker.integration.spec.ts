@@ -7,10 +7,7 @@ import { Kysely, PostgresDialect } from "kysely";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import {
-  createBundleEventRowFixture,
-  createBundleRowFixture,
-} from "../../../packages/test-utils/src/databaseTestFixtures";
+import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { findOpenPort } from "../../../packages/test-utils/src/runtimeProcess";
 import {
   migratePostgresInsightsLive,
@@ -24,6 +21,10 @@ import {
 } from "./postgresInsightsSource";
 import type { Database } from "./types";
 
+const postgresImage =
+  process.env.POSTGRES_INSIGHTS_TEST_VERSION_17 === "1"
+    ? "postgres:17-alpine"
+    : "postgres:15-alpine";
 const docker = (args: string[]) => {
   const result = spawnSync("docker", args, { encoding: "utf8" });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout);
@@ -49,7 +50,7 @@ describe("PostgreSQL committed source with concurrent transactions", () => {
   let source: ReturnType<typeof createPostgresInsightsSourceTools>;
 
   beforeAll(async () => {
-    docker(["image", "inspect", "postgres:15-alpine"]);
+    docker(["image", "inspect", postgresImage]);
     const port = await findOpenPort();
     docker([
       "run",
@@ -64,7 +65,7 @@ describe("PostgreSQL committed source with concurrent transactions", () => {
       `127.0.0.1:${port}:5432`,
       "-e",
       "POSTGRES_HOST_AUTH_METHOD=trust",
-      "postgres:15-alpine",
+      postgresImage,
     ]);
     // The initialization server only listens on a socket. Wait for final TCP.
     await waitUntil(
@@ -119,7 +120,6 @@ describe("PostgreSQL committed source with concurrent transactions", () => {
     const otherShard = candidates.find(
       (row) => postgresEventSourceShard(row.id) !== shard,
     )!;
-    const bundle = createBundleRowFixture("801");
     const writer = (name: string) => {
       const result = postgres({ ...config, max: 1, application_name: name });
       writers.push(result);
@@ -132,24 +132,17 @@ describe("PostgreSQL committed source with concurrent transactions", () => {
     const lock = 731846;
     await blocker.query("select pg_advisory_lock($1)", [lock]);
     // The trigger pauses the real adapter after its counter UPDATE and INSERT,
-    // before the mixed commit can publish either the event or the bundle.
+    // before the append can publish the event.
     await pool.query(`create function pause_source_insert() returns trigger language plpgsql as $$
       begin if NEW.id = '${first.id}'::uuid then perform pg_advisory_xact_lock(${lock}); end if; return NEW; end; $$;
       create trigger pause_source_insert after insert on bundle_events for each row execute function pause_source_insert();`);
     let firstCommit: Promise<unknown> | undefined;
     let secondCommit: Promise<unknown> | undefined;
     try {
-      firstCommit = firstWriter
-        .commit({
-          changes: [
-            { model: "insights", operation: "insert", row: first },
-            { model: "bundles", operation: "insert", row: bundle },
-          ],
-        })
-        .then(
-          (result) => result,
-          (error: unknown) => ({ error }),
-        );
+      firstCommit = firstWriter.models.insights.append(first).then(
+        (result) => result,
+        (error: unknown) => ({ error }),
+      );
       await waitUntil(
         async () =>
           (
@@ -160,9 +153,6 @@ describe("PostgreSQL committed source with concurrent transactions", () => {
           ).rowCount === 1,
       );
       expect(JSON.parse(await source.capture())[2][shard]).toBe("0");
-      expect(
-        await independentWriter.models.bundles.findById(bundle.id),
-      ).toBeNull();
       secondCommit = secondWriter.models.insights.append(sameShard).then(
         (result) => result,
         (error: unknown) => ({ error }),
@@ -185,7 +175,7 @@ describe("PostgreSQL committed source with concurrent transactions", () => {
         ],
       ).toBe("1");
       await blocker.query("select pg_advisory_unlock($1)", [lock]);
-      expect(await firstCommit).toEqual({ committed: true });
+      expect(await firstCommit).toBeUndefined();
       expect(await secondCommit).toBeUndefined();
       const oldRows = (
         await Promise.all(
@@ -206,9 +196,6 @@ describe("PostgreSQL committed source with concurrent transactions", () => {
         { sequence: "1", event: first },
         { sequence: "2", event: sameShard },
       ]);
-      expect(
-        await independentWriter.models.bundles.findById(bundle.id),
-      ).toEqual(bundle);
     } finally {
       await blocker.query("select pg_advisory_unlock($1)", [lock]);
       blocker.release();

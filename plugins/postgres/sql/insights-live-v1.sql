@@ -14,12 +14,17 @@ create table private_hot_updater_insights_live_state (
   version integer not null check (version = 1),
   initialized boolean not null,
   ready boolean not null,
+  failed boolean not null,
+  failure text check (failure is null or octet_length(failure) <= 64),
   upper_id uuid,
   after_id uuid,
-  revision bigint not null check (revision > 0)
+  revision bigint not null check (revision > 0),
+  check ((failed and not ready and failure is not null)
+    or (not failed and failure is null))
 );
 insert into private_hot_updater_insights_live_state
-  (id, version, initialized, ready, revision) values (1, 1, false, false, 1);
+  (id, version, initialized, ready, failed, revision)
+  values (1, 1, false, false, false, 1);
 
 -- NOT VALID avoids a historical table scan but rejects every unfenced new row.
 alter table bundle_events add constraint bundle_events_live_required

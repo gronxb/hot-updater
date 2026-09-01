@@ -95,13 +95,19 @@ const assertNativeBackfill = (root: Plan) => {
 
 describe("PostgreSQL native live installation pages", () => {
   const containers: string[] = [];
+  const versions = [
+    "15",
+    ...(process.env.POSTGRES_INSIGHTS_TEST_VERSION_17 === "1"
+      ? (["17"] as const)
+      : []),
+  ] as const;
 
   afterEach(() => {
     for (const container of containers.splice(0))
       spawnSync("docker", ["rm", "--force", container]);
   });
 
-  it.each(["15", "17"])(
+  it.each(versions)(
     "keeps backfill and pages bounded on PostgreSQL %s",
     async (version) => {
       const image = `postgres:${version}-alpine`;
@@ -272,11 +278,14 @@ describe("PostgreSQL native live installation pages", () => {
         ), numbered as (
           select s.*,c.committed_seq + row_number() over(partition by shard order by id) sequence
           from sharded s join private_hot_updater_insights_source_clocks c using(shard)
+        ), events as (
+          select numbered.*, '${template}'::jsonb || jsonb_build_object(
+            'id',id,'install_id','bulk-' || n,'received_at_ms',n) event
+          from numbered
         ) insert into bundle_events select (jsonb_populate_record(null::bundle_events,
-          '${template}'::jsonb || jsonb_build_object(
-            'id',id,'install_id','bulk-' || n,'received_at_ms',n,
+          event || jsonb_build_object(
             'insights_source_shard',shard,'insights_source_seq',sequence,
-            'insights_live_version',1))).* from numbered;
+            'insights_event',event,'insights_live_version',1))).* from events;
         update private_hot_updater_insights_source_clocks c set committed_seq=s.last_sequence
           from (select insights_source_shard,max(insights_source_seq) last_sequence
             from bundle_events group by insights_source_shard)s

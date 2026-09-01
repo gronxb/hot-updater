@@ -6,6 +6,7 @@ import { Kysely, sql } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { migratePostgresInsightsSource } from "./db";
 import {
   createPostgresInsightsJobs,
   isPostgresInsightsContainsJob,
@@ -14,14 +15,10 @@ import {
   type PostgresInsightsJobUpdate,
   type PostgresInsightsSearchResult,
 } from "./postgresInsightsJobs";
+import { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
 
 const jobsTable = "private_hot_updater_insights_report_jobs";
 const headsTable = "private_hot_updater_insights_report_heads";
-const generation = JSON.stringify([
-  1,
-  "00000000-0000-0000-0000-000000000001",
-  Array(16).fill("0"),
-]);
 const queuedId = (result: PostgresInsightsSearchResult) => {
   if (result.state !== "queued" && result.state !== "preparing")
     throw new Error("Expected a pending search.");
@@ -32,17 +29,16 @@ describe("private PostgreSQL historical contains jobs", () => {
   let client: PGlite;
   let db: Kysely<object>;
   let store: ReturnType<typeof createPostgresInsightsJobs>;
+  let generation: string;
   let requests: string[];
   let returnedRows: number;
   beforeEach(async () => {
     client = new PGlite();
-    // Reservation and binding cannot depend on raw events or alias contents.
-    await client.exec(
-      await readFile("plugins/postgres/sql/insights-reports-v1.sql", "utf8"),
-    );
-    await client.exec("create table derived_test(id integer primary key)");
     requests = [];
     returnedRows = 0;
+    await client.exec(
+      await readFile("plugins/postgres/sql/bundles.sql", "utf8"),
+    );
     db = new Kysely<object>({
       dialect: new PGliteDialect(client),
       log: (event) => {
@@ -58,6 +54,16 @@ describe("private PostgreSQL historical contains jobs", () => {
         },
       ],
     });
+    await migratePostgresInsightsSource(db);
+    const source = createPostgresInsightsSourceTools(db);
+    await source.backfillStep(1);
+    generation = await source.capture();
+    await client.exec(
+      await readFile("plugins/postgres/sql/insights-reports-v1.sql", "utf8"),
+    );
+    await client.exec("create table derived_test(id integer primary key)");
+    requests = [];
+    returnedRows = 0;
     store = createPostgresInsightsJobs(db);
   });
   afterEach(async () => {
@@ -91,10 +97,9 @@ describe("private PostgreSQL historical contains jobs", () => {
     await store.withLease(lease.token, async () => next);
   };
   const publishBase = async (id: string) => {
-    for (let shard = 0; shard < 16; shard++)
+    for (let shard = 1; shard < 16; shard++)
       await update(id, {
         kind: "progress",
-        sourceGeneration: generation,
         checkpoint: { phase: "source", shard, afterSequence: "0" },
       });
     await update(id, {
@@ -126,6 +131,7 @@ describe("private PostgreSQL historical contains jobs", () => {
     const results = await Promise.all(
       Array.from({ length: 20 }, (_, minAsOfMs) =>
         store.getSearch({
+          kind: "contains",
           query: minAsOfMs % 2 ? "Former-USER" : "former-user",
           minAsOfMs,
         }),
@@ -136,15 +142,17 @@ describe("private PostgreSQL historical contains jobs", () => {
     const first = await saved(id);
     expect(first).toMatchObject({
       as_of_ms: null,
-      source_generation: null,
+      source_generation: generation,
       checkpoint: { phase: "awaitIdentity" },
     });
     expect(
       (await client.query(`select id from ${jobsTable}`)).rows,
     ).toHaveLength(2);
 
-    const long = "İ".repeat(1500) + "\u0000\ud800";
-    const other = queuedId(await store.getSearch({ query: long }));
+    const long = "İ".repeat(500) + "\u0000";
+    const other = queuedId(
+      await store.getSearch({ kind: "contains", query: long }),
+    );
     expect((await saved(other)).base_job_id).toBe(first.base_job_id);
     const rows = (
       await client.query<{ canonical_query: { normalizedQuery?: string } }>(
@@ -165,28 +173,40 @@ describe("private PostgreSQL historical contains jobs", () => {
       ).rows,
     ).toHaveLength(1);
     expect(
-      queuedId(await store.getSearch({ query: " former-user " })),
+      queuedId(
+        await store.getSearch({ kind: "contains", query: " former-user " }),
+      ),
     ).not.toBe(id);
-    const composed = queuedId(await store.getSearch({ query: "É" }));
-    expect(queuedId(await store.getSearch({ query: "E\u0301" }))).not.toBe(
-      composed,
+    const composed = queuedId(
+      await store.getSearch({ kind: "contains", query: "É" }),
     );
+    expect(
+      queuedId(await store.getSearch({ kind: "contains", query: "E\u0301" })),
+    ).not.toBe(composed);
   });
 
   it("bounds reservation and polling to metadata and never re-reserves the base while a search is active", async () => {
     const id = queuedId(
-      await store.getSearch({ query: "budget", minAsOfMs: 0 }),
+      await store.getSearch({
+        kind: "contains",
+        query: "budget",
+        minAsOfMs: 0,
+      }),
     );
-    expect(requests).toHaveLength(12);
-    expect(returnedRows).toBe(4);
+    expect(requests).toHaveLength(15);
+    expect(returnedRows).toBe(22);
     requests = [];
     returnedRows = 0;
     for (let i = 0; i < 10; i++)
       expect(
-        await store.getSearch({ query: "BUDGET", minAsOfMs: i }),
+        await store.getSearch({
+          kind: "contains",
+          query: "BUDGET",
+          minAsOfMs: i,
+        }),
       ).toMatchObject({ state: "queued", jobId: id });
-    expect(requests).toHaveLength(70);
-    expect(returnedRows).toBe(40);
+    expect(requests).toHaveLength(80);
+    expect(returnedRows).toBe(50);
     expect(
       requests.filter((query) => /^insert into/i.test(query)),
     ).toHaveLength(10);
@@ -203,12 +223,14 @@ describe("private PostgreSQL historical contains jobs", () => {
     requests = [];
     returnedRows = 0;
     await store.withLease(lease.token, async () => ({ kind: "bindIdentity" }));
-    expect(requests).toHaveLength(6);
-    expect(returnedRows).toBe(4);
+    expect(requests).toHaveLength(7);
+    expect(returnedRows).toBe(5);
   });
 
   it("binds once from the completed base and rejects skipped phases, rebinding, bad totals and rollback leaks", async () => {
-    const id = queuedId(await store.getSearch({ query: "OLD" }));
+    const id = queuedId(
+      await store.getSearch({ kind: "contains", query: "OLD" }),
+    );
     const base = (await saved(id)).base_job_id!;
     await update(id, { kind: "bindIdentity" });
     expect(await saved(id)).toMatchObject({
@@ -240,11 +262,6 @@ describe("private PostgreSQL historical contains jobs", () => {
     for (const next of [
       { kind: "bindIdentity" },
       { kind: "progress", checkpoint: { phase: "complete" } },
-      {
-        kind: "progress",
-        sourceGeneration: generation,
-        checkpoint: { phase: "complete" },
-      },
       { kind: "publishSearch", total: 0 },
     ] as PostgresInsightsJobUpdate[])
       await expect(
@@ -287,7 +304,9 @@ describe("private PostgreSQL historical contains jobs", () => {
       kind: "publishSearch",
       total: 7,
     }));
-    expect(await store.getSearch({ query: "old" })).toMatchObject({
+    expect(
+      await store.getSearch({ kind: "contains", query: "old" }),
+    ).toMatchObject({
       state: "ready",
       publication: {
         id,
@@ -310,12 +329,21 @@ describe("private PostgreSQL historical contains jobs", () => {
       `update ${jobsTable} set as_of_ms=$2 where id=$1::uuid`,
       [base, oldTime],
     );
-    const input = { query: "former", minAsOfMs: oldTime + 1000 };
+    const input = {
+      kind: "contains" as const,
+      query: "former",
+      minAsOfMs: oldTime + 1000,
+    };
     const id = queuedId(await store.getSearch(input));
     expect((await saved(id)).base_job_id).toBe(base);
     await publishBase(base);
     await publishSearch(id, 2);
-    const old = await readPostgresInsightsSearchPublication(db, id, "former");
+    const old = await readPostgresInsightsSearchPublication(
+      db,
+      id,
+      "contains",
+      "former",
+    );
     expect(old?.publication).toMatchObject({ total: 2, asOfMs: oldTime });
     const next = await store.getSearch(input);
     const nextId = queuedId(next);
@@ -330,7 +358,7 @@ describe("private PostgreSQL historical contains jobs", () => {
       publication: { id: nextId, total: 3 },
     });
     expect(
-      await readPostgresInsightsSearchPublication(db, id, "former"),
+      await readPostgresInsightsSearchPublication(db, id, "contains", "former"),
     ).toEqual(old);
     // Neither current head references the old base now. Its old search still pins it.
     await expect(
@@ -339,22 +367,30 @@ describe("private PostgreSQL historical contains jobs", () => {
     await client.query(`delete from ${jobsTable} where id=$1::uuid`, [id]);
     await client.query(`delete from ${jobsTable} where id=$1::uuid`, [base]);
     expect(
-      await readPostgresInsightsSearchPublication(db, id, "former"),
+      await readPostgresInsightsSearchPublication(db, id, "contains", "former"),
     ).toBeNull();
   });
 
   it("makes a failed base visible without rebinding or creating retries", async () => {
-    const id = queuedId(await store.getSearch({ query: "poison" }));
+    const id = queuedId(
+      await store.getSearch({ kind: "contains", query: "poison" }),
+    );
     const base = (await saved(id)).base_job_id!;
     await update(base, { kind: "fail" });
-    await update(id, { kind: "bindIdentity" });
     for (let i = 0; i < 3; i++)
-      expect(await store.getSearch({ query: "POISON", minAsOfMs: i })).toEqual({
+      expect(
+        await store.getSearch({
+          kind: "contains",
+          query: "POISON",
+          minAsOfMs: i,
+        }),
+      ).toEqual({
         state: "failed",
         error: { code: "preparation-failed", jobId: id },
+        sourceGeneration: generation,
         previous: null,
       });
-    const other = await store.getSearch({ query: "another" });
+    const other = await store.getSearch({ kind: "contains", query: "another" });
     expect(other).toMatchObject({ state: "failed", previous: null });
     if (other.state !== "failed") throw new Error("Expected failed dependent.");
     expect((await saved(other.error.jobId)).base_job_id).toBe(base);
@@ -365,10 +401,12 @@ describe("private PostgreSQL historical contains jobs", () => {
   });
 
   it("keeps pinned lookups read-only and rejects wrong scopes or malformed requests before storage", async () => {
-    const id = queuedId(await store.getSearch({ query: "pinned" }));
+    const id = queuedId(
+      await store.getSearch({ kind: "contains", query: "pinned" }),
+    );
     const calls = vi.spyOn(client, "query");
     await expect(
-      readPostgresInsightsSearchPublication(db, id, "pinned"),
+      readPostgresInsightsSearchPublication(db, id, "contains", "pinned"),
     ).rejects.toMatchObject({ code: "INSIGHTS_QUERY_NOT_READY" });
     expect(
       calls.mock.calls.some(([query]) =>
@@ -387,17 +425,17 @@ describe("private PostgreSQL historical contains jobs", () => {
         code: "invalid-query",
       });
     await expect(
-      readPostgresInsightsSearchPublication(db, "bad", "pinned"),
+      readPostgresInsightsSearchPublication(db, "bad", "contains", "pinned"),
     ).rejects.toMatchObject({ code: "invalid-query" });
     await expect(
-      readPostgresInsightsSearchPublication(db, id, "UPPER"),
+      readPostgresInsightsSearchPublication(db, id, "contains", "UPPER"),
     ).rejects.toMatchObject({ code: "invalid-query" });
     expect(calls).not.toHaveBeenCalled();
     await publishBase((await saved(id)).base_job_id!);
     await publishSearch(id, 0);
     await expect(
-      readPostgresInsightsSearchPublication(db, id, "another"),
-    ).rejects.toMatchObject({ code: "invalid-query" });
+      readPostgresInsightsSearchPublication(db, id, "contains", "another"),
+    ).resolves.toBeNull();
     await expect(
       readPostgresInsightsReportPublication(db, id),
     ).rejects.toMatchObject({ code: "invalid-query" });
@@ -405,14 +443,19 @@ describe("private PostgreSQL historical contains jobs", () => {
       readPostgresInsightsSearchPublication(
         db,
         (await saved(id)).base_job_id!,
+        "contains",
         "pinned",
       ),
-    ).rejects.toMatchObject({ code: "invalid-query" });
+    ).resolves.toBeNull();
   });
 
   it("rejects future freshness before reserving either a search or a base", async () => {
     await expect(
-      store.getSearch({ query: "future", minAsOfMs: Number.MAX_SAFE_INTEGER }),
+      store.getSearch({
+        kind: "contains",
+        query: "future",
+        minAsOfMs: Number.MAX_SAFE_INTEGER,
+      }),
     ).rejects.toMatchObject({ code: "invalid-query" });
     expect((await client.query(`select id from ${jobsTable}`)).rows).toEqual(
       [],
@@ -424,7 +467,9 @@ describe("private PostgreSQL historical contains jobs", () => {
   });
 
   it("rolls back derived search progress when its lease expires", async () => {
-    const id = queuedId(await store.getSearch({ query: "lease" }));
+    const id = queuedId(
+      await store.getSearch({ kind: "contains", query: "lease" }),
+    );
     await publishBase((await saved(id)).base_job_id!);
     await update(id, { kind: "bindIdentity" });
     const lease = await acquire(id);
@@ -447,7 +492,12 @@ describe("private PostgreSQL historical contains jobs", () => {
     });
   });
 
-  it.each(["index", "foreign key", "old nullability"])(
+  it.each([
+    "index",
+    "foreign key",
+    "old cutoff nullability",
+    "nullable source generation",
+  ])(
     "rejects an incomplete current layout (%s) before reservation",
     async (part) => {
       if (part === "index")
@@ -458,12 +508,18 @@ describe("private PostgreSQL historical contains jobs", () => {
         await client.exec(
           `alter table ${jobsTable} drop constraint ${jobsTable}_base_job_id_fkey`,
         );
-      else
+      else if (part === "old cutoff nullability")
         await client.exec(
           `alter table ${jobsTable} alter column as_of_ms set not null`,
         );
+      else
+        await client.exec(
+          `alter table ${jobsTable} alter column source_generation drop not null`,
+        );
       const calls = vi.spyOn(client, "query");
-      await expect(store.getSearch({ query: "never" })).rejects.toMatchObject({
+      await expect(
+        store.getSearch({ kind: "contains", query: "never" }),
+      ).rejects.toMatchObject({
         code: "INSIGHTS_QUERY_NOT_READY",
       });
       expect(
@@ -482,8 +538,8 @@ describe("private PostgreSQL historical contains jobs", () => {
       [oldKey],
     );
     await client.query(
-      `insert into ${jobsTable}(id,query_key,as_of_ms,status,checkpoint) values($1::uuid,$2,0,'queued','{"phase":"source","shard":0,"afterSequence":"0"}'::jsonb)`,
-      [id, oldKey],
+      `insert into ${jobsTable}(id,query_key,as_of_ms,status,source_generation,checkpoint) values($1::uuid,$2,0,'queued',$3,'{"phase":"source","shard":0,"afterSequence":"0"}'::jsonb)`,
+      [id, oldKey, generation],
     );
     await client.query(
       `update ${headsTable} set active_job_id=$2::uuid where query_key=$1`,

@@ -121,6 +121,39 @@ describe("resumable PostgreSQL exact report accumulation", () => {
     }
     throw new Error("Report made no bounded completion progress.");
   };
+
+  it("rejects hostile report column and relationship catalog changes", async () => {
+    await client.exec(
+      "alter table private_hot_updater_insights_report_heads alter column canonical_query type jsonb using canonical_query::jsonb",
+    );
+    await expect(migratePostgresInsightsReports(db)).rejects.toMatchObject({
+      code: "INSIGHTS_QUERY_NOT_READY",
+    });
+    await client.exec(
+      "alter table private_hot_updater_insights_report_heads alter column canonical_query type json using canonical_query::json",
+    );
+
+    await client.exec(
+      "alter table private_hot_updater_insights_report_heads drop constraint private_hot_updater_insights_report_hea_publication_job_id_fkey",
+    );
+    await expect(migratePostgresInsightsReports(db)).rejects.toMatchObject({
+      code: "INSIGHTS_QUERY_NOT_READY",
+    });
+    await client.exec(
+      "alter table private_hot_updater_insights_report_heads add foreign key(publication_job_id) references private_hot_updater_insights_report_jobs(id)",
+    );
+
+    await client.exec(
+      "alter table private_hot_updater_insights_report_jobs drop constraint private_hot_updater_insights_report_jobs_query_key_fkey",
+    );
+    await expect(migratePostgresInsightsReports(db)).rejects.toMatchObject({
+      code: "INSIGHTS_QUERY_NOT_READY",
+    });
+    await client.exec(
+      "alter table private_hot_updater_insights_report_jobs add foreign key(query_key) references private_hot_updater_insights_report_heads(query_key)",
+    );
+    await expect(migratePostgresInsightsReports(db)).resolves.toBeUndefined();
+  });
   const counts = async (jobId: string, section: string) =>
     (
       await sql<{
@@ -134,7 +167,7 @@ describe("resumable PostgreSQL exact report accumulation", () => {
     ).rows;
 
   it("deduplicates summary, UTC buckets and cohorts independently, including long old cohort labels", async () => {
-    const longCohort = Array.from({ length: 1600 }, (_, i) =>
+    const longCohort = Array.from({ length: 1000 }, (_, i) =>
       String.fromCharCode(0x400 + ((i * 17) % 1000)),
     ).join("");
     const boundary = Math.floor(asOfMs / day) * day;
@@ -384,7 +417,8 @@ describe("resumable PostgreSQL exact report accumulation", () => {
     );
     const input = { query: { kind: "installationOverview" } } as const;
     const id = await reserve(input);
-    await step(); // Capture committed source before the late, backdated append.
+    // Reservation has already frozen the committed source before this
+    // backdated append and before any worker lease.
     await plugin.models.insights.append(
       event(301, asOfMs - 1, {
         install_id: old.install_id,
@@ -432,7 +466,7 @@ describe("resumable PostgreSQL exact report accumulation", () => {
     ).toEqual([{ installKey: aliases[0]!.installKey, event: latest }]);
   });
 
-  it("rolls back latest metadata and the source checkpoint when alias preparation fails", async () => {
+  it("rolls back an operational alias failure and retries after lease expiry", async () => {
     await plugin.models.insights.append(event(1, asOfMs - 1));
     const input = { query: { kind: "installationOverview" } } as const;
     const id = await reserve(input);
@@ -450,7 +484,10 @@ describe("resumable PostgreSQL exact report accumulation", () => {
       }
     }
     expect(thrown).toMatchObject({ message: "injected alias failure" });
-    expect(await jobs.getReport(input)).toMatchObject({ state: "failed" });
+    expect(await jobs.getReport(input)).toMatchObject({
+      state: "preparing",
+      jobId: id,
+    });
     const stored = await sql<{ checkpoint: { afterSequence: string } }>`
       select checkpoint from private_hot_updater_insights_report_jobs where id = ${id}::uuid`.execute(
       db,
@@ -471,26 +508,33 @@ describe("resumable PostgreSQL exact report accumulation", () => {
       ).rows,
     ).toEqual([]);
     expect(await step()).toMatchObject({ state: "idle" });
+    await client.exec(
+      "drop trigger fail_alias on private_hot_updater_insights_report_aliases; drop function fail_alias(); update private_hot_updater_insights_report_jobs set claimable_at=clock_timestamp() where id='" +
+        id +
+        "'::uuid",
+    );
+    expect(await finish(input)).toMatchObject({ id });
   });
 
-  it("preserves valid zero-match query strings that PostgreSQL event text cannot contain", async () => {
+  it("preserves valid zero-match report selectors", async () => {
     await plugin.models.insights.append(event(1, asOfMs - 1));
     const batch = {
       query: {
         kind: "bundleSummaries",
-        bundleIds: ["\u0000", "\uD800"],
+        bundleIds: ["missing-bundle"],
         window: "all",
       },
     } as const;
     await reserve(batch);
     expect(await finish(batch)).toMatchObject({
-      summary: [
-        { bundleId: "\u0000", installed: 0, recovered: 0 },
-        { bundleId: "\uD800", installed: 0, recovered: 0 },
-      ],
+      summary: [{ bundleId: "missing-bundle", installed: 0, recovered: 0 }],
     });
     const active = {
-      query: { kind: "activeOverview", window: "24h", userId: "\u0000" },
+      query: {
+        kind: "activeOverview",
+        window: "24h",
+        userId: "missing-user",
+      },
     } as const;
     await reserve(active);
     expect(await finish(active)).toMatchObject({
@@ -505,7 +549,6 @@ describe("resumable PostgreSQL exact report accumulation", () => {
     } as const;
     const id = await reserve(input);
     rawQueries = 0;
-    expect(await step()).toMatchObject({ state: "progress", processed: 0 });
     expect(await step()).toMatchObject({ state: "published", processed: 0 });
     expect(rawQueries).toBe(0);
     expect(await jobs.getReport(input)).toMatchObject({
@@ -514,7 +557,7 @@ describe("resumable PostgreSQL exact report accumulation", () => {
     });
   });
 
-  it("rolls back a failed batch and persists failure without publishing or retrying partial counters", async () => {
+  it("rolls back an operational count batch and retries without partial counters", async () => {
     await plugin.models.insights.append(event(1, asOfMs - 1));
     const input = {
       query: { kind: "bundleDetail", bundleId: bundleA, window: "all" },
@@ -535,9 +578,8 @@ describe("resumable PostgreSQL exact report accumulation", () => {
     }
     expect(thrown).toMatchObject({ message: "injected late batch failure" });
     expect(await jobs.getReport(input)).toMatchObject({
-      state: "failed",
-      error: { code: "preparation-failed", jobId: id },
-      previous: null,
+      state: "preparing",
+      jobId: id,
     });
     expect(
       (
@@ -546,13 +588,19 @@ describe("resumable PostgreSQL exact report accumulation", () => {
         )
       ).rows,
     ).toEqual([]);
+    await client.exec(
+      "drop trigger fail_count on private_hot_updater_insights_report_counts; drop function fail_report_count(); update private_hot_updater_insights_report_jobs set claimable_at=clock_timestamp() where id='" +
+        id +
+        "'::uuid",
+    );
+    expect(await finish(input)).toMatchObject({ id });
     expect(
       (
         await sql`select * from private_hot_updater_insights_report_counts where job_id = ${id}::uuid`.execute(
           db,
         )
-      ).rows,
-    ).toEqual([]);
+      ).rows.length,
+    ).toBeGreaterThan(0);
     expect(await step()).toMatchObject({ state: "idle" });
   });
 
@@ -561,19 +609,24 @@ describe("resumable PostgreSQL exact report accumulation", () => {
     // Bulk fixture creation is outside the worker budget. Match the production
     // UUID→SHA256→16shard assignment and contiguous committed shard sequences.
     await sql`with ids as (
-      select n, md5(n::text)::uuid::text as id from generate_series(1, 50001) n
+      select n, '10000000-0000-7000-8000-' || lpad(n::text, 12, '0') as id
+      from generate_series(1, 50001) n
     ), sharded as (
       select *, get_byte(sha256(convert_to(id, 'UTF8')), 0) % 16 as shard from ids
     ), source as (
       select *, row_number() over (partition by shard order by n) as sequence from sharded
-    ) insert into bundle_events select (jsonb_populate_record(null::bundle_events,
-      ${base}::jsonb || jsonb_build_object('id', id, 'install_id', 'install-' || n,
+    ), events as (
+      select *, ${base}::jsonb || jsonb_build_object('id', id,
+        'install_id', 'install-' || n,
         'received_at_ms', ${asOfMs}::bigint - 50002 + n,
         'type', case when n = 50001 then 'UPDATE_APPLIED' else 'UNCHANGED' end,
         'from_bundle_id', case when n = 50001 then ${bundleB}::text else null end,
-        'update_strategy', case when n = 50001 then 'appVersion' else null end,
-        'insights_source_shard', shard, 'insights_source_seq', sequence,
-        'insights_live_version', 1))).* from source`.execute(db);
+        'update_strategy', case when n = 50001 then 'appVersion' else null end) event
+      from source
+    ) insert into bundle_events select (jsonb_populate_record(null::bundle_events,
+      event || jsonb_build_object('insights_source_shard', shard,
+        'insights_source_seq', sequence, 'insights_event', event,
+        'insights_live_version', 1))).* from events`.execute(db);
     await sql`update private_hot_updater_insights_source_clocks c set committed_seq = s.last_sequence
       from (select insights_source_shard, max(insights_source_seq) as last_sequence
         from bundle_events group by insights_source_shard) s where c.shard = s.insights_source_shard`.execute(

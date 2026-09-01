@@ -1,6 +1,6 @@
 -- Sort by small native ordinals, never a B-tree key containing the full label.
-CREATE INDEX insights_report_counts_order_input_idx
-  ON private_hot_updater_insights_report_counts(job_id, section, metric, count_key)
+CREATE INDEX insights_report_count_manifest_order_idx
+  ON private_hot_updater_insights_report_count_manifest(job_id, section, metric, count_key)
   WHERE section IN ('movementCohorts', 'bundleDistribution', 'activeBundleTotals', 'installationIds');
 
 CREATE TABLE private_hot_updater_insights_report_order_states (

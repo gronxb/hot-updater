@@ -10,6 +10,10 @@ import {
   savePostgresInsightsAliases,
 } from "./postgresInsightsAliases";
 import {
+  assertPostgresInsightsMaintenanceInput,
+  isPostgresInsightsTerminalPreparationError,
+} from "./postgresInsightsContract";
+import {
   createPostgresInsightsJobs,
   isPostgresInsightsContainsJob,
   PostgresInsightsLeaseLostError,
@@ -31,6 +35,7 @@ import { stepPostgresInsightsSearch } from "./postgresInsightsSearchWorker";
 import {
   createPostgresInsightsSourceTools,
   POSTGRES_SOURCE_SHARDS,
+  validatePostgresInsightsSourcePage,
 } from "./postgresInsightsSource";
 
 /**
@@ -46,19 +51,50 @@ export const createPostgresInsightsReportWorker = <TDatabase extends object>(
   const source = createPostgresInsightsSourceTools(db);
   return {
     async runStep(input: { maxItems: number; maxRequests: number }): Promise<{
-      state: "idle" | "progress" | "published" | "not-ready" | "lease-lost";
+      state:
+        | "idle"
+        | "progress"
+        | "published"
+        | "not-ready"
+        | "lease-lost"
+        | "failed";
       processed: number;
       jobId?: string;
     }> {
-      // This provider's largest indivisible unit is one installation's 30
-      // rolling buckets. These minima also cover a 100-bundle publication.
+      assertPostgresInsightsMaintenanceInput(input);
+      // A smaller budget can still discover and durably fail a poison source
+      // row. Larger projection phases only start when one indivisible unit
+      // fits below.
       if (
         !Number.isSafeInteger(input.maxItems) ||
-        input.maxItems < 256 ||
+        input.maxItems < 1 ||
         !Number.isSafeInteger(input.maxRequests) ||
-        input.maxRequests < 128
+        input.maxRequests < 1
       )
         throw new DatabasePluginInputError("invalid-query");
+      if (input.maxItems < 100 || input.maxRequests < 10)
+        return { state: "idle", processed: 0 };
+      if (input.maxItems < 256 || input.maxRequests < 128) {
+        const probe = await jobs.probeNextSource((transaction, job) =>
+          validatePostgresInsightsSourcePage(transaction, {
+            sourceGeneration: job.sourceGeneration,
+            shard: job.checkpoint.shard,
+            afterSequence: job.checkpoint.afterSequence,
+            limit: Math.min(100, input.maxItems),
+          }),
+        );
+        if (probe.state === "failed")
+          return {
+            state: "failed",
+            processed: probe.processed,
+            jobId: probe.jobId,
+          };
+        return {
+          state: "idle",
+          processed: probe.processed,
+          jobId: probe.state === "valid" ? probe.jobId : undefined,
+        };
+      }
       await assertPostgresInsightsReportDataIndexes(db);
       await assertPostgresInsightsReportOrderIndexes(db);
       await assertPostgresInsightsAliasIndex(db);
@@ -74,23 +110,6 @@ export const createPostgresInsightsReportWorker = <TDatabase extends object>(
             job,
             input.maxItems,
           );
-        if (job.sourceGeneration === null) {
-          const sourceGeneration = await source.capture();
-          await jobs.withLease(token, async (_transaction, current) => {
-            if (isPostgresInsightsContainsJob(current))
-              throw new DatabasePluginInputError("invalid-result");
-            return {
-              kind: "progress",
-              sourceGeneration,
-              checkpoint:
-                current.query.kind === "bundleSummaries" &&
-                current.query.bundleIds.length === 0
-                  ? { phase: "complete" }
-                  : current.checkpoint,
-            };
-          });
-          return { state: "progress", processed, jobId: job.id };
-        }
         if (job.checkpoint.phase === "source") {
           // One event: raw row plus at most six membership/count result rows.
           // The global overview instead returns one latest row and up to three
@@ -255,6 +274,7 @@ export const createPostgresInsightsReportWorker = <TDatabase extends object>(
           }
           return { state: "not-ready", processed: 0, jobId: job.id };
         }
+        if (!isPostgresInsightsTerminalPreparationError(error)) throw error;
         // Persist terminal failure only after a successful rollback. Never loop
         // silently on a poison row or turn a failed partial result into zeros.
         try {

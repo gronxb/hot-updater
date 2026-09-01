@@ -22,6 +22,7 @@ import {
 } from "./db";
 import { createPostgresInsightsJobs } from "./postgresInsightsJobs";
 import { createPostgresInsightsLiveTools } from "./postgresInsightsLive";
+import { readPostgresInsightsReportCounts } from "./postgresInsightsReportData";
 import {
   readPostgresInsightsReportOrderRange,
   stepPostgresInsightsReportOrder,
@@ -43,6 +44,10 @@ const orderStates = "private_hot_updater_insights_report_order_states";
 const asOfMs = Date.UTC(2026, 0, 11, 12);
 const section = { section: "installationIds" } as const;
 type Query = { sql: string; parameters: readonly unknown[] };
+const postgresImage =
+  process.env.POSTGRES_INSIGHTS_TEST_VERSION_17 === "1"
+    ? "postgres:17-alpine"
+    : "postgres:15-alpine";
 const docker = (args: string[]) => {
   const result = spawnSync("docker", args, { encoding: "utf8" });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout);
@@ -55,13 +60,15 @@ describe("PostgreSQL frozen contains search and native read bounds", () => {
   let pageDb: Kysely<Database>;
   let pageConnection: DatabaseConnection;
   let afterMetadata: (() => Promise<void>) | undefined;
+  let databaseNamespace: string;
   let queries: Query[] = [];
   let pageQueries: Query[] = [];
   const jobs = () => createPostgresInsightsJobs(db);
-  const pages = () => createPostgresInsightsSearchPages(pageDb);
+  const pages = () =>
+    createPostgresInsightsSearchPages(pageDb, databaseNamespace);
 
   beforeAll(async () => {
-    docker(["image", "inspect", "postgres:15-alpine"]);
+    docker(["image", "inspect", postgresImage]);
     const port = await findOpenPort();
     docker([
       "run",
@@ -76,7 +83,7 @@ describe("PostgreSQL frozen contains search and native read bounds", () => {
       `127.0.0.1:${port}:5432`,
       "-e",
       "POSTGRES_HOST_AUTH_METHOD=trust",
-      "postgres:15-alpine",
+      postgresImage,
     ]);
     const deadline = Date.now() + 20_000;
     while (
@@ -156,6 +163,10 @@ describe("PostgreSQL frozen contains search and native read bounds", () => {
     await migratePostgresInsightsSource(db);
     await migratePostgresInsightsReports(db);
     await createPostgresInsightsSourceTools(db).backfillStep(1);
+    databaseNamespace = (
+      await sql<{ source_id: string }>`select source_id::text
+        from private_hot_updater_insights_source_state where id=1`.execute(db)
+    ).rows[0]!.source_id;
     await migratePostgresInsightsLive(db);
     await createPostgresInsightsLiveTools(db).backfillStep(1);
     await pool.query("create table readonly_probe(id integer primary key)");
@@ -204,7 +215,11 @@ describe("PostgreSQL frozen contains search and native read bounds", () => {
       db,
     );
     await finish(base.jobId);
-    const search = await jobs().getSearch({ query: "old", minAsOfMs: cutoff });
+    const search = await jobs().getSearch({
+      kind: "contains",
+      query: "old",
+      minAsOfMs: cutoff,
+    });
     if (search.state !== "queued")
       throw new Error("Expected a new fixture search.");
     queries = [];
@@ -214,7 +229,11 @@ describe("PostgreSQL frozen contains search and native read bounds", () => {
         /bundle_events|private_hot_updater_insights_source_/i.test(sql),
       ),
     ).toBe(false);
-    const ready = await jobs().getSearch({ query: "OLD", minAsOfMs: cutoff });
+    const ready = await jobs().getSearch({
+      kind: "contains",
+      query: "OLD",
+      minAsOfMs: cutoff,
+    });
     if (ready.state !== "ready")
       throw new Error("Expected the completed search.");
     return { baseId: base.jobId, publication: ready.publication };
@@ -368,7 +387,7 @@ describe("PostgreSQL frozen contains search and native read bounds", () => {
     ],
     [
       "count ordering index",
-      "drop index insights_report_counts_order_input_idx",
+      "drop index insights_report_count_manifest_order_idx",
       "page",
       orderRows,
     ],
@@ -421,7 +440,7 @@ describe("PostgreSQL frozen contains search and native read bounds", () => {
     // Neither SQL bulk population nor ready-state construction is a page read.
     await pool.query(
       `insert into ${counts}(job_id,count_key,identity,section,metric,label,bucket_start_ms,value)
-      select $1::uuid,encode(sha256(convert_to(identity,'UTF8')),'hex'),identity::jsonb,
+      select $1::uuid,encode(sha256(convert_to(to_json(label)::text,'UTF8')),'hex'),identity::jsonb,
         'installationIds','',label,-1,1
       from (select 'install-'||lpad(n::text,5,'0') label,
         '["installationIds","","install-'||lpad(n::text,5,'0')||'",-1]' identity from generate_series(0,50000)n)fixture`,
@@ -434,7 +453,16 @@ describe("PostgreSQL frozen contains search and native read bounds", () => {
       from (select n,'["movementSeries","installed","",'||n::text||']' identity from generate_series(0,50000)n)fixture`,
       [fixtureId],
     );
-    await pool.query(`analyze ${counts}`);
+    await pool.query(
+      `insert into private_hot_updater_insights_report_count_manifest
+        (job_id,count_key,identity,section,metric,label,bucket_start_ms)
+      select job_id,count_key,identity,section,metric,label,bucket_start_ms
+        from ${counts} where job_id=$1::uuid`,
+      [fixtureId],
+    );
+    await pool.query(
+      `analyze ${counts}; analyze private_hot_updater_insights_report_count_manifest`,
+    );
     queries = [];
     expect(
       await db
@@ -444,7 +472,7 @@ describe("PostgreSQL frozen contains search and native read bounds", () => {
         ),
     ).toEqual({ ready: false, processed: 32 });
     const copy = queries.find(({ sql }) =>
-      /order by count_key limit/.test(sql),
+      /order by m\.count_key limit/.test(sql),
     )!;
     expect(copy).toBeDefined();
     type Plan = {
@@ -516,10 +544,27 @@ describe("PostgreSQL frozen contains search and native read bounds", () => {
         connection.release();
       }
     };
-    await explainBoth(copy, "insights_report_counts_order_input_idx", 32);
+    queries = [];
+    expect(
+      await readPostgresInsightsReportCounts(db, fixtureId, [
+        ["movementSeries", "installed", "", 50_000],
+      ]),
+    ).toEqual([1]);
+    const point = queries.find(({ sql }) =>
+      /with "?requested"?\s*\(/i.test(sql),
+    )!;
+    expect(point).toBeDefined();
+    await explainBoth(
+      point,
+      "private_hot_updater_insights_report_count_manifest_pkey",
+      1,
+    );
+    await explain(point, "private_hot_updater_insights_report_counts_pkey", 1);
+    await explainBoth(copy, "insights_report_count_manifest_order_idx", 32);
     await pool.query(
       `insert into ${orderRows}(job_id,section,metric,sort_pass,run_number,row_position,label,value,count_key)
-      select job_id,section,metric,11,0,substring(label from 9)::bigint,label,value,count_key
+      select job_id,section,metric,11,0,
+        row_number() over(order by count_key)-1,label,value,count_key
       from ${counts} where job_id=$1::uuid and section='installationIds'`,
       [fixtureId],
     );
@@ -530,6 +575,13 @@ describe("PostgreSQL frozen contains search and native read bounds", () => {
       [fixtureId],
     );
     await pool.query(`analyze ${orderRows}`);
+    const expected = (
+      await pool.query<{ label: string }>(
+        `select label from ${counts} where job_id=$1::uuid and section='installationIds'
+        order by count_key offset 40000 limit 101`,
+        [fixtureId],
+      )
+    ).rows.map((row) => row.label);
     queries = [];
     const range = await readPostgresInsightsReportOrderRange(
       db,
@@ -539,9 +591,7 @@ describe("PostgreSQL frozen contains search and native read bounds", () => {
       "40000",
       101,
     );
-    expect(range.map((row) => row.label)).toEqual(
-      Array.from({ length: 101 }, (_, i) => `install-${40000 + i}`),
-    );
+    expect(range.map((row) => row.label)).toEqual(expected);
     expect(
       queries.some(({ sql }) =>
         /bundle_events|^\s*(insert|update|delete)/i.test(sql),

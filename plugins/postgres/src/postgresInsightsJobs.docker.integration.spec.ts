@@ -8,10 +8,16 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { findOpenPort } from "../../../packages/test-utils/src/runtimeProcess";
+import { migratePostgresInsightsSource } from "./db";
 import { createPostgresInsightsJobs } from "./postgresInsightsJobs";
+import { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
 
 const jobs = "private_hot_updater_insights_report_jobs";
 const heads = "private_hot_updater_insights_report_heads";
+const postgresImage =
+  process.env.POSTGRES_INSIGHTS_TEST_VERSION_17 === "1"
+    ? "postgres:17-alpine"
+    : "postgres:15-alpine";
 const docker = (args: string[]) => {
   const result = spawnSync("docker", args, { encoding: "utf8" });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout);
@@ -34,7 +40,7 @@ describe("PostgreSQL report reservation and lease concurrency", () => {
   let store: ReturnType<typeof createPostgresInsightsJobs>;
 
   beforeAll(async () => {
-    docker(["image", "inspect", "postgres:15-alpine"]);
+    docker(["image", "inspect", postgresImage]);
     const port = await findOpenPort();
     docker([
       "run",
@@ -49,7 +55,7 @@ describe("PostgreSQL report reservation and lease concurrency", () => {
       `127.0.0.1:${port}:5432`,
       "-e",
       "POSTGRES_HOST_AUTH_METHOD=trust",
-      "postgres:15-alpine",
+      postgresImage,
     ]);
     await waitUntil(
       () =>
@@ -72,6 +78,11 @@ describe("PostgreSQL report reservation and lease concurrency", () => {
       application_name: "insights-report-store",
     });
     db = new Kysely<object>({ dialect: new PostgresDialect({ pool }) });
+    await pool.query(
+      await readFile("plugins/postgres/sql/bundles.sql", "utf8"),
+    );
+    await migratePostgresInsightsSource(db);
+    await createPostgresInsightsSourceTools(db).backfillStep(1);
     await pool.query(
       await readFile("plugins/postgres/sql/insights-reports-v1.sql", "utf8"),
     );
@@ -151,15 +162,9 @@ describe("PostgreSQL report reservation and lease concurrency", () => {
       query: { kind: "bundleDetail", bundleId: "publish", window: "all" },
     });
     let lease = (await store.leaseNext())!;
-    const generation = JSON.stringify([
-      1,
-      "00000000-0000-0000-0000-000000000001",
-      Array(16).fill("0"),
-    ]);
-    for (let shard = 0; shard < 16; shard++) {
+    for (let shard = 1; shard < 16; shard++) {
       await store.withLease(lease.token, async () => ({
         kind: "progress",
-        sourceGeneration: generation,
         checkpoint: { phase: "source", shard, afterSequence: "0" },
       }));
       lease = (await store.leaseNext())!;

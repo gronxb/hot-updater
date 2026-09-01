@@ -2,22 +2,33 @@ import {
   DatabasePluginInputError,
   InsightsQueryNotReadyError,
   type BundleEventRow,
-  type InsightsInstallationPage,
-  type InsightsInstallationPageInput,
 } from "@hot-updater/plugin-core";
 import {
+  assertInsightsEventContract,
   assertInsightsEventRow,
   databaseFields,
+  INSIGHTS_PAGE_MAX_ROWS,
 } from "@hot-updater/plugin-core/internal";
 import { sql, type QueryExecutorProvider } from "kysely";
 
-type Input = Extract<InsightsInstallationPageInput, { kind: "installation" }>;
+import { fitPostgresInsightsInternalPage } from "./postgresInsightsContract";
+import type {
+  PostgresInsightsInstallationPage,
+  PostgresInsightsInstallationPageInput,
+} from "./postgresInsightsInternalTypes";
+
+type Input = Extract<
+  PostgresInsightsInstallationPageInput,
+  { kind: "installation" }
+>;
 
 /** One latest event through the existing installation index, not a history scan. */
 export const createPostgresInsightsInstallationLookup = (
   db: QueryExecutorProvider,
 ) => ({
-  async pageInstallation(input: Input): Promise<InsightsInstallationPage> {
+  async pageInstallation(
+    input: Input,
+  ): Promise<PostgresInsightsInstallationPage> {
     if (
       typeof input !== "object" ||
       input === null ||
@@ -29,7 +40,7 @@ export const createPostgresInsightsInstallationLookup = (
       typeof input.installId !== "string" ||
       !Number.isSafeInteger(input.limit) ||
       input.limit < 1 ||
-      input.limit > 100
+      input.limit > INSIGHTS_PAGE_MAX_ROWS
     )
       throw new DatabasePluginInputError("invalid-query");
 
@@ -88,6 +99,7 @@ export const createPostgresInsightsInstallationLookup = (
       : { rows: [] };
     const rows = result.rows.map((event) => {
       assertInsightsEventRow(event);
+      assertInsightsEventContract(event);
       if (
         event.install_id !== input.installId ||
         event.received_at_ms >= observedAtMs
@@ -120,12 +132,12 @@ export const createPostgresInsightsInstallationLookup = (
         received_at_ms,
       };
     });
-    return {
-      state: "ready",
-      consistency: "live",
+    return fitPostgresInsightsInternalPage(rows, (pageRows) => ({
+      state: "ready" as const,
+      consistency: "live" as const,
       observedAtMs,
-      rows,
+      rows: pageRows,
       nextCursor: null,
-    };
+    }));
   },
 });

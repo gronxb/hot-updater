@@ -13,13 +13,13 @@ create table private_hot_updater_insights_report_jobs (
   as_of_ms double precision check (as_of_ms >= 0 and as_of_ms <= 9007199254740991 and as_of_ms = trunc(as_of_ms)),
   base_job_id uuid references private_hot_updater_insights_report_jobs(id) on delete restrict,
   status text not null check (status in ('queued', 'preparing', 'ready', 'failed')),
-  source_generation text check (length(source_generation) between 1 and 1024),
+  source_generation text not null check (length(source_generation) between 1 and 1024),
   checkpoint jsonb not null,
   lease_epoch bigint not null default 0 check (lease_epoch >= 0),
   claimable_at timestamptz not null default clock_timestamp(),
   publication json,
   check ((status = 'ready') = (publication is not null)),
-  check (status <> 'ready' or (source_generation is not null and as_of_ms is not null)),
+  check (status <> 'ready' or as_of_ms is not null),
   check (base_job_id is null or base_job_id <> id),
   check (as_of_ms is not null or (base_job_id is not null and checkpoint = '{"phase":"awaitIdentity"}'::jsonb))
 );

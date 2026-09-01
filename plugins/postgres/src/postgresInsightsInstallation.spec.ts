@@ -151,7 +151,7 @@ describe("live PostgreSQL exact installation lookup", () => {
       "😀",
       "\ufffd",
       "x%_' OR TRUE --",
-      "長".repeat(10_000),
+      "長".repeat(1_000),
     ];
     for (const [index, install_id] of ids.entries())
       await append({

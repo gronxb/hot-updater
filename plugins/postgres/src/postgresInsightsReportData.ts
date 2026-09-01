@@ -7,12 +7,14 @@ import {
   type InsightsMovementMetric,
 } from "@hot-updater/plugin-core";
 import {
+  assertInsightsEventContract,
   assertInsightsEventRow,
   createInsightsReportProjection,
   type InsightsReportProjection,
 } from "@hot-updater/plugin-core/internal";
 import { sql, type QueryExecutorProvider } from "kysely";
 
+import { assertPostgresInsightsTableLayouts } from "./postgresInsightsContract";
 import type {
   PostgresInsightsReportJob,
   PostgresInsightsReportSummary,
@@ -21,6 +23,7 @@ import type {
 const members = "private_hot_updater_insights_report_members";
 const latest = "private_hot_updater_insights_report_latest";
 const counts = "private_hot_updater_insights_report_counts";
+const countManifest = "private_hot_updater_insights_report_count_manifest";
 const invalid = (): never => {
   throw new DatabasePluginInputError("invalid-result");
 };
@@ -36,6 +39,7 @@ type StoredInstallation = {
 };
 const readInstallation = (row: StoredInstallation) => {
   assertInsightsEventRow(row.event);
+  assertInsightsEventContract(row.event);
   if (
     row.install_id !== row.event.install_id ||
     key(JSON.stringify(row.install_id)) !== row.install_key
@@ -47,6 +51,58 @@ const readInstallation = (row: StoredInstallation) => {
 export const assertPostgresInsightsReportDataIndexes = async (
   db: QueryExecutorProvider,
 ): Promise<void> => {
+  await assertPostgresInsightsTableLayouts(db, [
+    {
+      table: members,
+      columns: [
+        "job_id:uuid:true:false::::",
+        "member_key:text:true:false::C::",
+        "identity:jsonb:true:false::::",
+      ],
+      constraints: ["PRIMARY KEY (job_id, member_key)"],
+    },
+    {
+      table: latest,
+      columns: [
+        "job_id:uuid:true:false::::",
+        "install_key:text:true:false::C::",
+        "bucket_index:integer:true:false::::",
+        "install_id:text:true:false::default::",
+        "event:jsonb:true:false::::",
+      ],
+      constraints: [
+        "CHECK (((bucket_index >= '-1'::integer) AND (bucket_index <= 29)))",
+        "PRIMARY KEY (job_id, install_key, bucket_index)",
+      ],
+    },
+    {
+      table: counts,
+      columns: [
+        "job_id:uuid:true:false::::",
+        "count_key:text:true:false::C::",
+        "identity:jsonb:true:false::::",
+        "section:text:true:false::C::",
+        "metric:text:true:false::C::",
+        "label:text:true:false::default::",
+        "bucket_start_ms:bigint:true:false::::",
+        "value:bigint:true:false::::",
+      ],
+      constraints: ["CHECK ((value > 0))", "PRIMARY KEY (job_id, count_key)"],
+    },
+    {
+      table: countManifest,
+      columns: [
+        "job_id:uuid:true:false::::",
+        "count_key:text:true:false::C::",
+        "identity:jsonb:true:false::::",
+        "section:text:true:false::C::",
+        "metric:text:true:false::C::",
+        "label:text:true:false::default::",
+        "bucket_start_ms:bigint:true:false::::",
+      ],
+      constraints: ["PRIMARY KEY (job_id, count_key)"],
+    },
+  ]);
   const required = [
     [members, `${members}_pkey`, true, ["job_id", "member_key"]],
     [latest, `${latest}_pkey`, true, ["job_id", "install_key", "bucket_index"]],
@@ -57,6 +113,7 @@ export const assertPostgresInsightsReportDataIndexes = async (
       ["job_id", "bucket_index", "install_key"],
     ],
     [counts, `${counts}_pkey`, true, ["job_id", "count_key"]],
+    [countManifest, `${countManifest}_pkey`, true, ["job_id", "count_key"]],
     [
       counts,
       "insights_report_counts_bucket_idx",
@@ -108,14 +165,27 @@ const increment = async (
   count: Count,
 ) => {
   const identity = JSON.stringify(count);
-  const result = await sql<{ value: string }>`insert into ${sql.table(counts)}
-    (job_id, count_key, identity, section, metric, label, bucket_start_ms, value)
-    values (${jobId}::uuid, ${key(identity)}, ${identity}::jsonb,
-      ${count[0]}, ${count[1]}, ${count[2]}, ${count[3]}, 1)
-    on conflict (job_id, count_key) do update
-      set value = ${sql.table(counts)}.value + 1
-      where ${sql.table(counts)}.identity = excluded.identity
-    returning value::text`.execute(db);
+  const countKey = key(identity);
+  const result = await sql<{ value: string }>`with manifest as (
+      insert into ${sql.table(countManifest)}
+        (job_id,count_key,identity,section,metric,label,bucket_start_ms)
+      values (${jobId}::uuid,${countKey},${identity}::jsonb,
+        ${count[0]},${count[1]},${count[2]},${count[3]})
+      on conflict (job_id, count_key) do update set count_key=excluded.count_key
+        where ${sql.table(countManifest)}.identity=excluded.identity
+          and ${sql.table(countManifest)}.section=excluded.section
+          and ${sql.table(countManifest)}.metric=excluded.metric
+          and ${sql.table(countManifest)}.label=excluded.label
+          and ${sql.table(countManifest)}.bucket_start_ms=excluded.bucket_start_ms
+      returning count_key
+    ) insert into ${sql.table(counts)}
+      (job_id, count_key, identity, section, metric, label, bucket_start_ms, value)
+      select ${jobId}::uuid, count_key, ${identity}::jsonb,
+        ${count[0]}, ${count[1]}, ${count[2]}, ${count[3]}, 1 from manifest
+      on conflict (job_id, count_key) do update
+        set value = ${sql.table(counts)}.value + 1
+        where ${sql.table(counts)}.identity = excluded.identity
+      returning value::text`.execute(db);
   if (result.rows.length !== 1) invalid();
   // Fail the transaction rather than publish rounded JavaScript counts.
   if (!Number.isSafeInteger(Number(result.rows[0]!.value))) invalid();
@@ -346,16 +416,32 @@ export const readPostgresInsightsReportCounts = async (
   if (byKey.size > 0) {
     const rows = await sql<{
       count_key: string;
-      identity: Count;
-      value: string;
-    }>`select count_key, identity, value::text
-      from ${sql.table(counts)} where job_id = ${jobId}::uuid and count_key in (${sql.join([...byKey.keys()])})
-      limit ${byKey.size}`.execute(db);
+      manifest_identity: Count | null;
+      count_identity: Count | null;
+      value: string | null;
+    }>`with requested(count_key) as (values ${sql.join(
+      [...byKey.keys()].map((countKey) => sql`(${countKey}::text)`),
+    )}) select requested.count_key,
+        m.identity manifest_identity, c.identity count_identity, c.value::text value
+      from requested left join ${sql.table(countManifest)} m
+        on m.job_id=${jobId}::uuid and m.count_key=requested.count_key
+      left join ${sql.table(counts)} c
+        on c.job_id=${jobId}::uuid and c.count_key=requested.count_key
+      limit ${byKey.size + 1}`.execute(db);
+    if (rows.rows.length > byKey.size) invalid();
     for (const row of rows.rows) {
       const requestedCount = byKey.get(row.count_key);
       if (!requestedCount) return invalid();
       if (
-        JSON.stringify(row.identity) !== requestedCount.identity ||
+        row.manifest_identity === null &&
+        row.count_identity === null &&
+        row.value === null
+      )
+        continue;
+      if (
+        JSON.stringify(row.manifest_identity) !== requestedCount.identity ||
+        JSON.stringify(row.count_identity) !== requestedCount.identity ||
+        row.value === null ||
         !Number.isSafeInteger(Number(row.value)) ||
         Number(row.value) < 1
       )

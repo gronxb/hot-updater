@@ -4,11 +4,15 @@ import {
   type BundleEventRow,
 } from "@hot-updater/plugin-core";
 import {
+  assertInsightsEventContract,
   createIndexedInsightsEventQueries,
+  createInsightsEventPageCursor,
   databaseFields,
   type DatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
 import { sql, type QueryExecutorProvider } from "kysely";
+
+import { fitPostgresInsightsInternalPage } from "./postgresInsightsContract";
 
 const GLOBAL_INDEX = ["received_at_ms", "id"];
 const BUNDLE_INDEXES = [
@@ -57,29 +61,38 @@ export const assertPostgresInsightsInstallationEventIndexes = async (
 export const createPostgresInsightsEventQueries = (
   db: QueryExecutorProvider,
   implementation: DatabasePluginImplementation,
-) =>
-  createIndexedInsightsEventQueries(
+) => {
+  const queries = createIndexedInsightsEventQueries(
     {
       ...implementation,
       async findMany(input) {
-        if (
-          input.model !== "bundle_events" ||
-          input.where?.[0]?.field !== "install_id"
-        )
+        if (input.model !== "bundle_events")
           return implementation.findMany(input);
-        const installId = input.where[0].value;
-        const type = input.where[1]?.value;
+        const installId = input.where?.find(
+          (filter) => filter.field === "install_id",
+        )?.value;
+        const type = input.where?.find(
+          (filter) => filter.field === "type",
+        )?.value;
         if (
-          typeof installId !== "string" ||
-          input.where[1]?.field !== "type" ||
-          (type !== "UPDATE_APPLIED" && type !== "RECOVERED")
+          (installId !== undefined && typeof installId !== "string") ||
+          (type !== undefined &&
+            type !== "UPDATE_APPLIED" &&
+            type !== "RECOVERED") ||
+          input.offset !== 0 ||
+          input.limit < 1 ||
+          input.limit > 101
         )
           throw new DatabasePluginInputError("invalid-query");
         // This private executor receives only the shared helper's finite stream
         // queries. Literal types let partial indexes work with generic plans too.
         // Do not encode lone surrogates as U+FFFD and match a different identity.
-        if (installId.includes("\0") || !installId.isWellFormed()) return [];
-        const predicates = input.where.map((filter) => {
+        if (
+          typeof installId === "string" &&
+          (installId.includes("\0") || !installId.isWellFormed())
+        )
+          return [];
+        const predicates = (input.where ?? []).map((filter) => {
           if (filter.field === "type") return sql`type = ${sql.lit(type)}`;
           // Keep the leading installation order key in the plan. Plain equality
           // lets PostgreSQL discard it and choose the global time index, which
@@ -88,19 +101,50 @@ export const createPostgresInsightsEventQueries = (
             return sql`install_id = any(array[${installId}]::text[])`;
           const operator = filter.operator ?? "eq";
           if (
-            !["install_id", "received_at_ms", "id"].includes(filter.field) ||
+            ![
+              "to_bundle_id",
+              "from_bundle_id",
+              "received_at_ms",
+              "id",
+            ].includes(filter.field) ||
             !["eq", "lt", "gte"].includes(operator)
           )
             throw new DatabasePluginInputError("invalid-query");
           return sql`${sql.ref(filter.field)} ${sql.raw(operator === "eq" ? "=" : operator === "lt" ? "<" : ">=")} ${filter.value}`;
         });
-        const { rows } =
-          await sql<BundleEventRow>`select ${sql.join(databaseFields.bundle_events.map((field) => sql.ref(field)))}
-          from ${sql.table("bundle_events")} where ${sql.join(predicates, sql` and `)}
-          order by install_id desc, received_at_ms desc, id desc limit ${input.limit}`.execute(
-            db,
-          );
-        return rows;
+        const orderBy = input.orderBy ?? [];
+        const order = orderBy.map((item) => item.field);
+        const requestedOrder = ["received_at_ms", "id"];
+        const physicalOrder =
+          installId === undefined
+            ? ["received_at_ms", "id"]
+            : ["install_id", "received_at_ms", "id"];
+        if (
+          order.length !== requestedOrder.length ||
+          order.some(
+            (field, index) =>
+              field !== requestedOrder[index] ||
+              orderBy[index]?.direction !== "desc",
+          )
+        )
+          throw new DatabasePluginInputError("invalid-query");
+        const { rows } = await sql<
+          BundleEventRow & { insights_event: BundleEventRow | null }
+        >`select ${sql.join(databaseFields.bundle_events.map((field) => sql.ref(field)))}, insights_event
+          from ${sql.table("bundle_events")}
+          ${predicates.length === 0 ? sql`` : sql`where ${sql.join(predicates, sql` and `)}`}
+          order by ${sql.join(physicalOrder.map((field) => sql`${sql.ref(field)} desc`))}
+          limit ${input.limit}`.execute(db);
+        return rows.map(({ insights_event, ...stored }) => {
+          const event = insights_event ?? stored;
+          if (
+            databaseFields.bundle_events.some(
+              (field) => event[field] !== stored[field],
+            )
+          )
+            throw new DatabasePluginInputError("invalid-result");
+          return event;
+        });
       },
     },
     ["all", "bundle", "installation"],
@@ -154,3 +198,24 @@ export const createPostgresInsightsEventQueries = (
       }
     },
   );
+  return {
+    ...queries,
+    async page(input: Parameters<typeof queries.page>[0]) {
+      const page = await queries.page(input);
+      page.rows.forEach(assertInsightsEventContract);
+      return fitPostgresInsightsInternalPage(page.rows, (rows, shortened) => {
+        const last = rows.at(-1);
+        return {
+          rows,
+          nextCursor:
+            shortened && last !== undefined
+              ? createInsightsEventPageCursor(input, {
+                  id: last.id,
+                  receivedAtMs: last.received_at_ms,
+                })
+              : page.nextCursor,
+        };
+      });
+    },
+  };
+};

@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { setTimeout } from "node:timers/promises";
 
+import { createUUIDv7 } from "@hot-updater/plugin-core";
 import { Kysely, PostgresDialect } from "kysely";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -14,7 +15,7 @@ import { migratePostgresInsightsInstallationEvents } from "./postgresInsightsEve
 const bundleId = "00000000-0000-0000-0000-000000000001";
 const postgresImages = [
   "postgres:15-alpine",
-  ...(process.env.HOT_UPDATER_POSTGRES_17_TESTS === "1"
+  ...(process.env.POSTGRES_INSIGHTS_TEST_VERSION_17 === "1"
     ? (["postgres:17-alpine"] as const)
     : []),
 ] as const;
@@ -109,19 +110,24 @@ describe.each(postgresImages)(
         await readFile("plugins/postgres/sql/bundles.sql", "utf8"),
       );
       await pool.query(`insert into bundle_events(id,type,install_id,from_bundle_id,to_bundle_id,platform,app_version,channel,cohort,update_strategy,received_at_ms)
-      select ('10000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,
+      select ('10000000-0000-7000-8000-'||lpad(n::text,12,'0'))::uuid,
         case when n%2=0 then 'UNCHANGED' else 'RELEASE_ADOPTED' end,
         'target', case when n%2=0 then null else '${bundleId}' end::uuid,
         '${bundleId}', 'ios','1.0.0','production','default',
         case when n%2=0 then null else 'appVersion' end,70000+n
       from generate_series(0,50000)n;
       insert into bundle_events(id,type,install_id,from_bundle_id,to_bundle_id,platform,app_version,channel,cohort,update_strategy,received_at_ms)
-      select ('20000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,
+      select ('20000000-0000-7000-8000-'||lpad(n::text,12,'0'))::uuid,
         case when n%2=0 then 'UPDATE_APPLIED' else 'RECOVERED' end,
         'target', '${bundleId}', '${bundleId}', 'ios','1.0.0','production','default','appVersion',
         case when n<4 then 59999 else 60000 end
       from generate_series(0,106)n;
       analyze bundle_events;`);
+      // Event pages also run while the source cutover is still preparing. This
+      // nullable payload column models that pre-fence migration state.
+      await pool.query(
+        "alter table bundle_events add column insights_event jsonb",
+      );
       // The other caller may complete after the first or fail fast as busy. It
       // must not hold an old SELECT snapshot while awaiting the migration lock.
       const migrations = await Promise.allSettled([
@@ -193,7 +199,7 @@ describe.each(postgresImages)(
         Array.from(
           { length: 17 },
           (_, n) =>
-            `20000000-0000-0000-0000-${String(106 - n).padStart(12, "0")}`,
+            `20000000-0000-7000-8000-${String(106 - n).padStart(12, "0")}`,
         ),
       );
       const second = await plugin.models.insights.events!.page({
@@ -204,7 +210,7 @@ describe.each(postgresImages)(
         Array.from(
           { length: 17 },
           (_, n) =>
-            `20000000-0000-0000-0000-${String(89 - n).padStart(12, "0")}`,
+            `20000000-0000-7000-8000-${String(89 - n).padStart(12, "0")}`,
         ),
       );
       const reads = eventReads();
@@ -250,7 +256,7 @@ describe.each(postgresImages)(
         Array.from(
           { length: 103 },
           (_, n) =>
-            `20000000-0000-0000-0000-${String(106 - n).padStart(12, "0")}`,
+            `20000000-0000-7000-8000-${String(106 - n).padStart(12, "0")}`,
         ),
       );
     });
@@ -302,9 +308,9 @@ describe.each(postgresImages)(
         createHash("sha256").update(String(index)).digest("hex"),
       )
         .join("")
-        .slice(0, 2660);
-      for (const installId of ["", nearWidth, '\\"😀'.repeat(4000), "\uFFFD"]) {
-        const ids = [randomUUID(), randomUUID()].sort().reverse();
+        .slice(0, 1000);
+      for (const installId of ["", nearWidth, '\\"😀'.repeat(200), "\uFFFD"]) {
+        const ids = [createUUIDv7(), createUUIDv7()].sort().reverse();
         for (const [index, id] of ids.entries())
           await pool.query(
             `insert into bundle_events(id,type,install_id,from_bundle_id,to_bundle_id,platform,app_version,channel,cohort,update_strategy,received_at_ms)
@@ -331,13 +337,13 @@ describe.each(postgresImages)(
       }
       clear();
       for (const installId of ["\0", "\uD800", "\uDC00"])
-        expect(
-          await plugin.models.insights.events!.page({
+        await expect(
+          plugin.models.insights.events!.page({
             scope: { kind: "installation", installId },
             beforeReceivedAtMs: 60001,
             limit: 1,
           }),
-        ).toEqual({ rows: [], nextCursor: null });
+        ).rejects.toMatchObject({ code: "invalid-query" });
       expect(eventReads()).toEqual([]);
     });
 
@@ -365,13 +371,13 @@ describe.each(postgresImages)(
     it("does not scan a newer unrelated movement burst while statistics still describe one installation", async () => {
       await pool.query(`truncate bundle_events;
       insert into bundle_events(id,type,install_id,from_bundle_id,to_bundle_id,platform,app_version,channel,cohort,update_strategy,received_at_ms)
-      select ('40000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,
+      select ('40000000-0000-7000-8000-'||lpad(n::text,12,'0'))::uuid,
         'UPDATE_APPLIED',
         'target', '${bundleId}', '${bundleId}', 'ios','1.0.0','production','default','appVersion',n
       from generate_series(0,50002)n;
       analyze bundle_events;
       insert into bundle_events(id,type,install_id,from_bundle_id,to_bundle_id,platform,app_version,channel,cohort,update_strategy,received_at_ms)
-      select ('50000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,
+      select ('50000000-0000-7000-8000-'||lpad(n::text,12,'0'))::uuid,
         'UPDATE_APPLIED',
         'newer-unrelated', '${bundleId}', '${bundleId}', 'ios','1.0.0','production','default','appVersion',60000+n
       from generate_series(0,50002)n;`);
@@ -381,7 +387,7 @@ describe.each(postgresImages)(
         beforeReceivedAtMs: 130001,
         limit: 1,
       });
-      expect(page.rows[0]?.id).toBe("40000000-0000-0000-0000-000000050002");
+      expect(page.rows[0]?.id).toBe("40000000-0000-7000-8000-000000050002");
       const reads = eventReads();
       expect(reads).toHaveLength(2);
       for (const [index, read] of reads.entries()) {
