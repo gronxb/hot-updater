@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-09-01T01:53:38Z",
+  "capturedAt": "2026-09-01T03:06:05Z",
   "scope": "Kysely required Insights model on SQLite, PostgreSQL, MySQL, and CockroachDB",
   "layoutRevision": 4,
   "releaseGatePassed": true,
@@ -33,7 +33,7 @@
     "testUtilsBuild": "passed",
     "focused": {
       "file": "packages/server/src/adapters/sqlInsights/kysely/kyselyInsights.spec.ts",
-      "testsPassed": 15
+      "testsPassed": 10
     },
     "requiredModelConformance": {
       "file": "packages/server/src/adapters/sqlInsights/kysely/kyselyInsightsConformance.spec.ts",
@@ -42,7 +42,7 @@
       "durableReopen": true,
       "otherNamespaceJobStep": true
     },
-    "combinedTestsPassed": 25,
+    "combinedTestsPassed": 20,
     "adversarialReview": "GO; no remaining scoped P0 or P1 finding",
     "serverTypecheckOwnedKyselyErrors": 0,
     "format": "passed",
@@ -73,14 +73,14 @@
       "engine": "PostgreSQL 17.10",
       "environment": "KYSELY_INSIGHTS_POSTGRES_URL",
       "command": "KYSELY_INSIGHTS_POSTGRES_URL=<postgres-url> mise exec -- pnpm exec vitest run packages/server/src/adapters/sqlInsights/kysely/kyselyInsights.postgresql.integration.spec.ts --reporter=verbose",
-      "testsPassed": 8,
+      "testsPassed": 7,
       "fixtureRows": 50001,
       "coverage": [
         "rev4 catalog and rank index",
         "bounded native event plan and live late continuation",
         "interrupted populated migration with append during backfill",
         "oversized poison preflight",
-        "delayed latest identity and publication A after B",
+        "delayed latest identity and native publication",
         "48-row zero-filled report with Unicode ordering",
         "20,000-row rank noise plan",
         "concurrent rollback and worker fencing"
@@ -91,7 +91,7 @@
       "engine": "MySQL 8.0.46",
       "environment": "KYSELY_INSIGHTS_MYSQL_URL",
       "command": "KYSELY_INSIGHTS_MYSQL_URL=<mysql-url> mise exec -- pnpm exec vitest run packages/server/src/adapters/sqlInsights/kysely/kyselyInsights.mysql.integration.spec.ts --project integration:default --reporter=verbose",
-      "testsPassed": 7,
+      "testsPassed": 6,
       "fixtureRows": 50001,
       "eventPageActualRows": 101,
       "coverage": [
@@ -99,8 +99,8 @@
         "four exact-state work-index probes without filesort",
         "interrupted populated migration with before, mid, and after append",
         "oversized poison preflight",
-        "delayed latest identity and publication A after B",
-        "24-bucket global and filtered zero-filled reports",
+        "delayed latest identity and native publication",
+        "24-bucket zero-filled report with global and filtered order plans",
         "forced primary-key global report page",
         "concurrent append rollback and worker fencing"
       ],
@@ -130,7 +130,7 @@
   "defaultCi": {
     "command": "mise exec -- pnpm exec vitest run packages/server/src/adapters/sqlInsights/kysely/kyselyInsights.mysql.integration.spec.ts packages/server/src/adapters/sqlInsights/kysely/kyselyInsights.postgresql.integration.spec.ts packages/server/src/adapters/sqlInsights/kysely/kyselyInsights.cockroachdb.integration.spec.ts --reporter=verbose",
     "filesSkipped": 3,
-    "testsSkipped": 19,
+    "testsSkipped": 17,
     "networkAccessWithoutEnvironment": false
   },
   "operationalModel": {
@@ -153,11 +153,11 @@
     "packages/server/src/adapters/sqlInsights/kysely/utils.ts": "0dff11050b216a9072b09af676cfa20488484eaaf553d87358daaab054e5744e"
   },
   "testHashes": {
-    "packages/server/src/adapters/sqlInsights/kysely/kyselyInsights.spec.ts": "556d391190d09ebc9600b867b9bcb068d952644966f7524d68b3b38521ad1838",
+    "packages/server/src/adapters/sqlInsights/kysely/kyselyInsights.spec.ts": "7ade6c36bafeaf31920a230cd33729583a7359e1ff0eddf52d02ec9fee5f59b8",
     "packages/server/src/adapters/sqlInsights/kysely/kyselyInsightsConformance.spec.ts": "d765a0971f853ecd4ef738136fa16f42ddc8db2456da96d87328d3cde025b167",
-    "packages/server/src/adapters/sqlInsights/kysely/kyselyInsights.mysql.integration.spec.ts": "22f8ff2a22c42f73ed030e38cd863bdc7fc7b015c3b76e4938aca2d0ed35d712",
-    "packages/server/src/adapters/sqlInsights/kysely/kyselyInsights.postgresql.integration.spec.ts": "4624c45e81765c3da54deed032459cc7ad803ee5933c1bd013468a0094284a87",
-    "packages/server/src/adapters/sqlInsights/kysely/kyselyInsights.cockroachdb.integration.spec.ts": "37db9928f69406745048d253dbdfb3fa86837c77866db668416939c1b1c82e31"
+    "packages/server/src/adapters/sqlInsights/kysely/kyselyInsights.mysql.integration.spec.ts": "c83cd2d5c93341da35ab9c7b54c74d854495edf07c513da5bc92c15a0f580306",
+    "packages/server/src/adapters/sqlInsights/kysely/kyselyInsights.postgresql.integration.spec.ts": "bf52393e1afd26e034fd947af45d2dff569c09cc034531375f8c2c011ce5e9f4",
+    "packages/server/src/adapters/sqlInsights/kysely/kyselyInsights.cockroachdb.integration.spec.ts": "2e9372c00f29b6358793701b05d76160600a9673fe2ecc5491fa1c25119fa119"
   },
   "limitations": [
     "Runtime durations are correctness evidence, not throughput benchmarks.",

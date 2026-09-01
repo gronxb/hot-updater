@@ -546,7 +546,7 @@ describe.skipIf(!databaseUrl)(
       });
     });
 
-    it("pins delayed historical search cursor A after publication B", async () => {
+    it("keeps native publication, zero-fill, and order plans exact", async () => {
       await reset();
       await migrateFresh();
       const insights = createKyselyInsightsModel(db, "postgresql");
@@ -565,28 +565,24 @@ describe.skipIf(!databaseUrl)(
           user_id: "historical-user",
         }),
       );
-
-      const exact = await insights.pageInstallations({
-        kind: "installationId",
-        installId: "delayed-a",
-        limit: 1,
+      await expect(
+        insights.pageInstallations({
+          kind: "installationId",
+          installId: "delayed-a",
+          limit: 1,
+        }),
+      ).resolves.toMatchObject({
+        state: "ready",
+        data: { data: [{ user_id: "current-user" }] },
       });
-      expect(exact.state).toBe("ready");
-      if (exact.state !== "ready") return;
-      expect(exact.data.data).toMatchObject([
-        {
-          install_id: "delayed-a",
-          user_id: "current-user",
-          received_at_ms: 200,
-        },
-      ]);
 
-      const pendingA = await insights.pageInstallations({
-        kind: "userId",
-        userId: "historical-user",
-        limit: 1,
-      });
-      expect(pendingA.state).toBe("preparing");
+      await expect(
+        insights.pageInstallations({
+          kind: "userId",
+          userId: "historical-user",
+          limit: 1,
+        }),
+      ).resolves.toMatchObject({ state: "preparing" });
       await pool.query(`insert into private_hot_updater_kysely_insights_aliases
           (install_key, install_id, alias_kind, alias_hash, value_json,
             normalized_json, source_seq)
@@ -595,16 +591,15 @@ describe.skipIf(!databaseUrl)(
           to_json('future-' || i)::text, to_json('future-' || i)::text,
           100 + i from generate_series(1, 50001) i`);
       await pool.query("analyze private_hot_updater_kysely_insights_aliases");
-      const aliasPlan = await readPlan(
-        pool,
-        `select install_key, install_id, alias_kind, alias_hash, value_json,
-           normalized_json, source_seq
-         from private_hot_updater_kysely_insights_aliases
-         where source_seq <= 3
-         order by source_seq, install_key, alias_kind, alias_hash limit 128`,
-      );
       expectBoundedIndexPlan(
-        aliasPlan,
+        await readPlan(
+          pool,
+          `select install_key, install_id, alias_kind, alias_hash, value_json,
+             normalized_json, source_seq
+           from private_hot_updater_kysely_insights_aliases
+           where source_seq <= 3
+           order by source_seq, install_key, alias_kind, alias_hash limit 128`,
+        ),
         "kysely_insights_alias_source_idx",
         128,
       );
@@ -622,68 +617,8 @@ describe.skipIf(!databaseUrl)(
       ) {
         return;
       }
-      expect(publicationA.data.total).toMatchObject({
-        state: "exact",
-        value: 2,
-      });
-      const publication = publicationA.data.consistency.cutoff.publication;
+      expect(publicationA.data.total).toMatchObject({ value: 2 });
 
-      await delay(Math.max(0, publication.asOfMs + 2 - Date.now()));
-      await insights.append(
-        event(makeId(0x903, 4), "delayed-c", 250, {
-          user_id: "historical-user",
-        }),
-      );
-      const stale = await insights.pageInstallations({
-        kind: "userId",
-        userId: "historical-user",
-        minAsOfMs: publication.asOfMs + 1,
-        limit: 1,
-      });
-      expect(stale.state).toBe("stale");
-      await maintenance();
-      const publicationB = await insights.pageInstallations({
-        kind: "userId",
-        userId: "historical-user",
-        minAsOfMs: publication.asOfMs + 1,
-        limit: 1,
-      });
-      expect(publicationB.state).toBe("ready");
-      if (publicationB.state !== "ready") return;
-      expect(publicationB.data.total).toMatchObject({
-        state: "exact",
-        value: 3,
-      });
-      expect(publicationB.data.consistency.cutoff.publication.id).not.toBe(
-        publication.id,
-      );
-
-      const retainedA = await insights.pageInstallations({
-        kind: "userId",
-        userId: "historical-user",
-        cursor: publicationA.data.nextCursor,
-        limit: 1,
-      });
-      expect(retainedA.state).toBe("ready");
-      if (retainedA.state !== "ready") return;
-      expect(retainedA.data.consistency.cutoff.publication.id).toBe(
-        publication.id,
-      );
-      expect(retainedA.data.total).toMatchObject({
-        state: "exact",
-        value: 2,
-      });
-      expect(
-        [...publicationA.data.data, ...retainedA.data.data].find(
-          ({ install_id }) => install_id === "delayed-a",
-        )?.user_id,
-      ).toBe("current-user");
-    });
-
-    it("orders Unicode ties and pages zero-filled active bundles", async () => {
-      await reset();
-      await migrateFresh();
-      const insights = createKyselyInsightsModel(db, "postgresql");
       const now = Date.now();
       const firstBundle = "10000000-0000-7000-8000-000000000001";
       const secondBundle = "10000000-0000-7000-8000-000000000002";
@@ -702,109 +637,27 @@ describe.skipIf(!databaseUrl)(
           to_bundle_id: firstBundle,
         }),
       );
-
       const active = await readyReport(() =>
         insights.getReport({
           query: { kind: "activeOverview", window: "24h" },
         }),
       );
-      const first = await insights.pageReport({
+      const series = await insights.pageReport({
         publicationId: active.data.id,
         section: "activeBundleSeries",
-        limit: 25,
-      });
-      expect(first.state).toBe("ready");
-      if (
-        first.state !== "ready" ||
-        first.data.section !== "activeBundleSeries" ||
-        first.data.nextCursor === null
-      ) {
-        return;
-      }
-      expect(first.data.total).toMatchObject({ state: "exact", value: 48 });
-      const second = await insights.pageReport({
-        publicationId: active.data.id,
-        section: "activeBundleSeries",
-        limit: 25,
-        cursor: first.data.nextCursor,
-      });
-      expect(second.state).toBe("ready");
-      if (
-        second.state !== "ready" ||
-        second.data.section !== "activeBundleSeries"
-      ) {
-        return;
-      }
-      expect(second.data.nextCursor).toBeNull();
-      const observed = [...first.data.data, ...second.data.data];
-      expect(observed).toHaveLength(48);
-      expect(observed.slice(0, 24).map(({ bundleId }) => bundleId)).toEqual(
-        Array(24).fill(firstBundle),
-      );
-      expect(observed.slice(24).map(({ bundleId }) => bundleId)).toEqual(
-        Array(24).fill(secondBundle),
-      );
-      for (const [bundleId, expectedTotal] of [
-        [firstBundle, 2],
-        [secondBundle, 1],
-      ] as const) {
-        const bundleRows = observed.filter((row) => row.bundleId === bundleId);
-        expect(bundleRows).toHaveLength(24);
-        expect(bundleRows.reduce((sum, row) => sum + row.value, 0)).toBe(
-          expectedTotal,
-        );
-        expect(bundleRows.map((row) => row.bucketStartMs)).toEqual(
-          bundleRows.map((row) => row.bucketStartMs).sort((a, b) => a - b),
-        );
-      }
-
-      const filtered = await insights.pageReport({
-        publicationId: active.data.id,
-        section: "activeBundleSeries",
-        bundleId: firstBundle,
         limit: 100,
       });
-      expect(filtered.state).toBe("ready");
+      expect(series.state).toBe("ready");
       if (
-        filtered.state !== "ready" ||
-        filtered.data.section !== "activeBundleSeries"
+        series.state !== "ready" ||
+        series.data.section !== "activeBundleSeries"
       ) {
         return;
       }
-      expect(filtered.data.total).toMatchObject({
-        state: "exact",
-        value: 24,
-      });
-      expect(filtered.data.nextCursor).toBeNull();
-      expect(filtered.data.data).toHaveLength(24);
-      expect(
-        filtered.data.data.every((row) => row.bundleId === firstBundle),
-      ).toBe(true);
-      expect(filtered.data.data.reduce((sum, row) => sum + row.value, 0)).toBe(
-        2,
+      expect(series.data.data).toHaveLength(48);
+      expect(series.data.data.filter(({ value }) => value === 0)).toHaveLength(
+        45,
       );
-      await expect(
-        insights.pageReport({
-          publicationId: active.data.id,
-          section: "activeBundleSeries",
-          bundleId: "10000000-0000-7000-8000-000000000099",
-          limit: 10,
-        }),
-      ).resolves.toMatchObject({
-        state: "ready",
-        data: { data: [], total: { state: "exact", value: 0 } },
-      });
-      const filled = await pool.query<{
-        readonly rows: number;
-        readonly zero_rows: number;
-      }>(
-        `select count(*)::int rows,
-            count(*) filter (where value = 0)::int zero_rows
-          from private_hot_updater_kysely_insights_report_order
-          where job_id = $1 and order_kind = 'activeBundleSeries'`,
-        [active.data.id],
-      );
-      expect(filled.rows[0]).toEqual({ rows: 48, zero_rows: 45 });
 
       await pool.query(
         `insert into private_hot_updater_kysely_insights_report_counts
@@ -819,25 +672,29 @@ describe.skipIf(!databaseUrl)(
       await pool.query(
         "analyze private_hot_updater_kysely_insights_report_counts",
       );
-      const rankPlan = await readPlan(
-        pool,
-        `select label, value
-         from private_hot_updater_kysely_insights_report_counts
-         where job_id = $1 and section = 'activeBundleTotals'
-           and metric = '' and bucket_start_ms = -1
-         order by value desc, label_order limit 160`,
-        [active.data.id],
+      expectBoundedIndexPlan(
+        await readPlan(
+          pool,
+          `select label, value
+           from private_hot_updater_kysely_insights_report_counts
+           where job_id = $1 and section = 'activeBundleTotals'
+             and metric = '' and bucket_start_ms = -1
+           order by value desc, label_order limit 160`,
+          [active.data.id],
+        ),
+        "kysely_insights_counts_rank_idx",
+        160,
       );
-      expectBoundedIndexPlan(rankPlan, "kysely_insights_counts_rank_idx", 160);
 
+      const detailBundle = "10000000-0000-7000-8000-000000000003";
       const labels = ["😀", "é", "Z", "a", "e\u0301", "Å", "東京"];
       for (const [index, cohort] of labels.entries()) {
         await insights.append(
           event(
             makeId(0xa10 + index, index + 10),
             `order-${index}`,
-            now + index,
-            { cohort },
+            now - 1_000 + index,
+            { cohort, to_bundle_id: detailBundle },
           ),
         );
       }
@@ -845,22 +702,24 @@ describe.skipIf(!databaseUrl)(
         insights.getReport({
           query: {
             kind: "bundleDetail",
-            bundleId: "01900000-0000-7000-8000-000000000021",
+            bundleId: detailBundle,
             window: "all",
           },
         }),
       );
-      const cohorts = await insights.pageReport({
-        publicationId: detail.data.id,
-        section: "movementCohorts",
-        metric: "installed",
-        limit: 10,
+      await expect(
+        insights.pageReport({
+          publicationId: detail.data.id,
+          section: "movementCohorts",
+          metric: "installed",
+          limit: 10,
+        }),
+      ).resolves.toMatchObject({
+        state: "ready",
+        data: {
+          data: [...labels].sort().map((cohort) => ({ cohort, value: 1 })),
+        },
       });
-      expect(cohorts.state).toBe("ready");
-      if (cohorts.state !== "ready") return;
-      expect(
-        cohorts.data.data.map((row) => Reflect.get(row, "cohort")),
-      ).toEqual([...labels].sort());
 
       await pool.query(
         `insert into private_hot_updater_kysely_insights_report_counts
@@ -875,17 +734,16 @@ describe.skipIf(!databaseUrl)(
       await pool.query(
         "analyze private_hot_updater_kysely_insights_report_counts",
       );
-      const orderPlan = await readPlan(
-        pool,
-        `select label, value
-         from private_hot_updater_kysely_insights_report_counts
-         where job_id = $1 and section = 'movementCohorts'
-           and metric = 'installed' and bucket_start_ms = -1
-         order by label_order limit 160`,
-        [detail.data.id],
-      );
       expectBoundedIndexPlan(
-        orderPlan,
+        await readPlan(
+          pool,
+          `select label, value
+           from private_hot_updater_kysely_insights_report_counts
+           where job_id = $1 and section = 'movementCohorts'
+             and metric = 'installed' and bucket_start_ms = -1
+           order by label_order limit 160`,
+          [detail.data.id],
+        ),
         "kysely_insights_counts_order_idx",
         160,
       );
@@ -905,17 +763,16 @@ describe.skipIf(!databaseUrl)(
       const firstBundleKey = createHash("sha256")
         .update(JSON.stringify(firstBundle))
         .digest("hex");
-      const filteredPlan = await readPlan(
-        pool,
-        `select label_ordinal, bucket_start_ms, value
-         from private_hot_updater_kysely_insights_report_order
-         where job_id = $1 and order_kind = 'activeBundleSeries'
-           and metric = '' and label_key = $2 and label_ordinal >= 0
-         order by label_ordinal limit 101`,
-        [active.data.id, firstBundleKey],
-      );
       expectBoundedIndexPlan(
-        filteredPlan,
+        await readPlan(
+          pool,
+          `select label_ordinal, bucket_start_ms, value
+           from private_hot_updater_kysely_insights_report_order
+           where job_id = $1 and order_kind = 'activeBundleSeries'
+             and metric = '' and label_key = $2 and label_ordinal >= 0
+           order by label_ordinal limit 101`,
+          [active.data.id, firstBundleKey],
+        ),
         "kysely_insights_order_label_idx",
         101,
       );

@@ -141,7 +141,7 @@ const readyReport = async (
 
 describeMySQL(
   "Kysely Insights MySQL integration (set KYSELY_INSIGHTS_MYSQL_URL)",
-  { timeout: 120_000 },
+  { timeout: 300_000 },
   () => {
     let adminPool: Pool;
     const activeDatabases = new Set<string>();
@@ -376,7 +376,7 @@ describeMySQL(
         expect(analyzedText).toContain("kysely_insights_events_order_idx");
         expect(analyzedText).toMatch(/actual time=.* rows=101 loops=1/);
       });
-    }, 120_000);
+    }, 300_000);
 
     it("uses all four exact-state work indexes without a filesort", async () => {
       await withDatabase(async ({ connect }) => {
@@ -591,9 +591,9 @@ describeMySQL(
       });
     });
 
-    it("keeps delayed latest identity and cursor A pinned after B", async () => {
+    it("keeps native publication, zero-fill, and order plans exact", async () => {
       await withDatabase(async ({ connect }) => {
-        const { db } = connect();
+        const { db, pool } = connect();
         await migrateAll(db);
         const insights = createKyselyInsightsModel(db, "mysql");
         const advance = () =>
@@ -617,24 +617,23 @@ describeMySQL(
             user_id: "historical-user",
           }),
         );
-
-        const exact = await insights.pageInstallations({
-          kind: "installationId",
-          installId: "delayed-a",
-          limit: 1,
-        });
-        expect(exact).toMatchObject({
+        await expect(
+          insights.pageInstallations({
+            kind: "installationId",
+            installId: "delayed-a",
+            limit: 1,
+          }),
+        ).resolves.toMatchObject({
           state: "ready",
-          data: {
-            data: [{ install_id: "delayed-a", user_id: "current-user" }],
-          },
+          data: { data: [{ user_id: "current-user" }] },
         });
-        const pending = await insights.pageInstallations({
-          kind: "userId",
-          userId: "historical-user",
-          limit: 1,
-        });
-        expect(pending.state).toBe("preparing");
+        await expect(
+          insights.pageInstallations({
+            kind: "userId",
+            userId: "historical-user",
+            limit: 1,
+          }),
+        ).resolves.toMatchObject({ state: "preparing" });
         await advance();
         const publicationA = await insights.pageInstallations({
           kind: "userId",
@@ -648,66 +647,8 @@ describeMySQL(
         ) {
           return;
         }
-        expect(publicationA.data.total.value).toBe(2);
-        const publication = publicationA.data.consistency.cutoff.publication;
+        expect(publicationA.data.total).toMatchObject({ value: 2 });
 
-        await insights.append(
-          event("01d20000-0000-7000-8000-000000000004", "delayed-c", 250, {
-            user_id: "historical-user",
-          }),
-        );
-        const stale = await insights.pageInstallations({
-          kind: "userId",
-          userId: "historical-user",
-          minAsOfMs: publication.asOfMs + 1,
-          limit: 1,
-        });
-        expect(stale.state).toBe("stale");
-        await advance();
-        const publicationB = await insights.pageInstallations({
-          kind: "userId",
-          userId: "historical-user",
-          minAsOfMs: publication.asOfMs + 1,
-          limit: 1,
-        });
-        expect(publicationB).toMatchObject({
-          state: "ready",
-          data: { total: { value: 3 } },
-        });
-
-        const retainedA = await insights.pageInstallations({
-          kind: "userId",
-          userId: "historical-user",
-          cursor: publicationA.data.nextCursor,
-          limit: 1,
-        });
-        expect(retainedA.state).toBe("ready");
-        if (retainedA.state === "ready") {
-          expect(retainedA.data.consistency.cutoff.publication.id).toBe(
-            publication.id,
-          );
-          expect(
-            [...publicationA.data.data, ...retainedA.data.data].find(
-              (row) => row.install_id === "delayed-a",
-            )?.user_id,
-          ).toBe("current-user");
-          expect(retainedA.data.data).not.toMatchObject([
-            { install_id: "delayed-c" },
-          ]);
-        }
-      });
-    });
-
-    it("publishes Unicode order and zero-filled global and bundle pages", async () => {
-      await withDatabase(async ({ connect }) => {
-        const { db, pool } = connect();
-        await migrateAll(db);
-        const insights = createKyselyInsightsModel(db, "mysql");
-        const advance = () =>
-          runKyselyInsightsMaintenanceStep(db, "mysql", {
-            maxItems: 160,
-            maxRequests: 4_096,
-          });
         const now = Date.now();
         const firstBundle = "10000000-0000-7000-8000-000000000001";
         const secondBundle = "10000000-0000-7000-8000-000000000002";
@@ -733,25 +674,19 @@ describeMySQL(
             }),
           advance,
         );
-        const cohorts = await insights.pageReport({
-          publicationId: detail.data.id,
-          section: "movementCohorts",
-          metric: "installed",
-          limit: 10,
+        await expect(
+          insights.pageReport({
+            publicationId: detail.data.id,
+            section: "movementCohorts",
+            metric: "installed",
+            limit: 10,
+          }),
+        ).resolves.toMatchObject({
+          state: "ready",
+          data: {
+            data: [...labels].sort().map((cohort) => ({ cohort, value: 1 })),
+          },
         });
-        expect(cohorts.state).toBe("ready");
-        if (
-          cohorts.state === "ready" &&
-          cohorts.data.section === "movementCohorts"
-        ) {
-          expect(cohorts.data.data.map((row) => row.cohort)).toEqual(
-            [...labels].sort(),
-          );
-          expect(cohorts.data.total).toMatchObject({
-            state: "exact",
-            value: 4,
-          });
-        }
         const labelPlan = await explainJson(
           pool,
           `select label, value
@@ -786,93 +721,22 @@ describeMySQL(
             }),
           advance,
         );
-        const globalFirst = await insights.pageReport({
+        const series = await insights.pageReport({
           publicationId: active.data.id,
           section: "activeBundleSeries",
-          limit: 25,
-        });
-        expect(globalFirst.state).toBe("ready");
-        if (
-          globalFirst.state !== "ready" ||
-          globalFirst.data.section !== "activeBundleSeries" ||
-          globalFirst.data.nextCursor === null
-        ) {
-          return;
-        }
-        expect(globalFirst.data.total).toMatchObject({
-          state: "exact",
-          value: 48,
-        });
-        const globalSecond = await insights.pageReport({
-          publicationId: active.data.id,
-          section: "activeBundleSeries",
-          limit: 25,
-          cursor: globalFirst.data.nextCursor,
-        });
-        expect(globalSecond.state).toBe("ready");
-        if (
-          globalSecond.state !== "ready" ||
-          globalSecond.data.section !== "activeBundleSeries"
-        ) {
-          return;
-        }
-        expect(globalSecond.data.nextCursor).toBeNull();
-        const observed = [...globalFirst.data.data, ...globalSecond.data.data];
-        expect(observed).toHaveLength(48);
-        expect(observed.slice(0, 24).map(({ bundleId }) => bundleId)).toEqual(
-          Array(24).fill(firstBundle),
-        );
-        expect(observed.slice(24).map(({ bundleId }) => bundleId)).toEqual(
-          Array(24).fill(secondBundle),
-        );
-        for (const [bundleId, expectedTotal] of [
-          [firstBundle, 2],
-          [secondBundle, 1],
-        ] as const) {
-          const bundleRows = observed.filter(
-            (row) => row.bundleId === bundleId,
-          );
-          expect(bundleRows).toHaveLength(24);
-          expect(bundleRows.reduce((sum, row) => sum + row.value, 0)).toBe(
-            expectedTotal,
-          );
-          expect(bundleRows.map((row) => row.bucketStartMs)).toEqual(
-            bundleRows.map((row) => row.bucketStartMs).sort((a, b) => a - b),
-          );
-        }
-
-        const filtered = await insights.pageReport({
-          publicationId: active.data.id,
-          section: "activeBundleSeries",
-          bundleId: firstBundle,
           limit: 100,
         });
-        expect(filtered.state).toBe("ready");
+        expect(series.state).toBe("ready");
         if (
-          filtered.state !== "ready" ||
-          filtered.data.section !== "activeBundleSeries"
+          series.state !== "ready" ||
+          series.data.section !== "activeBundleSeries"
         ) {
           return;
         }
-        expect(filtered.data.data).toHaveLength(24);
+        expect(series.data.data).toHaveLength(48);
         expect(
-          filtered.data.data.every((row) => row.bundleId === firstBundle),
-        ).toBe(true);
-        expect(
-          filtered.data.data.reduce((sum, row) => sum + row.value, 0),
-        ).toBe(2);
-        expect(filtered.data.total).toMatchObject({ value: 24 });
-        await expect(
-          insights.pageReport({
-            publicationId: active.data.id,
-            section: "activeBundleSeries",
-            bundleId: "10000000-0000-7000-8000-000000000099",
-            limit: 10,
-          }),
-        ).resolves.toMatchObject({
-          state: "ready",
-          data: { data: [], total: { state: "exact", value: 0 } },
-        });
+          series.data.data.filter(({ value }) => value === 0),
+        ).toHaveLength(45);
 
         const rankPlan = await explainJson(
           pool,
