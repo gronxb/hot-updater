@@ -152,9 +152,7 @@ export function InsightsOverview(props: InsightsOverviewProps) {
                 </dd>
               </div>
               <div className="flex min-w-0 flex-col gap-1">
-                <dt className="text-xs text-muted-foreground">
-                  As of ({dateTimeFormat.resolvedOptions().timeZone})
-                </dt>
+                <dt className="text-xs text-muted-foreground">As of</dt>
                 <dd className="text-xs font-medium tabular-nums">
                   <EventTimestamp
                     touch

@@ -100,7 +100,6 @@ export function EventHistoryCard({
   readonly onRefresh: () => void;
 }) {
   const dateTimeFormat = useInsightsTimeFormat();
-  const timeZone = dateTimeFormat.resolvedOptions().timeZone;
 
   return (
     <Card className="@container min-w-0 shadow-sm" aria-busy={isFetching}>
@@ -164,7 +163,7 @@ export function EventHistoryCard({
               <Table className="min-w-4xl table-fixed">
                 <TableHeader>
                   <TableRow className="[&>th]:px-4 sm:[&>th]:px-6">
-                    <TableHead className="w-52">Time ({timeZone})</TableHead>
+                    <TableHead className="w-64">Time</TableHead>
                     <TableHead className="w-48">Event</TableHead>
                     <TableHead className="w-48">User ID / install ID</TableHead>
                     <TableHead className="w-32">App</TableHead>

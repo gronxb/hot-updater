@@ -22,7 +22,7 @@ export function EventHistoryList<
   return (
     <>
       <p className="px-4 pb-2 text-xs text-muted-foreground sm:px-6">
-        Time ({formatter.resolvedOptions().timeZone})
+        Time in your browser zone
       </p>
       <ol aria-label="Events" className="divide-y border-y">
         {events.map((event) => (

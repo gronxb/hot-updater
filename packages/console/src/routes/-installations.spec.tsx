@@ -337,12 +337,10 @@ describe("InstallationsPage", () => {
     try {
       render(<InstallationsPage />);
       const desktop = within(screen.getByRole("table"));
-      expect(
-        screen.getByRole("columnheader", { name: "Time (America/New_York)" }),
-      ).toBeDefined();
-      expect(desktop.getByText("2026/07/18 06:02:03")).toBeDefined();
-      expect(desktop.getByText("2026/01/18 05:02:03")).toBeDefined();
-      const time = desktop.getByText("2026/07/18 06:02:03");
+      expect(screen.getByRole("columnheader", { name: "Time" })).toBeDefined();
+      expect(desktop.getByText("2026/07/18 06:02:03 GMT-4")).toBeDefined();
+      expect(desktop.getByText("2026/01/18 05:02:03 GMT-5")).toBeDefined();
+      const time = desktop.getByText("2026/07/18 06:02:03 GMT-4");
       expect(time.getAttribute("datetime")).toBe("2026-07-18T10:02:03.000Z");
       fireEvent.click(time.closest("summary")!);
       expect(time.closest("details")?.open).toBe(true);

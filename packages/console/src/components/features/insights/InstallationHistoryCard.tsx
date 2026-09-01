@@ -179,9 +179,7 @@ export function InstallationHistoryCard({
                 <Table className="min-w-3xl table-fixed">
                   <TableHeader>
                     <TableRow className="[&>th]:px-4 sm:[&>th]:px-6">
-                      <TableHead className="w-52">
-                        Time ({dateTimeFormat.resolvedOptions().timeZone})
-                      </TableHead>
+                      <TableHead className="w-64">Time</TableHead>
                       <TableHead className="w-48">Event</TableHead>
                       <TableHead className="w-32">App</TableHead>
                       <TableHead className="w-52">Bundle</TableHead>

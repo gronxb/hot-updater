@@ -35,6 +35,7 @@ export function useInsightsTimeFormat() {
   }, []);
   return new Intl.DateTimeFormat("en", {
     timeZone,
+    timeZoneName: "shortOffset",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -43,6 +44,19 @@ export function useInsightsTimeFormat() {
     second: "2-digit",
     hourCycle: "h23",
   });
+}
+
+export function formatInsightsTimestamp(
+  value: number,
+  formatter: Intl.DateTimeFormat,
+) {
+  const parts = Object.fromEntries(
+    formatter
+      .formatToParts(new Date(value))
+      .map(({ type, value }) => [type, value]),
+  );
+  const offset = parts.timeZoneName === "GMT" ? "GMT+0" : parts.timeZoneName;
+  return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}:${parts.second} ${offset}`;
 }
 
 export function EventTimestamp({
@@ -55,10 +69,7 @@ export function EventTimestamp({
   readonly touch?: boolean;
 }) {
   const date = new Date(value);
-  const parts = Object.fromEntries(
-    formatter.formatToParts(date).map(({ type, value }) => [type, value]),
-  );
-  const localTime = `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+  const localTime = formatInsightsTimestamp(value, formatter);
   return (
     <details className="group/time">
       <summary
