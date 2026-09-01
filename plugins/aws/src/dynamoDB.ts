@@ -1629,6 +1629,7 @@ export const createDynamoDBCrud = (
   store: DynamoDBStore,
   updateIndexName: string,
 ): DatabasePluginImplementation => ({
+  appendBundleEvent: (row) => createDynamoDBInsightsTable(store).append(row),
   async create(input): Promise<DatabaseImplementationResult> {
     switch (input.model) {
       case "bundles":
@@ -2358,7 +2359,6 @@ const compileAndCommitDynamoDBChanges = async (
   const originalApiKeys = new Map<string, VersionedApiKey>();
   const apiKeys = new Map<string, VersionedApiKey>();
   const apiKeyHashes = new Map<string, string>();
-  const insights = new Map<string, BundleEventRow>();
 
   const rememberApiKey = (value: VersionedApiKey | null): void => {
     if (value === null || apiKeys.has(value.row.id)) return;
@@ -2545,16 +2545,6 @@ const compileAndCommitDynamoDBChanges = async (
           }
         }
         break;
-      case "insights": {
-        const key = insightsSortKey(change.row);
-        if (insights.has(key)) {
-          throw new DynamoDBCommitStateError(
-            `Insights event "${change.row.id}" is duplicated`,
-          );
-        }
-        insights.set(key, change.row);
-        break;
-      }
       case "apiKeys":
         if (change.operation === "insert") {
           rememberApiKey(await loadApiKeyByHash(store, change.row.hash));
@@ -2586,6 +2576,8 @@ const compileAndCommitDynamoDBChanges = async (
           });
         }
         break;
+      default:
+        throw new DynamoDBCommitStateError("Unsupported DynamoDB commit model");
     }
   }
 
@@ -2871,22 +2863,6 @@ const compileAndCommitDynamoDBChanges = async (
     bundle_patches: patches.size - originalPatches.size,
   });
   if (counter !== undefined) actions.push(counter);
-
-  for (const [key, row] of insights) {
-    actions.push({
-      Put: {
-        TableName: store.tableName,
-        Item: boundedDynamoDBMetadataItem({
-          pk: DYNAMODB_INSIGHTS_PARTITION,
-          sk: key,
-          version: 1,
-          row,
-        }),
-        ConditionExpression: "attribute_not_exists(#pk)",
-        ExpressionAttributeNames: { "#pk": "pk" },
-      },
-    });
-  }
 
   for (const [id, current] of apiKeys) {
     const original = originalApiKeys.get(id);

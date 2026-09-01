@@ -32,6 +32,7 @@ import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamoDB";
 import { DynamoDBManager } from "./dynamodb";
 
 const compatibleTable = {
+  TableStatus: "ACTIVE",
   TableArn:
     "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata",
   AttributeDefinitions: [
@@ -44,14 +45,11 @@ const compatibleTable = {
   GlobalSecondaryIndexes: [
     {
       IndexName: DYNAMODB_UPDATE_INDEX_NAME,
+      IndexStatus: "ACTIVE",
       KeySchema: [
         { AttributeName: "gsi1pk", KeyType: "HASH" },
         { AttributeName: "gsi1sk", KeyType: "RANGE" },
       ],
-      OnDemandThroughput: {
-        MaxReadRequestUnits: 4_000,
-        MaxWriteRequestUnits: 100,
-      },
       Projection: { ProjectionType: "ALL" },
     },
   ],
@@ -59,10 +57,6 @@ const compatibleTable = {
     { AttributeName: "pk", KeyType: "HASH" },
     { AttributeName: "sk", KeyType: "RANGE" },
   ],
-  OnDemandThroughput: {
-    MaxReadRequestUnits: 4_000,
-    MaxWriteRequestUnits: 100,
-  },
 } as const;
 
 const manager = () =>

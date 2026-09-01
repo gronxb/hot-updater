@@ -12,6 +12,7 @@ import {
   DYNAMODB_API_KEY_PARTITION,
   DYNAMODB_UPDATE_INDEX_NAME,
 } from "../src/dynamoDB";
+import { DYNAMODB_INSIGHTS_V2_PREFIX } from "../src/dynamoDBInsightsV2";
 
 export class IAMManager {
   private region: string;
@@ -73,6 +74,7 @@ export class IAMManager {
               "dynamodb:GetItem",
               "dynamodb:PutItem",
               "dynamodb:Query",
+              "dynamodb:TransactGetItems",
               "dynamodb:TransactWriteItems",
               "dynamodb:UpdateItem",
             ],
@@ -88,6 +90,24 @@ export class IAMManager {
                   DYNAMODB_API_KEY_PARTITION,
                   DYNAMODB_API_KEY_HASH_PARTITION,
                 ],
+              },
+            },
+            Effect: "Allow",
+            Resource: [tableArn],
+          },
+          {
+            Action: [
+              "dynamodb:BatchGetItem",
+              "dynamodb:GetItem",
+              "dynamodb:PutItem",
+              "dynamodb:Query",
+              "dynamodb:TransactGetItems",
+              "dynamodb:TransactWriteItems",
+              "dynamodb:UpdateItem",
+            ],
+            Condition: {
+              "ForAllValues:StringLike": {
+                "dynamodb:LeadingKeys": [`${DYNAMODB_INSIGHTS_V2_PREFIX}#*`],
               },
             },
             Effect: "Allow",

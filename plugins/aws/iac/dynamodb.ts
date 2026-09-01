@@ -55,10 +55,14 @@ const updateIndexKeySchema = [
 ] as const satisfies readonly KeySchemaElement[];
 
 const keyAttributes = ["pk", "sk", "gsi1pk", "gsi1sk"] as const;
-const onDemandThroughput = {
-  MaxReadRequestUnits: 4_000,
-  MaxWriteRequestUnits: 100,
-} as const;
+
+const hasNoOnDemandCap = (
+  throughput: TableDescription["OnDemandThroughput"],
+): boolean =>
+  (throughput?.MaxReadRequestUnits === undefined ||
+    throughput.MaxReadRequestUnits === -1) &&
+  (throughput?.MaxWriteRequestUnits === undefined ||
+    throughput.MaxWriteRequestUnits === -1);
 
 const hasKeySchema = (
   actual: readonly KeySchemaElement[] | undefined,
@@ -76,6 +80,7 @@ const hasExpectedSchema = (table: TableDescription | undefined): boolean => {
     ({ IndexName }) => IndexName === DYNAMODB_UPDATE_INDEX_NAME,
   );
   return (
+    table?.AttributeDefinitions?.length === keyAttributes.length &&
     keyAttributes.every((attributeName) =>
       table?.AttributeDefinitions?.some(
         ({ AttributeName, AttributeType }: AttributeDefinition) =>
@@ -83,17 +88,22 @@ const hasExpectedSchema = (table: TableDescription | undefined): boolean => {
       ),
     ) &&
     table?.BillingModeSummary?.BillingMode === "PAY_PER_REQUEST" &&
-    table.OnDemandThroughput?.MaxReadRequestUnits ===
-      onDemandThroughput.MaxReadRequestUnits &&
-    table.OnDemandThroughput?.MaxWriteRequestUnits ===
-      onDemandThroughput.MaxWriteRequestUnits &&
     hasKeySchema(table?.KeySchema, primaryKeySchema) &&
+    table?.GlobalSecondaryIndexes?.length === 1 &&
     hasKeySchema(updateIndex?.KeySchema, updateIndexKeySchema) &&
-    updateIndex?.OnDemandThroughput?.MaxReadRequestUnits ===
-      onDemandThroughput.MaxReadRequestUnits &&
-    updateIndex?.OnDemandThroughput?.MaxWriteRequestUnits ===
-      onDemandThroughput.MaxWriteRequestUnits &&
     updateIndex?.Projection?.ProjectionType === "ALL"
+  );
+};
+
+const isActiveAndUnlimited = (table: TableDescription | undefined): boolean => {
+  const updateIndex = table?.GlobalSecondaryIndexes?.find(
+    ({ IndexName }) => IndexName === DYNAMODB_UPDATE_INDEX_NAME,
+  );
+  return (
+    table?.TableStatus === "ACTIVE" &&
+    updateIndex?.IndexStatus === "ACTIVE" &&
+    hasNoOnDemandCap(table.OnDemandThroughput) &&
+    hasNoOnDemandCap(updateIndex.OnDemandThroughput)
   );
 };
 
@@ -120,8 +130,25 @@ export class DynamoDBManager {
       const { Table } = await this.client.describeTable({
         TableName: tableName,
       });
-      if (!hasExpectedSchema(Table)) {
+      if (Table === undefined || !hasExpectedSchema(Table)) {
         throw new DynamoDBTableSchemaError(tableName);
+      }
+      let ready = Table;
+      if (!isActiveAndUnlimited(ready)) {
+        if (
+          ready.TableStatus !== "ACTIVE" ||
+          ready.GlobalSecondaryIndexes?.find(
+            ({ IndexName }) => IndexName === DYNAMODB_UPDATE_INDEX_NAME,
+          )?.IndexStatus !== "ACTIVE"
+        ) {
+          ready = await this.waitForActiveTable(tableName, false);
+        }
+        if (await this.ensureUnlimitedOnDemand(tableName, ready)) {
+          ready = await this.waitForActiveTable(tableName, true);
+        }
+        if (!hasExpectedSchema(ready) || !isActiveAndUnlimited(ready)) {
+          throw new DynamoDBTableSchemaError(tableName);
+        }
       }
       await this.ensureLifecycle(tableName);
       return;
@@ -150,18 +177,86 @@ export class DynamoDBManager {
           IndexName: DYNAMODB_UPDATE_INDEX_NAME,
           KeySchema: [...updateIndexKeySchema],
           Projection: { ProjectionType: "ALL" },
-          OnDemandThroughput: onDemandThroughput,
         },
       ],
       KeySchema: [...primaryKeySchema],
-      OnDemandThroughput: onDemandThroughput,
       TableName: tableName,
     });
+    const ready = await this.waitForActiveTable(tableName, true);
+    if (!hasExpectedSchema(ready) || !isActiveAndUnlimited(ready)) {
+      throw new DynamoDBTableSchemaError(tableName);
+    }
+    await this.ensureLifecycle(tableName);
+  }
+
+  private async waitForActiveTable(
+    tableName: string,
+    requireUnlimited: boolean,
+  ): Promise<TableDescription> {
     await waitUntilTableExists(
       { client: this.client, maxWaitTime: 120 },
       { TableName: tableName },
     );
-    await this.ensureLifecycle(tableName);
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const { Table } = await this.client.describeTable({
+        TableName: tableName,
+      });
+      if (Table === undefined || !hasExpectedSchema(Table)) {
+        throw new DynamoDBTableSchemaError(tableName);
+      }
+      if (
+        Table.TableStatus === "ACTIVE" &&
+        Table.GlobalSecondaryIndexes?.[0]?.IndexStatus === "ACTIVE" &&
+        (!requireUnlimited || isActiveAndUnlimited(Table))
+      ) {
+        return Table;
+      }
+      if (attempt < 23) {
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
+      }
+    }
+    throw new DynamoDBTableSchemaError(tableName);
+  }
+
+  private async ensureUnlimitedOnDemand(
+    tableName: string,
+    table: TableDescription,
+  ): Promise<boolean> {
+    const updateIndex = table.GlobalSecondaryIndexes?.find(
+      ({ IndexName }) => IndexName === DYNAMODB_UPDATE_INDEX_NAME,
+    );
+    const updateTable = !hasNoOnDemandCap(table.OnDemandThroughput);
+    const updateIndexThroughput = !hasNoOnDemandCap(
+      updateIndex?.OnDemandThroughput,
+    );
+    if (!updateTable && !updateIndexThroughput) return false;
+    await this.client.updateTable({
+      TableName: tableName,
+      ...(updateTable
+        ? {
+            OnDemandThroughput: {
+              MaxReadRequestUnits: -1,
+              MaxWriteRequestUnits: -1,
+            },
+          }
+        : {}),
+      ...(updateIndexThroughput
+        ? {
+            GlobalSecondaryIndexUpdates: [
+              {
+                Update: {
+                  IndexName: DYNAMODB_UPDATE_INDEX_NAME,
+                  OnDemandThroughput: {
+                    MaxReadRequestUnits: -1,
+                    MaxWriteRequestUnits: -1,
+                  },
+                },
+              },
+            ],
+          }
+        : {}),
+    });
+    return true;
   }
 
   private async ensureLifecycle(tableName: string): Promise<void> {

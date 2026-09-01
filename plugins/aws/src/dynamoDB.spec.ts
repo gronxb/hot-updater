@@ -9,7 +9,7 @@ import {
   ScanCommand,
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { bundleToRow, type BundleEventRow } from "@hot-updater/plugin-core";
+import { bundleToRow } from "@hot-updater/plugin-core";
 import { mockClient } from "aws-sdk-client-mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -52,26 +52,6 @@ const commitBundle = (plugin: ReturnType<typeof dynamoDB>) =>
       { model: "bundles", operation: "insert", row: bundleRow },
     ],
   });
-
-const insightsEvent = (index: number): BundleEventRow => ({
-  id: `00000000-0000-0000-0000-${String(index).padStart(12, "0")}`,
-  type: "UPDATE_APPLIED",
-  install_id: `install-${index}`,
-  user_id: null,
-  username: null,
-  from_release_id: null,
-  from_bundle_id: bundleRow.id,
-  to_release_id: null,
-  to_bundle_id: bundleRow.id,
-  platform: "ios",
-  app_version: "1.0.0",
-  channel: productionChannel.name,
-  cohort: "0",
-  update_strategy: "appVersion",
-  fingerprint_hash: null,
-  sdk_version: null,
-  received_at_ms: index,
-});
 
 describe("dynamoDB CloudFront lifecycle", () => {
   beforeEach(() => {
@@ -204,7 +184,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
     await plugin.dispose?.();
   });
 
-  it("rejects a generic commit above DynamoDB's 100-action boundary", async () => {
+  it("rejects Insights passed through the generic commit port", async () => {
     const plugin = dynamoDB({
       region: "us-east-1",
       tableName: "hot-updater-metadata",
@@ -212,76 +192,12 @@ describe("dynamoDB CloudFront lifecycle", () => {
 
     await expect(
       plugin.commit({
-        changes: Array.from({ length: 101 }, (_, index) => ({
-          model: "insights" as const,
-          operation: "insert" as const,
-          row: insightsEvent(index),
-        })),
-      }),
+        changes: [{ model: "insights", operation: "insert", row: {} }],
+      } as never),
     ).rejects.toMatchObject({
-      name: "DynamoDBTransactionLimitError",
-      actionCount: 101,
+      name: "DatabasePluginInputError",
     });
     expect(documentClient.commandCalls(TransactWriteCommand)).toHaveLength(0);
-    await plugin.dispose?.();
-  });
-
-  it.each([
-    { from_release_id: undefined },
-    { to_release_id: undefined },
-    { from_bundle_id: null },
-    { to_bundle_id: null },
-    { type: "UNCHANGED", from_bundle_id: bundleRow.id, update_strategy: null },
-  ])("rejects an invalid stored Insights row", async (overrides) => {
-    documentClient.on(QueryCommand).resolves({
-      Items: [
-        {
-          pk: "bundle_events",
-          sk: "0000000000000001#event",
-          version: 1,
-          row: { ...insightsEvent(1), ...overrides },
-        },
-      ],
-    });
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-
-    await expect(
-      plugin.models.insights.scan({
-        beforeReceivedAtMs: 2,
-        limit: 1,
-      }),
-    ).rejects.toMatchObject({ name: "DynamoDBStoredItemError" });
-
-    await plugin.dispose?.();
-  });
-
-  it("preserves explicit null Release ids on a stored Insights row", async () => {
-    const row = insightsEvent(1);
-    documentClient.on(QueryCommand).resolves({
-      Items: [
-        {
-          pk: "bundle_events",
-          sk: "0000000000000001#event",
-          version: 1,
-          row,
-        },
-      ],
-    });
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-
-    await expect(
-      plugin.models.insights.scan({
-        beforeReceivedAtMs: 2,
-        limit: 1,
-      }),
-    ).resolves.toEqual([row]);
-
     await plugin.dispose?.();
   });
 });

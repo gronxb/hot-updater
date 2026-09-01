@@ -86,6 +86,7 @@ describe("IAMManager DynamoDB access", () => {
           "dynamodb:GetItem",
           "dynamodb:PutItem",
           "dynamodb:Query",
+          "dynamodb:TransactGetItems",
           "dynamodb:TransactWriteItems",
           "dynamodb:UpdateItem",
         ],
@@ -101,6 +102,26 @@ describe("IAMManager DynamoDB access", () => {
               "api_keys",
               "_hot-updater#api-key-hashes",
             ],
+          },
+        },
+        Effect: "Allow",
+        Resource: [
+          "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata",
+        ],
+      },
+      {
+        Action: [
+          "dynamodb:BatchGetItem",
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:Query",
+          "dynamodb:TransactGetItems",
+          "dynamodb:TransactWriteItems",
+          "dynamodb:UpdateItem",
+        ],
+        Condition: {
+          "ForAllValues:StringLike": {
+            "dynamodb:LeadingKeys": ["_hot-updater#insights-v2#*"],
           },
         },
         Effect: "Allow",
