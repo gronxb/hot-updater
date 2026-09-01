@@ -1,5 +1,18 @@
 # hot-updater
 
+## 0.36.8
+
+### Patch Changes
+
+- 67703ab: Report the default `production` channel in `hot-updater channel` when the native files carry no channel value, instead of showing an empty channel.
+  - @hot-updater/android-helper@0.36.8
+  - @hot-updater/apple-helper@0.36.8
+  - @hot-updater/cli-tools@0.36.8
+  - @hot-updater/console@0.36.8
+  - @hot-updater/core@0.36.8
+  - @hot-updater/server@0.36.8
+  - @hot-updater/plugin-core@0.36.8
+
 ## 0.36.7
 
 ### Patch Changes
