@@ -304,9 +304,6 @@ export const createKyselyCrud = (
         );
         await insertRow(executor, "bundle_patches", input.data, provider);
         return input.data;
-      case "bundle_events":
-        await insertRow(executor, "bundle_events", input.data, provider);
-        return input.data;
       case "releases":
         await insertRow(
           executor,
