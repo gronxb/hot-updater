@@ -16,9 +16,9 @@ import {
 } from "firebase-admin/firestore";
 
 import {
-  parseFirebaseBundleRow,
-  parseFirebaseBundleEventRow,
   parseFirebaseApiKeyRow,
+  parseFirebaseBundleEventRow,
+  parseFirebaseBundleRow,
   parseFirebaseChannelRow,
   parseFirebasePatchRow,
   parseFirebaseReleaseCatalogRow,
@@ -26,7 +26,6 @@ import {
 } from "./firebaseDatabaseParser";
 import type { FirebaseDatabaseSnapshot } from "./firebaseDatabaseState";
 import { FirebaseDatabaseConstraintError } from "./firebaseDatabaseState";
-import { toFirebaseEventDocument } from "./firebaseEventIndex";
 import { FIREBASE_V1_COLLECTION_NAMES } from "./firebaseInfrastructureNames";
 
 export interface FirebaseDatabaseCollections {
@@ -240,9 +239,6 @@ const toSnapshot = (
   const snapshot: FirebaseDatabaseSnapshot = {
     bundles: bundleMap(documents[0]),
     bundlePatches: patchMap(documents[1]),
-    // Events are append-only and are not referenced by catalog constraints.
-    // In a mutation this map contains only the inserts staged by its callback.
-    bundleEvents: new Map(),
     channels: channelMap(documents[2]),
     apiKeys: apiKeyMap(documents[3]),
     releases: releaseMap(documents[4]),
@@ -348,14 +344,6 @@ export const persistFirebaseDatabaseSnapshot = ({
     after: after.bundlePatches,
     documentId: (row) => row.id,
   });
-  // create supplies the absent-document precondition without reading history.
-  // A duplicate aborts the entire transaction, including catalog changes.
-  for (const row of after.bundleEvents.values()) {
-    transaction.create(
-      collections.bundleEvents.doc(row.id),
-      toFirebaseEventDocument(row),
-    );
-  }
   persistCollection({
     transaction,
     collection: collections.channels,

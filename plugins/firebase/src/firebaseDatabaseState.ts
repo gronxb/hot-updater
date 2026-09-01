@@ -1,12 +1,12 @@
 import type {
   BundlePatchRow,
   BundleRow,
-  BundleEventRow,
   ApiKeyRow,
   ChannelRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import { DatabasePluginInputError } from "@hot-updater/plugin-core";
 import type {
   DatabaseImplementationResult,
   TransactionDatabasePluginImplementation,
@@ -20,7 +20,6 @@ import {
 export interface FirebaseDatabaseSnapshot {
   readonly bundles: Map<string, BundleRow>;
   readonly bundlePatches: Map<string, BundlePatchRow>;
-  readonly bundleEvents: Map<string, BundleEventRow>;
   readonly channels: Map<string, ChannelRow>;
   readonly apiKeys: Map<string, ApiKeyRow>;
   readonly releaseCatalogs: Map<string, ReleaseCatalogRow>;
@@ -40,7 +39,6 @@ export const cloneFirebaseDatabaseSnapshot = (
 ): FirebaseDatabaseSnapshot => ({
   bundles: new Map(snapshot.bundles),
   bundlePatches: new Map(snapshot.bundlePatches),
-  bundleEvents: new Map(snapshot.bundleEvents),
   channels: new Map(snapshot.channels),
   apiKeys: new Map(snapshot.apiKeys),
   releaseCatalogs: new Map(snapshot.releaseCatalogs),
@@ -92,10 +90,6 @@ export const createFirebaseDatabaseState = (
           );
         }
         snapshot.bundlePatches.set(input.data.id, input.data);
-        return input.data;
-      case "bundle_events":
-        requireUnique(snapshot.bundleEvents, input.data.id, input.model);
-        snapshot.bundleEvents.set(input.data.id, input.data);
         return input.data;
       case "releases":
         requireUnique(snapshot.releases, input.data.id, input.model);
@@ -299,10 +293,7 @@ export const createFirebaseDatabaseState = (
           input,
         );
       case "bundle_events":
-        return queryFirebaseDatabaseRows(
-          [...snapshot.bundleEvents.values()],
-          input,
-        );
+        throw new DatabasePluginInputError("invalid-operation");
       case "channels":
         return queryFirebaseDatabaseRows(
           [...snapshot.channels.values()],

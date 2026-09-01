@@ -1,7 +1,4 @@
-import {
-  createDatabasePlugin,
-  InsightsQueryNotReadyError,
-} from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
   type DatabasePluginImplementation,
@@ -39,12 +36,8 @@ import {
   createFirebaseDatabaseState,
   FirebaseDatabaseConstraintError,
 } from "./firebaseDatabaseState";
-import {
-  FIREBASE_EVENT_INDEX_STATE,
-  toFirebaseEventDocument,
-} from "./firebaseEventIndex";
+import { toFirebaseEventDocument } from "./firebaseEventIndex";
 import { FIREBASE_V1_COLLECTION_NAMES } from "./firebaseInfrastructureNames";
-import { createFirebaseInsightsQueries } from "./firebaseInsights";
 
 type FirebaseMutation<TResult> = (
   database: TransactionDatabasePluginImplementation,
@@ -65,7 +58,7 @@ const exactId = (
 export type FirebaseDatabaseConfig = AppOptions;
 
 export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
-  const { implementation, insights } = (() => {
+  const implementation = (() => {
     const app = getApps().length ? getApp() : initializeApp(config);
     const db = getFirestore(app);
     const collections = createFirebaseDatabaseCollections(db);
@@ -90,27 +83,7 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
         );
         const after = cloneFirebaseDatabaseSnapshot(before);
         const database = createFirebaseDatabaseState(after);
-        const result = await operation({
-          ...database,
-          async findMany(input) {
-            if (input.model !== "bundle_events")
-              return database.findMany(input);
-            // An explicit internal event query sees its staged inserts. Keep
-            // history out of the mutation maps so it is never written back.
-            const rows = parseFirebaseEventDocuments(
-              await transaction.get(collections.bundleEvents),
-            );
-            for (const [id, row] of after.bundleEvents) {
-              if (rows.has(id)) {
-                throw new FirebaseDatabaseConstraintError(
-                  "bundle_events.id.unique",
-                );
-              }
-              rows.set(id, row);
-            }
-            return queryFirebaseDatabaseRows([...rows.values()], input);
-          },
-        });
+        const result = await operation(database);
         persistFirebaseDatabaseSnapshot({
           transaction,
           collections,
@@ -130,15 +103,12 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
     };
 
     const implementation: DatabasePluginImplementation = {
-      create: async (input) => {
-        if (input.model !== "bundle_events") {
-          return mutate((database) => database.create(input));
-        }
-        const document = toFirebaseEventDocument(input.data);
+      appendBundleEvent: async (row) => {
+        const document = toFirebaseEventDocument(row);
         await ensureMigrated();
-        await collections.bundleEvents.doc(input.data.id).create(document);
-        return input.data;
+        await collections.bundleEvents.doc(row.id).create(document);
       },
+      create: (input) => mutate((database) => database.create(input)),
       update: (input) => mutate((database) => database.update(input)),
       delete: (input) => mutate((database) => database.delete(input)),
       count: (input) => read((database) => database.count(input)),
@@ -292,33 +262,19 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
       },
       transaction: (callback) => mutate(callback),
     };
-    return {
-      implementation,
-      insights: createFirebaseInsightsQueries(
-        collections.bundleEvents,
-        ensureMigrated,
-        async () => {
-          await ensureMigrated();
-          const index = await collections.settings
-            .doc(FIREBASE_EVENT_INDEX_STATE)
-            .get();
-          if (index.data()?.version !== 1 || index.data()?.state !== "ready") {
-            throw new InsightsQueryNotReadyError();
-          }
-        },
-      ),
-    };
+    return implementation;
   })();
   const adapter = createDatabasePluginAdapter(
     "firebaseDatabase",
     implementation,
   );
-  return createDatabasePlugin({
+  const plugin = createDatabasePlugin({
     name: "firebaseDatabase",
     models: {
       ...adapter.models,
-      insights: { ...adapter.models.insights, scan: insights.scan },
+      insights: adapter.models.insights,
     },
     commit: adapter.commit,
   });
+  return plugin;
 };

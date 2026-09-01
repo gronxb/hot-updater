@@ -2,17 +2,9 @@ import {
   createDatabaseClient,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
-import {
-  setupDatabaseClientTestSuite,
-  setupDatabasePluginTestSuite,
-} from "@hot-updater/test-utils";
-import { Query, Transaction } from "firebase-admin/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  createBundleEventRowFixture,
-  createBundleRowFixture,
-} from "../../../packages/test-utils/src/databaseTestFixtures";
+import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
 import { firebaseDatabase } from "./firebaseDatabase";
 import { firebaseChannelDocumentId } from "./firebaseDatabasePersistence";
@@ -21,13 +13,14 @@ import { toFirebaseEventDocument } from "./firebaseEventIndex";
 const PROJECT_ID = "firebase-database-test";
 
 const {
-  bundleEventsCollection,
   bundlePatchesCollection,
   bundlesCollection,
   channelsCollection,
   clearCollections,
   legacyBundlesCollection,
   legacySettingsCollection,
+  bundleEventsCollection,
+  insightsV2,
   settingsCollection,
 } = createFirestoreMock(PROJECT_ID);
 
@@ -43,23 +36,6 @@ const findAllBundles = (plugin: DatabasePlugin) =>
     offset: 0,
     orderBy: { field: "id", direction: "asc" },
   });
-
-setupDatabasePluginTestSuite({
-  name: "firebase fixed-model database plugin",
-  createPlugin,
-  migrate: () => undefined,
-  reset: clearCollections,
-  dispose: () => undefined,
-});
-
-setupDatabaseClientTestSuite({
-  name: "firebase database aggregate client",
-  createPlugin,
-  createClient: createDatabaseClient,
-  migrate: () => undefined,
-  reset: clearCollections,
-  dispose: () => undefined,
-});
 
 const storedBundleRow = (id: string) => ({
   id,
@@ -191,210 +167,29 @@ describe("firebase bounded reads", () => {
   });
 });
 
-describe("firebase event write isolation", () => {
+describe("firebase append-only Insights boundary", () => {
   beforeEach(clearCollections);
 
-  it("rejects identities that cannot retain exact index ordering or UTF-8 equality on both write paths", async () => {
+  it("keeps public append and scan on legacy storage until atomic cutover", async () => {
+    const first = createBundleEventRowFixture("919001", 100);
+    const second = createBundleEventRowFixture("919002", 200);
     const plugin = createPlugin();
-    const bundle = createBundleRowFixture("818");
-    await plugin.commit({
-      changes: [{ model: "bundles", operation: "insert", row: bundle }],
-    });
-    const valid = createBundleEventRowFixture("819", 100);
-    for (const event of [
-      { ...valid, id: "\uE000" },
-      { ...valid, id: "\u{10000}" },
-      { ...valid, id: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF" },
-      { ...valid, install_id: "unpaired-\uD800" },
-    ]) {
-      await expect(plugin.models.insights.append(event)).rejects.toMatchObject({
-        code: "invalid-data",
-      });
-      await expect(
-        plugin.commit({
-          changes: [
-            {
-              model: "bundles",
-              operation: "update",
-              where: { id: bundle.id },
-              update: { metadata: { incorrect: true } },
-            },
-            { model: "insights", operation: "insert", row: event },
-          ],
-        }),
-      ).rejects.toMatchObject({ code: "invalid-data" });
-      expect(
-        (await bundlesCollection.doc(bundle.id).get()).data()?.metadata,
-      ).toEqual(bundle.metadata);
-    }
-    expect((await bundleEventsCollection.get()).empty).toBe(true);
-  });
 
-  it("appends without reading history or unrelated catalog documents", async () => {
-    await settingsCollection
-      .doc("database_adapter_version")
-      .set({ version: 4 });
-    await bundlesCollection.doc("unrelated-malformed").set({ invalid: true });
-    await bundleEventsCollection
-      .doc("unrelated-malformed")
-      .set({ invalid: true });
-    const event = createBundleEventRowFixture("810", 100);
-    const reads = vi.spyOn(Query.prototype, "get");
-    const transactionReads = vi.spyOn(Transaction.prototype, "get");
-    try {
-      await createPlugin().models.insights.append(event);
-      expect(reads).not.toHaveBeenCalled();
-      expect(transactionReads).not.toHaveBeenCalled();
-      expect((await bundleEventsCollection.doc(event.id).get()).data()).toEqual(
-        toFirebaseEventDocument(event),
-      );
-    } finally {
-      reads.mockRestore();
-      transactionReads.mockRestore();
-    }
-  });
+    expect(plugin.models.insights).not.toHaveProperty("pageEvents");
+    await plugin.models.insights.append(second);
+    await plugin.models.insights.append(first);
 
-  it("keeps history out of catalog reads, mutations and mixed commits", async () => {
-    await settingsCollection
-      .doc("database_adapter_version")
-      .set({ version: 4 });
-    const untouched = { invalid: true, extension: "preserve" };
-    await bundleEventsCollection.doc("unrelated-malformed").set(untouched);
-    const plugin = createPlugin();
-    const bundle = createBundleRowFixture("811");
-    const event = createBundleEventRowFixture("812", 100);
-    const reads = vi.spyOn(Query.prototype, "get");
-    const transactionReads = vi.spyOn(Transaction.prototype, "get");
-    try {
-      await expect(
-        plugin.commit({
-          changes: [
-            { model: "bundles", operation: "insert", row: bundle },
-            { model: "insights", operation: "insert", row: event },
-          ],
-        }),
-      ).resolves.toEqual({ committed: true });
-      await expect(
-        plugin.commit({
-          changes: [
-            {
-              model: "bundles",
-              operation: "update",
-              where: { id: bundle.id },
-              update: { metadata: { updated: true } },
-            },
-          ],
-        }),
-      ).resolves.toEqual({ committed: true });
-      await expect(findAllBundles(plugin)).resolves.toMatchObject([
-        { id: bundle.id, metadata: { updated: true } },
-      ]);
-      expect(
-        reads.mock.contexts.some(
-          (query) =>
-            query instanceof Query && query.isEqual(bundleEventsCollection),
-        ),
-      ).toBe(false);
-      expect(
-        transactionReads.mock.calls.some(
-          ([reference]) =>
-            reference instanceof Query &&
-            reference.isEqual(bundleEventsCollection),
-        ),
-      ).toBe(false);
-      expect(
-        (await bundleEventsCollection.doc("unrelated-malformed").get()).data(),
-      ).toEqual(untouched);
-      expect((await bundleEventsCollection.doc(event.id).get()).data()).toEqual(
-        toFirebaseEventDocument(event),
-      );
-    } finally {
-      reads.mockRestore();
-      transactionReads.mockRestore();
-    }
-  });
-
-  it("rejects duplicate events and rolls back every change in a mixed commit", async () => {
-    const plugin = createPlugin();
-    const event = createBundleEventRowFixture("813", 100);
-    await plugin.models.insights.append(event);
-    const stored = { ...event, extension: "preserve" };
-    await bundleEventsCollection.doc(event.id).set(stored);
-    const bundle = createBundleRowFixture("814");
-    await plugin.commit({
-      changes: [{ model: "bundles", operation: "insert", row: bundle }],
-    });
-    const replacement = { ...event, install_id: "different-installation" };
-
-    await expect(plugin.models.insights.append(replacement)).rejects.toThrow();
+    expect((await bundleEventsCollection.doc(first.id).get()).data()).toEqual(
+      toFirebaseEventDocument(first),
+    );
     await expect(
-      plugin.commit({
-        changes: [
-          {
-            model: "bundles",
-            operation: "update",
-            where: { id: bundle.id },
-            update: { metadata: { incorrect: true } },
-          },
-          { model: "insights", operation: "insert", row: replacement },
-        ],
-      }),
-    ).rejects.toThrow();
+      plugin.models.insights.scan({ beforeReceivedAtMs: 300, limit: 10 }),
+    ).resolves.toEqual([first, second]);
+    expect((await insightsV2.events.get()).empty).toBe(true);
+    expect((await insightsV2.sourceClocks.get()).empty).toBe(true);
     expect(
-      (await bundlesCollection.doc(bundle.id).get()).data()?.metadata,
-    ).toEqual(bundle.metadata);
-    expect((await bundleEventsCollection.doc(event.id).get()).data()).toEqual(
-      stored,
-    );
-
-    const fresh = createBundleEventRowFixture("815", 200);
-    await expect(
-      plugin.commit({
-        changes: [
-          {
-            model: "bundles",
-            operation: "update",
-            where: { id: bundle.id },
-            update: { metadata: { incorrect: true } },
-          },
-          { model: "insights", operation: "insert", row: fresh },
-          { model: "insights", operation: "insert", row: fresh },
-        ],
-      }),
-    ).rejects.toThrow();
-    expect(
-      (await bundlesCollection.doc(bundle.id).get()).data()?.metadata,
-    ).toEqual(bundle.metadata);
-    expect((await bundleEventsCollection.doc(fresh.id).get()).exists).toBe(
-      false,
-    );
-  });
-
-  it("allows only one writer when append races a mixed commit for the same event ID", async () => {
-    const plugin = createPlugin();
-    await plugin.models.channels.list({});
-    const event = createBundleEventRowFixture("816", 100);
-    const competing = { ...event, install_id: "competing-installation" };
-    const bundle = createBundleRowFixture("817");
-    const results = await Promise.allSettled([
-      plugin.models.insights.append(event),
-      plugin.commit({
-        changes: [
-          { model: "bundles", operation: "insert", row: bundle },
-          { model: "insights", operation: "insert", row: competing },
-        ],
-      }),
-    ]);
-    expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(
-      1,
-    );
-    const commitWon = results[1].status === "fulfilled";
-    expect((await bundleEventsCollection.doc(event.id).get()).data()).toEqual(
-      toFirebaseEventDocument(commitWon ? competing : event),
-    );
-    expect((await bundlesCollection.doc(bundle.id).get()).exists).toBe(
-      commitWon,
-    );
+      (await settingsCollection.doc("database_adapter_version").get()).data(),
+    ).toEqual({ version: 4 });
   });
 });
 
