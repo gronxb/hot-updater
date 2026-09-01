@@ -131,7 +131,7 @@ export interface RequiredInsightsModelOracle {
   insertMigrationPoisonRow(): void | Promise<void>;
   /** Sets the clock from which subsequently reserved jobs freeze `asOfMs`. */
   setCurrentTimeMs(nowMs: number): void;
-  expirePublication(publicationId: string): void;
+  expirePublication(publicationId: string): void | Promise<void>;
   /** Reports only atomically visible, complete publications. */
   publicationStateForJob(jobId: string): "absent" | "complete";
   /** Native records/documents read before application-side filtering. */

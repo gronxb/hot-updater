@@ -1084,7 +1084,7 @@ export const registerRequiredInsightsModelTests = (
         }),
       ).rejects.toThrow();
       expect(harness.getLastStorageReadCount("other")).toBe(0);
-      harness.expirePublication(containsPublicationId);
+      await harness.expirePublication(containsPublicationId);
       await expect(
         harness.model.pageInstallations({
           ...containsInput,
@@ -1966,7 +1966,7 @@ export const registerRequiredInsightsModelTests = (
         expiryHarness,
         reportPreparing.job.id,
       );
-      expiryHarness.expirePublication(publicationId);
+      await expiryHarness.expirePublication(publicationId);
       const expired: InsightsReportPage = await expiryHarness.model.pageReport({
         publicationId,
         section: "activeSeries",
