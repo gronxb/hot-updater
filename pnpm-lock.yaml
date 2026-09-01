@@ -2215,6 +2215,9 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
+      '@hot-updater/test-utils':
+        specifier: workspace:*
+        version: link:../../packages/test-utils
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

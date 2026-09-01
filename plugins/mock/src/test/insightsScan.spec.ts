@@ -48,6 +48,9 @@ describe("Insights database cursor scans", () => {
     let reads = 0;
     const adapter = createDatabasePluginAdapter("scan-test", {
       ...state,
+      appendBundleEvent: async (row) => {
+        data.bundleEvents.set(row.id, structuredClone(row));
+      },
       insertChannel: async () => {
         throw new Error("Not used in this scenario");
       },

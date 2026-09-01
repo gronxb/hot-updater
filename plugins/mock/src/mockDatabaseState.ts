@@ -133,10 +133,6 @@ export const createMockDatabaseState = (
         }
         data.bundlePatches.set(input.data.id, input.data);
         return input.data;
-      case "bundle_events":
-        requireUnique(data.bundleEvents, input.data.id, input.model);
-        data.bundleEvents.set(input.data.id, input.data);
-        return input.data;
       case "releases":
         requireUnique(data.releases, input.data.id, input.model);
         if (!data.channels.has(input.data.channel_id)) {

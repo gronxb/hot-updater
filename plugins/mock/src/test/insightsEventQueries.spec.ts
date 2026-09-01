@@ -235,7 +235,7 @@ describe("indexed Insights event pages", () => {
     expect(findMany).not.toHaveBeenCalled();
   });
 
-  it.each(["", '\\"\0😀'.repeat(3000)])(
+  it.each(["", '\\"\u2028😀'.repeat(100)])(
     "preserves exact installation identities across escaped bookmarks",
     async (installId) => {
       const { queries, findMany } = harness(

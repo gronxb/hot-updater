@@ -33,7 +33,8 @@
   },
   "dependencies": {
     "@hot-updater/core": "workspace:*",
-    "@hot-updater/plugin-core": "workspace:*"
+    "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/test-utils": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",

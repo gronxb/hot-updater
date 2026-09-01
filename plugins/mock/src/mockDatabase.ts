@@ -8,6 +8,7 @@ import {
   cloneMockDatabaseData,
   createMockDatabaseData,
   createMockDatabaseState,
+  MockDatabaseConstraintError,
   type MockDatabaseData,
   replaceMockDatabaseData,
 } from "./mockDatabaseState";
@@ -49,6 +50,13 @@ export const mockDatabase = (config: MockDatabaseConfig) => {
     ): Promise<TResult> => mutate(operation);
 
     return {
+      appendBundleEvent: (row) =>
+        mutate(async () => {
+          if (data.bundleEvents.has(row.id)) {
+            throw new MockDatabaseConstraintError("bundle_events.id.unique");
+          }
+          data.bundleEvents.set(row.id, structuredClone(row));
+        }),
       create: (input) => mutate(() => state.create(input)),
       update: (input) => mutate(() => state.update(input)),
       delete: (input) => mutate(() => state.delete(input)),
