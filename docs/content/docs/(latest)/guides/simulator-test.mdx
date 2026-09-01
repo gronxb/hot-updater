@@ -81,13 +81,13 @@ This is the emergency deployment mode. After an update is created, the bundle wi
 npx hot-updater deploy -i --force-update
 ```
 
-## Step 3: Disable a Release
+## Step 3: Disable a Bundle
 
 <video src={"/docs/console/console.mp4"} controls autoPlay loop muted />
 
-Open the Release in the Console and set its `enabled` policy to `false`. An
-affected installation moves to a previous compatible enabled Release or to its
-built-in Bundle when no compatible Release remains.
+Open the Bundle in the Console and set its `enabled` policy to `false`. An
+affected installation moves to a previous compatible enabled Bundle or to its
+built-in Bundle when no compatible Bundle remains.
 
 ```package-install
 npx hot-updater console
@@ -97,8 +97,8 @@ The same operational action is available from the CLI when you already know
 the ID shown in the console or deployment output:
 
 ```package-install
-npx hot-updater release disable <id>
+npx hot-updater bundle disable <id>
 ```
 
 This policy rollback is different from automatic startup-crash recovery, which
-continues to track failed file IDs on the device.
+continues to track failed artifact IDs on the device.

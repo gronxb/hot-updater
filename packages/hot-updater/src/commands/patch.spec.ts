@@ -88,8 +88,8 @@ describe("createPatch", () => {
     expect(title).toBe("Patch");
     expect(summary).toMatch(/Channel:\s+production/);
     expect(summary).toMatch(/Platform:\s+ios/);
-    expect(summary).toMatch(/Base file ID:\s+base-bundle/);
-    expect(summary).toMatch(/Target file ID:\s+target-bundle/);
+    expect(summary).toMatch(/Base artifact ID:\s+base-bundle/);
+    expect(summary).toMatch(/Target artifact ID:\s+target-bundle/);
     expect(mockServer.createBundleDiff).toHaveBeenCalledWith(
       {
         baseBundleId: "base-bundle",

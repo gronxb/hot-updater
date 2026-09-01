@@ -64,7 +64,7 @@ const deployment = (
   },
 });
 
-describe("Release commands", () => {
+describe("Bundle commands", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     databaseHarness.reset();
@@ -109,17 +109,13 @@ describe("Release commands", () => {
     const rendered = stripVTControlCharacters(
       String(output.mock.calls[0]?.[0]),
     );
-    for (const field of [
-      "Strategy",
-      "Target cohorts",
-      "Source ID",
-      "Created",
-      "Updated",
-    ]) {
+    for (const field of ["Target cohorts", "Created", "Updated"]) {
       expect(rendered).toContain(field);
     }
     expect(rendered).toContain("staff");
-    expect(rendered).toContain("APP_VERSION");
+    expect(rendered).not.toContain("APP_VERSION");
+    expect(rendered).not.toContain("Source ID");
+    expect(rendered).not.toContain("Operation");
     expect(rendered).toMatch(/\bID:\s+/);
     expect(rendered).toContain(release!.id);
     expect(rendered).not.toContain(seeded.bundle.id);
@@ -157,11 +153,11 @@ describe("Release commands", () => {
           stripVTControlCharacters(String(rendered)).split("\n")[0],
       ),
     ).toEqual([
-      "Release updated",
-      "Release disabled",
-      "Release enabled",
-      "Release disabled",
-      "Release deleted",
+      "Bundle updated",
+      "Bundle disabled",
+      "Bundle enabled",
+      "Bundle disabled",
+      "Bundle deleted",
     ]);
     for (const [rawRendered] of [
       ...output.mock.calls,
@@ -182,7 +178,7 @@ describe("Release commands", () => {
     ).resolves.not.toBeNull();
   });
 
-  it("previews device-dependent fallback and warns for the sole enabled Release", async () => {
+  it("previews device-dependent fallback and warns for the sole enabled bundle", async () => {
     const seeded = deployment("01900000-0000-7000-8000-000000000001");
     await databaseHarness.seedDeployments([seeded]);
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -191,13 +187,13 @@ describe("Release commands", () => {
     await handleReleaseEnablement(seeded.bundle.id, false, { yes: true });
 
     expect(log.message).toHaveBeenCalledWith(
-      expect.stringContaining("previous compatible enabled Release or BUILTIN"),
+      expect.stringContaining("previous compatible enabled bundle or BUILTIN"),
     );
     expect(log.message).toHaveBeenCalledWith(
       expect.stringContaining("device-dependent"),
     );
     expect(log.warn).toHaveBeenCalledWith(
-      expect.stringContaining("only enabled Release"),
+      expect.stringContaining("only enabled bundle"),
     );
     await expect(
       databaseHarness.plugin.models.releases.findById(seeded.bundle.id),

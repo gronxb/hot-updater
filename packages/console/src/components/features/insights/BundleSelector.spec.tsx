@@ -21,20 +21,26 @@ describe("BundleSelector", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("combobox", { name: "Bundle to inspect" }),
+      screen.getByRole("combobox", { name: "Artifact to inspect" }),
     );
-    fireEvent.change(screen.getByRole("combobox", { name: "Search bundles" }), {
-      target: { value: "no-matching-bundle" },
-    });
-    expect(screen.getByText("No bundles found")).toBeDefined();
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Search artifacts" }),
+      {
+        target: { value: "no-matching-bundle" },
+      },
+    );
+    expect(screen.getByText("No artifacts found")).toBeDefined();
     expect(screen.queryAllByRole("option")).toHaveLength(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
     expect(screen.getAllByRole("option")).toHaveLength(2);
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Search bundles" }), {
-      target: { value: "Android" },
-    });
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Search artifacts" }),
+      {
+        target: { value: "Android" },
+      },
+    );
 
     expect(screen.queryByRole("option", { name: /bundle-a/i })).toBeNull();
     fireEvent.click(screen.getByRole("option", { name: /bundle-b/i }));

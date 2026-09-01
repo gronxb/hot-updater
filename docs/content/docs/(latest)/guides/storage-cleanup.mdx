@@ -12,8 +12,8 @@ selects only objects that are no longer referenced.
 
 It can remove:
 
-- Orphaned bundle objects in both the legacy `<file-id>/...` layout and the
-  current `bundles/<file-id>/...` layout.
+- Orphaned bundle objects in both the legacy `<artifact-id>/...` layout and the
+  current `bundles/<artifact-id>/...` layout.
 - Patch objects that are no longer referenced, including orphaned patches under
   a target Bundle that is still live.
 - Unreferenced content-addressed assets under `assets/sha256/...`.
@@ -27,38 +27,34 @@ objects without a modification timestamp, and unknown files are protected.
   longer need before pruning their objects.
 </Callout>
 
-## Remove policy references, then Bundle records
+## Remove bundles, then artifact records
 
-Channel, compatibility, enabled, and rollout fields belong to Releases. Start
-by listing the Release policy you intend to retire:
-
-```package-install
-npx hot-updater release list --channel production --platform ios --limit 100 --json
-```
-
-Disable each selected Release, then hard-delete it. Hard deletion is separate
-from operational rollback and is required only when you intend to make the
-referenced Bundle eligible for garbage collection.
+Start by listing the bundles you intend to retire:
 
 ```package-install
-npx hot-updater release disable <id> --yes
-npx hot-updater release delete <id> --yes
+npx hot-updater bundle list --channel production --platform ios --limit 100 --json
 ```
 
-A Bundle can be reused by multiple Releases, including Releases in other
-channels. Obtain the file ID from Advanced diagnostics (or `bundle_id` in
-`bundle show <id> --json`). Inspect its references and remove every Release
-reference before deleting the immutable artifact record:
+Disable each selected bundle, then hard-delete it. Hard deletion is separate
+from operational rollback.
 
 ```package-install
-npx hot-updater release list --bundle-id <file-id> --limit 1000 --json
-npx hot-updater bundle delete <file-id> <another-file-id> --yes
+npx hot-updater bundle disable <id> --yes
+npx hot-updater bundle delete <id> --yes
 ```
 
-`bundle delete` is rejected while any Release still references the Bundle. A
-successful delete removes database records only. Shared assets, patch objects,
-and Bundle files remain until a reference-aware prune confirms that no
-remaining record uses them.
+Multiple bundle IDs can reuse the same immutable artifact. Obtain the Artifact
+ID from Advanced diagnostics (or `bundle_id` in `bundle show <id> --json`),
+then delete the artifact record after every referencing bundle is gone:
+
+```package-install
+npx hot-updater bundle artifact delete <artifact-id> <another-artifact-id> --yes
+```
+
+`bundle artifact delete` is rejected while any bundle ID still references the
+artifact and reports those IDs. A successful delete removes database records
+only. Shared assets, patch objects, and bundle files remain until a
+reference-aware prune confirms that no remaining record uses them.
 
 ## Preview eligible objects
 
@@ -95,8 +91,8 @@ npx hot-updater storage prune --protect-newer-than 24h --yes
 Before deletion, Hot Updater reloads bundle and manifest references and removes
 objects from the candidate set if they became live.
 
-`release promote` does not need to be paused for Storage safety. It creates a
-new Release that reuses an existing Bundle and does not upload or copy Storage
+`bundle promote` does not need to be paused for Storage safety. It creates a new
+bundle ID that reuses an existing artifact and does not upload or copy Storage
 objects.
 
 <Callout type="warn">

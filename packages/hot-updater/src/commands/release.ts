@@ -20,6 +20,7 @@ export interface ReleaseListOptions {
   readonly json?: boolean;
   readonly limit?: number;
   readonly platform?: "ios" | "android";
+  readonly targetAppVersion?: string;
 }
 
 export interface ReleaseUpdateOptions {
@@ -75,7 +76,6 @@ const releaseTable = (
       { key: "enabled", label: "Enabled" },
       { key: "force", label: "Force" },
       { key: "rollout", label: "Rollout" },
-      { key: "operation", label: "Operation" },
       { key: "message", label: "Message" },
       { key: "created", label: "Created" },
     ],
@@ -85,7 +85,6 @@ const releaseTable = (
       enabled: release.enabled ? "yes" : "no",
       force: release.should_force_update ? "yes" : "no",
       message: release.message ?? "",
-      operation: release.operation,
       platform: release.platform,
       release: release.id,
       rollout: `${release.rollout_cohort_count / 10}%`,
@@ -94,13 +93,11 @@ const releaseTable = (
   );
 
 const releaseSummary = (release: ReleaseRow, channelName: string): string =>
-  ui.block("Release", [
+  ui.block("Bundle", [
     ui.kv("ID", ui.id(release.id)),
     ui.kv("Revision", String(release.revision)),
     ui.kv("Channel", ui.channel(channelName)),
     ui.kv("Platform", ui.platform(release.platform)),
-    ui.kv("Kind", release.kind),
-    ui.kv("Strategy", release.strategy),
     ui.kv("Target", ui.version(releaseTarget(release))),
     ui.kv("Enabled", ui.status(release.enabled)),
     ui.kv("Force update", release.should_force_update ? "yes" : "no"),
@@ -110,13 +107,6 @@ const releaseSummary = (release: ReleaseRow, channelName: string): string =>
       release.target_cohorts.length === 0
         ? ui.muted("(none)")
         : release.target_cohorts.join(", "),
-    ),
-    ui.kv("Operation", release.operation),
-    ui.kv(
-      "Source ID",
-      release.source_release_id === null
-        ? ui.muted("(none)")
-        : ui.id(release.source_release_id),
     ),
     release.message === null ? "" : ui.kv("Message", release.message),
     ui.kv("Created", new Date(release.created_at_ms).toISOString()),
@@ -140,7 +130,7 @@ const readScopeReleases = async (
     if (page.length < RELEASE_PAGE_SIZE) return releases;
     const nextCursor = page.at(-1)?.id;
     if (nextCursor === undefined || nextCursor === afterReleaseId) {
-      throw new Error("Release pagination did not advance.");
+      throw new Error("Bundle pagination did not advance.");
     }
     afterReleaseId = nextCursor;
   }
@@ -150,7 +140,7 @@ const releaseDisablePreview = (
   release: ReleaseRow,
   channelName: string,
 ): string =>
-  ui.block("Disable Release", [
+  ui.block("Disable Bundle", [
     ui.kv("ID", ui.id(release.id)),
     ui.kv("Revision", String(release.revision)),
     ui.kv("Channel", ui.channel(channelName)),
@@ -158,7 +148,7 @@ const releaseDisablePreview = (
     ui.kv("Target", ui.version(releaseTarget(release))),
     ui.kv(
       "Device result",
-      "previous compatible enabled Release or BUILTIN (device-dependent)",
+      "previous compatible enabled bundle or BUILTIN (device-dependent)",
     ),
   ]);
 
@@ -211,6 +201,9 @@ export const handleReleaseList = async (options: ReleaseListOptions = {}) => {
       ...(options.bundleId === undefined ? {} : { bundleId: options.bundleId }),
       ...(channelId === undefined ? {} : { channelId }),
       ...(options.platform === undefined ? {} : { platform: options.platform }),
+      ...(options.targetAppVersion === undefined
+        ? {}
+        : { targetAppVersion: options.targetAppVersion }),
       limit: options.limit ?? DEFAULT_LIMIT,
     });
     console.log(
@@ -236,7 +229,7 @@ export const handleReleaseShow = async (
       channelNames(database),
     ]);
     if (release === null) {
-      p.log.error(`No Release with id ${releaseId}.`);
+      p.log.error(`No bundle with ID ${releaseId}.`);
       process.exit(1);
     }
     console.log(
@@ -285,11 +278,11 @@ export const handleReleaseUpdate = async (
 ) => {
   const patch = createPolicyPatch(options);
   if (Object.keys(patch).length === 0) {
-    p.log.error("No Release policy fields were provided.");
+    p.log.error("No bundle fields were provided.");
     process.exit(1);
   }
   if (!options.json) printBanner();
-  await confirmMutation("Update this Release?", options.yes);
+  await confirmMutation("Update this bundle?", options.yes);
   const config = await loadConfig(null);
   const database = config.database;
   try {
@@ -302,7 +295,7 @@ export const handleReleaseUpdate = async (
     console.log(
       options.json
         ? JSON.stringify(result, null, 2)
-        : ui.block("Release updated", [
+        : ui.block("Bundle updated", [
             ui.kv("ID", ui.id(releaseId)),
             ui.kv("Revision", String(result.release?.revision ?? "")),
           ]),
@@ -329,7 +322,7 @@ export const handleReleaseEnablement = async (
     if (!enabled) {
       const release = await database.models.releases.findById(releaseId);
       if (release === null) {
-        p.log.error(`No Release with id ${releaseId}.`);
+        p.log.error(`No bundle with ID ${releaseId}.`);
         process.exit(1);
       }
       expectedRevision ??= release.revision;
@@ -354,14 +347,14 @@ export const handleReleaseEnablement = async (
           enabledReleases[0]?.id === release.id
         ) {
           p.log.warn(
-            "This is the only enabled Release in its scope. Compatible devices may fall back to BUILTIN.",
+            "This is the only enabled bundle for this target. Compatible devices may fall back to BUILTIN.",
           );
         }
       }
     }
 
     await confirmMutation(
-      `${enabled ? "Enable" : "Disable"} this Release?`,
+      `${enabled ? "Enable" : "Disable"} this bundle?`,
       options.yes,
     );
     const result = await updateReleasePolicy({
@@ -373,7 +366,7 @@ export const handleReleaseEnablement = async (
     console.log(
       options.json
         ? JSON.stringify(result, null, 2)
-        : ui.block(enabled ? "Release enabled" : "Release disabled", [
+        : ui.block(enabled ? "Bundle enabled" : "Bundle disabled", [
             ui.kv("ID", ui.id(releaseId)),
           ]),
     );
@@ -398,7 +391,7 @@ export const handleReleasePreflight = async (
     console.log(
       options.json
         ? JSON.stringify(result, null, 2)
-        : ui.block("Release mutation preflight", [
+        : ui.block("Bundle update preflight", [
             ui.kv(
               "Current bytes",
               String(result.currentCatalog?.byte_size ?? 0),
@@ -429,7 +422,7 @@ export const handleReleaseDelete = async (
 ) => {
   if (!options.json) printBanner();
   await confirmMutation(
-    `Permanently delete disabled Release ${releaseId}?`,
+    `Permanently delete disabled bundle ${releaseId}?`,
     options.yes,
   );
   const config = await loadConfig(null);
@@ -443,7 +436,7 @@ export const handleReleaseDelete = async (
     console.log(
       options.json
         ? JSON.stringify(result, null, 2)
-        : ui.block("Release deleted", [ui.kv("ID", ui.id(releaseId))]),
+        : ui.block("Bundle deleted", [ui.kv("ID", ui.id(releaseId))]),
     );
   } finally {
     await safeDispose(database);

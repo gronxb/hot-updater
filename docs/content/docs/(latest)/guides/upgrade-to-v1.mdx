@@ -55,32 +55,39 @@ Storage buckets do not have to be new, but preserve the access policies and
 objects still needed by v0. Do not prune shared storage using only the v1
 database while v0 binaries still need those artifacts.
 
-The v1 scaffold starts with an empty Release history. Redeploy the releases you
+The v1 scaffold starts with an empty Bundle history. Redeploy the Bundles you
 want to serve from their source artifacts; v0 policy is not backfilled.
 
-### 3. Update CLI automation to use console IDs
+### 3. Keep using the Bundle CLI
 
-v1 separates immutable Bundle artifacts from mutable Release policy. Update
-scripts before writers resume:
+The public CLI keeps the v0 Bundle workflow. The ID printed by deploy is the
+same ID shown in the Console and returned by `HotUpdater.getBundleId()`:
 
 | v0 command or assumption | v1 command or meaning |
 | --- | --- |
-| `bundle list --channel ... --target-app-version ...` | Use `release list --channel ... --platform ...` for channel filtering. `bundle list` shows the same update IDs as the console. |
-| `bundle show <bundle-id>` for rollout or enabled state | Use `bundle show <id>` or `release show <id>` with the console ID, also returned by `HotUpdater.getBundleId()`. |
-| `bundle update <bundle-id>` | `release update <id>` |
-| `bundle enable <bundle-id>` | `release enable <id>` |
-| `bundle disable <bundle-id>` | `release disable <id>` |
-| `bundle promote <bundle-id>` | `release promote <source-id> --target <channel>` |
-| top-level `rollback <channel>` or `--target <bundle-id>` | Identify the exact Release and run `release disable <id>`. The Bundle-targeted rollback command is removed. |
-| Delete an old Bundle directly | Disable and hard-delete every referencing Release, then run `bundle delete` and preview `storage prune`. |
+| `bundle list --channel ... --target-app-version ...` | Unchanged; the rows use the Console ID. |
+| `bundle show <bundle-id>` | `bundle show <id>` with the deploy or Console ID. |
+| `bundle update <bundle-id>` | `bundle update <id>` |
+| `bundle enable <bundle-id>` | `bundle enable <id>` |
+| `bundle disable <bundle-id>` | `bundle disable <id>` |
+| `bundle promote <bundle-id>` | `bundle promote <source-id> --target <channel>` |
+| `bundle delete <bundle-ids...>` | Delete one disabled public Bundle at a time with `bundle delete <id>`. |
+| `patch --bundle-id ... --base-bundle-id ...` | Prefer `--artifact-id` and `--base-artifact-id`; the old names remain deprecated aliases for Artifact IDs. |
+| top-level `rollback <channel>` | Identify the exact ID and run `bundle disable <id>`. |
+| Delete old immutable bytes directly | Delete the public bundle first, then use Advanced `bundle artifact delete <artifact-id>` and preview `storage prune`. |
 
 Deploy and promote create independent update IDs. Multiple updates can reuse
 the same files.
 
-Promotion reuses Bundle bytes and never copies Storage objects. Its target
-Release is enabled with a 100% numeric rollout, no target cohorts, and a new
-rollout seed. Review that policy in the command preview before
-confirming, especially when the source Release had a partial or QA-only rollout.
+The command names remain familiar, but v0 JSON automation is not schema
+compatible. In v1, `bundle list --json` and `bundle show --json` return raw
+internal rows; update scripts that depended on the v0 `{ data, pagination }`
+list wrapper or v0 Bundle DTO fields.
+
+Promotion reuses uploaded bytes and never copies Storage objects. The target
+bundle is enabled with a 100% numeric rollout, no target cohorts, and a new
+rollout seed. Review those settings before confirming, especially when the
+source bundle had a partial or QA-only rollout.
 
 ### 4. Verify the v1 endpoint
 

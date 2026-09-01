@@ -1,21 +1,21 @@
 ---
-title: "Console (Releases & Artifacts)"
+title: "Console"
 description: "Opens a localhost server based on plugins configured in `hot-updater.config.ts`. For security reasons, only localhost server is supported at the moment."
 icon: Terminal
 ---
 
 **The console provides the following features:**
 
-- Release delivery-policy management
-- Release disable and force-update controls
-- Immutable Bundle artifact inspection
+- Bundle rollout and targeting management
+- Bundle disable and force-update controls
+- Advanced immutable artifact inspection
 - Quick access to git history for updates
 
 <video src={"/docs/console/console.mp4"} controls autoPlay loop muted />
 
 ## Configuration (Optional)
 
-Console configuration does not change Release policy or Bundle artifacts.
+Console configuration does not change bundle delivery settings or artifacts.
 
 You can configure additional console settings in the `hot-updater.config.ts` file.
 
@@ -42,7 +42,7 @@ export default defineConfig({
 
 ## Usage
 
-The Releases list and its detail sheet show an **ID** that matches
+The Bundles list and its detail sheet show an **ID** that matches
 [`HotUpdater.getBundleId()`](/docs/react-native-api/getBundleId) on the device.
 Promoted updates have their own IDs even when they reuse the same files.
 
@@ -71,45 +71,41 @@ admin API. The standalone repository does not currently proxy Insights or API
 key models, so those Console views require a direct database
 plugin.
 
-Use the Release CLI for delivery-policy automation and CI scripts:
-
-```package-install
-npx hot-updater release list --platform ios
-npx hot-updater release show <id>
-npx hot-updater release disable <id> -y
-npx hot-updater release enable <id> -y
-npx hot-updater release update <id> --force-update true -y
-npx hot-updater release update <id> --rollout-cohort-count 500 -y
-npx hot-updater release update <id> --target-cohorts qa,dogfood -y
-```
-
-Add `--json` to `release list`, `release show`, or `release update` when
-another tool needs to read Release policy. `bundle list` and `bundle show`
-use the same IDs and query the same updates:
+Use the same Bundle commands as v0 for automation and CI scripts:
 
 ```package-install
 npx hot-updater bundle list --platform ios
 npx hot-updater bundle show <id>
+npx hot-updater bundle disable <id> -y
+npx hot-updater bundle enable <id> -y
+npx hot-updater bundle update <id> --force-update true -y
+npx hot-updater bundle update <id> --rollout-cohort-count 500 -y
+npx hot-updater bundle update <id> --target-cohorts qa,dogfood -y
 ```
 
-### Advanced file diagnostics
+Add `--json` to `bundle list`, `bundle show`, or `bundle update` when
+another tool needs raw internal row data. Its field names follow the v1 database
+schema rather than the human-readable Bundle terminology.
 
-File operations use the **File ID** from Advanced diagnostics. To find every
-update referencing a file:
+### Advanced artifact diagnostics
+
+Artifact operations use the **Artifact ID** from Advanced diagnostics. They are
+kept outside the normal bundle workflow:
 
 ```package-install
-npx hot-updater release list --bundle-id <file-id>
+npx hot-updater bundle artifact delete <artifact-id> --yes
 ```
 
-After deleting bundle records, use the [Storage Cleanup](/docs/guides/storage-cleanup)
-workflow to preview and reclaim bundle objects and shared assets that are no
-longer referenced.
+The command refuses to delete an artifact while any bundle ID references it and
+reports those IDs. After deleting unreferenced artifact records, use the
+[Storage Cleanup](/docs/guides/storage-cleanup) workflow to preview and reclaim
+stored objects and shared assets.
 
 ## Rollback
 
-Disabling a Release removes it from delivery selection. Affected installations
-move to the previous compatible enabled Release or to the app's built-in
-Bundle when no compatible Release remains. The result can vary by app version,
+Disabling a bundle removes it from delivery selection. Affected installations
+move to the previous compatible enabled bundle or to the app's built-in bundle
+when no compatible bundle remains. The result can vary by app version,
 fingerprint, and cohort, so verify the scope shown by the Console before
 confirming.
 
@@ -117,25 +113,24 @@ confirming.
 
 ## Force Update
 
-Setting a Release's `shouldForceUpdate` policy to `true` tells eligible
-installations to apply that Release immediately when it is selected. The flag
-belongs to the Release, not to its Bundle artifact.
+Setting a bundle's `shouldForceUpdate` value to `true` tells eligible
+installations to apply that bundle immediately when it is selected.
 
 <img src={"/docs/console/force_update.png"} />
 
 ## Promote
 
-Promotion creates a new Release in the target channel while reusing the source
-Release's Bundle:
+Promotion creates a new bundle ID in the target channel while reusing the same
+uploaded artifact:
 
 ```package-install
-npx hot-updater release promote <source-id> --target <channel>
+npx hot-updater bundle promote <source-id> --target <channel>
 ```
 
 No Storage object is uploaded or copied. The promoted update has a new ID
 and rollout seed, is enabled, starts at a 100% numeric rollout, and has no
 target cohorts. The command previews those defaults before confirmation. A
-`--action move` promotion also disables the source Release atomically.
+`--action move` promotion also disables the source bundle atomically.
 
 ## Git URL
 

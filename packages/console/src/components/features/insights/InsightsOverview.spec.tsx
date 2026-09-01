@@ -145,7 +145,7 @@ describe("InsightsOverview", () => {
       name: "Selected bundle activity",
     });
     const bundleSelector = screen.getByRole("combobox", {
-      name: "Bundle to inspect",
+      name: "Artifact to inspect",
     });
     expect(bundleSelector.closest('[data-slot="card"]')).toBe(
       bundleActivityHeading.closest('[data-slot="card"]'),

@@ -525,9 +525,9 @@ describe("deploy rollout wiring", () => {
     const catalog = await databasePlugin.models.releaseCatalogs.findByScopeKey(
       release.scope_key,
     );
-    const summary = mockCli.p.log.message.mock.calls[0]?.[0];
-    expect(summary).toContain("iOS Deployment");
+    const summary = mockCli.p.outro.mock.calls[0]?.[0];
     expect(release.id).not.toBe(release.bundle_id);
+    expect(summary).toContain("Deployment successful");
     expect(summary).toContain(`ID:`);
     expect(summary).toContain(release.id);
     expect(summary).not.toContain("Release ID");
@@ -536,7 +536,11 @@ describe("deploy rollout wiring", () => {
     expect(summary).not.toContain(catalog!.catalog_id);
     expect(summary).not.toContain(release.scope_key);
     expect(summary).not.toContain("Generation");
-    expect(mockCli.p.outro).toHaveBeenCalledWith("Deployment successful");
+    expect(summary.match(new RegExp(release.id, "g"))).toHaveLength(1);
+    expect(mockCli.p.log.message).not.toHaveBeenCalled();
+    expect(mockCli.p.outro).toHaveBeenCalledWith(
+      `Deployment successful\n    ID:       ${release.id}`,
+    );
   });
 
   it.each([true, false])(
@@ -569,7 +573,15 @@ describe("deploy rollout wiring", () => {
         platform: "ios",
         releaseId: release.id,
       });
-      expect(mockCli.p.note).toHaveBeenCalledWith(`Console: ${url}`);
+      expect(mockCli.p.note).toHaveBeenCalledWith(
+        "Console: http://localhost:3000",
+      );
+      const userOutput = [
+        ...mockCli.p.note.mock.calls.flat(),
+        ...mockCli.p.log.message.mock.calls.flat(),
+        ...mockCli.p.outro.mock.calls.flat(),
+      ].join("\n");
+      expect(userOutput.match(new RegExp(release.id, "g"))).toHaveLength(1);
       expect(openConsole).toHaveBeenCalledTimes(alreadyRunning ? 0 : 1);
     },
   );
@@ -661,19 +673,20 @@ describe("deploy rollout wiring", () => {
         await databasePlugin.models.releaseCatalogs.findByScopeKey(
           release!.scope_key,
         );
-      const summary = mockCli.p.log.message.mock.calls
-        .map(([message]) => message)
-        .find((message) => message.includes(`${platformName} Deployment`));
+      const summary = mockCli.p.outro.mock.calls[0]?.[0];
       expect(summary).toContain(release!.id);
       expect(summary).not.toContain(bundleId);
-      expect(summary).toContain("ID:");
+      expect(summary).toContain(`${platformName} ID:`);
       expect(summary).not.toContain("Authority ID:");
       expect(summary).not.toContain("Catalog ID:");
       expect(summary).not.toContain(catalog!.catalog_id);
       expect(summary).not.toContain(release!.scope_key);
       expect(summary).not.toContain("Generation");
     }
-    expect(mockCli.p.outro).toHaveBeenCalledWith("Deployment successful");
+    expect(mockCli.p.log.message).not.toHaveBeenCalled();
+    expect(mockCli.p.outro).toHaveBeenCalledWith(
+      `Deployment successful\n    iOS ID:     ${releases.find(({ platform }) => platform === "ios")!.id}\n    Android ID: ${releases.find(({ platform }) => platform === "android")!.id}`,
+    );
     expect(
       (await databaseHarness.bundles()).map(({ id }) => id).sort(),
     ).toEqual(["bundle-android", "bundle-ios"]);
@@ -875,9 +888,11 @@ describe("deploy rollout wiring", () => {
     expect(mockBuildPlugin.build).toHaveBeenCalledTimes(2);
     expect(mockCli.createTarBrTargetFiles).toHaveBeenCalledTimes(2);
     expect(mockStoragePlugin.put).toHaveBeenCalledTimes(6);
-    expect(mockCli.p.log.message).toHaveBeenCalledTimes(2);
+    expect(mockCli.p.log.message).not.toHaveBeenCalled();
     expect(mockCli.p.outro).toHaveBeenCalledTimes(1);
-    expect(mockCli.p.outro).toHaveBeenCalledWith("Deployment successful");
+    expect(mockCli.p.outro).toHaveBeenCalledWith(
+      expect.stringContaining("Deployment successful"),
+    );
     expect(
       (await databaseHarness.bundles()).map(({ id }) => id).sort(),
     ).toEqual(["bundle-android", "bundle-ios"]);
@@ -1579,7 +1594,9 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockCli.p.outro).toHaveBeenCalledWith("Deployment successful");
+    expect(mockCli.p.outro).toHaveBeenCalledWith(
+      expect.stringContaining("Deployment successful"),
+    );
     expect(mockCli.p.log.warn).toHaveBeenCalledWith(
       `Partial update skipped for file ${fixtureBundleId(122).slice(0, 8)}: storage unavailable`,
     );

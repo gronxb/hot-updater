@@ -147,79 +147,67 @@ describe("Bundle commands", () => {
     });
   });
 
-  it("paginates through all Release references", async () => {
-    const bundleId = "B1";
-    databaseHarness.setBundles([artifact(bundleId)]);
-    const releases = Array.from({ length: 1_001 }, (_, index) =>
-      releaseReference(
-        `release-${String(1_001 - index).padStart(4, "0")}`,
-        bundleId,
-      ),
-    );
-    const findMany = vi
-      .spyOn(databaseHarness.plugin.models.releases, "findMany")
-      .mockImplementation(async (input) => {
-        if (input.beforeReleaseId === undefined) {
-          return releases.slice(0, 1_000);
-        }
-        expect(input.beforeReleaseId).toBe(releases[999]!.id);
-        return releases.slice(1_000);
+  it("combines the v0 channel and target app version filters", async () => {
+    const bundle = artifact("00000000-0000-7000-8000-000000000011");
+    databaseHarness.setBundles([bundle]);
+    for (const name of ["production", "staging"]) {
+      await databaseHarness.plugin.models.channels.insert({
+        row: { id: `channel-${name}`, name },
+        onConflict: "returnExisting",
       });
-    const { handleBundleDelete } = await import("./bundle");
-
-    await expect(handleBundleDelete([bundleId], { yes: true })).rejects.toThrow(
-      releases[1_000]!.id,
+    }
+    const matching = releaseReference(
+      "00000000-0000-7000-8000-000000000012",
+      bundle.id,
     );
-
-    expect(findMany).toHaveBeenCalledTimes(2);
-    await expect(
-      databaseHarness.plugin.models.bundles.findById(bundleId),
-    ).resolves.not.toBeNull();
-  });
-
-  it("deletes an unreferenced artifact", async () => {
-    databaseHarness.setBundles([artifact("B1")]);
-    const { handleBundleDelete } = await import("./bundle");
-
-    await handleBundleDelete(["B1"], { yes: true });
-
-    await expect(
-      databaseHarness.plugin.models.bundles.findById("B1"),
-    ).resolves.toBeNull();
-    expect(log.success).toHaveBeenCalledWith("Deleted bundle record.");
-    expect(
-      log.info.mock.calls.map(([message]) =>
-        stripVTControlCharacters(String(message)),
-      ),
-    ).toContainEqual(expect.stringMatching(/File ID:\s+B1/));
-    expect(log.info).toHaveBeenCalledWith(
-      expect.stringContaining("storage prune --dry-run"),
-    );
-  });
-
-  it("preserves an artifact referenced by a Release", async () => {
-    const bundleId = "00000000-0000-7000-8000-000000000001";
-    databaseHarness.setBundles([artifact(bundleId)]);
-    await databaseHarness.plugin.models.channels.insert({
-      row: { id: "channel-production", name: "production" },
-      onConflict: "returnExisting",
-    });
-    const release = releaseReference(
-      "00000000-0000-7000-8000-000000000002",
-      bundleId,
-    );
+    const otherVersion = {
+      ...matching,
+      id: "00000000-0000-7000-8000-000000000013",
+      target_app_version: "2.0.x",
+    };
+    const otherChannel = {
+      ...matching,
+      id: "00000000-0000-7000-8000-000000000014",
+      channel_id: "channel-staging",
+    };
     await databaseHarness.plugin.commit({
-      changes: [{ model: "releases", operation: "insert", row: release }],
+      changes: [matching, otherVersion, otherChannel].map((row) => ({
+        model: "releases" as const,
+        operation: "insert" as const,
+        row,
+      })),
     });
-    databaseHarness.commit.mockClear();
-    const { handleBundleDelete } = await import("./bundle");
+    const output = vi.spyOn(console, "log").mockImplementation(() => {});
+    const { handleBundleList } = await import("./bundle");
 
-    await expect(handleBundleDelete([bundleId], { yes: true })).rejects.toThrow(
-      `Cannot delete Bundle records referenced by Releases. Disable and delete these Releases first:\nFile ID ${bundleId}: referenced by IDs ${release.id}`,
+    await handleBundleList({
+      channel: "production",
+      targetAppVersion: "1.0.x",
+      limit: 5,
+    });
+
+    const table = stripVTControlCharacters(
+      String(output.mock.calls.at(-1)?.[0]),
     );
-    expect(databaseHarness.commit).not.toHaveBeenCalled();
+    expect(table).toContain(matching.id);
+    expect(table).not.toContain(otherVersion.id);
+    expect(table).not.toContain(otherChannel.id);
+  });
+
+  it("translates internal release mutation errors at the public boundary", async () => {
+    const { handleBundleUpdate } = await import("./bundle");
+
     await expect(
-      databaseHarness.plugin.models.bundles.findById(bundleId),
-    ).resolves.not.toBeNull();
+      handleBundleUpdate("00000000-0000-7000-8000-000000000099", {
+        message: "updated",
+        yes: true,
+      }),
+    ).rejects.toMatchObject({
+      message: 'Bundle "00000000-0000-7000-8000-000000000099" was not found.',
+      cause: expect.objectContaining({
+        message:
+          'Release "00000000-0000-7000-8000-000000000099" was not found.',
+      }),
+    });
   });
 });

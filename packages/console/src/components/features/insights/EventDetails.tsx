@@ -17,7 +17,7 @@ const eventTypes = {
   UPDATE_APPLIED: { label: "Bundle applied", variant: "success", icon: Check },
   RECOVERED: { label: "Recovered", variant: "warning", icon: RotateCcw },
   RELEASE_ADOPTED: {
-    label: "Release adopted",
+    label: "Bundle adopted",
     variant: "success",
     icon: PackageCheck,
   },

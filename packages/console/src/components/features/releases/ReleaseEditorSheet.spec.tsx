@@ -175,14 +175,12 @@ describe("ReleaseEditorSheet", () => {
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     expect(
-      screen.getByRole("heading", { name: "Release Detail" }),
+      screen.getByRole("heading", { name: "Bundle Detail" }),
     ).toBeDefined();
 
     await act(async () => finishUpdate());
 
-    expect(
-      screen.queryByRole("heading", { name: "Release Detail" }),
-    ).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Bundle Detail" })).toBeNull();
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
@@ -197,7 +195,7 @@ describe("ReleaseEditorSheet", () => {
     );
 
     expect(
-      screen.getByRole("heading", { name: "Release Detail" }),
+      screen.getByRole("heading", { name: "Bundle Detail" }),
     ).toBeDefined();
     expect(
       screen.getByRole("button", { name: "Promote to channel" }),
@@ -269,7 +267,7 @@ describe("ReleaseEditorSheet", () => {
       );
 
       const header = screen.getByRole("heading", {
-        name: "Release Detail",
+        name: "Bundle Detail",
       }).parentElement!;
       expect(within(header).getByText("ID")).toBeDefined();
       expect(within(header).getByText(release.id)).toBeDefined();
@@ -444,7 +442,7 @@ describe("ReleaseEditorSheet", () => {
 
     expect(
       screen.getByText(
-        "Disabling rolls devices back to the previous enabled Release on their next check, or to the built-in app when none remains.",
+        "Disabling rolls devices back to the previous enabled bundle on their next check, or to the built-in app when none remains.",
       ),
     ).toBeDefined();
     expect(screen.queryByRole("button", { name: /roll back/i })).toBeNull();

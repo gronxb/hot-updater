@@ -48,8 +48,8 @@ export const createPatch = async (options: PatchOptions) => {
       [
         ui.kv("Channel", ui.channel(options.channel)),
         ui.kv("Platform", ui.platform(platform)),
-        ui.kv("Base file ID", ui.id(options.baseBundleId)),
-        ui.kv("Target file ID", ui.id(options.bundleId)),
+        ui.kv("Base artifact ID", ui.id(options.baseBundleId)),
+        ui.kv("Target artifact ID", ui.id(options.bundleId)),
       ].join("\n"),
       "Patch",
     );

@@ -32,14 +32,14 @@ import {
   type ReleaseRow,
   updateReleasePolicy,
 } from "../../../plugins/plugin-core/dist/index.mjs";
-import { createConsoleInsightsHttpClient } from "../insights-http-client.ts";
-import { createConsoleInsightsProviderClient } from "../insights-provider-client.ts";
 import {
   ConsoleInsightsQaError,
   readObservedInsightsEvent,
   verifyConsoleInsights,
   type ObservedInsightsEvent,
 } from "../console-insights-qa.ts";
+import { createConsoleInsightsHttpClient } from "../insights-http-client.ts";
+import { createConsoleInsightsProviderClient } from "../insights-provider-client.ts";
 import {
   PAX_LONG_ASSET_ANDROID_MANIFEST_PATH,
   PAX_LONG_ASSET_MANIFEST_PATH,
@@ -1665,7 +1665,7 @@ async function deleteProviderBundle(bundleId: string) {
 
     try {
       await runHotUpdaterCliLogged(
-        ["bundle", "delete", bundleId, "-y"],
+        ["bundle", "artifact", "delete", bundleId, "-y"],
         logName,
       );
       return;
@@ -1680,16 +1680,19 @@ async function deleteProviderBundle(bundleId: string) {
 
       const stillVisible = await isBundleVisible(bundleId);
       if (!stillVisible) {
-        logDetoxFixture("bundle delete verified after CLI retryable failure", {
-          attempt,
-          bundleId,
-          platform: fixtureSession.platform,
-        });
+        logDetoxFixture(
+          "artifact delete verified after CLI retryable failure",
+          {
+            attempt,
+            bundleId,
+            platform: fixtureSession.platform,
+          },
+        );
         return;
       }
 
       if (attempt < REMOTE_BUNDLE_DELETE_ATTEMPTS) {
-        logDetoxFixture("bundle delete verification still pending", {
+        logDetoxFixture("artifact delete verification still pending", {
           attempt,
           bundleId,
           platform: fixtureSession.platform,

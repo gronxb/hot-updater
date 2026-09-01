@@ -733,10 +733,10 @@ describe("Detox scenario contract", () => {
         callback: (database: typeof harness.plugin) => unknown,
       ) => callback(harness.plugin),
     });
-    const buildOutput = ["Release ID", "Bundle ID", "File ID", "Build ID"]
+    const buildOutput = ["Release ID", "Bundle ID", "Artifact ID", "Build ID"]
       .map((label) => `│  ${label}: ${file.id}`)
       .join("\n");
-    const output = `${buildOutput}\n│  iOS Deployment\n│      \u001b[2mID:      \u001b[22m \u001b[33m${release!.id}\u001b[39m\n└  Deployment successful\n`;
+    const output = `${buildOutput}\n└  Deployment successful\n    \u001b[2mID:      \u001b[22m \u001b[33m${release!.id}\u001b[39m\n`;
 
     expect(release!.id).not.toBe(file.id);
     expect(controller.extractDeployReleaseId(buildOutput)).toBeNull();
@@ -772,11 +772,11 @@ describe("Detox scenario contract", () => {
 
   it.each([
     [
-      "Verification failed: 1 bundle record(s) still exist (file IDs: file-1).",
+      "Verification failed: 1 artifact record(s) still exist (artifact IDs: file-1).",
       true,
     ],
     ["Verification failed: bundle file-1 still exists.", true],
-    ["Cannot delete Bundle records referenced by Releases.", false],
+    ["Cannot delete artifacts referenced by bundles.", false],
   ])(
     "recognizes retryable file deletion verification: %s",
     async (output, retryable) => {

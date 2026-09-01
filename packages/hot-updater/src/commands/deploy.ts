@@ -590,12 +590,28 @@ const resolveCommittedDeployments = (
   return results;
 };
 
-const summarizeDeploymentResult = (
-  result: CommittedDeployPlatformResult,
-): string =>
-  ui.block(`${getPlatformName(result.platform)} Deployment`, [
-    ui.kv("ID", ui.id(result.releaseId)),
-  ]);
+const summarizeDeploymentResults = (
+  results: readonly CommittedDeployPlatformResult[],
+): string => {
+  if (results.length === 1) {
+    return [
+      "Deployment successful",
+      ui.kv("ID", ui.id(results[0]!.releaseId)),
+    ].join("\n");
+  }
+
+  const labels = results.map(
+    (result) => `${getPlatformName(result.platform)} ID:`,
+  );
+  const labelWidth = Math.max(...labels.map((label) => label.length));
+  return [
+    "Deployment successful",
+    ...results.map(
+      (result, index) =>
+        `    ${labels[index]!.padEnd(labelWidth)} ${ui.id(result.releaseId)}`,
+    ),
+  ].join("\n");
+};
 
 const getDeployPlatforms = async (
   options: DeployOptions,
@@ -1060,7 +1076,7 @@ const deployPlatform = async ({
         title: `📦 Uploading to Storage (${platformName} • ${storagePlugin.name})`,
         task: async (message = () => {}) => {
           if (!bundleId) {
-            throw new Error("Build did not return a file ID");
+            throw new Error("Build did not return an artifact ID");
           }
           if (!taskRef.manifestPath) {
             throw new Error("Manifest path not found");
@@ -1150,7 +1166,7 @@ const deployPlatform = async ({
         title: `📦 Updating Database (${platformName} • ${databasePlugin.name})`,
         task: async () => {
           if (!bundleId) {
-            throw new Error("Build did not return a file ID");
+            throw new Error("Build did not return an artifact ID");
           }
           if (!taskRef.storageUri) {
             throw new Error("Storage URI not found");
@@ -1198,7 +1214,7 @@ const deployPlatform = async ({
       },
     ]);
     if (!bundleId) {
-      throw new Error("Build did not return a file ID");
+      throw new Error("Build did not return an artifact ID");
     }
     const confirmedBundleId = bundleId;
 
@@ -1370,7 +1386,6 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
 
     for (const [index, result] of results.entries()) {
       await result.runDeferredPatches?.();
-      p.log.message(summarizeDeploymentResult(result));
       if (options.interactive) {
         const port = await getConsolePort(platformConfigs[index]!.config);
         const isConsoleOpen = await isPortReachable(port, {
@@ -1383,7 +1398,7 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
 
         const url = openUrl.toString();
 
-        const note = `Console: ${url}`;
+        const note = `Console: ${openUrl.origin}`;
         if (!isConsoleOpen) {
           const result = await p.confirm({
             message:
@@ -1403,7 +1418,7 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
       }
     }
 
-    p.outro("Deployment successful");
+    p.outro(summarizeDeploymentResults(results));
   } catch (error) {
     if (!(error instanceof DeployAbortedError)) {
       throw error;

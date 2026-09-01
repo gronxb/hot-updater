@@ -1,5 +1,12 @@
 # Hot Updater CLI Release Catalog 멘탈모델 감사
 
+> **Superseded (2026-09-01):** 이 문서는 내부 Release/Artifact 분리를 공개
+> CLI에 그대로 노출하던 시점의 역사적 감사 기록이다. 현재 공개 멘탈 모델은
+> v0처럼 `bundle` 명령과 하나의 Bundle ID를 유지하고, 내부 파일 식별자는
+> Advanced `Artifact ID`로만 노출한다. 아래 제안은 실행 지침으로 사용하지
+> 않는다. 현행 동작은 [How It Works](../docs/content/docs/(latest)/concepts/how-it-works.mdx)와
+> [Upgrade to v1](../docs/content/docs/(latest)/guides/upgrade-to-v1.mdx)을 따른다.
+
 > 작성일: 2026-08-18
 > 비교 기준: `origin/main` `a5272d70119928052d76567d33c6887732ebfacf` ↔
 > `origin/next` `467e5f63c31876223b1d3378c2e6c3bebd8ca508`
