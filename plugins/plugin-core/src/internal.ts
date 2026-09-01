@@ -10,6 +10,7 @@ export {
   readInsightsPageEventsInput,
 } from "./insightsPageQuery";
 export {
+  readInsightsReportPageInput,
   readInsightsReportPageQuery,
   createInsightsReportPageCursor,
   INSIGHTS_REPORT_PAGE_ORDERING_REVISION,
