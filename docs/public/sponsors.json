@@ -7,6 +7,12 @@
       "url": "https://github.com/Davescat"
     },
     {
+      "login": "callstack",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/42239399?v=4",
+      "name": "Callstack",
+      "url": "https://github.com/callstack"
+    },
+    {
       "login": "soonoo",
       "avatarUrl": "https://avatars.githubusercontent.com/u/5436405?u=5d0b4aa955c87e30e6bda7f0cccae5402da99528&v=4",
       "name": "soonoo",
@@ -19,5 +25,5 @@
       "url": "https://github.com/valeriobelli"
     }
   ],
-  "updatedAt": "2026-08-28T09:47:58Z"
+  "updatedAt": "2026-09-01T09:06:36Z"
 }
