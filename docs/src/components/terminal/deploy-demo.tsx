@@ -68,6 +68,9 @@ export async function runDeployDemo(terminal: Terminal): Promise<void> {
   );
   await sleep(600);
 
-  // Success outro
-  await clack.outro(green("🚀  Deployment Successful"));
+  await clack.outro(
+    green(
+      "Deployment successful\n    ID:       01a0586e-a286-7a74-a959-6d2c770b8793",
+    ),
+  );
 }

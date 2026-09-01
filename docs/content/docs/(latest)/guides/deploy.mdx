@@ -6,10 +6,9 @@ icon: Upload
 
 <video src={"/docs/deploy/deploy.mov"} controls autoPlay loop muted />
 
-Deploy builds and uploads one immutable Bundle per platform, creates a Release
-that owns its delivery policy, and atomically recompiles the affected Release
-Catalog. Bundle IDs identify bytes; Release IDs identify delivery chronology,
-rollout, compatibility, enabled state, force update, and message policy.
+Deploy builds and uploads the update files for each platform and publishes its
+delivery policy. Each platform gets one **ID**, shared by the deployment output,
+the console, and [`HotUpdater.getBundleId()`](/docs/react-native-api/getBundleId).
 
 ## Checklist
 
@@ -25,10 +24,10 @@ If you haven't completed these steps, refer to the [Supabase Provider](/docs/man
 Options:
   -p, --platform <platform>                    specify the platform (choices: "ios", "android")
   -t, --target-app-version <targetAppVersion>  specify the target app version (semver format e.g. 1.0.0, 1.x.x)
-  -d, --disabled                               create the Release disabled (default: false)
+  -d, --disabled                               create the bundle disabled (default: false)
   -f, --force-update                           force update the app (default: false)
   -o, --bundle-output-path <bundleOutputPath>  the directory where bundle archives will be generated
-  -r, --rollout <percentage>                   specify the rollout percentage for the new Release (0-100) (default: 100)
+  -r, --rollout <percentage>                   specify the rollout percentage for the new bundle (0-100) (default: 100)
   -i, --interactive                            interactive mode (default: false)
   -c, --channel <channel>                      specify the channel to deploy (default: "production")
   -m, --message <message>                      Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message
@@ -55,18 +54,21 @@ npx hot-updater deploy
 
 ### Deployment Result
 
-After the database commit succeeds, deploy prints the identity of each
-platform result:
+After the database commit succeeds, the default two-platform deploy prints one
+ID per platform in the final success area:
 
-- Release ID
-- Bundle ID
-- Release Catalog scope key
-- Catalog generation
+```text
+Deployment successful
+    iOS ID:     01a0586e-a286-7a74-a959-6d2c770b8793
+    Android ID: 01a0586f-e975-7c24-8078-62b20b8fe2dd
+```
 
-Use the ID shown in the console or returned by `HotUpdater.getBundleId()` with
-`bundle show`, `release show`, `release update`, `release disable`, or
-`release promote`. File operations such as `patch` and `bundle delete` use the
-file ID available in the console's Advanced diagnostics.
+A single-platform deploy prints the same result with one `ID:` line.
+
+Interactive deploy opens that exact update in the console. Use this ID with
+`bundle show`, `bundle update`, `bundle disable`, `bundle delete`, or
+`bundle promote`. Advanced operations such as `patch` and
+`bundle artifact delete` use the Artifact ID shown in Advanced diagnostics.
 
 ### Bundle Diffing
 
@@ -112,7 +114,7 @@ npx hot-updater deploy -p <"ios" | "android">
 
 ### Force Update
 
-Create a Release whose selected update is applied immediately.
+Create a Bundle whose selected update is applied immediately.
 
 Run the following command:
 
@@ -120,8 +122,8 @@ Run the following command:
 npx hot-updater deploy -p <"ios" | "android"> -f
 ```
 
-The `-f` (or `--force-update`) flag sets policy on the new Release. It does not
-mutate the immutable Bundle.
+The `-f` (or `--force-update`) flag sets delivery behavior on the new Bundle. It
+does not rewrite the uploaded artifact.
 
 ### Channel
 
@@ -140,7 +142,7 @@ For more details about default channels, refer to
 
 ### Rollout
 
-The `-r` (or `--rollout`) flag sets the rollout percentage for the new Release.
+The `-r` (or `--rollout`) flag sets the rollout percentage for the new Bundle.
 
 Run the following command:
 
@@ -149,15 +151,15 @@ npx hot-updater deploy -p <"ios" | "android"> -r 25
 ```
 
 Use `1` to `99` for gradual rollout, `100` for a full rollout, and `0` when
-you want to create the Release without exposing it to numeric rollout until you
-edit the same Release later.
+you want to create the Bundle without exposing it to numeric rollout until you
+edit the same Bundle later.
 
 Hot Updater maps rollout percentages to `1..1000` numeric cohorts internally.
 For example, `-r 25` means 250 of 1000 numeric cohorts are eligible for that
-Release. Numeric cohort selection is seeded by Release ID and remains stable
-when that Release's rollout policy changes.
+Bundle. Numeric cohort selection is seeded by its ID and remains stable
+when that Bundle's rollout policy changes.
 
-If you omit `-r`, the default value is `100`, so the new Release is eligible for
+If you omit `-r`, the default value is `100`, so the new Bundle is eligible for
 the entire numeric audience immediately.
 
 For more on gradual rollout, current device cohorts, and cohort targeting from
@@ -165,7 +167,7 @@ the console, see [Rollout & Cohorts](/docs/guides/rollout-cohorts).
 
 ### Message
 
-The `-m` (or `--message`) flag specifies the new Release's public message.
+The `-m` (or `--message`) flag specifies the new Bundle's public message.
 
 Run the following command:
 
@@ -181,4 +183,4 @@ deploys.
 | Update Type  | When Applied                                                                                 | How to Enable                             |
 | ------------ | -------------------------------------------------------------------------------------------- | ----------------------------------------- |
 | Default      | Downloads the update bundle in the background and applies it when the user restarts the app. | Default setting                           |
-| Force Update | Downloads the selected Release's Bundle and applies it immediately.                           | Use the `--force-update` flag or console. |
+| Force Update | Downloads the selected Bundle and applies it immediately.                                    | Use the `--force-update` flag or console. |

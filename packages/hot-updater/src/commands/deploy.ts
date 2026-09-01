@@ -101,9 +101,7 @@ type DeployPlatformResult = {
 };
 
 type CommittedDeployPlatformResult = DeployPlatformResult & {
-  readonly generation: number;
   readonly releaseId: string;
-  readonly scopeKey: string;
 };
 
 export interface DeployOptions {
@@ -579,9 +577,7 @@ const resolveCommittedDeployments = (
     commitsByBundleId.delete(prepared.bundleId);
     return {
       ...prepared,
-      generation: matched.commit.catalog.generation,
       releaseId: matched.releaseId,
-      scopeKey: matched.commit.catalog.scope_key,
     };
   });
 
@@ -594,15 +590,28 @@ const resolveCommittedDeployments = (
   return results;
 };
 
-const summarizeDeploymentResult = (
-  result: CommittedDeployPlatformResult,
-): string =>
-  ui.block(`${getPlatformName(result.platform)} Deployment`, [
-    ui.kv("Release ID", ui.id(result.releaseId)),
-    ui.kv("Bundle ID", ui.id(result.bundleId)),
-    ui.kv("Scope key", ui.code(result.scopeKey)),
-    ui.kv("Generation", String(result.generation)),
-  ]);
+const summarizeDeploymentResults = (
+  results: readonly CommittedDeployPlatformResult[],
+): string => {
+  if (results.length === 1) {
+    return [
+      "Deployment successful",
+      ui.kv("ID", ui.id(results[0]!.releaseId)),
+    ].join("\n");
+  }
+
+  const labels = results.map(
+    (result) => `${getPlatformName(result.platform)} ID:`,
+  );
+  const labelWidth = Math.max(...labels.map((label) => label.length));
+  return [
+    "Deployment successful",
+    ...results.map(
+      (result, index) =>
+        `    ${labels[index]!.padEnd(labelWidth)} ${ui.id(result.releaseId)}`,
+    ),
+  ].join("\n");
+};
 
 const getDeployPlatforms = async (
   options: DeployOptions,
@@ -1067,7 +1076,7 @@ const deployPlatform = async ({
         title: `📦 Uploading to Storage (${platformName} • ${storagePlugin.name})`,
         task: async (message = () => {}) => {
           if (!bundleId) {
-            throw new Error("Bundle ID not found");
+            throw new Error("Build did not return an artifact ID");
           }
           if (!taskRef.manifestPath) {
             throw new Error("Manifest path not found");
@@ -1157,7 +1166,7 @@ const deployPlatform = async ({
         title: `📦 Updating Database (${platformName} • ${databasePlugin.name})`,
         task: async () => {
           if (!bundleId) {
-            throw new Error("Bundle ID not found");
+            throw new Error("Build did not return an artifact ID");
           }
           if (!taskRef.storageUri) {
             throw new Error("Storage URI not found");
@@ -1205,7 +1214,7 @@ const deployPlatform = async ({
       },
     ]);
     if (!bundleId) {
-      throw new Error("Bundle ID not found");
+      throw new Error("Build did not return an artifact ID");
     }
     const confirmedBundleId = bundleId;
 
@@ -1265,7 +1274,7 @@ const deployPlatform = async ({
 
         for (const failure of patchSummary.failures) {
           p.log.warn(
-            `Partial update skipped for ${failure.baseBundleId.slice(0, 8)}: ${failure.message}`,
+            `Partial update skipped for file ${failure.baseBundleId.slice(0, 8)}: ${failure.message}`,
           );
         }
       };
@@ -1277,34 +1286,6 @@ const deployPlatform = async ({
       }
     }
 
-    if (options.interactive) {
-      const port = await getConsolePort(config);
-      const isConsoleOpen = await isPortReachable(port, { host: "localhost" });
-
-      const openUrl = new URL(`http://localhost:${port}`);
-      openUrl.searchParams.set("channel", channel);
-      openUrl.searchParams.set("platform", platform);
-      openUrl.searchParams.set("bundleId", confirmedBundleId);
-
-      const url = openUrl.toString();
-
-      const note = `Console: ${url}`;
-      if (!isConsoleOpen) {
-        const result = await p.confirm({
-          message: "Console server is not running. Would you like to start it?",
-          initialValue: false,
-        });
-        if (!p.isCancel(result) && result) {
-          await openConsole(port, () => {
-            void open(url);
-          });
-        }
-      } else {
-        void open(url);
-      }
-
-      p.note(note);
-    }
     return { bundleId: confirmedBundleId, platform, runDeferredPatches };
   } catch (e) {
     await fs.promises.rm(bundlePath, { force: true });
@@ -1403,23 +1384,41 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
     }
     const results = resolveCommittedDeployments(preparedResults, commitResults);
 
-    for (const result of results) {
+    for (const [index, result] of results.entries()) {
       await result.runDeferredPatches?.();
-      p.log.message(summarizeDeploymentResult(result));
-      if (platforms.length > 1) {
-        p.log.success(
-          `✅ ${getPlatformName(result.platform)} Deployment Successful (${result.bundleId})`,
-        );
+      if (options.interactive) {
+        const port = await getConsolePort(platformConfigs[index]!.config);
+        const isConsoleOpen = await isPortReachable(port, {
+          host: "localhost",
+        });
+
+        const openUrl = new URL(`http://localhost:${port}`);
+        openUrl.searchParams.set("platform", result.platform);
+        openUrl.searchParams.set("releaseId", result.releaseId);
+
+        const url = openUrl.toString();
+
+        const note = `Console: ${openUrl.origin}`;
+        if (!isConsoleOpen) {
+          const result = await p.confirm({
+            message:
+              "Console server is not running. Would you like to start it?",
+            initialValue: false,
+          });
+          if (!p.isCancel(result) && result) {
+            await openConsole(port, () => {
+              void open(url);
+            });
+          }
+        } else {
+          void open(url);
+        }
+
+        p.note(note);
       }
     }
 
-    if (platforms.length > 1) {
-      p.outro(
-        `🚀 Deployment Successful (${results.map(({ platform }) => getPlatformName(platform)).join(", ")})`,
-      );
-    } else {
-      p.outro(`🚀 Deployment Successful (${results[0]!.bundleId})`);
-    }
+    p.outro(summarizeDeploymentResults(results));
   } catch (error) {
     if (!(error instanceof DeployAbortedError)) {
       throw error;

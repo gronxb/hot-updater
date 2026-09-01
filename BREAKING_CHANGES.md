@@ -174,13 +174,16 @@ operation is unchanged. A Console configured with
 `standaloneRepository` must use the admin root and keep its bearer header on
 the server side; hosted Console user authentication remains a separate layer.
 
-## Bundle and Release ownership
+## Public Bundles and internal artifact ownership
 
-A Bundle is now an immutable artifact. A Release references a Bundle and owns
-mutable delivery policy.
+The public CLI, Console, and React Native API continue to call a deployed
+update a Bundle. Its public ID is the value printed by deploy, shown in the
+Console, and returned by `HotUpdater.getBundleId()`.
 
-The following fields are removed from the public `Bundle` type and belong to a
-Release instead:
+The v1 plugin database splits that public Bundle from its immutable artifact.
+Internally, a Release row owns delivery policy and references a `Bundle`
+artifact row. The following fields therefore move from the plugin-core
+`Bundle` artifact type to the internal Release row:
 
 - `channel`
 - `enabled`
@@ -191,45 +194,44 @@ Release instead:
 - `targetAppVersion`
 - `targetCohorts`
 
-The combined `LegacyBundle` management shape is removed. Bundle writes accept
-artifact fields only, while Release writes carry delivery policy. The server no
-longer exposes the v0 Bundle selector or translates Bundle mutations into
-Release policy.
+The combined `LegacyBundle` management shape is removed. Artifact writes accept
+artifact fields only, while internal Release writes carry delivery policy. The
+two internal IDs are independent UUIDv7 identities. In particular:
 
-Release IDs and Bundle IDs are independent UUIDv7 identities. In particular:
-
-- Deploy creates an immutable Bundle and a Release.
-- Promote creates a new Release that reuses the existing Bundle bytes. It does
-  not copy storage objects.
-- Multiple Releases can reference one Bundle.
-- Rollout, targeting, enablement, force-update state, and messages mutate the
-  Release and recompile its Catalog.
-- Rollback disables an exact Release. The client then selects the previous
-  compatible enabled Release or the built-in Bundle.
-- A Bundle cannot be deleted until all referencing Releases are disabled and
-  hard-deleted.
+- Deploy creates an immutable artifact and a public Bundle ID.
+- Promote creates a new public Bundle ID that reuses the existing artifact. It
+  does not copy storage objects.
+- Multiple public Bundles can reference one artifact.
+- Rollout, targeting, enablement, force-update state, and messages update the
+  public Bundle and recompile its Catalog.
+- Rollback disables an exact public Bundle. The client then selects the
+  previous compatible enabled Bundle or the built-in Bundle.
+- An artifact cannot be deleted until all referencing public Bundles are
+  disabled and hard-deleted.
 - Binary patches are represented only by `Bundle.patches`. The deprecated
   `patchBaseBundleId`, `patchBaseFileHash`, `patchFileHash`, and
   `patchStorageUri` Bundle fields are removed.
 
 ## CLI changes
 
-Automation that manages delivery policy must use Release IDs.
+The public command group remains `bundle`, and every normal command accepts the
+same public ID used by the Console and `HotUpdater.getBundleId()`.
 
-| Removed or changed v0 usage                          | v1 replacement                                                                           |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `bundle list --channel ... --target-app-version ...` | `release list --channel ... --platform ...`; `bundle list` is artifact inventory         |
-| `bundle show <bundle-id>` for rollout or enablement  | `release show <release-id>`; Bundle output contains artifact data and Release references |
-| `bundle update <bundle-id>`                          | `release update <release-id>`                                                            |
-| `bundle enable <bundle-id>`                          | `release enable <release-id>`                                                            |
-| `bundle disable <bundle-id>`                         | `release disable <release-id>`                                                           |
-| `bundle promote <bundle-id>`                         | `release promote <source-release-id> --target <channel>`                                 |
-| `rollback <channel> [--target <bundle-id>]`          | `release disable <release-id>`                                                           |
-| Direct deletion of a policy-owning Bundle            | Disable and delete all referencing Releases, then run `bundle delete`                    |
+| Removed or changed v0 usage                          | v1 behavior                                                                           |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `bundle list --channel ... --target-app-version ...` | The command and filters remain; rows use the public Bundle ID.                        |
+| `bundle show/update/enable/disable <bundle-id>`       | The commands remain and accept the public Bundle ID.                                  |
+| `bundle promote <bundle-id>`                         | Use `bundle promote <source-id> --target <channel>`; the target gets a new public ID. |
+| `bundle delete <bundle-ids...>`                      | Delete one disabled public Bundle at a time with `bundle delete <id>`.                |
+| `patch --bundle-id ... --base-bundle-id ...`         | Prefer `--artifact-id` and `--base-artifact-id`; old names remain deprecated aliases. |
+| `rollback <channel> [--target <bundle-id>]`          | Disable the exact public ID with `bundle disable <id>`.                               |
+| Direct deletion of immutable bytes                   | Delete referencing public Bundles, then use Advanced `bundle artifact delete`.        |
 
-The top-level `rollback` command is removed. Release mutations now support
-revision preconditions and Catalog preflight. `db catalog preflight` and
-`db catalog rebuild` verify or repair compiled projections.
+The top-level `rollback` command is removed. Bundle mutations now support
+revision preconditions and Catalog preflight. `bundle list --json` and
+`bundle show --json` expose raw internal v1 rows and are not schema-compatible
+with the v0 list wrapper or Bundle DTO. `db catalog preflight` and `db catalog
+rebuild` verify or repair compiled projections.
 
 Self-hosted deployments manage API keys through the same official database
 domain used by managed init and Console:
@@ -441,11 +443,12 @@ custom or manual flow, or use `wrap` for the automatic HOC flow.
 - An applied OTA can now return `{ status: "UPDATE_APPLIED", fromBundleId,
 toBundleId, ... }`.
 - Recovery returns directional `fromBundleId` and `toBundleId`, with optional
-  Release IDs, instead of `crashedBundleId`.
+  internal selection IDs in `fromReleaseId` and `toReleaseId`, instead of
+  `crashedBundleId`.
 - `onNotifyAppReady` consumers and direct `HotUpdater.notifyAppReady()` callers
   must handle the new discriminated union.
 
-App-ready transition and Release adoption reporting use the configured
+App-ready transition and Bundle adoption reporting use the configured
 `baseURL` and are enabled by default for both `HotUpdater.init` and
 `HotUpdater.wrap`. Set `insights: false` to send nothing. The server routes
 and backing model remain available regardless.

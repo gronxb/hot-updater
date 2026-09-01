@@ -1023,8 +1023,9 @@ public status.
 Deploy uploads one immutable Bundle and creates one Release per platform. The
 Bundle, available patch rows, Release, Channel creation, and affected catalogs
 commit through the atomic mutation boundary. Failed DB commit cleans only newly
-uploaded exclusive objects. Output returns both Release/Bundle IDs plus scope and
-generation.
+uploaded exclusive objects. Default output shows one ID per platform
+(`release.id`), matching the Console and public runtime getter. Artifact IDs and catalog scope/generation remain
+available through explicit artifact or catalog diagnostics.
 
 ### Rollout and target cohorts
 
@@ -1123,21 +1124,21 @@ a v0 native binary.
 Bundle, manifest, Storage, and patch information. Insights and API Keys
 stay top-level.
 
-### Releases table and detail
+### Bundles table and detail
 
 Columns:
 
 ```text
 ID | Channel | Platform | Target
-Enabled | Force | Rollout | Operation | Message | Created
+Enabled | Force | Rollout | Message | Created
 ```
 
-ID is `release.id`, matching `HotUpdater.getBundleId()`. File IDs appear only
+ID is `release.id`, matching `HotUpdater.getBundleId()`. Artifact IDs appear only
 in Advanced diagnostics and downloads.
 
 Editable policy is message, target, enabled, force, rollout, and target cohorts.
-Identity/provenance is read-only. Every editor/action calls Release RPCs and
-uses revision/generation conflict handling.
+Identity/provenance is read-only. Every editor/action uses internal Release RPCs and revision/generation conflict
+handling.
 
 Policy-specific UI requirements:
 
@@ -1196,28 +1197,32 @@ cannot substitute for these tests.
 
 ## CLI changes
 
-Add:
+The public CLI keeps the v0 Bundle namespace while the implementation uses
+Release rows and immutable artifacts internally:
 
 ```text
-hot-updater release list
-hot-updater release show <release-id>
-hot-updater release update <release-id>
-hot-updater release enable <release-id>
-hot-updater release disable <release-id>
-hot-updater release delete <release-id>
+hot-updater bundle list
+hot-updater bundle show <id>
+hot-updater bundle update <id>
+hot-updater bundle preflight <id>
+hot-updater bundle enable <id>
+hot-updater bundle disable <id>
+hot-updater bundle delete <id>
+hot-updater bundle promote <source-id> --target <channel>
+hot-updater bundle artifact delete <artifact-ids...>
 hot-updater db catalog rebuild
 hot-updater db catalog preflight
 ```
 
-Rollout, target, force, enabled, message, channel, and compatibility output move
-to Release commands. Bundle commands show artifacts/reference counts and only
-perform reference-safe artifact deletion.
+Every normal Bundle command accepts the ID printed by deploy, shown in the
+Console, and returned by `HotUpdater.getBundleId()`. The prerelease `release`
+command is not exposed. Advanced artifact deletion uses an explicit Artifact ID
+and never guesses an ID's type.
 
-Deploy prints `{release, bundle, scopeKey, generation}`. Rollback
-uses `--to-release` as the unambiguous target; Bundle targeting is explicitly
-advanced. Promote accepts source Release and reports Bundle reuse with no
-Storage copy. Preflight shows current/projected catalog complexity and blocks
-incompatible migration/mutation.
+Deploy prints the committed public ID once in its final success area. Promote
+accepts a source Bundle ID and reports the new target Bundle ID while reusing
+Storage bytes. Preflight preserves internal revision and catalog conflict
+checks without adding Release vocabulary to the public command tree.
 
 ## Provider implementation requirements
 

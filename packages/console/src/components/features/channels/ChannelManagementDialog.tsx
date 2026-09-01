@@ -107,7 +107,7 @@ export function ChannelManagementDialog({
               Channels
             </DialogTitle>
             <DialogDescription>
-              Create deployment channels and remove them when no Release uses
+              Create deployment channels and remove them when no bundle uses
               them. Empty channels remain available until you delete them.
             </DialogDescription>
           </DialogHeader>

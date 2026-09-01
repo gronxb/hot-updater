@@ -342,9 +342,9 @@ export function ReleaseEditorSheet({
       >
         <SheetContent className="min-w-0 overflow-hidden data-[side=right]:w-full sm:max-w-[600px]">
           <SheetHeader className="shrink-0 pr-12">
-            <SheetTitle>Release Detail</SheetTitle>
+            <SheetTitle>Bundle Detail</SheetTitle>
             <SheetDescription className="sr-only">
-              Edit release delivery settings.
+              Edit bundle delivery settings.
             </SheetDescription>
             {release ? (
               <div className="mt-1 flex min-w-0 flex-col gap-3 text-sm">
@@ -478,7 +478,7 @@ export function ReleaseEditorSheet({
                       </div>
                       <FieldDescription>
                         Disabling rolls devices back to the previous enabled
-                        Release on their next check, or to the built-in app when
+                        bundle on their next check, or to the built-in app when
                         none remains.
                       </FieldDescription>
                     </Field>
@@ -655,7 +655,7 @@ export function ReleaseEditorSheet({
                   </summary>
                   <dl className="mt-4 grid gap-3 text-muted-foreground sm:grid-cols-2">
                     <div className="sm:col-span-2">
-                      <dt>File ID</dt>
+                      <dt>Artifact ID</dt>
                       <dd className="mt-1 break-all font-mono text-foreground">
                         {release.bundle_id ?? "Built-in app"}
                       </dd>
@@ -668,7 +668,7 @@ export function ReleaseEditorSheet({
                     </div>
                     {patchBaseBundleId ? (
                       <div className="sm:col-span-2">
-                        <dt>Patch base file ID</dt>
+                        <dt>Patch base artifact ID</dt>
                         <dd className="mt-1 break-all font-mono text-foreground">
                           {patchBaseBundleId}
                         </dd>
@@ -738,8 +738,8 @@ export function ReleaseEditorSheet({
               Remove this Bundle from {channelName ?? "the channel"}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              The Bundle file stays available. This only removes it from the
-              channel.
+              The uploaded artifact stays available. This only removes the
+              Bundle from the channel.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
