@@ -40,19 +40,9 @@ describe("database plugin types", () => {
       readonly operation: "insert";
       readonly row: BundleRow;
     }>().not.toMatchTypeOf<DatabaseChange>();
-    expectTypeOf<{
-      readonly model: "insights";
-      readonly operation: "append";
-      readonly row: never;
-    }>().not.toMatchTypeOf<DatabaseChange>();
   });
 
   it("matches BundleRepository commits to the standalone atomic boundary", () => {
-    expectTypeOf<{
-      readonly model: "insights";
-      readonly operation: "insert";
-      readonly row: never;
-    }>().not.toMatchTypeOf<BundleRepositoryChange>();
     expectTypeOf<{
       readonly model: "apiKeys";
       readonly operation: "insert";
@@ -83,15 +73,6 @@ describe("database plugin types", () => {
       ];
     }>().not.toMatchTypeOf<BundleRepositoryCommit>();
     expectTypeOf<{
-      readonly changes: readonly [
-        {
-          readonly model: "insights";
-          readonly operation: "insert";
-          readonly row: never;
-        },
-      ];
-    }>().not.toMatchTypeOf<BundleRepositoryCommit>();
-    expectTypeOf<{
       readonly changes: readonly [];
     }>().toMatchTypeOf<BundleRepositoryCommit>();
   });
@@ -102,11 +83,6 @@ describe("database plugin types", () => {
       readonly operation: "delete";
       readonly where: { readonly id: "channel-1" };
     }>().toMatchTypeOf<BundleRepositoryChange>();
-    expectTypeOf<{
-      readonly model: "insights";
-      readonly operation: "insert";
-      readonly row: never;
-    }>().not.toMatchTypeOf<BundleRepositoryChange>();
     expectTypeOf<{
       readonly model: "apiKeys";
       readonly operation: "update";

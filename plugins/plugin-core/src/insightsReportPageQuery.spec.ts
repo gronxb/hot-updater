@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createInsightsReportPageCursor,
+  INSIGHTS_REPORT_PAGE_ORDERING_REVISION,
   readInsightsReportPageQuery,
 } from "./insightsReportPageQuery";
 import type { InsightsReportPageInput } from "./types/insightsQueries";
@@ -13,6 +14,7 @@ const input: InsightsReportPageInput = {
   metric: "installed",
 };
 const MAX_ORDINAL = "9223372036854775807";
+const DATABASE_NAMESPACE = "database-a";
 
 describe("Insights materialized report page identity", () => {
   it("canonicalizes every section and starts at rank zero without a cursor", () => {
@@ -25,11 +27,14 @@ describe("Insights materialized report page identity", () => {
       { ...base, section: "activeBundleSeries", bundleId: "bundle-a" },
     ];
     for (const page of inputs) {
-      const result = readInsightsReportPageQuery(page);
+      const result = readInsightsReportPageQuery(page, DATABASE_NAMESPACE);
       expect(result.input).toEqual(page);
       expect(result.nextOrdinal).toBe("0");
       expect(result.input).not.toBe(page);
       expect(JSON.parse(result.semanticKey)).toEqual([
+        DATABASE_NAMESPACE,
+        "report-page",
+        INSIGHTS_REPORT_PAGE_ORDERING_REVISION,
         page.publicationId,
         page.section,
         "metric" in page ? page.metric : null,
@@ -39,98 +44,165 @@ describe("Insights materialized report page identity", () => {
   });
 
   it("keeps the persisted ordinal exact above Number.MAX_SAFE_INTEGER and permits page-size changes", () => {
-    const cursor = createInsightsReportPageCursor(input, MAX_ORDINAL);
-    const resumed = readInsightsReportPageQuery({
-      ...input,
-      cursor,
-      limit: 100,
-    });
+    const cursor = createInsightsReportPageCursor(
+      input,
+      MAX_ORDINAL,
+      DATABASE_NAMESPACE,
+    );
+    const resumed = readInsightsReportPageQuery(
+      {
+        ...input,
+        cursor,
+        limit: 100,
+      },
+      DATABASE_NAMESPACE,
+    );
     expect(resumed.nextOrdinal).toBe(MAX_ORDINAL);
     expect(resumed.input).toEqual({ ...input, limit: 100 });
     expect(resumed.input).not.toHaveProperty("cursor");
     expect(resumed.semanticKey).toBe(
-      readInsightsReportPageQuery(input).semanticKey,
+      readInsightsReportPageQuery(input, DATABASE_NAMESPACE).semanticKey,
     );
     expect(JSON.parse(cursor)).toEqual([1, resumed.semanticKey, MAX_ORDINAL]);
   });
 
   it("rejects cursors from another publication, section, metric, or exact bundle filter", () => {
-    const movementCursor = createInsightsReportPageCursor(input, "10");
+    const movementCursor = createInsightsReportPageCursor(
+      input,
+      "10",
+      DATABASE_NAMESPACE,
+    );
     for (const change of [
       { publicationId: "publication-b" },
       { section: "movementCohorts" },
       { metric: "recovered" },
     ])
       expect(() =>
-        readInsightsReportPageQuery({
-          ...input,
-          ...change,
-          cursor: movementCursor,
-        } as InsightsReportPageInput),
+        readInsightsReportPageQuery(
+          {
+            ...input,
+            ...change,
+            cursor: movementCursor,
+          } as InsightsReportPageInput,
+          DATABASE_NAMESPACE,
+        ),
       ).toThrow("invalid-query");
     const filtered: InsightsReportPageInput = {
       ...base,
       section: "activeBundleSeries",
       bundleId: "bundle-a",
     };
-    const cursor = createInsightsReportPageCursor(filtered, "10");
+    const cursor = createInsightsReportPageCursor(
+      filtered,
+      "10",
+      DATABASE_NAMESPACE,
+    );
     for (const bundleId of [undefined, "bundle-b", "bundle-A", " bundle-a "])
       expect(() =>
-        readInsightsReportPageQuery({ ...filtered, bundleId, cursor }),
+        readInsightsReportPageQuery(
+          { ...filtered, bundleId, cursor },
+          DATABASE_NAMESPACE,
+        ),
       ).toThrow("invalid-query");
     const unfiltered = { ...base, section: "activeBundleSeries" as const };
     expect(() =>
-      readInsightsReportPageQuery({
-        ...filtered,
-        cursor: createInsightsReportPageCursor(unfiltered, "10"),
-      }),
+      readInsightsReportPageQuery(
+        {
+          ...filtered,
+          cursor: createInsightsReportPageCursor(
+            unfiltered,
+            "10",
+            DATABASE_NAMESPACE,
+          ),
+        },
+        DATABASE_NAMESPACE,
+      ),
     ).toThrow("invalid-query");
   });
 
-  it("preserves opaque identifiers, including NUL and Unicode without normalization", () => {
-    for (const id of ["\0", "\ud800", "\udfff", "🚀", "é", "e\u0301", " "]) {
+  it("preserves well-formed opaque identifiers without normalization", () => {
+    for (const id of ["\u0001", "🚀", "é", "e\u0301", " "]) {
       const page: InsightsReportPageInput = {
         publicationId: id,
         section: "activeBundleSeries",
         bundleId: id,
         limit: 1,
       };
-      const cursor = createInsightsReportPageCursor(page, "0");
-      expect(readInsightsReportPageQuery({ ...page, cursor }).input).toEqual(
+      const cursor = createInsightsReportPageCursor(
         page,
+        "0",
+        DATABASE_NAMESPACE,
       );
+      expect(
+        readInsightsReportPageQuery({ ...page, cursor }, DATABASE_NAMESPACE)
+          .input,
+      ).toEqual(page);
       expect(() =>
-        readInsightsReportPageQuery({ ...page, bundleId: `${id}x`, cursor }),
+        readInsightsReportPageQuery(
+          { ...page, bundleId: `${id}x`, cursor },
+          DATABASE_NAMESPACE,
+        ),
       ).toThrow("invalid-query");
     }
     const key = (bundleId: string) =>
-      readInsightsReportPageQuery({
-        ...base,
-        section: "activeBundleSeries",
-        bundleId,
-      }).semanticKey;
+      readInsightsReportPageQuery(
+        {
+          ...base,
+          section: "activeBundleSeries",
+          bundleId,
+        },
+        DATABASE_NAMESPACE,
+      ).semanticKey;
     expect(key("é")).not.toBe(key("e\u0301"));
-    expect(key("a\0b")).not.toBe(key("ab"));
+    expect(() => key("a\0b")).toThrow("invalid-query");
+    for (const id of ["\ud800", "\udfff"])
+      expect(() =>
+        readInsightsReportPageQuery(
+          {
+            ...base,
+            publicationId: id,
+            section: "activeSeries",
+          },
+          DATABASE_NAMESPACE,
+        ),
+      ).toThrow("invalid-query");
   });
 
-  it("round-trips both longest identifiers with worst-case nested JSON escaping", () => {
+  it("round-trips longest identifiers when the serialized cursor fits", () => {
     const page: InsightsReportPageInput = {
-      publicationId: "\ud800".repeat(1_024),
+      publicationId: "p".repeat(1_024),
       section: "activeBundleSeries",
-      bundleId: "\0".repeat(1_024),
+      bundleId: "b".repeat(1_024),
       limit: 100,
     };
-    const cursor = createInsightsReportPageCursor(page, MAX_ORDINAL);
-    expect(cursor.length).toBe(14_403);
-    expect(cursor.length).toBeLessThanOrEqual(16_384);
-    expect(readInsightsReportPageQuery({ ...page, cursor }).nextOrdinal).toBe(
+    const cursor = createInsightsReportPageCursor(
+      page,
       MAX_ORDINAL,
+      DATABASE_NAMESPACE,
     );
+    expect(new TextEncoder().encode(cursor).byteLength).toBeLessThanOrEqual(
+      8_192,
+    );
+    expect(
+      readInsightsReportPageQuery({ ...page, cursor }, DATABASE_NAMESPACE)
+        .nextOrdinal,
+    ).toBe(MAX_ORDINAL);
     expect(() =>
-      readInsightsReportPageQuery({
-        ...page,
-        cursor: `${cursor}${" ".repeat(16_385 - cursor.length)}`,
-      }),
+      readInsightsReportPageQuery(
+        {
+          ...page,
+          cursor: `${cursor}${" ".repeat(8_193 - cursor.length)}`,
+        },
+        DATABASE_NAMESPACE,
+      ),
+    ).toThrow("invalid-query");
+
+    expect(() =>
+      createInsightsReportPageCursor(
+        { ...page, publicationId: "\0".repeat(1_024) },
+        MAX_ORDINAL,
+        DATABASE_NAMESPACE,
+      ),
     ).toThrow("invalid-query");
   });
 
@@ -163,7 +235,10 @@ describe("Insights materialized report page identity", () => {
     ];
     for (const page of invalid)
       expect(() =>
-        readInsightsReportPageQuery(page as InsightsReportPageInput),
+        readInsightsReportPageQuery(
+          page as InsightsReportPageInput,
+          DATABASE_NAMESPACE,
+        ),
       ).toThrow("invalid-query");
     const page = {
       ...base,
@@ -171,14 +246,19 @@ describe("Insights materialized report page identity", () => {
       bundleId: undefined,
       cursor: undefined,
     };
-    expect(readInsightsReportPageQuery(page).input).toEqual({
-      ...base,
-      section: "activeBundleSeries",
-    });
+    expect(readInsightsReportPageQuery(page, DATABASE_NAMESPACE).input).toEqual(
+      {
+        ...base,
+        section: "activeBundleSeries",
+      },
+    );
   });
 
   it("rejects malformed, noncanonical and overflowing rank cursors without legacy decoding", () => {
-    const key = readInsightsReportPageQuery(input).semanticKey;
+    const key = readInsightsReportPageQuery(
+      input,
+      DATABASE_NAMESPACE,
+    ).semanticKey;
     const badRanks = [
       "",
       "00",
@@ -199,13 +279,20 @@ describe("Insights materialized report page identity", () => {
     ];
     for (const rank of badRanks) {
       expect(() =>
-        readInsightsReportPageQuery({
-          ...input,
-          cursor: JSON.stringify([1, key, rank]),
-        }),
+        readInsightsReportPageQuery(
+          {
+            ...input,
+            cursor: JSON.stringify([1, key, rank]),
+          },
+          DATABASE_NAMESPACE,
+        ),
       ).toThrow("invalid-query");
       expect(() =>
-        createInsightsReportPageCursor(input, rank as string),
+        createInsightsReportPageCursor(
+          input,
+          rank as string,
+          DATABASE_NAMESPACE,
+        ),
       ).toThrow("invalid-result");
     }
     for (const value of [
@@ -219,14 +306,55 @@ describe("Insights materialized report page identity", () => {
       [1, "old-scope", 10],
     ])
       expect(() =>
-        readInsightsReportPageQuery({
-          ...input,
-          cursor: JSON.stringify(value),
-        }),
+        readInsightsReportPageQuery(
+          {
+            ...input,
+            cursor: JSON.stringify(value),
+          },
+          DATABASE_NAMESPACE,
+        ),
       ).toThrow("invalid-query");
-    for (const cursor of ["", "not-json", "[", " ".repeat(16_385)])
-      expect(() => readInsightsReportPageQuery({ ...input, cursor })).toThrow(
+    for (const cursor of ["", "not-json", "[", " ".repeat(8_193)])
+      expect(() =>
+        readInsightsReportPageQuery({ ...input, cursor }, DATABASE_NAMESPACE),
+      ).toThrow("invalid-query");
+  });
+
+  it("binds cursors to the durable database namespace and ordering revision", () => {
+    const cursor = createInsightsReportPageCursor(
+      input,
+      "10",
+      DATABASE_NAMESPACE,
+    );
+    expect(() =>
+      readInsightsReportPageQuery(input, "database-b"),
+    ).not.toThrow();
+    expect(() =>
+      readInsightsReportPageQuery({ ...input, cursor }, "database-b"),
+    ).toThrow("invalid-query");
+    const decoded = JSON.parse(cursor) as [number, string, string];
+    const semanticKey = JSON.parse(decoded[1]) as unknown[];
+    semanticKey[2] = INSIGHTS_REPORT_PAGE_ORDERING_REVISION + 1;
+    expect(() =>
+      readInsightsReportPageQuery(
+        {
+          ...input,
+          cursor: JSON.stringify([
+            decoded[0],
+            JSON.stringify(semanticKey),
+            decoded[2],
+          ]),
+        },
+        DATABASE_NAMESPACE,
+      ),
+    ).toThrow("invalid-query");
+    for (const namespace of ["", "a\0b", "\ud800", "x".repeat(1_025)]) {
+      expect(() => readInsightsReportPageQuery(input, namespace)).toThrow(
         "invalid-query",
       );
+      expect(() =>
+        createInsightsReportPageCursor(input, "0", namespace),
+      ).toThrow("invalid-query");
+    }
   });
 });

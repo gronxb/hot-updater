@@ -1,5 +1,6 @@
 import {
   createDatabasePlugin,
+  type BundleEventRow,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 import {
@@ -66,7 +67,6 @@ const assertReferences = (
       }
       return;
     case "channels":
-    case "bundle_events":
     case "api_keys":
       return;
     case "bundle_patches":
@@ -120,11 +120,6 @@ const createCrudImplementation = (
         if (tables.bundle_patches.rows.some(({ id }) => id === input.data.id))
           break;
         tables.bundle_patches.rows.push(structuredClone(input.data));
-        return input.data;
-      case "bundle_events":
-        if (tables.bundle_events.rows.some(({ id }) => id === input.data.id))
-          break;
-        tables.bundle_events.rows.push(structuredClone(input.data));
         return input.data;
       case "releases":
         if (tables.releases.rows.some(({ id }) => id === input.data.id)) break;
@@ -401,6 +396,13 @@ const createImplementation = (tables: Tables): DatabasePluginImplementation => {
 
   return {
     ...createCrudImplementation(tables),
+    appendBundleEvent: (row: BundleEventRow) =>
+      withMutationLock(() => {
+        if (tables.bundle_events.rows.some(({ id }) => id === row.id)) {
+          throw new MemoryConstraintError("Duplicate bundle_events id");
+        }
+        tables.bundle_events.rows.push(structuredClone(row));
+      }),
     insertChannel: ({ row }) =>
       withMutationLock(() => {
         const existing = tables.channels.rows.find(

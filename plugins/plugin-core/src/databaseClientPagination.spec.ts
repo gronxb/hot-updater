@@ -24,6 +24,7 @@ describe("database client pagination", () => {
     const row = bundlesRow(createBundle("001"));
     const findMany = vi.fn(async () => [row]);
     const adapter = createDatabasePluginAdapter("finite-id-memory", {
+      appendBundleEvent: async () => {},
       create: async () => row,
       update: async () => row,
       delete: async () => {},
@@ -95,6 +96,7 @@ describe("database client pagination", () => {
     const plugin = createDatabasePlugin({
       name,
       ...createDatabasePluginAdapter(name, {
+        appendBundleEvent: async () => {},
         create: async () => {
           throw new Error("not implemented");
         },
@@ -145,6 +147,7 @@ describe("database client pagination", () => {
     const plugin = createDatabasePlugin({
       name,
       ...createDatabasePluginAdapter(name, {
+        appendBundleEvent: async () => {},
         create: async () => {
           throw new Error("not implemented");
         },

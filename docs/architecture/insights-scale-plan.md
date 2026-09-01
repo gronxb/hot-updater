@@ -62,8 +62,8 @@ Two additional physical bottlenecks need their own work:
   and unrelated mutations can read all events even after cursor pushdown.
 - [DynamoDB](../../plugins/aws/src/dynamoDB.ts) writes events under one
   `bundle_events` partition, ordered by timestamp and ID. It lacks the scoped
-  access patterns and distributed writes needed for this plan. Both direct
-  `append` and generic `commit` write paths must migrate.
+  access patterns and distributed writes needed for this plan. The dedicated
+  append path must migrate; Insights is removed from generic CRUD and commit.
 
 ## Complete operation matrix
 
@@ -101,6 +101,8 @@ The [current collector](../../packages/server/src/insights/bounded/activeOvervie
 uses `[asOfMs - duration, asOfMs)`. Its buckets also start at
 `asOfMs - duration`; they are not fixed UTC calendar buckets. It considers all four
 event types, including internal `UNCHANGED`, displayed as `Activity reported`.
+Rows exactly at the lower boundary are included; rows exactly at `asOfMs` and
+future rows are excluded before latest-identity selection.
 
 For each installation, the maximum `(received_at_ms, id)` in the window selects
 the current bundle and identity. A `userId` filter applies to that latest identity,
@@ -120,6 +122,8 @@ the current hour plus the previous 23 hours, or the current UTC day plus the
 previous 6/29 days. It counts distinct installations separately for
 `UPDATE_APPLIED` **to** a bundle and `RECOVERED` **from** a bundle.
 `RELEASE_ADOPTED` and `UNCHANGED` are activity but are not movement events.
+The first calendar bucket boundary is inclusive and `asOfMs` is exclusive;
+events exactly at `asOfMs` or in the future never enter totals or buckets.
 
 Window totals, bucket counts, and cohort counts each deduplicate independently.
 An installation can appear in multiple cohorts, or both applied and recovered
@@ -138,15 +142,21 @@ not assumptions about SQL/Firestore/DynamoDB defaults.
 The [current search](../../packages/server/src/insights/bounded/installationSearch.ts)
 matches any historical alias, then returns the latest installation state even
 when its current user ID no longer matches. Preserve legacy username aliases.
-An empty API query can enumerate installations, although the UI currently waits
-for input. That enumeration must become a native installation page too.
+The replacement has explicit exact installation ID, exact user ID, all, and
+"Contains" selectors. Exact user ID is a case-sensitive whole-string match over
+historical user-ID aliases. It publishes membership and each match's latest
+metadata at one captured source generation. Contains is nonempty, uses historical
+install/user/username aliases with the current JavaScript lowercase behavior,
+and freezes the same data. Exact installation ID remains live. `all` replaces
+the old empty-query convention. Exact user and contains accept the same optional
+publication pin and `minAsOfMs` freshness selector for polling and restart.
+Exact installation ID is a single 0/1 lookup; its input has no cursor and its
+output continuation is always null.
 
-Recommended new UX: exact install/user ID lookup first, with an explicit
-"Contains" mode for historical partial search. Existing `searchInstallations`
-continues to mean contains. A prefix mode may be added with distinct labeling.
 For stores without an efficient contains index, scan **alias records** in bounded,
-resumable work, persist deduplicated matches, then page by install ID. Exact totals
-and install-ID ordering are published after matching completes; an unfinished
+resumable work, persist deduplicated matches, then page by the opaque installation
+order defined below. Exact totals and membership are published after matching
+completes; an unfinished
 scan must not produce an apparently empty or complete result.
 
 Alias storage grows with identity changes, not every repeated activity event.
@@ -189,7 +199,7 @@ read ports**, without public capability negotiation:
 | Port | Required behavior |
 | --- | --- |
 | `pageEvents` | One bounded all/installation/bundle event page. Provider owns lookahead and continuation. |
-| `pageInstallations` | Historical contains, or all installations for an empty query, with latest metadata. Bind live/snapshot choice and search scope into the cursor. |
+| `pageInstallations` | Explicit all, live exact installation ID, publication-frozen exact historical user ID, or historical contains. Bind live/snapshot choice and search scope into the cursor. |
 | `getReport` | A finite query kind: bundle summary batch, bundle detail, installation overview, or active overview. Return a small typed summary/publication, or an actual durable job state with the previous publication. |
 | `pageReport` | One bounded section of one immutable publication: series, cohorts, bundle distribution, or flat active bundle-series rows. Never nested unbounded arrays. |
 
@@ -199,13 +209,72 @@ deduplicated/sorted and limited to 100. The server maps already aggregated rows;
 it never recollects raw history to compute a report. Raw scans, leases, checkpoints
 and backfill live behind DB/tooling `runStep({ maxItems, maxRequests })` only.
 
+### Normative storage identity and byte contract
+
+Public event IDs are canonical lowercase UUIDv7 strings matching
+`^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`.
+A nonconforming stored row is migration poison; accepting arbitrary IDs in one
+provider would create data that other official providers cannot represent.
+
+Installation ordering is ascending raw-byte order of
+`SHA-256(UTF-8(JSON.stringify(fullInstallId)))`. The digest is an opaque order
+key, not the identity. Persist the complete installation ID and compare it on
+every keyed read and write. A digest paired with a different complete ID is
+storage corruption; never merge, overwrite, or return it as the requested
+installation. The portable JavaScript string identity domain, including an empty
+installation ID but excluding U+0000 as specified below, remains valid. Providers
+use the shared
+`getInsightsInstallationOrderKey` helper and verify the digest/full-ID pair; they
+must recompute stored digests with
+`assertInsightsInstallationIdentityDigest` and must not reimplement JSON
+escaping, Unicode handling, or normalization.
+
+For byte accounting, canonical JSON recursively sorts object keys, preserves
+array order, and uses UTF-8 bytes. Every stored, query, and response string has
+at most 1,024 UTF-16 code units and paired surrogates. U+0000 is rejected across
+the common contract because PostgreSQL text cannot preserve it; providers must
+not create a wider identity or query domain. An opaque cursor is the exception
+to the code-unit ceiling and has its own byte ceiling, but still rejects U+0000
+and malformed UTF-16.
+
+| Boundary | Maximum |
+| --- | ---: |
+| Existing public ingestion request body | 16 KiB |
+| Canonical complete raw event, including provider extensions | 20 KiB |
+| Canonical query JSON, excluding its separately validated cursor | 32 KiB |
+| UTF-8 cursor | 8 KiB |
+| Serialized public page, including wrapper and cursor | 1 MiB |
+| Serialized maintenance job-step input | 4 MiB |
+
+The page default is 50 rows and maximum is 100. A provider may return a short or
+empty page with a non-null cursor when a bounded read needs more work; only null
+proves exhaustion. A valid row must fit in the page envelope. If persisted data
+would make a response invalid, fail with typed storage corruption or migration
+poison instead of skipping, truncating, deleting, or normalizing it. Maintenance
+also requires explicit `maxItems` and `maxRequests`; each is an integer from 1
+through 4,096. The 4 MiB envelope does not replace either work ceiling. DynamoDB
+remains subject to its smaller native 400 KiB item ceiling.
+
 Report reuse keys contain the semantic/storage revision and canonical query,
 within the database namespace. Never include `Date.now()`, `minAsOfMs`, page size
 or cursor in that key. `minAsOfMs` selects freshness, not a new cache entry.
-Atomically reuse one active job per query; `queued`/`preparing` requires that job
-to exist. A publication fixes its ID, `asOfMs`, committed source generation and
+Atomically reuse one active job per query; `preparing` requires that job to exist.
+A publication fixes its ID, `asOfMs`, committed source generation and
 completion time. Section pages cannot switch publications midway. Expired
 publications fail with an explicit restart state.
+
+Report section order is part of the cursor contract. Compare complete labels by
+JavaScript UTF-16 code-unit order (`<`/`>`), never `localeCompare` or database
+collation. Movement series and active series use ascending bucket time and emit
+every bucket in the requested calendar/rolling interval, including zeros.
+Movement cohorts use ascending complete cohort label. Bundle distribution uses
+count descending then complete bundle ID ascending. Unfiltered active bundle
+series ranks bundles by total bucket observations descending then complete bundle
+ID ascending, and emits every bucket for each ranked bundle in ascending time;
+a bundle-filtered series uses ascending bucket time only.
+Every report-page cursor also binds the durable database namespace and an
+explicit ordering revision before publication storage is read. Publication IDs
+are namespace-local and cannot provide that isolation by themselves.
 
 This is agreement on the port shape and responsibilities, not approval of the
 implementation. Before storage changes, settle the provider-specific commit
@@ -213,9 +282,17 @@ boundary for source generations, lease/replay/publication atomicity, historical
 search snapshots, fixed section ordering and real read budgets. Timestamp cutoffs
 alone must not be promoted to committed snapshots to avoid this work.
 
-Readiness is per operation: `ready`, `preparing`, `stale`, or `failed`, with
-schema/storage version and projection generation where relevant. Missing required
-plugin methods are configuration errors, not an optional legacy mode. A missing
+Readiness is per operation: `ready`, `preparing`, `stale`, or `failed`.
+Ready/stale results carry non-null schema, storage, and committed source
+generations; projection generation is null only for a raw event read. Preparing
+names a real durable job and its non-null reserved source generation. Failed
+pre-layout inspection uses explicit null version fields when a generation is
+genuinely unknowable; it never substitutes an invented sentinel string. `stale`
+carries immutable previous data plus the real successor job. `failed` carries a
+typed failure, including migration poison; it is not an endless retry loop.
+Published ready/stale versions name that publication's committed source and
+projection generations, not the current live head. Missing required plugin
+methods are configuration errors, not an optional legacy mode. A missing
 index is not evidence that a background preparation job is running.
 Completed reports include `asOfMs`, computation completion time, source generation,
 and `accuracy: exact`. A previously completed report may be displayed while its
@@ -223,6 +300,33 @@ successor runs, with its age visible. Preparing/failed is never converted to zer
 Readiness distinguishes event browsing, identity lookup and aggregates; one
 aggregate backfill cannot disable event pages. Public capability-version
 negotiation, `mode: bounded`, and `maxMatchingRows` are not part of the new API.
+Live event and live all/exact-installation pages never return `stale`.
+Historical exact-user/contains and `getReport` may return stale immutable data
+while a successor job runs. `pageReport(publicationId)` returns only ready,
+typed expired, or failed; it cannot prepare or switch publications.
+For historical lookup, an existing pinned publication is read-only. It returns
+ready only when its query binding matches and `asOfMs >= minAsOfMs`; a missing,
+wrong-query, wrong-namespace, expired, or too-old pin returns typed expired and
+requires restart. A pinned request never reserves a successor job.
+A new unpinned historical request may prepare or return a stale publication.
+A direct publication pin without a cursor returns only ready, expired, or failed.
+A historical cursor continuation returns ready, stale, expired, or failed, never
+preparing; it retains the original query, namespace, source generation, and
+publication. Expiry between pages returns typed expired from the cursor-only
+request instead of reserving work or switching publications.
+
+`RequiredInsightsModel` is the internal compile target while providers prepare
+these five methods. Replacing the public `InsightsModel` happens once, in the
+same final cutover as the server routes, after every official provider passes the
+shared conformance suite. Do not publish an interim V2 name, optional method,
+legacy adapter, capability version, or version-negotiation window.
+At that atomic step, public `InsightsModel` is the five-method contract and the
+transitional `RequiredInsightsModel` type is deleted. Provider implementations
+expose required `insights: InsightsModel`; `createDatabasePluginAdapter` validates
+that model and publishes it as `models.insights`. Delete the temporary top-level
+`appendBundleEvent`, public `scan`/optional `events`, their cursor DTOs, and all
+generic `bundle_events` create/findMany capability in the same compile-breaking
+change.
 
 Propagate this through
 [`createHotUpdaterCore.ts`](../../packages/server/src/createHotUpdaterCore.ts),
@@ -244,7 +348,8 @@ schema-readiness wrappers; testing an adapter directly is not enough.
   only a null continuation proves exhaustion; a non-null cursor means more
   bounded work may remain on providers with response/read caps.
 - Cursor binds version, database scope, query/filter, ordering, cutoff, and last
-  emitted `(received_at_ms, id)`; installation result pages use install ID.
+  emitted `(received_at_ms, id)`. Installation cursor position uses the opaque
+  SHA-256 order key with complete-ID collision verification, never text collation.
   A live bookmark grants no access: validate it against the request's scope and
   cutoff, bound its size, and authorize each request independently. Never accept
   a table, physical partition, or database selected by the cursor. Signing a
@@ -253,8 +358,9 @@ schema-readiness wrappers; testing an adapter directly is not enough.
 - For sharded storage retain each stream's last **emitted** position, not a fetched
   `LastEvaluatedKey` that would skip buffered candidates. Use bounded cursor state
   or a server-side cursor record if the partition list cannot fit safely in a URL.
-- Total is independently `exact(value, sourceGeneration)`, `pending`, or
-  `unavailable`. Never infer total from a full page, and never combine a stale
+- Total is independently `exact(value, sourceGeneration)`, `pending(jobId)`, or
+  `unavailable`. Pending names a real durable total job. Never infer total from
+  a full page, and never combine a stale
   total with live items as though both share a snapshot.
 - Do not implement pages using a deep `OFFSET`/`skip` traversal or add an offset
   compatibility resolver. Cursor navigation is the only supported list contract.
@@ -265,7 +371,8 @@ does not create a cross-request database snapshot: a delayed commit may arrive
 behind an already traversed cursor. Document that refreshing starts a new view.
 Guarantee deterministic order and no repeated immutable event IDs while moving
 forward; guarantee no omissions for a fixed dataset. Do not claim no omissions
-under arbitrary late commits without a captured source generation.
+under arbitrary late commits or require a live continuation to retain one source
+generation. The event-time cutoff and last emitted key are the fixed cursor state.
 
 Exact reports and exhaustive snapshot enumeration instead use a captured source
 generation. If an API promises snapshot pagination, every page must bind that
@@ -308,7 +415,7 @@ physical projection tables/collections only where the provider needs them:
 | Logical data | Key and purpose | Correctness requirement |
 | --- | --- | --- |
 | Latest installation | Install ID -> latest event tuple and metadata | Conditional replacement by `(received_at_ms, id)`, including identity changes and activity-only events. Snapshot reports must use state from their own source generation. |
-| Historical identity alias | Normalized alias/kind/install ID -> identity relationship | Deduplicate repeated reports; retain historical matches; look up current metadata separately. |
+| Historical identity alias | Normalized alias/kind/install ID -> identity relationship | Deduplicate repeated reports; retain historical matches; use generation-frozen latest metadata for snapshot queries. |
 | Report/job state | Query signature + source generation -> status, checkpoint, paged results and exact membership | Durable, bounded work; unique membership keys prevent duplicate counting; atomic publication after all sections reconcile. |
 
 Raw events remain authoritative. SQL/Mongo can aggregate scoped data in the
@@ -414,9 +521,9 @@ aggregation syntax alone is not proof of an indexed plan. See
    processing marker when projections are asynchronous. Read/update only affected
    latest/alias documents if maintaining them in the transaction.
 2. Remove event collection loading/diffing from unrelated generic snapshot
-   mutations. Preserve existing multi-model `commit` atomicity by handling any
-   event additions within the same transaction using targeted operations. Audit
-   generic `create`, `findOne`, `findMany`, and `count` event paths as well.
+   mutations. Remove Insights from generic create and multi-model commit; append
+   is its sole mutation. Remove generic interactive event reads as the required
+   page ports land; maintenance reads remain explicitly separate.
 3. Implement ordered native event queries with composite indexes and cursor
    tuples. Installation movement history can merge the two indexed event types;
    do not filter thousands of unrelated activities after reading them.
@@ -464,8 +571,9 @@ than hiding it. See
 [DynamoDB write sharding](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-partition-key-sharding.html).
 
 Use explicit transactionally written access records where strong index readiness
-is required, or publish a verified projection generation. Migrate both direct
-append and generic transaction writes from the old global partition. Conditional
+is required, or publish a verified projection generation. Migrate the dedicated
+append path from the old global partition; generic commits cannot contain Insights.
+Conditional
 raw writes, outbox markers, and index/projection retries must agree on event ID;
 partial secondary-write success must not lose the raw event or double count it.
 
@@ -568,6 +676,12 @@ Migration sequence for an existing database larger than the current cap:
    There is no API compatibility window. Raw retention changes require a separate
    decision and are not part of this task.
 
+Preparation audits the complete stored raw record, including provider extensions,
+unless the provider explicitly projects extensions out of its public row. At the
+first invalid UUIDv7, malformed Unicode value, or oversize record, persist a
+failed migration-poison state at the checkpoint. Retries resume only after the
+row is repaired; they never skip, normalize, truncate, delete, or publish past it.
+
 Authentication remains unchanged: admin Insights reads require the host's admin
 authorization; client ingestion keys do not grant read/maintenance access. Scope
 cache keys, job ownership, cursors, and generation lookup by database and authorized
@@ -579,6 +693,14 @@ results across users or databases through shared caches.
 Each implementation PR needs its own meaningful tests and migration/docs notes.
 Provider changes may proceed independently after the contracts, but no provider
 may advertise a method before its conformance and storage-read checks pass.
+`registerRequiredInsightsModelTests` is an internal official-provider suite in
+this repository; this plan does not change `@hot-updater/test-utils` package
+visibility or make the suite a supported third-party API. Each harness declares
+finite per-request candidate-read ceilings for event, installation, and report
+pages; the shared ceiling is 4,096 so sharded providers can state their real
+fan-out without inheriting SQL-specific N+1 constants. Provider-native plan,
+request, and byte evidence remains a separate gate and cannot be replaced by a
+generous declaration.
 
 | Package | Changes | Depends on | Exit criterion |
 | --- | --- | --- | --- |
@@ -609,7 +731,7 @@ missing bundle labels without collecting every release on each overview request.
 | Few installations, very frequent activity | Event count is not mistaken for active installation count; ingestion cost and report behavior remain measurable. |
 | All four event types, activity-only installs, apply/recover/adopt | Global vs installation history and movement vs activity retain their different meanings. |
 | Same timestamps, different IDs; out-of-order commits; replay | Latest tuple and page order are deterministic; projection replay adds no membership twice; delayed commits are handled according to live vs published consistency. |
-| User ID changes, old username aliases, null identity, Unicode/case | Historical contains still finds the installation; returned metadata is current; active user filter uses latest identity. Ordering/normalization agree across providers. |
+| User ID changes, old username aliases, null identity, Unicode/case | Historical contains finds the installation; returned latest metadata is frozen at the publication's captured generation; active user filter uses latest identity. Ordering/normalization agree across providers. |
 | One install changes cohorts/bundles repeatedly | Whole-window distinct values do not become sums of overlapping cohort/bucket values. Batch summaries equal individual summaries at the same cutoff. |
 | Arbitrary `asOfMs`, exact lower/upper boundaries, future rows | Rolling active buckets and UTC calendar movement buckets each match their reference formulas. |
 | No new events for more than 24h/7d/30d | Scheduled expiry produces correct new snapshots; a stopped runner surfaces old freshness instead of current zero or current stale counts. |
@@ -620,7 +742,26 @@ missing bundle labels without collecting every release on each overview request.
 
 Run the semantic suite through the model, real server wrapper, admin HTTP where
 present, and Console RPC. Include runtime-neutral entry tests and all schema
-generators. Mock results alone cannot certify physical scalability.
+generators. The shared five-method oracle exercises every selector, requested
+limits and harness-reported storage reads, cursor namespace/scope/cutoff binding,
+typed readiness and migration poison, exact totals, durable job reuse, and atomic
+publication. Its harness freezes the report clock and inserts a malformed retained
+row through provider-native test controls. It also advances a reserved historical
+lookup and report by one bounded step, appends matching post-reservation data,
+then requires completion within a bounded number of larger portable steps from
+the original source generation. Providers must run that suite against
+their own storage harness;
+the oracle alone cannot certify physical scalability. Semantic conformance and
+physical-plan evidence are separate gates: the provider harness reports actual
+native candidate/document reads immediately after each selector, and query-plan
+or service metrics prove that the bounded count was not computed after a hidden
+full filter or sort.
+
+Build `@hot-updater/plugin-core` before downstream server/provider tests, then
+verify the generated `dist/internal` declarations and runtime exports contain the
+same required model, constants, and validators as source. A downstream test that
+resolves stale package output is not acceptance evidence. A workspace source
+alias is acceptable only when its type and runtime paths both use source.
 
 ### Performance and cost evidence
 

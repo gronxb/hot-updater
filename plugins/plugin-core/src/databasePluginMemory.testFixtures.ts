@@ -72,7 +72,6 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
     }
     const nextBundles = new Map(bundles);
     const nextPatches = new Map(patches);
-    const nextEvents = new Map(events);
     const nextReleases = new Map(releases);
     const nextReleaseCatalogs = new Map(releaseCatalogs);
     const nextChannels = new Map(channels);
@@ -187,9 +186,6 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
             }
           }
           break;
-        case "insights":
-          nextEvents.set(change.row.id, structuredClone(change.row));
-          break;
         case "apiKeys":
           if (change.operation === "insert") {
             const existing = [...nextApiKeys.values()].find(
@@ -216,7 +212,6 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
     }
     replaceMap(bundles, nextBundles);
     replaceMap(patches, nextPatches);
-    replaceMap(events, nextEvents);
     replaceMap(releases, nextReleases);
     replaceMap(releaseCatalogs, nextReleaseCatalogs);
     replaceMap(channels, nextChannels);

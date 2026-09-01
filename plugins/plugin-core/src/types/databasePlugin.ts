@@ -206,11 +206,6 @@ export type DatabaseChange =
       readonly where: { readonly id: string };
     }
   | {
-      readonly model: "insights";
-      readonly operation: "insert";
-      readonly row: BundleEventRow;
-    }
-  | {
       readonly model: "apiKeys";
       readonly operation: "insert";
       readonly row: ApiKeyRow;

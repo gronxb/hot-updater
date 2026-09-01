@@ -6,8 +6,13 @@ export {
 export { databaseFields } from "./types/databaseFields";
 export { readInsightsReportQuery } from "./insightsReportQuery";
 export {
+  readInsightsInstallationPageInput,
+  readInsightsPageEventsInput,
+} from "./insightsPageQuery";
+export {
   readInsightsReportPageQuery,
   createInsightsReportPageCursor,
+  INSIGHTS_REPORT_PAGE_ORDERING_REVISION,
 } from "./insightsReportPageQuery";
 export {
   createInsightsReportProjection,
@@ -22,3 +27,4 @@ export {
   assertInsightsEventRow,
 } from "./insightsEventQueries";
 export type * from "./types/internal";
+export * from "./insightsContract";

@@ -33,6 +33,7 @@ const createNativePlugin = (
   return createDatabasePlugin({
     name,
     ...createDatabasePluginAdapter(name, {
+      appendBundleEvent: async () => {},
       create: async (input) => input.data,
       update: async () => null,
       delete: async () => undefined,
@@ -74,6 +75,7 @@ describe("database client patch updates", () => {
     const plugin = createDatabasePlugin({
       name,
       ...createDatabasePluginAdapter(name, {
+        appendBundleEvent: async () => {},
         create,
         update: async () => null,
         delete: async () => undefined,
@@ -116,6 +118,7 @@ describe("database client patch updates", () => {
     const plugin = createDatabasePlugin({
       name,
       ...createDatabasePluginAdapter(name, {
+        appendBundleEvent: async () => {},
         create: async (input) => input.data,
         update: async () => {
           scalarUpdateCount += 1;

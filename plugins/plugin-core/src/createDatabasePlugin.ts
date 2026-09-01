@@ -11,6 +11,7 @@ import {
   validateResult,
 } from "./databasePluginCrudValidationRows";
 import { createTransactionDatabasePlugin } from "./databasePluginTransaction";
+import { assertInsightsEventContract } from "./insightsContract";
 import type {
   BundlePatchRow,
   BundleRow,
@@ -264,9 +265,6 @@ const applyChange = async (
           return;
         }
       }
-    case "insights":
-      await database.create({ model: "bundle_events", data: change.row });
-      return;
     case "apiKeys":
       switch (change.operation) {
         case "insert":
@@ -479,15 +477,6 @@ const validateDatabaseChange = (change: unknown): void => {
         default:
           throw new DatabasePluginInputError("invalid-operation");
       }
-    case "insights":
-      if (
-        change.operation !== "insert" ||
-        !hasOnlyKeys(change, ["model", "operation", "row"])
-      ) {
-        throw new DatabasePluginInputError("invalid-operation");
-      }
-      validateCreateData("bundle_events", change.row);
-      return;
     case "apiKeys":
       switch (change.operation) {
         case "insert":
@@ -857,7 +846,12 @@ export const createDatabasePluginAdapter = (
       },
       insights: {
         async append(row) {
-          await crud.create({ model: "bundle_events", data: row });
+          try {
+            assertInsightsEventContract(row);
+          } catch {
+            throw new DatabasePluginInputError("invalid-data");
+          }
+          await implementation.appendBundleEvent(row);
         },
         async scan(input) {
           if (

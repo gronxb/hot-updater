@@ -1,4 +1,5 @@
 import { DatabasePluginInputError } from "./databasePluginCrudValidationErrors";
+import { assertInsightsQueryContract } from "./insightsContract";
 import type {
   InsightsReportInput,
   InsightsReportQuery,
@@ -22,6 +23,11 @@ const hasOnly = (value: object, fields: readonly string[]): boolean =>
 export const readInsightsReportQuery = (
   input: InsightsReportInput,
 ): { query: InsightsReportQuery; semanticKey: string; minAsOfMs?: number } => {
+  try {
+    assertInsightsQueryContract(input);
+  } catch {
+    invalid();
+  }
   if (
     typeof input !== "object" ||
     input === null ||

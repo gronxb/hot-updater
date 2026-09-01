@@ -51,7 +51,7 @@ export const registerDatabasePluginCapabilityTests = (
       }
     });
 
-    it("atomically inserts every official model", async () => {
+    it("commits mutable models and appends Insights independently", async () => {
       const plugin = state.getPlugin();
       const channel = createChannelRowFixture("production");
       const base = createBundleRowFixture("86");
@@ -72,7 +72,6 @@ export const registerDatabasePluginCapabilityTests = (
           { model: "bundles", operation: "insert", row: base },
           { model: "bundles", operation: "insert", row: bundle },
           { model: "bundlePatches", operation: "insert", row: patch },
-          { model: "insights", operation: "insert", row: event },
           {
             model: "apiKeys",
             operation: "insert",
@@ -81,6 +80,9 @@ export const registerDatabasePluginCapabilityTests = (
           },
         ),
       ).resolves.toEqual({ committed: true });
+      await expect(
+        plugin.models.insights.append(event),
+      ).resolves.toBeUndefined();
       await expect(plugin.models.channels.list({})).resolves.toEqual({
         channels: [channel],
       });
@@ -90,9 +92,6 @@ export const registerDatabasePluginCapabilityTests = (
       await expect(
         plugin.models.bundlePatches.findByBundleIds([bundle.id]),
       ).resolves.toEqual([patch]);
-      await expect(
-        plugin.models.insights.scan({ beforeReceivedAtMs: 101, limit: 10 }),
-      ).resolves.toEqual([event]);
       await expect(
         plugin.models.apiKeys.findByHash(apiKey.hash),
       ).resolves.toEqual(apiKey);
@@ -300,7 +299,6 @@ export const registerDatabasePluginCapabilityTests = (
         second.id,
         "ffffffff-ffff-ffff-ffff-ffffffffffff",
       );
-      const event = createBundleEventRowFixture("93", 100);
       const apiKey = createApiKeyRowFixture("93", 100);
 
       await expect(
@@ -314,7 +312,6 @@ export const registerDatabasePluginCapabilityTests = (
             },
             { model: "bundles", operation: "insert", row: first },
             { model: "bundles", operation: "insert", row: second },
-            { model: "insights", operation: "insert", row: event },
             {
               model: "apiKeys",
               operation: "insert",
@@ -338,9 +335,6 @@ export const registerDatabasePluginCapabilityTests = (
       await expect(plugin.models.channels.list({})).resolves.toEqual({
         channels: [],
       });
-      await expect(
-        plugin.models.insights.scan({ beforeReceivedAtMs: 101, limit: 10 }),
-      ).resolves.toEqual([]);
       await expect(
         plugin.models.apiKeys.findByHash(apiKey.hash),
       ).resolves.toBeNull();

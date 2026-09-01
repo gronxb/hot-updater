@@ -1,6 +1,15 @@
 import { createDatabasePluginCrud } from "./databasePluginCrud";
 import { DatabasePluginInputError } from "./databasePluginCrudValidation";
 import { validateResult } from "./databasePluginCrudValidationRows";
+import {
+  assertInsightsCursorContract,
+  assertInsightsEventContract,
+  assertInsightsQueryContract,
+  getCanonicalInsightsJsonByteLength,
+  INSIGHTS_CURSOR_MAX_BYTES,
+  INSIGHTS_PAGE_MAX_BYTES,
+  INSIGHTS_PAGE_MAX_ROWS,
+} from "./insightsContract";
 import type {
   BundleEventRow,
   DatabaseWhere,
@@ -11,8 +20,6 @@ import type {
   TransactionDatabasePluginImplementation,
 } from "./types/internal";
 
-const MAX_PAGE_SIZE = 100;
-const MAX_CURSOR_LENGTH = 8_192;
 const MAX_IDENTIFIER_LENGTH = 1_024;
 
 const isIdentifier = (value: unknown): value is string =>
@@ -27,8 +34,9 @@ export function assertInsightsEventRow(
   value: unknown,
 ): asserts value is BundleEventRow {
   validateResult("bundle_events", value as BundleEventRow, undefined);
-  const row = value as BundleEventRow;
-  if (!isIdentifier(row.id) || !isTimestamp(row.received_at_ms)) {
+  try {
+    assertInsightsEventContract(value);
+  } catch {
     throw new DatabasePluginInputError("invalid-result");
   }
 }
@@ -47,17 +55,9 @@ const scopeKey = (scope: InsightsEventScope): string => {
   throw new DatabasePluginInputError("invalid-query");
 };
 
-// The bookmark repeats the exact scope. Account for its outer JSON escaping,
-// without imposing a new length restriction on stored installation identities.
 export const getInsightsEventPageCursorLimit = (
-  scope: InsightsEventScope,
-): number => {
-  const key = scopeKey(scope);
-  return (
-    MAX_CURSOR_LENGTH +
-    (scope.kind === "installation" ? JSON.stringify(key).length : 0)
-  );
-};
+  _scope: InsightsEventScope,
+): number => INSIGHTS_CURSOR_MAX_BYTES;
 
 export const compareInsightsEventRows = (
   left: Pick<BundleEventRow, "received_at_ms" | "id">,
@@ -71,10 +71,7 @@ const readCursor = (
   scope: string,
 ): InsightsScanCursor | undefined => {
   if (input.cursor === undefined) return undefined;
-  if (
-    typeof input.cursor !== "string" ||
-    input.cursor.length > getInsightsEventPageCursorLimit(input.scope)
-  ) {
+  if (typeof input.cursor !== "string") {
     throw new DatabasePluginInputError("invalid-query");
   }
   let value: unknown;
@@ -106,6 +103,11 @@ export const readInsightsEventPageCursor = (
   if (typeof input !== "object" || input === null) {
     throw new DatabasePluginInputError("invalid-query");
   }
+  try {
+    assertInsightsQueryContract(input);
+  } catch {
+    throw new DatabasePluginInputError("invalid-query");
+  }
   const key = scopeKey(input.scope);
   if (
     !isTimestamp(input.beforeReceivedAtMs) ||
@@ -114,7 +116,7 @@ export const readInsightsEventPageCursor = (
     (input.sinceReceivedAtMs ?? 0) > input.beforeReceivedAtMs ||
     !Number.isSafeInteger(input.limit) ||
     input.limit < 1 ||
-    input.limit > MAX_PAGE_SIZE
+    input.limit > INSIGHTS_PAGE_MAX_ROWS
   ) {
     throw new DatabasePluginInputError("invalid-query");
   }
@@ -133,7 +135,9 @@ export const createInsightsEventPageCursor = (
     last.receivedAtMs,
     last.id,
   ]);
-  if (cursor.length > getInsightsEventPageCursorLimit(input.scope)) {
+  try {
+    assertInsightsCursorContract(cursor);
+  } catch {
     throw new DatabasePluginInputError("invalid-result");
   }
   return cursor;
@@ -273,7 +277,7 @@ export const createIndexedInsightsEventQueries = (
       }
       const rows = candidates.slice(0, input.limit);
       const last = rows.at(-1);
-      return {
+      const page = {
         rows,
         nextCursor:
           candidates.length > input.limit && last
@@ -283,6 +287,13 @@ export const createIndexedInsightsEventQueries = (
               })
             : null,
       };
+      if (
+        rows.length > input.limit ||
+        getCanonicalInsightsJsonByteLength(page) > INSIGHTS_PAGE_MAX_BYTES
+      ) {
+        throw new DatabasePluginInputError("invalid-result");
+      }
+      return page;
     },
   };
 };

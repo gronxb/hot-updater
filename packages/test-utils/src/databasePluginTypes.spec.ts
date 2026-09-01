@@ -34,7 +34,7 @@ describe("database plugin operation matrix", () => {
     expectTypeOf<databaseFields>();
   });
 
-  it("exposes create and findMany for all fixed models", () => {
+  it("keeps Insights out of generic create", () => {
     expectTypeOf<DatabaseModel>().toEqualTypeOf<
       | "bundles"
       | "bundle_patches"
@@ -44,7 +44,12 @@ describe("database plugin operation matrix", () => {
       | "bundle_events"
       | "api_keys"
     >();
-    expectTypeOf<CreateDatabaseModel>().toEqualTypeOf<DatabaseModel>();
+    expectTypeOf<CreateDatabaseModel>().toEqualTypeOf<
+      Exclude<DatabaseModel, "bundle_events">
+    >();
+    expectTypeOf<
+      Extract<DatabaseChange, { readonly model: "insights" }>
+    >().toEqualTypeOf<never>();
   });
 
   it("limits delete to canonical mutable rows", () => {

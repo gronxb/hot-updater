@@ -10,6 +10,7 @@ const unimplemented = async (): Promise<never> => {
 };
 
 const createMethods = () => ({
+  appendBundleEvent: unimplemented,
   create: unimplemented,
   update: unimplemented,
   delete: unimplemented,
@@ -232,66 +233,19 @@ describe("database plugin CRUD runtime contract", () => {
     expect(create).toHaveBeenCalledOnce();
   });
 
-  it("accepts explicit null Release ids on an Insights event", async () => {
+  it("rejects Insights append through generic create", async () => {
     const create = vi.fn(async ({ data }) => data);
     const plugin = createValidatedCrud({
       name: "insights-create-contract",
       plugin: () => ({ ...createMethods(), create }),
     });
 
-    await expect(
-      invoke(plugin, "create", {
-        model: "bundle_events",
-        data: bundleEventRow,
-      }),
-    ).resolves.toMatchObject({
-      from_release_id: null,
-      to_release_id: null,
-    });
-  });
-
-  it.each(["from_release_id", "to_release_id"])(
-    "rejects an omitted Insights create field: %s",
-    async (field) => {
-      const create = vi.fn(async ({ data }) => data);
-      const plugin = createValidatedCrud({
-        name: "insights-create-contract",
-        plugin: () => ({ ...createMethods(), create }),
-      });
-      const data: Record<string, unknown> = { ...bundleEventRow };
-      delete data[field];
-
-      const result = invoke(plugin, "create", {
-        model: "bundle_events",
-        data,
-      });
-
-      await expect(result).rejects.toMatchObject({ code: "invalid-data" });
-      expect(create).not.toHaveBeenCalled();
-    },
-  );
-
-  it.each([
-    { from_bundle_id: null },
-    { to_bundle_id: null },
-    {
-      type: "UNCHANGED",
-      from_bundle_id: "bundle-old",
-      update_strategy: null,
-    },
-  ])("rejects an invalid Insights direction shape", async (overrides) => {
-    const create = vi.fn(async ({ data }) => data);
-    const plugin = createValidatedCrud({
-      name: "insights-direction-contract",
-      plugin: () => ({ ...createMethods(), create }),
-    });
-
     const result = invoke(plugin, "create", {
       model: "bundle_events",
-      data: { ...bundleEventRow, ...overrides },
+      data: bundleEventRow,
     });
 
-    await expect(result).rejects.toMatchObject({ code: "invalid-data" });
+    await expect(result).rejects.toMatchObject({ code: "invalid-operation" });
     expect(create).not.toHaveBeenCalled();
   });
 

@@ -7,6 +7,7 @@ import {
   DatabasePluginInputError,
 } from "./createDatabasePlugin";
 import type {
+  BundleEventRow,
   DatabaseChange,
   DatabaseCommit,
   DatabasePluginImplementation,
@@ -20,6 +21,7 @@ const unimplemented = async (): Promise<never> => {
 };
 
 const createMethods = (): DatabasePluginImplementation => ({
+  appendBundleEvent: unimplemented,
   create: unimplemented,
   update: unimplemented,
   delete: unimplemented,
@@ -97,6 +99,26 @@ const releaseRow = {
   updated_at_ms: 0,
 };
 
+const eventRow: BundleEventRow = {
+  id: "00000000-0000-7000-8000-000000000001",
+  type: "UPDATE_APPLIED",
+  install_id: "install-1",
+  user_id: null,
+  username: null,
+  from_bundle_id: "bundle-old",
+  from_release_id: null,
+  to_bundle_id: "bundle-new",
+  to_release_id: null,
+  platform: "ios",
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "0",
+  update_strategy: "appVersion",
+  fingerprint_hash: null,
+  sdk_version: null,
+  received_at_ms: 1,
+};
+
 describe("createDatabasePlugin", () => {
   it("exposes only models, commit, and lifecycle", () => {
     const plugin = createTestPlugin("memory", createMethods());
@@ -114,6 +136,36 @@ describe("createDatabasePlugin", () => {
     expect(Reflect.has(plugin, "bundles")).toBe(false);
     expect(Reflect.has(plugin, "getChannels")).toBe(false);
     expect(Reflect.has(plugin, "transaction")).toBe(false);
+  });
+
+  it("validates the complete event contract before the append hook", async () => {
+    const appendBundleEvent = vi.fn(async () => {});
+    const plugin = createTestPlugin("memory", {
+      ...createMethods(),
+      appendBundleEvent,
+    });
+    const invalidRows = [
+      { ...eventRow, id: "event-1" },
+      { id: eventRow.id },
+      {
+        ...eventRow,
+        extension: Array.from({ length: 21 }, () => "a".repeat(1000)),
+      },
+    ];
+
+    for (const row of invalidRows) {
+      await expect(
+        plugin.models.insights.append(row as BundleEventRow),
+      ).rejects.toMatchObject({ code: "invalid-data" });
+    }
+    expect(appendBundleEvent).not.toHaveBeenCalled();
+
+    const eventWithExtension = { ...eventRow, provider_extension: "retained" };
+    await expect(
+      plugin.models.insights.append(eventWithExtension),
+    ).resolves.toBeUndefined();
+    expect(appendBundleEvent).toHaveBeenCalledOnce();
+    expect(appendBundleEvent).toHaveBeenCalledWith(eventWithExtension);
   });
 
   it("maps the domain bundle query to the low-level adapter", async () => {

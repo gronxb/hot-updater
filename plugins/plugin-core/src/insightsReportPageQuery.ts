@@ -1,11 +1,17 @@
 import { DatabasePluginInputError } from "./databasePluginCrudValidationErrors";
+import {
+  assertInsightsCursorContract,
+  assertInsightsQueryContract,
+} from "./insightsContract";
 import type {
   InsightsReportPageInput,
   InsightsReportSection,
 } from "./types/insightsQueries";
 
-const MAX_CURSOR_LENGTH = 16_384;
 const MAX_ORDINAL = "9223372036854775807";
+
+/** Changes whenever the committed row ordering for report pages changes. */
+export const INSIGHTS_REPORT_PAGE_ORDERING_REVISION = 1;
 
 type CanonicalReportPageInput = InsightsReportSection &
   Pick<InsightsReportPageInput, "publicationId" | "limit">;
@@ -26,16 +32,24 @@ const ordinal = (value: unknown): value is string =>
 /** Validates a materialized-rank bookmark; it is never a raw-query offset. */
 export const readInsightsReportPageQuery = (
   input: InsightsReportPageInput,
+  databaseNamespace: string,
 ): {
   input: CanonicalReportPageInput;
   semanticKey: string;
   nextOrdinal: string;
 } => {
+  try {
+    assertInsightsQueryContract(input);
+    assertInsightsQueryContract({ databaseNamespace });
+  } catch {
+    invalid();
+  }
   if (
     typeof input !== "object" ||
     input === null ||
     Array.isArray(input) ||
     !identifier(input.publicationId) ||
+    !identifier(databaseNamespace) ||
     !Number.isSafeInteger(input.limit) ||
     input.limit < 1 ||
     input.limit > 100
@@ -73,6 +87,9 @@ export const readInsightsReportPageQuery = (
   if (!Object.keys(input).every((field) => fields.includes(field))) invalid();
 
   const semanticKey = JSON.stringify([
+    databaseNamespace,
+    "report-page",
+    INSIGHTS_REPORT_PAGE_ORDERING_REVISION,
     canonical.publicationId,
     canonical.section,
     "metric" in canonical ? canonical.metric : null,
@@ -80,11 +97,7 @@ export const readInsightsReportPageQuery = (
   ]);
   let nextOrdinal = "0";
   if (input.cursor !== undefined) {
-    if (
-      typeof input.cursor !== "string" ||
-      input.cursor.length > MAX_CURSOR_LENGTH
-    )
-      invalid();
+    if (typeof input.cursor !== "string") invalid();
     let value: unknown;
     try {
       value = JSON.parse(input.cursor);
@@ -107,11 +120,16 @@ export const readInsightsReportPageQuery = (
 export const createInsightsReportPageCursor = (
   input: InsightsReportPageInput,
   nextOrdinal: string,
+  databaseNamespace: string,
 ): string => {
-  const { semanticKey } = readInsightsReportPageQuery(input);
+  const { semanticKey } = readInsightsReportPageQuery(input, databaseNamespace);
   if (!ordinal(nextOrdinal))
     throw new DatabasePluginInputError("invalid-result");
-  // Two maximum-length opaque IDs take at most 14,336 characters after the
-  // nested JSON escaping; the section and ordinal framing fit below 16,384.
-  return JSON.stringify([1, semanticKey, nextOrdinal]);
+  const cursor = JSON.stringify([1, semanticKey, nextOrdinal]);
+  try {
+    assertInsightsCursorContract(cursor);
+  } catch {
+    throw new DatabasePluginInputError("invalid-result");
+  }
+  return cursor;
 };
