@@ -176,9 +176,6 @@ export const createDrizzleCrud = (
         case "bundle_patches":
           await executeInsert(db, provider, patches, input.data, undefined);
           return input.data;
-        case "bundle_events":
-          await executeInsert(db, provider, events, input.data, undefined);
-          return input.data;
         case "releases":
           await executeInsert(
             db,

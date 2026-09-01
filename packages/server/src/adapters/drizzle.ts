@@ -17,6 +17,7 @@ import type {
 } from "../db/types";
 import { createDrizzleCrud } from "./drizzleCrud";
 import { createLazyDB } from "./drizzleLazyDB";
+import { createDrizzleInsightsQueries } from "./sqlInsights/drizzle";
 
 export type DrizzleProvider = Exclude<
   ORMProvider,
@@ -35,9 +36,11 @@ const createImplementation = (
 ): DatabasePluginImplementation => {
   const db = createLazyDB(config);
   const crud = createDrizzleCrud(db, config.provider);
+  const insights = createDrizzleInsightsQueries(db, config.provider);
   const transaction = db.transaction?.bind(db);
   return {
     ...crud,
+    appendBundleEvent: insights.append,
     deleteChannel: (input) => {
       if (transaction === undefined) {
         throw new Error(
