@@ -1,8 +1,15 @@
 import type {
+  BundleEventRow,
   BundleRow,
   ChannelRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import {
+  INSIGHTS_EVENT_MAX_BYTES,
+  INSIGHTS_INSTALLATION_ORDER_TEST_VECTORS,
+  canonicalInsightsJson,
+  getCanonicalInsightsJsonByteLength,
+} from "@hot-updater/plugin-core/internal";
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import {
@@ -19,11 +26,14 @@ import {
 import { createBundleEventRowFixture } from "../../../../packages/test-utils/src/databaseTestFixtures";
 import { d1Database } from "../../src/d1Database";
 import type { D1Executor, D1Statement } from "../../src/d1Implementation";
+import { createD1InsightsMaintenance } from "../../src/d1InsightsJobs";
 import {
   createD1InsightsEventPages,
   createD1InsightsInstallationPages,
 } from "../../src/d1InsightsPages";
+import { createD1RequiredInsightsModel } from "../../src/d1InsightsRequired";
 import {
+  assertD1InsightsLayout,
   createD1InsightsSourceTools,
   d1InsightsInstallKey,
 } from "../../src/d1InsightsSource";
@@ -122,7 +132,7 @@ vi.mock("cloudflare", () => ({
 const reset = async (): Promise<void> => {
   await getDb()
     .prepare(
-      "DELETE FROM private_hot_updater_insights_live_installations; DELETE FROM private_hot_updater_insights_installation_events; DELETE FROM private_hot_updater_insights_bundle_events; DELETE FROM private_hot_updater_insights_source_events; DELETE FROM bundle_events; UPDATE private_hot_updater_insights_source_state SET generation = 0, status = 'ready', backfill_upper_received_at_ms = NULL, backfill_upper_id = NULL, backfill_after_received_at_ms = NULL, backfill_after_id = NULL WHERE id = 1; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
+      "DELETE FROM private_hot_updater_insights_job_page_rows; DELETE FROM private_hot_updater_insights_job_sections; DELETE FROM private_hot_updater_insights_job_order; DELETE FROM private_hot_updater_insights_job_memberships; DELETE FROM private_hot_updater_insights_job_counts; DELETE FROM private_hot_updater_insights_job_latest; DELETE FROM private_hot_updater_insights_jobs; DELETE FROM private_hot_updater_insights_job_heads; DELETE FROM private_hot_updater_insights_installation_versions; DELETE FROM private_hot_updater_insights_installation_aliases; DELETE FROM private_hot_updater_insights_live_installations; DELETE FROM private_hot_updater_insights_installation_events; DELETE FROM private_hot_updater_insights_bundle_events; DELETE FROM private_hot_updater_insights_source_events; DELETE FROM private_hot_updater_insights_pending_events; DELETE FROM bundle_events; UPDATE private_hot_updater_insights_source_state SET generation = 0, status = 'ready', backfill_upper_received_at_ms = NULL, backfill_upper_id = NULL, backfill_after_received_at_ms = NULL, backfill_after_id = NULL WHERE id = 1; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
     )
     .run();
 };
@@ -346,24 +356,16 @@ describe.each([
     state.db = undefined;
   });
 
-  it("commits raw, source, and latest rows for direct and mixed writes", async () => {
+  it("atomically appends raw, source, and latest rows", async () => {
     const plugin = createPlugin();
-    const direct = {
-      ...createBundleEventRowFixture("801", 100),
-      id: "direct/event-801",
-    };
-    const mixed = {
+    const first = createBundleEventRowFixture("801", 100);
+    const second = {
       ...createBundleEventRowFixture("802", 200),
-      id: "mixed:event:802",
-      install_id: direct.install_id,
+      install_id: first.install_id,
     };
 
-    await plugin.models.insights.append(direct);
-    await expect(
-      plugin.commit({
-        changes: [{ model: "insights", operation: "insert", row: mixed }],
-      }),
-    ).resolves.toEqual({ committed: true });
+    await plugin.models.insights.append(first);
+    await plugin.models.insights.append(second);
 
     const stateRow = await getDb()
       .prepare(
@@ -377,194 +379,326 @@ describe.each([
       )
       .all();
     expect(sourceRows.results).toEqual([
-      { generation: 1, event_id: direct.id },
-      { generation: 2, event_id: mixed.id },
+      { generation: 1, event_id: first.id },
+      { generation: 2, event_id: second.id },
     ]);
+    await expect(
+      getDb()
+        .prepare("SELECT id FROM bundle_events ORDER BY received_at_ms")
+        .all(),
+    ).resolves.toMatchObject({
+      results: [{ id: first.id }, { id: second.id }],
+    });
     const latest = await getDb()
       .prepare(
         "SELECT install_id, event_id, row_bytes FROM private_hot_updater_insights_live_installations",
       )
       .first<{ install_id: string; event_id: string; row_bytes: number }>();
-    expect(latest?.install_id).toBe(direct.install_id);
-    expect(latest?.event_id).toBe(mixed.id);
+    expect(latest?.install_id).toBe(first.install_id);
+    expect(latest?.event_id).toBe(second.id);
     expect(latest?.row_bytes).toBeGreaterThan(0);
   });
 
-  it("rolls back unrelated mixed changes when an event is duplicated", async () => {
+  it("rejects noncanonical event IDs without writing raw or sidecar rows", async () => {
     const plugin = createPlugin();
-    const event = createBundleEventRowFixture("803", 100);
-    const bundle = createBundleRow();
-    await plugin.models.insights.append(event);
-
-    await expect(
-      plugin.commit({
-        changes: [
-          { model: "bundles", operation: "insert", row: bundle },
-          { model: "insights", operation: "insert", row: event },
-        ],
-      }),
-    ).rejects.toThrow();
-
-    await expect(plugin.models.bundles.findById(bundle.id)).resolves.toBeNull();
-    const generation = await getDb()
-      .prepare(
-        "SELECT generation FROM private_hot_updater_insights_source_state WHERE id = 1",
-      )
-      .first<number>("generation");
-    expect(generation).toBe(1);
-  });
-
-  it("rejects an empty event ID before direct or mixed D1 writes", async () => {
-    const plugin = createPlugin();
-    const invalid = { ...createBundleEventRowFixture("805", 100), id: "" };
-    await expect(plugin.models.insights.append(invalid)).rejects.toThrow();
-    await expect(
-      plugin.commit({
-        changes: [
-          {
-            model: "channels",
-            operation: "insert",
-            row: { id: "empty-id-guard", name: "empty-id-guard" },
-            onConflict: "ignore",
-          },
-          { model: "insights", operation: "insert", row: invalid },
-        ],
-      }),
-    ).rejects.toThrow();
-    await expect(plugin.models.channels.list({})).resolves.toEqual({
-      channels: [],
-    });
+    const canonical = createBundleEventRowFixture("805", 100);
+    for (const id of [
+      "",
+      "event-805",
+      "00000000-0000-7000-8000-00000000080A",
+    ]) {
+      await expect(
+        plugin.models.insights.append({ ...canonical, id }),
+      ).rejects.toThrow();
+    }
     await expect(
       getDb()
-        .prepare("SELECT count(*) count FROM bundle_events")
+        .prepare(
+          `SELECT
+            (SELECT count(*) FROM bundle_events) +
+            (SELECT count(*) FROM private_hot_updater_insights_source_events) +
+            (SELECT count(*) FROM private_hot_updater_insights_live_installations)
+            AS count`,
+        )
         .first<number>("count"),
     ).resolves.toBe(0);
   });
 
-  it("pages source, event scopes, and digest-ordered installations", async () => {
+  it("rejects an oversized event without writing raw or sidecar rows", async () => {
+    const plugin = createPlugin();
+    const largeValue = "€".repeat(900);
+    const invalid = {
+      ...createBundleEventRowFixture("806", 100),
+      type: "UPDATE_APPLIED" as const,
+      update_strategy: "appVersion" as const,
+      install_id: largeValue,
+      user_id: largeValue,
+      username: largeValue,
+      from_bundle_id: largeValue,
+      from_release_id: largeValue,
+      to_bundle_id: largeValue,
+      to_release_id: largeValue,
+      app_version: largeValue,
+    };
+    expect(getCanonicalInsightsJsonByteLength(invalid)).toBeGreaterThan(
+      INSIGHTS_EVENT_MAX_BYTES,
+    );
+
+    await expect(plugin.models.insights.append(invalid)).rejects.toThrow();
+    await expect(
+      getDb()
+        .prepare(
+          `SELECT
+            (SELECT count(*) FROM bundle_events) +
+            (SELECT count(*) FROM private_hot_updater_insights_source_events) +
+            (SELECT count(*) FROM private_hot_updater_insights_live_installations)
+            AS count`,
+        )
+        .first<number>("count"),
+    ).resolves.toBe(0);
+  });
+
+  it("smokes event and installation pages through the D1 facades", async () => {
     const plugin = createPlugin();
     const first = createBundleEventRowFixture("811", 100);
     const second = createBundleEventRowFixture("812", 100);
-    await plugin.commit({
-      changes: [first, second].map((row) => ({
-        model: "insights" as const,
-        operation: "insert" as const,
-        row,
-      })),
+    await plugin.models.insights.append(first);
+    await plugin.models.insights.append(second);
+
+    await expect(
+      createD1InsightsEventPages(insightsExecutor, "d1-plugin-test").pageEvents(
+        {
+          selector: { kind: "all" },
+          beforeReceivedAtMs: 200,
+          limit: 1,
+        },
+      ),
+    ).resolves.toMatchObject({
+      state: "ready",
+      data: { data: [second], hasNext: true, nextCursor: expect.any(String) },
     });
-
-    const source = createD1InsightsSourceTools(insightsExecutor);
-    const generation = await source.capture();
-    await expect(
-      source.readPage({ sourceGeneration: generation, limit: 100 }),
-    ).resolves.toEqual([
-      { generation: 1, event: first },
-      { generation: 2, event: second },
-    ]);
-
-    const events = createD1InsightsEventPages(insightsExecutor);
-    const allInput = {
-      scope: { kind: "all" as const },
-      beforeReceivedAtMs: 200,
-      limit: 1,
-    };
-    const allFirst = await events.pageEvents(allInput);
-    expect(allFirst.rows).toEqual([second]);
-    expect(allFirst.nextCursor).toEqual(expect.any(String));
-    await expect(
-      events.pageEvents({ ...allInput, cursor: allFirst.nextCursor! }),
-    ).resolves.toEqual({ rows: [first], nextCursor: null });
-    await expect(
-      events.pageEvents({
-        ...allInput,
-        scope: { kind: "installation", installId: first.install_id },
-        limit: 10,
-      }),
-    ).resolves.toEqual({ rows: [first], nextCursor: null });
-    await expect(
-      events.pageEvents({
-        ...allInput,
-        scope: { kind: "bundle", bundleId: second.to_bundle_id },
-        limit: 10,
-      }),
-    ).resolves.toEqual({ rows: [second], nextCursor: null });
 
     const installations = createD1InsightsInstallationPages(
       insightsExecutor,
       () => 300,
+      "d1-live-primary",
     );
-    const firstInstallPage = await installations.pageAll({
+    const firstPage = await installations.pageInstallations({
       kind: "all",
       limit: 1,
     });
-    expect(firstInstallPage).toMatchObject({
+    expect(firstPage).toMatchObject({
       state: "ready",
-      consistency: "live",
-      observedAtMs: 300,
+      data: {
+        data: [expect.any(Object)],
+        hasNext: true,
+        nextCursor: expect.any(String),
+      },
     });
-    if (firstInstallPage.state !== "ready") throw new Error("not ready");
-    expect(firstInstallPage.rows).toHaveLength(1);
-    expect(firstInstallPage.nextCursor).toEqual(expect.any(String));
-    const secondInstallPage = await installations.pageAll({
-      kind: "all",
-      limit: 1,
-      cursor: firstInstallPage.nextCursor!,
-    });
-    if (secondInstallPage.state !== "ready") throw new Error("not ready");
-    expect(
-      [...firstInstallPage.rows, ...secondInstallPage.rows]
-        .map(({ install_id }) => install_id)
-        .sort(),
-    ).toEqual([first.install_id, second.install_id].sort());
+    if (firstPage.state !== "ready") throw new Error("not ready");
+
+    let crossNamespaceReads = 0;
+    const otherNamespace = createD1InsightsInstallationPages(
+      {
+        async query(sql, params) {
+          crossNamespaceReads += 1;
+          return insightsExecutor.query(sql, params);
+        },
+        async batch(statements) {
+          crossNamespaceReads += statements.length;
+          return insightsExecutor.batch(statements);
+        },
+      },
+      () => 300,
+      "d1-live-other",
+    );
     await expect(
-      installations.pageInstallation({
-        kind: "installation",
-        installId: first.install_id,
-        limit: 100,
+      otherNamespace.pageInstallations({
+        kind: "all",
+        limit: 1,
+        cursor: firstPage.data.nextCursor!,
       }),
+    ).rejects.toThrow();
+    expect(crossNamespaceReads).toBe(0);
+  });
+
+  it("roundtrips a canonical 20 KiB event with provider extensions", async () => {
+    const plugin = createPlugin();
+    const base = createBundleEventRowFixture("813", 100);
+    let boundary:
+      | (BundleEventRow & { readonly provider_extension: readonly string[] })
+      | undefined;
+    for (let full = 0; full < 32 && boundary === undefined; full += 1) {
+      const providerExtension = [
+        ...Array.from({ length: full }, () => "x".repeat(1_024)),
+        "",
+      ];
+      const candidate = { ...base, provider_extension: providerExtension };
+      const remaining =
+        INSIGHTS_EVENT_MAX_BYTES -
+        getCanonicalInsightsJsonByteLength(candidate);
+      if (remaining >= 0 && remaining <= 1_024) {
+        providerExtension[providerExtension.length - 1] = "x".repeat(remaining);
+        boundary = candidate;
+      }
+    }
+    expect(boundary).toBeDefined();
+    expect(getCanonicalInsightsJsonByteLength(boundary)).toBe(
+      INSIGHTS_EVENT_MAX_BYTES,
+    );
+    await plugin.models.insights.append(boundary!);
+
+    const stored = await getDb()
+      .prepare(`SELECT insights_event_json FROM bundle_events WHERE id = ?`)
+      .bind(boundary!.id)
+      .first<string>("insights_event_json");
+    expect(stored).toBe(canonicalInsightsJson(boundary));
+    const source = createD1InsightsSourceTools(insightsExecutor);
+    const generation = await source.capture();
+    await expect(
+      source.readPage({ sourceGeneration: generation, limit: 100 }),
+    ).resolves.toEqual([{ generation: 1, event: boundary }]);
+    await expect(
+      createD1InsightsEventPages(insightsExecutor, "d1-plugin-test").pageEvents(
+        {
+          selector: { kind: "all" },
+          beforeReceivedAtMs: 200,
+          limit: 100,
+        },
+      ),
     ).resolves.toMatchObject({
-      rows: [expect.objectContaining({ id: first.id })],
-      nextCursor: null,
+      state: "ready",
+      data: { data: [boundary] },
+    });
+  });
+
+  it("advertises the same source snapshot used to select live pointers", async () => {
+    const plugin = createPlugin();
+    const first = createBundleEventRowFixture("814", 100);
+    await plugin.models.insights.append(first);
+    const appendAfterPointerRead = (late: BundleEventRow): D1Executor => {
+      let appended = false;
+      return {
+        async query(sql, params) {
+          const rows = await insightsExecutor.query(sql, params);
+          if (
+            !appended &&
+            /WITH source_state AS/i.test(sql) &&
+            /LEFT JOIN page ON TRUE/i.test(sql)
+          ) {
+            appended = true;
+            await plugin.models.insights.append(late);
+          }
+          return rows;
+        },
+        batch: insightsExecutor.batch,
+      };
+    };
+    const selectors = [
+      { kind: "all" as const },
+      { kind: "installationId" as const, installId: first.install_id },
+      { kind: "bundleId" as const, bundleId: first.to_bundle_id },
+    ];
+    for (const [index, selector] of selectors.entries()) {
+      const late = {
+        ...createBundleEventRowFixture(String(815 + index), 200 + index),
+        install_id: first.install_id,
+        to_bundle_id: first.to_bundle_id,
+      };
+      const before = JSON.parse(
+        await createD1InsightsSourceTools(insightsExecutor).capture(),
+      ) as [number, string, number];
+      const page = await createD1InsightsEventPages(
+        appendAfterPointerRead(late),
+        "d1-plugin-test",
+      ).pageEvents({ selector, beforeReceivedAtMs: 1_000, limit: 100 });
+      if (page.state !== "ready") throw new Error("not ready");
+      expect(page.versions.sourceGeneration).toBe(JSON.stringify(before));
+      expect(page.data.data.map(({ id }) => id)).not.toContain(late.id);
+    }
+
+    const late = {
+      ...createBundleEventRowFixture("818", 300),
+      install_id: first.install_id,
+      to_bundle_id: first.to_bundle_id,
+    };
+    const before = JSON.parse(
+      await createD1InsightsSourceTools(insightsExecutor).capture(),
+    ) as [number, string, number];
+    const page = await createD1InsightsInstallationPages(
+      appendAfterPointerRead(late),
+      () => 500,
+      "d1-plugin-test",
+    ).pageInstallations({
+      kind: "installationId",
+      installId: first.install_id,
+      limit: 1,
+    });
+    if (page.state !== "ready") throw new Error("not ready");
+    expect(page.versions.sourceGeneration).toBe(JSON.stringify(before));
+    expect(page.data.data.map(({ id }) => id)).not.toContain(late.id);
+    expect(page.data.consistency.cutoff).toMatchObject({
+      kind: "projection",
+      observedAtMs: 500,
+      projectionGeneration: JSON.stringify(before),
     });
   });
 
   it("returns a short event page at the byte budget and resumes", async () => {
     const plugin = createPlugin();
-    const first = {
-      ...createBundleEventRowFixture("821", 100),
-      username: "a".repeat(1_100_000),
-    };
-    const second = {
-      ...createBundleEventRowFixture("822", 200),
-      username: "b".repeat(1_100_000),
-    };
-    await plugin.commit({
-      changes: [first, second].map((row) => ({
-        model: "insights" as const,
-        operation: "insert" as const,
-        row,
-      })),
-    });
+    const largeValue = "€".repeat(900);
+    const source = Array.from({ length: 60 }, (_, index) => ({
+      ...createBundleEventRowFixture(String(821 + index), 100 + index),
+      type: "UPDATE_APPLIED" as const,
+      update_strategy: "appVersion" as const,
+      install_id: largeValue,
+      user_id: largeValue,
+      username: largeValue,
+      from_bundle_id: largeValue,
+      from_release_id: largeValue,
+      to_bundle_id: largeValue,
+      to_release_id: largeValue,
+    }));
+    for (const event of source) await plugin.models.insights.append(event);
 
-    const pages = createD1InsightsEventPages(insightsExecutor);
+    const pages = createD1InsightsEventPages(
+      insightsExecutor,
+      "d1-plugin-test",
+    );
     const input = {
-      scope: { kind: "all" as const },
+      selector: { kind: "all" as const },
       beforeReceivedAtMs: 300,
       limit: 100,
     };
     const page = await pages.pageEvents(input);
-    expect(page.rows.map(({ id }) => id)).toEqual([second.id]);
-    expect(page.nextCursor).toEqual(expect.any(String));
+    if (page.state !== "ready") throw new Error("not ready");
+    expect(page.data.data.length).toBeGreaterThan(0);
+    expect(page.data.data.length).toBeLessThan(source.length);
+    expect(
+      new TextEncoder().encode(JSON.stringify(page.data)).byteLength,
+    ).toBeLessThanOrEqual(1_048_576);
+    expect(page.data.nextCursor).toEqual(expect.any(String));
     const next = await pages.pageEvents({
       ...input,
-      cursor: page.nextCursor!,
+      cursor: page.data.nextCursor!,
     });
-    expect(next.rows.map(({ id }) => id)).toEqual([first.id]);
-    expect(next.nextCursor).toBeNull();
+    if (next.state !== "ready") throw new Error("not ready");
+    expect([...page.data.data, ...next.data.data].map(({ id }) => id)).toEqual(
+      source.toReversed().map(({ id }) => id),
+    );
+    expect(
+      new TextEncoder().encode(JSON.stringify(next.data)).byteLength,
+    ).toBeLessThanOrEqual(1_048_576);
+    expect(next.data.nextCursor).toBeNull();
   });
 
   it("fences the safe generation maximum and rejects full-identity digest collisions", async () => {
     const plugin = createPlugin();
+    for (const vector of INSIGHTS_INSTALLATION_ORDER_TEST_VECTORS) {
+      await expect(d1InsightsInstallKey(vector.installId)).resolves.toBe(
+        vector.sha256Hex,
+      );
+    }
     const first = {
       ...createBundleEventRowFixture("831", 100),
       install_id: "사용자/👩‍💻/e\u0301",
@@ -646,9 +780,9 @@ it("rejects tampered D1 layout before reading a raw event", async () => {
     },
     batch: insightsExecutor.batch,
   };
-  const pages = createD1InsightsEventPages(guardedExecutor);
+  const pages = createD1InsightsEventPages(guardedExecutor, "d1-plugin-test");
   const input = {
-    scope: { kind: "all" as const },
+    selector: { kind: "all" as const },
     beforeReceivedAtMs: 200,
     limit: 100,
   };
@@ -672,6 +806,18 @@ it("rejects tampered D1 layout before reading a raw event", async () => {
       .run();
 
     await getDb()
+      .prepare("DROP INDEX bundle_events_insights_backfill_idx")
+      .run();
+    await expect(pages.pageEvents(input)).rejects.toThrow();
+    expect(rawReads).toBe(0);
+    await getDb()
+      .prepare(
+        `CREATE INDEX bundle_events_insights_backfill_idx
+        ON bundle_events(insights_write_version, received_at_ms, id)`,
+      )
+      .run();
+
+    await getDb()
       .prepare("DROP TRIGGER bundle_events_insights_writer_fence")
       .run();
     await getDb()
@@ -689,6 +835,11 @@ it("rejects tampered D1 layout before reading a raw event", async () => {
       )
       .run();
     await getDb()
+      .prepare(
+        "CREATE INDEX IF NOT EXISTS bundle_events_insights_backfill_idx ON bundle_events(insights_write_version, received_at_ms, id)",
+      )
+      .run();
+    await getDb()
       .prepare("DROP TRIGGER IF EXISTS bundle_events_insights_writer_fence")
       .run();
     if (triggerSql !== null) await getDb().prepare(triggerSql).run();
@@ -696,27 +847,21 @@ it("rejects tampered D1 layout before reading a raw event", async () => {
   }
 });
 
-it("keeps live-installation lookahead pointers small for long identities", async () => {
+it("keeps live-installation lookahead pointers small within the event budget", async () => {
   state.db = env.DB;
   await reset();
   const plugin = d1RuntimeDatabase(env.DB);
   const events = [
     {
       ...createBundleEventRowFixture("851", 100),
-      install_id: `${"a".repeat(1_100_000)}-first`,
+      install_id: `${"a".repeat(1_000)}-first`,
     },
     {
       ...createBundleEventRowFixture("852", 200),
-      install_id: `${"b".repeat(1_100_000)}-second`,
+      install_id: `${"b".repeat(1_000)}-second`,
     },
   ];
-  await plugin.commit({
-    changes: events.map((row) => ({
-      model: "insights" as const,
-      operation: "insert" as const,
-      row,
-    })),
-  });
+  for (const event of events) await plugin.models.insights.append(event);
   let candidateBytes = 0;
   const measured: D1Executor = {
     async query(sql, params) {
@@ -733,11 +878,12 @@ it("keeps live-installation lookahead pointers small for long identities", async
     const page = await createD1InsightsInstallationPages(
       measured,
       () => 300,
-    ).pageAll({ kind: "all", limit: 1 });
+      "d1-plugin-test",
+    ).pageInstallations({ kind: "all", limit: 1 });
     if (page.state !== "ready") throw new Error("not ready");
-    expect(page.rows).toHaveLength(1);
-    expect(page.rows[0]!.install_id.length).toBeGreaterThan(1_000_000);
-    expect(page.nextCursor).toEqual(expect.any(String));
+    expect(page.data.data).toHaveLength(1);
+    expect(page.data.data[0]!.install_id.length).toBeGreaterThan(900);
+    expect(page.data.nextCursor).toEqual(expect.any(String));
     expect(candidateBytes).toBeLessThan(1_024);
   } finally {
     state.db = undefined;
@@ -759,5 +905,98 @@ it("rejects an old D1 event writer after the Insights v2 cutover", async () => {
       .bind(...Object.values(event))
       .run(),
   ).rejects.toThrow();
+  state.db = undefined;
+});
+
+it("surfaces durable source poison through reads and maintenance", async () => {
+  state.db = env.DB;
+  await reset();
+  const sourceId = await getDb()
+    .prepare(
+      `UPDATE private_hot_updater_insights_source_state SET status = 'failed'
+      WHERE id = 1 RETURNING source_id`,
+    )
+    .first<string>("source_id");
+  const model = createD1RequiredInsightsModel(
+    insightsExecutor,
+    "d1-plugin-test",
+  );
+  await expect(
+    model.pageEvents({
+      selector: { kind: "all" },
+      beforeReceivedAtMs: 100,
+      limit: 100,
+    }),
+  ).resolves.toMatchObject({
+    state: "failed",
+    error: { code: "migration-poison", jobId: sourceId },
+  });
+  const maintenance = await createD1InsightsMaintenance(
+    insightsExecutor,
+  ).runStep({ maxItems: 256, maxRequests: 50 });
+  expect(maintenance).toMatchObject({
+    state: "failed",
+    processed: 0,
+    jobId: sourceId,
+    error: { code: "migration-poison", jobId: sourceId },
+  });
+  expect(maintenance.requests).toBeLessThanOrEqual(3);
+  state.db = undefined;
+});
+
+it("rejects hostile source schemas while preserving quoted literals", async () => {
+  state.db = env.DB;
+  await reset();
+  const tableName = "private_hot_updater_insights_source_events";
+  const indexName = "private_hot_updater_insights_source_event_order_idx";
+  const tableSql = await getDb()
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .bind(tableName)
+    .first<string>("sql");
+  const indexSql = await getDb()
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?")
+    .bind(indexName)
+    .first<string>("sql");
+  if (tableSql === null || indexSql === null) {
+    throw new Error("source schema fixture missing");
+  }
+  await getDb().prepare(`DROP TABLE ${tableName}`).run();
+  await getDb()
+    .prepare(
+      tableSql.replace(
+        "  CONSTRAINT insights_source_generation_check",
+        "  hostile_extension TEXT,\n  CONSTRAINT insights_source_generation_check",
+      ),
+    )
+    .run();
+  await getDb().prepare(indexSql).run();
+  await expect(assertD1InsightsLayout(insightsExecutor)).rejects.toThrow();
+  await getDb().prepare(`DROP TABLE ${tableName}`).run();
+  await getDb().prepare(tableSql).run();
+  await getDb().prepare(indexSql).run();
+  await expect(
+    assertD1InsightsLayout(insightsExecutor),
+  ).resolves.toBeUndefined();
+
+  const stateTable = "private_hot_updater_insights_source_state";
+  const stateSql = await getDb()
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .bind(stateTable)
+    .first<string>("sql");
+  if (stateSql === null) throw new Error("source state schema fixture missing");
+  await getDb().prepare(`DROP TABLE ${stateTable}`).run();
+  await getDb().prepare(stateSql.replace("'ready'", "'READY'")).run();
+  await expect(assertD1InsightsLayout(insightsExecutor)).rejects.toThrow();
+  await getDb().prepare(`DROP TABLE ${stateTable}`).run();
+  await getDb().prepare(stateSql).run();
+  await getDb()
+    .prepare(
+      `INSERT INTO ${stateTable} (id, version, source_id, status, generation)
+      VALUES (1, 2, '00000000000000000000000000000000', 'ready', 0)`,
+    )
+    .run();
+  await expect(
+    assertD1InsightsLayout(insightsExecutor),
+  ).resolves.toBeUndefined();
   state.db = undefined;
 });

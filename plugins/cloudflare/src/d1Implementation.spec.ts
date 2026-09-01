@@ -1,7 +1,61 @@
+import {
+  INSIGHTS_EVENT_MAX_BYTES,
+  getCanonicalInsightsJsonByteLength,
+} from "@hot-updater/plugin-core/internal";
 import { expect, it } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { createD1Implementation, type D1Statement } from "./d1Implementation";
+
+it("validates the canonical event ID and 20 KiB event before D1 I/O", async () => {
+  const largeValue = "€".repeat(900);
+  const accepted = {
+    ...createBundleEventRowFixture("950", 100),
+    type: "UPDATE_APPLIED" as const,
+    update_strategy: "appVersion" as const,
+    id: "00000000-0000-7000-8000-00000000095a",
+    install_id: largeValue,
+    user_id: largeValue,
+    username: largeValue,
+    from_bundle_id: largeValue,
+    from_release_id: largeValue,
+    to_bundle_id: largeValue,
+    to_release_id: largeValue,
+  };
+  const oversized = { ...accepted, app_version: largeValue };
+  expect(getCanonicalInsightsJsonByteLength(accepted)).toBeLessThanOrEqual(
+    INSIGHTS_EVENT_MAX_BYTES,
+  );
+  expect(getCanonicalInsightsJsonByteLength(oversized)).toBeGreaterThan(
+    INSIGHTS_EVENT_MAX_BYTES,
+  );
+  let queryCount = 0;
+  let statement: D1Statement | undefined;
+  const implementation = createD1Implementation({
+    async query(sql, params) {
+      queryCount += 1;
+      statement = { sql, params };
+      return [];
+    },
+    batch: () => Promise.reject(new Error("unexpected D1 batch")),
+  });
+
+  await expect(
+    implementation.appendBundleEvent(accepted),
+  ).resolves.toBeUndefined();
+  expect(statement?.params).toContain(
+    String(getCanonicalInsightsJsonByteLength(accepted)),
+  );
+
+  await expect(implementation.appendBundleEvent(oversized)).rejects.toThrow();
+  await expect(
+    implementation.appendBundleEvent({
+      ...accepted,
+      id: accepted.id.toUpperCase(),
+    }),
+  ).rejects.toThrow();
+  expect(queryCount).toBe(1);
+});
 
 it("guards every write and reports the missing change index", async () => {
   let recorded: readonly D1Statement[] = [];
@@ -211,43 +265,6 @@ it("packs many commit expectations into one bound JSON parameter", async () => {
   expect(statements).toHaveLength(2);
   expect(statements.every(({ params }) => params.length <= 5)).toBe(true);
   expect(statements[0]?.params).toHaveLength(1);
-});
-
-it("returns no raw rows from a mixed batch containing large Insights events", async () => {
-  let statements: readonly D1Statement[] = [];
-  let returnedRows = 0;
-  const implementation = createD1Implementation({
-    query: () => Promise.reject(new Error("unexpected standalone query")),
-    async batch(input) {
-      statements = input;
-      const results = input.map(() => [] as readonly unknown[]);
-      returnedRows = results.flat().length;
-      return results;
-    },
-  });
-  const events = [
-    {
-      ...createBundleEventRowFixture("951", 100),
-      username: "a".repeat(1_100_000),
-    },
-    {
-      ...createBundleEventRowFixture("952", 200),
-      username: "b".repeat(1_100_000),
-    },
-  ];
-
-  await expect(
-    implementation.commit?.({
-      changes: events.map((row) => ({
-        model: "insights" as const,
-        operation: "insert" as const,
-        row,
-      })),
-    }),
-  ).resolves.toEqual({ committed: true });
-  expect(statements).toHaveLength(2);
-  expect(statements.every(({ sql }) => !/\bRETURNING\b/i.test(sql))).toBe(true);
-  expect(returnedRows).toBe(0);
 });
 
 it("persists required archive and patch byte sizes", async () => {

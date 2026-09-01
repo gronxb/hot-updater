@@ -1,21 +1,35 @@
 import {
   DatabasePluginInputError,
+  InsightsQueryNotReadyError,
   type BundleEventRow,
-  type InsightsEventPage,
+  type InsightsEventPageData,
   type InsightsEventPageInput,
-  type InsightsInstallationPage,
-  type InsightsInstallationPageInput,
   type InsightsInstallationRow,
+  type InsightsProjectedReadVersions,
+  type InsightsSourceReadVersions,
+  type InsightsLiveInstallationPage,
+  type InsightsLiveInstallationPageInput,
+  type InsightsLiveInstallationPageData,
+  type InsightsPageEventsInput,
+  type InsightsPageEventsResult,
 } from "@hot-updater/plugin-core";
 import {
+  INSIGHTS_PAGE_MAX_BYTES,
+  INSIGHTS_PAGE_MAX_ROWS,
+  assertInsightsCursorContract,
+  assertInsightsPageContract,
+  assertInsightsQueryContract,
   compareInsightsEventRows,
   createInsightsEventPageCursor,
+  getCanonicalInsightsJsonByteLength,
+  isCanonicalInsightsEventId,
   readInsightsEventPageCursor,
 } from "@hot-updater/plugin-core/internal";
 
 import type { D1Executor } from "./d1Implementation";
 import {
-  assertD1InsightsReady,
+  D1InsightsMigrationPoisonError,
+  assertD1InsightsLayout,
   type D1InsightsEventPointer,
   d1InsightsInstallKey,
   readD1InsightsPointerEvents,
@@ -47,13 +61,118 @@ const record = (value: unknown): value is Readonly<Record<string, unknown>> =>
 const safeInteger = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
+const validateEventInput = (input: InsightsPageEventsInput): void => {
+  try {
+    assertInsightsQueryContract(input);
+  } catch {
+    invalidQuery();
+  }
+  if (
+    !record(input) ||
+    !record(input.selector) ||
+    Object.keys(input).some(
+      (key) =>
+        ![
+          "selector",
+          "sinceReceivedAtMs",
+          "beforeReceivedAtMs",
+          "limit",
+          "cursor",
+        ].includes(key),
+    )
+  ) {
+    invalidQuery();
+  }
+  const selector = input.selector;
+  if (
+    (selector.kind === "all" && Object.keys(selector).length === 1) ||
+    (selector.kind === "installationId" &&
+      typeof selector.installId === "string" &&
+      Object.keys(selector).every((key) =>
+        ["kind", "installId"].includes(key),
+      )) ||
+    (selector.kind === "bundleId" &&
+      typeof selector.bundleId === "string" &&
+      Object.keys(selector).every((key) => ["kind", "bundleId"].includes(key)))
+  ) {
+    return;
+  }
+  invalidQuery();
+};
+
+type ReadyState = {
+  readonly sourceId: string;
+  readonly generation: number;
+};
+
+const readySnapshot = (rows: readonly unknown[]): ReadyState => {
+  if (rows.length === 0) throw new InsightsQueryNotReadyError();
+  const first = rows[0];
+  if (!record(first)) return invalidResult();
+  if (first.source_status === "failed") {
+    if (typeof first.source_id !== "string") return invalidResult();
+    throw new D1InsightsMigrationPoisonError(first.source_id);
+  }
+  if (
+    first.source_status !== "ready" ||
+    typeof first.source_id !== "string" ||
+    !/^[0-9a-f]{32}$/.test(first.source_id) ||
+    !safeInteger(first.source_generation)
+  ) {
+    throw new InsightsQueryNotReadyError();
+  }
+  for (const row of rows) {
+    if (
+      !record(row) ||
+      row.source_status !== "ready" ||
+      row.source_id !== first.source_id ||
+      row.source_generation !== first.source_generation
+    ) {
+      return invalidResult();
+    }
+  }
+  return { sourceId: first.source_id, generation: first.source_generation };
+};
+
+const pointerRows = (rows: readonly unknown[]): readonly unknown[] => {
+  if (rows.length === 1 && record(rows[0]) && rows[0].event_id === null) {
+    return [];
+  }
+  if (rows.some((row) => !record(row) || row.event_id === null)) {
+    return invalidResult();
+  }
+  return rows;
+};
+
+const sourceVersions = (state: ReadyState): InsightsSourceReadVersions => {
+  const generation = JSON.stringify([2, state.sourceId, state.generation]);
+  return {
+    schemaVersion: "2",
+    storageVersion: "d1-insights-v2",
+    projectionGeneration: null,
+    sourceGeneration: generation,
+  };
+};
+
+const projectedVersions = (
+  state: ReadyState,
+): InsightsProjectedReadVersions => {
+  const generation = JSON.stringify([2, state.sourceId, state.generation]);
+  return {
+    schemaVersion: "2",
+    storageVersion: "d1-insights-v2",
+    projectionGeneration: generation,
+    sourceGeneration: generation,
+  };
+};
+
 const pointer = (value: unknown): D1InsightsEventPointer => {
   if (!record(value)) return invalidResult();
   const eventId = value.event_id;
   const receivedAtMs = value.received_at_ms;
   const rowBytes = value.row_bytes;
   if (
-    typeof eventId !== "string" ||
+    !isCanonicalInsightsEventId(eventId) ||
     !safeInteger(receivedAtMs) ||
     !safeInteger(rowBytes) ||
     rowBytes < 1
@@ -80,8 +199,61 @@ const assertPointerOrder = (
   }
 };
 
-const scopeStorage = (input: InsightsEventPageInput) => {
-  switch (input.scope.kind) {
+const legacyEventInput = (
+  input: InsightsPageEventsInput,
+): InsightsEventPageInput => ({
+  scope:
+    input.selector.kind === "all"
+      ? { kind: "all" }
+      : input.selector.kind === "installationId"
+        ? { kind: "installation", installId: input.selector.installId }
+        : { kind: "bundle", bundleId: input.selector.bundleId },
+  beforeReceivedAtMs: input.beforeReceivedAtMs,
+  ...(input.sinceReceivedAtMs === undefined
+    ? {}
+    : { sinceReceivedAtMs: input.sinceReceivedAtMs }),
+  limit: input.limit,
+  ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
+});
+
+const scopedEventCursorInput = (
+  input: InsightsPageEventsInput,
+  databaseNamespace: string,
+): InsightsPageEventsInput => {
+  if (input.cursor === undefined) return input;
+  let value: unknown;
+  try {
+    value = JSON.parse(input.cursor);
+  } catch {
+    return invalidQuery();
+  }
+  if (
+    !Array.isArray(value) ||
+    value.length !== 3 ||
+    value[0] !== 1 ||
+    value[1] !== databaseNamespace ||
+    typeof value[2] !== "string"
+  ) {
+    return invalidQuery();
+  }
+  return { ...input, cursor: value[2] };
+};
+
+const scopedEventCursor = (
+  databaseNamespace: string,
+  cursor: string,
+): string => {
+  const saved = JSON.stringify([1, databaseNamespace, cursor]);
+  try {
+    assertInsightsCursorContract(saved);
+  } catch {
+    return invalidResult();
+  }
+  return saved;
+};
+
+const scopeStorage = (input: InsightsPageEventsInput) => {
+  switch (input.selector.kind) {
     case "all":
       return {
         table: SOURCE_EVENTS,
@@ -89,63 +261,133 @@ const scopeStorage = (input: InsightsEventPageInput) => {
         filter: "",
         params: [] as readonly string[],
       };
-    case "installation":
+    case "installationId":
       return {
         table: INSTALLATION_EVENTS,
         index: INSTALLATION_INDEX,
         filter: "install_id = json_extract(?, '$') AND ",
-        params: encodeD1Values([input.scope.installId]),
+        params: encodeD1Values([input.selector.installId]),
       };
-    case "bundle":
+    case "bundleId":
       return {
         table: BUNDLE_EVENTS,
         index: BUNDLE_INDEX,
         filter: "bundle_id = json_extract(?, '$') AND ",
-        params: encodeD1Values([input.scope.bundleId]),
+        params: encodeD1Values([input.selector.bundleId]),
       };
   }
 };
 
 const matchesScope = (
-  input: InsightsEventPageInput,
+  input: InsightsPageEventsInput,
   event: BundleEventRow,
 ): boolean => {
-  switch (input.scope.kind) {
+  switch (input.selector.kind) {
     case "all":
       return true;
-    case "installation":
+    case "installationId":
       return (
-        event.install_id === input.scope.installId &&
+        event.install_id === input.selector.installId &&
         (event.type === "UPDATE_APPLIED" || event.type === "RECOVERED")
       );
-    case "bundle":
+    case "bundleId":
       return (
         (event.type === "UPDATE_APPLIED" &&
-          event.to_bundle_id === input.scope.bundleId) ||
+          event.to_bundle_id === input.selector.bundleId) ||
         (event.type === "RECOVERED" &&
-          event.from_bundle_id === input.scope.bundleId)
+          event.from_bundle_id === input.selector.bundleId)
       );
   }
 };
 
-export const createD1InsightsEventPages = (executor: D1Executor) => ({
-  async pageEvents(input: InsightsEventPageInput): Promise<InsightsEventPage> {
-    const cursor = readInsightsEventPageCursor(input);
-    await assertD1InsightsReady(executor);
+const eventPageData = (
+  input: InsightsPageEventsInput,
+  pointers: readonly D1InsightsEventPointer[],
+  rows: readonly BundleEventRow[],
+  readVersions: InsightsSourceReadVersions,
+  databaseNamespace: string,
+): InsightsEventPageData => {
+  const data = [...rows];
+  for (;;) {
+    const last = data.at(-1);
+    const hasNext = pointers.length > data.length;
+    const nextCursor =
+      hasNext && last !== undefined
+        ? scopedEventCursor(
+            databaseNamespace,
+            createInsightsEventPageCursor(legacyEventInput(input), {
+              id: last.id,
+              receivedAtMs: last.received_at_ms,
+            }),
+          )
+        : null;
+    const page: InsightsEventPageData = {
+      data,
+      nextCursor,
+      hasNext,
+      consistency: {
+        kind: "live",
+        cutoff: {
+          kind: "event-time",
+          beforeReceivedAtMs: input.beforeReceivedAtMs,
+        },
+      },
+      total: { state: "unavailable" },
+    };
+    const result = {
+      state: "ready",
+      versions: readVersions,
+      data: page,
+    } as const;
+    if (getCanonicalInsightsJsonByteLength(result) <= INSIGHTS_PAGE_MAX_BYTES) {
+      assertInsightsPageContract(result, input.limit);
+      return page;
+    }
+    if (data.length <= 1) invalidResult();
+    data.pop();
+  }
+};
+
+export const createD1InsightsEventPages = (
+  executor: D1Executor,
+  databaseNamespace: string,
+) => ({
+  async pageEvents(
+    input: InsightsPageEventsInput,
+  ): Promise<InsightsPageEventsResult> {
+    validateEventInput(input);
+    const scopedInput = scopedEventCursorInput(input, databaseNamespace);
+    const legacyInput = legacyEventInput(scopedInput);
+    const cursor = readInsightsEventPageCursor(legacyInput);
+    if (cursor !== undefined && !isCanonicalInsightsEventId(cursor.id)) {
+      invalidQuery();
+    }
+    await assertD1InsightsLayout(executor);
     const storage = scopeStorage(input);
     const rows = await executor.query(
-      `SELECT event_id, received_at_ms, row_bytes
-      FROM ${storage.table} INDEXED BY ${storage.index}
-      WHERE ${storage.filter}received_at_ms >= json_extract(?, '$')
-        AND received_at_ms < json_extract(?, '$')
-        ${
-          cursor === undefined
-            ? ""
-            : `AND (received_at_ms, event_id COLLATE BINARY) <
-              (json_extract(?, '$'), json_extract(?, '$') COLLATE BINARY)`
-        }
-      ORDER BY received_at_ms DESC, event_id COLLATE BINARY DESC
-      LIMIT json_extract(?, '$')`,
+      `WITH source_state AS (
+        SELECT source_id, status, generation
+        FROM private_hot_updater_insights_source_state
+        WHERE id = 1 AND version = 2
+      ), page AS (
+        SELECT event_id, received_at_ms, row_bytes
+        FROM ${storage.table} INDEXED BY ${storage.index}
+        WHERE ${storage.filter}received_at_ms >= json_extract(?, '$')
+          AND received_at_ms < json_extract(?, '$')
+          ${
+            cursor === undefined
+              ? ""
+              : `AND (received_at_ms, event_id COLLATE BINARY) <
+                (json_extract(?, '$'), json_extract(?, '$') COLLATE BINARY)`
+          }
+        ORDER BY received_at_ms DESC, event_id COLLATE BINARY DESC
+        LIMIT json_extract(?, '$')
+      )
+      SELECT source.source_id, source.status AS source_status,
+        source.generation AS source_generation, page.event_id,
+        page.received_at_ms, page.row_bytes
+      FROM source_state AS source LEFT JOIN page ON TRUE
+      ORDER BY page.received_at_ms DESC, page.event_id COLLATE BINARY DESC`,
       [
         ...storage.params,
         ...encodeD1Values([
@@ -157,7 +399,8 @@ export const createD1InsightsEventPages = (executor: D1Executor) => ({
       ],
     );
     if (rows.length > input.limit + 1) invalidResult();
-    const pointers = rows.map(pointer);
+    const state = readySnapshot(rows);
+    const pointers = pointerRows(rows).map(pointer);
     assertPointerOrder(pointers);
     const selected = await readD1InsightsPointerEvents(
       executor,
@@ -175,16 +418,17 @@ export const createD1InsightsEventPages = (executor: D1Executor) => ({
       }
       return event;
     });
-    const last = events.at(-1);
+    const readVersions = sourceVersions(state);
     return {
-      rows: events,
-      nextCursor:
-        pointers.length > events.length && last !== undefined
-          ? createInsightsEventPageCursor(input, {
-              id: last.id,
-              receivedAtMs: last.received_at_ms,
-            })
-          : null,
+      state: "ready",
+      versions: readVersions,
+      data: eventPageData(
+        scopedInput,
+        pointers,
+        events,
+        readVersions,
+        databaseNamespace,
+      ),
     };
   },
 });
@@ -218,9 +462,9 @@ const installationRow = (event: BundleEventRow): InsightsInstallationRow => ({
 });
 
 const readAllCursor = (
-  input: InsightsInstallationPageInput & { readonly kind: "all" },
-  sourceId: string,
-): string | undefined => {
+  input: InsightsLiveInstallationPageInput & { readonly kind: "all" },
+  databaseNamespace: string,
+): { readonly sourceId: string; readonly installKey: string } | undefined => {
   if (input.cursor === undefined) return undefined;
   if (
     typeof input.cursor !== "string" ||
@@ -236,40 +480,46 @@ const readAllCursor = (
   }
   if (
     !Array.isArray(value) ||
-    value.length !== 4 ||
-    value[0] !== 2 ||
-    value[1] !== sourceId ||
-    value[2] !== "all" ||
-    typeof value[3] !== "string" ||
-    !INSTALL_KEY.test(value[3])
+    value.length !== 5 ||
+    value[0] !== 3 ||
+    value[1] !== databaseNamespace ||
+    typeof value[2] !== "string" ||
+    !/^[0-9a-f]{32}$/.test(value[2]) ||
+    value[3] !== "all" ||
+    typeof value[4] !== "string" ||
+    !INSTALL_KEY.test(value[4])
   ) {
     return invalidQuery();
   }
-  return value[3];
+  return { sourceId: value[2], installKey: value[4] };
 };
 
 const validateInstallationInput = (
-  input: InsightsInstallationPageInput,
-  kind: "all" | "installation",
+  input: InsightsLiveInstallationPageInput,
 ) => {
+  try {
+    assertInsightsQueryContract(input);
+  } catch {
+    invalidQuery();
+  }
   if (
     typeof input !== "object" ||
     input === null ||
     Array.isArray(input) ||
-    input.kind !== kind ||
+    (input.kind !== "all" && input.kind !== "installationId") ||
     Object.keys(input).some(
       (key) =>
         !(
-          kind === "all"
+          input.kind === "all"
             ? ["kind", "limit", "cursor"]
             : ["kind", "installId", "limit", "cursor"]
         ).includes(key),
     ) ||
-    (kind === "installation" &&
+    (input.kind === "installationId" &&
       (!("installId" in input) || typeof input.installId !== "string")) ||
     !Number.isSafeInteger(input.limit) ||
     input.limit < 1 ||
-    input.limit > 100
+    input.limit > INSIGHTS_PAGE_MAX_ROWS
   ) {
     invalidQuery();
   }
@@ -294,86 +544,160 @@ const readLiveRows = async (
   );
 };
 
+const installationPageData = (
+  input: InsightsLiveInstallationPageInput,
+  state: ReadyState,
+  pointers: readonly LivePointer[],
+  rows: readonly InsightsInstallationRow[],
+  observedAtMs: number,
+  readVersions: InsightsProjectedReadVersions,
+  databaseNamespace: string,
+): InsightsLiveInstallationPageData => {
+  const data = [...rows];
+  for (;;) {
+    const last = pointers[data.length - 1];
+    const hasNext = input.kind === "all" && pointers.length > data.length;
+    const nextCursor =
+      hasNext && last !== undefined
+        ? JSON.stringify([
+            3,
+            databaseNamespace,
+            state.sourceId,
+            "all",
+            last.installKey,
+          ])
+        : null;
+    const page: InsightsLiveInstallationPageData = {
+      data,
+      nextCursor,
+      hasNext,
+      consistency: {
+        kind: "live",
+        cutoff: {
+          kind: "projection",
+          observedAtMs,
+          projectionGeneration: projectedVersions(state).projectionGeneration,
+        },
+      },
+      total: { state: "unavailable" },
+    };
+    const result = {
+      state: "ready",
+      versions: readVersions,
+      data: page,
+    } as const;
+    if (getCanonicalInsightsJsonByteLength(result) <= INSIGHTS_PAGE_MAX_BYTES) {
+      assertInsightsPageContract(result, input.limit);
+      return page;
+    }
+    if (data.length <= 1) invalidResult();
+    data.pop();
+  }
+};
+
 export const createD1InsightsInstallationPages = (
   executor: D1Executor,
-  now: () => number = Date.now,
+  now: () => number,
+  databaseNamespace: string,
 ) => ({
-  async pageAll(
-    input: InsightsInstallationPageInput & { readonly kind: "all" },
-  ): Promise<InsightsInstallationPage> {
-    validateInstallationInput(input, "all");
-    const state = await assertD1InsightsReady(executor);
-    const after = readAllCursor(input, state.sourceId);
-    const rows = await executor.query(
-      `SELECT install_key, event_id, received_at_ms, row_bytes
-      FROM ${LIVE_INSTALLATIONS}
-      ${
-        after === undefined
-          ? ""
-          : "WHERE install_key > json_extract(?, '$') COLLATE BINARY"
+  async pageInstallations(
+    input: InsightsLiveInstallationPageInput,
+  ): Promise<InsightsLiveInstallationPage> {
+    validateInstallationInput(input);
+    if (input.kind === "installationId" && input.cursor !== undefined) {
+      invalidQuery();
+    }
+    const after =
+      input.kind === "all"
+        ? readAllCursor(input, databaseNamespace)
+        : undefined;
+    await assertD1InsightsLayout(executor);
+    const observedAtMs = now();
+    if (!safeInteger(observedAtMs)) invalidResult();
+    let state: ReadyState;
+    let pointers: readonly LivePointer[];
+    let data: readonly InsightsInstallationRow[];
+    if (input.kind === "all") {
+      const rows = await executor.query(
+        `WITH source_state AS (
+          SELECT source_id, status, generation
+          FROM private_hot_updater_insights_source_state
+          WHERE id = 1 AND version = 2
+        ), page AS (
+          SELECT install_key, event_id, received_at_ms, row_bytes
+          FROM ${LIVE_INSTALLATIONS}
+          ${
+            after === undefined
+              ? ""
+              : "WHERE install_key > json_extract(?, '$') COLLATE BINARY"
+          }
+          ORDER BY install_key COLLATE BINARY ASC
+          LIMIT json_extract(?, '$')
+        )
+        SELECT source.source_id, source.status AS source_status,
+          source.generation AS source_generation, page.install_key,
+          page.event_id, page.received_at_ms, page.row_bytes
+        FROM source_state AS source LEFT JOIN page ON TRUE
+        ORDER BY page.install_key COLLATE BINARY ASC`,
+        encodeD1Values([
+          ...(after === undefined ? [] : [after.installKey]),
+          input.limit + 1,
+        ]),
+      );
+      if (rows.length > input.limit + 1) invalidResult();
+      state = readySnapshot(rows);
+      if (after !== undefined && after.sourceId !== state.sourceId) {
+        invalidQuery();
       }
-      ORDER BY install_key COLLATE BINARY ASC
-      LIMIT json_extract(?, '$')`,
-      encodeD1Values([
-        ...(after === undefined ? [] : [after]),
-        input.limit + 1,
-      ]),
-    );
-    if (rows.length > input.limit + 1) invalidResult();
-    const pointers = rows.map(livePointer);
-    if (
-      pointers.some(
-        (value, index) =>
-          index > 0 && pointers[index - 1]!.installKey >= value.installKey,
-      )
-    ) {
-      invalidResult();
+      pointers = pointerRows(rows).map(livePointer);
+      if (
+        pointers.some(
+          (value, index) =>
+            index > 0 && pointers[index - 1]!.installKey >= value.installKey,
+        )
+      ) {
+        invalidResult();
+      }
+      data = await readLiveRows(executor, pointers, input.limit);
+    } else {
+      const installKey = await d1InsightsInstallKey(input.installId);
+      const rows = await executor.query(
+        `WITH source_state AS (
+          SELECT source_id, status, generation
+          FROM private_hot_updater_insights_source_state
+          WHERE id = 1 AND version = 2
+        ), page AS (
+          SELECT install_key, event_id, received_at_ms, row_bytes
+          FROM ${LIVE_INSTALLATIONS}
+          WHERE install_key = json_extract(?, '$') COLLATE BINARY LIMIT 1
+        )
+        SELECT source.source_id, source.status AS source_status,
+          source.generation AS source_generation, page.install_key,
+          page.event_id, page.received_at_ms, page.row_bytes
+        FROM source_state AS source LEFT JOIN page ON TRUE`,
+        encodeD1Values([installKey]),
+      );
+      if (rows.length > 1) invalidResult();
+      state = readySnapshot(rows);
+      pointers = pointerRows(rows).map(livePointer);
+      data = await readLiveRows(executor, pointers, 1);
+      if (data[0] !== undefined && data[0].install_id !== input.installId) {
+        invalidResult();
+      }
     }
-    const data = await readLiveRows(executor, pointers, input.limit);
-    const last = pointers[data.length - 1];
-    const observedAtMs = now();
-    if (!safeInteger(observedAtMs)) invalidResult();
+    const readVersions = projectedVersions(state);
     return {
       state: "ready",
-      consistency: "live",
-      observedAtMs,
-      rows: data,
-      nextCursor:
-        pointers.length > data.length && last !== undefined
-          ? JSON.stringify([2, state.sourceId, "all", last.installKey])
-          : null,
-    };
-  },
-
-  async pageInstallation(
-    input: InsightsInstallationPageInput & {
-      readonly kind: "installation";
-    },
-  ): Promise<InsightsInstallationPage> {
-    validateInstallationInput(input, "installation");
-    if (input.cursor !== undefined) invalidQuery();
-    await assertD1InsightsReady(executor);
-    const installKey = await d1InsightsInstallKey(input.installId);
-    const rows = await executor.query(
-      `SELECT install_key, event_id, received_at_ms, row_bytes
-      FROM ${LIVE_INSTALLATIONS}
-      WHERE install_key = json_extract(?, '$') COLLATE BINARY LIMIT 1`,
-      encodeD1Values([installKey]),
-    );
-    if (rows.length > 1) invalidResult();
-    const pointers = rows.map(livePointer);
-    const data = await readLiveRows(executor, pointers, 1);
-    if (data[0] !== undefined && data[0].install_id !== input.installId) {
-      invalidResult();
-    }
-    const observedAtMs = now();
-    if (!safeInteger(observedAtMs)) invalidResult();
-    return {
-      state: "ready",
-      consistency: "live",
-      observedAtMs,
-      rows: data,
-      nextCursor: null,
+      versions: readVersions,
+      data: installationPageData(
+        input,
+        state,
+        pointers,
+        data,
+        observedAtMs,
+        readVersions,
+        databaseNamespace,
+      ),
     };
   },
 });

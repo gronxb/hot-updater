@@ -249,7 +249,6 @@ const insertQuery = (
       columns = ["id", "name"];
       values = channelValues(input.data);
       break;
-    case "bundle_events":
     case "api_keys":
     case "release_catalogs":
     case "releases":
@@ -498,8 +497,6 @@ const changeQuery = (change: DatabaseChange, guard: D1Guard): D1Statement => {
               ...guard.params,
             ],
           };
-    case "insights":
-      throw new TypeError("Insights writes require the v2 statement builder.");
     case "apiKeys":
       return change.operation === "insert"
         ? insertQuery(
@@ -521,14 +518,6 @@ const changeQuery = (change: DatabaseChange, guard: D1Guard): D1Statement => {
           );
   }
 };
-
-const changeQueries = async (
-  change: DatabaseChange,
-  guard: D1Guard,
-): Promise<readonly D1Statement[]> =>
-  change.model === "insights"
-    ? [await createD1InsightsEventInsert(change.row, guard, false)]
-    : [changeQuery(change, guard)];
 
 const createCommitPlan = async (
   input: DatabaseCommit,
@@ -631,10 +620,7 @@ const createCommitPlan = async (
     ]),
   };
 
-  const changes = await Promise.all(
-    input.changes.map((change) => changeQueries(change, guard)),
-  );
-  statements.push(...changes.flat());
+  statements.push(...input.changes.map((change) => changeQuery(change, guard)));
   const reservedReconciliation = expectations.length > 0 ? 1 : 0;
   if (
     statements.length + reservedReconciliation > MAX_D1_BATCH_STATEMENTS ||
@@ -717,11 +703,12 @@ const deleteChannel = async (
 export const createD1Implementation = (
   executor: D1Executor,
 ): DatabasePluginImplementation => ({
+  async appendBundleEvent(row) {
+    const query = await createD1InsightsEventInsert(row);
+    await executor.query(query.sql, query.params);
+  },
   async create(input) {
-    const query =
-      input.model === "bundle_events"
-        ? await createD1InsightsEventInsert(input.data)
-        : insertQuery(input);
+    const query = insertQuery(input);
     const rows = await executor.query(query.sql, query.params);
     switch (input.model) {
       case "bundles":
@@ -730,8 +717,6 @@ export const createD1Implementation = (
         return parseD1Row("bundle_patches", rows[0]);
       case "channels":
         return parseD1Row("channels", rows[0]);
-      case "bundle_events":
-        return parseD1Row("bundle_events", rows[0]);
       case "api_keys":
         return parseD1Row("api_keys", rows[0]);
       case "releases":
