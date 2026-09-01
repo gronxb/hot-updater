@@ -2,7 +2,11 @@ import {
   DatabasePluginInputError,
   InsightsQueryNotReadyError,
 } from "@hot-updater/plugin-core";
-import { databaseFields } from "@hot-updater/plugin-core/internal";
+import {
+  databaseFields,
+  INSIGHTS_EVENT_ID_PATTERN,
+  INSIGHTS_MAINTENANCE_INPUT_MAX_BYTES,
+} from "@hot-updater/plugin-core/internal";
 import type { Document, MongoClient, ReadConcern } from "mongodb";
 
 import {
@@ -13,12 +17,6 @@ import {
 const STATE_ID = "event-pages";
 const STATE_COLLECTION = "private_hot_updater_insights_preparation";
 const EVENT_COLLECTION = "bundle_events";
-const AUDIT_PROJECTION = {
-  ...Object.fromEntries(
-    databaseFields.bundle_events.map((field) => [field, 1]),
-  ),
-  _id: 1,
-};
 const nullableString = { bsonType: ["string", "null"] };
 export const mongoInsightsEventValidator = {
   $and: [
@@ -30,8 +28,7 @@ export const mongoInsightsEventValidator = {
           _id: { bsonType: "objectId" },
           id: {
             bsonType: "string",
-            pattern:
-              "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            pattern: INSIGHTS_EVENT_ID_PATTERN.source,
             minLength: 36,
             maxLength: 36,
           },
@@ -323,13 +320,11 @@ export const createMongoInsightsPreparation = (client: MongoClient) => {
         }
         collection = await metadata();
         const upper = await events
-          .find({}, { projection: { _id: 1 } })
+          .find({}, { projection: { _id: 1 }, promoteValues: false })
           .hint("_id_")
           .sort({ _id: -1 })
           .limit(1)
           .toArray();
-        if (upper[0] && !(upper[0]._id instanceof (await bson()).ObjectId))
-          throw new DatabasePluginInputError("invalid-result");
         const upperId = upper[0]
           ? EJSON.stringify(upper[0]._id, { relaxed: false })
           : null;
@@ -357,9 +352,9 @@ export const createMongoInsightsPreparation = (client: MongoClient) => {
       if (
         !Number.isSafeInteger(input.maxItems) ||
         input.maxItems < 2 ||
-        input.maxItems > 1000 ||
+        input.maxItems > 200 ||
         !Number.isSafeInteger(input.maxRequests) ||
-        input.maxRequests < 4
+        input.maxRequests < 5
       )
         throw new DatabasePluginInputError("invalid-query");
       const current = await state();
@@ -371,49 +366,100 @@ export const createMongoInsightsPreparation = (client: MongoClient) => {
         throw new InsightsQueryNotReadyError();
       if (current.phase === "ready")
         return { ...view(current), itemsRead: 0, requests: 2 };
-      const { EJSON, MinKey, ObjectId } = await bson();
+      const { deserialize, EJSON, MinKey } = await bson();
       const upper = EJSON.parse(current.upperId!, { relaxed: false });
       const after =
         current.afterId === null
           ? undefined
           : EJSON.parse(current.afterId, { relaxed: false });
-      // A single response can be short because of Mongo's byte cap. Never
-      // interpret that as exhaustion or let the driver automatically getMore.
+      // Read only the BSON size and key first. A hostile legacy document can
+      // then poison preparation durably without entering a maintenance input.
       // Native $ne preserves cross-BSON ordering and can fetch the excluded
       // checkpoint once, so reserve one physical candidate on continuation.
-      const rows =
+      const readRange = (projection: Document | undefined, limit: number) =>
         current.phase === "upper"
-          ? await events
+          ? events
               .find(
                 { _id: upper },
-                { singleBatch: true, projection: AUDIT_PROJECTION },
+                {
+                  singleBatch: true,
+                  ...(projection
+                    ? { projection, promoteValues: false }
+                    : { raw: true }),
+                },
               )
               .hint("_id_")
               .limit(1)
+              .batchSize(1)
               .toArray()
-          : await events
+          : events
               .find(after === undefined ? {} : { _id: { $ne: after } }, {
                 singleBatch: true,
-                projection: AUDIT_PROJECTION,
+                ...(projection
+                  ? { projection, promoteValues: false }
+                  : { raw: true }),
               })
               .hint("_id_")
               .sort({ _id: 1 })
               .min({ _id: after === undefined ? new MinKey() : after })
               .max({ _id: upper })
-              .limit(input.maxItems - (after === undefined ? 0 : 1))
-              .batchSize(input.maxItems)
+              .limit(limit)
+              .batchSize(limit)
               .toArray();
+      const candidateLimit =
+        current.phase === "upper"
+          ? 1
+          : input.maxItems - (after === undefined ? 0 : 1);
+      const sizeRows = await readRange(
+        { _id: 1, documentBytes: { $bsonSize: "$$ROOT" } },
+        candidateLimit,
+      );
+      let documentBytes = 0;
+      let selected = 0;
+      for (const row of sizeRows) {
+        const rowBytes = Number(row.documentBytes);
+        if (
+          !Number.isSafeInteger(rowBytes) ||
+          rowBytes < 1 ||
+          rowBytes > INSIGHTS_MAINTENANCE_INPUT_MAX_BYTES
+        ) {
+          await advance(current, { phase: "failed" });
+          throw new DatabasePluginInputError("invalid-result");
+        }
+        if (documentBytes + rowBytes > INSIGHTS_MAINTENANCE_INPUT_MAX_BYTES)
+          break;
+        documentBytes += rowBytes;
+        selected++;
+      }
+      const rawRows =
+        selected === 0 ? [] : await readRange(undefined, selected);
+      const rows = rawRows.map((raw) =>
+        deserialize(raw as unknown as Uint8Array),
+      );
+      const exactIds = rawRows.map(
+        (raw) =>
+          deserialize(raw as unknown as Uint8Array, { promoteValues: false })
+            ._id,
+      );
       if (rows.length > input.maxItems)
         throw new DatabasePluginInputError("invalid-result");
       let afterId: string | null = null;
       try {
         for (const row of rows) {
-          if (!(row._id instanceof ObjectId))
+          const index = rows.indexOf(row);
+          const metadataId = sizeRows[index]?._id;
+          if (
+            EJSON.stringify(exactIds[index], { relaxed: false }) !==
+            EJSON.stringify(metadataId, { relaxed: false })
+          )
             throw new DatabasePluginInputError("invalid-result");
-          assertMongoInsightsEventRow(row);
+          const { _id: _rawId, ...event } = row;
+          assertMongoInsightsEventRow(event);
         }
         if (rows.length > 0) {
-          afterId = EJSON.stringify(rows.at(-1)!._id, { relaxed: false });
+          afterId = EJSON.stringify(sizeRows[selected - 1]!._id, {
+            relaxed: false,
+          });
           if (typeof afterId !== "string")
             throw new DatabasePluginInputError("invalid-result");
         }
@@ -431,7 +477,11 @@ export const createMongoInsightsPreparation = (client: MongoClient) => {
         afterId,
         processed: current.processed + rows.length,
       });
-      return { ...view(next), itemsRead: rows.length, requests: 4 };
+      return {
+        ...view(next),
+        itemsRead: rows.length,
+        requests: rows.length === 0 ? 4 : 5,
+      };
     },
 
     async ensureReady(): Promise<void> {

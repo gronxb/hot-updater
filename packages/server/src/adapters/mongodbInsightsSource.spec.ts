@@ -1,12 +1,12 @@
-import { Long, ObjectId } from "mongodb";
+import {
+  getCanonicalInsightsJsonByteLength,
+  INSIGHTS_EVENT_MAX_BYTES,
+} from "@hot-updater/plugin-core/internal";
+import { BSON, Long, ObjectId } from "mongodb";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  createBundleEventRowFixture,
-  createBundlePatchRowFixture,
-  createBundleRowFixture,
-} from "../../../test-utils/src/databaseTestFixtures";
-import { mongoAdapter } from "./mongodb";
+import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTestFixtures";
+import { createMongoRequiredInsightsModel } from "./mongodbInsightsRequired";
 import { mongoInsightsSourceShard } from "./mongodbInsightsSource";
 import {
   MONGO_INSIGHTS_SOURCE_CLOCK_COLLECTION,
@@ -20,11 +20,10 @@ describe("MongoDB committed Insights source writes", () => {
   const setup = () => {
     const harness = createMongoTestHarness();
     harnesses.push(harness);
-    const database = mongoAdapter({
-      client: harness.client,
-      transactions: true,
-    });
-    return { database, harness };
+    return {
+      harness,
+      model: createMongoRequiredInsightsModel(harness.client),
+    };
   };
 
   afterEach(async () => {
@@ -32,10 +31,10 @@ describe("MongoDB committed Insights source writes", () => {
   });
 
   it("commits the raw event, shard clock, and one-ID ledger together", async () => {
-    const { database, harness } = setup();
+    const { model, harness } = setup();
     const event = createBundleEventRowFixture("801", 100);
 
-    await database.models.insights.append(event);
+    await model.append(event);
 
     const db = harness.client.db();
     const [raw] = await db.collection("bundle_events").find({}).toArray();
@@ -52,21 +51,24 @@ describe("MongoDB committed Insights source writes", () => {
     expect(raw?._id).toBeInstanceOf(ObjectId);
     expect(ledger).toMatchObject({
       _id: event.id,
-      rawId: raw?._id,
+      rawId: BSON.EJSON.stringify(raw?._id, { relaxed: false }),
       sequence: Long.ONE,
     });
     expect(clock?.value).toEqual(Long.ONE);
   });
 
-  it("rejects an unprepared database without leaving a raw event", async () => {
-    const { database, harness } = setup();
+  it("rejects internal appends until the atomic source writer is ready", async () => {
+    const { model, harness } = setup();
     const db = harness.client.db();
     await db.collection(MONGO_INSIGHTS_SOURCE_STATE_COLLECTION).deleteMany({});
 
-    await expect(
-      database.models.insights.append(createBundleEventRowFixture("802", 100)),
-    ).rejects.toMatchObject({ code: "INSIGHTS_QUERY_NOT_READY" });
-    expect(await db.collection("bundle_events").countDocuments()).toBe(0);
+    const event = createBundleEventRowFixture("802", 100);
+    await expect(model.append(event)).rejects.toMatchObject({
+      code: "INSIGHTS_QUERY_NOT_READY",
+    });
+    expect(await db.collection("bundle_events").findOne({ id: event.id })).toBe(
+      null,
+    );
     expect(
       await db
         .collection(MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION)
@@ -74,50 +76,45 @@ describe("MongoDB committed Insights source writes", () => {
     ).toBe(0);
   });
 
-  it("rolls back source state when a later mixed mutation fails", async () => {
-    const { database, harness } = setup();
-    const event = createBundleEventRowFixture("803", 100);
-    const bundle = createBundleRowFixture("803");
-    const missingReference = createBundlePatchRowFixture("803", "900", "901");
-
-    await expect(
-      database.commit({
-        changes: [
-          { model: "bundles", operation: "insert", row: bundle },
-          { model: "insights", operation: "insert", row: event },
-          {
-            model: "bundlePatches",
-            operation: "insert",
-            row: missingReference,
-          },
-        ],
-      }),
-    ).rejects.toThrow("references a missing bundle");
-
-    const db = harness.client.db();
-    expect(await db.collection("bundles").countDocuments()).toBe(0);
-    expect(await db.collection("bundle_events").countDocuments()).toBe(0);
+  it("rejects an oversized raw event before I/O", async () => {
+    const { model, harness } = setup();
+    const text = "한".repeat(1024);
+    const oversized = {
+      ...createBundleEventRowFixture("803", 100),
+      type: "UPDATE_APPLIED" as const,
+      install_id: text,
+      user_id: text,
+      username: text,
+      from_bundle_id: text,
+      from_release_id: text,
+      to_bundle_id: text,
+      to_release_id: text,
+      app_version: text,
+      channel: text,
+      cohort: text,
+      fingerprint_hash: text,
+      sdk_version: text,
+      update_strategy: "appVersion" as const,
+    };
+    expect(getCanonicalInsightsJsonByteLength(oversized)).toBeGreaterThan(
+      INSIGHTS_EVENT_MAX_BYTES,
+    );
+    const operations = harness.getOperationCount();
+    await expect(model.append(oversized)).rejects.toMatchObject({
+      code: "invalid-data",
+    });
+    expect(harness.getOperationCount()).toBe(operations);
     expect(
-      await db
-        .collection(MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION)
-        .countDocuments(),
+      await harness.client.db().collection("bundle_events").countDocuments(),
     ).toBe(0);
-    const clock = await db
-      .collection<{ _id: number; value: Long }>(
-        MONGO_INSIGHTS_SOURCE_CLOCK_COLLECTION,
-      )
-      .findOne({ _id: mongoInsightsSourceShard(event.id) });
-    expect(clock?.value).toEqual(Long.ZERO);
   });
 
   it("rolls back a duplicate event's raw row and clock increment", async () => {
-    const { database, harness } = setup();
+    const { model, harness } = setup();
     const event = createBundleEventRowFixture("804", 100);
-    await database.models.insights.append(event);
+    await model.append(event);
 
-    await expect(database.models.insights.append(event)).rejects.toThrow(
-      "duplicate id",
-    );
+    await expect(model.append(event)).rejects.toThrow("duplicate id");
 
     const db = harness.client.db();
     expect(await db.collection("bundle_events").countDocuments()).toBe(1);

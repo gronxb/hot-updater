@@ -54,6 +54,9 @@ class BenchmarkMutationError extends Error {
 
 const name = "release-catalog-benchmark";
 const adapter = createDatabasePluginAdapter(name, {
+  async appendBundleEvent() {
+    throw new BenchmarkMutationError();
+  },
   async count() {
     return 0;
   },

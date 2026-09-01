@@ -39,15 +39,14 @@ const createTransactionalMongoImplementation = (
   };
   return {
     ...direct,
-    create: (input) =>
-      input.model !== "bundle_events"
-        ? direct.create(input)
-        : client.withSession((session) =>
-            session.withTransaction(
-              () => createMongoImplementation(client, session).create(input),
-              transactionOptions,
-            ),
-          ),
+    appendBundleEvent: (row) =>
+      client.withSession((session) =>
+        session.withTransaction(
+          () =>
+            createMongoImplementation(client, session).appendBundleEvent(row),
+          transactionOptions,
+        ),
+      ),
     deleteChannel: (input) =>
       client.withSession((session) =>
         session.withTransaction(

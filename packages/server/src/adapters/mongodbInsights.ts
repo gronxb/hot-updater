@@ -6,27 +6,36 @@ import {
   type InsightsEventPageInput,
 } from "@hot-updater/plugin-core";
 import {
+  assertInsightsEventContract,
   assertInsightsEventRow,
   compareInsightsEventRows,
   createInsightsEventPageCursor,
   databaseFields,
+  getCanonicalInsightsJsonByteLength,
+  INSIGHTS_PAGE_MAX_BYTES,
+  InsightsContractError,
+  isCanonicalInsightsEventId,
   readInsightsEventPageCursor,
 } from "@hot-updater/plugin-core/internal";
 import type { Collection, Filter } from "mongodb";
 
-const EVENT_ID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export const isMongoInsightsEventId = (value: unknown): value is string =>
-  typeof value === "string" && EVENT_ID.test(value);
+  isCanonicalInsightsEventId(value);
 export const assertMongoInsightsEventRow = (value: unknown): void => {
-  assertInsightsEventRow(value);
-  if (
-    !isMongoInsightsEventId(value.id) ||
-    [value.install_id, value.to_bundle_id, value.from_bundle_id].some(
-      (identity) => identity !== null && /[\uD800-\uDFFF]/u.test(identity),
+  try {
+    assertInsightsEventRow(value);
+    assertInsightsEventContract(value);
+    if (
+      [value.install_id, value.to_bundle_id, value.from_bundle_id].some(
+        (identity) => identity !== null && /[\uD800-\uDFFF]/u.test(identity),
+      )
     )
-  )
-    throw new DatabasePluginInputError("invalid-result");
+      throw new DatabasePluginInputError("invalid-result");
+  } catch (error) {
+    if (error instanceof InsightsContractError)
+      throw new DatabasePluginInputError("invalid-result");
+    throw error;
+  }
 };
 const SIMPLE_COLLATION = { locale: "simple" } as const;
 const ORDER = { received_at_ms: -1, id: -1 } as const;
@@ -88,7 +97,7 @@ export const createMongoInsightsQueries = (
     const cursor = readInsightsEventPageCursor(input);
     const scope = input.scope;
     if (
-      (cursor !== undefined && !EVENT_ID.test(cursor.id)) ||
+      (cursor !== undefined && !isCanonicalInsightsEventId(cursor.id)) ||
       (scope.kind !== "all" &&
         /[\uD800-\uDFFF]/u.test(
           scope.kind === "installation" ? scope.installId : scope.bundleId,
@@ -161,10 +170,10 @@ export const createMongoInsightsQueries = (
             if (rows.length > limit)
               throw new DatabasePluginInputError("invalid-result");
             for (const [position, row] of rows.entries()) {
-              assertInsightsEventRow(row);
+              assertMongoInsightsEventRow(row);
               const previous = rows[position - 1];
               if (
-                !EVENT_ID.test(row.id) ||
+                !isCanonicalInsightsEventId(row.id) ||
                 row.received_at_ms < (input.sinceReceivedAtMs ?? 0) ||
                 row.received_at_ms >= input.beforeReceivedAtMs ||
                 Object.entries(branch.filter).some(
@@ -209,18 +218,46 @@ export const createMongoInsightsQueries = (
       const candidates = streams.flat().sort(compareInsightsEventRows);
       if (new Set(candidates.map(({ id }) => id)).size !== candidates.length)
         throw new DatabasePluginInputError("invalid-result");
-      const rows = candidates.slice(0, input.limit);
+      let rows: BundleEventRow[] = [];
+      for (const row of candidates.slice(0, input.limit)) {
+        const trialRows = [...rows, row];
+        const trialPage = {
+          rows: trialRows,
+          nextCursor:
+            trialRows.length < candidates.length
+              ? createInsightsEventPageCursor(input, {
+                  receivedAtMs: row.received_at_ms,
+                  id: row.id,
+                })
+              : null,
+        };
+        if (
+          getCanonicalInsightsJsonByteLength(trialPage) >
+          INSIGHTS_PAGE_MAX_BYTES
+        ) {
+          if (rows.length === 0)
+            throw new DatabasePluginInputError("invalid-result");
+          break;
+        }
+        rows = trialRows;
+      }
       const last = rows.at(-1);
-      return {
+      const page = {
         rows,
         nextCursor:
-          candidates.length > input.limit && last
+          candidates.length > rows.length && last
             ? createInsightsEventPageCursor(input, {
                 receivedAtMs: last.received_at_ms,
                 id: last.id,
               })
             : null,
       };
+      if (
+        rows.length > input.limit ||
+        getCanonicalInsightsJsonByteLength(page) > INSIGHTS_PAGE_MAX_BYTES
+      )
+        throw new DatabasePluginInputError("invalid-result");
+      return page;
     } catch (error) {
       if (isMissingIndex(error)) throw new InsightsQueryNotReadyError();
       throw error;

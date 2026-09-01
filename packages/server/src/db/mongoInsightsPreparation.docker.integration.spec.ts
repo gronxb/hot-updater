@@ -1,6 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 
+import {
+  getCanonicalInsightsJsonByteLength,
+  INSIGHTS_EVENT_MAX_BYTES,
+} from "@hot-updater/plugin-core/internal";
 import { BSON, Collection, MongoClient, type Document } from "mongodb";
 import {
   afterAll,
@@ -27,6 +31,21 @@ const encode = (value: unknown) =>
   BSON.EJSON.stringify(value, { relaxed: false });
 const objectId = (value: number) =>
   new BSON.ObjectId(value.toString(16).padStart(24, "0"));
+const oversizedExtension = (suffix: string, receivedAtMs: number) => {
+  const extension: string[] = [];
+  const event = {
+    ...createBundleEventRowFixture(suffix, receivedAtMs),
+    extension,
+  };
+  while (true) {
+    const remaining =
+      INSIGHTS_EVENT_MAX_BYTES - getCanonicalInsightsJsonByteLength(event);
+    const overhead = extension.length === 0 ? 2 : 3;
+    if (remaining <= overhead) break;
+    extension.push("x".repeat(Math.min(1024, remaining - overhead)));
+  }
+  return [...extension, "x"];
+};
 describe("MongoDB durable native-event preparation", () => {
   const container = `hot-updater-mongo-preparation-${randomUUID().slice(0, 8)}`;
   let client: MongoClient;
@@ -108,7 +127,7 @@ describe("MongoDB durable native-event preparation", () => {
   };
   const finish = async (maxItems = 1000) => {
     for (let step = 0; step < 100; step++) {
-      const result = await tools().runStep({ maxItems, maxRequests: 4 });
+      const result = await tools().runStep({ maxItems, maxRequests: 5 });
       if (result.state === "ready") return result;
     }
     throw new Error("Fixture audit failed to finish within its bounded steps");
@@ -171,7 +190,7 @@ describe("MongoDB durable native-event preparation", () => {
       await preparation.prepare({ writersDrained: true });
       let result;
       for (let step = 0; step < 5; step++) {
-        result = await preparation.runStep({ maxItems: 2, maxRequests: 4 });
+        result = await preparation.runStep({ maxItems: 2, maxRequests: 5 });
         if (result.state === "ready") break;
       }
       expect(result).toMatchObject({ state: "ready", processed: 1 });
@@ -206,17 +225,14 @@ describe("MongoDB durable native-event preparation", () => {
     [{ locale: "en", strength: 2, numericOrdering: true }, new BSON.Int32(2)],
     [{ locale: "simple" }, new BSON.MaxKey()],
   ])(
-    "rejects an existing non-ObjectId under %j collation without rewriting it",
-    async (collation, invalidId) => {
+    "audits an existing non-ObjectId under %j collation without rewriting it",
+    async (collation, legacyId) => {
       await client.db().createCollection("bundle_events", { collation });
-      await insert(invalidId, 100);
+      await insert(legacyId, 100);
       const original = await digest();
-      await expect(
-        tools().prepare({ writersDrained: true }),
-      ).rejects.toMatchObject({ code: "invalid-result" });
-      await expect(tools().ensureReady()).rejects.toMatchObject({
-        code: "INSIGHTS_QUERY_NOT_READY",
-      });
+      await tools().prepare({ writersDrained: true });
+      expect(await finish(2)).toMatchObject({ state: "ready", processed: 1 });
+      await tools().ensureReady();
       expect(await digest()).toBe(original);
     },
   );
@@ -240,55 +256,82 @@ describe("MongoDB durable native-event preparation", () => {
     const original = await digest();
     await tools().prepare({ writersDrained: true });
     let result;
-    for (let step = 0; step < 60; step++) {
+    for (let step = 0; step < 300; step++) {
       commands = [];
       recording = true;
-      result = await tools().runStep({ maxItems: 1000, maxRequests: 4 });
+      result = await tools().runStep({ maxItems: 200, maxRequests: 5 });
       recording = false;
-      expect(commands).toHaveLength(4);
-      expect(result.itemsRead).toBeLessThanOrEqual(1000);
+      expect(commands).toHaveLength(result.itemsRead === 0 ? 4 : 5);
+      expect(result.itemsRead).toBeLessThanOrEqual(200);
       expect(commands.filter((command) => "getMore" in command)).toHaveLength(
         0,
       );
-      const read = commands.find(
+      const reads = commands.filter(
         (command) => command.find === "bundle_events",
-      )!;
-      expect(read.projection).toMatchObject({ _id: 1, id: 1, username: 1 });
-      expect(read.projection).not.toHaveProperty("extension");
+      );
+      expect(reads).toHaveLength(result.itemsRead === 0 ? 1 : 2);
+      expect(reads[0]?.projection).toHaveProperty("documentBytes");
+      if (result.itemsRead > 0)
+        expect(reads[1]).not.toHaveProperty("projection");
       if (result.state === "ready") break;
     }
     expect(result).toMatchObject({ state: "ready", processed: 50_001 });
     expect(await digest()).toBe(original);
   }, 60_000);
 
-  it("continues after a short byte-limited batch without getMore or lost rows", async () => {
-    const large = "x".repeat(9 * 1024 * 1024);
-    await insert(0, 800, { username: large });
-    await insert(1, 801, { username: large });
-    await insert(2, 802);
+  it("fails durably on an oversized raw extension without rewriting it", async () => {
+    await insert(0, 800, {
+      extension: oversizedExtension("800", 800),
+    });
+    const original = await digest();
     await tools().prepare({ writersDrained: true });
     commands = [];
     recording = true;
-    const first = await tools().runStep({ maxItems: 100, maxRequests: 4 });
+    await expect(finish(100)).rejects.toMatchObject({ code: "invalid-result" });
     recording = false;
-    expect(first).toMatchObject({
-      state: "auditing",
-      processed: 1,
-      itemsRead: 1,
-    });
-    expect(commands).toHaveLength(4);
+    expect(commands).toHaveLength(9);
     expect(commands.filter((command) => "getMore" in command)).toHaveLength(0);
-    expect(await finish(100)).toMatchObject({ state: "ready", processed: 3 });
+    expect(
+      await states().findOne({ _id: "event-pages" } as never),
+    ).toMatchObject({ phase: "failed", processed: 0 });
+    expect(await digest()).toBe(original);
+  });
+
+  it("rejects a hostile legacy document from BSON metadata before reading its payload", async () => {
+    await insert(0, 801, { extension: "x".repeat(5 * 1024 * 1024) });
+    const original = await digest();
+    await tools().prepare({ writersDrained: true });
+    commands = [];
+    recording = true;
+    await tools().runStep({ maxItems: 100, maxRequests: 5 });
+    await expect(
+      tools().runStep({ maxItems: 100, maxRequests: 5 }),
+    ).rejects.toMatchObject({ code: "invalid-result" });
+    recording = false;
+    const eventReads = commands.filter(
+      (command) => command.find === "bundle_events",
+    );
+    expect(eventReads).toHaveLength(2);
+    expect(
+      eventReads.every((command) =>
+        Object.hasOwn(command.projection ?? {}, "documentBytes"),
+      ),
+    ).toBe(true);
+    expect(commands.filter((command) => "getMore" in command)).toHaveLength(0);
+    expect(
+      await states().findOne({ _id: "event-pages" } as never),
+    ).toMatchObject({ phase: "failed", processed: 0 });
+    expect(await digest()).toBe(original);
   });
 
   it.each([new BSON.MinKey(), null, new BSON.MaxKey()])(
-    "rejects a singleton legacy BSON boundary %j without rewriting it",
+    "audits a singleton legacy BSON boundary %j without rewriting it",
     async (id) => {
       await insert(id, 200);
       const original = await digest();
-      await expect(
-        tools().prepare({ writersDrained: true }),
-      ).rejects.toMatchObject({ code: "invalid-result" });
+      await tools().prepare({ writersDrained: true });
+      expect(await finish(2)).toMatchObject({ state: "ready", processed: 1 });
+      await tools().ensureReady();
       expect(await digest()).toBe(original);
     },
   );
@@ -297,7 +340,7 @@ describe("MongoDB durable native-event preparation", () => {
     for (let id = 0; id < 5; id++) await insert(id, 300 + id);
     await tools().prepare({ writersDrained: true });
     expect(
-      await tools().runStep({ maxItems: 3, maxRequests: 4 }),
+      await tools().runStep({ maxItems: 3, maxRequests: 5 }),
     ).toMatchObject({ processed: 3 });
     await client.db().command({
       delete: "bundle_events",
@@ -316,6 +359,7 @@ describe("MongoDB durable native-event preparation", () => {
 
   it.each([
     { id: "noncanonical" },
+    { id: "00000000-0000-4000-8000-000000000401" },
     { received_at_ms: 1.5 },
     { received_at_ms: Number.NaN },
     { install_id: ["multikey"] },
@@ -400,8 +444,8 @@ describe("MongoDB durable native-event preparation", () => {
     let results;
     try {
       results = await Promise.allSettled([
-        tools().runStep({ maxItems: 3, maxRequests: 4 }),
-        tools().runStep({ maxItems: 3, maxRequests: 4 }),
+        tools().runStep({ maxItems: 3, maxRequests: 5 }),
+        tools().runStep({ maxItems: 3, maxRequests: 5 }),
       ]);
     } finally {
       update.mockRestore();

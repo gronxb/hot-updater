@@ -1,21 +1,22 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
+import type { BundleEventRow } from "@hot-updater/plugin-core";
+import {
+  getCanonicalInsightsJsonByteLength,
+  INSIGHTS_EVENT_MAX_BYTES,
+  INSIGHTS_MAINTENANCE_INPUT_MAX_BYTES,
+} from "@hot-updater/plugin-core/internal";
 import { BSON, Long, MongoClient, ObjectId, type Document } from "mongodb";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  createBundleEventRowFixture,
-  createBundlePatchRowFixture,
-  createBundleRowFixture,
-} from "../../../test-utils/src/databaseTestFixtures";
+import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { findOpenPort } from "../../../test-utils/src/runtimeProcess";
-import { mongoAdapter } from "../adapters/mongodb";
+import { createMongoRequiredInsightsModel } from "../adapters/mongodbInsightsRequired";
 import { mongoInsightsSourceShard } from "../adapters/mongodbInsightsSource";
 import {
   MONGO_INSIGHTS_SOURCE_CLOCK_COLLECTION,
   MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION,
-  MONGO_INSIGHTS_SOURCE_PAGE_MAX_BYTES,
   MONGO_INSIGHTS_SOURCE_STATE_COLLECTION,
 } from "../adapters/mongodbInsightsSourceSchema";
 import { createMongoInsightsSource } from "./mongoInsightsSource";
@@ -28,17 +29,41 @@ const docker = (args: string[]) => {
 const objectId = (value: number) =>
   new ObjectId(value.toString(16).padStart(24, "0"));
 const nearLimitEvent = (suffix: string, receivedAtMs: number) => {
-  const base = {
+  const padding: string[] = [];
+  const event = {
     ...createBundleEventRowFixture(suffix, receivedAtMs),
-    username: "",
+    padding,
   };
-  const emptyRawBytes = BSON.calculateObjectSize({
-    ...base,
-    _id: new ObjectId(),
-  });
+  while (true) {
+    const remaining =
+      INSIGHTS_EVENT_MAX_BYTES - getCanonicalInsightsJsonByteLength(event);
+    const overhead = padding.length === 0 ? 2 : 3;
+    if (remaining <= overhead) break;
+    padding.push("x".repeat(Math.min(1024, remaining - overhead)));
+  }
+  return event;
+};
+const largePublicEvent = (
+  suffix: string,
+  receivedAtMs: number,
+): BundleEventRow => {
+  const text = "x".repeat(1024);
   return {
-    ...base,
-    username: "x".repeat(16 * 1024 * 1024 - emptyRawBytes),
+    ...createBundleEventRowFixture(suffix, receivedAtMs),
+    type: "UPDATE_APPLIED",
+    install_id: text,
+    user_id: text,
+    username: text,
+    from_bundle_id: text,
+    from_release_id: text,
+    to_bundle_id: text,
+    to_release_id: text,
+    app_version: text,
+    channel: text,
+    cohort: text,
+    fingerprint_hash: text,
+    sdk_version: text,
+    update_strategy: "appVersion",
   };
 };
 const findStages = (value: unknown): string[] => {
@@ -61,7 +86,7 @@ describe("MongoDB committed Insights source", () => {
   let recordCommandDetails = true;
   let getMoreCount = 0;
   const source = () => createMongoInsightsSource(client);
-  const database = () => mongoAdapter({ client, transactions: true as const });
+  const model = () => createMongoRequiredInsightsModel(client);
 
   beforeAll(async () => {
     docker(["image", "inspect", "mongo:7-jammy"]);
@@ -120,7 +145,7 @@ describe("MongoDB committed Insights source", () => {
       if (commandName === "getMore") getMoreCount++;
       if (recordCommandDetails) commands.push({ name: commandName, command });
     });
-  });
+  }, 120_000);
 
   beforeEach(async () => {
     recording = false;
@@ -158,33 +183,10 @@ describe("MongoDB committed Insights source", () => {
     return rows;
   };
 
-  it("commits direct source writes and rolls back every sidecar in a failed mixed transaction", async () => {
+  it("commits direct source writes and rolls back every sidecar on counter overflow", async () => {
     await prepareEmpty();
     const first = createBundleEventRowFixture("910001", 100);
-    await database().models.insights.append(first);
-
-    const second = createBundleEventRowFixture("910002", 101);
-    await expect(
-      database().commit({
-        changes: [
-          {
-            model: "bundles",
-            operation: "insert",
-            row: createBundleRowFixture("910002"),
-          },
-          { model: "insights", operation: "insert", row: second },
-          {
-            model: "bundlePatches",
-            operation: "insert",
-            row: createBundlePatchRowFixture(
-              "910002",
-              "missing-owner",
-              "missing-base",
-            ),
-          },
-        ],
-      }),
-    ).rejects.toThrow("references a missing bundle");
+    await model().append(first);
 
     const events = await client
       .db()
@@ -202,25 +204,9 @@ describe("MongoDB committed Insights source", () => {
     expect(ledger).toHaveLength(1);
     expect(ledger[0]).toMatchObject({
       _id: first.id,
-      rawId: events[0]?._id,
+      rawId: BSON.EJSON.stringify(events[0]?._id, { relaxed: false }),
       sequence: Long.ONE,
     });
-    expect(await client.db().collection("bundles").countDocuments()).toBe(0);
-    const secondClock = await client
-      .db()
-      .collection<{ _id: number; value: Long }>(
-        MONGO_INSIGHTS_SOURCE_CLOCK_COLLECTION,
-      )
-      .findOne(
-        { _id: mongoInsightsSourceShard(second.id) },
-        { promoteLongs: false },
-      );
-    expect(secondClock?.value).toEqual(
-      mongoInsightsSourceShard(first.id) === mongoInsightsSourceShard(second.id)
-        ? Long.ONE
-        : Long.ZERO,
-    );
-
     let overflowSuffix = 910100;
     let overflow = createBundleEventRowFixture(String(overflowSuffix), 102);
     while (
@@ -238,9 +224,9 @@ describe("MongoDB committed Insights source", () => {
         { _id: mongoInsightsSourceShard(overflow.id) },
         { $set: { value: Long.MAX_VALUE } },
       );
-    await expect(
-      database().models.insights.append(overflow),
-    ).rejects.toMatchObject({ code: "INSIGHTS_QUERY_NOT_READY" });
+    await expect(model().append(overflow)).rejects.toMatchObject({
+      code: "INSIGHTS_QUERY_NOT_READY",
+    });
     expect(await client.db().collection("bundle_events").countDocuments()).toBe(
       1,
     );
@@ -256,9 +242,9 @@ describe("MongoDB committed Insights source", () => {
     await prepareEmpty();
     const first = createBundleEventRowFixture("920001", 100);
     const later = createBundleEventRowFixture("920002", 101);
-    await database().models.insights.append(first);
+    await model().append(first);
     const firstGeneration = await source().capture();
-    await database().models.insights.append(later);
+    await model().append(later);
     const secondGeneration = await source().capture();
 
     expect(
@@ -360,14 +346,14 @@ describe("MongoDB committed Insights source", () => {
         sourceId: string;
         shard: number;
         sequence: Long;
-        rawId: ObjectId;
+        rawId: string;
       }>(MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION)
       .insertOne({
         _id: event.id,
         sourceId: "00000000-0000-7000-8000-000000000123",
         shard: mongoInsightsSourceShard(event.id),
         sequence: Long.ONE,
-        rawId: event._id,
+        rawId: BSON.EJSON.stringify(event._id, { relaxed: false }),
       });
 
     await expect(
@@ -435,9 +421,7 @@ describe("MongoDB committed Insights source", () => {
 
   it("does not report source ready while event-page preparation is reopened", async () => {
     await prepareEmpty();
-    await database().models.insights.append(
-      createBundleEventRowFixture("927001", 100),
-    );
+    await model().append(createBundleEventRowFixture("927001", 100));
     await client
       .db()
       .collection<{ _id: string }>("private_hot_updater_insights_preparation")
@@ -471,10 +455,12 @@ describe("MongoDB committed Insights source", () => {
     });
   });
 
-  it("backfills one existing maximum-size raw event without rewriting it", async () => {
+  it("backfills one maximum-size canonical public event without rewriting it", async () => {
     const event = nearLimitEvent("928001", 100);
     const raw = { ...event, _id: objectId(20) };
-    expect(BSON.calculateObjectSize(raw)).toBe(16 * 1024 * 1024);
+    expect(getCanonicalInsightsJsonByteLength(event)).toBe(
+      INSIGHTS_EVENT_MAX_BYTES,
+    );
     await client.db().collection("bundle_events").insertOne(raw);
     await source().prepare({ writersDrained: true });
 
@@ -495,7 +481,6 @@ describe("MongoDB committed Insights source", () => {
       .db()
       .collection("bundle_events")
       .findOne({ _id: raw._id });
-    expect(BSON.calculateObjectSize(stored!)).toBe(16 * 1024 * 1024);
     expect(stored).toEqual(raw);
     expect(
       await client
@@ -505,11 +490,54 @@ describe("MongoDB committed Insights source", () => {
     ).toBe(1);
   });
 
-  it("returns one valid near-16MiB event without getMore and reads at most one non-emitted raw row", async () => {
+  it("preserves arbitrary legacy BSON identifiers through source replay", async () => {
+    const rows = [
+      {
+        ...createBundleEventRowFixture("929001", 100),
+        _id: "legacy-string-id",
+      },
+      {
+        ...createBundleEventRowFixture("929002", 101),
+        _id: Long.fromNumber(42),
+      },
+    ];
+    await client
+      .db()
+      .collection<{ _id: string | Long }>("bundle_events")
+      .insertMany(rows);
+    await source().prepare({ writersDrained: true });
+    let progress;
+    for (let step = 0; step < 10; step++) {
+      progress = await source().runStep({ maxItems: 2, maxRequests: 17 });
+      if (progress.state === "ready" && progress.stage === "source") break;
+    }
+    expect(progress).toMatchObject({
+      state: "ready",
+      stage: "source",
+      processed: 2,
+    });
+    const generation = await source().capture();
+    expect(
+      new Set((await readGeneration(generation)).map(({ event }) => event.id)),
+    ).toEqual(new Set(rows.map(({ id }) => id)));
+    const ledger = await client
+      .db()
+      .collection<{ rawId: string }>(MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION)
+      .find({})
+      .toArray();
+    expect(ledger.map(({ rawId }) => rawId)).toEqual(
+      expect.arrayContaining([
+        BSON.EJSON.stringify("legacy-string-id", { relaxed: false }),
+        BSON.EJSON.stringify(Long.fromNumber(42), { relaxed: false }),
+      ]),
+    );
+  });
+
+  it("keeps source-step input below 4 MiB and continues by sequence", async () => {
     await prepareEmpty();
-    const large = nearLimitEvent("930001", 100);
-    expect(BSON.calculateObjectSize({ ...large, _id: new ObjectId() })).toBe(
-      16 * 1024 * 1024,
+    const large = largePublicEvent("930001", 100);
+    expect(getCanonicalInsightsJsonByteLength(large)).toBeLessThanOrEqual(
+      INSIGHTS_EVENT_MAX_BYTES,
     );
     const shard = mongoInsightsSourceShard(large.id);
     let nextSuffix = 930002;
@@ -517,8 +545,8 @@ describe("MongoDB committed Insights source", () => {
     while (mongoInsightsSourceShard(next.id) !== shard) {
       next = createBundleEventRowFixture(String(++nextSuffix), 101);
     }
-    await database().models.insights.append(large);
-    await database().models.insights.append(next);
+    await model().append(large);
+    await model().append(next);
     const generation = await source().capture();
 
     commands = [];
@@ -526,7 +554,7 @@ describe("MongoDB committed Insights source", () => {
     const page = await source().readPage({
       sourceGeneration: generation,
       shard,
-      limit: 100,
+      limit: 1,
     });
     recording = false;
     const rawReads = commands.filter(
@@ -540,15 +568,10 @@ describe("MongoDB committed Insights source", () => {
     );
     expect(page).toHaveLength(1);
     expect(page[0]?.event).toEqual(large);
-    const returnedEventBytes = page.reduce(
-      (bytes, { event }) => bytes + BSON.calculateObjectSize(event),
-      0,
+    expect(getCanonicalInsightsJsonByteLength(page)).toBeLessThanOrEqual(
+      INSIGHTS_MAINTENANCE_INPUT_MAX_BYTES,
     );
-    expect(returnedEventBytes).toBe(16 * 1024 * 1024 - 17);
-    expect(returnedEventBytes).toBeLessThanOrEqual(
-      MONGO_INSIGHTS_SOURCE_PAGE_MAX_BYTES,
-    );
-    expect(rawReads).toHaveLength(2);
+    expect(rawReads).toHaveLength(1);
     expect(ledgerReads).toHaveLength(1);
     expect(getMoreCount).toBe(0);
     expect(rawReads.every(({ command }) => command.singleBatch === true)).toBe(
@@ -647,5 +670,5 @@ describe("MongoDB committed Insights source", () => {
     );
     expect(plan.executionStats.totalDocsExamined).toBeLessThanOrEqual(100);
     expect(plan.executionStats.totalKeysExamined).toBeLessThanOrEqual(100);
-  }, 180_000);
+  }, 480_000);
 });

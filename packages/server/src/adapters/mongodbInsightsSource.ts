@@ -6,6 +6,7 @@ import {
   type BundleEventRow,
 } from "@hot-updater/plugin-core";
 import {
+  BSON,
   Long,
   ObjectId,
   type ClientSession,
@@ -17,6 +18,7 @@ import {
   assertMongoInsightsEventRow,
   isMongoInsightsEventId,
 } from "./mongodbInsights";
+import { appendMongoInsightsProjectionEvent } from "./mongodbInsightsProjection";
 import {
   MONGO_INSIGHTS_SOURCE_CLOCK_COLLECTION,
   MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION,
@@ -32,6 +34,7 @@ import {
 export * from "./mongodbInsightsSourceSchema";
 
 export type MongoInsightsSourceCollections = {
+  readonly client: MongoClient;
   readonly bundleEvents: Collection<MongoBundleEventDocument>;
   readonly sourceState: Collection<MongoInsightsSourceState>;
   readonly sourceClocks: Collection<MongoInsightsSourceClock>;
@@ -43,6 +46,7 @@ export const createMongoInsightsSourceCollections = (
 ): MongoInsightsSourceCollections => {
   const database = client.db();
   return {
+    client,
     bundleEvents:
       database.collection<MongoBundleEventDocument>("bundle_events"),
     sourceState: database.collection<MongoInsightsSourceState>(
@@ -72,25 +76,24 @@ const validState = (
   value !== null &&
   value.version === 1 &&
   (value.phase === "auditing" || value.phase === "ready") &&
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
-    value.sourceId,
-  );
+  isMongoInsightsEventId(value.sourceId);
 
 export const appendMongoInsightsSourceEvent = async (
   collections: MongoInsightsSourceCollections,
   row: BundleEventRow,
   session: ClientSession | undefined,
-): Promise<BundleEventRow> => {
+): Promise<void> => {
   assertMongoInsightsEventRow(row);
   if (session === undefined) throw new InsightsQueryNotReadyError();
   const state = await collections.sourceState.findOne(
     { _id: MONGO_INSIGHTS_SOURCE_STATE_ID },
     { session },
   );
+  const rawId = new ObjectId();
+  const encodedRawId = BSON.EJSON.stringify(rawId, { relaxed: false });
   if (!validState(state)) throw new InsightsQueryNotReadyError();
 
   const shard = mongoInsightsSourceShard(row.id);
-  const rawId = new ObjectId();
   await collections.bundleEvents.insertOne({ ...row, _id: rawId }, { session });
   const clock = await collections.sourceClocks.findOneAndUpdate(
     {
@@ -109,9 +112,18 @@ export const appendMongoInsightsSourceEvent = async (
       sourceId: state.sourceId,
       shard,
       sequence: clock.value,
-      rawId,
+      rawId: encodedRawId,
     },
     { session },
   );
-  return row;
+  await appendMongoInsightsProjectionEvent(
+    collections.client,
+    {
+      event: row,
+      sourceId: state.sourceId,
+      sourceShard: shard,
+      sourceSequence: clock.value,
+    },
+    session,
+  );
 };

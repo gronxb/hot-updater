@@ -5,6 +5,9 @@ import {
 import {
   createInsightsEventPageCursor,
   databaseFields,
+  getCanonicalInsightsJsonByteLength,
+  INSIGHTS_EVENT_MAX_BYTES,
+  INSIGHTS_PAGE_MAX_BYTES,
 } from "@hot-updater/plugin-core/internal";
 import type { Collection } from "mongodb";
 import { describe, expect, it, vi } from "vitest";
@@ -108,8 +111,48 @@ describe("MongoDB event page readiness and result validation", () => {
     expect(test.batchSize).toHaveBeenCalledWith(3);
   });
 
+  it("returns a continuation before the serialized public page exceeds 1 MiB", async () => {
+    const rows = Array.from({ length: 100 }, (_, index): BundleEventRow => {
+      const text = "x".repeat(1024);
+      return {
+        ...createBundleEventRowFixture(String(20_099 - index), 50),
+        type: "UPDATE_APPLIED",
+        install_id: text,
+        user_id: text,
+        username: text,
+        from_bundle_id: text,
+        from_release_id: text,
+        to_bundle_id: text,
+        to_release_id: text,
+        app_version: text,
+        channel: text,
+        cohort: text,
+        fingerprint_hash: text,
+        sdk_version: text,
+        update_strategy: "appVersion",
+      };
+    });
+    expect(
+      rows.every(
+        (row) =>
+          getCanonicalInsightsJsonByteLength(row) <= INSIGHTS_EVENT_MAX_BYTES,
+      ),
+    ).toBe(true);
+    const test = harness(rows);
+    const page = await test.queries.pageEvents({ ...input, limit: 100 });
+
+    expect(page.rows.length).toBeGreaterThan(0);
+    expect(page.rows.length).toBeLessThan(rows.length);
+    expect(page.nextCursor).not.toBeNull();
+    expect(getCanonicalInsightsJsonByteLength(page)).toBeLessThanOrEqual(
+      INSIGHTS_PAGE_MAX_BYTES,
+    );
+    expect(page.rows).toEqual(rows.slice(0, page.rows.length));
+  });
+
   it.each([
     { ...row, id: "arbitrary-id" },
+    { ...row, id: "00000000-0000-4000-8000-000000000012" },
     { ...row, received_at_ms: 9 },
     { ...row, received_at_ms: 100 },
     { ...row, received_at_ms: 20.5 },
@@ -142,7 +185,7 @@ describe("MongoDB event page readiness and result validation", () => {
       {
         ...input,
         cursor: createInsightsEventPageCursor(input, {
-          id: "noncanonical",
+          id: "00000000-0000-4000-8000-000000000012",
           receivedAtMs: 50,
         }),
       },

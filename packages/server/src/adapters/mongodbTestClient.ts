@@ -19,6 +19,7 @@ type Tables = {
   private_hot_updater_insights_source: MongoTestRow[];
   private_hot_updater_insights_source_clocks: MongoTestRow[];
   private_hot_updater_insights_source_events: MongoTestRow[];
+  private_hot_updater_insights_projection: MongoTestRow[];
 };
 
 type FindOptions = { readonly projection?: unknown };
@@ -295,6 +296,12 @@ const createDatabase = (tables: Tables, hooks: MongoTestHooks) => ({
           "private_hot_updater_insights_source_events",
           hooks,
         );
+      case "private_hot_updater_insights_projection":
+        return createCollection(
+          tables,
+          "private_hot_updater_insights_projection",
+          hooks,
+        );
       default:
         throw new MongoTestConstraintError(`unknown collection: ${name}`);
     }
@@ -338,6 +345,7 @@ export const createMongoTestHarness = () => {
     private_hot_updater_insights_source: prepared.state,
     private_hot_updater_insights_source_clocks: prepared.clocks,
     private_hot_updater_insights_source_events: [],
+    private_hot_updater_insights_projection: [],
   };
   const hooks: MongoTestHooks = {
     failNextBundleTombstone: false,
@@ -378,6 +386,8 @@ export const createMongoTestHarness = () => {
               staged.private_hot_updater_insights_source_clocks;
             tables.private_hot_updater_insights_source_events =
               staged.private_hot_updater_insights_source_events;
+            tables.private_hot_updater_insights_projection =
+              staged.private_hot_updater_insights_projection;
             return result;
           } finally {
             activeTables = tables;
@@ -406,6 +416,7 @@ export const createMongoTestHarness = () => {
       tables.private_hot_updater_insights_source = resetSource.state;
       tables.private_hot_updater_insights_source_clocks = resetSource.clocks;
       tables.private_hot_updater_insights_source_events = [];
+      tables.private_hot_updater_insights_projection = [];
     },
     getOperationCount: (): number => hooks.operationCount,
     setBeforeBundlePatchInsert: (

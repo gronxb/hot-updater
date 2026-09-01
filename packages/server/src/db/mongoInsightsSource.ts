@@ -6,7 +6,12 @@ import {
   InsightsQueryNotReadyError,
   type BundleEventRow,
 } from "@hot-updater/plugin-core";
-import { databaseFields } from "@hot-updater/plugin-core/internal";
+import {
+  databaseFields,
+  getCanonicalInsightsJsonByteLength,
+  INSIGHTS_EVENT_ID_PATTERN,
+  INSIGHTS_MAINTENANCE_INPUT_MAX_BYTES,
+} from "@hot-updater/plugin-core/internal";
 import type {
   ClientSession,
   CollectionInfo,
@@ -21,9 +26,12 @@ import {
   mongoInsightsEventIndexes,
 } from "../adapters/mongodbInsights";
 import {
+  measureMongoInsightsCollection,
+  type MongoInsightsStepUsage,
+} from "../adapters/mongodbInsightsModelSchema";
+import {
   MONGO_INSIGHTS_SOURCE_CLOCK_COLLECTION,
   MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION,
-  MONGO_INSIGHTS_SOURCE_PAGE_MAX_BYTES,
   MONGO_INSIGHTS_SOURCE_SHARDS,
   MONGO_INSIGHTS_SOURCE_STATE_COLLECTION,
   MONGO_INSIGHTS_SOURCE_STATE_ID,
@@ -35,16 +43,15 @@ import {
 import { createMongoInsightsPreparation } from "./mongoInsightsPreparation";
 
 const EVENT_COLLECTION = "bundle_events";
-const UUID = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
+const UUID_V7 = INSIGHTS_EVENT_ID_PATTERN.source;
 const MAX_SEQUENCE = "9223372036854775807";
 const SOURCE_SEQUENCE_INDEX = "insights_source_sequence_idx";
 const PUBLIC_PROJECTION = {
   ...Object.fromEntries(
     databaseFields.bundle_events.map((field) => [field, 1]),
   ),
-  _id: 0,
+  _id: 1,
 };
-const AUDIT_PROJECTION = { ...PUBLIC_PROJECTION, _id: 1 };
 const transactionOptions = {
   readPreference: "primary" as const,
   readConcern: { level: "snapshot" as const },
@@ -102,13 +109,13 @@ const stateValidator = {
       version: { enum: [1] },
       revision: { bsonType: "int", minimum: 0 },
       phase: { enum: ["auditing", "ready"] },
-      sourceId: { bsonType: "string", pattern: UUID },
+      sourceId: { bsonType: "string", pattern: UUID_V7 },
       eventCollectionUuid: { bsonType: "string" },
       stateCollectionUuid: { bsonType: "string" },
       clockCollectionUuid: { bsonType: "string" },
       ledgerCollectionUuid: { bsonType: "string" },
-      upperId: { bsonType: ["string", "null"], pattern: UUID },
-      afterId: { bsonType: ["string", "null"], pattern: UUID },
+      upperId: { bsonType: ["string", "null"], pattern: UUID_V7 },
+      afterId: { bsonType: ["string", "null"], pattern: UUID_V7 },
       processed: { bsonType: ["int", "long"], minimum: 0 },
     },
   },
@@ -123,7 +130,7 @@ const clockValidator = {
         minimum: 0,
         maximum: MONGO_INSIGHTS_SOURCE_SHARDS - 1,
       },
-      sourceId: { bsonType: "string", pattern: UUID },
+      sourceId: { bsonType: "string", pattern: UUID_V7 },
       value: { bsonType: "long", minimum: 0 },
     },
   },
@@ -133,15 +140,15 @@ const ledgerValidator = {
     bsonType: "object",
     required: ["_id", "sourceId", "shard", "sequence", "rawId"],
     properties: {
-      _id: { bsonType: "string", pattern: UUID },
-      sourceId: { bsonType: "string", pattern: UUID },
+      _id: { bsonType: "string", pattern: UUID_V7 },
+      sourceId: { bsonType: "string", pattern: UUID_V7 },
       shard: {
         bsonType: "int",
         minimum: 0,
         maximum: MONGO_INSIGHTS_SOURCE_SHARDS - 1,
       },
       sequence: { bsonType: "long", minimum: 1 },
-      rawId: { bsonType: "objectId" },
+      rawId: { bsonType: "string" },
     },
   },
 };
@@ -162,7 +169,7 @@ const parseSequence = (value: unknown): bigint => {
   return parsed;
 };
 
-const decodeGeneration = (
+export const decodeMongoInsightsSourceGeneration = (
   value: string,
 ): {
   sourceId: string;
@@ -246,21 +253,36 @@ const collectionMetadata = async (
   return new Map(found.map((collection) => [collection.name, collection]));
 };
 
-export const createMongoInsightsSource = (client: MongoClient) => {
+export const createMongoInsightsSource = (
+  client: MongoClient,
+  usage?: MongoInsightsStepUsage,
+) => {
   const db = client.db(undefined, {
     readPreference: "primary",
     readConcern: { level: "local" } as ReadConcern,
     writeConcern: { w: "majority" },
   });
-  const events = db.collection<MongoBundleEventDocument>(EVENT_COLLECTION);
-  const states = db.collection<MongoInsightsSourceState>(
-    MONGO_INSIGHTS_SOURCE_STATE_COLLECTION,
+  const events = measureMongoInsightsCollection(
+    db.collection<MongoBundleEventDocument>(EVENT_COLLECTION),
+    usage,
   );
-  const clocks = db.collection<MongoInsightsSourceClock>(
-    MONGO_INSIGHTS_SOURCE_CLOCK_COLLECTION,
+  const states = measureMongoInsightsCollection(
+    db.collection<MongoInsightsSourceState>(
+      MONGO_INSIGHTS_SOURCE_STATE_COLLECTION,
+    ),
+    usage,
   );
-  const ledger = db.collection<MongoInsightsSourceEvent>(
-    MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION,
+  const clocks = measureMongoInsightsCollection(
+    db.collection<MongoInsightsSourceClock>(
+      MONGO_INSIGHTS_SOURCE_CLOCK_COLLECTION,
+    ),
+    usage,
+  );
+  const ledger = measureMongoInsightsCollection(
+    db.collection<MongoInsightsSourceEvent>(
+      MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION,
+    ),
+    usage,
   );
   const eventPreparation = createMongoInsightsPreparation(client);
   const mongo = async () => await import("mongodb");
@@ -305,10 +327,14 @@ export const createMongoInsightsSource = (client: MongoClient) => {
   const ensureSchema = async (
     eventSchemaReady = false,
   ): Promise<MongoInsightsSourceState> => {
-    if (!eventSchemaReady) await eventPreparation.ensureReady();
+    if (!eventSchemaReady) {
+      if (usage !== undefined) usage.requests += 3;
+      await eventPreparation.ensureReady();
+    }
     const current = assertMongoInsightsSourceState(
       await states.findOne({ _id: MONGO_INSIGHTS_SOURCE_STATE_ID }),
     );
+    if (usage !== undefined) usage.requests += 1;
     const metadata = await collectionMetadata(db);
     const { EJSON } = (await mongo()).BSON;
     for (const [name, validator] of [
@@ -434,11 +460,7 @@ export const createMongoInsightsSource = (client: MongoClient) => {
         .sort({ id: -1 })
         .limit(1)
         .toArray();
-      if (
-        upper[0] &&
-        (!isMongoInsightsEventId(upper[0].id) ||
-          !(upper[0]._id instanceof (await mongo()).ObjectId))
-      )
+      if (upper[0] && !isMongoInsightsEventId(upper[0].id))
         throw new DatabasePluginInputError("invalid-result");
       const sourceId = createUUIDv7();
       const state: MongoInsightsSourceState = {
@@ -505,7 +527,7 @@ export const createMongoInsightsSource = (client: MongoClient) => {
         if (!(error instanceof InsightsQueryNotReadyError)) throw error;
         const progress = await eventPreparation.runStep({
           maxItems: input.maxItems,
-          maxRequests: 4,
+          maxRequests: 5,
         });
         return {
           ...progress,
@@ -540,18 +562,30 @@ export const createMongoInsightsSource = (client: MongoClient) => {
             state.afterId === null
               ? { id: { $lte: state.upperId } }
               : { id: { $gt: state.afterId, $lte: state.upperId } };
-          const rows = await events
+          const rawRows = await events
             .find(filter, {
               collation: { locale: "simple" },
               session,
-              projection: AUDIT_PROJECTION,
               singleBatch: true,
+              raw: true,
             })
             .hint(mongoInsightsEventIndexes[0].name)
             .sort({ id: 1 })
             .limit(candidateLimit)
             .batchSize(candidateLimit)
             .toArray();
+          const { deserialize, EJSON } = (await mongo()).BSON;
+          const rows = rawRows.map((raw) =>
+            deserialize(raw as unknown as Uint8Array),
+          );
+          const rawIds = rawRows.map((raw) =>
+            EJSON.stringify(
+              deserialize(raw as unknown as Uint8Array, {
+                promoteValues: false,
+              })._id,
+              { relaxed: false },
+            ),
+          );
           if (rows.length === 0)
             throw new DatabasePluginInputError("invalid-result");
           const clockRows = await clocks
@@ -562,7 +596,7 @@ export const createMongoInsightsSource = (client: MongoClient) => {
             .sort({ _id: 1 })
             .limit(MONGO_INSIGHTS_SOURCE_SHARDS + 1)
             .toArray();
-          const { Long, ObjectId } = await mongo();
+          const { Long } = await mongo();
           if (
             clockRows.length !== MONGO_INSIGHTS_SOURCE_SHARDS ||
             clockRows.some(
@@ -575,10 +609,12 @@ export const createMongoInsightsSource = (client: MongoClient) => {
           )
             throw new DatabasePluginInputError("invalid-result");
           let requests = 9;
-          for (const row of rows) {
-            if (!(row._id instanceof ObjectId))
+          for (const [index, row] of rows.entries()) {
+            const rawId = rawIds[index];
+            if (typeof rawId !== "string")
               throw new DatabasePluginInputError("invalid-result");
-            assertMongoInsightsEventRow(row);
+            const { _id: _rawId, ...event } = row;
+            assertMongoInsightsEventRow(event);
             const shard = mongoInsightsSourceShard(row.id);
             const existing = await ledger.findOne(
               { _id: row.id },
@@ -592,8 +628,7 @@ export const createMongoInsightsSource = (client: MongoClient) => {
                 !Long.isLong(existing.sequence) ||
                 existing.sequence.lessThanOrEqual(0) ||
                 existing.sequence.greaterThan(clockRows[shard]!.value) ||
-                !(existing.rawId instanceof ObjectId) ||
-                !existing.rawId.equals(row._id)
+                existing.rawId !== rawId
               )
                 throw new DatabasePluginInputError("invalid-result");
               continue;
@@ -615,7 +650,7 @@ export const createMongoInsightsSource = (client: MongoClient) => {
                 sourceId: state.sourceId,
                 shard,
                 sequence: clock.value,
-                rawId: row._id,
+                rawId,
               },
               { session },
             );
@@ -681,7 +716,9 @@ export const createMongoInsightsSource = (client: MongoClient) => {
       readonly afterSequence?: string;
       readonly limit: number;
     }): Promise<readonly { sequence: string; event: BundleEventRow }[]> {
-      const generation = decodeGeneration(input.sourceGeneration);
+      const generation = decodeMongoInsightsSourceGeneration(
+        input.sourceGeneration,
+      );
       const after = parseSequence(input.afterSequence ?? "0");
       if (
         !Number.isSafeInteger(input.shard) ||
@@ -704,7 +741,8 @@ export const createMongoInsightsSource = (client: MongoClient) => {
         )
       )
         throw new InsightsQueryNotReadyError();
-      const { BSON, ObjectId, Timestamp } = await mongo();
+      const { Timestamp } = await mongo();
+      const { EJSON, deserialize } = (await mongo()).BSON;
       return client.withSession(
         { causalConsistency: true },
         async (session) => {
@@ -747,7 +785,6 @@ export const createMongoInsightsSource = (client: MongoClient) => {
               .toArray();
             const page: { sequence: string; event: BundleEventRow }[] = [];
             let previous = after;
-            let bytes = 0;
             let consumedAllCandidates = true;
             for (const candidate of candidates) {
               if (
@@ -756,34 +793,52 @@ export const createMongoInsightsSource = (client: MongoClient) => {
                 !Long.isLong(candidate.sequence) ||
                 candidate.sequence.toBigInt() !== previous + 1n ||
                 candidate.sequence.toBigInt() > prefix ||
-                !(candidate.rawId instanceof ObjectId) ||
                 !isMongoInsightsEventId(candidate._id)
               )
                 throw new DatabasePluginInputError("invalid-result");
-              const event = await events.findOne(
-                { _id: candidate.rawId },
+              let rawId: unknown;
+              try {
+                rawId = EJSON.parse(candidate.rawId, { relaxed: false });
+              } catch {
+                throw new DatabasePluginInputError("invalid-result");
+              }
+              const raw = await events.findOne(
+                { _id: rawId as never },
                 {
                   session,
                   projection: PUBLIC_PROJECTION,
                   hint: "_id_",
+                  raw: true,
                 },
               );
-              if (!event || event.id !== candidate._id)
-                throw new DatabasePluginInputError("invalid-result");
-              assertMongoInsightsEventRow(event);
-              const eventBytes = BSON.calculateObjectSize(event);
-              if (eventBytes > MONGO_INSIGHTS_SOURCE_PAGE_MAX_BYTES)
-                throw new DatabasePluginInputError("invalid-result");
+              if (!raw) throw new DatabasePluginInputError("invalid-result");
+              const exact = deserialize(raw as unknown as Uint8Array, {
+                promoteValues: false,
+              });
+              const decoded = deserialize(raw as unknown as Uint8Array);
               if (
-                page.length > 0 &&
-                bytes + eventBytes > MONGO_INSIGHTS_SOURCE_PAGE_MAX_BYTES
+                decoded.id !== candidate._id ||
+                EJSON.stringify(exact._id, { relaxed: false }) !==
+                  candidate.rawId
+              )
+                throw new DatabasePluginInputError("invalid-result");
+              const { _id: _rawId, ...event } = decoded;
+              assertMongoInsightsEventRow(event);
+              const item: { sequence: string; event: BundleEventRow } = {
+                sequence: candidate.sequence.toString(),
+                event: event as BundleEventRow,
+              };
+              if (
+                getCanonicalInsightsJsonByteLength([...page, item]) >
+                INSIGHTS_MAINTENANCE_INPUT_MAX_BYTES
               ) {
+                if (page.length === 0)
+                  throw new DatabasePluginInputError("invalid-result");
                 consumedAllCandidates = false;
                 break;
               }
-              bytes += eventBytes;
               previous = candidate.sequence.toBigInt();
-              page.push({ sequence: candidate.sequence.toString(), event });
+              page.push(item);
             }
             if (
               consumedAllCandidates &&
