@@ -52,21 +52,18 @@ jobs:
             | .sponsorEntity
           ]' > /tmp/public-sponsors.json
 
-          # Amounts remain in an ephemeral runner file. includePrivate is needed
-          # to recover the amount for sponsors that were public in git history
-          # but later changed visibility; private identities are never published.
+          # Lifetime amounts remain in an ephemeral runner file. The separate
+          # public sponsorship query above controls which identities are published.
           gh api graphql --paginate -f query='
             query($endCursor: String) {
               user(login: "gronxb") {
-                sponsorshipsAsMaintainer(
+                lifetimeReceivedSponsorshipValues(
                   first: 100
                   after: $endCursor
-                  activeOnly: false
-                  includePrivate: true
                 ) {
                   nodes {
-                    tier { monthlyPriceInCents }
-                    sponsorEntity {
+                    amountInCents
+                    sponsor {
                       ... on User { login }
                       ... on Organization { login }
                     }
@@ -76,14 +73,14 @@ jobs:
               }
             }
           ' | jq -s '[
-            .[].data.user.sponsorshipsAsMaintainer.nodes[]
+            .[].data.user.lifetimeReceivedSponsorshipValues.nodes[]
             | select(
-                .sponsorEntity != null
-                and .tier.monthlyPriceInCents > 0
+                .sponsor != null
+                and .amountInCents > 0
               )
             | {
-                login: .sponsorEntity.login,
-                amountInCents: .tier.monthlyPriceInCents
+                login: .sponsor.login,
+                amountInCents
               }
           ]' > /tmp/sponsor-amounts.json
 
@@ -124,7 +121,7 @@ jobs:
                   | map($amounts[.login | ascii_downcase])
                   | max // 0) as $maxAmount
               | if $maxAmount <= 0 then
-                  error("SPONSORS_TOKEN cannot read sponsor tier amounts")
+                  error("SPONSORS_TOKEN cannot read lifetime sponsorship amounts")
                 else
                   $sponsors
                   | map(
