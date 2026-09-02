@@ -9,6 +9,7 @@ interface Sponsor {
   name: string | null;
   url: string;
   amountInCents?: number;
+  /** Relative size override when GitHub does not expose the sponsor tier. */
   displayWeight?: number;
 }
 
