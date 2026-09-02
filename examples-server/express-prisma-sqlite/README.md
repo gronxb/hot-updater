@@ -78,6 +78,7 @@ This merges the fixed Hot Updater models directly into
 mkdir -p data
 touch data/prisma.db
 DATABASE_URL=file:../data/prisma.db pnpm db:push
+TEST_DB_PATH=$(pwd)/data/prisma.db npx hot-updater db migrate src/db.ts --yes
 ```
 
 For production, use Prisma migrations:
@@ -85,7 +86,17 @@ For production, use Prisma migrations:
 ```bash
 DATABASE_URL=file:../data/prisma.db npx prisma migrate dev --name init
 DATABASE_URL=file:../data/prisma.db npx prisma migrate deploy
+TEST_DB_PATH=$(pwd)/data/prisma.db npx hot-updater db migrate src/db.ts --yes
 ```
+
+Run the Hot Updater migration after every Prisma schema deployment and before
+starting the server. Prisma owns the generated application tables; Hot Updater
+owns the provider-specific Insights tables, indexes, and source state that
+Prisma schema syntax cannot represent. Keep
+`HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE` as one stable lowercase UUID for the
+lifetime of the database. For an existing database, stop and drain every Hot
+Updater event writer before provisioning and start only the new server version
+after it completes.
 
 ## Development
 
@@ -194,6 +205,8 @@ express-server/
 - The Prisma adapter uses Hot Updater's DatabasePlugin contract with generated
   Prisma schema artifacts
 - Schema generation is handled by Hot Updater CLI (`db generate`)
-- Database migrations use Prisma's built-in migration system
+- Prisma migrations own the generated core tables; `hot-updater db migrate`
+  owns the separate Insights layout
 - The server includes graceful shutdown handlers for SIGTERM/SIGINT
-- Integration tests automatically run schema generation and database push before starting the server
+- Integration tests automatically run schema generation, database push, and
+  Insights provisioning before starting the server

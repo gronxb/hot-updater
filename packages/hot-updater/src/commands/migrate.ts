@@ -1,5 +1,9 @@
 import { p } from "@hot-updater/cli-tools";
-import { createMigrator as createHotUpdaterMigrator } from "@hot-updater/server/db";
+import {
+  createInsightsSchemaProvisioner,
+  createMigrator as createHotUpdaterMigrator,
+  type SchemaProvisioner,
+} from "@hot-updater/server/db";
 
 import { ui } from "../utils/cli-ui";
 import { showMigrateUnsupportedError } from "./utils/adapter-strategies";
@@ -192,6 +196,11 @@ export async function migrate(options: MigrateOptions) {
 
     // Load hotUpdater instance from config file
     const { hotUpdater, adapterName } = await loadHotUpdater(configPath);
+    const schemaProvisioner = createInsightsSchemaProvisioner(hotUpdater);
+    if (schemaProvisioner) {
+      await migrateWithSchemaProvisioner(schemaProvisioner, skipConfirm, s);
+      return;
+    }
 
     // Execute migration based on adapter type
     switch (adapterName) {
@@ -203,7 +212,7 @@ export async function migrate(options: MigrateOptions) {
 
       case "drizzle":
       case "prisma":
-        // These adapters have their own migration systems
+        // Their ORM owns the core schema and no separate provisioner is exposed.
         s.stop("Migration not supported");
         showMigrateUnsupportedError(adapterName);
         break;
@@ -225,6 +234,59 @@ export async function migrate(options: MigrateOptions) {
     }
     process.exit(1);
   }
+}
+
+async function migrateWithSchemaProvisioner(
+  provisioner: SchemaProvisioner,
+  skipConfirm: boolean,
+  s: ReturnType<typeof p.spinner>,
+) {
+  const plan = await provisioner.plan();
+
+  s.stop("Analysis complete");
+
+  if (plan.operations.length === 0) {
+    p.log.success("Insights schema is up to date.");
+    process.exit(0);
+  }
+
+  p.log.message(
+    ui.block("Migration", [
+      ui.kv("Core", "managed by Prisma"),
+      ui.kv("Insights", "managed by Hot Updater"),
+    ]),
+  );
+  p.log.message(
+    ui.block("Precondition", [
+      "Stop and drain every Hot Updater event writer before continuing.",
+      "Start only servers using the new schema after provisioning completes.",
+    ]),
+  );
+  p.log.message(
+    ui.block(
+      "Changes",
+      formatOperations(plan.operations).map((change) => `    ${change}`),
+    ),
+  );
+
+  if (!skipConfirm) {
+    const shouldContinue = await p.confirm({
+      message: "Apply these changes?",
+      initialValue: true,
+    });
+    if (p.isCancel(shouldContinue) || !shouldContinue) {
+      p.cancel("Migration cancelled");
+      process.exit(0);
+    }
+  }
+
+  await plan.execute();
+  const remaining = await provisioner.plan();
+  if (remaining.operations.length > 0) {
+    throw new Error("Insights schema provisioning did not complete.");
+  }
+  p.log.success("Insights schema provisioned.");
+  process.exit(0);
 }
 
 /**

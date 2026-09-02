@@ -11,7 +11,10 @@ import {
 } from "./apiKeys";
 import type { ApiKeyManagementAPI } from "./apiKeys";
 import { createDatabasePluginCore } from "./db/databasePluginCore";
-import { createSchemaReadinessChecker } from "./db/schemaReadiness";
+import {
+  createInsightsSchemaReadinessChecker,
+  createSchemaReadinessChecker,
+} from "./db/schemaReadiness";
 import {
   type DatabaseAdapterCapabilities,
   type DatabaseAPI,
@@ -163,6 +166,10 @@ export function createHotUpdaterCore(
     adapterName,
     adapterCapabilities.createMigrator,
   );
+  const assertInsightsSchemaReady = createInsightsSchemaReadinessChecker(
+    adapterName,
+    adapterCapabilities.createInsightsSchemaProvisioner,
+  );
   const core = createDatabasePluginCore(plugin, resolveFileUrl, {
     beforeOperation: assertSchemaReady,
     readStorageText,
@@ -170,7 +177,10 @@ export function createHotUpdaterCore(
   const clientAccess = normalizeClientAccess(options.clientAccess);
   const insights = createValidatedInsightsModel(
     plugin.models.insights,
-    assertSchemaReady,
+    async () => {
+      await assertSchemaReady();
+      await assertInsightsSchemaReady();
+    },
   );
   const apiKeys = createApiKeyManagement({
     apiKeys: plugin.models.apiKeys,

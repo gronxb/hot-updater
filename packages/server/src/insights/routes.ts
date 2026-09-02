@@ -20,7 +20,10 @@ import {
   INSIGHTS_STRING_MAX_CODE_UNITS,
 } from "@hot-updater/plugin-core/internal";
 
-import { HotUpdaterSchemaMigrationRequiredError } from "../db/schemaReadiness";
+import {
+  HotUpdaterInsightsSchemaProvisioningRequiredError,
+  HotUpdaterSchemaMigrationRequiredError,
+} from "../db/schemaReadiness";
 import type { RouteHandler } from "../handlerTypes";
 import {
   InsightsBadRequestError,
@@ -379,7 +382,10 @@ const run = async (
     ) {
       return json({ error: { code: "INSIGHTS_PAYLOAD_TOO_LARGE" } }, 413);
     }
-    if (error instanceof HotUpdaterSchemaMigrationRequiredError) {
+    if (
+      error instanceof HotUpdaterSchemaMigrationRequiredError ||
+      error instanceof HotUpdaterInsightsSchemaProvisioningRequiredError
+    ) {
       return json(
         { error: { code: "INSIGHTS_SCHEMA_MIGRATION_REQUIRED" } },
         503,

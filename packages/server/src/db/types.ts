@@ -57,6 +57,10 @@ export interface MigrationResult {
   getSQL?: () => string;
 }
 
+export interface SchemaProvisioner {
+  plan: () => Promise<MigrationResult>;
+}
+
 export interface Migrator {
   getVersion: () => Promise<string | undefined>;
   getNameVariants: () => Promise<unknown>;
@@ -83,6 +87,7 @@ export interface DatabaseAdapterCapabilities {
   adapterName?: string;
   provider?: ORMProvider;
   createMigrator?: () => Migrator;
+  createInsightsSchemaProvisioner?: () => SchemaProvisioner;
   generateSchema?: SchemaGenerator;
 }
 

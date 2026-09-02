@@ -205,7 +205,8 @@ Start by setting up your database adapter. Choose the ORM that fits your project
 Generate and apply the adapter's schema before serving requests. The exact
 workflow differs by adapter: Kysely and MongoDB use `hot-updater db migrate`,
 Drizzle uses the generated schema with Drizzle Kit, and Prisma merges its models
-into `prisma/schema.prisma` before `prisma db push` applies them.
+into `prisma/schema.prisma` before Prisma applies them, then uses
+`hot-updater db migrate` to provision its separate Insights layout.
 
 ## Server Frameworks
 

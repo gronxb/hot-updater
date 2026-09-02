@@ -23,6 +23,7 @@ import type {
 } from "@hot-updater/test-utils";
 
 import type { ORMSQLProvider } from "../../../../db/types";
+import { createPrismaInsightsSchemaProvisioner } from "../../../prisma";
 import {
   assertPrismaInsightsClient,
   executePrismaInsights,
@@ -33,7 +34,6 @@ import {
   type PrismaInsightsRawClient,
 } from "../client";
 import { prismaInsightsEventOrder, prismaInsightsInstallKey } from "../codec";
-import { preparePrismaInsights } from "../maintenance";
 import { createPrismaInsightsModel } from "../model";
 import { runPrismaInsightsReportStep } from "../reports";
 import {
@@ -339,15 +339,19 @@ const activateNamespace = async (
   databaseNamespace: string,
 ): Promise<ActiveNamespace> => {
   assertPrismaInsightsClient(namespace.client);
-  const preparation = await preparePrismaInsights(
+  const provisioner = createPrismaInsightsSchemaProvisioner(
     namespace.client,
     provider,
     databaseNamespace,
-    { writersDrained: true },
   );
-  if (!preparation.ready) {
-    throw new Error("Prisma conformance namespace is not source-ready");
-  }
+  const plan = await provisioner.plan();
+  if (plan.operations.length !== 1)
+    throw new Error(
+      "Prisma conformance namespace did not require provisioning",
+    );
+  await plan.execute();
+  if ((await provisioner.plan()).operations.length !== 0)
+    throw new Error("Prisma conformance namespace provisioning was not stable");
   const meter = new NativeRequestMeter();
   const controls: ClientControls = { nowMs: 0 };
   return {

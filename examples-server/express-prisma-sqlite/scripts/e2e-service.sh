@@ -15,4 +15,5 @@ cp .env.hotupdater src/.env.hotupdater
 ./node_modules/.bin/prisma generate
 node ../../packages/hot-updater/dist/index.mjs db generate src/db.ts --yes
 RUST_LOG=info ./node_modules/.bin/prisma db push
+node ../../packages/hot-updater/dist/index.mjs db migrate src/db.ts --yes
 exec ./node_modules/.bin/tsx src/index.ts

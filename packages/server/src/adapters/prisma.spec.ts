@@ -1,7 +1,11 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
-import { prismaAdapter, type PrismaConfig } from "./prisma";
+import {
+  createPrismaInsightsSchemaProvisioner,
+  prismaAdapter,
+  type PrismaConfig,
+} from "./prisma";
 import { createPrismaTestHarness } from "./prismaTestClient";
 
 const harness = createPrismaTestHarness();
@@ -71,6 +75,24 @@ describe("prismaAdapter capabilities", () => {
     });
 
     expect(Reflect.has(plugin, "transaction")).toBe(false);
+  });
+
+  it("preserves non-schema core preflight failures", async () => {
+    const connectionError = Object.assign(new Error("authentication failed"), {
+      code: "P1000",
+    });
+    const provisioner = createPrismaInsightsSchemaProvisioner(
+      {
+        ...harness.client,
+        $queryRawUnsafe: async () => {
+          throw connectionError;
+        },
+      },
+      "postgresql",
+      insightsDatabaseNamespace,
+    );
+
+    await expect(provisioner.plan()).rejects.toBe(connectionError);
   });
 
   it("requires transactions for emulated relations", () => {

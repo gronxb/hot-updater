@@ -8,7 +8,10 @@ import {
   queryPrismaInsights,
   type PrismaInsightsRawClient,
 } from "./client";
-import { assertPrismaInsightsDatabaseNamespace } from "./utils";
+import {
+  assertPrismaInsightsDatabaseNamespace,
+  prismaInsightsSafeInteger,
+} from "./utils";
 
 export const PRISMA_INSIGHTS_LAYOUT_VERSION = 4;
 export const PRISMA_INSIGHTS_STATE =
@@ -253,39 +256,46 @@ interface PrismaInsightsCatalogIndex {
   readonly keys: readonly PrismaInsightsCatalogKey[];
 }
 
+const isExpectedPrismaInsightsIndex = (
+  provider: ORMSQLProvider,
+  name: (typeof PRISMA_INSIGHTS_REQUIRED_INDEXES)[number],
+  index: PrismaInsightsCatalogIndex,
+): boolean => {
+  const expected = PRISMA_INSIGHTS_REQUIRED_INDEX_LAYOUTS[name];
+  if (
+    index.name !== name ||
+    index.table !== PRISMA_INSIGHTS_INDEX_TABLES[name] ||
+    !index.healthy ||
+    index.unique !== isRequiredIndexUnique(provider, expected) ||
+    index.keys.length !== expected.keys.length
+  ) {
+    return false;
+  }
+  return expected.keys.every((key, position) => {
+    const actualKey = index.keys[position];
+    return (
+      actualKey !== undefined &&
+      typeof actualKey.value === "string" &&
+      hasExpectedIndexKey(
+        provider,
+        actualKey.value,
+        indexKeyValue(provider, key),
+      ) &&
+      isCatalogTrue(actualKey.descending) === indexKeyDirection(name, position)
+    );
+  });
+};
+
 const hasExpectedPrismaInsightsIndexLayout = (
   provider: ORMSQLProvider,
   indexes: readonly PrismaInsightsCatalogIndex[],
 ): boolean =>
   PRISMA_INSIGHTS_REQUIRED_INDEXES.every((name) => {
-    const expected = PRISMA_INSIGHTS_REQUIRED_INDEX_LAYOUTS[name];
-    const table = PRISMA_INSIGHTS_INDEX_TABLES[name];
-    const actual = indexes.filter(
-      (index) => index.name === name && index.table === table,
+    const actual = indexes.filter((index) => index.name === name);
+    return (
+      actual.length === 1 &&
+      isExpectedPrismaInsightsIndex(provider, name, actual[0]!)
     );
-    if (actual.length !== 1) return false;
-    const index = actual[0]!;
-    if (
-      !index.healthy ||
-      index.unique !== isRequiredIndexUnique(provider, expected) ||
-      index.keys.length !== expected.keys.length
-    ) {
-      return false;
-    }
-    return expected.keys.every((key, position) => {
-      const actualKey = index.keys[position];
-      return (
-        actualKey !== undefined &&
-        typeof actualKey.value === "string" &&
-        hasExpectedIndexKey(
-          provider,
-          actualKey.value,
-          indexKeyValue(provider, key),
-        ) &&
-        isCatalogTrue(actualKey.descending) ===
-          indexKeyDirection(name, position)
-      );
-    });
   });
 
 const groupCatalogRows = <TRow>(
@@ -1419,7 +1429,7 @@ const hasNoUnexpectedPrismaInsightsIndexes = async (
     query = `select indexes.name from sqlite_master indexes
       where indexes.type='index' and indexes.sql is not null
         and (indexes.tbl_name like 'private_hot_updater_prisma_insights_%'
-          or indexes.tbl_name='bundle_events')`;
+          or indexes.name like 'private_hot_updater_prisma_insights_%')`;
   } else if (provider === "postgresql") {
     query = `select indexes.relname as name from pg_index metadata
       join pg_class indexes on indexes.oid=metadata.indexrelid
@@ -1428,14 +1438,14 @@ const hasNoUnexpectedPrismaInsightsIndexes = async (
       left join pg_constraint constraints on constraints.conindid=indexes.oid
       where namespace.nspname=current_schema() and constraints.oid is null
         and (tables.relname like 'private_hot_updater_prisma_insights_%'
-          or tables.relname='bundle_events')`;
+          or indexes.relname like 'private_hot_updater_prisma_insights_%')`;
   } else if (provider === "mssql") {
     query = `select indexes.name from sys.indexes indexes
       join sys.tables tables on tables.object_id=indexes.object_id
       where indexes.name is not null and indexes.is_primary_key=0
         and indexes.is_unique_constraint=0
         and (tables.name like 'private_hot_updater_prisma_insights_%'
-          or tables.name='bundle_events')`;
+          or indexes.name like 'private_hot_updater_prisma_insights_%')`;
   } else {
     const schema =
       provider === "mysql"
@@ -1451,13 +1461,397 @@ const hasNoUnexpectedPrismaInsightsIndexes = async (
         and constraints.constraint_type in ('PRIMARY KEY','UNIQUE')
       where ${schema} and constraints.constraint_name is null
         and (statistics.table_name like 'private_hot_updater_prisma_insights_%'
-          or statistics.table_name='bundle_events')`;
+          or statistics.index_name like 'private_hot_updater_prisma_insights_%')`;
   }
   const rows = await client.$queryRawUnsafe<{ name: unknown }[]>(query);
   const expected = new Set<string>(PRISMA_INSIGHTS_REQUIRED_INDEXES);
   return rows.every(
     (row) => typeof row.name === "string" && expected.has(row.name),
   );
+};
+
+interface PrismaInsightsRequiredIndexInspection {
+  readonly compatible: boolean;
+  readonly existing: number;
+}
+
+const requiredIndexInspection = (
+  provider: ORMSQLProvider,
+  indexes: readonly PrismaInsightsCatalogIndex[],
+  ownersValid: boolean,
+): PrismaInsightsRequiredIndexInspection => ({
+  compatible:
+    ownersValid &&
+    indexes.every((index) => {
+      const name = PRISMA_INSIGHTS_REQUIRED_INDEXES.find(
+        (candidate) => candidate === index.name,
+      );
+      return (
+        name !== undefined &&
+        isExpectedPrismaInsightsIndex(provider, name, index)
+      );
+    }),
+  existing: indexes.length,
+});
+
+const inspectPrismaInsightsRequiredIndexes = async (
+  client: PrismaInsightsRawClient,
+  provider: ORMSQLProvider,
+): Promise<PrismaInsightsRequiredIndexInspection> => {
+  const sql = new PrismaInsightsSql(provider);
+  const names = PRISMA_INSIGHTS_REQUIRED_INDEXES.map((name) => sql.value(name));
+  const filter = `(${names.join(",")})`;
+  if (provider === "mssql") {
+    const rows = await queryPrismaInsights<
+      {
+        name: unknown;
+        table_name: unknown;
+        is_unique: unknown;
+        is_disabled: unknown;
+        has_filter: unknown;
+        column_name: unknown;
+        is_descending_key: unknown;
+        computed_definition: unknown;
+        is_persisted: unknown;
+      }[]
+    >(
+      client,
+      sql.statement(
+        `select indexes.name as name,object_name(indexes.object_id) as table_name,
+           indexes.is_unique as is_unique,indexes.is_disabled as is_disabled,
+           indexes.has_filter as has_filter,columns.name as column_name,
+           index_columns.is_descending_key as is_descending_key,
+           computed.definition as computed_definition,
+           computed.is_persisted as is_persisted
+         from sys.indexes indexes
+         join sys.index_columns index_columns
+           on index_columns.object_id=indexes.object_id
+           and index_columns.index_id=indexes.index_id
+         join sys.columns columns on columns.object_id=index_columns.object_id
+           and columns.column_id=index_columns.column_id
+         left join sys.computed_columns computed
+           on computed.object_id=columns.object_id
+           and computed.column_id=columns.column_id
+         where indexes.name in ${filter} and index_columns.key_ordinal>0
+         order by indexes.name,index_columns.key_ordinal`,
+      ),
+    );
+    const ownersValid = rows.every(
+      (row) =>
+        typeof row.name === "string" &&
+        row.table_name === PRISMA_INSIGHTS_INDEX_TABLES[row.name],
+    );
+    const indexes = PRISMA_INSIGHTS_REQUIRED_INDEXES.flatMap((name) => {
+      const table = PRISMA_INSIGHTS_INDEX_TABLES[name]!;
+      const indexRows = rows.filter(
+        (row) => row.name === name && row.table_name === table,
+      );
+      const first = indexRows[0];
+      return first === undefined
+        ? []
+        : [
+            {
+              name,
+              table,
+              unique: isCatalogTrue(first.is_unique),
+              healthy:
+                isCatalogFalse(first.is_disabled) &&
+                isCatalogFalse(first.has_filter) &&
+                (name !== PRISMA_INSIGHTS_MIGRATION_INDEX ||
+                  (first.column_name === PRISMA_INSIGHTS_MIGRATION_COLUMN &&
+                    isCatalogTrue(first.is_persisted))),
+              keys: indexRows.map((row) => ({
+                value:
+                  name === PRISMA_INSIGHTS_MIGRATION_INDEX
+                    ? row.computed_definition
+                    : row.column_name,
+                descending: row.is_descending_key,
+              })),
+            },
+          ];
+    });
+    return requiredIndexInspection(provider, indexes, ownersValid);
+  }
+  if (provider === "sqlite") {
+    const rows = await queryPrismaInsights<
+      {
+        name: unknown;
+        table_name: unknown;
+        is_unique: unknown;
+        origin: unknown;
+        partial: unknown;
+        column_name: unknown;
+        is_descending: unknown;
+        index_sql: unknown;
+      }[]
+    >(
+      client,
+      sql.statement(
+        `select indexes.name as name,indexes.tbl_name as table_name,
+           list."unique" as is_unique,list.origin as origin,
+           list.partial as partial,key.name as column_name,
+           key.desc as is_descending,indexes.sql as index_sql
+         from sqlite_master indexes,
+           pragma_index_list(indexes.tbl_name) list,
+           pragma_index_xinfo(indexes.name) key
+         where indexes.type='index' and indexes.name in ${filter}
+           and list.name=indexes.name and key.key=1
+         order by indexes.name,key.seqno`,
+      ),
+    );
+    const ownersValid = rows.every(
+      (row) =>
+        typeof row.name === "string" &&
+        row.table_name === PRISMA_INSIGHTS_INDEX_TABLES[row.name],
+    );
+    const indexes = PRISMA_INSIGHTS_REQUIRED_INDEXES.flatMap((name) => {
+      const table = PRISMA_INSIGHTS_INDEX_TABLES[name]!;
+      const indexRows = rows.filter(
+        (row) => row.name === name && row.table_name === table,
+      );
+      const first = indexRows[0];
+      if (!first) return [];
+      const migrationSql =
+        typeof first.index_sql === "string" &&
+        normalizeIndexKey(first.index_sql).includes(
+          normalizeIndexKey(
+            indexKeyValue(
+              provider,
+              PRISMA_INSIGHTS_REQUIRED_INDEX_LAYOUTS[name].keys[0]!,
+            ),
+          ),
+        );
+      return [
+        {
+          name,
+          table,
+          unique: isCatalogTrue(first.is_unique),
+          healthy:
+            first.origin === "c" &&
+            isCatalogFalse(first.partial) &&
+            (name !== PRISMA_INSIGHTS_MIGRATION_INDEX || migrationSql),
+          keys: indexRows.map((row) => ({
+            value:
+              name === PRISMA_INSIGHTS_MIGRATION_INDEX &&
+              row.column_name === null &&
+              migrationSql
+                ? indexKeyValue(
+                    provider,
+                    PRISMA_INSIGHTS_REQUIRED_INDEX_LAYOUTS[name].keys[0]!,
+                  )
+                : row.column_name,
+            descending: row.is_descending,
+          })),
+        },
+      ];
+    });
+    return requiredIndexInspection(provider, indexes, ownersValid);
+  }
+  if (provider === "postgresql") {
+    const rows = await queryPrismaInsights<
+      {
+        name: unknown;
+        table_name: unknown;
+        is_unique: unknown;
+        is_valid: unknown;
+        is_ready: unknown;
+        is_partial: unknown;
+        key_definition: unknown;
+        index_definition: unknown;
+        is_descending: unknown;
+      }[]
+    >(
+      client,
+      sql.statement(
+        `select indexes.relname as name,tables.relname as table_name,
+           metadata.indisunique as is_unique,metadata.indisvalid as is_valid,
+           metadata.indisready as is_ready,(metadata.indpred is not null) as is_partial,
+           pg_get_indexdef(metadata.indexrelid,keys.position,false) as key_definition,
+           pg_get_indexdef(metadata.indexrelid) as index_definition,
+           ((metadata.indoption[keys.position - 1] & 1) <> 0) as is_descending
+         from pg_index metadata
+         join pg_class indexes on indexes.oid=metadata.indexrelid
+         join pg_class tables on tables.oid=metadata.indrelid
+         join pg_namespace namespace on namespace.oid=tables.relnamespace
+         cross join lateral generate_series(1,metadata.indnkeyatts) keys(position)
+         where namespace.nspname=current_schema() and indexes.relname in ${filter}
+         order by indexes.relname,keys.position`,
+      ),
+    );
+    const ownersValid = rows.every(
+      (row) =>
+        typeof row.name === "string" &&
+        row.table_name === PRISMA_INSIGHTS_INDEX_TABLES[row.name],
+    );
+    const indexes = PRISMA_INSIGHTS_REQUIRED_INDEXES.flatMap((name) => {
+      const table = PRISMA_INSIGHTS_INDEX_TABLES[name]!;
+      const indexRows = rows.filter(
+        (row) => row.name === name && row.table_name === table,
+      );
+      const first = indexRows[0];
+      if (!first) return [];
+      const migrationExpression =
+        typeof first.index_definition === "string" &&
+        normalizeIndexKey(first.index_definition).includes(
+          normalizeIndexKey(
+            indexKeyValue(
+              provider,
+              PRISMA_INSIGHTS_REQUIRED_INDEX_LAYOUTS[name].keys[0]!,
+            ),
+          ),
+        );
+      return [
+        {
+          name,
+          table,
+          unique: isCatalogTrue(first.is_unique),
+          healthy:
+            isCatalogTrue(first.is_valid) &&
+            isCatalogTrue(first.is_ready) &&
+            isCatalogFalse(first.is_partial) &&
+            (name !== PRISMA_INSIGHTS_MIGRATION_INDEX || migrationExpression),
+          keys: indexRows.map((row) => ({
+            value:
+              name === PRISMA_INSIGHTS_MIGRATION_INDEX && migrationExpression
+                ? indexKeyValue(
+                    provider,
+                    PRISMA_INSIGHTS_REQUIRED_INDEX_LAYOUTS[name].keys[0]!,
+                  )
+                : postgresIndexKey(row.key_definition),
+            descending: row.is_descending,
+          })),
+        },
+      ];
+    });
+    return requiredIndexInspection(provider, indexes, ownersValid);
+  }
+  if (provider === "cockroachdb") {
+    const rows = await queryPrismaInsights<
+      {
+        name: unknown;
+        table_name: unknown;
+        non_unique: unknown;
+        column_name: unknown;
+        direction: unknown;
+        implicit: unknown;
+        storing: unknown;
+      }[]
+    >(
+      client,
+      sql.statement(
+        `select index_name as name,table_name as table_name,non_unique as non_unique,
+           column_name as column_name,direction as direction,
+           implicit as implicit,storing as storing
+         from information_schema.statistics
+         where table_schema=current_schema() and index_name in ${filter}
+         order by index_name,seq_in_index`,
+      ),
+    );
+    const ownersValid = rows.every(
+      (row) =>
+        typeof row.name === "string" &&
+        row.table_name === PRISMA_INSIGHTS_INDEX_TABLES[row.name],
+    );
+    const hasMigrationIndex = rows.some(
+      (row) => row.name === PRISMA_INSIGHTS_MIGRATION_INDEX,
+    );
+    let migrationExpression = true;
+    if (hasMigrationIndex) {
+      const statement = await queryPrismaInsights<
+        { create_statement: unknown }[]
+      >(
+        client,
+        new PrismaInsightsSql(provider).statement(
+          "select create_statement from [show create table bundle_events]",
+        ),
+      );
+      const normalized =
+        typeof statement[0]?.create_statement === "string"
+          ? normalizeIndexKey(statement[0].create_statement)
+          : "";
+      migrationExpression = normalized.includes(
+        normalizeIndexKey(
+          `${PRISMA_INSIGHTS_MIGRATION_COLUMN} bytes null as (id::string::bytes) stored`,
+        ),
+      );
+    }
+    const indexes = PRISMA_INSIGHTS_REQUIRED_INDEXES.flatMap((name) => {
+      const table = PRISMA_INSIGHTS_INDEX_TABLES[name]!;
+      const indexRows = rows.filter(
+        (row) => row.name === name && row.table_name === table,
+      );
+      const first = indexRows[0];
+      if (!first) return [];
+      const explicit = indexRows.filter(
+        (row) => row.implicit === "NO" && row.storing === "NO",
+      );
+      return [
+        {
+          name,
+          table,
+          unique: isCatalogFalse(first.non_unique),
+          healthy:
+            explicit.length > 0 &&
+            (name !== PRISMA_INSIGHTS_MIGRATION_INDEX || migrationExpression),
+          keys: explicit.map((row) => ({
+            value: row.column_name,
+            descending: row.direction === "DESC",
+          })),
+        },
+      ];
+    });
+    return requiredIndexInspection(provider, indexes, ownersValid);
+  }
+  const rows = await queryPrismaInsights<
+    {
+      name: unknown;
+      table_name: unknown;
+      non_unique: unknown;
+      column_name: unknown;
+      expression: unknown;
+      collation: unknown;
+      sub_part: unknown;
+    }[]
+  >(
+    client,
+    sql.statement(
+      `select index_name as name,table_name as table_name,non_unique as non_unique,
+         column_name as column_name,expression as expression,
+         collation as collation,sub_part as sub_part
+       from information_schema.statistics
+       where table_schema=database() and index_name in ${filter}
+       order by index_name,seq_in_index`,
+    ),
+  );
+  const ownersValid = rows.every(
+    (row) =>
+      typeof row.name === "string" &&
+      row.table_name === PRISMA_INSIGHTS_INDEX_TABLES[row.name],
+  );
+  const indexes = PRISMA_INSIGHTS_REQUIRED_INDEXES.flatMap((name) => {
+    const table = PRISMA_INSIGHTS_INDEX_TABLES[name]!;
+    const indexRows = rows.filter(
+      (row) => row.name === name && row.table_name === table,
+    );
+    const first = indexRows[0];
+    return first === undefined
+      ? []
+      : [
+          {
+            name,
+            table,
+            unique: isCatalogFalse(first.non_unique),
+            healthy: indexRows.every(
+              (row) => row.sub_part === null || row.sub_part === undefined,
+            ),
+            keys: indexRows.map((row) => ({
+              value: row.expression ?? row.column_name,
+              descending: row.collation === "D",
+            })),
+          },
+        ];
+  });
+  return requiredIndexInspection(provider, indexes, ownersValid);
 };
 
 const hasExactPrismaInsightsCatalog = async (
@@ -1510,6 +1904,192 @@ const hasExactPrismaInsightsCatalog = async (
       return false;
   }
   return hasNoUnexpectedPrismaInsightsIndexes(client, provider);
+};
+
+const readPrismaInsightsCatalogTableNames = async (
+  client: PrismaInsightsRawClient,
+  provider: ORMSQLProvider,
+): Promise<readonly string[]> => {
+  if (provider === "sqlite") {
+    const rows = await client.$queryRawUnsafe<{ name: unknown }[]>(
+      `select name from sqlite_master where type='table'
+       and name like 'private_hot_updater_prisma_insights_%' order by name`,
+    );
+    return rows.flatMap(({ name }) =>
+      typeof name === "string" ? [name.toLowerCase()] : [],
+    );
+  }
+  const schema =
+    provider === "mysql"
+      ? "table_schema=database()"
+      : provider === "mssql"
+        ? "table_schema=schema_name()"
+        : "table_schema=current_schema()";
+  const rows = await client.$queryRawUnsafe<{ name: unknown }[]>(
+    `select table_name as name from information_schema.tables where ${schema}
+       and table_name like 'private_hot_updater_prisma_insights_%'
+       order by table_name`,
+  );
+  return rows.flatMap(({ name }) =>
+    typeof name === "string" ? [name.toLowerCase()] : [],
+  );
+};
+
+const hasCompatiblePrismaInsightsCatalog = async (
+  client: PrismaInsightsRawClient,
+  provider: ORMSQLProvider,
+  tableNames: readonly string[],
+): Promise<boolean> => {
+  const expected = new Map(
+    getExpectedPrismaInsightsCatalog(provider).map((table) => [
+      table.name,
+      table,
+    ]),
+  );
+  if (tableNames.some((name) => !expected.has(name))) return false;
+
+  const columns = await readPrismaInsightsCatalogColumns(client, provider);
+  const keys = await readPrismaInsightsCatalogKeys(client, provider);
+  const checks = await readPrismaInsightsCatalogChecks(client, provider);
+  if (!(await hasNoUnexpectedPrismaInsightsConstraints(client, provider)))
+    return false;
+
+  return tableNames.every((name) => {
+    const expectedTable = expected.get(name);
+    if (!expectedTable) return false;
+    const actualColumns = columns.filter((column) => column.table === name);
+    if (actualColumns.length !== expectedTable.columns.length) return false;
+    for (let index = 0; index < expectedTable.columns.length; index += 1) {
+      const expectedColumn = expectedTable.columns[index]!;
+      const actualColumn = actualColumns[index]!;
+      if (
+        actualColumn.name !== expectedColumn.name ||
+        actualColumn.type !== expectedColumn.type ||
+        actualColumn.nullable !== expectedColumn.nullable ||
+        actualColumn.defaultValue !== expectedColumn.defaultValue ||
+        (expectedColumn.collation !== null &&
+          actualColumn.collation !== expectedColumn.collation)
+      )
+        return false;
+    }
+    if (
+      JSON.stringify(keys.get(name) ?? []) !==
+      JSON.stringify(expectedTable.keys)
+    )
+      return false;
+    const actualChecks = checks.get(name) ?? [];
+    return (
+      actualChecks.length === expectedTable.checks.length &&
+      expectedTable.checks.every((expectedCheck) =>
+        actualChecks.some((actualCheck) => actualCheck.includes(expectedCheck)),
+      )
+    );
+  });
+};
+
+export type PrismaInsightsLayoutInspection =
+  | { readonly state: "absent" }
+  | { readonly state: "pending" }
+  | { readonly state: "ready" };
+
+export const inspectPrismaInsightsLayout = async (
+  client: PrismaInsightsRawClient,
+  provider: ORMSQLProvider,
+  databaseNamespace: string,
+): Promise<PrismaInsightsLayoutInspection> => {
+  assertPrismaInsightsDatabaseNamespace(databaseNamespace);
+  const indexes = await inspectPrismaInsightsRequiredIndexes(client, provider);
+  if (
+    !indexes.compatible ||
+    !(await hasNoUnexpectedPrismaInsightsIndexes(client, provider))
+  ) {
+    throw new PrismaInsightsConfigurationError(
+      "Prisma Insights storage has an incompatible partial index catalog",
+    );
+  }
+  const tableNames = await readPrismaInsightsCatalogTableNames(
+    client,
+    provider,
+  );
+  if (tableNames.length === 0) {
+    return indexes.existing === 0 ? { state: "absent" } : { state: "pending" };
+  }
+  if (
+    !(await hasCompatiblePrismaInsightsCatalog(client, provider, tableNames))
+  ) {
+    throw new PrismaInsightsConfigurationError(
+      "Prisma Insights storage has an incompatible partial catalog",
+    );
+  }
+
+  let migrationInitialized = false;
+  if (tableNames.includes(PRISMA_INSIGHTS_STATE)) {
+    const rows = await client.$queryRawUnsafe<
+      {
+        readonly layout_version: unknown;
+        readonly migration_initialized: unknown;
+      }[]
+    >(
+      `select layout_version,migration_initialized from ${PRISMA_INSIGHTS_STATE} where id=1`,
+    );
+    if (rows.length > 1) {
+      throw new PrismaInsightsConfigurationError(
+        "Prisma Insights storage has invalid layout state",
+      );
+    }
+    const row = rows[0];
+    if (row) {
+      let layoutVersion: number;
+      let initialized: number;
+      try {
+        layoutVersion = prismaInsightsSafeInteger(row.layout_version);
+        initialized = prismaInsightsSafeInteger(row.migration_initialized);
+      } catch {
+        throw new PrismaInsightsConfigurationError(
+          "Prisma Insights storage has invalid layout state",
+        );
+      }
+      if (layoutVersion !== PRISMA_INSIGHTS_LAYOUT_VERSION) {
+        throw new PrismaInsightsConfigurationError(
+          `Prisma Insights layout revision ${layoutVersion} is unsupported; expected ${PRISMA_INSIGHTS_LAYOUT_VERSION}`,
+        );
+      }
+      if (initialized !== 0 && initialized !== 1) {
+        throw new PrismaInsightsConfigurationError(
+          "Prisma Insights storage has invalid migration state",
+        );
+      }
+      migrationInitialized = initialized === 1;
+    }
+  }
+
+  if (tableNames.includes(PRISMA_INSIGHTS_SOURCE)) {
+    const rows = await client.$queryRawUnsafe<
+      { readonly source_id: unknown }[]
+    >(`select source_id from ${PRISMA_INSIGHTS_SOURCE} where id=1`);
+    if (
+      rows.length > 1 ||
+      (rows[0] !== undefined && typeof rows[0].source_id !== "string")
+    ) {
+      throw new PrismaInsightsConfigurationError(
+        "Prisma Insights storage has invalid source state",
+      );
+    }
+    const actualNamespace = rows[0]?.source_id;
+    if (
+      typeof actualNamespace === "string" &&
+      actualNamespace !== databaseNamespace
+    ) {
+      throw new PrismaInsightsConfigurationError(
+        `Prisma Insights database namespace mismatch: configured ${databaseNamespace}, stored ${actualNamespace}`,
+      );
+    }
+  }
+
+  return migrationInitialized &&
+    (await hasCompletePrismaInsightsLayout(client, provider, databaseNamespace))
+    ? { state: "ready" }
+    : { state: "pending" };
 };
 
 export const hasCompletePrismaInsightsLayout = async (

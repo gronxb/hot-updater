@@ -49,8 +49,18 @@ import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
 import { s3Storage } from "@hot-updater/aws";
 import { prisma } from "./prisma";
 
+const insightsDatabaseNamespace =
+  process.env.HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE;
+if (!insightsDatabaseNamespace) {
+  throw new Error("HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE is required");
+}
+
 export const hotUpdater = createHotUpdater({
-  database: prismaAdapter({ prisma, provider: "sqlite" }),
+  database: prismaAdapter({
+    insightsDatabaseNamespace,
+    prisma,
+    provider: "sqlite",
+  }),
   clientAccess: { type: "api-key" },
   storage: [
     s3Storage({
@@ -66,6 +76,18 @@ export const hotUpdater = createHotUpdater({
   ],
 });
 ```
+
+Generate one lowercase UUID and store it as
+`HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE` in the server and migration
+environment:
+
+```bash
+node -e 'console.log(crypto.randomUUID())'
+```
+
+Keep this value unchanged for the lifetime of the database. It identifies the
+Insights data source, so provisioning and every server deployment must use the
+same value.
 
 ## Schema Generation
 
@@ -90,7 +112,17 @@ Regenerate Prisma Client and apply the merged schema:
 ```bash
 npx prisma generate
 npx prisma db push
+npx hot-updater db migrate src/hotUpdater.ts --yes
 ```
+
+Run the Hot Updater migration after Prisma applies the generated schema and
+before the server starts. This explicit provisioning step installs the
+provider-specific Insights layout and validates its database namespace. In
+production, run it after `prisma migrate deploy`; in development, run it after
+`prisma db push`. When updating an existing database, stop and drain every Hot
+Updater event writer before provisioning, then start only servers using the new
+schema after provisioning completes. Mixed-version rolling writes are not
+supported during this offline cutover.
 
 ## Query Semantics
 

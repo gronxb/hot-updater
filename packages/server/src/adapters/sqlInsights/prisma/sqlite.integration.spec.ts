@@ -12,6 +12,7 @@ import { registerInsightsModelTests } from "@hot-updater/test-utils";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../../../test-utils/src/databaseTestFixtures";
+import { createPrismaInsightsSchemaProvisioner } from "../../prisma";
 import { assertPrismaInsightsClient } from "./client";
 import { prismaInsightsInstallKey } from "./codec";
 import {
@@ -29,7 +30,10 @@ import { createPrismaInsightsModel } from "./model";
 import { runPrismaInsightsReportStep } from "./reports";
 import {
   createPrismaInsightsLayout,
+  getPrismaInsightsSchemaSql,
   hasCompletePrismaInsightsLayout,
+  inspectPrismaInsightsLayout,
+  PRISMA_INSIGHTS_MIGRATION_INDEX,
 } from "./schema";
 import { runPrismaInsightsSearchStep } from "./search";
 import { prismaInsightsDigest } from "./utils";
@@ -326,6 +330,48 @@ const createClient = async () => {
 };
 
 describe("Prisma Insights SQLite evidence", () => {
+  it("resumes a compatible index-only partial layout", async () => {
+    const client = await createClient();
+    const migrationIndex = getPrismaInsightsSchemaSql("sqlite").find((query) =>
+      query.includes(
+        `create index if not exists ${PRISMA_INSIGHTS_MIGRATION_INDEX}`,
+      ),
+    );
+    if (!migrationIndex) throw new Error("missing SQLite migration index DDL");
+    await client.$executeRawUnsafe(migrationIndex);
+    const provisioner = createPrismaInsightsSchemaProvisioner(
+      client,
+      "sqlite",
+      insightsDatabaseNamespace,
+    );
+
+    const plan = await provisioner.plan();
+    expect(plan.operations).toHaveLength(1);
+    await plan.execute();
+    await expect(provisioner.plan()).resolves.toMatchObject({ operations: [] });
+  });
+
+  it("rejects an incompatible index-only partial layout before mutation", async () => {
+    const client = await createClient();
+    await client.$executeRawUnsafe(
+      `create index ${PRISMA_INSIGHTS_MIGRATION_INDEX} on bundle_events (type)`,
+    );
+    const provisioner = createPrismaInsightsSchemaProvisioner(
+      client,
+      "sqlite",
+      insightsDatabaseNamespace,
+    );
+
+    await expect(provisioner.plan()).rejects.toThrow(
+      "incompatible partial index catalog",
+    );
+    const tables = await client.$queryRawUnsafe<{ total: unknown }[]>(
+      `select count(*) as total from sqlite_master where type='table'
+       and name like 'private_hot_updater_prisma_insights_%'`,
+    );
+    expect(Number(tables[0]?.total)).toBe(0);
+  });
+
   it("rejects an unexpected private catalog column", async () => {
     const client = await createClient();
     await createPrismaInsightsLayout(
@@ -350,6 +396,9 @@ describe("Prisma Insights SQLite evidence", () => {
         insightsDatabaseNamespace,
       ),
     ).resolves.toBe(false);
+    await expect(
+      inspectPrismaInsightsLayout(client, "sqlite", insightsDatabaseNamespace),
+    ).rejects.toThrow("incompatible partial catalog");
   });
 
   it("accepts low and maximum shared worker budgets", async () => {

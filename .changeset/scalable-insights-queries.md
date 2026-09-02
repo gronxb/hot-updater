@@ -8,6 +8,7 @@
 "@hot-updater/postgres": minor
 "@hot-updater/server": minor
 "@hot-updater/supabase": minor
+"hot-updater": minor
 ---
 
 Replace the bounded Insights scan contract with native cursor pages and durable
@@ -20,3 +21,9 @@ Official database providers now preserve raw events while maintaining committed
 source positions, latest installations, historical aliases, and immutable report
 publications. Console Insights uses cursor pagination, explicit readiness states,
 and readable local timestamps across desktop and mobile layouts.
+
+Prisma deployments now provision the provider-specific Insights layout with
+`hot-updater db migrate` after Prisma applies the generated core schema. The
+server checks this layout before Insights operations and returns a migration
+required response instead of failing the first event write with a raw database
+error.
