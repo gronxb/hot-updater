@@ -33,7 +33,6 @@ jobs:
                   includePrivate: false
                 ) {
                   nodes {
-                    tier { monthlyPriceInCents }
                     sponsorEntity {
                       ... on User { login avatarUrl name url }
                       ... on Organization { login avatarUrl name url }
@@ -46,12 +45,10 @@ jobs:
           ' | jq -s '[
             .[].data.user.sponsorshipsAsMaintainer.nodes[]
             | select(.sponsorEntity != null)
-            | {
-                sponsor: .sponsorEntity,
-                amountInCents: (.tier.monthlyPriceInCents // 0)
-              }
+            | .sponsorEntity
           ]' > /tmp/active-sponsors.json
 
+          # Preserve historical sponsors and their last recorded tier amount
           git log --reverse --format=%H -- docs/public/sponsors.json |
             while read -r revision; do
               git show "$revision:docs/public/sponsors.json" | jq '.sponsors // []'
@@ -63,20 +60,25 @@ jobs:
             --slurpfile historicalSponsors /tmp/historical-sponsors.json '
               ($activeSponsors[0]
                 | map({
-                    login: .sponsor.login,
-                    avatarUrl: .sponsor.avatarUrl,
-                    name: .sponsor.name,
-                    url: .sponsor.url,
-                    amountInCents
+                    login,
+                    avatarUrl,
+                    name,
+                    url
                   })) as $active
               | ($historicalSponsors[0] + $active)
               | reduce .[] as $sponsor ({};
+                  .[$sponsor.login] as $existing
+                  |
                   .[$sponsor.login] = {
                     login: $sponsor.login,
                     avatarUrl: $sponsor.avatarUrl,
                     name: $sponsor.name,
                     url: $sponsor.url,
-                    amountInCents: ($sponsor.amountInCents // 0)
+                    amountInCents: (
+                      $sponsor.amountInCents
+                      // $existing.amountInCents
+                      // 0
+                    )
                   }
                 )
               | [.[]]
