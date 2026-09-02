@@ -1,6 +1,5 @@
 import type {
   ApiKeyRow,
-  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
@@ -149,15 +148,6 @@ export function createMongoPatchWhere(
 ): Filter<BundlePatchRow>;
 export function createMongoPatchWhere(
   where: readonly DatabaseWhere<"bundle_patches">[] | undefined,
-): Document {
-  return createMongoWhereDocument(where);
-}
-
-export function createMongoEventWhere(
-  where: readonly DatabaseWhere<"bundle_events">[] | undefined,
-): Filter<BundleEventRow>;
-export function createMongoEventWhere(
-  where: readonly DatabaseWhere<"bundle_events">[] | undefined,
 ): Document {
   return createMongoWhereDocument(where);
 }

@@ -1,8 +1,43 @@
 import { readFile } from "node:fs/promises";
 
-import { sql, type Kysely } from "kysely";
+import { InsightsQueryNotReadyError } from "@hot-updater/plugin-core";
+import { sql, type Kysely, type QueryExecutorProvider } from "kysely";
 
-import { assertPostgresInsightsInstallationEventIndexes } from "./postgresInsights";
+export const assertPostgresInsightsInstallationEventIndexes = async (
+  db: QueryExecutorProvider,
+): Promise<void> => {
+  const { rows } = await sql<{ ready: boolean }>`select count(*) = 2 as ready
+    from pg_index i
+    join pg_class c on c.oid = i.indexrelid
+    join pg_am am on am.oid = c.relam
+    join pg_attribute install on install.attrelid = i.indrelid and install.attname = 'install_id'
+    join pg_attribute type on type.attrelid = i.indrelid and type.attname = 'type'
+    join pg_attribute time on time.attrelid = i.indrelid and time.attname = 'received_at_ms'
+    join pg_attribute id on id.attrelid = i.indrelid and id.attname = 'id'
+    join pg_collation install_collation on install_collation.oid = install.attcollation
+    join pg_collation type_collation on type_collation.oid = type.attcollation
+    where i.indrelid = to_regclass('bundle_events')
+      and ((i.indexrelid = to_regclass('bundle_events_install_applied_idx')
+        and pg_get_expr(i.indpred, i.indrelid) = '(type = ''UPDATE_APPLIED''::text)')
+      or (i.indexrelid = to_regclass('bundle_events_install_recovered_idx')
+        and pg_get_expr(i.indpred, i.indrelid) = '(type = ''RECOVERED''::text)'))
+      and i.indisvalid and i.indisready and am.amname = 'btree'
+      and i.indnkeyatts = 3 and i.indnatts = 3 and i.indexprs is null
+      and install.atttypid = 'text'::regtype and install.attnotnull
+      and type.atttypid = 'text'::regtype and type.attnotnull
+      and time.atttypid = 'float8'::regtype and time.attnotnull
+      and id.atttypid = 'uuid'::regtype and id.attnotnull
+      and i.indkey[0] = install.attnum and i.indkey[1] = time.attnum and i.indkey[2] = id.attnum
+      and i.indcollation[0] = install.attcollation
+      and i.indcollation[1] = 0 and i.indcollation[2] = 0
+      and install_collation.collisdeterministic and type_collation.collisdeterministic
+      and not exists (select 1 from unnest(i.indoption) option_bits where option_bits <> 0)
+      and not exists (select 1 from unnest(i.indclass) class_id
+        join pg_opclass opclass on opclass.oid = class_id where not opclass.opcdefault)`.execute(
+    db,
+  );
+  if (!rows[0]?.ready) throw new InsightsQueryNotReadyError();
+};
 
 export const getPostgresInsightsInstallationEventsMigrationSQL =
   (): Promise<string> =>

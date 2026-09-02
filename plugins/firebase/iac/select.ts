@@ -33,6 +33,7 @@ const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
     imports: [{ pkg: "@hot-updater/firebase", named: ["firebaseDatabase"] }],
     configString: `firebaseDatabase({
     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+    insightsDatabaseNamespace: process.env.HOT_UPDATER_FIREBASE_INSIGHTS_DATABASE_NAMESPACE!,
     credential,
   })`,
   };
@@ -66,12 +67,14 @@ const credential = applicationDefault();`.trim(),
 
 export const setEnv = async ({
   applicationCredentials,
+  insightsDatabaseNamespace,
   projectId,
   storageBucket,
   build,
   region,
 }: {
   applicationCredentials?: string;
+  insightsDatabaseNamespace: string;
   projectId: string;
   storageBucket: string;
   build: BuildType;
@@ -86,6 +89,8 @@ export const setEnv = async ({
       },
       [FIREBASE_INIT_PROVIDER.inputs.projectId.envKey]: projectId,
       [FIREBASE_INIT_PROVIDER.inputs.region.envKey]: region,
+      HOT_UPDATER_FIREBASE_INSIGHTS_DATABASE_NAMESPACE:
+        insightsDatabaseNamespace,
       HOT_UPDATER_FIREBASE_STORAGE_BUCKET: storageBucket,
     },
     ".env.hotupdater",

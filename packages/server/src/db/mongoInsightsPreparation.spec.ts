@@ -7,6 +7,8 @@ import { createMongoTestHarness } from "../adapters/mongodbTestClient";
 import { createMongoInsightsPreparation } from "./mongoInsightsPreparation";
 import { createMongoInsightsSource } from "./mongoInsightsSource";
 
+const databaseNamespace = "00000000-0000-4000-8000-000000000001";
+
 describe("MongoDB Insights event write fence", () => {
   it("loads generic DB tooling without loading the optional MongoDB peer", async () => {
     vi.resetModules();
@@ -36,6 +38,7 @@ describe("MongoDB Insights event write fence", () => {
     const harness = createMongoTestHarness();
     const database = mongoAdapter({
       client: harness.client,
+      insightsDatabaseNamespace: databaseNamespace,
       transactions: true,
     });
     const event = { ...createBundleEventRowFixture("10", 50), ...change };
@@ -84,7 +87,7 @@ describe("MongoDB Insights event write fence", () => {
     const collection = vi.fn(() => ({}));
     const db = vi.fn(() => ({ collection }));
     const client = { db } as unknown as MongoClient;
-    const source = createMongoInsightsSource(client);
+    const source = createMongoInsightsSource(client, databaseNamespace);
     await expect(
       source.prepare({ writersDrained: false } as never),
     ).rejects.toMatchObject({ code: "invalid-query" });

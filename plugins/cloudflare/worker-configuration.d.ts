@@ -6,6 +6,7 @@ declare namespace Cloudflare {
     OTHER_DB: D1Database;
     BUCKET: R2Bucket;
     BUCKET_NAME: string;
+    INSIGHTS_DATABASE_NAMESPACE: string;
     STORAGE_DOWNLOAD_URL_SIGNING_KEY: string;
   }
 }

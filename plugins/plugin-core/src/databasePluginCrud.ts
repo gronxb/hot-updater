@@ -44,9 +44,6 @@ export const createDatabasePluginCrud = (
     input: TInput,
   ): Promise<SelectedDatabaseInputRow<TInput>> {
     validateModel(input.model);
-    if ((input as { readonly model: string }).model === "bundle_events") {
-      throw new DatabasePluginInputError("invalid-operation");
-    }
     validateCreateData(input.model, input.data);
     if (
       input.onConflict !== undefined &&

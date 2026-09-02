@@ -1,5 +1,6 @@
 import {
   createDatabaseClient,
+  type BundleEventRow,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -15,13 +16,16 @@ import {
 } from "../mockDatabase";
 
 const DEFAULT_LATENCY = { min: 0, max: 0 } as const;
+const INSIGHTS_NAMESPACES = {
+  insightsDatabaseNamespace: "00000000-0000-7000-8000-00000000d001",
+  otherInsightsDatabaseNamespace: "00000000-0000-7000-8000-00000000d002",
+} as const;
 
 let data: MockDatabaseData;
 
 const resetData = (): void => {
   data.bundles.clear();
   data.bundlePatches.clear();
-  data.bundleEvents.clear();
   data.channels.clear();
   data.apiKeys.clear();
   data.releaseCatalogs.clear();
@@ -29,13 +33,17 @@ const resetData = (): void => {
 };
 
 const createPlugin = (): DatabasePlugin =>
-  mockDatabase({ data, latency: DEFAULT_LATENCY });
+  mockDatabase({
+    ...INSIGHTS_NAMESPACES,
+    data,
+    latency: DEFAULT_LATENCY,
+  });
 
 beforeEach(() => {
   resetData();
 });
 
-data = createMockDatabaseData();
+data = createMockDatabaseData(INSIGHTS_NAMESPACES);
 
 setupDatabasePluginTestSuite({
   name: "mock fixed-model database plugin",
@@ -55,6 +63,129 @@ setupDatabaseClientTestSuite({
 });
 
 describe("mock database provider", () => {
+  it("rejects data from a different Insights namespace before creating the plugin", () => {
+    expect(() =>
+      mockDatabase({
+        ...INSIGHTS_NAMESPACES,
+        insightsDatabaseNamespace: "00000000-0000-7000-8000-00000000d003",
+        data,
+        latency: DEFAULT_LATENCY,
+      }),
+    ).toThrow("Mock Insights database namespaces do not match data");
+  });
+
+  it("exposes all Insights reads with bounded controllable maintenance", async () => {
+    const plugin = createPlugin();
+    const dayMs = 86_400_000;
+    const nowMs = 31 * dayMs;
+    const event: BundleEventRow = {
+      id: "00000000-0000-7000-8000-000000000e01",
+      type: "UPDATE_APPLIED",
+      install_id: "public-cutover-installation",
+      user_id: "public-cutover-user",
+      username: "Public Cutover",
+      from_bundle_id: "10000000-0000-7000-8000-000000000001",
+      from_release_id: null,
+      to_bundle_id: "10000000-0000-7000-8000-000000000002",
+      to_release_id: null,
+      platform: "ios",
+      app_version: "1.0.0",
+      channel: "production",
+      cohort: "default",
+      update_strategy: "appVersion",
+      fingerprint_hash: null,
+      sdk_version: null,
+      received_at_ms: nowMs - 1_000,
+    };
+    data.insights.setCurrentTimeMs(nowMs);
+    await plugin.models.insights.append(event);
+
+    const events = await plugin.models.insights.pageEvents({
+      selector: { kind: "installationId", installId: event.install_id },
+      beforeReceivedAtMs: nowMs,
+      limit: 10,
+    });
+    expect(events).toMatchObject({
+      state: "ready",
+      data: { data: [{ id: event.id }], nextCursor: null },
+    });
+    await expect(
+      plugin.models.insights.pageInstallations({
+        kind: "installationId",
+        installId: event.install_id,
+        limit: 10,
+      }),
+    ).resolves.toMatchObject({
+      state: "ready",
+      data: { data: [{ install_id: event.install_id }], nextCursor: null },
+    });
+
+    const searchInput = {
+      kind: "contains" as const,
+      query: event.install_id,
+      limit: 10,
+    };
+    const preparingSearch =
+      await plugin.models.insights.pageInstallations(searchInput);
+    expect(preparingSearch.state).toBe("preparing");
+    if (preparingSearch.state !== "preparing") {
+      throw new Error("expected search preparation");
+    }
+    const searchStep = await data.insights.runJobStep(preparingSearch.job.id, {
+      maxItems: 10,
+      maxRequests: 1,
+    });
+    expect(searchStep.state).toBe("complete");
+    expect(searchStep.usage.items).toBeGreaterThan(0);
+    expect(searchStep.usage.items).toBeLessThanOrEqual(10);
+    expect(searchStep.usage.requests).toBe(1);
+    await expect(
+      createPlugin().models.insights.pageInstallations(searchInput),
+    ).resolves.toMatchObject({
+      state: "ready",
+      data: { data: [{ install_id: event.install_id }], nextCursor: null },
+    });
+
+    const reportInput = {
+      query: {
+        kind: "activeOverview" as const,
+        window: "7d" as const,
+        userId: event.user_id!,
+      },
+    };
+    const preparingReport = await plugin.models.insights.getReport(reportInput);
+    expect(preparingReport.state).toBe("preparing");
+    if (preparingReport.state !== "preparing") {
+      throw new Error("expected report preparation");
+    }
+    const reportStep = await data.insights.runJobStep(preparingReport.job.id, {
+      maxItems: 10,
+      maxRequests: 1,
+    });
+    expect(reportStep.state).toBe("complete");
+    expect(reportStep.usage.items).toBeGreaterThan(0);
+    expect(reportStep.usage.items).toBeLessThanOrEqual(10);
+    expect(reportStep.usage.requests).toBe(1);
+    const report = await plugin.models.insights.getReport(reportInput);
+    expect(report).toMatchObject({
+      state: "ready",
+      data: { kind: "activeOverview", summary: { activeInstallations: 1 } },
+    });
+    if (report.state !== "ready" && report.state !== "stale") {
+      throw new Error("expected published report");
+    }
+    await expect(
+      plugin.models.insights.pageReport({
+        publicationId: report.data.id,
+        section: "activeSeries",
+        limit: 10,
+      }),
+    ).resolves.toMatchObject({
+      state: "ready",
+      data: { section: "activeSeries" },
+    });
+  });
+
   it("serializes concurrent channel inserts and returns the canonical row", async () => {
     const plugin = createPlugin();
 

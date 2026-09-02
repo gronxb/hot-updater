@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import path from "path";
 
@@ -91,6 +92,7 @@ const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
     configString: `supabaseDatabase({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    insightsDatabaseNamespace: process.env.HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE!,
   })`,
   };
 
@@ -742,12 +744,14 @@ const deployEdgeFunction = async (
   projectId: string,
   functionName: string,
   bucketName: string,
+  insightsDatabaseNamespace: string,
 ) => {
   const edgeFunctionsLibPath = path.join(workdir, "supabase", "edge-functions");
   const edgeFunctionsCodePath = path.join(edgeFunctionsLibPath, "index.ts");
   const edgeFunctionsCode = transformEnv(edgeFunctionsCodePath, {
     BUCKET_NAME: bucketName,
     FUNCTION_NAME: functionName,
+    INSIGHTS_DATABASE_NAMESPACE: insightsDatabaseNamespace,
   });
 
   if (!isSupabaseFunctionName(functionName)) {
@@ -1134,11 +1138,14 @@ const runInitWithoutCliMetadata = async ({
   });
 
   const bucket = await createSelectedBucket(projectAccess.api, bucketSelection);
+  const insightsDatabaseNamespace =
+    process.env.HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE ?? randomUUID();
   await makeEnv({
     [SUPABASE_INIT_PROVIDER.inputs.projectId.envKey]: project.id,
     HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY: projectAccess.serviceRoleApiKey,
     [SUPABASE_INIT_PROVIDER.inputs.bucketName.envKey]: bucket.name,
     HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
+    HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE: insightsDatabaseNamespace,
   });
   const scaffoldLibPath = path.dirname(
     path.resolve(require.resolve("@hot-updater/supabase/scaffold")),
@@ -1175,6 +1182,7 @@ const runInitWithoutCliMetadata = async ({
     getInfrastructureState: projectAccess.api.getInfrastructureState,
   });
   const databasePlugin = supabaseDatabase({
+    insightsDatabaseNamespace,
     supabaseServiceRoleKey: projectAccess.serviceRoleApiKey,
     supabaseUrl: `https://${project.id}.supabase.co`,
   });
@@ -1197,6 +1205,7 @@ const runInitWithoutCliMetadata = async ({
     project.id,
     functionName,
     bucket.name,
+    insightsDatabaseNamespace,
   );
 
   await removeTmpDir();

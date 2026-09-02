@@ -19,6 +19,8 @@ import {
   DRIZZLE_INSIGHTS_STATE,
 } from "./schema";
 
+const DATABASE_NAMESPACE = "00000000-0000-7000-8000-00000000d001";
+
 const legacySchema = `
   create table bundle_events (
     id text primary key, type text not null, install_id text not null,
@@ -93,7 +95,11 @@ const createSQLiteDatabase = (
 
 it("rejects a same-named SQLite index with the wrong key order", async () => {
   const { native, database } = createSQLiteDatabase();
-  const queries = createDrizzleInsightsQueries(database, "sqlite");
+  const queries = createDrizzleInsightsQueries(
+    database,
+    "sqlite",
+    DATABASE_NAMESPACE,
+  );
   const id = createUUIDv7After(null, 1_800_000_003_000);
   await queries.append(event(id, 1_000, "install-a"));
   native.exec("drop index drizzle_insights_events_order_idx");
@@ -115,7 +121,11 @@ it("rejects a same-named SQLite index with the wrong key order", async () => {
 
 it("rejects an unexpected SQLite Insights index", async () => {
   const { native, database } = createSQLiteDatabase();
-  const queries = createDrizzleInsightsQueries(database, "sqlite");
+  const queries = createDrizzleInsightsQueries(
+    database,
+    "sqlite",
+    DATABASE_NAMESPACE,
+  );
   await queries.append(
     event(createUUIDv7After(null, 1_800_000_003_100), 1_000, "install-a"),
   );
@@ -137,7 +147,11 @@ it("rejects an unexpected SQLite Insights index", async () => {
 
 it("rejects an unexpected SQLite Insights table", async () => {
   const { native, database } = createSQLiteDatabase();
-  const queries = createDrizzleInsightsQueries(database, "sqlite");
+  const queries = createDrizzleInsightsQueries(
+    database,
+    "sqlite",
+    DATABASE_NAMESPACE,
+  );
   await queries.append(
     event(createUUIDv7After(null, 1_800_000_003_200), 1_000, "install-a"),
   );
@@ -160,7 +174,11 @@ it("rejects an unexpected SQLite Insights table", async () => {
 
 it("rejects a SQLite state table missing the revision constraint", async () => {
   const { native, database } = createSQLiteDatabase();
-  const queries = createDrizzleInsightsQueries(database, "sqlite");
+  const queries = createDrizzleInsightsQueries(
+    database,
+    "sqlite",
+    DATABASE_NAMESPACE,
+  );
   await queries.append(
     event(createUUIDv7After(null, 1_800_000_004_000), 1_000, "install-a"),
   );
@@ -196,7 +214,11 @@ it.each([
   "returns storage corruption for malformed SQLite state %s",
   async (field, value) => {
     const { native, database } = createSQLiteDatabase();
-    const queries = createDrizzleInsightsQueries(database, "sqlite");
+    const queries = createDrizzleInsightsQueries(
+      database,
+      "sqlite",
+      DATABASE_NAMESPACE,
+    );
     await queries.append(
       event(createUUIDv7After(null, 1_800_000_004_100), 1_000, "install-a"),
     );
@@ -221,7 +243,11 @@ it.each([
 
 it("durably fails malformed SQLite search job metadata", async () => {
   const { native, database } = createSQLiteDatabase();
-  const queries = createDrizzleInsightsQueries(database, "sqlite");
+  const queries = createDrizzleInsightsQueries(
+    database,
+    "sqlite",
+    DATABASE_NAMESPACE,
+  );
   await queries.append(
     event(createUUIDv7After(null, 1_800_000_004_200), 1_000, "search-corrupt"),
   );
@@ -235,10 +261,13 @@ it("durably fails malformed SQLite search job metadata", async () => {
     .run(reserved.job.id);
 
   await expect(
-    runDrizzleInsightsMaintenanceStep(database, "sqlite", reserved.job.id, {
-      maxItems: 100,
-      maxRequests: 128,
-    }),
+    runDrizzleInsightsMaintenanceStep(
+      database,
+      "sqlite",
+      DATABASE_NAMESPACE,
+      reserved.job.id,
+      { maxItems: 100, maxRequests: 128 },
+    ),
   ).resolves.toMatchObject({ state: "failed" });
   expect(
     native
@@ -257,7 +286,11 @@ it("durably fails malformed SQLite search job metadata", async () => {
 
 it("durably fails malformed SQLite report job metadata", async () => {
   const { native, database } = createSQLiteDatabase();
-  const queries = createDrizzleInsightsQueries(database, "sqlite");
+  const queries = createDrizzleInsightsQueries(
+    database,
+    "sqlite",
+    DATABASE_NAMESPACE,
+  );
   await queries.append(
     event(createUUIDv7After(null, 1_800_000_004_300), 1_000, "report-corrupt"),
   );
@@ -271,10 +304,13 @@ it("durably fails malformed SQLite report job metadata", async () => {
     .run(reserved.job.id);
 
   await expect(
-    runDrizzleInsightsMaintenanceStep(database, "sqlite", reserved.job.id, {
-      maxItems: 100,
-      maxRequests: 128,
-    }),
+    runDrizzleInsightsMaintenanceStep(
+      database,
+      "sqlite",
+      DATABASE_NAMESPACE,
+      reserved.job.id,
+      { maxItems: 100, maxRequests: 128 },
+    ),
   ).resolves.toMatchObject({ state: "failed" });
   expect(
     native
@@ -303,7 +339,11 @@ it("reads at most requested limit plus one from the SQLite event index", async (
       rowCounts.push(rows);
     }
   });
-  const queries = createDrizzleInsightsQueries(database, "sqlite");
+  const queries = createDrizzleInsightsQueries(
+    database,
+    "sqlite",
+    DATABASE_NAMESPACE,
+  );
   let id: string | null = null;
   for (let index = 0; index < 15; index += 1) {
     id = createUUIDv7After(id, 1_800_000_011_000 + index);
@@ -337,7 +377,11 @@ it("preflights oversized SQLite poison without materializing its raw row", async
          'production','a','appVersion',null,null,1000)`,
     )
     .run(oversizedId);
-  const queries = createDrizzleInsightsQueries(database, "sqlite");
+  const queries = createDrizzleInsightsQueries(
+    database,
+    "sqlite",
+    DATABASE_NAMESPACE,
+  );
   const preparing = await queries.pageEvents({
     selector: { kind: "all" },
     beforeReceivedAtMs: 2_000,
@@ -349,6 +393,7 @@ it("preflights oversized SQLite poison without materializing its raw row", async
   const poison = await runDrizzleInsightsMaintenanceStep(
     database,
     "sqlite",
+    DATABASE_NAMESPACE,
     preparing.job.id,
     { maxItems: 100, maxRequests: 128 },
   );

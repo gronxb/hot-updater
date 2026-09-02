@@ -21,6 +21,7 @@ export type AwsInitInputs = {
   readonly bucketRegion?: string;
   readonly distributionId?: string;
   readonly dynamodbTableName?: string;
+  readonly insightsDatabaseNamespace?: string;
   readonly lambdaName?: string;
   readonly profile?: string;
   readonly secretAccessKey?: string;
@@ -44,6 +45,10 @@ export const resolveAwsInitInputs = (
     dynamodbTableName: resolveInitProviderInput(
       existingEnv,
       inputs.dynamodbTableName,
+    ),
+    insightsDatabaseNamespace: resolveInitProviderInput(
+      existingEnv,
+      inputs.insightsDatabaseNamespace,
     ),
     lambdaName: resolveInitProviderInput(existingEnv, inputs.lambdaName),
     profile: resolveInitProviderInput(existingEnv, inputs.profile),

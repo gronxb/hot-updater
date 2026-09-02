@@ -23,6 +23,12 @@ import { executeSerializable } from "./utils";
 const cockroachUrl = process.env.KYSELY_INSIGHTS_COCKROACH_URL;
 const databaseKinds = ["scale", "behavior", "migration", "poison"] as const;
 type DatabaseKind = (typeof databaseKinds)[number];
+const databaseNamespaces = {
+  scale: "30000000-0000-4000-8000-000000000001",
+  behavior: "30000000-0000-4000-8000-000000000002",
+  migration: "30000000-0000-4000-8000-000000000003",
+  poison: "30000000-0000-4000-8000-000000000004",
+} as const satisfies Record<DatabaseKind, string>;
 
 type AppliedEvent = BundleEventRow & { readonly type: "UPDATE_APPLIED" };
 
@@ -118,10 +124,14 @@ describe.skipIf(!cockroachUrl)("Kysely Insights CockroachDB evidence", () => {
     await db.destroy();
   };
 
-  const migrateFresh = async (db: Kysely<object>): Promise<void> => {
+  const migrateFresh = async (
+    db: Kysely<object>,
+    kind: DatabaseKind,
+  ): Promise<void> => {
     const migration = await kyselyAdapter({
       db,
       provider: "cockroachdb",
+      insightsDatabaseNamespace: databaseNamespaces[kind],
     }).createMigrator!().migrateToLatest();
     await migration.execute();
   };
@@ -179,7 +189,7 @@ describe.skipIf(!cockroachUrl)("Kysely Insights CockroachDB evidence", () => {
 
   it("runs rev4 BYTES DDL and a bounded 50,001-row DistSQL page", async () => {
     const db = connect("scale");
-    await migrateFresh(db);
+    await migrateFresh(db, "scale");
 
     const state = await sql<{
       readonly layout_revision: unknown;
@@ -244,7 +254,11 @@ describe.skipIf(!cockroachUrl)("Kysely Insights CockroachDB evidence", () => {
     await sql`update private_hot_updater_kysely_insights_state
         set next_seq = 50001 where id = 1`.execute(db);
 
-    const insights = createKyselyInsightsModel(db, "cockroachdb");
+    const insights = createKyselyInsightsModel(
+      db,
+      "cockroachdb",
+      databaseNamespaces.scale,
+    );
     const page = await insights.pageEvents({
       selector: { kind: "all" },
       beforeReceivedAtMs: 60_000,
@@ -277,13 +291,22 @@ describe.skipIf(!cockroachUrl)("Kysely Insights CockroachDB evidence", () => {
   it("keeps concurrent writes, delayed publications, and zero-filled reports exact", async () => {
     const db = connect("behavior");
     const worker = connect("behavior");
-    await migrateFresh(db);
-    const insights = createKyselyInsightsModel(db, "cockroachdb");
+    await migrateFresh(db, "behavior");
+    const insights = createKyselyInsightsModel(
+      db,
+      "cockroachdb",
+      databaseNamespaces.behavior,
+    );
     const advance = () =>
-      runKyselyInsightsMaintenanceStep(db, "cockroachdb", {
-        maxItems: 160,
-        maxRequests: 4_096,
-      });
+      runKyselyInsightsMaintenanceStep(
+        db,
+        "cockroachdb",
+        databaseNamespaces.behavior,
+        {
+          maxItems: 160,
+          maxRequests: 4_096,
+        },
+      );
 
     await insights.append(
       event("019a2000-0000-7000-8000-000000000001", "delayed-a", 200, {
@@ -606,7 +629,11 @@ describe.skipIf(!cockroachUrl)("Kysely Insights CockroachDB evidence", () => {
           '1.0.0', n::float8 + 1.0
         from generate_series(0, 320) as generated(n)`.execute(db);
 
-    await migrateKyselyInsights(db, "cockroachdb");
+    await migrateKyselyInsights(
+      db,
+      "cockroachdb",
+      databaseNamespaces.migration,
+    );
     const initial = await sql<{
       readonly ready: unknown;
       readonly migration_after_id: string | null;
@@ -621,12 +648,21 @@ describe.skipIf(!cockroachUrl)("Kysely Insights CockroachDB evidence", () => {
     });
     expect(initial.rows[0]?.migration_upper_id).not.toBeNull();
     await expect(
-      prepareKyselyInsightsSource(db, "cockroachdb", 1),
+      prepareKyselyInsightsSource(
+        db,
+        "cockroachdb",
+        databaseNamespaces.migration,
+        1,
+      ),
     ).resolves.toEqual({ state: "progress", processed: 1 });
 
     await disconnect(db);
     db = connect("migration");
-    const insights = createKyselyInsightsModel(db, "cockroachdb");
+    const insights = createKyselyInsightsModel(
+      db,
+      "cockroachdb",
+      databaseNamespaces.migration,
+    );
     await insights.append(
       event(
         "019d0000-0000-7000-8000-000000000001",
@@ -642,7 +678,12 @@ describe.skipIf(!cockroachUrl)("Kysely Insights CockroachDB evidence", () => {
       ),
     );
     for (;;) {
-      const step = await prepareKyselyInsightsSource(db, "cockroachdb", 17);
+      const step = await prepareKyselyInsightsSource(
+        db,
+        "cockroachdb",
+        databaseNamespaces.migration,
+        17,
+      );
       if (step.state === "ready") break;
     }
     await insights.append(
@@ -688,10 +729,10 @@ describe.skipIf(!cockroachUrl)("Kysely Insights CockroachDB evidence", () => {
       1,
     );
     await insertCoreEvent(db, poison);
-    await migrateKyselyInsights(db, "cockroachdb");
+    await migrateKyselyInsights(db, "cockroachdb", databaseNamespaces.poison);
 
     await expect(
-      prepareKyselyInsightsSource(db, "cockroachdb"),
+      prepareKyselyInsightsSource(db, "cockroachdb", databaseNamespaces.poison),
     ).rejects.toThrow();
     const state = await sql<{
       readonly poison_event_id: string | null;

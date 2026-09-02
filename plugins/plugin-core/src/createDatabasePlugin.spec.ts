@@ -21,7 +21,13 @@ const unimplemented = async (): Promise<never> => {
 };
 
 const createMethods = (): DatabasePluginImplementation => ({
-  appendBundleEvent: unimplemented,
+  insights: {
+    append: unimplemented,
+    pageEvents: unimplemented,
+    pageInstallations: unimplemented,
+    getReport: unimplemented,
+    pageReport: unimplemented,
+  },
   create: unimplemented,
   update: unimplemented,
   delete: unimplemented,
@@ -129,6 +135,10 @@ describe("createDatabasePlugin", () => {
     expect(plugin.models.channels.insert).toBeTypeOf("function");
     expect(plugin.models.channels.delete).toBeTypeOf("function");
     expect(plugin.models.insights.append).toBeTypeOf("function");
+    expect(plugin.models.insights.pageEvents).toBeTypeOf("function");
+    expect(plugin.models.insights.pageInstallations).toBeTypeOf("function");
+    expect(plugin.models.insights.getReport).toBeTypeOf("function");
+    expect(plugin.models.insights.pageReport).toBeTypeOf("function");
     expect(plugin.models.apiKeys.findByHash).toBeTypeOf("function");
     expect(plugin.commit).toBeTypeOf("function");
     expect(Object.keys(plugin).sort()).toEqual(["commit", "models", "name"]);
@@ -139,10 +149,10 @@ describe("createDatabasePlugin", () => {
   });
 
   it("validates the complete event contract before the append hook", async () => {
-    const appendBundleEvent = vi.fn(async () => {});
+    const append = vi.fn(async () => {});
     const plugin = createTestPlugin("memory", {
       ...createMethods(),
-      appendBundleEvent,
+      insights: { ...createMethods().insights, append },
     });
     const invalidRows = [
       { ...eventRow, id: "event-1" },
@@ -158,14 +168,114 @@ describe("createDatabasePlugin", () => {
         plugin.models.insights.append(row as BundleEventRow),
       ).rejects.toMatchObject({ code: "invalid-data" });
     }
-    expect(appendBundleEvent).not.toHaveBeenCalled();
+    expect(append).not.toHaveBeenCalled();
 
     const eventWithExtension = { ...eventRow, provider_extension: "retained" };
     await expect(
       plugin.models.insights.append(eventWithExtension),
     ).resolves.toBeUndefined();
-    expect(appendBundleEvent).toHaveBeenCalledOnce();
-    expect(appendBundleEvent).toHaveBeenCalledWith(eventWithExtension);
+    expect(append).toHaveBeenCalledOnce();
+    expect(append).toHaveBeenCalledWith(eventWithExtension);
+  });
+
+  it("canonicalizes and validates every Insights read at the adapter boundary", async () => {
+    const failed = {
+      state: "failed" as const,
+      versions: {
+        schemaVersion: null,
+        storageVersion: null,
+        projectionGeneration: null,
+        sourceGeneration: null,
+      },
+      error: { code: "storage-not-ready" as const },
+    };
+    const pageEvents = vi.fn(async () => failed);
+    const pageInstallations = vi.fn(async () => failed);
+    const getReport = vi.fn(async () => failed);
+    const pageReport = vi.fn(async () => failed);
+    const plugin = createTestPlugin("memory", {
+      ...createMethods(),
+      insights: {
+        append: unimplemented,
+        pageEvents,
+        pageInstallations,
+        getReport,
+        pageReport,
+      },
+    });
+
+    await expect(
+      plugin.models.insights.pageEvents({
+        selector: { kind: "all" },
+        beforeReceivedAtMs: 10,
+        limit: 1,
+      }),
+    ).resolves.toEqual(failed);
+    await expect(
+      plugin.models.insights.pageInstallations({
+        kind: "installationId",
+        installId: "install-1",
+        limit: 1,
+      }),
+    ).resolves.toEqual(failed);
+    await expect(
+      plugin.models.insights.getReport({
+        query: {
+          kind: "bundleSummaries",
+          bundleIds: ["bundle-b", "bundle-a", "bundle-b"],
+          window: "30d",
+        },
+      }),
+    ).resolves.toEqual(failed);
+    await expect(
+      plugin.models.insights.pageReport({
+        publicationId: "publication-1",
+        section: "bundleDistribution",
+        limit: 1,
+      }),
+    ).resolves.toEqual(failed);
+
+    expect(pageEvents).toHaveBeenCalledOnce();
+    expect(pageInstallations).toHaveBeenCalledOnce();
+    expect(getReport).toHaveBeenCalledWith({
+      query: {
+        kind: "bundleSummaries",
+        bundleIds: ["bundle-a", "bundle-b"],
+        window: "30d",
+      },
+    });
+    expect(pageReport).toHaveBeenCalledOnce();
+
+    await expect(
+      plugin.models.insights.pageEvents({
+        selector: { kind: "all" },
+        beforeReceivedAtMs: 10,
+        limit: 0,
+      }),
+    ).rejects.toMatchObject({ code: "invalid-query" });
+    expect(pageEvents).toHaveBeenCalledOnce();
+  });
+
+  it("rejects an illegal Insights result state from the provider", async () => {
+    const invalidPageEvents = (async () => ({
+      state: "expired" as const,
+      publicationId: "old",
+    })) as unknown as DatabasePluginImplementation["insights"]["pageEvents"];
+    const plugin = createTestPlugin("memory", {
+      ...createMethods(),
+      insights: {
+        ...createMethods().insights,
+        pageEvents: invalidPageEvents,
+      },
+    });
+
+    await expect(
+      plugin.models.insights.pageEvents({
+        selector: { kind: "all" },
+        beforeReceivedAtMs: 10,
+        limit: 1,
+      }),
+    ).rejects.toMatchObject({ code: "invalid-result" });
   });
 
   it("maps the domain bundle query to the low-level adapter", async () => {

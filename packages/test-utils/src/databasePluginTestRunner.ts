@@ -8,6 +8,7 @@ export type DatabasePluginTestLifecycle<TPlugin> = {
   readonly migrate: () => Awaitable<void>;
   readonly reset: (plugin: TPlugin) => Awaitable<void>;
   readonly dispose: (plugin: TPlugin) => Awaitable<void>;
+  readonly recreatePluginAfterReset?: boolean;
 };
 
 export type DatabasePluginTestState<TPlugin> = {
@@ -42,6 +43,10 @@ export const setupDatabasePluginTestRunner = <TPlugin>(
 
     beforeEach(async () => {
       await lifecycle.reset(getPlugin());
+      if (lifecycle.recreatePluginAfterReset) {
+        await lifecycle.dispose(getPlugin());
+        plugin = await lifecycle.createPlugin();
+      }
     });
 
     afterAll(async () => {

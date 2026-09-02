@@ -12,7 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { findOpenPort } from "../../../test-utils/src/runtimeProcess";
-import { createMongoRequiredInsightsModel } from "../adapters/mongodbInsightsRequired";
+import { createMongoInsightsModel } from "../adapters/mongodbInsightsModel";
 import { mongoInsightsSourceShard } from "../adapters/mongodbInsightsSource";
 import {
   MONGO_INSIGHTS_SOURCE_CLOCK_COLLECTION,
@@ -80,13 +80,14 @@ const findStages = (value: unknown): string[] => {
 describe("MongoDB committed Insights source", () => {
   const replicaSet = "insightsSourceRs";
   const container = `hot-updater-mongo-source-${randomUUID().slice(0, 8)}`;
+  const databaseNamespace = randomUUID();
   let client: MongoClient;
   let commands: { name: string; command: Document }[] = [];
   let recording = false;
   let recordCommandDetails = true;
   let getMoreCount = 0;
-  const source = () => createMongoInsightsSource(client);
-  const model = () => createMongoRequiredInsightsModel(client);
+  const source = () => createMongoInsightsSource(client, databaseNamespace);
+  const model = () => createMongoInsightsModel(client, databaseNamespace);
 
   beforeAll(async () => {
     docker(["image", "inspect", "mongo:7-jammy"]);

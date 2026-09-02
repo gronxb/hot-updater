@@ -18,9 +18,10 @@ import {
 
 import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { findOpenPort } from "../../../test-utils/src/runtimeProcess";
-import { createMongoInsightsQueries } from "../adapters/mongodbInsights";
 import { createMongoInsightsPreparation } from "./mongoInsightsPreparation";
 import { createMongoInsightsSource } from "./mongoInsightsSource";
+
+const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000e004";
 
 const docker = (args: string[]) => {
   const result = spawnSync("docker", args, { encoding: "utf8" });
@@ -164,7 +165,9 @@ describe("MongoDB durable native-event preparation", () => {
 
   it("does not fall back to non-atomic source preparation on standalone MongoDB", async () => {
     await expect(
-      createMongoInsightsSource(client).prepare({ writersDrained: true }),
+      createMongoInsightsSource(client, insightsDatabaseNamespace).prepare({
+        writersDrained: true,
+      }),
     ).rejects.toMatchObject({ code: 20 });
     expect(
       await client
@@ -500,31 +503,5 @@ describe("MongoDB durable native-event preparation", () => {
     await expect(tools().ensureReady()).rejects.toMatchObject({
       code: "INSIGHTS_QUERY_NOT_READY",
     });
-  });
-
-  it("serves native pages only after the persisted audit completes", async () => {
-    await insert(0, 700);
-    await tools().prepare({ writersDrained: true });
-    const queries = createMongoInsightsQueries(
-      client.db().collection("bundle_events"),
-      () => tools().ensureReady(),
-    );
-    await expect(
-      queries.pageEvents({
-        scope: { kind: "all" },
-        beforeReceivedAtMs: 1000,
-        limit: 1,
-      }),
-    ).rejects.toMatchObject({ code: "INSIGHTS_QUERY_NOT_READY" });
-    await finish(2);
-    expect(
-      (
-        await queries.pageEvents({
-          scope: { kind: "all" },
-          beforeReceivedAtMs: 1000,
-          limit: 1,
-        })
-      ).rows.map(({ id }) => id),
-    ).toEqual([createBundleEventRowFixture("700", 700).id]);
   });
 });

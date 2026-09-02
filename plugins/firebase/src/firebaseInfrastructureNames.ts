@@ -1,4 +1,6 @@
 export const FIREBASE_V1_FUNCTION_NAME = "hot-updater-v1";
+export const FIREBASE_INSIGHTS_DATABASE_NAMESPACE_ENV =
+  "HOT_UPDATER_FIREBASE_INSIGHTS_DATABASE_NAMESPACE";
 
 export const FIREBASE_V1_COLLECTION_NAMES = {
   apiKeys: "hot_updater_v1_api_keys",

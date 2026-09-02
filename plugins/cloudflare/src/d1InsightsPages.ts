@@ -3,7 +3,6 @@ import {
   InsightsQueryNotReadyError,
   type BundleEventRow,
   type InsightsEventPageData,
-  type InsightsEventPageInput,
   type InsightsInstallationRow,
   type InsightsProjectedReadVersions,
   type InsightsSourceReadVersions,
@@ -19,11 +18,8 @@ import {
   assertInsightsCursorContract,
   assertInsightsPageContract,
   assertInsightsQueryContract,
-  compareInsightsEventRows,
-  createInsightsEventPageCursor,
   getCanonicalInsightsJsonByteLength,
   isCanonicalInsightsEventId,
-  readInsightsEventPageCursor,
 } from "@hot-updater/plugin-core/internal";
 
 import type { D1Executor } from "./d1Implementation";
@@ -60,6 +56,13 @@ const record = (value: unknown): value is Readonly<Record<string, unknown>> =>
 
 const safeInteger = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+const compareEventRows = (
+  left: Pick<BundleEventRow, "received_at_ms" | "id">,
+  right: Pick<BundleEventRow, "received_at_ms" | "id">,
+): number =>
+  right.received_at_ms - left.received_at_ms ||
+  (left.id < right.id ? 1 : left.id > right.id ? -1 : 0);
 
 const validateEventInput = (input: InsightsPageEventsInput): void => {
   try {
@@ -189,7 +192,7 @@ const assertPointerOrder = (
     const previous = pointers[index - 1]!;
     const current = pointers[index]!;
     if (
-      compareInsightsEventRows(
+      compareEventRows(
         { id: previous.eventId, received_at_ms: previous.receivedAtMs },
         { id: current.eventId, received_at_ms: current.receivedAtMs },
       ) >= 0
@@ -199,28 +202,23 @@ const assertPointerOrder = (
   }
 };
 
-const legacyEventInput = (
-  input: InsightsPageEventsInput,
-): InsightsEventPageInput => ({
-  scope:
-    input.selector.kind === "all"
-      ? { kind: "all" }
-      : input.selector.kind === "installationId"
-        ? { kind: "installation", installId: input.selector.installId }
-        : { kind: "bundle", bundleId: input.selector.bundleId },
-  beforeReceivedAtMs: input.beforeReceivedAtMs,
-  ...(input.sinceReceivedAtMs === undefined
-    ? {}
-    : { sinceReceivedAtMs: input.sinceReceivedAtMs }),
-  limit: input.limit,
-  ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
-});
+const eventSelectorKey = (input: InsightsPageEventsInput): string =>
+  input.selector.kind === "all"
+    ? "all"
+    : input.selector.kind === "installationId"
+      ? `installation:${input.selector.installId}`
+      : `bundle:${input.selector.bundleId}`;
 
-const scopedEventCursorInput = (
+const readEventCursor = (
   input: InsightsPageEventsInput,
   databaseNamespace: string,
-): InsightsPageEventsInput => {
-  if (input.cursor === undefined) return input;
+): { readonly receivedAtMs: number; readonly id: string } | undefined => {
+  if (input.cursor === undefined) return undefined;
+  try {
+    assertInsightsCursorContract(input.cursor);
+  } catch {
+    return invalidQuery();
+  }
   let value: unknown;
   try {
     value = JSON.parse(input.cursor);
@@ -229,21 +227,36 @@ const scopedEventCursorInput = (
   }
   if (
     !Array.isArray(value) ||
-    value.length !== 3 ||
+    value.length !== 7 ||
     value[0] !== 1 ||
     value[1] !== databaseNamespace ||
-    typeof value[2] !== "string"
+    value[2] !== eventSelectorKey(input) ||
+    value[3] !== (input.sinceReceivedAtMs ?? 0) ||
+    value[4] !== input.beforeReceivedAtMs ||
+    !safeInteger(value[5]) ||
+    value[5] < (input.sinceReceivedAtMs ?? 0) ||
+    value[5] >= input.beforeReceivedAtMs ||
+    !isCanonicalInsightsEventId(value[6])
   ) {
     return invalidQuery();
   }
-  return { ...input, cursor: value[2] };
+  return { receivedAtMs: value[5], id: value[6] };
 };
 
-const scopedEventCursor = (
+const createEventCursor = (
+  input: InsightsPageEventsInput,
   databaseNamespace: string,
-  cursor: string,
+  row: Pick<BundleEventRow, "received_at_ms" | "id">,
 ): string => {
-  const saved = JSON.stringify([1, databaseNamespace, cursor]);
+  const saved = JSON.stringify([
+    1,
+    databaseNamespace,
+    eventSelectorKey(input),
+    input.sinceReceivedAtMs ?? 0,
+    input.beforeReceivedAtMs,
+    row.received_at_ms,
+    row.id,
+  ]);
   try {
     assertInsightsCursorContract(saved);
   } catch {
@@ -313,13 +326,7 @@ const eventPageData = (
     const hasNext = pointers.length > data.length;
     const nextCursor =
       hasNext && last !== undefined
-        ? scopedEventCursor(
-            databaseNamespace,
-            createInsightsEventPageCursor(legacyEventInput(input), {
-              id: last.id,
-              receivedAtMs: last.received_at_ms,
-            }),
-          )
+        ? createEventCursor(input, databaseNamespace, last)
         : null;
     const page: InsightsEventPageData = {
       data,
@@ -356,12 +363,7 @@ export const createD1InsightsEventPages = (
     input: InsightsPageEventsInput,
   ): Promise<InsightsPageEventsResult> {
     validateEventInput(input);
-    const scopedInput = scopedEventCursorInput(input, databaseNamespace);
-    const legacyInput = legacyEventInput(scopedInput);
-    const cursor = readInsightsEventPageCursor(legacyInput);
-    if (cursor !== undefined && !isCanonicalInsightsEventId(cursor.id)) {
-      invalidQuery();
-    }
+    const cursor = readEventCursor(input, databaseNamespace);
     await assertD1InsightsLayout(executor);
     const storage = scopeStorage(input);
     const rows = await executor.query(
@@ -423,7 +425,7 @@ export const createD1InsightsEventPages = (
       state: "ready",
       versions: readVersions,
       data: eventPageData(
-        scopedInput,
+        input,
         pointers,
         events,
         readVersions,

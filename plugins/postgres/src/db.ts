@@ -8,6 +8,9 @@ import { assertPostgresInsightsReportDataIndexes } from "./postgresInsightsRepor
 import { assertPostgresInsightsReportOrderIndexes } from "./postgresInsightsReportOrder";
 import { assertPostgresInsightsSourceIndex } from "./postgresInsightsSource";
 
+const databaseNamespacePattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 export {
   createPostgresInsightsLiveTools,
   getPostgresInsightsLiveMigrationSQL,
@@ -27,7 +30,10 @@ export const getPostgresInsightsSourceMigrationSQL = (): Promise<string> =>
 /** Explicit DB tooling: schema cutover only, never a data backfill. */
 export const migratePostgresInsightsSource = async <TDatabase extends object>(
   db: Kysely<TDatabase>,
+  databaseNamespace: string,
 ): Promise<void> => {
+  if (!databaseNamespacePattern.test(databaseNamespace))
+    throw new Error("Invalid PostgreSQL Insights database namespace.");
   if (db.isTransaction)
     throw new Error("Source migration requires a root database connection.");
   const migration = await getPostgresInsightsSourceMigrationSQL();
@@ -46,7 +52,7 @@ export const migratePostgresInsightsSource = async <TDatabase extends object>(
       );
       if (version.rows[0]?.version !== 1)
         throw new Error("Invalid PostgreSQL Insights source layout.");
-      await assertPostgresInsightsSourceIndex(transaction);
+      await assertPostgresInsightsSourceIndex(transaction, databaseNamespace);
       return;
     }
     // This owned migration consists only of plain DDL, without function bodies.
@@ -56,7 +62,12 @@ export const migratePostgresInsightsSource = async <TDatabase extends object>(
       .filter(Boolean)) {
       await sql.raw(statement).execute(transaction);
     }
-    await assertPostgresInsightsSourceIndex(transaction);
+    await sql`insert into private_hot_updater_insights_source_state
+      (id,version,source_id,initialized,ready,failed,revision)
+      values (1,1,${databaseNamespace}::uuid,false,false,false,1)`.execute(
+      transaction,
+    );
+    await assertPostgresInsightsSourceIndex(transaction, databaseNamespace);
   });
 };
 
@@ -84,11 +95,15 @@ export const getPostgresInsightsReportMigrationSQL =
 /** Creates empty report storage. Does not reserve jobs or read raw events. */
 export const migratePostgresInsightsReports = async <TDatabase extends object>(
   db: Kysely<TDatabase>,
+  databaseNamespace: string,
 ): Promise<void> => {
+  if (!databaseNamespacePattern.test(databaseNamespace))
+    throw new Error("Invalid PostgreSQL Insights database namespace.");
   if (db.isTransaction)
     throw new Error("Report migration requires a root database connection.");
   const migration = await getPostgresInsightsReportMigrationSQL();
   await db.transaction().execute(async (transaction) => {
+    await assertPostgresInsightsSourceIndex(transaction, databaseNamespace);
     await sql`select pg_advisory_xact_lock(hashtext('hot-updater:insights-reports:v1'))`.execute(
       transaction,
     );

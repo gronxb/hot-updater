@@ -14,10 +14,12 @@ import type {
 } from "../db/types";
 import { createKyselyCrud } from "./kyselyCrud";
 import {
+  createKyselyInsightsModel,
   getKyselyInsightsDDL,
   migrateKyselyInsights,
 } from "./sqlInsights/kysely";
-import { appendKyselyInsightsEvent } from "./sqlInsights/kysely/source";
+
+export { runKyselyInsightsMaintenanceStep } from "./sqlInsights/kysely";
 
 type KyselySQLProvider = Exclude<ORMSQLProvider, "mssql">;
 
@@ -26,6 +28,7 @@ export type { RelationMode, KyselySQLProvider as SQLProvider };
 export interface KyselyAdapterConfig<TDatabase extends object = object> {
   readonly db: Kysely<TDatabase>;
   readonly provider: KyselySQLProvider;
+  readonly insightsDatabaseNamespace: string;
   readonly relationMode?: RelationMode;
 }
 
@@ -33,7 +36,10 @@ const extendMigration = <TDatabase extends object>(
   result: MigrationResult,
   config: KyselyAdapterConfig<TDatabase>,
 ): MigrationResult => {
-  const statements = getKyselyInsightsDDL(config.provider);
+  const statements = getKyselyInsightsDDL(
+    config.provider,
+    config.insightsDatabaseNamespace,
+  );
   return {
     operations: [
       ...result.operations,
@@ -48,7 +54,12 @@ const extendMigration = <TDatabase extends object>(
         .join("\n\n"),
     execute: async () => {
       await result.execute();
-      await migrateKyselyInsights(config.db, config.provider, statements);
+      await migrateKyselyInsights(
+        config.db,
+        config.provider,
+        config.insightsDatabaseNamespace,
+        statements,
+      );
     },
   };
 };
@@ -61,8 +72,11 @@ const createImplementation = <TDatabase extends object>(
   const crud = createKyselyCrud(db, config.provider, relationMode);
   return {
     ...crud,
-    appendBundleEvent: (row) =>
-      appendKyselyInsightsEvent(db, config.provider, row),
+    insights: createKyselyInsightsModel(
+      db,
+      config.provider,
+      config.insightsDatabaseNamespace,
+    ),
     deleteChannel: (input) =>
       db
         .transaction()

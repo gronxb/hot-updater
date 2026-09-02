@@ -25,6 +25,7 @@ import {
   MONGO_INSIGHTS_SOURCE_SHARDS,
   MONGO_INSIGHTS_SOURCE_STATE_COLLECTION,
   MONGO_INSIGHTS_SOURCE_STATE_ID,
+  isMongoInsightsDatabaseNamespace,
   type MongoBundleEventDocument,
   type MongoInsightsSourceClock,
   type MongoInsightsSourceEvent,
@@ -72,18 +73,22 @@ export const mongoInsightsSourceShard = (eventId: string): number => {
 
 const validState = (
   value: MongoInsightsSourceState | null,
+  databaseNamespace: string,
 ): value is MongoInsightsSourceState =>
   value !== null &&
   value.version === 1 &&
   (value.phase === "auditing" || value.phase === "ready") &&
-  isMongoInsightsEventId(value.sourceId);
+  value.sourceId === databaseNamespace;
 
 export const appendMongoInsightsSourceEvent = async (
   collections: MongoInsightsSourceCollections,
   row: BundleEventRow,
   session: ClientSession | undefined,
+  databaseNamespace: string,
 ): Promise<void> => {
   assertMongoInsightsEventRow(row);
+  if (!isMongoInsightsDatabaseNamespace(databaseNamespace))
+    throw new DatabasePluginInputError("invalid-query");
   if (session === undefined) throw new InsightsQueryNotReadyError();
   const state = await collections.sourceState.findOne(
     { _id: MONGO_INSIGHTS_SOURCE_STATE_ID },
@@ -91,7 +96,8 @@ export const appendMongoInsightsSourceEvent = async (
   );
   const rawId = new ObjectId();
   const encodedRawId = BSON.EJSON.stringify(rawId, { relaxed: false });
-  if (!validState(state)) throw new InsightsQueryNotReadyError();
+  if (!validState(state, databaseNamespace))
+    throw new InsightsQueryNotReadyError();
 
   const shard = mongoInsightsSourceShard(row.id);
   await collections.bundleEvents.insertOne({ ...row, _id: rawId }, { session });

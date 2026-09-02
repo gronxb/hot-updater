@@ -12,6 +12,26 @@ import type {
   DatabaseBundleQueryOrder,
   DatabaseBundleQueryWhere,
 } from "./index";
+import type {
+  InsightsInstallationPage,
+  InsightsInstallationPageInput,
+  InsightsInitialPublishedInstallationPage,
+  InsightsInitialPublishedInstallationPageInput,
+  InsightsLiveInstallationPage,
+  InsightsLiveInstallationPageInput,
+  InsightsPageEventsInput,
+  InsightsPageEventsResult,
+  InsightsPinnedInstallationPage,
+  InsightsPinnedInstallationPageInput,
+  InsightsPublishedInstallationContinuation,
+  InsightsPublishedInstallationContinuationInput,
+  InsightsPublishedInstallationPage,
+  InsightsPublishedInstallationPageInput,
+  InsightsReportInput,
+  InsightsReportPage,
+  InsightsReportPageInput,
+  InsightsReportResult,
+} from "./insightsQueries";
 
 export interface BundleModelQuery {
   readonly where?: DatabaseBundleQueryWhere;
@@ -60,53 +80,29 @@ export interface ReleaseCatalogModel {
   }): Promise<readonly ReleaseCatalogRow[]>;
 }
 
-export interface InsightsScanCursor {
-  readonly receivedAtMs: number;
-  readonly id: string;
-}
-
-export interface InsightsScanInput {
-  readonly beforeReceivedAtMs: number;
-  readonly after?: InsightsScanCursor;
-  readonly limit: number;
-}
-
-export type InsightsEventScope =
-  | { readonly kind: "all" }
-  | { readonly kind: "installation"; readonly installId: string }
-  | { readonly kind: "bundle"; readonly bundleId: string };
-
-export interface InsightsEventPageInput {
-  readonly scope: InsightsEventScope;
-  /** Inclusive lower boundary. Omitted means the entire history. */
-  readonly sinceReceivedAtMs?: number;
-  readonly beforeReceivedAtMs: number;
-  /** Final response size, including neither lookahead nor merge candidates. */
-  readonly limit: number;
-  readonly cursor?: string;
-}
-
-export interface InsightsEventPage {
-  readonly rows: readonly BundleEventRow[];
-  /**
-   * null proves exhaustion. A continuation may require more bounded work even
-   * when this page is short or empty. Callers must not automatically drain it.
-   * It resumes after emitted rows, never after unconsumed lookahead candidates.
-   */
-  readonly nextCursor: string | null;
-}
-
-export interface InsightsEventQueries {
-  readonly version: 1;
-  readonly scopes: readonly InsightsEventScope["kind"][];
-  page(input: InsightsEventPageInput): Promise<InsightsEventPage>;
-}
-
 export interface InsightsModel {
   append(row: BundleEventRow): Promise<void>;
-  scan(input: InsightsScanInput): Promise<readonly BundleEventRow[]>;
-  /** Present only for physically paginated, explicitly supported read paths. */
-  readonly events?: InsightsEventQueries;
+  pageEvents(input: InsightsPageEventsInput): Promise<InsightsPageEventsResult>;
+  pageInstallations(
+    input: InsightsLiveInstallationPageInput,
+  ): Promise<InsightsLiveInstallationPage>;
+  pageInstallations(
+    input: InsightsInitialPublishedInstallationPageInput,
+  ): Promise<InsightsInitialPublishedInstallationPage>;
+  pageInstallations(
+    input: InsightsPinnedInstallationPageInput,
+  ): Promise<InsightsPinnedInstallationPage>;
+  pageInstallations(
+    input: InsightsPublishedInstallationContinuationInput,
+  ): Promise<InsightsPublishedInstallationContinuation>;
+  pageInstallations(
+    input: InsightsPublishedInstallationPageInput,
+  ): Promise<InsightsPublishedInstallationPage>;
+  pageInstallations(
+    input: InsightsInstallationPageInput,
+  ): Promise<InsightsInstallationPage>;
+  getReport(input: InsightsReportInput): Promise<InsightsReportResult>;
+  pageReport(input: InsightsReportPageInput): Promise<InsightsReportPage>;
 }
 
 export interface ApiKeyModel {

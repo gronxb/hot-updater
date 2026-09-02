@@ -17,6 +17,7 @@ import {
   DYNAMODB_INSIGHTS_ITEM_MAX_BYTES,
   DYNAMODB_INSIGHTS_TRANSACTION_MAX_ACTIONS,
   DYNAMODB_INSIGHTS_TRANSACTION_MAX_BYTES,
+  DYNAMODB_INSIGHTS_LEGACY_PARTITION,
   DYNAMODB_INSIGHTS_V2_PREFIX,
   DYNAMODB_INSIGHTS_V2_SOURCE_SHARDS,
   type DynamoDBInsightsV2Store,
@@ -25,7 +26,7 @@ import {
   dynamoDBInsightsTransactionRequestBytes,
   validateDynamoDBInsightsV2Event,
 } from "./dynamoDBInsightsV2";
-import { createDynamoDBRequiredInsightsModel } from "./dynamoDBInsightsV2Jobs";
+import { createDynamoDBInsightsModel } from "./dynamoDBInsightsV2Jobs";
 
 const fixture = new DynamoDBIntegrationFixture();
 
@@ -33,11 +34,9 @@ let namespaceIndex = 0;
 const integrationStore = () => ({
   client: fixture.client,
   tableName: fixture.tableName,
-  namespace: {
-    partition: `test-${++namespaceIndex}`,
-    region: "us-east-1",
-    accountId: "000000000000",
-  },
+  insightsDatabaseNamespace: `00000000-0000-4000-8000-${(++namespaceIndex)
+    .toString()
+    .padStart(12, "0")}`,
 });
 
 beforeAll(() => fixture.start(), 120_000);
@@ -220,7 +219,7 @@ describe("DynamoDB Insights v2 LocalStack", () => {
     });
     await writeItems(
       [first, second].map((row) => ({
-        pk: "bundle_events",
+        pk: DYNAMODB_INSIGHTS_LEGACY_PARTITION,
         sk: order(row),
         version: 1,
         row,
@@ -320,7 +319,7 @@ describe("DynamoDB Insights v2 LocalStack", () => {
     const poison = { ...event(4), id: "legacy-event-id" } as BundleEventRow;
     await writeItems([
       {
-        pk: "bundle_events",
+        pk: DYNAMODB_INSIGHTS_LEGACY_PARTITION,
         sk: order(poison),
         version: 1,
         row: poison,
@@ -388,7 +387,7 @@ describe("DynamoDB Insights v2 LocalStack", () => {
   });
 
   it("uses bounded report keys and types missing section data as corruption", async () => {
-    const model = createDynamoDBRequiredInsightsModel(integrationStore());
+    const model = createDynamoDBInsightsModel(integrationStore());
     await expect(
       model.maintenance.migrateLegacy({ maxItems: 1, maxRequests: 14 }),
     ).resolves.toMatchObject({ state: "done" });
@@ -830,7 +829,12 @@ describe("DynamoDB Insights v2 LocalStack", () => {
             username: `acceptance-scale-${index.toString().padStart(5, "0")}`,
           });
           validateDynamoDBInsightsV2Event(row);
-          batch.push({ pk: "bundle_events", sk: order(row), version: 1, row });
+          batch.push({
+            pk: DYNAMODB_INSIGHTS_LEGACY_PARTITION,
+            sk: order(row),
+            version: 1,
+            row,
+          });
           seeded += 1;
         }
         await writeItems(batch);
@@ -845,7 +849,9 @@ describe("DynamoDB Insights v2 LocalStack", () => {
             ConsistentRead: true,
             KeyConditionExpression: "#pk = :pk",
             ExpressionAttributeNames: { "#pk": "pk" },
-            ExpressionAttributeValues: { ":pk": "bundle_events" },
+            ExpressionAttributeValues: {
+              ":pk": DYNAMODB_INSIGHTS_LEGACY_PARTITION,
+            },
             ExclusiveStartKey: rawCursor,
             Limit: 1_000,
             Select: "COUNT",
@@ -871,7 +877,7 @@ describe("DynamoDB Insights v2 LocalStack", () => {
         unmeteredRequests: 0,
       };
       const store = countingStore(integrationStore(), metrics);
-      let model = createDynamoDBRequiredInsightsModel(store);
+      let model = createDynamoDBInsightsModel(store);
 
       let migrated = 0;
       for (;;) {
@@ -911,7 +917,7 @@ describe("DynamoDB Insights v2 LocalStack", () => {
       if (search.state !== "preparing") {
         throw new Error("scale search did not reserve a durable job");
       }
-      model = createDynamoDBRequiredInsightsModel(store);
+      model = createDynamoDBInsightsModel(store);
       const concurrent = event(rawCount + 1, {
         install_id: `scale-install-${rawCount.toString().padStart(5, "0")}`,
         user_id: `scale-user-${rawCount.toString().padStart(5, "0")}`,
@@ -925,7 +931,7 @@ describe("DynamoDB Insights v2 LocalStack", () => {
         }),
         model.append(concurrent),
       ]);
-      model = createDynamoDBRequiredInsightsModel(store);
+      model = createDynamoDBInsightsModel(store);
       for (let stepIndex = 0; stepIndex < 20_000; stepIndex++) {
         const step = await model.maintenance.runJob({
           jobId: search.job.id,

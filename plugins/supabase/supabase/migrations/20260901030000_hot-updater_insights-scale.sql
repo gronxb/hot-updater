@@ -231,6 +231,7 @@ CREATE INDEX hot_updater_v1_bundle_events_install_type_idx
 CREATE TABLE public.hot_updater_v1_insights_source_state (
   id integer PRIMARY KEY CHECK (id = 1),
   version integer NOT NULL CHECK (version = 2),
+  database_namespace uuid,
   source_id uuid NOT NULL,
   committed_seq bigint NOT NULL CHECK (committed_seq >= 0),
   ready boolean NOT NULL,
@@ -244,6 +245,57 @@ INSERT INTO public.hot_updater_v1_insights_source_state
 SELECT 1, 2, gen_random_uuid(), 0,
   NOT EXISTS (SELECT 1 FROM public.hot_updater_v1_bundle_events LIMIT 1),
   null, null;
+
+CREATE FUNCTION public.hot_updater_v1_insights_bind_namespace(
+  p_database_namespace uuid
+) RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+  IF p_database_namespace IS NULL THEN
+    RAISE EXCEPTION 'Invalid Insights database namespace'
+      USING ERRCODE='22023';
+  END IF;
+  UPDATE public.hot_updater_v1_insights_source_state AS source
+  SET database_namespace=p_database_namespace
+  WHERE source.id=1 AND source.version=2
+    AND source.database_namespace IS NULL;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.hot_updater_v1_insights_source_state AS source
+    WHERE source.id=1 AND source.version=2
+      AND source.database_namespace=p_database_namespace
+  ) THEN
+    RAISE EXCEPTION 'INSIGHTS_DATABASE_NAMESPACE_MISMATCH'
+      USING ERRCODE='P0001';
+  END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.hot_updater_v1_insights_bind_namespace(uuid)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE FUNCTION public.hot_updater_v1_insights_require_namespace(
+  p_database_namespace uuid
+) RETURNS void
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+  IF p_database_namespace IS NULL OR NOT EXISTS (
+    SELECT 1 FROM public.hot_updater_v1_insights_source_state AS source
+    WHERE source.id=1 AND source.version=2
+      AND source.database_namespace=p_database_namespace
+  ) THEN
+    RAISE EXCEPTION 'INSIGHTS_DATABASE_NAMESPACE_MISMATCH'
+      USING ERRCODE='P0001';
+  END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.hot_updater_v1_insights_require_namespace(uuid)
+  FROM PUBLIC, anon, authenticated, service_role;
 
 CREATE TABLE public.hot_updater_v1_insights_live_installations (
   install_key bytea PRIMARY KEY CHECK (octet_length(install_key) = 32),
@@ -361,6 +413,9 @@ CREATE INDEX hot_updater_v1_insights_search_jobs_retention_idx
   ON public.hot_updater_v1_insights_search_jobs(
     state, completed_at_ms, id COLLATE "C"
   );
+CREATE INDEX hot_updater_v1_insights_search_jobs_queue_idx
+  ON public.hot_updater_v1_insights_search_jobs(id COLLATE "C")
+  WHERE state='preparing' AND visible;
 
 CREATE TABLE public.hot_updater_v1_insights_search_members (
   job_id text NOT NULL REFERENCES public.hot_updater_v1_insights_search_jobs(id)
@@ -460,6 +515,7 @@ AS $$
         'hot_updater_v1_insights_aliases_scan_idx',
         'hot_updater_v1_insights_aliases_exact_idx',
         'hot_updater_v1_insights_search_jobs_active_idx',
+        'hot_updater_v1_insights_search_jobs_queue_idx',
         'hot_updater_v1_insights_search_members_pkey',
         'hot_updater_v1_insights_installation_versions_pkey',
         'hot_updater_v1_insights_search_results_pkey',
@@ -471,6 +527,7 @@ AS $$
         'hot_updater_v1_insights_publications_visible_key',
         'hot_updater_v1_insights_report_jobs_lookup_idx',
         'hot_updater_v1_insights_report_jobs_active_idx',
+        'hot_updater_v1_insights_report_jobs_queue_idx',
         'hot_updater_v1_insights_report_latest_pkey',
         'hot_updater_v1_insights_report_counts_pkey',
         'hot_updater_v1_insights_report_counts_rank_idx',
@@ -497,6 +554,11 @@ AS $$
         'hot_updater_v1_insights_report_bundle_order_pkey',
         'hot_updater_v1_insights_report_rows_pkey',
         'hot_updater_v1_insights_report_totals_pkey'
+      ]
+      WHEN 'maintenance' THEN ARRAY[
+        'hot_updater_v1_insights_source_state_pkey',
+        'hot_updater_v1_insights_search_jobs_queue_idx',
+        'hot_updater_v1_insights_report_jobs_queue_idx'
       ]
       ELSE ARRAY[]::text[]
     END)
@@ -564,6 +626,11 @@ AS $$
         'hot_updater_v1_insights_report_bundle_order',
         'hot_updater_v1_insights_report_rows',
         'hot_updater_v1_insights_report_totals'
+      ]
+      WHEN 'maintenance' THEN ARRAY[
+        'hot_updater_v1_insights_source_state',
+        'hot_updater_v1_insights_search_jobs',
+        'hot_updater_v1_insights_report_jobs'
       ]
       ELSE ARRAY[]::text[]
     END)
@@ -687,6 +754,7 @@ VALUES ('schema.insights', 'supabase-insights-v2')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
 CREATE FUNCTION public.hot_updater_v1_insights_prepare_read(
+  p_database_namespace uuid,
   p_max_items integer
 ) RETURNS jsonb
 LANGUAGE plpgsql
@@ -702,6 +770,9 @@ BEGIN
   IF p_max_items IS NULL OR p_max_items NOT BETWEEN 0 AND 1000 THEN
     RAISE EXCEPTION 'Invalid Insights preparation input' USING ERRCODE = '22023';
   END IF;
+  PERFORM public.hot_updater_v1_insights_bind_namespace(
+    p_database_namespace
+  );
   IF NOT coalesce(public.hot_updater_v1_insights_layout_ready('migration'), false)
   THEN
     RAISE EXCEPTION 'INSIGHTS_STORAGE_NOT_READY' USING ERRCODE = 'P0001';
@@ -720,7 +791,8 @@ BEGIN
       RETURN jsonb_build_object(
         'state', 'failed', 'jobId', 'supabase-v2-migration',
         'sourceGeneration', jsonb_build_array(
-          2, v_state.source_id, v_state.committed_seq
+          2, v_state.database_namespace, v_state.source_id,
+          v_state.committed_seq
         )::text
       );
     END IF;
@@ -736,7 +808,8 @@ BEGIN
       RETURN jsonb_build_object(
         'state', 'failed', 'jobId', 'supabase-v2-migration',
         'sourceGeneration', jsonb_build_array(
-          2, v_state.source_id, v_state.committed_seq
+          2, v_state.database_namespace, v_state.source_id,
+          v_state.committed_seq
         )::text
       );
     END IF;
@@ -745,7 +818,8 @@ BEGIN
     RETURN jsonb_build_object(
       'state', 'ready',
       'sourceGeneration', jsonb_build_array(
-        2, v_state.source_id, v_state.committed_seq
+        2, v_state.database_namespace, v_state.source_id,
+        v_state.committed_seq
       )::text
     );
   END IF;
@@ -753,7 +827,8 @@ BEGIN
     RETURN jsonb_build_object(
       'state', 'preparing', 'jobId', 'supabase-v2-migration',
       'sourceGeneration', jsonb_build_array(
-        2, v_state.source_id, v_state.committed_seq
+        2, v_state.database_namespace, v_state.source_id,
+        v_state.committed_seq
       )::text
     );
   END IF;
@@ -799,19 +874,21 @@ BEGIN
   RETURN jsonb_build_object(
     'state', 'preparing', 'jobId', 'supabase-v2-migration',
     'sourceGeneration', jsonb_build_array(
-      2, v_state.source_id, v_state.committed_seq
+      2, v_state.database_namespace, v_state.source_id,
+      v_state.committed_seq
     )::text,
     'batch', coalesce(v_batch, '[]'::jsonb)
   );
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.hot_updater_v1_insights_prepare_read(integer)
+REVOKE ALL ON FUNCTION public.hot_updater_v1_insights_prepare_read(uuid, integer)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.hot_updater_v1_insights_prepare_read(integer)
+GRANT EXECUTE ON FUNCTION public.hot_updater_v1_insights_prepare_read(uuid, integer)
   TO service_role;
 
 CREATE FUNCTION public.hot_updater_v1_insights_prepare(
+  p_database_namespace uuid,
   p_max_items integer,
   p_batch jsonb,
   p_batch_bytes integer
@@ -849,6 +926,9 @@ BEGIN
   THEN
     RAISE EXCEPTION 'Invalid Insights preparation input' USING ERRCODE = '22023';
   END IF;
+  PERFORM public.hot_updater_v1_insights_bind_namespace(
+    p_database_namespace
+  );
   IF NOT coalesce(public.hot_updater_v1_insights_layout_ready('migration'), false)
   THEN
     RAISE EXCEPTION 'INSIGHTS_STORAGE_NOT_READY' USING ERRCODE = 'P0001';
@@ -874,7 +954,8 @@ BEGIN
       RETURN jsonb_build_object(
         'state', 'failed', 'jobId', 'supabase-v2-migration',
         'sourceGeneration', jsonb_build_array(
-          2, v_state.source_id, v_state.committed_seq
+          2, v_state.database_namespace, v_state.source_id,
+          v_state.committed_seq
         )::text
       );
     END IF;
@@ -883,7 +964,8 @@ BEGIN
     RETURN jsonb_build_object(
       'state', 'ready',
       'sourceGeneration', jsonb_build_array(
-        2, v_state.source_id, v_state.committed_seq
+        2, v_state.database_namespace, v_state.source_id,
+        v_state.committed_seq
       )::text
     );
   END IF;
@@ -913,7 +995,8 @@ BEGIN
     RETURN jsonb_build_object(
       'state', 'preparing', 'jobId', 'supabase-v2-migration',
       'sourceGeneration', jsonb_build_array(
-        2, v_state.source_id, v_state.committed_seq
+        2, v_state.database_namespace, v_state.source_id,
+        v_state.committed_seq
       )::text,
       'processed', 0, 'retry', true
     );
@@ -946,7 +1029,8 @@ BEGIN
       RETURN jsonb_build_object(
         'state', 'failed', 'jobId', 'supabase-v2-migration',
         'sourceGeneration', jsonb_build_array(
-          2, v_state.source_id, v_state.committed_seq
+          2, v_state.database_namespace, v_state.source_id,
+          v_state.committed_seq
         )::text
       );
     END IF;
@@ -965,7 +1049,8 @@ BEGIN
       RETURN jsonb_build_object(
         'state', 'failed', 'jobId', 'supabase-v2-migration',
         'sourceGeneration', jsonb_build_array(
-          2, v_state.source_id, v_state.committed_seq
+          2, v_state.database_namespace, v_state.source_id,
+          v_state.committed_seq
         )::text
       );
     END IF;
@@ -982,7 +1067,8 @@ BEGIN
       RETURN jsonb_build_object(
         'state', 'failed', 'jobId', 'supabase-v2-migration',
         'sourceGeneration', jsonb_build_array(
-          2, v_state.source_id, v_state.committed_seq
+          2, v_state.database_namespace, v_state.source_id,
+          v_state.committed_seq
         )::text
       );
     END IF;
@@ -1035,7 +1121,8 @@ BEGIN
       RETURN jsonb_build_object(
         'state', 'failed', 'jobId', 'supabase-v2-migration',
         'sourceGeneration', jsonb_build_array(
-          2, v_state.source_id, v_state.committed_seq
+          2, v_state.database_namespace, v_state.source_id,
+          v_state.committed_seq
         )::text
       );
     END IF;
@@ -1166,7 +1253,8 @@ BEGIN
     RETURN jsonb_build_object(
       'state', 'failed', 'jobId', 'supabase-v2-migration',
       'sourceGeneration', jsonb_build_array(
-        2, v_state.source_id, v_state.committed_seq
+        2, v_state.database_namespace, v_state.source_id,
+        v_state.committed_seq
       )::text
     );
   END IF;
@@ -1181,7 +1269,8 @@ BEGIN
     RETURN jsonb_build_object(
       'state', 'failed', 'jobId', 'supabase-v2-migration',
       'sourceGeneration', jsonb_build_array(
-        2, v_state.source_id, v_state.committed_seq
+        2, v_state.database_namespace, v_state.source_id,
+        v_state.committed_seq
       )::text
     );
   END IF;
@@ -1194,7 +1283,8 @@ BEGIN
     'state', CASE WHEN v_has_remaining THEN 'preparing' ELSE 'ready' END,
     'jobId', CASE WHEN v_has_remaining THEN 'supabase-v2-migration' ELSE null END,
     'sourceGeneration', jsonb_build_array(
-      2, v_state.source_id, v_state.committed_seq
+      2, v_state.database_namespace, v_state.source_id,
+      v_state.committed_seq
     )::text,
     'processed', v_processed
   );
@@ -1202,15 +1292,16 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.hot_updater_v1_insights_prepare(
-  integer, jsonb, integer
+  uuid, integer, jsonb, integer
 )
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.hot_updater_v1_insights_prepare(
-  integer, jsonb, integer
+  uuid, integer, jsonb, integer
 )
   TO service_role;
 
 CREATE FUNCTION public.hot_updater_v1_insights_append(
+  p_database_namespace uuid,
   p_event jsonb,
   p_event_bytes integer,
   p_install_key text,
@@ -1239,6 +1330,9 @@ BEGIN
   THEN
     RAISE EXCEPTION 'Invalid Insights append' USING ERRCODE = '22023';
   END IF;
+  PERFORM public.hot_updater_v1_insights_bind_namespace(
+    p_database_namespace
+  );
   IF NOT coalesce(public.hot_updater_v1_insights_layout_ready('append'), false)
   THEN
     RAISE EXCEPTION 'INSIGHTS_STORAGE_NOT_READY' USING ERRCODE='P0001';
@@ -1365,15 +1459,16 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.hot_updater_v1_insights_append(
-  jsonb, integer, text, text, jsonb
+  uuid, jsonb, integer, text, text, jsonb
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.hot_updater_v1_insights_append(
-  jsonb, integer, text, text, jsonb
+  uuid, jsonb, integer, text, text, jsonb
 ) TO service_role;
 REVOKE INSERT, UPDATE, DELETE ON public.hot_updater_v1_bundle_events
   FROM service_role;
 
 CREATE OR REPLACE FUNCTION public.hot_updater_v1_insights_event_page(
+  p_database_namespace uuid,
   p_scope text,
   p_scope_id text,
   p_before_received_at_ms double precision,
@@ -1414,13 +1509,18 @@ BEGIN
   THEN
     RAISE EXCEPTION 'Invalid Insights event page input' USING ERRCODE = '22023';
   END IF;
+  PERFORM public.hot_updater_v1_insights_require_namespace(
+    p_database_namespace
+  );
   IF NOT coalesce(public.hot_updater_v1_insights_layout_ready('event'), false)
   THEN
     RAISE EXCEPTION 'INSIGHTS_STORAGE_NOT_READY' USING ERRCODE = 'P0001';
   END IF;
 
   SELECT source.committed_seq,
-    jsonb_build_array(2, source.source_id, source.committed_seq)::text
+    jsonb_build_array(
+      2, source.database_namespace, source.source_id, source.committed_seq
+    )::text
   INTO v_source_seq, v_source_generation
   FROM public.hot_updater_v1_insights_source_state AS source
   WHERE source.id = 1 AND source.version = 2 AND source.ready
@@ -1555,10 +1655,12 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.hot_updater_v1_insights_event_page(
-  text, text, double precision, double precision, integer, double precision, uuid
+  uuid, text, text, double precision, double precision, integer,
+  double precision, uuid
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.hot_updater_v1_insights_event_page(
-  text, text, double precision, double precision, integer, double precision, uuid
+  uuid, text, text, double precision, double precision, integer,
+  double precision, uuid
 ) TO service_role;
 
 CREATE FUNCTION public.hot_updater_v1_insights_installation_row(p_event jsonb)
@@ -1587,6 +1689,7 @@ REVOKE ALL ON FUNCTION public.hot_updater_v1_insights_installation_row(jsonb)
   FROM PUBLIC, anon, authenticated, service_role;
 
 CREATE FUNCTION public.hot_updater_v1_insights_installation_page(
+  p_database_namespace uuid,
   p_selector jsonb,
   p_limit integer,
   p_after_key text DEFAULT NULL,
@@ -1661,6 +1764,9 @@ BEGIN
   THEN
     RAISE EXCEPTION 'Invalid installation page input' USING ERRCODE = '22023';
   END IF;
+  PERFORM public.hot_updater_v1_insights_bind_namespace(
+    p_database_namespace
+  );
   IF NOT coalesce(
     public.hot_updater_v1_insights_layout_ready('installation'), false
   ) THEN
@@ -1675,7 +1781,8 @@ BEGIN
     v_result := (
       WITH source AS MATERIALIZED (
         SELECT jsonb_build_array(
-            2, state.source_id, state.committed_seq
+            2, state.database_namespace, state.source_id,
+            state.committed_seq
           )::text AS generation,
           coalesce(p_now_ms, floor(
             extract(epoch FROM clock_timestamp()) * 1000
@@ -1790,7 +1897,9 @@ BEGIN
     END IF;
     IF NOT FOUND THEN
       SELECT source.source_id, source.committed_seq,
-        jsonb_build_array(2, source.source_id, source.committed_seq)::text,
+        jsonb_build_array(
+          2, source.database_namespace, source.source_id, source.committed_seq
+        )::text,
         coalesce(p_now_ms,
           floor(extract(epoch FROM clock_timestamp()) * 1000)::double precision),
         source.ready, source.poison
@@ -1819,7 +1928,8 @@ BEGIN
         ORDER BY alias.id DESC LIMIT 1
       ), 0) INTO v_alias_upper_id;
       v_job_id := 'search:' || encode(sha256(convert_to(
-        encode(v_query_key, 'hex') || ':' || v_source_id::text || ':' ||
+        p_database_namespace::text || ':' || encode(v_query_key, 'hex') || ':' ||
+          v_source_id::text || ':' ||
           v_source_seq::text || ':' || v_observed_at_ms::bigint::text || ':' ||
           gen_random_uuid()::text,
         'utf8'
@@ -1941,14 +2051,15 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.hot_updater_v1_insights_installation_page(
-  jsonb, integer, text, text, text, double precision, double precision
+  uuid, jsonb, integer, text, text, text, double precision, double precision
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.hot_updater_v1_insights_installation_page(
-  jsonb, integer, text, text, text, double precision, double precision
+  uuid, jsonb, integer, text, text, text, double precision, double precision
 ) TO service_role;
 
 
 CREATE FUNCTION public.hot_updater_v1_insights_search_step(
+  p_database_namespace uuid,
   p_job_id text,
   p_max_items integer,
   p_max_bytes integer
@@ -1978,6 +2089,9 @@ BEGIN
   THEN
     RAISE EXCEPTION 'Invalid Insights search step' USING ERRCODE = '22023';
   END IF;
+  PERFORM public.hot_updater_v1_insights_bind_namespace(
+    p_database_namespace
+  );
   IF NOT coalesce(public.hot_updater_v1_insights_layout_ready('search'), false)
   THEN
     RAISE EXCEPTION 'INSIGHTS_STORAGE_NOT_READY' USING ERRCODE = 'P0001';
@@ -2286,10 +2400,10 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.hot_updater_v1_insights_search_step(
-  text, integer, integer
+  uuid, text, integer, integer
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.hot_updater_v1_insights_search_step(
-  text, integer, integer
+  uuid, text, integer, integer
 ) TO service_role;
 
 
@@ -2335,6 +2449,9 @@ CREATE INDEX hot_updater_v1_insights_report_jobs_retention_idx
   ON public.hot_updater_v1_insights_report_jobs(
     state, completed_at_ms, id COLLATE "C"
   );
+CREATE INDEX hot_updater_v1_insights_report_jobs_queue_idx
+  ON public.hot_updater_v1_insights_report_jobs(id COLLATE "C")
+  WHERE state='preparing' AND visible;
 
 CREATE TABLE public.hot_updater_v1_insights_report_members (
   job_id text NOT NULL REFERENCES public.hot_updater_v1_insights_report_jobs(id)
@@ -2437,6 +2554,65 @@ ALTER TABLE public.hot_updater_v1_insights_report_counts ENABLE ROW LEVEL SECURI
 ALTER TABLE public.hot_updater_v1_insights_report_section_totals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.hot_updater_v1_insights_report_latest ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.hot_updater_v1_insights_report_bundle_order ENABLE ROW LEVEL SECURITY;
+
+CREATE FUNCTION public.hot_updater_v1_insights_job_next(
+  p_database_namespace uuid
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  v_source public.hot_updater_v1_insights_source_state;
+  v_job_id text;
+BEGIN
+  IF p_database_namespace IS NULL THEN
+    RAISE EXCEPTION 'Invalid Insights database namespace'
+      USING ERRCODE='22023';
+  END IF;
+  PERFORM public.hot_updater_v1_insights_bind_namespace(
+    p_database_namespace
+  );
+  IF NOT coalesce(
+    public.hot_updater_v1_insights_layout_ready('maintenance'), false
+  ) THEN
+    RAISE EXCEPTION 'INSIGHTS_STORAGE_NOT_READY' USING ERRCODE='P0001';
+  END IF;
+  SELECT source.* INTO v_source
+  FROM public.hot_updater_v1_insights_source_state AS source
+  WHERE source.id=1 AND source.version=2;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'INSIGHTS_STORAGE_NOT_READY' USING ERRCODE='P0001';
+  END IF;
+  IF NOT v_source.ready OR v_source.poison IS NOT NULL THEN
+    RETURN jsonb_build_object(
+      'state','queued','jobId','supabase-v2-migration'
+    );
+  END IF;
+
+  SELECT queued.id INTO v_job_id
+  FROM (
+    (SELECT job.id
+     FROM public.hot_updater_v1_insights_search_jobs AS job
+     WHERE job.state='preparing' AND job.visible
+     ORDER BY job.id COLLATE "C" LIMIT 1)
+    UNION ALL
+    (SELECT job.id
+     FROM public.hot_updater_v1_insights_report_jobs AS job
+     WHERE job.state='preparing' AND job.visible
+     ORDER BY job.id COLLATE "C" LIMIT 1)
+  ) AS queued
+  ORDER BY queued.id COLLATE "C" LIMIT 1;
+  IF v_job_id IS NULL THEN
+    RETURN jsonb_build_object('state','idle');
+  END IF;
+  RETURN jsonb_build_object('state','queued','jobId',v_job_id);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.hot_updater_v1_insights_job_next(uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.hot_updater_v1_insights_job_next(uuid)
+  TO service_role;
 
 CREATE FUNCTION public.hot_updater_v1_insights_report_add_member(
   p_job_id text, p_dimension text, p_discriminator text, p_group_key text,
@@ -2577,6 +2753,7 @@ REVOKE ALL ON FUNCTION public.hot_updater_v1_insights_publication_json(
   public.hot_updater_v1_insights_publications
 ) FROM PUBLIC, anon, authenticated, service_role;
 CREATE FUNCTION public.hot_updater_v1_insights_report(
+  p_database_namespace uuid,
   p_query jsonb,
   p_min_as_of_ms double precision DEFAULT NULL,
   p_now_ms double precision DEFAULT NULL
@@ -2620,6 +2797,9 @@ BEGIN
   THEN
     RAISE EXCEPTION 'Invalid Insights report query' USING ERRCODE = '22023';
   END IF;
+  PERFORM public.hot_updater_v1_insights_bind_namespace(
+    p_database_namespace
+  );
   IF v_kind = 'bundleSummaries' AND (
     jsonb_typeof(p_query->'bundleIds') <> 'array' OR
     jsonb_array_length(p_query->'bundleIds') > 100 OR
@@ -2667,7 +2847,9 @@ BEGIN
   ORDER BY job.as_of_ms DESC, job.id COLLATE "C" DESC LIMIT 1 FOR UPDATE;
   IF NOT FOUND THEN
     SELECT source.source_id, source.committed_seq,
-      jsonb_build_array(2, source.source_id, source.committed_seq)::text,
+      jsonb_build_array(
+        2, source.database_namespace, source.source_id, source.committed_seq
+      )::text,
       source.ready, source.poison
     INTO v_source_id, v_source_seq, v_generation,
       v_source_ready, v_source_poison
@@ -2707,7 +2889,8 @@ BEGIN
       THEN v_as_of_ms - v_bucket_ms
       ELSE floor(v_as_of_ms / v_bucket_ms) * v_bucket_ms END;
     v_job_id := 'report:' || encode(sha256(convert_to(
-      encode(v_query_key, 'hex') || ':' || v_source_id::text || ':' ||
+      p_database_namespace::text || ':' || encode(v_query_key, 'hex') || ':' ||
+        v_source_id::text || ':' ||
         v_source_seq::text || ':' || v_as_of_ms::bigint::text || ':' ||
         gen_random_uuid()::text,
       'utf8'
@@ -2756,12 +2939,13 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.hot_updater_v1_insights_report(
-  jsonb, double precision, double precision
+  uuid, jsonb, double precision, double precision
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.hot_updater_v1_insights_report(
-  jsonb, double precision, double precision
+  uuid, jsonb, double precision, double precision
 ) TO service_role;
 CREATE FUNCTION public.hot_updater_v1_insights_report_step(
+  p_database_namespace uuid,
   p_job_id text,
   p_max_items integer,
   p_max_bytes integer
@@ -2805,6 +2989,9 @@ BEGIN
   THEN
     RAISE EXCEPTION 'Invalid Insights report step' USING ERRCODE = '22023';
   END IF;
+  PERFORM public.hot_updater_v1_insights_bind_namespace(
+    p_database_namespace
+  );
   IF NOT coalesce(public.hot_updater_v1_insights_layout_ready('report'), false)
   THEN
     RAISE EXCEPTION 'INSIGHTS_STORAGE_NOT_READY' USING ERRCODE = 'P0001';
@@ -3504,13 +3691,14 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.hot_updater_v1_insights_report_step(
-  text, integer, integer
+  uuid, text, integer, integer
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.hot_updater_v1_insights_report_step(
-  text, integer, integer
+  uuid, text, integer, integer
 ) TO service_role;
 
 CREATE FUNCTION public.hot_updater_v1_insights_report_page(
+  p_database_namespace uuid,
   p_publication_id text,
   p_section jsonb,
   p_limit integer,
@@ -3549,6 +3737,9 @@ BEGIN
   THEN
     RAISE EXCEPTION 'Invalid report page input' USING ERRCODE = '22023';
   END IF;
+  PERFORM public.hot_updater_v1_insights_require_namespace(
+    p_database_namespace
+  );
   IF NOT coalesce(public.hot_updater_v1_insights_layout_ready('report'), false)
   THEN
     RAISE EXCEPTION 'INSIGHTS_STORAGE_NOT_READY' USING ERRCODE = 'P0001';
@@ -3701,13 +3892,14 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.hot_updater_v1_insights_report_page(
-  text, jsonb, integer, jsonb
+  uuid, text, jsonb, integer, jsonb
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.hot_updater_v1_insights_report_page(
-  text, jsonb, integer, jsonb
+  uuid, text, jsonb, integer, jsonb
 ) TO service_role;
 
 CREATE FUNCTION public.hot_updater_v1_insights_prune(
+  p_database_namespace uuid,
   p_before_ms double precision,
   p_max_items integer,
   p_max_bytes integer
@@ -3733,6 +3925,9 @@ BEGIN
   THEN
     RAISE EXCEPTION 'Invalid Insights retention input' USING ERRCODE='22023';
   END IF;
+  PERFORM public.hot_updater_v1_insights_bind_namespace(
+    p_database_namespace
+  );
   IF NOT coalesce(
     public.hot_updater_v1_insights_layout_ready('retention'), false
   ) THEN
@@ -3888,10 +4083,10 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.hot_updater_v1_insights_prune(
-  double precision, integer, integer
+  uuid, double precision, integer, integer
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.hot_updater_v1_insights_prune(
-  double precision, integer, integer
+  uuid, double precision, integer, integer
 ) TO service_role;
 
 -- Supabase can grant newly created public objects through default privileges.
@@ -3927,7 +4122,8 @@ SET layout = jsonb_build_object(
   'installation', public.hot_updater_v1_insights_layout_digest('installation'),
   'search', public.hot_updater_v1_insights_layout_digest('search'),
   'report', public.hot_updater_v1_insights_layout_digest('report'),
-  'retention', public.hot_updater_v1_insights_layout_digest('retention')
+  'retention', public.hot_updater_v1_insights_layout_digest('retention'),
+  'maintenance', public.hot_updater_v1_insights_layout_digest('maintenance')
 )
 WHERE source.id = 1 AND source.version = 2;
 

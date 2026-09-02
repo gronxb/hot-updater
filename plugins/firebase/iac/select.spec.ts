@@ -55,6 +55,7 @@ describe("setEnv", () => {
     await setEnv({
       projectId: "demo-project",
       storageBucket: "demo-bucket",
+      insightsDatabaseNamespace: "10000000-0000-4000-8000-000000000005",
       build: "bare",
       region: "asia-northeast3",
     });
@@ -68,6 +69,8 @@ describe("setEnv", () => {
         },
         HOT_UPDATER_FIREBASE_PROJECT_ID: "demo-project",
         HOT_UPDATER_FIREBASE_REGION: "asia-northeast3",
+        HOT_UPDATER_FIREBASE_INSIGHTS_DATABASE_NAMESPACE:
+          "10000000-0000-4000-8000-000000000005",
         HOT_UPDATER_FIREBASE_STORAGE_BUCKET: "demo-bucket",
       },
       ".env.hotupdater",
@@ -79,6 +82,9 @@ describe("setEnv", () => {
     const scaffold = vi.mocked(writeHotUpdaterConfig).mock.calls[0]?.[0];
     expect(scaffold?.text).toContain(
       "// Check your .env.hotupdater file and add the credentials",
+    );
+    expect(scaffold?.text).toContain(
+      "insightsDatabaseNamespace: process.env.HOT_UPDATER_FIREBASE_INSIGHTS_DATABASE_NAMESPACE!",
     );
   });
 });

@@ -31,9 +31,11 @@ import {
   D1InsightsMigrationPoisonError,
   D1_INSIGHTS_INSTALLATION_ALIASES,
   D1_INSIGHTS_INSTALLATION_VERSIONS,
+  assertD1InsightsDatabaseNamespace,
   assertD1InsightsReady,
   d1InsightsInstallKey,
   readD1InsightsPointerEvents,
+  verifyD1InsightsDatabaseNamespace,
   type D1InsightsEventPointer,
 } from "./d1InsightsSource";
 import { encodeD1Values, normalizeD1SchemaSql } from "./d1Sql";
@@ -2685,89 +2687,109 @@ const deferJob = async (
   return committed === "committed" ? "not-ready" : "lease-lost";
 };
 
-export const createD1InsightsMaintenance = (executor: D1Executor) => ({
-  async runStep(input: MaintenanceInput): Promise<D1InsightsMaintenanceResult> {
-    try {
-      assertInsightsMaintenanceInputContract(input);
-    } catch {
-      invalidQuery();
-    }
-    // Job/source layout, source state, and the lease claim require four
-    // requests.
-    // Keep two more available to durably defer any claimed job that cannot
-    // complete a bounded step with the caller's remaining budget.
-    if (input.maxRequests < 6) {
-      return { state: "idle", processed: 0, requests: 0 };
-    }
-    const budgeted = new BudgetedD1Executor(executor, input.maxRequests);
-    try {
-      await assertD1InsightsJobsLayout(budgeted);
-      await assertD1InsightsReady(budgeted);
-    } catch (error) {
-      if (error instanceof D1InsightsMigrationPoisonError) {
-        return {
-          state: "failed",
-          processed: 0,
-          requests: budgeted.requests,
-          jobId: error.sourceId,
-          error: { code: "migration-poison", jobId: error.sourceId },
-        };
+export const createD1InsightsMaintenance = (
+  executor: D1Executor,
+  databaseNamespace: string,
+) => {
+  assertD1InsightsDatabaseNamespace(databaseNamespace);
+  return {
+    async runStep(
+      input: MaintenanceInput,
+    ): Promise<D1InsightsMaintenanceResult> {
+      try {
+        assertInsightsMaintenanceInputContract(input);
+      } catch {
+        invalidQuery();
       }
-      if (error instanceof InsightsQueryNotReadyError) {
-        return {
-          state: "not-ready",
-          processed: 0,
-          requests: budgeted.requests,
-        };
+      // Namespace, job/source layout, source state, and the lease claim require
+      // five requests.
+      // Keep two more available to durably defer any claimed job that cannot
+      // complete a bounded step with the caller's remaining budget.
+      if (input.maxRequests < 7) {
+        return { state: "idle", processed: 0, requests: 0 };
       }
-      throw error;
-    }
-    const job = await claimJob(budgeted);
-    if (job === null) {
-      return { state: "idle", processed: 0, requests: budgeted.requests };
-    }
-    budgeted.reserve(2);
-    try {
-      if (job.checkpoint.phase === "complete") {
-        const state = await publishJob(budgeted, input, job);
+      const budgeted = new BudgetedD1Executor(executor, input.maxRequests);
+      try {
+        await verifyD1InsightsDatabaseNamespace(budgeted, databaseNamespace);
+        await assertD1InsightsJobsLayout(budgeted);
+        await assertD1InsightsReady(budgeted);
+      } catch (error) {
+        if (error instanceof D1InsightsMigrationPoisonError) {
+          return {
+            state: "failed",
+            processed: 0,
+            requests: budgeted.requests,
+            jobId: error.sourceId,
+            error: { code: "migration-poison", jobId: error.sourceId },
+          };
+        }
+        if (error instanceof InsightsQueryNotReadyError) {
+          return {
+            state: "not-ready",
+            processed: 0,
+            requests: budgeted.requests,
+          };
+        }
+        throw error;
+      }
+      const job = await claimJob(budgeted);
+      if (job === null) {
+        return { state: "idle", processed: 0, requests: budgeted.requests };
+      }
+      budgeted.reserve(2);
+      try {
+        if (job.checkpoint.phase === "complete") {
+          const state = await publishJob(budgeted, input, job);
+          return {
+            state: state === "lease-lost" ? "lease-lost" : "published",
+            processed: 0,
+            requests: budgeted.requests,
+            jobId: job.id,
+          };
+        }
+        const result =
+          job.checkpoint.phase === "aliases"
+            ? await stepAliases(budgeted, input, job)
+            : job.checkpoint.phase === "searchLatest"
+              ? await stepSearchLatest(budgeted, input, job)
+              : job.checkpoint.phase === "source"
+                ? await stepSource(budgeted, input, job)
+                : job.checkpoint.phase === "installations"
+                  ? await stepInstallations(budgeted, input, job)
+                  : job.checkpoint.phase === "order"
+                    ? await stepOrder(budgeted, input, job)
+                    : job.checkpoint.phase === "rows"
+                      ? await stepRows(budgeted, input, job)
+                      : await stepSeries(budgeted, input, job);
         return {
-          state: state === "lease-lost" ? "lease-lost" : "published",
-          processed: 0,
+          state: result.leaseLost ? "lease-lost" : "progress",
+          processed: result.leaseLost ? 0 : result.processed,
           requests: budgeted.requests,
           jobId: job.id,
         };
-      }
-      const result =
-        job.checkpoint.phase === "aliases"
-          ? await stepAliases(budgeted, input, job)
-          : job.checkpoint.phase === "searchLatest"
-            ? await stepSearchLatest(budgeted, input, job)
-            : job.checkpoint.phase === "source"
-              ? await stepSource(budgeted, input, job)
-              : job.checkpoint.phase === "installations"
-                ? await stepInstallations(budgeted, input, job)
-                : job.checkpoint.phase === "order"
-                  ? await stepOrder(budgeted, input, job)
-                  : job.checkpoint.phase === "rows"
-                    ? await stepRows(budgeted, input, job)
-                    : await stepSeries(budgeted, input, job);
-      return {
-        state: result.leaseLost ? "lease-lost" : "progress",
-        processed: result.leaseLost ? 0 : result.processed,
-        requests: budgeted.requests,
-        jobId: job.id,
-      };
-    } catch (error) {
-      budgeted.releaseReserve();
-      const provenCorruption =
-        isProvenJobCorruption(error) ||
-        isProvenPublicationInvariantFailure(error, job);
-      if (
-        error instanceof InsightsQueryNotReadyError ||
-        error instanceof D1InsightsStepBudgetExhaustedError ||
-        (!provenCorruption && !(error instanceof DatabasePluginInputError))
-      ) {
-        const state = await deferJob(budgeted, job);
+      } catch (error) {
+        budgeted.releaseReserve();
+        const provenCorruption =
+          isProvenJobCorruption(error) ||
+          isProvenPublicationInvariantFailure(error, job);
+        if (
+          error instanceof InsightsQueryNotReadyError ||
+          error instanceof D1InsightsStepBudgetExhaustedError ||
+          (!provenCorruption && !(error instanceof DatabasePluginInputError))
+        ) {
+          const state = await deferJob(budgeted, job);
+          return {
+            state,
+            processed: 0,
+            requests: budgeted.requests,
+            jobId: job.id,
+          };
+        }
+        const state = await finishFailed(
+          budgeted,
+          job,
+          provenCorruption ? "migration-poison" : "preparation-failed",
+        );
         return {
           state,
           processed: 0,
@@ -2775,17 +2797,6 @@ export const createD1InsightsMaintenance = (executor: D1Executor) => ({
           jobId: job.id,
         };
       }
-      const state = await finishFailed(
-        budgeted,
-        job,
-        provenCorruption ? "migration-poison" : "preparation-failed",
-      );
-      return {
-        state,
-        processed: 0,
-        requests: budgeted.requests,
-        jobId: job.id,
-      };
-    }
-  },
-});
+    },
+  };
+};

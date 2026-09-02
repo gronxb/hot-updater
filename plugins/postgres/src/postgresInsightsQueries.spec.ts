@@ -1,13 +1,10 @@
 import { readFile } from "node:fs/promises";
 
 import { PGlite } from "@electric-sql/pglite";
-import {
-  createInsightsReportPageCursor,
-  type DatabasePluginImplementation,
-} from "@hot-updater/plugin-core/internal";
+import { createInsightsReportPageCursor } from "@hot-updater/plugin-core/internal";
 import { Kysely, sql } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import {
@@ -19,20 +16,14 @@ import { createPostgresInsightsLiveTools } from "./postgresInsightsLive";
 import { createPostgresInsightsQueries } from "./postgresInsightsQueries";
 import { createPostgresInsightsReportWorker } from "./postgresInsightsReports";
 import { createPostgresInsightsSearchPageCursor } from "./postgresInsightsSearchPages";
-import {
-  appendPostgresInsightsEvent,
-  createPostgresInsightsSourceTools,
-} from "./postgresInsightsSource";
+import { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
 import type { Database } from "./types";
 
-const unsupported = async (): Promise<never> => {
-  throw new Error("unexpected generic database operation");
-};
+const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
 
 describe("PostgreSQL required Insights port", () => {
   let client: PGlite;
   let db: Kysely<Database>;
-  let databaseNamespace: string;
   let statements: string[];
 
   beforeEach(async () => {
@@ -47,15 +38,17 @@ describe("PostgreSQL required Insights port", () => {
         statements.push(event.query.sql);
       },
     });
-    await migratePostgresInsightsSource(db);
-    await createPostgresInsightsSourceTools(db).backfillStep(10);
-    await migratePostgresInsightsLive(db);
-    await createPostgresInsightsLiveTools(db).backfillStep(10);
-    await migratePostgresInsightsReports(db);
-    databaseNamespace = (
-      await sql<{ source_id: string }>`select source_id::text
-        from private_hot_updater_insights_source_state where id=1`.execute(db)
-    ).rows[0]!.source_id;
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
+    await createPostgresInsightsSourceTools(
+      db,
+      insightsDatabaseNamespace,
+    ).backfillStep(10);
+    await migratePostgresInsightsLive(db, insightsDatabaseNamespace);
+    await createPostgresInsightsLiveTools(
+      db,
+      insightsDatabaseNamespace,
+    ).backfillStep(10);
+    await migratePostgresInsightsReports(db, insightsDatabaseNamespace);
   });
 
   afterEach(async () => {
@@ -64,24 +57,9 @@ describe("PostgreSQL required Insights port", () => {
   });
 
   it("wires all five required methods and rejects foreign namespaces before I/O", async () => {
-    const appendBundleEvent = vi.fn((row) =>
-      appendPostgresInsightsEvent(db, row).then(() => undefined),
-    );
-    const implementation: DatabasePluginImplementation = {
-      appendBundleEvent,
-      create: unsupported,
-      update: unsupported,
-      delete: unsupported,
-      count: unsupported,
-      findOne: unsupported,
-      findMany: unsupported,
-      insertChannel: unsupported,
-      deleteChannel: unsupported,
-    };
     const insights = createPostgresInsightsQueries(
       db,
-      implementation,
-      databaseNamespace,
+      insightsDatabaseNamespace,
     );
     const event = {
       ...createBundleEventRowFixture("1", 100),
@@ -89,7 +67,6 @@ describe("PostgreSQL required Insights port", () => {
     };
 
     await insights.append(event);
-    expect(appendBundleEvent).toHaveBeenCalledExactlyOnceWith(event);
 
     await expect(
       insights.pageEvents({
@@ -143,7 +120,7 @@ describe("PostgreSQL required Insights port", () => {
           JSON.stringify(["all"]),
           101,
           0,
-          "00000000-0000-0000-0000-000000000099",
+          "00000000-0000-7000-8000-000000000099",
           100,
           event.id,
           "received-desc-id-desc",
@@ -163,7 +140,7 @@ describe("PostgreSQL required Insights port", () => {
           foreignSearchInput,
           preparing.job.id,
           0,
-          "00000000-0000-0000-0000-000000000099",
+          "00000000-0000-7000-8000-000000000099",
         ),
       }),
     ).rejects.toMatchObject({ code: "invalid-query" });
@@ -173,7 +150,7 @@ describe("PostgreSQL required Insights port", () => {
         limit: 1,
         cursor: JSON.stringify([
           "postgres-live-v1",
-          "00000000-0000-0000-0000-000000000099",
+          "00000000-0000-7000-8000-000000000099",
           event.install_id,
         ]),
       }),
@@ -184,13 +161,16 @@ describe("PostgreSQL required Insights port", () => {
         cursor: createInsightsReportPageCursor(
           reportInput,
           "0",
-          "00000000-0000-0000-0000-000000000099",
+          "00000000-0000-7000-8000-000000000099",
         ),
       }),
     ).rejects.toMatchObject({ code: "invalid-query" });
     expect(statements).toEqual([]);
 
-    const worker = createPostgresInsightsReportWorker(db);
+    const worker = createPostgresInsightsReportWorker(
+      db,
+      insightsDatabaseNamespace,
+    );
     const finish = async (input: Parameters<typeof insights.getReport>[0]) => {
       for (let i = 0; i < 100; i++) {
         const result = await insights.getReport(input);

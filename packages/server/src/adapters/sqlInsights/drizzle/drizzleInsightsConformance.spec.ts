@@ -17,16 +17,17 @@ import type {
   InsightsPublishedInstallationContinuationInput,
   InsightsPublishedInstallationPage,
   InsightsPublishedInstallationPageInput,
+  InsightsModel,
 } from "@hot-updater/plugin-core";
 import { createUUIDv7After } from "@hot-updater/plugin-core";
 import {
   getInsightsInstallationOrderKey,
   INSIGHTS_MAINTENANCE_INPUT_MAX_BYTES,
-  type RequiredInsightsModel,
 } from "@hot-updater/plugin-core/internal";
 import {
-  type RequiredInsightsModelConformanceHarness,
-  registerRequiredInsightsModelTests,
+  type InsightsModelConformanceNamespaces,
+  type InsightsModelConformanceHarness,
+  registerInsightsModelTests,
 } from "@hot-updater/test-utils";
 import { type SQL } from "drizzle-orm";
 import { MySqlDialect } from "drizzle-orm/mysql-core";
@@ -125,6 +126,7 @@ class CandidateMeter {
 
 type NativeNamespace = {
   readonly database: DrizzleDB;
+  readonly databaseNamespace: string;
   readonly meter: CandidateMeter;
   readonly provider: DrizzleProvider;
   readonly sqlitePath?: string;
@@ -142,10 +144,10 @@ type NativeNamespace = {
 const namespaces: NativeNamespace[] = [];
 
 const instrumentModel = (
-  model: RequiredInsightsModel,
+  model: InsightsModel,
   meter: CandidateMeter,
   beforeOperation: () => Promise<void> = () => Promise.resolve(),
-): RequiredInsightsModel => {
+): InsightsModel => {
   function pageInstallations(
     input: InsightsLiveInstallationPageInput,
   ): Promise<InsightsLiveInstallationPage>;
@@ -200,6 +202,7 @@ const instrumentModel = (
 
 const createSQLiteNamespace = async (
   sqlitePath = ":memory:",
+  databaseNamespace: string = crypto.randomUUID(),
 ): Promise<NativeNamespace> => {
   const native = new DatabaseSync(sqlitePath);
   native.exec(legacySchema("sqlite"));
@@ -236,6 +239,7 @@ const createSQLiteNamespace = async (
   } as unknown as DrizzleDB;
   const namespace: NativeNamespace = {
     database,
+    databaseNamespace,
     meter,
     provider: "sqlite",
     ...(sqlitePath === ":memory:" ? {} : { sqlitePath }),
@@ -293,6 +297,7 @@ const postgresqlDatabase = (
 
 const createPostgreSQLNamespace = async (
   connectionString: string,
+  databaseNamespace: string = crypto.randomUUID(),
 ): Promise<NativeNamespace> => {
   const schema = uniqueName("drizzle_insights");
   const admin = new Client({ connectionString });
@@ -308,6 +313,7 @@ const createPostgreSQLNamespace = async (
   const database = postgresqlDatabase(client, meter);
   const namespace: NativeNamespace = {
     database,
+    databaseNamespace,
     meter,
     provider: "postgresql",
     openDatabase: async () => {
@@ -375,6 +381,7 @@ const mysqlDatabase = (
 
 const createMySQLNamespace = async (
   connectionString: string,
+  databaseNamespace: string = crypto.randomUUID(),
 ): Promise<NativeNamespace> => {
   const databaseName = uniqueName("drizzle_insights");
   const admin = await createConnection(connectionString);
@@ -388,6 +395,7 @@ const createMySQLNamespace = async (
   const database = mysqlDatabase(client, meter);
   const namespace: NativeNamespace = {
     database,
+    databaseNamespace,
     meter,
     provider: "mysql",
     openDatabase: async () => {
@@ -466,11 +474,17 @@ const insertNativePrivatePoison = async (namespace: NativeNamespace) => {
 
 const createHarness =
   (
-    createNamespace: () => Promise<NativeNamespace>,
-  ): (() => Promise<RequiredInsightsModelConformanceHarness>) =>
-  async () => {
-    const primary = await createNamespace();
-    const other = await createNamespace();
+    createNamespace: (databaseNamespace: string) => Promise<NativeNamespace>,
+  ): ((
+    databaseNamespaces: InsightsModelConformanceNamespaces,
+  ) => Promise<InsightsModelConformanceHarness>) =>
+  async (databaseNamespaces) => {
+    const primary = await createNamespace(
+      databaseNamespaces.insightsDatabaseNamespace,
+    );
+    const other = await createNamespace(
+      databaseNamespaces.otherInsightsDatabaseNamespace,
+    );
     const completed = new Set<string>();
     const pendingExpiry = new Set<string>();
     const applyExpiry = async (): Promise<void> => {
@@ -479,14 +493,22 @@ const createHarness =
         pendingExpiry.delete(publicationId);
       }
     };
-    const facade = (): RequiredInsightsModelConformanceHarness => ({
+    const facade = (): InsightsModelConformanceHarness => ({
       model: instrumentModel(
-        createDrizzleInsightsQueries(primary.database, primary.provider),
+        createDrizzleInsightsQueries(
+          primary.database,
+          primary.provider,
+          primary.databaseNamespace,
+        ),
         primary.meter,
         applyExpiry,
       ),
       otherNamespaceModel: instrumentModel(
-        createDrizzleInsightsQueries(other.database, other.provider),
+        createDrizzleInsightsQueries(
+          other.database,
+          other.provider,
+          other.databaseNamespace,
+        ),
         other.meter,
       ),
       async runJobStep(jobId, input) {
@@ -494,6 +516,7 @@ const createHarness =
         const result = await runDrizzleInsightsMaintenanceStep(
           primary.database,
           primary.provider,
+          primary.databaseNamespace,
           jobId,
           input,
         );
@@ -504,6 +527,7 @@ const createHarness =
         runDrizzleInsightsMaintenanceStep(
           other.database,
           other.provider,
+          other.databaseNamespace,
           jobId,
           input,
         ),
@@ -544,22 +568,30 @@ afterEach(async () => {
 });
 
 describe("Drizzle SQLite native conformance", () => {
-  registerRequiredInsightsModelTests(createHarness(createSQLiteNamespace));
+  registerInsightsModelTests(
+    createHarness((databaseNamespace) =>
+      createSQLiteNamespace(":memory:", databaseNamespace),
+    ),
+  );
 });
 
 const postgresqlUrl = process.env["DRIZZLE_INSIGHTS_POSTGRES_URL"];
 const postgresqlSuite = postgresqlUrl === undefined ? describe.skip : describe;
 postgresqlSuite("Drizzle PostgreSQL native conformance", () => {
-  registerRequiredInsightsModelTests(
-    createHarness(() => createPostgreSQLNamespace(postgresqlUrl!)),
+  registerInsightsModelTests(
+    createHarness((databaseNamespace) =>
+      createPostgreSQLNamespace(postgresqlUrl!, databaseNamespace),
+    ),
   );
 });
 
 const mysqlUrl = process.env["DRIZZLE_INSIGHTS_MYSQL_URL"];
 const mysqlSuite = mysqlUrl === undefined ? describe.skip : describe;
 mysqlSuite("Drizzle MySQL native conformance", () => {
-  registerRequiredInsightsModelTests(
-    createHarness(() => createMySQLNamespace(mysqlUrl!)),
+  registerInsightsModelTests(
+    createHarness((databaseNamespace) =>
+      createMySQLNamespace(mysqlUrl!, databaseNamespace),
+    ),
   );
 });
 
@@ -595,6 +627,7 @@ const assertNativeLegacyPoison = async (
   const model = createDrizzleInsightsQueries(
     namespace.database,
     namespace.provider,
+    namespace.databaseNamespace,
   );
   const initial = await model.pageEvents({
     selector: { kind: "all" },
@@ -617,6 +650,7 @@ const assertNativeLegacyPoison = async (
     const maintenance = await runDrizzleInsightsMaintenanceStep(
       namespace.database,
       namespace.provider,
+      namespace.databaseNamespace,
       initial.job.id,
       { maxItems: 100, maxRequests: 128 },
     );
@@ -658,6 +692,7 @@ const assertNativeLegacyPoison = async (
   const reopened = await createDrizzleInsightsQueries(
     namespace.database,
     namespace.provider,
+    namespace.databaseNamespace,
   ).pageEvents({
     selector: { kind: "all" },
     beforeReceivedAtMs: 1_000,
@@ -696,6 +731,7 @@ const assertNativeFailedSearchReuse = async (
   const model = createDrizzleInsightsQueries(
     namespace.database,
     namespace.provider,
+    namespace.databaseNamespace,
   );
   await model.append({
     id: "00000000-0000-7000-8000-000000000001",
@@ -730,6 +766,7 @@ const assertNativeFailedSearchReuse = async (
   const step = await runDrizzleInsightsMaintenanceStep(
     namespace.database,
     namespace.provider,
+    namespace.databaseNamespace,
     reserved.job.id,
     { maxItems: 100, maxRequests: 128 },
   );
@@ -739,6 +776,7 @@ const assertNativeFailedSearchReuse = async (
   const reopened = await createDrizzleInsightsQueries(
     namespace.database,
     namespace.provider,
+    namespace.databaseNamespace,
   ).pageInstallations(input);
   if (
     reopened.state !== "failed" ||
@@ -786,6 +824,7 @@ const assertNativeReportRegressions = async (
   const model = createDrizzleInsightsQueries(
     namespace.database,
     namespace.provider,
+    namespace.databaseNamespace,
   );
   const event = (
     id: string,
@@ -881,6 +920,7 @@ const assertNativeReportRegressions = async (
   const budgetStep = await runDrizzleInsightsMaintenanceStep(
     namespace.database,
     namespace.provider,
+    namespace.databaseNamespace,
     active.job.id,
     { maxItems: 100, maxRequests: 4 },
   );
@@ -971,6 +1011,7 @@ const assertNativeByteShortPages = async (
   const model = createDrizzleInsightsQueries(
     namespace.database,
     namespace.provider,
+    namespace.databaseNamespace,
   );
   const large = "😀".repeat(500);
   let id: string | null = null;
@@ -1037,6 +1078,7 @@ const assertNativeByteShortPages = async (
     const result = await runDrizzleInsightsMaintenanceStep(
       namespace.database,
       namespace.provider,
+      namespace.databaseNamespace,
       reserved.job.id,
       { maxItems: 200, maxRequests: 128 },
     );
@@ -1085,6 +1127,7 @@ const assertNativeAppendRollback = async (
   const model = createDrizzleInsightsQueries(
     namespace.database,
     namespace.provider,
+    namespace.databaseNamespace,
   );
   const firstId = "00000000-0000-7000-8000-000000000001";
   const rejectedId = "00000000-0000-7000-8000-000000000002";
@@ -1231,10 +1274,12 @@ const assertCommittedSourceFence = async (
     const writerModel = createDrizzleInsightsQueries(
       stalled.database,
       namespace.provider,
+      namespace.databaseNamespace,
     );
     const reserverModel = createDrizzleInsightsQueries(
       reserver.database,
       namespace.provider,
+      namespace.databaseNamespace,
     );
     const emptyInput = {
       selector: { kind: "all" as const },
@@ -1371,6 +1416,7 @@ const assertMigrationSourceFence = async (
   const initialModel = createDrizzleInsightsQueries(
     namespace.database,
     namespace.provider,
+    namespace.databaseNamespace,
   );
   const sourcePage = await initialModel.pageEvents({
     selector: { kind: "all" },
@@ -1391,10 +1437,12 @@ const assertMigrationSourceFence = async (
     const writerModel = createDrizzleInsightsQueries(
       writer.database,
       namespace.provider,
+      namespace.databaseNamespace,
     );
     const reserverModel = createDrizzleInsightsQueries(
       reserver.database,
       namespace.provider,
+      namespace.databaseNamespace,
     );
     const sourceInput = {
       selector: { kind: "all" as const },
@@ -1410,6 +1458,7 @@ const assertMigrationSourceFence = async (
     const initialized = await runDrizzleInsightsMaintenanceStep(
       stalled.database,
       namespace.provider,
+      namespace.databaseNamespace,
       sourcePage.job.id,
       { maxItems: 100, maxRequests: 128 },
     );
@@ -1419,6 +1468,7 @@ const assertMigrationSourceFence = async (
     const migration = runDrizzleInsightsMaintenanceStep(
       stalled.database,
       namespace.provider,
+      namespace.databaseNamespace,
       sourcePage.job.id,
       { maxItems: 100, maxRequests: 128 },
     );
@@ -1600,6 +1650,7 @@ const finishNativeJob = async (
     const result = await runDrizzleInsightsMaintenanceStep(
       namespace.database,
       namespace.provider,
+      namespace.databaseNamespace,
       jobId,
       { maxItems, maxRequests },
     );
@@ -1698,6 +1749,7 @@ const runScaleGate = async (namespace: NativeNamespace): Promise<void> => {
   let model = createDrizzleInsightsQueries(
     namespace.database,
     namespace.provider,
+    namespace.databaseNamespace,
   );
   const initial = await model.pageEvents({
     selector: { kind: "all" },
@@ -1731,6 +1783,7 @@ const runScaleGate = async (namespace: NativeNamespace): Promise<void> => {
     const step = await runDrizzleInsightsMaintenanceStep(
       namespace.database,
       namespace.provider,
+      namespace.databaseNamespace,
       initial.job.id,
       { maxItems: 200, maxRequests: 4096 },
     );
@@ -1738,6 +1791,7 @@ const runScaleGate = async (namespace: NativeNamespace): Promise<void> => {
       model = createDrizzleInsightsQueries(
         namespace.database,
         namespace.provider,
+        namespace.databaseNamespace,
       );
       const writerId = createUUIDv7After(lastLegacyId, 1_800_200_000_000);
       await model.append({

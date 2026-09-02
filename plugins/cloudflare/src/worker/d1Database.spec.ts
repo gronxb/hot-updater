@@ -15,7 +15,10 @@ const database: D1Like = {
 };
 
 it("uses the D1 binding supplied at the Worker composition boundary", async () => {
-  const plugin = d1Database(database);
+  const plugin = d1Database({
+    database,
+    insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000401",
+  });
 
   expect(plugin.name).toBe("d1Database");
   expect(Object.keys(plugin.models).sort()).toEqual([

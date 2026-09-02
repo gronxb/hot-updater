@@ -1,5 +1,6 @@
 import {
   assertStorageOperations,
+  type InsightsModel,
   type StoragePlugin,
 } from "@hot-updater/plugin-core";
 
@@ -18,8 +19,7 @@ import {
   isDatabasePlugin,
 } from "./db/types";
 import { createHotUpdaterHandlers, type HotUpdaterHandlers } from "./handler";
-import { createInsightsProvider } from "./insights/bounded/provider";
-import type { InsightsProvider } from "./insights/types";
+import { createValidatedInsightsModel } from "./insights/provider";
 import { createStorageAccess } from "./storageAccess";
 
 export type RuntimeHotUpdaterAPI = DatabaseAPI & {
@@ -30,7 +30,7 @@ export type RuntimeHotUpdaterAPI = DatabaseAPI & {
    * always mounted; React Native clients report lifecycle events by default
    * and can opt out with `HotUpdater.init({ insights: false })`.
    */
-  readonly insights: InsightsProvider;
+  readonly insights: InsightsModel;
   /**
    * In-process API key lifecycle operations for trusted server tooling.
    * Creation returns the plaintext once; list and revoke expose only metadata.
@@ -168,27 +168,10 @@ export function createHotUpdaterCore(
     readStorageText,
   });
   const clientAccess = normalizeClientAccess(options.clientAccess);
-  const insights = createInsightsProvider({
-    async append(row) {
-      await assertSchemaReady();
-      return plugin.models.insights.append(row);
-    },
-    async scan(input) {
-      await assertSchemaReady();
-      return plugin.models.insights.scan(input);
-    },
-    ...(plugin.models.insights.events
-      ? {
-          events: {
-            ...plugin.models.insights.events,
-            async page(input) {
-              await assertSchemaReady();
-              return plugin.models.insights.events!.page(input);
-            },
-          },
-        }
-      : {}),
-  });
+  const insights = createValidatedInsightsModel(
+    plugin.models.insights,
+    assertSchemaReady,
+  );
   const apiKeys = createApiKeyManagement({
     apiKeys: plugin.models.apiKeys,
     beforeOperation: assertSchemaReady,

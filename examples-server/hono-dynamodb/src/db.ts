@@ -13,11 +13,15 @@ const credentials = {
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? "minioadmin",
 };
 const providerNamespace = process.env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE;
+const insightsDatabaseNamespace =
+  process.env.HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE ??
+  "00000000-0000-7000-8000-00000000e001";
 
 export const database = dynamoDB({
   region,
   endpoint: process.env.AWS_DYNAMODB_ENDPOINT ?? "http://localhost:8000",
   credentials,
+  insightsDatabaseNamespace,
   tableName: process.env.AWS_DYNAMODB_TABLE_NAME ?? "hot-updater-metadata",
 });
 

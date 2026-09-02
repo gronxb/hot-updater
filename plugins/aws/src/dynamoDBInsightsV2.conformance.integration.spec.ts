@@ -4,13 +4,13 @@ import { CreateTableCommand } from "@aws-sdk/client-dynamodb";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import type {
   InsightsInstallationPageInput,
+  InsightsModel,
   InsightsPageEventsInput,
   InsightsReportPageInput,
 } from "@hot-updater/plugin-core";
-import type { RequiredInsightsModel } from "@hot-updater/plugin-core/internal";
 import {
-  registerRequiredInsightsModelTests,
-  type RequiredInsightsModelConformanceHarness,
+  registerInsightsModelTests,
+  type InsightsModelConformanceHarness,
 } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, describe, vi } from "vitest";
 
@@ -20,7 +20,7 @@ import {
   DYNAMODB_INSIGHTS_V2_STORAGE_REVISION,
   type DynamoDBInsightsV2Store,
 } from "./dynamoDBInsightsV2";
-import { createDynamoDBRequiredInsightsModel } from "./dynamoDBInsightsV2Jobs";
+import { createDynamoDBInsightsModel } from "./dynamoDBInsightsV2Jobs";
 
 const fixture = new DynamoDBIntegrationFixture();
 let harnessIndex = 0;
@@ -51,14 +51,11 @@ const createHarnessTable = async (suffix: string): Promise<string> => {
 
 const countingStore = (
   tableName: string,
+  insightsDatabaseNamespace: string,
   counter: ReadCounter,
 ): DynamoDBInsightsV2Store => ({
   tableName,
-  namespace: {
-    partition: "test",
-    region: "us-east-1",
-    accountId: "000000000000",
-  },
+  insightsDatabaseNamespace,
   client: {
     async send(command) {
       const result: any = await fixture.client.send(command as never);
@@ -102,12 +99,12 @@ const markReady = async (tableName: string): Promise<void> => {
   );
 };
 
-describe("DynamoDB required Insights LocalStack conformance", () => {
+describe("DynamoDB Insights LocalStack conformance", () => {
   vi.setConfig({ testTimeout: 240_000 });
   beforeAll(() => fixture.start(), 120_000);
   afterAll(() => fixture.stop());
 
-  registerRequiredInsightsModelTests(async () => {
+  registerInsightsModelTests(async () => {
     harnessIndex += 1;
     const [tableName, otherTableName] = await Promise.all([
       createHarnessTable("primary"),
@@ -115,10 +112,23 @@ describe("DynamoDB required Insights LocalStack conformance", () => {
     ]);
     const primaryCounter: ReadCounter = { candidateReads: 0, requests: 0 };
     const otherCounter: ReadCounter = { candidateReads: 0, requests: 0 };
-    const primaryStore = countingStore(tableName, primaryCounter);
-    const otherStore = countingStore(otherTableName, otherCounter);
-    const primary = createDynamoDBRequiredInsightsModel(primaryStore);
-    const other = createDynamoDBRequiredInsightsModel(otherStore);
+    const namespaceSequence = harnessIndex * 2;
+    const primaryStore = countingStore(
+      tableName,
+      `00000000-0000-4000-8000-${namespaceSequence
+        .toString()
+        .padStart(12, "0")}`,
+      primaryCounter,
+    );
+    const otherStore = countingStore(
+      otherTableName,
+      `00000000-0000-4000-8000-${(namespaceSequence + 1)
+        .toString()
+        .padStart(12, "0")}`,
+      otherCounter,
+    );
+    const primary = createDynamoDBInsightsModel(primaryStore);
+    const other = createDynamoDBInsightsModel(otherStore);
     await Promise.all([
       primary.maintenance.initialize(),
       other.maintenance.initialize(),
@@ -143,11 +153,11 @@ describe("DynamoDB required Insights LocalStack conformance", () => {
       }
     };
 
-    const facade = (): RequiredInsightsModelConformanceHarness => {
+    const facade = (): InsightsModelConformanceHarness => {
       const wrapModel = (
-        value: ReturnType<typeof createDynamoDBRequiredInsightsModel>,
+        value: ReturnType<typeof createDynamoDBInsightsModel>,
         counter: ReadCounter,
-      ): RequiredInsightsModel => {
+      ): InsightsModel => {
         const counted = async <T>(operation: () => Promise<T>): Promise<T> => {
           const previous = counter.candidateReads;
           counter.candidateReads = 0;
@@ -185,7 +195,7 @@ describe("DynamoDB required Insights LocalStack conformance", () => {
                 return Promise.resolve({ state: "expired", publicationId });
               }
               return atCurrentTime(() => value.pageInstallations(input));
-            })) as RequiredInsightsModel["pageInstallations"],
+            })) as InsightsModel["pageInstallations"],
           getReport: (input) => atCurrentTime(() => value.getReport(input)),
           pageReport: (input) =>
             counted(() => {
@@ -197,7 +207,7 @@ describe("DynamoDB required Insights LocalStack conformance", () => {
               }
               return atCurrentTime(() => value.pageReport(input));
             }),
-        } satisfies RequiredInsightsModel;
+        } satisfies InsightsModel;
       };
       return {
         model: wrapModel(primary, primaryCounter),

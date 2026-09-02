@@ -15,7 +15,7 @@ select shard, 0 from generate_series(0, 15) shard;
 create table private_hot_updater_insights_source_state (
   id integer primary key check (id = 1),
   version integer not null check (version = 1),
-  source_id uuid not null default gen_random_uuid(),
+  source_id uuid not null,
   initialized boolean not null,
   ready boolean not null,
   failed boolean not null,
@@ -26,10 +26,6 @@ create table private_hot_updater_insights_source_state (
   check ((failed and not ready and failure is not null)
     or (not failed and failure is null))
 );
-insert into private_hot_updater_insights_source_state
-  (id, version, initialized, ready, failed, revision)
-  values (1, 1, false, false, false, 1);
-
 create unique index bundle_events_source_idx
   on bundle_events (insights_source_shard, insights_source_seq)
   where insights_source_shard is not null;

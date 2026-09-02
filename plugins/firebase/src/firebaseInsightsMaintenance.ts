@@ -168,6 +168,7 @@ export const appendFirebaseInsightsEvent = async (
   const clock = collections.sourceClocks.doc(sourceId);
   const destination = collections.events.doc(firebaseEventDocumentId(row.id));
   const installationKey = firebaseInstallationKey(row.install_id);
+  const layout = collections.control.doc("layout");
   const installation = collections.installations.doc(installationKey);
   const sourceHead = collections.installationVersions.doc(
     firebaseInstallationSourceHeadId(installationKey, sourceId),
@@ -177,8 +178,27 @@ export const appendFirebaseInsightsEvent = async (
     return invalidQuery();
   }
   await db.runTransaction(async (transaction) => {
-    const documents = await transaction.getAll(clock, installation, sourceHead);
-    const [clockDocument, installationDocument, sourceHeadDocument] = documents;
+    const documents = await transaction.getAll(
+      layout,
+      clock,
+      installation,
+      sourceHead,
+    );
+    const [
+      layoutDocument,
+      clockDocument,
+      installationDocument,
+      sourceHeadDocument,
+    ] = documents;
+    const layoutData = layoutDocument.data();
+    if (
+      layoutData?.version !== FIREBASE_INSIGHTS_LAYOUT_VERSION ||
+      !["building", "failed", "ready"].includes(layoutData.state) ||
+      layoutData.indexRevision !== FIREBASE_INSIGHTS_INDEX_REVISION ||
+      layoutData.databaseNamespace !== collections.databaseNamespace
+    ) {
+      throw new DatabasePluginInputError("invalid-result");
+    }
     if (!clockDocument.exists) {
       throw new DatabasePluginInputError("invalid-result");
     }
@@ -333,6 +353,13 @@ export const prepareFirebaseInsightsStep = async (
       const saved = await transaction.get(layout);
       const state = saved.data();
       if (state?.state === "failed") {
+        if (
+          state.version !== FIREBASE_INSIGHTS_LAYOUT_VERSION ||
+          state.indexRevision !== FIREBASE_INSIGHTS_INDEX_REVISION ||
+          state.databaseNamespace !== collections.databaseNamespace
+        ) {
+          throw new DatabasePluginInputError("invalid-result");
+        }
         return {
           state: "failed",
           processed: 0,
@@ -342,7 +369,8 @@ export const prepareFirebaseInsightsStep = async (
       if (state?.state === "ready") {
         if (
           state.version !== FIREBASE_INSIGHTS_LAYOUT_VERSION ||
-          state.indexRevision !== FIREBASE_INSIGHTS_INDEX_REVISION
+          state.indexRevision !== FIREBASE_INSIGHTS_INDEX_REVISION ||
+          state.databaseNamespace !== collections.databaseNamespace
         ) {
           throw new DatabasePluginInputError("invalid-result");
         }
@@ -404,6 +432,7 @@ export const prepareFirebaseInsightsStep = async (
           version: FIREBASE_INSIGHTS_LAYOUT_VERSION,
           state: nextState,
           indexRevision: FIREBASE_INSIGHTS_INDEX_REVISION,
+          databaseNamespace: collections.databaseNamespace,
           afterId: null,
           revision: 1,
         });
@@ -444,6 +473,7 @@ export const prepareFirebaseInsightsStep = async (
         state.version !== FIREBASE_INSIGHTS_LAYOUT_VERSION ||
         state.state !== "building" ||
         state.indexRevision !== FIREBASE_INSIGHTS_INDEX_REVISION ||
+        state.databaseNamespace !== collections.databaseNamespace ||
         (state.afterId !== null && typeof state.afterId !== "string") ||
         !Number.isSafeInteger(state.revision)
       ) {
@@ -540,6 +570,8 @@ export const repairFirebaseInsightsPoisonStep = async (
       if (
         state?.version !== FIREBASE_INSIGHTS_LAYOUT_VERSION ||
         state.state !== "failed" ||
+        state.indexRevision !== FIREBASE_INSIGHTS_INDEX_REVISION ||
+        state.databaseNamespace !== collections.databaseNamespace ||
         typeof state.poisonId !== "string" ||
         (state.afterId !== null && typeof state.afterId !== "string") ||
         !Number.isSafeInteger(state.revision)
@@ -625,7 +657,12 @@ export const projectFirebaseInsightsStep = async (
         collections.sourceClocks.doc(clockId),
         checkpoint,
       );
-      if (layout.data()?.state !== "ready") {
+      if (
+        layout.data()?.version !== FIREBASE_INSIGHTS_LAYOUT_VERSION ||
+        layout.data()?.state !== "ready" ||
+        layout.data()?.indexRevision !== FIREBASE_INSIGHTS_INDEX_REVISION ||
+        layout.data()?.databaseNamespace !== collections.databaseNamespace
+      ) {
         throw new DatabasePluginInputError("invalid-operation");
       }
       if (!clock.exists || !saved.exists) {
@@ -914,15 +951,26 @@ export const publishFirebaseInsightsProjection = async (
   return db.runTransaction(async (transaction) => {
     const clockIds = FIREBASE_INSIGHTS_SOURCE_IDS;
     const documents = await transaction.getAll(
+      collections.control.doc("layout"),
       ...clockIds.flatMap((clockId) => [
         collections.sourceClocks.doc(clockId),
         collections.control.doc(`projection_checkpoint_${clockId}`),
       ]),
     );
+    const layout = documents[0]!;
+    if (
+      layout.data()?.version !== FIREBASE_INSIGHTS_LAYOUT_VERSION ||
+      layout.data()?.state !== "ready" ||
+      layout.data()?.indexRevision !== FIREBASE_INSIGHTS_INDEX_REVISION ||
+      layout.data()?.databaseNamespace !== collections.databaseNamespace
+    ) {
+      throw new DatabasePluginInputError("invalid-operation");
+    }
+    const sourceDocuments = documents.slice(1);
     const vector: readonly (readonly [string, number])[] = clockIds.map(
       (clockId, index) => {
-        const clock = documents[index * 2]!;
-        const checkpoint = documents[index * 2 + 1]!;
+        const clock = sourceDocuments[index * 2]!;
+        const checkpoint = sourceDocuments[index * 2 + 1]!;
         const sourceShard: FirebaseInsightsSourceShard =
           clockId === "legacy"
             ? "legacy"

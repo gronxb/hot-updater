@@ -26,8 +26,13 @@ import { createHotUpdater, type RuntimeHotUpdaterAPI } from "./index";
 const db = new PGlite();
 const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
 const clientMountPath = "/hot-updater";
+const insightsDatabaseNamespace = "00000000-0000-4000-8000-000000000001";
 const api = createHotUpdater({
-  database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
+  database: kyselyAdapter({
+    db: kysely,
+    insightsDatabaseNamespace,
+    provider: "postgresql",
+  }),
   clientAccess: { type: "public" },
 });
 const baseUrl = "http://localhost:3000";
@@ -192,9 +197,9 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
     expect(ingestion.status).toBe(204);
     expect(overview.status).toBe(200);
-    await expect(overview.json()).resolves.toEqual({
-      bundles: [{ bundleId, installations: 1 }],
-      trackedInstallations: 1,
+    await expect(overview.json()).resolves.toMatchObject({
+      state: "preparing",
+      job: { id: expect.any(String) },
     });
   });
 
@@ -462,7 +467,11 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
   it("works when handlers are mounted under a custom client path", async () => {
     const customApi = createHotUpdater({
-      database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
+      database: kyselyAdapter({
+        db: kysely,
+        insightsDatabaseNamespace,
+        provider: "postgresql",
+      }),
       clientAccess: { type: "public" },
     });
     server.use(

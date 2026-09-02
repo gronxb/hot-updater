@@ -76,8 +76,6 @@ describe("Detox E2E harness contract", () => {
     const expectedE2eFiles = [
       "e2e/detox/insights-http-client.spec.ts",
       "e2e/detox/insights-http-client.ts",
-      "e2e/detox/insights-provider-client.spec.ts",
-      "e2e/detox/insights-provider-client.ts",
       "e2e/detox/control-server/android-instrumentation.spec.ts",
       "e2e/detox/control-server/android-instrumentation.ts",
       "e2e/detox/control-server/android-restart-wait.spec.ts",

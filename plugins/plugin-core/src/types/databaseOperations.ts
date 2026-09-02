@@ -8,7 +8,6 @@ import type {
   SelectedDatabaseRow,
 } from "./databaseQuery";
 import type {
-  BundleEventRow,
   BundleRow,
   ApiKeyRow,
   DatabaseModel,
@@ -16,26 +15,6 @@ import type {
   ReleaseCatalogRow,
   ReleaseRow,
 } from "./databaseRows";
-import type {
-  InsightsInstallationPage,
-  InsightsInstallationPageInput,
-  InsightsInitialPublishedInstallationPage,
-  InsightsInitialPublishedInstallationPageInput,
-  InsightsLiveInstallationPage,
-  InsightsLiveInstallationPageInput,
-  InsightsPageEventsInput,
-  InsightsPageEventsResult,
-  InsightsPinnedInstallationPage,
-  InsightsPinnedInstallationPageInput,
-  InsightsPublishedInstallationContinuation,
-  InsightsPublishedInstallationContinuationInput,
-  InsightsPublishedInstallationPage,
-  InsightsPublishedInstallationPageInput,
-  InsightsReportInput,
-  InsightsReportPage,
-  InsightsReportPageInput,
-  InsightsReportResult,
-} from "./insightsQueries";
 
 export type DatabaseCapability =
   | "create"
@@ -84,14 +63,6 @@ export type DatabaseModelCapabilities = {
     readonly delete: true;
     readonly count: false;
     readonly findOne: true;
-    readonly findMany: true;
-  };
-  readonly bundle_events: {
-    readonly create: false;
-    readonly update: false;
-    readonly delete: false;
-    readonly count: false;
-    readonly findOne: false;
     readonly findMany: true;
   };
   readonly api_keys: {
@@ -318,8 +289,8 @@ export interface TransactionDatabasePluginImplementation {
 }
 
 export interface DatabasePluginImplementation {
-  /** Insights ingestion is append-only and never joins a mixed-model commit. */
-  appendBundleEvent(row: BundleEventRow): Promise<void>;
+  /** Insights is append-only and never joins a mixed-model commit. */
+  readonly insights: import("./databasePlugin").InsightsModel;
   create(
     input: CreateDatabaseImplementationInput,
   ): Promise<DatabaseImplementationResult>;
@@ -347,30 +318,4 @@ export interface DatabasePluginImplementation {
   ) => Promise<TResult>;
   commit?: (input: DatabaseCommit) => Promise<DatabaseCommitResult>;
   dispose?: () => Promise<void>;
-}
-
-/** Required target contract used while providers land before the public flip. */
-export interface RequiredInsightsModel {
-  append(row: BundleEventRow): Promise<void>;
-  pageEvents(input: InsightsPageEventsInput): Promise<InsightsPageEventsResult>;
-  pageInstallations(
-    input: InsightsLiveInstallationPageInput,
-  ): Promise<InsightsLiveInstallationPage>;
-  pageInstallations(
-    input: InsightsInitialPublishedInstallationPageInput,
-  ): Promise<InsightsInitialPublishedInstallationPage>;
-  pageInstallations(
-    input: InsightsPinnedInstallationPageInput,
-  ): Promise<InsightsPinnedInstallationPage>;
-  pageInstallations(
-    input: InsightsPublishedInstallationContinuationInput,
-  ): Promise<InsightsPublishedInstallationContinuation>;
-  pageInstallations(
-    input: InsightsPublishedInstallationPageInput,
-  ): Promise<InsightsPublishedInstallationPage>;
-  pageInstallations(
-    input: InsightsInstallationPageInput,
-  ): Promise<InsightsInstallationPage>;
-  getReport(input: InsightsReportInput): Promise<InsightsReportResult>;
-  pageReport(input: InsightsReportPageInput): Promise<InsightsReportPage>;
 }

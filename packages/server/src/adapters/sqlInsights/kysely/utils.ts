@@ -5,8 +5,9 @@ import {
   type BundleEventRow,
 } from "@hot-updater/plugin-core";
 import {
-  assertInsightsEventRow,
+  assertInsightsEventContract,
   getInsightsInstallationOrderKey,
+  isCanonicalInsightsDatabaseNamespace,
 } from "@hot-updater/plugin-core/internal";
 import { sql, type QueryExecutorProvider } from "kysely";
 
@@ -19,6 +20,12 @@ export const installationKey = async (installId: string): Promise<string> =>
   Buffer.from(await getInsightsInstallationOrderKey(installId)).toString("hex");
 
 export const newOpaqueId = (): string => randomUUID();
+
+export const assertKyselyInsightsDatabaseNamespace = (value: string): void => {
+  if (!isCanonicalInsightsDatabaseNamespace(value)) {
+    throw new DatabasePluginInputError("invalid-query");
+  }
+};
 
 export const toSafeInteger = (value: unknown): number => {
   const parsed = typeof value === "bigint" ? Number(value) : Number(value);
@@ -38,7 +45,7 @@ export const readRawEvent = (value: unknown): BundleEventRow => {
   } catch {
     throw new DatabasePluginInputError("invalid-result");
   }
-  assertInsightsEventRow(event);
+  assertInsightsEventContract(event);
   return event;
 };
 

@@ -29,6 +29,7 @@ import {
   INSIGHTS_MAINTENANCE_MAX_REQUESTS,
   INSIGHTS_PAGE_MAX_BYTES,
   INSIGHTS_QUERY_MAX_BYTES,
+  isCanonicalInsightsDatabaseNamespace,
   isCanonicalInsightsEventId,
 } from "./insightsContract";
 import type { BundleEventRow } from "./types/databaseRows";
@@ -156,6 +157,28 @@ describe("Insights storage contract", () => {
     expect(
       isCanonicalInsightsEventId("00000000-0000-7000-A000-000000000001"),
     ).toBe(false);
+  });
+
+  it("accepts only canonical lowercase UUID database namespaces", () => {
+    expect(
+      isCanonicalInsightsDatabaseNamespace(
+        "550e8400-e29b-41d4-a716-446655440000",
+      ),
+    ).toBe(true);
+    expect(
+      isCanonicalInsightsDatabaseNamespace(
+        "00000000-0000-7000-8000-000000000001",
+      ),
+    ).toBe(true);
+    for (const namespace of [
+      "550E8400-E29B-41D4-A716-446655440000",
+      "550e8400e29b41d4a716446655440000",
+      "550e8400-e29b-01d4-a716-446655440000",
+      "550e8400-e29b-41d4-7716-446655440000",
+      "",
+    ]) {
+      expect(isCanonicalInsightsDatabaseNamespace(namespace)).toBe(false);
+    }
   });
 
   it("validates the complete event row before accepting UUID and bytes", () => {

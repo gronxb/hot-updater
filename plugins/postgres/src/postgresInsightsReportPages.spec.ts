@@ -25,6 +25,8 @@ import { createPostgresInsightsReportWorker } from "./postgresInsightsReports";
 import { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
 import type { Database } from "./types";
 
+const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
+
 const day = 86_400_000;
 const cutoff = Date.UTC(2026, 0, 11, 12, 34, 56);
 const today = Math.floor(cutoff / day) * day;
@@ -72,15 +74,24 @@ describe("immutable PostgreSQL report section pages", () => {
         },
       ],
     });
-    plugin = postgres({ dialect: new PGliteDialect(client) });
-    await migratePostgresInsightsSource(db);
-    await migratePostgresInsightsReports(db);
-    await createPostgresInsightsSourceTools(db).backfillStep(1);
-    await migratePostgresInsightsLive(db);
-    await createPostgresInsightsLiveTools(db).backfillStep(1);
-    jobs = createPostgresInsightsJobs(db);
-    worker = createPostgresInsightsReportWorker(db);
-    pages = createPostgresInsightsReportPages(db, "postgres-test");
+    plugin = postgres({
+      insightsDatabaseNamespace,
+      dialect: new PGliteDialect(client),
+    });
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
+    await migratePostgresInsightsReports(db, insightsDatabaseNamespace);
+    await createPostgresInsightsSourceTools(
+      db,
+      insightsDatabaseNamespace,
+    ).backfillStep(1);
+    await migratePostgresInsightsLive(db, insightsDatabaseNamespace);
+    await createPostgresInsightsLiveTools(
+      db,
+      insightsDatabaseNamespace,
+    ).backfillStep(1);
+    jobs = createPostgresInsightsJobs(db, insightsDatabaseNamespace);
+    worker = createPostgresInsightsReportWorker(db, insightsDatabaseNamespace);
+    pages = createPostgresInsightsReportPages(db, insightsDatabaseNamespace);
   });
   afterEach(async () => {
     await plugin.dispose?.();
@@ -149,7 +160,7 @@ describe("immutable PostgreSQL report section pages", () => {
     const cursor = createInsightsReportPageCursor(
       input,
       String(today / day - 1),
-      "postgres-test",
+      insightsDatabaseNamespace,
     );
     expect(
       (
@@ -167,7 +178,7 @@ describe("immutable PostgreSQL report section pages", () => {
     const beyond = createInsightsReportPageCursor(
       input,
       "9223372036854775807",
-      "postgres-test",
+      insightsDatabaseNamespace,
     );
     await expect(
       pages.pageReport({ ...input, cursor: beyond }),

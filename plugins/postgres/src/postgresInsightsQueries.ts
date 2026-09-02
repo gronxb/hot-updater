@@ -1,6 +1,8 @@
 import {
   DatabasePluginInputError,
   InsightsQueryNotReadyError,
+  type BundleEventRow,
+  type InsightsModel,
   type InsightsInstallationPage,
   type InsightsInstallationPageInput,
   type InsightsInitialPublishedInstallationPage,
@@ -26,7 +28,6 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   assertInsightsCursorContract,
-  createInsightsEventPageCursor,
   createInsightsReportPageCursor,
   InsightsContractError,
   isCanonicalInsightsEventId,
@@ -34,13 +35,14 @@ import {
   readInsightsPageEventsInput,
   readInsightsReportPageInput,
   readInsightsReportPageQuery,
-  type DatabasePluginImplementation,
-  type RequiredInsightsModel,
 } from "@hot-updater/plugin-core/internal";
-import type { Kysely } from "kysely";
+import { sql, type Kysely, type QueryExecutorProvider } from "kysely";
 
-import { createPostgresInsightsEventQueries } from "./postgresInsights";
-import { fitPostgresInsightsPage } from "./postgresInsightsContract";
+import {
+  assertPostgresInsightsStoredEvent,
+  fitPostgresInsightsPage,
+  POSTGRES_INSIGHTS_EVENT_COLUMNS,
+} from "./postgresInsightsContract";
 import { createPostgresInsightsInstallationLookup } from "./postgresInsightsInstallation";
 import type {
   PostgresInsightsInstallationPage,
@@ -60,7 +62,11 @@ import {
   createPostgresInsightsSearchPageCursor,
   createPostgresInsightsSearchPages,
 } from "./postgresInsightsSearchPages";
-import { readPostgresInsightsSourceGeneration } from "./postgresInsightsSource";
+import {
+  appendPostgresInsightsEvent,
+  readPostgresInsightsSourceGeneration,
+  readPostgresInsightsSourceIdentity,
+} from "./postgresInsightsSource";
 import type { Database } from "./types";
 
 const schemaVersion = "1.0.0";
@@ -98,22 +104,15 @@ const reservedVersions = (
   sourceGeneration,
 });
 
-const sourceIdentity = (sourceGeneration: string): string => {
-  let value: unknown;
-  try {
-    value = JSON.parse(sourceGeneration);
-  } catch {
-    throw new DatabasePluginInputError("invalid-result");
-  }
+const assertSourceNamespace = (
+  sourceGeneration: string,
+  databaseNamespace: string,
+): void => {
   if (
-    !Array.isArray(value) ||
-    value.length !== 3 ||
-    value[0] !== 1 ||
-    typeof value[1] !== "string" ||
-    !uuid.test(value[1])
+    readPostgresInsightsSourceIdentity(sourceGeneration).sourceId !==
+    databaseNamespace
   )
     throw new DatabasePluginInputError("invalid-result");
-  return value[1];
 };
 
 const eventSelectorKey = (input: InsightsPageEventsInput): string =>
@@ -244,35 +243,202 @@ const cutoffPublication = <
   accuracy: publication.accuracy,
 });
 
-const legacyEventInput = (
+type PostgresInsightsEventStream =
+  | { readonly kind: "all" }
+  | {
+      readonly kind: "installation";
+      readonly installId: string;
+      readonly type: "UPDATE_APPLIED" | "RECOVERED";
+    }
+  | {
+      readonly kind: "bundle";
+      readonly field: "to_bundle_id" | "from_bundle_id";
+      readonly bundleId: string;
+      readonly type: "UPDATE_APPLIED" | "RECOVERED";
+    };
+
+const compareEvents = (
+  left: Pick<BundleEventRow, "received_at_ms" | "id">,
+  right: Pick<BundleEventRow, "received_at_ms" | "id">,
+): number =>
+  right.received_at_ms - left.received_at_ms ||
+  (left.id < right.id ? 1 : left.id > right.id ? -1 : 0);
+
+const eventStreams = (
   input: InsightsPageEventsInput,
-  cursor?: Pick<RequiredEventCursor, "receivedAtMs" | "id">,
-) => {
-  const base = {
-    scope:
-      input.selector.kind === "all"
-        ? ({ kind: "all" } as const)
-        : input.selector.kind === "installationId"
-          ? ({
-              kind: "installation" as const,
-              installId: input.selector.installId,
-            } as const)
-          : ({
-              kind: "bundle" as const,
-              bundleId: input.selector.bundleId,
-            } as const),
-    ...(input.sinceReceivedAtMs === undefined
-      ? {}
-      : { sinceReceivedAtMs: input.sinceReceivedAtMs }),
-    beforeReceivedAtMs: input.beforeReceivedAtMs,
-    limit: input.limit,
+): readonly PostgresInsightsEventStream[] => {
+  if (input.selector.kind === "all") return [{ kind: "all" }];
+  if (input.selector.kind === "installationId") {
+    const installId = input.selector.installId;
+    return (["UPDATE_APPLIED", "RECOVERED"] as const).map((type) => ({
+      kind: "installation" as const,
+      installId,
+      type,
+    }));
+  }
+  if (!uuid.test(input.selector.bundleId))
+    throw new DatabasePluginInputError("invalid-query");
+  return [
+    {
+      kind: "bundle",
+      field: "to_bundle_id",
+      bundleId: input.selector.bundleId,
+      type: "UPDATE_APPLIED",
+    },
+    {
+      kind: "bundle",
+      field: "from_bundle_id",
+      bundleId: input.selector.bundleId,
+      type: "RECOVERED",
+    },
+  ];
+};
+
+const assertPostgresInsightsEventIndexes = async (
+  db: QueryExecutorProvider,
+  input: InsightsPageEventsInput,
+): Promise<void> => {
+  if (input.selector.kind === "installationId") {
+    const { rows } = await sql<{ ready: boolean }>`select count(*) = 2 as ready
+      from pg_index i join pg_class c on c.oid=i.indexrelid
+      join pg_am am on am.oid=c.relam
+      join pg_attribute install on install.attrelid=i.indrelid and install.attname='install_id'
+      join pg_attribute time on time.attrelid=i.indrelid and time.attname='received_at_ms'
+      join pg_attribute id on id.attrelid=i.indrelid and id.attname='id'
+      join pg_collation coll on coll.oid=install.attcollation
+      where i.indrelid=to_regclass('bundle_events') and
+        ((i.indexrelid=to_regclass('bundle_events_install_applied_idx')
+          and pg_get_expr(i.indpred,i.indrelid)='(type = ''UPDATE_APPLIED''::text)')
+        or (i.indexrelid=to_regclass('bundle_events_install_recovered_idx')
+          and pg_get_expr(i.indpred,i.indrelid)='(type = ''RECOVERED''::text)'))
+        and i.indisvalid and i.indisready and am.amname='btree'
+        and i.indnkeyatts=3 and i.indnatts=3 and i.indexprs is null
+        and i.indkey[0]=install.attnum and i.indkey[1]=time.attnum
+        and i.indkey[2]=id.attnum and coll.collisdeterministic
+        and not exists (select 1 from unnest(i.indoption) bits where bits<>0)
+        and not exists (select 1 from unnest(i.indclass) class_id
+          join pg_opclass opclass on opclass.oid=class_id
+          where not opclass.opcdefault)`.execute(db);
+    if (!rows[0]?.ready) throw new InsightsQueryNotReadyError();
+    return;
+  }
+  const { rows } = await sql<{ uuid_id: boolean; columns: readonly string[] }>`
+    select a.atttypid='uuid'::regtype as uuid_id,
+      array(select pg_get_indexdef(i.indexrelid,n,false)
+        from generate_series(1,i.indnkeyatts)n) as columns
+    from pg_index i join pg_class c on c.oid=i.indexrelid
+    join pg_am am on am.oid=c.relam
+    join pg_attribute a on a.attrelid=i.indrelid and a.attname='id'
+    where i.indrelid=to_regclass('bundle_events') and i.indisvalid
+      and i.indisready and i.indpred is null and i.indexprs is null
+      and am.amname='btree'
+      and not exists (select 1 from unnest(i.indoption) bits where bits<>0)
+      and not exists (select 1 from unnest(i.indclass) class_id
+        join pg_opclass opclass on opclass.oid=class_id
+        where not opclass.opcdefault)`.execute(db);
+  const required =
+    input.selector.kind === "all"
+      ? [["received_at_ms", "id"]]
+      : [
+          ["type", "to_bundle_id", "received_at_ms", "id"],
+          ["type", "from_bundle_id", "received_at_ms", "id"],
+        ];
+  if (
+    !required.every((columns) =>
+      rows.some(
+        (row) =>
+          row.uuid_id &&
+          row.columns.length === columns.length &&
+          columns.every((column, index) => row.columns[index] === column),
+      ),
+    )
+  )
+    throw new InsightsQueryNotReadyError();
+};
+
+const readPostgresInsightsEventCandidates = async (
+  db: QueryExecutorProvider,
+  input: InsightsPageEventsInput,
+  cursor: RequiredEventCursor | undefined,
+): Promise<{ rows: readonly BundleEventRow[]; hasMore: boolean }> => {
+  const candidateLimit = input.limit + 1;
+  const read = async (
+    stream: PostgresInsightsEventStream,
+    mode: "tie" | "older",
+    limit: number,
+  ): Promise<readonly BundleEventRow[]> => {
+    const predicates = [
+      sql`received_at_ms >= ${input.sinceReceivedAtMs ?? 0}`,
+      mode === "tie"
+        ? sql`received_at_ms = ${cursor!.receivedAtMs} and id < ${cursor!.id}::uuid`
+        : sql`received_at_ms < ${cursor?.receivedAtMs ?? input.beforeReceivedAtMs}`,
+    ];
+    if (stream.kind === "installation") {
+      predicates.push(
+        sql`install_id = any(array[${stream.installId}]::text[])`,
+        sql`type = ${sql.lit(stream.type)}`,
+      );
+    } else if (stream.kind === "bundle") {
+      predicates.push(
+        sql`${sql.ref(stream.field)} = ${stream.bundleId}::uuid`,
+        sql`type = ${sql.lit(stream.type)}`,
+      );
+    }
+    const order =
+      stream.kind === "installation"
+        ? sql`install_id desc, received_at_ms desc, id desc`
+        : sql`received_at_ms desc, id desc`;
+    const result = await sql<
+      BundleEventRow & { insights_event: BundleEventRow | null }
+    >`select ${sql.join(POSTGRES_INSIGHTS_EVENT_COLUMNS.map((field) => sql.ref(field)))},
+        insights_event from bundle_events where ${sql.join(predicates, sql` and `)}
+        order by ${order} limit ${limit}`.execute(db);
+    return result.rows.map(({ insights_event: event, ...stored }, index) => {
+      if (event === null) throw new DatabasePluginInputError("invalid-result");
+      assertPostgresInsightsStoredEvent(event);
+      if (
+        POSTGRES_INSIGHTS_EVENT_COLUMNS.some(
+          (field) => event[field] !== stored[field],
+        ) ||
+        event.received_at_ms < (input.sinceReceivedAtMs ?? 0) ||
+        event.received_at_ms >= input.beforeReceivedAtMs ||
+        (mode === "tie" &&
+          (event.received_at_ms !== cursor!.receivedAtMs ||
+            event.id >= cursor!.id)) ||
+        (mode === "older" &&
+          event.received_at_ms >=
+            (cursor?.receivedAtMs ?? input.beforeReceivedAtMs)) ||
+        (stream.kind === "installation" &&
+          (event.install_id !== stream.installId ||
+            event.type !== stream.type)) ||
+        (stream.kind === "bundle" &&
+          (event[stream.field] !== stream.bundleId ||
+            event.type !== stream.type))
+      )
+        throw new DatabasePluginInputError("invalid-result");
+      const previous = result.rows[index - 1];
+      if (previous !== undefined && compareEvents(previous, event) >= 0)
+        throw new DatabasePluginInputError("invalid-result");
+      return event;
+    });
   };
-  return cursor === undefined
-    ? base
-    : {
-        ...base,
-        cursor: createInsightsEventPageCursor(base, cursor),
-      };
+  const streams: BundleEventRow[][] = [];
+  for (const stream of eventStreams(input)) {
+    const ties =
+      cursor === undefined ? [] : await read(stream, "tie", candidateLimit);
+    const older =
+      ties.length === candidateLimit
+        ? []
+        : await read(stream, "older", candidateLimit - ties.length);
+    streams.push([...ties, ...older]);
+  }
+  const candidates = streams.flat().sort(compareEvents);
+  if (new Set(candidates.map(({ id }) => id)).size !== candidates.length)
+    throw new DatabasePluginInputError("invalid-result");
+  return {
+    rows: candidates.slice(0, input.limit),
+    hasMore: candidates.length > input.limit,
+  };
 };
 
 const sourceFailure = (): InsightsPageEventsResult => ({
@@ -293,9 +459,11 @@ const isStoredCorruption = (error: unknown): boolean =>
 
 const mapReportResult = (
   result: PostgresInsightsReportResult,
+  databaseNamespace: string,
 ): InsightsReportResult => {
   if (result.state === "ready") {
     const generation = result.publication.sourceGeneration;
+    assertSourceNamespace(generation, databaseNamespace);
     return {
       state: "ready",
       versions: projectedVersions(generation, generation),
@@ -303,6 +471,12 @@ const mapReportResult = (
     };
   }
   if (result.state === "failed") {
+    assertSourceNamespace(result.sourceGeneration, databaseNamespace);
+    if (result.previous !== null)
+      assertSourceNamespace(
+        result.previous.sourceGeneration,
+        databaseNamespace,
+      );
     return {
       state: "failed",
       versions:
@@ -317,6 +491,8 @@ const mapReportResult = (
   }
   if (result.previous !== null) {
     const generation = result.previous.sourceGeneration;
+    assertSourceNamespace(result.sourceGeneration, databaseNamespace);
+    assertSourceNamespace(generation, databaseNamespace);
     return {
       state: "stale",
       versions: projectedVersions(generation, generation),
@@ -324,6 +500,7 @@ const mapReportResult = (
       refresh: { id: result.jobId },
     };
   }
+  assertSourceNamespace(result.sourceGeneration, databaseNamespace);
   return {
     state: "preparing",
     versions: reservedVersions(result.sourceGeneration),
@@ -331,16 +508,14 @@ const mapReportResult = (
   };
 };
 
-/** PostgreSQL's sole internal implementation of the required Insights port. */
 export const createPostgresInsightsQueries = (
   db: Kysely<Database>,
-  implementation: DatabasePluginImplementation,
   databaseNamespace: string,
-): RequiredInsightsModel => {
+): InsightsModel => {
   if (!uuid.test(databaseNamespace))
     throw new DatabasePluginInputError("invalid-query");
   const search = createPostgresInsightsSearchPages(db, databaseNamespace);
-  const jobs = createPostgresInsightsJobs(db);
+  const jobs = createPostgresInsightsJobs(db, databaseNamespace);
   const reports = createPostgresInsightsReportPages(db, databaseNamespace);
 
   const pageEvents = async (
@@ -363,20 +538,18 @@ export const createPostgresInsightsQueries = (
             return sourceFailure();
           throw error;
         }
-        const sourceId = sourceIdentity(generation);
+        const sourceId =
+          readPostgresInsightsSourceIdentity(generation).sourceId;
         if (sourceId !== databaseNamespace)
           throw new DatabasePluginInputError("invalid-result");
-        const legacy = legacyEventInput(input, cursor);
-        let page: Awaited<
-          ReturnType<
-            ReturnType<typeof createPostgresInsightsEventQueries>["page"]
-          >
-        >;
+        let page: { rows: readonly BundleEventRow[]; hasMore: boolean };
         try {
-          page = await createPostgresInsightsEventQueries(
+          await assertPostgresInsightsEventIndexes(transaction, input);
+          page = await readPostgresInsightsEventCandidates(
             transaction,
-            implementation,
-          ).page(legacy);
+            input,
+            cursor,
+          );
         } catch (error) {
           if (error instanceof InsightsQueryNotReadyError)
             return {
@@ -392,7 +565,7 @@ export const createPostgresInsightsQueries = (
           (rows, shortened) => {
             const last = rows.at(-1);
             const nextCursor =
-              last !== undefined && (shortened || page.nextCursor !== null)
+              last !== undefined && (shortened || page.hasMore)
                 ? createRequiredEventCursor(input, sourceId, last)
                 : null;
             return {
@@ -456,6 +629,7 @@ export const createPostgresInsightsQueries = (
     const pageGeneration = publication?.sourceGeneration ?? generation;
     if (pageGeneration === undefined)
       throw new DatabasePluginInputError("invalid-result");
+    assertSourceNamespace(pageGeneration, databaseNamespace);
     const projectionGeneration = pageGeneration;
     return fitPostgresInsightsPage(
       page.rows,
@@ -557,6 +731,19 @@ export const createPostgresInsightsQueries = (
           }
           throw error;
         }
+        if (job.state === "ready") {
+          assertSourceNamespace(
+            job.publication.sourceGeneration,
+            databaseNamespace,
+          );
+        } else {
+          assertSourceNamespace(job.sourceGeneration, databaseNamespace);
+          if (job.previous !== null)
+            assertSourceNamespace(
+              job.previous.sourceGeneration,
+              databaseNamespace,
+            );
+        }
         if (job.state === "failed") {
           return {
             state: "failed",
@@ -606,7 +793,9 @@ export const createPostgresInsightsQueries = (
                   },
                   publication.id,
                   emittedRows,
-                  sourceIdentity(publication.sourceGeneration),
+                  readPostgresInsightsSourceIdentity(
+                    publication.sourceGeneration,
+                  ).sourceId,
                 ),
         );
       }
@@ -639,7 +828,7 @@ export const createPostgresInsightsQueries = (
                 },
                 publicationId,
                 emittedRows,
-                sourceIdentity(generation!),
+                readPostgresInsightsSourceIdentity(generation!).sourceId,
               ),
       );
     }
@@ -656,7 +845,8 @@ export const createPostgresInsightsQueries = (
         .execute(async (transaction) => {
           const generation =
             await readPostgresInsightsSourceGeneration(transaction);
-          const sourceId = sourceIdentity(generation);
+          const sourceId =
+            readPostgresInsightsSourceIdentity(generation).sourceId;
           if (sourceId !== databaseNamespace)
             throw new DatabasePluginInputError("invalid-result");
           const page =
@@ -712,7 +902,7 @@ export const createPostgresInsightsQueries = (
     input: InsightsReportInput,
   ): Promise<InsightsReportResult> => {
     try {
-      return mapReportResult(await jobs.getReport(input));
+      return mapReportResult(await jobs.getReport(input), databaseNamespace);
     } catch (error) {
       if (error instanceof InsightsQueryNotReadyError) {
         return {
@@ -741,6 +931,7 @@ export const createPostgresInsightsQueries = (
       saved = await readPostgresInsightsReportPublication(
         db,
         input.publicationId,
+        databaseNamespace,
       );
     } catch (error) {
       if (
@@ -755,7 +946,10 @@ export const createPostgresInsightsQueries = (
       return { state: "expired", publicationId: input.publicationId };
     const generation = saved.publication.sourceGeneration;
     try {
-      if (sourceIdentity(generation) !== databaseNamespace)
+      if (
+        readPostgresInsightsSourceIdentity(generation).sourceId !==
+        databaseNamespace
+      )
         return storageFailure();
     } catch (error) {
       if (isStoredCorruption(error)) return storageFailure();
@@ -804,7 +998,10 @@ export const createPostgresInsightsQueries = (
   };
 
   return {
-    append: implementation.appendBundleEvent,
+    append: (row) =>
+      appendPostgresInsightsEvent(db, row, databaseNamespace).then(
+        () => undefined,
+      ),
     pageEvents,
     pageInstallations,
     getReport,

@@ -27,11 +27,11 @@ import { createBundleEventRowFixture } from "../../../../packages/test-utils/src
 import { d1Database } from "../../src/d1Database";
 import type { D1Executor, D1Statement } from "../../src/d1Implementation";
 import { createD1InsightsMaintenance } from "../../src/d1InsightsJobs";
+import { createD1InsightsModel } from "../../src/d1InsightsModel";
 import {
   createD1InsightsEventPages,
   createD1InsightsInstallationPages,
 } from "../../src/d1InsightsPages";
-import { createD1RequiredInsightsModel } from "../../src/d1InsightsRequired";
 import {
   assertD1InsightsLayout,
   createD1InsightsSourceTools,
@@ -132,7 +132,7 @@ vi.mock("cloudflare", () => ({
 const reset = async (): Promise<void> => {
   await getDb()
     .prepare(
-      "DELETE FROM private_hot_updater_insights_job_page_rows; DELETE FROM private_hot_updater_insights_job_sections; DELETE FROM private_hot_updater_insights_job_order; DELETE FROM private_hot_updater_insights_job_memberships; DELETE FROM private_hot_updater_insights_job_counts; DELETE FROM private_hot_updater_insights_job_latest; DELETE FROM private_hot_updater_insights_jobs; DELETE FROM private_hot_updater_insights_job_heads; DELETE FROM private_hot_updater_insights_installation_versions; DELETE FROM private_hot_updater_insights_installation_aliases; DELETE FROM private_hot_updater_insights_live_installations; DELETE FROM private_hot_updater_insights_installation_events; DELETE FROM private_hot_updater_insights_bundle_events; DELETE FROM private_hot_updater_insights_source_events; DELETE FROM private_hot_updater_insights_pending_events; DELETE FROM bundle_events; UPDATE private_hot_updater_insights_source_state SET generation = 0, status = 'ready', backfill_upper_received_at_ms = NULL, backfill_upper_id = NULL, backfill_after_received_at_ms = NULL, backfill_after_id = NULL WHERE id = 1; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
+      "DELETE FROM private_hot_updater_insights_job_page_rows; DELETE FROM private_hot_updater_insights_job_sections; DELETE FROM private_hot_updater_insights_job_order; DELETE FROM private_hot_updater_insights_job_memberships; DELETE FROM private_hot_updater_insights_job_counts; DELETE FROM private_hot_updater_insights_job_latest; DELETE FROM private_hot_updater_insights_jobs; DELETE FROM private_hot_updater_insights_job_heads; DELETE FROM private_hot_updater_insights_installation_versions; DELETE FROM private_hot_updater_insights_installation_aliases; DELETE FROM private_hot_updater_insights_live_installations; DELETE FROM private_hot_updater_insights_installation_events; DELETE FROM private_hot_updater_insights_bundle_events; DELETE FROM private_hot_updater_insights_source_events; DELETE FROM private_hot_updater_insights_pending_events; DELETE FROM bundle_events; UPDATE private_hot_updater_insights_source_state SET database_namespace = NULL, generation = 0, status = 'ready', backfill_upper_received_at_ms = NULL, backfill_upper_id = NULL, backfill_after_received_at_ms = NULL, backfill_after_id = NULL WHERE id = 1; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
     )
     .run();
 };
@@ -191,6 +191,7 @@ setupDatabasePluginTestSuite({
       accountId: "account-id",
       cloudflareApiToken: "api-token",
       databaseId: "database-id",
+      insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000502",
     }),
   reset,
   dispose: () => undefined,
@@ -199,7 +200,11 @@ setupDatabasePluginTestSuite({
 setupDatabasePluginTestSuite({
   name: "cloudflare worker d1 fixed-model database plugin",
   migrate: () => undefined,
-  createPlugin: () => d1RuntimeDatabase(env.DB),
+  createPlugin: () =>
+    d1RuntimeDatabase({
+      database: env.DB,
+      insightsDatabaseNamespace: env.INSIGHTS_DATABASE_NAMESPACE,
+    }),
   reset,
   dispose: () => {
     state.db = undefined;
@@ -214,11 +219,16 @@ describe.each([
         accountId: "account-id",
         cloudflareApiToken: "api-token",
         databaseId: "database-id",
+        insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000502",
       }),
   },
   {
     name: "cloudflare worker d1",
-    createPlugin: () => d1RuntimeDatabase(env.DB),
+    createPlugin: () =>
+      d1RuntimeDatabase({
+        database: env.DB,
+        insightsDatabaseNamespace: env.INSIGHTS_DATABASE_NAMESPACE,
+      }),
   },
 ])("$name Channel deletion", ({ createPlugin }) => {
   beforeAll(() => {
@@ -339,11 +349,16 @@ describe.each([
         accountId: "account-id",
         cloudflareApiToken: "api-token",
         databaseId: "database-id",
+        insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000502",
       }),
   },
   {
     name: "cloudflare worker d1",
-    createPlugin: () => d1RuntimeDatabase(env.DB),
+    createPlugin: () =>
+      d1RuntimeDatabase({
+        database: env.DB,
+        insightsDatabaseNamespace: env.INSIGHTS_DATABASE_NAMESPACE,
+      }),
   },
 ])("$name Insights v2 writer", ({ createPlugin }) => {
   beforeAll(() => {
@@ -767,7 +782,10 @@ describe.each([
 it("rejects tampered D1 layout before reading a raw event", async () => {
   state.db = env.DB;
   await reset();
-  const plugin = d1RuntimeDatabase(env.DB);
+  const plugin = d1RuntimeDatabase({
+    database: env.DB,
+    insightsDatabaseNamespace: env.INSIGHTS_DATABASE_NAMESPACE,
+  });
   const event = createBundleEventRowFixture("841", 100);
   await plugin.models.insights.append(event);
   let rawReads = 0;
@@ -850,7 +868,10 @@ it("rejects tampered D1 layout before reading a raw event", async () => {
 it("keeps live-installation lookahead pointers small within the event budget", async () => {
   state.db = env.DB;
   await reset();
-  const plugin = d1RuntimeDatabase(env.DB);
+  const plugin = d1RuntimeDatabase({
+    database: env.DB,
+    insightsDatabaseNamespace: env.INSIGHTS_DATABASE_NAMESPACE,
+  });
   const events = [
     {
       ...createBundleEventRowFixture("851", 100),
@@ -917,9 +938,9 @@ it("surfaces durable source poison through reads and maintenance", async () => {
       WHERE id = 1 RETURNING source_id`,
     )
     .first<string>("source_id");
-  const model = createD1RequiredInsightsModel(
+  const model = createD1InsightsModel(
     insightsExecutor,
-    "d1-plugin-test",
+    "00000000-0000-4000-8000-000000000301",
   );
   await expect(
     model.pageEvents({
@@ -933,6 +954,7 @@ it("surfaces durable source poison through reads and maintenance", async () => {
   });
   const maintenance = await createD1InsightsMaintenance(
     insightsExecutor,
+    "00000000-0000-4000-8000-000000000301",
   ).runStep({ maxItems: 256, maxRequests: 50 });
   expect(maintenance).toMatchObject({
     state: "failed",
@@ -940,7 +962,7 @@ it("surfaces durable source poison through reads and maintenance", async () => {
     jobId: sourceId,
     error: { code: "migration-poison", jobId: sourceId },
   });
-  expect(maintenance.requests).toBeLessThanOrEqual(3);
+  expect(maintenance.requests).toBeLessThanOrEqual(4);
   state.db = undefined;
 });
 

@@ -20,7 +20,6 @@ import {
   assertInsightsPageContract,
   getCanonicalInsightsJsonByteLength,
   INSIGHTS_PAGE_MAX_BYTES,
-  isCanonicalInsightsEventId,
   readInsightsInstallationPageInput,
 } from "@hot-updater/plugin-core/internal";
 import {
@@ -57,6 +56,7 @@ import {
   mongoInsightsInstallationKey,
   mongoInsightsProjectionSourceGeneration,
 } from "./mongodbInsightsProjection";
+import { isMongoInsightsDatabaseNamespace } from "./mongodbInsightsSourceSchema";
 
 const transactionOptions = {
   readPreference: "primary" as const,
@@ -106,6 +106,7 @@ const installationRow = (event: BundleEventRow): InsightsInstallationRow => ({
 
 const readReadyState = async (
   collections: MongoInsightsModelCollections,
+  databaseNamespace: string,
   session?: ClientSession,
 ): Promise<MongoInsightsProjectionState> => {
   const state = assertMongoInsightsProjectionState(
@@ -114,7 +115,8 @@ const readReadyState = async (
       { session, promoteLongs: false },
     ),
   );
-  if (state.phase !== "ready") throw new InsightsQueryNotReadyError();
+  if (state.phase !== "ready" || state.sourceId !== databaseNamespace)
+    throw new InsightsQueryNotReadyError();
   return state;
 };
 
@@ -178,6 +180,7 @@ const makeCursor = (identity: string, key: string): string =>
 const readPublishedCursor = (
   input: InsightsPublishedInstallationPageInput,
   queryHash: string,
+  databaseNamespace: string,
 ):
   | { readonly sourceId: string; readonly publicationId: string }
   | undefined => {
@@ -200,7 +203,7 @@ const readPublishedCursor = (
       identity.length !== 4 ||
       identity[0] !== "published" ||
       identity[1] !== queryHash ||
-      !isCanonicalInsightsEventId(identity[2]) ||
+      identity[2] !== databaseNamespace ||
       typeof identity[3] !== "string" ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
         identity[3],
@@ -258,6 +261,7 @@ const validateInput = (
 
 const readLiveCursor = (
   input: InsightsLiveInstallationPageInput,
+  databaseNamespace: string,
 ):
   | {
       readonly snapshotId: string;
@@ -284,17 +288,18 @@ const readLiveCursor = (
       inputKind === "installationId" ? Reflect.get(input, "installId") : null;
     if (
       !Array.isArray(stored) ||
-      stored.length !== 4 ||
+      stored.length !== 5 ||
       stored[0] !== "live" ||
-      stored[1] !== inputKind ||
-      stored[2] !== requestedInstallId ||
-      typeof stored[3] !== "string" ||
+      stored[1] !== databaseNamespace ||
+      stored[2] !== inputKind ||
+      stored[3] !== requestedInstallId ||
+      typeof stored[4] !== "string" ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
-        stored[3],
+        stored[4],
       )
     )
       throw null;
-    return { snapshotId: stored[3], identity: outer[1], after: outer[2] };
+    return { snapshotId: stored[4], identity: outer[1], after: outer[2] };
   } catch {
     throw new DatabasePluginInputError("invalid-query");
   }
@@ -397,8 +402,9 @@ const snapshotLatest = async (
 const pageLive = async (
   client: MongoClient,
   input: InsightsLiveInstallationPageInput,
+  databaseNamespace: string,
 ): Promise<InsightsLiveInstallationPage> => {
-  const resumed = readLiveCursor(input);
+  const resumed = readLiveCursor(input, databaseNamespace);
   const collections = createMongoInsightsModelCollections(client);
   const requestedInstallId =
     input.kind === "installationId" ? input.installId : null;
@@ -457,6 +463,7 @@ const pageLive = async (
   }
   if (
     state.phase !== "ready" ||
+    state.sourceId !== databaseNamespace ||
     state.sourceId !== snapshot.sourceId ||
     !state.nextProjectionSequence.equals(snapshot.projectionUpper)
   )
@@ -469,6 +476,7 @@ const pageLive = async (
   const projection = projectionGeneration(state);
   const identity = JSON.stringify([
     "live",
+    databaseNamespace,
     input.kind,
     requestedInstallId,
     snapshot._id,
@@ -619,12 +627,17 @@ type SearchReservation = {
 const reserveSearch = async (
   client: MongoClient,
   collections: MongoInsightsModelCollections,
+  databaseNamespace: string,
   query: ReturnType<typeof descriptor>,
   minAsOfMs: number | undefined,
 ): Promise<SearchReservation> =>
   client.withSession((session) =>
     session.withTransaction(async () => {
-      const state = await readReadyState(collections, session);
+      const state = await readReadyState(
+        collections,
+        databaseNamespace,
+        session,
+      );
       await collections.searchHeads.updateOne(
         { _id: query.hash },
         {
@@ -768,12 +781,13 @@ const pagePublished = async (
   client: MongoClient,
   collections: MongoInsightsModelCollections,
   input: InsightsPublishedInstallationPageInput,
+  databaseNamespace: string,
 ): Promise<InsightsPublishedInstallationPage> => {
   const query = descriptor(input);
-  const cursor = readPublishedCursor(input, query.hash);
+  const cursor = readPublishedCursor(input, query.hash, databaseNamespace);
   let pinnedPublicationId = cursor?.publicationId ?? input.publicationId;
   if (cursor !== undefined) {
-    const state = await readReadyState(collections);
+    const state = await readReadyState(collections, databaseNamespace);
     if (cursor.sourceId !== state.sourceId)
       throw new DatabasePluginInputError("invalid-query");
   }
@@ -791,6 +805,7 @@ const pagePublished = async (
   const reservation = await reserveSearch(
     client,
     collections,
+    databaseNamespace,
     query,
     input.minAsOfMs,
   );
@@ -1064,25 +1079,29 @@ export const stepMongoInsightsSearch = async (
 function pageInstallations(
   client: MongoClient,
   input: InsightsLiveInstallationPageInput,
+  databaseNamespace: string,
 ): Promise<InsightsLiveInstallationPage>;
 function pageInstallations(
   client: MongoClient,
   input: InsightsPublishedInstallationPageInput,
+  databaseNamespace: string,
 ): Promise<InsightsPublishedInstallationPage>;
 function pageInstallations(
   client: MongoClient,
   input: InsightsInstallationPageInput,
+  databaseNamespace: string,
 ): Promise<InsightsInstallationPage>;
 async function pageInstallations(
   client: MongoClient,
   input: InsightsInstallationPageInput,
+  databaseNamespace: string,
 ): Promise<InsightsInstallationPage> {
   input = validateInput(input);
   const collections = createMongoInsightsModelCollections(client);
   try {
     return input.kind === "all" || input.kind === "installationId"
-      ? await pageLive(client, input)
-      : await pagePublished(client, collections, input);
+      ? await pageLive(client, input, databaseNamespace)
+      : await pagePublished(client, collections, input, databaseNamespace);
   } catch (error) {
     if (error instanceof MongoInsightsSnapshotUnavailableError)
       return {
@@ -1113,7 +1132,12 @@ async function pageInstallations(
 
 export const createMongoInsightsInstallationQueries = (
   client: MongoClient,
-) => ({
-  pageInstallations: (input: InsightsInstallationPageInput) =>
-    pageInstallations(client, input),
-});
+  databaseNamespace: string,
+) => {
+  if (!isMongoInsightsDatabaseNamespace(databaseNamespace))
+    throw new DatabasePluginInputError("invalid-query");
+  return {
+    pageInstallations: (input: InsightsInstallationPageInput) =>
+      pageInstallations(client, input, databaseNamespace),
+  };
+};

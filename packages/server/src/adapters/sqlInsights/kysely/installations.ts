@@ -20,6 +20,7 @@ import type { SQLProvider as KyselySQLProvider } from "../../kysely";
 import { KYSELY_INSIGHTS_ALIAS_WORK_ROWS, tables } from "./constants";
 import { readKyselyInsightsState } from "./source";
 import {
+  assertKyselyInsightsDatabaseNamespace,
   executeSerializable,
   insertIgnore,
   installationKey,
@@ -224,6 +225,7 @@ const readLatestAt = async (
 
 const pageLive = async (
   db: QueryExecutorProvider,
+  databaseNamespace: string,
   input: Extract<
     InsightsInstallationPageInput,
     { kind: "all" | "installationId" }
@@ -262,8 +264,11 @@ const pageLive = async (
       sourceId: storedIdentity[3],
       upper: storedIdentity[4],
     };
+    if (cursorSource.sourceId !== databaseNamespace) {
+      throw new DatabasePluginInputError("invalid-query");
+    }
   }
-  const currentSource = await readKyselyInsightsState(db);
+  const currentSource = await readKyselyInsightsState(db, databaseNamespace);
   if (
     cursorSource &&
     (cursorSource.sourceId !== currentSource.sourceId ||
@@ -393,6 +398,7 @@ const parseSearchJob = (row: SearchJob | undefined): SearchJob => {
 const reserveSearch = async <TDatabase>(
   db: Kysely<TDatabase>,
   provider: KyselySQLProvider,
+  databaseNamespace: string,
   descriptor: SearchDescriptor,
   hash: string,
   minAsOfMs: number | undefined,
@@ -452,7 +458,10 @@ const reserveSearch = async <TDatabase>(
     }
     const id = newOpaqueId();
     const asOfMs = Date.now();
-    const source = await readKyselyInsightsState(transaction);
+    const source = await readKyselyInsightsState(
+      transaction,
+      databaseNamespace,
+    );
     await sql`insert into ${sql.table(tables.searchJobs)}
       (id, query_hash, normalized_json, state, source_id, source_upper,
         as_of_ms, completed_at_ms, after_source_seq, after_install_key,
@@ -618,6 +627,7 @@ const publication = (job: SearchJob): InsightsPublication => ({
 const pagePublished = async <TDatabase>(
   db: Kysely<TDatabase>,
   provider: KyselySQLProvider,
+  databaseNamespace: string,
   input: Extract<
     InsightsInstallationPageInput,
     { kind: "contains" | "userId" }
@@ -633,10 +643,10 @@ const pagePublished = async <TDatabase>(
     throw new DatabasePluginInputError("invalid-query");
   }
   if (cursorPublication !== undefined) {
-    const currentSource = await readKyselyInsightsState(db);
-    if (cursorPublication.sourceId !== currentSource.sourceId) {
+    if (cursorPublication.sourceId !== databaseNamespace) {
       throw new DatabasePluginInputError("invalid-query");
     }
+    await readKyselyInsightsState(db, databaseNamespace);
   }
   const pinnedId = input.publicationId ?? cursorPublication?.jobId;
   let job: SearchJob;
@@ -660,12 +670,19 @@ const pagePublished = async <TDatabase>(
     const reservation = await reserveSearch(
       db,
       provider,
+      databaseNamespace,
       query.descriptor,
       query.hash,
       input.minAsOfMs,
     );
     job = reservation.job;
     previous = reservation.previous;
+  }
+  if (
+    job.source_id !== databaseNamespace ||
+    (previous !== null && previous.source_id !== databaseNamespace)
+  ) {
+    throw new DatabasePluginInputError("invalid-result");
   }
   const readVersions = versions(
     job.source_id,
@@ -753,8 +770,10 @@ const pagePublished = async <TDatabase>(
 export const pageKyselyInsightsInstallations = async <TDatabase>(
   db: Kysely<TDatabase>,
   provider: KyselySQLProvider,
+  databaseNamespace: string,
   input: InsightsInstallationPageInput,
 ): Promise<InsightsInstallationPage> => {
+  assertKyselyInsightsDatabaseNamespace(databaseNamespace);
   input = readInsightsInstallationPageInput(input);
   if (
     !Number.isSafeInteger(input.limit) ||
@@ -765,8 +784,8 @@ export const pageKyselyInsightsInstallations = async <TDatabase>(
   }
   try {
     return input.kind === "all" || input.kind === "installationId"
-      ? await pageLive(db, input)
-      : await pagePublished(db, provider, input);
+      ? await pageLive(db, databaseNamespace, input)
+      : await pagePublished(db, provider, databaseNamespace, input);
   } catch (error) {
     if (!(error instanceof InsightsQueryNotReadyError)) throw error;
     return {

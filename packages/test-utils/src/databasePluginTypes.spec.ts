@@ -13,6 +13,7 @@ import type {
   ChannelRow,
   DatabaseChange,
   DatabaseCommitResult,
+  InsightsModel,
 } from "@hot-updater/plugin-core";
 import type {
   CountBundlesDatabaseInput,
@@ -41,15 +42,21 @@ describe("database plugin operation matrix", () => {
       | "releases"
       | "release_catalogs"
       | "channels"
-      | "bundle_events"
       | "api_keys"
     >();
-    expectTypeOf<CreateDatabaseModel>().toEqualTypeOf<
-      Exclude<DatabaseModel, "bundle_events">
-    >();
+    expectTypeOf<CreateDatabaseModel>().toEqualTypeOf<DatabaseModel>();
     expectTypeOf<
       Extract<DatabaseChange, { readonly model: "insights" }>
     >().toEqualTypeOf<never>();
+  });
+
+  it("exposes one required five-method Insights contract", () => {
+    expectTypeOf<keyof InsightsModel>().toEqualTypeOf<
+      "append" | "pageEvents" | "pageInstallations" | "getReport" | "pageReport"
+    >();
+    expectTypeOf<
+      DatabasePluginImplementation["insights"]
+    >().toEqualTypeOf<InsightsModel>();
   });
 
   it("limits delete to canonical mutable rows", () => {

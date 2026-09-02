@@ -15,7 +15,8 @@ const input: InsightsReportPageInput = {
   metric: "installed",
 };
 const MAX_ORDINAL = "9223372036854775807";
-const DATABASE_NAMESPACE = "database-a";
+const DATABASE_NAMESPACE = "00000000-0000-7000-8000-000000000001";
+const OTHER_DATABASE_NAMESPACE = "00000000-0000-7000-8000-000000000002";
 
 describe("Insights materialized report page identity", () => {
   it("canonicalizes every section and starts at rank zero without a cursor", () => {
@@ -322,14 +323,17 @@ describe("Insights materialized report page identity", () => {
       DATABASE_NAMESPACE,
     );
     expect(() =>
-      readInsightsReportPageQuery(input, "database-b"),
+      readInsightsReportPageQuery(input, OTHER_DATABASE_NAMESPACE),
     ).not.toThrow();
     expect(readInsightsReportPageInput({ ...input, cursor })).toEqual({
       ...input,
       cursor,
     });
     expect(() =>
-      readInsightsReportPageQuery({ ...input, cursor }, "database-b"),
+      readInsightsReportPageQuery(
+        { ...input, cursor },
+        OTHER_DATABASE_NAMESPACE,
+      ),
     ).toThrow("invalid-query");
     const decoded = JSON.parse(cursor) as [number, string, string];
     const semanticKey = JSON.parse(decoded[1]) as unknown[];
@@ -347,7 +351,14 @@ describe("Insights materialized report page identity", () => {
         DATABASE_NAMESPACE,
       ),
     ).toThrow("invalid-query");
-    for (const namespace of ["", "a\0b", "\ud800", "x".repeat(1_025)]) {
+    for (const namespace of [
+      "",
+      "database-a",
+      "00000000-0000-7000-8000-00000000000A",
+      "a\0b",
+      "\ud800",
+      "x".repeat(1_025),
+    ]) {
       expect(() => readInsightsReportPageQuery(input, namespace)).toThrow(
         "invalid-query",
       );

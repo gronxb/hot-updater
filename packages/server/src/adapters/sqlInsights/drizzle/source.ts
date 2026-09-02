@@ -4,12 +4,11 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   assertInsightsEventContract,
-  assertInsightsEventRow,
   canonicalInsightsJson,
-  databaseFields,
   INSIGHTS_MAINTENANCE_INPUT_MAX_BYTES,
   INSIGHTS_STRING_MAX_CODE_UNITS,
   isCanonicalInsightsEventId,
+  isCanonicalInsightsDatabaseNamespace,
 } from "@hot-updater/plugin-core/internal";
 import { sql } from "drizzle-orm";
 
@@ -27,12 +26,22 @@ import {
   ensureDrizzleInsightsSchema,
 } from "./schema";
 import {
+  drizzleInsightsRawEventColumns,
   getDrizzleInsightsEventBytes,
   insertDrizzleRawEvent,
   persistDrizzleInsightsProjection,
+  type DrizzleInsightsRawEventColumn,
 } from "./storage";
 
 const PREPARATION_ROWS = 200;
+
+export const assertDrizzleInsightsDatabaseNamespace = (
+  databaseNamespace: string,
+): void => {
+  if (!isCanonicalInsightsDatabaseNamespace(databaseNamespace)) {
+    throw new DatabasePluginInputError("invalid-query");
+  }
+};
 
 const legacyOrder = (provider: DrizzleProvider) =>
   provider === "sqlite"
@@ -64,7 +73,7 @@ const legacyValue = (provider: DrizzleProvider, id: string) =>
 
 const legacyText = (
   provider: DrizzleProvider,
-  column: (typeof databaseFields.bundle_events)[number],
+  column: DrizzleInsightsRawEventColumn,
 ) => {
   const identifier = sql.identifier(column);
   return provider === "mysql"
@@ -76,7 +85,7 @@ const legacyText = (
 
 const legacyLength = (
   provider: DrizzleProvider,
-  column: (typeof databaseFields.bundle_events)[number],
+  column: DrizzleInsightsRawEventColumn,
   bytes: boolean,
 ) => {
   const identifier = sql.identifier(column);
@@ -96,10 +105,10 @@ const legacyLength = (
 };
 
 const legacyMetadata = (provider: DrizzleProvider) => {
-  const lengths = databaseFields.bundle_events.map((column) =>
+  const lengths = drizzleInsightsRawEventColumns.map((column) =>
     legacyLength(provider, column, false),
   );
-  const bytes = databaseFields.bundle_events.map((column) =>
+  const bytes = drizzleInsightsRawEventColumns.map((column) =>
     legacyLength(provider, column, true),
   );
   const greatest =
@@ -139,6 +148,7 @@ const asInteger = (value: unknown): number => {
 
 const readState = (
   row: Record<string, unknown> | undefined,
+  databaseNamespace: string,
 ): DrizzleInsightsSourceState => {
   if (row === undefined) return invalid();
   const status = row["status"];
@@ -156,7 +166,7 @@ const readState = (
   const error = row["error"];
   if (
     typeof sourceId !== "string" ||
-    !isCanonicalInsightsEventId(sourceId) ||
+    sourceId !== databaseNamespace ||
     (upperId !== null && typeof upperId !== "string") ||
     (afterId !== null && typeof afterId !== "string") ||
     (error !== null && typeof error !== "string")
@@ -174,7 +184,7 @@ const readState = (
   };
 };
 
-const selectState = async (db: DrizzleDB) =>
+const selectState = async (db: DrizzleDB, databaseNamespace: string) =>
   assertStateRevision(
     readState(
       (
@@ -185,6 +195,7 @@ const selectState = async (db: DrizzleDB) =>
         where id=1`,
         )
       )[0],
+      databaseNamespace,
     ),
   );
 
@@ -198,6 +209,7 @@ const assertStateRevision = (
 export const lockDrizzleInsightsSourceFence = async (
   db: DrizzleDB,
   provider: DrizzleProvider,
+  databaseNamespace: string,
 ): Promise<DrizzleInsightsSourceState> => {
   if (provider === "sqlite") {
     await mutateDrizzleInsights(
@@ -216,6 +228,7 @@ export const lockDrizzleInsightsSourceFence = async (
             where id=1 ${provider === "sqlite" ? sql`` : sql`for update`}`,
         )
       )[0],
+      databaseNamespace,
     ),
   );
 };
@@ -235,18 +248,23 @@ const readLegacyEvent = (row: Record<string, unknown>): BundleEventRow => {
     received_at_ms: asInteger(row["received_at_ms"]),
   };
   assertInsightsEventContract(event);
-  assertInsightsEventRow(event);
   return event;
 };
 
 export const createDrizzleInsightsSource = (
   db: DrizzleDB,
   provider: DrizzleProvider,
+  databaseNamespace: string,
 ) => {
+  assertDrizzleInsightsDatabaseNamespace(databaseNamespace);
   let schema: Promise<void> | undefined;
   let sqliteAppendTail: Promise<void> = Promise.resolve();
   const ensure = (): Promise<void> =>
-    (schema ??= ensureDrizzleInsightsSchema(db, provider).catch((error) => {
+    (schema ??= ensureDrizzleInsightsSchema(
+      db,
+      provider,
+      databaseNamespace,
+    ).catch((error) => {
       schema = undefined;
       throw error;
     }));
@@ -260,7 +278,7 @@ export const createDrizzleInsightsSource = (
         status='failed',error=${message},updated_at_ms=${Date.now()}
         where id=1 and status<>'ready'`,
     );
-    return selectState(db);
+    return selectState(db, databaseNamespace);
   };
 
   return {
@@ -271,7 +289,7 @@ export const createDrizzleInsightsSource = (
     },
     readState: async (): Promise<DrizzleInsightsSourceState> => {
       await ensure();
-      return selectState(db);
+      return selectState(db, databaseNamespace);
     },
     async advanceStep(
       maxRows = PREPARATION_ROWS,
@@ -291,7 +309,7 @@ export const createDrizzleInsightsSource = (
       }
       if (!layoutReady) await ensure();
       await assertDrizzleInsightsIndexes(db, provider);
-      let state = await selectState(db);
+      let state = await selectState(db, databaseNamespace);
       if (state.status === "ready" || state.status === "failed" || !process) {
         return { state, items: 0, bytes: 0 };
       }
@@ -301,6 +319,7 @@ export const createDrizzleInsightsSource = (
             const locked = await lockDrizzleInsightsSourceFence(
               transaction,
               provider,
+              databaseNamespace,
             );
             if (locked.status !== "new") return locked;
             const upper = await queryDrizzleInsights<{
@@ -329,7 +348,7 @@ export const createDrizzleInsightsSource = (
                 upper_id=${upperId ?? null},after_id=null,error=null,
                 updated_at_ms=${Date.now()} where id=1 and status='new'`,
             );
-            return selectState(transaction);
+            return selectState(transaction, databaseNamespace);
           });
         } catch (error) {
           return { state: await fail(error), items: 0, bytes: 0 };
@@ -424,6 +443,7 @@ export const createDrizzleInsightsSource = (
             const locked = await lockDrizzleInsightsSourceFence(
               transaction,
               provider,
+              databaseNamespace,
             );
             if (
               locked.sourceId !== state.sourceId ||
@@ -460,14 +480,13 @@ export const createDrizzleInsightsSource = (
         return { state: await fail(error), items: 0, bytes: 0 };
       }
       return {
-        state: await selectState(db),
+        state: await selectState(db, databaseNamespace),
         items: events.length,
         bytes,
       };
     },
     async append(event: BundleEventRow): Promise<void> {
       assertInsightsEventContract(event);
-      assertInsightsEventRow(event);
       // Encoding before opening the transaction also rejects cyclic/provider
       // extension records without leaving either physical source half-written.
       canonicalInsightsJson(event);
@@ -477,6 +496,7 @@ export const createDrizzleInsightsSource = (
           const state = await lockDrizzleInsightsSourceFence(
             transaction,
             provider,
+            databaseNamespace,
           );
           if (state.status === "failed") {
             throw new DatabasePluginInputError("invalid-data");
@@ -498,7 +518,7 @@ export const createDrizzleInsightsSource = (
     },
     async sourceMaxSequence(): Promise<number> {
       await ensure();
-      return (await selectState(db)).committedSeq;
+      return (await selectState(db, databaseNamespace)).committedSeq;
     },
   };
 };

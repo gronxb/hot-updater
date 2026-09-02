@@ -2,6 +2,13 @@ import type { BundleEventRow } from "@hot-updater/plugin-core";
 import type { Document, Long } from "mongodb";
 
 export const MONGO_INSIGHTS_SOURCE_SHARDS = 16;
+export const MONGO_INSIGHTS_DATABASE_NAMESPACE_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const isMongoInsightsDatabaseNamespace = (
+  value: unknown,
+): value is string =>
+  typeof value === "string" &&
+  MONGO_INSIGHTS_DATABASE_NAMESPACE_PATTERN.test(value);
 export const MONGO_INSIGHTS_SOURCE_STATE_ID = "source";
 export const MONGO_INSIGHTS_SOURCE_STATE_COLLECTION =
   "private_hot_updater_insights_source";

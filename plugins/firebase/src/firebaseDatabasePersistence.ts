@@ -1,5 +1,4 @@
 import type {
-  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
@@ -17,7 +16,6 @@ import {
 
 import {
   parseFirebaseApiKeyRow,
-  parseFirebaseBundleEventRow,
   parseFirebaseBundleRow,
   parseFirebaseChannelRow,
   parseFirebasePatchRow,
@@ -31,7 +29,6 @@ import { FIREBASE_V1_COLLECTION_NAMES } from "./firebaseInfrastructureNames";
 export interface FirebaseDatabaseCollections {
   readonly bundles: CollectionReference<DocumentData>;
   readonly bundlePatches: CollectionReference<DocumentData>;
-  readonly bundleEvents: CollectionReference<DocumentData>;
   readonly channels: CollectionReference<DocumentData>;
   readonly apiKeys: CollectionReference<DocumentData>;
   readonly releaseCatalogs: CollectionReference<DocumentData>;
@@ -52,7 +49,6 @@ export const createFirebaseDatabaseCollections = (
 ): FirebaseDatabaseCollections => ({
   bundles: db.collection(FIREBASE_V1_COLLECTION_NAMES.bundles),
   bundlePatches: db.collection(FIREBASE_V1_COLLECTION_NAMES.bundlePatches),
-  bundleEvents: db.collection(FIREBASE_V1_COLLECTION_NAMES.bundleEvents),
   channels: db.collection(FIREBASE_V1_COLLECTION_NAMES.channels),
   apiKeys: db.collection(FIREBASE_V1_COLLECTION_NAMES.apiKeys),
   releaseCatalogs: db.collection(FIREBASE_V1_COLLECTION_NAMES.releaseCatalogs),
@@ -61,7 +57,6 @@ export const createFirebaseDatabaseCollections = (
 });
 
 type FixedRow =
-  | BundleEventRow
   | BundlePatchRow
   | BundleRow
   | ChannelRow
@@ -69,7 +64,6 @@ type FixedRow =
   | ReleaseCatalogRow
   | ReleaseRow;
 type FixedModel =
-  | "bundle_events"
   | "bundle_patches"
   | "bundles"
   | "channels"
@@ -139,20 +133,6 @@ const patchMap = (
       row: parseFirebasePatchRow(
         document.data(),
         `bundle_patches/${document.id}`,
-      ),
-    })),
-  );
-
-export const parseFirebaseEventDocuments = (
-  snapshot: QuerySnapshot<DocumentData>,
-): Map<string, BundleEventRow> =>
-  documentMap(
-    "bundle_events",
-    snapshot.docs.map((document) => ({
-      document,
-      row: parseFirebaseBundleEventRow(
-        document.data(),
-        `bundle_events/${document.id}`,
       ),
     })),
   );

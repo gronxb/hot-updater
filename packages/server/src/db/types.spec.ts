@@ -26,6 +26,16 @@ describe("isDatabasePlugin", () => {
       ...plugin,
       models: { ...plugin.models, insights: undefined },
     };
+    const malformedInsights = [
+      { ...plugin.models.insights, append: null },
+      { ...plugin.models.insights, pageEvents: null },
+      { ...plugin.models.insights, pageInstallations: null },
+      { ...plugin.models.insights, getReport: null },
+      { ...plugin.models.insights, pageReport: null },
+    ].map((insights) => ({
+      ...plugin,
+      models: { ...plugin.models, insights },
+    }));
     const malformedChannels = {
       ...plugin,
       models: {
@@ -48,6 +58,9 @@ describe("isDatabasePlugin", () => {
     expect(isDatabasePlugin(factory)).toBe(false);
     expect(isDatabasePlugin(malformedBundles)).toBe(false);
     expect(isDatabasePlugin(missingInsights)).toBe(false);
+    for (const malformed of malformedInsights) {
+      expect(isDatabasePlugin(malformed)).toBe(false);
+    }
     expect(isDatabasePlugin(malformedChannels)).toBe(false);
     expect(isDatabasePlugin(malformedApiKeys)).toBe(false);
     expect(isDatabasePlugin(malformedDispose)).toBe(false);

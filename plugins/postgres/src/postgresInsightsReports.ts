@@ -28,9 +28,9 @@ import {
 import {
   assertPostgresInsightsReportOrderIndexes,
   getPostgresInsightsReportOrderReady,
+  getPostgresInsightsReportOrderSections,
   stepPostgresInsightsReportOrder,
 } from "./postgresInsightsReportOrder";
-import { getPostgresInsightsReportOrderSections } from "./postgresInsightsReportSections";
 import { stepPostgresInsightsSearch } from "./postgresInsightsSearchWorker";
 import {
   createPostgresInsightsSourceTools,
@@ -46,9 +46,10 @@ import {
  */
 export const createPostgresInsightsReportWorker = <TDatabase extends object>(
   db: Kysely<TDatabase>,
+  databaseNamespace: string,
 ) => {
-  const jobs = createPostgresInsightsJobs(db);
-  const source = createPostgresInsightsSourceTools(db);
+  const jobs = createPostgresInsightsJobs(db, databaseNamespace);
+  const source = createPostgresInsightsSourceTools(db, databaseNamespace);
   return {
     async runStep(input: { maxItems: number; maxRequests: number }): Promise<{
       state:
@@ -77,6 +78,7 @@ export const createPostgresInsightsReportWorker = <TDatabase extends object>(
       if (input.maxItems < 256 || input.maxRequests < 128) {
         const probe = await jobs.probeNextSource((transaction, job) =>
           validatePostgresInsightsSourcePage(transaction, {
+            databaseNamespace,
             sourceGeneration: job.sourceGeneration,
             shard: job.checkpoint.shard,
             afterSequence: job.checkpoint.afterSequence,

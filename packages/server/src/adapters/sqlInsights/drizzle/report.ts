@@ -14,7 +14,6 @@ import {
   type InsightsReportResult,
 } from "@hot-updater/plugin-core";
 import {
-  assertInsightsCursorContract,
   assertInsightsPageContract,
   assertInsightsQueryContract,
   createInsightsReportPageCursor,
@@ -61,27 +60,6 @@ const corruptVersions = (provider: DrizzleProvider): InsightsReadVersions => ({
   projectionGeneration: null,
   sourceGeneration: null,
 });
-
-const reportPageCursorNamespace = (input: InsightsReportPageInput): string => {
-  if (input.cursor === undefined) return "drizzle-preflight";
-  try {
-    assertInsightsCursorContract(input.cursor);
-    const cursor: unknown = JSON.parse(input.cursor);
-    if (!Array.isArray(cursor) || typeof cursor[1] !== "string") throw null;
-    const semantic: unknown = JSON.parse(cursor[1]);
-    if (
-      !Array.isArray(semantic) ||
-      semantic.length !== 7 ||
-      typeof semantic[0] !== "string" ||
-      semantic[1] !== "report-page"
-    ) {
-      throw null;
-    }
-    return semantic[0];
-  } catch {
-    throw new DatabasePluginInputError("invalid-query");
-  }
-};
 
 type ReportJob = {
   readonly jobId: string;
@@ -802,15 +780,21 @@ const firstPublishSection = (job: ReportJob): string =>
 export const createDrizzleInsightsReports = (
   db: DrizzleDB,
   provider: DrizzleProvider,
+  databaseNamespace: string,
 ) => {
-  const source = createDrizzleInsightsSource(db, provider);
+  const source = createDrizzleInsightsSource(db, provider, databaseNamespace);
+  const readStoredJob = (row: Record<string, unknown>): ReportJob => {
+    const job = readJob(row);
+    if (job.sourceId !== databaseNamespace) return invalidResult();
+    return job;
+  };
   const findJob = async (jobId: string): Promise<ReportJob | null> => {
     const rows = await queryDrizzleInsights(
       db,
       sql`select * from ${sql.identifier(DRIZZLE_INSIGHTS_JOBS)}
         where job_id=${jobId} and job_kind='report' limit 1`,
     );
-    return rows[0] === undefined ? null : readJob(rows[0]);
+    return rows[0] === undefined ? null : readStoredJob(rows[0]);
   };
   const findReservation = async (
     reservationKey: string,
@@ -821,7 +805,7 @@ export const createDrizzleInsightsReports = (
       sql`select * from ${sql.identifier(DRIZZLE_INSIGHTS_JOBS)}
         where reservation_key=${reservationKey} and job_kind='report' limit 1`,
     );
-    return rows[0] === undefined ? null : readJob(rows[0]);
+    return rows[0] === undefined ? null : readStoredJob(rows[0]);
   };
   const reserve = (
     semanticKey: string,
@@ -830,7 +814,11 @@ export const createDrizzleInsightsReports = (
     minimum: number,
   ) =>
     transactDrizzleInsights(db, async (transaction) => {
-      const state = await lockDrizzleInsightsSourceFence(transaction, provider);
+      const state = await lockDrizzleInsightsSourceFence(
+        transaction,
+        provider,
+        databaseNamespace,
+      );
       if (state.sourceId !== sourceId || state.status !== "ready") {
         return invalidResult();
       }
@@ -908,7 +896,7 @@ export const createDrizzleInsightsReports = (
           and as_of_ms >= ${minimum}
         order by as_of_ms desc,job_order_key desc limit 1`,
     );
-    return rows[0] === undefined ? null : readJob(rows[0]);
+    return rows[0] === undefined ? null : readStoredJob(rows[0]);
   };
 
   const advanceFilter = async (
@@ -1323,7 +1311,11 @@ export const createDrizzleInsightsReports = (
         size,
         nextCursor:
           next < total
-            ? createInsightsReportPageCursor(input, String(next), job.sourceId)
+            ? createInsightsReportPageCursor(
+                input,
+                String(next),
+                databaseNamespace,
+              )
             : null,
       };
     };
@@ -1860,12 +1852,10 @@ export const createDrizzleInsightsReports = (
       input: InsightsReportPageInput,
     ): Promise<InsightsReportPage> {
       assertInsightsQueryContract(input);
-      const cursorNamespace = reportPageCursorNamespace(input);
-      const parsed = readInsightsReportPageQuery(input, cursorNamespace);
-      let namespace: string;
+      const parsed = readInsightsReportPageQuery(input, databaseNamespace);
       try {
         await source.assertReadyLayout();
-        namespace = (await source.readState()).sourceId;
+        await source.readState();
       } catch (error) {
         if (!(error instanceof InsightsQueryNotReadyError)) throw error;
         const saved = await source.readState();
@@ -1880,13 +1870,10 @@ export const createDrizzleInsightsReports = (
           error: { code: "index-not-ready" },
         };
       }
-      if (input.cursor !== undefined && cursorNamespace !== namespace) {
-        return invalid();
-      }
       const job = await findJob(input.publicationId);
       if (job === null)
         return { state: "expired", publicationId: input.publicationId };
-      if (job.sourceId !== namespace) return invalid();
+      if (job.sourceId !== databaseNamespace) return invalidResult();
       if (job.status === "failed")
         return {
           state: "failed",

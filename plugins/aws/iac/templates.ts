@@ -28,6 +28,7 @@ export const getConfigScaffold = (
     configString: `dynamoDB({
     ...awsOptions,
     tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
+    insightsDatabaseNamespace: process.env.HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE!,
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   })`,
   };

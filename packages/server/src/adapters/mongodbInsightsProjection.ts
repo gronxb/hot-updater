@@ -9,7 +9,6 @@ import {
   assertInsightsInstallationIdentityMatch,
   canonicalInsightsJson,
   InsightsContractError,
-  isCanonicalInsightsEventId,
 } from "@hot-updater/plugin-core/internal";
 import {
   Long,
@@ -30,7 +29,10 @@ import {
   MONGO_INSIGHTS_PROJECTION_STATE_ID,
   MONGO_INSIGHTS_STORAGE_VERSION,
 } from "./mongodbInsightsModelSchema";
-import { MONGO_INSIGHTS_SOURCE_SHARDS } from "./mongodbInsightsSourceSchema";
+import {
+  isMongoInsightsDatabaseNamespace,
+  MONGO_INSIGHTS_SOURCE_SHARDS,
+} from "./mongodbInsightsSourceSchema";
 
 export const mongoInsightsDigest = (value: unknown): string =>
   createHash("sha256")
@@ -45,7 +47,7 @@ export const assertMongoInsightsProjectionEvent = (
 ): void => {
   assertMongoInsightsEventRow(row.event);
   if (
-    !isCanonicalInsightsEventId(row.sourceId) ||
+    !isMongoInsightsDatabaseNamespace(row.sourceId) ||
     !Number.isSafeInteger(row.sourceShard) ||
     row.sourceShard < 0 ||
     row.sourceShard >= MONGO_INSIGHTS_SOURCE_SHARDS ||
@@ -93,7 +95,7 @@ export const assertMongoInsightsProjectionState = (
     !Number.isSafeInteger(value.revision) ||
     value.revision < 0 ||
     !["building", "ready", "failed"].includes(value.phase) ||
-    !isCanonicalInsightsEventId(value.sourceId) ||
+    !isMongoInsightsDatabaseNamespace(value.sourceId) ||
     typeof value.targetGeneration !== "string" ||
     !Number.isSafeInteger(value.shard) ||
     value.shard < 0 ||

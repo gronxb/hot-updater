@@ -15,7 +15,6 @@ import {
   type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 import {
-  type BundleEventRow,
   type BundlePatchRow,
   type BundleRow,
   type InsightsModel,
@@ -45,6 +44,7 @@ import {
 } from "@hot-updater/plugin-core/internal";
 
 import { invalidateCloudFront } from "./cloudFrontInvalidation";
+import { createDynamoDBInsightsModel } from "./dynamoDBInsightsV2Jobs";
 
 export const DYNAMODB_MAX_METADATA_ITEM_BYTES = 8 * 1_024;
 export const DYNAMODB_MAX_CATALOG_ITEM_BYTES = 400 * 1_024;
@@ -1628,8 +1628,9 @@ const exactDynamoDBField = (
 export const createDynamoDBCrud = (
   store: DynamoDBStore,
   updateIndexName: string,
+  insights: InsightsModel,
 ): DatabasePluginImplementation => ({
-  appendBundleEvent: (row) => createDynamoDBInsightsTable(store).append(row),
+  insights,
   async create(input): Promise<DatabaseImplementationResult> {
     switch (input.model) {
       case "bundles":
@@ -2926,36 +2927,8 @@ const createDynamoDBCommit =
       return compileAndCommitDynamoDBChanges(store, input);
     }
   };
-export const DYNAMODB_INSIGHTS_PARTITION = "bundle_events";
 export const DYNAMODB_API_KEY_PARTITION = "api_keys";
 export const DYNAMODB_API_KEY_HASH_PARTITION = "_hot-updater#api-key-hashes";
-
-const hasValidBundleEventShape = (value: object): boolean => {
-  const type = field(value, "type");
-  const fromBundleId = field(value, "from_bundle_id");
-  const updateStrategy = field(value, "update_strategy");
-  return (
-    ((type === "UPDATE_APPLIED" ||
-      type === "RECOVERED" ||
-      type === "RELEASE_ADOPTED") &&
-      typeof fromBundleId === "string" &&
-      (updateStrategy === "fingerprint" || updateStrategy === "appVersion")) ||
-    (type === "UNCHANGED" && fromBundleId === null && updateStrategy === null)
-  );
-};
-
-const isBundleEventRow = (value: unknown): value is BundleEventRow =>
-  typeof value === "object" &&
-  value !== null &&
-  typeof field(value, "id") === "string" &&
-  typeof field(value, "install_id") === "string" &&
-  isNullableString(field(value, "from_release_id")) &&
-  isNullableString(field(value, "to_release_id")) &&
-  typeof field(value, "to_bundle_id") === "string" &&
-  (field(value, "platform") === "ios" ||
-    field(value, "platform") === "android") &&
-  typeof field(value, "received_at_ms") === "number" &&
-  hasValidBundleEventShape(value);
 
 const isApiKeyRow = (value: unknown): value is ApiKeyRow =>
   typeof value === "object" &&
@@ -2984,81 +2957,6 @@ const parseOfficialRowItem = <TRow>(
   }
   return { row: value.row, version: value.version };
 };
-
-const timestampSortKey = (timestampMs: number): string =>
-  Math.trunc(timestampMs).toString().padStart(16, "0");
-
-const insightsSortKey = (
-  row: Pick<BundleEventRow, "id" | "received_at_ms">,
-): string => `${timestampSortKey(row.received_at_ms)}#${row.id}`;
-
-export const createDynamoDBInsightsTable = (
-  store: DynamoDBStore,
-): InsightsModel => ({
-  async append(row) {
-    await store.client.send(
-      new PutCommand({
-        TableName: store.tableName,
-        Item: boundedDynamoDBMetadataItem({
-          pk: DYNAMODB_INSIGHTS_PARTITION,
-          sk: insightsSortKey(row),
-          version: 1,
-          row,
-        }),
-        ConditionExpression: "attribute_not_exists(#pk)",
-        ExpressionAttributeNames: { "#pk": "pk" },
-      }),
-    );
-  },
-  async scan(input) {
-    if (input.limit <= 0) return [];
-    if (
-      input.after !== undefined &&
-      input.after.receivedAtMs >= input.beforeReceivedAtMs
-    ) {
-      return [];
-    }
-    const rows: BundleEventRow[] = [];
-    const afterKey =
-      input.after === undefined
-        ? undefined
-        : `${timestampSortKey(input.after.receivedAtMs)}#${input.after.id}`;
-    let exclusiveStartKey: Record<string, unknown> | undefined;
-    do {
-      const page = await store.client.send(
-        new QueryCommand({
-          TableName: store.tableName,
-          ExclusiveStartKey: exclusiveStartKey,
-          KeyConditionExpression:
-            afterKey === undefined
-              ? "#pk = :pk AND #sk < :before"
-              : "#pk = :pk AND #sk BETWEEN :after AND :before",
-          ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
-          ExpressionAttributeValues: {
-            ":before": `${timestampSortKey(input.beforeReceivedAtMs)}#`,
-            ":pk": DYNAMODB_INSIGHTS_PARTITION,
-            ...(afterKey === undefined ? {} : { ":after": afterKey }),
-          },
-          Limit: input.limit - rows.length + (afterKey === undefined ? 0 : 1),
-          ScanIndexForward: true,
-        }),
-      );
-      for (const item of page.Items ?? []) {
-        if (item.sk === afterKey) continue;
-        rows.push(
-          parseOfficialRowItem(
-            item,
-            DYNAMODB_INSIGHTS_PARTITION,
-            isBundleEventRow,
-          ).row,
-        );
-        if (rows.length === input.limit) return rows;
-      }
-      exclusiveStartKey = page.LastEvaluatedKey;
-    } while (exclusiveStartKey !== undefined);
-    return rows;
-  },
-});
 
 const apiKeyItem = (
   row: ApiKeyRow,
@@ -3202,6 +3100,7 @@ export const DYNAMODB_UPDATE_INDEX_NAME = "hot-updater-update-index";
 export interface DynamoDBConfig extends DynamoDBClientConfig {
   readonly apiBasePath?: string;
   readonly cloudfrontDistributionId?: string;
+  readonly insightsDatabaseNamespace: string;
   readonly shouldWaitForInvalidation?: boolean;
   readonly tableName: string;
 }
@@ -3210,6 +3109,7 @@ export const dynamoDB = (config: DynamoDBConfig) => {
   const {
     apiBasePath = "/release-catalogs",
     cloudfrontDistributionId,
+    insightsDatabaseNamespace,
     shouldWaitForInvalidation = false,
     tableName,
     ...clientConfig
@@ -3224,7 +3124,11 @@ export const dynamoDB = (config: DynamoDBConfig) => {
       })
     : null;
   const store = { client, tableName };
-  const crud = createDynamoDBCrud(store, DYNAMODB_UPDATE_INDEX_NAME);
+  const insights = createDynamoDBInsightsModel({
+    ...store,
+    insightsDatabaseNamespace,
+  });
+  const crud = createDynamoDBCrud(store, DYNAMODB_UPDATE_INDEX_NAME, insights);
   const invalidateUpdateRoutes = async () => {
     if (!cloudFront || !cloudfrontDistributionId) return;
     try {
@@ -3260,7 +3164,6 @@ export const dynamoDB = (config: DynamoDBConfig) => {
         store,
         DYNAMODB_UPDATE_INDEX_NAME,
       ),
-      insights: createDynamoDBInsightsTable(store),
       apiKeys: createDynamoDBApiKeyTable(store),
     },
     async commit(input) {

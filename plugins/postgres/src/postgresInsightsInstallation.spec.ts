@@ -5,12 +5,12 @@ import type {
   BundleEventRow,
   InsightsInstallationPageInput,
 } from "@hot-updater/plugin-core";
-import { databaseFields } from "@hot-updater/plugin-core/internal";
 import { Kysely, sql } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
+import { POSTGRES_INSIGHTS_EVENT_COLUMNS } from "./postgresInsightsContract";
 import { createPostgresInsightsInstallationLookup } from "./postgresInsightsInstallation";
 
 describe("live PostgreSQL exact installation lookup", () => {
@@ -48,8 +48,8 @@ describe("live PostgreSQL exact installation lookup", () => {
     await client.close();
   });
   const append = async (event: BundleEventRow) => {
-    await sql`insert into bundle_events (${sql.join(databaseFields.bundle_events.map((field) => sql.ref(field)))})
-      values (${sql.join(databaseFields.bundle_events.map((field) => event[field]))})`.execute(
+    await sql`insert into bundle_events (${sql.join(POSTGRES_INSIGHTS_EVENT_COLUMNS.map((field) => sql.ref(field)))})
+      values (${sql.join(POSTGRES_INSIGHTS_EVENT_COLUMNS.map((field) => event[field]))})`.execute(
       db,
     );
   };

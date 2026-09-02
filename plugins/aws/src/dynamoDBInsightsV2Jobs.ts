@@ -10,6 +10,7 @@ import {
 import {
   createUUIDv7,
   type BundleEventRow,
+  type InsightsModel,
   type InsightsInstallationPage,
   type InsightsInstallationPageInput,
   type InsightsInstallationRow,
@@ -51,7 +52,6 @@ import {
   readInsightsInstallationPageInput,
   readInsightsReportPageQuery,
   readInsightsReportQuery,
-  type RequiredInsightsModel,
 } from "@hot-updater/plugin-core/internal";
 
 import {
@@ -322,7 +322,7 @@ const requestBudgetStore = (
   let requests = 0;
   return {
     tableName: store.tableName,
-    namespace: store.namespace,
+    insightsDatabaseNamespace: store.insightsDatabaseNamespace,
     requestsUsed: () => requests,
     client: {
       async send(command) {
@@ -3581,7 +3581,7 @@ export const pageDynamoDBInsightsReport = async (
   }
 };
 
-export type DynamoDBRequiredInsightsModel = RequiredInsightsModel & {
+export type DynamoDBInsightsModel = InsightsModel & {
   readonly maintenance: ReturnType<
     typeof createDynamoDBInsightsV2
   >["maintenance"] & {
@@ -3591,10 +3591,10 @@ export type DynamoDBRequiredInsightsModel = RequiredInsightsModel & {
   };
 };
 
-/** Internal five-port landing point; public provider wiring waits for cutover. */
-export const createDynamoDBRequiredInsightsModel = (
+export const createDynamoDBInsightsModel = (
   store: DynamoDBInsightsV2Store,
-): DynamoDBRequiredInsightsModel => {
+): DynamoDBInsightsModel => {
+  dynamoDBInsightsV2Namespace(store);
   const base = createDynamoDBInsightsV2(store);
   async function pageInstallations(
     input: InsightsLiveInstallationPageInput,

@@ -55,6 +55,7 @@ export const createPostgresInsightsReportPages = <TDatabase extends object>(
           const stored = await readPostgresInsightsReportPublication(
             transaction,
             request.publicationId,
+            databaseNamespace,
           );
           if (stored === null)
             return {

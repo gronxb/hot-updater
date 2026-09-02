@@ -2,7 +2,6 @@ export const SUPABASE_V1_FUNCTION_NAME = "hot-updater-v1";
 
 export const SUPABASE_V1_TABLE_NAMES = {
   apiKeys: "hot_updater_v1_api_keys",
-  bundleEvents: "hot_updater_v1_bundle_events",
   bundlePatches: "hot_updater_v1_bundle_patches",
   bundles: "hot_updater_v1_bundles",
   channels: "hot_updater_v1_channels",
@@ -24,4 +23,5 @@ export const SUPABASE_V1_FUNCTION_NAMES = {
   insightsReportStep: "hot_updater_v1_insights_report_step",
   insightsReportPage: "hot_updater_v1_insights_report_page",
   insightsPrune: "hot_updater_v1_insights_prune",
+  insightsJobNext: "hot_updater_v1_insights_job_next",
 } as const;

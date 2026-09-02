@@ -17,6 +17,8 @@ import {
 } from "./postgresInsightsJobs";
 import { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
 
+const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
+
 const jobsTable = "private_hot_updater_insights_report_jobs";
 const headsTable = "private_hot_updater_insights_report_heads";
 const queuedId = (result: PostgresInsightsSearchResult) => {
@@ -54,8 +56,11 @@ describe("private PostgreSQL historical contains jobs", () => {
         },
       ],
     });
-    await migratePostgresInsightsSource(db);
-    const source = createPostgresInsightsSourceTools(db);
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
+    const source = createPostgresInsightsSourceTools(
+      db,
+      insightsDatabaseNamespace,
+    );
     await source.backfillStep(1);
     generation = await source.capture();
     await client.exec(
@@ -64,7 +69,7 @@ describe("private PostgreSQL historical contains jobs", () => {
     await client.exec("create table derived_test(id integer primary key)");
     requests = [];
     returnedRows = 0;
-    store = createPostgresInsightsJobs(db);
+    store = createPostgresInsightsJobs(db, insightsDatabaseNamespace);
   });
   afterEach(async () => {
     vi.restoreAllMocks();

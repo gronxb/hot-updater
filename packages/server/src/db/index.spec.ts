@@ -213,6 +213,7 @@ const transactionBundle: Bundle = {
   storageUri: "s3://test-bucket/transaction.zip",
 };
 const transactionChannelId = "00000000-0000-0000-0000-000000000700";
+const insightsDatabaseNamespace = "00000000-0000-4000-8000-000000000001";
 
 describe("server/db hotUpdater (PGlite + Kysely)", async () => {
   const db = new PGlite();
@@ -230,6 +231,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
   const hotUpdater = createHotUpdater({
     database: kyselyAdapter({
       db: kysely,
+      insightsDatabaseNamespace,
       provider: "postgresql",
     }),
     storage: [
@@ -266,6 +268,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
 
   it("uses the default generated schema artifact path for Drizzle", () => {
     const adapter = drizzleAdapter({
+      insightsDatabaseNamespace,
       db: {
         _: {
           fullSchema: {
@@ -447,6 +450,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       const migrationHotUpdater = createHotUpdater({
         database: kyselyAdapter({
           db: migrationKysely,
+          insightsDatabaseNamespace,
           provider: "postgresql",
         }),
       });
@@ -493,6 +497,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       const migrationHotUpdater = createHotUpdater({
         database: kyselyAdapter({
           db: migrationKysely,
+          insightsDatabaseNamespace,
           provider: "postgresql",
         }),
       });
@@ -528,6 +533,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       const migrationHotUpdater = createHotUpdater({
         database: kyselyAdapter({
           db: migrationKysely,
+          insightsDatabaseNamespace,
           provider: "postgresql",
           relationMode: "fumadb",
         }),
@@ -561,6 +567,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       const migrationHotUpdater = createHotUpdater({
         database: kyselyAdapter({
           db: migrationKysely,
+          insightsDatabaseNamespace,
           provider: "sqlite",
         }),
       });
@@ -599,7 +606,11 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         }),
       } as unknown as MongoClient;
       const mongoHotUpdater = createHotUpdater({
-        database: mongoAdapter({ client, transactions: true }),
+        database: mongoAdapter({
+          client,
+          transactions: true,
+          insightsDatabaseNamespace,
+        }),
       });
       const result = await createMigrator(mongoHotUpdater).migrateToLatest({
         mode: "from-schema",
@@ -643,6 +654,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       const migrationHotUpdater = createHotUpdater({
         database: kyselyAdapter({
           db: migrationKysely,
+          insightsDatabaseNamespace,
           provider: "postgresql",
         }),
       });
@@ -669,6 +681,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       const migrationHotUpdater = createHotUpdater({
         database: kyselyAdapter({
           db: migrationKysely,
+          insightsDatabaseNamespace,
           provider: "postgresql",
         }),
       });
@@ -693,6 +706,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       const migrationHotUpdater = createHotUpdater({
         database: kyselyAdapter({
           db: migrationKysely,
+          insightsDatabaseNamespace,
           provider: "postgresql",
         }),
       });
@@ -743,7 +757,11 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         }),
       } as unknown as MongoClient;
       const mongoHotUpdater = createHotUpdater({
-        database: mongoAdapter({ client, transactions: true }),
+        database: mongoAdapter({
+          client,
+          transactions: true,
+          insightsDatabaseNamespace,
+        }),
       });
 
       await expect(mongoHotUpdater.getBundles({ limit: 10 })).rejects.toThrow(
@@ -807,8 +825,13 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
             channels,
           }),
       );
+      const $executeRawUnsafe = vi.fn(async () => 0);
+      const $queryRawUnsafe = vi.fn(async () => []);
       const adapter = prismaAdapter({
+        insightsDatabaseNamespace,
         prisma: {
+          $executeRawUnsafe,
+          $queryRawUnsafe,
           $transaction,
           bundle_patches: rootPatches,
           bundles: rootBundles,
@@ -923,6 +946,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         transaction,
       };
       const adapter = drizzleAdapter({
+        insightsDatabaseNamespace,
         db,
         provider: "postgresql",
       });
@@ -962,7 +986,11 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
             name === "bundle_patches" ? patches : bundles,
         }),
       } as unknown as MongoClient;
-      const adapter = mongoAdapter({ client, transactions: true });
+      const adapter = mongoAdapter({
+        client,
+        transactions: true,
+        insightsDatabaseNamespace,
+      });
 
       expect(Reflect.has(adapter, "transaction")).toBe(false);
     });
@@ -995,7 +1023,11 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
           operation(session),
       );
       Object.defineProperty(client, "withSession", { value: withSession });
-      const adapter = mongoAdapter({ client, transactions: true });
+      const adapter = mongoAdapter({
+        client,
+        transactions: true,
+        insightsDatabaseNamespace,
+      });
 
       await adapter.commit({
         changes: [

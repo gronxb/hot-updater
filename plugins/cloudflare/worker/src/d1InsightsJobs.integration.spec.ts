@@ -14,7 +14,9 @@ import {
   assertD1InsightsJobsLayout,
   createD1InsightsMaintenance,
 } from "../../src/d1InsightsJobs";
-import { createD1RequiredInsightsModel } from "../../src/d1InsightsRequired";
+import { createD1InsightsModel } from "../../src/d1InsightsModel";
+
+const DATABASE_NAMESPACE = "00000000-0000-4000-8000-000000000101";
 import { d1InsightsInstallKey } from "../../src/d1InsightsSource";
 
 declare module "vitest" {
@@ -57,7 +59,7 @@ const reset = async () => {
     DELETE FROM private_hot_updater_insights_pending_events;
     DELETE FROM bundle_events;
     UPDATE private_hot_updater_insights_source_state
-    SET generation = 0, status = 'ready',
+    SET database_namespace = NULL, generation = 0, status = 'ready',
       backfill_upper_received_at_ms = NULL, backfill_upper_id = NULL,
       backfill_after_received_at_ms = NULL, backfill_after_id = NULL
     WHERE id = 1;
@@ -127,7 +129,7 @@ it("rejects same-name job tables, indexes, and triggers with the wrong shape", a
 });
 
 const runToPublication = async (maximumSteps = 100) => {
-  const maintenance = createD1InsightsMaintenance(executor);
+  const maintenance = createD1InsightsMaintenance(executor, DATABASE_NAMESPACE);
   for (let step = 0; step < maximumSteps; step += 1) {
     const result = await maintenance.runStep({
       maxItems: 4096,
@@ -143,7 +145,7 @@ const runToPublication = async (maximumSteps = 100) => {
 };
 
 it("defers a healthy claimed job when request budget or D1 reads are exhausted", async () => {
-  const insights = createD1RequiredInsightsModel(executor, "d1-jobs");
+  const insights = createD1InsightsModel(executor, DATABASE_NAMESPACE);
   await insights.append({
     ...createBundleEventRowFixture("959", 100),
     install_id: "retry-install",
@@ -157,7 +159,10 @@ it("defers a healthy claimed job when request budget or D1 reads are exhausted",
   const preparing = await insights.pageInstallations(input);
   if (preparing.state !== "preparing") throw new Error("search was not queued");
 
-  const bounded = await createD1InsightsMaintenance(executor).runStep({
+  const bounded = await createD1InsightsMaintenance(
+    executor,
+    DATABASE_NAMESPACE,
+  ).runStep({
     maxItems: 256,
     maxRequests: 9,
   });
@@ -196,7 +201,10 @@ it("defers a healthy claimed job when request budget or D1 reads are exhausted",
     },
     batch: executor.batch,
   };
-  const deferred = await createD1InsightsMaintenance(transient).runStep({
+  const deferred = await createD1InsightsMaintenance(
+    transient,
+    DATABASE_NAMESPACE,
+  ).runStep({
     maxItems: 256,
     maxRequests: 50,
   });
@@ -229,7 +237,7 @@ it("defers a healthy claimed job when request budget or D1 reads are exhausted",
 });
 
 it("deduplicates historical aliases with JS lowercase semantics", async () => {
-  const insights = createD1RequiredInsightsModel(executor, "d1-jobs");
+  const insights = createD1InsightsModel(executor, DATABASE_NAMESPACE);
   const first = {
     ...createBundleEventRowFixture("1201", 100),
     install_id: "unicode-install",
@@ -304,7 +312,7 @@ it("deduplicates historical aliases with JS lowercase semantics", async () => {
 });
 
 it("shortens a published search page before the serialized 1 MiB limit", async () => {
-  const insights = createD1RequiredInsightsModel(executor, "d1-jobs");
+  const insights = createD1InsightsModel(executor, DATABASE_NAMESPACE);
   const large = (prefix: string) =>
     `${prefix}${"x".repeat(1024 - prefix.length)}`;
   for (let index = 0; index < 100; index += 1) {
@@ -411,7 +419,7 @@ it("keeps active projection bind values bounded for canonical 20 KiB events", as
       return executor.batch(statements);
     },
   };
-  const insights = createD1RequiredInsightsModel(measured, "d1-jobs");
+  const insights = createD1InsightsModel(measured, DATABASE_NAMESPACE);
   const now = Date.now();
   for (let index = 0; index < 24; index += 1) {
     const base = {
@@ -454,7 +462,7 @@ it("keeps active projection bind values bounded for canonical 20 KiB events", as
   await expect(insights.getReport({ query })).resolves.toMatchObject({
     state: "preparing",
   });
-  const maintenance = createD1InsightsMaintenance(measured);
+  const maintenance = createD1InsightsMaintenance(measured, DATABASE_NAMESPACE);
   let published = false;
   for (let step = 0; step < 100 && !published; step += 1) {
     const result = await maintenance.runStep({
@@ -474,7 +482,7 @@ it("keeps active projection bind values bounded for canonical 20 KiB events", as
 });
 
 it("hydrates 33 installations with 30 exact-20 KiB buckets in bounded steps", async () => {
-  const insights = createD1RequiredInsightsModel(executor, "d1-jobs");
+  const insights = createD1InsightsModel(executor, DATABASE_NAMESPACE);
   const query = { kind: "activeOverview" as const, window: "30d" as const };
   const preparing = await insights.getReport({ query });
   if (preparing.state !== "preparing") throw new Error("report was not queued");
@@ -605,7 +613,7 @@ it("hydrates 33 installations with 30 exact-20 KiB buckets in bounded steps", as
       return result;
     },
   };
-  const maintenance = createD1InsightsMaintenance(measured);
+  const maintenance = createD1InsightsMaintenance(measured, DATABASE_NAMESPACE);
   let processed = 0;
   for (let step = 0; step < 100; step += 1) {
     const checkpoint = await env.DB.prepare(
@@ -652,7 +660,7 @@ it("hydrates 33 installations with 30 exact-20 KiB buckets in bounded steps", as
 }, 30_000);
 
 it("fences a stolen lease and reconciles a committed checkpoint after response loss", async () => {
-  const insights = createD1RequiredInsightsModel(executor, "d1-jobs");
+  const insights = createD1InsightsModel(executor, DATABASE_NAMESPACE);
   await insights.append({
     ...createBundleEventRowFixture("981", 100),
     install_id: "lease-install",
@@ -685,7 +693,7 @@ it("fences a stolen lease and reconciles a committed checkpoint after response l
     },
   };
   await expect(
-    createD1InsightsMaintenance(fenced).runStep({
+    createD1InsightsMaintenance(fenced, DATABASE_NAMESPACE).runStep({
       maxItems: 4096,
       maxRequests: 50,
     }),
@@ -720,7 +728,7 @@ it("fences a stolen lease and reconciles a committed checkpoint after response l
     },
   };
   await expect(
-    createD1InsightsMaintenance(uncertain).runStep({
+    createD1InsightsMaintenance(uncertain, DATABASE_NAMESPACE).runStep({
       maxItems: 4096,
       maxRequests: 50,
     }),
@@ -746,7 +754,7 @@ it("fences a stolen lease and reconciles a committed checkpoint after response l
 });
 
 it("rolls back a failed publication swap and retains the prior immutable head", async () => {
-  const insights = createD1RequiredInsightsModel(executor, "d1-jobs");
+  const insights = createD1InsightsModel(executor, DATABASE_NAMESPACE);
   await insights.append({
     ...createBundleEventRowFixture("982", 100),
     install_id: "atomic-install",
@@ -774,7 +782,7 @@ it("rolls back a failed publication swap and retains the prior immutable head", 
   const stale = await insights.pageInstallations({ ...input, minAsOfMs: 1 });
   if (stale.state !== "stale") throw new Error("refresh was not reserved");
   const refreshId = stale.refresh.id;
-  const maintenance = createD1InsightsMaintenance(executor);
+  const maintenance = createD1InsightsMaintenance(executor, DATABASE_NAMESPACE);
   for (;;) {
     const checkpoint = await env.DB.prepare(
       "SELECT checkpoint_json FROM private_hot_updater_insights_jobs WHERE id = ?",
@@ -810,7 +818,7 @@ it("rolls back a failed publication swap and retains the prior immutable head", 
     },
   };
   await expect(
-    createD1InsightsMaintenance(failing).runStep({
+    createD1InsightsMaintenance(failing, DATABASE_NAMESPACE).runStep({
       maxItems: 4096,
       maxRequests: 50,
     }),
@@ -849,7 +857,7 @@ it("publishes an empty bundle summary without reading the source", async () => {
     },
     batch: executor.batch,
   };
-  const insights = createD1RequiredInsightsModel(guarded, "d1-jobs");
+  const insights = createD1InsightsModel(guarded, DATABASE_NAMESPACE);
   const query = {
     kind: "bundleSummaries" as const,
     bundleIds: [],
@@ -857,7 +865,10 @@ it("publishes an empty bundle summary without reading the source", async () => {
   };
   const preparing = await insights.getReport({ query });
   expect(preparing).toMatchObject({ state: "preparing" });
-  const result = await createD1InsightsMaintenance(guarded).runStep({
+  const result = await createD1InsightsMaintenance(
+    guarded,
+    DATABASE_NAMESPACE,
+  ).runStep({
     maxItems: 256,
     maxRequests: 50,
   });
@@ -870,7 +881,7 @@ it("publishes an empty bundle summary without reading the source", async () => {
 });
 
 it("fails and rolls back a cross-count install digest collision", async () => {
-  const insights = createD1RequiredInsightsModel(executor, "d1-jobs");
+  const insights = createD1InsightsModel(executor, DATABASE_NAMESPACE);
   const event = {
     ...createBundleEventRowFixture("1199", 100),
     install_id: "collision-source",
@@ -898,7 +909,10 @@ it("fails and rolls back a cross-count install digest collision", async () => {
       "different-full-install-id",
     )
     .run();
-  const result = await createD1InsightsMaintenance(executor).runStep({
+  const result = await createD1InsightsMaintenance(
+    executor,
+    DATABASE_NAMESPACE,
+  ).runStep({
     maxItems: 256,
     maxRequests: 50,
   });
@@ -922,7 +936,7 @@ it("fails and rolls back a cross-count install digest collision", async () => {
 });
 
 it("proves a 50,001-member search uses bounded native seeks without a temp sort", async () => {
-  const insights = createD1RequiredInsightsModel(executor, "d1-jobs");
+  const insights = createD1InsightsModel(executor, DATABASE_NAMESPACE);
   await env.DB.prepare(`
       WITH RECURSIVE source(n) AS (
         VALUES (1) UNION ALL SELECT n + 1 FROM source WHERE n < 100002

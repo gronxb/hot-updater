@@ -8,9 +8,7 @@ import {
   INSIGHTS_PAGE_MAX_BYTES,
   INSIGHTS_PAGE_MAX_ROWS,
   assertInsightsEventContract,
-  assertInsightsEventRow,
   canonicalInsightsJson,
-  databaseFields,
   getCanonicalInsightsJsonByteLength,
   getInsightsInstallationOrderKey,
   isCanonicalInsightsEventId,
@@ -28,6 +26,8 @@ export const D1_INSIGHTS_INSTALLATION_ALIASES =
 export const D1_INSIGHTS_INSTALLATION_VERSIONS =
   "private_hot_updater_insights_installation_versions";
 const SOURCE_ID = /^[0-9a-f]{32}$/;
+const DATABASE_NAMESPACE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const INSTALL_KEY = /^[0-9a-f]{64}$/;
 const MAX_BACKFILL_PAGE = 100;
 const MAX_BACKFILL_PAYLOAD_BYTES = 500_000;
@@ -35,6 +35,25 @@ const MAX_SAFE_GENERATION = Number.MAX_SAFE_INTEGER;
 const INSTALL_KEY_COLLISION_MARKER =
   "HOT_UPDATER_INSIGHTS_INSTALL_KEY_COLLISION";
 const textEncoder = new TextEncoder();
+const D1_INSIGHTS_EVENT_COLUMNS = [
+  "id",
+  "type",
+  "install_id",
+  "user_id",
+  "username",
+  "from_bundle_id",
+  "from_release_id",
+  "to_bundle_id",
+  "to_release_id",
+  "platform",
+  "app_version",
+  "channel",
+  "cohort",
+  "update_strategy",
+  "fingerprint_hash",
+  "sdk_version",
+  "received_at_ms",
+] as const satisfies readonly (keyof BundleEventRow)[];
 
 const WRITER_TRIGGER_SQL = `CREATE TRIGGER bundle_events_insights_writer_fence
 BEFORE INSERT ON bundle_events
@@ -105,6 +124,7 @@ const SOURCE_STATE_TABLE_SQL = `CREATE TABLE private_hot_updater_insights_source
   id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1),
   version INTEGER NOT NULL CHECK (version = 2),
   source_id TEXT COLLATE BINARY NOT NULL,
+  database_namespace TEXT COLLATE BINARY,
   status TEXT NOT NULL CHECK (status IN ('preparing', 'ready', 'failed')),
   generation INTEGER NOT NULL CHECK (
     generation >= 0 AND generation <= 9007199254740991
@@ -112,7 +132,17 @@ const SOURCE_STATE_TABLE_SQL = `CREATE TABLE private_hot_updater_insights_source
   backfill_upper_received_at_ms REAL,
   backfill_upper_id TEXT COLLATE BINARY,
   backfill_after_received_at_ms REAL,
-  backfill_after_id TEXT COLLATE BINARY
+  backfill_after_id TEXT COLLATE BINARY,
+  CONSTRAINT insights_database_namespace_check CHECK (
+    database_namespace IS NULL OR (
+      length(database_namespace) = 36
+      AND substr(database_namespace, 9, 1) = '-'
+      AND substr(database_namespace, 14, 1) = '-'
+      AND substr(database_namespace, 19, 1) = '-'
+      AND substr(database_namespace, 24, 1) = '-'
+      AND replace(database_namespace, '-', '') NOT GLOB '*[^0-9a-f]*'
+    )
+  )
 )`;
 
 const PENDING_EVENTS_TABLE_SQL = `CREATE TABLE private_hot_updater_insights_pending_events (
@@ -346,7 +376,6 @@ const LEGACY_EVENT_BYTES_SQL = `length(CAST(json_object(
 ) AS BLOB))`;
 
 const eventBytes = (row: BundleEventRow): number => {
-  assertInsightsEventRow(row);
   assertInsightsEventContract(row);
   return getCanonicalInsightsJsonByteLength(row);
 };
@@ -398,7 +427,7 @@ export const createD1InsightsEventInsert = async (
   const eventJson = canonicalInsightsJson(row);
   const installKey = await d1InsightsInstallKey(row.install_id);
   const columns = [
-    ...databaseFields.bundle_events,
+    ...D1_INSIGHTS_EVENT_COLUMNS,
     "insights_write_version",
     "insights_install_key",
     "insights_row_bytes",
@@ -406,7 +435,7 @@ export const createD1InsightsEventInsert = async (
     "insights_aliases_json",
   ];
   const values = [
-    ...databaseFields.bundle_events.map((field) => row[field]),
+    ...D1_INSIGHTS_EVENT_COLUMNS.map((field) => row[field]),
     2,
     installKey,
     rowBytes,
@@ -473,6 +502,37 @@ const readState = async (executor: D1Executor): Promise<SourceState> => {
   return sourceState(rows[0]);
 };
 
+export const assertD1InsightsDatabaseNamespace = (
+  databaseNamespace: string,
+): void => {
+  if (!DATABASE_NAMESPACE.test(databaseNamespace)) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+};
+
+export const verifyD1InsightsDatabaseNamespace = async (
+  executor: D1Executor,
+  databaseNamespace: string,
+): Promise<void> => {
+  assertD1InsightsDatabaseNamespace(databaseNamespace);
+  const updated = await executor.query(
+    `UPDATE ${SOURCE_STATE}
+      SET database_namespace = json_extract(?, '$')
+      WHERE id = 1 AND version = 2
+        AND (database_namespace IS NULL
+          OR database_namespace = json_extract(?, '$') COLLATE BINARY)
+      RETURNING database_namespace`,
+    encodeD1Values([databaseNamespace, databaseNamespace]),
+  );
+  if (
+    updated.length !== 1 ||
+    !record(updated[0]) ||
+    updated[0].database_namespace !== databaseNamespace
+  ) {
+    throw new InsightsQueryNotReadyError();
+  }
+};
+
 export const assertD1InsightsLayout = async (
   executor: D1Executor,
 ): Promise<void> => {
@@ -489,7 +549,7 @@ export const assertD1InsightsLayout = async (
       (SELECT group_concat(name || ':' || type || ':' || "notnull" || ':' || pk, ',') FROM (
         SELECT name, type, "notnull", pk
         FROM pragma_table_info('${SOURCE_STATE}') ORDER BY cid
-      )) = 'id:INTEGER:1:1,version:INTEGER:1:0,source_id:TEXT:1:0,status:TEXT:1:0,generation:INTEGER:1:0,backfill_upper_received_at_ms:REAL:0:0,backfill_upper_id:TEXT:0:0,backfill_after_received_at_ms:REAL:0:0,backfill_after_id:TEXT:0:0'
+      )) = 'id:INTEGER:1:1,version:INTEGER:1:0,source_id:TEXT:1:0,database_namespace:TEXT:0:0,status:TEXT:1:0,generation:INTEGER:1:0,backfill_upper_received_at_ms:REAL:0:0,backfill_upper_id:TEXT:0:0,backfill_after_received_at_ms:REAL:0:0,backfill_after_id:TEXT:0:0'
         AS state_columns,
       (SELECT sql FROM sqlite_master WHERE type = 'table'
         AND name = '${SOURCE_STATE}') AS state_table,
@@ -707,7 +767,6 @@ const publicEvent = (value: unknown): BundleEventRow => {
   if (!record(value)) return invalidResult();
   try {
     assertInsightsEventContract(value);
-    assertInsightsEventRow(value);
   } catch {
     return invalidResult();
   }
@@ -828,7 +887,7 @@ const readD1LegacyPointerEvents = async <
   const selected = pointerPrefix(pointers, limit);
   if (selected.length === 0) return [];
   const rows = await executor.query(
-    `SELECT ${databaseFields.bundle_events.join(", ")}
+    `SELECT ${D1_INSIGHTS_EVENT_COLUMNS.join(", ")}
     FROM bundle_events WHERE id IN (SELECT value FROM json_each(?))`,
     [JSON.stringify(selected.map(({ eventId }) => eventId))],
   );

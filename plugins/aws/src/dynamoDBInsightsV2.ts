@@ -10,6 +10,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import type {
   BundleEventRow,
+  InsightsModel,
   InsightsLiveInstallationPage,
   InsightsLiveInstallationPageInput,
   InsightsInstallationRow,
@@ -25,7 +26,6 @@ import {
   assertInsightsPageContract,
   assertInsightsPreparingReadContract,
   canonicalInsightsJson,
-  compareInsightsEventRows,
   INSIGHTS_CURSOR_MAX_BYTES,
   INSIGHTS_EVENT_ID_PATTERN,
   INSIGHTS_EVENT_MAX_BYTES,
@@ -34,7 +34,6 @@ import {
   INSIGHTS_PAGE_MAX_BYTES,
   readInsightsInstallationPageInput,
   readInsightsPageEventsInput,
-  type RequiredInsightsModel,
 } from "@hot-updater/plugin-core/internal";
 
 export const DYNAMODB_INSIGHTS_V2_PREFIX = "_hot-updater#insights-v2" as const;
@@ -69,11 +68,7 @@ type TransactItem = NonNullable<
 
 export interface DynamoDBInsightsV2Store {
   readonly tableName: string;
-  readonly namespace: {
-    readonly partition: string;
-    readonly region: string;
-    readonly accountId: string;
-  };
+  readonly insightsDatabaseNamespace: string;
   readonly client: {
     send(command: unknown): Promise<any>;
   };
@@ -139,7 +134,7 @@ const withRequestBudget = (
   let requests = 0;
   return {
     tableName: store.tableName,
-    namespace: store.namespace,
+    insightsDatabaseNamespace: store.insightsDatabaseNamespace,
     client: {
       send(command) {
         requests += 1;
@@ -167,24 +162,26 @@ export class DynamoDBInsightsV2NotReadyError extends Error {
 const sha256 = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
 
+const DATABASE_NAMESPACE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 export const dynamoDBInsightsV2Namespace = (
-  store: Pick<DynamoDBInsightsV2Store, "namespace" | "tableName">,
+  store: Pick<DynamoDBInsightsV2Store, "insightsDatabaseNamespace">,
 ): string => {
-  const identity = [
-    store.namespace.partition,
-    store.namespace.region,
-    store.namespace.accountId,
-    store.tableName,
-  ];
-  if (identity.some((value) => value.length === 0)) {
+  if (!DATABASE_NAMESPACE.test(store.insightsDatabaseNamespace)) {
     throw new DynamoDBInsightsV2InputError(
-      "DynamoDB Insights namespace components must be non-empty",
+      "DynamoDB Insights database namespace must be a lowercase UUID",
     );
   }
-  return sha256(
-    canonicalInsightsJson([DYNAMODB_INSIGHTS_V2_STORAGE_REVISION, ...identity]),
-  );
+  return store.insightsDatabaseNamespace;
 };
+
+const compareInsightsEventRows = (
+  left: Pick<BundleEventRow, "received_at_ms" | "id">,
+  right: Pick<BundleEventRow, "received_at_ms" | "id">,
+): number =>
+  right.received_at_ms - left.received_at_ms ||
+  (left.id < right.id ? 1 : left.id > right.id ? -1 : 0);
 
 export const dynamoDBInsightsInstallationHash = (installId: string): string =>
   sha256(canonicalInsightsJson(installId));
@@ -1211,7 +1208,7 @@ const isLegacyCheckpoint = (
     item.state === "done" ||
     item.state === "failed");
 
-const legacyPartition = "bundle_events";
+export const DYNAMODB_INSIGHTS_LEGACY_PARTITION = "bundle_events";
 
 const initializeLegacyCheckpoint = async (
   store: DynamoDBInsightsV2Store,
@@ -1224,7 +1221,9 @@ const initializeLegacyCheckpoint = async (
       ConsistentRead: true,
       KeyConditionExpression: "#pk = :pk",
       ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
-      ExpressionAttributeValues: { ":pk": legacyPartition },
+      ExpressionAttributeValues: {
+        ":pk": DYNAMODB_INSIGHTS_LEGACY_PARTITION,
+      },
       ProjectionExpression: "#sk",
       Limit: 1,
       ScanIndexForward: false,
@@ -1265,7 +1264,7 @@ const parseLegacyEvent = (
   item: Record<string, unknown>,
 ): ReturnType<typeof validateDynamoDBInsightsV2Event> => {
   if (
-    item.pk !== legacyPartition ||
+    item.pk !== DYNAMODB_INSIGHTS_LEGACY_PARTITION ||
     typeof item.sk !== "string" ||
     item.version !== 1 ||
     typeof item.row !== "object" ||
@@ -1394,7 +1393,7 @@ export const runDynamoDBInsightsLegacyBackfillStep = async (
             : "#pk = :pk AND #sk BETWEEN :after AND :boundary",
         ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
         ExpressionAttributeValues: {
-          ":pk": legacyPartition,
+          ":pk": DYNAMODB_INSIGHTS_LEGACY_PARTITION,
           ":boundary": checkpoint.boundary_sk,
           ...(checkpoint.after_sk === ""
             ? {}
@@ -3429,7 +3428,7 @@ export const pageDynamoDBInsightsInstallations = async (
 };
 
 export interface DynamoDBInsightsV2 extends Pick<
-  RequiredInsightsModel,
+  InsightsModel,
   "append" | "pageEvents"
 > {
   append(row: BundleEventRow): Promise<void>;

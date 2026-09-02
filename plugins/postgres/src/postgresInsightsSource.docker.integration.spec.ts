@@ -21,6 +21,8 @@ import {
 } from "./postgresInsightsSource";
 import type { Database } from "./types";
 
+const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
+
 const postgresImage =
   process.env.POSTGRES_INSIGHTS_TEST_VERSION_17 === "1"
     ? "postgres:17-alpine"
@@ -92,11 +94,16 @@ describe("PostgreSQL committed source with concurrent transactions", () => {
     await pool.query(
       await readFile("plugins/postgres/sql/bundles.sql", "utf8"),
     );
-    await migratePostgresInsightsSource(db);
-    source = createPostgresInsightsSourceTools(db);
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
+    source = createPostgresInsightsSourceTools(db, insightsDatabaseNamespace);
     expect(await source.backfillStep(2)).toEqual({ ready: true, processed: 0 });
-    await migratePostgresInsightsLive(db);
-    expect(await createPostgresInsightsLiveTools(db).backfillStep(2)).toEqual({
+    await migratePostgresInsightsLive(db, insightsDatabaseNamespace);
+    expect(
+      await createPostgresInsightsLiveTools(
+        db,
+        insightsDatabaseNamespace,
+      ).backfillStep(2),
+    ).toEqual({
       ready: true,
       processed: 0,
     });
@@ -121,7 +128,12 @@ describe("PostgreSQL committed source with concurrent transactions", () => {
       (row) => postgresEventSourceShard(row.id) !== shard,
     )!;
     const writer = (name: string) => {
-      const result = postgres({ ...config, max: 1, application_name: name });
+      const result = postgres({
+        insightsDatabaseNamespace,
+        ...config,
+        max: 1,
+        application_name: name,
+      });
       writers.push(result);
       return result;
     };

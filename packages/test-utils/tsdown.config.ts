@@ -18,7 +18,7 @@ export default defineConfig([
     failOnWarn: true,
   },
   {
-    entry: { "insights-oracle": "src/requiredInsightsModelOracle.ts" },
+    entry: { "insights-oracle": "src/insightsModelOracle.ts" },
     format: ["esm"],
     outDir: "dist",
     clean: false,

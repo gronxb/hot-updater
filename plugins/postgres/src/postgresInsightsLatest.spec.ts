@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 
 import { PGlite } from "@electric-sql/pglite";
 import { Kysely, sql } from "kysely";
@@ -6,8 +7,13 @@ import { PGliteDialect } from "kysely-pglite-dialect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
-import { migratePostgresInsightsReports } from "./db";
+import {
+  migratePostgresInsightsReports,
+  migratePostgresInsightsSource,
+} from "./db";
 import { readPostgresInsightsLatestByKey } from "./postgresInsightsReportData";
+
+const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
 
 const installKey = (value: string) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -43,7 +49,11 @@ describe("frozen installation point lookups", () => {
         },
       ],
     });
-    await migratePostgresInsightsReports(db);
+    await client.exec(
+      await readFile("plugins/postgres/sql/bundles.sql", "utf8"),
+    );
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
+    await migratePostgresInsightsReports(db, insightsDatabaseNamespace);
     await sql`insert into private_hot_updater_insights_report_latest
       (job_id, install_key, bucket_index, install_id, event) values ${sql.join(
         rows.map(

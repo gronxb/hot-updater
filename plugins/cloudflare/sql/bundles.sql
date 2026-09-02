@@ -182,6 +182,7 @@ CREATE TABLE private_hot_updater_insights_source_state (
   id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1),
   version INTEGER NOT NULL CHECK (version = 2),
   source_id TEXT COLLATE BINARY NOT NULL,
+  database_namespace TEXT COLLATE BINARY,
   status TEXT NOT NULL CHECK (status IN ('preparing', 'ready', 'failed')),
   generation INTEGER NOT NULL CHECK (
     generation >= 0 AND generation <= 9007199254740991
@@ -189,7 +190,17 @@ CREATE TABLE private_hot_updater_insights_source_state (
   backfill_upper_received_at_ms REAL,
   backfill_upper_id TEXT COLLATE BINARY,
   backfill_after_received_at_ms REAL,
-  backfill_after_id TEXT COLLATE BINARY
+  backfill_after_id TEXT COLLATE BINARY,
+  CONSTRAINT insights_database_namespace_check CHECK (
+    database_namespace IS NULL OR (
+      length(database_namespace) = 36
+      AND substr(database_namespace, 9, 1) = '-'
+      AND substr(database_namespace, 14, 1) = '-'
+      AND substr(database_namespace, 19, 1) = '-'
+      AND substr(database_namespace, 24, 1) = '-'
+      AND replace(database_namespace, '-', '') NOT GLOB '*[^0-9a-f]*'
+    )
+  )
 );
 
 CREATE TABLE private_hot_updater_insights_source_events (

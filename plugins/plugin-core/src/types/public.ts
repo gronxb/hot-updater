@@ -4,13 +4,7 @@ export type {
   ReleaseRowUpdate,
 } from "./databaseOperations";
 export type {
-  InsightsEventPage,
-  InsightsEventPageInput,
-  InsightsEventQueries,
-  InsightsEventScope,
   InsightsModel,
-  InsightsScanCursor,
-  InsightsScanInput,
   BundleModel,
   BundleModelQuery,
   BundlePatchModel,

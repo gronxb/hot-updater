@@ -17,6 +17,8 @@ import {
 } from "./postgresInsightsJobs";
 import { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
 
+const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
+
 const jobs = "private_hot_updater_insights_report_jobs";
 const postgresImage =
   process.env.POSTGRES_INSIGHTS_TEST_VERSION_17 === "1"
@@ -90,14 +92,17 @@ describe("PostgreSQL search reservation and base publication concurrency", () =>
     await pool.query(
       await readFile("plugins/postgres/sql/bundles.sql", "utf8"),
     );
-    await migratePostgresInsightsSource(db);
-    const source = createPostgresInsightsSourceTools(db);
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
+    const source = createPostgresInsightsSourceTools(
+      db,
+      insightsDatabaseNamespace,
+    );
     await source.backfillStep(1);
     generation = await source.capture();
     await pool.query(
       await readFile("plugins/postgres/sql/insights-reports-v1.sql", "utf8"),
     );
-    store = createPostgresInsightsJobs(db);
+    store = createPostgresInsightsJobs(db, insightsDatabaseNamespace);
   });
   afterAll(async () => {
     await db?.destroy();

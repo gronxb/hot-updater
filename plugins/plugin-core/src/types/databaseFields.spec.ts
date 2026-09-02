@@ -12,7 +12,6 @@ describe("database model fields", () => {
       "releases",
       "release_catalogs",
       "channels",
-      "bundle_events",
       "api_keys",
     ]);
   });

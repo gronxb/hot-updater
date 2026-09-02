@@ -9,9 +9,9 @@ import { useEffect, useState } from "react";
 
 import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { Badge } from "@/components/ui/badge";
-import type { EventHistoryResult } from "@/lib/api";
+import type { InsightsEventRow } from "@/lib/insights-view";
 
-type EventHistoryRow = EventHistoryResult["data"][number];
+type EventHistoryRow = InsightsEventRow;
 
 const eventTypes = {
   UPDATE_APPLIED: { label: "Bundle applied", variant: "success", icon: Check },

@@ -2,7 +2,7 @@ import { sql, type QueryExecutorProvider } from "kysely";
 
 import type { SQLProvider as KyselySQLProvider } from "../../kysely";
 import { KYSELY_INSIGHTS_LAYOUT_REVISION, tables } from "./constants";
-import { newOpaqueId } from "./utils";
+import { assertKyselyInsightsDatabaseNamespace } from "./utils";
 
 const text = (provider: KyselySQLProvider): string =>
   provider === "mysql" ? "longtext" : "text";
@@ -36,7 +36,9 @@ const bytes = (provider: KyselySQLProvider, size: number): string =>
 
 export const getKyselyInsightsDDL = (
   provider: KyselySQLProvider,
+  databaseNamespace: string,
 ): readonly string[] => {
+  assertKyselyInsightsDatabaseNamespace(databaseNamespace);
   const large = text(provider);
   const flag = bool(provider);
   const falseLiteral = provider === "sqlite" ? "0" : "false";
@@ -46,7 +48,6 @@ export const getKyselyInsightsDDL = (
   const uuid = asciiText(provider, 36);
   const json = jsonText(provider);
   const labelOrder = bytes(provider, 2_048);
-  const sourceId = newOpaqueId();
   const legacyOrder = "id";
   const index = (
     name: string,
@@ -63,7 +64,7 @@ export const getKyselyInsightsDDL = (
         ];
   return [
     `create table if not exists ${tables.state} (id integer primary key, layout_revision integer not null, source_id ${uuid} not null, next_seq bigint not null, ready ${flag} not null, migration_upper_id ${large}, migration_after_id ${large}, poison_event_id ${large})`,
-    `insert into ${tables.state} (id, layout_revision, source_id, next_seq, ready, migration_upper_id, migration_after_id, poison_event_id) select 1, ${KYSELY_INSIGHTS_LAYOUT_REVISION}, '${sourceId}', 0, ${falseLiteral}, null, null, null where not exists (select 1 from ${tables.state} where id = 1)`,
+    `insert into ${tables.state} (id, layout_revision, source_id, next_seq, ready, migration_upper_id, migration_after_id, poison_event_id) select 1, ${KYSELY_INSIGHTS_LAYOUT_REVISION}, '${databaseNamespace}', 0, ${falseLiteral}, null, null, null where not exists (select 1 from ${tables.state} where id = 1)`,
     `create table if not exists ${tables.events} (event_id ${uuid} primary key, source_seq bigint not null unique, received_at_ms bigint not null, install_key ${key64} not null, install_id ${id} not null, event_type varchar(32) not null, to_bundle_id ${uuid} not null, from_bundle_id ${uuid}, raw_json ${large} not null${provider === "mysql" ? ", index kysely_insights_events_order_idx (received_at_ms, event_id), index kysely_insights_events_install_idx (install_key, event_type, received_at_ms, event_id), index kysely_insights_events_install_source_idx (install_key, source_seq), index kysely_insights_events_to_bundle_idx (event_type, to_bundle_id, received_at_ms, event_id), index kysely_insights_events_from_bundle_idx (event_type, from_bundle_id, received_at_ms, event_id)" : ""})`,
     ...index(
       "kysely_insights_events_order_idx",
@@ -165,14 +166,17 @@ export const getKyselyInsightsDDL = (
 export const migrateKyselyInsights = async (
   db: QueryExecutorProvider,
   provider: KyselySQLProvider,
-  statements = getKyselyInsightsDDL(provider),
+  databaseNamespace: string,
+  statements = getKyselyInsightsDDL(provider, databaseNamespace),
 ): Promise<void> => {
+  assertKyselyInsightsDatabaseNamespace(databaseNamespace);
   for (const statement of statements) {
     await sql.raw(statement).execute(db);
   }
   const state = await sql<{
     layout_revision: unknown;
-  }>`select layout_revision from ${sql.table(
+    source_id: string;
+  }>`select layout_revision, source_id from ${sql.table(
     tables.state,
   )} where id = 1`.execute(db);
   if (
@@ -180,5 +184,8 @@ export const migrateKyselyInsights = async (
     Number(state.rows[0]?.layout_revision) !== KYSELY_INSIGHTS_LAYOUT_REVISION
   ) {
     throw new Error("Unsupported Kysely Insights layout revision.");
+  }
+  if (state.rows[0]?.source_id !== databaseNamespace) {
+    throw new Error("Kysely Insights database namespace mismatch.");
   }
 };

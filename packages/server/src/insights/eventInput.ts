@@ -6,16 +6,39 @@ import {
   INSIGHTS_STRING_MAX_CODE_UNITS,
 } from "@hot-updater/plugin-core/internal";
 
-import type {
-  CreateBundleEventRequest,
-  CreateBundleEventRequestBase,
-} from "./domain";
 import {
   InsightsBadRequestError,
   InsightsPayloadTooLargeError,
 } from "./errors";
 
-export const EVENT_BODY_MAX_BYTES = INSIGHTS_INGEST_BODY_MAX_BYTES;
+type CreateBundleEventRequestBase = {
+  readonly installId: string;
+  readonly toBundleId: string;
+  readonly userId?: string;
+  readonly username?: string;
+  readonly platform: "ios" | "android";
+  readonly appVersion: string;
+  readonly channel: string;
+  readonly cohort: string;
+  readonly fingerprintHash: string | null;
+  readonly sdkVersion?: string | null;
+  readonly fromReleaseId: string | null;
+  readonly toReleaseId: string | null;
+};
+
+type CreateBundleEventRequest =
+  | (CreateBundleEventRequestBase & {
+      readonly type: "UPDATE_APPLIED" | "RECOVERED" | "RELEASE_ADOPTED";
+      readonly fromBundleId: string;
+      readonly updateStrategy: "fingerprint" | "appVersion";
+    })
+  | (CreateBundleEventRequestBase & {
+      readonly type: "UNCHANGED";
+      readonly fromBundleId: null;
+      readonly updateStrategy: null;
+    });
+
+const EVENT_BODY_MAX_BYTES = INSIGHTS_INGEST_BODY_MAX_BYTES;
 
 const eventKeys = new Set([
   "type",

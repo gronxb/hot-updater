@@ -1,4 +1,5 @@
 import { RefreshCw } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { Badge } from "@/components/ui/badge";
@@ -15,10 +16,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type {
-  InstallationHistoryResult,
-  InstallationHistoryRow,
-  InstallationSearchRow,
-} from "@/lib/api";
+  InsightsEventRow,
+  InsightsInstallationViewRow,
+  InsightsViewPage,
+} from "@/lib/insights-view";
 
 import {
   EventBundleTransition,
@@ -28,7 +29,7 @@ import {
 } from "./EventDetails";
 import { EventHistoryList } from "./EventHistoryList";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
-import { InstallationPagination } from "./InstallationPagination";
+import { InsightsPagination } from "./InsightsPagination";
 
 const getUserLabel = (event: {
   readonly username: string | null;
@@ -36,7 +37,7 @@ const getUserLabel = (event: {
 }) => event.userId ?? event.username ?? "—";
 
 const getLastKnownBundleId = (
-  event: InstallationHistoryRow | InstallationSearchRow,
+  event: InsightsEventRow | InsightsInstallationViewRow,
 ) =>
   "lastKnownBundleId" in event
     ? event.lastKnownBundleId
@@ -46,25 +47,27 @@ export function InstallationHistoryCard({
   error,
   history,
   isLoading,
-  limit,
-  offset,
-  onOffsetChange,
+  onNext,
+  onPrevious,
   onRefresh,
+  pageNumber,
+  readState,
   selectedEvent,
   selectedInstallId,
 }: {
   readonly error: unknown;
-  readonly history: InstallationHistoryResult | undefined;
+  readonly history: InsightsViewPage<InsightsEventRow> | undefined;
   readonly isLoading: boolean;
-  readonly limit: number;
-  readonly offset: number;
   readonly onRefresh?: () => void;
-  readonly onOffsetChange: (offset: number) => void;
+  readonly onNext: () => void;
+  readonly onPrevious: () => void;
+  readonly pageNumber: number;
+  readonly readState?: ReactNode;
   readonly selectedEvent:
-    | InstallationHistoryRow
-    | InstallationSearchRow
+    | InsightsEventRow
+    | InsightsInstallationViewRow
     | undefined;
-  readonly selectedInstallId: string;
+  readonly selectedInstallId: string | undefined;
 }) {
   const dateTimeFormat = useInsightsTimeFormat();
   const lastKnownBundleId = selectedEvent
@@ -78,18 +81,20 @@ export function InstallationHistoryCard({
           <div className="flex min-w-0 flex-col gap-1.5">
             <CardTitle className="text-sm font-medium">
               <h2 className="flex flex-wrap items-center gap-2">
-                {selectedInstallId
+                {selectedInstallId !== undefined
                   ? "Installation history"
                   : "Select an installation"}
-                {history && !error ? (
+                {history?.total !== null &&
+                history?.total !== undefined &&
+                !error ? (
                   <Badge variant="secondary" className="tabular-nums">
-                    {history.pagination.total.toLocaleString()}
+                    {history.total.toLocaleString()}
                   </Badge>
                 ) : null}
               </h2>
             </CardTitle>
           </div>
-          {onRefresh && selectedInstallId ? (
+          {onRefresh && selectedInstallId !== undefined ? (
             <Button
               className="h-11 lg:h-8"
               size="lg"
@@ -104,7 +109,7 @@ export function InstallationHistoryCard({
         </div>
       </CardHeader>
       <CardContent className="min-h-0 p-0">
-        {selectedInstallId && selectedEvent ? (
+        {selectedInstallId !== undefined && selectedEvent ? (
           <>
             <section
               aria-labelledby="latest-installation-state"
@@ -149,7 +154,7 @@ export function InstallationHistoryCard({
             <Separator />
           </>
         ) : null}
-        {selectedInstallId ? (
+        {selectedInstallId !== undefined ? (
           isLoading ? (
             <div
               className="flex flex-col gap-3 p-6"
@@ -160,6 +165,8 @@ export function InstallationHistoryCard({
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
             </div>
+          ) : readState ? (
+            <div className="p-6">{readState}</div>
           ) : error ? (
             <div className="p-6">
               <InsightsErrorAlert
@@ -219,19 +226,37 @@ export function InstallationHistoryCard({
                   </TableBody>
                 </Table>
               </div>
-              <InstallationPagination
+              <InsightsPagination
+                hasNext={history.hasNext}
+                hasPrevious={pageNumber > 1}
                 label="Installation history"
-                limit={limit}
-                offset={offset}
+                onNext={onNext}
+                onPrevious={onPrevious}
                 pageLength={history.data.length}
-                total={history.pagination.total}
-                onOffsetChange={onOffsetChange}
+                pageNumber={pageNumber}
+                total={history.total}
               />
             </>
           ) : (
-            <div className="p-6 text-sm text-muted-foreground">
-              No bundle changes recorded yet.
-            </div>
+            <>
+              <div className="p-6 text-sm text-muted-foreground">
+                {pageNumber > 1 || history?.hasNext
+                  ? "No bundle changes on this page."
+                  : "No bundle changes recorded yet."}
+              </div>
+              {history && (pageNumber > 1 || history.hasNext) ? (
+                <InsightsPagination
+                  hasNext={history.hasNext}
+                  hasPrevious={pageNumber > 1}
+                  label="Installation history"
+                  onNext={onNext}
+                  onPrevious={onPrevious}
+                  pageLength={0}
+                  pageNumber={pageNumber}
+                  total={history.total}
+                />
+              ) : null}
+            </>
           )
         ) : null}
       </CardContent>

@@ -11,13 +11,17 @@ export type CloudflareWorkerEnv = {
   };
   BUCKET: R2Bucket;
   BUCKET_NAME: string;
+  INSIGHTS_DATABASE_NAMESPACE: string;
   STORAGE_DOWNLOAD_URL_SIGNING_KEY: string;
 };
 
 export const HOT_UPDATER_BASE_PATH = "/";
 
 const hotUpdater = createHotUpdater({
-  database: d1Database(env.DB),
+  database: d1Database({
+    database: env.DB,
+    insightsDatabaseNamespace: env.INSIGHTS_DATABASE_NAMESPACE,
+  }),
   clientAccess: { type: "api-key" },
   storage: [
     r2Storage({

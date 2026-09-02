@@ -1,9 +1,10 @@
-# Insights responsive review — 2026-09-01
+# Insights responsive review — 2026-09-02
 
 This revision responds to the repeated text and awkward mobile reading flow in
 the previous review. It separates source and test evidence from browser evidence.
 The previous blanket 100-point assessment and acceptance of horizontally scrolled
-mobile tables are superseded. This review does not approve 50,000 MAU support.
+mobile tables are superseded. The current cursor-based backend contract is
+reviewed separately in [the scale review](./insights-scale-review.md).
 
 ## Implemented hierarchy and interaction
 
@@ -26,7 +27,7 @@ mobile tables are superseded. This review does not approve 50,000 MAU support.
   [period:37](../../packages/console/src/components/features/insights/InsightsControls.tsx#L37),
   [lookup:38](../../packages/console/src/components/features/insights/InstallationPageHeader.tsx#L38),
   [picker:89](../../packages/console/src/components/features/insights/BundleSelector.tsx#L89),
-  [pagination:27](../../packages/console/src/components/features/insights/InstallationPagination.tsx#L27)
+  [pagination:33](../../packages/console/src/components/features/insights/InsightsPagination.tsx#L33)
 - Matching installations form a collapsed chooser below `lg`, so many matches
   cannot bury the selected history on first arrival. Selecting a match closes
   the chooser and returns focus to its trigger. Desktop keeps the sidebar open;
@@ -41,8 +42,9 @@ mobile tables are superseded. This review does not approve 50,000 MAU support.
   [InstallationHistoryCard.tsx:172](../../packages/console/src/components/features/insights/InstallationHistoryCard.tsx#L172),
   [EventHistoryList.tsx:24](../../packages/console/src/components/features/insights/EventHistoryList.tsx#L24)
 - **Activity reported** remains neutral. Applied/adopted events use success and
-  recovery uses warning, all with text and icons. Local times retain the named
-  browser zone, `YYYY/MM/DD HH:mm:ss`, and an exact UTC disclosure. Identifier
+  recovery uses warning, all with text and icons. Local times use
+  `YYYY/MM/DD HH:mm:ss` with the browser's numeric GMT offset and an exact UTC
+  disclosure. Identifier
   buttons copy the full value. [EventDetails.tsx:16](../../packages/console/src/components/features/insights/EventDetails.tsx#L16),
   [timestamp:48](../../packages/console/src/components/features/insights/EventDetails.tsx#L48),
   [HashValueDisplay.tsx:28](../../packages/console/src/components/HashValueDisplay.tsx#L28)
@@ -73,7 +75,7 @@ is converted into full marks, and no blanket 100-point score is issued.
 | InstallationPageHeader  | Named Enter-submit lookup with 16px mobile input and 44px actions. [line 25](../../packages/console/src/components/features/insights/InstallationPageHeader.tsx#L25)                                                                                                                                                             |
 | InstallationMatchesCard | No observed deduction: six matches collapse after selection, trigger focus returns, and desktop remains open. Empty/error handling has test coverage. [line 60](../../packages/console/src/components/features/insights/InstallationMatchesCard.tsx#L60)                                                                         |
 | InstallationHistoryCard | Writing −2 resolved: unselected instruction appears once. Compact metadata and width-based history fit all three inspected widths. [line 80](../../packages/console/src/components/features/insights/InstallationHistoryCard.tsx#L80)                                                                                            |
-| InstallationPagination  | Named region, explicit Previous/Next, disabled boundaries, 44px mobile controls. [line 19](../../packages/console/src/components/features/insights/InstallationPagination.tsx#L19)                                                                                                                                               |
+| InsightsPagination      | Named region, explicit Previous/Next, disabled boundaries, 44px mobile controls. [line 23](../../packages/console/src/components/features/insights/InsightsPagination.tsx#L23)                                                                                                                                                   |
 | InsightsErrorAlert      | Semantic alert and shared actionable error copy. [line 13](../../packages/console/src/components/features/insights/InsightsErrorAlert.tsx#L13)                                                                                                                                                                                   |
 
 Both scored source findings are resolved: **+3 coherence** for the tablet
@@ -101,9 +103,10 @@ remain separate limitations, not assumed passes.
   choosing one and focus returns to the disclosure. Returning from detail to
   Events preserved the source scroll position, **329px → 329px**. Expanding
   Overview UTC retained the 375px document width.
-- Final parent verification passed Console **235 tests / 55 files**, root
-  **2,470 tests / 278 files**, formatting/lint, type checks, the production
-  Console build, and changeset status.
+- The scale branch's complete integration verification passed **49 files** with
+  **478 tests**; 7 files and 81 tests were intentionally skipped by their
+  environment guards. Current unit, lint, type, and build results are recorded
+  in [the scale review](./insights-scale-review.md).
 - Loading and backend error coverage uses component/route tests rather than
   manufactured live failures. Formal contrast measurement, a screen-reader
   session, iOS-device testing, and independent 200% browser zoom are not yet
@@ -115,16 +118,18 @@ remain separate limitations, not assumed passes.
   and 3 reported bundles. The configuration is restored;
   `git diff` shows no change to `packages/console/hot-updater.config.ts`. These
   two images are explicitly fixture evidence, not production data.
-- The 50,000-record aggregate scan limit remains a backend constraint.
-  Installation lookup does not bypass it. Scalability planning is a separate
-  task; these UI changes do not establish 50,000 MAU support.
+- Event and installation views request one bounded cursor page at a time. The
+  backend does not impose a 50,000-record total or retention ceiling.
 
 ## Screenshot evidence
 
-All 14 final captures were inspected. A browser viewport artifact in an early
-Overview capture was corrected before publication. Dimensions are 375 × 844,
-768 × 1024, and 1280 × 900. The nine primary captures use the restored July
-fixture; the two populated-chart supplements disclose their temporary fixture.
+The 375px Events capture was refreshed after the cursor cutover and inspected
+again. It shows the final `Activity reported` label, semantic event colors,
+`YYYY/MM/DD HH:mm:ss` browser-zone timestamps, and mobile cards without a
+horizontal table. The other captures are retained from the preceding responsive
+review; they support its layout findings but predate the final cursor and copy
+changes and are not presented as fresh post-cutover browser evidence. Dimensions
+are 375 × 844, 768 × 1024, and 1280 × 900.
 
 | View                 | 375px phone                                                      | 768px tablet                                                      | 1280px desktop                                                      |
 | -------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------- |
@@ -139,9 +144,6 @@ Supplementary 375px evidence:
 - [Populated bundle chart and tooltip — temporary recent-date fixture](../public/docs/console/insights-bundle-activity-populated-mobile.png)
 - [Light Overview](../public/docs/console/insights-overview-light-mobile.png) and [light Events](../public/docs/console/insights-events-light-mobile.png)
 
-Browser JPEG captures were re-encoded as PNG; no cropping, resizing, or
-retouching. All 14 PNG files retain the original dimensions, and SHA-256
-comparisons of decoded RGB pixels were identical before and after conversion.
-Original JPEG captures are retained locally in
-`/tmp/hot-updater-insights-mobile-20260831`. Captures include development-tool
-launchers.
+The retained browser captures include development-tool launchers. No claim is
+made that the retained captures replace a fresh assistive-technology, zoom, or
+device session.

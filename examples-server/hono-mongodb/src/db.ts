@@ -13,11 +13,16 @@ import { client, closeDatabase as closeMongo, db } from "./mongodb";
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 config({ path: path.join(__dirname, ".env.hotupdater") });
 
+const insightsDatabaseNamespace =
+  process.env.HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE ??
+  "00000000-0000-7000-8000-00000000e001";
+
 // Create Hot Updater instance for CLI
 // Note: MongoDB connection must be established before using this instance
 export const hotUpdater = createHotUpdater({
   database: mongoAdapter({
     client,
+    insightsDatabaseNamespace,
     transactions: true,
   }),
   clientAccess: { type: "public" },

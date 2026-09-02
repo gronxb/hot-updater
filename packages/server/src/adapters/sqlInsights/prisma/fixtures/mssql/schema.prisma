@@ -1,0 +1,29 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("PRISMA_INSIGHTS_MSSQL_URL")
+}
+
+model bundle_events {
+  id               String  @id @db.VarChar(36)
+  type             String  @db.VarChar(255)
+  install_id       String  @db.NVarChar(1024)
+  user_id          String? @db.NVarChar(1024)
+  username         String? @db.NVarChar(1024)
+  from_release_id  String? @db.VarChar(36)
+  from_bundle_id   String? @db.VarChar(36)
+  to_release_id    String? @db.VarChar(36)
+  to_bundle_id     String  @db.VarChar(36)
+  platform         String  @db.VarChar(255)
+  app_version      String  @db.VarChar(255)
+  channel          String  @db.VarChar(255)
+  cohort           String  @db.NVarChar(1024)
+  update_strategy  String? @db.VarChar(255)
+  fingerprint_hash String? @db.VarChar(255)
+  sdk_version      String? @db.VarChar(255)
+  received_at_ms   Float
+}

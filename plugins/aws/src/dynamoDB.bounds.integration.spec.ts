@@ -14,6 +14,7 @@ import {
 import { createDynamoDBCrud, queryCompleteOwnersPatches } from "./dynamoDB";
 import { toDynamoDBBundleItem, toDynamoDBPatchItem } from "./dynamoDB";
 import { DynamoDBIntegrationFixture } from "./dynamoDB.integration-fixture";
+import { createDynamoDBInsightsModel } from "./dynamoDBInsightsV2Jobs";
 
 const fixture = new DynamoDBIntegrationFixture();
 const bundleCount = 1_001;
@@ -113,9 +114,14 @@ describe("DynamoDB reads beyond the former metadata ceiling", () => {
         }),
       );
     }
+    const store = { client: fixture.client, tableName: fixture.tableName };
     const crud = createDynamoDBCrud(
-      { client: fixture.client, tableName: fixture.tableName },
+      store,
       "hot-updater-update-index",
+      createDynamoDBInsightsModel({
+        ...store,
+        insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000001",
+      }),
     );
     const queries = fixture.trackCommands("QueryCommand");
     const batchGets = fixture.trackCommands("BatchGetItemCommand");

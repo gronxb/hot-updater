@@ -97,6 +97,7 @@ describe("assertCloudflareNonInteractiveInputs", () => {
           "HOT_UPDATER_CLOUDFLARE_WORKER_NAME",
           "HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID",
           "HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME",
+          "HOT_UPDATER_CLOUDFLARE_INSIGHTS_DATABASE_NAMESPACE",
           "HOT_UPDATER_CLOUDFLARE_R2_PRIVATE",
         ],
       }),

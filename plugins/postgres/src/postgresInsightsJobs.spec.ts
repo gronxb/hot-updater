@@ -18,6 +18,8 @@ import {
 } from "./postgresInsightsJobs";
 import { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
 
+const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
+
 const headTable = "private_hot_updater_insights_report_heads";
 const jobTable = "private_hot_updater_insights_report_jobs";
 const initial: PostgresInsightsReportCheckpoint = {
@@ -97,8 +99,11 @@ describe("PostgreSQL durable report jobs", () => {
       await readFile("plugins/postgres/sql/bundles.sql", "utf8"),
     );
     db = new Kysely<object>({ dialect: new PGliteDialect(client) });
-    await migratePostgresInsightsSource(db);
-    const source = createPostgresInsightsSourceTools(db);
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
+    const source = createPostgresInsightsSourceTools(
+      db,
+      insightsDatabaseNamespace,
+    );
     await source.backfillStep(1);
     generation = await source.capture();
     await client.exec(
@@ -107,7 +112,7 @@ describe("PostgreSQL durable report jobs", () => {
     await client.exec(
       "create table derived_test (id integer primary key, value integer not null)",
     );
-    store = createPostgresInsightsJobs(db);
+    store = createPostgresInsightsJobs(db, insightsDatabaseNamespace);
   });
   afterEach(async () => {
     vi.restoreAllMocks();
@@ -645,7 +650,7 @@ describe("PostgreSQL durable report jobs", () => {
     expect(
       await readPostgresInsightsReportPublication(
         db,
-        "00000000-0000-0000-0000-000000000099",
+        "00000000-0000-7000-8000-000000000099",
       ),
     ).toBeNull();
     const queued = await store.getReport({ query });

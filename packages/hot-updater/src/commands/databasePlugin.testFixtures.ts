@@ -21,6 +21,11 @@ import type { DeploymentWrite } from "./deployTransaction";
 
 export type DeploymentSeed = Omit<DeploymentWrite, "catalogId">;
 
+const MOCK_INSIGHTS_NAMESPACES = {
+  insightsDatabaseNamespace: "00000000-0000-7000-8000-00000000d101",
+  otherInsightsDatabaseNamespace: "00000000-0000-7000-8000-00000000d102",
+} as const;
+
 const createdAtMsFromId = (id: string): number => {
   try {
     const timestamp = extractTimestampFromUUIDv7(id);
@@ -156,8 +161,12 @@ const compileSeedCatalogs = async (
 };
 
 export const createDatabasePluginHarness = () => {
-  const data = createMockDatabaseData();
-  const basePlugin = mockDatabase({ data, latency: { min: 0, max: 0 } });
+  const data = createMockDatabaseData(MOCK_INSIGHTS_NAMESPACES);
+  const basePlugin = mockDatabase({
+    ...MOCK_INSIGHTS_NAMESPACES,
+    data,
+    latency: { min: 0, max: 0 },
+  });
   const read = vi.fn(async (): Promise<void> => {});
   const commit = vi.fn((input) => basePlugin.commit(input));
   const dispose = vi.fn(async (): Promise<void> => {});
@@ -256,7 +265,6 @@ export const createDatabasePluginHarness = () => {
     reset: (): void => {
       data.bundles.clear();
       data.bundlePatches.clear();
-      data.bundleEvents.clear();
       data.channels.clear();
       data.apiKeys.clear();
       data.releaseCatalogs.clear();

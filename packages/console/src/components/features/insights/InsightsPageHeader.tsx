@@ -6,10 +6,8 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 
 export function InsightsPageHeader({
   view,
-  eventsOffset = 0,
 }: {
   readonly view: "overview" | "events";
-  readonly eventsOffset?: number;
 }) {
   return (
     <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-3 border-b bg-background px-3 py-3 sm:bg-card/70 sm:px-4 sm:backdrop-blur-sm">
@@ -41,12 +39,6 @@ export function InsightsPageHeader({
             variant: view === "events" ? "secondary" : "ghost",
           })}
           to="/installations"
-          search={{
-            query: undefined,
-            installId: undefined,
-            searchOffset: 0,
-            historyOffset: eventsOffset,
-          }}
         >
           Events
         </Link>

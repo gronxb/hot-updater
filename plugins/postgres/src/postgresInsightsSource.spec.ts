@@ -19,6 +19,8 @@ import {
 } from "./postgresInsightsSource";
 import type { Database } from "./types";
 
+const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
+
 type ExplainPlan = {
   "Node Type": string;
   "Actual Rows": number;
@@ -68,10 +70,15 @@ describe("PostgreSQL committed Insights source", () => {
       )
     ).rows[0];
   const ready = async () => {
-    await migratePostgresInsightsSource(db);
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
     expect(await source.backfillStep(2)).toEqual({ ready: true, processed: 0 });
-    await migratePostgresInsightsLive(db);
-    expect(await createPostgresInsightsLiveTools(db).backfillStep(2)).toEqual({
+    await migratePostgresInsightsLive(db, insightsDatabaseNamespace);
+    expect(
+      await createPostgresInsightsLiveTools(
+        db,
+        insightsDatabaseNamespace,
+      ).backfillStep(2),
+    ).toEqual({
       ready: true,
       processed: 0,
     });
@@ -83,8 +90,11 @@ describe("PostgreSQL committed Insights source", () => {
       await readFile("plugins/postgres/sql/bundles.sql", "utf8"),
     );
     db = new Kysely<Database>({ dialect: new PGliteDialect(client) });
-    plugin = postgres({ dialect: new PGliteDialect(client) });
-    source = createPostgresInsightsSourceTools(db);
+    plugin = postgres({
+      insightsDatabaseNamespace,
+      dialect: new PGliteDialect(client),
+    });
+    source = createPostgresInsightsSourceTools(db, insightsDatabaseNamespace);
   });
   afterEach(async () => {
     vi.restoreAllMocks();
@@ -98,12 +108,12 @@ describe("PostgreSQL committed Insights source", () => {
     expect(
       (await client.query("select id from bundle_events")).rows,
     ).toHaveLength(0);
-    await migratePostgresInsightsSource(db);
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
     await expect(source.capture()).rejects.toMatchObject({
       code: "INSIGHTS_QUERY_NOT_READY",
     });
     const installed = await state();
-    await migratePostgresInsightsSource(db);
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
     expect(await state()).toEqual(installed);
     await source.backfillStep(2);
     const generation = JSON.parse(await source.capture());
@@ -133,34 +143,43 @@ describe("PostgreSQL committed Insights source", () => {
         limit: 2,
       }),
     ).toEqual([{ sequence: "9007199254740993", event: row }]);
-    expect(
-      await plugin.models.insights.scan({ beforeReceivedAtMs: 2, limit: 2 }),
-    ).toEqual([row]);
   });
 
   it("rejects a noncanonical or oversized append before database I/O", async () => {
     const queries = vi.spyOn(client, "query");
     await expect(
-      appendPostgresInsightsEvent(db, {
-        ...event(1),
-        install_id: "x".repeat(1025),
-      }),
+      appendPostgresInsightsEvent(
+        db,
+        {
+          ...event(1),
+          install_id: "x".repeat(1025),
+        },
+        insightsDatabaseNamespace,
+      ),
     ).rejects.toMatchObject({ reason: "string-too-long" });
     await expect(
-      appendPostgresInsightsEvent(db, {
-        ...event(2),
-        id: "00000000-0000-4000-8000-000000000002",
-      }),
+      appendPostgresInsightsEvent(
+        db,
+        {
+          ...event(2),
+          id: "00000000-0000-4000-8000-000000000002",
+        },
+        insightsDatabaseNamespace,
+      ),
     ).rejects.toMatchObject({ reason: "invalid-event-id" });
     const escaped = "\u0001".repeat(1024);
     await expect(
-      appendPostgresInsightsEvent(db, {
-        ...event(3),
-        install_id: escaped,
-        app_version: escaped,
-        channel: escaped,
-        cohort: escaped,
-      }),
+      appendPostgresInsightsEvent(
+        db,
+        {
+          ...event(3),
+          install_id: escaped,
+          app_version: escaped,
+          channel: escaped,
+          cohort: escaped,
+        },
+        insightsDatabaseNamespace,
+      ),
     ).rejects.toMatchObject({ reason: "event-too-large" });
     expect(queries).not.toHaveBeenCalled();
   });
@@ -171,7 +190,7 @@ describe("PostgreSQL committed Insights source", () => {
       id: "00000000-0000-4000-8000-000000000001",
     };
     await db.insertInto("bundle_events").values(poison).execute();
-    await migratePostgresInsightsSource(db);
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
     expect(await source.backfillStep(2)).toEqual({
       ready: false,
       processed: 0,
@@ -204,7 +223,7 @@ describe("PostgreSQL committed Insights source", () => {
     const installId = "x".repeat(100_000);
     const poison = { ...event(1), install_id: installId };
     await db.insertInto("bundle_events").values(poison).execute();
-    await migratePostgresInsightsSource(db);
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
     expect(await source.backfillStep(1)).toEqual({
       ready: false,
       processed: 0,
@@ -288,7 +307,9 @@ describe("PostgreSQL committed Insights source", () => {
     await expect(source.capture()).rejects.toMatchObject({
       code: "INSIGHTS_QUERY_NOT_READY",
     });
-    await expect(migratePostgresInsightsSource(db)).rejects.toMatchObject({
+    await expect(
+      migratePostgresInsightsSource(db, insightsDatabaseNamespace),
+    ).rejects.toMatchObject({
       code: "INSIGHTS_QUERY_NOT_READY",
     });
     expect(
@@ -309,7 +330,7 @@ describe("PostgreSQL committed Insights source", () => {
   });
 
   it("rejects malformed source catalogs and keeps the new-writer fence exact", async () => {
-    await migratePostgresInsightsSource(db);
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
     await source.backfillStep(2);
     const generation = await source.capture();
     const read = () =>
@@ -320,7 +341,9 @@ describe("PostgreSQL committed Insights source", () => {
       "alter table bundle_events drop constraint bundle_events_source_required; alter table bundle_events add constraint bundle_events_source_required check (insights_source_shard is not null) not valid",
     );
     queries.mockClear();
-    await expect(migratePostgresInsightsSource(db)).rejects.toMatchObject({
+    await expect(
+      migratePostgresInsightsSource(db, insightsDatabaseNamespace),
+    ).rejects.toMatchObject({
       code: "INSIGHTS_QUERY_NOT_READY",
     });
     await expect(read()).rejects.toMatchObject({
@@ -369,7 +392,7 @@ describe("PostgreSQL committed Insights source", () => {
     await client.exec(
       "alter table bundle_events add column extension jsonb default '{\"keep\":[1,null,true]}'::jsonb",
     );
-    await migratePostgresInsightsSource(db);
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
     await expect(
       db.insertInto("bundle_events").values(event(40)).execute(),
     ).rejects.toMatchObject({ code: "23514" });
@@ -403,8 +426,8 @@ describe("PostgreSQL committed Insights source", () => {
     const completed = await state();
     expect(await source.backfillStep(2)).toEqual({ ready: true, processed: 0 });
     expect(await state()).toEqual(completed);
-    await migratePostgresInsightsLive(db);
-    const live = createPostgresInsightsLiveTools(db);
+    await migratePostgresInsightsLive(db, insightsDatabaseNamespace);
+    const live = createPostgresInsightsLiveTools(db, insightsDatabaseNamespace);
     while (!(await live.backfillStep(2)).ready) {
       // Live backfill begins only after the earlier source cutover is complete.
     }
@@ -425,7 +448,7 @@ describe("PostgreSQL committed Insights source", () => {
   });
 
   it("limits actual PK and source index reads among more than 50,000 already indexed events", async () => {
-    await migratePostgresInsightsSource(db);
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
     await client.exec(`with identities as (
       select ('10000000-0000-7000-8000-' || lpad(n::text,12,'0'))::uuid id,n from generate_series(0,50000)n
     ), sharded as (

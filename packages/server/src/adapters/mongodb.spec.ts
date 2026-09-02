@@ -7,19 +7,28 @@ import { createMongoBundleWhere } from "./mongodbQuery";
 import { createMongoTestHarness } from "./mongodbTestClient";
 
 const harness = createMongoTestHarness();
+const insightsDatabaseNamespace = "00000000-0000-7000-8000-000000000099";
 
 setupDatabasePluginTestSuite({
   name: "mongoAdapter v2",
   migrate: () => undefined,
   createPlugin: () =>
-    mongoAdapter({ client: harness.client, transactions: true }),
+    mongoAdapter({
+      client: harness.client,
+      transactions: true,
+      insightsDatabaseNamespace,
+    }),
   reset: () => harness.reset(),
   dispose: () => harness.close(),
 });
 
 describe("mongoAdapter capabilities", () => {
   it("requires the transaction-capable adapter", () => {
-    const plugin = mongoAdapter({ client: harness.client, transactions: true });
+    const plugin = mongoAdapter({
+      client: harness.client,
+      transactions: true,
+      insightsDatabaseNamespace,
+    });
     expect(plugin.name).toBe("mongodb");
     expect(plugin.adapterName).toBe("mongodb");
     expect(plugin.provider).toBe("mongodb");
@@ -28,6 +37,7 @@ describe("mongoAdapter capabilities", () => {
       mongoAdapter({
         client: harness.client,
         transactions: false,
+        insightsDatabaseNamespace,
       } as never),
     ).toThrow("requires replica-set or sharded-cluster transactions");
   });
@@ -35,7 +45,11 @@ describe("mongoAdapter capabilities", () => {
   it("recovers a tombstoned bundle when an aggregate delete is retried", async () => {
     harness.reset();
     const client = createDatabaseClient(
-      mongoAdapter({ client: harness.client, transactions: true }),
+      mongoAdapter({
+        client: harness.client,
+        transactions: true,
+        insightsDatabaseNamespace,
+      }),
     );
     const bundle = {
       id: "bundle-retry",

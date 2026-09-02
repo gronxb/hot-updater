@@ -1,27 +1,57 @@
-import type { ActiveInstallationWindow } from "@hot-updater/server";
+import type {
+  InsightsActiveWindow,
+  InsightsBundleSummary,
+  InsightsReadFailure,
+  InsightsSeriesRow,
+} from "@hot-updater/plugin-core";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { BundleEventInsights } from "@/lib/api";
 
 import { BundleActivityChart } from "../bundles/BundleActivityChart";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
+import {
+  InsightsExpiredState,
+  InsightsFailedState,
+  InsightsPreparingState,
+  InsightsStaleNotice,
+} from "./InsightsReadState";
+
+type OutcomeData = {
+  readonly summary: InsightsBundleSummary;
+  readonly series: {
+    readonly installed: readonly InsightsSeriesRow[];
+    readonly recovered: readonly InsightsSeriesRow[];
+  };
+};
 
 export type UpdateOutcomeState =
   | { readonly status: "idle" }
   | { readonly status: "loading"; readonly bundleId: string }
+  | { readonly status: "preparing"; readonly bundleId: string }
   | {
       readonly status: "error";
       readonly bundleId: string;
       readonly error: Error;
     }
   | {
+      readonly status: "failed";
+      readonly bundleId: string;
+      readonly failure: InsightsReadFailure;
+    }
+  | {
+      readonly status: "expired";
+      readonly bundleId: string;
+      readonly onRestart: () => void;
+    }
+  | {
       readonly status: "success";
       readonly bundleId: string;
-      readonly data: BundleEventInsights;
+      readonly data: OutcomeData;
+      readonly staleAsOfMs?: number;
     };
 
 export function UpdateOutcomes({
@@ -37,7 +67,7 @@ export function UpdateOutcomes({
   readonly latestBundleInstallations: number;
   readonly reportingInstallations: number;
   readonly state: UpdateOutcomeState;
-  readonly window: ActiveInstallationWindow;
+  readonly window: InsightsActiveWindow;
 }) {
   const latestBundleShare =
     reportingInstallations === 0
@@ -47,11 +77,9 @@ export function UpdateOutcomes({
   return (
     <Card className="min-w-0 overflow-hidden shadow-sm">
       <CardHeader className="gap-3 space-y-0 px-4 pt-4 pb-4 sm:px-6 sm:pt-6 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
-          <CardTitle className="text-sm font-medium">
-            <h2 id="bundle-detail-heading">Selected bundle activity</h2>
-          </CardTitle>
-        </div>
+        <CardTitle className="text-sm font-medium">
+          <h2 id="bundle-detail-heading">Selected bundle activity</h2>
+        </CardTitle>
         {bundleSelector}
       </CardHeader>
       <CardContent className="px-4 pb-4 sm:px-6 sm:pb-6">
@@ -81,13 +109,22 @@ export function UpdateOutcomes({
             </div>
             <Skeleton className="h-32 w-full" />
           </div>
+        ) : state.status === "preparing" ? (
+          <InsightsPreparingState label="Preparing bundle activity" />
         ) : state.status === "error" ? (
           <InsightsErrorAlert
             error={state.error}
             fallbackTitle="Bundle movement unavailable"
           />
+        ) : state.status === "failed" ? (
+          <InsightsFailedState failure={state.failure} />
+        ) : state.status === "expired" ? (
+          <InsightsExpiredState onRestart={state.onRestart} />
         ) : (
           <div className="flex min-w-0 flex-col gap-5">
+            {state.staleAsOfMs === undefined ? null : (
+              <InsightsStaleNotice asOfMs={state.staleAsOfMs} />
+            )}
             <dl className="grid grid-cols-2 gap-4 lg:grid-cols-4">
               <div>
                 <dt className="text-xs text-muted-foreground">

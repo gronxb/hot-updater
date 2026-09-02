@@ -7,14 +7,14 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   assertInsightsEventContract,
-  assertInsightsEventRow,
-  databaseFields,
   isCanonicalInsightsEventId,
 } from "@hot-updater/plugin-core/internal";
 import { sql, type Kysely, type QueryExecutorProvider } from "kysely";
 
 import {
   assertPostgresInsightsEventCandidates,
+  assertPostgresInsightsStoredEvent,
+  POSTGRES_INSIGHTS_EVENT_COLUMNS,
   postgresInsightsEventVariableBytes,
   recordPostgresInsightsPreparationFailure,
   type PostgresInsightsEventCandidate,
@@ -32,7 +32,7 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const decimal = /^(0|[1-9][0-9]{0,18})$/;
 const maxSequence = 9_223_372_036_854_775_807n;
 const eventColumns = () =>
-  sql.join(databaseFields.bundle_events.map((field) => sql.ref(field)));
+  sql.join(POSTGRES_INSIGHTS_EVENT_COLUMNS.map((field) => sql.ref(field)));
 
 const sequence = (value: unknown): value is string =>
   typeof value === "string" &&
@@ -41,7 +41,10 @@ const sequence = (value: unknown): value is string =>
 
 export const assertPostgresInsightsSourceIndex = async (
   db: QueryExecutorProvider,
+  databaseNamespace?: string,
 ): Promise<void> => {
+  if (databaseNamespace !== undefined && !uuid.test(databaseNamespace))
+    throw new DatabasePluginInputError("invalid-query");
   // Recheck the complete owned layout for every logical operation. A missing
   // writer fence or malformed clock/state table must never permit a raw-history
   // fallback or let an old writer silently omit source markers.
@@ -69,14 +72,10 @@ export const assertPostgresInsightsSourceIndex = async (
       where a.attrelid = to_regclass('private_hot_updater_insights_source_state')
         and a.attnum > 0 and not a.attisdropped) = array[
           'id:integer:true:false::','version:integer:true:false::',
-          'source_id:uuid:true:true::','initialized:boolean:true:false::',
+          'source_id:uuid:true:false::','initialized:boolean:true:false::',
           'ready:boolean:true:false::','failed:boolean:true:false::',
           'failure:text:false:false::','upper_id:uuid:false:false::',
           'after_id:uuid:false:false::','revision:bigint:true:false::']
-    and (select pg_get_expr(d.adbin,d.adrelid) from pg_attrdef d
-      join pg_attribute a on a.attrelid=d.adrelid and a.attnum=d.adnum
-      where d.adrelid=to_regclass('private_hot_updater_insights_source_state')
-        and a.attname='source_id') = 'gen_random_uuid()'
     and (select array_agg(a.attname || ':' || format_type(a.atttypid,a.atttypmod)
         || ':' || a.attnotnull::text || ':' || a.atthasdef::text
         || ':' || a.attidentity::text || ':' || a.attgenerated::text
@@ -134,7 +133,12 @@ export const assertPostgresInsightsSourceIndex = async (
       and count(distinct shard)=16 and bool_and(committed_seq >= 0)
       from ${sql.table(clocks)})
     and (select count(*)=1 and bool_and(id=1 and version=1)
-      from ${sql.table(stateTable)}) as ready`.execute(db);
+      from ${sql.table(stateTable)})
+    and ${
+      databaseNamespace === undefined
+        ? sql`true`
+        : sql`(select source_id=${databaseNamespace}::uuid from ${sql.table(stateTable)} where id=1)`
+    } as ready`.execute(db);
   if (!rows[0]?.ready) throw new InsightsQueryNotReadyError();
 };
 
@@ -163,18 +167,22 @@ export const lockPostgresEventSourceShards = async (
 export const appendPostgresInsightsEvent = async (
   db: QueryExecutorProvider,
   row: BundleEventRow,
+  databaseNamespace: string,
 ): Promise<BundleEventRow> => {
   assertInsightsEventContract(row);
-  assertInsightsEventRow(row);
+  if (!uuid.test(databaseNamespace))
+    throw new DatabasePluginInputError("invalid-query");
   const shard = postgresEventSourceShard(row.id);
   const installKey = postgresInsightsInstallKey(row.install_id);
   // The UPDATE lock lasts until the surrounding commit. Unlike nextval(), a
   // later counter value cannot commit while an earlier allocation is pending.
   const result = await sql<BundleEventRow>`with allocated as (
     update ${sql.table(clocks)} set committed_seq = committed_seq + 1
-    where shard = ${shard} returning committed_seq
+    where shard = ${shard} and exists (select 1 from ${sql.table(stateTable)}
+      where id=1 and source_id=${databaseNamespace}::uuid)
+    returning committed_seq
   ), inserted as (insert into bundle_events (${eventColumns()}, insights_source_shard, insights_source_seq, insights_event, insights_live_version)
-    select ${sql.join(databaseFields.bundle_events.map((field) => row[field]))},
+    select ${sql.join(POSTGRES_INSIGHTS_EVENT_COLUMNS.map((field) => row[field]))},
       ${shard}, committed_seq, ${JSON.stringify(row)}::jsonb, 1 from allocated
     returning ${eventColumns()}), latest as (
       insert into ${sql.table(POSTGRES_INSIGHTS_LIVE_TABLE)}
@@ -191,7 +199,13 @@ export const appendPostgresInsightsEvent = async (
           < (excluded.received_at_ms,excluded.event_id)
       returning install_key
     ) select ${eventColumns()} from inserted`.execute(db);
-  if (result.rows.length !== 1) throw new InsightsQueryNotReadyError();
+  if (result.rows.length !== 1) {
+    const identity = await sql<{ source_id: string }>`select source_id::text
+      from ${sql.table(stateTable)} where id=1`.execute(db);
+    if (identity.rows[0]?.source_id !== databaseNamespace)
+      throw new DatabasePluginInputError("invalid-result");
+    throw new InsightsQueryNotReadyError();
+  }
   return result.rows[0]!;
 };
 
@@ -210,7 +224,7 @@ type StoredEvent = BundleEventRow & {
   insights_event: BundleEventRow | null;
 };
 
-const readGeneration = (
+export const readPostgresInsightsSourceIdentity = (
   value: string,
 ): { sourceId: string; counters: readonly string[] } => {
   let decoded: unknown;
@@ -237,14 +251,19 @@ const readGeneration = (
 export const validatePostgresInsightsSourcePage = async (
   db: QueryExecutorProvider,
   input: {
+    readonly databaseNamespace: string;
     readonly sourceGeneration: string;
     readonly shard: number;
     readonly afterSequence: string;
     readonly limit: number;
   },
 ): Promise<number> => {
-  const { sourceId, counters } = readGeneration(input.sourceGeneration);
+  const { sourceId, counters } = readPostgresInsightsSourceIdentity(
+    input.sourceGeneration,
+  );
   if (
+    !uuid.test(input.databaseNamespace) ||
+    sourceId !== input.databaseNamespace ||
     !Number.isSafeInteger(input.shard) ||
     input.shard < 0 ||
     input.shard >= POSTGRES_SOURCE_SHARDS ||
@@ -255,7 +274,7 @@ export const validatePostgresInsightsSourcePage = async (
     BigInt(input.afterSequence) > BigInt(counters[input.shard]!)
   )
     throw new DatabasePluginInputError("invalid-query");
-  await assertPostgresInsightsSourceIndex(db);
+  await assertPostgresInsightsSourceIndex(db, input.databaseNamespace);
   const upper = counters[input.shard]!;
   const candidates = await sql<
     PostgresInsightsEventCandidate & {
@@ -308,10 +327,19 @@ export const validatePostgresInsightsSourcePage = async (
     )
   )
     throw new DatabasePluginInputError("invalid-result");
-  for (const { source_sequence: _, insights_event, ...stored } of rows.rows) {
-    const event = insights_event ?? stored;
-    assertInsightsEventContract(event);
-    assertInsightsEventRow(event);
+  for (const {
+    source_sequence: _,
+    insights_event: event,
+    ...stored
+  } of rows.rows) {
+    if (event === null) throw new DatabasePluginInputError("invalid-result");
+    assertPostgresInsightsStoredEvent(event);
+    if (
+      POSTGRES_INSIGHTS_EVENT_COLUMNS.some(
+        (field) => event[field] !== stored[field],
+      )
+    )
+      throw new DatabasePluginInputError("invalid-result");
   }
   return rows.rows.length;
 };
@@ -350,12 +378,21 @@ export const readPostgresInsightsSourceGeneration = async (
 
 export const createPostgresInsightsSourceTools = <TDatabase extends object>(
   db: Kysely<TDatabase>,
+  databaseNamespace: string,
 ) => {
   // Captures must not include the caller's own uncommitted source allocations.
   if (db.isTransaction) throw new DatabasePluginInputError("invalid-query");
+  if (!uuid.test(databaseNamespace))
+    throw new DatabasePluginInputError("invalid-query");
   return {
     async capture(): Promise<string> {
-      return readPostgresInsightsSourceGeneration(db);
+      const generation = await readPostgresInsightsSourceGeneration(db);
+      if (
+        readPostgresInsightsSourceIdentity(generation).sourceId !==
+        databaseNamespace
+      )
+        throw new DatabasePluginInputError("invalid-result");
+      return generation;
     },
 
     async readPage(input: {
@@ -364,11 +401,12 @@ export const createPostgresInsightsSourceTools = <TDatabase extends object>(
       afterSequence?: string;
       limit: number;
     }): Promise<readonly { sequence: string; event: BundleEventRow }[]> {
-      const { sourceId, counters: prefix } = readGeneration(
+      const { sourceId, counters: prefix } = readPostgresInsightsSourceIdentity(
         input.sourceGeneration,
       );
       const after = input.afterSequence ?? "0";
       if (
+        sourceId !== databaseNamespace ||
         !Number.isSafeInteger(input.shard) ||
         input.shard < 0 ||
         input.shard >= POSTGRES_SOURCE_SHARDS ||
@@ -398,7 +436,10 @@ export const createPostgresInsightsSourceTools = <TDatabase extends object>(
           ) {
             throw new InsightsQueryNotReadyError();
           }
-          await assertPostgresInsightsSourceIndex(transaction);
+          await assertPostgresInsightsSourceIndex(
+            transaction,
+            databaseNamespace,
+          );
           const { rows } = await sql<
             BundleEventRow & {
               source_sequence: string;
@@ -417,11 +458,14 @@ export const createPostgresInsightsSourceTools = <TDatabase extends object>(
           if (rows.length > input.limit)
             throw new DatabasePluginInputError("invalid-result");
           const page = rows.map(
-            ({ source_sequence, insights_event, ...stored }) => {
-              const event = insights_event ?? stored;
-              assertInsightsEventRow(event);
-              assertInsightsEventContract(event);
+            ({ source_sequence, insights_event: event, ...stored }) => {
+              if (event === null)
+                throw new DatabasePluginInputError("invalid-result");
+              assertPostgresInsightsStoredEvent(event);
               if (
+                POSTGRES_INSIGHTS_EVENT_COLUMNS.some(
+                  (field) => event[field] !== stored[field],
+                ) ||
                 !sequence(source_sequence) ||
                 BigInt(source_sequence) !== previous + 1n ||
                 BigInt(source_sequence) > BigInt(prefix[input.shard]!)
@@ -496,13 +540,13 @@ export const createPostgresInsightsSourceTools = <TDatabase extends object>(
             const event =
               row.insights_event ??
               Object.fromEntries(
-                databaseFields.bundle_events.map((field) => [
+                POSTGRES_INSIGHTS_EVENT_COLUMNS.map((field) => [
                   field,
                   row[field],
                 ]),
               );
             assertInsightsEventContract(event);
-            assertInsightsEventRow(event);
+            assertPostgresInsightsStoredEvent(event);
             const shard = postgresEventSourceShard(row.id);
             if (
               row.insights_source_shard === null &&
@@ -531,7 +575,7 @@ export const createPostgresInsightsSourceTools = <TDatabase extends object>(
             insights_event = ${JSON.stringify(
               row.insights_event ??
                 Object.fromEntries(
-                  databaseFields.bundle_events.map((field) => [
+                  POSTGRES_INSIGHTS_EVENT_COLUMNS.map((field) => [
                     field,
                     row[field],
                   ]),

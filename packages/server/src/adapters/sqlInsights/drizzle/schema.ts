@@ -1,5 +1,5 @@
 import {
-  createUUIDv7,
+  DatabasePluginInputError,
   InsightsQueryNotReadyError,
 } from "@hot-updater/plugin-core";
 import { sql } from "drizzle-orm";
@@ -947,6 +947,7 @@ export const assertDrizzleInsightsIndexes = async (
 export const ensureDrizzleInsightsSchema = async (
   db: DrizzleDB,
   provider: DrizzleProvider,
+  databaseNamespace: string,
 ): Promise<void> => {
   if (provider === "mysql") {
     const indexes = await queryDrizzleInsights<{ name: unknown }>(
@@ -980,6 +981,9 @@ export const ensureDrizzleInsightsSchema = async (
     db,
     sql`select source_id from ${sql.identifier(DRIZZLE_INSIGHTS_STATE)} where id = 1`,
   );
+  if (rows[0] !== undefined && rows[0].source_id !== databaseNamespace) {
+    throw new DatabasePluginInputError("invalid-result");
+  }
   if (rows.length === 0) {
     const retained = await queryDrizzleInsights(
       db,
@@ -991,11 +995,18 @@ export const ensureDrizzleInsightsSchema = async (
       provider === "mysql"
         ? sql`insert ignore into ${sql.identifier(DRIZZLE_INSIGHTS_STATE)}
             (id,revision,source_id,status,upper_id,after_id,error,committed_seq,updated_at_ms)
-            values (1,1,${createUUIDv7()},${initialStatus},null,null,null,0,${Date.now()})`
+            values (1,1,${databaseNamespace},${initialStatus},null,null,null,0,${Date.now()})`
         : sql`insert into ${sql.identifier(DRIZZLE_INSIGHTS_STATE)}
             (id,revision,source_id,status,upper_id,after_id,error,committed_seq,updated_at_ms)
-            values (1,1,${createUUIDv7()},${initialStatus},null,null,null,0,${Date.now()})
+            values (1,1,${databaseNamespace},${initialStatus},null,null,null,0,${Date.now()})
             on conflict(id) do nothing`,
     );
+    const saved = await queryDrizzleInsights<{ source_id: unknown }>(
+      db,
+      sql`select source_id from ${sql.identifier(DRIZZLE_INSIGHTS_STATE)} where id = 1`,
+    );
+    if (saved[0]?.source_id !== databaseNamespace) {
+      throw new DatabasePluginInputError("invalid-result");
+    }
   }
 };

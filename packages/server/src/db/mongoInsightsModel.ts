@@ -51,6 +51,8 @@ import {
 } from "../adapters/mongodbInsightsProjection";
 import { stepMongoInsightsReport } from "../adapters/mongodbInsightsReports";
 import {
+  isMongoInsightsDatabaseNamespace,
+  MONGO_INSIGHTS_DATABASE_NAMESPACE_PATTERN,
   MONGO_INSIGHTS_SOURCE_CLOCK_COLLECTION,
   MONGO_INSIGHTS_SOURCE_SHARDS,
   MONGO_INSIGHTS_SOURCE_STATE_COLLECTION,
@@ -90,7 +92,10 @@ const schema = (
 const jobProperties = {
   _id: { bsonType: "string" },
   state: { enum: ["queued", "preparing", "ready", "failed"] },
-  sourceId: { bsonType: "string", pattern: INSIGHTS_EVENT_ID_PATTERN.source },
+  sourceId: {
+    bsonType: "string",
+    pattern: MONGO_INSIGHTS_DATABASE_NAMESPACE_PATTERN.source,
+  },
   sourceGeneration: { bsonType: "string" },
   projectionUpper: { bsonType: "long", minimum: 0 },
   asOfMs: nonnegativeNumber,
@@ -126,7 +131,7 @@ const COLLECTION_VALIDATORS: Readonly<
       phase: { enum: ["building", "ready", "failed"] },
       sourceId: {
         bsonType: "string",
-        pattern: INSIGHTS_EVENT_ID_PATTERN.source,
+        pattern: MONGO_INSIGHTS_DATABASE_NAMESPACE_PATTERN.source,
       },
       targetGeneration: { bsonType: "string" },
       shard: {
@@ -168,7 +173,7 @@ const COLLECTION_VALIDATORS: Readonly<
       _id: { bsonType: "string", pattern: INSIGHTS_EVENT_ID_PATTERN.source },
       sourceId: {
         bsonType: "string",
-        pattern: INSIGHTS_EVENT_ID_PATTERN.source,
+        pattern: MONGO_INSIGHTS_DATABASE_NAMESPACE_PATTERN.source,
       },
       sourceShard: nonnegativeNumber,
       sourceSequence: { bsonType: "long", minimum: 1 },
@@ -225,7 +230,7 @@ const COLLECTION_VALIDATORS: Readonly<
       installId: nullableString,
       sourceId: {
         bsonType: "string",
-        pattern: INSIGHTS_EVENT_ID_PATTERN.source,
+        pattern: MONGO_INSIGHTS_DATABASE_NAMESPACE_PATTERN.source,
       },
       sourceGeneration: { bsonType: "string" },
       projectionUpper: { bsonType: "long", minimum: 0 },
@@ -860,22 +865,29 @@ const jobStepBudget = (
   return { limit };
 };
 
-export const createMongoInsightsModelMaintenance = (client: MongoClient) => {
+export const createMongoInsightsModelMaintenance = (
+  client: MongoClient,
+  databaseNamespace: string,
+) => {
+  if (!isMongoInsightsDatabaseNamespace(databaseNamespace))
+    throw new DatabasePluginInputError("invalid-query");
   const collections = createMongoInsightsModelCollections(client);
-  const source = createMongoInsightsSource(client);
+  const source = createMongoInsightsSource(client, databaseNamespace);
 
   const runProjectionStep = async (
     limit: number,
     usage: MongoInsightsStepUsage,
   ) => {
     const collections = createMongoInsightsModelCollections(client, usage);
-    const source = createMongoInsightsSource(client, usage);
+    const source = createMongoInsightsSource(client, databaseNamespace, usage);
     const state = assertMongoInsightsProjectionState(
       await collections.projectionState.findOne(
         { _id: MONGO_INSIGHTS_PROJECTION_STATE_ID },
         { promoteLongs: false },
       ),
     );
+    if (state.sourceId !== databaseNamespace)
+      throw new InsightsQueryNotReadyError();
     if (state.phase === "failed") throw new InsightsQueryNotReadyError();
     if (state.phase === "ready")
       return { state: "ready" as const, processed: 0 };
@@ -901,6 +913,8 @@ export const createMongoInsightsModelMaintenance = (client: MongoClient) => {
               { session, promoteLongs: false },
             ),
           );
+          if (current.sourceId !== databaseNamespace)
+            throw new InsightsQueryNotReadyError();
           const sourceState = await measureMongoInsightsCollection(
             client
               .db()
@@ -975,6 +989,7 @@ export const createMongoInsightsModelMaintenance = (client: MongoClient) => {
             ),
           );
           if (
+            current.sourceId !== databaseNamespace ||
             current.phase !== "building" ||
             current.revision !== state.revision ||
             current.shard !== state.shard ||
@@ -1044,6 +1059,8 @@ export const createMongoInsightsModelMaintenance = (client: MongoClient) => {
       );
       if (existing) {
         const state = assertMongoInsightsProjectionState(existing);
+        if (state.sourceId !== databaseNamespace)
+          throw new InsightsQueryNotReadyError();
         await assertCollectionUuids(client, state.collectionUuids);
         if (state.phase === "failed") throw new InsightsQueryNotReadyError();
         return { state: state.phase, processed: 0 };
@@ -1059,6 +1076,8 @@ export const createMongoInsightsModelMaintenance = (client: MongoClient) => {
         throw new DatabasePluginInputError("invalid-result");
       const generation = await source.capture();
       const decoded = decodeMongoInsightsSourceGeneration(generation);
+      if (decoded.sourceId !== databaseNamespace)
+        throw new InsightsQueryNotReadyError();
       const collectionUuids = await readCollectionUuids(client);
       await collections.projectionState.insertOne({
         _id: MONGO_INSIGHTS_PROJECTION_STATE_ID,

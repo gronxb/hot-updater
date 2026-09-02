@@ -29,7 +29,6 @@ import { hasNullOrderOverrides, sortRowsByOrder } from "./databasePluginUtils";
 import { createPrismaOrderBy, createPrismaWhere } from "./prismaQuery";
 import {
   getPrismaDelegate,
-  parsePrismaBundleEventRow,
   parsePrismaBundleRow,
   parsePrismaChannelRow,
   parsePrismaApiKeyRow,
@@ -39,6 +38,7 @@ import {
   parsePrismaRows,
   PrismaAdapterError,
 } from "./prismaRows";
+import { createPrismaInsightsModel } from "./sqlInsights/prisma/model";
 
 type PrismaRelationMode = "prisma" | "foreign-keys";
 
@@ -56,6 +56,7 @@ type PrismaTransactionClient = object & {
 export interface PrismaConfig {
   readonly prisma: object;
   readonly provider: ORMSQLProvider;
+  readonly insightsDatabaseNamespace: string;
   readonly relationMode?: PrismaRelationMode;
   readonly db?: unknown;
 }
@@ -133,8 +134,6 @@ const findMany = async (
       return parsePrismaRows(rows, parsePrismaBundleRow);
     case "bundle_patches":
       return parsePrismaRows(rows, parsePrismaPatchRow);
-    case "bundle_events":
-      return parsePrismaRows(rows, parsePrismaBundleEventRow);
     case "channels":
       return parsePrismaRows(rows, parsePrismaChannelRow);
     case "api_keys":
@@ -232,8 +231,6 @@ const createCrudImplementation = (
         return parsePrismaBundleRow(row);
       case "bundle_patches":
         return parsePrismaPatchRow(row);
-      case "bundle_events":
-        return parsePrismaBundleEventRow(row);
       case "channels":
         return parsePrismaChannelRow(row);
       case "api_keys":
@@ -352,10 +349,21 @@ const createPrismaImplementation = (
   client: object,
   relationMode: PrismaRelationMode,
   provider: ORMSQLProvider,
+  insightsDatabaseNamespace: string,
 ): DatabasePluginImplementation => {
   const crud = createCrudImplementation(client, provider, relationMode);
+  if (relationMode === "prisma" && !hasCallbackTransaction(client)) {
+    throw new PrismaAdapterError(
+      'relation mode "prisma" requires callback transactions',
+    );
+  }
   const implementation: DatabasePluginImplementation = {
     ...crud,
+    insights: createPrismaInsightsModel(
+      client,
+      provider,
+      insightsDatabaseNamespace,
+    ),
     deleteChannel: (input) => {
       if (!hasCallbackTransaction(client)) {
         throw new PrismaAdapterError(
@@ -388,11 +396,6 @@ const createPrismaImplementation = (
       );
     },
   };
-  if (relationMode === "prisma" && !hasCallbackTransaction(client)) {
-    throw new PrismaAdapterError(
-      'relation mode "prisma" requires callback transactions',
-    );
-  }
   if (!hasCallbackTransaction(client)) return implementation;
   if (relationMode === "prisma") {
     implementation.create = (input) =>
@@ -440,6 +443,7 @@ export const prismaAdapter = (
       config.prisma,
       config.relationMode ?? "foreign-keys",
       config.provider,
+      config.insightsDatabaseNamespace,
     ),
   );
   return Object.assign(

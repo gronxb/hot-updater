@@ -1,6 +1,5 @@
 import {
   DatabasePluginInputError,
-  type BundleEventRow,
   type BundlePatchRow,
   type ChannelRow,
   type ApiKeyRow,
@@ -71,13 +70,6 @@ const orderClause = (
       const field = sql.ref(clause.field);
       const valueOrder =
         clause.direction === "asc" ? sql`${field} asc` : sql`${field} desc`;
-      // These NOT NULL event columns can use their index order directly.
-      if (
-        input?.model === "bundle_events" &&
-        (clause.field === "id" || clause.field === "received_at_ms")
-      ) {
-        return valueOrder;
-      }
       const nulls =
         clause.nulls ?? (clause.direction === "asc" ? "last" : "first");
       const nullOrder =
@@ -546,14 +538,6 @@ export const createKyselyCrud = (
         const order = orderClause(input);
         const result = await sql<BundlePatchRow>`select * from ${sql.table(
           "bundle_patches",
-        )}${where}${order}${pagination}`.execute(executor);
-        return [...result.rows];
-      }
-      case "bundle_events": {
-        const where = whereClause(buildKyselyWhere(provider, input.where));
-        const order = orderClause(input);
-        const result = await sql<BundleEventRow>`select * from ${sql.table(
-          "bundle_events",
         )}${where}${order}${pagination}`.execute(executor);
         return [...result.rows];
       }

@@ -6,7 +6,7 @@ import { BSON, Long, ObjectId } from "mongodb";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTestFixtures";
-import { createMongoRequiredInsightsModel } from "./mongodbInsightsRequired";
+import { createMongoInsightsModel } from "./mongodbInsightsModel";
 import { mongoInsightsSourceShard } from "./mongodbInsightsSource";
 import {
   MONGO_INSIGHTS_SOURCE_CLOCK_COLLECTION,
@@ -16,13 +16,14 @@ import {
 import { createMongoTestHarness } from "./mongodbTestClient";
 
 describe("MongoDB committed Insights source writes", () => {
+  const databaseNamespace = "00000000-0000-7000-8000-000000000099";
   const harnesses: ReturnType<typeof createMongoTestHarness>[] = [];
   const setup = () => {
     const harness = createMongoTestHarness();
     harnesses.push(harness);
     return {
       harness,
-      model: createMongoRequiredInsightsModel(harness.client),
+      model: createMongoInsightsModel(harness.client, databaseNamespace),
     };
   };
 

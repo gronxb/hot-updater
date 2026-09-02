@@ -94,13 +94,6 @@ const toOrderBy = (
   return clauses?.flatMap((clause) => {
     const column = getDrizzleColumn(table, clause.field);
     const valueOrder = clause.direction === "asc" ? asc(column) : desc(column);
-    // These NOT NULL event columns can use their index order directly.
-    if (
-      input.model === "bundle_events" &&
-      (clause.field === "id" || clause.field === "received_at_ms")
-    ) {
-      return [valueOrder];
-    }
     const nulls =
       clause.nulls ?? (clause.direction === "asc" ? "last" : "first");
     return [
@@ -119,7 +112,6 @@ export const createDrizzleCrud = (
   Pick<DatabasePluginImplementation, "deleteChannel" | "insertChannel"> => {
   const bundles = getDrizzleTable(db, "bundles");
   const patches = getDrizzleTable(db, "bundle_patches");
-  const events = getDrizzleTable(db, "bundle_events");
   const releases = getDrizzleTable(db, "releases");
   const releaseCatalogs = getDrizzleTable(db, "release_catalogs");
   const channels = getDrizzleTable(db, "channels");
@@ -374,13 +366,6 @@ export const createDrizzleCrud = (
           });
           return rows.map(fromStoredBundleRow);
         }
-        case "bundle_events":
-          return db.query.bundle_events.findMany({
-            where: buildDrizzleWhere(provider, events, input.where),
-            orderBy: toOrderBy(events, input),
-            limit: input.limit,
-            offset: input.offset,
-          });
         case "api_keys":
           return db.query.api_keys.findMany({
             where: buildDrizzleWhere(provider, apiKeys, input.where),

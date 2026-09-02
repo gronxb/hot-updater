@@ -6,10 +6,8 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   assertInsightsEventContract,
-  assertInsightsEventRow,
   assertInsightsInstallationIdentityDigest,
   canonicalInsightsJson,
-  databaseFields,
   getCanonicalInsightsJsonByteLength,
   getInsightsInstallationOrderKey,
 } from "@hot-updater/plugin-core/internal";
@@ -39,6 +37,29 @@ export type DrizzleInsightsStoredEvent = {
   readonly to_bundle_key: string;
   readonly raw_event: string;
 };
+
+export const drizzleInsightsRawEventColumns = [
+  "id",
+  "type",
+  "install_id",
+  "user_id",
+  "username",
+  "from_release_id",
+  "from_bundle_id",
+  "to_release_id",
+  "to_bundle_id",
+  "platform",
+  "app_version",
+  "channel",
+  "cohort",
+  "update_strategy",
+  "fingerprint_hash",
+  "sdk_version",
+  "received_at_ms",
+] as const satisfies readonly (keyof BundleEventRow)[];
+
+export type DrizzleInsightsRawEventColumn =
+  (typeof drizzleInsightsRawEventColumns)[number];
 
 const invalid = (): never => {
   throw new DatabasePluginInputError("invalid-result");
@@ -79,7 +100,6 @@ export const readDrizzleInsightsEvent = (value: unknown): BundleEventRow => {
     return invalid();
   }
   assertInsightsEventContract(parsed);
-  assertInsightsEventRow(parsed);
   return parsed;
 };
 
@@ -152,7 +172,6 @@ export const toDrizzleInsightsStoredEvent = async (
   event: BundleEventRow,
 ): Promise<Omit<DrizzleInsightsStoredEvent, "seq">> => {
   assertInsightsEventContract(event);
-  assertInsightsEventRow(event);
   return {
     event_id: event.id,
     event_order_key: drizzleInsightsEventOrderKey(event.id),
@@ -174,7 +193,7 @@ export const toDrizzleInsightsStoredEvent = async (
 };
 
 const values = (event: BundleEventRow): readonly unknown[] =>
-  databaseFields.bundle_events.map((field) => event[field]);
+  drizzleInsightsRawEventColumns.map((field) => event[field]);
 
 export const insertDrizzleRawEvent = async (
   db: DrizzleDB,
@@ -183,7 +202,7 @@ export const insertDrizzleRawEvent = async (
   await mutateDrizzleInsights(
     db,
     sql`insert into ${sql.identifier("bundle_events")}
-      (${sql.join(databaseFields.bundle_events.map(sql.identifier), sql.raw(","))})
+      (${sql.join(drizzleInsightsRawEventColumns.map(sql.identifier), sql.raw(","))})
       values (${sql.join(
         values(event).map((value) => sql`${value}`),
         sql.raw(","),

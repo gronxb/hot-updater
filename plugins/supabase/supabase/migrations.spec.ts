@@ -30,11 +30,6 @@ describe("Supabase v1 schema", () => {
       "20260818000000_hot-updater_1.0.0.sql",
       "20260901030000_hot-updater_insights-scale.sql",
     ]);
-    expect(migrations[1]!.sql.trim()).toBe(
-      (
-        await fs.readFile("plugins/supabase/src/insightsScale.sql", "utf8")
-      ).trim(),
-    );
 
     const insightsSql = migrations[1]!.sql;
     const prepareStart = insightsSql.indexOf(

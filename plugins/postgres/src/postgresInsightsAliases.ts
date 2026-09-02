@@ -5,10 +5,12 @@ import {
   InsightsQueryNotReadyError,
   type BundleEventRow,
 } from "@hot-updater/plugin-core";
-import { assertInsightsEventRow } from "@hot-updater/plugin-core/internal";
 import { sql, type QueryExecutorProvider, type Transaction } from "kysely";
 
-import { assertPostgresInsightsTableLayouts } from "./postgresInsightsContract";
+import {
+  assertPostgresInsightsStoredEvent,
+  assertPostgresInsightsTableLayouts,
+} from "./postgresInsightsContract";
 
 const aliases = "private_hot_updater_insights_report_aliases";
 const hashPattern = /^[0-9a-f]{64}$/;
@@ -102,7 +104,7 @@ export const savePostgresInsightsAliases = async <TDatabase>(
 ): Promise<void> => {
   assertJob(jobId);
   if (!db.isTransaction) throw new DatabasePluginInputError("invalid-query");
-  assertInsightsEventRow(event);
+  assertPostgresInsightsStoredEvent(event);
   const expected = new Map<string, string>();
   for (const [kind, value] of [
     ["installation", event.install_id],

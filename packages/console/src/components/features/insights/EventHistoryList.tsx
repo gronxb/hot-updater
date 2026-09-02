@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { EventHistoryResult } from "@/lib/api";
+import type { InsightsEventRow } from "@/lib/insights-view";
 
 import {
   EventBundleTransition,
@@ -8,9 +8,7 @@ import {
   EventTypeBadge,
 } from "./EventDetails";
 
-export function EventHistoryList<
-  T extends Omit<EventHistoryResult["data"][number], "installId">,
->({
+export function EventHistoryList<T extends InsightsEventRow>({
   events,
   formatter,
   renderIdentity,

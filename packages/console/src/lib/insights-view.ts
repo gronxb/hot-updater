@@ -79,7 +79,7 @@ export const mapInsightsPageData = <TInput, TOutput>(
 
 export const getExactInsightsTotal = (
   total: InsightsTotal,
-  sourceGeneration: string,
+  sourceGeneration: string | null,
 ): number | null =>
   total.state === "exact" && total.sourceGeneration === sourceGeneration
     ? total.value

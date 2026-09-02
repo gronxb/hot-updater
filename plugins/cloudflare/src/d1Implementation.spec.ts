@@ -1,65 +1,17 @@
-import {
-  INSIGHTS_EVENT_MAX_BYTES,
-  getCanonicalInsightsJsonByteLength,
-} from "@hot-updater/plugin-core/internal";
 import { expect, it } from "vitest";
 
-import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
-import { createD1Implementation, type D1Statement } from "./d1Implementation";
+import {
+  createD1Implementation,
+  type D1Executor,
+  type D1Statement,
+} from "./d1Implementation";
 
-it("validates the canonical event ID and 20 KiB event before D1 I/O", async () => {
-  const largeValue = "€".repeat(900);
-  const accepted = {
-    ...createBundleEventRowFixture("950", 100),
-    type: "UPDATE_APPLIED" as const,
-    update_strategy: "appVersion" as const,
-    id: "00000000-0000-7000-8000-00000000095a",
-    install_id: largeValue,
-    user_id: largeValue,
-    username: largeValue,
-    from_bundle_id: largeValue,
-    from_release_id: largeValue,
-    to_bundle_id: largeValue,
-    to_release_id: largeValue,
-  };
-  const oversized = { ...accepted, app_version: largeValue };
-  expect(getCanonicalInsightsJsonByteLength(accepted)).toBeLessThanOrEqual(
-    INSIGHTS_EVENT_MAX_BYTES,
-  );
-  expect(getCanonicalInsightsJsonByteLength(oversized)).toBeGreaterThan(
-    INSIGHTS_EVENT_MAX_BYTES,
-  );
-  let queryCount = 0;
-  let statement: D1Statement | undefined;
-  const implementation = createD1Implementation({
-    async query(sql, params) {
-      queryCount += 1;
-      statement = { sql, params };
-      return [];
-    },
-    batch: () => Promise.reject(new Error("unexpected D1 batch")),
-  });
-
-  await expect(
-    implementation.appendBundleEvent(accepted),
-  ).resolves.toBeUndefined();
-  expect(statement?.params).toContain(
-    String(getCanonicalInsightsJsonByteLength(accepted)),
-  );
-
-  await expect(implementation.appendBundleEvent(oversized)).rejects.toThrow();
-  await expect(
-    implementation.appendBundleEvent({
-      ...accepted,
-      id: accepted.id.toUpperCase(),
-    }),
-  ).rejects.toThrow();
-  expect(queryCount).toBe(1);
-});
+const createImplementation = (executor: D1Executor) =>
+  createD1Implementation(executor, "00000000-0000-4000-8000-000000000001");
 
 it("guards every write and reports the missing change index", async () => {
   let recorded: readonly D1Statement[] = [];
-  const implementation = createD1Implementation({
+  const implementation = createImplementation({
     query: () => Promise.reject(new Error("unexpected standalone query")),
     async batch(statements) {
       recorded = statements;
@@ -108,7 +60,7 @@ it("guards every write and reports the missing change index", async () => {
 
 it("reconciles an atomic commit when its in-batch Release guard fails", async () => {
   let queryCount = 0;
-  const implementation = createD1Implementation({
+  const implementation = createImplementation({
     async query(sql) {
       expect(sql).toContain("SELECT revision FROM releases");
       queryCount += 1;
@@ -153,7 +105,7 @@ it("reconciles an atomic commit when its in-batch Release guard fails", async ()
 
 it("maps idempotent Channel inserts to the normalized table", async () => {
   let recorded: readonly D1Statement[] = [];
-  const implementation = createD1Implementation({
+  const implementation = createImplementation({
     query: () => Promise.reject(new Error("unexpected standalone query")),
     async batch(statements) {
       recorded = statements;
@@ -181,7 +133,7 @@ it("maps idempotent Channel inserts to the normalized table", async () => {
 
 it("rejects a 51-statement commit before calling D1 batch", async () => {
   const batchSizes: number[] = [];
-  const implementation = createD1Implementation({
+  const implementation = createImplementation({
     query: () => Promise.reject(new Error("unexpected standalone query")),
     async batch(statements) {
       batchSizes.push(statements.length);
@@ -206,7 +158,7 @@ it("rejects a 51-statement commit before calling D1 batch", async () => {
 
 it("reserves the 50th query for one-shot expectation reconciliation", async () => {
   let invocationQueries = 0;
-  const implementation = createD1Implementation({
+  const implementation = createImplementation({
     async query() {
       invocationQueries += 1;
       return [{ actual_version: 2 }];
@@ -238,7 +190,7 @@ it("reserves the 50th query for one-shot expectation reconciliation", async () =
 
 it("packs many commit expectations into one bound JSON parameter", async () => {
   let statements: readonly D1Statement[] = [];
-  const implementation = createD1Implementation({
+  const implementation = createImplementation({
     query: () => Promise.reject(new Error("unexpected reconciliation")),
     async batch(input) {
       statements = input;
@@ -269,7 +221,7 @@ it("packs many commit expectations into one bound JSON parameter", async () => {
 
 it("persists required archive and patch byte sizes", async () => {
   let recorded: readonly D1Statement[] = [];
-  const implementation = createD1Implementation({
+  const implementation = createImplementation({
     query: () => Promise.reject(new Error("unexpected standalone query")),
     async batch(statements) {
       recorded = statements;
@@ -318,7 +270,7 @@ it("persists required archive and patch byte sizes", async () => {
 });
 
 it("returns the canonical Channel row after a concurrent name conflict", async () => {
-  const implementation = createD1Implementation({
+  const implementation = createImplementation({
     query: () => Promise.reject(new Error("unexpected standalone query")),
     async batch(statements) {
       expect(statements[0]?.sql).toContain("ON CONFLICT(name) DO NOTHING");
@@ -346,7 +298,7 @@ it("deletes an empty Channel and distinguishes missing and referenced rows", asy
     [[], [], []],
     [[{ id: "active" }], [{ id: "release" }], []],
   ];
-  const implementation = createD1Implementation({
+  const implementation = createImplementation({
     query: () => Promise.reject(new Error("unexpected standalone query")),
     async batch(statements) {
       expect(statements[2]?.sql).toContain(
@@ -369,7 +321,7 @@ it("deletes an empty Channel and distinguishes missing and referenced rows", asy
 
 it("guards a generic Channel delete and reports a referenced conflict", async () => {
   let recorded: readonly D1Statement[] = [];
-  const implementation = createD1Implementation({
+  const implementation = createImplementation({
     query: () => Promise.reject(new Error("unexpected standalone query")),
     async batch(statements) {
       recorded = statements;

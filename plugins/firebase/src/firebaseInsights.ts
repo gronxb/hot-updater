@@ -5,6 +5,7 @@ import {
   type InsightsInstallationPageInput,
   type InsightsInstallationRow,
   type InsightsLiveInstallationPage,
+  type InsightsModel,
   type InsightsPageEventsInput,
   type InsightsPageEventsResult,
   type InsightsReadFailure,
@@ -16,14 +17,12 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   assertInsightsCursorContract,
+  assertInsightsEventContract,
   assertInsightsPageContract,
   assertInsightsQueryContract,
-  assertInsightsEventRow,
   getCanonicalInsightsJsonByteLength,
-  compareInsightsEventRows,
   INSIGHTS_CURSOR_MAX_BYTES,
   INSIGHTS_PAGE_MAX_ROWS,
-  type RequiredInsightsModel,
 } from "@hot-updater/plugin-core/internal";
 import {
   FieldPath,
@@ -72,6 +71,7 @@ class FirebaseInsightsIndexNotReadyError extends Error {}
 class FirebaseInsightsStorageCorruptionError extends Error {}
 
 export interface FirebaseInsightsCollections {
+  readonly databaseNamespace: string;
   readonly control: CollectionReference<DocumentData>;
   readonly events: CollectionReference<DocumentData>;
   readonly heads: CollectionReference<DocumentData>;
@@ -88,7 +88,9 @@ export interface FirebaseInsightsCollections {
 
 export const createFirebaseInsightsCollections = (
   db: Firestore,
+  databaseNamespace: string,
 ): FirebaseInsightsCollections => ({
+  databaseNamespace: assertFirebaseInsightsDatabaseNamespace(databaseNamespace),
   control: db.collection(FIREBASE_V2_INSIGHTS_COLLECTION_NAMES.control),
   events: db.collection(FIREBASE_V2_INSIGHTS_COLLECTION_NAMES.events),
   heads: db.collection(FIREBASE_V2_INSIGHTS_COLLECTION_NAMES.heads),
@@ -113,6 +115,22 @@ export const createFirebaseInsightsCollections = (
   work: db.collection(FIREBASE_V2_INSIGHTS_COLLECTION_NAMES.work),
 });
 
+export const assertFirebaseInsightsDatabaseNamespace = (
+  value: unknown,
+): string => {
+  if (
+    typeof value !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+      value,
+    )
+  ) {
+    throw new TypeError(
+      "Firebase Insights requires a canonical lowercase UUID database namespace.",
+    );
+  }
+  return value;
+};
+
 type Position = {
   readonly receivedAtMs: number;
   readonly id: string;
@@ -126,6 +144,13 @@ type Stream = {
   exhausted: boolean;
   emitted?: Position;
 };
+
+const compareInsightsEventRows = (
+  left: Pick<BundleEventRow, "received_at_ms" | "id">,
+  right: Pick<BundleEventRow, "received_at_ms" | "id">,
+): number =>
+  right.received_at_ms - left.received_at_ms ||
+  (left.id < right.id ? 1 : left.id > right.id ? -1 : 0);
 
 const invalidQuery = (): never => {
   throw new DatabasePluginInputError("invalid-query");
@@ -392,7 +417,11 @@ const publicEvent = (data: DocumentData, path: string): BundleEventRow => {
     ),
     parsed,
   ) as BundleEventRow;
-  assertInsightsEventRow(row);
+  try {
+    assertInsightsEventContract(row);
+  } catch {
+    throw new DatabasePluginInputError("invalid-result");
+  }
   if (
     !isFirebaseEventId(row.id) ||
     firebaseEventJsonBytes(row) > FIREBASE_INSIGHTS_EVENT_BYTES
@@ -631,7 +660,8 @@ const readLiveReadiness = async (
   if (
     state?.version !== FIREBASE_INSIGHTS_LAYOUT_VERSION ||
     !["building", "failed", "ready"].includes(state.state) ||
-    state.indexRevision !== FIREBASE_INSIGHTS_INDEX_REVISION
+    state.indexRevision !== FIREBASE_INSIGHTS_INDEX_REVISION ||
+    state.databaseNamespace !== collections.databaseNamespace
   ) {
     return failedReadiness(corruptionSourceGeneration(clocks), null, {
       code: "storage-corruption",
@@ -1271,4 +1301,4 @@ export const createFirebaseInsightsQueries = (
       }
       return pageFirebaseInsightsReport(collections, namespace, input);
     },
-  }) as RequiredInsightsModel;
+  }) as InsightsModel;

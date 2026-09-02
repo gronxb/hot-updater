@@ -8,17 +8,20 @@ import type {
   InsightsPageEventsInput,
   InsightsReportPageInput,
 } from "@hot-updater/plugin-core";
+import {
+  type InsightsMaintenanceStepResult,
+  type InsightsModelConformanceHarness,
+  type InsightsModelConformanceNamespaces,
+  registerInsightsModelTests,
+} from "@hot-updater/test-utils";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll } from "vitest";
 
-import {
-  registerRequiredInsightsModelTests,
-  type RequiredInsightsModelConformanceHarness,
-} from "../../../packages/test-utils/src/requiredInsightsModelConformance";
 import { findOpenPort } from "../../../packages/test-utils/src/runtimeProcess";
 import {
   createSupabaseInsights,
   createSupabaseInsightsMaintenance,
+  type SupabaseInsightsMaintenanceResult,
 } from "./supabaseInsights";
 import type { Database } from "./types";
 
@@ -232,57 +235,69 @@ const observedClient = (
   }) as unknown as RpcClient["rpc"],
 });
 
-const createHarness =
-  async (): Promise<RequiredInsightsModelConformanceHarness> => {
-    resetDatabase(primaryDatabase);
-    resetDatabase(otherDatabase);
-    docker(["restart", primaryRest, otherRest]);
-    await waitUntil(async () => {
-      try {
-        return (await fetch(primaryOrigin)).ok && (await fetch(otherOrigin)).ok;
-      } catch {
-        return false;
-      }
-    });
-    const clock = { value: Date.now() };
-    const primaryReads = { value: 0 };
-    const otherReads = { value: 0 };
-    const complete = new Set<string>();
+const conformanceStep = (
+  jobId: string,
+  result: SupabaseInsightsMaintenanceResult,
+): InsightsMaintenanceStepResult =>
+  result.state === "idle" ? { ...result, jobId } : result;
 
-    const facades = () => {
-      const primaryClient = client(primaryOrigin);
-      const otherClient = client(otherOrigin);
-      const primaryModel = createSupabaseInsights(
-        observedClient(primaryClient, primaryReads),
-        primaryOrigin,
-        () => clock.value,
-      );
-      const otherModel = createSupabaseInsights(
-        observedClient(otherClient, otherReads),
-        otherOrigin,
-        () => clock.value,
-      );
-      const primaryMaintenance =
-        createSupabaseInsightsMaintenance(primaryClient);
-      const otherMaintenance = createSupabaseInsightsMaintenance(otherClient);
-      const harness: RequiredInsightsModelConformanceHarness = {
-        model: primaryModel,
-        otherNamespaceModel: otherModel,
-        async runJobStep(jobId, input) {
-          const result = await primaryMaintenance.runJobStep(jobId, input);
-          if (result.state === "complete") complete.add(jobId);
-          return result;
-        },
-        async runOtherNamespaceJobStep(jobId, input) {
-          const result = await otherMaintenance.runJobStep(jobId, input);
-          if (result.state === "complete") complete.add(jobId);
-          return result;
-        },
-        reopen: facades,
-        insertMigrationPoisonRow() {
-          psql(
-            primaryDatabase,
-            `WITH source AS (
+const createHarness = async (
+  namespaces: InsightsModelConformanceNamespaces,
+): Promise<InsightsModelConformanceHarness> => {
+  resetDatabase(primaryDatabase);
+  resetDatabase(otherDatabase);
+  docker(["restart", primaryRest, otherRest]);
+  await waitUntil(async () => {
+    try {
+      return (await fetch(primaryOrigin)).ok && (await fetch(otherOrigin)).ok;
+    } catch {
+      return false;
+    }
+  });
+  const clock = { value: Date.now() };
+  const primaryReads = { value: 0 };
+  const otherReads = { value: 0 };
+  const complete = new Set<string>();
+
+  const facades = () => {
+    const primaryClient = client(primaryOrigin);
+    const otherClient = client(otherOrigin);
+    const primaryModel = createSupabaseInsights(
+      observedClient(primaryClient, primaryReads),
+      namespaces.insightsDatabaseNamespace,
+      () => clock.value,
+    );
+    const otherModel = createSupabaseInsights(
+      observedClient(otherClient, otherReads),
+      namespaces.otherInsightsDatabaseNamespace,
+      () => clock.value,
+    );
+    const primaryMaintenance = createSupabaseInsightsMaintenance(
+      primaryClient,
+      namespaces.insightsDatabaseNamespace,
+    );
+    const otherMaintenance = createSupabaseInsightsMaintenance(
+      otherClient,
+      namespaces.otherInsightsDatabaseNamespace,
+    );
+    const harness: InsightsModelConformanceHarness = {
+      model: primaryModel,
+      otherNamespaceModel: otherModel,
+      async runJobStep(jobId, input) {
+        const result = await primaryMaintenance.runJobStep(jobId, input);
+        if (result.state === "complete") complete.add(jobId);
+        return conformanceStep(jobId, result);
+      },
+      async runOtherNamespaceJobStep(jobId, input) {
+        const result = await otherMaintenance.runJobStep(jobId, input);
+        if (result.state === "complete") complete.add(jobId);
+        return conformanceStep(jobId, result);
+      },
+      reopen: facades,
+      insertMigrationPoisonRow() {
+        psql(
+          primaryDatabase,
+          `WITH source AS (
              SELECT committed_seq + 1 AS seq
              FROM public.hot_updater_v1_insights_source_state WHERE id=1
            ), inserted AS (
@@ -300,51 +315,49 @@ const createHarness =
            ) UPDATE public.hot_updater_v1_insights_source_state
              SET committed_seq=(SELECT insights_source_seq FROM inserted)
              WHERE id=1;`,
-          );
-        },
-        setCurrentTimeMs(nowMs) {
-          clock.value = nowMs;
-        },
-        async expirePublication(publicationId) {
-          const retentionJob = "supabase-v2-retention:9007199254740991";
-          for (let step = 0; step < 256; step += 1) {
-            const result = await primaryMaintenance.runJobStep(retentionJob, {
-              maxItems: 4096,
-              maxRequests: 1,
-            });
-            if (result.state === "complete") {
-              complete.delete(publicationId);
-              return;
-            }
-            if (result.state === "failed") break;
+        );
+      },
+      setCurrentTimeMs(nowMs) {
+        clock.value = nowMs;
+      },
+      async expirePublication(publicationId) {
+        const retentionJob = "supabase-v2-retention:9007199254740991";
+        for (let step = 0; step < 256; step += 1) {
+          const result = await primaryMaintenance.runJobStep(retentionJob, {
+            maxItems: 4096,
+            maxRequests: 1,
+          });
+          if (result.state === "complete") {
+            complete.delete(publicationId);
+            return;
           }
-          throw new Error("Supabase Insights retention did not complete");
-        },
-        publicationStateForJob(jobId) {
-          return complete.has(jobId) ? "complete" : "absent";
-        },
-        getLastStorageReadCount(namespace = "primary") {
-          return namespace === "primary"
-            ? primaryReads.value
-            : otherReads.value;
-        },
-        getPageEventsCandidateReadBudget(input: InsightsPageEventsInput) {
-          return input.selector.kind === "all"
-            ? input.limit + 1
-            : 2 * (input.limit + 1);
-        },
-        getPageInstallationsCandidateReadBudget(
-          input: InsightsInstallationPageInput,
-        ) {
-          return input.limit + 1;
-        },
-        getPageReportCandidateReadBudget(input: InsightsReportPageInput) {
-          return input.limit + 1;
-        },
-      };
-      return harness;
+          if (result.state === "failed") break;
+        }
+        throw new Error("Supabase Insights retention did not complete");
+      },
+      publicationStateForJob(jobId) {
+        return complete.has(jobId) ? "complete" : "absent";
+      },
+      getLastStorageReadCount(namespace = "primary") {
+        return namespace === "primary" ? primaryReads.value : otherReads.value;
+      },
+      getPageEventsCandidateReadBudget(input: InsightsPageEventsInput) {
+        return input.selector.kind === "all"
+          ? input.limit + 1
+          : 2 * (input.limit + 1);
+      },
+      getPageInstallationsCandidateReadBudget(
+        input: InsightsInstallationPageInput,
+      ) {
+        return input.limit + 1;
+      },
+      getPageReportCandidateReadBudget(input: InsightsReportPageInput) {
+        return input.limit + 1;
+      },
     };
-    return facades();
+    return harness;
   };
+  return facades();
+};
 
-registerRequiredInsightsModelTests(createHarness);
+registerInsightsModelTests(createHarness);

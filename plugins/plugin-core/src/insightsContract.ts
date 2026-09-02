@@ -28,6 +28,8 @@ export const INSIGHTS_STRING_MAX_CODE_UNITS = 1024;
 
 export const INSIGHTS_EVENT_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+export const INSIGHTS_DATABASE_NAMESPACE_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export type InsightsContractErrorReason =
   | "invalid-json"
@@ -120,6 +122,11 @@ export const getCanonicalInsightsJsonByteLength = (value: unknown): number =>
 
 export const isCanonicalInsightsEventId = (value: unknown): value is string =>
   typeof value === "string" && INSIGHTS_EVENT_ID_PATTERN.test(value);
+
+export const isCanonicalInsightsDatabaseNamespace = (
+  value: unknown,
+): value is string =>
+  typeof value === "string" && INSIGHTS_DATABASE_NAMESPACE_PATTERN.test(value);
 
 export const assertWellFormedInsightsString = (value: string): void => {
   for (let index = 0; index < value.length; index += 1) {

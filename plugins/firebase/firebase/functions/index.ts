@@ -8,6 +8,7 @@ import { firebaseStorage } from "../../src/firebaseStorage";
 
 declare global {
   var HotUpdater: {
+    INSIGHTS_DATABASE_NAMESPACE: string;
     REGION: string;
   };
 }
@@ -28,6 +29,7 @@ if (!storageBucket) {
 const hotUpdater = createHotUpdater({
   database: firebaseDatabase({
     ...adminOptions,
+    insightsDatabaseNamespace: HotUpdater.INSIGHTS_DATABASE_NAMESPACE,
   }),
   clientAccess: { type: "api-key" },
   storage: [

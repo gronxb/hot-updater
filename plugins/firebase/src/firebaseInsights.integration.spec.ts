@@ -29,10 +29,11 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
 const { firestore, clearCollections } = createFirestoreMock(
   "firebase-insights-pages",
 );
-const collections = createFirebaseInsightsCollections(firestore);
+const namespace = "10000000-0000-4000-8000-000000000001";
+const collections = createFirebaseInsightsCollections(firestore, namespace);
 const queries = createFirebaseInsightsQueries(
   collections,
-  "firebase-insights-pages/(default)",
+  namespace,
   async () => undefined,
 );
 const bundleId = createBundleEventRowFixture("1", 1).to_bundle_id;
@@ -101,6 +102,7 @@ describe("Firestore v2 sharded Insights pages", () => {
       version: FIREBASE_INSIGHTS_LAYOUT_VERSION,
       state: "ready",
       indexRevision: FIREBASE_INSIGHTS_INDEX_REVISION,
+      databaseNamespace: namespace,
     });
     const sourceBatch = firestore.batch();
     for (let shard = 0; shard < 64; shard += 1) {
@@ -139,6 +141,7 @@ describe("Firestore v2 sharded Insights pages", () => {
 
   afterAll(async () => {
     for (const collection of Object.values(collections)) {
+      if (typeof collection === "string") continue;
       await firestore.recursiveDelete(collection);
     }
     await clearCollections();

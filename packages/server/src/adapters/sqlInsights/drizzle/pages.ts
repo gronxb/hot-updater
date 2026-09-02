@@ -129,6 +129,7 @@ type EventCursor = {
 const readEventCursor = (
   input: InsightsPageEventsInput,
   key: string,
+  databaseNamespace: string,
 ): EventCursor | null => {
   if (input.cursor === undefined) return null;
   assertInsightsCursorContract(input.cursor);
@@ -143,7 +144,7 @@ const readEventCursor = (
     value.length !== 8 ||
     value[0] !== 1 ||
     value[1] !== EVENT_CURSOR_REVISION ||
-    typeof value[2] !== "string" ||
+    value[2] !== databaseNamespace ||
     value[3] !== key ||
     value[4] !== input.beforeReceivedAtMs ||
     value[5] !== (input.sinceReceivedAtMs ?? 0) ||
@@ -200,6 +201,7 @@ type InstallationCursor = {
 
 const readInstallationCursor = (
   input: InsightsLiveInstallationPageInput,
+  databaseNamespace: string,
 ): InstallationCursor | null => {
   if (input.cursor === undefined) return null;
   assertInsightsCursorContract(input.cursor);
@@ -214,7 +216,7 @@ const readInstallationCursor = (
     value.length !== 4 ||
     value[0] !== 1 ||
     value[1] !== INSTALL_CURSOR_REVISION ||
-    typeof value[2] !== "string" ||
+    value[2] !== databaseNamespace ||
     typeof value[3] !== "string" ||
     !hex.test(value[3])
   ) {
@@ -226,8 +228,9 @@ const readInstallationCursor = (
 export const createDrizzleInsightsPages = (
   db: DrizzleDB,
   provider: DrizzleProvider,
+  databaseNamespace: string,
 ) => {
-  const source = createDrizzleInsightsSource(db, provider);
+  const source = createDrizzleInsightsSource(db, provider, databaseNamespace);
   const readySource = async (): Promise<
     | { readonly ready: false; readonly state: DrizzleInsightsSourceState }
     | {
@@ -260,7 +263,7 @@ export const createDrizzleInsightsPages = (
         return invalid();
       }
       const key = selectorKey(input);
-      const cursor = readEventCursor(input, key);
+      const cursor = readEventCursor(input, key, databaseNamespace);
       let prepared;
       try {
         prepared = await readySource();
@@ -388,7 +391,7 @@ export const createDrizzleInsightsPages = (
       const hasNext = candidates.length > data.length;
       const nextCursor =
         hasNext && data.length > 0
-          ? eventCursor(input, key, prepared.state.sourceId, data.at(-1)!)
+          ? eventCursor(input, key, databaseNamespace, data.at(-1)!)
           : null;
       const page: InsightsEventPageData = {
         data,
@@ -426,7 +429,7 @@ export const createDrizzleInsightsPages = (
       ) {
         return invalid();
       }
-      const cursor = readInstallationCursor(input);
+      const cursor = readInstallationCursor(input, databaseNamespace);
       let prepared;
       try {
         prepared = await readySource();
@@ -549,7 +552,7 @@ export const createDrizzleInsightsPages = (
           ? JSON.stringify([
               1,
               INSTALL_CURSOR_REVISION,
-              prepared.state.sourceId,
+              databaseNamespace,
               emitted.at(-1)!.installKey,
             ])
           : null;

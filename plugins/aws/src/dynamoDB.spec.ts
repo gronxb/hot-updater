@@ -67,9 +67,21 @@ describe("dynamoDB CloudFront lifecycle", () => {
     vi.useRealTimers();
   });
 
+  it("rejects a noncanonical Insights database namespace before I/O", () => {
+    expect(() =>
+      dynamoDB({
+        insightsDatabaseNamespace: "NOT-A-UUID",
+        region: "us-east-1",
+        tableName: "hot-updater-metadata",
+      }),
+    ).toThrow("namespace must be a lowercase UUID");
+    expect(documentClient.calls()).toHaveLength(0);
+  });
+
   it("invalidates cached update checks after a successful commit", async () => {
     // Given
     const plugin = dynamoDB({
+      insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000001",
       cloudfrontDistributionId: "distribution-id",
       region: "us-east-1",
       tableName: "hot-updater-metadata",
@@ -102,6 +114,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
       Invalidation: cloudFrontInvalidation("Completed"),
     });
     const plugin = dynamoDB({
+      insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000001",
       cloudfrontDistributionId: "distribution-id",
       region: "us-east-1",
       shouldWaitForInvalidation: true,
@@ -122,6 +135,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
   it("uses the database factory naming convention", async () => {
     // Given
     const plugin = dynamoDB({
+      insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000001",
       region: "us-east-1",
       tableName: "hot-updater-metadata",
     });
@@ -134,6 +148,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
 
   it("exposes only the nested official database contract", async () => {
     const plugin = dynamoDB({
+      insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000001",
       region: "us-east-1",
       tableName: "hot-updater-metadata",
     });
@@ -142,6 +157,14 @@ describe("dynamoDB CloudFront lifecycle", () => {
     expect(plugin.models.bundlePatches).toBeDefined();
     expect(plugin.models.channels).toBeDefined();
     expect(plugin.models.insights).toBeDefined();
+    expect(Object.keys(plugin.models.insights).sort()).toEqual([
+      "append",
+      "getReport",
+      "pageEvents",
+      "pageInstallations",
+      "pageReport",
+    ]);
+    expect(plugin.models.insights).not.toHaveProperty("scan");
     expect(plugin.models.apiKeys).toBeDefined();
     expect(plugin).not.toHaveProperty("queries");
     expect(typeof plugin.commit).toBe("function");
@@ -163,6 +186,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
   it("lists channels from their dedicated partition without scanning", async () => {
     documentClient.on(QueryCommand).resolves({ Items: [] });
     const plugin = dynamoDB({
+      insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000001",
       region: "us-east-1",
       tableName: "hot-updater-metadata",
     });
@@ -186,6 +210,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
 
   it("rejects Insights passed through the generic commit port", async () => {
     const plugin = dynamoDB({
+      insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000001",
       region: "us-east-1",
       tableName: "hot-updater-metadata",
     });

@@ -19,6 +19,7 @@ import { createKyselyMigrator } from "../../../db/fixedMigrator";
 import { installationKey } from "./utils";
 
 const databaseUrl = process.env.KYSELY_INSIGHTS_POSTGRES_URL;
+const databaseNamespace = "10000000-0000-4000-8000-000000000001";
 const schema = `kysely_insights_${randomUUID().replaceAll("-", "")}`;
 const quotedSchema = `"${schema}"`;
 
@@ -126,11 +127,11 @@ const migrateCore = async (): Promise<void> => {
 
 const migrateFresh = async (): Promise<void> => {
   await migrateCore();
-  await migrateKyselyInsights(db, "postgresql");
+  await migrateKyselyInsights(db, "postgresql", databaseNamespace);
 };
 
 const maintenance = () =>
-  runKyselyInsightsMaintenanceStep(db, "postgresql", {
+  runKyselyInsightsMaintenanceStep(db, "postgresql", databaseNamespace, {
     maxItems: 160,
     maxRequests: 4_096,
   });
@@ -341,7 +342,11 @@ describe.skipIf(!databaseUrl)(
       );
       expectBoundedIndexPlan(plan, "kysely_insights_events_order_idx", 101);
 
-      const insights = createKyselyInsightsModel(db, "postgresql");
+      const insights = createKyselyInsightsModel(
+        db,
+        "postgresql",
+        databaseNamespace,
+      );
       const first = await insights.pageEvents({
         selector: { kind: "all" },
         beforeReceivedAtMs: 1_000_000,
@@ -463,7 +468,7 @@ describe.skipIf(!databaseUrl)(
       }
       expectBoundedIndexPlan(plan, "bundle_events_pkey", 3);
 
-      await migrateKyselyInsights(db, "postgresql");
+      await migrateKyselyInsights(db, "postgresql", databaseNamespace);
       const captured = await pool.query<{
         readonly ready: boolean;
         readonly migration_upper_id: string;
@@ -476,9 +481,20 @@ describe.skipIf(!databaseUrl)(
         migration_after_id: null,
       });
 
-      const insights = createKyselyInsightsModel(db, "postgresql");
+      const insights = createKyselyInsightsModel(
+        db,
+        "postgresql",
+        databaseNamespace,
+      );
       await insights.append(event(makeId(0x800, 1), "before-step", 100));
-      expect(await prepareKyselyInsightsSource(db, "postgresql", 7)).toEqual({
+      expect(
+        await prepareKyselyInsightsSource(
+          db,
+          "postgresql",
+          databaseNamespace,
+          7,
+        ),
+      ).toEqual({
         state: "progress",
         processed: 7,
       });
@@ -491,7 +507,12 @@ describe.skipIf(!databaseUrl)(
       expect(middle.id < upper).toBe(true);
       await insights.append(middle);
       for (;;) {
-        const step = await prepareKyselyInsightsSource(db, "postgresql", 7);
+        const step = await prepareKyselyInsightsSource(
+          db,
+          "postgresql",
+          databaseNamespace,
+          7,
+        );
         if (step.state === "ready") break;
       }
       await insights.append(event(makeId(0x801, 2), "after-ready", 102));
@@ -521,10 +542,10 @@ describe.skipIf(!databaseUrl)(
         username: "x".repeat(20_481),
       });
       await insertCoreEvent(poison);
-      await migrateKyselyInsights(db, "postgresql");
+      await migrateKyselyInsights(db, "postgresql", databaseNamespace);
 
       await expect(
-        prepareKyselyInsightsSource(db, "postgresql"),
+        prepareKyselyInsightsSource(db, "postgresql", databaseNamespace),
       ).rejects.toThrow();
       const state = await pool.query<{
         readonly ready: boolean;
@@ -549,7 +570,11 @@ describe.skipIf(!databaseUrl)(
     it("keeps native publication, zero-fill, and order plans exact", async () => {
       await reset();
       await migrateFresh();
-      const insights = createKyselyInsightsModel(db, "postgresql");
+      const insights = createKyselyInsightsModel(
+        db,
+        "postgresql",
+        databaseNamespace,
+      );
       await insights.append(
         event(makeId(0x900, 1), "delayed-a", 200, {
           user_id: "current-user",
@@ -793,7 +818,11 @@ describe.skipIf(!databaseUrl)(
         on private_hot_updater_kysely_insights_events
         for each row execute function reject_kysely_event()`);
 
-      const insights = createKyselyInsightsModel(db, "postgresql");
+      const insights = createKyselyInsightsModel(
+        db,
+        "postgresql",
+        databaseNamespace,
+      );
       const accepted = Array.from({ length: 20 }, (_, index) =>
         event(
           makeId(0xb10 + index, index + 2),
@@ -846,7 +875,11 @@ describe.skipIf(!databaseUrl)(
     it("fences duplicate workers without blocking an append", async () => {
       await reset();
       await migrateFresh();
-      const insights = createKyselyInsightsModel(db, "postgresql");
+      const insights = createKyselyInsightsModel(
+        db,
+        "postgresql",
+        databaseNamespace,
+      );
       await insights.append(
         event(makeId(0xc00, 1), "locked-search", 1, {
           username: "Lock Target",

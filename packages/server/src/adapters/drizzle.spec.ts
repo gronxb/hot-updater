@@ -19,6 +19,8 @@ import {
 } from "./databasePluginTestDatabase";
 import { drizzleAdapter } from "./drizzle";
 
+const INSIGHTS_DATABASE_NAMESPACE = "00000000-0000-7000-8000-00000000d101";
+
 const bundles = pgTable("bundles", {
   id: text("id").primaryKey(),
   platform: text("platform").notNull(),
@@ -144,7 +146,11 @@ setupDatabasePluginTestSuite({
     database = drizzle(client, { schema });
   },
   createPlugin: (): DatabaseAdapterWithCapabilities =>
-    drizzleAdapter({ db: getDatabase(), provider: "postgresql" }),
+    drizzleAdapter({
+      db: getDatabase(),
+      provider: "postgresql",
+      insightsDatabaseNamespace: INSIGHTS_DATABASE_NAMESPACE,
+    }),
   reset: async () => {
     await getClient().exec(DATABASE_PLUGIN_TEST_RESET_SQL);
   },
@@ -163,6 +169,7 @@ describe("drizzleAdapter schema requirements", () => {
     const plugin = drizzleAdapter({
       db: getDB,
       provider: "postgresql",
+      insightsDatabaseNamespace: INSIGHTS_DATABASE_NAMESPACE,
       schema,
     });
 
@@ -180,6 +187,7 @@ describe("drizzleAdapter schema requirements", () => {
     const plugin = drizzleAdapter({
       db: getDB,
       provider: "postgresql",
+      insightsDatabaseNamespace: INSIGHTS_DATABASE_NAMESPACE,
       schema,
     });
 
@@ -198,7 +206,11 @@ describe("drizzleAdapter schema requirements", () => {
     const getDB = vi.fn(() => {
       throw new DrizzleTestStateError();
     });
-    const plugin = drizzleAdapter({ db: getDB, provider: "postgresql" });
+    const plugin = drizzleAdapter({
+      db: getDB,
+      provider: "postgresql",
+      insightsDatabaseNamespace: INSIGHTS_DATABASE_NAMESPACE,
+    });
 
     expect(() => plugin.models.channels.list({})).toThrow(
       "[hot-updater] Drizzle adapter requires schema when db is lazy.",
@@ -213,6 +225,7 @@ describe("drizzleAdapter schema requirements", () => {
     const plugin = drizzleAdapter({
       db: getDB,
       provider: "postgresql",
+      insightsDatabaseNamespace: INSIGHTS_DATABASE_NAMESPACE,
       schema: { ...schema, bundles: null },
     });
 
@@ -227,6 +240,7 @@ describe("drizzleAdapter schema requirements", () => {
     const plugin = drizzleAdapter({
       db: () => getDatabase(),
       provider: "postgresql",
+      insightsDatabaseNamespace: INSIGHTS_DATABASE_NAMESPACE,
       schema: incompleteSchema,
     });
 

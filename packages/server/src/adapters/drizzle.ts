@@ -1,4 +1,8 @@
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  createDatabasePlugin,
+  type InsightsInstallationPageInput,
+  type InsightsModel,
+} from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
   type DatabasePluginImplementation,
@@ -27,6 +31,7 @@ export type DrizzleProvider = Exclude<
 export interface DrizzleConfig {
   readonly db: unknown | (() => unknown | Promise<unknown>);
   readonly provider: DrizzleProvider;
+  readonly insightsDatabaseNamespace: string;
   readonly schema?: Record<string, unknown>;
   readonly transaction?: boolean;
 }
@@ -36,11 +41,15 @@ const createImplementation = (
 ): DatabasePluginImplementation => {
   const db = createLazyDB(config);
   const crud = createDrizzleCrud(db, config.provider);
-  const insights = createDrizzleInsightsQueries(db, config.provider);
+  const insights = createDrizzleInsightsQueries(
+    db,
+    config.provider,
+    config.insightsDatabaseNamespace,
+  );
   const transaction = db.transaction?.bind(db);
   return {
     ...crud,
-    appendBundleEvent: insights.append,
+    insights,
     deleteChannel: (input) => {
       if (transaction === undefined) {
         throw new Error(
@@ -120,7 +129,13 @@ export const drizzleAdapter = (
       },
       insights: {
         append: (row) => getAdapter().models.insights.append(row),
-        scan: (input) => getAdapter().models.insights.scan(input),
+        pageEvents: (input) => getAdapter().models.insights.pageEvents(input),
+        pageInstallations: ((input: InsightsInstallationPageInput) =>
+          getAdapter().models.insights.pageInstallations(
+            input,
+          )) as InsightsModel["pageInstallations"],
+        getReport: (input) => getAdapter().models.insights.getReport(input),
+        pageReport: (input) => getAdapter().models.insights.pageReport(input),
       },
       apiKeys: {
         create: (row) => getAdapter().models.apiKeys.create(row),

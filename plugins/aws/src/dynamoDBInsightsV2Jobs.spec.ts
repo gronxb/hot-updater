@@ -19,19 +19,15 @@ import {
   dynamoDBInsightsTransactionRequestBytes,
   dynamoDBInsightsV2Namespace,
 } from "./dynamoDBInsightsV2";
-import { createDynamoDBRequiredInsightsModel } from "./dynamoDBInsightsV2Jobs";
+import { createDynamoDBInsightsModel } from "./dynamoDBInsightsV2Jobs";
 
 const documentClient = mockClient(DynamoDBDocumentClient);
 const client = DynamoDBDocumentClient.from(
   new DynamoDBClient({ region: "us-east-1" }),
 );
 const tableName = "hot-updater-metadata";
-const namespace = {
-  partition: "test",
-  region: "us-east-1",
-  accountId: "000000000000",
-};
-const store = { client, tableName, namespace };
+const insightsDatabaseNamespace = "00000000-0000-4000-8000-000000000001";
+const store = { client, tableName, insightsDatabaseNamespace };
 const key = (value: Record<string, unknown>): string =>
   `${String(value.pk)}\n${String(value.sk)}`;
 let items: Map<string, Record<string, unknown>>;
@@ -121,7 +117,7 @@ describe("DynamoDB Insights v2 durable jobs", () => {
   });
 
   it("freezes all 32 source clocks in the short reservation transaction", async () => {
-    const model = createDynamoDBRequiredInsightsModel(store);
+    const model = createDynamoDBInsightsModel(store);
     const first = await model.getReport({
       query: { kind: "installationOverview" },
     });
@@ -202,7 +198,7 @@ describe("DynamoDB Insights v2 durable jobs", () => {
   });
 
   it("keeps a 100-ID summary reservation below item and request limits", async () => {
-    const model = createDynamoDBRequiredInsightsModel(store);
+    const model = createDynamoDBInsightsModel(store);
     const bundleIds = Array.from(
       { length: 100 },
       (_, index) => `${index.toString().padStart(3, "0")}-${"x".repeat(180)}`,
@@ -227,7 +223,7 @@ describe("DynamoDB Insights v2 durable jobs", () => {
   });
 
   it("rejects an exhausted durable head revision before another write", async () => {
-    const model = createDynamoDBRequiredInsightsModel(store);
+    const model = createDynamoDBInsightsModel(store);
     await model.getReport({
       query: { kind: "installationOverview" },
     });

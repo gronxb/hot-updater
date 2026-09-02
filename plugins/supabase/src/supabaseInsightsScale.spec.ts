@@ -2,10 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 
 import { PGlite } from "@electric-sql/pglite";
 import type { BundleEventRow } from "@hot-updater/plugin-core";
-import {
-  getCanonicalInsightsJsonByteLength,
-  getInsightsInstallationOrderKey,
-} from "@hot-updater/plugin-core/internal";
+import { getCanonicalInsightsJsonByteLength } from "@hot-updater/plugin-core/internal";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -17,6 +14,8 @@ import {
 import type { Database } from "./types";
 
 const migrationsPath = "plugins/supabase/supabase/migrations";
+const insightsMigrationPath = `${migrationsPath}/20260901030000_hot-updater_insights-scale.sql`;
+const databaseNamespace = "00000000-0000-4000-8000-000000000001";
 const bundleA = "00000000-0000-0000-0000-000000000001";
 const bundleB = "00000000-0000-0000-0000-000000000002";
 const eventId = (suffix: number) =>
@@ -48,8 +47,8 @@ const event = (
 const prepareLegacy = async (database: PGlite, maxItems: number) => {
   const read = (
     await database.query<{ result: Record<string, unknown> }>(
-      "select public.hot_updater_v1_insights_prepare_read($1) result",
-      [maxItems],
+      "select public.hot_updater_v1_insights_prepare_read($1,$2) result",
+      [databaseNamespace, maxItems],
     )
   ).rows[0]!.result;
   if (read.state !== "preparing") return read;
@@ -91,8 +90,9 @@ const prepareLegacy = async (database: PGlite, maxItems: number) => {
   }));
   return (
     await database.query<{ result: Record<string, unknown> }>(
-      "select public.hot_updater_v1_insights_prepare($1,$2::jsonb,$3) result",
+      "select public.hot_updater_v1_insights_prepare($1,$2,$3::jsonb,$4) result",
       [
+        databaseNamespace,
         maxItems,
         JSON.stringify(batch),
         getCanonicalInsightsJsonByteLength(batch),
@@ -109,8 +109,8 @@ const pgliteRpc =
           return {
             data: (
               await database.query<{ result: Record<string, unknown> }>(
-                `select public.${name}($1) result`,
-                [args.p_max_items],
+                `select public.${name}($1,$2) result`,
+                [args.p_database_namespace, args.p_max_items],
               )
             ).rows[0]!.result,
             error: null,
@@ -119,8 +119,9 @@ const pgliteRpc =
           return {
             data: (
               await database.query<{ result: Record<string, unknown> }>(
-                `select public.${name}($1,$2::jsonb,$3) result`,
+                `select public.${name}($1,$2,$3::jsonb,$4) result`,
                 [
+                  args.p_database_namespace,
                   args.p_max_items,
                   JSON.stringify(args.p_batch),
                   args.p_batch_bytes,
@@ -131,8 +132,9 @@ const pgliteRpc =
           };
         case SUPABASE_V1_FUNCTION_NAMES.insightsAppend:
           await database.query(
-            `select public.${name}($1::jsonb,$2,$3,$4,$5::jsonb)`,
+            `select public.${name}($1,$2::jsonb,$3,$4,$5,$6::jsonb)`,
             [
+              args.p_database_namespace,
               JSON.stringify(args.p_event),
               args.p_event_bytes,
               args.p_install_key,
@@ -145,8 +147,9 @@ const pgliteRpc =
           return {
             data: (
               await database.query<{ result: Record<string, unknown> }>(
-                `select public.${name}($1,$2,$3,$4,$5,$6,$7) result`,
+                `select public.${name}($1,$2,$3,$4,$5,$6,$7,$8) result`,
                 [
+                  args.p_database_namespace,
                   args.p_scope,
                   args.p_scope_id,
                   args.p_before_received_at_ms,
@@ -163,8 +166,9 @@ const pgliteRpc =
           return {
             data: (
               await database.query<{ result: Record<string, unknown> }>(
-                `select public.${name}($1::jsonb,$2,$3,$4,$5,$6,$7) result`,
+                `select public.${name}($1,$2::jsonb,$3,$4,$5,$6,$7,$8) result`,
                 [
+                  args.p_database_namespace,
                   JSON.stringify(args.p_selector),
                   args.p_limit,
                   args.p_after_key,
@@ -181,8 +185,13 @@ const pgliteRpc =
           return {
             data: (
               await database.query<{ result: Record<string, unknown> }>(
-                `select public.${name}($1,$2,$3) result`,
-                [args.p_job_id, args.p_max_items, args.p_max_bytes],
+                `select public.${name}($1,$2,$3,$4) result`,
+                [
+                  args.p_database_namespace,
+                  args.p_job_id,
+                  args.p_max_items,
+                  args.p_max_bytes,
+                ],
               )
             ).rows[0]!.result,
             error: null,
@@ -191,8 +200,9 @@ const pgliteRpc =
           return {
             data: (
               await database.query<{ result: Record<string, unknown> }>(
-                `select public.${name}($1::jsonb,$2,$3) result`,
+                `select public.${name}($1,$2::jsonb,$3,$4) result`,
                 [
+                  args.p_database_namespace,
                   JSON.stringify(args.p_query),
                   args.p_min_as_of_ms,
                   args.p_now_ms,
@@ -205,8 +215,13 @@ const pgliteRpc =
           return {
             data: (
               await database.query<{ result: Record<string, unknown> }>(
-                `select public.${name}($1,$2,$3) result`,
-                [args.p_job_id, args.p_max_items, args.p_max_bytes],
+                `select public.${name}($1,$2,$3,$4) result`,
+                [
+                  args.p_database_namespace,
+                  args.p_job_id,
+                  args.p_max_items,
+                  args.p_max_bytes,
+                ],
               )
             ).rows[0]!.result,
             error: null,
@@ -215,8 +230,9 @@ const pgliteRpc =
           return {
             data: (
               await database.query<{ result: Record<string, unknown> }>(
-                `select public.${name}($1,$2::jsonb,$3,$4::jsonb) result`,
+                `select public.${name}($1,$2,$3::jsonb,$4,$5::jsonb) result`,
                 [
+                  args.p_database_namespace,
                   args.p_publication_id,
                   JSON.stringify(args.p_section),
                   args.p_limit,
@@ -230,8 +246,13 @@ const pgliteRpc =
           return {
             data: (
               await database.query<{ result: Record<string, unknown> }>(
-                `select public.${name}($1,$2,$3) result`,
-                [args.p_before_ms, args.p_max_items, args.p_max_bytes],
+                `select public.${name}($1,$2,$3,$4) result`,
+                [
+                  args.p_database_namespace,
+                  args.p_before_ms,
+                  args.p_max_items,
+                  args.p_max_bytes,
+                ],
               )
             ).rows[0]!.result,
             error: null,
@@ -269,11 +290,8 @@ describe("Supabase required Insights model", () => {
     }
     const rpc = pgliteRpc(db);
     const client = { rpc: rpc as unknown as SupabaseClient<Database>["rpc"] };
-    insights = createSupabaseInsights(
-      client,
-      "https://project-ref.supabase.co",
-    );
-    maintenance = createSupabaseInsightsMaintenance(client);
+    insights = createSupabaseInsights(client, databaseNamespace);
+    maintenance = createSupabaseInsightsMaintenance(client, databaseNamespace);
   });
 
   afterEach(() => db.close());
@@ -505,11 +523,7 @@ describe("Supabase required Insights model", () => {
   });
 
   it("rejects reflected and malformed installation cursors before storage I/O", async () => {
-    const url = "https://cursor-input.supabase.co";
-    const namespace = Array.from(
-      await getInsightsInstallationOrderKey(`${url}/`),
-      (byte) => byte.toString(16).padStart(2, "0"),
-    ).join("");
+    const namespace = databaseNamespace;
     let requests = 0;
     const model = createSupabaseInsights(
       {
@@ -518,7 +532,7 @@ describe("Supabase required Insights model", () => {
           throw new Error("storage I/O was reached");
         }) as unknown as SupabaseClient<Database>["rpc"],
       },
-      url,
+      namespace,
     );
     const cursor = (
       selector: Record<string, unknown>,
@@ -925,7 +939,7 @@ describe("Supabase required Insights model", () => {
     const rpc = pgliteRpc(db) as unknown as SupabaseClient<Database>["rpc"];
     const oldModel = createSupabaseInsights(
       { rpc },
-      "https://stale-search.supabase.co",
+      databaseNamespace,
       () => 1_000,
     );
     const base = {
@@ -939,7 +953,7 @@ describe("Supabase required Insights model", () => {
     const publicationId = await finishSearch(preparing.job.id);
     const freshModel = createSupabaseInsights(
       { rpc },
-      "https://stale-search.supabase.co",
+      databaseNamespace,
       () => 2_000,
     );
     const first = await freshModel.pageInstallations({
@@ -1027,7 +1041,7 @@ describe("Supabase required Insights model", () => {
       {
         rpc: pgliteRpc(db) as unknown as SupabaseClient<Database>["rpc"],
       },
-      "https://failed-report-retention.supabase.co",
+      databaseNamespace,
       () => 1_000,
     );
     await insights.append(
@@ -1106,7 +1120,7 @@ describe("Supabase required Insights model", () => {
       {
         rpc: pgliteRpc(db) as unknown as SupabaseClient<Database>["rpc"],
       },
-      "https://failed-search-retention.supabase.co",
+      databaseNamespace,
       () => 1_000,
     );
     await insights.append(
@@ -1454,9 +1468,7 @@ describe("Supabase populated Insights migration", () => {
          )`,
         [JSON.stringify(legacy)],
       );
-      await db.exec(
-        await readFile("plugins/supabase/src/insightsScale.sql", "utf8"),
-      );
+      await db.exec(await readFile(insightsMigrationPath, "utf8"));
       await db.query(
         `update public.hot_updater_v1_bundle_events as event
          set insights_event=(
@@ -1473,7 +1485,10 @@ describe("Supabase populated Insights migration", () => {
       const client = {
         rpc: rpc as unknown as SupabaseClient<Database>["rpc"],
       };
-      const worker = createSupabaseInsightsMaintenance(client);
+      const worker = createSupabaseInsightsMaintenance(
+        client,
+        databaseNamespace,
+      );
       await expect(
         worker.runJobStep("supabase-v2-migration", {
           maxItems: 1,
@@ -1501,15 +1516,12 @@ describe("Supabase populated Insights migration", () => {
         [legacy.id, JSON.stringify(extension)],
       );
       await expect(
-        createSupabaseInsightsMaintenance(client).runJobStep(
+        createSupabaseInsightsMaintenance(client, databaseNamespace).runJobStep(
           "supabase-v2-migration",
           { maxItems: 1, maxRequests: 2 },
         ),
       ).resolves.toMatchObject({ state: "complete" });
-      const model = createSupabaseInsights(
-        client,
-        "https://migration-extension.supabase.co",
-      );
+      const model = createSupabaseInsights(client, databaseNamespace);
       const page = await model.pageEvents({
         selector: { kind: "all" },
         beforeReceivedAtMs: 2,
@@ -1555,18 +1567,16 @@ describe("Supabase populated Insights migration", () => {
           ],
         );
       }
-      await db.exec(
-        await readFile("plugins/supabase/src/insightsScale.sql", "utf8"),
-      );
+      await db.exec(await readFile(insightsMigrationPath, "utf8"));
       const rpc = pgliteRpc(db);
       const client = {
         rpc: rpc as unknown as SupabaseClient<Database>["rpc"],
       };
-      const model = createSupabaseInsights(
+      const model = createSupabaseInsights(client, databaseNamespace);
+      const worker = createSupabaseInsightsMaintenance(
         client,
-        "https://migration-unicode.supabase.co",
+        databaseNamespace,
       );
-      const worker = createSupabaseInsightsMaintenance(client);
       await expect(
         worker.runJobStep("supabase-v2-migration", {
           maxItems: 1000,
@@ -1647,9 +1657,7 @@ describe("Supabase populated Insights migration", () => {
           '${"x".repeat(1025)}',2
         )
       `);
-      await db.exec(
-        await readFile("plugins/supabase/src/insightsScale.sql", "utf8"),
-      );
+      await db.exec(await readFile(insightsMigrationPath, "utf8"));
       expect(await prepareLegacy(db, 1000)).toMatchObject({
         state: "failed",
         jobId: "supabase-v2-migration",
@@ -1698,7 +1706,7 @@ describe("Supabase populated Insights migration", () => {
       const rpc = pgliteRpc(db);
       const runtime = createSupabaseInsights(
         { rpc: rpc as unknown as SupabaseClient<Database>["rpc"] },
-        "https://poison.supabase.co",
+        databaseNamespace,
       );
       const appended = event(904, {
         type: "UNCHANGED",
@@ -1727,9 +1735,12 @@ describe("Supabase populated Insights migration", () => {
         SET sdk_version='1.0.0'
         WHERE id='ffffffff-ffff-7000-8000-000000000001'
       `);
-      const worker = createSupabaseInsightsMaintenance({
-        rpc: rpc as unknown as SupabaseClient<Database>["rpc"],
-      });
+      const worker = createSupabaseInsightsMaintenance(
+        {
+          rpc: rpc as unknown as SupabaseClient<Database>["rpc"],
+        },
+        databaseNamespace,
+      );
       for (let step = 0; step < 8; step += 1) {
         const progress = await worker.runJobStep("supabase-v2-migration", {
           maxItems: 1000,
@@ -1805,9 +1816,7 @@ describe("Supabase populated Insights migration", () => {
            from public.hot_updater_v1_bundle_events event order by id`,
         )
       ).rows;
-      await db.exec(
-        await readFile("plugins/supabase/src/insightsScale.sql", "utf8"),
-      );
+      await db.exec(await readFile(insightsMigrationPath, "utf8"));
 
       await db.exec("SET ROLE service_role");
       await expect(
@@ -1842,11 +1851,11 @@ describe("Supabase populated Insights migration", () => {
       const client = {
         rpc: rpc as unknown as SupabaseClient<Database>["rpc"],
       };
-      const runtime = createSupabaseInsights(
+      const runtime = createSupabaseInsights(client, databaseNamespace);
+      const worker = createSupabaseInsightsMaintenance(
         client,
-        "https://migration.supabase.co",
+        databaseNamespace,
       );
-      const worker = createSupabaseInsightsMaintenance(client);
       const gated = await runtime.pageEvents({
         selector: { kind: "all" },
         beforeReceivedAtMs: 10,
@@ -1901,9 +1910,12 @@ describe("Supabase populated Insights migration", () => {
         state: "idle",
         usage: { items: 0, requests: 0, bytes: 0 },
       });
-      const reopened = createSupabaseInsightsMaintenance({
-        rpc: rpc as unknown as SupabaseClient<Database>["rpc"],
-      });
+      const reopened = createSupabaseInsightsMaintenance(
+        {
+          rpc: rpc as unknown as SupabaseClient<Database>["rpc"],
+        },
+        databaseNamespace,
+      );
       await expect(
         reopened.runJobStep("supabase-v2-migration", {
           maxItems: 1,
@@ -1924,9 +1936,12 @@ describe("Supabase populated Insights migration", () => {
         ).rows[0],
       ).toEqual({ unprepared: 2 });
       for (const expectedState of ["running", "complete"] as const) {
-        const stepWorker = createSupabaseInsightsMaintenance({
-          rpc: rpc as unknown as SupabaseClient<Database>["rpc"],
-        });
+        const stepWorker = createSupabaseInsightsMaintenance(
+          {
+            rpc: rpc as unknown as SupabaseClient<Database>["rpc"],
+          },
+          databaseNamespace,
+        );
         const progress = await stepWorker.runJobStep("supabase-v2-migration", {
           maxItems: 1,
           maxRequests: 2,

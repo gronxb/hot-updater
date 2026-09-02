@@ -16,6 +16,7 @@ import {
 import type { Database } from "./types";
 
 const secret = "local-insights-test-secret-with-at-least-32-characters";
+const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000b001";
 const token = (role: string) => {
   const header = Buffer.from(
     JSON.stringify({ alg: "HS256", typ: "JWT" }),
@@ -278,7 +279,10 @@ describe("Supabase Insights scalar RPC with PostgREST max_rows=1", () => {
       }
     });
     service = client("service_role");
-    const migration = createSupabaseInsightsMaintenance(service);
+    const migration = createSupabaseInsightsMaintenance(
+      service,
+      insightsDatabaseNamespace,
+    );
     for (let step = 0; step < 16; step += 1) {
       const result = await migration.runJobStep("supabase-v2-migration", {
         maxItems: 1000,
@@ -370,7 +374,9 @@ describe("Supabase Insights scalar RPC with PostgREST max_rows=1", () => {
       ]),
     ).toThrow("Insights events require the append RPC");
 
-    const rawTable = service.from("hot_updater_v1_bundle_events");
+    const rawTable = (service as unknown as SupabaseClient).from(
+      "hot_updater_v1_bundle_events",
+    );
     const forbidden = await Promise.all([
       rawTable.select("*").limit(2),
       rawTable.insert({} as never),
@@ -384,8 +390,11 @@ describe("Supabase Insights scalar RPC with PostgREST max_rows=1", () => {
       expect(result.error?.code).toBe("42501");
     }
 
-    const insights = createSupabaseInsights(service, origin);
-    const maintenance = createSupabaseInsightsMaintenance(service);
+    const insights = createSupabaseInsights(service, insightsDatabaseNamespace);
+    const maintenance = createSupabaseInsightsMaintenance(
+      service,
+      insightsDatabaseNamespace,
+    );
     const finishJob = async (jobId: string) => {
       for (let step = 0; step < 32; step += 1) {
         const result = await maintenance.runJobStep(jobId, {
@@ -493,8 +502,11 @@ describe("Supabase Insights scalar RPC with PostgREST max_rows=1", () => {
   });
 
   it("keeps long BMP identities index-safe and exponent pages byte-bounded", async () => {
-    const insights = createSupabaseInsights(service, origin);
-    const maintenance = createSupabaseInsightsMaintenance(service);
+    const insights = createSupabaseInsights(service, insightsDatabaseNamespace);
+    const maintenance = createSupabaseInsightsMaintenance(
+      service,
+      insightsDatabaseNamespace,
+    );
     const finishJob = async (jobId: string) => {
       for (let step = 0; step < 64; step += 1) {
         const result = await maintenance.runJobStep(jobId, {
@@ -755,8 +767,15 @@ describe("Supabase Insights scalar RPC with PostgREST max_rows=1", () => {
          SET committed_seq=v_base+50001 WHERE id=1;
        END $$;`,
     );
-    const insights = createSupabaseInsights(service, origin, () => scaleAsOfMs);
-    const maintenance = createSupabaseInsightsMaintenance(service);
+    const insights = createSupabaseInsights(
+      service,
+      insightsDatabaseNamespace,
+      () => scaleAsOfMs,
+    );
+    const maintenance = createSupabaseInsightsMaintenance(
+      service,
+      insightsDatabaseNamespace,
+    );
     const finish = async (jobId: string) => {
       for (let step = 0; step < 128; step += 1) {
         let result: Awaited<ReturnType<typeof maintenance.runJobStep>>;
@@ -850,7 +869,7 @@ describe("Supabase Insights scalar RPC with PostgREST max_rows=1", () => {
 
     const freshInsights = createSupabaseInsights(
       service,
-      origin,
+      insightsDatabaseNamespace,
       () => scaleAsOfMs + 1,
     );
     const overviewInput = {
@@ -1025,7 +1044,7 @@ describe("Supabase Insights scalar RPC with PostgREST max_rows=1", () => {
     }
     if (process.env.HOT_UPDATER_CAPTURE_SUPABASE_INSIGHTS_EVIDENCE === "1") {
       const sql = await readFile(
-        "plugins/supabase/src/insightsScale.sql",
+        "plugins/supabase/supabase/migrations/20260901030000_hot-updater_insights-scale.sql",
         "utf8",
       );
       await writeFile(
@@ -1064,14 +1083,17 @@ describe("Supabase Insights scalar RPC with PostgREST max_rows=1", () => {
       const rpc = restricted.rpc.bind(restricted);
       const results = await Promise.all([
         rpc(SUPABASE_V1_FUNCTION_NAMES.insightsPrepareRead, {
+          p_database_namespace: insightsDatabaseNamespace,
           p_max_items: 1,
         }),
         rpc(SUPABASE_V1_FUNCTION_NAMES.insightsPrepare, {
+          p_database_namespace: insightsDatabaseNamespace,
           p_max_items: 1,
           p_batch: [],
           p_batch_bytes: 2,
         }),
         rpc(SUPABASE_V1_FUNCTION_NAMES.insightsAppend, {
+          p_database_namespace: insightsDatabaseNamespace,
           p_event: {} as never,
           p_event_bytes: 0,
           p_install_key: "0".repeat(64),
@@ -1079,6 +1101,7 @@ describe("Supabase Insights scalar RPC with PostgREST max_rows=1", () => {
           p_aliases: [],
         }),
         rpc(SUPABASE_V1_FUNCTION_NAMES.insightsEventPage, {
+          p_database_namespace: insightsDatabaseNamespace,
           p_scope: "all",
           p_scope_id: null,
           p_limit: 2,
@@ -1088,6 +1111,7 @@ describe("Supabase Insights scalar RPC with PostgREST max_rows=1", () => {
           p_cursor_id: null,
         }),
         rpc(SUPABASE_V1_FUNCTION_NAMES.insightsInstallationPage, {
+          p_database_namespace: insightsDatabaseNamespace,
           p_selector: { kind: "all" },
           p_limit: 1,
           p_after_key: null,
@@ -1097,27 +1121,32 @@ describe("Supabase Insights scalar RPC with PostgREST max_rows=1", () => {
           p_now_ms: Date.now(),
         }),
         rpc(SUPABASE_V1_FUNCTION_NAMES.insightsSearchStep, {
+          p_database_namespace: insightsDatabaseNamespace,
           p_job_id: "search:missing",
           p_max_items: 1,
           p_max_bytes: 1,
         }),
         rpc(SUPABASE_V1_FUNCTION_NAMES.insightsReport, {
+          p_database_namespace: insightsDatabaseNamespace,
           p_query: { kind: "installationOverview" },
           p_min_as_of_ms: null,
           p_now_ms: Date.now(),
         }),
         rpc(SUPABASE_V1_FUNCTION_NAMES.insightsReportStep, {
+          p_database_namespace: insightsDatabaseNamespace,
           p_job_id: "report:missing",
           p_max_items: 1,
           p_max_bytes: 1,
         }),
         rpc(SUPABASE_V1_FUNCTION_NAMES.insightsReportPage, {
+          p_database_namespace: insightsDatabaseNamespace,
           p_publication_id: "missing",
           p_section: { section: "bundleDistribution" },
           p_limit: 1,
           p_after: null,
         }),
         rpc(SUPABASE_V1_FUNCTION_NAMES.insightsPrune, {
+          p_database_namespace: insightsDatabaseNamespace,
           p_before_ms: Date.now(),
           p_max_items: 1,
           p_max_bytes: 1,

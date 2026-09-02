@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 describe("createHotUpdater Insights", () => {
-  it("always persists events and serves queries without a server Insights flag", async () => {
+  it("always persists events and exposes the five-method Insights model", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-12T00:00:00.000Z"));
     const database = createInMemoryDatabasePlugin();
@@ -59,13 +59,22 @@ describe("createHotUpdater Insights", () => {
       }),
     );
     expect(hotUpdater.insights).toMatchObject({
-      mode: "bounded",
-      maxMatchingRows: 50_000,
+      append: expect.any(Function),
+      pageEvents: expect.any(Function),
+      pageInstallations: expect.any(Function),
+      getReport: expect.any(Function),
+      pageReport: expect.any(Function),
     });
     expect(overview.status).toBe(200);
     await expect(overview.json()).resolves.toEqual({
-      bundles: [{ bundleId: "bundle-1", installations: 1 }],
-      trackedInstallations: 1,
+      state: "failed",
+      versions: {
+        schemaVersion: null,
+        storageVersion: null,
+        projectionGeneration: null,
+        sourceGeneration: null,
+      },
+      error: { code: "storage-not-ready" },
     });
   });
 
@@ -81,7 +90,9 @@ describe("createHotUpdater Insights", () => {
     });
 
     expect((await hotUpdater.handlers.client(eventRequest())).status).toBe(204);
-    await hotUpdater.insights?.getBundleEventOverview();
+    await hotUpdater.insights.getReport({
+      query: { kind: "installationOverview" },
+    });
 
     expect(createMigrator).toHaveBeenCalledOnce();
   });
@@ -100,11 +111,35 @@ describe("createHotUpdater Insights", () => {
     const adminQuery = await hotUpdater.handlers.admin(
       new Request("https://example.com/installations/overview"),
     );
+    const adminEvents = await hotUpdater.handlers.admin(
+      new Request("https://example.com/events"),
+    );
+    const adminInstallations = await hotUpdater.handlers.admin(
+      new Request("https://example.com/installations?kind=all"),
+    );
+    const adminReportPage = await hotUpdater.handlers.admin(
+      new Request(
+        "https://example.com/insights/reports/publication-1?section=activeSeries",
+      ),
+    );
+    const legacyEventPage = await hotUpdater.handlers.admin(
+      new Request("https://example.com/insights/v1/events"),
+    );
+    const legacyInstallationHistory = await hotUpdater.handlers.admin(
+      new Request("https://example.com/installations/install-1/events"),
+    );
 
     expect(clientQuery.status).toBe(404);
     expect(adminIngestion.status).toBe(404);
     expect(adminQuery.status).toBe(200);
     expect(adminQuery.headers.get("cache-control")).toBe("private, no-store");
+    expect([
+      adminEvents.status,
+      adminInstallations.status,
+      adminReportPage.status,
+    ]).toEqual([200, 200, 200]);
+    expect(legacyEventPage.status).toBe(404);
+    expect(legacyInstallationHistory.status).toBe(404);
   });
 
   it("returns a stable client error for malformed event payloads", async () => {
@@ -119,7 +154,7 @@ describe("createHotUpdater Insights", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: "Invalid event field: platform",
+      error: { code: "INSIGHTS_INVALID_QUERY" },
     });
   });
 
@@ -137,7 +172,7 @@ describe("createHotUpdater Insights", () => {
 
       expect(response.status).toBe(400);
       await expect(response.json()).resolves.toEqual({
-        error: `Invalid event field: ${field}`,
+        error: { code: "INSIGHTS_INVALID_QUERY" },
       });
     },
   );

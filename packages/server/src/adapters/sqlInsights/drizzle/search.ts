@@ -178,6 +178,7 @@ const canonicalSearch = (
 const cursorJobId = (
   input: InsightsPublishedInstallationPageInput,
   semanticKey: string,
+  databaseNamespace: string,
 ): { readonly sourceId: string; readonly jobId: string } | null => {
   if (input.cursor === undefined) return null;
   assertInsightsCursorContract(input.cursor);
@@ -192,7 +193,7 @@ const cursorJobId = (
     value.length !== 6 ||
     value[0] !== 1 ||
     value[1] !== SEARCH_CURSOR_REVISION ||
-    typeof value[2] !== "string" ||
+    value[2] !== databaseNamespace ||
     typeof value[3] !== "string" ||
     value[4] !== semanticKey ||
     typeof value[5] !== "string" ||
@@ -323,8 +324,14 @@ const readStoredSearch = (value: string): CanonicalSearch => {
 export const createDrizzleInsightsSearch = (
   db: DrizzleDB,
   provider: DrizzleProvider,
+  databaseNamespace: string,
 ) => {
-  const source = createDrizzleInsightsSource(db, provider);
+  const source = createDrizzleInsightsSource(db, provider, databaseNamespace);
+  const readStoredJob = (row: Record<string, unknown>): SearchJob => {
+    const job = readJob(row);
+    if (job.sourceId !== databaseNamespace) return invalidResult();
+    return job;
+  };
 
   const findJob = async (jobId: string): Promise<SearchJob | null> => {
     const rows = await queryDrizzleInsights(
@@ -332,7 +339,7 @@ export const createDrizzleInsightsSearch = (
       sql`select * from ${sql.identifier(DRIZZLE_INSIGHTS_JOBS)}
         where job_id=${jobId} and job_kind='search' limit 1`,
     );
-    return rows[0] === undefined ? null : readJob(rows[0]);
+    return rows[0] === undefined ? null : readStoredJob(rows[0]);
   };
 
   const findReservation = async (
@@ -344,7 +351,7 @@ export const createDrizzleInsightsSearch = (
       sql`select * from ${sql.identifier(DRIZZLE_INSIGHTS_JOBS)}
         where reservation_key=${reservationKey} and job_kind='search' limit 1`,
     );
-    return rows[0] === undefined ? null : readJob(rows[0]);
+    return rows[0] === undefined ? null : readStoredJob(rows[0]);
   };
 
   const reserve = (
@@ -354,7 +361,11 @@ export const createDrizzleInsightsSearch = (
     minimum: number,
   ) =>
     transactDrizzleInsights(db, async (transaction) => {
-      const state = await lockDrizzleInsightsSourceFence(transaction, provider);
+      const state = await lockDrizzleInsightsSourceFence(
+        transaction,
+        provider,
+        databaseNamespace,
+      );
       if (state.sourceId !== sourceId || state.status !== "ready") {
         return invalidResult();
       }
@@ -436,7 +447,7 @@ export const createDrizzleInsightsSearch = (
           and as_of_ms >= ${minimum}
         order by as_of_ms desc,job_order_key desc limit 1`,
     );
-    return rows[0] === undefined ? null : readJob(rows[0]);
+    return rows[0] === undefined ? null : readStoredJob(rows[0]);
   };
 
   const advance = async (
@@ -694,7 +705,11 @@ export const createDrizzleInsightsSearch = (
   ): Promise<InsightsPublishedInstallationPage> => {
     const search = canonicalSearch(input);
     const semanticKey = drizzleInsightsSemanticKey([1, search]);
-    const cursorPublicationId = cursorJobId(input, semanticKey);
+    const cursorPublicationId = cursorJobId(
+      input,
+      semanticKey,
+      databaseNamespace,
+    );
     try {
       await source.assertReadyLayout();
     } catch (error) {

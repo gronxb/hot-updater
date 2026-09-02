@@ -34,11 +34,7 @@ const client = DynamoDBDocumentClient.from(
 const store = {
   client,
   tableName: "hot-updater-metadata",
-  namespace: {
-    partition: "test",
-    region: "us-east-1",
-    accountId: "000000000000",
-  },
+  insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000001",
 };
 
 const initializedItem = (
@@ -262,6 +258,31 @@ describe("DynamoDB Insights v2 contract", () => {
     await expect(initializeDynamoDBInsightsV2(store)).rejects.toBeInstanceOf(
       DynamoDBInsightsV2StorageCorruptionError,
     );
+  });
+
+  it("rejects a layout bound to another database namespace", async () => {
+    documentClient.on(GetCommand).callsFake((input) => ({
+      Item:
+        input.Key?.sk === "layout"
+          ? {
+              ...input.Key,
+              item_type: "insights-layout",
+              layout_version: DYNAMODB_INSIGHTS_V2_LAYOUT_VERSION,
+              storage_revision: DYNAMODB_INSIGHTS_V2_STORAGE_REVISION,
+              database_namespace: "00000000-0000-4000-8000-000000000002",
+              source_shards: 32,
+              global_shards: 16,
+              installation_shards: 8,
+              bundle_shards: 16,
+              latest_shards: 16,
+            }
+          : undefined,
+    }));
+
+    await expect(initializeDynamoDBInsightsV2(store)).rejects.toBeInstanceOf(
+      DynamoDBInsightsV2StorageCorruptionError,
+    );
+    expect(documentClient.commandCalls(BatchGetCommand)).toHaveLength(0);
   });
 
   it("rejects safe-integer source clock exhaustion before writing", async () => {

@@ -2,9 +2,20 @@ import {
   DatabasePluginInputError,
   InsightsQueryNotReadyError,
   type BundleEventRow,
+  type InsightsInitialPublishedInstallationPage,
+  type InsightsInitialPublishedInstallationPageInput,
   type InsightsInstallationPage,
   type InsightsInstallationPageInput,
   type InsightsInstallationRow,
+  type InsightsLiveInstallationPage,
+  type InsightsLiveInstallationPageInput,
+  type InsightsModel,
+  type InsightsPinnedInstallationPage,
+  type InsightsPinnedInstallationPageInput,
+  type InsightsPublishedInstallationContinuation,
+  type InsightsPublishedInstallationContinuationInput,
+  type InsightsPublishedInstallationPage,
+  type InsightsPublishedInstallationPageInput,
   type InsightsPageEventsInput,
   type InsightsPageEventsResult,
   type InsightsReportInput,
@@ -19,7 +30,6 @@ import {
   assertInsightsPageContract,
   assertInsightsReportPageResultContract,
   assertInsightsReportResultContract,
-  assertInsightsEventRow,
   assertInsightsMaintenanceInputContract,
   createInsightsReportPageCursor,
   getCanonicalInsightsJsonByteLength,
@@ -30,9 +40,8 @@ import {
   readInsightsReportPageInput,
   readInsightsReportPageQuery,
   readInsightsReportQuery,
-  type RequiredInsightsModel,
 } from "@hot-updater/plugin-core/internal";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 
 import { SUPABASE_V1_FUNCTION_NAMES } from "./supabaseInfrastructureNames";
 import { throwSupabaseError } from "./supabaseResult";
@@ -45,6 +54,8 @@ const canonicalUuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const canonicalEventId =
   /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const canonicalDatabaseNamespace =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 type RpcClient = Pick<SupabaseClient<Database>, "rpc">;
 type JsonObject = Record<string, unknown>;
@@ -66,8 +77,17 @@ export type SupabaseInsightsMaintenanceResult =
       };
     }
   | {
-      readonly state: "running" | "idle" | "failed";
+      readonly state: "running" | "failed";
       readonly jobId: string;
+      readonly usage: {
+        readonly items: number;
+        readonly requests: number;
+        readonly bytes: number;
+      };
+    }
+  | {
+      readonly state: "idle";
+      readonly jobId?: string;
       readonly usage: {
         readonly items: number;
         readonly requests: number;
@@ -129,16 +149,6 @@ const unknownVersions = () => ({
   sourceGeneration: null,
 });
 
-const namespaceSource = (supabaseUrl: string): string => {
-  let url: URL;
-  try {
-    url = new URL(supabaseUrl);
-  } catch {
-    return invalidQuery();
-  }
-  return `${url.protocol}//${url.host}${url.pathname}`;
-};
-
 const digestHex = async (value: string): Promise<string> =>
   Array.from(await getInsightsInstallationOrderKey(value), (byte) =>
     byte.toString(16).padStart(2, "0"),
@@ -166,7 +176,6 @@ const legacyAliases = (value: unknown): JsonObject[] => {
   const row = value.event as unknown as BundleEventRow;
   let eventBytes: number;
   try {
-    assertInsightsEventRow(row);
     assertInsightsEventContract(row);
     eventBytes = getCanonicalInsightsJsonByteLength(row);
   } catch {
@@ -258,11 +267,34 @@ const sourceGeneration = (value: unknown): string => {
   return value as string;
 };
 
-export const createSupabaseInsightsMaintenance = (supabase: RpcClient) => ({
-  async runJobStep(
+const throwMaintenanceError = (
+  operation: string,
+  error: PostgrestError | null,
+): void => {
+  if (error?.message === "INSIGHTS_DATABASE_NAMESPACE_MISMATCH") {
+    throw new InsightsQueryNotReadyError();
+  }
+  throwSupabaseError(operation, error);
+};
+
+export const readSupabaseInsightsDatabaseNamespace = (
+  value: unknown,
+): string => {
+  if (!text(value) || !canonicalDatabaseNamespace.test(value)) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+  return value;
+};
+
+export const createSupabaseInsightsMaintenance = (
+  supabase: RpcClient,
+  databaseNamespace: string,
+) => {
+  databaseNamespace = readSupabaseInsightsDatabaseNamespace(databaseNamespace);
+  const runJobStep = async (
     jobId: string,
     input: SupabaseInsightsMaintenanceInput,
-  ): Promise<SupabaseInsightsMaintenanceResult> {
+  ): Promise<SupabaseInsightsMaintenanceResult> => {
     try {
       assertInsightsMaintenanceInputContract({
         maxItems: input.maxItems,
@@ -297,9 +329,12 @@ export const createSupabaseInsightsMaintenance = (supabase: RpcClient) => ({
       }
       const { data: readData, error: readError } = await supabase.rpc(
         SUPABASE_V1_FUNCTION_NAMES.insightsPrepareRead,
-        { p_max_items: Math.min(input.maxItems, 1000) } as never,
+        {
+          p_database_namespace: databaseNamespace,
+          p_max_items: Math.min(input.maxItems, 1000),
+        } as never,
       );
-      throwSupabaseError("read Supabase Insights migration step", readError);
+      throwMaintenanceError("read Supabase Insights migration step", readError);
       const read = resultObject(readData);
       if (!text(read.state)) invalidResult();
       if (read.state === "ready") {
@@ -324,12 +359,13 @@ export const createSupabaseInsightsMaintenance = (supabase: RpcClient) => ({
       const { data: commitData, error: commitError } = await supabase.rpc(
         SUPABASE_V1_FUNCTION_NAMES.insightsPrepare,
         {
+          p_database_namespace: databaseNamespace,
           p_max_items: Math.min(input.maxItems, 1000),
           p_batch: batch,
           p_batch_bytes: bytes,
         } as never,
       );
-      throwSupabaseError(
+      throwMaintenanceError(
         "commit Supabase Insights migration step",
         commitError,
       );
@@ -362,12 +398,13 @@ export const createSupabaseInsightsMaintenance = (supabase: RpcClient) => ({
       const { data, error } = await supabase.rpc(
         SUPABASE_V1_FUNCTION_NAMES.insightsPrune,
         {
+          p_database_namespace: databaseNamespace,
           p_before_ms: beforeMs,
           p_max_items: input.maxItems,
           p_max_bytes: maxBytes,
         } as never,
       );
-      throwSupabaseError("prune Supabase Insights publications", error);
+      throwMaintenanceError("prune Supabase Insights publications", error);
       const payload = resultObject(data);
       if (
         !text(payload.state) ||
@@ -398,11 +435,12 @@ export const createSupabaseInsightsMaintenance = (supabase: RpcClient) => ({
         : null;
     if (functionName === null) return failed(0);
     const { data, error } = await supabase.rpc(functionName, {
+      p_database_namespace: databaseNamespace,
       p_job_id: jobId,
       p_max_items: input.maxItems,
       p_max_bytes: maxBytes,
     } as never);
-    throwSupabaseError("run Supabase Insights job step", error);
+    throwMaintenanceError("run Supabase Insights job step", error);
     const payload = resultObject(data);
     if (
       !text(payload.state) ||
@@ -430,8 +468,70 @@ export const createSupabaseInsightsMaintenance = (supabase: RpcClient) => ({
       return { state: payload.state, jobId, usage };
     }
     return invalidResult();
-  },
-});
+  };
+
+  return {
+    runJobStep,
+    async runScheduledStep(
+      input: SupabaseInsightsMaintenanceInput,
+    ): Promise<SupabaseInsightsMaintenanceResult> {
+      try {
+        assertInsightsMaintenanceInputContract({
+          maxItems: input.maxItems,
+          maxRequests: input.maxRequests,
+        });
+      } catch {
+        return invalidQuery();
+      }
+      const maxBytes = input.maxBytes ?? INSIGHTS_MAINTENANCE_INPUT_MAX_BYTES;
+      if (
+        !Number.isSafeInteger(maxBytes) ||
+        maxBytes < 1 ||
+        maxBytes > INSIGHTS_MAINTENANCE_INPUT_MAX_BYTES
+      )
+        invalidQuery();
+
+      const { data, error } = await supabase.rpc(
+        SUPABASE_V1_FUNCTION_NAMES.insightsJobNext,
+        { p_database_namespace: databaseNamespace } as never,
+      );
+      throwMaintenanceError(
+        "discover Supabase Insights maintenance job",
+        error,
+      );
+      const payload = resultObject(data);
+      if (payload.state === "idle") {
+        return {
+          state: "idle",
+          usage: { items: 0, requests: 1, bytes: 0 },
+        };
+      }
+      if (
+        payload.state !== "queued" ||
+        !text(payload.jobId) ||
+        payload.jobId.length === 0 ||
+        payload.jobId.length > 128
+      )
+        invalidResult();
+      const jobId = payload.jobId as string;
+      if (input.maxRequests === 1) {
+        return {
+          state: "idle",
+          jobId,
+          usage: { items: 0, requests: 1, bytes: 0 },
+        };
+      }
+      const result = await runJobStep(jobId, {
+        ...input,
+        maxRequests: input.maxRequests - 1,
+      });
+      return {
+        ...result,
+        usage: { ...result.usage, requests: result.usage.requests + 1 },
+      };
+    },
+  };
+};
 
 const mapReadError = (
   operation: string,
@@ -446,7 +546,11 @@ const mapReadError = (
     (error.code === "42883" &&
       error.message?.includes("hot_updater_v1_insights_"));
   const marker = error.message ?? "";
-  if (missing || marker === "INSIGHTS_STORAGE_NOT_READY") {
+  if (
+    missing ||
+    marker === "INSIGHTS_STORAGE_NOT_READY" ||
+    marker === "INSIGHTS_DATABASE_NAMESPACE_MISMATCH"
+  ) {
     return {
       state: "failed" as const,
       versions: unknownVersions(),
@@ -627,17 +731,17 @@ const eventCursor = (
 
 export const createSupabaseInsights = (
   supabase: RpcClient,
-  supabaseUrl: string,
+  databaseNamespace: string,
   nowMs: () => number = Date.now,
-): RequiredInsightsModel => {
-  const namespace = digestHex(namespaceSource(supabaseUrl));
+): InsightsModel => {
+  const namespace = readSupabaseInsightsDatabaseNamespace(databaseNamespace);
   let storagePrepared = false;
 
   const inspectStorage = async (projectionGeneration: string | null) => {
     if (storagePrepared) return null;
     const { data, error } = await supabase.rpc(
       SUPABASE_V1_FUNCTION_NAMES.insightsPrepareRead,
-      { p_max_items: 0 } as never,
+      { p_database_namespace: namespace, p_max_items: 0 } as never,
     );
     const failure = mapReadError("inspect Supabase Insights storage", error);
     if (failure !== null) return failure;
@@ -669,10 +773,295 @@ export const createSupabaseInsights = (
     return invalidResult();
   };
 
-  const model = {
+  function pageInstallations(
+    input: InsightsLiveInstallationPageInput,
+  ): Promise<InsightsLiveInstallationPage>;
+  function pageInstallations(
+    input: InsightsInitialPublishedInstallationPageInput,
+  ): Promise<InsightsInitialPublishedInstallationPage>;
+  function pageInstallations(
+    input: InsightsPinnedInstallationPageInput,
+  ): Promise<InsightsPinnedInstallationPage>;
+  function pageInstallations(
+    input: InsightsPublishedInstallationContinuationInput,
+  ): Promise<InsightsPublishedInstallationContinuation>;
+  function pageInstallations(
+    input: InsightsPublishedInstallationPageInput,
+  ): Promise<InsightsPublishedInstallationPage>;
+  function pageInstallations(
+    input: InsightsInstallationPageInput,
+  ): Promise<InsightsInstallationPage>;
+  async function pageInstallations(
+    input: InsightsInstallationPageInput,
+  ): Promise<InsightsInstallationPage> {
+    input = readInsightsInstallationPageInput(input);
+    const cursorNamespace = namespace;
+    if (
+      (input.kind === "contains" && input.query.length === 0) ||
+      (input.kind === "installationId" && input.cursor !== undefined) ||
+      ((input.kind === "contains" || input.kind === "userId") &&
+        input.minAsOfMs !== undefined &&
+        !integer(input.minAsOfMs)) ||
+      ((input.kind === "contains" || input.kind === "userId") &&
+        input.publicationId !== undefined &&
+        (input.publicationId.length === 0 || input.publicationId.length > 128))
+    )
+      invalidQuery();
+    const decoded = decodeCursor(input.cursor);
+    if (
+      decoded !== undefined &&
+      (!Array.isArray(decoded) ||
+        decoded.length !==
+          (input.kind === "contains" || input.kind === "userId" ? 8 : 7) ||
+        decoded[0] !== 1 ||
+        decoded[1] !== cursorNamespace ||
+        decoded[2] !== "installations" ||
+        decoded[3] !== installationOrderRevision ||
+        JSON.stringify(decoded[4]) !==
+          JSON.stringify(
+            input.kind === "contains"
+              ? { kind: input.kind, query: input.query }
+              : input.kind === "userId"
+                ? { kind: input.kind, userId: input.userId }
+                : input.kind === "installationId"
+                  ? { kind: input.kind, installId: input.installId }
+                  : { kind: input.kind },
+          ) ||
+        !(decoded[5] === null || text(decoded[5])) ||
+        !(decoded[6] === null || text(decoded[6])) ||
+        ((input.kind === "contains" || input.kind === "userId") &&
+          (!text(decoded[7]) ||
+            !/^(0|[1-9][0-9]*)$/.test(decoded[7]) ||
+            decoded[7].length > 16)))
+    )
+      invalidQuery();
+    if (
+      Array.isArray(decoded) &&
+      (!text(decoded[6]) ||
+        !/^[0-9a-f]{64}$/.test(decoded[6]) ||
+        (input.kind === "all" && decoded[5] !== null) ||
+        ((input.kind === "contains" || input.kind === "userId") &&
+          (!text(decoded[5]) ||
+            decoded[5].length === 0 ||
+            decoded[5].length > 128)))
+    )
+      invalidQuery();
+    const selector =
+      input.kind === "contains"
+        ? { kind: input.kind, query: input.query.toLowerCase() }
+        : input.kind === "userId"
+          ? { kind: input.kind, userId: input.userId }
+          : input.kind === "installationId"
+            ? { kind: input.kind, installId: input.installId }
+            : { kind: input.kind };
+    const cursorPublicationId =
+      Array.isArray(decoded) && text(decoded[5]) ? decoded[5] : undefined;
+    if (
+      (input.kind === "contains" || input.kind === "userId") &&
+      input.publicationId !== undefined &&
+      cursorPublicationId !== undefined &&
+      input.publicationId !== cursorPublicationId
+    )
+      invalidQuery();
+    if (input.kind === "all" || input.kind === "installationId") {
+      const preparation = await inspectStorage(null);
+      if (preparation !== null) return preparation;
+    }
+    const { data, error } = await supabase.rpc(
+      SUPABASE_V1_FUNCTION_NAMES.insightsInstallationPage,
+      {
+        p_database_namespace: namespace,
+        p_selector: selector,
+        p_limit: input.limit,
+        p_after_key: Array.isArray(decoded) ? decoded[6] : null,
+        p_after_ordinal:
+          Array.isArray(decoded) && text(decoded[7]) ? decoded[7] : null,
+        p_publication_id:
+          input.kind === "contains" || input.kind === "userId"
+            ? (input.publicationId ??
+              (Array.isArray(decoded) && text(decoded[5]) ? decoded[5] : null))
+            : Array.isArray(decoded) && text(decoded[5])
+              ? decoded[5]
+              : null,
+        p_min_as_of_ms:
+          input.kind === "contains" || input.kind === "userId"
+            ? Array.isArray(decoded)
+              ? null
+              : (input.minAsOfMs ?? null)
+            : null,
+        p_now_ms: nowMs(),
+      } as never,
+    );
+    const failure = mapReadError("page Insights installations", error);
+    if (failure !== null) return failure;
+    if (!object(data) || !text(data.state)) invalidResult();
+    const payload = data as JsonObject;
+    if (payload.state === "expired") {
+      if (!text(payload.publicationId)) invalidResult();
+      return {
+        state: "expired",
+        publicationId: payload.publicationId as string,
+      };
+    }
+    const generation = sourceGeneration(payload.sourceGeneration);
+    if (payload.state === "preparing") {
+      if (!text(payload.jobId)) invalidResult();
+      return {
+        state: "preparing",
+        versions: knownVersions(generation, generation),
+        job: { id: payload.jobId as string },
+      };
+    }
+    if (payload.state === "failed") {
+      if (!text(payload.jobId)) invalidResult();
+      return {
+        state: "failed",
+        versions: knownVersions(generation, generation),
+        error: {
+          code:
+            payload.error === "migration-poison"
+              ? "migration-poison"
+              : "preparation-failed",
+          jobId: payload.jobId as string,
+        },
+      };
+    }
+    const readState = payload.state;
+    if (
+      (readState !== "ready" && readState !== "stale") ||
+      !Array.isArray(payload.rows) ||
+      payload.rows.length > input.limit ||
+      typeof payload.hasMore !== "boolean" ||
+      !text(payload.consistency) ||
+      (!text(payload.lastKey) && payload.lastKey !== null) ||
+      (payload.consistency === "snapshot" &&
+        !(
+          payload.lastOrdinal === null ||
+          (text(payload.lastOrdinal) &&
+            /^(0|[1-9][0-9]*)$/.test(payload.lastOrdinal) &&
+            payload.lastOrdinal.length <= 16)
+        )) ||
+      (readState === "stale" && !text(payload.refreshJobId))
+    )
+      invalidResult();
+    const rows = (payload.rows as unknown[]).map(toInstallationRow);
+    if (input.kind === "installationId" && (rows.length > 1 || payload.hasMore))
+      invalidResult();
+    const afterKey =
+      Array.isArray(decoded) && text(decoded[6]) ? decoded[6] : null;
+    let previousKey = afterKey;
+    for (const row of rows) {
+      const key = await digestHex(row.install_id);
+      if (
+        (previousKey !== null && key <= previousKey) ||
+        (input.kind === "installationId" && row.install_id !== input.installId)
+      )
+        invalidResult();
+      previousKey = key;
+    }
+    if (
+      rows.length > 0 &&
+      (!text(payload.lastKey) ||
+        payload.lastKey !== (await digestHex(rows.at(-1)!.install_id)))
+    )
+      invalidResult();
+    const previousOrdinal =
+      Array.isArray(decoded) && text(decoded[7]) ? Number(decoded[7]) : -1;
+    if (
+      payload.consistency === "snapshot" &&
+      ((rows.length === 0 && payload.lastOrdinal !== null) ||
+        (rows.length > 0 &&
+          payload.lastOrdinal !== String(previousOrdinal + rows.length)))
+    )
+      invalidResult();
+    const publication = payload.publication;
+    if (
+      payload.consistency === "snapshot" &&
+      (!object(publication) ||
+        !text(publication.id) ||
+        !integer(publication.asOfMs) ||
+        !integer(publication.completedAtMs) ||
+        publication.completedAtMs < publication.asOfMs)
+    )
+      invalidResult();
+    if (payload.consistency === "live" && !integer(payload.observedAtMs))
+      invalidResult();
+    const cursorSelector =
+      input.kind === "contains"
+        ? { kind: input.kind, query: input.query }
+        : input.kind === "userId"
+          ? { kind: input.kind, userId: input.userId }
+          : input.kind === "installationId"
+            ? { kind: input.kind, installId: input.installId }
+            : { kind: input.kind };
+    const nextCursor =
+      payload.hasMore && text(payload.lastKey)
+        ? encodeCursor([
+            1,
+            cursorNamespace,
+            "installations",
+            installationOrderRevision,
+            cursorSelector,
+            payload.consistency === "snapshot" && object(publication)
+              ? publication.id
+              : null,
+            payload.lastKey,
+            ...(payload.consistency === "snapshot"
+              ? [payload.lastOrdinal]
+              : []),
+          ])
+        : null;
+    if (payload.hasMore && nextCursor === null) invalidResult();
+    const exactTotal = integer(payload.total)
+      ? {
+          state: "exact" as const,
+          value: payload.total as number,
+          sourceGeneration: generation,
+        }
+      : ({ state: "unavailable" } as const);
+    const result = {
+      state: readState,
+      versions: projectedVersions(generation, generation),
+      data: {
+        data: rows,
+        nextCursor,
+        hasNext: nextCursor !== null,
+        consistency:
+          payload.consistency === "snapshot" && object(publication)
+            ? {
+                kind: "snapshot",
+                cutoff: {
+                  kind: "publication",
+                  publication: {
+                    id: publication.id as string,
+                    asOfMs: publication.asOfMs as number,
+                    completedAtMs: publication.completedAtMs as number,
+                    sourceGeneration: generation,
+                    accuracy: "exact",
+                  },
+                },
+              }
+            : {
+                kind: "live",
+                cutoff: {
+                  kind: "projection",
+                  observedAtMs: payload.observedAtMs as number,
+                  projectionGeneration: generation,
+                },
+              },
+        total: exactTotal,
+      },
+      ...(readState === "stale"
+        ? { refresh: { id: payload.refreshJobId as string } }
+        : {}),
+    } as unknown as InsightsInstallationPage;
+    assertInsightsPageContract(result, input.limit);
+    return result;
+  }
+
+  const model: InsightsModel = {
     async append(row: BundleEventRow): Promise<void> {
       try {
-        assertInsightsEventRow(row);
         assertInsightsEventContract(row);
       } catch {
         throw new DatabasePluginInputError("invalid-data");
@@ -705,6 +1094,7 @@ export const createSupabaseInsights = (
       const { error } = await supabase.rpc(
         SUPABASE_V1_FUNCTION_NAMES.insightsAppend,
         {
+          p_database_namespace: namespace,
           p_event: row,
           p_event_bytes: getCanonicalInsightsJsonByteLength(row),
           p_install_key: await digestHex(row.install_id),
@@ -715,7 +1105,8 @@ export const createSupabaseInsights = (
       if (
         error?.code === "PGRST202" ||
         error?.code === "42883" ||
-        error?.message === "INSIGHTS_STORAGE_NOT_READY"
+        error?.message === "INSIGHTS_STORAGE_NOT_READY" ||
+        error?.message === "INSIGHTS_DATABASE_NAMESPACE_MISMATCH"
       )
         throw new InsightsQueryNotReadyError();
       if (error?.code === "22023") {
@@ -728,7 +1119,7 @@ export const createSupabaseInsights = (
       input: InsightsPageEventsInput,
     ): Promise<InsightsPageEventsResult> {
       input = readInsightsPageEventsInput(input);
-      const cursorNamespace = await namespace;
+      const cursorNamespace = namespace;
       const selector = eventSelector(input);
       const cursor = eventCursor(cursorNamespace, input);
       const preparation = await inspectStorage(null);
@@ -736,6 +1127,7 @@ export const createSupabaseInsights = (
       const { data, error } = await supabase.rpc(
         SUPABASE_V1_FUNCTION_NAMES.insightsEventPage,
         {
+          p_database_namespace: namespace,
           p_scope: selector.scope,
           p_scope_id: selector.scopeId,
           p_before_received_at_ms: input.beforeReceivedAtMs,
@@ -760,7 +1152,6 @@ export const createSupabaseInsights = (
       const rows = payload.rows as BundleEventRow[];
       for (const [index, row] of rows.entries()) {
         assertInsightsEventContract(row);
-        assertInsightsEventRow(row);
         const previous = rows[index - 1];
         if (
           row.received_at_ms < (input.sinceReceivedAtMs ?? 0) ||
@@ -822,285 +1213,14 @@ export const createSupabaseInsights = (
       return result;
     },
 
-    async pageInstallations(
-      input: InsightsInstallationPageInput,
-    ): Promise<InsightsInstallationPage> {
-      input = readInsightsInstallationPageInput(input);
-      const cursorNamespace = await namespace;
-      if (
-        (input.kind === "contains" && input.query.length === 0) ||
-        (input.kind === "installationId" && input.cursor !== undefined) ||
-        ((input.kind === "contains" || input.kind === "userId") &&
-          input.minAsOfMs !== undefined &&
-          !integer(input.minAsOfMs)) ||
-        ((input.kind === "contains" || input.kind === "userId") &&
-          input.publicationId !== undefined &&
-          (input.publicationId.length === 0 ||
-            input.publicationId.length > 128))
-      )
-        invalidQuery();
-      const decoded = decodeCursor(input.cursor);
-      if (
-        decoded !== undefined &&
-        (!Array.isArray(decoded) ||
-          decoded.length !==
-            (input.kind === "contains" || input.kind === "userId" ? 8 : 7) ||
-          decoded[0] !== 1 ||
-          decoded[1] !== cursorNamespace ||
-          decoded[2] !== "installations" ||
-          decoded[3] !== installationOrderRevision ||
-          JSON.stringify(decoded[4]) !==
-            JSON.stringify(
-              input.kind === "contains"
-                ? { kind: input.kind, query: input.query }
-                : input.kind === "userId"
-                  ? { kind: input.kind, userId: input.userId }
-                  : input.kind === "installationId"
-                    ? { kind: input.kind, installId: input.installId }
-                    : { kind: input.kind },
-            ) ||
-          !(decoded[5] === null || text(decoded[5])) ||
-          !(decoded[6] === null || text(decoded[6])) ||
-          ((input.kind === "contains" || input.kind === "userId") &&
-            (!text(decoded[7]) ||
-              !/^(0|[1-9][0-9]*)$/.test(decoded[7]) ||
-              decoded[7].length > 16)))
-      )
-        invalidQuery();
-      if (
-        Array.isArray(decoded) &&
-        (!text(decoded[6]) ||
-          !/^[0-9a-f]{64}$/.test(decoded[6]) ||
-          (input.kind === "all" && decoded[5] !== null) ||
-          ((input.kind === "contains" || input.kind === "userId") &&
-            (!text(decoded[5]) ||
-              decoded[5].length === 0 ||
-              decoded[5].length > 128)))
-      )
-        invalidQuery();
-      const selector =
-        input.kind === "contains"
-          ? { kind: input.kind, query: input.query.toLowerCase() }
-          : input.kind === "userId"
-            ? { kind: input.kind, userId: input.userId }
-            : input.kind === "installationId"
-              ? { kind: input.kind, installId: input.installId }
-              : { kind: input.kind };
-      const cursorPublicationId =
-        Array.isArray(decoded) && text(decoded[5]) ? decoded[5] : undefined;
-      if (
-        (input.kind === "contains" || input.kind === "userId") &&
-        input.publicationId !== undefined &&
-        cursorPublicationId !== undefined &&
-        input.publicationId !== cursorPublicationId
-      )
-        invalidQuery();
-      if (input.kind === "all" || input.kind === "installationId") {
-        const preparation = await inspectStorage(null);
-        if (preparation !== null) return preparation;
-      }
-      const { data, error } = await supabase.rpc(
-        SUPABASE_V1_FUNCTION_NAMES.insightsInstallationPage,
-        {
-          p_selector: selector,
-          p_limit: input.limit,
-          p_after_key: Array.isArray(decoded) ? decoded[6] : null,
-          p_after_ordinal:
-            Array.isArray(decoded) && text(decoded[7]) ? decoded[7] : null,
-          p_publication_id:
-            input.kind === "contains" || input.kind === "userId"
-              ? (input.publicationId ??
-                (Array.isArray(decoded) && text(decoded[5])
-                  ? decoded[5]
-                  : null))
-              : Array.isArray(decoded) && text(decoded[5])
-                ? decoded[5]
-                : null,
-          p_min_as_of_ms:
-            input.kind === "contains" || input.kind === "userId"
-              ? Array.isArray(decoded)
-                ? null
-                : (input.minAsOfMs ?? null)
-              : null,
-          p_now_ms: nowMs(),
-        } as never,
-      );
-      const failure = mapReadError("page Insights installations", error);
-      if (failure !== null) return failure;
-      if (!object(data) || !text(data.state)) invalidResult();
-      const payload = data as JsonObject;
-      if (payload.state === "expired") {
-        if (!text(payload.publicationId)) invalidResult();
-        return {
-          state: "expired",
-          publicationId: payload.publicationId as string,
-        };
-      }
-      const generation = sourceGeneration(payload.sourceGeneration);
-      if (payload.state === "preparing") {
-        if (!text(payload.jobId)) invalidResult();
-        return {
-          state: "preparing",
-          versions: knownVersions(generation, generation),
-          job: { id: payload.jobId as string },
-        };
-      }
-      if (payload.state === "failed") {
-        if (!text(payload.jobId)) invalidResult();
-        return {
-          state: "failed",
-          versions: knownVersions(generation, generation),
-          error: {
-            code:
-              payload.error === "migration-poison"
-                ? "migration-poison"
-                : "preparation-failed",
-            jobId: payload.jobId as string,
-          },
-        };
-      }
-      const readState = payload.state;
-      if (
-        (readState !== "ready" && readState !== "stale") ||
-        !Array.isArray(payload.rows) ||
-        payload.rows.length > input.limit ||
-        typeof payload.hasMore !== "boolean" ||
-        !text(payload.consistency) ||
-        (!text(payload.lastKey) && payload.lastKey !== null) ||
-        (payload.consistency === "snapshot" &&
-          !(
-            payload.lastOrdinal === null ||
-            (text(payload.lastOrdinal) &&
-              /^(0|[1-9][0-9]*)$/.test(payload.lastOrdinal) &&
-              payload.lastOrdinal.length <= 16)
-          )) ||
-        (readState === "stale" && !text(payload.refreshJobId))
-      )
-        invalidResult();
-      const rows = (payload.rows as unknown[]).map(toInstallationRow);
-      if (
-        input.kind === "installationId" &&
-        (rows.length > 1 || payload.hasMore)
-      )
-        invalidResult();
-      const afterKey =
-        Array.isArray(decoded) && text(decoded[6]) ? decoded[6] : null;
-      let previousKey = afterKey;
-      for (const row of rows) {
-        const key = await digestHex(row.install_id);
-        if (
-          (previousKey !== null && key <= previousKey) ||
-          (input.kind === "installationId" &&
-            row.install_id !== input.installId)
-        )
-          invalidResult();
-        previousKey = key;
-      }
-      if (
-        rows.length > 0 &&
-        (!text(payload.lastKey) ||
-          payload.lastKey !== (await digestHex(rows.at(-1)!.install_id)))
-      )
-        invalidResult();
-      const previousOrdinal =
-        Array.isArray(decoded) && text(decoded[7]) ? Number(decoded[7]) : -1;
-      if (
-        payload.consistency === "snapshot" &&
-        ((rows.length === 0 && payload.lastOrdinal !== null) ||
-          (rows.length > 0 &&
-            payload.lastOrdinal !== String(previousOrdinal + rows.length)))
-      )
-        invalidResult();
-      const publication = payload.publication;
-      if (
-        payload.consistency === "snapshot" &&
-        (!object(publication) ||
-          !text(publication.id) ||
-          !integer(publication.asOfMs) ||
-          !integer(publication.completedAtMs) ||
-          publication.completedAtMs < publication.asOfMs)
-      )
-        invalidResult();
-      if (payload.consistency === "live" && !integer(payload.observedAtMs))
-        invalidResult();
-      const cursorSelector =
-        input.kind === "contains"
-          ? { kind: input.kind, query: input.query }
-          : input.kind === "userId"
-            ? { kind: input.kind, userId: input.userId }
-            : input.kind === "installationId"
-              ? { kind: input.kind, installId: input.installId }
-              : { kind: input.kind };
-      const nextCursor =
-        payload.hasMore && text(payload.lastKey)
-          ? encodeCursor([
-              1,
-              cursorNamespace,
-              "installations",
-              installationOrderRevision,
-              cursorSelector,
-              payload.consistency === "snapshot" && object(publication)
-                ? publication.id
-                : null,
-              payload.lastKey,
-              ...(payload.consistency === "snapshot"
-                ? [payload.lastOrdinal]
-                : []),
-            ])
-          : null;
-      if (payload.hasMore && nextCursor === null) invalidResult();
-      const exactTotal = integer(payload.total)
-        ? {
-            state: "exact" as const,
-            value: payload.total as number,
-            sourceGeneration: generation,
-          }
-        : ({ state: "unavailable" } as const);
-      const result = {
-        state: readState,
-        versions: projectedVersions(generation, generation),
-        data: {
-          data: rows,
-          nextCursor,
-          hasNext: nextCursor !== null,
-          consistency:
-            payload.consistency === "snapshot" && object(publication)
-              ? {
-                  kind: "snapshot",
-                  cutoff: {
-                    kind: "publication",
-                    publication: {
-                      id: publication.id as string,
-                      asOfMs: publication.asOfMs as number,
-                      completedAtMs: publication.completedAtMs as number,
-                      sourceGeneration: generation,
-                      accuracy: "exact",
-                    },
-                  },
-                }
-              : {
-                  kind: "live",
-                  cutoff: {
-                    kind: "projection",
-                    observedAtMs: payload.observedAtMs as number,
-                    projectionGeneration: generation,
-                  },
-                },
-          total: exactTotal,
-        },
-        ...(readState === "stale"
-          ? { refresh: { id: payload.refreshJobId as string } }
-          : {}),
-      } as unknown as InsightsInstallationPage;
-      assertInsightsPageContract(result, input.limit);
-      return result;
-    },
+    pageInstallations,
 
     async getReport(input: InsightsReportInput): Promise<InsightsReportResult> {
       const normalized = normalizeReportInput(input);
       const { data, error } = await supabase.rpc(
         SUPABASE_V1_FUNCTION_NAMES.insightsReport,
         {
+          p_database_namespace: namespace,
           p_query: normalized.query,
           p_min_as_of_ms: normalized.minAsOfMs ?? null,
           p_now_ms: nowMs(),
@@ -1168,7 +1288,7 @@ export const createSupabaseInsights = (
       input: InsightsReportPageInput,
     ): Promise<InsightsReportPage> {
       input = readInsightsReportPageInput(input);
-      const cursorNamespace = await namespace;
+      const cursorNamespace = namespace;
       const parsed = readInsightsReportPageQuery(input, cursorNamespace);
       const structural = parsed.input;
       if (
@@ -1197,6 +1317,7 @@ export const createSupabaseInsights = (
       const { data, error } = await supabase.rpc(
         SUPABASE_V1_FUNCTION_NAMES.insightsReportPage,
         {
+          p_database_namespace: namespace,
           p_publication_id: structural.publicationId,
           p_section: section,
           p_limit: structural.limit,
@@ -1297,5 +1418,5 @@ export const createSupabaseInsights = (
       return result;
     },
   };
-  return model as unknown as RequiredInsightsModel;
+  return model;
 };

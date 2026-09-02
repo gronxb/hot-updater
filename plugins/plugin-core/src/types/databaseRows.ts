@@ -128,7 +128,6 @@ export interface DatabaseModelMap {
   readonly releases: ReleaseRow;
   readonly release_catalogs: ReleaseCatalogRow;
   readonly channels: ChannelRow;
-  readonly bundle_events: BundleEventRow;
   readonly api_keys: ApiKeyRow;
 }
 

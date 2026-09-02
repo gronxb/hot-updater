@@ -1,13 +1,11 @@
 import { createHash } from "node:crypto";
 
 import {
-  createUUIDv7,
   DatabasePluginInputError,
   InsightsQueryNotReadyError,
   type BundleEventRow,
 } from "@hot-updater/plugin-core";
 import {
-  databaseFields,
   getCanonicalInsightsJsonByteLength,
   INSIGHTS_EVENT_ID_PATTERN,
   INSIGHTS_MAINTENANCE_INPUT_MAX_BYTES,
@@ -23,7 +21,6 @@ import type {
 import {
   assertMongoInsightsEventRow,
   isMongoInsightsEventId,
-  mongoInsightsEventIndexes,
 } from "../adapters/mongodbInsights";
 import {
   measureMongoInsightsCollection,
@@ -31,25 +28,45 @@ import {
 } from "../adapters/mongodbInsightsModelSchema";
 import {
   MONGO_INSIGHTS_SOURCE_CLOCK_COLLECTION,
+  MONGO_INSIGHTS_DATABASE_NAMESPACE_PATTERN,
   MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION,
   MONGO_INSIGHTS_SOURCE_SHARDS,
   MONGO_INSIGHTS_SOURCE_STATE_COLLECTION,
   MONGO_INSIGHTS_SOURCE_STATE_ID,
+  isMongoInsightsDatabaseNamespace,
   type MongoBundleEventDocument,
   type MongoInsightsSourceClock,
   type MongoInsightsSourceEvent,
   type MongoInsightsSourceState,
 } from "../adapters/mongodbInsightsSourceSchema";
-import { createMongoInsightsPreparation } from "./mongoInsightsPreparation";
+import {
+  createMongoInsightsPreparation,
+  mongoInsightsSourceEventIndex,
+} from "./mongoInsightsPreparation";
 
 const EVENT_COLLECTION = "bundle_events";
 const UUID_V7 = INSIGHTS_EVENT_ID_PATTERN.source;
+const DATABASE_NAMESPACE = MONGO_INSIGHTS_DATABASE_NAMESPACE_PATTERN.source;
 const MAX_SEQUENCE = "9223372036854775807";
 const SOURCE_SEQUENCE_INDEX = "insights_source_sequence_idx";
 const PUBLIC_PROJECTION = {
-  ...Object.fromEntries(
-    databaseFields.bundle_events.map((field) => [field, 1]),
-  ),
+  id: 1,
+  type: 1,
+  install_id: 1,
+  user_id: 1,
+  username: 1,
+  from_bundle_id: 1,
+  from_release_id: 1,
+  to_bundle_id: 1,
+  to_release_id: 1,
+  platform: 1,
+  app_version: 1,
+  channel: 1,
+  cohort: 1,
+  update_strategy: 1,
+  fingerprint_hash: 1,
+  sdk_version: 1,
+  received_at_ms: 1,
   _id: 1,
 };
 const transactionOptions = {
@@ -60,12 +77,13 @@ const transactionOptions = {
 
 const assertMongoInsightsSourceState = (
   value: MongoInsightsSourceState | null,
+  databaseNamespace: string,
 ): MongoInsightsSourceState => {
   if (
     value === null ||
     value.version !== 1 ||
     (value.phase !== "auditing" && value.phase !== "ready") ||
-    !isMongoInsightsEventId(value.sourceId)
+    value.sourceId !== databaseNamespace
   )
     throw new InsightsQueryNotReadyError();
   if (
@@ -109,7 +127,7 @@ const stateValidator = {
       version: { enum: [1] },
       revision: { bsonType: "int", minimum: 0 },
       phase: { enum: ["auditing", "ready"] },
-      sourceId: { bsonType: "string", pattern: UUID_V7 },
+      sourceId: { bsonType: "string", pattern: DATABASE_NAMESPACE },
       eventCollectionUuid: { bsonType: "string" },
       stateCollectionUuid: { bsonType: "string" },
       clockCollectionUuid: { bsonType: "string" },
@@ -130,7 +148,7 @@ const clockValidator = {
         minimum: 0,
         maximum: MONGO_INSIGHTS_SOURCE_SHARDS - 1,
       },
-      sourceId: { bsonType: "string", pattern: UUID_V7 },
+      sourceId: { bsonType: "string", pattern: DATABASE_NAMESPACE },
       value: { bsonType: "long", minimum: 0 },
     },
   },
@@ -141,7 +159,7 @@ const ledgerValidator = {
     required: ["_id", "sourceId", "shard", "sequence", "rawId"],
     properties: {
       _id: { bsonType: "string", pattern: UUID_V7 },
-      sourceId: { bsonType: "string", pattern: UUID_V7 },
+      sourceId: { bsonType: "string", pattern: DATABASE_NAMESPACE },
       shard: {
         bsonType: "int",
         minimum: 0,
@@ -187,7 +205,7 @@ export const decodeMongoInsightsSourceGeneration = (
     !Array.isArray(decoded) ||
     decoded.length !== 4 ||
     decoded[0] !== 1 ||
-    !isMongoInsightsEventId(decoded[1]) ||
+    !isMongoInsightsDatabaseNamespace(decoded[1]) ||
     !Array.isArray(decoded[2]) ||
     decoded[2].length !== MONGO_INSIGHTS_SOURCE_SHARDS ||
     !Array.isArray(decoded[3]) ||
@@ -255,8 +273,11 @@ const collectionMetadata = async (
 
 export const createMongoInsightsSource = (
   client: MongoClient,
+  databaseNamespace: string,
   usage?: MongoInsightsStepUsage,
 ) => {
+  if (!isMongoInsightsDatabaseNamespace(databaseNamespace))
+    throw new DatabasePluginInputError("invalid-query");
   const db = client.db(undefined, {
     readPreference: "primary",
     readConcern: { level: "local" } as ReadConcern,
@@ -333,6 +354,7 @@ export const createMongoInsightsSource = (
     }
     const current = assertMongoInsightsSourceState(
       await states.findOne({ _id: MONGO_INSIGHTS_SOURCE_STATE_ID }),
+      databaseNamespace,
     );
     if (usage !== undefined) usage.requests += 1;
     const metadata = await collectionMetadata(db);
@@ -456,13 +478,13 @@ export const createMongoInsightsSource = (
             singleBatch: true,
           },
         )
-        .hint(mongoInsightsEventIndexes[0].name)
+        .hint(mongoInsightsSourceEventIndex.name)
         .sort({ id: -1 })
         .limit(1)
         .toArray();
       if (upper[0] && !isMongoInsightsEventId(upper[0].id))
         throw new DatabasePluginInputError("invalid-result");
-      const sourceId = createUUIDv7();
+      const sourceId = databaseNamespace;
       const state: MongoInsightsSourceState = {
         _id: MONGO_INSIGHTS_SOURCE_STATE_ID,
         version: 1,
@@ -547,6 +569,7 @@ export const createMongoInsightsSource = (
               { _id: MONGO_INSIGHTS_SOURCE_STATE_ID },
               { session },
             ),
+            databaseNamespace,
           );
           if (state.phase === "ready")
             return {
@@ -569,7 +592,7 @@ export const createMongoInsightsSource = (
               singleBatch: true,
               raw: true,
             })
-            .hint(mongoInsightsEventIndexes[0].name)
+            .hint(mongoInsightsSourceEventIndex.name)
             .sort({ id: 1 })
             .limit(candidateLimit)
             .batchSize(candidateLimit)
@@ -691,6 +714,7 @@ export const createMongoInsightsSource = (
               { _id: MONGO_INSIGHTS_SOURCE_STATE_ID },
               { session },
             ),
+            databaseNamespace,
           );
           if (state.phase !== "ready" || state.sourceId !== ready.sourceId)
             throw new InsightsQueryNotReadyError();
@@ -758,6 +782,7 @@ export const createMongoInsightsSource = (
                 { _id: MONGO_INSIGHTS_SOURCE_STATE_ID },
                 { session },
               ),
+              databaseNamespace,
             );
             if (
               state.phase !== "ready" ||

@@ -1,0 +1,29 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = env("PRISMA_EVIDENCE_CLIENT_OUTPUT")
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model bundle_events {
+  id               String  @id @db.VarChar(36)
+  type             String  @db.VarChar(32)
+  install_id       String  @db.Text
+  user_id          String? @db.Text
+  username         String? @db.Text
+  from_release_id  String? @db.VarChar(36)
+  from_bundle_id   String? @db.VarChar(36)
+  to_release_id    String? @db.VarChar(36)
+  to_bundle_id     String  @db.VarChar(36)
+  platform         String  @db.VarChar(32)
+  app_version      String  @db.VarChar(255)
+  channel          String  @db.VarChar(255)
+  cohort           String  @db.VarChar(255)
+  update_strategy  String? @db.VarChar(32)
+  fingerprint_hash String? @db.Text
+  sdk_version      String? @db.VarChar(255)
+  received_at_ms   Float
+}

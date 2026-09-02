@@ -19,9 +19,7 @@ import {
 } from "../../../packages/core/src/releaseCatalogScope.ts";
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
 import type { Bundle } from "../../../packages/core/src/types.ts";
-import { createInsightsProvider } from "../../../packages/server/dist/index.mjs";
 import {
-  type InsightsModel,
   type BundleRepository,
   createDatabaseClient,
   createUUIDv7After,
@@ -39,7 +37,6 @@ import {
   type ObservedInsightsEvent,
 } from "../console-insights-qa.ts";
 import { createConsoleInsightsHttpClient } from "../insights-http-client.ts";
-import { createConsoleInsightsProviderClient } from "../insights-provider-client.ts";
 import {
   PAX_LONG_ASSET_ANDROID_MANIFEST_PATH,
   PAX_LONG_ASSET_MANIFEST_PATH,
@@ -1379,32 +1376,15 @@ async function withConfiguredDatabase<T>(
   }
 }
 
-function readInsightsModel(database: BundleRepository): InsightsModel | null {
-  const models: unknown = Reflect.get(database, "models");
-  const insights: unknown =
-    typeof models === "object" && models !== null
-      ? Reflect.get(models, "insights")
-      : undefined;
-  return typeof insights === "object" &&
-    insights !== null &&
-    typeof Reflect.get(insights, "append") === "function" &&
-    typeof Reflect.get(insights, "scan") === "function"
-    ? (insights as InsightsModel)
-    : null;
-}
-
 async function verifyConfiguredConsoleInsights(args: {
   bundleIds: readonly string[];
   sinceMs: number;
 }) {
-  return withConfiguredDatabase(async (database) => {
-    const insights = readInsightsModel(database);
-    const client = insights
-      ? createConsoleInsightsProviderClient(createInsightsProvider(insights))
-      : createConsoleInsightsHttpClient({
-          baseUrl: `${getControllerReachableAppBaseUrl()}/admin`,
-          headers: getHotUpdaterAdminHeaders(),
-        });
+  return withConfiguredDatabase(async () => {
+    const client = createConsoleInsightsHttpClient({
+      baseUrl: `${getControllerReachableAppBaseUrl()}/admin`,
+      headers: getHotUpdaterAdminHeaders(),
+    });
     for (let attempt = 1; attempt <= 30; attempt += 1) {
       try {
         const evidence = await verifyConsoleInsights(client, args.bundleIds, {

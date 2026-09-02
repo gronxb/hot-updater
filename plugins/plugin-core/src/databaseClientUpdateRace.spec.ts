@@ -7,7 +7,23 @@ import {
 } from "./createDatabasePlugin";
 import { createDatabaseClient } from "./databaseClient";
 import { bundleToRow } from "./databaseRows";
-import type { BundleRow, BundleRowUpdate } from "./types";
+import type { BundleRow, BundleRowUpdate, InsightsModel } from "./types";
+
+const unusedInsights = {
+  append: async () => {},
+  pageEvents: async () => {
+    throw new Error("not implemented");
+  },
+  pageInstallations: async () => {
+    throw new Error("not implemented");
+  },
+  getReport: async () => {
+    throw new Error("not implemented");
+  },
+  pageReport: async () => {
+    throw new Error("not implemented");
+  },
+} satisfies InsightsModel;
 
 const createBundle = (): Bundle => ({
   id: "bundle-1",
@@ -32,7 +48,7 @@ const createFixture = (expectedUpdates: number) => {
   const plugin = createDatabasePlugin({
     name,
     ...createDatabasePluginAdapter(name, {
-      appendBundleEvent: async () => {},
+      insights: unusedInsights,
       create: async (input) => {
         if (input.model === "bundle_patches") patchCreateCount += 1;
         return input.data;

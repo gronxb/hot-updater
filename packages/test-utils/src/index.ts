@@ -2,5 +2,5 @@ export * from "./setupBundleMethodsTestSuite";
 export * from "./setupSemverSatisfiesTestSuite";
 export * from "./setupDatabasePluginTestSuite";
 export * from "./setupDatabaseClientTestSuite";
-export * from "./requiredInsightsModelConformance";
-export * from "./requiredInsightsModelOracle";
+export * from "./insightsModelConformance";
+export * from "./insightsModelOracle";

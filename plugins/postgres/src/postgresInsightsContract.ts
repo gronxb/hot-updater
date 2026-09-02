@@ -1,8 +1,10 @@
 import {
   DatabasePluginInputError,
   InsightsQueryNotReadyError,
+  type BundleEventRow,
 } from "@hot-updater/plugin-core";
 import {
+  assertInsightsEventContract,
   assertInsightsPageContract,
   assertInsightsMaintenanceInputContract,
   getCanonicalInsightsJsonByteLength,
@@ -17,6 +19,36 @@ export interface PostgresInsightsTableLayout {
   readonly table: string;
   readonly columns: readonly string[];
   readonly constraints: readonly string[];
+}
+
+export const POSTGRES_INSIGHTS_EVENT_COLUMNS = [
+  "id",
+  "type",
+  "install_id",
+  "user_id",
+  "username",
+  "from_bundle_id",
+  "from_release_id",
+  "to_bundle_id",
+  "to_release_id",
+  "platform",
+  "app_version",
+  "channel",
+  "cohort",
+  "update_strategy",
+  "fingerprint_hash",
+  "sdk_version",
+  "received_at_ms",
+] as const satisfies readonly (keyof BundleEventRow)[];
+
+export function assertPostgresInsightsStoredEvent(
+  value: unknown,
+): asserts value is BundleEventRow {
+  try {
+    assertInsightsEventContract(value);
+  } catch {
+    throw new DatabasePluginInputError("invalid-result");
+  }
 }
 
 /** Exact catalog shape for private owned tables; extensions are never accepted. */

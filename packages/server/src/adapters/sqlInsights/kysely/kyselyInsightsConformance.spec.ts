@@ -2,6 +2,7 @@ import { DatabaseSync, type SqliteValue } from "node:sqlite";
 
 import type {
   BundleEventRow,
+  InsightsModel,
   InsightsInitialPublishedInstallationPage,
   InsightsInitialPublishedInstallationPageInput,
   InsightsInstallationPage,
@@ -15,19 +16,16 @@ import type {
   InsightsPublishedInstallationPage,
   InsightsPublishedInstallationPageInput,
 } from "@hot-updater/plugin-core";
+import { assertInsightsMaintenanceInputContract } from "@hot-updater/plugin-core/internal";
 import {
-  assertInsightsMaintenanceInputContract,
-  type RequiredInsightsModel,
-} from "@hot-updater/plugin-core/internal";
-import {
-  type RequiredInsightsMaintenanceStepResult,
-  type RequiredInsightsModelConformanceHarness,
-  registerRequiredInsightsModelTests,
+  type InsightsMaintenanceStepResult,
+  type InsightsModelConformanceHarness,
+  type InsightsModelConformanceNamespaces,
+  registerInsightsModelTests,
 } from "@hot-updater/test-utils";
 import { Kysely, SqliteDialect } from "kysely";
 import { afterEach, beforeEach, vi } from "vitest";
 
-import { createKyselyInsightsModel } from ".";
 import { kyselyAdapter } from "../../kysely";
 import { tables } from "./constants";
 import { stepKyselyInsightsSearch } from "./installations";
@@ -91,11 +89,14 @@ type SqliteNamespace = {
   readonly db: Kysely<object>;
   readonly native: DatabaseSync;
   readonly meter: SqliteCandidateMeter;
+  readonly databaseNamespace: string;
 };
 
 const namespaces: SqliteNamespace[] = [];
 
-const createNamespace = async (): Promise<SqliteNamespace> => {
+const createNamespace = async (
+  databaseNamespace: string,
+): Promise<SqliteNamespace> => {
   const native = new DatabaseSync(":memory:");
   const meter = new SqliteCandidateMeter();
   const db = new Kysely<object>({
@@ -126,9 +127,13 @@ const createNamespace = async (): Promise<SqliteNamespace> => {
       },
     }),
   });
-  const namespace = { db, native, meter };
+  const namespace = { db, native, meter, databaseNamespace };
   namespaces.push(namespace);
-  const adapter = kyselyAdapter({ db, provider: "sqlite" });
+  const adapter = kyselyAdapter({
+    db,
+    provider: "sqlite",
+    insightsDatabaseNamespace: databaseNamespace,
+  });
   await adapter.createMigrator!()
     .migrateToLatest()
     .then((migration) => migration.execute());
@@ -136,9 +141,9 @@ const createNamespace = async (): Promise<SqliteNamespace> => {
 };
 
 const instrumentModel = (
-  model: RequiredInsightsModel,
+  model: InsightsModel,
   meter: SqliteCandidateMeter,
-): RequiredInsightsModel => {
+): InsightsModel => {
   function pageInstallations(
     input: InsightsLiveInstallationPageInput,
   ): Promise<InsightsLiveInstallationPage>;
@@ -213,158 +218,166 @@ const deletePublication = (native: DatabaseSync, id: string): void => {
   }
 };
 
-const createHarness =
-  async (): Promise<RequiredInsightsModelConformanceHarness> => {
-    const primary = await createNamespace();
-    const other = await createNamespace();
-    const primaryModel = createKyselyInsightsModel(primary.db, "sqlite");
-    const otherModel = createKyselyInsightsModel(other.db, "sqlite");
-    const runTargetedJobStep = async (
-      namespace: SqliteNamespace,
-      jobId: string,
-      input: { readonly maxItems: number; readonly maxRequests: number },
-    ): Promise<RequiredInsightsMaintenanceStepResult> => {
-      assertInsightsMaintenanceInputContract(input);
-      const search = namespace.native
-        .prepare(`select id from ${tables.searchJobs} where id = ?`)
-        .get(jobId);
-      const report = namespace.native
-        .prepare(`select id from ${tables.reportJobs} where id = ?`)
-        .get(jobId);
-      if (search === undefined && report === undefined) {
-        throw new Error("unknown-job");
-      }
-      if (
-        (search !== undefined && input.maxRequests < 13) ||
-        (report !== undefined && input.maxRequests < 10)
-      ) {
-        return {
-          state: "idle",
-          jobId,
-          usage: { items: 0, requests: 1 },
-        };
-      }
-      const update =
-        search !== undefined
-          ? await namespace.meter.measure(() =>
-              stepKyselyInsightsSearch(
-                namespace.db,
-                "sqlite",
-                jobId,
-                Math.min(
-                  input.maxItems,
-                  Math.floor((input.maxRequests - 6) / 5),
-                ),
-              ),
-            )
-          : await namespace.meter.measure(() =>
-              stepKyselyInsightsReport(namespace.db, "sqlite", jobId, input),
-            );
-      const usage = {
-        items: update.processed,
-        requests: namespace.meter.lastRequests + 1,
+const createHarness = async (
+  namespaces: InsightsModelConformanceNamespaces,
+): Promise<InsightsModelConformanceHarness> => {
+  const primary = await createNamespace(namespaces.insightsDatabaseNamespace);
+  const other = await createNamespace(
+    namespaces.otherInsightsDatabaseNamespace,
+  );
+  const primaryModel = kyselyAdapter({
+    db: primary.db,
+    provider: "sqlite",
+    insightsDatabaseNamespace: primary.databaseNamespace,
+  }).models.insights;
+  const otherModel = kyselyAdapter({
+    db: other.db,
+    provider: "sqlite",
+    insightsDatabaseNamespace: other.databaseNamespace,
+  }).models.insights;
+  const runTargetedJobStep = async (
+    namespace: SqliteNamespace,
+    jobId: string,
+    input: { readonly maxItems: number; readonly maxRequests: number },
+  ): Promise<InsightsMaintenanceStepResult> => {
+    assertInsightsMaintenanceInputContract(input);
+    const search = namespace.native
+      .prepare(`select id from ${tables.searchJobs} where id = ?`)
+      .get(jobId);
+    const report = namespace.native
+      .prepare(`select id from ${tables.reportJobs} where id = ?`)
+      .get(jobId);
+    if (search === undefined && report === undefined) {
+      throw new Error("unknown-job");
+    }
+    if (
+      (search !== undefined && input.maxRequests < 13) ||
+      (report !== undefined && input.maxRequests < 10)
+    ) {
+      return {
+        state: "idle",
+        jobId,
+        usage: { items: 0, requests: 1 },
       };
-      return update.job.state === "ready"
-        ? { state: "complete", publicationId: jobId, usage }
-        : update.job.state === "failed"
-          ? { state: "failed", jobId, usage }
-          : update.advanced
-            ? { state: "running", jobId, usage }
-            : { state: "idle", jobId, usage };
+    }
+    const update =
+      search !== undefined
+        ? await namespace.meter.measure(() =>
+            stepKyselyInsightsSearch(
+              namespace.db,
+              "sqlite",
+              jobId,
+              Math.min(input.maxItems, Math.floor((input.maxRequests - 6) / 5)),
+            ),
+          )
+        : await namespace.meter.measure(() =>
+            stepKyselyInsightsReport(namespace.db, "sqlite", jobId, input),
+          );
+    const usage = {
+      items: update.processed,
+      requests: namespace.meter.lastRequests + 1,
     };
+    return update.job.state === "ready"
+      ? { state: "complete", publicationId: jobId, usage }
+      : update.job.state === "failed"
+        ? { state: "failed", jobId, usage }
+        : update.advanced
+          ? { state: "running", jobId, usage }
+          : { state: "idle", jobId, usage };
+  };
 
-    const createFacade = (): RequiredInsightsModelConformanceHarness => ({
-      model: instrumentModel(primaryModel, primary.meter),
-      otherNamespaceModel: instrumentModel(otherModel, other.meter),
-      runJobStep: (jobId, input) => runTargetedJobStep(primary, jobId, input),
-      runOtherNamespaceJobStep: (jobId, input) =>
-        runTargetedJobStep(other, jobId, input),
-      reopen: createFacade,
-      insertMigrationPoisonRow() {
-        primary.native.exec("begin immediate");
-        try {
-          for (const table of [
-            tables.events,
-            tables.liveVersions,
-            tables.aliases,
-          ]) {
-            primary.native
-              .prepare(`update ${table} set source_seq = source_seq + 1000`)
-              .run();
-            primary.native
-              .prepare(`update ${table} set source_seq = source_seq - 999`)
-              .run();
-          }
+  const createFacade = (): InsightsModelConformanceHarness => ({
+    model: instrumentModel(primaryModel, primary.meter),
+    otherNamespaceModel: instrumentModel(otherModel, other.meter),
+    runJobStep: (jobId, input) => runTargetedJobStep(primary, jobId, input),
+    runOtherNamespaceJobStep: (jobId, input) =>
+      runTargetedJobStep(other, jobId, input),
+    reopen: createFacade,
+    insertMigrationPoisonRow() {
+      primary.native.exec("begin immediate");
+      try {
+        for (const table of [
+          tables.events,
+          tables.liveVersions,
+          tables.aliases,
+        ]) {
           primary.native
-            .prepare(
-              `update ${tables.live} set source_seq = source_seq + 1,
-                first_source_seq = first_source_seq + 1`,
-            )
+            .prepare(`update ${table} set source_seq = source_seq + 1000`)
             .run();
           primary.native
-            .prepare(
-              `insert into ${tables.events} (
+            .prepare(`update ${table} set source_seq = source_seq - 999`)
+            .run();
+        }
+        primary.native
+          .prepare(
+            `update ${tables.live} set source_seq = source_seq + 1,
+                first_source_seq = first_source_seq + 1`,
+          )
+          .run();
+        primary.native
+          .prepare(
+            `insert into ${tables.events} (
             event_id, source_seq, received_at_ms, install_key, install_id,
             event_type, to_bundle_id, from_bundle_id, raw_json
           ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            )
-            .run(
-              "00000000-0000-7000-8000-0000000000ff",
-              1,
-              999,
-              "f".repeat(64),
-              "poison-installation",
-              "UNCHANGED",
-              "10000000-0000-7000-8000-000000000001",
-              null,
-              "{",
-            );
-          primary.native
-            .prepare(`update ${tables.state} set next_seq = next_seq + 1`)
-            .run();
-          primary.native.exec("commit");
-        } catch (error) {
-          primary.native.exec("rollback");
-          throw error;
-        }
-      },
-      setCurrentTimeMs(nowMs) {
-        if (!Number.isSafeInteger(nowMs) || nowMs < 0) {
-          throw new Error("invalid-time");
-        }
-        vi.setSystemTime(nowMs);
-      },
-      expirePublication(publicationId) {
-        deletePublication(primary.native, publicationId);
-      },
-      publicationStateForJob(jobId) {
-        const search = primary.native
-          .prepare(`select state from ${tables.searchJobs} where id = ?`)
-          .get(jobId) as { state: string } | undefined;
-        const report = primary.native
-          .prepare(`select state from ${tables.reportJobs} where id = ?`)
-          .get(jobId) as { state: string } | undefined;
-        return search?.state === "ready" || report?.state === "ready"
-          ? "complete"
-          : "absent";
-      },
-      getLastStorageReadCount(namespace = "primary") {
-        return namespace === "primary" ? primary.meter.last : other.meter.last;
-      },
-      getPageEventsCandidateReadBudget(input) {
-        return input.selector.kind === "all"
-          ? input.limit + 1
-          : (input.limit + 1) * 2;
-      },
-      getPageInstallationsCandidateReadBudget(input) {
-        return input.kind === "installationId" ? 2 : input.limit + 1;
-      },
-      getPageReportCandidateReadBudget(input) {
-        return input.limit + 1;
-      },
-    });
-    return createFacade();
-  };
+          )
+          .run(
+            "00000000-0000-7000-8000-0000000000ff",
+            1,
+            999,
+            "f".repeat(64),
+            "poison-installation",
+            "UNCHANGED",
+            "10000000-0000-7000-8000-000000000001",
+            null,
+            "{",
+          );
+        primary.native
+          .prepare(`update ${tables.state} set next_seq = next_seq + 1`)
+          .run();
+        primary.native.exec("commit");
+      } catch (error) {
+        primary.native.exec("rollback");
+        throw error;
+      }
+    },
+    setCurrentTimeMs(nowMs) {
+      if (!Number.isSafeInteger(nowMs) || nowMs < 0) {
+        throw new Error("invalid-time");
+      }
+      vi.setSystemTime(nowMs);
+    },
+    expirePublication(publicationId) {
+      deletePublication(primary.native, publicationId);
+    },
+    publicationStateForJob(jobId) {
+      const search = primary.native
+        .prepare(`select state from ${tables.searchJobs} where id = ?`)
+        .get(jobId) as { state: string } | undefined;
+      const report = primary.native
+        .prepare(`select state from ${tables.reportJobs} where id = ?`)
+        .get(jobId) as { state: string } | undefined;
+      return search?.state === "ready" || report?.state === "ready"
+        ? "complete"
+        : "absent";
+    },
+    getLastStorageReadCount(namespace = "primary") {
+      return namespace === "primary" ? primary.meter.last : other.meter.last;
+    },
+    getPageEventsCandidateReadBudget(input) {
+      return input.selector.kind === "all"
+        ? input.limit + 1
+        : (input.limit + 1) * 2;
+    },
+    getPageInstallationsCandidateReadBudget(input) {
+      return input.kind === "installationId" ? 2 : input.limit + 1;
+    },
+    getPageReportCandidateReadBudget(input) {
+      return input.limit + 1;
+    },
+  });
+  return createFacade();
+};
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -375,4 +388,4 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-registerRequiredInsightsModelTests(createHarness);
+registerInsightsModelTests(createHarness);

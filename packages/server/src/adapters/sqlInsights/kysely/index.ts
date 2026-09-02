@@ -1,5 +1,6 @@
 import type {
   BundleEventRow,
+  InsightsModel,
   InsightsInitialPublishedInstallationPage,
   InsightsInitialPublishedInstallationPageInput,
   InsightsInstallationPageInput,
@@ -19,7 +20,6 @@ import {
   DatabasePluginInputError,
   InsightsQueryNotReadyError,
 } from "@hot-updater/plugin-core";
-import type { RequiredInsightsModel } from "@hot-updater/plugin-core/internal";
 import {
   assertInsightsMaintenanceInputContract,
   INSIGHTS_MAINTENANCE_MAX_ITEMS,
@@ -50,6 +50,7 @@ import {
   prepareKyselyInsightsSource,
   readKyselyInsightsState,
 } from "./source";
+import { assertKyselyInsightsDatabaseNamespace } from "./utils";
 
 export { getKyselyInsightsDDL, migrateKyselyInsights } from "./schema";
 export { prepareKyselyInsightsSource } from "./source";
@@ -57,45 +58,59 @@ export { prepareKyselyInsightsSource } from "./source";
 function pageInstallations<TDatabase>(
   db: Kysely<TDatabase>,
   provider: KyselySQLProvider,
+  databaseNamespace: string,
   input: InsightsInitialPublishedInstallationPageInput,
 ): Promise<InsightsInitialPublishedInstallationPage>;
 function pageInstallations<TDatabase>(
   db: Kysely<TDatabase>,
   provider: KyselySQLProvider,
+  databaseNamespace: string,
   input: InsightsPinnedInstallationPageInput,
 ): Promise<InsightsPinnedInstallationPage>;
 function pageInstallations<TDatabase>(
   db: Kysely<TDatabase>,
   provider: KyselySQLProvider,
+  databaseNamespace: string,
   input: InsightsPublishedInstallationContinuationInput,
 ): Promise<InsightsPublishedInstallationContinuation>;
 function pageInstallations<TDatabase>(
   db: Kysely<TDatabase>,
   provider: KyselySQLProvider,
+  databaseNamespace: string,
   input: InsightsLiveInstallationPageInput,
 ): Promise<InsightsLiveInstallationPage>;
 function pageInstallations<TDatabase>(
   db: Kysely<TDatabase>,
   provider: KyselySQLProvider,
+  databaseNamespace: string,
   input: InsightsPublishedInstallationPageInput,
 ): Promise<InsightsPublishedInstallationPage>;
 function pageInstallations<TDatabase>(
   db: Kysely<TDatabase>,
   provider: KyselySQLProvider,
+  databaseNamespace: string,
   input: InsightsInstallationPageInput,
 ): ReturnType<typeof pageKyselyInsightsInstallations>;
 function pageInstallations<TDatabase>(
   db: Kysely<TDatabase>,
   provider: KyselySQLProvider,
+  databaseNamespace: string,
   input: InsightsInstallationPageInput,
 ) {
-  return pageKyselyInsightsInstallations(db, provider, input);
+  return pageKyselyInsightsInstallations(
+    db,
+    provider,
+    databaseNamespace,
+    input,
+  );
 }
 
 export const createKyselyInsightsModel = <TDatabase>(
   db: Kysely<TDatabase>,
   provider: KyselySQLProvider,
-): RequiredInsightsModel => {
+  databaseNamespace: string,
+): InsightsModel => {
+  assertKyselyInsightsDatabaseNamespace(databaseNamespace);
   function pageInstallationMethod(
     input: InsightsInitialPublishedInstallationPageInput,
   ): Promise<InsightsInitialPublishedInstallationPage>;
@@ -115,30 +130,32 @@ export const createKyselyInsightsModel = <TDatabase>(
     input: InsightsInstallationPageInput,
   ): ReturnType<typeof pageKyselyInsightsInstallations>;
   function pageInstallationMethod(input: InsightsInstallationPageInput) {
-    return pageInstallations(db, provider, input);
+    return pageInstallations(db, provider, databaseNamespace, input);
   }
   return {
     append: (row: BundleEventRow) =>
-      appendKyselyInsightsEvent(db, provider, row),
+      appendKyselyInsightsEvent(db, provider, databaseNamespace, row),
     pageEvents: (input: InsightsPageEventsInput) =>
-      pageKyselyInsightsEvents(db, input),
+      pageKyselyInsightsEvents(db, databaseNamespace, input),
     pageInstallations: pageInstallationMethod,
     getReport: (input: InsightsReportInput) =>
-      getKyselyInsightsReport(db, provider, input),
+      getKyselyInsightsReport(db, provider, databaseNamespace, input),
     pageReport: (input: InsightsReportPageInput) =>
-      pageKyselyInsightsReport(db, provider, input),
+      pageKyselyInsightsReport(db, provider, databaseNamespace, input),
   };
 };
 
 export const runKyselyInsightsMaintenanceStep = <TDatabase>(
   db: Kysely<TDatabase>,
   provider: KyselySQLProvider,
+  databaseNamespace: string,
   input: { readonly maxItems: number; readonly maxRequests: number },
 ): Promise<{
   readonly state: "idle" | "progress" | "published" | "failed";
   readonly processed: number;
   readonly jobId?: string;
 }> => {
+  assertKyselyInsightsDatabaseNamespace(databaseNamespace);
   assertInsightsMaintenanceInputContract(input);
   if (
     input.maxItems > INSIGHTS_MAINTENANCE_MAX_ITEMS ||
@@ -152,7 +169,7 @@ export const runKyselyInsightsMaintenanceStep = <TDatabase>(
   return (async () => {
     if (input.maxRequests < 20) {
       try {
-        await readKyselyInsightsState(db);
+        await readKyselyInsightsState(db, databaseNamespace);
       } catch (error) {
         if (!(error instanceof InsightsQueryNotReadyError)) throw error;
         return { state: "idle" as const, processed: 0 };
@@ -166,6 +183,7 @@ export const runKyselyInsightsMaintenanceStep = <TDatabase>(
       const source = await prepareKyselyInsightsSource(
         db,
         provider,
+        databaseNamespace,
         sourceLimit,
       );
       if (source.state !== "ready" || source.processed > 0) {

@@ -35,6 +35,8 @@ import {
 } from "./postgresInsightsSource";
 import type { Database } from "./types";
 
+const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
+
 const jobsTable = "private_hot_updater_insights_report_jobs";
 const headsTable = "private_hot_updater_insights_report_heads";
 const countsTable = "private_hot_updater_insights_report_counts";
@@ -60,9 +62,9 @@ describe("PostgreSQL report page snapshot and physical read bounds", () => {
   let afterMetadata: (() => Promise<void>) | undefined;
   let pageQueries: string[] = [];
   let queries: { sql: string; parameters: readonly unknown[] }[] = [];
-  const jobs = () => createPostgresInsightsJobs(db);
+  const jobs = () => createPostgresInsightsJobs(db, insightsDatabaseNamespace);
   const pages = () =>
-    createPostgresInsightsReportPages(pageDb, "postgres-test");
+    createPostgresInsightsReportPages(pageDb, insightsDatabaseNamespace);
 
   beforeAll(async () => {
     docker(["image", "inspect", postgresImage]);
@@ -156,11 +158,17 @@ describe("PostgreSQL report page snapshot and physical read bounds", () => {
     await pool.query(
       await readFile("plugins/postgres/sql/bundles.sql", "utf8"),
     );
-    await migratePostgresInsightsSource(db);
-    await migratePostgresInsightsReports(db);
-    await createPostgresInsightsSourceTools(db).backfillStep(1);
-    await migratePostgresInsightsLive(db);
-    await createPostgresInsightsLiveTools(db).backfillStep(1);
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
+    await migratePostgresInsightsReports(db, insightsDatabaseNamespace);
+    await createPostgresInsightsSourceTools(
+      db,
+      insightsDatabaseNamespace,
+    ).backfillStep(1);
+    await migratePostgresInsightsLive(db, insightsDatabaseNamespace);
+    await createPostgresInsightsLiveTools(
+      db,
+      insightsDatabaseNamespace,
+    ).backfillStep(1);
     await pool.query("create table page_write_probe(id integer primary key)");
     pageQueries = [];
     queries = [];
@@ -172,10 +180,14 @@ describe("PostgreSQL report page snapshot and physical read bounds", () => {
   });
 
   const append = async (id: number, time: number, bundleId = bundleA) =>
-    appendPostgresInsightsEvent(db, {
-      ...createBundleEventRowFixture(String(id), time),
-      to_bundle_id: bundleId,
-    });
+    appendPostgresInsightsEvent(
+      db,
+      {
+        ...createBundleEventRowFixture(String(id), time),
+        to_bundle_id: bundleId,
+      },
+      insightsDatabaseNamespace,
+    );
   const reserve = async (query: InsightsReportQuery, cutoff = asOfMs) => {
     const result = await jobs().getReport({ query, minAsOfMs: cutoff });
     if (result.state !== "queued")
@@ -186,7 +198,10 @@ describe("PostgreSQL report page snapshot and physical read bounds", () => {
     return result.jobId;
   };
   const finish = async (query: InsightsReportQuery, cutoff = asOfMs) => {
-    const worker = createPostgresInsightsReportWorker(db);
+    const worker = createPostgresInsightsReportWorker(
+      db,
+      insightsDatabaseNamespace,
+    );
     for (let step = 0; step < 100; step++) {
       const result = await worker.runStep({ maxItems: 256, maxRequests: 128 });
       if (result.state === "published") {
@@ -345,7 +360,7 @@ describe("PostgreSQL report page snapshot and physical read bounds", () => {
     expect(
       await readPostgresInsightsFirstMovementBucket(
         db,
-        "00000000-0000-0000-0000-000000000099",
+        "00000000-0000-7000-8000-000000000099",
         "installed",
       ),
     ).toBeNull();
@@ -441,7 +456,9 @@ describe("PostgreSQL report page snapshot and physical read bounds", () => {
       expect(pageQueries.some((query) => /select\s+j\.\*/i.test(query))).toBe(
         false,
       );
-      await expect(migratePostgresInsightsReports(db)).rejects.toMatchObject({
+      await expect(
+        migratePostgresInsightsReports(db, insightsDatabaseNamespace),
+      ).rejects.toMatchObject({
         code: "INSIGHTS_QUERY_NOT_READY",
       });
     },

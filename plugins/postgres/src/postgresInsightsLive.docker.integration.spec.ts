@@ -4,7 +4,6 @@ import { readFile } from "node:fs/promises";
 import { setTimeout } from "node:timers/promises";
 
 import type { BundleEventRow } from "@hot-updater/plugin-core";
-import { databaseFields } from "@hot-updater/plugin-core/internal";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import pg from "pg";
 import { afterEach, describe, expect, it } from "vitest";
@@ -16,6 +15,7 @@ import {
   migratePostgresInsightsSource,
 } from "./db";
 import { postgres } from "./postgres";
+import { POSTGRES_INSIGHTS_EVENT_COLUMNS } from "./postgresInsightsContract";
 import {
   createPostgresInsightsLivePages,
   createPostgresInsightsLiveTools,
@@ -27,6 +27,8 @@ import {
   postgresEventSourceShard,
 } from "./postgresInsightsSource";
 import type { Database } from "./types";
+
+const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
 
 type Plan = {
   "Node Type": string;
@@ -161,6 +163,7 @@ describe("PostgreSQL native live installation pages", () => {
         },
       });
       const plugin = postgres({
+        insightsDatabaseNamespace,
         host: "127.0.0.1",
         port,
         user: "postgres",
@@ -186,13 +189,19 @@ describe("PostgreSQL native live installation pages", () => {
           .insertInto("bundle_events")
           .values([oldHot, newHot, legacy])
           .execute();
-        await migratePostgresInsightsSource(db);
-        const source = createPostgresInsightsSourceTools(db);
+        await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
+        const source = createPostgresInsightsSourceTools(
+          db,
+          insightsDatabaseNamespace,
+        );
         while (!(await source.backfillStep(2)).ready) {
           // Three legacy rows require only bounded source pages.
         }
-        await migratePostgresInsightsLive(db);
-        const live = createPostgresInsightsLiveTools(db);
+        await migratePostgresInsightsLive(db, insightsDatabaseNamespace);
+        const live = createPostgresInsightsLiveTools(
+          db,
+          insightsDatabaseNamespace,
+        );
         expect(await live.backfillStep(1)).toEqual({
           ready: false,
           processed: 0,
@@ -237,9 +246,9 @@ describe("PostgreSQL native live installation pages", () => {
         const unfenced = event("400", "old-writer", 40);
         await expect(
           sql`insert into bundle_events
-            (${sql.join(databaseFields.bundle_events.map((field) => sql.ref(field)))},
+            (${sql.join(POSTGRES_INSIGHTS_EVENT_COLUMNS.map((field) => sql.ref(field)))},
               insights_source_shard,insights_source_seq)
-            values (${sql.join(databaseFields.bundle_events.map((field) => unfenced[field]))},
+            values (${sql.join(POSTGRES_INSIGHTS_EVENT_COLUMNS.map((field) => unfenced[field]))},
               ${postgresEventSourceShard(unfenced.id)},9999)`.execute(db),
         ).rejects.toMatchObject({
           code: "23514",

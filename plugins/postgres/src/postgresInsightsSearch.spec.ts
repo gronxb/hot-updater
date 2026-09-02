@@ -20,6 +20,8 @@ import { createPostgresInsightsSearchPages } from "./postgresInsightsSearchPages
 import { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
 import type { Database } from "./types";
 
+const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
+
 const cutoff = Date.UTC(2026, 0, 10, 12, 34, 56);
 const event = (
   id: number,
@@ -64,18 +66,27 @@ describe("durable historical contains and immutable installation pages", () => {
         },
       ],
     });
-    plugin = postgres({ dialect: new PGliteDialect(client) });
-    await migratePostgresInsightsSource(db);
-    await migratePostgresInsightsReports(db);
-    await createPostgresInsightsSourceTools(db).backfillStep(1);
+    plugin = postgres({
+      insightsDatabaseNamespace,
+      dialect: new PGliteDialect(client),
+    });
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
+    await migratePostgresInsightsReports(db, insightsDatabaseNamespace);
+    await createPostgresInsightsSourceTools(
+      db,
+      insightsDatabaseNamespace,
+    ).backfillStep(1);
     databaseNamespace = (
       await sql<{ source_id: string }>`select source_id::text
         from private_hot_updater_insights_source_state where id=1`.execute(db)
     ).rows[0]!.source_id;
-    await migratePostgresInsightsLive(db);
-    await createPostgresInsightsLiveTools(db).backfillStep(1);
-    jobs = createPostgresInsightsJobs(db);
-    worker = createPostgresInsightsReportWorker(db);
+    await migratePostgresInsightsLive(db, insightsDatabaseNamespace);
+    await createPostgresInsightsLiveTools(
+      db,
+      insightsDatabaseNamespace,
+    ).backfillStep(1);
+    jobs = createPostgresInsightsJobs(db, insightsDatabaseNamespace);
+    worker = createPostgresInsightsReportWorker(db, insightsDatabaseNamespace);
     pages = createPostgresInsightsSearchPages(db, databaseNamespace);
   });
   afterEach(async () => {
@@ -168,11 +179,12 @@ describe("durable historical contains and immutable installation pages", () => {
         limit: 100,
       }),
     ).resolves.toMatchObject({ state: "ready", nextCursor: null });
+    expect(statements.some((query) => /bundle_events/.test(query))).toBe(false);
     expect(
-      statements.some((query) =>
-        /bundle_events|insights_source_(?:state|clocks)/.test(query),
+      statements.filter((query) =>
+        /private_hot_updater_insights_source_state/.test(query),
       ),
-    ).toBe(false);
+    ).toHaveLength(2);
     for (const bad of [
       { ...input, query: "different", cursor: first.nextCursor },
       { ...input, publicationId: initial.base, cursor: first.nextCursor },
@@ -279,7 +291,10 @@ describe("durable historical contains and immutable installation pages", () => {
     await sql`update private_hot_updater_insights_source_clocks c set committed_seq=s.last_sequence from
       (select insights_source_shard,max(insights_source_seq) as last_sequence from bundle_events group by insights_source_shard)s
       where c.shard=s.insights_source_shard`.execute(db);
-    const generation = await createPostgresInsightsSourceTools(db).capture();
+    const generation = await createPostgresInsightsSourceTools(
+      db,
+      insightsDatabaseNamespace,
+    ).capture();
     await sql`insert into private_hot_updater_insights_report_latest(job_id,install_key,bucket_index,install_id,event)
       select ${baseId}::uuid,encode(sha256(convert_to(to_json(install_id)::text,'UTF8')),'hex'),-1,install_id,
         e.insights_event from bundle_events e`.execute(db);

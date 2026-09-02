@@ -9,7 +9,6 @@ import { Kysely, sql } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { collectActiveInstallationOverview } from "../../../packages/server/src/insights/bounded/activeOverview";
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import {
   migratePostgresInsightsLive,
@@ -24,6 +23,8 @@ import { readPostgresInsightsLatestByKey } from "./postgresInsightsReportData";
 import { createPostgresInsightsReportWorker } from "./postgresInsightsReports";
 import { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
 import type { Database } from "./types";
+
+const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
 
 const hour = 3_600_000;
 const day = 24 * hour;
@@ -73,15 +74,24 @@ describe("resumable PostgreSQL exact report accumulation", () => {
         },
       ],
     });
-    plugin = postgres({ dialect: new PGliteDialect(client) });
-    await migratePostgresInsightsSource(db);
-    await migratePostgresInsightsReports(db);
-    await migratePostgresInsightsReports(db);
-    await createPostgresInsightsSourceTools(db).backfillStep(1);
-    await migratePostgresInsightsLive(db);
-    await createPostgresInsightsLiveTools(db).backfillStep(1);
-    jobs = createPostgresInsightsJobs(db);
-    worker = createPostgresInsightsReportWorker(db);
+    plugin = postgres({
+      insightsDatabaseNamespace,
+      dialect: new PGliteDialect(client),
+    });
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
+    await migratePostgresInsightsReports(db, insightsDatabaseNamespace);
+    await migratePostgresInsightsReports(db, insightsDatabaseNamespace);
+    await createPostgresInsightsSourceTools(
+      db,
+      insightsDatabaseNamespace,
+    ).backfillStep(1);
+    await migratePostgresInsightsLive(db, insightsDatabaseNamespace);
+    await createPostgresInsightsLiveTools(
+      db,
+      insightsDatabaseNamespace,
+    ).backfillStep(1);
+    jobs = createPostgresInsightsJobs(db, insightsDatabaseNamespace);
+    worker = createPostgresInsightsReportWorker(db, insightsDatabaseNamespace);
     largestStep = { requests: 0, rows: 0 };
   });
   afterEach(async () => {
@@ -126,7 +136,9 @@ describe("resumable PostgreSQL exact report accumulation", () => {
     await client.exec(
       "alter table private_hot_updater_insights_report_heads alter column canonical_query type jsonb using canonical_query::jsonb",
     );
-    await expect(migratePostgresInsightsReports(db)).rejects.toMatchObject({
+    await expect(
+      migratePostgresInsightsReports(db, insightsDatabaseNamespace),
+    ).rejects.toMatchObject({
       code: "INSIGHTS_QUERY_NOT_READY",
     });
     await client.exec(
@@ -136,7 +148,9 @@ describe("resumable PostgreSQL exact report accumulation", () => {
     await client.exec(
       "alter table private_hot_updater_insights_report_heads drop constraint private_hot_updater_insights_report_hea_publication_job_id_fkey",
     );
-    await expect(migratePostgresInsightsReports(db)).rejects.toMatchObject({
+    await expect(
+      migratePostgresInsightsReports(db, insightsDatabaseNamespace),
+    ).rejects.toMatchObject({
       code: "INSIGHTS_QUERY_NOT_READY",
     });
     await client.exec(
@@ -146,13 +160,17 @@ describe("resumable PostgreSQL exact report accumulation", () => {
     await client.exec(
       "alter table private_hot_updater_insights_report_jobs drop constraint private_hot_updater_insights_report_jobs_query_key_fkey",
     );
-    await expect(migratePostgresInsightsReports(db)).rejects.toMatchObject({
+    await expect(
+      migratePostgresInsightsReports(db, insightsDatabaseNamespace),
+    ).rejects.toMatchObject({
       code: "INSIGHTS_QUERY_NOT_READY",
     });
     await client.exec(
       "alter table private_hot_updater_insights_report_jobs add foreign key(query_key) references private_hot_updater_insights_report_heads(query_key)",
     );
-    await expect(migratePostgresInsightsReports(db)).resolves.toBeUndefined();
+    await expect(
+      migratePostgresInsightsReports(db, insightsDatabaseNamespace),
+    ).resolves.toBeUndefined();
   });
   const counts = async (jobId: string, section: string) =>
     (
@@ -280,51 +298,53 @@ describe("resumable PostgreSQL exact report accumulation", () => {
     } as const;
     const id = await reserve(input);
     const actual = await finish(input);
-    const expected = collectActiveInstallationOverview({
-      rows,
-      asOfMs,
-      window: "30d",
-      userId: "selected",
-    });
-    expect(actual.summary).toEqual({
-      activeInstallations: expected.activeInstallations,
-    });
+    expect(actual.summary).toEqual({ activeInstallations: 2 });
     expect(await counts(id, "bundleDistribution")).toEqual(
-      expect.arrayContaining(
-        expected.bundles.map((row) => ({
+      expect.arrayContaining([
+        {
           metric: "",
-          label: row.bundleId,
+          label: bundleA,
           bucket_start_ms: "-1",
-          value: String(row.installations),
-        })),
-      ),
+          value: "1",
+        },
+        {
+          metric: "",
+          label: bundleB,
+          bucket_start_ms: "-1",
+          value: "1",
+        },
+      ]),
     );
     const series = await counts(id, "activeSeries");
     expect(series).toHaveLength(30);
     expect(series).toEqual(
       expect.arrayContaining(
-        expected.series.map((row) => ({
+        Array.from({ length: 30 }, (_, index) => ({
           metric: "",
           label: "",
-          bucket_start_ms: String(row.bucketStartMs),
-          value: String(row.value),
+          bucket_start_ms: String(start + index * day),
+          value: index === 29 ? "2" : "1",
         })),
       ),
     );
-    for (const bundle of expected.bundleSeries) {
+    for (const [bundleId, activeIndexes] of [
+      [
+        bundleA,
+        new Set([...Array(15).keys()].map((index) => index * 2).concat(29)),
+      ],
+      [bundleB, new Set([...Array(15).keys()].map((index) => index * 2 + 1))],
+    ] as const) {
       const actualBuckets = (await counts(id, "activeBundleSeries")).filter(
-        (row) => row.label === bundle.bundleId,
+        (row) => row.label === bundleId,
       );
       expect(actualBuckets).toEqual(
         expect.arrayContaining(
-          bundle.series
-            .filter((row) => row.value > 0)
-            .map((row) => ({
-              metric: "",
-              label: bundle.bundleId,
-              bucket_start_ms: String(row.bucketStartMs),
-              value: String(row.value),
-            })),
+          [...activeIndexes].map((index) => ({
+            metric: "",
+            label: bundleId,
+            bucket_start_ms: String(start + index * day),
+            value: "1",
+          })),
         ),
       );
     }

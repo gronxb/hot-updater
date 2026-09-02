@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 
 import { PGlite } from "@electric-sql/pglite";
-import { databaseFields } from "@hot-updater/plugin-core/internal";
 import { Kysely, sql } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -12,6 +11,7 @@ import {
   migratePostgresInsightsSource,
 } from "./db";
 import { postgres } from "./postgres";
+import { POSTGRES_INSIGHTS_EVENT_COLUMNS } from "./postgresInsightsContract";
 import {
   createPostgresInsightsLivePages,
   createPostgresInsightsLiveTools,
@@ -23,6 +23,8 @@ import {
   postgresEventSourceShard,
 } from "./postgresInsightsSource";
 import type { Database } from "./types";
+
+const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
 
 describe("PostgreSQL live installation projection", () => {
   let client: PGlite;
@@ -40,8 +42,11 @@ describe("PostgreSQL live installation projection", () => {
       await db.insertInto("bundle_events").values(rows).execute();
   };
   const prepareSource = async (): Promise<void> => {
-    await migratePostgresInsightsSource(db);
-    const source = createPostgresInsightsSourceTools(db);
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
+    const source = createPostgresInsightsSourceTools(
+      db,
+      insightsDatabaseNamespace,
+    );
     for (let step = 0; step < 100; step++) {
       const result = await source.backfillStep(2);
       if (result.ready) return;
@@ -49,8 +54,8 @@ describe("PostgreSQL live installation projection", () => {
     throw new Error("source fixture did not become ready");
   };
   const prepareLive = async (limit = 2): Promise<void> => {
-    await migratePostgresInsightsLive(db);
-    const live = createPostgresInsightsLiveTools(db);
+    await migratePostgresInsightsLive(db, insightsDatabaseNamespace);
+    const live = createPostgresInsightsLiveTools(db, insightsDatabaseNamespace);
     for (let step = 0; step < 100; step++) {
       const result = await live.backfillStep(limit);
       if (result.ready) return;
@@ -82,11 +87,13 @@ describe("PostgreSQL live installation projection", () => {
     const future = event("3", `future-${"x".repeat(900)}`, 9_000_000_000_000);
     await insertLegacy([first, tiedNewer, future]);
 
-    await expect(migratePostgresInsightsLive(db)).rejects.toMatchObject({
+    await expect(
+      migratePostgresInsightsLive(db, insightsDatabaseNamespace),
+    ).rejects.toMatchObject({
       code: "INSIGHTS_QUERY_NOT_READY",
     });
     await prepareSource();
-    await migratePostgresInsightsLive(db);
+    await migratePostgresInsightsLive(db, insightsDatabaseNamespace);
     const pages = createPostgresInsightsLivePages(db);
     await expect(
       pages.pageAll({ kind: "all", limit: 2 }),
@@ -95,9 +102,9 @@ describe("PostgreSQL live installation projection", () => {
     const unfenced = event("4", "old-writer", 4);
     await expect(
       sql`insert into bundle_events
-        (${sql.join(databaseFields.bundle_events.map((field) => sql.ref(field)))},
+        (${sql.join(POSTGRES_INSIGHTS_EVENT_COLUMNS.map((field) => sql.ref(field)))},
           insights_source_shard,insights_source_seq)
-        values (${sql.join(databaseFields.bundle_events.map((field) => unfenced[field]))},
+        values (${sql.join(POSTGRES_INSIGHTS_EVENT_COLUMNS.map((field) => unfenced[field]))},
           ${postgresEventSourceShard(unfenced.id)},9999)`.execute(db),
     ).rejects.toMatchObject({
       code: "23514",
@@ -159,7 +166,7 @@ describe("PostgreSQL live installation projection", () => {
     expect(stored.rows).toHaveLength(2);
     for (const row of stored.rows)
       expect(Object.keys(row.event).sort()).toEqual(
-        [...databaseFields.bundle_events].sort(),
+        [...POSTGRES_INSIGHTS_EVENT_COLUMNS].sort(),
       );
   });
 
@@ -167,7 +174,7 @@ describe("PostgreSQL live installation projection", () => {
     await prepareSource();
     await prepareLive();
     const dialect = new PGliteDialect(client);
-    const plugin = postgres({ dialect });
+    const plugin = postgres({ insightsDatabaseNamespace, dialect });
     const newest = event("10", "hot", 20);
     const older = event("11", "hot", 10);
     await plugin.models.insights.append(newest);
@@ -210,7 +217,10 @@ describe("PostgreSQL live installation projection", () => {
       from private_hot_updater_insights_source_clocks where shard=${shard}`.execute(
       db,
     );
-    const plugin = postgres({ dialect: new PGliteDialect(client) });
+    const plugin = postgres({
+      insightsDatabaseNamespace,
+      dialect: new PGliteDialect(client),
+    });
     await expect(plugin.models.insights.append(victim)).rejects.toMatchObject({
       code: "23502",
     });
@@ -233,7 +243,7 @@ describe("PostgreSQL live installation projection", () => {
     const victim = event("30", "victim", 30);
     await insertLegacy([victim]);
     await prepareSource();
-    await migratePostgresInsightsLive(db);
+    await migratePostgresInsightsLive(db, insightsDatabaseNamespace);
     const other = event("31", "other", 31);
     await sql`insert into ${sql.table(POSTGRES_INSIGHTS_LIVE_TABLE)}
       (install_key,install_id,event_id,received_at_ms,event) values
@@ -241,7 +251,7 @@ describe("PostgreSQL live installation projection", () => {
         ${other.id}::uuid,${other.received_at_ms},${JSON.stringify(other)}::jsonb)`.execute(
       db,
     );
-    const live = createPostgresInsightsLiveTools(db);
+    const live = createPostgresInsightsLiveTools(db, insightsDatabaseNamespace);
     expect(await live.backfillStep(1)).toEqual({ ready: false, processed: 0 });
     const before = await sql<{
       initialized: boolean;

@@ -21,7 +21,7 @@ type Table<TModel extends DatabaseModel> = {
 
 type Tables = {
   [TModel in DatabaseModel]: Table<TModel>;
-};
+} & { insightsEvents: BundleEventRow[] };
 
 class MemoryConstraintError extends Error {
   constructor(message: string) {
@@ -36,8 +36,8 @@ const createTables = (): Tables => ({
   releases: { rows: [] },
   release_catalogs: { rows: [] },
   channels: { rows: [] },
-  bundle_events: { rows: [] },
   api_keys: { rows: [] },
+  insightsEvents: [],
 });
 
 const assertReferences = (
@@ -332,15 +332,6 @@ const createCrudImplementation = (
           input.offset,
           input.limit,
         );
-      case "bundle_events":
-        return queryRows(
-          tables.bundle_events.rows,
-          input.where,
-          input.orderBy,
-          input.distinctOn,
-          input.offset,
-          input.limit,
-        );
       case "channels":
         return queryRows(
           tables.channels.rows,
@@ -394,15 +385,41 @@ const createImplementation = (tables: Tables): DatabasePluginImplementation => {
     return result;
   };
 
+  const insightsUnavailable = () =>
+    ({
+      state: "failed",
+      versions: {
+        schemaVersion: null,
+        storageVersion: null,
+        projectionGeneration: null,
+        sourceGeneration: null,
+      },
+      error: { code: "storage-not-ready" },
+    }) as const;
+
   return {
     ...createCrudImplementation(tables),
-    appendBundleEvent: (row: BundleEventRow) =>
-      withMutationLock(() => {
-        if (tables.bundle_events.rows.some(({ id }) => id === row.id)) {
-          throw new MemoryConstraintError("Duplicate bundle_events id");
-        }
-        tables.bundle_events.rows.push(structuredClone(row));
-      }),
+    insights: {
+      append: (row: BundleEventRow) =>
+        withMutationLock(() => {
+          if (tables.insightsEvents.some(({ id }) => id === row.id)) {
+            throw new MemoryConstraintError("Duplicate Insights event id");
+          }
+          tables.insightsEvents.push(structuredClone(row));
+        }),
+      async pageEvents() {
+        return insightsUnavailable();
+      },
+      async pageInstallations() {
+        return insightsUnavailable();
+      },
+      async getReport() {
+        return insightsUnavailable();
+      },
+      async pageReport() {
+        return insightsUnavailable();
+      },
+    },
     insertChannel: ({ row }) =>
       withMutationLock(() => {
         const existing = tables.channels.rows.find(
@@ -440,7 +457,6 @@ const createImplementation = (tables: Tables): DatabasePluginImplementation => {
         tables.releases.rows = transactionTables.releases.rows;
         tables.release_catalogs.rows = transactionTables.release_catalogs.rows;
         tables.channels.rows = transactionTables.channels.rows;
-        tables.bundle_events.rows = transactionTables.bundle_events.rows;
         tables.api_keys.rows = transactionTables.api_keys.rows;
         return result;
       }),
@@ -471,7 +487,7 @@ export const createInMemoryDatabaseHarness = () => {
       tables.releases.rows = [];
       tables.release_catalogs.rows = [];
       tables.channels.rows = [];
-      tables.bundle_events.rows = [];
+      tables.insightsEvents = [];
       tables.api_keys.rows = [];
     },
   };

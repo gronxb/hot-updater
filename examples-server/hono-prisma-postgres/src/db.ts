@@ -5,9 +5,14 @@ import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
 
 import { prisma } from "./prisma";
 
+const insightsDatabaseNamespace =
+  process.env.HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE ??
+  "00000000-0000-7000-8000-00000000e001";
+
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
   database: prismaAdapter({
+    insightsDatabaseNamespace,
     prisma,
     provider: "postgresql",
   }),

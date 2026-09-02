@@ -7,14 +7,15 @@ import {
   type InsightsMovementMetric,
 } from "@hot-updater/plugin-core";
 import {
-  assertInsightsEventContract,
-  assertInsightsEventRow,
   createInsightsReportProjection,
   type InsightsReportProjection,
 } from "@hot-updater/plugin-core/internal";
 import { sql, type QueryExecutorProvider } from "kysely";
 
-import { assertPostgresInsightsTableLayouts } from "./postgresInsightsContract";
+import {
+  assertPostgresInsightsStoredEvent,
+  assertPostgresInsightsTableLayouts,
+} from "./postgresInsightsContract";
 import type {
   PostgresInsightsReportJob,
   PostgresInsightsReportSummary,
@@ -38,8 +39,7 @@ type StoredInstallation = {
   event: BundleEventRow;
 };
 const readInstallation = (row: StoredInstallation) => {
-  assertInsightsEventRow(row.event);
-  assertInsightsEventContract(row.event);
+  assertPostgresInsightsStoredEvent(row.event);
   if (
     row.install_id !== row.event.install_id ||
     key(JSON.stringify(row.install_id)) !== row.install_key
@@ -371,7 +371,7 @@ export const countPostgresInsightsInstallation = async (
       and bucket_index >= 0 order by bucket_index limit 31`.execute(db);
   if (buckets.rows.length > 30) invalid();
   for (const bucket of buckets.rows) {
-    assertInsightsEventRow(bucket.event);
+    assertPostgresInsightsStoredEvent(bucket.event);
     const projected = range.project(bucket.event);
     const bucketStartMs =
       range.firstBucketMs! + bucket.bucket_index * range.bucketSizeMs;

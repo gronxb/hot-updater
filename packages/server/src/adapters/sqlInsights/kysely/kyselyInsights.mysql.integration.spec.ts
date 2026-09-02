@@ -18,6 +18,7 @@ import { createKyselyMigrator } from "../../../db/fixedMigrator";
 import { kyselyAdapter } from "../../kysely";
 
 const mysqlUrl = process.env.KYSELY_INSIGHTS_MYSQL_URL;
+const databaseNamespace = "20000000-0000-4000-8000-000000000001";
 const describeMySQL = mysqlUrl ? describe : describe.skip;
 
 type AppliedEvent = BundleEventRow & { readonly type: "UPDATE_APPLIED" };
@@ -121,8 +122,11 @@ const insertRows = async (
 };
 
 const migrateAll = async (db: Kysely<object>): Promise<void> => {
-  const migration = await kyselyAdapter({ db, provider: "mysql" })
-    .createMigrator!().migrateToLatest();
+  const migration = await kyselyAdapter({
+    db,
+    provider: "mysql",
+    insightsDatabaseNamespace: databaseNamespace,
+  }).createMigrator!().migrateToLatest();
   await migration.execute();
 };
 
@@ -319,7 +323,11 @@ describeMySQL(
               set next_seq = 50001 where id = 1`,
         );
 
-        const page = await createKyselyInsightsModel(db, "mysql").pageEvents({
+        const page = await createKyselyInsightsModel(
+          db,
+          "mysql",
+          databaseNamespace,
+        ).pageEvents({
           selector: { kind: "all" },
           beforeReceivedAtMs: 60_000,
           limit: 100,
@@ -334,10 +342,13 @@ describeMySQL(
           "late-behind-mysql-cursor",
           49_850,
         );
-        await createKyselyInsightsModel(db, "mysql").append(lateEvent);
+        await createKyselyInsightsModel(db, "mysql", databaseNamespace).append(
+          lateEvent,
+        );
         const continuation = await createKyselyInsightsModel(
           db,
           "mysql",
+          databaseNamespace,
         ).pageEvents({
           selector: { kind: "all" },
           beforeReceivedAtMs: 60_000,
@@ -382,7 +393,11 @@ describeMySQL(
       await withDatabase(async ({ connect }) => {
         const { db, pool } = connect();
         await migrateAll(db);
-        const insights = createKyselyInsightsModel(db, "mysql");
+        const insights = createKyselyInsightsModel(
+          db,
+          "mysql",
+          databaseNamespace,
+        );
         await insights.append(
           event("01c20000-0000-7000-8000-000000000001", "work-plan", 1),
         );
@@ -475,11 +490,16 @@ describeMySQL(
           ),
         ];
         await insertRows(first.pool, "bundle_events", legacy);
-        await migrateKyselyInsights(first.db, "mysql");
+        await migrateKyselyInsights(first.db, "mysql", databaseNamespace);
 
-        expect(await prepareKyselyInsightsSource(first.db, "mysql", 1)).toEqual(
-          { state: "progress", processed: 1 },
-        );
+        expect(
+          await prepareKyselyInsightsSource(
+            first.db,
+            "mysql",
+            databaseNamespace,
+            1,
+          ),
+        ).toEqual({ state: "progress", processed: 1 });
         expect(
           await rows<RowDataPacket>(
             first.pool,
@@ -492,7 +512,11 @@ describeMySQL(
         await first.close();
 
         const second = connect();
-        const insights = createKyselyInsightsModel(second.db, "mysql");
+        const insights = createKyselyInsightsModel(
+          second.db,
+          "mysql",
+          databaseNamespace,
+        );
         await insights.append(
           event(
             "01d00000-0000-7000-8000-000000000001",
@@ -511,6 +535,7 @@ describeMySQL(
           const step = await prepareKyselyInsightsSource(
             second.db,
             "mysql",
+            databaseNamespace,
             17,
           );
           if (step.state === "ready") break;
@@ -558,10 +583,10 @@ describeMySQL(
           { username: "x".repeat(20_481) },
         );
         await insertRows(pool, "bundle_events", [poison]);
-        await migrateKyselyInsights(db, "mysql");
+        await migrateKyselyInsights(db, "mysql", databaseNamespace);
 
         await expect(
-          prepareKyselyInsightsSource(db, "mysql"),
+          prepareKyselyInsightsSource(db, "mysql", databaseNamespace),
         ).rejects.toThrow();
         expect(
           await rows<RowDataPacket>(
@@ -595,9 +620,13 @@ describeMySQL(
       await withDatabase(async ({ connect }) => {
         const { db, pool } = connect();
         await migrateAll(db);
-        const insights = createKyselyInsightsModel(db, "mysql");
+        const insights = createKyselyInsightsModel(
+          db,
+          "mysql",
+          databaseNamespace,
+        );
         const advance = () =>
-          runKyselyInsightsMaintenanceStep(db, "mysql", {
+          runKyselyInsightsMaintenanceStep(db, "mysql", databaseNamespace, {
             maxItems: 160,
             maxRequests: 4_096,
           });
@@ -792,7 +821,11 @@ describeMySQL(
               signal sqlstate '45000' set message_text = 'forced';
             end if;
           end`);
-        const insights = createKyselyInsightsModel(db, "mysql");
+        const insights = createKyselyInsightsModel(
+          db,
+          "mysql",
+          databaseNamespace,
+        );
         const accepted = Array.from({ length: 20 }, (_, index) =>
           event(
             mysqlUuid("01d6", index + 1),
@@ -851,11 +884,11 @@ describeMySQL(
         });
         expect(pending.state).toBe("preparing");
         const concurrentSteps = await Promise.all([
-          runKyselyInsightsMaintenanceStep(db, "mysql", {
+          runKyselyInsightsMaintenanceStep(db, "mysql", databaseNamespace, {
             maxItems: 160,
             maxRequests: 4_096,
           }),
-          runKyselyInsightsMaintenanceStep(db, "mysql", {
+          runKyselyInsightsMaintenanceStep(db, "mysql", databaseNamespace, {
             maxItems: 160,
             maxRequests: 4_096,
           }),

@@ -3,15 +3,14 @@ import {
   InsightsQueryNotReadyError,
   type BundleEventRow,
 } from "@hot-updater/plugin-core";
-import {
-  assertInsightsEventContract,
-  assertInsightsEventRow,
-  databaseFields,
-  INSIGHTS_PAGE_MAX_ROWS,
-} from "@hot-updater/plugin-core/internal";
+import { INSIGHTS_PAGE_MAX_ROWS } from "@hot-updater/plugin-core/internal";
 import { sql, type QueryExecutorProvider } from "kysely";
 
-import { fitPostgresInsightsInternalPage } from "./postgresInsightsContract";
+import {
+  assertPostgresInsightsStoredEvent,
+  fitPostgresInsightsInternalPage,
+  POSTGRES_INSIGHTS_EVENT_COLUMNS,
+} from "./postgresInsightsContract";
 import type {
   PostgresInsightsInstallationPage,
   PostgresInsightsInstallationPageInput,
@@ -90,7 +89,7 @@ export const createPostgresInsightsInstallationLookup = (
     // the planner drop it and choose the global time index; stale statistics
     // then caused 50,003 unrelated rows to be filtered before returning one.
     const result = representable
-      ? await sql<BundleEventRow>`select ${sql.join(databaseFields.bundle_events.map((field) => sql.ref(field)))}
+      ? await sql<BundleEventRow>`select ${sql.join(POSTGRES_INSIGHTS_EVENT_COLUMNS.map((field) => sql.ref(field)))}
           from bundle_events where install_id = any(array[${input.installId}]::text[])
             and received_at_ms < ${observedAtMs}
           order by install_id desc, received_at_ms desc, id desc limit 1`.execute(
@@ -98,8 +97,7 @@ export const createPostgresInsightsInstallationLookup = (
         )
       : { rows: [] };
     const rows = result.rows.map((event) => {
-      assertInsightsEventRow(event);
-      assertInsightsEventContract(event);
+      assertPostgresInsightsStoredEvent(event);
       if (
         event.install_id !== input.installId ||
         event.received_at_ms >= observedAtMs

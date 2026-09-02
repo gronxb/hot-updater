@@ -13,6 +13,8 @@ import {
 import { ui } from "../utils/cli-ui";
 
 const SUPPORTED_PROVIDERS = ["postgresql", "mysql", "sqlite"] as const;
+const SQL_GENERATION_INSIGHTS_DATABASE_NAMESPACE =
+  "00000000-0000-4000-8000-000000000001";
 type SupportedProvider = (typeof SUPPORTED_PROVIDERS)[number];
 
 const isSupportedProvider = (provider: string): provider is SupportedProvider =>
@@ -141,6 +143,7 @@ export async function generateStandaloneSQL(options: {
 
     const adapter = kyselyAdapter({
       db,
+      insightsDatabaseNamespace: SQL_GENERATION_INSIGHTS_DATABASE_NAMESPACE,
       provider: dbType,
     });
 

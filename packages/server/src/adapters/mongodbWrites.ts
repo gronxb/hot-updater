@@ -1,10 +1,7 @@
 import type { BundlePatchRow } from "@hot-updater/plugin-core";
-import {
-  createUUIDv7,
-  DatabasePluginInputError,
-} from "@hot-updater/plugin-core";
+import { createUUIDv7 } from "@hot-updater/plugin-core";
 import type { DatabasePluginImplementation } from "@hot-updater/plugin-core/internal";
-import { ObjectId, type ClientSession, type Collection } from "mongodb";
+import type { ClientSession, Collection } from "mongodb";
 
 import {
   activeBundleFilter,
@@ -15,7 +12,6 @@ import {
   mongoSessionOptions,
   WITHOUT_INTERNAL_FIELDS,
 } from "./mongodbCollections";
-import { assertMongoInsightsEventRow } from "./mongodbInsights";
 import {
   createMongoBundleWhere,
   createMongoChannelWhere,
@@ -44,35 +40,13 @@ const assertPatchReferences = async (
 
 type MongoWriteImplementation = Pick<
   DatabasePluginImplementation,
-  | "appendBundleEvent"
-  | "create"
-  | "delete"
-  | "deleteChannel"
-  | "insertChannel"
-  | "update"
+  "create" | "delete" | "deleteChannel" | "insertChannel" | "update"
 >;
 
 export const createMongoWrites = (
   collections: MongoCollections,
   session?: ClientSession,
 ): MongoWriteImplementation => ({
-  appendBundleEvent: async (row) => {
-    if (session === undefined)
-      throw new MongoAdapterConstraintError(
-        "event append requires transaction support",
-      );
-    try {
-      assertMongoInsightsEventRow(row);
-    } catch (error) {
-      if (error instanceof DatabasePluginInputError)
-        throw new DatabasePluginInputError("invalid-data");
-      throw error;
-    }
-    await collections.bundleEvents.insertOne(
-      { ...row, _id: new ObjectId() },
-      mongoSessionOptions(session),
-    );
-  },
   deleteChannel: async ({ id }) => {
     if (session === undefined) {
       throw new MongoAdapterConstraintError(

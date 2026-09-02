@@ -16,7 +16,8 @@ setupDatabasePluginTestSuite({
   createPlugin,
   migrate: () => undefined,
   reset: clearTable,
-  dispose: () => undefined,
+  dispose: (plugin) => plugin.dispose?.(),
+  recreatePluginAfterReset: true,
 });
 
 describe("DynamoDB aggregate mutations", () => {

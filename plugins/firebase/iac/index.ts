@@ -1,4 +1,5 @@
 import fs from "fs";
+import { randomUUID } from "node:crypto";
 import path from "path";
 
 import {
@@ -29,7 +30,11 @@ import {
 } from "firebase-admin/app";
 
 import { firebaseDatabase } from "../src/firebaseDatabase";
-import { FIREBASE_V1_FUNCTION_NAME } from "../src/firebaseInfrastructureNames";
+import {
+  FIREBASE_INSIGHTS_DATABASE_NAMESPACE_ENV,
+  FIREBASE_V1_FUNCTION_NAME,
+} from "../src/firebaseInfrastructureNames";
+import { assertFirebaseInsightsDatabaseNamespace } from "../src/firebaseInsights";
 import { inputFirebaseApplicationCredentials } from "./firebaseApplicationCredentials";
 import {
   assertFirebaseFunctionCanInitialize,
@@ -451,6 +456,9 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     initEnvSources,
     nonInteractive,
   );
+  const insightsDatabaseNamespace = assertFirebaseInsightsDatabaseNamespace(
+    initInputEnv[FIREBASE_INSIGHTS_DATABASE_NAMESPACE_ENV] ?? randomUUID(),
+  );
   const savedInputs = resolveFirebaseInitInputs(initInputEnv);
   assertFirebaseNonInteractiveInputs(savedInputs, nonInteractive);
   let applicationCredentials = savedInputs.applicationCredentials;
@@ -535,17 +543,22 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       cliEnv,
       projectId: initializeVariable.projectId,
     });
-    await makeEnv(persistedInputs);
+    await makeEnv({
+      ...persistedInputs,
+      [FIREBASE_INSIGHTS_DATABASE_NAMESPACE_ENV]: insightsDatabaseNamespace,
+    });
     await removeTmpDir();
     return;
   }
   const functionsCode = transformEnv(functionsIndexPath, {
+    INSIGHTS_DATABASE_NAMESPACE: insightsDatabaseNamespace,
     REGION: currentRegion,
   });
   await fs.promises.writeFile(functionsIndexPath, functionsCode);
   await setEnv({
     projectId: initializeVariable.projectId,
     storageBucket: initializeVariable.storageBucket,
+    insightsDatabaseNamespace,
     build,
     region: currentRegion,
     applicationCredentials:
@@ -594,6 +607,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const databasePlugin = firebaseDatabase({
     credential,
     projectId: initializeVariable.projectId,
+    insightsDatabaseNamespace,
   });
   let apiKey: string;
   try {

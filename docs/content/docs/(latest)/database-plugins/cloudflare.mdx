@@ -75,6 +75,51 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
+## Insights limits and preparation
+
+D1 stores each Insights event together with private source and
+latest-installation pointers. `database.models.insights.append` is the only
+event mutation; Insights events cannot be included in `database.commit(...)`.
+Once the Insights source is ready, one append writes the raw event and all of
+its pointers atomically. There is no legacy writer fallback.
+
+Event IDs must be canonical lowercase UUIDv7 values. The full canonical public
+event must be at most 20 KiB of UTF-8 JSON. D1 validates both rules before
+provider I/O and again when preparing an existing database. Public event and
+installation pages contain at most 100 rows and at most 1 MiB of canonical
+serialized row data. A byte-limited short page returns a continuation cursor.
+
+After cutting old writers over, the v2 append path may run while the internal
+preparation runner drains the fixed legacy prefix. New appends atomically write
+their raw and pending rows; the pending sequence drains after the legacy prefix,
+so an earlier event time cannot move a new row into that prefix. Each
+preparation call accepts at most 100 compact candidates, hydrates at most 1 MiB
+of canonical event data, caps the repeated prepared payload at 500,000 bytes,
+and commits at most 10 statements. A noncanonical or oversized legacy event
+durably fails preparation; the full raw row is not fetched and the row and
+checkpoint remain unchanged for inspection.
+
+While preparation is failed, the writer fence rejects new appends. After the
+bad raw row is repaired in place, the provider-local operator calls
+`createD1InsightsSourceTools(executor).recoverFailedPreparation()`. That bounded
+operation revalidates only the next row, recomputes its installation digest and
+canonical aliases, and checks its full installation identity across the exact
+live, alias, and version projection key. It changes `failed` back to
+`preparing` without moving the raw row or checkpoint only after every check
+passes. The ordinary preparation runner then resumes from the same checkpoint.
+
+The provider also contains native durable published installation search and
+report preparation. Append and backfill maintain deduplicated historical
+installation, user ID, and username aliases. Search jobs capture the committed
+source generation and alias upper bound, scan the durable alias projection, and
+hydrate only matched latest installation versions. Jobs reuse semantic work,
+fence leases and checkpoints, publish atomically, and serve exact totals through
+scoped cursors. Maintenance steps accept at most 4 MiB of canonical serialized
+work and use at most 50 D1 requests. These bounds fit the current
+[D1 provider limits](https://developers.cloudflare.com/d1/platform/limits/),
+including its 2,000,000-byte maximum row/value size and 100 bound parameters per
+query.
+
 ## Complete Example
 
 Combined R2 storage and D1 database:

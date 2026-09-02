@@ -40,7 +40,10 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
 };
 
 const seedBundles = async (bundles: Bundle[]) => {
-  const database = d1Database(env.DB);
+  const database = d1Database({
+    database: env.DB,
+    insightsDatabaseNamespace: env.INSIGHTS_DATABASE_NAMESPACE,
+  });
   const seedHotUpdater = createHotUpdater({
     database,
     clientAccess: { type: "public" },
@@ -113,7 +116,10 @@ const seedBundles = async (bundles: Bundle[]) => {
 describe.sequential("cloudflare worker runtime acceptance", () => {
   beforeAll(async () => {
     await env.DB.prepare(inject("prepareSql")).run();
-    const database = d1Database(env.DB);
+    const database = d1Database({
+      database: env.DB,
+      insightsDatabaseNamespace: env.INSIGHTS_DATABASE_NAMESPACE,
+    });
     await registerApiKey({
       apiKey: API_KEY,
       apiKeys: database.models.apiKeys,

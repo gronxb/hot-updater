@@ -12,6 +12,7 @@ export type CloudflareInitInputs = {
   readonly bucketName?: string;
   readonly d1DatabaseId?: string;
   readonly d1DatabaseName?: string;
+  readonly insightsDatabaseNamespace?: string;
   readonly r2Private?: string;
   readonly secretAccessKey?: string;
   readonly workerName?: string;
@@ -72,6 +73,10 @@ export const resolveCloudflareInitInputs = (
     d1DatabaseName: resolveInitProviderInput(
       existingEnv,
       inputs.d1DatabaseName,
+    ),
+    insightsDatabaseNamespace: resolveInitProviderInput(
+      existingEnv,
+      inputs.insightsDatabaseNamespace,
     ),
     r2Private: resolveInitProviderInput(existingEnv, inputs.r2Private),
     secretAccessKey: resolveInitProviderInput(

@@ -1,144 +1,87 @@
-import { type QueryClient, useQuery } from "@tanstack/react-query";
-import { redirect } from "@tanstack/react-router";
+import type {
+  InsightsInstallationPageInput,
+  InsightsPageEventsInput,
+  InsightsReportInput,
+  InsightsReportPageInput,
+} from "@hot-updater/plugin-core";
+import { useQuery } from "@tanstack/react-query";
 
 import {
-  type ActiveInstallationInput,
-  parseActiveInstallationInput,
-} from "./insights-input";
-import {
-  getActiveInstallationOverviewRpc,
-  getInsightsCapabilitiesRpc,
-  getInsightsOverviewRpc,
-  type InsightsCapabilities,
+  getInsightsReportRpc,
+  pageInsightsEventsRpc,
+  pageInsightsInstallationsRpc,
+  pageInsightsReportRpc,
 } from "./insights-rpc";
 
-export type InsightsCapabilityState =
-  | { readonly status: "unresolved" }
-  | { readonly status: "unsupported" }
-  | {
-      readonly status: "supported";
-      readonly mode: "bounded";
-      readonly maxMatchingRows: number;
-    }
-  | { readonly status: "error"; readonly error: Error };
-
-type InsightsCapabilityQueryResult =
-  | { readonly status: "pending" }
-  | { readonly status: "success"; readonly data: InsightsCapabilities }
-  | { readonly status: "error"; readonly error: Error };
-
-export type ProtectedInsightsRouteDecision =
-  | "loading"
-  | "redirect"
-  | "allow"
-  | "error";
+const INSIGHTS_STALE_TIME_MS = 30_000;
+const INSIGHTS_PREPARATION_POLL_MS = 2_000;
 
 export const insightsQueryKeys = {
-  capabilities: ["insights", "capabilities"] as const,
-  overview: ["insights", "overview"] as const,
-  activeInstallations: (input: ActiveInstallationInput) =>
-    [
-      "insights",
-      "active-installations",
-      input.window,
-      input.userId ?? null,
-    ] as const,
+  events: (input: InsightsPageEventsInput) =>
+    ["insights", "events", input] as const,
+  installations: (input: InsightsInstallationPageInput) =>
+    ["insights", "installations", input] as const,
+  report: (input: InsightsReportInput) =>
+    ["insights", "report", input] as const,
+  reportPage: (input: InsightsReportPageInput) =>
+    ["insights", "report-page", input] as const,
 };
 
-const INSIGHTS_STALE_TIME_MS = 30_000;
+const preparationPollInterval = (data: unknown) =>
+  typeof data === "object" &&
+  data !== null &&
+  "state" in data &&
+  (data.state === "preparing" || data.state === "stale")
+    ? INSIGHTS_PREPARATION_POLL_MS
+    : false;
 
-export const getInsightsCapabilityState = (
-  query: InsightsCapabilityQueryResult,
-): InsightsCapabilityState => {
-  switch (query.status) {
-    case "pending":
-      return { status: "unresolved" };
-    case "error":
-      return { status: "error", error: query.error };
-    case "success":
-      if (!query.data.capabilities.insights) {
-        return { status: "unsupported" };
-      }
-      return {
-        status: "supported",
-        mode: "bounded",
-        maxMatchingRows: query.data.capabilities.maxMatchingRows,
-      };
-  }
-};
-
-export const getProtectedInsightsRouteDecision = (
-  capability: InsightsCapabilityState,
-): ProtectedInsightsRouteDecision => {
-  switch (capability.status) {
-    case "unresolved":
-      return "loading";
-    case "unsupported":
-      return "redirect";
-    case "supported":
-      return "allow";
-    case "error":
-      return "error";
-  }
-};
-
-export const isInsightsQueryEnabled = (
-  capability: InsightsCapabilityState,
-): boolean => capability.status === "supported";
-
-export const getInsightsCapabilitiesQueryOptions = () => ({
-  queryKey: insightsQueryKeys.capabilities,
-  queryFn: () => getInsightsCapabilitiesRpc(),
-  staleTime: Infinity,
-});
-
-export const useInsightsCapabilitiesQuery = () =>
-  useQuery(getInsightsCapabilitiesQueryOptions());
-
-export const ensureInsightsRouteAccess = async (
-  queryClient: QueryClient,
-): Promise<void> => {
-  const result = await queryClient.ensureQueryData(
-    getInsightsCapabilitiesQueryOptions(),
-  );
-
-  if (!result.capabilities.insights) {
-    throw redirect({
-      to: "/",
-      search: {},
-      replace: true,
-    });
-  }
-};
-
-export const getInsightsOverviewQueryOptions = (
-  capability: InsightsCapabilityState,
-) => ({
-  queryKey: insightsQueryKeys.overview,
-  queryFn: () => getInsightsOverviewRpc(),
-  staleTime: INSIGHTS_STALE_TIME_MS,
-  refetchOnWindowFocus: true,
-  enabled: isInsightsQueryEnabled(capability),
-});
-
-export const useInsightsOverviewQuery = (capability: InsightsCapabilityState) =>
-  useQuery(getInsightsOverviewQueryOptions(capability));
-
-export const getActiveInstallationQueryOptions = (
-  capability: InsightsCapabilityState,
-  input: ActiveInstallationInput,
-) => {
-  const normalized = parseActiveInstallationInput(input);
-  return {
-    queryKey: insightsQueryKeys.activeInstallations(normalized),
-    queryFn: () => getActiveInstallationOverviewRpc({ data: normalized }),
-    staleTime: INSIGHTS_STALE_TIME_MS,
+export const useInsightsEventsQuery = (
+  input: InsightsPageEventsInput,
+  enabled = true,
+) =>
+  useQuery({
+    enabled,
+    queryFn: () => pageInsightsEventsRpc({ data: input }),
+    queryKey: insightsQueryKeys.events(input),
+    refetchInterval: ({ state }) => preparationPollInterval(state.data),
     refetchOnWindowFocus: true,
-    enabled: isInsightsQueryEnabled(capability),
-  };
-};
+    staleTime: INSIGHTS_STALE_TIME_MS,
+  });
 
-export const useActiveInstallationQuery = (
-  capability: InsightsCapabilityState,
-  input: ActiveInstallationInput,
-) => useQuery(getActiveInstallationQueryOptions(capability, input));
+export const useInsightsInstallationsQuery = (
+  input: InsightsInstallationPageInput,
+  enabled = true,
+) =>
+  useQuery({
+    enabled,
+    queryFn: () => pageInsightsInstallationsRpc({ data: input }),
+    queryKey: insightsQueryKeys.installations(input),
+    refetchInterval: ({ state }) => preparationPollInterval(state.data),
+    refetchOnWindowFocus: true,
+    staleTime: INSIGHTS_STALE_TIME_MS,
+  });
+
+export const useInsightsReportQuery = (
+  input: InsightsReportInput,
+  enabled = true,
+) =>
+  useQuery({
+    enabled,
+    queryFn: () => getInsightsReportRpc({ data: input }),
+    queryKey: insightsQueryKeys.report(input),
+    refetchInterval: ({ state }) => preparationPollInterval(state.data),
+    refetchOnWindowFocus: true,
+    staleTime: INSIGHTS_STALE_TIME_MS,
+  });
+
+export const useInsightsReportPageQuery = (
+  input: InsightsReportPageInput,
+  enabled = true,
+) =>
+  useQuery({
+    enabled,
+    queryFn: () => pageInsightsReportRpc({ data: input }),
+    queryKey: insightsQueryKeys.reportPage(input),
+    refetchOnWindowFocus: true,
+    staleTime: INSIGHTS_STALE_TIME_MS,
+  });

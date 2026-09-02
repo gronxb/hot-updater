@@ -5,14 +5,16 @@ import { STS } from "@aws-sdk/client-sts";
 import { p } from "@hot-updater/cli-tools";
 
 import {
-  DYNAMODB_INSIGHTS_PARTITION,
   DYNAMODB_CHANNEL_NAME_PARTITION,
   DYNAMODB_CHANNEL_PARTITION,
   DYNAMODB_API_KEY_HASH_PARTITION,
   DYNAMODB_API_KEY_PARTITION,
   DYNAMODB_UPDATE_INDEX_NAME,
 } from "../src/dynamoDB";
-import { DYNAMODB_INSIGHTS_V2_PREFIX } from "../src/dynamoDBInsightsV2";
+import {
+  DYNAMODB_INSIGHTS_LEGACY_PARTITION,
+  DYNAMODB_INSIGHTS_V2_PREFIX,
+} from "../src/dynamoDBInsightsV2";
 
 export class IAMManager {
   private region: string;
@@ -86,7 +88,7 @@ export class IAMManager {
                   "bundle_patches",
                   DYNAMODB_CHANNEL_PARTITION,
                   DYNAMODB_CHANNEL_NAME_PARTITION,
-                  DYNAMODB_INSIGHTS_PARTITION,
+                  DYNAMODB_INSIGHTS_LEGACY_PARTITION,
                   DYNAMODB_API_KEY_PARTITION,
                   DYNAMODB_API_KEY_HASH_PARTITION,
                 ],

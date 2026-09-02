@@ -32,7 +32,6 @@ const observedTransition = {
 const createClient = (): ConsoleInsightsQaClient => ({
   getActiveOverview: vi.fn(async () => ({
     activeInstallations: 1,
-    bundles: [{ bundleId, installations: 1 }],
   })),
   getBundleInsights: vi.fn(async () => ({
     recentEvents: {
@@ -46,6 +45,7 @@ const createClient = (): ConsoleInsightsQaClient => ({
     data: [event],
     pagination: { limit: 50, offset: 0, total: 1 },
   })),
+  getInstallationBundle: vi.fn(async () => bundleId),
   getOverview: vi.fn(async () => ({ trackedInstallations: 1 })),
   getSummary: vi.fn(async () => ({ installed: 1, recovered: 0 })),
   searchInstallations: vi.fn(async () => ({

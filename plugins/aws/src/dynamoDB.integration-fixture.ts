@@ -56,6 +56,7 @@ export class DynamoDBIntegrationFixture {
     return dynamoDB({
       credentials,
       endpoint: this.endpoint,
+      insightsDatabaseNamespace: crypto.randomUUID(),
       region: REGION,
       tableName: this.tableName,
     });

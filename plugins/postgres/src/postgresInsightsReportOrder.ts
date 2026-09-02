@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   DatabasePluginInputError,
   InsightsQueryNotReadyError,
+  type InsightsReportQuery,
 } from "@hot-updater/plugin-core";
 import { sql, type QueryExecutorProvider, type Transaction } from "kysely";
 
@@ -29,6 +30,28 @@ export type PostgresInsightsReportOrderSection =
         | "activeBundleTotals"
         | "installationIds";
     };
+
+/** Every ordered section must be immutable before its publication is visible. */
+export const getPostgresInsightsReportOrderSections = (
+  query: InsightsReportQuery,
+): readonly PostgresInsightsReportOrderSection[] => {
+  switch (query.kind) {
+    case "bundleSummaries":
+      return [];
+    case "bundleDetail":
+      return [
+        { section: "movementCohorts", metric: "installed" },
+        { section: "movementCohorts", metric: "recovered" },
+      ];
+    case "installationOverview":
+      return [{ section: "bundleDistribution" }];
+    case "activeOverview":
+      return [
+        { section: "bundleDistribution" },
+        { section: "activeBundleTotals" },
+      ];
+  }
+};
 
 export interface PostgresInsightsReportOrderRow {
   readonly ordinal: string;

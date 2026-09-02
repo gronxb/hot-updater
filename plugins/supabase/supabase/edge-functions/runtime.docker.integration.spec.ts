@@ -48,6 +48,7 @@ const FUNCTION_NAME = "hot-updater-function";
 const FUNCTION_BASE_PATH = `/${FUNCTION_NAME}`;
 const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 const BUCKET_NAME = "hot-updater-bundles";
+const INSIGHTS_DATABASE_NAMESPACE = "00000000-0000-7000-8000-00000000f001";
 const DENO_DOCKER_IMAGE = "denoland/deno:alpine";
 const DENO_CACHE_VOLUME = "hot-updater-supabase-deno-cache";
 const POSTGRES_IMAGE = "postgres:15-alpine";
@@ -307,6 +308,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
     await ensureBucketExists(supabaseAdmin);
 
     database = supabaseDatabase({
+      insightsDatabaseNamespace: INSIGHTS_DATABASE_NAMESPACE,
       supabaseUrl: gatewayBaseUrl,
       supabaseServiceRoleKey: SERVICE_ROLE_KEY,
     });
@@ -427,6 +429,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
   it("returns one canonical Channel row under concurrent inserts", async () => {
     const database = supabaseDatabase({
+      insightsDatabaseNamespace: INSIGHTS_DATABASE_NAMESPACE,
       supabaseUrl: gatewayBaseUrl,
       supabaseServiceRoleKey: SERVICE_ROLE_KEY,
     });
@@ -1140,6 +1143,7 @@ const writeSupabaseRuntimeFiles = async ({
     {
       BUCKET_NAME,
       FUNCTION_NAME,
+      INSIGHTS_DATABASE_NAMESPACE,
     },
   );
   const importMap = {

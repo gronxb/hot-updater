@@ -63,10 +63,6 @@ type OffsetResult<T> = {
 export type ConsoleInsightsQaClient = {
   readonly getActiveOverview: () => Promise<{
     readonly activeInstallations: number;
-    readonly bundles: readonly {
-      readonly bundleId: string;
-      readonly installations: number;
-    }[];
   }>;
   readonly getBundleInsights: (bundleId: string) => Promise<{
     readonly recentEvents: OffsetResult<InsightsEvent>;
@@ -79,6 +75,7 @@ export type ConsoleInsightsQaClient = {
   readonly getHistory: (
     installId: string,
   ) => Promise<OffsetResult<InsightsEvent>>;
+  readonly getInstallationBundle: (installId: string) => Promise<string | null>;
   readonly getOverview: () => Promise<{
     readonly trackedInstallations: number;
   }>;
@@ -186,11 +183,11 @@ export const verifyConsoleInsights = async (
       .filter((event) => event.type === "UNCHANGED")
       .sort((left, right) => right.observedAtMs - left.observedAtMs)[0];
     if (unchanged && observedTransitions.length === 0) {
-      const active = await client.getActiveOverview();
-      const activeBundle = active.bundles.find(
-        (bundle) => bundle.bundleId === unchanged.toBundleId,
-      );
-      if (active.activeInstallations > 0 && activeBundle?.installations) {
+      const [active, bundleId] = await Promise.all([
+        client.getActiveOverview(),
+        client.getInstallationBundle(unchanged.installId),
+      ]);
+      if (active.activeInstallations > 0 && bundleId === unchanged.toBundleId) {
         return {
           activeInstallations: active.activeInstallations,
           bundleId: unchanged.toBundleId,

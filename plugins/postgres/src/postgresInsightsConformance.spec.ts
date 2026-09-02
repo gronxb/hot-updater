@@ -17,14 +17,12 @@ import type {
   InsightsPublishedInstallationContinuationInput,
   InsightsPublishedInstallationPage,
   InsightsPublishedInstallationPageInput,
+  InsightsModel,
 } from "@hot-updater/plugin-core";
-import type {
-  DatabasePluginImplementation,
-  RequiredInsightsModel,
-} from "@hot-updater/plugin-core/internal";
 import {
-  type RequiredInsightsModelConformanceHarness,
-  registerRequiredInsightsModelTests,
+  type InsightsModelConformanceHarness,
+  type InsightsModelConformanceNamespaces,
+  registerInsightsModelTests,
 } from "@hot-updater/test-utils";
 import { Kysely, sql } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
@@ -40,7 +38,6 @@ import { createPostgresInsightsLiveTools } from "./postgresInsightsLive";
 import { createPostgresInsightsQueries } from "./postgresInsightsQueries";
 import { createPostgresInsightsReportWorker } from "./postgresInsightsReports";
 import {
-  appendPostgresInsightsEvent,
   createPostgresInsightsSourceTools,
   postgresEventSourceShard,
 } from "./postgresInsightsSource";
@@ -124,25 +121,6 @@ const harnesses: {
   readonly namespaces: readonly PostgresNamespace[];
 }[] = [];
 
-const unsupported = async (): Promise<never> => {
-  throw new Error("unexpected generic database operation");
-};
-
-const implementation = (
-  namespace: PostgresNamespace,
-): DatabasePluginImplementation => ({
-  appendBundleEvent: (row) =>
-    appendPostgresInsightsEvent(namespace.db, row).then(() => undefined),
-  create: unsupported,
-  update: unsupported,
-  delete: unsupported,
-  count: unsupported,
-  findOne: unsupported,
-  findMany: unsupported,
-  insertChannel: unsupported,
-  deleteChannel: unsupported,
-});
-
 const openNamespace = async (
   path: string,
   meter: PostgresCandidateMeter,
@@ -165,24 +143,27 @@ const openNamespace = async (
 const createNamespace = async (
   path: string,
   bundlesSql: string,
+  databaseNamespace: string,
 ): Promise<PostgresNamespace> => {
   const meter = new PostgresCandidateMeter();
   const opened = await openNamespace(path, meter);
   const namespace = { path, meter, ...opened };
   await namespace.client.exec(bundlesSql);
   await migratePostgresInsightsInstallationEvents(namespace.db);
-  await migratePostgresInsightsSource(namespace.db);
-  await createPostgresInsightsSourceTools(namespace.db).backfillStep(10);
-  await migratePostgresInsightsLive(namespace.db);
-  await createPostgresInsightsLiveTools(namespace.db).backfillStep(10);
-  await migratePostgresInsightsReports(namespace.db);
-  const identity = await sql<{ source_id: string }>`select source_id::text
-    from private_hot_updater_insights_source_state where id=1`.execute(
+  await migratePostgresInsightsSource(namespace.db, databaseNamespace);
+  await createPostgresInsightsSourceTools(
     namespace.db,
-  );
+    databaseNamespace,
+  ).backfillStep(10);
+  await migratePostgresInsightsLive(namespace.db, databaseNamespace);
+  await createPostgresInsightsLiveTools(
+    namespace.db,
+    databaseNamespace,
+  ).backfillStep(10);
+  await migratePostgresInsightsReports(namespace.db, databaseNamespace);
   return {
     ...namespace,
-    databaseNamespace: identity.rows[0]!.source_id,
+    databaseNamespace,
   };
 };
 
@@ -195,11 +176,11 @@ const reopenNamespace = async (namespace: PostgresNamespace): Promise<void> => {
 };
 
 const instrumentModel = (
-  model: RequiredInsightsModel,
+  model: InsightsModel,
   meter: PostgresCandidateMeter,
   beforeOperation: () => Promise<void>,
   afterOperation: () => Promise<void>,
-): RequiredInsightsModel => {
+): InsightsModel => {
   function pageInstallations(
     input: InsightsLiveInstallationPageInput,
   ): Promise<InsightsLiveInstallationPage>;
@@ -288,183 +269,190 @@ const deletePublication = async (
   });
 };
 
-const createHarness =
-  async (): Promise<RequiredInsightsModelConformanceHarness> => {
-    const root = await mkdtemp(
-      join(tmpdir(), "hot-updater-postgres-insights-"),
-    );
-    const bundlesSql = await readFile(
-      "plugins/postgres/sql/bundles.sql",
-      "utf8",
-    );
-    const primary = await createNamespace(join(root, "primary"), bundlesSql);
-    const other = await createNamespace(join(root, "other"), bundlesSql);
-    harnesses.push({ root, namespaces: [primary, other] });
-    const completed = new Set<string>();
-    const otherCompleted = new Set<string>();
-    const pendingExpiry = new Set<string>();
-    let currentTimeMs = 0;
+const createHarness = async (
+  databaseNamespaces: InsightsModelConformanceNamespaces,
+): Promise<InsightsModelConformanceHarness> => {
+  const root = await mkdtemp(join(tmpdir(), "hot-updater-postgres-insights-"));
+  const bundlesSql = await readFile("plugins/postgres/sql/bundles.sql", "utf8");
+  const primary = await createNamespace(
+    join(root, "primary"),
+    bundlesSql,
+    databaseNamespaces.insightsDatabaseNamespace,
+  );
+  const other = await createNamespace(
+    join(root, "other"),
+    bundlesSql,
+    databaseNamespaces.otherInsightsDatabaseNamespace,
+  );
+  harnesses.push({ root, namespaces: [primary, other] });
+  const completed = new Set<string>();
+  const otherCompleted = new Set<string>();
+  const pendingExpiry = new Set<string>();
+  let currentTimeMs = 0;
 
-    const applyExpiry = async (): Promise<void> => {
-      for (const publicationId of pendingExpiry) {
-        await deletePublication(primary.db, publicationId);
-        pendingExpiry.delete(publicationId);
-      }
-    };
+  const applyExpiry = async (): Promise<void> => {
+    for (const publicationId of pendingExpiry) {
+      await deletePublication(primary.db, publicationId);
+      pendingExpiry.delete(publicationId);
+    }
+  };
 
-    const freezeReservedAsOf = async (
-      namespace: PostgresNamespace,
-    ): Promise<void> => {
-      await sql`update private_hot_updater_insights_report_jobs
+  const freezeReservedAsOf = async (
+    namespace: PostgresNamespace,
+  ): Promise<void> => {
+    await sql`update private_hot_updater_insights_report_jobs
         set as_of_ms=${currentTimeMs}
         where base_job_id is null and status in ('queued','preparing')`.execute(
-        namespace.db,
-      );
-    };
+      namespace.db,
+    );
+  };
 
-    const runNamespaceJobStep = async (
-      namespace: PostgresNamespace,
-      completedJobs: Set<string>,
-      jobId: string,
-      input: { readonly maxItems: number; readonly maxRequests: number },
-    ) => {
-      if (input.maxItems > 4_096 || input.maxRequests > 4_096)
-        await createPostgresInsightsReportWorker(namespace.db).runStep(input);
-      if (input.maxItems < 100 || input.maxRequests < 10)
-        return {
-          state: "idle" as const,
-          jobId,
-          usage: { items: 0, requests: 0 },
-        };
-      let result: Awaited<
-        ReturnType<
-          ReturnType<typeof createPostgresInsightsReportWorker>["runStep"]
-        >
-      >;
-      let processed = 0;
-      try {
-        result = await namespace.meter.measure(async () => {
-          const target = await sql<{ status: string }>`select status
+  const runNamespaceJobStep = async (
+    namespace: PostgresNamespace,
+    completedJobs: Set<string>,
+    jobId: string,
+    input: { readonly maxItems: number; readonly maxRequests: number },
+  ) => {
+    if (input.maxItems > 4_096 || input.maxRequests > 4_096)
+      await createPostgresInsightsReportWorker(
+        namespace.db,
+        namespace.databaseNamespace,
+      ).runStep(input);
+    if (input.maxItems < 100 || input.maxRequests < 10)
+      return {
+        state: "idle" as const,
+        jobId,
+        usage: { items: 0, requests: 0 },
+      };
+    let result: Awaited<
+      ReturnType<
+        ReturnType<typeof createPostgresInsightsReportWorker>["runStep"]
+      >
+    >;
+    let processed = 0;
+    try {
+      result = await namespace.meter.measure(async () => {
+        const target = await sql<{ status: string }>`select status
             from private_hot_updater_insights_report_jobs
             where id=${jobId}::uuid`.execute(namespace.db);
-          if (target.rows[0]?.status === "ready")
-            return { state: "published" as const, processed: 0, jobId };
-          if (target.rows[0]?.status === "failed")
-            return { state: "failed" as const, processed: 0, jobId };
-          let current = await createPostgresInsightsReportWorker(
+        if (target.rows[0]?.status === "ready")
+          return { state: "published" as const, processed: 0, jobId };
+        if (target.rows[0]?.status === "failed")
+          return { state: "failed" as const, processed: 0, jobId };
+        let current = await createPostgresInsightsReportWorker(
+          namespace.db,
+          namespace.databaseNamespace,
+        ).runStep(input);
+        processed += current.processed;
+        for (
+          let attempt = 1;
+          attempt < 4 &&
+          current.state !== "published" &&
+          current.state !== "failed" &&
+          namespace.meter.currentRequests < 80;
+          attempt++
+        ) {
+          current = await createPostgresInsightsReportWorker(
             namespace.db,
+            namespace.databaseNamespace,
           ).runStep(input);
           processed += current.processed;
-          for (
-            let attempt = 1;
-            attempt < 4 &&
-            current.state !== "published" &&
-            current.state !== "failed" &&
-            namespace.meter.currentRequests < 80;
-            attempt++
-          ) {
-            current = await createPostgresInsightsReportWorker(
-              namespace.db,
-            ).runStep(input);
-            processed += current.processed;
-          }
-          return current;
-        });
-      } catch (error) {
-        const failed = await sql<{ status: string }>`select status
+        }
+        return current;
+      });
+    } catch (error) {
+      const failed = await sql<{ status: string }>`select status
           from private_hot_updater_insights_report_jobs
           where id=${jobId}::uuid`.execute(namespace.db);
-        if (failed.rows[0]?.status !== "failed") throw error;
-        return {
-          state: "failed" as const,
-          jobId,
-          usage: { items: 0, requests: namespace.meter.lastRequests },
-        };
-      }
-      const usage = {
-        items: processed,
-        requests: namespace.meter.lastRequests,
-      };
-      if (result.jobId !== undefined && result.jobId !== jobId)
-        return { state: "idle" as const, jobId, usage };
-      if (result.state === "published") {
-        completedJobs.add(jobId);
-        return {
-          state: "complete" as const,
-          publicationId: jobId,
-          usage,
-        };
-      }
-      if (result.state === "failed")
-        return { state: "failed" as const, jobId, usage };
-      if (result.state === "progress")
-        return result.processed > 0
-          ? { state: "running" as const, jobId, usage }
-          : { state: "idle" as const, jobId, usage };
-      return { state: "idle" as const, jobId, usage };
-    };
-
-    const createFacade = (): RequiredInsightsModelConformanceHarness => {
-      const primaryModel = createPostgresInsightsQueries(
-        primary.db,
-        implementation(primary),
-        primary.databaseNamespace,
-      );
-      const otherModel = createPostgresInsightsQueries(
-        other.db,
-        implementation(other),
-        other.databaseNamespace,
-      );
+      if (failed.rows[0]?.status !== "failed") throw error;
       return {
-        model: instrumentModel(primaryModel, primary.meter, applyExpiry, () =>
-          freezeReservedAsOf(primary),
-        ),
-        otherNamespaceModel: instrumentModel(
-          otherModel,
-          other.meter,
-          async () => undefined,
-          () => freezeReservedAsOf(other),
-        ),
-        async runJobStep(jobId, input) {
-          await applyExpiry();
-          return runNamespaceJobStep(primary, completed, jobId, input);
-        },
-        runOtherNamespaceJobStep(jobId, input) {
-          return runNamespaceJobStep(other, otherCompleted, jobId, input);
-        },
-        async reopen() {
-          await Promise.all([reopenNamespace(primary), reopenNamespace(other)]);
-          return createFacade();
-        },
-        async insertMigrationPoisonRow() {
-          const id = "00000000-0000-7000-8000-00000000000a";
-          const shard = postgresEventSourceShard(id);
-          const installId = "p".repeat(1_025);
-          const poisonEvent: BundleEventRow = {
-            id,
-            type: "UPDATE_APPLIED",
-            install_id: installId,
-            user_id: "poison",
-            username: "poison",
-            from_release_id: null,
-            from_bundle_id: "10000000-0000-7000-8000-000000000002",
-            to_release_id: null,
-            to_bundle_id: "10000000-0000-7000-8000-000000000001",
-            platform: "ios",
-            app_version: "1.0.0",
-            channel: "production",
-            cohort: "poison",
-            update_strategy: "appVersion",
-            fingerprint_hash: null,
-            sdk_version: null,
-            received_at_ms: 999,
-          };
-          await primary.db.transaction().execute(async (transaction) => {
-            const allocated = await sql<{ sequence: string }>`update
+        state: "failed" as const,
+        jobId,
+        usage: { items: 0, requests: namespace.meter.lastRequests },
+      };
+    }
+    const usage = {
+      items: processed,
+      requests: namespace.meter.lastRequests,
+    };
+    if (result.jobId !== undefined && result.jobId !== jobId)
+      return { state: "idle" as const, jobId, usage };
+    if (result.state === "published") {
+      completedJobs.add(jobId);
+      return {
+        state: "complete" as const,
+        publicationId: jobId,
+        usage,
+      };
+    }
+    if (result.state === "failed")
+      return { state: "failed" as const, jobId, usage };
+    if (result.state === "progress")
+      return result.processed > 0
+        ? { state: "running" as const, jobId, usage }
+        : { state: "idle" as const, jobId, usage };
+    return { state: "idle" as const, jobId, usage };
+  };
+
+  const createFacade = (): InsightsModelConformanceHarness => {
+    const primaryModel = createPostgresInsightsQueries(
+      primary.db,
+      primary.databaseNamespace,
+    );
+    const otherModel = createPostgresInsightsQueries(
+      other.db,
+      other.databaseNamespace,
+    );
+    return {
+      model: instrumentModel(primaryModel, primary.meter, applyExpiry, () =>
+        freezeReservedAsOf(primary),
+      ),
+      otherNamespaceModel: instrumentModel(
+        otherModel,
+        other.meter,
+        async () => undefined,
+        () => freezeReservedAsOf(other),
+      ),
+      async runJobStep(jobId, input) {
+        await applyExpiry();
+        return runNamespaceJobStep(primary, completed, jobId, input);
+      },
+      runOtherNamespaceJobStep(jobId, input) {
+        return runNamespaceJobStep(other, otherCompleted, jobId, input);
+      },
+      async reopen() {
+        await Promise.all([reopenNamespace(primary), reopenNamespace(other)]);
+        return createFacade();
+      },
+      async insertMigrationPoisonRow() {
+        const id = "00000000-0000-7000-8000-00000000000a";
+        const shard = postgresEventSourceShard(id);
+        const installId = "p".repeat(1_025);
+        const poisonEvent: BundleEventRow = {
+          id,
+          type: "UPDATE_APPLIED",
+          install_id: installId,
+          user_id: "poison",
+          username: "poison",
+          from_release_id: null,
+          from_bundle_id: "10000000-0000-7000-8000-000000000002",
+          to_release_id: null,
+          to_bundle_id: "10000000-0000-7000-8000-000000000001",
+          platform: "ios",
+          app_version: "1.0.0",
+          channel: "production",
+          cohort: "poison",
+          update_strategy: "appVersion",
+          fingerprint_hash: null,
+          sdk_version: null,
+          received_at_ms: 999,
+        };
+        await primary.db.transaction().execute(async (transaction) => {
+          const allocated = await sql<{ sequence: string }>`update
               private_hot_updater_insights_source_clocks
               set committed_seq=committed_seq+1 where shard=${shard}
               returning committed_seq::text sequence`.execute(transaction);
-            await sql`insert into bundle_events (
+          await sql`insert into bundle_events (
               id,type,install_id,user_id,username,from_release_id,
               from_bundle_id,to_release_id,to_bundle_id,platform,app_version,
               channel,cohort,update_strategy,fingerprint_hash,sdk_version,
@@ -478,41 +466,39 @@ const createHarness =
               ${allocated.rows[0]!.sequence}::bigint,
               ${JSON.stringify(poisonEvent)}::jsonb,1
             )`.execute(transaction);
-          });
-        },
-        setCurrentTimeMs(nowMs) {
-          if (!Number.isSafeInteger(nowMs) || nowMs < 0)
-            throw new Error("invalid-time");
-          currentTimeMs = nowMs;
-          vi.setSystemTime(nowMs);
-        },
-        expirePublication(publicationId) {
-          completed.delete(publicationId);
-          pendingExpiry.add(publicationId);
-        },
-        publicationStateForJob(jobId) {
-          return completed.has(jobId) ? "complete" : "absent";
-        },
-        getLastStorageReadCount(namespace = "primary") {
-          return namespace === "primary"
-            ? primary.meter.last
-            : other.meter.last;
-        },
-        getPageEventsCandidateReadBudget(input) {
-          return input.selector.kind === "all"
-            ? input.limit + 1
-            : (input.limit + 1) * 2;
-        },
-        getPageInstallationsCandidateReadBudget(input) {
-          return input.kind === "installationId" ? 1 : input.limit + 1;
-        },
-        getPageReportCandidateReadBudget(input) {
-          return input.limit + 1;
-        },
-      };
+        });
+      },
+      setCurrentTimeMs(nowMs) {
+        if (!Number.isSafeInteger(nowMs) || nowMs < 0)
+          throw new Error("invalid-time");
+        currentTimeMs = nowMs;
+        vi.setSystemTime(nowMs);
+      },
+      expirePublication(publicationId) {
+        completed.delete(publicationId);
+        pendingExpiry.add(publicationId);
+      },
+      publicationStateForJob(jobId) {
+        return completed.has(jobId) ? "complete" : "absent";
+      },
+      getLastStorageReadCount(namespace = "primary") {
+        return namespace === "primary" ? primary.meter.last : other.meter.last;
+      },
+      getPageEventsCandidateReadBudget(input) {
+        return input.selector.kind === "all"
+          ? input.limit + 1
+          : (input.limit + 1) * 2;
+      },
+      getPageInstallationsCandidateReadBudget(input) {
+        return input.kind === "installationId" ? 1 : input.limit + 1;
+      },
+      getPageReportCandidateReadBudget(input) {
+        return input.limit + 1;
+      },
     };
-    return createFacade();
   };
+  return createFacade();
+};
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -533,4 +519,4 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-registerRequiredInsightsModelTests(createHarness);
+registerInsightsModelTests(createHarness);

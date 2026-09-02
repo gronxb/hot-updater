@@ -21,6 +21,7 @@ describe("AWS non-interactive init inputs", () => {
       expect.objectContaining({
         missingInputs: [
           "HOT_UPDATER_DYNAMODB_TABLE_NAME",
+          "HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE",
           "HOT_UPDATER_S3_ACCESS_KEY_ID",
           "HOT_UPDATER_S3_SECRET_ACCESS_KEY",
           "HOT_UPDATER_S3_REGION",
@@ -36,6 +37,8 @@ describe("AWS non-interactive init inputs", () => {
       HOT_UPDATER_AWS_AUTH_MODE: "local-session",
       HOT_UPDATER_AWS_LAMBDA_NAME: "hot-updater-edge",
       HOT_UPDATER_DYNAMODB_TABLE_NAME: "hot-updater-metadata",
+      HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE:
+        "00000000-0000-4000-8000-000000000001",
       HOT_UPDATER_S3_BUCKET_NAME: "bucket-name",
       HOT_UPDATER_S3_REGION: "ap-northeast-2",
     };

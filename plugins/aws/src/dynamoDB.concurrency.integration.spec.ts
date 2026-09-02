@@ -9,9 +9,22 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDynamoDBAggregateMutations } from "./dynamoDB";
 import { createDynamoDBCrud } from "./dynamoDB";
 import { DynamoDBIntegrationFixture } from "./dynamoDB.integration-fixture";
+import { createDynamoDBInsightsModel } from "./dynamoDBInsightsV2Jobs";
 
 const fixture = new DynamoDBIntegrationFixture();
 const productionChannelId = "00000000-0000-0000-0000-000000000100";
+
+const createCrud = () => {
+  const store = { client: fixture.client, tableName: fixture.tableName };
+  return createDynamoDBCrud(
+    store,
+    "hot-updater-update-index",
+    createDynamoDBInsightsModel({
+      ...store,
+      insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000001",
+    }),
+  );
+};
 
 const bundle = (sequence: number): Bundle => ({
   id: `00000000-0000-0000-0000-${sequence.toString().padStart(12, "0")}`,
@@ -200,13 +213,7 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
       const base = bundle(2);
       await database.insertBundle(owner);
       await database.insertBundle(base);
-      const crud = createDynamoDBCrud(
-        {
-          client: fixture.client,
-          tableName: fixture.tableName,
-        },
-        "hot-updater-update-index",
-      );
+      const crud = createCrud();
       const paused = fixture.pauseNextQuery();
       const deleted = deletedSide === "owner" ? owner : base;
 
@@ -234,13 +241,7 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
     const database = createDatabaseClient(fixture.createPlugin());
     const target = bundle(1);
     await database.insertBundle(target);
-    const crud = createDynamoDBCrud(
-      {
-        client: fixture.client,
-        tableName: fixture.tableName,
-      },
-      "hot-updater-update-index",
-    );
+    const crud = createCrud();
     const paused = fixture.pauseNextQuery();
 
     const deletion = crud.delete({
@@ -272,13 +273,7 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
 
   it("deletes multiple related bundles in resumable atomic groups", async () => {
     const database = createDatabaseClient(fixture.createPlugin());
-    const crud = createDynamoDBCrud(
-      {
-        client: fixture.client,
-        tableName: fixture.tableName,
-      },
-      "hot-updater-update-index",
-    );
+    const crud = createCrud();
     const owner = bundle(1);
     const base = bundle(2);
     await database.insertBundle(owner);

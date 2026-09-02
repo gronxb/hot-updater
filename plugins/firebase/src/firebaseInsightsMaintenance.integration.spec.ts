@@ -40,7 +40,8 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
 
 const { firestore, bundleEventsCollection, clearCollections } =
   createFirestoreMock("firebase-insights-maintenance");
-const collections = createFirebaseInsightsCollections(firestore);
+const namespace = "10000000-0000-4000-8000-000000000003";
+const collections = createFirebaseInsightsCollections(firestore, namespace);
 
 const initializeEmptyInsights = async () => {
   await prepareFirebaseInsightsStep(
@@ -84,7 +85,7 @@ describe("Firestore v2 Insights maintenance", () => {
     try {
       await appendFirebaseInsightsEvent(firestore, collections, event);
       expect(reads).toHaveBeenCalledTimes(1);
-      expect(reads.mock.calls[0]).toHaveLength(3);
+      expect(reads.mock.calls[0]).toHaveLength(4);
       expect(creates).toHaveBeenCalledTimes(2);
       expect(sets).toHaveBeenCalledTimes(3);
     } finally {
@@ -133,6 +134,7 @@ describe("Firestore v2 Insights maintenance", () => {
       version: FIREBASE_INSIGHTS_LAYOUT_VERSION,
       state: "ready",
       indexRevision: FIREBASE_INSIGHTS_INDEX_REVISION,
+      databaseNamespace: namespace,
     });
     const queries = createFirebaseInsightsQueries(
       collections,
@@ -303,6 +305,7 @@ describe("Firestore v2 Insights maintenance", () => {
       version: FIREBASE_INSIGHTS_LAYOUT_VERSION,
       state: "ready",
       indexRevision: FIREBASE_INSIGHTS_INDEX_REVISION,
+      databaseNamespace: namespace,
     });
     const rows: BundleEventRow[] = [];
     for (let suffix = 911_000; rows.length < 4; suffix += 1) {
@@ -634,6 +637,7 @@ describe("Firestore v2 Insights maintenance", () => {
       version: FIREBASE_INSIGHTS_LAYOUT_VERSION,
       state: "ready",
       indexRevision: FIREBASE_INSIGHTS_INDEX_REVISION,
+      databaseNamespace: namespace,
     });
     const first = {
       ...createBundleEventRowFixture("940001", 100),

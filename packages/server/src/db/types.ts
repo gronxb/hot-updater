@@ -128,8 +128,14 @@ export function isDatabasePlugin(plugin: unknown): plugin is DatabasePlugin {
     plugin.models.insights !== null &&
     "append" in plugin.models.insights &&
     typeof plugin.models.insights.append === "function" &&
-    "scan" in plugin.models.insights &&
-    typeof plugin.models.insights.scan === "function" &&
+    "pageEvents" in plugin.models.insights &&
+    typeof plugin.models.insights.pageEvents === "function" &&
+    "pageInstallations" in plugin.models.insights &&
+    typeof plugin.models.insights.pageInstallations === "function" &&
+    "getReport" in plugin.models.insights &&
+    typeof plugin.models.insights.getReport === "function" &&
+    "pageReport" in plugin.models.insights &&
+    typeof plugin.models.insights.pageReport === "function" &&
     "apiKeys" in plugin.models &&
     typeof plugin.models.apiKeys === "object" &&
     plugin.models.apiKeys !== null &&

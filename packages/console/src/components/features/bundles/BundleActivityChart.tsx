@@ -1,4 +1,4 @@
-import type { ActiveInstallationWindow } from "@hot-updater/server";
+import type { InsightsActiveWindow } from "@hot-updater/plugin-core";
 import { useId } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
@@ -19,7 +19,7 @@ interface SeriesPoint {
 interface BundleActivityChartProps {
   readonly installed: readonly SeriesPoint[];
   readonly recovered: readonly SeriesPoint[];
-  readonly window: ActiveInstallationWindow;
+  readonly window: InsightsActiveWindow;
 }
 
 interface ActivityChartPoint {
@@ -81,10 +81,7 @@ const mergeActivitySeries = (
     }));
 };
 
-const formatBucket = (
-  value: number,
-  window: ActiveInstallationWindow,
-): string =>
+const formatBucket = (value: number, window: InsightsActiveWindow): string =>
   (window === "24h" ? hourFormatter : dateFormatter).format(new Date(value));
 
 export function BundleActivityChart({

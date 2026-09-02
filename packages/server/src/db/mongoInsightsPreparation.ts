@@ -3,27 +3,47 @@ import {
   InsightsQueryNotReadyError,
 } from "@hot-updater/plugin-core";
 import {
-  databaseFields,
   INSIGHTS_EVENT_ID_PATTERN,
   INSIGHTS_MAINTENANCE_INPUT_MAX_BYTES,
 } from "@hot-updater/plugin-core/internal";
 import type { Document, MongoClient, ReadConcern } from "mongodb";
 
-import {
-  assertMongoInsightsEventRow,
-  mongoInsightsEventIndexes,
-} from "../adapters/mongodbInsights";
+import { assertMongoInsightsEventRow } from "../adapters/mongodbInsights";
 
 const STATE_ID = "event-pages";
 const STATE_COLLECTION = "private_hot_updater_insights_preparation";
 const EVENT_COLLECTION = "bundle_events";
+const EVENT_FIELDS = [
+  "id",
+  "type",
+  "install_id",
+  "user_id",
+  "username",
+  "from_bundle_id",
+  "from_release_id",
+  "to_bundle_id",
+  "to_release_id",
+  "platform",
+  "app_version",
+  "channel",
+  "cohort",
+  "update_strategy",
+  "fingerprint_hash",
+  "sdk_version",
+  "received_at_ms",
+] as const;
+export const mongoInsightsSourceEventIndex = {
+  name: "bundle_events_id_idx",
+  key: { id: 1 },
+  unique: true,
+} as const;
 const nullableString = { bsonType: ["string", "null"] };
 export const mongoInsightsEventValidator = {
   $and: [
     {
       $jsonSchema: {
         bsonType: "object",
-        required: [...databaseFields.bundle_events, "_id"],
+        required: [...EVENT_FIELDS, "_id"],
         properties: {
           _id: { bsonType: "objectId" },
           id: {
@@ -188,7 +208,7 @@ export const createMongoInsightsPreparation = (client: MongoClient) => {
     collection.options.validationAction === "error";
   const indexes = async () => {
     const found = await events.listIndexes().toArray();
-    return mongoInsightsEventIndexes.map((expected) => ({
+    return [mongoInsightsSourceEventIndex].map((expected) => ({
       expected,
       existing: found.find(({ name }) => name === expected.name),
       ready: found.some(

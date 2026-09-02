@@ -34,6 +34,18 @@ const replaceMap = <T>(target: Map<string, T>, source: Map<string, T>) => {
   for (const [key, value] of source) target.set(key, value);
 };
 
+const insightsUnavailable = () =>
+  ({
+    state: "failed",
+    versions: {
+      schemaVersion: null,
+      storageVersion: null,
+      projectionGeneration: null,
+      sourceGeneration: null,
+    },
+    error: { code: "storage-not-ready" },
+  }) as const;
+
 export const createMemoryDatabasePlugin = (): DatabasePlugin => {
   const bundles = new Map<string, BundleRow>();
   const patches = new Map<string, BundlePatchRow>();
@@ -359,24 +371,17 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
         async append(row) {
           events.set(row.id, structuredClone(row));
         },
-        async scan(input) {
-          return structuredClone(
-            [...events.values()]
-              .filter(
-                (row) =>
-                  row.received_at_ms < input.beforeReceivedAtMs &&
-                  (input.after === undefined ||
-                    row.received_at_ms > input.after.receivedAtMs ||
-                    (row.received_at_ms === input.after.receivedAtMs &&
-                      row.id > input.after.id)),
-              )
-              .sort(
-                (left, right) =>
-                  left.received_at_ms - right.received_at_ms ||
-                  left.id.localeCompare(right.id),
-              )
-              .slice(0, input.limit),
-          );
+        async pageEvents() {
+          return insightsUnavailable();
+        },
+        async pageInstallations() {
+          return insightsUnavailable();
+        },
+        async getReport() {
+          return insightsUnavailable();
+        },
+        async pageReport() {
+          return insightsUnavailable();
         },
       },
       apiKeys: {

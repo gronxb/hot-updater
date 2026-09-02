@@ -13,7 +13,6 @@ import {
   type InsightsReportResult,
 } from "@hot-updater/plugin-core";
 import {
-  assertInsightsCursorContract,
   assertInsightsPageContract,
   assertInsightsQueryContract,
   createInsightsReportPageCursor,
@@ -32,6 +31,7 @@ import {
 } from "./constants";
 import { readKyselyInsightsState } from "./source";
 import {
+  assertKyselyInsightsDatabaseNamespace,
   executeSerializable,
   insertIgnore,
   installationKey,
@@ -311,6 +311,7 @@ const saveProjection = async (
 const reserveReport = async <TDatabase>(
   db: Kysely<TDatabase>,
   provider: KyselySQLProvider,
+  databaseNamespace: string,
   input: InsightsReportInput,
 ): Promise<{ job: ReportJob; previous: ReportJob | null }> => {
   const canonical = readInsightsReportQuery(input);
@@ -365,7 +366,10 @@ const reserveReport = async <TDatabase>(
       return { job: parseJob(failed.rows[0]), previous };
     }
     const id = newOpaqueId();
-    const source = await readKyselyInsightsState(transaction);
+    const source = await readKyselyInsightsState(
+      transaction,
+      databaseNamespace,
+    );
     await sql`insert into ${sql.table(tables.reportJobs)} (
         id, query_hash, query_json, state, phase, source_id, source_upper,
         as_of_ms, completed_at_ms, after_source_seq, after_member_key,
@@ -1251,12 +1255,26 @@ const reportFailureCode = (
 export const getKyselyInsightsReport = async <TDatabase>(
   db: Kysely<TDatabase>,
   provider: KyselySQLProvider,
+  databaseNamespace: string,
   input: InsightsReportInput,
 ): Promise<InsightsReportResult> => {
+  assertKyselyInsightsDatabaseNamespace(databaseNamespace);
   assertInsightsQueryContract(input);
   try {
-    const reservation = await reserveReport(db, provider, input);
+    const reservation = await reserveReport(
+      db,
+      provider,
+      databaseNamespace,
+      input,
+    );
     const job = reservation.job;
+    if (
+      job.source_id !== databaseNamespace ||
+      (reservation.previous !== null &&
+        reservation.previous.source_id !== databaseNamespace)
+    ) {
+      throw new DatabasePluginInputError("invalid-result");
+    }
     const currentVersions = reportVersions(job);
     if (job.state === "ready") {
       const result = {
@@ -1427,47 +1445,24 @@ const pageOrder = async (
   return { rows, total, nextCursor: bounds.nextCursor };
 };
 
-const reportPageCursorNamespace = (input: InsightsReportPageInput): string => {
-  if (input.cursor === undefined) return "kysely-preflight";
-  try {
-    assertInsightsCursorContract(input.cursor);
-    const cursor: unknown = JSON.parse(input.cursor);
-    if (!Array.isArray(cursor) || typeof cursor[1] !== "string") throw null;
-    const semantic: unknown = JSON.parse(cursor[1]);
-    if (
-      !Array.isArray(semantic) ||
-      semantic.length !== 7 ||
-      typeof semantic[0] !== "string" ||
-      semantic[1] !== "report-page"
-    ) {
-      throw null;
-    }
-    return semantic[0];
-  } catch {
-    throw new DatabasePluginInputError("invalid-query");
-  }
-};
-
 export const pageKyselyInsightsReport = async (
   db: QueryExecutorProvider,
   provider: KyselySQLProvider,
+  databaseNamespace: string,
   input: InsightsReportPageInput,
 ): Promise<InsightsReportPage> => {
-  const cursorNamespace = reportPageCursorNamespace(input);
-  const parsed = readInsightsReportPageQuery(input, cursorNamespace);
+  assertKyselyInsightsDatabaseNamespace(databaseNamespace);
+  const parsed = readInsightsReportPageQuery(input, databaseNamespace);
   if (input.cursor !== undefined) {
-    const source = await readKyselyInsightsState(db);
-    if (cursorNamespace !== source.sourceId) {
-      throw new DatabasePluginInputError("invalid-query");
-    }
+    await readKyselyInsightsState(db, databaseNamespace);
   }
   const jobs = await sql<ReportJob>`select * from ${sql.table(
     tables.reportJobs,
   )} where id = ${input.publicationId}`.execute(db);
   const job = jobs.rows[0];
   if (!job) return { state: "expired", publicationId: input.publicationId };
-  if (input.cursor !== undefined && cursorNamespace !== job.source_id) {
-    throw new DatabasePluginInputError("invalid-query");
+  if (job.source_id !== databaseNamespace) {
+    throw new DatabasePluginInputError("invalid-result");
   }
   if (job.state !== "ready") {
     return {

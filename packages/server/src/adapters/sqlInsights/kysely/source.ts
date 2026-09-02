@@ -24,6 +24,7 @@ import { sql, type Kysely, type QueryExecutorProvider } from "kysely";
 import type { SQLProvider as KyselySQLProvider } from "../../kysely";
 import { KYSELY_INSIGHTS_WORK_ROWS, tables } from "./constants";
 import {
+  assertKyselyInsightsDatabaseNamespace,
   executeSerializable,
   insertIgnore,
   installationKey,
@@ -153,8 +154,10 @@ const isReady = (value: unknown): boolean =>
 
 export const readKyselyInsightsState = async (
   db: QueryExecutorProvider,
+  databaseNamespace: string,
   requireReady = true,
 ): Promise<{ sourceId: string; upper: number }> => {
+  assertKyselyInsightsDatabaseNamespace(databaseNamespace);
   const result = await sql<StateRow>`select source_id, next_seq, ready,
     migration_upper_id, migration_after_id from ${sql.table(
       tables.state,
@@ -162,6 +165,9 @@ export const readKyselyInsightsState = async (
   const state = result.rows[0];
   if (!state || (requireReady && !isReady(state.ready))) {
     throw new InsightsQueryNotReadyError();
+  }
+  if (state.source_id !== databaseNamespace) {
+    throw new DatabasePluginInputError("invalid-result");
   }
   return { sourceId: state.source_id, upper: toSafeInteger(state.next_seq) };
 };
@@ -253,6 +259,7 @@ const saveLive = async (
 const saveSourceEvent = async (
   db: QueryExecutorProvider,
   provider: KyselySQLProvider,
+  databaseNamespace: string,
   event: BundleEventRow,
   insertCore: boolean,
 ): Promise<number> => {
@@ -260,7 +267,7 @@ const saveSourceEvent = async (
   const raw = canonicalInsightsJson(event);
   const key = await installationKey(event.install_id);
   await lockState(db, provider);
-  const state = await readKyselyInsightsState(db, false);
+  const state = await readKyselyInsightsState(db, databaseNamespace, false);
   if (insertCore) await insertCoreEvent(db, event);
   const previous = await sql<{
     source_seq: unknown;
@@ -322,17 +329,21 @@ const saveSourceEvent = async (
 export const appendKyselyInsightsEvent = async <TDatabase>(
   db: Kysely<TDatabase>,
   provider: KyselySQLProvider,
+  databaseNamespace: string,
   event: BundleEventRow,
 ): Promise<void> => {
+  assertKyselyInsightsDatabaseNamespace(databaseNamespace);
   await executeSerializable(db, provider, (transaction) =>
-    saveSourceEvent(transaction, provider, event, true),
+    saveSourceEvent(transaction, provider, databaseNamespace, event, true),
   );
 };
 
 export const pageKyselyInsightsEvents = async (
   db: QueryExecutorProvider,
+  databaseNamespace: string,
   input: InsightsPageEventsInput,
 ): Promise<InsightsPageEventsResult> => {
+  assertKyselyInsightsDatabaseNamespace(databaseNamespace);
   input = readInsightsPageEventsInput(input);
   if (
     !Number.isSafeInteger(input.limit) ||
@@ -347,9 +358,12 @@ export const pageKyselyInsightsEvents = async (
   }
   const selectorKey = eventSelectorKey(input);
   const cursor = readEventCursor(input, selectorKey);
+  if (cursor !== undefined && cursor.sourceId !== databaseNamespace) {
+    throw new DatabasePluginInputError("invalid-query");
+  }
   let currentSource: { sourceId: string; upper: number };
   try {
-    currentSource = await readKyselyInsightsState(db);
+    currentSource = await readKyselyInsightsState(db, databaseNamespace);
   } catch (error) {
     if (!(error instanceof InsightsQueryNotReadyError)) throw error;
     return {
@@ -513,8 +527,10 @@ type LegacyId = { id: string };
 export const prepareKyselyInsightsSource = async <TDatabase>(
   db: Kysely<TDatabase>,
   provider: KyselySQLProvider,
+  databaseNamespace: string,
   limit = KYSELY_INSIGHTS_WORK_ROWS,
 ): Promise<{ state: "ready" | "progress"; processed: number }> => {
+  assertKyselyInsightsDatabaseNamespace(databaseNamespace);
   if (
     !Number.isSafeInteger(limit) ||
     limit < 1 ||
@@ -528,6 +544,9 @@ export const prepareKyselyInsightsSource = async <TDatabase>(
       )} where id = 1`.execute(db);
   const state = stateResult.rows[0];
   if (!state) throw new InsightsQueryNotReadyError();
+  if (state.source_id !== databaseNamespace) {
+    throw new DatabasePluginInputError("invalid-result");
+  }
   if (isReady(state.ready)) return { state: "ready", processed: 0 };
   if (!state.migration_upper_id) {
     throw new DatabasePluginInputError("invalid-result");
@@ -586,7 +605,13 @@ export const prepareKyselyInsightsSource = async <TDatabase>(
   }
   for (const event of rows) {
     await executeSerializable(db, provider, async (transaction) => {
-      await saveSourceEvent(transaction, provider, event, false);
+      await saveSourceEvent(
+        transaction,
+        provider,
+        databaseNamespace,
+        event,
+        false,
+      );
       await sql`update ${sql.table(tables.state)}
         set migration_after_id = ${event.id}, poison_event_id = null
         where id = 1 and (migration_after_id is null

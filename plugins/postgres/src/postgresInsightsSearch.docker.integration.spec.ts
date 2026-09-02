@@ -35,6 +35,8 @@ import {
 } from "./postgresInsightsSource";
 import type { Database } from "./types";
 
+const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
+
 const jobsTable = "private_hot_updater_insights_report_jobs";
 const heads = "private_hot_updater_insights_report_heads";
 const counts = "private_hot_updater_insights_report_counts";
@@ -63,7 +65,7 @@ describe("PostgreSQL frozen contains search and native read bounds", () => {
   let databaseNamespace: string;
   let queries: Query[] = [];
   let pageQueries: Query[] = [];
-  const jobs = () => createPostgresInsightsJobs(db);
+  const jobs = () => createPostgresInsightsJobs(db, insightsDatabaseNamespace);
   const pages = () =>
     createPostgresInsightsSearchPages(pageDb, databaseNamespace);
 
@@ -160,15 +162,21 @@ describe("PostgreSQL frozen contains search and native read bounds", () => {
     await pool.query(
       await readFile("plugins/postgres/sql/bundles.sql", "utf8"),
     );
-    await migratePostgresInsightsSource(db);
-    await migratePostgresInsightsReports(db);
-    await createPostgresInsightsSourceTools(db).backfillStep(1);
+    await migratePostgresInsightsSource(db, insightsDatabaseNamespace);
+    await migratePostgresInsightsReports(db, insightsDatabaseNamespace);
+    await createPostgresInsightsSourceTools(
+      db,
+      insightsDatabaseNamespace,
+    ).backfillStep(1);
     databaseNamespace = (
       await sql<{ source_id: string }>`select source_id::text
         from private_hot_updater_insights_source_state where id=1`.execute(db)
     ).rows[0]!.source_id;
-    await migratePostgresInsightsLive(db);
-    await createPostgresInsightsLiveTools(db).backfillStep(1);
+    await migratePostgresInsightsLive(db, insightsDatabaseNamespace);
+    await createPostgresInsightsLiveTools(
+      db,
+      insightsDatabaseNamespace,
+    ).backfillStep(1);
     await pool.query("create table readonly_probe(id integer primary key)");
     queries = [];
     pageQueries = [];
@@ -185,18 +193,25 @@ describe("PostgreSQL frozen contains search and native read bounds", () => {
     installId: string,
     userId: string,
   ) =>
-    appendPostgresInsightsEvent(db, {
-      ...createBundleEventRowFixture(String(id), time),
-      install_id: installId,
-      user_id: userId,
-    });
+    appendPostgresInsightsEvent(
+      db,
+      {
+        ...createBundleEventRowFixture(String(id), time),
+        install_id: installId,
+        user_id: userId,
+      },
+      insightsDatabaseNamespace,
+    );
   const seedHistory = async () => {
     await append(1, asOfMs - 30, "alpha", "old-owner");
     await append(2, asOfMs - 20, "alpha", "current-owner");
     await append(3, asOfMs - 10, "beta", "old-owner");
   };
   const finish = async (jobId: string) => {
-    const worker = createPostgresInsightsReportWorker(db);
+    const worker = createPostgresInsightsReportWorker(
+      db,
+      insightsDatabaseNamespace,
+    );
     for (let i = 0; i < 200; i++) {
       const result = await worker.runStep({ maxItems: 256, maxRequests: 128 });
       if (result.state === "published" && result.jobId === jobId) return;
@@ -226,7 +241,9 @@ describe("PostgreSQL frozen contains search and native read bounds", () => {
     await finish(search.jobId);
     expect(
       queries.some(({ sql }) =>
-        /bundle_events|private_hot_updater_insights_source_/i.test(sql),
+        /\bbundle_events\b|private_hot_updater_insights_source_events/i.test(
+          sql,
+        ),
       ),
     ).toBe(false);
     const ready = await jobs().getSearch({
@@ -413,7 +430,10 @@ describe("PostgreSQL frozen contains search and native read bounds", () => {
       pageQueries = [];
       await expect(
         target === "worker"
-          ? createPostgresInsightsReportWorker(db).runStep({
+          ? createPostgresInsightsReportWorker(
+              db,
+              insightsDatabaseNamespace,
+            ).runStep({
               maxItems: 256,
               maxRequests: 128,
             })

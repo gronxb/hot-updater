@@ -10,7 +10,13 @@ const unimplemented = async (): Promise<never> => {
 };
 
 const createMethods = () => ({
-  appendBundleEvent: unimplemented,
+  insights: {
+    append: unimplemented,
+    pageEvents: unimplemented,
+    pageInstallations: unimplemented,
+    getReport: unimplemented,
+    pageReport: unimplemented,
+  },
   create: unimplemented,
   update: unimplemented,
   delete: unimplemented,
@@ -48,26 +54,6 @@ const patchRow = {
   patch_storage_uri: "storage://patch-1",
   byte_size: 3_000_000_002,
   order_index: 0,
-};
-
-const bundleEventRow = {
-  id: "event-1",
-  type: "UPDATE_APPLIED" as const,
-  install_id: "install-1",
-  user_id: null,
-  username: null,
-  from_release_id: null,
-  from_bundle_id: "bundle-old",
-  to_release_id: null,
-  to_bundle_id: "bundle-new",
-  platform: "ios" as const,
-  app_version: "1.0.0",
-  channel: "production",
-  cohort: "default",
-  update_strategy: "fingerprint" as const,
-  fingerprint_hash: null,
-  sdk_version: null,
-  received_at_ms: 1,
 };
 
 const invoke = (
@@ -231,22 +217,6 @@ describe("database plugin CRUD runtime contract", () => {
       data,
     );
     expect(create).toHaveBeenCalledOnce();
-  });
-
-  it("rejects Insights append through generic create", async () => {
-    const create = vi.fn(async ({ data }) => data);
-    const plugin = createValidatedCrud({
-      name: "insights-create-contract",
-      plugin: () => ({ ...createMethods(), create }),
-    });
-
-    const result = invoke(plugin, "create", {
-      model: "bundle_events",
-      data: bundleEventRow,
-    });
-
-    await expect(result).rejects.toMatchObject({ code: "invalid-operation" });
-    expect(create).not.toHaveBeenCalled();
   });
 
   it("rejects duplicate order fields before provider execution", async () => {
@@ -506,28 +476,6 @@ describe("database plugin CRUD runtime contract", () => {
         model: "bundles",
         where: [{ field: "id", value: bundleRow.id }],
         select: ["metadata"],
-      });
-
-      await expect(result).rejects.toMatchObject({ code: "invalid-result" });
-    },
-  );
-
-  it.each(["from_release_id", "to_release_id"])(
-    "rejects an omitted Insights provider result field: %s",
-    async (field) => {
-      const row: Record<string, unknown> = { ...bundleEventRow };
-      delete row[field];
-      const plugin = createValidatedCrud({
-        name: "insights-result-contract",
-        plugin: () => ({
-          ...createMethods(),
-          findOne: async () => row,
-        }),
-      });
-
-      const result = invoke(plugin, "findOne", {
-        model: "bundle_events",
-        where: [{ field: "id", value: bundleEventRow.id }],
       });
 
       await expect(result).rejects.toMatchObject({ code: "invalid-result" });

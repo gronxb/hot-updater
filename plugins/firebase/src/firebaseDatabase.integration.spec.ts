@@ -2,15 +2,17 @@ import {
   createDatabaseClient,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
+import { Query } from "firebase-admin/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
+import { firebaseInsightsDatabase } from "./db";
 import { firebaseDatabase } from "./firebaseDatabase";
 import { firebaseChannelDocumentId } from "./firebaseDatabasePersistence";
-import { toFirebaseEventDocument } from "./firebaseEventIndex";
 
 const PROJECT_ID = "firebase-database-test";
+const INSIGHTS_DATABASE_NAMESPACE = "10000000-0000-4000-8000-000000000004";
 
 const {
   bundlePatchesCollection,
@@ -28,6 +30,7 @@ const createPlugin = (): DatabasePlugin =>
   firebaseDatabase({
     projectId: PROJECT_ID,
     storageBucket: `${PROJECT_ID}.appspot.com`,
+    insightsDatabaseNamespace: INSIGHTS_DATABASE_NAMESPACE,
   });
 
 const findAllBundles = (plugin: DatabasePlugin) =>
@@ -170,26 +173,94 @@ describe("firebase bounded reads", () => {
 describe("firebase append-only Insights boundary", () => {
   beforeEach(clearCollections);
 
-  it("keeps public append and scan on legacy storage until atomic cutover", async () => {
+  it("publishes the complete v2 model without a legacy writer or scan", async () => {
     const first = createBundleEventRowFixture("919001", 100);
     const second = createBundleEventRowFixture("919002", 200);
+    const maintenance = firebaseInsightsDatabase({
+      projectId: PROJECT_ID,
+      storageBucket: `${PROJECT_ID}.appspot.com`,
+      insightsDatabaseNamespace: INSIGHTS_DATABASE_NAMESPACE,
+    });
+    await expect(
+      maintenance.prepareStep({
+        writersDrained: true,
+        indexesReady: true,
+        maxItems: 1,
+        maxRequests: 4,
+      }),
+    ).resolves.toEqual({ state: "ready", processed: 0 });
     const plugin = createPlugin();
 
-    expect(plugin.models.insights).not.toHaveProperty("pageEvents");
+    expect(plugin.models.insights).toMatchObject({
+      append: expect.any(Function),
+      pageEvents: expect.any(Function),
+      pageInstallations: expect.any(Function),
+      getReport: expect.any(Function),
+      pageReport: expect.any(Function),
+    });
+    expect(plugin.models.insights).not.toHaveProperty("scan");
     await plugin.models.insights.append(second);
     await plugin.models.insights.append(first);
 
-    expect((await bundleEventsCollection.doc(first.id).get()).data()).toEqual(
-      toFirebaseEventDocument(first),
-    );
     await expect(
-      plugin.models.insights.scan({ beforeReceivedAtMs: 300, limit: 10 }),
-    ).resolves.toEqual([first, second]);
-    expect((await insightsV2.events.get()).empty).toBe(true);
-    expect((await insightsV2.sourceClocks.get()).empty).toBe(true);
+      plugin.models.insights.pageEvents({
+        selector: { kind: "all" },
+        beforeReceivedAtMs: Number.MAX_SAFE_INTEGER,
+        limit: 10,
+      }),
+    ).resolves.toMatchObject({
+      state: "ready",
+      data: { data: [second, first] },
+    });
+    await expect(
+      plugin.models.insights.pageInstallations({ kind: "all", limit: 10 }),
+    ).resolves.toMatchObject({ state: "ready" });
+    expect((await bundleEventsCollection.get()).empty).toBe(true);
+    expect((await insightsV2.events.get()).size).toBe(2);
+    expect((await insightsV2.sourceClocks.get()).size).toBe(65);
     expect(
       (await settingsCollection.doc("database_adapter_version").get()).data(),
-    ).toEqual({ version: 4 });
+    ).toBeUndefined();
+  });
+
+  it("requires a canonical durable namespace before constructing the model", () => {
+    expect(() =>
+      firebaseDatabase({
+        projectId: PROJECT_ID,
+        storageBucket: `${PROJECT_ID}.appspot.com`,
+        insightsDatabaseNamespace: "NOT-A-UUID",
+      }),
+    ).toThrow("canonical lowercase UUID database namespace");
+  });
+
+  it("fails closed before event queries when the stored namespace differs", async () => {
+    await firebaseInsightsDatabase({
+      projectId: PROJECT_ID,
+      insightsDatabaseNamespace: INSIGHTS_DATABASE_NAMESPACE,
+    }).prepareStep({
+      writersDrained: true,
+      indexesReady: true,
+      maxItems: 1,
+      maxRequests: 4,
+    });
+    const mismatch = firebaseDatabase({
+      projectId: PROJECT_ID,
+      insightsDatabaseNamespace: "10000000-0000-4000-8000-0000000000ff",
+    });
+    const dataReads = vi.spyOn(Query.prototype, "get");
+
+    await expect(
+      mismatch.models.insights.pageEvents({
+        selector: { kind: "all" },
+        beforeReceivedAtMs: Number.MAX_SAFE_INTEGER,
+        limit: 10,
+      }),
+    ).resolves.toMatchObject({
+      state: "failed",
+      error: { code: "storage-corruption" },
+    });
+    expect(dataReads).not.toHaveBeenCalled();
+    dataReads.mockRestore();
   });
 });
 

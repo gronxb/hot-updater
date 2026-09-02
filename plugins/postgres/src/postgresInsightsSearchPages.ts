@@ -158,7 +158,7 @@ export const createPostgresInsightsSearchPages = <TDatabase extends object>(
 ) => {
   if (!uuid.test(databaseNamespace))
     throw new DatabasePluginInputError("invalid-query");
-  const jobs = createPostgresInsightsJobs(db);
+  const jobs = createPostgresInsightsJobs(db, databaseNamespace);
   return {
     async pageContains(
       input: Input,
@@ -197,6 +197,7 @@ export const createPostgresInsightsSearchPages = <TDatabase extends object>(
                 pinnedId,
                 input.kind,
                 parsed.query,
+                databaseNamespace,
               );
             } catch (error) {
               if (error instanceof InsightsQueryNotReadyError)

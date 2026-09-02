@@ -4,6 +4,7 @@ import {
   assertInsightsQueryContract,
   INSIGHTS_PAGE_MAX_ROWS,
   INSIGHTS_STRING_MAX_CODE_UNITS,
+  isCanonicalInsightsDatabaseNamespace,
 } from "./insightsContract";
 import type {
   InsightsReportPageInput,
@@ -189,7 +190,9 @@ export const readInsightsReportPageQuery = (
   } catch {
     return invalid();
   }
-  if (!identifier(databaseNamespace)) return invalid();
+  if (!isCanonicalInsightsDatabaseNamespace(databaseNamespace)) {
+    return invalid();
+  }
 
   const { cursor: _cursor, ...canonical } = parsed.input;
 

@@ -1,7 +1,6 @@
 import type {
   BundlePatchRow,
   BundleRow,
-  BundleEventRow,
   ApiKeyRow,
   ChannelRow,
   ReleaseCatalogRow,
@@ -16,11 +15,16 @@ import {
   matchesMockDatabaseWhere,
   queryMockDatabaseRows,
 } from "./mockDatabaseQuery";
+import {
+  createMockInsightsRuntime,
+  type MockInsightsDatabaseNamespaces,
+  type MockInsightsRuntime,
+} from "./mockInsights";
 
-export interface MockDatabaseData {
+export interface MockDatabaseData extends MockInsightsDatabaseNamespaces {
   readonly bundles: Map<string, BundleRow>;
   readonly bundlePatches: Map<string, BundlePatchRow>;
-  readonly bundleEvents: Map<string, BundleEventRow>;
+  readonly insights: MockInsightsRuntime;
   readonly channels: Map<string, ChannelRow>;
   readonly apiKeys: Map<string, ApiKeyRow>;
   readonly releaseCatalogs: Map<string, ReleaseCatalogRow>;
@@ -35,10 +39,13 @@ export class MockDatabaseConstraintError extends Error {
   }
 }
 
-export const createMockDatabaseData = (): MockDatabaseData => ({
+export const createMockDatabaseData = (
+  namespaces: MockInsightsDatabaseNamespaces,
+): MockDatabaseData => ({
+  ...namespaces,
   bundles: new Map(),
   bundlePatches: new Map(),
-  bundleEvents: new Map(),
+  insights: createMockInsightsRuntime(namespaces),
   channels: new Map(),
   apiKeys: new Map(),
   releaseCatalogs: new Map(),
@@ -48,9 +55,11 @@ export const createMockDatabaseData = (): MockDatabaseData => ({
 export const cloneMockDatabaseData = (
   data: MockDatabaseData,
 ): MockDatabaseData => ({
+  insightsDatabaseNamespace: data.insightsDatabaseNamespace,
+  otherInsightsDatabaseNamespace: data.otherInsightsDatabaseNamespace,
   bundles: new Map(data.bundles),
   bundlePatches: new Map(data.bundlePatches),
-  bundleEvents: new Map(data.bundleEvents),
+  insights: data.insights,
   channels: new Map(data.channels),
   apiKeys: new Map(data.apiKeys),
   releaseCatalogs: new Map(data.releaseCatalogs),
@@ -63,7 +72,6 @@ export const replaceMockDatabaseData = (
 ): void => {
   target.bundles.clear();
   target.bundlePatches.clear();
-  target.bundleEvents.clear();
   target.channels.clear();
   target.apiKeys.clear();
   target.releaseCatalogs.clear();
@@ -71,9 +79,6 @@ export const replaceMockDatabaseData = (
   for (const [id, row] of source.bundles) target.bundles.set(id, row);
   for (const [id, row] of source.bundlePatches) {
     target.bundlePatches.set(id, row);
-  }
-  for (const [id, row] of source.bundleEvents) {
-    target.bundleEvents.set(id, row);
   }
   for (const [id, row] of source.channels) {
     target.channels.set(id, row);
@@ -331,11 +336,6 @@ export const createMockDatabaseState = (
         return queryMockDatabaseRows([...data.bundles.values()], input);
       case "bundle_patches":
         return queryMockDatabaseRows([...data.bundlePatches.values()], input);
-      case "bundle_events":
-        return queryMockDatabaseRows<"bundle_events">(
-          [...data.bundleEvents.values()],
-          input,
-        );
       case "channels":
         return queryMockDatabaseRows<"channels">(
           [...data.channels.values()],

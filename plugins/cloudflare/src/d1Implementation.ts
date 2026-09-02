@@ -20,7 +20,7 @@ import type {
   UpdateDatabaseImplementationInput,
 } from "@hot-updater/plugin-core/internal";
 
-import { createD1InsightsEventInsert } from "./d1InsightsSource";
+import { createD1InsightsModel } from "./d1InsightsModel";
 import { countD1Rows, d1TableNames, findManyD1Rows } from "./d1Query";
 import { parseD1Row } from "./d1Rows";
 import { buildD1Where, d1Placeholders, encodeD1Values } from "./d1Sql";
@@ -702,11 +702,9 @@ const deleteChannel = async (
 
 export const createD1Implementation = (
   executor: D1Executor,
+  databaseNamespace: string,
 ): DatabasePluginImplementation => ({
-  async appendBundleEvent(row) {
-    const query = await createD1InsightsEventInsert(row);
-    await executor.query(query.sql, query.params);
-  },
+  insights: createD1InsightsModel(executor, databaseNamespace),
   async create(input) {
     const query = insertQuery(input);
     const rows = await executor.query(query.sql, query.params);

@@ -35,6 +35,24 @@ describe("Detox Insights HTTP client", () => {
       name: "standaloneRepository",
     };
     const serverDatabase = createInMemoryDatabasePlugin();
+    vi.spyOn(serverDatabase.models.insights, "getReport").mockResolvedValue({
+      state: "ready",
+      versions: {
+        schemaVersion: "1",
+        storageVersion: "2",
+        projectionGeneration: "projection-1",
+        sourceGeneration: "source-1",
+      },
+      data: {
+        id: "019c1680-9e83-7000-8000-000000000001",
+        asOfMs: 1,
+        completedAtMs: 2,
+        sourceGeneration: "source-1",
+        accuracy: "exact",
+        kind: "installationOverview",
+        summary: { trackedInstallations: 0 },
+      },
+    });
     const deployedServer = createHotUpdater({
       database: serverDatabase,
       clientAccess: { type: "public" },
@@ -88,8 +106,11 @@ describe("Detox Insights HTTP client", () => {
   it("encodes route parameters and query values", async () => {
     const fetch = vi.fn(async () =>
       Response.json({
-        data: [],
-        pagination: { limit: 50, offset: 0, total: 0 },
+        state: "ready",
+        data: {
+          data: [],
+          total: { state: "exact", value: 0 },
+        },
       }),
     );
     const client = createConsoleInsightsHttpClient({
@@ -101,8 +122,8 @@ describe("Detox Insights HTTP client", () => {
     await client.getHistory("install/a b");
 
     expect(fetch.mock.calls.map(([url]) => url)).toEqual([
-      "https://example.com/hot-updater/admin/installations?query=alias%2Fa%20b&limit=50&offset=0",
-      "https://example.com/hot-updater/admin/installations/install%2Fa%20b/events?limit=50&offset=0",
+      "https://example.com/hot-updater/admin/installations?kind=contains&query=alias%2Fa%20b&limit=50",
+      "https://example.com/hot-updater/admin/events?installId=install%2Fa%20b&limit=50",
     ]);
   });
 });

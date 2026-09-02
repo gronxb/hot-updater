@@ -2,15 +2,27 @@ import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 import Cloudflare from "cloudflare";
 
-import { createD1Implementation, type D1Statement } from "./d1Implementation";
+import {
+  createD1Implementation,
+  type D1Executor,
+  type D1Statement,
+} from "./d1Implementation";
+import { createD1InsightsMaintenance } from "./d1InsightsJobs";
+import {
+  assertD1InsightsDatabaseNamespace,
+  createD1InsightsSourceTools,
+  verifyD1InsightsDatabaseNamespace,
+} from "./d1InsightsSource";
 
 export interface D1DatabaseConfig {
   readonly databaseId: string;
   readonly accountId: string;
   readonly cloudflareApiToken: string;
+  readonly insightsDatabaseNamespace: string;
 }
 
 export const d1Database = (config: D1DatabaseConfig) => {
+  assertD1InsightsDatabaseNamespace(config.insightsDatabaseNamespace);
   const cloudflare = new Cloudflare({
     apiToken: config.cloudflareApiToken,
   });
@@ -47,19 +59,51 @@ export const d1Database = (config: D1DatabaseConfig) => {
     return results;
   };
 
+  const executor: D1Executor = {
+    async query(sql, params) {
+      return (await execute([{ sql, params }])).flat();
+    },
+    batch: execute,
+  };
   const adapter = createDatabasePluginAdapter(
     "d1Database",
-    createD1Implementation({
-      async query(sql, params) {
-        return (await execute([{ sql, params }])).flat();
-      },
-      batch: execute,
-    }),
+    createD1Implementation(executor, config.insightsDatabaseNamespace),
   );
-  return createDatabasePlugin({
+  const database = createDatabasePlugin({
     name: "d1Database",
     models: adapter.models,
     commit: adapter.commit,
     ...(adapter.dispose ? { dispose: adapter.dispose } : {}),
   });
+  const jobs = createD1InsightsMaintenance(
+    executor,
+    config.insightsDatabaseNamespace,
+  );
+  const source = createD1InsightsSourceTools(executor);
+  return {
+    ...database,
+    models: {
+      ...database.models,
+      insights: {
+        ...database.models.insights,
+        maintenance: {
+          runStep: jobs.runStep,
+          async backfillStep(limit: number) {
+            await verifyD1InsightsDatabaseNamespace(
+              executor,
+              config.insightsDatabaseNamespace,
+            );
+            return source.backfillStep(limit);
+          },
+          async recoverFailedPreparation() {
+            await verifyD1InsightsDatabaseNamespace(
+              executor,
+              config.insightsDatabaseNamespace,
+            );
+            return source.recoverFailedPreparation();
+          },
+        },
+      },
+    },
+  };
 };

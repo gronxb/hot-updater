@@ -9,20 +9,25 @@ import type { ClientSession, MongoClient } from "mongodb";
 import { createMongoMigrator } from "../db/fixedMigrator";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
 import { createMongoCollections } from "./mongodbCollections";
+import { createMongoInsightsModel } from "./mongodbInsightsModel";
+import { isMongoInsightsDatabaseNamespace } from "./mongodbInsightsSourceSchema";
 import { createMongoReads } from "./mongodbReads";
 import { createMongoWrites } from "./mongodbWrites";
 
 export interface MongoDBConfig {
   readonly client: MongoClient;
+  readonly insightsDatabaseNamespace: string;
   readonly transactions: true;
 }
 
 const createMongoImplementation = (
   client: MongoClient,
+  databaseNamespace: string,
   session?: ClientSession,
 ): DatabasePluginImplementation => {
   const collections = createMongoCollections(client);
   return {
+    insights: createMongoInsightsModel(client, databaseNamespace, session),
     ...createMongoWrites(collections, session),
     ...createMongoReads(collections, session),
   };
@@ -30,8 +35,9 @@ const createMongoImplementation = (
 
 const createTransactionalMongoImplementation = (
   client: MongoClient,
+  databaseNamespace: string,
 ): DatabasePluginImplementation => {
-  const direct = createMongoImplementation(client);
+  const direct = createMongoImplementation(client, databaseNamespace);
   const transactionOptions = {
     readPreference: "primary" as const,
     readConcern: { level: "snapshot" as const },
@@ -39,18 +45,15 @@ const createTransactionalMongoImplementation = (
   };
   return {
     ...direct,
-    appendBundleEvent: (row) =>
-      client.withSession((session) =>
-        session.withTransaction(
-          () =>
-            createMongoImplementation(client, session).appendBundleEvent(row),
-          transactionOptions,
-        ),
-      ),
     deleteChannel: (input) =>
       client.withSession((session) =>
         session.withTransaction(
-          () => createMongoImplementation(client, session).deleteChannel(input),
+          () =>
+            createMongoImplementation(
+              client,
+              databaseNamespace,
+              session,
+            ).deleteChannel(input),
           transactionOptions,
         ),
       ),
@@ -61,7 +64,10 @@ const createTransactionalMongoImplementation = (
     ): Promise<TResult> =>
       client.withSession((session) =>
         session.withTransaction(
-          () => callback(createMongoImplementation(client, session)),
+          () =>
+            callback(
+              createMongoImplementation(client, databaseNamespace, session),
+            ),
           transactionOptions,
         ),
       ),
@@ -76,9 +82,17 @@ export const mongoAdapter = (
       "MongoDB Insights requires replica-set or sharded-cluster transactions.",
     );
   }
+  if (!isMongoInsightsDatabaseNamespace(config.insightsDatabaseNamespace)) {
+    throw new Error(
+      "MongoDB Insights database namespace must be a lowercase UUID.",
+    );
+  }
   const adapter = createDatabasePluginAdapter(
     "mongodb",
-    createTransactionalMongoImplementation(config.client),
+    createTransactionalMongoImplementation(
+      config.client,
+      config.insightsDatabaseNamespace,
+    ),
   );
   return Object.assign(
     createDatabasePlugin({

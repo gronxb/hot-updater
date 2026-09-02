@@ -23,7 +23,7 @@ import type {
   PostgresInsightsInstallationPublication,
   PostgresInsightsReportResult,
 } from "./postgresInsightsInternalTypes";
-import { getPostgresInsightsReportOrderSections } from "./postgresInsightsReportSections";
+import { getPostgresInsightsReportOrderSections } from "./postgresInsightsReportOrder";
 import { readPostgresInsightsSourceGeneration } from "./postgresInsightsSource";
 
 const heads = "private_hot_updater_insights_report_heads";
@@ -37,7 +37,10 @@ const nowMs = sql<number>`floor(extract(epoch from clock_timestamp()) * 1000)::d
 
 export const assertPostgresInsightsReportMetadataIndexes = async (
   db: QueryExecutorProvider,
+  databaseNamespace?: string,
 ): Promise<void> => {
+  if (databaseNamespace !== undefined && !uuid.test(databaseNamespace))
+    throw new DatabasePluginInputError("invalid-query");
   await assertPostgresInsightsTableLayouts(db, [
     {
       table: heads,
@@ -120,7 +123,11 @@ export const assertPostgresInsightsReportMetadataIndexes = async (
       and not exists (select 1 from unnest(i.indoption) bits where bits <> 0)
       and not exists (select 1 from unnest(i.indclass) class_id
         join pg_opclass opclass on opclass.oid = class_id where not opclass.opcdefault)
-  ) as ready from (values
+  ) and ${
+    databaseNamespace === undefined
+      ? sql`true`
+      : sql`(select source_id=${databaseNamespace}::uuid from private_hot_updater_insights_source_state where id=1)`
+  } as ready from (values
     (${heads}::text, ${`${heads}_pkey`}::text, 'query_key', true),
     (${jobs}::text, ${`${jobs}_pkey`}::text, 'id', true),
     (${jobs}::text, 'private_hot_updater_insights_report_base_idx', 'base_job_id', false)
@@ -130,8 +137,9 @@ export const assertPostgresInsightsReportMetadataIndexes = async (
 
 export const assertPostgresInsightsReportClaimIndex = async (
   db: QueryExecutorProvider,
+  databaseNamespace?: string,
 ): Promise<void> => {
-  await assertPostgresInsightsReportMetadataIndexes(db);
+  await assertPostgresInsightsReportMetadataIndexes(db, databaseNamespace);
 };
 
 export type PostgresInsightsReportCheckpoint =
@@ -642,10 +650,14 @@ export const normalizePostgresInsightsSearchQuery = (
   return query.toLowerCase();
 };
 
-const readJobRow = async (db: QueryExecutorProvider, publicationId: string) => {
+const readJobRow = async (
+  db: QueryExecutorProvider,
+  publicationId: string,
+  databaseNamespace?: string,
+) => {
   if (typeof publicationId !== "string" || !uuid.test(publicationId))
     throw new DatabasePluginInputError("invalid-query");
-  await assertPostgresInsightsReportMetadataIndexes(db);
+  await assertPostgresInsightsReportMetadataIndexes(db, databaseNamespace);
   return (
     await sql<StoredJob & { canonical_query: PrivateQuery }>`
     select j.*, j.lease_epoch::text, h.canonical_query
@@ -658,11 +670,12 @@ const readJobRow = async (db: QueryExecutorProvider, publicationId: string) => {
 export const readPostgresInsightsReportPublication = async (
   db: QueryExecutorProvider,
   publicationId: string,
+  databaseNamespace?: string,
 ): Promise<{
   job: PostgresInsightsReportJob;
   publication: InsightsReportPublication;
 } | null> => {
-  const row = await readJobRow(db, publicationId);
+  const row = await readJobRow(db, publicationId, databaseNamespace);
   if (row === undefined) return null;
   const query = storedQuery(row.canonical_query, row.query_key);
   const job = toJob(row, query);
@@ -686,6 +699,7 @@ export const readPostgresInsightsSearchPublication = async (
   publicationId: string,
   kind: "contains" | "userId",
   value: string,
+  databaseNamespace?: string,
 ): Promise<{
   job: PostgresInsightsContainsJob;
   publication: PostgresInsightsInstallationPublication;
@@ -696,7 +710,7 @@ export const readPostgresInsightsSearchPublication = async (
     (kind === "userId" && typeof value !== "string")
   )
     throw new DatabasePluginInputError("invalid-query");
-  const row = await readJobRow(db, publicationId);
+  const row = await readJobRow(db, publicationId, databaseNamespace);
   if (row === undefined) return null;
   const query = storedQuery(row.canonical_query, row.query_key);
   const job = toJob(row, query);
@@ -869,15 +883,21 @@ const checkFreshness = async (
 
 export const createPostgresInsightsJobs = <TDatabase extends object>(
   db: Kysely<TDatabase>,
+  databaseNamespace: string,
 ) => {
   if (db.isTransaction) throw new DatabasePluginInputError("invalid-query");
+  if (!uuid.test(databaseNamespace))
+    throw new DatabasePluginInputError("invalid-query");
   return {
     async getReport(
       input: InsightsReportInput,
     ): Promise<PostgresInsightsReportResult> {
       const { query, minAsOfMs } = readInsightsReportQuery(input);
       return db.transaction().execute(async (transaction) => {
-        await assertPostgresInsightsReportMetadataIndexes(transaction);
+        await assertPostgresInsightsReportMetadataIndexes(
+          transaction,
+          databaseNamespace,
+        );
         await checkFreshness(transaction, minAsOfMs);
         return reserveQuery(
           transaction,
@@ -913,7 +933,10 @@ export const createPostgresInsightsJobs = <TDatabase extends object>(
             }
           : { kind: "installationUserId", userId: input.query };
       return db.transaction().execute(async (transaction) => {
-        await assertPostgresInsightsReportMetadataIndexes(transaction);
+        await assertPostgresInsightsReportMetadataIndexes(
+          transaction,
+          databaseNamespace,
+        );
         await checkFreshness(transaction, input.minAsOfMs);
         return reserveQuery(
           transaction,
@@ -940,7 +963,10 @@ export const createPostgresInsightsJobs = <TDatabase extends object>(
       | { state: "failed"; processed: number; jobId: string; error: unknown }
     > {
       return db.transaction().execute(async (transaction) => {
-        await assertPostgresInsightsReportClaimIndex(transaction);
+        await assertPostgresInsightsReportClaimIndex(
+          transaction,
+          databaseNamespace,
+        );
         const row = (
           await sql<StoredJob & Head>`
             with candidate as materialized (
@@ -1002,7 +1028,10 @@ export const createPostgresInsightsJobs = <TDatabase extends object>(
       job: PostgresInsightsJob;
     } | null> {
       return db.transaction().execute(async (transaction) => {
-        await assertPostgresInsightsReportClaimIndex(transaction);
+        await assertPostgresInsightsReportClaimIndex(
+          transaction,
+          databaseNamespace,
+        );
         const row = (
           await sql<StoredJob>`with candidate as materialized (
           select id from ${sql.table(jobs)} where status in ('queued', 'preparing') and claimable_at <= statement_timestamp()
@@ -1045,7 +1074,10 @@ export const createPostgresInsightsJobs = <TDatabase extends object>(
       )
         throw new DatabasePluginInputError("invalid-query");
       await db.transaction().execute(async (transaction) => {
-        await assertPostgresInsightsReportMetadataIndexes(transaction);
+        await assertPostgresInsightsReportMetadataIndexes(
+          transaction,
+          databaseNamespace,
+        );
         const row = (
           await sql<
             StoredJob & {

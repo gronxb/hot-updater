@@ -70,6 +70,7 @@ const failedVersions = (): InsightsReadVersions => ({
 
 const readReadyState = async (
   collections: MongoInsightsModelCollections,
+  databaseNamespace: string,
   session?: ClientSession,
 ): Promise<MongoInsightsProjectionState> => {
   const state = assertMongoInsightsProjectionState(
@@ -78,7 +79,8 @@ const readReadyState = async (
       { session, promoteLongs: false },
     ),
   );
-  if (state.phase !== "ready") throw new InsightsQueryNotReadyError();
+  if (state.phase !== "ready" || state.sourceId !== databaseNamespace)
+    throw new InsightsQueryNotReadyError();
   return state;
 };
 
@@ -90,6 +92,7 @@ type ReportReservation = {
 const reserveReport = async (
   client: MongoClient,
   input: InsightsReportInput,
+  databaseNamespace: string,
 ): Promise<ReportReservation> => {
   const request = readInsightsReportQuery(input);
   const queryHash = mongoInsightsDigest([
@@ -99,7 +102,11 @@ const reserveReport = async (
   const collections = createMongoInsightsModelCollections(client);
   return client.withSession((session) =>
     session.withTransaction(async () => {
-      const state = await readReadyState(collections, session);
+      const state = await readReadyState(
+        collections,
+        databaseNamespace,
+        session,
+      );
       await collections.reportHeads.updateOne(
         { _id: queryHash },
         {
@@ -134,7 +141,8 @@ const reserveReport = async (
           { _id: head.activeJobId, queryHash },
           { session, promoteLongs: false },
         );
-        if (!active) throw new DatabasePluginInputError("invalid-result");
+        if (!active || active.sourceId !== databaseNamespace)
+          throw new DatabasePluginInputError("invalid-result");
         return { job: active, previous };
       }
       const job: MongoInsightsReportJob = {
@@ -1147,6 +1155,7 @@ export const stepMongoInsightsReport = async (
 const reportResult = (
   job: MongoInsightsReportJob,
   state: "ready" | "stale",
+  databaseNamespace: string,
   refreshId?: string,
 ): InsightsReportResult => {
   assertReadyReportJob(job);
@@ -1155,6 +1164,8 @@ const reportResult = (
     job.sourceId,
     job.projectionUpper,
   );
+  if (job.sourceId !== databaseNamespace)
+    throw new DatabasePluginInputError("invalid-result");
   return state === "stale"
     ? {
         state,
@@ -1168,10 +1179,11 @@ const reportResult = (
 export const getMongoInsightsReport = async (
   client: MongoClient,
   input: InsightsReportInput,
+  databaseNamespace: string,
 ): Promise<InsightsReportResult> => {
   let readyJob: MongoInsightsReportJob | null = null;
   try {
-    const reservation = await reserveReport(client, input);
+    const reservation = await reserveReport(client, input, databaseNamespace);
     let result: InsightsReportResult;
     if (reservation.job.state === "failed") {
       result = {
@@ -1181,10 +1193,15 @@ export const getMongoInsightsReport = async (
       };
     } else if (reservation.previous?.state === "ready") {
       readyJob = reservation.previous;
-      result = reportResult(reservation.previous, "stale", reservation.job._id);
+      result = reportResult(
+        reservation.previous,
+        "stale",
+        databaseNamespace,
+        reservation.job._id,
+      );
     } else if (reservation.job.state === "ready") {
       readyJob = reservation.job;
-      result = reportResult(reservation.job, "ready");
+      result = reportResult(reservation.job, "ready", databaseNamespace);
     } else {
       result = {
         state: "preparing",
@@ -1443,16 +1460,16 @@ const failedReportPage = async (
 export const pageMongoInsightsReport = async (
   client: MongoClient,
   input: InsightsReportPageInput,
+  databaseNamespace: string,
 ): Promise<InsightsReportPage> => {
   try {
     input = readInsightsReportPageInput(input);
   } catch {
     throw new DatabasePluginInputError("invalid-query");
   }
-  const databaseNamespace = client.db().databaseName;
   const parsed = readInsightsReportPageQuery(input, databaseNamespace);
   const collections = createMongoInsightsModelCollections(client);
-  const state = await readReadyState(collections);
+  const state = await readReadyState(collections, databaseNamespace);
   const job = await collections.reportJobs.findOne(
     { _id: input.publicationId },
     { promoteLongs: false },

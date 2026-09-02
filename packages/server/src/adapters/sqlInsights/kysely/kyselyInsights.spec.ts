@@ -20,6 +20,8 @@ import {
 import { createKyselyMigrator } from "../../../db/fixedMigrator";
 import { kyselyAdapter } from "../../kysely";
 
+const databaseNamespace = "00000000-0000-4000-8000-000000000001";
+
 const createDatabase = () => {
   const native = new DatabaseSync(":memory:");
   const db = new Kysely<object>({
@@ -94,7 +96,11 @@ describe("Kysely native Insights", () => {
   it("uses a bounded native index page with 50,001 stored events", async () => {
     const { native, db } = createDatabase();
     databases.push(db);
-    const adapter = kyselyAdapter({ db, provider: "sqlite" });
+    const adapter = kyselyAdapter({
+      db,
+      provider: "sqlite",
+      insightsDatabaseNamespace: databaseNamespace,
+    });
     await adapter.createMigrator!()
       .migrateToLatest()
       .then((item) => item.execute());
@@ -130,7 +136,7 @@ describe("Kysely native Insights", () => {
       .run(50_001);
     native.exec("commit");
 
-    const insights = createKyselyInsightsModel(db, "sqlite");
+    const insights = createKyselyInsightsModel(db, "sqlite", databaseNamespace);
     const page = await insights.pageEvents({
       selector: { kind: "all" },
       beforeReceivedAtMs: 60_000,
@@ -175,11 +181,15 @@ describe("Kysely native Insights", () => {
   it("pages late commits behind the live event keyset across 50,001 rows", async () => {
     const { native, db } = createDatabase();
     databases.push(db);
-    const adapter = kyselyAdapter({ db, provider: "sqlite" });
+    const adapter = kyselyAdapter({
+      db,
+      provider: "sqlite",
+      insightsDatabaseNamespace: databaseNamespace,
+    });
     await adapter.createMigrator!()
       .migrateToLatest()
       .then((item) => item.execute());
-    const insights = createKyselyInsightsModel(db, "sqlite");
+    const insights = createKyselyInsightsModel(db, "sqlite", databaseNamespace);
     await insights.append(
       event("019f0000-0000-7000-8000-000000000001", "cutoff-first", 100_000),
     );
@@ -247,11 +257,15 @@ describe("Kysely native Insights", () => {
   it("finishes a captured alias prefix ahead of 50,001 future aliases", async () => {
     const { native, db } = createDatabase();
     databases.push(db);
-    const adapter = kyselyAdapter({ db, provider: "sqlite" });
+    const adapter = kyselyAdapter({
+      db,
+      provider: "sqlite",
+      insightsDatabaseNamespace: databaseNamespace,
+    });
     await adapter.createMigrator!()
       .migrateToLatest()
       .then((item) => item.execute());
-    const insights = createKyselyInsightsModel(db, "sqlite");
+    const insights = createKyselyInsightsModel(db, "sqlite", databaseNamespace);
     await insights.append(
       event("01a10000-0000-7000-8000-000000000001", "bounded-alias", 1),
     );
@@ -283,10 +297,15 @@ describe("Kysely native Insights", () => {
     }
     native.exec("commit");
 
-    const step = await runKyselyInsightsMaintenanceStep(db, "sqlite", {
-      maxItems: 160,
-      maxRequests: 4_096,
-    });
+    const step = await runKyselyInsightsMaintenanceStep(
+      db,
+      "sqlite",
+      databaseNamespace,
+      {
+        maxItems: 160,
+        maxRequests: 4_096,
+      },
+    );
     expect(step).toMatchObject({
       state: "published",
       processed: 3,
@@ -330,11 +349,15 @@ describe("Kysely native Insights", () => {
   it("shortens a byte-heavy page without dropping raw provider fields", async () => {
     const { db } = createDatabase();
     databases.push(db);
-    const adapter = kyselyAdapter({ db, provider: "sqlite" });
+    const adapter = kyselyAdapter({
+      db,
+      provider: "sqlite",
+      insightsDatabaseNamespace: databaseNamespace,
+    });
     await adapter.createMigrator!()
       .migrateToLatest()
       .then((item) => item.execute());
-    const insights = createKyselyInsightsModel(db, "sqlite");
+    const insights = createKyselyInsightsModel(db, "sqlite", databaseNamespace);
     for (let index = 1; index <= 101; index += 1) {
       const id = `019b${index.toString(16).padStart(4, "0")}-0000-7000-8000-${index
         .toString(16)
@@ -395,7 +418,7 @@ describe("Kysely native Insights", () => {
     }
     native.exec("commit");
 
-    await migrateKyselyInsights(db, "sqlite");
+    await migrateKyselyInsights(db, "sqlite", databaseNamespace);
     expect(
       native
         .prepare(
@@ -412,7 +435,12 @@ describe("Kysely native Insights", () => {
         .get(),
     ).toMatchObject({ value: 0 });
 
-    const first = await prepareKyselyInsightsSource(db, "sqlite", 1);
+    const first = await prepareKyselyInsightsSource(
+      db,
+      "sqlite",
+      databaseNamespace,
+      1,
+    );
     expect(first).toEqual({ state: "progress", processed: 1 });
     expect(
       native
@@ -424,14 +452,14 @@ describe("Kysely native Insights", () => {
     ).toMatchObject({
       migration_after_id: "00000000-0000-7000-8000-000000000000",
     });
-    await createKyselyInsightsModel(db, "sqlite").append(
+    await createKyselyInsightsModel(db, "sqlite", databaseNamespace).append(
       event(
         "019d0000-0000-7000-8000-000000000001",
         "accepted-before-ready",
         500,
       ),
     );
-    await createKyselyInsightsModel(db, "sqlite").append(
+    await createKyselyInsightsModel(db, "sqlite", databaseNamespace).append(
       event(
         "00000000-0000-7000-8000-000000000001",
         "accepted-inside-captured-range",
@@ -439,10 +467,15 @@ describe("Kysely native Insights", () => {
       ),
     );
     for (;;) {
-      const step = await prepareKyselyInsightsSource(db, "sqlite", 17);
+      const step = await prepareKyselyInsightsSource(
+        db,
+        "sqlite",
+        databaseNamespace,
+        17,
+      );
       if (step.state === "ready") break;
     }
-    await createKyselyInsightsModel(db, "sqlite").append(
+    await createKyselyInsightsModel(db, "sqlite", databaseNamespace).append(
       event(
         "019d0000-0000-7000-8000-000000000002",
         "accepted-after-ready",
@@ -461,7 +494,11 @@ describe("Kysely native Insights", () => {
   it("rolls back source allocation when a native append fails", async () => {
     const { native, db } = createDatabase();
     databases.push(db);
-    const adapter = kyselyAdapter({ db, provider: "sqlite" });
+    const adapter = kyselyAdapter({
+      db,
+      provider: "sqlite",
+      insightsDatabaseNamespace: databaseNamespace,
+    });
     await adapter.createMigrator!()
       .migrateToLatest()
       .then((item) => item.execute());
@@ -474,7 +511,7 @@ describe("Kysely native Insights", () => {
       before insert on private_hot_updater_kysely_insights_events
       when new.event_id = '${rejected.id}'
       begin select raise(abort, 'forced'); end`);
-    const insights = createKyselyInsightsModel(db, "sqlite");
+    const insights = createKyselyInsightsModel(db, "sqlite", databaseNamespace);
     const accepted = Array.from({ length: 20 }, (_, index) =>
       event(
         `019e${(index + 1).toString(16).padStart(4, "0")}-0000-7000-8000-${(
@@ -533,11 +570,15 @@ describe("Kysely native Insights", () => {
   it("keeps a semantic search failure durable across polls", async () => {
     const { native, db } = createDatabase();
     databases.push(db);
-    const adapter = kyselyAdapter({ db, provider: "sqlite" });
+    const adapter = kyselyAdapter({
+      db,
+      provider: "sqlite",
+      insightsDatabaseNamespace: databaseNamespace,
+    });
     await adapter.createMigrator!()
       .migrateToLatest()
       .then((item) => item.execute());
-    const insights = createKyselyInsightsModel(db, "sqlite");
+    const insights = createKyselyInsightsModel(db, "sqlite", databaseNamespace);
     await insights.append(
       event("019e1000-0000-7000-8000-000000000001", "failed-search", 1),
     );
@@ -550,10 +591,15 @@ describe("Kysely native Insights", () => {
     if (pending.state !== "preparing") return;
     native.exec(`update private_hot_updater_kysely_insights_aliases
       set normalized_json = '{'`);
-    const step = await runKyselyInsightsMaintenanceStep(db, "sqlite", {
-      maxItems: 160,
-      maxRequests: 4_096,
-    });
+    const step = await runKyselyInsightsMaintenanceStep(
+      db,
+      "sqlite",
+      databaseNamespace,
+      {
+        maxItems: 160,
+        maxRequests: 4_096,
+      },
+    );
     expect(step).toMatchObject({ state: "failed", jobId: pending.job.id });
     for (let index = 0; index < 2; index += 1) {
       const failed = await insights.pageInstallations({
@@ -602,9 +648,11 @@ describe("Kysely native Insights", () => {
     for (const poison of poisons) {
       insert.run(...(Object.values(poison) as SqliteValue[]));
     }
-    await migrateKyselyInsights(db, "sqlite");
+    await migrateKyselyInsights(db, "sqlite", databaseNamespace);
 
-    await expect(prepareKyselyInsightsSource(db, "sqlite")).rejects.toThrow();
+    await expect(
+      prepareKyselyInsightsSource(db, "sqlite", databaseNamespace),
+    ).rejects.toThrow();
     expect(
       native.prepare("select count(*) as value from bundle_events").get(),
     ).toMatchObject({ value: 3 });
@@ -650,9 +698,11 @@ describe("Kysely native Insights", () => {
         `insert into bundle_events (${columns}) values (${placeholders})`,
       )
       .run(...(Object.values(oversized) as SqliteValue[]));
-    await migrateKyselyInsights(db, "sqlite");
+    await migrateKyselyInsights(db, "sqlite", databaseNamespace);
 
-    await expect(prepareKyselyInsightsSource(db, "sqlite")).rejects.toThrow();
+    await expect(
+      prepareKyselyInsightsSource(db, "sqlite", databaseNamespace),
+    ).rejects.toThrow();
     expect(
       native
         .prepare(
@@ -684,11 +734,19 @@ describe("Kysely native Insights", () => {
   it("runs the PostgreSQL native DDL and keyset read path", async () => {
     const db = new Kysely<object>({ dialect: new PGliteDialect(new PGlite()) });
     databases.push(db);
-    const adapter = kyselyAdapter({ db, provider: "postgresql" });
+    const adapter = kyselyAdapter({
+      db,
+      provider: "postgresql",
+      insightsDatabaseNamespace: databaseNamespace,
+    });
     await adapter.createMigrator!()
       .migrateToLatest()
       .then((item) => item.execute());
-    const insights = createKyselyInsightsModel(db, "postgresql");
+    const insights = createKyselyInsightsModel(
+      db,
+      "postgresql",
+      databaseNamespace,
+    );
     await insights.append(
       event("019a0000-0000-7000-8000-000000000011", "postgres-install", 1),
     );

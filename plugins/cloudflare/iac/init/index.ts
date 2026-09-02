@@ -72,6 +72,20 @@ export const initProvider = {
         type: "text",
       },
     },
+    insightsDatabaseNamespace: {
+      envKey: "HOT_UPDATER_CLOUDFLARE_INSIGHTS_DATABASE_NAMESPACE",
+      help: "Stable lowercase UUID for the logical Insights database",
+      prompt: {
+        message: "Enter the Insights database namespace UUID",
+        placeholder: "00000000-0000-4000-8000-000000000000",
+        type: "text",
+      },
+      validate: (value) =>
+        typeof value === "string" &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+          value,
+        ),
+    },
     r2Private: {
       envKey: "HOT_UPDATER_CLOUDFLARE_R2_PRIVATE",
       help: "Whether the R2 bucket is private (true or false)",

@@ -1,4 +1,5 @@
 import type {
+  InsightsModel,
   InsightsInitialPublishedInstallationPage,
   InsightsInitialPublishedInstallationPageInput,
   InsightsInstallationPage,
@@ -11,8 +12,8 @@ import type {
   InsightsPublishedInstallationContinuationInput,
   InsightsPublishedInstallationPage,
   InsightsPublishedInstallationPageInput,
-  RequiredInsightsModel,
-} from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core";
+import { DatabasePluginInputError } from "@hot-updater/plugin-core";
 import { assertInsightsMaintenanceInputContract } from "@hot-updater/plugin-core/internal";
 import { sql } from "drizzle-orm";
 
@@ -27,7 +28,10 @@ import { createDrizzleInsightsPages } from "./pages";
 import { createDrizzleInsightsReports } from "./report";
 import { DRIZZLE_INSIGHTS_STATE } from "./schema";
 import { createDrizzleInsightsSearch } from "./search";
-import { createDrizzleInsightsSource } from "./source";
+import {
+  assertDrizzleInsightsDatabaseNamespace,
+  createDrizzleInsightsSource,
+} from "./source";
 
 export type DrizzleInsightsMaintenanceResult =
   | {
@@ -71,9 +75,11 @@ const meteredDrizzleInsightsDB = (
 export const runDrizzleInsightsMaintenanceStep = async (
   db: DrizzleDB,
   provider: DrizzleProvider,
+  databaseNamespace: string,
   jobId: string,
   input: { readonly maxItems: number; readonly maxRequests: number },
 ): Promise<DrizzleInsightsMaintenanceResult> => {
+  assertDrizzleInsightsDatabaseNamespace(databaseNamespace);
   assertInsightsMaintenanceInputContract(input);
   if (input.maxRequests < 4) {
     return {
@@ -89,6 +95,12 @@ export const runDrizzleInsightsMaintenanceStep = async (
     sql`select source_id,status from ${sql.identifier(DRIZZLE_INSIGHTS_STATE)}
       where id=1`,
   );
+  if (
+    sourceState[0] !== undefined &&
+    sourceState[0]["source_id"] !== databaseNamespace
+  ) {
+    throw new DatabasePluginInputError("invalid-result");
+  }
   if (sourceState[0]?.["source_id"] === jobId) {
     if (input.maxRequests < 24) {
       return {
@@ -102,7 +114,11 @@ export const runDrizzleInsightsMaintenanceStep = async (
       200,
       Math.max(1, Math.floor((input.maxRequests - 17) / 3)),
     );
-    const source = createDrizzleInsightsSource(metered, provider);
+    const source = createDrizzleInsightsSource(
+      metered,
+      provider,
+      databaseNamespace,
+    );
     const advanced = await source.advanceStep(sourceRows, true, true);
     const usage = {
       items: advanced.items,
@@ -121,8 +137,16 @@ export const runDrizzleInsightsMaintenanceStep = async (
       usage,
     };
   }
-  const search = createDrizzleInsightsSearch(metered, provider);
-  const reports = createDrizzleInsightsReports(metered, provider);
+  const search = createDrizzleInsightsSearch(
+    metered,
+    provider,
+    databaseNamespace,
+  );
+  const reports = createDrizzleInsightsReports(
+    metered,
+    provider,
+    databaseNamespace,
+  );
   const reportRows = Math.min(
     input.maxItems,
     200,
@@ -170,10 +194,12 @@ export const runDrizzleInsightsMaintenanceStep = async (
 export const createDrizzleInsightsQueries = (
   db: DrizzleDB,
   provider: DrizzleProvider,
-): RequiredInsightsModel => {
-  const pages = createDrizzleInsightsPages(db, provider);
-  const search = createDrizzleInsightsSearch(db, provider);
-  const reports = createDrizzleInsightsReports(db, provider);
+  databaseNamespace: string,
+): InsightsModel => {
+  assertDrizzleInsightsDatabaseNamespace(databaseNamespace);
+  const pages = createDrizzleInsightsPages(db, provider, databaseNamespace);
+  const search = createDrizzleInsightsSearch(db, provider, databaseNamespace);
+  const reports = createDrizzleInsightsReports(db, provider, databaseNamespace);
   function pageInstallations(
     input: InsightsLiveInstallationPageInput,
   ): Promise<InsightsLiveInstallationPage>;

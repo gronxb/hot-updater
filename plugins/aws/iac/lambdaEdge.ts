@@ -91,6 +91,7 @@ export class LambdaEdgeDeployer {
       bucketName: string;
       dynamodbRegion: string;
       dynamodbTableName: string;
+      insightsDatabaseNamespace: string;
       publicKeyId: string;
       ssmParameterName: string;
       ssmRegion: string;
@@ -108,6 +109,7 @@ export class LambdaEdgeDeployer {
       CLOUDFRONT_KEY_PAIR_ID: config.publicKeyId,
       DYNAMODB_REGION: config.dynamodbRegion,
       DYNAMODB_TABLE_NAME: config.dynamodbTableName,
+      INSIGHTS_DATABASE_NAMESPACE: config.insightsDatabaseNamespace,
       SSM_PARAMETER_NAME: config.ssmParameterName,
       SSM_REGION: config.ssmRegion,
       S3_BUCKET_NAME: config.bucketName,

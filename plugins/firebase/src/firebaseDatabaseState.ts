@@ -6,7 +6,6 @@ import type {
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
-import { DatabasePluginInputError } from "@hot-updater/plugin-core";
 import type {
   DatabaseImplementationResult,
   TransactionDatabasePluginImplementation,
@@ -292,8 +291,6 @@ export const createFirebaseDatabaseState = (
           [...snapshot.bundlePatches.values()],
           input,
         );
-      case "bundle_events":
-        throw new DatabasePluginInputError("invalid-operation");
       case "channels":
         return queryFirebaseDatabaseRows(
           [...snapshot.channels.values()],

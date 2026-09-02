@@ -26,7 +26,6 @@ import {
   loadFirebaseDatabaseSnapshot,
   loadFirebaseTransactionSnapshot,
   migrateFirebaseDatabase,
-  parseFirebaseEventDocuments,
   persistFirebaseDatabaseSnapshot,
   requireFirebaseDocumentKey,
 } from "./firebaseDatabasePersistence";
@@ -36,8 +35,13 @@ import {
   createFirebaseDatabaseState,
   FirebaseDatabaseConstraintError,
 } from "./firebaseDatabaseState";
-import { toFirebaseEventDocument } from "./firebaseEventIndex";
 import { FIREBASE_V1_COLLECTION_NAMES } from "./firebaseInfrastructureNames";
+import {
+  assertFirebaseInsightsDatabaseNamespace,
+  createFirebaseInsightsCollections,
+  createFirebaseInsightsQueries,
+} from "./firebaseInsights";
+import { appendFirebaseInsightsEvent } from "./firebaseInsightsMaintenance";
 
 type FirebaseMutation<TResult> = (
   database: TransactionDatabasePluginImplementation,
@@ -55,13 +59,28 @@ const exactId = (
     : undefined;
 };
 
-export type FirebaseDatabaseConfig = AppOptions;
+export type FirebaseDatabaseConfig = AppOptions & {
+  readonly insightsDatabaseNamespace: string;
+};
 
 export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
+  const insightsDatabaseNamespace = assertFirebaseInsightsDatabaseNamespace(
+    config.insightsDatabaseNamespace,
+  );
+  const { insightsDatabaseNamespace: _, ...appOptions } = config;
   const implementation = (() => {
-    const app = getApps().length ? getApp() : initializeApp(config);
+    const app = getApps().length ? getApp() : initializeApp(appOptions);
     const db = getFirestore(app);
     const collections = createFirebaseDatabaseCollections(db);
+    const insightsCollections = createFirebaseInsightsCollections(
+      db,
+      insightsDatabaseNamespace,
+    );
+    const insights = createFirebaseInsightsQueries(
+      insightsCollections,
+      insightsDatabaseNamespace,
+      (row) => appendFirebaseInsightsEvent(db, insightsCollections, row),
+    );
     let migration: Promise<void> | undefined;
 
     const ensureMigrated = (): Promise<void> => {
@@ -103,11 +122,7 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
     };
 
     const implementation: DatabasePluginImplementation = {
-      appendBundleEvent: async (row) => {
-        const document = toFirebaseEventDocument(row);
-        await ensureMigrated();
-        await collections.bundleEvents.doc(row.id).create(document);
-      },
+      insights,
       create: (input) => mutate((database) => database.create(input)),
       update: (input) => mutate((database) => database.update(input)),
       delete: (input) => mutate((database) => database.delete(input)),
@@ -163,17 +178,6 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
         }
       },
       findMany: async (input) => {
-        if (input.model === "bundle_events") {
-          await ensureMigrated();
-          return queryFirebaseDatabaseRows(
-            [
-              ...parseFirebaseEventDocuments(
-                await collections.bundleEvents.get(),
-              ).values(),
-            ],
-            input,
-          );
-        }
         if (input.model !== "channels") {
           return read((database) => database.findMany(input));
         }
@@ -270,10 +274,7 @@ export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
   );
   const plugin = createDatabasePlugin({
     name: "firebaseDatabase",
-    models: {
-      ...adapter.models,
-      insights: adapter.models.insights,
-    },
+    models: adapter.models,
     commit: adapter.commit,
   });
   return plugin;
