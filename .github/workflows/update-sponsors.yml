@@ -24,12 +24,15 @@ jobs:
           set -euo pipefail
           mkdir -p docs/public
 
+          # SPONSORS_TOKEN must be a classic PAT owned by the sponsorable
+          # account with read:user. Fine-grained PATs cannot read sponsor tiers.
           gh api graphql --paginate -f query='
             query($endCursor: String) {
               user(login: "gronxb") {
                 sponsorshipsAsMaintainer(
                   first: 100
                   after: $endCursor
+                  activeOnly: false
                   includePrivate: false
                 ) {
                   nodes {
@@ -46,9 +49,44 @@ jobs:
             .[].data.user.sponsorshipsAsMaintainer.nodes[]
             | select(.sponsorEntity != null)
             | .sponsorEntity
-          ]' > /tmp/active-sponsors.json
+          ]' > /tmp/public-sponsors.json
 
-          # Preserve historical sponsors and their last recorded tier amount
+          # Amounts remain in an ephemeral runner file. includePrivate is needed
+          # to recover the amount for sponsors that were public in git history
+          # but later changed visibility; private identities are never published.
+          gh api graphql --paginate -f query='
+            query($endCursor: String) {
+              user(login: "gronxb") {
+                sponsorshipsAsMaintainer(
+                  first: 100
+                  after: $endCursor
+                  activeOnly: false
+                  includePrivate: true
+                ) {
+                  nodes {
+                    tier { monthlyPriceInCents }
+                    sponsorEntity {
+                      ... on User { login }
+                      ... on Organization { login }
+                    }
+                  }
+                  pageInfo { hasNextPage endCursor }
+                }
+              }
+            }
+          ' | jq -s '[
+            .[].data.user.sponsorshipsAsMaintainer.nodes[]
+            | select(
+                .sponsorEntity != null
+                and .tier.monthlyPriceInCents > 0
+              )
+            | {
+                login: .sponsorEntity.login,
+                amountInCents: .tier.monthlyPriceInCents
+              }
+          ]' > /tmp/sponsor-amounts.json
+
+          # Preserve every sponsor that was public in an earlier revision.
           git log --reverse --format=%H -- docs/public/sponsors.json |
             while read -r revision; do
               git show "$revision:docs/public/sponsors.json" | jq '.sponsors // []'
@@ -56,45 +94,52 @@ jobs:
             jq -s 'add // []' > /tmp/historical-sponsors.json
 
           jq -n \
-            --slurpfile activeSponsors /tmp/active-sponsors.json \
+            --slurpfile publicSponsors /tmp/public-sponsors.json \
+            --slurpfile sponsorAmounts /tmp/sponsor-amounts.json \
             --slurpfile historicalSponsors /tmp/historical-sponsors.json '
-              ($activeSponsors[0]
+              ($publicSponsors[0]
                 | map({
                     login,
                     avatarUrl,
                     name,
                     url
-                  })) as $active
-              | ($historicalSponsors[0] + $active)
-              | reduce .[] as $sponsor ({};
-                  .[$sponsor.login] as $existing
-                  |
-                  .[$sponsor.login] = (
-                    {
-                      login: $sponsor.login,
-                      avatarUrl: $sponsor.avatarUrl,
-                      name: $sponsor.name,
-                      url: $sponsor.url,
-                      amountInCents: (
-                        $sponsor.amountInCents
-                        // $existing.amountInCents
-                        // 0
-                      )
-                    }
-                    + (
-                      ($sponsor.displayWeight // $existing.displayWeight) as $displayWeight
-                      | if $displayWeight == null
-                        then {}
-                        else { displayWeight: $displayWeight }
+                  })) as $public
+              | ($historicalSponsors[0] + $public
+                  | reduce .[] as $sponsor ({};
+                      .[$sponsor.login | ascii_downcase] = {
+                        login: $sponsor.login,
+                        avatarUrl: $sponsor.avatarUrl,
+                        name: $sponsor.name,
+                        url: $sponsor.url
+                      }
+                    )
+                  | [.[]]) as $sponsors
+              | ($sponsorAmounts[0]
+                  | reduce .[] as $sponsorship ({};
+                      .[$sponsorship.login | ascii_downcase] =
+                        $sponsorship.amountInCents
+                    )) as $amounts
+              | ($sponsors
+                  | map($amounts[.login | ascii_downcase])
+                  | max // 0) as $maxAmount
+              | if $maxAmount <= 0 then
+                  error("SPONSORS_TOKEN cannot read sponsor tier amounts")
+                else
+                  $sponsors
+                  | map(
+                      ($amounts[.login | ascii_downcase]) as $amount
+                      | if $amount == null then
+                          error("Missing amount for historical sponsor: \(.login)")
+                        else
+                          . + {
+                            weight: (
+                              ($amount / $maxAmount * 1000) | round / 1000
+                            )
+                          }
                         end
                     )
-                  )
-                )
-              | [.[]]
-              | sort_by([
-                  -(.displayWeight // .amountInCents // 0),
-                  (.login | ascii_downcase)
-                ])
+                  | sort_by([-.weight, (.login | ascii_downcase)])
+                end
             ' > /tmp/sponsors.new.json
 
           # Extract the existing sponsors array (or use an empty array if missing)

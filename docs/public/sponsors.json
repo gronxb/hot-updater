@@ -5,135 +5,134 @@
       "avatarUrl": "https://avatars.githubusercontent.com/u/42239399?v=4",
       "name": "Callstack",
       "url": "https://github.com/callstack",
-      "amountInCents": 0,
-      "displayWeight": 1500
-    },
-    {
-      "login": "diepquynh",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/13411810?u=9ccec54ec26d43f895665e0d39f584f07d8bb310&v=4",
-      "name": "Diệp Quỳnh",
-      "url": "https://github.com/diepquynh",
-      "amountInCents": 1000
-    },
-    {
-      "login": "sfshine",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/3046831?v=4",
-      "name": "SHUAI GAO",
-      "url": "https://github.com/sfshine",
-      "amountInCents": 1000
-    },
-    {
-      "login": "timid-dogs",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/290142700?v=4",
-      "name": null,
-      "url": "https://github.com/timid-dogs",
-      "amountInCents": 1000
-    },
-    {
-      "login": "Alexhamila",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/28599364?u=28acfc45897776540c12bbcaddb6a0f75eac3ae4&v=4",
-      "name": "Alexandre Hamila",
-      "url": "https://github.com/Alexhamila",
-      "amountInCents": 500
-    },
-    {
-      "login": "Davescat",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/47789084?u=011ae9b93ad68924bf2bce311eb102bd6337e00b&v=4",
-      "name": "Davide Catalano",
-      "url": "https://github.com/Davescat",
-      "amountInCents": 500
-    },
-    {
-      "login": "l2hyunwoo",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/54518925?u=f80bc30256a5ea51de9f8e3c820b227dcf89526e&v=4",
-      "name": "HyunWoo Lee (Nunu Lee)",
-      "url": "https://github.com/l2hyunwoo",
-      "amountInCents": 500
-    },
-    {
-      "login": "LESANF",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/54767632?u=cbfb438d2adb43d312f3df83a78772e1e4dd1509&v=4",
-      "name": "LESA",
-      "url": "https://github.com/LESANF",
-      "amountInCents": 500
-    },
-    {
-      "login": "RiedelNicolas",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/44354888?u=355d329022734ebc2a7e6d4a1d8a3fe72cc3664c&v=4",
-      "name": "Nicolás Riedel",
-      "url": "https://github.com/RiedelNicolas",
-      "amountInCents": 500
-    },
-    {
-      "login": "soonoo",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/5436405?u=5d0b4aa955c87e30e6bda7f0cccae5402da99528&v=4",
-      "name": "soonoo",
-      "url": "https://github.com/soonoo",
-      "amountInCents": 500
-    },
-    {
-      "login": "valeriobelli",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/56547421?u=2a7ead7e22a551021e26e41aef6c7c4b89216ffc&v=4",
-      "name": "Valerio Belli",
-      "url": "https://github.com/valeriobelli",
-      "amountInCents": 500
-    },
-    {
-      "login": "victorsaisse",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/85237893?u=b2a3b07d95f2fa74982a01cca672fe9c8ba0dad6&v=4",
-      "name": "Victor Saisse",
-      "url": "https://github.com/victorsaisse",
-      "amountInCents": 500
+      "weight": 1
     },
     {
       "login": "claudesortwell",
       "avatarUrl": "https://avatars.githubusercontent.com/u/41422239?u=62aa6ed5b4084595175b5fdc42d2edb5598e914b&v=4",
       "name": "Claude",
       "url": "https://github.com/claudesortwell",
-      "amountInCents": 0
-    },
-    {
-      "login": "himanjalsaha",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/84189618?u=f42b709bb52d9c69f97d792d14a3fb4ff94d20ba&v=4",
-      "name": "Himanjal saha",
-      "url": "https://github.com/himanjalsaha",
-      "amountInCents": 0
+      "weight": 0.238
     },
     {
       "login": "iAndrew25",
       "avatarUrl": "https://avatars.githubusercontent.com/u/16413368?u=0e32c0315f111ee0d8729cf5364c6d579f5fb703&v=4",
       "name": "AndreiO",
       "url": "https://github.com/iAndrew25",
-      "amountInCents": 0
+      "weight": 0.238
     },
     {
       "login": "Ikanny",
       "avatarUrl": "https://avatars.githubusercontent.com/u/22442088?u=204aa63d72569f59c7f3f7cebb3ccded6a83c6de&v=4",
       "name": "ikanny",
       "url": "https://github.com/Ikanny",
-      "amountInCents": 0
-    },
-    {
-      "login": "kr-yeon",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/65217664?u=c997206ed89e902b1d15c96d0c0997823c1317fc&v=4",
-      "name": "kr-yeon",
-      "url": "https://github.com/kr-yeon",
-      "amountInCents": 0
-    },
-    {
-      "login": "RyuWoong",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/36265465?u=916eb9791fb9f9d5efbea5f2ab82f1463af166e2&v=4",
-      "name": "RyuWoong",
-      "url": "https://github.com/RyuWoong",
-      "amountInCents": 0
+      "weight": 0.095
     },
     {
       "login": "wes4m",
       "avatarUrl": "https://avatars.githubusercontent.com/u/5308867?v=4",
       "name": "Wesam Alzahir",
       "url": "https://github.com/wes4m",
-      "amountInCents": 0
+      "weight": 0.095
+    },
+    {
+      "login": "diepquynh",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/13411810?u=9ccec54ec26d43f895665e0d39f584f07d8bb310&v=4",
+      "name": "Diệp Quỳnh",
+      "url": "https://github.com/diepquynh",
+      "weight": 0.048
+    },
+    {
+      "login": "kr-yeon",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/65217664?u=c997206ed89e902b1d15c96d0c0997823c1317fc&v=4",
+      "name": "kr-yeon",
+      "url": "https://github.com/kr-yeon",
+      "weight": 0.048
+    },
+    {
+      "login": "sfshine",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/3046831?v=4",
+      "name": "SHUAI GAO",
+      "url": "https://github.com/sfshine",
+      "weight": 0.048
+    },
+    {
+      "login": "timid-dogs",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/290142700?v=4",
+      "name": null,
+      "url": "https://github.com/timid-dogs",
+      "weight": 0.048
+    },
+    {
+      "login": "Alexhamila",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/28599364?u=28acfc45897776540c12bbcaddb6a0f75eac3ae4&v=4",
+      "name": "Alexandre Hamila",
+      "url": "https://github.com/Alexhamila",
+      "weight": 0.024
+    },
+    {
+      "login": "Davescat",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/47789084?u=011ae9b93ad68924bf2bce311eb102bd6337e00b&v=4",
+      "name": "Davide Catalano",
+      "url": "https://github.com/Davescat",
+      "weight": 0.024
+    },
+    {
+      "login": "l2hyunwoo",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/54518925?u=f80bc30256a5ea51de9f8e3c820b227dcf89526e&v=4",
+      "name": "HyunWoo Lee (Nunu Lee)",
+      "url": "https://github.com/l2hyunwoo",
+      "weight": 0.024
+    },
+    {
+      "login": "LESANF",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/54767632?u=cbfb438d2adb43d312f3df83a78772e1e4dd1509&v=4",
+      "name": "LESA",
+      "url": "https://github.com/LESANF",
+      "weight": 0.024
+    },
+    {
+      "login": "RiedelNicolas",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/44354888?u=355d329022734ebc2a7e6d4a1d8a3fe72cc3664c&v=4",
+      "name": "Nicolás Riedel",
+      "url": "https://github.com/RiedelNicolas",
+      "weight": 0.024
+    },
+    {
+      "login": "soonoo",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/5436405?u=5d0b4aa955c87e30e6bda7f0cccae5402da99528&v=4",
+      "name": "soonoo",
+      "url": "https://github.com/soonoo",
+      "weight": 0.024
+    },
+    {
+      "login": "valeriobelli",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/56547421?u=2a7ead7e22a551021e26e41aef6c7c4b89216ffc&v=4",
+      "name": "Valerio Belli",
+      "url": "https://github.com/valeriobelli",
+      "weight": 0.024
+    },
+    {
+      "login": "victorsaisse",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/85237893?u=b2a3b07d95f2fa74982a01cca672fe9c8ba0dad6&v=4",
+      "name": "Victor Saisse",
+      "url": "https://github.com/victorsaisse",
+      "weight": 0.024
+    },
+    {
+      "login": "RyuWoong",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/36265465?u=916eb9791fb9f9d5efbea5f2ab82f1463af166e2&v=4",
+      "name": "RyuWoong",
+      "url": "https://github.com/RyuWoong",
+      "weight": 0.019
+    },
+    {
+      "login": "himanjalsaha",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/84189618?u=f42b709bb52d9c69f97d792d14a3fb4ff94d20ba&v=4",
+      "name": "Himanjal saha",
+      "url": "https://github.com/himanjalsaha",
+      "weight": 0.005
     }
   ],
-  "updatedAt": "2026-09-02T15:33:14Z"
+  "updatedAt": "2026-09-02T16:06:39Z"
 }
