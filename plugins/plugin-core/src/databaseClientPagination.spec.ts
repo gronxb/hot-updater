@@ -12,6 +12,7 @@ import type { BundleRow, InsightsModel } from "./types";
 
 const unusedInsights = {
   append: async () => {},
+  runMaintenanceStep: async () => {},
   pageEvents: async () => {
     throw new Error("not implemented");
   },

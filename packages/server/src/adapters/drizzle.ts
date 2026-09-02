@@ -129,6 +129,8 @@ export const drizzleAdapter = (
       },
       insights: {
         append: (row) => getAdapter().models.insights.append(row),
+        runMaintenanceStep: (input) =>
+          getAdapter().models.insights.runMaintenanceStep(input),
         pageEvents: (input) => getAdapter().models.insights.pageEvents(input),
         pageInstallations: ((input: InsightsInstallationPageInput) =>
           getAdapter().models.insights.pageInstallations(

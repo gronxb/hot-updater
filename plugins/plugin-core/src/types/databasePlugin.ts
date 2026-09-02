@@ -19,6 +19,7 @@ import type {
   InsightsInitialPublishedInstallationPageInput,
   InsightsLiveInstallationPage,
   InsightsLiveInstallationPageInput,
+  InsightsMaintenanceStepInput,
   InsightsPageEventsInput,
   InsightsPageEventsResult,
   InsightsPinnedInstallationPage,
@@ -82,6 +83,8 @@ export interface ReleaseCatalogModel {
 
 export interface InsightsModel {
   append(row: BundleEventRow): Promise<void>;
+  /** Advances at most one bounded durable preparation step. */
+  runMaintenanceStep(input: InsightsMaintenanceStepInput): Promise<void>;
   pageEvents(input: InsightsPageEventsInput): Promise<InsightsPageEventsResult>;
   pageInstallations(
     input: InsightsLiveInstallationPageInput,

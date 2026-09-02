@@ -17,6 +17,7 @@ import type { DatabasePluginImplementation } from "./types/internal";
 
 const unusedInsights = {
   append: async () => {},
+  runMaintenanceStep: async () => {},
   pageEvents: async () => {
     throw new Error("not implemented");
   },

@@ -13,7 +13,8 @@
 Replace the bounded Insights scan contract with native cursor pages and durable
 report preparation. Insights event history, installation search, and reports now
 remain exact beyond 50,000 events while bounding each storage request, response,
-and maintenance step.
+and maintenance step. Preparing reads advance one required provider-owned step,
+so standalone servers converge without an external worker.
 
 Official database providers now preserve raw events while maintaining committed
 source positions, latest installations, historical aliases, and immutable report

@@ -17,6 +17,7 @@ Every database plugin implements one required model:
 ```ts
 interface InsightsModel {
   append(row: BundleEventRow): Promise<void>;
+  runMaintenanceStep(input: InsightsMaintenanceStepInput): Promise<void>;
   pageEvents(input: InsightsPageEventsInput): Promise<InsightsPageEventsResult>;
   pageInstallations(
     input: InsightsInstallationPageInput,
@@ -26,8 +27,11 @@ interface InsightsModel {
 }
 ```
 
-Provider maintenance remains internal. The server validates inputs and outputs,
-maps read states to HTTP, and does not emulate missing provider behavior.
+Every provider owns its maintenance state machine and implements the same
+bounded step entry point. When a valid read returns `preparing`, the server runs
+one step capped at 256 items and 512 storage requests, then rereads once. For a
+`stale` read, it runs one step and returns the usable committed publication.
+The server does not scan source data or emulate provider behavior.
 
 ## Required semantics
 
@@ -70,6 +74,7 @@ maps read states to HTTP, and does not emulate missing provider behavior.
 | Query | 32 KiB |
 | Raw event | 20 KiB |
 | Maintenance input | 4 MiB |
+| Server maintenance step | 256 items / 512 storage requests |
 
 Providers own bounded lookahead. A page may be short or empty while still
 having a continuation cursor; only a null cursor means exhaustion. Database

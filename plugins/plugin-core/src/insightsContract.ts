@@ -916,6 +916,20 @@ export const assertInsightsMaintenanceInputContract = (
   );
 };
 
+export const assertInsightsMaintenanceStepInputContract = (
+  value: unknown,
+): void => {
+  assertInsightsMaintenanceInputContract(value);
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    !isContractString(Reflect.get(value, "jobId"))
+  ) {
+    throw new InsightsContractError("invalid-maintenance-input");
+  }
+  assertInsightsStringLimits(value, ["jobId"]);
+};
+
 export interface InsightsInstallationIdentity {
   readonly digestHex: string;
   readonly installId: string;

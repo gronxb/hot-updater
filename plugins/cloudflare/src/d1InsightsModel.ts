@@ -44,6 +44,7 @@ import {
 
 import type { D1Executor } from "./d1Implementation";
 import {
+  createD1InsightsMaintenance,
   d1InsightsJobVersions,
   d1InsightsUnavailableVersions,
   getD1InsightsReportPublication,
@@ -929,6 +930,7 @@ export const createD1InsightsModel = (
   databaseNamespace: string,
 ): InsightsModel => {
   assertD1InsightsDatabaseNamespace(databaseNamespace);
+  const maintenance = createD1InsightsMaintenance(executor, databaseNamespace);
   const events = createD1InsightsEventPages(executor, databaseNamespace);
   const live = createD1InsightsInstallationPages(
     executor,
@@ -976,6 +978,9 @@ export const createD1InsightsModel = (
       await assertD1InsightsLayout(executor);
       const statement = await createD1InsightsEventInsert(row);
       await executor.query(statement.sql, statement.params);
+    },
+    async runMaintenanceStep({ maxItems, maxRequests }) {
+      await maintenance.runStep({ maxItems, maxRequests });
     },
     async pageEvents(input) {
       try {

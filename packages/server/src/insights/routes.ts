@@ -403,28 +403,85 @@ const query = (
 
 type PageInput = { readonly limit: number };
 
+const maintenanceJobId = (value: unknown): string | null => {
+  if (typeof value !== "object" || value === null) return null;
+  if (Reflect.get(value, "state") === "preparing") {
+    const job = Reflect.get(value, "job");
+    return typeof job === "object" &&
+      job !== null &&
+      typeof Reflect.get(job, "id") === "string"
+      ? (Reflect.get(job, "id") as string)
+      : null;
+  }
+  if (Reflect.get(value, "state") === "stale") {
+    const refresh = Reflect.get(value, "refresh");
+    return typeof refresh === "object" &&
+      refresh !== null &&
+      typeof Reflect.get(refresh, "id") === "string"
+      ? (Reflect.get(refresh, "id") as string)
+      : null;
+  }
+  return null;
+};
+
+const readWithMaintenance = async (
+  provider: InsightsModel,
+  operation: () => Promise<unknown>,
+  expected: InsightsOperation,
+): Promise<unknown> => {
+  const initial = await operation();
+  assertInsightsOperationResult(initial, expected);
+  const jobId = maintenanceJobId(initial);
+  if (jobId === null) return initial;
+  await provider.runMaintenanceStep({
+    jobId,
+    maxItems: 256,
+    maxRequests: 512,
+  });
+  if (
+    typeof initial === "object" &&
+    initial !== null &&
+    Reflect.get(initial, "state") === "stale"
+  ) {
+    return initial;
+  }
+  return operation();
+};
+
 const pageQuery = <TInput extends PageInput>(
+  provider: InsightsModel,
   readInput: () => TInput,
   operation: (input: TInput) => Promise<unknown>,
   expected: (input: TInput) => InsightsOperation,
 ): Promise<Response> =>
   query(async () => {
     const input = readInput();
+    const operationExpected = expected(input);
     return {
-      body: await operation(input),
-      expected: expected(input),
+      body: await readWithMaintenance(
+        provider,
+        () => operation(input),
+        operationExpected,
+      ),
+      expected: operationExpected,
     };
   });
 
 const reportQuery = (
+  provider: InsightsModel,
   readInput: () => Parameters<InsightsModel["getReport"]>[0],
   operation: InsightsModel["getReport"],
 ): Promise<Response> =>
   query(async () => {
     const input = readInput();
+    const expected = { kind: "report" as const, input };
     return {
-      body: await operation(input),
-      expected: { kind: "report", input },
+      body: await readWithMaintenance(
+        provider,
+        () => operation(input),
+        expected,
+      ),
+      expected,
     };
   });
 
@@ -439,12 +496,14 @@ export const createInsightsRouteHandlers = (
     }, "append"),
   getEventHistory: (_params, request) =>
     pageQuery(
+      provider,
       () => parseEventPageInput(request),
       (input) => provider.pageEvents(input),
       (input) => ({ kind: "events", input }),
     ),
   getBundleEventHistory: (params, request) =>
     pageQuery(
+      provider,
       () =>
         parseEventPageInput(request, {
           kind: "bundleId",
@@ -455,6 +514,7 @@ export const createInsightsRouteHandlers = (
     ),
   getBundleEventSummary: (params, request) =>
     reportQuery(
+      provider,
       () =>
         parseReportInput(request, {
           query: {
@@ -467,6 +527,7 @@ export const createInsightsRouteHandlers = (
     ),
   getBundleEventInsights: (params, request) =>
     reportQuery(
+      provider,
       () =>
         parseReportInput(request, {
           kind: "bundleDetail",
@@ -477,6 +538,7 @@ export const createInsightsRouteHandlers = (
     ),
   getBundleEventOverview: (_params, request) =>
     reportQuery(
+      provider,
       () =>
         parseReportInput(request, {
           query: { kind: "installationOverview" },
@@ -485,6 +547,7 @@ export const createInsightsRouteHandlers = (
     ),
   getActiveInstallationOverview: (_params, request) =>
     reportQuery(
+      provider,
       () =>
         parseReportInput(request, {
           kind: "activeOverview",
@@ -494,12 +557,14 @@ export const createInsightsRouteHandlers = (
     ),
   searchInstallations: (_params, request) =>
     pageQuery(
+      provider,
       () => parseInstallationPageInput(request),
       (input) => provider.pageInstallations(input),
       (input) => ({ kind: "installations", input }),
     ),
   getInsightsReportPage: (params, request) =>
     pageQuery(
+      provider,
       () =>
         parseReportPageInput(request, requireParam(params, "publicationId")),
       (input) => provider.pageReport(input),

@@ -211,6 +211,63 @@ const countingStore = (
 describe("DynamoDB Insights v2 LocalStack", () => {
   beforeEach(() => fixture.reset());
 
+  it("advances every durable preparation job through the public model", async () => {
+    const model = createDynamoDBInsightsModel(integrationStore());
+    await model.append(event(1));
+
+    const source = await model.pageEvents({
+      selector: { kind: "all" },
+      beforeReceivedAtMs: 2,
+      limit: 10,
+    });
+    expect(source).toMatchObject({ state: "preparing" });
+    if (source.state !== "preparing") throw new Error("source already ready");
+    await model.runMaintenanceStep({
+      jobId: source.job.id,
+      maxItems: 256,
+      maxRequests: 512,
+    });
+
+    const projection = await model.pageEvents({
+      selector: { kind: "all" },
+      beforeReceivedAtMs: 2,
+      limit: 10,
+    });
+    expect(projection).toMatchObject({ state: "preparing" });
+    if (projection.state !== "preparing") {
+      throw new Error("projection already ready");
+    }
+    await model.runMaintenanceStep({
+      jobId: projection.job.id,
+      maxItems: 256,
+      maxRequests: 512,
+    });
+    await expect(
+      model.pageEvents({
+        selector: { kind: "all" },
+        beforeReceivedAtMs: 2,
+        limit: 10,
+      }),
+    ).resolves.toMatchObject({ state: "ready", data: { data: [event(1)] } });
+
+    const report = await model.getReport({
+      query: { kind: "installationOverview" },
+    });
+    expect(report).toMatchObject({ state: "preparing" });
+    if (report.state !== "preparing") throw new Error("report already ready");
+    await model.runMaintenanceStep({
+      jobId: report.job.id,
+      maxItems: 256,
+      maxRequests: 512,
+    });
+    await expect(
+      model.getReport({ query: { kind: "installationOverview" } }),
+    ).resolves.toMatchObject({
+      state: "ready",
+      data: { summary: { trackedInstallations: 1 } },
+    });
+  });
+
   it("replays bounded migration, projects every source shard, and serves native pages", async () => {
     const first = event(1);
     const second = event(2, {

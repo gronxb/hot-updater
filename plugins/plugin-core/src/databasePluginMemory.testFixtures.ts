@@ -371,6 +371,7 @@ export const createMemoryDatabasePlugin = (): DatabasePlugin => {
         async append(row) {
           events.set(row.id, structuredClone(row));
         },
+        async runMaintenanceStep() {},
         async pageEvents() {
           return insightsUnavailable();
         },

@@ -15,6 +15,7 @@ import {
   assertInsightsEventContract,
   assertInsightsExpiredReadContract,
   assertInsightsFailedReadContract,
+  assertInsightsMaintenanceStepInputContract,
   assertInsightsPageContract,
   assertInsightsPreparingReadContract,
   assertInsightsReportPageResultContract,
@@ -1155,6 +1156,14 @@ export const createDatabasePluginAdapter = (
             throw new DatabasePluginInputError("invalid-data");
           }
           await implementation.insights.append(row);
+        },
+        async runMaintenanceStep(input) {
+          try {
+            assertInsightsMaintenanceStepInputContract(input);
+          } catch {
+            throw new DatabasePluginInputError("invalid-query");
+          }
+          await implementation.insights.runMaintenanceStep(input);
         },
         async pageEvents(input) {
           const canonicalInput = readInsightsPageEventsInput(input);

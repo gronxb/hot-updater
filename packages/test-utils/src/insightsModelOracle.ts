@@ -711,6 +711,10 @@ const createModel = (namespace: string, store: OracleStore): InsightsModel => ({
     });
   },
 
+  async runMaintenanceStep({ jobId, maxItems, maxRequests }) {
+    await runOracleJobStep(store, jobId, { maxItems, maxRequests });
+  },
+
   async pageEvents(input): Promise<InsightsPageEventsResult> {
     input = readInsightsPageEventsInput(input);
     const scope = JSON.stringify(input.selector);

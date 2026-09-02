@@ -173,6 +173,7 @@ const instrumentModel = (
 
   return {
     append: (row: BundleEventRow) => meter.measure(() => model.append(row)),
+    runMaintenanceStep: (input) => model.runMaintenanceStep(input),
     pageEvents: (input) => meter.measure(() => model.pageEvents(input)),
     pageInstallations,
     getReport: (input) => meter.measure(() => model.getReport(input)),

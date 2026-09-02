@@ -10,6 +10,7 @@ import {
   assertInsightsInstallationIdentityMatch,
   assertInsightsInstallationIdentityDigest,
   assertInsightsMaintenanceInputContract,
+  assertInsightsMaintenanceStepInputContract,
   assertInsightsPageContract,
   assertInsightsPreparingReadContract,
   assertInsightsQueryContract,
@@ -257,6 +258,20 @@ describe("Insights storage contract", () => {
       assertInsightsMaintenanceInputContract({
         maxItems: 1,
         maxRequests: INSIGHTS_MAINTENANCE_MAX_REQUESTS + 1,
+      }),
+    ).toThrowError("invalid-maintenance-input");
+    expect(() =>
+      assertInsightsMaintenanceStepInputContract({
+        jobId: "job-1",
+        maxItems: 1,
+        maxRequests: 1,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertInsightsMaintenanceStepInputContract({
+        jobId: "",
+        maxItems: 1,
+        maxRequests: 1,
       }),
     ).toThrowError("invalid-maintenance-input");
   });

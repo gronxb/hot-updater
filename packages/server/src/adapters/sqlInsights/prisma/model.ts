@@ -29,8 +29,15 @@ import {
   type PrismaInsightsClient,
 } from "./client";
 import { createPrismaInsightsInstallationPages } from "./installations";
-import { createPrismaInsightsReports } from "./reports";
-import { createPrismaInsightsSearchPages } from "./search";
+import { createPrismaInsightsMaintenance } from "./maintenance";
+import {
+  createPrismaInsightsReports,
+  runPrismaInsightsReportStep,
+} from "./reports";
+import {
+  createPrismaInsightsSearchPages,
+  runPrismaInsightsSearchStep,
+} from "./search";
 import { createPrismaInsightsEventPages } from "./source";
 import { assertPrismaInsightsDatabaseNamespace } from "./utils";
 
@@ -55,6 +62,33 @@ export class PrismaInsightsModel implements InsightsModel {
           row,
         ),
     );
+  }
+
+  async runMaintenanceStep({
+    jobId,
+    maxItems,
+    maxRequests,
+  }: Parameters<InsightsModel["runMaintenanceStep"]>[0]): Promise<void> {
+    const canSplit = maxItems >= 3 && maxRequests >= 3;
+    const stepItems = canSplit ? Math.floor(maxItems / 3) : maxItems;
+    const stepRequests = canSplit ? Math.floor(maxRequests / 3) : maxRequests;
+    const source = await createPrismaInsightsMaintenance(
+      this.client,
+      this.provider,
+      this.databaseNamespace,
+    ).runStep({ maxItems: stepItems, maxRequests: stepRequests });
+    if (!source.ready || !canSplit) return;
+    const search = await runPrismaInsightsSearchStep(
+      this.client,
+      this.provider,
+      { jobId, maxItems: stepItems, maxRequests: stepRequests },
+    );
+    if (search.jobId !== null) return;
+    await runPrismaInsightsReportStep(this.client, this.provider, {
+      jobId,
+      maxItems: stepItems,
+      maxRequests: stepRequests,
+    });
   }
 
   pageEvents(

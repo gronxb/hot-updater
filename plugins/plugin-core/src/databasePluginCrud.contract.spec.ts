@@ -12,6 +12,7 @@ const unimplemented = async (): Promise<never> => {
 const createMethods = () => ({
   insights: {
     append: unimplemented,
+    runMaintenanceStep: unimplemented,
     pageEvents: unimplemented,
     pageInstallations: unimplemented,
     getReport: unimplemented,

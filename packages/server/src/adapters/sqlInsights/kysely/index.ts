@@ -135,6 +135,12 @@ export const createKyselyInsightsModel = <TDatabase>(
   return {
     append: (row: BundleEventRow) =>
       appendKyselyInsightsEvent(db, provider, databaseNamespace, row),
+    async runMaintenanceStep({ maxItems, maxRequests }) {
+      await runKyselyInsightsMaintenanceStep(db, provider, databaseNamespace, {
+        maxItems,
+        maxRequests,
+      });
+    },
     pageEvents: (input: InsightsPageEventsInput) =>
       pageKyselyInsightsEvents(db, databaseNamespace, input),
     pageInstallations: pageInstallationMethod,

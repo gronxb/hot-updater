@@ -163,6 +163,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
       "pageEvents",
       "pageInstallations",
       "pageReport",
+      "runMaintenanceStep",
     ]);
     expect(plugin.models.insights).not.toHaveProperty("scan");
     expect(plugin.models.apiKeys).toBeDefined();

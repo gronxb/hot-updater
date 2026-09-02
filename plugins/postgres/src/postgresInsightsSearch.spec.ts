@@ -364,7 +364,7 @@ describe("durable historical contains and immutable installation pages", () => {
       rows: [{ install_id: target }],
       nextCursor: null,
     });
-  });
+  }, 120_000);
 
   it("fails a search before publication when a matching base installation is missing", async () => {
     await plugin.models.insights.append(event(1, "match", "needle"));

@@ -308,6 +308,7 @@ const instrumentModel = (
       await beforeOperation();
       return meter.measure(() => model.append(row));
     },
+    runMaintenanceStep: (input) => model.runMaintenanceStep(input),
     async pageEvents(input) {
       await beforeOperation();
       return meter.measure(() => model.pageEvents(input));

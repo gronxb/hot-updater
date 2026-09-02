@@ -12,6 +12,7 @@ required `InsightsModel`:
 ```ts
 interface InsightsModel {
   append(row): Promise<void>;
+  runMaintenanceStep(input): Promise<void>;
   pageEvents(input): Promise<InsightsPageEventsResult>;
   pageInstallations(input): Promise<InsightsInstallationPage>;
   getReport(input): Promise<InsightsReportResult>;
@@ -29,13 +30,13 @@ types.
 The implementation was reviewed from both the server maintainer and external
 database plugin developer perspectives. They agreed on these release conditions:
 
-- the five-method model is the only public database contract;
+- the six-method model is the only public database contract;
 - every page owns bounded lookahead and opaque continuation state;
 - search and reports publish immutable snapshots with exact totals;
 - raw events remain the source of truth while derived state can be rebuilt;
 - malformed input and cursors fail before provider reads where possible;
 - a stable lowercase UUID namespace fences every durable database;
-- maintenance is provider-internal and never expands the public model;
+- maintenance mechanics stay provider-owned behind one required bounded step;
 - every official provider must pass the shared semantic conformance suite;
 - HTTP, Console, and E2E clients cut over together, without an offset fallback.
 
@@ -70,6 +71,8 @@ co-located; the cutover does not add generic one-use abstraction layers.
 - Search text is limited to 32 KiB.
 - Public events are limited to 20 KiB canonical JSON.
 - A maintenance request is limited to 4 MiB and provider-specific item budgets.
+- A server read advances at most 256 items and 512 provider requests before one
+  reread; stale publications remain usable while their refresh advances.
 - Providers use keyset pagination and bounded lookahead. No Insights read uses
   database `OFFSET` or loads the complete event history.
 - Search membership and report sections publish exact totals. A short or empty
@@ -97,6 +100,10 @@ unfiltered newest-first history. Installation search uses explicit selector
 kinds and cursor pagination. Reports return `ready`, `stale`, `preparing`, or
 `failed` states and page immutable sections by publication ID.
 
+When a read reserves a durable preparation job, the server advances one bounded
+provider step in the same request. This lets standalone deployments converge
+without a separate worker while repeated requests remain strictly bounded.
+
 The Console consumes the model directly in local mode and the same response
 contract through HTTP in standalone QA. It no longer scans or translates offsets.
 All Events is reachable from Insights without entering a search. Installation
@@ -114,8 +121,8 @@ The following checks are green on this branch:
   checks;
 - packed ESM and CommonJS consumers for AWS, Cloudflare Worker, Firebase,
   PostgreSQL, Supabase root, and Supabase edge;
-- the complete unit workspace: 313 files, 2,768 passed, 37 skipped;
-- the complete integration workspace: 49 files and 478 tests passed, with 7
+- the complete unit workspace: 313 files, 2,770 passed, 37 skipped;
+- the complete integration workspace: 49 files and 479 tests passed, with 7
   files and 81 tests skipped by environment guards;
 - PostgreSQL search and report tests that traverse more than 50,000 rows in
   bounded steps;

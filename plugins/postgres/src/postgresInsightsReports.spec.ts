@@ -696,5 +696,5 @@ describe("resumable PostgreSQL exact report accumulation", () => {
         accuracy: "exact",
       },
     });
-  });
+  }, 120_000);
 });

@@ -172,6 +172,8 @@ describe("DynamoDB Insights LocalStack conformance", () => {
         };
         return {
           append: (row) => atCurrentTime(() => value.append(row)),
+          runMaintenanceStep: (input) =>
+            atCurrentTime(() => value.runMaintenanceStep(input)),
           pageEvents: (input) =>
             counted(() => atCurrentTime(() => value.pageEvents(input))),
           pageInstallations: ((input: InsightsInstallationPageInput) =>

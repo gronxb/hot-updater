@@ -23,6 +23,7 @@ const unimplemented = async (): Promise<never> => {
 const createMethods = (): DatabasePluginImplementation => ({
   insights: {
     append: unimplemented,
+    runMaintenanceStep: unimplemented,
     pageEvents: unimplemented,
     pageInstallations: unimplemented,
     getReport: unimplemented,
@@ -135,6 +136,7 @@ describe("createDatabasePlugin", () => {
     expect(plugin.models.channels.insert).toBeTypeOf("function");
     expect(plugin.models.channels.delete).toBeTypeOf("function");
     expect(plugin.models.insights.append).toBeTypeOf("function");
+    expect(plugin.models.insights.runMaintenanceStep).toBeTypeOf("function");
     expect(plugin.models.insights.pageEvents).toBeTypeOf("function");
     expect(plugin.models.insights.pageInstallations).toBeTypeOf("function");
     expect(plugin.models.insights.getReport).toBeTypeOf("function");
@@ -178,6 +180,31 @@ describe("createDatabasePlugin", () => {
     expect(append).toHaveBeenCalledWith(eventWithExtension);
   });
 
+  it("validates maintenance bounds before advancing a provider job", async () => {
+    const runMaintenanceStep = vi.fn(async () => {});
+    const plugin = createTestPlugin("memory", {
+      ...createMethods(),
+      insights: { ...createMethods().insights, runMaintenanceStep },
+    });
+
+    for (const input of [
+      { jobId: "", maxItems: 1, maxRequests: 1 },
+      { jobId: "job-1", maxItems: 0, maxRequests: 1 },
+      { jobId: "job-1", maxItems: 1, maxRequests: 4097 },
+    ]) {
+      await expect(
+        plugin.models.insights.runMaintenanceStep(input),
+      ).rejects.toMatchObject({ code: "invalid-query" });
+    }
+    expect(runMaintenanceStep).not.toHaveBeenCalled();
+
+    const input = { jobId: "job-1", maxItems: 256, maxRequests: 512 };
+    await expect(
+      plugin.models.insights.runMaintenanceStep(input),
+    ).resolves.toBeUndefined();
+    expect(runMaintenanceStep).toHaveBeenCalledExactlyOnceWith(input);
+  });
+
   it("canonicalizes and validates every Insights read at the adapter boundary", async () => {
     const failed = {
       state: "failed" as const,
@@ -197,6 +224,7 @@ describe("createDatabasePlugin", () => {
       ...createMethods(),
       insights: {
         append: unimplemented,
+        runMaintenanceStep: unimplemented,
         pageEvents,
         pageInstallations,
         getReport,

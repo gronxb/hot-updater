@@ -48,6 +48,15 @@ export interface InsightsPreparationJob {
   readonly id: string;
 }
 
+export interface InsightsMaintenanceStepInput {
+  /** Durable preparation job returned by a read. */
+  readonly jobId: string;
+  /** Hard ceiling for source records examined by this step. */
+  readonly maxItems: number;
+  /** Hard ceiling for provider storage requests issued by this step. */
+  readonly maxRequests: number;
+}
+
 export type InsightsReadFailure =
   | {
       readonly code:

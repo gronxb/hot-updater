@@ -407,6 +407,7 @@ const createImplementation = (tables: Tables): DatabasePluginImplementation => {
           }
           tables.insightsEvents.push(structuredClone(row));
         }),
+      async runMaintenanceStep() {},
       async pageEvents() {
         return insightsUnavailable();
       },

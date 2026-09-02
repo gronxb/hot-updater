@@ -50,9 +50,14 @@ describe("database plugin operation matrix", () => {
     >().toEqualTypeOf<never>();
   });
 
-  it("exposes one required five-method Insights contract", () => {
+  it("exposes one required six-method Insights contract", () => {
     expectTypeOf<keyof InsightsModel>().toEqualTypeOf<
-      "append" | "pageEvents" | "pageInstallations" | "getReport" | "pageReport"
+      | "append"
+      | "runMaintenanceStep"
+      | "pageEvents"
+      | "pageInstallations"
+      | "getReport"
+      | "pageReport"
     >();
     expectTypeOf<
       DatabasePluginImplementation["insights"]

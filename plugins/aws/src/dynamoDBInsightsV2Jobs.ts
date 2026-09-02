@@ -38,6 +38,7 @@ import {
   assertInsightsExpiredReadContract,
   assertInsightsFailedReadContract,
   assertInsightsMaintenanceInputContract,
+  assertInsightsMaintenanceStepInputContract,
   assertInsightsPageContract,
   assertInsightsPreparingReadContract,
   assertInsightsReportPageResultContract,
@@ -57,6 +58,7 @@ import {
 import {
   assertDynamoDBInsightsTransactionBudget,
   createDynamoDBInsightsV2,
+  DYNAMODB_INSIGHTS_PROJECTION_MAX_ITEMS,
   DYNAMODB_INSIGHTS_PAGE_MAX_BYTES,
   DYNAMODB_INSIGHTS_STEP_MAX_BYTES,
   DYNAMODB_INSIGHTS_V2_LAYOUT_VERSION,
@@ -84,6 +86,7 @@ type TransactItem = NonNullable<
 const JOB_PREFIX = `${DYNAMODB_INSIGHTS_V2_PREFIX}#jobs`;
 const JOB_CURSOR_VERSION = 2;
 const SOURCE_JOB_ID = "dynamodb-insights-v2-migration";
+const PROJECTION_JOB_ID = "dynamodb-insights-v2-projection";
 const MAX_JOB_SOURCE_ITEMS = 32;
 const MAX_JOB_STEP_ITEMS = 96;
 const textEncoder = new TextEncoder();
@@ -3624,6 +3627,40 @@ export const createDynamoDBInsightsModel = (
   }
   return {
     append: base.append,
+    async runMaintenanceStep(input) {
+      assertInsightsMaintenanceStepInputContract(input);
+      if (input.jobId === SOURCE_JOB_ID) {
+        if (input.maxRequests < 14) return;
+        await base.maintenance.migrateLegacy({
+          maxItems: Math.min(input.maxItems, MAX_JOB_SOURCE_ITEMS),
+          maxRequests: input.maxRequests,
+        });
+        return;
+      }
+      if (input.jobId === PROJECTION_JOB_ID) {
+        const maxRequests = Math.floor(
+          input.maxRequests / DYNAMODB_INSIGHTS_V2_SOURCE_SHARDS,
+        );
+        const maxItems = Math.min(
+          DYNAMODB_INSIGHTS_PROJECTION_MAX_ITEMS,
+          Math.floor(input.maxItems / DYNAMODB_INSIGHTS_V2_SOURCE_SHARDS),
+        );
+        if (maxItems < 1 || maxRequests < 14) return;
+        for (
+          let sourceShard = 0;
+          sourceShard < DYNAMODB_INSIGHTS_V2_SOURCE_SHARDS;
+          sourceShard += 1
+        ) {
+          await base.maintenance.project({
+            sourceShard,
+            maxItems,
+            maxRequests,
+          });
+        }
+        return;
+      }
+      await runDynamoDBInsightsJobStep(store, input);
+    },
     pageEvents: (input) => pageDynamoDBInsightsEvents(store, input),
     pageInstallations,
     getReport: (input) => getDynamoDBInsightsReport(store, input),

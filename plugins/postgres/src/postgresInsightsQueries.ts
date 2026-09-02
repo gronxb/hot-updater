@@ -58,6 +58,7 @@ import {
   createPostgresInsightsLivePages,
 } from "./postgresInsightsLive";
 import { createPostgresInsightsReportPages } from "./postgresInsightsReportPages";
+import { createPostgresInsightsReportWorker } from "./postgresInsightsReports";
 import {
   createPostgresInsightsSearchPageCursor,
   createPostgresInsightsSearchPages,
@@ -517,6 +518,7 @@ export const createPostgresInsightsQueries = (
   const search = createPostgresInsightsSearchPages(db, databaseNamespace);
   const jobs = createPostgresInsightsJobs(db, databaseNamespace);
   const reports = createPostgresInsightsReportPages(db, databaseNamespace);
+  const worker = createPostgresInsightsReportWorker(db, databaseNamespace);
 
   const pageEvents = async (
     input: InsightsPageEventsInput,
@@ -1002,6 +1004,9 @@ export const createPostgresInsightsQueries = (
       appendPostgresInsightsEvent(db, row, databaseNamespace).then(
         () => undefined,
       ),
+    async runMaintenanceStep({ maxItems, maxRequests }) {
+      await worker.runStep({ maxItems, maxRequests });
+    },
     pageEvents,
     pageInstallations,
     getReport,

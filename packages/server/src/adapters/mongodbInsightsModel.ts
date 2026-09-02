@@ -16,6 +16,7 @@ import {
 } from "@hot-updater/plugin-core/internal";
 import type { ClientSession, Filter, MongoClient } from "mongodb";
 
+import { createMongoInsightsModelMaintenance } from "../db/mongoInsightsModel";
 import { assertMongoInsightsEventRow } from "./mongodbInsights";
 import { createMongoInsightsInstallationQueries } from "./mongodbInsightsInstallations";
 import {
@@ -376,6 +377,12 @@ export const createMongoInsightsModel = (
           transactionOptions,
         ),
       );
+    },
+    async runMaintenanceStep({ jobId, maxItems, maxRequests }) {
+      await createMongoInsightsModelMaintenance(
+        client,
+        databaseNamespace,
+      ).runJobStep(jobId, { maxItems, maxRequests });
     },
     pageEvents: (input) => pageEvents(client, input, databaseNamespace),
     pageInstallations:

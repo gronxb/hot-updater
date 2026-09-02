@@ -175,6 +175,8 @@ const reportPage = {
 class TestInsightsModel implements InsightsModel {
   async append(): Promise<void> {}
 
+  async runMaintenanceStep(): Promise<void> {}
+
   async pageEvents() {
     return eventPage();
   }
@@ -238,6 +240,7 @@ class TestInsightsModel implements InsightsModel {
 const createInsightsModel = (): InsightsModel => {
   const model = new TestInsightsModel();
   vi.spyOn(model, "append");
+  vi.spyOn(model, "runMaintenanceStep");
   vi.spyOn(model, "pageEvents");
   vi.spyOn(model, "pageInstallations");
   vi.spyOn(model, "getReport");
@@ -255,7 +258,7 @@ const call = (
 afterEach(() => vi.useRealTimers());
 
 describe("Insights server boundary", () => {
-  it("maps every page and report HTTP read to one Insights model operation", async () => {
+  it("maps every page and report HTTP route to its Insights operation", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
     const insights = createInsightsModel();
@@ -383,6 +386,32 @@ describe("Insights server boundary", () => {
       metric: "installed",
       limit: 50,
     });
+  });
+
+  it("advances a bounded job and rereads a preparing report", async () => {
+    const insights = createInsightsModel();
+    vi.mocked(insights.getReport)
+      .mockResolvedValueOnce({
+        state: "preparing",
+        versions,
+        job: { id: "report-job" },
+      })
+      .mockResolvedValueOnce(report);
+    const handlers = createInsightsRouteHandlers(insights);
+
+    const response = await call(
+      handlers.getBundleEventOverview,
+      "https://example.com/installations/overview",
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(report);
+    expect(insights.runMaintenanceStep).toHaveBeenCalledExactlyOnceWith({
+      jobId: "report-job",
+      maxItems: 256,
+      maxRequests: 512,
+    });
+    expect(insights.getReport).toHaveBeenCalledTimes(2);
   });
 
   it("rejects offsets, ambiguous inputs and malformed cursors before storage", async () => {

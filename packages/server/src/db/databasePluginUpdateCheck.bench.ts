@@ -58,6 +58,9 @@ const adapter = createDatabasePluginAdapter(name, {
     async append() {
       throw new BenchmarkMutationError();
     },
+    async runMaintenanceStep() {
+      throw new BenchmarkMutationError();
+    },
     async pageEvents() {
       throw new BenchmarkMutationError();
     },

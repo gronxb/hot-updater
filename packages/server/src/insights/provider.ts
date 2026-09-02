@@ -370,6 +370,10 @@ export const createValidatedInsightsModel = (
       await beforeOperation();
       return model.append(row);
     },
+    async runMaintenanceStep(input) {
+      await beforeOperation();
+      return model.runMaintenanceStep(input);
+    },
     async pageEvents(input) {
       const canonicalInput = readInsightsPageEventsInput(input);
       return read(beforeOperation, () => model.pageEvents(canonicalInput), {

@@ -56,6 +56,7 @@ import {
   getFirebaseInsightsReport,
   pageFirebaseInsightsPublishedInstallations,
   pageFirebaseInsightsReport,
+  runFirebaseInsightsJobStep,
 } from "./firebaseInsightsJobs";
 
 const MAX_PAGE_SIZE = INSIGHTS_PAGE_MAX_ROWS;
@@ -886,6 +887,14 @@ export const createFirebaseInsightsQueries = (
 ) =>
   ({
     append,
+
+    async runMaintenanceStep(input) {
+      await runFirebaseInsightsJobStep(
+        collections.events.firestore,
+        collections,
+        { ...input, nowMs: Date.now() },
+      );
+    },
 
     async pageEvents(
       input: InsightsPageEventsInput,

@@ -200,6 +200,7 @@ const instrumentModel = (
   };
   return {
     append: (row) => meter.measure([], () => model.append(row)),
+    runMaintenanceStep: (input) => model.runMaintenanceStep(input),
     pageEvents: (input) =>
       meter.measure([MONGO_INSIGHTS_PROJECTION_EVENT_COLLECTION], () =>
         model.pageEvents(input),

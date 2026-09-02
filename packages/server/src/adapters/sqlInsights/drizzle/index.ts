@@ -228,6 +228,15 @@ export const createDrizzleInsightsQueries = (
   }
   return {
     append: pages.append,
+    async runMaintenanceStep({ jobId, maxItems, maxRequests }) {
+      await runDrizzleInsightsMaintenanceStep(
+        db,
+        provider,
+        databaseNamespace,
+        jobId,
+        { maxItems, maxRequests },
+      );
+    },
     pageEvents: pages.pageEvents,
     pageInstallations,
     getReport: reports.getReport,

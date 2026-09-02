@@ -735,6 +735,7 @@ export const createSupabaseInsights = (
   nowMs: () => number = Date.now,
 ): InsightsModel => {
   const namespace = readSupabaseInsightsDatabaseNamespace(databaseNamespace);
+  const maintenance = createSupabaseInsightsMaintenance(supabase, namespace);
   let storagePrepared = false;
 
   const inspectStorage = async (projectionGeneration: string | null) => {
@@ -1113,6 +1114,10 @@ export const createSupabaseInsights = (
         throw new DatabasePluginInputError("invalid-data");
       }
       throwSupabaseError("append Insights event", error);
+    },
+
+    async runMaintenanceStep({ jobId, maxItems, maxRequests }) {
+      await maintenance.runJobStep(jobId, { maxItems, maxRequests });
     },
 
     async pageEvents(
