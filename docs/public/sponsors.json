@@ -1,6 +1,14 @@
 {
   "sponsors": [
     {
+      "login": "callstack",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/42239399?v=4",
+      "name": "Callstack",
+      "url": "https://github.com/callstack",
+      "amountInCents": 0,
+      "displayWeight": 1500
+    },
+    {
       "login": "diepquynh",
       "avatarUrl": "https://avatars.githubusercontent.com/u/13411810?u=9ccec54ec26d43f895665e0d39f584f07d8bb310&v=4",
       "name": "Diệp Quỳnh",
@@ -78,14 +86,6 @@
       "amountInCents": 500
     },
     {
-      "login": "callstack",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/42239399?v=4",
-      "name": "Callstack",
-      "url": "https://github.com/callstack",
-      "amountInCents": 0,
-      "displayWeight": 1500
-    },
-    {
       "login": "claudesortwell",
       "avatarUrl": "https://avatars.githubusercontent.com/u/41422239?u=62aa6ed5b4084595175b5fdc42d2edb5598e914b&v=4",
       "name": "Claude",
@@ -135,5 +135,5 @@
       "amountInCents": 0
     }
   ],
-  "updatedAt": "2026-09-02T15:03:46Z"
+  "updatedAt": "2026-09-02T15:33:14Z"
 }
