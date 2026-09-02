@@ -1,5 +1,14 @@
 # @hot-updater/react-native
 
+## 1.0.0-rc.3
+
+### Patch Changes
+
+- f48521a: Align the console ID, `HotUpdater.getBundleId()`, update-check results, completion callbacks, and `bundle list/show` with the selected update identity so promotions sharing an artifact remain distinguishable. The getter can reflect a staged update before reload. Remove the prerelease `getReleaseId()` getter, keep artifact and crash identities unchanged, and move Artifact IDs into Advanced diagnostics. `bundle list --json` returns the internal rows, and `bundle show` accepts the console ID. Use `HotUpdater.getManifest().bundleId` for BugSnag sourcemap matching.
+- Updated dependencies [e6d9ae7]
+- Updated dependencies [a837c71]
+  - @hot-updater/plugin-core@1.0.0-rc.2
+
 ## 1.0.0-rc.2
 
 ### Minor Changes

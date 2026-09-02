@@ -1,5 +1,18 @@
 # @hot-updater/plugin-core
 
+## 1.0.0-rc.2
+
+### Patch Changes
+
+- e6d9ae7: Apply Insights scan cursors in database queries instead of re-reading the
+  entire preceding history for each page. Preserve timestamp ties and the
+  exclusive cutoff while returning at most the requested number of rows.
+  This reduces repeated reads; the server's 50,000-event aggregation limit is
+  unchanged.
+- a837c71: Upgrade verkit to 0.4.0 while preserving canonical app-version strings and
+  Doctor's package-version compatibility checks with the new parsed SemVer
+  return values. Upgrade the workspace build tool tsdown to 0.22.14.
+
 ## 1.0.0-rc.1
 
 ### Minor Changes
