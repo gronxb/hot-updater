@@ -112,7 +112,7 @@ export function LandingSponsors() {
                 <span className="size-2.5 rounded-full bg-orange-500/70" />
                 <span className="size-3.5 rounded-full bg-orange-500" />
               </span>
-              <span>Circle area reflects lifetime support</span>
+              <span>Circle area reflects sponsorship amount</span>
             </div>
           </div>
         ) : null}

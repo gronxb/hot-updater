@@ -32,6 +32,7 @@ jobs:
                   includePrivate: false
                 ) {
                   nodes {
+                    tier { monthlyPriceInCents }
                     sponsorEntity {
                       ... on User { login avatarUrl name url }
                       ... on Organization { login avatarUrl name url }
@@ -44,54 +45,33 @@ jobs:
           ' | jq -s '[
             .[].data.user.sponsorshipsAsMaintainer.nodes[]
             | select(.sponsorEntity != null)
-            | .sponsorEntity
+            | {
+                sponsor: .sponsorEntity,
+                amountInCents: (.tier.monthlyPriceInCents // 0)
+              }
           ]' > /tmp/public-sponsorships.json
 
-          gh api graphql --paginate -f query='
-            query($endCursor: String) {
-              user(login: "gronxb") {
-                lifetimeReceivedSponsorshipValues(
-                  first: 100
-                  after: $endCursor
-                  orderBy: { field: LIFETIME_VALUE, direction: DESC }
-                ) {
-                  nodes {
-                    amountInCents
-                    sponsor {
-                      ... on User { login }
-                      ... on Organization { login }
-                    }
-                  }
-                  pageInfo { hasNextPage endCursor }
-                }
-              }
-            }
-          ' | jq -s '[
-            .[].data.user.lifetimeReceivedSponsorshipValues.nodes[]
-            | select(. != null and .sponsor != null)
-          ]' > /tmp/lifetime-values.json
-
           jq -n \
-            --slurpfile sponsorships /tmp/public-sponsorships.json \
-            --slurpfile lifetimeValues /tmp/lifetime-values.json '
+            --slurpfile sponsorships /tmp/public-sponsorships.json '
               ($sponsorships[0]
-                | unique_by(.login)) as $publicSponsors
-              | (reduce $lifetimeValues[0][] as $value ({};
-                  .[$value.sponsor.login] = $value.amountInCents
-                )) as $amountByLogin
-              | ($publicSponsors
-                  | map(.login as $login | $amountByLogin[$login] // 0)
-                  | max // 1
-                ) as $maxAmount
+                | group_by(.sponsor.login)
+                | map(max_by(.amountInCents))) as $publicSponsors
+              | ($publicSponsors | map(.amountInCents) | max // 0) as $maxAmount
               | $publicSponsors
               | map(
-                  .login as $login
-                  | . + {
+                  {
+                    login: .sponsor.login,
+                    avatarUrl: .sponsor.avatarUrl,
+                    name: .sponsor.name,
+                    url: .sponsor.url,
                       weight: (
-                        (($amountByLogin[$login] // 0) / $maxAmount * 1000)
-                        | round / 1000
+                        if $maxAmount > 0 then
+                          ((.amountInCents / $maxAmount * 1000) | round / 1000)
+                        else
+                          1
+                        end
                       )
-                    }
+                  }
                 )
               | sort_by([-.weight, (.login | ascii_downcase)])
             ' > /tmp/sponsors.new.json
