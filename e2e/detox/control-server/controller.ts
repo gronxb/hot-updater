@@ -1385,7 +1385,7 @@ async function verifyConfiguredConsoleInsights(args: {
       baseUrl: `${getControllerReachableAppBaseUrl()}/admin`,
       headers: getHotUpdaterAdminHeaders(),
     });
-    for (let attempt = 1; attempt <= 30; attempt += 1) {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
       try {
         const evidence = await verifyConsoleInsights(client, args.bundleIds, {
           observedEvents: fixtureSession.observedInsightsEvents,
@@ -1395,8 +1395,8 @@ async function verifyConfiguredConsoleInsights(args: {
       } catch (error) {
         if (
           !(error instanceof ConsoleInsightsQaError) ||
-          error.code === "unsupported" ||
-          attempt === 30
+          error.code !== "event-not-found" ||
+          attempt === 3
         ) {
           throw error;
         }

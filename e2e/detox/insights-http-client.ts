@@ -13,6 +13,8 @@ type ReadyData = Readonly<Record<string, unknown>> & {
   readonly data?: readonly unknown[];
 };
 
+const MAX_READY_REQUESTS = 32;
+
 export class ConsoleInsightsHttpError extends Error {
   readonly name = "ConsoleInsightsHttpError";
   readonly status: number;
@@ -107,7 +109,33 @@ export const createConsoleInsightsHttpClient = ({
   const requestReadyData = async (
     path: string,
     operation: string,
-  ): Promise<ReadyData> => readyData(await requestJson(path), operation);
+  ): Promise<ReadyData> => {
+    let preparingJobId: string | undefined;
+    for (let attempt = 0; attempt < MAX_READY_REQUESTS; attempt += 1) {
+      const value = await requestJson<unknown>(path);
+      if (!isRecord(value) || value.state !== "preparing") {
+        return readyData(value, operation);
+      }
+      const job = value.job;
+      if (!isRecord(job) || typeof job.id !== "string" || job.id.length === 0) {
+        throw new ConsoleInsightsQaError(
+          "inconsistent-data",
+          `${operation} returned an invalid preparation job.`,
+        );
+      }
+      if (preparingJobId !== undefined && job.id !== preparingJobId) {
+        throw new ConsoleInsightsQaError(
+          "inconsistent-data",
+          `${operation} changed preparation jobs while polling.`,
+        );
+      }
+      preparingJobId = job.id;
+    }
+    throw new ConsoleInsightsQaError(
+      "inconsistent-data",
+      `${operation} did not become ready within ${MAX_READY_REQUESTS} requests.`,
+    );
+  };
 
   const getOverview = async () => {
     const data = await requestReadyData(
@@ -184,7 +212,10 @@ export const createConsoleInsightsHttpClient = ({
       };
     },
     getCapabilities: async () => {
-      await requestJson("/installations/overview");
+      await requestReadyData(
+        "/installations/overview",
+        "Installation overview",
+      );
       return { insights: true };
     },
     getHistory: async (installId) => {
