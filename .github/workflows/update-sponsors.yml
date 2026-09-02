@@ -22,40 +22,93 @@ jobs:
           set -euo pipefail
           mkdir -p docs/public
 
-          # 1) Generate the new sponsors array (sorted for stable diffs)
-          gh api graphql -f query='
-            query {
+          gh api graphql --paginate -f query='
+            query($endCursor: String) {
               user(login: "gronxb") {
-                sponsorshipsAsMaintainer(first: 100, includePrivate: false) {
+                sponsorshipsAsMaintainer(
+                  first: 100
+                  after: $endCursor
+                  activeOnly: false
+                  includePrivate: false
+                ) {
                   nodes {
                     sponsorEntity {
                       ... on User { login avatarUrl name url }
                       ... on Organization { login avatarUrl name url }
                     }
                   }
+                  pageInfo { hasNextPage endCursor }
                 }
               }
             }
-          ' | jq '[
-            .data.user.sponsorshipsAsMaintainer.nodes[].sponsorEntity
-            | select(. != null)
-            | { login, avatarUrl, name, url }
-          ] | sort_by(.login)' > /tmp/sponsors.new.json
+          ' | jq -s '[
+            .[].data.user.sponsorshipsAsMaintainer.nodes[]
+            | select(.sponsorEntity != null)
+            | .sponsorEntity
+          ]' > /tmp/public-sponsorships.json
 
-          # 2) Extract the existing sponsors array (or use an empty array if missing)
+          gh api graphql --paginate -f query='
+            query($endCursor: String) {
+              user(login: "gronxb") {
+                lifetimeReceivedSponsorshipValues(
+                  first: 100
+                  after: $endCursor
+                  orderBy: { field: LIFETIME_VALUE, direction: DESC }
+                ) {
+                  nodes {
+                    amountInCents
+                    sponsor {
+                      ... on User { login }
+                      ... on Organization { login }
+                    }
+                  }
+                  pageInfo { hasNextPage endCursor }
+                }
+              }
+            }
+          ' | jq -s '[
+            .[].data.user.lifetimeReceivedSponsorshipValues.nodes[]
+            | select(. != null and .sponsor != null)
+          ]' > /tmp/lifetime-values.json
+
+          jq -n \
+            --slurpfile sponsorships /tmp/public-sponsorships.json \
+            --slurpfile lifetimeValues /tmp/lifetime-values.json '
+              ($sponsorships[0]
+                | unique_by(.login)) as $publicSponsors
+              | (reduce $lifetimeValues[0][] as $value ({};
+                  .[$value.sponsor.login] = $value.amountInCents
+                )) as $amountByLogin
+              | ($publicSponsors
+                  | map(.login as $login | $amountByLogin[$login] // 0)
+                  | max // 1
+                ) as $maxAmount
+              | $publicSponsors
+              | map(
+                  .login as $login
+                  | . + {
+                      weight: (
+                        (($amountByLogin[$login] // 0) / $maxAmount * 1000)
+                        | round / 1000
+                      )
+                    }
+                )
+              | sort_by([-.weight, (.login | ascii_downcase)])
+            ' > /tmp/sponsors.new.json
+
+          # Extract the existing sponsors array (or use an empty array if missing)
           if [ -f docs/public/sponsors.json ]; then
-            jq '.sponsors // [] | sort_by(.login)' docs/public/sponsors.json > /tmp/sponsors.old.json
+            jq '.sponsors // []' docs/public/sponsors.json > /tmp/sponsors.old.json
           else
             echo '[]' > /tmp/sponsors.old.json
           fi
 
-          # 3) If sponsors did not change, do not touch the file (so updatedAt won't change)
+          # Keep updatedAt stable when the sponsor data has not changed
           if diff -q /tmp/sponsors.old.json /tmp/sponsors.new.json >/dev/null; then
             echo "No sponsor changes. Skipping update."
             exit 0
           fi
 
-          # 4) If sponsors changed, write a new sponsors.json with a fresh updatedAt timestamp
           jq -n --slurpfile sponsors /tmp/sponsors.new.json \
             '{ sponsors: $sponsors[0], updatedAt: (now | todate) }' \
             > docs/public/sponsors.json
