@@ -42,6 +42,8 @@ import { createPrismaInsightsEventPages } from "./source";
 import { assertPrismaInsightsDatabaseNamespace } from "./utils";
 
 export class PrismaInsightsModel implements InsightsModel {
+  private sqliteAppendTail: Promise<void> = Promise.resolve();
+
   constructor(
     private readonly client: PrismaInsightsClient,
     private readonly provider: ORMSQLProvider,
@@ -51,17 +53,19 @@ export class PrismaInsightsModel implements InsightsModel {
   }
 
   append(row: BundleEventRow): Promise<void> {
-    return runPrismaInsightsTransaction(
-      this.client,
-      this.provider,
-      (transaction) =>
+    const append = () =>
+      runPrismaInsightsTransaction(this.client, this.provider, (transaction) =>
         appendPrismaInsightsEvent(
           transaction,
           this.provider,
           this.databaseNamespace,
           row,
         ),
-    );
+      );
+    if (this.provider !== "sqlite") return append();
+    const pending = this.sqliteAppendTail.then(append, append);
+    this.sqliteAppendTail = pending.catch(() => undefined);
+    return pending;
   }
 
   async runMaintenanceStep({
