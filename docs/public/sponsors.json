@@ -8,10 +8,24 @@
       "weight": 1
     },
     {
+      "login": "valeriobelli",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/56547421?u=2a7ead7e22a551021e26e41aef6c7c4b89216ffc&v=4",
+      "name": "Valerio Belli",
+      "url": "https://github.com/valeriobelli",
+      "weight": 0.452
+    },
+    {
       "login": "claudesortwell",
       "avatarUrl": "https://avatars.githubusercontent.com/u/41422239?u=62aa6ed5b4084595175b5fdc42d2edb5598e914b&v=4",
       "name": "Claude",
       "url": "https://github.com/claudesortwell",
+      "weight": 0.238
+    },
+    {
+      "login": "Davescat",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/47789084?u=011ae9b93ad68924bf2bce311eb102bd6337e00b&v=4",
+      "name": "Davide Catalano",
+      "url": "https://github.com/Davescat",
       "weight": 0.238
     },
     {
@@ -20,6 +34,20 @@
       "name": "AndreiO",
       "url": "https://github.com/iAndrew25",
       "weight": 0.238
+    },
+    {
+      "login": "kr-yeon",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/65217664?u=c997206ed89e902b1d15c96d0c0997823c1317fc&v=4",
+      "name": "kr-yeon",
+      "url": "https://github.com/kr-yeon",
+      "weight": 0.19
+    },
+    {
+      "login": "timid-dogs",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/290142700?v=4",
+      "name": null,
+      "url": "https://github.com/timid-dogs",
+      "weight": 0.143
     },
     {
       "login": "Ikanny",
@@ -36,17 +64,17 @@
       "weight": 0.095
     },
     {
+      "login": "soonoo",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/5436405?u=5d0b4aa955c87e30e6bda7f0cccae5402da99528&v=4",
+      "name": "soonoo",
+      "url": "https://github.com/soonoo",
+      "weight": 0.071
+    },
+    {
       "login": "diepquynh",
       "avatarUrl": "https://avatars.githubusercontent.com/u/13411810?u=9ccec54ec26d43f895665e0d39f584f07d8bb310&v=4",
       "name": "Diệp Quỳnh",
       "url": "https://github.com/diepquynh",
-      "weight": 0.048
-    },
-    {
-      "login": "kr-yeon",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/65217664?u=c997206ed89e902b1d15c96d0c0997823c1317fc&v=4",
-      "name": "kr-yeon",
-      "url": "https://github.com/kr-yeon",
       "weight": 0.048
     },
     {
@@ -57,24 +85,10 @@
       "weight": 0.048
     },
     {
-      "login": "timid-dogs",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/290142700?v=4",
-      "name": null,
-      "url": "https://github.com/timid-dogs",
-      "weight": 0.048
-    },
-    {
       "login": "Alexhamila",
       "avatarUrl": "https://avatars.githubusercontent.com/u/28599364?u=28acfc45897776540c12bbcaddb6a0f75eac3ae4&v=4",
       "name": "Alexandre Hamila",
       "url": "https://github.com/Alexhamila",
-      "weight": 0.024
-    },
-    {
-      "login": "Davescat",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/47789084?u=011ae9b93ad68924bf2bce311eb102bd6337e00b&v=4",
-      "name": "Davide Catalano",
-      "url": "https://github.com/Davescat",
       "weight": 0.024
     },
     {
@@ -99,20 +113,6 @@
       "weight": 0.024
     },
     {
-      "login": "soonoo",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/5436405?u=5d0b4aa955c87e30e6bda7f0cccae5402da99528&v=4",
-      "name": "soonoo",
-      "url": "https://github.com/soonoo",
-      "weight": 0.024
-    },
-    {
-      "login": "valeriobelli",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/56547421?u=2a7ead7e22a551021e26e41aef6c7c4b89216ffc&v=4",
-      "name": "Valerio Belli",
-      "url": "https://github.com/valeriobelli",
-      "weight": 0.024
-    },
-    {
       "login": "victorsaisse",
       "avatarUrl": "https://avatars.githubusercontent.com/u/85237893?u=b2a3b07d95f2fa74982a01cca672fe9c8ba0dad6&v=4",
       "name": "Victor Saisse",
@@ -134,5 +134,5 @@
       "weight": 0.005
     }
   ],
-  "updatedAt": "2026-09-02T16:06:39Z"
+  "updatedAt": "2026-09-02T17:18:32Z"
 }
