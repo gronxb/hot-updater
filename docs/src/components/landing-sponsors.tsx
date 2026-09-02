@@ -1,118 +1,154 @@
-"use client";
-
+import { hierarchy, pack } from "d3-hierarchy";
 import { Heart } from "lucide-react";
-import { useEffect, useState } from "react";
+
+import sponsorsData from "../../public/sponsors.json";
 
 interface Sponsor {
   login: string;
   avatarUrl: string;
   name: string | null;
   url: string;
+  weight: number;
 }
 
-interface SponsorsData {
-  sponsors: Sponsor[];
-  updatedAt: string;
+interface SponsorNode {
+  sponsor?: Sponsor;
+  children?: SponsorNode[];
+}
+
+const PACKING_SIZE = 720;
+const PACKING_PADDING = 5;
+
+function getPackedSponsors(sponsors: Sponsor[]) {
+  const root = hierarchy<SponsorNode>(
+    {
+      children: sponsors.map((sponsor) => ({ sponsor })),
+    },
+    (node) => node.children,
+  )
+    .sum((node) => {
+      if (!node.sponsor) {
+        return 0;
+      }
+
+      return node.sponsor.weight;
+    })
+    .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+
+  return pack<SponsorNode>()
+    .size([PACKING_SIZE, PACKING_SIZE])
+    .padding(PACKING_PADDING)(root)
+    .leaves()
+    .map((node) => ({
+      sponsor: node.data.sponsor as Sponsor,
+      x: node.x,
+      y: node.y,
+      radius: node.r,
+    }));
 }
 
 export function LandingSponsors() {
-  const [sponsors, setSponsors] = useState<Sponsor[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/sponsors.json")
-      .then((res) => res.json())
-      .then((data: SponsorsData) => {
-        setSponsors(data.sponsors);
-        setLoading(false);
-      })
-      .catch(() => {
-        setLoading(false);
-      });
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="relative border-b border-fd-border bg-fd-background">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
-          <div className="text-center">
-            <div className="animate-pulse h-8 w-48 bg-fd-muted rounded mx-auto" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+  const sponsors = sponsorsData.sponsors as Sponsor[];
   const hasSponsors = sponsors.length > 0;
+  const packedSponsors = getPackedSponsors(sponsors);
 
   return (
-    <div className="relative border-b border-fd-border bg-fd-background">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
-        {/* Section header */}
+    <section className="relative overflow-hidden border-b border-fd-border bg-fd-background">
+      <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8 lg:py-28">
         <div
-          className={hasSponsors ? "mb-10 sm:mb-14 text-center" : "text-center"}
+          className={hasSponsors ? "mb-8 text-center sm:mb-10" : "text-center"}
         >
-          <div className="inline-flex items-center gap-2 mb-4">
-            <Heart className="w-5 h-5 text-pink-500 fill-pink-500" />
-            <span className="text-sm font-medium text-pink-500 uppercase tracking-wider">
-              Sponsors
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-pink-500/20 bg-pink-500/8 px-3 py-1.5">
+            <Heart className="size-3.5 fill-pink-500 text-pink-500" />
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-pink-500">
+              Past &amp; present
             </span>
           </div>
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-fd-foreground">
-            {hasSponsors ? "Thanks to our sponsors" : "Become a Sponsor"}
+          <h2 className="text-2xl font-bold tracking-tight text-fd-foreground sm:text-3xl lg:text-4xl">
+            {hasSponsors ? "Built with our sponsors" : "Become a Sponsor"}
           </h2>
-          <p className="mt-3 sm:mt-4 text-base sm:text-lg text-fd-muted-foreground max-w-2xl mx-auto">
+          <p className="mx-auto mt-3 max-w-2xl text-base leading-relaxed text-fd-muted-foreground sm:mt-4 sm:text-lg">
             {hasSponsors
-              ? "Hot Updater is made possible by our amazing sponsors. Thank you for supporting open source!"
+              ? "Every person and team who has supported Hot Updater has a place here. Thank you for keeping open source moving."
               : "Support Hot Updater development and help us build the best OTA update solution for React Native."}
           </p>
         </div>
 
-        {/* Sponsors grid */}
-        {hasSponsors && (
-          <div className="flex flex-wrap justify-center gap-4 sm:gap-6">
-            {sponsors.map((sponsor) => (
-              <a
-                key={sponsor.login}
-                href={sponsor.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group flex flex-col items-center gap-2 p-3 sm:p-4 rounded-xl border border-transparent transition-all hover:border-fd-border hover:bg-fd-accent/50"
-              >
-                <div className="relative">
-                  <img
-                    src={sponsor.avatarUrl}
-                    alt={sponsor.name || sponsor.login}
-                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 border-fd-border transition-all group-hover:border-orange-500/50 group-hover:scale-105"
-                  />
-                  <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-pink-500 flex items-center justify-center">
-                    <Heart className="w-3 h-3 text-white fill-white" />
-                  </div>
-                </div>
-                <span className="text-sm font-medium text-fd-foreground group-hover:text-orange-500 transition-colors">
-                  {sponsor.name || sponsor.login}
-                </span>
-              </a>
-            ))}
-          </div>
-        )}
+        {hasSponsors ? (
+          <div className="relative mx-auto aspect-square w-full max-w-[45rem] rounded-full border border-fd-border/70 bg-fd-card/20 shadow-[inset_0_0_80px_rgba(0,0,0,0.025)] dark:bg-fd-card/10 dark:shadow-[inset_0_0_80px_rgba(255,255,255,0.025)]">
+            <div className="pointer-events-none absolute inset-[4%] rounded-full border border-dashed border-fd-border/50" />
+            <ul className="absolute inset-0 m-0 list-none p-0">
+              {packedSponsors.map(({ sponsor, x, y, radius }) => {
+                const sponsorName = sponsor.name || sponsor.login;
 
-        {/* Become a sponsor CTA */}
+                return (
+                  <li
+                    key={sponsor.login}
+                    className="absolute"
+                    style={{
+                      left: `${((x - radius) / PACKING_SIZE) * 100}%`,
+                      top: `${((y - radius) / PACKING_SIZE) * 100}%`,
+                      width: `${((radius * 2) / PACKING_SIZE) * 100}%`,
+                      height: `${((radius * 2) / PACKING_SIZE) * 100}%`,
+                    }}
+                  >
+                    <a
+                      href={sponsor.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`View ${sponsorName}'s GitHub profile`}
+                      className="group relative block size-full rounded-full outline-none transition duration-300 hover:z-10 hover:scale-[1.06] focus-visible:z-10 focus-visible:scale-[1.06] focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-4 focus-visible:ring-offset-fd-background motion-reduce:transition-none"
+                    >
+                      <span className="absolute inset-0 overflow-hidden rounded-full border border-white/60 bg-fd-card shadow-[0_12px_35px_-16px_rgba(0,0,0,0.55)] ring-1 ring-black/5 transition-shadow duration-300 group-hover:shadow-[0_16px_45px_-14px_rgba(0,0,0,0.42)] dark:border-white/15 dark:ring-white/10">
+                        <img
+                          src={sponsor.avatarUrl}
+                          alt=""
+                          width={Math.ceil(radius * 2)}
+                          height={Math.ceil(radius * 2)}
+                          loading="lazy"
+                          decoding="async"
+                          className="size-full object-cover saturate-[0.88] transition duration-300 group-hover:scale-105 group-hover:saturate-100 motion-reduce:transition-none"
+                        />
+                        <span className="absolute inset-0 bg-linear-to-t from-black/30 via-transparent to-white/10 opacity-60 transition-opacity group-hover:opacity-30" />
+                      </span>
+
+                      <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 translate-y-1 whitespace-nowrap rounded-md border border-fd-border bg-fd-popover px-2.5 py-1.5 text-xs font-medium text-fd-popover-foreground opacity-0 shadow-lg transition duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100 motion-reduce:transition-none">
+                        {sponsorName}
+                      </span>
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
+
+        {hasSponsors ? (
+          <div className="mt-8 flex items-center justify-center gap-2 text-xs text-fd-muted-foreground">
+            <span className="flex items-end gap-0.5" aria-hidden="true">
+              <span className="size-1.5 rounded-full bg-fd-muted-foreground/35" />
+              <span className="size-2.5 rounded-full bg-fd-muted-foreground/60" />
+              <span className="size-3.5 rounded-full bg-fd-muted-foreground" />
+            </span>
+            <span>Circle area reflects lifetime support</span>
+          </div>
+        ) : null}
+
         <div
           className={
             hasSponsors
-              ? "mt-12 sm:mt-16 text-center"
-              : "mt-6 sm:mt-8 text-center"
+              ? "mt-10 text-center sm:mt-12"
+              : "mt-6 text-center sm:mt-8"
           }
         >
           <a
             href="https://github.com/sponsors/gronxb"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-pink-500/30 bg-pink-500/10 text-pink-500 font-medium text-sm transition-all hover:bg-pink-500/20 hover:border-pink-500/50"
+            className="inline-flex items-center gap-2 rounded-full border border-pink-500/30 bg-pink-500/10 px-5 py-2.5 text-sm font-semibold text-pink-500 transition-all hover:border-pink-500/50 hover:bg-pink-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2 focus-visible:ring-offset-fd-background"
           >
-            <Heart className="w-4 h-4" />
-            Become a Sponsor
+            <Heart className="size-4" />
+            Sponsor on GitHub
           </a>
 
           <div className="mt-6 flex flex-col items-center gap-2">
@@ -123,7 +159,7 @@ export function LandingSponsors() {
               href="https://vercel.com/oss"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex rounded-md border border-fd-border/60 bg-fd-card/40 px-2.5 py-1.5 opacity-80 transition-opacity hover:opacity-100"
+              className="inline-flex rounded-md border border-fd-border/60 bg-fd-card/40 px-2.5 py-1.5 opacity-80 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
             >
               <img
                 alt="Vercel OSS Program"
@@ -135,6 +171,6 @@ export function LandingSponsors() {
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
