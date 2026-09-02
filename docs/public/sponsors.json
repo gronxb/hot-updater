@@ -113,6 +113,13 @@
       "amountInCents": 0
     },
     {
+      "login": "kr-yeon",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/65217664?u=c997206ed89e902b1d15c96d0c0997823c1317fc&v=4",
+      "name": "kr-yeon",
+      "url": "https://github.com/kr-yeon",
+      "amountInCents": 0
+    },
+    {
       "login": "RyuWoong",
       "avatarUrl": "https://avatars.githubusercontent.com/u/36265465?u=916eb9791fb9f9d5efbea5f2ab82f1463af166e2&v=4",
       "name": "RyuWoong",
@@ -127,5 +134,5 @@
       "amountInCents": 0
     }
   ],
-  "updatedAt": "2026-09-02T14:58:00Z"
+  "updatedAt": "2026-09-02T15:03:46Z"
 }
