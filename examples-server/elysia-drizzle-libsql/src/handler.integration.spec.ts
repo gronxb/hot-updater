@@ -116,4 +116,58 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
+
+  it("serves concurrent Console Insights queries against SQLite", async () => {
+    const bundleId = "10000000-0000-7000-8000-000000000001";
+    const installId = `concurrent-insights-${Date.now()}`;
+    const ingestion = await fetch(`${baseUrl}/hot-updater/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        appVersion: "1.0.0",
+        channel: "production",
+        cohort: "default",
+        fingerprintHash: null,
+        fromBundleId: "00000000-0000-0000-0000-000000000000",
+        fromReleaseId: null,
+        installId,
+        platform: "ios",
+        sdkVersion: "2.0.0",
+        toBundleId: bundleId,
+        toReleaseId: null,
+        type: "UPDATE_APPLIED",
+        updateStrategy: "appVersion",
+      }),
+    });
+    expect(ingestion.status).toBe(204);
+
+    const headers = {
+      Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}`,
+    };
+    const responses = await Promise.all(
+      [
+        `/hot-updater/admin/bundles/${bundleId}/events/summary`,
+        "/hot-updater/admin/installations/overview",
+        "/hot-updater/admin/installations/active?window=24h",
+        `/hot-updater/admin/installations?kind=contains&query=${installId}&limit=50`,
+        `/hot-updater/admin/events?installId=${installId}`,
+      ].map((path) => fetch(`${baseUrl}${path}`, { headers })),
+    );
+
+    expect(responses.map(({ status }) => status)).toEqual([
+      200, 200, 200, 200, 200,
+    ]);
+    const search = (await responses[3]!.json()) as {
+      state: string;
+      data?: { data?: { install_id?: string }[] };
+    };
+    expect(search).toMatchObject({
+      state: "ready",
+      data: {
+        data: expect.arrayContaining([
+          expect.objectContaining({ install_id: installId }),
+        ]),
+      },
+    });
+  });
 });

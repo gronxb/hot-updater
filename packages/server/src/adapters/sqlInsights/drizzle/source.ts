@@ -258,7 +258,6 @@ export const createDrizzleInsightsSource = (
 ) => {
   assertDrizzleInsightsDatabaseNamespace(databaseNamespace);
   let schema: Promise<void> | undefined;
-  let sqliteAppendTail: Promise<void> = Promise.resolve();
   const ensure = (): Promise<void> =>
     (schema ??= ensureDrizzleInsightsSchema(
       db,
@@ -511,10 +510,7 @@ export const createDrizzleInsightsSource = (
           await updateCommittedFence(transaction);
         });
       };
-      if (provider !== "sqlite") return append();
-      const pending = sqliteAppendTail.then(append, append);
-      sqliteAppendTail = pending.catch(() => undefined);
-      return pending;
+      return append();
     },
     async sourceMaxSequence(): Promise<number> {
       await ensure();

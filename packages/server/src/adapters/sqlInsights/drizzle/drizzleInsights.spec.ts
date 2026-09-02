@@ -93,6 +93,89 @@ const createSQLiteDatabase = (
   return { native, database };
 };
 
+it("serializes SQLite append, maintenance, and search transactions", async () => {
+  const { native, database } = createSQLiteDatabase();
+  let transactionStarts = 0;
+  let stallNextTransaction = false;
+  let markEntered = (): void => undefined;
+  const entered = new Promise<void>((resolve) => {
+    markEntered = resolve;
+  });
+  let release = (): void => undefined;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const stalled = {
+    ...database,
+    insightsTransaction: async <TResult>(
+      operation: (transaction: DrizzleDB) => Promise<TResult>,
+    ): Promise<TResult> => {
+      transactionStarts += 1;
+      return database.insightsTransaction!(async (transaction) => {
+        if (stallNextTransaction) {
+          stallNextTransaction = false;
+          markEntered();
+          await released;
+        }
+        return operation(transaction);
+      });
+    },
+  } as DrizzleDB;
+  const queries = createDrizzleInsightsQueries(
+    stalled,
+    "sqlite",
+    DATABASE_NAMESPACE,
+  );
+  const firstId = createUUIDv7After(null, 1_800_000_002_000);
+  const secondId = createUUIDv7After(firstId, 1_800_000_002_001);
+
+  try {
+    await queries.append(event(firstId, 1_000, "queued-first"));
+    const reserved = await queries.pageInstallations({
+      kind: "contains",
+      query: "queued-first",
+      limit: 10,
+    });
+    expect(reserved.state).toBe("preparing");
+    if (reserved.state !== "preparing") return;
+
+    const baselineStarts = transactionStarts;
+    stallNextTransaction = true;
+    const append = queries.append(event(secondId, 1_001, "queued-second"));
+    await entered;
+
+    const outcomes = Promise.allSettled([
+      queries.runMaintenanceStep({
+        jobId: reserved.job.id,
+        maxItems: 256,
+        maxRequests: 512,
+      }),
+      queries.pageInstallations({
+        kind: "contains",
+        query: "queued-second",
+        limit: 10,
+      }),
+    ]);
+    for (let turn = 0; turn < 4; turn += 1) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    const startsWhileBlocked = transactionStarts;
+
+    release();
+    await append;
+    const completed = await outcomes;
+
+    expect(startsWhileBlocked).toBe(baselineStarts + 1);
+    expect(completed.map(({ status }) => status)).toEqual([
+      "fulfilled",
+      "fulfilled",
+    ]);
+  } finally {
+    release();
+    native.close();
+  }
+});
+
 it("rejects a same-named SQLite index with the wrong key order", async () => {
   const { native, database } = createSQLiteDatabase();
   const queries = createDrizzleInsightsQueries(

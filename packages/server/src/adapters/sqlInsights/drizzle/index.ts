@@ -200,6 +200,18 @@ export const createDrizzleInsightsQueries = (
   const pages = createDrizzleInsightsPages(db, provider, databaseNamespace);
   const search = createDrizzleInsightsSearch(db, provider, databaseNamespace);
   const reports = createDrizzleInsightsReports(db, provider, databaseNamespace);
+  let sqliteOperationTail: Promise<void> = Promise.resolve();
+  const run = <TResult>(
+    operation: () => Promise<TResult>,
+  ): Promise<TResult> => {
+    if (provider !== "sqlite") return operation();
+    const pending = sqliteOperationTail.then(operation, operation);
+    sqliteOperationTail = pending.then(
+      () => undefined,
+      () => undefined,
+    );
+    return pending;
+  };
   function pageInstallations(
     input: InsightsLiveInstallationPageInput,
   ): Promise<InsightsLiveInstallationPage>;
@@ -222,24 +234,25 @@ export const createDrizzleInsightsQueries = (
     input: InsightsInstallationPageInput,
   ): Promise<InsightsInstallationPage> {
     if (input.kind === "all" || input.kind === "installationId") {
-      return pages.pageLiveInstallations(input);
+      return run(() => pages.pageLiveInstallations(input));
     }
-    return search.pageInstallations(input);
+    return run(() => search.pageInstallations(input));
   }
   return {
-    append: pages.append,
-    async runMaintenanceStep({ jobId, maxItems, maxRequests }) {
-      await runDrizzleInsightsMaintenanceStep(
-        db,
-        provider,
-        databaseNamespace,
-        jobId,
-        { maxItems, maxRequests },
-      );
-    },
-    pageEvents: pages.pageEvents,
+    append: (event) => run(() => pages.append(event)),
+    runMaintenanceStep: ({ jobId, maxItems, maxRequests }) =>
+      run(async () => {
+        await runDrizzleInsightsMaintenanceStep(
+          db,
+          provider,
+          databaseNamespace,
+          jobId,
+          { maxItems, maxRequests },
+        );
+      }),
+    pageEvents: (input) => run(() => pages.pageEvents(input)),
     pageInstallations,
-    getReport: reports.getReport,
-    pageReport: reports.pageReport,
+    getReport: (input) => run(() => reports.getReport(input)),
+    pageReport: (input) => run(() => reports.pageReport(input)),
   };
 };
