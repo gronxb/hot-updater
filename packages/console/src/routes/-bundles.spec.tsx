@@ -143,7 +143,7 @@ describe("BundlesPage", () => {
   it("opens the Bundle edit sheet from the whole table row", () => {
     render(<BundlesPage />);
     const row = screen.getByRole("row", {
-      name: "Open release release-1",
+      name: "Open bundle release-1",
     });
 
     fireEvent.click(row);
@@ -167,7 +167,7 @@ describe("BundlesPage", () => {
   it("keeps a default Bundle row focused on delivery decisions", () => {
     render(<BundlesPage />);
     const row = screen.getByRole("row", {
-      name: "Open release release-1",
+      name: "Open bundle release-1",
     });
 
     expect(within(row).getByText("release-1")).toBeDefined();
@@ -192,12 +192,12 @@ describe("BundlesPage", () => {
     expect(within(row).queryByText("rev 1")).toBeNull();
   });
 
-  it("subdues a Release that no catalog path currently selects first", () => {
+  it("subdues a Bundle that no catalog path currently selects first", () => {
     release.currentlyUnreachable = true;
 
     render(<BundlesPage />);
     const row = screen.getByRole("row", {
-      name: "Open release release-1",
+      name: "Open bundle release-1",
     });
     const state = within(row).getByText("Unreachable");
 
@@ -206,31 +206,31 @@ describe("BundlesPage", () => {
     expect(row.className).toContain("hover:saturate-100");
     expect(row.className).toContain("motion-reduce:transition-none");
     expect(state.getAttribute("title")).toBe(
-      "No catalog segment or cohort selects this release first with the current delivery settings.",
+      "No catalog segment or cohort selects this bundle first with the current delivery settings.",
     );
   });
 
   it("expands the base-to-patch relationship from the Bundle row", () => {
     render(<BundlesPage />);
     const row = screen.getByRole("row", {
-      name: "Open release release-1",
+      name: "Open bundle release-1",
     });
 
-    expect(screen.queryByText("Base file ID")).toBeNull();
+    expect(screen.queryByText("Base artifact ID")).toBeNull();
     fireEvent.click(
       within(row).getByRole("button", {
-        name: "Show advanced file diagnostics",
+        name: "Show advanced artifact diagnostics",
       }),
     );
 
-    expect(screen.getByText("Advanced file diagnostics")).toBeDefined();
-    expect(screen.getByText("Base file ID")).toBeDefined();
-    expect(screen.getByText("Patch bundles from this base")).toBeDefined();
+    expect(screen.getByText("Advanced artifact diagnostics")).toBeDefined();
+    expect(screen.getByText("Base artifact ID")).toBeDefined();
+    expect(screen.getByText("Patch artifacts from this base")).toBeDefined();
     expect(screen.getAllByText(childBundle.id).length).toBeGreaterThan(0);
     expect(screen.getByText("bsdiff")).toBeDefined();
     expect(
       within(row).getByRole("button", {
-        name: "Hide advanced file diagnostics",
+        name: "Hide advanced artifact diagnostics",
       }),
     ).toBeDefined();
   });
@@ -245,9 +245,9 @@ describe("BundlesPage", () => {
       ];
       render(<BundlesPage />);
 
-      expect(screen.getByRole("heading", { name: "Releases" })).toBeDefined();
+      expect(screen.getByRole("heading", { name: "Bundles" })).toBeDefined();
       expect(
-        screen.getByRole("navigation", { name: "Release pagination" }),
+        screen.getByRole("navigation", { name: "Bundle pagination" }),
       ).toBeDefined();
       expect(screen.queryByText(release.bundle_id!)).toBeNull();
       for (const id of ["release-1", "release-2"]) {

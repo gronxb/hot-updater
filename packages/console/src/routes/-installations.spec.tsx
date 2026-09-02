@@ -191,7 +191,7 @@ describe("InstallationsPage", () => {
     for (const label of [
       "Bundle applied",
       "Recovered",
-      "Release adopted",
+      "Bundle adopted",
       "Activity reported",
     ]) {
       expect(within(screen.getByRole("table")).getByText(label)).toBeDefined();

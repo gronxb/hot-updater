@@ -165,7 +165,7 @@ function BundleFilterToolbar({
   return (
     <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-2 border-b bg-background px-3 py-3 sm:h-12 sm:flex-nowrap sm:bg-card/70 sm:px-4 sm:py-0 sm:backdrop-blur-sm">
       <SidebarTrigger className="-ml-1" />
-      <h1 className="sr-only">Releases</h1>
+      <h1 className="sr-only">Bundles</h1>
       <div className="ml-1 flex items-center gap-1.5 text-muted-foreground sm:ml-2">
         <Filter className="size-3.5" />
         <span className="text-xs font-medium">Filters</span>
@@ -244,9 +244,9 @@ function BundleFilterToolbar({
       </Button>
       {search.bundleId ? (
         <Badge className="max-w-48 gap-1" variant="secondary">
-          File filter
+          Artifact filter
           <button
-            aria-label="Clear file filter"
+            aria-label="Clear artifact filter"
             className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => onChange({ bundleId: undefined })}
             type="button"
@@ -296,10 +296,10 @@ function BundleEntry({
           aria-expanded={expanded}
           aria-label={
             expanded
-              ? "Hide advanced file diagnostics"
-              : "Show advanced file diagnostics"
+              ? "Hide advanced artifact diagnostics"
+              : "Show advanced artifact diagnostics"
           }
-          title="Advanced file diagnostics"
+          title="Advanced artifact diagnostics"
           className="size-8 shrink-0 touch-manipulation"
           onClick={onToggleExpand}
           size="icon"
@@ -332,9 +332,9 @@ function BundleEntry({
       ) : null}
       {release.currentlyUnreachable ? (
         <span
-          aria-label="Currently unreachable. No catalog segment or cohort selects this release first."
+          aria-label="Currently unreachable. No catalog segment or cohort selects this bundle first."
           className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
-          title="No catalog segment or cohort selects this release first with the current delivery settings."
+          title="No catalog segment or cohort selects this bundle first with the current delivery settings."
         >
           <CircleOff className="size-3.5" />
           Unreachable
@@ -505,7 +505,7 @@ function BundlesPage() {
         {releasesQuery.isError ? (
           <Alert variant="destructive">
             <AlertTriangle />
-            <AlertTitle>Releases could not be loaded</AlertTitle>
+            <AlertTitle>Bundles could not be loaded</AlertTitle>
             <AlertDescription>{releasesQuery.error.message}</AlertDescription>
           </Alert>
         ) : (
@@ -651,8 +651,8 @@ function BundlesPage() {
                     search.enabled !== undefined ||
                     search.platform ||
                     search.targetAppVersion
-                      ? "No releases match these filters."
-                      : "No releases yet. Deploy an update to see it here."}
+                      ? "No bundles match these filters."
+                      : "No bundles yet. Deploy an update to see it here."}
                   </p>
                 )}
               </div>
@@ -691,7 +691,7 @@ function BundlesPage() {
                         return (
                           <Fragment key={release.id}>
                             <TableRow
-                              aria-label={`Open release ${release.id}`}
+                              aria-label={`Open bundle ${release.id}`}
                               className={cn(
                                 "cursor-pointer transition-[background-color,filter] hover:bg-muted/10 focus-within:bg-muted/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none data-[state=selected]:bg-muted/15 [&>td]:py-3",
                                 release.currentlyUnreachable &&
@@ -886,8 +886,8 @@ function BundlesPage() {
                         search.enabled !== undefined ||
                         search.platform ||
                         search.targetAppVersion
-                          ? "No releases match these filters."
-                          : "No releases yet. Deploy an update to see it here."}
+                          ? "No bundles match these filters."
+                          : "No bundles yet. Deploy an update to see it here."}
                       </TableCell>
                     </TableRow>
                   ) : null}
@@ -899,7 +899,7 @@ function BundlesPage() {
 
         {!releasesQuery.isError && !releasesQuery.isPending ? (
           <nav
-            aria-label="Release pagination"
+            aria-label="Bundle pagination"
             className="flex flex-col gap-3 px-2 sm:flex-row sm:items-center sm:justify-between"
           >
             <p className="text-xs font-medium text-muted-foreground">

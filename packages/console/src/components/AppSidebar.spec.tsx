@@ -110,12 +110,12 @@ describe("AppSidebar insights navigation", () => {
   });
 
   it.each(["unresolved", "unsupported", "error"] as const)(
-    "keeps Releases as the primary destination while capability is %s",
+    "keeps Bundles as the primary destination while capability is %s",
     (status) => {
       renderSidebar(capability(status));
 
-      expect(screen.getByRole("link", { name: /releases/i })).toBeDefined();
-      expect(screen.queryByRole("link", { name: /bundles/i })).toBeNull();
+      expect(screen.getByRole("link", { name: /bundles/i })).toBeDefined();
+      expect(screen.queryByRole("link", { name: /releases/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /insights/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /installations/i })).toBeNull();
     },

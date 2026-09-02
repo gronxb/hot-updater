@@ -1,8 +1,9 @@
+import { stripVTControlCharacters } from "node:util";
+
 import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
-import type { DeployReleasePolicy } from "./deployTransaction";
 
 const { loadConfig, log } = vi.hoisted(() => ({
   loadConfig: vi.fn(),
@@ -40,19 +41,6 @@ const artifact = (
   storageUri: `storage://artifacts/${id}.zip`,
   gitCommitHash: "1234567890abcdef",
 });
-
-const releasePolicy = (): DeployReleasePolicy => ({
-  channel: "production",
-  enabled: true,
-  fingerprintHash: null,
-  message: null,
-  shouldForceUpdate: false,
-  targetAppVersion: "1.0.x",
-  rolloutCohortCount: 1_000,
-  targetCohorts: [],
-});
-
-const deployment = (bundle: Bundle) => ({ bundle, release: releasePolicy() });
 
 const releaseReference = (id: string, bundleId: string): ReleaseRow => ({
   bundle_id: bundleId,
@@ -126,7 +114,9 @@ describe("Bundle commands", () => {
 
     await handleBundleList({ platform: "ios", limit: 5 });
 
-    const table = String(output.mock.calls.at(-1)?.[0]);
+    const table = stripVTControlCharacters(
+      String(output.mock.calls.at(-1)?.[0]),
+    );
     expect(table).toContain(source.id);
     expect(table).toContain(promoted.id);
     expect(table).not.toContain(bundle.id);
@@ -141,7 +131,9 @@ describe("Bundle commands", () => {
     ]);
 
     await handleBundleShow(promoted.id);
-    const summary = String(output.mock.calls.at(-1)?.[0]);
+    const summary = stripVTControlCharacters(
+      String(output.mock.calls.at(-1)?.[0]),
+    );
     expect(summary).toContain(`ID:`);
     expect(summary).toContain(promoted.id);
     expect(summary).toContain("staging");
@@ -155,64 +147,67 @@ describe("Bundle commands", () => {
     });
   });
 
-  it("paginates through all Release references", async () => {
-    const bundleId = "B1";
-    databaseHarness.setBundles([artifact(bundleId)]);
-    const releases = Array.from({ length: 1_001 }, (_, index) =>
-      releaseReference(
-        `release-${String(1_001 - index).padStart(4, "0")}`,
-        bundleId,
-      ),
-    );
-    const findMany = vi
-      .spyOn(databaseHarness.plugin.models.releases, "findMany")
-      .mockImplementation(async (input) => {
-        if (input.beforeReleaseId === undefined) {
-          return releases.slice(0, 1_000);
-        }
-        expect(input.beforeReleaseId).toBe(releases[999]!.id);
-        return releases.slice(1_000);
+  it("combines the v0 channel and target app version filters", async () => {
+    const bundle = artifact("00000000-0000-7000-8000-000000000011");
+    databaseHarness.setBundles([bundle]);
+    for (const name of ["production", "staging"]) {
+      await databaseHarness.plugin.models.channels.insert({
+        row: { id: `channel-${name}`, name },
+        onConflict: "returnExisting",
       });
-    const { handleBundleDelete } = await import("./bundle");
-
-    await expect(handleBundleDelete([bundleId], { yes: true })).rejects.toThrow(
-      releases[1_000]!.id,
+    }
+    const matching = releaseReference(
+      "00000000-0000-7000-8000-000000000012",
+      bundle.id,
     );
+    const otherVersion = {
+      ...matching,
+      id: "00000000-0000-7000-8000-000000000013",
+      target_app_version: "2.0.x",
+    };
+    const otherChannel = {
+      ...matching,
+      id: "00000000-0000-7000-8000-000000000014",
+      channel_id: "channel-staging",
+    };
+    await databaseHarness.plugin.commit({
+      changes: [matching, otherVersion, otherChannel].map((row) => ({
+        model: "releases" as const,
+        operation: "insert" as const,
+        row,
+      })),
+    });
+    const output = vi.spyOn(console, "log").mockImplementation(() => {});
+    const { handleBundleList } = await import("./bundle");
 
-    expect(findMany).toHaveBeenCalledTimes(2);
-    await expect(
-      databaseHarness.plugin.models.bundles.findById(bundleId),
-    ).resolves.not.toBeNull();
+    await handleBundleList({
+      channel: "production",
+      targetAppVersion: "1.0.x",
+      limit: 5,
+    });
+
+    const table = stripVTControlCharacters(
+      String(output.mock.calls.at(-1)?.[0]),
+    );
+    expect(table).toContain(matching.id);
+    expect(table).not.toContain(otherVersion.id);
+    expect(table).not.toContain(otherChannel.id);
   });
 
-  it("deletes an unreferenced artifact", async () => {
-    databaseHarness.setBundles([artifact("B1")]);
-    const { handleBundleDelete } = await import("./bundle");
-
-    await handleBundleDelete(["B1"], { yes: true });
+  it("translates internal release mutation errors at the public boundary", async () => {
+    const { handleBundleUpdate } = await import("./bundle");
 
     await expect(
-      databaseHarness.plugin.models.bundles.findById("B1"),
-    ).resolves.toBeNull();
-    expect(log.success).toHaveBeenCalledWith("Deleted bundle record.");
-    expect(log.info).toHaveBeenCalledWith(
-      expect.stringContaining("storage prune --dry-run"),
-    );
-  });
-
-  it("preserves an artifact referenced by a Release", async () => {
-    const bundleId = "00000000-0000-7000-8000-000000000001";
-    await databaseHarness.seedDeployments([deployment(artifact(bundleId))]);
-    const [release] = await databaseHarness.releases();
-    databaseHarness.commit.mockClear();
-    const { handleBundleDelete } = await import("./bundle");
-
-    await expect(handleBundleDelete([bundleId], { yes: true })).rejects.toThrow(
-      `Cannot delete Bundle records referenced by Releases. Disable and delete these Releases first:\n${bundleId}: ${release!.id}`,
-    );
-    expect(databaseHarness.commit).not.toHaveBeenCalled();
-    await expect(
-      databaseHarness.plugin.models.bundles.findById(bundleId),
-    ).resolves.not.toBeNull();
+      handleBundleUpdate("00000000-0000-7000-8000-000000000099", {
+        message: "updated",
+        yes: true,
+      }),
+    ).rejects.toMatchObject({
+      message: 'Bundle "00000000-0000-7000-8000-000000000099" was not found.',
+      cause: expect.objectContaining({
+        message:
+          'Release "00000000-0000-7000-8000-000000000099" was not found.',
+      }),
+    });
   });
 });

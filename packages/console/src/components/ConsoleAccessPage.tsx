@@ -67,7 +67,7 @@ export function ConsoleAccessPage({
           <div>
             <h1 className="text-lg font-semibold">Hot Updater Console</h1>
             <p className="text-muted-foreground text-sm">
-              Sign in to manage OTA releases.
+              Sign in to manage OTA bundles.
             </p>
           </div>
         </div>

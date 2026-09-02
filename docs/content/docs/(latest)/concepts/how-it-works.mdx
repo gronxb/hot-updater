@@ -4,72 +4,58 @@ description: Understanding the core infrastructure and update decision logic
 icon: Cog
 ---
 
-## Core Infrastructure
+## The Bundle model
 
-Hot Updater separates immutable update bytes from mutable delivery policy:
+Hot Updater keeps the v0 public model: a deployment creates a Bundle with one
+ID. The deployment result, Console, `HotUpdater.getBundleId()`, and every
+`hot-updater bundle` command use that same ID.
 
-- **Storage** holds immutable Bundle archives, manifests, assets, and patch
-  objects.
-- **Database** holds Bundle metadata, canonical Releases, Channels, and Release
-  Catalog rows.
-- **Release Catalog** is a deterministic, derived projection of Release policy
-  for one channel, platform, and compatibility scope.
-- **Server** serves the exact Catalog for an app's scope and resolves the
-  selected Bundle artifact.
+A Bundle's delivery settings include its channel, platform, compatibility
+target, enabled state, rollout, target cohorts, force-update value, and message.
+Changing those settings keeps the same ID. Promoting a Bundle creates a new ID
+in the target channel without uploading the same bytes again.
+
+```text
+deploy → ID → bundle show/update/enable/disable/delete/promote
+```
+
+## Infrastructure
+
+- **Storage** holds immutable archives, manifests, assets, and patch objects.
+- **Database** holds Bundle delivery settings and internal catalog rows.
+- **Server** selects the compatible Bundle for an app's channel, platform, and
+  app-version or fingerprint scope.
 
 Storage and Database are configured using plugins in `hot-updater.config.ts`.
 The Server is initialized and deployed with `hot-updater init`.
 
-## Bundle, Release, and Catalog
+Internally, v1 can reuse one immutable artifact across multiple public Bundle
+IDs. This avoids copying uploaded bytes during promotion and lets policy changes
+recompile the delivery catalog without rebuilding the archive. The internal
+artifact identity is shown only as **Artifact ID** in Advanced diagnostics and
+artifact commands.
 
-### Bundle
+## Deployment and selection
 
-A Bundle identifies installable bytes. Its ID, hashes, Storage URIs, manifest,
-assets, patches, signing identity, and crash identity are artifact concerns.
-Bundle records do not own channel, enabled, rollout, compatibility, cohort,
-force-update, or message policy.
+1. `hot-updater deploy` builds and uploads an immutable artifact.
+2. The database creates the public Bundle ID and compiles its delivery catalog.
+3. The app requests the catalog for its channel, platform, and app-version or
+   fingerprint scope.
+4. The client evaluates compatibility, chronology, rollout, and target cohorts,
+   then resolves the selected artifact.
+5. When no compatible enabled Bundle remains, the app uses its built-in Bundle
+   (`BUILTIN`).
 
-### Release
+Changing rollout, enabled, force update, cohorts, or message never rewrites the
+uploaded bytes.
 
-A Release references a Bundle and owns delivery policy: Channel, platform,
-compatibility target, enabled state, rollout, target cohorts, force update, and
-message. Release ID also controls delivery chronology and the stable numeric
-rollout seed.
+## Two rollback mechanisms
 
-Multiple Releases can reuse the same Bundle. For example, `release promote`
-creates a new target-channel Release without copying Storage bytes. The new
-Release has its own chronology and rollout seed even though its Bundle is
-unchanged.
+Operational rollback disables a Bundle with `hot-updater bundle disable <id>`.
+Affected installations select a previous compatible enabled Bundle or
+`BUILTIN`; the result can differ by app version, fingerprint, and cohort.
 
-### Release Catalog
-
-The Catalog is compiled from canonical Releases whenever policy changes. It is
-not edited independently. Release and Catalog changes commit atomically so
-clients never observe policy without its matching projection.
-
-## Deployment and Selection
-
-1. `hot-updater deploy` builds and uploads an immutable Bundle.
-2. Deploy creates a Release for that Bundle and compiles the affected Catalog.
-3. The app requests the Catalog for its channel, platform, and
-   app-version or fingerprint scope.
-4. The client evaluates compatibility, Release chronology, rollout, and target
-   cohorts, then resolves the selected Bundle artifact.
-5. When no compatible enabled Release remains, the complete Catalog can direct
-   the app to its local built-in Bundle (`BUILTIN`).
-
-Changing rollout, enabled, force update, cohorts, or message mutates the
-Release and increments its revision and Catalog generation. It never rewrites
-the Bundle bytes.
-
-## Two Different Rollback Mechanisms
-
-Operational rollback disables a Release with
-`hot-updater release disable <release-id>`. Affected installations then select
-a previous compatible enabled Release or `BUILTIN`; the result can differ by
-app version, fingerprint, and cohort.
-
-Automatic crash rollback is a separate native safety mechanism. It rejects a
-Bundle that failed startup and restores the last safe local Bundle. Crash
-history therefore remains Bundle-ID based. See
+Automatic crash rollback is a separate native safety mechanism. It rejects an
+artifact that failed startup and restores the last safe local Bundle. Crash
+history therefore records Artifact IDs. See
 [Automatic Rollback](/docs/concepts/automatic-rollback) for that lifecycle.

@@ -5,6 +5,7 @@ import { promoteRelease } from "@hot-updater/plugin-core";
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
+import { withPublicBundleErrors } from "../utils/publicBundleError";
 
 export type PromoteAction = "copy" | "move";
 
@@ -30,9 +31,8 @@ const summarizePlan = (
   targetChannel: string,
   action: PromoteAction,
 ) =>
-  ui.block(`Promote Release (${action})`, [
-    ui.kv("Source Release", ui.id(source.id)),
-    ui.kv("Bundle", ui.id(source.bundle_id ?? "Embedded")),
+  ui.block(`Promote Bundle (${action})`, [
+    ui.kv("Source ID", ui.id(source.id)),
     ui.kv("Platform", ui.platform(source.platform)),
     ui.kv("From", ui.channel(sourceChannel)),
     ui.kv("To", ui.channel(targetChannel)),
@@ -40,9 +40,9 @@ const summarizePlan = (
     ui.kv("Target enabled", "yes"),
     ui.kv("Target rollout", "100%"),
     ui.kv("Target cohorts", ui.muted("(none)")),
-    ui.kv("Rollout seed", ui.muted("new Release ID")),
+    ui.kv("Rollout seed", ui.muted("new ID")),
     ui.kv(
-      "Source Release",
+      "Source",
       action === "move" ? "disabled atomically" : "remains unchanged",
     ),
   ]);
@@ -66,7 +66,7 @@ export const handlePromote = async (
       database.models.channels.list({}),
     ]);
     if (source === null) {
-      p.log.error(`No Release with id ${sourceReleaseId}.`);
+      p.log.error(`No bundle with ID ${sourceReleaseId}.`);
       process.exit(1);
     }
     const sourceChannel =
@@ -82,30 +82,31 @@ export const handlePromote = async (
       }
       const confirmed = await p.confirm({
         initialValue: false,
-        message: `${action === "copy" ? "Promote" : "Move"} this Release to ${targetChannel}?`,
+        message: `${action === "copy" ? "Promote" : "Move"} this bundle to ${targetChannel}?`,
       });
       if (p.isCancel(confirmed) || !confirmed) {
         p.log.info("Aborted.");
         process.exit(2);
       }
     }
-    const result = await promoteRelease({
-      action,
-      database,
-      expectedRevision: source.revision,
-      releaseId: source.id,
-      targetChannel,
-    });
+    const result = await withPublicBundleErrors(() =>
+      promoteRelease({
+        action,
+        database,
+        expectedRevision: source.revision,
+        releaseId: source.id,
+        targetChannel,
+      }),
+    );
     const promoted = result.target.release;
     if (promoted === null)
-      throw new Error("Promoted Release was not persisted.");
+      throw new Error("Promoted bundle was not persisted.");
     p.log.success(
       action === "copy"
-        ? `Promoted Release to ${targetChannel}.`
-        : `Moved delivery policy to ${targetChannel}.`,
+        ? `Promoted bundle to ${targetChannel}.`
+        : `Moved bundle to ${targetChannel}.`,
     );
-    p.log.info(`  Release ${ui.id(promoted.id)}`);
-    p.log.info(`  Bundle ${ui.id(promoted.bundle_id ?? "Embedded")} (reused)`);
+    p.log.info(ui.kv("ID", ui.id(promoted.id)));
   } finally {
     await safeDispose(database);
   }

@@ -20,6 +20,7 @@ import {
   parseInstallationHistoryInput,
   parseSearchInstallationsInput,
 } from "./insights-input";
+import { withPublicBundleMutationErrors } from "./public-bundle-error";
 import { listReleases } from "./server/listReleases";
 import { getReleaseActivity30d } from "./server/releaseActivity";
 import { addReleaseReachability } from "./server/releaseReachability";
@@ -129,7 +130,9 @@ export const updateRelease = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { prepareConfig } = await import("./server/config.server");
     const { config } = await prepareConfig();
-    return updateReleasePolicy({ database: config.database, ...data });
+    return withPublicBundleMutationErrors(() =>
+      updateReleasePolicy({ database: config.database, ...data }),
+    );
   });
 
 export const preflightRelease = createServerFn({ method: "POST" })
@@ -137,7 +140,9 @@ export const preflightRelease = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { prepareConfig } = await import("./server/config.server");
     const { config } = await prepareConfig();
-    return preflightReleasePolicy({ database: config.database, ...data });
+    return withPublicBundleMutationErrors(() =>
+      preflightReleasePolicy({ database: config.database, ...data }),
+    );
   });
 
 export const deleteRelease = createServerFn({ method: "POST" })
@@ -145,7 +150,9 @@ export const deleteRelease = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { prepareConfig } = await import("./server/config.server");
     const { config } = await prepareConfig();
-    return deleteReleaseMutation({ database: config.database, ...data });
+    return withPublicBundleMutationErrors(() =>
+      deleteReleaseMutation({ database: config.database, ...data }),
+    );
   });
 
 export const promoteRelease = createServerFn({ method: "POST" })
@@ -160,7 +167,9 @@ export const promoteRelease = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { prepareConfig } = await import("./server/config.server");
     const { config } = await prepareConfig();
-    return promoteReleaseMutation({ database: config.database, ...data });
+    return withPublicBundleMutationErrors(() =>
+      promoteReleaseMutation({ database: config.database, ...data }),
+    );
   });
 
 export const getReleaseCatalogDiagnostics = createServerFn({ method: "GET" })

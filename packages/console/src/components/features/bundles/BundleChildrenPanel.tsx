@@ -40,10 +40,10 @@ export function BundleChildrenPanel({
       id={panelId}
     >
       <div className="flex flex-col gap-4">
-        <h3 className="text-sm font-medium">Advanced file diagnostics</h3>
+        <h3 className="text-sm font-medium">Advanced artifact diagnostics</h3>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2 text-sm sm:items-center">
-            <span className="text-muted-foreground">Base file ID</span>
+            <span className="text-muted-foreground">Base artifact ID</span>
             <BundleIdDisplay bundleId={bundle.id} fullOnMobile maxLength={18} />
           </div>
           <Badge variant="outline">
@@ -59,7 +59,7 @@ export function BundleChildrenPanel({
         ) : bundles.length > 0 ? (
           <div className="flex flex-col gap-2">
             <div className="text-xs font-semibold uppercase text-muted-foreground/70">
-              Patch bundles from this base
+              Patch artifacts from this base
             </div>
             {isMobile ? (
               <div className="flex flex-col gap-2">
@@ -71,7 +71,7 @@ export function BundleChildrenPanel({
                     <div className="flex flex-col gap-3">
                       <div className="space-y-1">
                         <div className="text-[11px] font-medium uppercase text-muted-foreground/70">
-                          Target file ID
+                          Target artifact ID
                         </div>
                         <BundleIdDisplay
                           bundleId={childBundle.id}
@@ -131,7 +131,7 @@ export function BundleChildrenPanel({
                 <Table className="min-w-max">
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
-                      <TableHead>Target file ID</TableHead>
+                      <TableHead>Target artifact ID</TableHead>
                       <TableHead>Relation</TableHead>
                       <TableHead>Artifact</TableHead>
                       <TableHead>Created</TableHead>
@@ -189,10 +189,10 @@ export function BundleChildrenPanel({
         ) : (
           <div className="flex flex-col gap-2">
             <div className="text-xs font-semibold uppercase text-muted-foreground/70">
-              Patch bundles from this base
+              Patch artifacts from this base
             </div>
             <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
-              No direct patch bundles.
+              No direct patch artifacts.
             </div>
           </div>
         )}

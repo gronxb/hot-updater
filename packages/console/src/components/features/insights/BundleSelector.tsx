@@ -34,7 +34,7 @@ export function BundleSelector({
       data-disabled={!bundles.length}
     >
       <FieldLabel className="sr-only" htmlFor="insights-bundle-selector">
-        Bundle to inspect
+        Artifact to inspect
       </FieldLabel>
       <Combobox
         autoHighlight
@@ -57,7 +57,7 @@ export function BundleSelector({
         value={selectedBundle}
       >
         <ComboboxTrigger
-          aria-label="Bundle to inspect"
+          aria-label="Artifact to inspect"
           id="insights-bundle-selector"
           render={
             <Button
@@ -81,19 +81,19 @@ export function BundleSelector({
             </span>
           ) : (
             <span className="truncate text-muted-foreground">
-              No bundles available
+              No artifacts available
             </span>
           )}
         </ComboboxTrigger>
         <ComboboxContent className="min-w-(--anchor-width)">
           <ComboboxInput
-            aria-label="Search bundles"
+            aria-label="Search artifacts"
             className="h-11 [&_input]:h-11 [&_input]:text-base [&_[data-slot=combobox-clear]]:size-11 md:[&_input]:text-base lg:h-8 lg:[&_input]:h-8 lg:[&_input]:text-xs lg:[&_[data-slot=combobox-clear]]:size-5"
-            placeholder="Bundle ID or description"
+            placeholder="Artifact ID or description"
             showClear
             showTrigger={false}
           />
-          <ComboboxEmpty>No bundles found</ComboboxEmpty>
+          <ComboboxEmpty>No artifacts found</ComboboxEmpty>
           <ComboboxList>
             {(bundle) => (
               <ComboboxItem

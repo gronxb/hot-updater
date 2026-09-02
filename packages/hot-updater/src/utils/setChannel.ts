@@ -1,5 +1,4 @@
 import { loadConfig } from "@hot-updater/cli-tools";
-import { merge } from "es-toolkit";
 
 import { AndroidConfigParser } from "./configParser/androidParser";
 import { IosConfigParser } from "./configParser/iosParser";
@@ -27,10 +26,8 @@ const getAndroidChannel = async (): Promise<{
   if (!(await androidParser.exists())) {
     throw new Error("No Android native config files found");
   }
-  return merge(
-    { value: DEFAULT_CHANNEL },
-    await androidParser.get("hot_updater_channel"),
-  );
+  const { value, paths } = await androidParser.get("hot_updater_channel");
+  return { value: value ?? DEFAULT_CHANNEL, paths };
 };
 
 const setIosChannel = async (channel: string): Promise<{ paths: string[] }> => {
@@ -50,10 +47,8 @@ const getIosChannel = async (): Promise<{
   if (!(await iosParser.exists())) {
     throw new Error("No iOS Info.plist files found");
   }
-  return merge(
-    { value: DEFAULT_CHANNEL },
-    await iosParser.get("HOT_UPDATER_CHANNEL"),
-  );
+  const { value, paths } = await iosParser.get("HOT_UPDATER_CHANNEL");
+  return { value: value ?? DEFAULT_CHANNEL, paths };
 };
 
 export const setChannel = async (
