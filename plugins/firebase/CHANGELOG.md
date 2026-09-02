@@ -1,5 +1,16 @@
 # @hot-updater/firebase
 
+## 1.0.0-rc.2
+
+### Patch Changes
+
+- Updated dependencies [e6d9ae7]
+- Updated dependencies [e6d9ae7]
+- Updated dependencies [a837c71]
+  - @hot-updater/server@1.0.0-rc.2
+  - @hot-updater/plugin-core@1.0.0-rc.2
+  - @hot-updater/cli-tools@1.0.0-rc.2
+
 ## 1.0.0-rc.1
 
 ### Minor Changes

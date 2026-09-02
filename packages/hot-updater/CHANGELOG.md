@@ -1,5 +1,31 @@
 # hot-updater
 
+## 1.0.0-rc.3
+
+### Patch Changes
+
+- 8c3c4f2: Report the default `production` channel in `hot-updater channel` when the native files carry no channel value, instead of showing an empty channel.
+- a837c71: Upgrade verkit to 0.4.0 while preserving canonical app-version strings and
+  Doctor's package-version compatibility checks with the new parsed SemVer
+  return values. Upgrade the workspace build tool tsdown to 0.22.14.
+- f48521a: Align the console ID, `HotUpdater.getBundleId()`, update-check results, completion callbacks, and `bundle list/show` with the selected update identity so promotions sharing an artifact remain distinguishable. The getter can reflect a staged update before reload. Remove the prerelease `getReleaseId()` getter, keep artifact and crash identities unchanged, and move Artifact IDs into Advanced diagnostics. `bundle list --json` returns the internal rows, and `bundle show` accepts the console ID. Use `HotUpdater.getManifest().bundleId` for BugSnag sourcemap matching.
+- 0546348: Keep the v0 bundle mental model while using the console update ID everywhere. Deploy now prints that ID once in its final success area, and `bundle list`, `show`, `update`, `preflight`, `enable`, `disable`, `delete`, and `promote` all accept the same ID. The prerelease `release` command is removed. Immutable-file cleanup moves to Advanced `bundle artifact delete <artifact-id>`, and patch creation uses `--artifact-id` and `--base-artifact-id` (with the old bundle-named flags retained as hidden aliases). Raw JSON and internal database fields remain unchanged.
+- Updated dependencies [e6d9ae7]
+- Updated dependencies [e6d9ae7]
+- Updated dependencies [483483e]
+- Updated dependencies [a837c71]
+- Updated dependencies [f48521a]
+  - @hot-updater/console@1.0.0-rc.2
+  - @hot-updater/server@1.0.0-rc.2
+  - @hot-updater/plugin-core@1.0.0-rc.2
+  - @hot-updater/cli-tools@1.0.0-rc.2
+  - @hot-updater/cloudflare@1.0.0-rc.3
+  - @hot-updater/aws@1.0.0-rc.2
+  - @hot-updater/firebase@1.0.0-rc.2
+  - @hot-updater/supabase@1.0.0-rc.2
+  - @hot-updater/android-helper@1.0.0-rc.2
+  - @hot-updater/apple-helper@1.0.0-rc.2
+
 ## 1.0.0-rc.2
 
 ### Minor Changes

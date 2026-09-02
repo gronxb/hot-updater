@@ -1,5 +1,13 @@
 # @hot-updater/js
 
+## 1.0.0-rc.1
+
+### Patch Changes
+
+- a837c71: Upgrade verkit to 0.4.0 while preserving canonical app-version strings and
+  Doctor's package-version compatibility checks with the new parsed SemVer
+  return values. Upgrade the workspace build tool tsdown to 0.22.14.
+
 ## 1.0.0-rc.0
 
 ### Major Changes
