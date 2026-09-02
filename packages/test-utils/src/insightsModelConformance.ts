@@ -649,7 +649,7 @@ export const registerInsightsModelTests = (
       ).rejects.toThrow();
     });
 
-    it("drains native hash-ordered installation identities and preserves selector string semantics", async () => {
+    it("concurrently appends and drains native hash-ordered installation identities while preserving selector string semantics", async () => {
       const harness = await createHarness(CONFORMANCE_NAMESPACES);
       const keyedVectors = await Promise.all(
         INSIGHTS_INSTALLATION_ORDER_TEST_VECTORS.map(async (vector, index) => {

@@ -349,13 +349,26 @@ export const appendPrismaInsightsEvent = async (
   databaseNamespace: string,
   row: BundleEventRow,
 ): Promise<void> => {
+  assertInsightsEventContract(row);
+  const eventJson = canonicalInsightsJson(row);
+  if (provider === "sqlite") {
+    const locked = await client.$executeRawUnsafe(
+      `update ${PRISMA_INSIGHTS_SOURCE}
+       set generation=generation where id=1`,
+    );
+    if (locked !== 1) {
+      throw new PrismaInsightsConfigurationError(
+        "Prisma Insights source is not ready",
+      );
+    }
+  }
   const state = await readPrismaInsightsState(client, databaseNamespace);
   if (state.failedReason !== null) {
     throw new PrismaInsightsConfigurationError(
       "Prisma Insights source is not ready",
     );
   }
-  await recordPrismaInsightsEvent(client, provider, row, true);
+  await recordPrismaInsightsEvent(client, provider, row, eventJson, true);
 };
 
 /** Migration path for a raw row which already exists in bundle_events. */
@@ -385,7 +398,7 @@ export const backfillPrismaInsightsEvent = async (
       );
     return;
   }
-  await recordPrismaInsightsEvent(client, provider, row, false);
+  await recordPrismaInsightsEvent(client, provider, row, eventJson, false);
 };
 
 /** Bounded migration writer. The caller owns the Serializable transaction. */
@@ -661,10 +674,9 @@ const recordPrismaInsightsEvent = async (
   client: PrismaInsightsRawClient & object,
   provider: ORMSQLProvider,
   row: BundleEventRow,
+  eventJson: string,
   insertRaw: boolean,
 ): Promise<void> => {
-  assertInsightsEventContract(row);
-  const eventJson = canonicalInsightsJson(row);
   const generation = await allocateGeneration(client, provider);
   await executePrismaInsights(
     client,
