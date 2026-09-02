@@ -52,17 +52,27 @@ jobs:
             | .sponsorEntity
           ]' > /tmp/public-sponsors.json
 
-          # Lifetime amounts remain in an ephemeral runner file. The separate
-          # public sponsorship query above controls which identities are published.
+          # GitHub withholds lifetime value nodes from API tokens, so derive each
+          # total from sponsorship starts, tier changes, and cancellations. The
+          # amounts remain in an ephemeral runner file; the public query above
+          # controls which identities are published.
           gh api graphql --paginate -f query='
             query($endCursor: String) {
               user(login: "gronxb") {
-                lifetimeReceivedSponsorshipValues(
+                sponsorsActivities(
                   first: 100
                   after: $endCursor
+                  period: ALL
+                  includePrivate: true
                 ) {
                   nodes {
-                    amountInCents
+                    action
+                    timestamp
+                    paymentSource
+                    sponsorsTier {
+                      monthlyPriceInCents
+                      isOneTime
+                    }
                     sponsor {
                       ... on User { login }
                       ... on Organization { login }
@@ -72,17 +82,113 @@ jobs:
                 }
               }
             }
-          ' | jq -s '[
-            .[].data.user.lifetimeReceivedSponsorshipValues.nodes[]
-            | select(
-                .sponsor != null
-                and .amountInCents > 0
+          ' | jq -s '
+            def billing_count($startedAt; $endedAt; $includeEnd):
+              ($startedAt | fromdateiso8601 | gmtime) as $started
+              | ($endedAt | fromdateiso8601 | gmtime) as $ended
+              | (($ended[0] - $started[0]) * 12
+                  + $ended[1] - $started[1]) as $months
+              | if $months < 0 then
+                  error("Sponsorship ended before it started")
+                else
+                  ([$ended[0], $ended[1] + 1, 0, 0, 0, 0, 0, 0]
+                    | mktime | gmtime | .[2]) as $lastDay
+                  | ([$started[2], $lastDay] | min) as $billingDay
+                  | $months + (
+                      if $ended[2] > $billingDay
+                        or ($includeEnd and $ended[2] == $billingDay)
+                      then 1 else 0 end
+                    )
+                end;
+
+            (now | todate) as $now
+            | [
+                .[].data.user.sponsorsActivities.nodes[]
+                | select(. != null and .sponsor != null)
+                | {
+                    login: .sponsor.login,
+                    action,
+                    timestamp,
+                    paymentSource,
+                    amountInCents: .sponsorsTier.monthlyPriceInCents,
+                    isOneTime: .sponsorsTier.isOneTime
+                  }
+              ]
+            | sort_by([(.login | ascii_downcase), .timestamp])
+            | group_by(.login | ascii_downcase)
+            | map(
+                . as $events
+                | reduce $events[] as $event (
+                    {
+                      login: $events[0].login,
+                      amountInCents: 0,
+                      recurring: null
+                    };
+                    if $event.paymentSource != "GITHUB" then
+                      error("Unsupported sponsorship payment source")
+                    elif $event.action == "NEW_SPONSORSHIP" then
+                      if ($event.amountInCents // 0) <= 0 then
+                        error("Missing amount for new sponsorship")
+                      elif $event.isOneTime then
+                        .amountInCents += $event.amountInCents
+                      elif .recurring != null then
+                        error("Overlapping recurring sponsorships")
+                      else
+                        .recurring = {
+                          startedAt: $event.timestamp,
+                          amountInCents: $event.amountInCents
+                        }
+                      end
+                    elif $event.action == "TIER_CHANGE" then
+                      if .recurring == null
+                        or ($event.amountInCents // 0) <= 0 then
+                        error("Invalid recurring tier change")
+                      else
+                        .amountInCents += (
+                          .recurring.amountInCents
+                          * billing_count(
+                              .recurring.startedAt;
+                              $event.timestamp;
+                              false
+                            )
+                        )
+                        | .recurring = {
+                            startedAt: $event.timestamp,
+                            amountInCents: $event.amountInCents
+                          }
+                      end
+                    elif $event.action == "CANCELLED_SPONSORSHIP" then
+                      if .recurring == null then
+                        error("Cancellation without recurring sponsorship")
+                      else
+                        .amountInCents += (
+                          .recurring.amountInCents
+                          * billing_count(
+                              .recurring.startedAt;
+                              $event.timestamp;
+                              false
+                            )
+                        )
+                        | .recurring = null
+                      end
+                    elif $event.action == "REFUND" then
+                      error("Refund amounts are unavailable from Sponsors API")
+                    elif $event.action == "PENDING_CHANGE"
+                      or $event.action == "SPONSOR_MATCH_DISABLED" then
+                      .
+                    else
+                      error("Unsupported sponsorship activity")
+                    end
+                  )
+                | if .recurring != null then
+                    .amountInCents += (
+                      .recurring.amountInCents
+                      * billing_count(.recurring.startedAt; $now; true)
+                    )
+                  else . end
+                | del(.recurring)
               )
-            | {
-                login: .sponsor.login,
-                amountInCents
-              }
-          ]' > /tmp/sponsor-amounts.json
+          ' > /tmp/sponsor-amounts.json
 
           # Preserve every sponsor that was public in an earlier revision.
           git log --reverse --format=%H -- docs/public/sponsors.json |
@@ -121,7 +227,7 @@ jobs:
                   | map($amounts[.login | ascii_downcase])
                   | max // 0) as $maxAmount
               | if $maxAmount <= 0 then
-                  error("SPONSORS_TOKEN cannot read lifetime sponsorship amounts")
+                  error("Could not calculate lifetime sponsorship amounts")
                 else
                   $sponsors
                   | map(
