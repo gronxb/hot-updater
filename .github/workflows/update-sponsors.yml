@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
 
       - name: Fetch sponsors (commit only when sponsors changed)
         env:
@@ -28,7 +30,6 @@ jobs:
                 sponsorshipsAsMaintainer(
                   first: 100
                   after: $endCursor
-                  activeOnly: false
                   includePrivate: false
                 ) {
                   nodes {
@@ -49,31 +50,37 @@ jobs:
                 sponsor: .sponsorEntity,
                 amountInCents: (.tier.monthlyPriceInCents // 0)
               }
-          ]' > /tmp/public-sponsorships.json
+          ]' > /tmp/active-sponsors.json
+
+          git log --reverse --format=%H -- docs/public/sponsors.json |
+            while read -r revision; do
+              git show "$revision:docs/public/sponsors.json" | jq '.sponsors // []'
+            done |
+            jq -s 'add // []' > /tmp/historical-sponsors.json
 
           jq -n \
-            --slurpfile sponsorships /tmp/public-sponsorships.json '
-              ($sponsorships[0]
-                | group_by(.sponsor.login)
-                | map(max_by(.amountInCents))) as $publicSponsors
-              | ($publicSponsors | map(.amountInCents) | max // 0) as $maxAmount
-              | $publicSponsors
-              | map(
-                  {
+            --slurpfile activeSponsors /tmp/active-sponsors.json \
+            --slurpfile historicalSponsors /tmp/historical-sponsors.json '
+              ($activeSponsors[0]
+                | map({
                     login: .sponsor.login,
                     avatarUrl: .sponsor.avatarUrl,
                     name: .sponsor.name,
                     url: .sponsor.url,
-                      weight: (
-                        if $maxAmount > 0 then
-                          ((.amountInCents / $maxAmount * 1000) | round / 1000)
-                        else
-                          1
-                        end
-                      )
+                    amountInCents
+                  })) as $active
+              | ($historicalSponsors[0] + $active)
+              | reduce .[] as $sponsor ({};
+                  .[$sponsor.login] = {
+                    login: $sponsor.login,
+                    avatarUrl: $sponsor.avatarUrl,
+                    name: $sponsor.name,
+                    url: $sponsor.url,
+                    amountInCents: ($sponsor.amountInCents // 0)
                   }
                 )
-              | sort_by([-.weight, (.login | ascii_downcase)])
+              | [.[]]
+              | sort_by([-.amountInCents, (.login | ascii_downcase)])
             ' > /tmp/sponsors.new.json
 
           # Extract the existing sponsors array (or use an empty array if missing)

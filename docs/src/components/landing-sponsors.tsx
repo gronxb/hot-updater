@@ -7,7 +7,7 @@ interface Sponsor {
   avatarUrl: string;
   name: string | null;
   url: string;
-  weight?: number;
+  amountInCents?: number;
 }
 
 const MIN_BUBBLE_SIZE = 72;
@@ -21,18 +21,23 @@ const BUBBLE_OFFSETS = [
   "sm:-translate-y-1",
 ];
 
-function getBubbleSize(weight = 1) {
-  const normalizedWeight = Math.min(Math.max(weight, 0), 1);
+function getBubbleSize(amountInCents = 0, maxAmountInCents = 0) {
+  const normalizedAmount =
+    maxAmountInCents > 0 ? amountInCents / maxAmountInCents : 1;
 
   return Math.max(
     MIN_BUBBLE_SIZE,
-    Math.sqrt(normalizedWeight) * MAX_BUBBLE_SIZE,
+    Math.sqrt(normalizedAmount) * MAX_BUBBLE_SIZE,
   );
 }
 
 export function LandingSponsors() {
   const sponsors = sponsorsData.sponsors as Sponsor[];
   const hasSponsors = sponsors.length > 0;
+  const maxAmountInCents = sponsors.reduce(
+    (maxAmount, sponsor) => Math.max(maxAmount, sponsor.amountInCents ?? 0),
+    0,
+  );
 
   return (
     <section className="relative overflow-hidden border-b border-fd-border bg-fd-background">
@@ -64,7 +69,10 @@ export function LandingSponsors() {
             <ul className="relative flex flex-wrap items-center justify-center gap-2 sm:gap-3">
               {sponsors.map((sponsor, index) => {
                 const sponsorName = sponsor.name || sponsor.login;
-                const bubbleSize = getBubbleSize(sponsor.weight);
+                const bubbleSize = getBubbleSize(
+                  sponsor.amountInCents,
+                  maxAmountInCents,
+                );
                 const offset =
                   BUBBLE_OFFSETS[index % BUBBLE_OFFSETS.length] ?? "";
 
