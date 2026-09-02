@@ -82,7 +82,8 @@
       "avatarUrl": "https://avatars.githubusercontent.com/u/42239399?v=4",
       "name": "Callstack",
       "url": "https://github.com/callstack",
-      "amountInCents": 0
+      "amountInCents": 0,
+      "displayWeight": 1500
     },
     {
       "login": "claudesortwell",

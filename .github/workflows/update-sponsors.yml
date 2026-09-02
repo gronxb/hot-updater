@@ -69,20 +69,32 @@ jobs:
               | reduce .[] as $sponsor ({};
                   .[$sponsor.login] as $existing
                   |
-                  .[$sponsor.login] = {
-                    login: $sponsor.login,
-                    avatarUrl: $sponsor.avatarUrl,
-                    name: $sponsor.name,
-                    url: $sponsor.url,
-                    amountInCents: (
-                      $sponsor.amountInCents
-                      // $existing.amountInCents
-                      // 0
+                  .[$sponsor.login] = (
+                    {
+                      login: $sponsor.login,
+                      avatarUrl: $sponsor.avatarUrl,
+                      name: $sponsor.name,
+                      url: $sponsor.url,
+                      amountInCents: (
+                        $sponsor.amountInCents
+                        // $existing.amountInCents
+                        // 0
+                      )
+                    }
+                    + (
+                      ($sponsor.displayWeight // $existing.displayWeight) as $displayWeight
+                      | if $displayWeight == null
+                        then {}
+                        else { displayWeight: $displayWeight }
+                        end
                     )
-                  }
+                  )
                 )
               | [.[]]
-              | sort_by([-.amountInCents, (.login | ascii_downcase)])
+              | sort_by([
+                  -(.displayWeight // .amountInCents // 0),
+                  (.login | ascii_downcase)
+                ])
             ' > /tmp/sponsors.new.json
 
           # Extract the existing sponsors array (or use an empty array if missing)

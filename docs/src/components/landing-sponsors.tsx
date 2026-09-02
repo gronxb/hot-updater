@@ -1,3 +1,4 @@
+import { hierarchy, pack } from "d3-hierarchy";
 import { Heart } from "lucide-react";
 
 import sponsorsData from "../../public/sponsors.json";
@@ -8,36 +9,60 @@ interface Sponsor {
   name: string | null;
   url: string;
   amountInCents?: number;
+  displayWeight?: number;
 }
 
-const MIN_BUBBLE_SIZE = 72;
-const MAX_BUBBLE_SIZE = 168;
-const BUBBLE_OFFSETS = [
-  "sm:translate-y-5",
-  "sm:-translate-y-3",
-  "sm:translate-y-1",
-  "sm:-translate-y-5",
-  "sm:translate-y-4",
-  "sm:-translate-y-1",
-];
+interface SponsorNode {
+  sponsor?: Sponsor;
+  children?: SponsorNode[];
+}
 
-function getBubbleSize(amountInCents = 0, maxAmountInCents = 0) {
-  const normalizedAmount =
-    maxAmountInCents > 0 ? amountInCents / maxAmountInCents : 1;
+const PACKING_SIZE = 720;
+const PACKING_PADDING = 5;
+const UNKNOWN_TIER_RATIO = 0.25;
 
-  return Math.max(
-    MIN_BUBBLE_SIZE,
-    Math.sqrt(normalizedAmount) * MAX_BUBBLE_SIZE,
-  );
+function getPackedSponsors(sponsors: Sponsor[]) {
+  const knownAmounts = sponsors
+    .map((sponsor) => sponsor.amountInCents ?? 0)
+    .filter((amount) => amount > 0);
+  const smallestKnownAmount = Math.min(...knownAmounts);
+  const unknownTierWeight = Number.isFinite(smallestKnownAmount)
+    ? smallestKnownAmount * UNKNOWN_TIER_RATIO
+    : 1;
+
+  const root = hierarchy<SponsorNode>(
+    {
+      children: sponsors.map((sponsor) => ({ sponsor })),
+    },
+    (node) => node.children,
+  )
+    .sum((node) => {
+      if (!node.sponsor) {
+        return 0;
+      }
+
+      const weight =
+        node.sponsor.displayWeight ?? node.sponsor.amountInCents ?? 0;
+      return weight > 0 ? weight : unknownTierWeight;
+    })
+    .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+
+  return pack<SponsorNode>()
+    .size([PACKING_SIZE, PACKING_SIZE])
+    .padding(PACKING_PADDING)(root)
+    .leaves()
+    .map((node) => ({
+      sponsor: node.data.sponsor as Sponsor,
+      x: node.x,
+      y: node.y,
+      radius: node.r,
+    }));
 }
 
 export function LandingSponsors() {
   const sponsors = sponsorsData.sponsors as Sponsor[];
   const hasSponsors = sponsors.length > 0;
-  const maxAmountInCents = sponsors.reduce(
-    (maxAmount, sponsor) => Math.max(maxAmount, sponsor.amountInCents ?? 0),
-    0,
-  );
+  const packedSponsors = getPackedSponsors(sponsors);
 
   return (
     <section className="relative overflow-hidden border-b border-fd-border bg-fd-background">
@@ -63,26 +88,21 @@ export function LandingSponsors() {
         </div>
 
         {hasSponsors ? (
-          <div className="relative mx-auto max-w-5xl py-4 sm:py-8">
-            <div className="pointer-events-none absolute inset-8 rounded-[50%] border border-orange-500/10" />
-            <div className="pointer-events-none absolute inset-16 rounded-[50%] border border-dashed border-orange-500/10" />
-            <ul className="relative flex flex-wrap items-center justify-center gap-2 sm:gap-3">
-              {sponsors.map((sponsor, index) => {
+          <div className="relative mx-auto aspect-square w-full max-w-[45rem] rounded-full border border-orange-500/20 bg-[radial-gradient(circle_at_40%_35%,rgba(249,115,22,0.12),transparent_68%)] shadow-[inset_0_0_90px_rgba(249,115,22,0.06)] dark:border-orange-400/20 dark:bg-[radial-gradient(circle_at_40%_35%,rgba(249,115,22,0.16),transparent_68%)]">
+            <div className="pointer-events-none absolute inset-[4%] rounded-full border border-dashed border-orange-500/10" />
+            <ul className="absolute inset-0 m-0 list-none p-0">
+              {packedSponsors.map(({ sponsor, x, y, radius }) => {
                 const sponsorName = sponsor.name || sponsor.login;
-                const bubbleSize = getBubbleSize(
-                  sponsor.amountInCents,
-                  maxAmountInCents,
-                );
-                const offset =
-                  BUBBLE_OFFSETS[index % BUBBLE_OFFSETS.length] ?? "";
 
                 return (
                   <li
                     key={sponsor.login}
-                    className={`relative ${offset}`}
+                    className="absolute"
                     style={{
-                      width: bubbleSize,
-                      height: bubbleSize,
+                      left: `${((x - radius) / PACKING_SIZE) * 100}%`,
+                      top: `${((y - radius) / PACKING_SIZE) * 100}%`,
+                      width: `${((radius * 2) / PACKING_SIZE) * 100}%`,
+                      height: `${((radius * 2) / PACKING_SIZE) * 100}%`,
                     }}
                   >
                     <a
@@ -96,8 +116,8 @@ export function LandingSponsors() {
                         <img
                           src={sponsor.avatarUrl}
                           alt=""
-                          width={MAX_BUBBLE_SIZE}
-                          height={MAX_BUBBLE_SIZE}
+                          width={Math.ceil(radius * 2)}
+                          height={Math.ceil(radius * 2)}
                           loading="lazy"
                           decoding="async"
                           className="size-full object-cover saturate-[0.88] transition duration-300 group-hover:scale-105 group-hover:saturate-100 motion-reduce:transition-none"
@@ -113,15 +133,17 @@ export function LandingSponsors() {
                 );
               })}
             </ul>
+          </div>
+        ) : null}
 
-            <div className="mt-10 flex items-center justify-center gap-2 text-xs text-fd-muted-foreground sm:mt-12">
-              <span className="flex items-end gap-0.5" aria-hidden="true">
-                <span className="size-1.5 rounded-full bg-orange-500/45" />
-                <span className="size-2.5 rounded-full bg-orange-500/70" />
-                <span className="size-3.5 rounded-full bg-orange-500" />
-              </span>
-              <span>Circle area reflects sponsorship amount</span>
-            </div>
+        {hasSponsors ? (
+          <div className="mt-8 flex items-center justify-center gap-2 text-xs text-fd-muted-foreground">
+            <span className="flex items-end gap-0.5" aria-hidden="true">
+              <span className="size-1.5 rounded-full bg-orange-500/45" />
+              <span className="size-2.5 rounded-full bg-orange-500/70" />
+              <span className="size-3.5 rounded-full bg-orange-500" />
+            </span>
+            <span>Circle area reflects sponsorship level</span>
           </div>
         ) : null}
 
