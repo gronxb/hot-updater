@@ -28,6 +28,7 @@ import {
   measureMongoInsightsCollection,
   type MongoInsightsModelCollectionName,
   type MongoInsightsModelCollections,
+  type MongoInsightsProjectionState,
   type MongoInsightsReportJob,
   type MongoInsightsStepUsage,
   MONGO_INSIGHTS_PROJECTION_EVENT_COLLECTION,
@@ -513,7 +514,14 @@ const ensureIndex = async (
   key: Document,
   unique = false,
   repair = true,
+  allowMissing = false,
+  expectedNames?: Map<string, Set<string>>,
 ): Promise<void> => {
+  if (expectedNames) {
+    const names = expectedNames.get(collection.collectionName) ?? new Set();
+    names.add(name);
+    expectedNames.set(collection.collectionName, names);
+  }
   const existing = (await collection.listIndexes().toArray()).find(
     (index) => index.name === name,
   );
@@ -528,6 +536,7 @@ const ensureIndex = async (
     (existing.collation === undefined ||
       existing.collation.locale === "simple");
   if (compatible) return;
+  if (!existing && allowMissing) return;
   if (!repair) throw new InsightsQueryNotReadyError();
   if (existing) await collection.dropIndex(name);
   await collection.createIndex(key, {
@@ -540,13 +549,24 @@ const ensureIndex = async (
 const ensureIndexes = async (
   collections: MongoInsightsModelCollections,
   repair = true,
+  allowMissing = false,
+  expectedNames?: Map<string, Set<string>>,
 ): Promise<void> => {
   const ensure = (
     collection: MongoInsightsModelCollections[keyof MongoInsightsModelCollections],
     name: string,
     key: Document,
     unique = false,
-  ) => ensureIndex(collection, name, key, unique, repair);
+  ) =>
+    ensureIndex(
+      collection,
+      name,
+      key,
+      unique,
+      repair,
+      allowMissing,
+      expectedNames,
+    );
   await ensure(
     collections.projectionEvents,
     "insights_projection_sequence_idx",
@@ -874,6 +894,38 @@ export const createMongoInsightsModelMaintenance = (
   const collections = createMongoInsightsModelCollections(client);
   const source = createMongoInsightsSource(client, databaseNamespace);
 
+  const inspectLayout = async (): Promise<MongoInsightsProjectionState> => {
+    for (const name of COLLECTIONS) await assertCollectionReady(client, name);
+    const expectedIndexNames = new Map<string, Set<string>>();
+    await ensureIndexes(collections, false, false, expectedIndexNames);
+    for (const collectionName of COLLECTIONS) {
+      const indexes = await client
+        .db()
+        .collection(collectionName)
+        .listIndexes()
+        .toArray();
+      if (
+        indexes.some(
+          ({ name }) =>
+            name !== "_id_" &&
+            !expectedIndexNames.get(collectionName)?.has(String(name)),
+        )
+      )
+        throw new InsightsQueryNotReadyError();
+    }
+    const state = assertMongoInsightsProjectionState(
+      await collections.projectionState.findOne(
+        { _id: MONGO_INSIGHTS_PROJECTION_STATE_ID },
+        { promoteLongs: false },
+      ),
+    );
+    if (state.sourceId !== databaseNamespace)
+      throw new InsightsQueryNotReadyError();
+    if (state.phase === "failed") throw new InsightsQueryNotReadyError();
+    await assertCollectionUuids(client, state.collectionUuids);
+    return state;
+  };
+
   const runProjectionStep = async (
     limit: number,
     usage: MongoInsightsStepUsage,
@@ -1046,6 +1098,57 @@ export const createMongoInsightsModelMaintenance = (
   };
 
   return {
+    async inspectUnownedLayout(): Promise<"absent" | "partial"> {
+      const metadata = await client
+        .db()
+        .listCollections(
+          { name: { $in: [...COLLECTIONS] } },
+          { nameOnly: true },
+        )
+        .toArray();
+      const present = new Set(metadata.map(({ name }) => name));
+      const existingNames = COLLECTIONS.filter((name) => present.has(name));
+      if (existingNames.length === 0) return "absent";
+      if (existingNames.some((name, index) => name !== COLLECTIONS[index]))
+        throw new InsightsQueryNotReadyError();
+      for (const name of existingNames) {
+        await assertCollectionReady(client, name);
+        if (
+          await client
+            .db()
+            .collection(name)
+            .findOne({}, { projection: { _id: 1 } })
+        )
+          throw new InsightsQueryNotReadyError();
+      }
+      const expectedIndexNames = new Map<string, Set<string>>();
+      if (existingNames.length === COLLECTIONS.length) {
+        await ensureIndexes(collections, false, true, expectedIndexNames);
+      }
+      for (const collectionName of existingNames) {
+        const indexes = await client
+          .db()
+          .collection(collectionName)
+          .listIndexes()
+          .toArray();
+        if (
+          indexes.some(
+            ({ name }) =>
+              name !== "_id_" &&
+              !expectedIndexNames.get(collectionName)?.has(String(name)),
+          )
+        )
+          throw new InsightsQueryNotReadyError();
+      }
+      return "partial";
+    },
+
+    async inspectLayout(): Promise<"building" | "ready"> {
+      const phase = (await inspectLayout()).phase;
+      if (phase === "failed") throw new InsightsQueryNotReadyError();
+      return phase;
+    },
+
     async prepare(): Promise<{
       state: "building" | "ready";
       processed: number;
@@ -1318,16 +1421,8 @@ export const createMongoInsightsModelMaintenance = (
     },
 
     async ensureReady(): Promise<void> {
-      for (const name of COLLECTIONS) await assertCollectionReady(client, name);
-      await ensureIndexes(collections, false);
-      const state = assertMongoInsightsProjectionState(
-        await collections.projectionState.findOne(
-          { _id: MONGO_INSIGHTS_PROJECTION_STATE_ID },
-          { promoteLongs: false },
-        ),
-      );
+      const state = await inspectLayout();
       if (state.phase !== "ready") throw new InsightsQueryNotReadyError();
-      await assertCollectionUuids(client, state.collectionUuids);
       await source.ensureReady();
     },
   };

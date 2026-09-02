@@ -11,7 +11,8 @@ import type { Document, MongoClient, ReadConcern } from "mongodb";
 import { assertMongoInsightsEventRow } from "../adapters/mongodbInsights";
 
 const STATE_ID = "event-pages";
-const STATE_COLLECTION = "private_hot_updater_insights_preparation";
+export const MONGO_INSIGHTS_PREPARATION_COLLECTION =
+  "private_hot_updater_insights_preparation";
 const EVENT_COLLECTION = "bundle_events";
 const EVENT_FIELDS = [
   "id",
@@ -151,7 +152,9 @@ export const createMongoInsightsPreparation = (client: MongoClient) => {
     writeConcern: { w: "majority" },
   });
   const events = db.collection(EVENT_COLLECTION);
-  const states = db.collection<Preparation>(STATE_COLLECTION);
+  const states = db.collection<Preparation>(
+    MONGO_INSIGHTS_PREPARATION_COLLECTION,
+  );
   // Loading generic /db must not eagerly load the optional MongoDB peer.
   const bson = async () => (await import("mongodb")).BSON;
   const metadata = async () => {
@@ -242,6 +245,95 @@ export const createMongoInsightsPreparation = (client: MongoClient) => {
   };
 
   return {
+    async inspectLayout(): Promise<"absent" | "empty" | Phase> {
+      const stateCollection = await db
+        .listCollections(
+          { name: MONGO_INSIGHTS_PREPARATION_COLLECTION },
+          { nameOnly: false },
+        )
+        .next();
+      if (!stateCollection) return "absent";
+      const stateIndexes = await states.listIndexes().toArray();
+      const stateOptions = stateCollection.options ?? {};
+      if (
+        Object.keys(stateOptions.validator ?? {}).length !== 0 ||
+        stateOptions.validationLevel !== undefined ||
+        stateOptions.validationAction !== undefined ||
+        stateOptions.collation !== undefined ||
+        stateIndexes.length !== 1 ||
+        stateIndexes[0]?.name !== "_id_" ||
+        JSON.stringify(Object.entries(stateIndexes[0].key)) !==
+          JSON.stringify(Object.entries({ _id: 1 })) ||
+        (await states.findOne({ _id: { $ne: STATE_ID } })) !== null
+      )
+        throw new InsightsQueryNotReadyError();
+      const existing = await states.findOne({ _id: STATE_ID });
+      if (!existing) return "empty";
+      const current = await state();
+      if (current.phase === "failed") throw new InsightsQueryNotReadyError();
+      if (
+        typeof current.previousValidator !== "object" ||
+        current.previousValidator === null
+      )
+        throw new InsightsQueryNotReadyError();
+      const { EJSON } = await bson();
+      const isCanonicalCheckpoint = (value: string | null): boolean => {
+        if (value === null) return true;
+        try {
+          return (
+            EJSON.stringify(EJSON.parse(value, { relaxed: false }), {
+              relaxed: false,
+            }) === value
+          );
+        } catch {
+          return false;
+        }
+      };
+      if (
+        !isCanonicalCheckpoint(current.upperId) ||
+        !isCanonicalCheckpoint(current.afterId) ||
+        (current.phase === "installing" &&
+          (current.upperId !== null || current.afterId !== null))
+      )
+        throw new InsightsQueryNotReadyError();
+      const expectedValidator =
+        Object.keys(current.previousValidator).length === 0
+          ? mongoInsightsEventValidator
+          : {
+              $and: [current.previousValidator, mongoInsightsEventValidator],
+            };
+      if (
+        EJSON.stringify(current.validator, { relaxed: false }) !==
+        EJSON.stringify(expectedValidator, { relaxed: false })
+      )
+        throw new InsightsQueryNotReadyError();
+      const collection = await metadata();
+      if (
+        EJSON.stringify(collection.info!.uuid, { relaxed: false }) !==
+        current.collectionUuid
+      )
+        throw new InsightsQueryNotReadyError();
+      const eventIndex = (await indexes())[0]!;
+      if (current.phase === "installing") {
+        const actualValidator = EJSON.stringify(
+          collection.options.validator ?? {},
+          { relaxed: false },
+        );
+        if (
+          (actualValidator !==
+            EJSON.stringify(current.previousValidator, { relaxed: false }) &&
+            actualValidator !==
+              EJSON.stringify(current.validator, { relaxed: false })) ||
+          (eventIndex.existing !== undefined && !eventIndex.ready)
+        )
+          throw new InsightsQueryNotReadyError();
+        return current.phase;
+      }
+      if (!(await sameFence(current, collection)) || !eventIndex.ready)
+        throw new InsightsQueryNotReadyError();
+      return current.phase;
+    },
+
     async prepare(input: { readonly writersDrained: true }) {
       if (input?.writersDrained !== true)
         throw new DatabasePluginInputError("invalid-query");

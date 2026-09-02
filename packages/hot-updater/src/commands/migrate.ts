@@ -197,22 +197,46 @@ export async function migrate(options: MigrateOptions) {
     // Load hotUpdater instance from config file
     const { hotUpdater, adapterName } = await loadHotUpdater(configPath);
     const schemaProvisioner = createInsightsSchemaProvisioner(hotUpdater);
-    if (schemaProvisioner) {
-      await migrateWithSchemaProvisioner(schemaProvisioner, skipConfirm, s);
-      return;
-    }
 
     // Execute migration based on adapter type
     switch (adapterName) {
       case "kysely":
-      case "mongodb":
         // Use createMigrator to run migrations
         await migrateWithMigrator(hotUpdater, skipConfirm, s);
         break;
 
-      case "drizzle":
+      case "mongodb":
+        await migrateWithMigrator(hotUpdater, skipConfirm, s);
+        if (!schemaProvisioner) {
+          throw new Error(
+            "MongoDB adapter does not expose Insights schema provisioning.",
+          );
+        }
+        s.start("Analyzing Insights schema");
+        await migrateWithSchemaProvisioner(
+          schemaProvisioner,
+          "migrated above",
+          skipConfirm,
+          s,
+        );
+        break;
+
       case "prisma":
-        // Their ORM owns the core schema and no separate provisioner is exposed.
+        if (schemaProvisioner) {
+          await migrateWithSchemaProvisioner(
+            schemaProvisioner,
+            "managed by Prisma",
+            skipConfirm,
+            s,
+          );
+          break;
+        }
+        s.stop("Migration not supported");
+        showMigrateUnsupportedError(adapterName);
+        break;
+
+      case "drizzle":
+        // Drizzle owns both schemas through the generated ORM schema.
         s.stop("Migration not supported");
         showMigrateUnsupportedError(adapterName);
         break;
@@ -224,6 +248,7 @@ export async function migrate(options: MigrateOptions) {
         process.exit(1);
         break;
     }
+    process.exit(0);
   } catch (error) {
     p.log.error("Failed to run migration");
     if (error instanceof Error) {
@@ -238,6 +263,7 @@ export async function migrate(options: MigrateOptions) {
 
 async function migrateWithSchemaProvisioner(
   provisioner: SchemaProvisioner,
+  coreStatus: string,
   skipConfirm: boolean,
   s: ReturnType<typeof p.spinner>,
 ) {
@@ -247,12 +273,12 @@ async function migrateWithSchemaProvisioner(
 
   if (plan.operations.length === 0) {
     p.log.success("Insights schema is up to date.");
-    process.exit(0);
+    return;
   }
 
   p.log.message(
     ui.block("Migration", [
-      ui.kv("Core", "managed by Prisma"),
+      ui.kv("Core", coreStatus),
       ui.kv("Insights", "managed by Hot Updater"),
     ]),
   );
@@ -286,7 +312,6 @@ async function migrateWithSchemaProvisioner(
     throw new Error("Insights schema provisioning did not complete.");
   }
   p.log.success("Insights schema provisioned.");
-  process.exit(0);
 }
 
 /**
@@ -324,7 +349,7 @@ async function migrateWithMigrator(
 
   if (!operations || operations.length === 0) {
     p.log.success("Schema is up to date.");
-    process.exit(0);
+    return;
   }
 
   // Format operations into human-readable changes
@@ -333,7 +358,7 @@ async function migrateWithMigrator(
   // Double-check: if operations exist but produce no changes, schema is up to date
   if (changes.length === 0) {
     p.log.success("Schema is up to date.");
-    process.exit(0);
+    return;
   }
 
   p.log.message(
@@ -361,9 +386,4 @@ async function migrateWithMigrator(
 
   const newVersion = await migrator.getVersion();
   p.log.success(ui.line(["Migrated to", ui.version(newVersion)]));
-
-  // Exit process to ensure all connections are closed
-  // This is especially important for MongoDB and other databases
-  // that may keep connections open
-  process.exit(0);
 }

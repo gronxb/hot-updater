@@ -170,6 +170,37 @@ const ledgerValidator = {
     },
   },
 };
+const SOURCE_COLLECTION_VALIDATORS = [
+  [MONGO_INSIGHTS_SOURCE_STATE_COLLECTION, stateValidator],
+  [MONGO_INSIGHTS_SOURCE_CLOCK_COLLECTION, clockValidator],
+  [MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION, ledgerValidator],
+] as const;
+
+const isSourceSequenceIndexReady = (index: Document | undefined): boolean =>
+  index !== undefined &&
+  JSON.stringify(Object.entries(index.key as Document)) ===
+    JSON.stringify(Object.entries({ sourceId: 1, shard: 1, sequence: 1 })) &&
+  index.unique === true &&
+  !index.hidden &&
+  !index.sparse &&
+  index.partialFilterExpression === undefined &&
+  (index.collation === undefined || index.collation.locale === "simple");
+
+const hasExactSourceIndexes = (
+  name: (typeof SOURCE_COLLECTION_VALIDATORS)[number][0],
+  indexes: readonly Document[],
+  allowMissingSourceSequence: boolean,
+): boolean => {
+  const customIndexes = indexes.filter(({ name }) => name !== "_id_");
+  if (name !== MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION)
+    return customIndexes.length === 0;
+  if (customIndexes.length === 0) return allowMissingSourceSequence;
+  return (
+    customIndexes.length === 1 &&
+    customIndexes[0]?.name === SOURCE_SEQUENCE_INDEX &&
+    isSourceSequenceIndexReady(customIndexes[0])
+  );
+};
 
 export class MongoInsightsSourceConflictError extends Error {
   readonly name = "MongoInsightsSourceConflictError";
@@ -359,11 +390,7 @@ export const createMongoInsightsSource = (
     if (usage !== undefined) usage.requests += 1;
     const metadata = await collectionMetadata(db);
     const { EJSON } = (await mongo()).BSON;
-    for (const [name, validator] of [
-      [MONGO_INSIGHTS_SOURCE_STATE_COLLECTION, stateValidator],
-      [MONGO_INSIGHTS_SOURCE_CLOCK_COLLECTION, clockValidator],
-      [MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION, ledgerValidator],
-    ] as const) {
+    for (const [name, validator] of SOURCE_COLLECTION_VALIDATORS) {
       const options = metadata.get(name)?.options;
       if (
         !options ||
@@ -390,24 +417,74 @@ export const createMongoInsightsSource = (
     const sourceIndex = (await ledger.listIndexes().toArray()).find(
       ({ name }) => name === SOURCE_SEQUENCE_INDEX,
     );
-    if (
-      !sourceIndex ||
-      JSON.stringify(Object.entries(sourceIndex.key)) !==
-        JSON.stringify(
-          Object.entries({ sourceId: 1, shard: 1, sequence: 1 }),
-        ) ||
-      sourceIndex.unique !== true ||
-      sourceIndex.hidden ||
-      sourceIndex.sparse ||
-      sourceIndex.partialFilterExpression !== undefined ||
-      (sourceIndex.collation !== undefined &&
-        sourceIndex.collation.locale !== "simple")
-    )
+    if (!isSourceSequenceIndexReady(sourceIndex))
       throw new InsightsQueryNotReadyError();
     return current;
   };
 
   return {
+    async inspectPreparationLayout() {
+      return eventPreparation.inspectLayout();
+    },
+
+    async inspectUnownedLayout(): Promise<"absent" | "partial"> {
+      const metadata = await collectionMetadata(db);
+      const existingNames = SOURCE_COLLECTION_VALIDATORS.filter(([name]) =>
+        metadata.has(name),
+      ).map(([name]) => name);
+      if (existingNames.length === 0) return "absent";
+      if (
+        existingNames.some(
+          (name, index) => name !== SOURCE_COLLECTION_VALIDATORS[index]?.[0],
+        )
+      )
+        throw new InsightsQueryNotReadyError();
+      const { EJSON } = (await mongo()).BSON;
+      for (const [name, validator] of SOURCE_COLLECTION_VALIDATORS.slice(
+        0,
+        existingNames.length,
+      )) {
+        const options = metadata.get(name)?.options;
+        if (
+          !options ||
+          options.validationLevel !== "strict" ||
+          options.validationAction !== "error" ||
+          (options.collation !== undefined &&
+            options.collation.locale !== "simple") ||
+          EJSON.stringify(options.validator ?? {}, { relaxed: false }) !==
+            EJSON.stringify(validator, { relaxed: false }) ||
+          (await db.collection(name).findOne({}, { projection: { _id: 1 } }))
+        )
+          throw new InsightsQueryNotReadyError();
+        const indexes = await db.collection(name).listIndexes().toArray();
+        if (!hasExactSourceIndexes(name, indexes, true))
+          throw new InsightsQueryNotReadyError();
+      }
+      return "partial";
+    },
+
+    async inspectLayout(): Promise<"auditing" | "ready"> {
+      const state = await ensureSchema(true);
+      const indexes = await Promise.all(
+        SOURCE_COLLECTION_VALIDATORS.map(([name]) =>
+          db.collection(name).listIndexes().toArray(),
+        ),
+      );
+      if (
+        indexes.some(
+          (found, index) =>
+            !hasExactSourceIndexes(
+              SOURCE_COLLECTION_VALIDATORS[index]![0],
+              found,
+              false,
+            ),
+        )
+      )
+        throw new InsightsQueryNotReadyError();
+      await readClockSet(state);
+      return state.phase;
+    },
+
     async prepare(input: { readonly writersDrained: true }) {
       if (input?.writersDrained !== true)
         throw new DatabasePluginInputError("invalid-query");
@@ -430,18 +507,7 @@ export const createMongoInsightsSource = (
       const existingIndex = (await ledger.listIndexes().toArray()).find(
         ({ name }) => name === SOURCE_SEQUENCE_INDEX,
       );
-      const compatibleIndex =
-        existingIndex &&
-        JSON.stringify(Object.entries(existingIndex.key)) ===
-          JSON.stringify(
-            Object.entries({ sourceId: 1, shard: 1, sequence: 1 }),
-          ) &&
-        existingIndex.unique === true &&
-        !existingIndex.hidden &&
-        !existingIndex.sparse &&
-        existingIndex.partialFilterExpression === undefined &&
-        (existingIndex.collation === undefined ||
-          existingIndex.collation.locale === "simple");
+      const compatibleIndex = isSourceSequenceIndexReady(existingIndex);
       if (!compatibleIndex) {
         if (existingIndex) await ledger.dropIndex(SOURCE_SEQUENCE_INDEX);
         await ledger.createIndex(

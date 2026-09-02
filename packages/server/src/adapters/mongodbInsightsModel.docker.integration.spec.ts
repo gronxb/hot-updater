@@ -9,15 +9,23 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createBundleEventRowFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { findOpenPort } from "../../../test-utils/src/runtimeProcess";
 import { createMongoInsightsModelMaintenance } from "../db/mongoInsightsModel";
+import {
+  mongoInsightsEventValidator,
+  MONGO_INSIGHTS_PREPARATION_COLLECTION,
+} from "../db/mongoInsightsPreparation";
 import { createMongoInsightsSource } from "../db/mongoInsightsSource";
+import { createHotUpdater } from "../index";
+import { createMongoInsightsSchemaProvisioner, mongoAdapter } from "./mongodb";
 import { stepMongoInsightsSearch } from "./mongodbInsightsInstallations";
 import { createMongoInsightsModel } from "./mongodbInsightsModel";
 import {
   MONGO_INSIGHTS_ALIAS_COLLECTION,
   MONGO_INSIGHTS_INSTALLATION_COLLECTION,
   MONGO_INSIGHTS_LIVE_SNAPSHOT_COLLECTION,
+  MONGO_INSIGHTS_MODEL_COLLECTIONS,
   MONGO_INSIGHTS_PROJECTION_EVENT_COLLECTION,
   MONGO_INSIGHTS_PROJECTION_STATE_COLLECTION,
+  MONGO_INSIGHTS_PROJECTION_STATE_ID,
   MONGO_INSIGHTS_REPORT_COUNT_COLLECTION,
   MONGO_INSIGHTS_REPORT_JOB_COLLECTION,
   MONGO_INSIGHTS_REPORT_ORDER_COLLECTION,
@@ -35,6 +43,12 @@ import {
   mongoInsightsDigest,
   mongoInsightsInstallationKey,
 } from "./mongodbInsightsProjection";
+import {
+  MONGO_INSIGHTS_SOURCE_CLOCK_COLLECTION,
+  MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION,
+  MONGO_INSIGHTS_SOURCE_STATE_COLLECTION,
+  type MongoInsightsSourceEvent,
+} from "./mongodbInsightsSourceSchema";
 
 const docker = (args: string[]) => {
   const result = spawnSync("docker", args, { encoding: "utf8" });
@@ -70,6 +84,15 @@ const utf16OrderKey = (value: string): string =>
   Array.from({ length: value.length }, (_, index) =>
     value.charCodeAt(index).toString(16).padStart(4, "0"),
   ).join("");
+
+const snapshotCollection = async (client: MongoClient, name: string) => ({
+  documents: await client.db().collection(name).find({}).toArray(),
+  indexes: await client.db().collection(name).listIndexes().toArray(),
+  metadata: await client
+    .db()
+    .listCollections({ name }, { nameOnly: false })
+    .toArray(),
+});
 
 describe("MongoDB durable Insights model", () => {
   const replicaSet = "insightsRequiredRs";
@@ -167,6 +190,394 @@ describe("MongoDB durable Insights model", () => {
     await maintenance.ensureReady();
     return maintenance;
   };
+
+  const migrateCore = async () => {
+    const adapter = mongoAdapter({
+      client,
+      insightsDatabaseNamespace: databaseNamespace,
+      transactions: true,
+    });
+    const core = await adapter.createMigrator!().migrateToLatest({
+      mode: "from-schema",
+      updateSettings: true,
+    });
+    await core.execute();
+    return adapter;
+  };
+
+  it("provisions MongoDB Insights after the core schema and gates only Insights until ready", async () => {
+    const adapter = await migrateCore();
+    const hotUpdater = createHotUpdater({
+      clientAccess: { type: "public" },
+      database: adapter,
+    });
+
+    await expect(hotUpdater.getChannels()).resolves.toEqual([]);
+    const beforeProvisioning = await hotUpdater.handlers.client(
+      new Request("https://example.com/events", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          appVersion: "1.0.0",
+          channel: "production",
+          cohort: "default",
+          fingerprintHash: null,
+          fromBundleId: null,
+          fromReleaseId: null,
+          installId: "mongo-provisioned-install",
+          platform: "ios",
+          sdkVersion: "2.0.0",
+          toBundleId: "00000000-0000-7000-8000-000000000001",
+          toReleaseId: null,
+          type: "UNCHANGED",
+          updateStrategy: null,
+        }),
+      }),
+    );
+    expect(beforeProvisioning.status).toBe(503);
+    await expect(beforeProvisioning.json()).resolves.toEqual({
+      error: { code: "INSIGHTS_SCHEMA_MIGRATION_REQUIRED" },
+    });
+
+    const provisioner = adapter.createInsightsSchemaProvisioner!();
+    const plan = await provisioner.plan();
+    expect(plan.operations).toEqual([
+      {
+        type: "custom",
+        description: "Provision native MongoDB Insights storage",
+      },
+    ]);
+    await plan.execute();
+    await expect(provisioner.plan()).resolves.toMatchObject({ operations: [] });
+
+    const ingestion = await hotUpdater.handlers.client(
+      new Request("https://example.com/events", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          appVersion: "1.0.0",
+          channel: "production",
+          cohort: "default",
+          fingerprintHash: null,
+          fromBundleId: null,
+          fromReleaseId: null,
+          installId: "mongo-provisioned-install",
+          platform: "ios",
+          sdkVersion: "2.0.0",
+          toBundleId: "00000000-0000-7000-8000-000000000001",
+          toReleaseId: null,
+          type: "UNCHANGED",
+          updateStrategy: null,
+        }),
+      }),
+    );
+    expect(ingestion.status).toBe(204);
+
+    let overview: unknown;
+    for (let attempt = 0; attempt < 32; attempt++) {
+      const response = await hotUpdater.handlers.admin(
+        new Request("https://example.com/installations/overview"),
+      );
+      expect(response.status).toBe(200);
+      overview = await response.json();
+      if (Reflect.get(overview as object, "state") !== "preparing") break;
+    }
+    expect(overview).toMatchObject({
+      state: "ready",
+      data: { summary: { trackedInstallations: 1 } },
+    });
+  });
+
+  it("rejects a foreign MongoDB Insights namespace before mutating storage", async () => {
+    await migrateCore();
+    const provisioner = createMongoInsightsSchemaProvisioner(
+      client,
+      databaseNamespace,
+    );
+    await (await provisioner.plan()).execute();
+    const collectionsBefore = await client
+      .db()
+      .listCollections({}, { nameOnly: true })
+      .toArray();
+    const sourceBefore = await client
+      .db()
+      .collection<{ readonly _id: string }>(
+        MONGO_INSIGHTS_PROJECTION_STATE_COLLECTION,
+      )
+      .findOne({ _id: MONGO_INSIGHTS_PROJECTION_STATE_ID });
+
+    await expect(
+      createMongoInsightsSchemaProvisioner(
+        client,
+        "00000000-0000-7000-8000-000000000098",
+      ).plan(),
+    ).rejects.toThrow(
+      "MongoDB Insights storage belongs to another database namespace",
+    );
+
+    await expect(
+      client.db().listCollections({}, { nameOnly: true }).toArray(),
+    ).resolves.toEqual(collectionsBefore);
+    await expect(
+      client
+        .db()
+        .collection<{ readonly _id: string }>(
+          MONGO_INSIGHTS_PROJECTION_STATE_COLLECTION,
+        )
+        .findOne({ _id: MONGO_INSIGHTS_PROJECTION_STATE_ID }),
+    ).resolves.toEqual(sourceBefore);
+  });
+
+  it("rejects an orphan source ledger without mutating storage", async () => {
+    await migrateCore();
+    await client
+      .db()
+      .collection<MongoInsightsSourceEvent>(
+        MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION,
+      )
+      .insertOne({
+        _id: "01900000-0000-7000-8000-000000000001",
+        sourceId: databaseNamespace,
+        shard: 0,
+        sequence: Long.ONE,
+        rawId: "orphan-source-event",
+      });
+    const before = await snapshotCollection(
+      client,
+      MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION,
+    );
+
+    await expect(
+      createMongoInsightsSchemaProvisioner(client, databaseNamespace).plan(),
+    ).rejects.toThrow(
+      "MongoDB Insights source collections exist without a safe owning state",
+    );
+
+    await expect(
+      snapshotCollection(client, MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION),
+    ).resolves.toEqual(before);
+  });
+
+  it("rejects an orphan projection without mutating storage", async () => {
+    await migrateCore();
+    const source = createMongoInsightsSource(client, databaseNamespace);
+    await source.prepare({ writersDrained: true });
+    for (let step = 0; step < 200; step++) {
+      try {
+        await source.ensureReady();
+        break;
+      } catch {
+        await source.runStep({ maxItems: 200, maxRequests: 1000 });
+      }
+    }
+    await source.ensureReady();
+    await client
+      .db()
+      .collection<MongoInsightsInstallation>(
+        MONGO_INSIGHTS_INSTALLATION_COLLECTION,
+      )
+      .insertOne({
+        _id: mongoInsightsInstallationKey("orphan-installation"),
+        installId: "orphan-installation",
+        firstProjectionSequence: Long.ONE,
+      });
+    const before = await snapshotCollection(
+      client,
+      MONGO_INSIGHTS_INSTALLATION_COLLECTION,
+    );
+
+    await expect(
+      createMongoInsightsSchemaProvisioner(client, databaseNamespace).plan(),
+    ).rejects.toThrow(
+      "MongoDB Insights projection collections exist without a safe owning state",
+    );
+
+    await expect(
+      snapshotCollection(client, MONGO_INSIGHTS_INSTALLATION_COLLECTION),
+    ).resolves.toEqual(before);
+  });
+
+  it("rejects foreign preparation state without mutating storage", async () => {
+    await migrateCore();
+    await client
+      .db()
+      .collection<Record<string, unknown> & { readonly _id: string }>(
+        MONGO_INSIGHTS_PREPARATION_COLLECTION,
+      )
+      .insertOne({
+        _id: "event-pages",
+        version: 1,
+        revision: 0,
+        phase: "installing",
+        collectionUuid: "foreign-collection",
+        validator: mongoInsightsEventValidator,
+        previousValidator: {},
+        upperId: null,
+        afterId: null,
+        processed: 0,
+      });
+    const preparationBefore = await snapshotCollection(
+      client,
+      MONGO_INSIGHTS_PREPARATION_COLLECTION,
+    );
+    const eventsBefore = await snapshotCollection(client, "bundle_events");
+
+    await expect(
+      createMongoInsightsSchemaProvisioner(client, databaseNamespace).plan(),
+    ).rejects.toThrow("MongoDB Insights preparation layout is incompatible");
+
+    await expect(
+      snapshotCollection(client, MONGO_INSIGHTS_PREPARATION_COLLECTION),
+    ).resolves.toEqual(preparationBefore);
+    await expect(snapshotCollection(client, "bundle_events")).resolves.toEqual(
+      eventsBefore,
+    );
+  });
+
+  it("rejects malformed preparation checkpoints without mutating storage", async () => {
+    await migrateCore();
+    await client
+      .db()
+      .collection("bundle_events")
+      .insertOne({
+        ...createBundleEventRowFixture("930001", 100),
+        _id: new ObjectId(),
+      });
+    await createMongoInsightsSource(client, databaseNamespace).prepare({
+      writersDrained: true,
+    });
+    await client
+      .db()
+      .collection<Record<string, unknown> & { readonly _id: string }>(
+        MONGO_INSIGHTS_PREPARATION_COLLECTION,
+      )
+      .updateOne(
+        { _id: "event-pages" },
+        { $set: { upperId: "not-canonical-ejson" } },
+      );
+    const preparationBefore = await snapshotCollection(
+      client,
+      MONGO_INSIGHTS_PREPARATION_COLLECTION,
+    );
+    const sourceBefore = await snapshotCollection(
+      client,
+      MONGO_INSIGHTS_SOURCE_STATE_COLLECTION,
+    );
+
+    await expect(
+      createMongoInsightsSchemaProvisioner(client, databaseNamespace).plan(),
+    ).rejects.toThrow("MongoDB Insights preparation layout is incompatible");
+
+    await expect(
+      snapshotCollection(client, MONGO_INSIGHTS_PREPARATION_COLLECTION),
+    ).resolves.toEqual(preparationBefore);
+    await expect(
+      snapshotCollection(client, MONGO_INSIGHTS_SOURCE_STATE_COLLECTION),
+    ).resolves.toEqual(sourceBefore);
+  });
+
+  it("rejects unexpected owned source indexes without mutating storage", async () => {
+    await migrateCore();
+    const provisioner = createMongoInsightsSchemaProvisioner(
+      client,
+      databaseNamespace,
+    );
+    await (await provisioner.plan()).execute();
+    await client
+      .db()
+      .collection(MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION)
+      .createIndex(
+        { sourceId: 1 },
+        { name: "unexpected_source_unique_idx", unique: true },
+      );
+    const before = await snapshotCollection(
+      client,
+      MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION,
+    );
+
+    await expect(provisioner.plan()).rejects.toThrow(
+      "MongoDB Insights source layout is incompatible",
+    );
+
+    await expect(
+      snapshotCollection(client, MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION),
+    ).resolves.toEqual(before);
+  });
+
+  it("rejects unexpected owned projection indexes without mutating storage", async () => {
+    await migrateCore();
+    const provisioner = createMongoInsightsSchemaProvisioner(
+      client,
+      databaseNamespace,
+    );
+    await (await provisioner.plan()).execute();
+    await client
+      .db()
+      .collection(MONGO_INSIGHTS_PROJECTION_EVENT_COLLECTION)
+      .createIndex(
+        { sourceId: 1 },
+        { name: "unexpected_projection_unique_idx", unique: true },
+      );
+    const before = await snapshotCollection(
+      client,
+      MONGO_INSIGHTS_PROJECTION_EVENT_COLLECTION,
+    );
+
+    await expect(provisioner.plan()).rejects.toThrow(
+      "MongoDB Insights projection layout is incompatible",
+    );
+
+    await expect(
+      snapshotCollection(client, MONGO_INSIGHTS_PROJECTION_EVENT_COLLECTION),
+    ).resolves.toEqual(before);
+  });
+
+  it("resumes an empty source collection prefix left before ownership state", async () => {
+    await migrateCore();
+    const source = createMongoInsightsSource(client, databaseNamespace);
+    await source.prepare({ writersDrained: true });
+    await client
+      .db()
+      .collection(MONGO_INSIGHTS_SOURCE_STATE_COLLECTION)
+      .deleteMany({});
+    await client
+      .db()
+      .collection(MONGO_INSIGHTS_SOURCE_CLOCK_COLLECTION)
+      .deleteMany({});
+    await client.db().dropCollection(MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION);
+
+    const provisioner = createMongoInsightsSchemaProvisioner(
+      client,
+      databaseNamespace,
+    );
+    await expect(provisioner.plan()).resolves.toMatchObject({
+      operations: [{ type: "custom" }],
+    });
+    await (await provisioner.plan()).execute();
+    await expect(provisioner.plan()).resolves.toMatchObject({ operations: [] });
+  });
+
+  it("resumes an empty projection collection prefix left before ownership state", async () => {
+    await migrateCore();
+    const provisioner = createMongoInsightsSchemaProvisioner(
+      client,
+      databaseNamespace,
+    );
+    await (await provisioner.plan()).execute();
+    await client
+      .db()
+      .collection(MONGO_INSIGHTS_PROJECTION_STATE_COLLECTION)
+      .deleteMany({});
+    for (const name of MONGO_INSIGHTS_MODEL_COLLECTIONS.slice(1)) {
+      await client.db().dropCollection(name);
+    }
+
+    await expect(provisioner.plan()).resolves.toMatchObject({
+      operations: [{ type: "custom" }],
+    });
+    await (await provisioner.plan()).execute();
+    await expect(provisioner.plan()).resolves.toMatchObject({ operations: [] });
+  });
 
   it("rejects live, historical, and report cursors before storage I/O", async () => {
     const model = createMongoInsightsModel(client, databaseNamespace);

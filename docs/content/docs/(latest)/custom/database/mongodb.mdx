@@ -40,8 +40,18 @@ import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
 import { s3Storage } from "@hot-updater/aws";
 import { client } from "./mongodb";
 
+const insightsDatabaseNamespace =
+  process.env.HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE;
+if (!insightsDatabaseNamespace) {
+  throw new Error("HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE is required");
+}
+
 export const hotUpdater = createHotUpdater({
-  database: mongoAdapter({ client, transactions: true }),
+  database: mongoAdapter({
+    client,
+    insightsDatabaseNamespace,
+    transactions: true,
+  }),
   clientAccess: { type: "api-key" },
   storage: [
     s3Storage({
@@ -62,6 +72,8 @@ Run MongoDB as a replica set or sharded cluster and set `transactions: true`.
 v1 Release and Release Catalog changes must commit atomically. With transactions
 disabled, commits with revision expectations or multiple changes are rejected,
 so a standalone MongoDB server cannot support the normal v1 deployment workflow.
+Set `HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE` once to a lowercase UUID and keep
+that value stable for the lifetime of the database.
 
 ## Schema Generation
 
@@ -72,7 +84,13 @@ npx hot-updater db migrate src/hotUpdater.ts
 ```
 
 This command targets `src/hotUpdater.ts` and creates all Hot Updater
-collections and indexes required by the active database schema.
+collections and indexes required by the active database schema. It migrates the
+core schema first, then provisions the native Insights source and projections
+with bounded, resumable steps.
+
+Stop and drain all Hot Updater event writers before running this command. Start
+only servers using the new schema after it completes. Existing event history is
+backfilled in place; the migration does not discard or rewrite those events.
 
 ## CLI Configuration
 
