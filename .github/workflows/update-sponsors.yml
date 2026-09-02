@@ -25,7 +25,8 @@ jobs:
           mkdir -p docs/public
 
           # SPONSORS_TOKEN must be a classic PAT owned by the sponsorable
-          # account with read:user. Fine-grained PATs cannot read sponsor tiers.
+          # account with read:user and read:org. Fine-grained PATs cannot read
+          # sponsor tiers.
           gh api graphql --paginate -f query='
             query($endCursor: String) {
               user(login: "gronxb") {
