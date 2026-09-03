@@ -42,7 +42,7 @@ import { createPrismaInsightsEventPages } from "./source";
 import { assertPrismaInsightsDatabaseNamespace } from "./utils";
 
 export class PrismaInsightsModel implements InsightsModel {
-  private sqliteAppendTail: Promise<void> = Promise.resolve();
+  private sqliteOperationTail: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly client: PrismaInsightsClient,
@@ -52,8 +52,18 @@ export class PrismaInsightsModel implements InsightsModel {
     assertPrismaInsightsDatabaseNamespace(databaseNamespace);
   }
 
+  private run<TResult>(operation: () => Promise<TResult>): Promise<TResult> {
+    if (this.provider !== "sqlite") return operation();
+    const pending = this.sqliteOperationTail.then(operation, operation);
+    this.sqliteOperationTail = pending.then(
+      () => undefined,
+      () => undefined,
+    );
+    return pending;
+  }
+
   append(row: BundleEventRow): Promise<void> {
-    const append = () =>
+    return this.run(() =>
       runPrismaInsightsTransaction(this.client, this.provider, (transaction) =>
         appendPrismaInsightsEvent(
           transaction,
@@ -61,52 +71,49 @@ export class PrismaInsightsModel implements InsightsModel {
           this.databaseNamespace,
           row,
         ),
-      );
-    if (this.provider !== "sqlite") return append();
-    const pending = this.sqliteAppendTail.then(append, append);
-    this.sqliteAppendTail = pending.catch(() => undefined);
-    return pending;
+      ),
+    );
   }
 
-  async runMaintenanceStep({
-    jobId,
-    maxItems,
-    maxRequests,
-  }: Parameters<InsightsModel["runMaintenanceStep"]>[0]): Promise<void> {
-    const canSplit = maxItems >= 3 && maxRequests >= 3;
-    const stepItems = canSplit ? Math.floor(maxItems / 3) : maxItems;
-    const stepRequests = canSplit ? Math.floor(maxRequests / 3) : maxRequests;
-    const source = await createPrismaInsightsMaintenance(
-      this.client,
-      this.provider,
-      this.databaseNamespace,
-    ).runStep({ maxItems: stepItems, maxRequests: stepRequests });
-    if (!source.ready || !canSplit) return;
-    const search = await runPrismaInsightsSearchStep(
-      this.client,
-      this.provider,
-      { jobId, maxItems: stepItems, maxRequests: stepRequests },
-    );
-    if (search.jobId !== null) return;
-    await runPrismaInsightsReportStep(this.client, this.provider, {
-      jobId,
-      maxItems: stepItems,
-      maxRequests: stepRequests,
+  runMaintenanceStep(
+    input: Parameters<InsightsModel["runMaintenanceStep"]>[0],
+  ): Promise<void> {
+    return this.run(async () => {
+      const { jobId, maxItems, maxRequests } = input;
+      const canSplit = maxItems >= 3 && maxRequests >= 3;
+      const stepItems = canSplit ? Math.floor(maxItems / 3) : maxItems;
+      const stepRequests = canSplit ? Math.floor(maxRequests / 3) : maxRequests;
+      const source = await createPrismaInsightsMaintenance(
+        this.client,
+        this.provider,
+        this.databaseNamespace,
+      ).runStep({ maxItems: stepItems, maxRequests: stepRequests });
+      if (!source.ready || !canSplit) return;
+      const search = await runPrismaInsightsSearchStep(
+        this.client,
+        this.provider,
+        { jobId, maxItems: stepItems, maxRequests: stepRequests },
+      );
+      if (search.jobId !== null) return;
+      await runPrismaInsightsReportStep(this.client, this.provider, {
+        jobId,
+        maxItems: stepItems,
+        maxRequests: stepRequests,
+      });
     });
   }
 
   pageEvents(
     input: InsightsPageEventsInput,
   ): Promise<InsightsPageEventsResult> {
-    return runPrismaInsightsTransaction(
-      this.client,
-      this.provider,
-      (transaction) =>
+    return this.run(() =>
+      runPrismaInsightsTransaction(this.client, this.provider, (transaction) =>
         createPrismaInsightsEventPages(
           transaction,
           this.provider,
           this.databaseNamespace,
         ).pageEvents(input),
+      ),
     );
   }
 
@@ -131,39 +138,45 @@ export class PrismaInsightsModel implements InsightsModel {
   pageInstallations(
     input: InsightsInstallationPageInput,
   ): Promise<InsightsInstallationPage> {
-    if (input.kind === "userId" || input.kind === "contains") {
-      return createPrismaInsightsSearchPages(
-        this.client,
-        this.provider,
-        this.databaseNamespace,
-      ).pageInstallations(input);
-    }
-    return runPrismaInsightsTransaction(
-      this.client,
-      this.provider,
-      (transaction) =>
-        createPrismaInsightsInstallationPages(
-          transaction,
+    return this.run<InsightsInstallationPage>(() => {
+      if (input.kind === "userId" || input.kind === "contains") {
+        return createPrismaInsightsSearchPages(
+          this.client,
           this.provider,
           this.databaseNamespace,
-        ).pageInstallations(input),
-    );
+        ).pageInstallations(input);
+      }
+      return runPrismaInsightsTransaction(
+        this.client,
+        this.provider,
+        (transaction) =>
+          createPrismaInsightsInstallationPages(
+            transaction,
+            this.provider,
+            this.databaseNamespace,
+          ).pageInstallations(input),
+      );
+    });
   }
 
   getReport(input: InsightsReportInput): Promise<InsightsReportResult> {
-    return createPrismaInsightsReports(
-      this.client,
-      this.provider,
-      this.databaseNamespace,
-    ).getReport(input);
+    return this.run(() =>
+      createPrismaInsightsReports(
+        this.client,
+        this.provider,
+        this.databaseNamespace,
+      ).getReport(input),
+    );
   }
 
   pageReport(input: InsightsReportPageInput): Promise<InsightsReportPage> {
-    return createPrismaInsightsReports(
-      this.client,
-      this.provider,
-      this.databaseNamespace,
-    ).pageReport(input);
+    return this.run(() =>
+      createPrismaInsightsReports(
+        this.client,
+        this.provider,
+        this.databaseNamespace,
+      ).pageReport(input),
+    );
   }
 }
 

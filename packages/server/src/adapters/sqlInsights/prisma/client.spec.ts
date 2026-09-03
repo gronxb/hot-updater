@@ -1,3 +1,4 @@
+import type { BundleEventRow } from "@hot-updater/plugin-core";
 import { createInsightsReportPageCursor } from "@hot-updater/plugin-core/internal";
 import { describe, expect, it } from "vitest";
 
@@ -76,6 +77,114 @@ describe("Prisma Insights transactions", () => {
       runPrismaInsightsTransaction(client, "sqlite", async () => undefined),
     ).rejects.toBe(failure);
     expect(attempts).toBe(1);
+  });
+
+  it("serializes every SQLite model operation behind one queue", async () => {
+    const failure = new Error("storage stopped");
+    let storageStarts = 0;
+    let markEntered = (): void => undefined;
+    const entered = new Promise<void>((resolve) => {
+      markEntered = resolve;
+    });
+    let release = (): void => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const enterStorage = async (): Promise<never> => {
+      storageStarts += 1;
+      if (storageStarts === 1) {
+        markEntered();
+        await released;
+      }
+      throw failure;
+    };
+    const client: PrismaInsightsClient = {
+      $queryRawUnsafe: async <TResult>() => enterStorage() as Promise<TResult>,
+      $executeRawUnsafe: enterStorage,
+      $transaction: async <TResult>() => enterStorage() as Promise<TResult>,
+    };
+    const model = createPrismaInsightsModel(
+      client,
+      "sqlite",
+      insightsDatabaseNamespace,
+    );
+    const row: BundleEventRow = {
+      id: "00000000-0000-7000-8000-000000000001",
+      type: "UPDATE_APPLIED",
+      install_id: "sqlite-queue-install",
+      user_id: null,
+      username: null,
+      from_release_id: null,
+      from_bundle_id: "00000000-0000-7000-8000-000000000002",
+      to_release_id: null,
+      to_bundle_id: "00000000-0000-7000-8000-000000000003",
+      platform: "ios",
+      app_version: "1.0.0",
+      channel: "production",
+      cohort: "default",
+      update_strategy: "appVersion",
+      fingerprint_hash: null,
+      sdk_version: "2.0.0",
+      received_at_ms: 1,
+    };
+    const first = model.pageEvents({
+      selector: { kind: "all" },
+      beforeReceivedAtMs: 1_000,
+      limit: 1,
+    });
+    await entered;
+
+    const queued = [
+      model.append(row),
+      model.runMaintenanceStep({
+        jobId: "00000000-0000-7000-8000-000000000004",
+        maxItems: 256,
+        maxRequests: 512,
+      }),
+      model.pageEvents({
+        selector: { kind: "all" },
+        beforeReceivedAtMs: 1_000,
+        limit: 1,
+      }),
+      model.pageInstallations({ kind: "all", limit: 1 }),
+      model.pageInstallations({
+        kind: "contains",
+        query: "sqlite-queue-install",
+        limit: 1,
+      }),
+      model.getReport({ query: { kind: "installationOverview" } }),
+      model.pageReport({
+        publicationId: "00000000-0000-7000-8000-000000000005",
+        section: "activeSeries",
+        limit: 1,
+      }),
+    ];
+    let settled = 0;
+    const outcomes = queued.map((operation) =>
+      operation.then(
+        () => {
+          settled += 1;
+        },
+        () => {
+          settled += 1;
+        },
+      ),
+    );
+    for (let turn = 0; turn < 4; turn += 1) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+
+    expect({ settled, storageStarts }).toEqual({
+      settled: 0,
+      storageStarts: 1,
+    });
+
+    release();
+    await expect(first).rejects.toBe(failure);
+    await Promise.all(outcomes);
+
+    expect(settled).toBe(queued.length);
+    expect(storageStarts).toBe(queued.length + 1);
   });
 
   it("rejects search and report cursor scope before any storage statement", async () => {
