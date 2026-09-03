@@ -9,7 +9,7 @@ import {
 import { createPrismaTestHarness } from "./prismaTestClient";
 
 const harness = createPrismaTestHarness();
-const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000e001";
+const insightsDatabaseNamespace = "00000000-0000-4000-8000-000000000001";
 
 setupDatabasePluginTestSuite({
   name: "prismaAdapter v2",
@@ -18,7 +18,6 @@ setupDatabasePluginTestSuite({
     prismaAdapter({
       prisma: harness.client,
       provider: "postgresql",
-      insightsDatabaseNamespace,
     }),
   reset: () => harness.reset(),
   dispose: () => undefined,
@@ -51,7 +50,6 @@ describe("prismaAdapter capabilities", () => {
     const plugin = prismaAdapter({
       prisma: harness.client,
       provider: "postgresql",
-      insightsDatabaseNamespace,
     });
 
     expect(plugin.name).toBe("prisma");
@@ -71,7 +69,6 @@ describe("prismaAdapter capabilities", () => {
     const plugin = prismaAdapter({
       prisma: harness.client,
       provider: "postgresql",
-      insightsDatabaseNamespace,
     });
 
     expect(Reflect.has(plugin, "transaction")).toBe(false);
@@ -102,7 +99,6 @@ describe("prismaAdapter capabilities", () => {
       prismaAdapter({
         prisma: client,
         provider: "postgresql",
-        insightsDatabaseNamespace,
         relationMode: "prisma",
       }),
     ).toThrow('relation mode "prisma" requires callback transactions');
@@ -113,7 +109,6 @@ describe("prismaAdapter capabilities", () => {
     const plugin = prismaAdapter({
       prisma: harness.client,
       provider: "postgresql",
-      insightsDatabaseNamespace,
       relationMode: "prisma",
     });
     const base = bundleRow("bundle-base");
@@ -163,7 +158,6 @@ describe("prismaAdapter capabilities", () => {
     const plugin = prismaAdapter({
       prisma: harness.client,
       provider: "postgresql",
-      insightsDatabaseNamespace,
     });
 
     await plugin.commit({
@@ -182,7 +176,6 @@ describe("prismaAdapter capabilities", () => {
     const plugin = prismaAdapter({
       prisma: harness.client,
       provider: "postgresql",
-      insightsDatabaseNamespace,
     });
     const base = bundleRow("bundle-base");
     const owner = bundleRow("bundle-target");

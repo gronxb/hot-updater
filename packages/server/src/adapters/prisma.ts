@@ -4,6 +4,7 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
+  OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
   type DatabaseImplementationResult,
   type DatabasePluginImplementation,
   type FindManyDatabaseImplementationInput,
@@ -69,7 +70,6 @@ type PrismaTransactionClient = object & {
 export interface PrismaConfig {
   readonly prisma: object;
   readonly provider: ORMSQLProvider;
-  readonly insightsDatabaseNamespace: string;
   readonly relationMode?: PrismaRelationMode;
   readonly db?: unknown;
 }
@@ -535,7 +535,7 @@ export const prismaAdapter = (
       client,
       config.relationMode ?? "foreign-keys",
       config.provider,
-      config.insightsDatabaseNamespace,
+      OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
     ),
   );
   return Object.assign(
@@ -550,7 +550,7 @@ export const prismaAdapter = (
         createPrismaInsightsSchemaProvisioner(
           client,
           config.provider,
-          config.insightsDatabaseNamespace,
+          OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
         ),
       provider: config.provider,
       generateSchema: ((version) => ({

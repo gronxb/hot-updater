@@ -17,11 +17,11 @@ import {
 } from "./mockDatabaseQuery";
 import {
   createMockInsightsRuntime,
-  type MockInsightsDatabaseNamespaces,
+  MOCK_INSIGHTS_DATABASE_NAMESPACES,
   type MockInsightsRuntime,
 } from "./mockInsights";
 
-export interface MockDatabaseData extends MockInsightsDatabaseNamespaces {
+export interface MockDatabaseData {
   readonly bundles: Map<string, BundleRow>;
   readonly bundlePatches: Map<string, BundlePatchRow>;
   readonly insights: MockInsightsRuntime;
@@ -39,13 +39,10 @@ export class MockDatabaseConstraintError extends Error {
   }
 }
 
-export const createMockDatabaseData = (
-  namespaces: MockInsightsDatabaseNamespaces,
-): MockDatabaseData => ({
-  ...namespaces,
+export const createMockDatabaseData = (): MockDatabaseData => ({
   bundles: new Map(),
   bundlePatches: new Map(),
-  insights: createMockInsightsRuntime(namespaces),
+  insights: createMockInsightsRuntime(MOCK_INSIGHTS_DATABASE_NAMESPACES),
   channels: new Map(),
   apiKeys: new Map(),
   releaseCatalogs: new Map(),
@@ -55,8 +52,6 @@ export const createMockDatabaseData = (
 export const cloneMockDatabaseData = (
   data: MockDatabaseData,
 ): MockDatabaseData => ({
-  insightsDatabaseNamespace: data.insightsDatabaseNamespace,
-  otherInsightsDatabaseNamespace: data.otherInsightsDatabaseNamespace,
   bundles: new Map(data.bundles),
   bundlePatches: new Map(data.bundlePatches),
   insights: data.insights,

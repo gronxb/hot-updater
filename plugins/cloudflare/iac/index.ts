@@ -73,7 +73,6 @@ const getConfigScaffold = (
     databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
-    insightsDatabaseNamespace: process.env.HOT_UPDATER_CLOUDFLARE_INSIGHTS_DATABASE_NAMESPACE!,
   })`,
   };
 
@@ -110,7 +109,6 @@ const deployWorker = async (
     credentialSource,
     d1DatabaseId,
     d1DatabaseName,
-    insightsDatabaseNamespace,
     nonInteractive,
     r2BucketName,
     workerName,
@@ -118,7 +116,6 @@ const deployWorker = async (
     credentialSource: CloudflareCredentialSource;
     d1DatabaseId: string;
     d1DatabaseName: string;
-    insightsDatabaseNamespace: string;
     nonInteractive: boolean;
     r2BucketName: string;
     workerName: string;
@@ -157,7 +154,6 @@ const deployWorker = async (
 
     wranglerConfig.vars = {
       BUCKET_NAME: r2BucketName,
-      INSIGHTS_DATABASE_NAMESPACE: insightsDatabaseNamespace,
     };
 
     await fs.writeFile(
@@ -239,24 +235,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     bucketName: existingBucketName,
     d1DatabaseId: existingD1DatabaseId,
     d1DatabaseName: existingD1DatabaseName,
-    insightsDatabaseNamespace: existingInsightsDatabaseNamespace,
     r2Private: savedPrivateSetting,
     secretAccessKey: existingR2SecretAccessKey,
     workerName: existingWorkerName,
   } = existingInputs;
-
-  let insightsDatabaseNamespace = existingInsightsDatabaseNamespace;
-  if (insightsDatabaseNamespace === undefined) {
-    const input = CLOUDFLARE_INIT_PROVIDER.inputs.insightsDatabaseNamespace;
-    const selected = await p.text({
-      message: input.prompt.message,
-      placeholder: input.prompt.placeholder,
-      validate: (value) =>
-        input.validate(value) ? undefined : "Enter a lowercase UUID.",
-    });
-    if (p.isCancel(selected)) process.exit(1);
-    insightsDatabaseNamespace = selected;
-  }
 
   const infrastructureCredentialSource: CloudflareCredentialSource = {
     kind: "wrangler-oauth",
@@ -654,7 +636,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     bucketName: selectedBucketName,
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
-    insightsDatabaseNamespace,
     r2Private: String(isPrivate),
     secretAccessKey,
     workerName,
@@ -752,7 +733,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     credentialSource: infrastructureCredentialSource,
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
-    insightsDatabaseNamespace,
     nonInteractive,
     r2BucketName: selectedBucketName,
     workerName,
@@ -762,7 +742,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     accountId,
     cloudflareApiToken: apiToken,
     databaseId: selectedD1DatabaseId,
-    insightsDatabaseNamespace,
   });
   let apiKey: string;
   try {

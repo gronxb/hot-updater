@@ -14,6 +14,7 @@ import type {
 import {
   createDatabasePluginAdapter,
   DatabaseRowReferencedError,
+  OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
 } from "@hot-updater/plugin-core/internal";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
@@ -34,9 +35,7 @@ import {
 import { SupabaseMissingDataError, throwSupabaseError } from "./supabaseResult";
 import type { Database } from "./types";
 
-export interface SupabaseDatabaseConfig extends SupabaseServiceRoleConfig {
-  readonly insightsDatabaseNamespace: string;
-}
+export type SupabaseDatabaseConfig = SupabaseServiceRoleConfig;
 
 const isForeignKeyViolation = (error: unknown): boolean =>
   typeof error === "object" &&
@@ -472,7 +471,7 @@ const createSupabaseImplementation = (
 
 export const supabaseDatabase = (config: SupabaseDatabaseConfig) => {
   const databaseNamespace = readSupabaseInsightsDatabaseNamespace(
-    config.insightsDatabaseNamespace,
+    OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
   );
   const supabase = createClient<Database>(
     config.supabaseUrl,
@@ -496,7 +495,7 @@ export const supabaseDatabase = (config: SupabaseDatabaseConfig) => {
  */
 export const supabaseInsightsMaintenance = (config: SupabaseDatabaseConfig) => {
   const databaseNamespace = readSupabaseInsightsDatabaseNamespace(
-    config.insightsDatabaseNamespace,
+    OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
   );
   const supabase = createClient<Database>(
     config.supabaseUrl,

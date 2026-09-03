@@ -99,7 +99,6 @@ describe("Kysely native Insights", () => {
     const adapter = kyselyAdapter({
       db,
       provider: "sqlite",
-      insightsDatabaseNamespace: databaseNamespace,
     });
     await adapter.createMigrator!()
       .migrateToLatest()
@@ -184,7 +183,6 @@ describe("Kysely native Insights", () => {
     const adapter = kyselyAdapter({
       db,
       provider: "sqlite",
-      insightsDatabaseNamespace: databaseNamespace,
     });
     await adapter.createMigrator!()
       .migrateToLatest()
@@ -260,7 +258,6 @@ describe("Kysely native Insights", () => {
     const adapter = kyselyAdapter({
       db,
       provider: "sqlite",
-      insightsDatabaseNamespace: databaseNamespace,
     });
     await adapter.createMigrator!()
       .migrateToLatest()
@@ -352,7 +349,6 @@ describe("Kysely native Insights", () => {
     const adapter = kyselyAdapter({
       db,
       provider: "sqlite",
-      insightsDatabaseNamespace: databaseNamespace,
     });
     await adapter.createMigrator!()
       .migrateToLatest()
@@ -497,7 +493,6 @@ describe("Kysely native Insights", () => {
     const adapter = kyselyAdapter({
       db,
       provider: "sqlite",
-      insightsDatabaseNamespace: databaseNamespace,
     });
     await adapter.createMigrator!()
       .migrateToLatest()
@@ -573,7 +568,6 @@ describe("Kysely native Insights", () => {
     const adapter = kyselyAdapter({
       db,
       provider: "sqlite",
-      insightsDatabaseNamespace: databaseNamespace,
     });
     await adapter.createMigrator!()
       .migrateToLatest()
@@ -737,7 +731,6 @@ describe("Kysely native Insights", () => {
     const adapter = kyselyAdapter({
       db,
       provider: "postgresql",
-      insightsDatabaseNamespace: databaseNamespace,
     });
     await adapter.createMigrator!()
       .migrateToLatest()

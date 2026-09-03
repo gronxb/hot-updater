@@ -43,7 +43,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
 const REGION = "us-central1";
-const INSIGHTS_DATABASE_NAMESPACE = "10000000-0000-4000-8000-000000000006";
 const FUNCTION_NAME = "hot-updater-v1";
 const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 const FIREBASE_CLI_VERSION_ARGS = [
@@ -280,7 +279,6 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
           "plugins/firebase/dist/firebase/functions/index.cjs",
         ),
         {
-          INSIGHTS_DATABASE_NAMESPACE,
           REGION,
         },
       ),
@@ -296,7 +294,6 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
 
     database = firebaseDatabase({
       ...adminOptions,
-      insightsDatabaseNamespace: INSIGHTS_DATABASE_NAMESPACE,
     });
     await registerApiKey({
       apiKey: API_KEY,

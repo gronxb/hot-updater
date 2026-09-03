@@ -1,5 +1,8 @@
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
-import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
+import {
+  createDatabasePluginAdapter,
+  OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
+} from "@hot-updater/plugin-core/internal";
 import Cloudflare from "cloudflare";
 
 import {
@@ -18,11 +21,10 @@ export interface D1DatabaseConfig {
   readonly databaseId: string;
   readonly accountId: string;
   readonly cloudflareApiToken: string;
-  readonly insightsDatabaseNamespace: string;
 }
 
 export const d1Database = (config: D1DatabaseConfig) => {
-  assertD1InsightsDatabaseNamespace(config.insightsDatabaseNamespace);
+  assertD1InsightsDatabaseNamespace(OFFICIAL_INSIGHTS_DATABASE_NAMESPACE);
   const cloudflare = new Cloudflare({
     apiToken: config.cloudflareApiToken,
   });
@@ -67,7 +69,7 @@ export const d1Database = (config: D1DatabaseConfig) => {
   };
   const adapter = createDatabasePluginAdapter(
     "d1Database",
-    createD1Implementation(executor, config.insightsDatabaseNamespace),
+    createD1Implementation(executor, OFFICIAL_INSIGHTS_DATABASE_NAMESPACE),
   );
   const database = createDatabasePlugin({
     name: "d1Database",
@@ -77,7 +79,7 @@ export const d1Database = (config: D1DatabaseConfig) => {
   });
   const jobs = createD1InsightsMaintenance(
     executor,
-    config.insightsDatabaseNamespace,
+    OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
   );
   const source = createD1InsightsSourceTools(executor);
   return {
@@ -91,14 +93,14 @@ export const d1Database = (config: D1DatabaseConfig) => {
           async backfillStep(limit: number) {
             await verifyD1InsightsDatabaseNamespace(
               executor,
-              config.insightsDatabaseNamespace,
+              OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
             );
             return source.backfillStep(limit);
           },
           async recoverFailedPreparation() {
             await verifyD1InsightsDatabaseNamespace(
               executor,
-              config.insightsDatabaseNamespace,
+              OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
             );
             return source.recoverFailedPreparation();
           },

@@ -76,7 +76,6 @@ const mocks = vi.hoisted(() => {
     makeEnv: vi.fn(),
     readHotUpdaterInitEnv: vi.fn(),
     select: vi.fn(),
-    text: vi.fn(),
   };
 });
 
@@ -105,7 +104,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
       confirm: mocks.confirm,
       log: mocks.log,
       select: mocks.select,
-      text: mocks.text,
       tasks: vi.fn(async (tasks) => {
         for (const task of tasks) {
           await task.task();
@@ -151,7 +149,6 @@ describe("Cloudflare init discovery", () => {
       async ({ options }: { options: readonly { readonly value: string }[] }) =>
         options[0]?.value,
     );
-    mocks.text.mockResolvedValue("00000000-0000-4000-8000-000000000501");
     mocks.api.accounts.list.mockResolvedValue({
       result: [{ id: "account-id", name: "Account" }],
     });
@@ -199,8 +196,6 @@ describe("Cloudflare init discovery", () => {
         HOT_UPDATER_CLOUDFLARE_API_TOKEN: "api-token",
         HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID: "database-id",
         HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME: "ota",
-        HOT_UPDATER_CLOUDFLARE_INSIGHTS_DATABASE_NAMESPACE:
-          "00000000-0000-4000-8000-000000000501",
         HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: "access-key-id",
         HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME: "bundles",
         HOT_UPDATER_CLOUDFLARE_R2_PRIVATE: "true",
@@ -259,8 +254,6 @@ describe("Cloudflare init discovery", () => {
         HOT_UPDATER_CLOUDFLARE_API_TOKEN: "api-token",
         HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID: "old-database-id",
         HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME: "overridden-name",
-        HOT_UPDATER_CLOUDFLARE_INSIGHTS_DATABASE_NAMESPACE:
-          "00000000-0000-4000-8000-000000000501",
         HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: "access-key-id",
         HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME: "bundles",
         HOT_UPDATER_CLOUDFLARE_R2_PRIVATE: "true",
@@ -372,8 +365,6 @@ describe("Cloudflare init discovery", () => {
         HOT_UPDATER_CLOUDFLARE_API_TOKEN: "saved-api-token",
         HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID: "database-id",
         HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME: "ota",
-        HOT_UPDATER_CLOUDFLARE_INSIGHTS_DATABASE_NAMESPACE:
-          "00000000-0000-4000-8000-000000000501",
         HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: "saved-access-key",
         HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME: "bundles",
         HOT_UPDATER_CLOUDFLARE_R2_PRIVATE: "true",
@@ -533,8 +524,6 @@ describe("Cloudflare init discovery", () => {
         HOT_UPDATER_CLOUDFLARE_API_TOKEN: "api-token",
         HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID: "database-id",
         HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME: "ota",
-        HOT_UPDATER_CLOUDFLARE_INSIGHTS_DATABASE_NAMESPACE:
-          "00000000-0000-4000-8000-000000000501",
         HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: "access-key-id",
         HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME: "bundles",
         HOT_UPDATER_CLOUDFLARE_R2_PRIVATE: "true",

@@ -20,7 +20,7 @@ import { createPostgresInsightsSearchPages } from "./postgresInsightsSearchPages
 import { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
 import type { Database } from "./types";
 
-const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
+const insightsDatabaseNamespace = "00000000-0000-4000-8000-000000000001";
 
 const cutoff = Date.UTC(2026, 0, 10, 12, 34, 56);
 const event = (
@@ -67,7 +67,6 @@ describe("durable historical contains and immutable installation pages", () => {
       ],
     });
     plugin = postgres({
-      insightsDatabaseNamespace,
       dialect: new PGliteDialect(client),
     });
     await migratePostgresInsightsSource(db, insightsDatabaseNamespace);

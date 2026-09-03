@@ -7,13 +7,11 @@ declare global {
   var HotUpdater: {
     BUCKET_NAME: string;
     FUNCTION_NAME: string;
-    INSIGHTS_DATABASE_NAMESPACE: string;
   };
 }
 
 const functionName = HotUpdater.FUNCTION_NAME;
 const bucketName = HotUpdater.BUCKET_NAME;
-const insightsDatabaseNamespace = HotUpdater.INSIGHTS_DATABASE_NAMESPACE;
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const functionBasePath = `/${functionName}`;
@@ -21,7 +19,6 @@ const hotUpdaterBasePath = "/";
 
 const hotUpdater = createHotUpdater({
   database: supabaseDatabase({
-    insightsDatabaseNamespace,
     supabaseUrl,
     supabaseServiceRoleKey,
   }),

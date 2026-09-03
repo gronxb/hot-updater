@@ -49,9 +49,6 @@ describe("AWS managed config scaffold", () => {
     expect(scaffold.text).toContain(
       "tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!",
     );
-    expect(scaffold.text).toContain(
-      "insightsDatabaseNamespace: process.env.HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE!",
-    );
     expect(scaffold.text).not.toContain("authorityId");
     expect(scaffold.text).not.toContain("catalogId");
     expect(scaffold.text).not.toContain("storageOptions");
@@ -106,9 +103,6 @@ export default defineConfig({
 
     const updated = await fs.readFile(configPath, "utf8");
     expect(updated.match(/const awsOptions\s*=/gu)).toHaveLength(1);
-    expect(updated).toContain(
-      "insightsDatabaseNamespace: process.env.HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE!",
-    );
     expect(updated).not.toContain("const storageOptions");
     expect(updated).toContain("HOT_UPDATER_E2E_ENV_TARGET_PATH");
     expect(updated).toContain("basePath: providerNamespace");

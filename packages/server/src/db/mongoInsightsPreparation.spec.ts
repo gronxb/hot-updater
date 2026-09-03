@@ -38,7 +38,6 @@ describe("MongoDB Insights event write fence", () => {
     const harness = createMongoTestHarness();
     const database = mongoAdapter({
       client: harness.client,
-      insightsDatabaseNamespace: databaseNamespace,
       transactions: true,
     });
     const event = { ...createBundleEventRowFixture("10", 50), ...change };

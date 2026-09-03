@@ -12,7 +12,6 @@
   },
   "vars": {
     "BUCKET_NAME": "hot-updater-test",
-    "INSIGHTS_DATABASE_NAMESPACE": "00000000-0000-4000-8000-000000000001",
     "STORAGE_DOWNLOAD_URL_SIGNING_KEY": "test-storage-download-url-signing-key"
   },
   "d1_databases": [

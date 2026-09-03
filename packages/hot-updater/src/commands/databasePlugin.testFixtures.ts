@@ -21,11 +21,6 @@ import type { DeploymentWrite } from "./deployTransaction";
 
 export type DeploymentSeed = Omit<DeploymentWrite, "catalogId">;
 
-const MOCK_INSIGHTS_NAMESPACES = {
-  insightsDatabaseNamespace: "00000000-0000-7000-8000-00000000d101",
-  otherInsightsDatabaseNamespace: "00000000-0000-7000-8000-00000000d102",
-} as const;
-
 const createdAtMsFromId = (id: string): number => {
   try {
     const timestamp = extractTimestampFromUUIDv7(id);
@@ -161,9 +156,8 @@ const compileSeedCatalogs = async (
 };
 
 export const createDatabasePluginHarness = () => {
-  const data = createMockDatabaseData(MOCK_INSIGHTS_NAMESPACES);
+  const data = createMockDatabaseData();
   const basePlugin = mockDatabase({
-    ...MOCK_INSIGHTS_NAMESPACES,
     data,
     latency: { min: 0, max: 0 },
   });

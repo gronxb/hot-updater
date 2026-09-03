@@ -5,15 +5,10 @@ import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
 
 import { client, db } from "./drizzle";
 
-const insightsDatabaseNamespace =
-  process.env.HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE ??
-  "00000000-0000-7000-8000-00000000e001";
-
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({
     db,
-    insightsDatabaseNamespace,
     provider: "sqlite",
   }),
   clientAccess: { type: "public" },

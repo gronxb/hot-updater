@@ -28,7 +28,7 @@ import {
 } from "./postgresInsightsSource";
 import type { Database } from "./types";
 
-const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
+const insightsDatabaseNamespace = "00000000-0000-4000-8000-000000000001";
 
 type Plan = {
   "Node Type": string;
@@ -163,7 +163,6 @@ describe("PostgreSQL native live installation pages", () => {
         },
       });
       const plugin = postgres({
-        insightsDatabaseNamespace,
         host: "127.0.0.1",
         port,
         user: "postgres",

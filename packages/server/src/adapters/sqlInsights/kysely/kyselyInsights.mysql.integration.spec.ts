@@ -18,7 +18,7 @@ import { createKyselyMigrator } from "../../../db/fixedMigrator";
 import { kyselyAdapter } from "../../kysely";
 
 const mysqlUrl = process.env.KYSELY_INSIGHTS_MYSQL_URL;
-const databaseNamespace = "20000000-0000-4000-8000-000000000001";
+const databaseNamespace = "00000000-0000-4000-8000-000000000001";
 const describeMySQL = mysqlUrl ? describe : describe.skip;
 
 type AppliedEvent = BundleEventRow & { readonly type: "UPDATE_APPLIED" };
@@ -125,7 +125,6 @@ const migrateAll = async (db: Kysely<object>): Promise<void> => {
   const migration = await kyselyAdapter({
     db,
     provider: "mysql",
-    insightsDatabaseNamespace: databaseNamespace,
   }).createMigrator!().migrateToLatest();
   await migration.execute();
 };

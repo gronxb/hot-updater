@@ -1,6 +1,7 @@
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
+  OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
   type DatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
 import type { Kysely } from "kysely";
@@ -28,7 +29,6 @@ export type { RelationMode, KyselySQLProvider as SQLProvider };
 export interface KyselyAdapterConfig<TDatabase extends object = object> {
   readonly db: Kysely<TDatabase>;
   readonly provider: KyselySQLProvider;
-  readonly insightsDatabaseNamespace: string;
   readonly relationMode?: RelationMode;
 }
 
@@ -38,7 +38,7 @@ const extendMigration = <TDatabase extends object>(
 ): MigrationResult => {
   const statements = getKyselyInsightsDDL(
     config.provider,
-    config.insightsDatabaseNamespace,
+    OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
   );
   return {
     operations: [
@@ -57,7 +57,7 @@ const extendMigration = <TDatabase extends object>(
       await migrateKyselyInsights(
         config.db,
         config.provider,
-        config.insightsDatabaseNamespace,
+        OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
         statements,
       );
     },
@@ -75,7 +75,7 @@ const createImplementation = <TDatabase extends object>(
     insights: createKyselyInsightsModel(
       db,
       config.provider,
-      config.insightsDatabaseNamespace,
+      OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
     ),
     deleteChannel: (input) =>
       db

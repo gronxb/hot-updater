@@ -19,7 +19,7 @@ import {
 } from "./postgresInsightsSource";
 import type { Database } from "./types";
 
-const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
+const insightsDatabaseNamespace = "00000000-0000-4000-8000-000000000001";
 
 type ExplainPlan = {
   "Node Type": string;
@@ -91,7 +91,6 @@ describe("PostgreSQL committed Insights source", () => {
     );
     db = new Kysely<Database>({ dialect: new PGliteDialect(client) });
     plugin = postgres({
-      insightsDatabaseNamespace,
       dialect: new PGliteDialect(client),
     });
     source = createPostgresInsightsSourceTools(db, insightsDatabaseNamespace);

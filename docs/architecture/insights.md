@@ -50,6 +50,6 @@ states explicitly. Cursors pin the publication and query identity so a refresh
 cannot mix generations within one traversal. Raw events remain the source of
 truth; invalid source data does not advance a projection checkpoint.
 
-`HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE` is a required stable lowercase UUID.
-Providers use it to derive isolated storage identities. Changing it creates a
-new Insights namespace instead of adopting the previous projections.
+Official providers own a fixed internal storage identity, so existing database
+configuration does not need an Insights-specific setting. Custom database
+plugins must provide a stable storage identity to fence cursors and projections.

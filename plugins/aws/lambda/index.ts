@@ -13,7 +13,6 @@ declare global {
     CLOUDFRONT_KEY_PAIR_ID: string;
     DYNAMODB_REGION: string;
     DYNAMODB_TABLE_NAME: string;
-    INSIGHTS_DATABASE_NAMESPACE: string;
     SSM_PARAMETER_NAME: string;
     SSM_REGION: string;
     S3_BUCKET_NAME: string;
@@ -25,7 +24,6 @@ export const HOT_UPDATER_BASE_PATH = "/";
 const CLOUDFRONT_KEY_PAIR_ID = HotUpdater.CLOUDFRONT_KEY_PAIR_ID;
 const DYNAMODB_REGION = HotUpdater.DYNAMODB_REGION;
 const DYNAMODB_TABLE_NAME = HotUpdater.DYNAMODB_TABLE_NAME;
-const INSIGHTS_DATABASE_NAMESPACE = HotUpdater.INSIGHTS_DATABASE_NAMESPACE;
 const SSM_PARAMETER_NAME = HotUpdater.SSM_PARAMETER_NAME;
 const SSM_REGION = HotUpdater.SSM_REGION;
 const S3_BUCKET_NAME = HotUpdater.S3_BUCKET_NAME;
@@ -39,7 +37,6 @@ type Bindings = {
 };
 
 const database = dynamoDB({
-  insightsDatabaseNamespace: INSIGHTS_DATABASE_NAMESPACE,
   region: DYNAMODB_REGION,
   tableName: DYNAMODB_TABLE_NAME,
 });

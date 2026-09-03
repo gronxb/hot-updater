@@ -8,6 +8,11 @@ export interface MockInsightsDatabaseNamespaces {
   readonly otherInsightsDatabaseNamespace: string;
 }
 
+export const MOCK_INSIGHTS_DATABASE_NAMESPACES = {
+  insightsDatabaseNamespace: "00000000-0000-7000-8000-00000000d001",
+  otherInsightsDatabaseNamespace: "00000000-0000-7000-8000-00000000d002",
+} as const;
+
 /**
  * Internal reference-backed Insights runtime for the Mock database provider.
  *

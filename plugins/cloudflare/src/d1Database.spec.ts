@@ -82,7 +82,6 @@ it("queries bundles through domain filters", async () => {
     accountId: "account",
     cloudflareApiToken: "token",
     databaseId: "database",
-    insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000501",
   });
 
   const rows = await plugin.models.bundles.findMany({
@@ -109,7 +108,6 @@ it("lists normalized channels without scanning bundles", async () => {
     accountId: "account",
     cloudflareApiToken: "token",
     databaseId: "database",
-    insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000501",
   });
 
   await expect(plugin.models.channels.list({})).resolves.toEqual({
@@ -129,7 +127,6 @@ it("counts domain-filtered bundle rows in SQL", async () => {
     accountId: "account",
     cloudflareApiToken: "token",
     databaseId: "database",
-    insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000501",
   });
 
   await plugin.models.bundles.count({
@@ -147,7 +144,6 @@ it("sends parameterized commits through the D1 batch body", async () => {
     accountId: "account",
     cloudflareApiToken: "token",
     databaseId: "database",
-    insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000501",
   });
 
   await expect(

@@ -24,7 +24,7 @@ import { createPostgresInsightsReportWorker } from "./postgresInsightsReports";
 import { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
 import type { Database } from "./types";
 
-const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
+const insightsDatabaseNamespace = "00000000-0000-4000-8000-000000000001";
 
 const hour = 3_600_000;
 const day = 24 * hour;
@@ -75,7 +75,6 @@ describe("resumable PostgreSQL exact report accumulation", () => {
       ],
     });
     plugin = postgres({
-      insightsDatabaseNamespace,
       dialect: new PGliteDialect(client),
     });
     await migratePostgresInsightsSource(db, insightsDatabaseNamespace);

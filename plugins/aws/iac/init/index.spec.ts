@@ -31,12 +31,6 @@ describe("AWS init provider", () => {
         provider: initProvider,
       }),
     ).toContain("HOT_UPDATER_DYNAMODB_TABLE_NAME");
-    expect(
-      getMissingInitProviderInputs({
-        inputs,
-        provider: initProvider,
-      }),
-    ).toContain("HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE");
   });
 
   it("validates auth mode and region through its declaration", () => {
@@ -56,7 +50,6 @@ describe("AWS init provider", () => {
       getMissingInitProviderInputs({ inputs, provider: initProvider }),
     ).toEqual([
       "HOT_UPDATER_DYNAMODB_TABLE_NAME",
-      "HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE",
       "HOT_UPDATER_AWS_AUTH_MODE",
       "HOT_UPDATER_S3_REGION",
     ]);

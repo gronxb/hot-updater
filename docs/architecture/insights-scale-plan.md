@@ -83,8 +83,9 @@ aggregation are prohibited.
 
 ## Storage identity and safety
 
-`HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE` is a required stable lowercase UUID.
-It fences cursor and projection identities across deployments.
+Official providers own a fixed internal storage identity. Custom database
+plugins provide a stable identity that fences cursors and projections across
+deployments.
 
 Event IDs are canonical lowercase UUIDv7 values. Installation storage keys use
 SHA-256 of UTF-8 `JSON.stringify(installId)` and retain the complete source ID
@@ -94,8 +95,8 @@ NUL code units; providers preserve exact raw extension fields.
 Projection work advances a durable source checkpoint only after all derived
 writes for the step commit. Invalid source data remains stored and leaves the
 checkpoint and source generation unchanged. Leases, bookmarks, publications,
-and storage versions fail closed when they do not match the configured
-namespace or current schema.
+and storage versions fail closed when they do not match the storage identity or
+current schema.
 
 ## Provider implementation
 

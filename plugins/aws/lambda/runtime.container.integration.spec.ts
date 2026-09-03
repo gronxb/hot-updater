@@ -365,7 +365,6 @@ describe.sequential("aws lambda runtime acceptance", () => {
 
     database = dynamoDB({
       tableName: DYNAMODB_TABLE_NAME,
-      insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000001",
       region: REGION,
       endpoint: localstackEndpoint,
       credentials: {
@@ -406,7 +405,6 @@ describe.sequential("aws lambda runtime acceptance", () => {
       CLOUDFRONT_KEY_PAIR_ID,
       DYNAMODB_REGION: REGION,
       DYNAMODB_TABLE_NAME,
-      INSIGHTS_DATABASE_NAMESPACE: "00000000-0000-4000-8000-000000000001",
       SSM_PARAMETER_NAME,
       SSM_REGION: REGION,
       S3_BUCKET_NAME,

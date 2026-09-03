@@ -26,7 +26,8 @@ import {
 import { Kysely, SqliteDialect } from "kysely";
 import { afterEach, beforeEach, vi } from "vitest";
 
-import { kyselyAdapter } from "../../kysely";
+import { createKyselyInsightsModel, migrateKyselyInsights } from ".";
+import { createKyselyMigrator } from "../../../db/fixedMigrator";
 import { tables } from "./constants";
 import { stepKyselyInsightsSearch } from "./installations";
 import { stepKyselyInsightsReport } from "./reports";
@@ -129,14 +130,12 @@ const createNamespace = async (
   });
   const namespace = { db, native, meter, databaseNamespace };
   namespaces.push(namespace);
-  const adapter = kyselyAdapter({
+  const migration = await createKyselyMigrator({
     db,
     provider: "sqlite",
-    insightsDatabaseNamespace: databaseNamespace,
   });
-  await adapter.createMigrator!()
-    .migrateToLatest()
-    .then((migration) => migration.execute());
+  await migration.migrateToLatest().then((migration) => migration.execute());
+  await migrateKyselyInsights(db, "sqlite", databaseNamespace);
   return namespace;
 };
 
@@ -226,16 +225,16 @@ const createHarness = async (
   const other = await createNamespace(
     namespaces.otherInsightsDatabaseNamespace,
   );
-  const primaryModel = kyselyAdapter({
-    db: primary.db,
-    provider: "sqlite",
-    insightsDatabaseNamespace: primary.databaseNamespace,
-  }).models.insights;
-  const otherModel = kyselyAdapter({
-    db: other.db,
-    provider: "sqlite",
-    insightsDatabaseNamespace: other.databaseNamespace,
-  }).models.insights;
+  const primaryModel = createKyselyInsightsModel(
+    primary.db,
+    "sqlite",
+    primary.databaseNamespace,
+  );
+  const otherModel = createKyselyInsightsModel(
+    other.db,
+    "sqlite",
+    other.databaseNamespace,
+  );
   const runTargetedJobStep = async (
     namespace: SqliteNamespace,
     jobId: string,

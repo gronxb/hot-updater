@@ -1,13 +1,16 @@
 import { createDatabaseClient } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
+import {
+  createBundlePatchRowFixture,
+  createBundleRowFixture,
+} from "../../../test-utils/src/databaseTestFixtures";
 import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import { mongoAdapter } from "./mongodb";
 import { createMongoBundleWhere } from "./mongodbQuery";
 import { createMongoTestHarness } from "./mongodbTestClient";
 
 const harness = createMongoTestHarness();
-const insightsDatabaseNamespace = "00000000-0000-7000-8000-000000000099";
 
 setupDatabasePluginTestSuite({
   name: "mongoAdapter v2",
@@ -16,30 +19,37 @@ setupDatabasePluginTestSuite({
     mongoAdapter({
       client: harness.client,
       transactions: true,
-      insightsDatabaseNamespace,
     }),
   reset: () => harness.reset(),
   dispose: () => harness.close(),
 });
 
 describe("mongoAdapter capabilities", () => {
-  it("requires the transaction-capable adapter", () => {
-    const plugin = mongoAdapter({
-      client: harness.client,
-      transactions: true,
-      insightsDatabaseNamespace,
-    });
+  it("returns an adapter without an unsafe atomic-batch fallback", () => {
+    const plugin = mongoAdapter({ client: harness.client });
     expect(plugin.name).toBe("mongodb");
     expect(plugin.adapterName).toBe("mongodb");
     expect(plugin.provider).toBe("mongodb");
     expect(Reflect.has(plugin, "transaction")).toBe(false);
-    expect(() =>
-      mongoAdapter({
-        client: harness.client,
-        transactions: false,
-        insightsDatabaseNamespace,
-      } as never),
-    ).toThrow("requires replica-set or sharded-cluster transactions");
+  });
+
+  it("rejects a cross-table commit when transactions are disabled", async () => {
+    const plugin = mongoAdapter({ client: harness.client });
+    const owner = createBundleRowFixture("970");
+    const patch = createBundlePatchRowFixture(
+      "971",
+      owner.id,
+      createBundleRowFixture("972").id,
+    );
+
+    await expect(
+      plugin.commit({
+        changes: [
+          { model: "bundles", operation: "insert", row: owner },
+          { model: "bundlePatches", operation: "insert", row: patch },
+        ],
+      }),
+    ).rejects.toMatchObject({ name: "DatabaseAtomicCommitUnsupportedError" });
   });
 
   it("recovers a tombstoned bundle when an aggregate delete is retried", async () => {
@@ -48,7 +58,6 @@ describe("mongoAdapter capabilities", () => {
       mongoAdapter({
         client: harness.client,
         transactions: true,
-        insightsDatabaseNamespace,
       }),
     );
     const bundle = {

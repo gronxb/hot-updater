@@ -49,18 +49,8 @@ import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
 import { s3Storage } from "@hot-updater/aws";
 import { prisma } from "./prisma";
 
-const insightsDatabaseNamespace =
-  process.env.HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE;
-if (!insightsDatabaseNamespace) {
-  throw new Error("HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE is required");
-}
-
 export const hotUpdater = createHotUpdater({
-  database: prismaAdapter({
-    insightsDatabaseNamespace,
-    prisma,
-    provider: "sqlite",
-  }),
+  database: prismaAdapter({ prisma, provider: "sqlite" }),
   clientAccess: { type: "api-key" },
   storage: [
     s3Storage({
@@ -76,18 +66,6 @@ export const hotUpdater = createHotUpdater({
   ],
 });
 ```
-
-Generate one lowercase UUID and store it as
-`HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE` in the server and migration
-environment:
-
-```bash
-node -e 'console.log(crypto.randomUUID())'
-```
-
-Keep this value unchanged for the lifetime of the database. It identifies the
-Insights data source, so provisioning and every server deployment must use the
-same value.
 
 ## Schema Generation
 

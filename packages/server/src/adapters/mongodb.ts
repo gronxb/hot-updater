@@ -5,6 +5,7 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
+  OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
   type DatabasePluginImplementation,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
@@ -33,15 +34,13 @@ import {
   MONGO_INSIGHTS_SOURCE_EVENT_COLLECTION,
   MONGO_INSIGHTS_SOURCE_STATE_COLLECTION,
   MONGO_INSIGHTS_SOURCE_STATE_ID,
-  isMongoInsightsDatabaseNamespace,
 } from "./mongodbInsightsSourceSchema";
 import { createMongoReads } from "./mongodbReads";
 import { createMongoWrites } from "./mongodbWrites";
 
 export interface MongoDBConfig {
   readonly client: MongoClient;
-  readonly insightsDatabaseNamespace: string;
-  readonly transactions: true;
+  readonly transactions?: boolean;
 }
 
 const assertMongoCoreSchemaReady = async (client: MongoClient) => {
@@ -285,22 +284,17 @@ const createTransactionalMongoImplementation = (
 export const mongoAdapter = (
   config: MongoDBConfig,
 ): DatabaseAdapterWithCapabilities => {
-  if (config.transactions !== true) {
-    throw new Error(
-      "MongoDB Insights requires replica-set or sharded-cluster transactions.",
-    );
-  }
-  if (!isMongoInsightsDatabaseNamespace(config.insightsDatabaseNamespace)) {
-    throw new Error(
-      "MongoDB Insights database namespace must be a lowercase UUID.",
-    );
-  }
   const adapter = createDatabasePluginAdapter(
     "mongodb",
-    createTransactionalMongoImplementation(
-      config.client,
-      config.insightsDatabaseNamespace,
-    ),
+    config.transactions === true
+      ? createTransactionalMongoImplementation(
+          config.client,
+          OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
+        )
+      : createMongoImplementation(
+          config.client,
+          OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
+        ),
   );
   return Object.assign(
     createDatabasePlugin({
@@ -313,7 +307,7 @@ export const mongoAdapter = (
       createInsightsSchemaProvisioner: () =>
         createMongoInsightsSchemaProvisioner(
           config.client,
-          config.insightsDatabaseNamespace,
+          OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
         ),
       provider: "mongodb" as const,
       createMigrator: () => createMongoMigrator(config.client),

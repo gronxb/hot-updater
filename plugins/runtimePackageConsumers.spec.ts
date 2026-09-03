@@ -255,10 +255,7 @@ const databaseBinding = {
   prepare: () => ({ bind: () => ({ all: async () => ({ results: [] }) }) }),
   batch: async (statements) => Promise.all(statements.map((statement) => statement.all())),
 };
-const database = runtime.d1Database({
-  database: databaseBinding,
-  insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000001",
-});
+const database = runtime.d1Database(databaseBinding);
 if ("createWorkerSigningHandler" in runtime) throw new Error("unexpected Worker signing handler");
 if (database.name !== "d1Database") throw new Error("invalid d1Database name");
 if (typeof database.models.insights.append !== "function") throw new Error("missing insights model");
@@ -307,7 +304,6 @@ for (const operation of ["put", "get", "getDownloadUrl", "exists", "delete"]) {
     const edgeSpecifier = "@hot-updater/supabase/edge";
     const runtimeAssertions = `
 const config = {
-  insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000001",
   supabaseUrl: "https://test.supabase.invalid",
   supabaseServiceRoleKey: "test-service-role-key",
 };
@@ -345,7 +341,7 @@ for (const runtime of [rootRuntime, edgeRuntime]) {
       rootSpecifier,
     )};\nimport { supabaseDatabase as edgeDatabase, supabaseStorage as edgeStorage } from ${JSON.stringify(
       edgeSpecifier,
-    )};\nconst config: Parameters<typeof rootDatabase>[0] = { insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000001", supabaseUrl: "https://test.supabase.invalid", supabaseServiceRoleKey: "test-service-role-key" };\nconst edgeConfig: Parameters<typeof edgeDatabase>[0] = config;\nconst rootStorageConfig: Parameters<typeof rootStorage>[0] = { ...config, bucketName: "updates" };\nconst edgeStorageConfig: Parameters<typeof edgeStorage>[0] = rootStorageConfig;\nvoid rootDatabase(config).models.channels;\nvoid edgeDatabase(edgeConfig).models.channels;\nvoid rootStorage(rootStorageConfig).getDownloadUrl;\nvoid edgeStorage(edgeStorageConfig).getDownloadUrl;\n`;
+    )};\nconst config: Parameters<typeof rootDatabase>[0] = { supabaseUrl: "https://test.supabase.invalid", supabaseServiceRoleKey: "test-service-role-key" };\nconst edgeConfig: Parameters<typeof edgeDatabase>[0] = config;\nconst rootStorageConfig: Parameters<typeof rootStorage>[0] = { ...config, bucketName: "updates" };\nconst edgeStorageConfig: Parameters<typeof edgeStorage>[0] = rootStorageConfig;\nvoid rootDatabase(config).models.channels;\nvoid edgeDatabase(edgeConfig).models.channels;\nvoid rootStorage(rootStorageConfig).getDownloadUrl;\nvoid edgeStorage(edgeStorageConfig).getDownloadUrl;\n`;
     await writeFile(moduleConsumer, consumerSource);
     await writeFile(commonJsConsumer, consumerSource);
     await typeCheckConsumers(packageDirectory, [

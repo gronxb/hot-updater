@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 
 import { postgres } from "./postgres";
 
-const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
+const insightsDatabaseNamespace = "00000000-0000-4000-8000-000000000001";
 
 class PostgresTestStateError extends Error {
   readonly name = "PostgresTestStateError";
@@ -50,7 +50,6 @@ setupDatabasePluginTestSuite({
   },
   createPlugin: () =>
     postgres({
-      insightsDatabaseNamespace,
       dialect: new PGliteDialect(getClient()),
     }),
   reset: async () => {
@@ -83,7 +82,6 @@ const createPostgresTestPlugin = async () => {
   return {
     database,
     plugin: postgres({
-      insightsDatabaseNamespace,
       dialect: new PGliteDialect(database),
     }),
   };

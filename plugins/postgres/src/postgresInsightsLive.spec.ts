@@ -24,7 +24,7 @@ import {
 } from "./postgresInsightsSource";
 import type { Database } from "./types";
 
-const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
+const insightsDatabaseNamespace = "00000000-0000-4000-8000-000000000001";
 
 describe("PostgreSQL live installation projection", () => {
   let client: PGlite;
@@ -174,7 +174,7 @@ describe("PostgreSQL live installation projection", () => {
     await prepareSource();
     await prepareLive();
     const dialect = new PGliteDialect(client);
-    const plugin = postgres({ insightsDatabaseNamespace, dialect });
+    const plugin = postgres({ dialect });
     const newest = event("10", "hot", 20);
     const older = event("11", "hot", 10);
     await plugin.models.insights.append(newest);
@@ -218,7 +218,6 @@ describe("PostgreSQL live installation projection", () => {
       db,
     );
     const plugin = postgres({
-      insightsDatabaseNamespace,
       dialect: new PGliteDialect(client),
     });
     await expect(plugin.models.insights.append(victim)).rejects.toMatchObject({

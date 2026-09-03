@@ -24,10 +24,10 @@ const cockroachUrl = process.env.KYSELY_INSIGHTS_COCKROACH_URL;
 const databaseKinds = ["scale", "behavior", "migration", "poison"] as const;
 type DatabaseKind = (typeof databaseKinds)[number];
 const databaseNamespaces = {
-  scale: "30000000-0000-4000-8000-000000000001",
-  behavior: "30000000-0000-4000-8000-000000000002",
-  migration: "30000000-0000-4000-8000-000000000003",
-  poison: "30000000-0000-4000-8000-000000000004",
+  scale: "00000000-0000-4000-8000-000000000001",
+  behavior: "00000000-0000-4000-8000-000000000001",
+  migration: "00000000-0000-4000-8000-000000000001",
+  poison: "00000000-0000-4000-8000-000000000001",
 } as const satisfies Record<DatabaseKind, string>;
 
 type AppliedEvent = BundleEventRow & { readonly type: "UPDATE_APPLIED" };
@@ -124,14 +124,10 @@ describe.skipIf(!cockroachUrl)("Kysely Insights CockroachDB evidence", () => {
     await db.destroy();
   };
 
-  const migrateFresh = async (
-    db: Kysely<object>,
-    kind: DatabaseKind,
-  ): Promise<void> => {
+  const migrateFresh = async (db: Kysely<object>): Promise<void> => {
     const migration = await kyselyAdapter({
       db,
       provider: "cockroachdb",
-      insightsDatabaseNamespace: databaseNamespaces[kind],
     }).createMigrator!().migrateToLatest();
     await migration.execute();
   };
@@ -189,7 +185,7 @@ describe.skipIf(!cockroachUrl)("Kysely Insights CockroachDB evidence", () => {
 
   it("runs rev4 BYTES DDL and a bounded 50,001-row DistSQL page", async () => {
     const db = connect("scale");
-    await migrateFresh(db, "scale");
+    await migrateFresh(db);
 
     const state = await sql<{
       readonly layout_revision: unknown;
@@ -291,7 +287,7 @@ describe.skipIf(!cockroachUrl)("Kysely Insights CockroachDB evidence", () => {
   it("keeps concurrent writes, delayed publications, and zero-filled reports exact", async () => {
     const db = connect("behavior");
     const worker = connect("behavior");
-    await migrateFresh(db, "behavior");
+    await migrateFresh(db);
     const insights = createKyselyInsightsModel(
       db,
       "cockroachdb",

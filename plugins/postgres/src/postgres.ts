@@ -12,6 +12,7 @@ import type {
 import {
   createDatabasePluginAdapter,
   DatabaseRowReferencedError,
+  OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
 } from "@hot-updater/plugin-core/internal";
 import {
   Kysely,
@@ -38,7 +39,6 @@ type PostgresWhereList = {
 
 export type PostgresConfig = PoolConfig & {
   readonly dialect?: Dialect;
-  readonly insightsDatabaseNamespace: string;
 };
 
 class InvalidPostgresPredicateError extends Error {
@@ -355,7 +355,7 @@ const createPostgresImplementation = (
 });
 
 export const postgres = (config: PostgresConfig) => {
-  const { dialect, insightsDatabaseNamespace, ...poolConfig } = config;
+  const { dialect, ...poolConfig } = config;
   const db =
     dialect !== undefined
       ? new Kysely<Database>({ dialect })
@@ -367,7 +367,7 @@ export const postgres = (config: PostgresConfig) => {
         })();
   const implementation = createPostgresImplementation(
     db,
-    insightsDatabaseNamespace,
+    OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
   );
   const adapter = createDatabasePluginAdapter("postgres", implementation);
   return createDatabasePlugin({

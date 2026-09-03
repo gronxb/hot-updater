@@ -32,10 +32,7 @@ import {
 import { CloudFrontManager } from "./cloudfront";
 import { DynamoDBManager } from "./dynamodb";
 import { IAMManager } from "./iam";
-import {
-  initProvider as AWS_INIT_PROVIDER,
-  isInsightsDatabaseNamespace,
-} from "./init/index";
+import { initProvider as AWS_INIT_PROVIDER } from "./init/index";
 import { LambdaEdgeDeployer } from "./lambdaEdge";
 import { type AwsRegion, regionLocationMap } from "./regionLocationMap";
 import { S3Manager } from "./s3";
@@ -163,13 +160,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
   const savedLambdaName = savedInputs.lambdaName;
   const savedDynamoDBTableName = savedInputs.dynamodbTableName;
-  const savedInsightsDatabaseNamespace = savedInputs.insightsDatabaseNamespace;
   const resourceInputs = await p.group<{
     bucketSelection: string | symbol;
     bucketName: string | symbol | undefined;
     bucketRegion: string | symbol | undefined;
     dynamodbTableName: string | symbol | undefined;
-    insightsDatabaseNamespace: string | symbol | undefined;
     lambdaName: string | symbol;
   }>(
     {
@@ -240,22 +235,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
               validate: (value) =>
                 value ? undefined : "DynamoDB table name is required",
             }),
-      insightsDatabaseNamespace: () =>
-        nonInteractive && savedInsightsDatabaseNamespace
-          ? Promise.resolve(savedInsightsDatabaseNamespace)
-          : p.text({
-              ...getInitProviderTextPromptValues(
-                AWS_INIT_PROVIDER.inputs.insightsDatabaseNamespace.prompt,
-                savedInsightsDatabaseNamespace,
-              ),
-              message:
-                AWS_INIT_PROVIDER.inputs.insightsDatabaseNamespace.prompt
-                  .message,
-              validate: (value) =>
-                isInsightsDatabaseNamespace(value)
-                  ? undefined
-                  : "Insights database namespace must be a lowercase UUID",
-            }),
       lambdaName: () =>
         nonInteractive && savedLambdaName
           ? Promise.resolve(savedLambdaName)
@@ -273,13 +252,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       onCancel: () => process.exit(1),
     },
   );
-  const {
-    bucketName,
-    bucketRegion,
-    dynamodbTableName,
-    insightsDatabaseNamespace,
-    lambdaName,
-  } = resourceInputs;
+  const { bucketName, bucketRegion, dynamodbTableName, lambdaName } =
+    resourceInputs;
   if (!bucketName || !lambdaName) {
     p.log.error("AWS resource names are required.");
     process.exit(1);
@@ -293,14 +267,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     typeof dynamodbTableName === "string" ? dynamodbTableName : undefined;
   if (!resolvedDynamoDBTableName) {
     p.log.error("AWS DynamoDB table name is required.");
-    process.exit(1);
-  }
-  const resolvedInsightsDatabaseNamespace =
-    typeof insightsDatabaseNamespace === "string"
-      ? insightsDatabaseNamespace
-      : undefined;
-  if (!isInsightsDatabaseNamespace(resolvedInsightsDatabaseNamespace)) {
-    p.log.error("AWS Insights database namespace is required.");
     process.exit(1);
   }
   await assertAwsLambdaCanInitialize({
@@ -324,7 +290,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     bucketRegion,
     distributionId: selectedDistribution?.Id,
     dynamodbTableName: resolvedDynamoDBTableName,
-    insightsDatabaseNamespace: resolvedInsightsDatabaseNamespace,
     lambdaName,
   };
   const persistCredentialInputs = await confirmInitInputPersistence({
@@ -375,7 +340,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   });
   const databasePlugin = dynamoDB({
     credentials,
-    insightsDatabaseNamespace: resolvedInsightsDatabaseNamespace,
     region: bucketRegion,
     tableName: resolvedDynamoDBTableName,
   });
@@ -420,7 +384,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       bucketName,
       dynamodbRegion: bucketRegion,
       dynamodbTableName: resolvedDynamoDBTableName,
-      insightsDatabaseNamespace: resolvedInsightsDatabaseNamespace,
       publicKeyId: publicKeyId,
       ssmParameterName: ssmParameterName,
       ssmRegion: bucketRegion,

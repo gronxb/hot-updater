@@ -194,7 +194,6 @@ describe("MongoDB durable Insights model", () => {
   const migrateCore = async () => {
     const adapter = mongoAdapter({
       client,
-      insightsDatabaseNamespace: databaseNamespace,
       transactions: true,
     });
     const core = await adapter.createMigrator!().migrateToLatest({

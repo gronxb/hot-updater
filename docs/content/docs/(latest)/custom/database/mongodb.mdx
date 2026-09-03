@@ -40,18 +40,8 @@ import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
 import { s3Storage } from "@hot-updater/aws";
 import { client } from "./mongodb";
 
-const insightsDatabaseNamespace =
-  process.env.HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE;
-if (!insightsDatabaseNamespace) {
-  throw new Error("HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE is required");
-}
-
 export const hotUpdater = createHotUpdater({
-  database: mongoAdapter({
-    client,
-    insightsDatabaseNamespace,
-    transactions: true,
-  }),
+  database: mongoAdapter({ client, transactions: true }),
   clientAccess: { type: "api-key" },
   storage: [
     s3Storage({
@@ -72,9 +62,6 @@ Run MongoDB as a replica set or sharded cluster and set `transactions: true`.
 v1 Release and Release Catalog changes must commit atomically. With transactions
 disabled, commits with revision expectations or multiple changes are rejected,
 so a standalone MongoDB server cannot support the normal v1 deployment workflow.
-Set `HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE` once to a lowercase UUID and keep
-that value stable for the lifetime of the database.
-
 ## Schema Generation
 
 Run the database migration to create the MongoDB collection and indexes.

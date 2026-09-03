@@ -119,7 +119,6 @@ describe("aws lambda entrypoint", () => {
       CLOUDFRONT_KEY_PAIR_ID: "KTEST",
       DYNAMODB_REGION: "us-east-1",
       DYNAMODB_TABLE_NAME: "hot-updater-metadata",
-      INSIGHTS_DATABASE_NAMESPACE: "00000000-0000-4000-8000-000000000001",
       SSM_PARAMETER_NAME: "/hot-updater/test",
       SSM_REGION: "us-east-1",
       S3_BUCKET_NAME: "hot-updater-test",
@@ -137,7 +136,6 @@ describe("aws lambda entrypoint", () => {
     );
 
     expect(databaseMocks.dynamoDB).toHaveBeenCalledWith({
-      insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000001",
       region: "us-east-1",
       tableName: "hot-updater-metadata",
     });

@@ -25,7 +25,7 @@ import { createPostgresInsightsReportWorker } from "./postgresInsightsReports";
 import { createPostgresInsightsSourceTools } from "./postgresInsightsSource";
 import type { Database } from "./types";
 
-const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
+const insightsDatabaseNamespace = "00000000-0000-4000-8000-000000000001";
 
 const day = 86_400_000;
 const cutoff = Date.UTC(2026, 0, 11, 12, 34, 56);
@@ -75,7 +75,6 @@ describe("immutable PostgreSQL report section pages", () => {
       ],
     });
     plugin = postgres({
-      insightsDatabaseNamespace,
       dialect: new PGliteDialect(client),
     });
     await migratePostgresInsightsSource(db, insightsDatabaseNamespace);

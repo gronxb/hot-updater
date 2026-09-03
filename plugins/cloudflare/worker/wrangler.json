@@ -23,7 +23,6 @@
     }
   ],
   "vars": {
-    "BUCKET_NAME": "user-buckets",
-    "INSIGHTS_DATABASE_NAMESPACE": "00000000-0000-4000-8000-000000000000"
+    "BUCKET_NAME": "user-buckets"
   }
 }

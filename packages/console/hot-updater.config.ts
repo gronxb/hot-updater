@@ -660,12 +660,7 @@ const bundles: DemoDeployment[] = [
   iosProdCoreBase,
 ];
 
-const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000d001";
-const otherInsightsDatabaseNamespace = "00000000-0000-7000-8000-00000000d002";
-const databaseData = createMockDatabaseData({
-  insightsDatabaseNamespace,
-  otherInsightsDatabaseNamespace,
-});
+const databaseData = createMockDatabaseData();
 for (const bundle of bundles) {
   const channelId = `channel-${bundle.channel}`;
   databaseData.channels.set(channelId, {
@@ -1112,9 +1107,7 @@ for (const query of demoInstallationQueries) {
 }
 
 const database = mockDatabase({
-  insightsDatabaseNamespace,
   latency: { min: 150, max: 320 },
-  otherInsightsDatabaseNamespace,
   data: databaseData,
 });
 

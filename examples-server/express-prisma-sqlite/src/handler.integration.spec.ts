@@ -32,8 +32,6 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
     readonly coreReadBefore: boolean;
     readonly missingCoreExitCode: number | undefined;
     readonly missingCoreOutput: string;
-    readonly mismatchExitCode: number | undefined;
-    readonly mismatchOutput: string;
   };
   const port = 13581;
 
@@ -150,28 +148,6 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
         env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
       },
     );
-    const mismatch = await execa(
-      "node",
-      [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"],
-      {
-        cwd: projectRoot,
-        env: {
-          DATABASE_URL: `file:${testDbPath}`,
-          HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE:
-            "00000000-0000-7000-8000-00000000e999",
-          TEST_DB_PATH: testDbPath,
-        },
-        reject: false,
-      },
-    );
-    await execa(
-      "node",
-      [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"],
-      {
-        cwd: projectRoot,
-        env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
-      },
-    );
     const afterProvisioning =
       await hotUpdater.handlers.client(readinessRequest());
     provisioningEvidence = {
@@ -180,8 +156,6 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
       coreReadBefore,
       missingCoreExitCode: missingCore.exitCode,
       missingCoreOutput: `${missingCore.stdout}\n${missingCore.stderr}`,
-      mismatchExitCode: mismatch.exitCode,
-      mismatchOutput: `${mismatch.stdout}\n${mismatch.stderr}`,
     };
 
     serverProcess = spawnServerProcess({
@@ -214,19 +188,15 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
     expect(response.status).toBe(200);
   });
 
-  it("fails only Insights closed and rejects invalid provisioning plans before mutation", () => {
+  it("fails only Insights closed until its schema is provisioned", () => {
     expect(provisioningEvidence).toMatchObject({
       afterStatus: 204,
       beforeStatus: 503,
       coreReadBefore: true,
       missingCoreExitCode: 1,
-      mismatchExitCode: 1,
     });
     expect(provisioningEvidence.missingCoreOutput).toContain(
       "Prisma core schema is not ready",
-    );
-    expect(provisioningEvidence.mismatchOutput).toContain(
-      "Prisma Insights database namespace mismatch",
     );
   });
 

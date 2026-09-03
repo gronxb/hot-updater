@@ -16,11 +16,6 @@ import {
 } from "../mockDatabase";
 
 const DEFAULT_LATENCY = { min: 0, max: 0 } as const;
-const INSIGHTS_NAMESPACES = {
-  insightsDatabaseNamespace: "00000000-0000-7000-8000-00000000d001",
-  otherInsightsDatabaseNamespace: "00000000-0000-7000-8000-00000000d002",
-} as const;
-
 let data: MockDatabaseData;
 
 const resetData = (): void => {
@@ -34,7 +29,6 @@ const resetData = (): void => {
 
 const createPlugin = (): DatabasePlugin =>
   mockDatabase({
-    ...INSIGHTS_NAMESPACES,
     data,
     latency: DEFAULT_LATENCY,
   });
@@ -43,7 +37,7 @@ beforeEach(() => {
   resetData();
 });
 
-data = createMockDatabaseData(INSIGHTS_NAMESPACES);
+data = createMockDatabaseData();
 
 setupDatabasePluginTestSuite({
   name: "mock fixed-model database plugin",
@@ -63,17 +57,6 @@ setupDatabaseClientTestSuite({
 });
 
 describe("mock database provider", () => {
-  it("rejects data from a different Insights namespace before creating the plugin", () => {
-    expect(() =>
-      mockDatabase({
-        ...INSIGHTS_NAMESPACES,
-        insightsDatabaseNamespace: "00000000-0000-7000-8000-00000000d003",
-        data,
-        latency: DEFAULT_LATENCY,
-      }),
-    ).toThrow("Mock Insights database namespaces do not match data");
-  });
-
   it("exposes all Insights reads with bounded controllable maintenance", async () => {
     const plugin = createPlugin();
     const dayMs = 86_400_000;

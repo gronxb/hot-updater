@@ -191,7 +191,6 @@ setupDatabasePluginTestSuite({
       accountId: "account-id",
       cloudflareApiToken: "api-token",
       databaseId: "database-id",
-      insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000502",
     }),
   reset,
   dispose: () => undefined,
@@ -200,11 +199,7 @@ setupDatabasePluginTestSuite({
 setupDatabasePluginTestSuite({
   name: "cloudflare worker d1 fixed-model database plugin",
   migrate: () => undefined,
-  createPlugin: () =>
-    d1RuntimeDatabase({
-      database: env.DB,
-      insightsDatabaseNamespace: env.INSIGHTS_DATABASE_NAMESPACE,
-    }),
+  createPlugin: () => d1RuntimeDatabase(env.DB),
   reset,
   dispose: () => {
     state.db = undefined;
@@ -219,16 +214,11 @@ describe.each([
         accountId: "account-id",
         cloudflareApiToken: "api-token",
         databaseId: "database-id",
-        insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000502",
       }),
   },
   {
     name: "cloudflare worker d1",
-    createPlugin: () =>
-      d1RuntimeDatabase({
-        database: env.DB,
-        insightsDatabaseNamespace: env.INSIGHTS_DATABASE_NAMESPACE,
-      }),
+    createPlugin: () => d1RuntimeDatabase(env.DB),
   },
 ])("$name Channel deletion", ({ createPlugin }) => {
   beforeAll(() => {
@@ -349,16 +339,11 @@ describe.each([
         accountId: "account-id",
         cloudflareApiToken: "api-token",
         databaseId: "database-id",
-        insightsDatabaseNamespace: "00000000-0000-4000-8000-000000000502",
       }),
   },
   {
     name: "cloudflare worker d1",
-    createPlugin: () =>
-      d1RuntimeDatabase({
-        database: env.DB,
-        insightsDatabaseNamespace: env.INSIGHTS_DATABASE_NAMESPACE,
-      }),
+    createPlugin: () => d1RuntimeDatabase(env.DB),
   },
 ])("$name Insights v2 writer", ({ createPlugin }) => {
   beforeAll(() => {
@@ -782,10 +767,7 @@ describe.each([
 it("rejects tampered D1 layout before reading a raw event", async () => {
   state.db = env.DB;
   await reset();
-  const plugin = d1RuntimeDatabase({
-    database: env.DB,
-    insightsDatabaseNamespace: env.INSIGHTS_DATABASE_NAMESPACE,
-  });
+  const plugin = d1RuntimeDatabase(env.DB);
   const event = createBundleEventRowFixture("841", 100);
   await plugin.models.insights.append(event);
   let rawReads = 0;
@@ -868,10 +850,7 @@ it("rejects tampered D1 layout before reading a raw event", async () => {
 it("keeps live-installation lookahead pointers small within the event budget", async () => {
   state.db = env.DB;
   await reset();
-  const plugin = d1RuntimeDatabase({
-    database: env.DB,
-    insightsDatabaseNamespace: env.INSIGHTS_DATABASE_NAMESPACE,
-  });
+  const plugin = d1RuntimeDatabase(env.DB);
   const events = [
     {
       ...createBundleEventRowFixture("851", 100),

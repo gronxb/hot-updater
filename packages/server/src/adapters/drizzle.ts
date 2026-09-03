@@ -5,6 +5,7 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
+  OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
   type DatabasePluginImplementation,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
@@ -31,7 +32,6 @@ export type DrizzleProvider = Exclude<
 export interface DrizzleConfig {
   readonly db: unknown | (() => unknown | Promise<unknown>);
   readonly provider: DrizzleProvider;
-  readonly insightsDatabaseNamespace: string;
   readonly schema?: Record<string, unknown>;
   readonly transaction?: boolean;
 }
@@ -44,7 +44,7 @@ const createImplementation = (
   const insights = createDrizzleInsightsQueries(
     db,
     config.provider,
-    config.insightsDatabaseNamespace,
+    OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
   );
   const transaction = db.transaction?.bind(db);
   return {

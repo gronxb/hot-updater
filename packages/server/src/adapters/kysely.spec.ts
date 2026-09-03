@@ -17,7 +17,7 @@ import {
 import { kyselyAdapter } from "./kysely";
 import { migrateKyselyInsights } from "./sqlInsights/kysely";
 
-const insightsDatabaseNamespace = "40000000-0000-4000-8000-000000000001";
+const insightsDatabaseNamespace = "00000000-0000-4000-8000-000000000001";
 
 class KyselyTestStateError extends Error {
   readonly name = "KyselyTestStateError";
@@ -52,7 +52,6 @@ setupDatabasePluginTestSuite({
     kyselyAdapter({
       db: getDatabase(),
       provider: "postgresql",
-      insightsDatabaseNamespace,
     }),
   reset: async () => {
     await getClient().exec(DATABASE_PLUGIN_TEST_RESET_SQL);
@@ -80,7 +79,6 @@ describe("kyselyAdapter SQLite JSON storage", () => {
     const plugin = kyselyAdapter({
       db: sqliteDatabase,
       provider: "sqlite",
-      insightsDatabaseNamespace,
     });
     const row = {
       ...createBundleRowFixture("901"),
@@ -118,7 +116,6 @@ describe("kyselyAdapter soft relations", () => {
     const plugin = kyselyAdapter({
       db: softDatabase,
       provider: "postgresql",
-      insightsDatabaseNamespace,
       relationMode: "fumadb",
     });
     const owner = createBundleRowFixture("952");

@@ -21,7 +21,7 @@ import {
 } from "./postgresInsightsSource";
 import type { Database } from "./types";
 
-const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000f001";
+const insightsDatabaseNamespace = "00000000-0000-4000-8000-000000000001";
 
 const postgresImage =
   process.env.POSTGRES_INSIGHTS_TEST_VERSION_17 === "1"
@@ -129,7 +129,6 @@ describe("PostgreSQL committed source with concurrent transactions", () => {
     )!;
     const writer = (name: string) => {
       const result = postgres({
-        insightsDatabaseNamespace,
         ...config,
         max: 1,
         application_name: name,

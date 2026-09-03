@@ -23,9 +23,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
-const insightsDatabaseNamespace =
-  process.env.HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE ??
-  "00000000-0000-7000-8000-00000000e001";
 assertDockerComposeAvailable(
   "Hono + MySQL integration tests require Docker Compose and a running Docker daemon.",
 );
@@ -136,11 +133,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
         .execute(db);
 
       const migrationHotUpdater = createHotUpdater({
-        database: kyselyAdapter({
-          db,
-          insightsDatabaseNamespace,
-          provider: "mysql",
-        }),
+        database: kyselyAdapter({ db, provider: "mysql" }),
         clientAccess: { type: "public" },
       });
       const migrator = createMigrator(migrationHotUpdater);
@@ -196,7 +189,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     try {
       const adapter = kyselyAdapter({
         db: writer,
-        insightsDatabaseNamespace,
         provider: "mysql",
         relationMode: "fumadb",
       });
@@ -262,7 +254,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
       const deleteAdapter = kyselyAdapter({
         db: remover,
-        insightsDatabaseNamespace,
         provider: "mysql",
         relationMode: "fumadb",
       });

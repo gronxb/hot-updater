@@ -2,6 +2,7 @@ import {
   createDatabaseClient,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
+import { OFFICIAL_INSIGHTS_DATABASE_NAMESPACE } from "@hot-updater/plugin-core/internal";
 import { Query } from "firebase-admin/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,7 +13,7 @@ import { firebaseDatabase } from "./firebaseDatabase";
 import { firebaseChannelDocumentId } from "./firebaseDatabasePersistence";
 
 const PROJECT_ID = "firebase-database-test";
-const INSIGHTS_DATABASE_NAMESPACE = "10000000-0000-4000-8000-000000000004";
+const INSIGHTS_DATABASE_NAMESPACE = OFFICIAL_INSIGHTS_DATABASE_NAMESPACE;
 
 const {
   bundlePatchesCollection,
@@ -30,7 +31,6 @@ const createPlugin = (): DatabasePlugin =>
   firebaseDatabase({
     projectId: PROJECT_ID,
     storageBucket: `${PROJECT_ID}.appspot.com`,
-    insightsDatabaseNamespace: INSIGHTS_DATABASE_NAMESPACE,
   });
 
 const findAllBundles = (plugin: DatabasePlugin) =>
@@ -223,20 +223,10 @@ describe("firebase append-only Insights boundary", () => {
     ).toBeUndefined();
   });
 
-  it("requires a canonical durable namespace before constructing the model", () => {
-    expect(() =>
-      firebaseDatabase({
-        projectId: PROJECT_ID,
-        storageBucket: `${PROJECT_ID}.appspot.com`,
-        insightsDatabaseNamespace: "NOT-A-UUID",
-      }),
-    ).toThrow("canonical lowercase UUID database namespace");
-  });
-
   it("fails closed before event queries when the stored namespace differs", async () => {
     await firebaseInsightsDatabase({
       projectId: PROJECT_ID,
-      insightsDatabaseNamespace: INSIGHTS_DATABASE_NAMESPACE,
+      insightsDatabaseNamespace: "10000000-0000-4000-8000-000000000004",
     }).prepareStep({
       writersDrained: true,
       indexesReady: true,
@@ -245,7 +235,6 @@ describe("firebase append-only Insights boundary", () => {
     });
     const mismatch = firebaseDatabase({
       projectId: PROJECT_ID,
-      insightsDatabaseNamespace: "10000000-0000-4000-8000-0000000000ff",
     });
     const dataReads = vi.spyOn(Query.prototype, "get");
 

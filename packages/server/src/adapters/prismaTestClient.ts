@@ -303,7 +303,7 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
   },
 });
 
-const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000e001";
+const insightsDatabaseNamespace = "00000000-0000-4000-8000-000000000001";
 
 const createClient = (tables: Tables, hooks: Hooks) => ({
   bundle_events: createDelegate(tables, "bundle_events", hooks),

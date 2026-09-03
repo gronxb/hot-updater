@@ -744,7 +744,6 @@ const supabaseMock = vi.hoisted(() => {
   };
 });
 const { createMockClient, getTableReadCount, resetMockClient } = supabaseMock;
-const insightsDatabaseNamespace = "00000000-0000-7000-8000-00000000b001";
 
 vi.mock("@supabase/supabase-js", () => ({
   createClient: () => createMockClient(),
@@ -755,7 +754,6 @@ setupDatabasePluginTestSuite({
   migrate: () => undefined,
   createPlugin: () =>
     supabaseDatabase({
-      insightsDatabaseNamespace,
       supabaseUrl: "https://test.supabase.invalid",
       supabaseServiceRoleKey: "test-service-role-key",
     }),
@@ -766,7 +764,6 @@ setupDatabasePluginTestSuite({
 describe("supabase edge database", () => {
   it("exposes the same nested database contract as the root entrypoint", () => {
     const database = supabaseEdgeDatabase({
-      insightsDatabaseNamespace,
       supabaseUrl: "https://test.supabase.invalid",
       supabaseServiceRoleKey: "test-service-role-key",
     });
@@ -788,7 +785,6 @@ describe("supabase Channel model", () => {
   it("lists the normalized channels table without reading bundles", async () => {
     resetMockClient();
     const database = supabaseDatabase({
-      insightsDatabaseNamespace,
       supabaseUrl: "https://test.supabase.invalid",
       supabaseServiceRoleKey: "test-service-role-key",
     });
@@ -811,7 +807,6 @@ describe("supabase Channel model", () => {
   it("deletes only an empty channel and reports missing channels", async () => {
     resetMockClient();
     const database = supabaseDatabase({
-      insightsDatabaseNamespace,
       supabaseUrl: "https://test.supabase.invalid",
       supabaseServiceRoleKey: "test-service-role-key",
     });
@@ -837,7 +832,6 @@ describe("supabase Channel model", () => {
     async (field) => {
       resetMockClient();
       const database = supabaseDatabase({
-        insightsDatabaseNamespace,
         supabaseUrl: "https://test.supabase.invalid",
         supabaseServiceRoleKey: "test-service-role-key",
       });

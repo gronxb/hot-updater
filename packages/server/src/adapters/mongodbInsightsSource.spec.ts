@@ -16,7 +16,7 @@ import {
 import { createMongoTestHarness } from "./mongodbTestClient";
 
 describe("MongoDB committed Insights source writes", () => {
-  const databaseNamespace = "00000000-0000-7000-8000-000000000099";
+  const databaseNamespace = "00000000-0000-4000-8000-000000000001";
   const harnesses: ReturnType<typeof createMongoTestHarness>[] = [];
   const setup = () => {
     const harness = createMongoTestHarness();

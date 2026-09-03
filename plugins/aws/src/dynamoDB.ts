@@ -34,6 +34,7 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
+  OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
   type DatabaseDistinctOn,
   type DatabaseImplementationResult,
   type DatabaseModel,
@@ -3100,7 +3101,6 @@ export const DYNAMODB_UPDATE_INDEX_NAME = "hot-updater-update-index";
 export interface DynamoDBConfig extends DynamoDBClientConfig {
   readonly apiBasePath?: string;
   readonly cloudfrontDistributionId?: string;
-  readonly insightsDatabaseNamespace: string;
   readonly shouldWaitForInvalidation?: boolean;
   readonly tableName: string;
 }
@@ -3109,7 +3109,6 @@ export const dynamoDB = (config: DynamoDBConfig) => {
   const {
     apiBasePath = "/release-catalogs",
     cloudfrontDistributionId,
-    insightsDatabaseNamespace,
     shouldWaitForInvalidation = false,
     tableName,
     ...clientConfig
@@ -3126,7 +3125,7 @@ export const dynamoDB = (config: DynamoDBConfig) => {
   const store = { client, tableName };
   const insights = createDynamoDBInsightsModel({
     ...store,
-    insightsDatabaseNamespace,
+    insightsDatabaseNamespace: OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
   });
   const crud = createDynamoDBCrud(store, DYNAMODB_UPDATE_INDEX_NAME, insights);
   const invalidateUpdateRoutes = async () => {

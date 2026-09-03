@@ -1,6 +1,7 @@
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginAdapter,
+  OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
   type DatabasePluginImplementation,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core/internal";
@@ -59,17 +60,14 @@ const exactId = (
     : undefined;
 };
 
-export type FirebaseDatabaseConfig = AppOptions & {
-  readonly insightsDatabaseNamespace: string;
-};
+export type FirebaseDatabaseConfig = AppOptions;
 
 export const firebaseDatabase = (config: FirebaseDatabaseConfig) => {
   const insightsDatabaseNamespace = assertFirebaseInsightsDatabaseNamespace(
-    config.insightsDatabaseNamespace,
+    OFFICIAL_INSIGHTS_DATABASE_NAMESPACE,
   );
-  const { insightsDatabaseNamespace: _, ...appOptions } = config;
   const implementation = (() => {
-    const app = getApps().length ? getApp() : initializeApp(appOptions);
+    const app = getApps().length ? getApp() : initializeApp(config);
     const db = getFirestore(app);
     const collections = createFirebaseDatabaseCollections(db);
     const insightsCollections = createFirebaseInsightsCollections(

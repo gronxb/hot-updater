@@ -62,12 +62,6 @@ export const isAwsRegionValue = (
 ): value is AwsRegionValue =>
   value !== undefined && AWS_REGION_VALUES.some((region) => region === value);
 
-export const isInsightsDatabaseNamespace = (
-  value: string | undefined,
-): value is string =>
-  value !== undefined &&
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value);
-
 export const initProvider = {
   label: "AWS + Lambda@Edge",
   inputs: {
@@ -80,16 +74,6 @@ export const initProvider = {
         placeholder: "hot-updater-v1",
         type: "text",
       },
-    },
-    insightsDatabaseNamespace: {
-      envKey: "HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE",
-      help: "Stable lowercase UUID for the logical Insights database",
-      prompt: {
-        message: "Enter the stable Insights database namespace UUID",
-        placeholder: "00000000-0000-4000-8000-000000000001",
-        type: "text",
-      },
-      validate: isInsightsDatabaseNamespace,
     },
     authMode: {
       envKey: "HOT_UPDATER_AWS_AUTH_MODE",

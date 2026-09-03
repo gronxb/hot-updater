@@ -21,3 +21,7 @@ export {
 } from "./insightsReportProjection";
 export type * from "./types/internal";
 export * from "./insightsContract";
+
+/** Internal storage fence shared by the official database integrations. */
+export const OFFICIAL_INSIGHTS_DATABASE_NAMESPACE =
+  "00000000-0000-4000-8000-000000000001";

@@ -11,27 +11,19 @@ import {
   type MockDatabaseData,
   replaceMockDatabaseData,
 } from "./mockDatabaseState";
-import type { MockInsightsDatabaseNamespaces } from "./mockInsights";
 import { minMax, sleep } from "./util/utils";
 
 export type { MockDatabaseData } from "./mockDatabaseState";
 export { createMockDatabaseData } from "./mockDatabaseState";
 
-export interface MockDatabaseConfig extends MockInsightsDatabaseNamespaces {
+export interface MockDatabaseConfig {
   readonly latency: { readonly min: number; readonly max: number };
   readonly data?: MockDatabaseData;
 }
 
 export const mockDatabase = (config: MockDatabaseConfig) => {
   const implementation: DatabasePluginImplementation = (() => {
-    const data = config.data ?? createMockDatabaseData(config);
-    if (
-      data.insightsDatabaseNamespace !== config.insightsDatabaseNamespace ||
-      data.otherInsightsDatabaseNamespace !==
-        config.otherInsightsDatabaseNamespace
-    ) {
-      throw new Error("Mock Insights database namespaces do not match data");
-    }
+    const data = config.data ?? createMockDatabaseData();
     const state = createMockDatabaseState(data);
     let operationQueue: Promise<void> = Promise.resolve();
 

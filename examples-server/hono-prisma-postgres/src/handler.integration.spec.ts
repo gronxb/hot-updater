@@ -24,9 +24,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
-const insightsDatabaseNamespace =
-  process.env.HOT_UPDATER_INSIGHTS_DATABASE_NAMESPACE ??
-  "00000000-0000-7000-8000-00000000e001";
 
 const waitForPostgresContainer = async () => {
   const deadline = Date.now() + 60_000;
@@ -220,11 +217,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
   });
 
   it("allows exactly one concurrent Release/catalog CAS writer", async () => {
-    const database = prismaAdapter({
-      insightsDatabaseNamespace,
-      prisma,
-      provider: "postgresql",
-    });
+    const database = prismaAdapter({ prisma, provider: "postgresql" });
     const id = "0198a5b0-0000-7000-8000-000000000001";
     const channelName = "prisma-concurrency";
     const channelKey = encodeChannelKey(channelName);
@@ -344,7 +337,6 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
 
   it("rolls back emulated patch cleanup when bundle deletion fails", async () => {
     const database = prismaAdapter({
-      insightsDatabaseNamespace,
       prisma,
       provider: "postgresql",
       relationMode: "prisma",
