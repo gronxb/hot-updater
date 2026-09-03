@@ -824,7 +824,8 @@ export const handleDoctor = async ({
   if (result.error) {
     p.log.error(result.error);
     p.outro("Doctor check failed.");
-    return;
+    // Match the --json path and the issue path below, which both exit non-zero.
+    process.exit(1);
   }
 
   // Handle issues with details
