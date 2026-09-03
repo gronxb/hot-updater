@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   BatchGetCommand,
@@ -544,7 +544,7 @@ export const initializeDynamoDBInsightsV2 = async (
     try {
       await sendTransaction(
         store,
-        `initialize:${databaseNamespace}`,
+        `initialize:${databaseNamespace}:${randomUUID()}`,
         initialItems.map((item) => ({
           Put: {
             TableName: store.tableName,

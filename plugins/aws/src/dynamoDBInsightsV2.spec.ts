@@ -251,6 +251,45 @@ describe("DynamoDB Insights v2 contract", () => {
     );
   });
 
+  it("reinitializes storage cleared within DynamoDB's idempotency window", async () => {
+    documentClient.reset();
+    const items = new Map<string, Record<string, unknown>>();
+    const key = (value: Record<string, unknown>) =>
+      `${String(value.pk)}\n${String(value.sk)}`;
+    documentClient.on(GetCommand).callsFake((input) => ({
+      Item: items.get(key(input.Key!)),
+    }));
+    documentClient.on(BatchGetCommand).callsFake((input) => ({
+      Responses: {
+        [store.tableName]: (
+          input.RequestItems?.[store.tableName]?.Keys ?? []
+        ).flatMap((value: Record<string, unknown>) => {
+          const item = items.get(key(value));
+          return item === undefined ? [] : [item];
+        }),
+      },
+    }));
+    documentClient.on(TransactWriteCommand).callsFake((input) => {
+      for (const action of input.TransactItems ?? []) {
+        if (action.Put?.Item !== undefined) {
+          items.set(key(action.Put.Item), action.Put.Item);
+        }
+      }
+      return {};
+    });
+
+    await initializeDynamoDBInsightsV2(store);
+    items.clear();
+    await initializeDynamoDBInsightsV2(store);
+
+    const transactions = documentClient.commandCalls(TransactWriteCommand);
+    expect(transactions).toHaveLength(2);
+    expect(transactions[0]?.args[0].input.ClientRequestToken).not.toBe(
+      transactions[1]?.args[0].input.ClientRequestToken,
+    );
+    expect(items.size).toBe(68);
+  });
+
   it("types a partial pre-layout initialization collision as corruption", async () => {
     documentClient.on(GetCommand).resolves({});
     documentClient.on(TransactWriteCommand).rejects(transactionCancelled());
