@@ -117,7 +117,13 @@ export const drizzleAdapter = (
       },
       insights: {
         append: (row) => getAdapter().models.insights.append(row),
-        scan: (input) => getAdapter().models.insights.scan(input),
+        pageEvents: (input) => getAdapter().models.insights.pageEvents(input),
+        getInstallation: (installId) =>
+          getAdapter().models.insights.getInstallation(installId),
+        pageInstallationsByCurrentUserId: (input) =>
+          getAdapter().models.insights.pageInstallationsByCurrentUserId(input),
+        countActiveInstallations: (input) =>
+          getAdapter().models.insights.countActiveInstallations(input),
       },
       apiKeys: {
         create: (row) => getAdapter().models.apiKeys.create(row),

@@ -1,3 +1,5 @@
+import { createUUIDv7, type BundleEventRow } from "@hot-updater/plugin-core";
+
 import type {
   CreateBundleEventRequest,
   CreateBundleEventRequestBase,
@@ -8,6 +10,7 @@ import {
 } from "./errors";
 
 const MAX_EVENT_STRING_LENGTH = 1_024;
+const MAX_IDENTITY_LENGTH = 255;
 export const EVENT_BODY_MAX_BYTES = 16 * 1_024;
 
 const eventKeys = new Set([
@@ -53,6 +56,17 @@ function requireNullableStringField(
 ): string | null {
   if (payload[key] === null) return null;
   return requireStringField(payload, key);
+}
+
+function requireIdentityField(
+  payload: Readonly<Record<string, unknown>>,
+  key: "installId" | "userId",
+): string {
+  const value = requireStringField(payload, key);
+  if (value.length > MAX_IDENTITY_LENGTH) {
+    throw new InsightsBadRequestError(`Invalid event field: ${key}`);
+  }
+  return value;
 }
 
 async function readBoundedText(request: Request): Promise<string> {
@@ -107,11 +121,11 @@ function requireEvent(payload: unknown): CreateBundleEventRequest {
     throw new InsightsBadRequestError("Invalid event field: platform");
   }
   const base: CreateBundleEventRequestBase = {
-    installId: requireStringField(payload, "installId"),
+    installId: requireIdentityField(payload, "installId"),
     toBundleId: requireStringField(payload, "toBundleId"),
     ...(payload.userId === undefined
       ? {}
-      : { userId: requireStringField(payload, "userId") }),
+      : { userId: requireIdentityField(payload, "userId") }),
     ...(payload.username === undefined
       ? {}
       : { username: requireStringField(payload, "username") }),
@@ -165,4 +179,43 @@ export async function parseBundleEventRequest(
 ): Promise<CreateBundleEventRequest> {
   const payload = await parseJson(request);
   return requireEvent(payload);
+}
+
+export function createBundleEventRow(
+  input: CreateBundleEventRequest,
+): BundleEventRow {
+  const base = {
+    app_version: input.appVersion,
+    channel: input.channel,
+    cohort: input.cohort,
+    fingerprint_hash: input.fingerprintHash,
+    from_release_id: input.fromReleaseId,
+    id: createUUIDv7(),
+    install_id: input.installId,
+    platform: input.platform,
+    received_at_ms: Date.now(),
+    sdk_version: input.sdkVersion ?? null,
+    to_bundle_id: input.toBundleId,
+    to_release_id: input.toReleaseId,
+    user_id: input.userId ?? null,
+    username: input.username ?? null,
+  };
+  switch (input.type) {
+    case "UPDATE_APPLIED":
+    case "RECOVERED":
+    case "RELEASE_ADOPTED":
+      return {
+        ...base,
+        from_bundle_id: input.fromBundleId,
+        type: input.type,
+        update_strategy: input.updateStrategy,
+      };
+    case "UNCHANGED":
+      return {
+        ...base,
+        from_bundle_id: null,
+        type: input.type,
+        update_strategy: null,
+      };
+  }
 }

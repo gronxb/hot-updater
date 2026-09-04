@@ -12,6 +12,7 @@ import {
 } from "./databasePluginCrudValidationRows";
 import { createTransactionDatabasePlugin } from "./databasePluginTransaction";
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelInsertInput,
@@ -27,6 +28,7 @@ import type {
   DatabasePluginCrud,
   DatabasePluginImplementation,
   DatabaseWhere,
+  InsightsInstallationRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "./types/internal";
@@ -37,9 +39,75 @@ export {
 } from "./databasePluginCrud";
 
 const PAGE_SIZE = 100;
+const INSIGHTS_PAGE_SIZE = 101;
 
 const compareChannelRows = (left: ChannelRow, right: ChannelRow): number =>
   left.name < right.name ? -1 : left.name > right.name ? 1 : 0;
+
+const toInsightsInstallation = (
+  row: BundleEventRow,
+): InsightsInstallationRow => ({
+  id: row.id,
+  install_id: row.install_id,
+  user_id: row.user_id,
+  username: row.username,
+  to_bundle_id: row.to_bundle_id,
+  type: row.type,
+  platform: row.platform,
+  app_version: row.app_version,
+  channel: row.channel,
+  cohort: row.cohort,
+  received_at_ms: row.received_at_ms,
+});
+
+const appendInsightsEvent = async (
+  database: DatabasePluginCrud,
+  row: BundleEventRow,
+): Promise<void> => {
+  await database.create({ model: "bundle_events", data: row });
+  const installation = toInsightsInstallation(row);
+  await database.create({
+    model: "bundle_installations",
+    data: installation,
+    onConflict: "ignore",
+  });
+  const { install_id: installId, ...update } = installation;
+  const advanced = await database.update({
+    model: "bundle_installations",
+    where: [
+      { field: "install_id", operator: "eq", value: installId },
+      {
+        field: "received_at_ms",
+        operator: "lt",
+        value: installation.received_at_ms,
+      },
+    ],
+    update,
+  });
+  if (advanced !== null) return;
+  await database.update({
+    model: "bundle_installations",
+    where: [
+      { field: "install_id", operator: "eq", value: installId },
+      {
+        field: "received_at_ms",
+        operator: "eq",
+        value: installation.received_at_ms,
+      },
+      { field: "id", operator: "lt", value: installation.id },
+    ],
+    update,
+  });
+};
+
+const isTimestamp = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+const isInsightsPageLimit = (value: unknown): value is number =>
+  typeof value === "number" &&
+  Number.isSafeInteger(value) &&
+  value >= 1 &&
+  value <= INSIGHTS_PAGE_SIZE;
 
 export class DatabaseAtomicCommitUnsupportedError extends Error {
   readonly name = "DatabaseAtomicCommitUnsupportedError";
@@ -264,9 +332,6 @@ const applyChange = async (
           return;
         }
       }
-    case "insights":
-      await database.create({ model: "bundle_events", data: change.row });
-      return;
     case "apiKeys":
       switch (change.operation) {
         case "insert":
@@ -479,15 +544,6 @@ const validateDatabaseChange = (change: unknown): void => {
         default:
           throw new DatabasePluginInputError("invalid-operation");
       }
-    case "insights":
-      if (
-        change.operation !== "insert" ||
-        !hasOnlyKeys(change, ["model", "operation", "row"])
-      ) {
-        throw new DatabasePluginInputError("invalid-operation");
-      }
-      validateCreateData("bundle_events", change.row);
-      return;
     case "apiKeys":
       switch (change.operation) {
         case "insert":
@@ -857,15 +913,34 @@ export const createDatabasePluginAdapter = (
       },
       insights: {
         async append(row) {
-          await crud.create({ model: "bundle_events", data: row });
+          await appendInsightsEvent(crud, row);
         },
-        async scan(input) {
+        async pageEvents(input) {
           if (
-            input.limit <= 0 ||
+            !isInsightsPageLimit(input.limit) ||
+            !isTimestamp(input.beforeReceivedAtMs) ||
             (input.after !== undefined &&
-              input.after.receivedAtMs >= input.beforeReceivedAtMs)
-          )
-            return [];
+              (!isTimestamp(input.after.receivedAtMs) ||
+                typeof input.after.id !== "string" ||
+                input.after.receivedAtMs >= input.beforeReceivedAtMs)) ||
+            (input.selector.kind !== "all" &&
+              (input.selector.kind !== "installationMovement" ||
+                input.selector.installId.length === 0))
+          ) {
+            throw new DatabasePluginInputError("invalid-query");
+          }
+
+          const selectorWhere: readonly DatabaseWhere<"bundle_events">[] =
+            input.selector.kind === "all"
+              ? []
+              : [
+                  { field: "install_id", value: input.selector.installId },
+                  {
+                    field: "type",
+                    operator: "in",
+                    value: ["UPDATE_APPLIED", "RECOVERED"],
+                  },
+                ];
 
           // Split the cursor into disjoint ranges so every adapter can apply
           // it in the database without nested OR predicates or offset scans.
@@ -875,43 +950,87 @@ export const createDatabasePluginAdapter = (
               : await crud.findMany({
                   model: "bundle_events",
                   where: [
+                    ...selectorWhere,
                     {
                       field: "received_at_ms",
                       value: input.after.receivedAtMs,
                     },
-                    { field: "id", operator: "gt", value: input.after.id },
+                    { field: "id", operator: "lt", value: input.after.id },
                   ],
-                  orderBy: [{ field: "id", direction: "asc" }],
+                  orderBy: [{ field: "id", direction: "desc" }],
                   limit: input.limit,
                   offset: 0,
                 });
           if (sameTimestamp.length === input.limit) return sameTimestamp;
-          const later = await crud.findMany({
+          const older = await crud.findMany({
             model: "bundle_events",
             where: [
+              ...selectorWhere,
               {
                 field: "received_at_ms",
                 operator: "lt",
-                value: input.beforeReceivedAtMs,
+                value: input.after?.receivedAtMs ?? input.beforeReceivedAtMs,
               },
-              ...(input.after === undefined
-                ? []
-                : [
-                    {
-                      field: "received_at_ms" as const,
-                      operator: "gt" as const,
-                      value: input.after.receivedAtMs,
-                    },
-                  ]),
             ],
             orderBy: [
-              { field: "received_at_ms", direction: "asc" },
-              { field: "id", direction: "asc" },
+              { field: "received_at_ms", direction: "desc" },
+              { field: "id", direction: "desc" },
             ],
             limit: input.limit - sameTimestamp.length,
             offset: 0,
           });
-          return [...sameTimestamp, ...later];
+          return [...sameTimestamp, ...older];
+        },
+        getInstallation(installId) {
+          if (installId.length === 0) {
+            throw new DatabasePluginInputError("invalid-query");
+          }
+          return crud.findOne({
+            model: "bundle_installations",
+            where: [{ field: "install_id", value: installId }],
+          });
+        },
+        pageInstallationsByCurrentUserId(input) {
+          if (
+            input.userId.length === 0 ||
+            !isInsightsPageLimit(input.limit) ||
+            input.afterInstallId === ""
+          ) {
+            throw new DatabasePluginInputError("invalid-query");
+          }
+          return crud.findMany({
+            model: "bundle_installations",
+            where: [
+              { field: "user_id", value: input.userId },
+              ...(input.afterInstallId === undefined
+                ? []
+                : [
+                    {
+                      field: "install_id" as const,
+                      operator: "gt" as const,
+                      value: input.afterInstallId,
+                    },
+                  ]),
+            ],
+            orderBy: [{ field: "install_id", direction: "asc" }],
+            limit: input.limit,
+            offset: 0,
+          });
+        },
+        countActiveInstallations(input) {
+          if (!isTimestamp(input.sinceMs)) {
+            throw new DatabasePluginInputError("invalid-query");
+          }
+          return crud.count({
+            model: "bundle_installations",
+            where: [
+              {
+                field: "received_at_ms",
+                operator: "gte",
+                value: input.sinceMs,
+              },
+            ],
+          });
         },
       },
       apiKeys: {

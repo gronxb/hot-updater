@@ -4,6 +4,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   ChannelRow,
+  InsightsInstallationRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -158,6 +159,15 @@ export function createMongoEventWhere(
 ): Filter<BundleEventRow>;
 export function createMongoEventWhere(
   where: readonly DatabaseWhere<"bundle_events">[] | undefined,
+): Document {
+  return createMongoWhereDocument(where);
+}
+
+export function createMongoInstallationWhere(
+  where: readonly DatabaseWhere<"bundle_installations">[] | undefined,
+): Filter<InsightsInstallationRow>;
+export function createMongoInstallationWhere(
+  where: readonly DatabaseWhere<"bundle_installations">[] | undefined,
 ): Document {
   return createMongoWhereDocument(where);
 }

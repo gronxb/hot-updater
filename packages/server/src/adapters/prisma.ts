@@ -30,6 +30,7 @@ import { createPrismaOrderBy, createPrismaWhere } from "./prismaQuery";
 import {
   getPrismaDelegate,
   parsePrismaBundleEventRow,
+  parsePrismaInsightsInstallationRow,
   parsePrismaBundleRow,
   parsePrismaChannelRow,
   parsePrismaApiKeyRow,
@@ -135,6 +136,8 @@ const findMany = async (
       return parsePrismaRows(rows, parsePrismaPatchRow);
     case "bundle_events":
       return parsePrismaRows(rows, parsePrismaBundleEventRow);
+    case "bundle_installations":
+      return parsePrismaRows(rows, parsePrismaInsightsInstallationRow);
     case "channels":
       return parsePrismaRows(rows, parsePrismaChannelRow);
     case "api_keys":
@@ -218,7 +221,9 @@ const createCrudImplementation = (
       const where =
         input.model === "channels"
           ? { name: input.data.name }
-          : { hash: input.data.hash };
+          : input.model === "api_keys"
+            ? { hash: input.data.hash }
+            : { install_id: input.data.install_id };
       row = await delegate.upsert({
         where,
         create: input.data,
@@ -234,6 +239,8 @@ const createCrudImplementation = (
         return parsePrismaPatchRow(row);
       case "bundle_events":
         return parsePrismaBundleEventRow(row);
+      case "bundle_installations":
+        return parsePrismaInsightsInstallationRow(row);
       case "channels":
         return parsePrismaChannelRow(row);
       case "api_keys":
@@ -245,6 +252,36 @@ const createCrudImplementation = (
     }
   },
   update: async (input) => {
+    if (input.model === "bundle_installations") {
+      const installId = input.where.find(
+        (item) =>
+          item.field === "install_id" &&
+          (item.operator === undefined || item.operator === "eq") &&
+          typeof item.value === "string",
+      )?.value;
+      if (typeof installId !== "string") {
+        throw new PrismaAdapterError(
+          "bundle_installations update requires install_id",
+        );
+      }
+      const delegate = getPrismaDelegate(client, "bundle_installations");
+      if (delegate.updateMany === undefined) {
+        throw new PrismaAdapterError(
+          'model delegate "bundle_installations" requires updateMany',
+        );
+      }
+      const result = await delegate.updateMany({
+        where: createPrismaWhere(input.where, provider),
+        data: input.update,
+      });
+      if (result.count === 0) return null;
+      const stored = await delegate.findFirst({
+        where: { install_id: installId },
+      });
+      return stored === null
+        ? null
+        : parsePrismaInsightsInstallationRow(stored);
+    }
     const id = input.where[0]?.value;
     if (typeof id !== "string") {
       throw new PrismaAdapterError(
@@ -343,6 +380,8 @@ const createCrudImplementation = (
         return parsePrismaReleaseRow(row);
       case "release_catalogs":
         return parsePrismaReleaseCatalogRow(row);
+      case "bundle_installations":
+        return parsePrismaInsightsInstallationRow(row);
     }
   },
   findMany: (input) => findMany(client, input, provider),

@@ -160,6 +160,26 @@ const createPostgresImplementation = (
           .values(input.data)
           .returningAll()
           .executeTakeFirstOrThrow();
+      case "bundle_installations": {
+        const query = db.insertInto("bundle_installations").values(input.data);
+        const row = await (
+          input.onConflict === "ignore"
+            ? query.onConflict((conflict) =>
+                conflict.column("install_id").doNothing(),
+              )
+            : query
+        )
+          .returningAll()
+          .executeTakeFirst();
+        return (
+          row ??
+          (await db
+            .selectFrom("bundle_installations")
+            .selectAll()
+            .where("install_id", "=", input.data.install_id)
+            .executeTakeFirstOrThrow())
+        );
+      }
       case "releases":
         return db
           .insertInto("releases")
@@ -227,6 +247,11 @@ const createPostgresImplementation = (
     }
     if (input.model === "release_catalogs") {
       let query = db.updateTable("release_catalogs").set(input.update);
+      if (where !== undefined) query = query.where(where);
+      return (await query.returningAll().executeTakeFirst()) ?? null;
+    }
+    if (input.model === "bundle_installations") {
+      let query = db.updateTable("bundle_installations").set(input.update);
       if (where !== undefined) query = query.where(where);
       return (await query.returningAll().executeTakeFirst()) ?? null;
     }
@@ -301,6 +326,11 @@ const createPostgresImplementation = (
       }
       case "release_catalogs": {
         let query = db.selectFrom("release_catalogs").selectAll();
+        if (where !== undefined) query = query.where(where);
+        return (await query.executeTakeFirst()) ?? null;
+      }
+      case "bundle_installations": {
+        let query = db.selectFrom("bundle_installations").selectAll();
         if (where !== undefined) query = query.where(where);
         return (await query.executeTakeFirst()) ?? null;
       }

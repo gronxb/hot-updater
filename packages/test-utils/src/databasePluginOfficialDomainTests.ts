@@ -1,4 +1,8 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type {
+  BundleEventRow,
+  DatabasePlugin,
+  InsightsInstallationRow,
+} from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import type { DatabasePluginTestState } from "./databasePluginTestRunner";
@@ -11,6 +15,38 @@ import {
 } from "./databaseTestFixtures";
 
 type OfficialDomainTestState = DatabasePluginTestState<DatabasePlugin>;
+
+const toInstallationRow = (
+  row: ReturnType<typeof createBundleEventRowFixture>,
+): InsightsInstallationRow => ({
+  id: row.id,
+  install_id: row.install_id,
+  user_id: row.user_id,
+  username: row.username,
+  to_bundle_id: row.to_bundle_id,
+  type: row.type,
+  platform: row.platform,
+  app_version: row.app_version,
+  channel: row.channel,
+  cohort: row.cohort,
+  received_at_ms: row.received_at_ms,
+});
+
+const createMovementEvent = (
+  suffix: string,
+  receivedAtMs: number,
+  type: "UPDATE_APPLIED" | "RECOVERED" | "RELEASE_ADOPTED",
+  installId: string,
+): BundleEventRow => {
+  const row = createBundleEventRowFixture(suffix, receivedAtMs);
+  return {
+    ...row,
+    type,
+    install_id: installId,
+    from_bundle_id: row.to_bundle_id,
+    update_strategy: "appVersion",
+  };
+};
 
 export const registerDatabasePluginOfficialDomainTests = (
   state: OfficialDomainTestState,
@@ -201,7 +237,7 @@ export const registerDatabasePluginOfficialDomainTests = (
       });
     });
 
-    it("appends and scans insights events in stable cursor order", async () => {
+    it("pages insights events newest first with a stable cursor", async () => {
       const plugin = state.getPlugin();
       const first = createBundleEventRowFixture("701", 100);
       const second = createBundleEventRowFixture("702", 100);
@@ -211,29 +247,187 @@ export const registerDatabasePluginOfficialDomainTests = (
       await plugin.models.insights.append(first);
 
       await expect(
-        plugin.models.insights.scan({ beforeReceivedAtMs: 201, limit: 1 }),
+        plugin.models.insights.pageEvents({
+          selector: { kind: "all" },
+          beforeReceivedAtMs: 201,
+          limit: 2,
+        }),
+      ).resolves.toEqual([third, second]);
+      await expect(
+        plugin.models.insights.pageEvents({
+          selector: { kind: "all" },
+          after: { receivedAtMs: second.received_at_ms, id: second.id },
+          beforeReceivedAtMs: 201,
+          limit: 2,
+        }),
       ).resolves.toEqual([first]);
       await expect(
-        plugin.models.insights.scan({
-          after: { receivedAtMs: first.received_at_ms, id: first.id },
-          beforeReceivedAtMs: 201,
-          limit: 1,
-        }),
-      ).resolves.toEqual([second]);
-      await expect(
-        plugin.models.insights.scan({
-          after: { receivedAtMs: first.received_at_ms, id: first.id },
-          beforeReceivedAtMs: 201,
-          limit: 10,
-        }),
-      ).resolves.toEqual([second, third]);
-      await expect(
-        plugin.models.insights.scan({
-          after: { receivedAtMs: second.received_at_ms, id: second.id },
+        plugin.models.insights.pageEvents({
+          selector: { kind: "all" },
           beforeReceivedAtMs: 200,
           limit: 10,
         }),
+      ).resolves.toEqual([second, first]);
+    });
+
+    it("filters installation movements before applying the page limit", async () => {
+      const plugin = state.getPlugin();
+      const adopted = createMovementEvent(
+        "711",
+        300,
+        "RELEASE_ADOPTED",
+        "install-target",
+      );
+      const unrelated = createMovementEvent(
+        "712",
+        250,
+        "UPDATE_APPLIED",
+        "install-other",
+      );
+      const applied = createMovementEvent(
+        "713",
+        200,
+        "UPDATE_APPLIED",
+        "install-target",
+      );
+      const recovered = createMovementEvent(
+        "714",
+        100,
+        "RECOVERED",
+        "install-target",
+      );
+      for (const row of [adopted, unrelated, applied, recovered]) {
+        await plugin.models.insights.append(row);
+      }
+
+      await expect(
+        plugin.models.insights.pageEvents({
+          selector: {
+            kind: "installationMovement",
+            installId: "install-target",
+          },
+          beforeReceivedAtMs: 301,
+          limit: 1,
+        }),
+      ).resolves.toEqual([applied]);
+      await expect(
+        plugin.models.insights.pageEvents({
+          selector: {
+            kind: "installationMovement",
+            installId: "install-target",
+          },
+          after: {
+            receivedAtMs: applied.received_at_ms,
+            id: applied.id,
+          },
+          beforeReceivedAtMs: 301,
+          limit: 1,
+        }),
+      ).resolves.toEqual([recovered]);
+    });
+
+    it("keeps the newest installation state and indexes its current user", async () => {
+      const plugin = state.getPlugin();
+      const previous = {
+        ...createBundleEventRowFixture("721", 100),
+        install_id: "install-a",
+        user_id: "user-previous",
+        username: "Previous",
+      };
+      const current = {
+        ...createBundleEventRowFixture("722", 200),
+        install_id: "install-a",
+        user_id: "user-current",
+        username: "Current",
+      };
+      const secondInstallation = {
+        ...createBundleEventRowFixture("723", 150),
+        install_id: "install-b",
+        user_id: "user-current",
+        username: "Current",
+      };
+      await plugin.models.insights.append(previous);
+      await plugin.models.insights.append(current);
+      await plugin.models.insights.append(secondInstallation);
+
+      await expect(
+        plugin.models.insights.getInstallation("install-a"),
+      ).resolves.toEqual(toInstallationRow(current));
+      await expect(
+        plugin.models.insights.pageInstallationsByCurrentUserId({
+          userId: "user-previous",
+          limit: 10,
+        }),
       ).resolves.toEqual([]);
+      await expect(
+        plugin.models.insights.pageInstallationsByCurrentUserId({
+          userId: "user-current",
+          limit: 1,
+        }),
+      ).resolves.toEqual([toInstallationRow(current)]);
+      await expect(
+        plugin.models.insights.pageInstallationsByCurrentUserId({
+          userId: "user-current",
+          afterInstallId: "install-a",
+          limit: 10,
+        }),
+      ).resolves.toEqual([toInstallationRow(secondInstallation)]);
+    });
+
+    it("does not let late events regress the current installation state", async () => {
+      const plugin = state.getPlugin();
+      const current = {
+        ...createBundleEventRowFixture("732", 200),
+        install_id: "install-late",
+      };
+      const olderTimestamp = {
+        ...createBundleEventRowFixture("733", 100),
+        install_id: "install-late",
+      };
+      const smallerIdAtSameTimestamp = {
+        ...createBundleEventRowFixture("731", 200),
+        install_id: "install-late",
+      };
+      await plugin.models.insights.append(current);
+      await plugin.models.insights.append(olderTimestamp);
+      await plugin.models.insights.append(smallerIdAtSameTimestamp);
+
+      await expect(
+        plugin.models.insights.getInstallation("install-late"),
+      ).resolves.toEqual(toInstallationRow(current));
+    });
+
+    it("counts current active installations instead of raw event rows", async () => {
+      const plugin = state.getPlugin();
+      const repeated = [
+        {
+          ...createBundleEventRowFixture("741", 100),
+          install_id: "install-active-a",
+        },
+        {
+          ...createBundleEventRowFixture("742", 200),
+          install_id: "install-active-a",
+        },
+        {
+          ...createBundleEventRowFixture("743", 300),
+          install_id: "install-active-a",
+        },
+      ];
+      const inactive = {
+        ...createBundleEventRowFixture("744", 99),
+        install_id: "install-inactive",
+      };
+      const active = {
+        ...createBundleEventRowFixture("745", 100),
+        install_id: "install-active-b",
+      };
+      for (const row of [...repeated, inactive, active]) {
+        await plugin.models.insights.append(row);
+      }
+
+      await expect(
+        plugin.models.insights.countActiveInstallations({ sinceMs: 100 }),
+      ).resolves.toBe(2);
     });
 
     it("creates, lists, resolves, and revokes API keys", async () => {

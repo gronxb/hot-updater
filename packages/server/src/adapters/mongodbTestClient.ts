@@ -12,6 +12,7 @@ type Tables = {
   bundle_patches: MongoTestRow[];
   bundles: MongoTestRow[];
   bundle_events: MongoTestRow[];
+  bundle_installations: MongoTestRow[];
   channels: MongoTestRow[];
   api_keys: MongoTestRow[];
   releases: MongoTestRow[];
@@ -150,10 +151,19 @@ const createCollection = (
   insertOne: async (row: MongoTestRow): Promise<void> => {
     hooks.operationCount += 1;
     if (model === "bundle_patches") await hooks.beforeBundlePatchInsert?.();
-    const key = "id" in row ? row.id : row.scope_key;
+    const key =
+      model === "bundle_installations" && "install_id" in row
+        ? row.install_id
+        : "id" in row
+          ? row.id
+          : row.scope_key;
     if (
       tables[model].some((candidate) =>
-        "id" in candidate ? candidate.id === key : candidate.scope_key === key,
+        model === "bundle_installations" && "install_id" in candidate
+          ? candidate.install_id === key
+          : "id" in candidate
+            ? candidate.id === key
+            : candidate.scope_key === key,
       )
     ) {
       throw new MongoTestConstraintError("duplicate id");
@@ -211,12 +221,18 @@ const createCollection = (
     }
     if (options?.upsert === true && "$setOnInsert" in update) {
       const key =
-        "id" in update.$setOnInsert
-          ? update.$setOnInsert.id
-          : update.$setOnInsert.scope_key;
+        model === "bundle_installations" && "install_id" in update.$setOnInsert
+          ? update.$setOnInsert.install_id
+          : "id" in update.$setOnInsert
+            ? update.$setOnInsert.id
+            : update.$setOnInsert.scope_key;
       if (
         tables[model].some((row) =>
-          "id" in row ? row.id === key : row.scope_key === key,
+          model === "bundle_installations" && "install_id" in row
+            ? row.install_id === key
+            : "id" in row
+              ? row.id === key
+              : row.scope_key === key,
         )
       ) {
         throw new MongoTestConstraintError("duplicate id");
@@ -237,6 +253,8 @@ const createDatabase = (tables: Tables, hooks: MongoTestHooks) => ({
         return createCollection(tables, "bundle_patches", hooks);
       case "bundle_events":
         return createCollection(tables, "bundle_events", hooks);
+      case "bundle_installations":
+        return createCollection(tables, "bundle_installations", hooks);
       case "channels":
         return createCollection(tables, "channels", hooks);
       case "api_keys":
@@ -256,6 +274,7 @@ export const createMongoTestHarness = () => {
     bundle_patches: [],
     bundles: [],
     bundle_events: [],
+    bundle_installations: [],
     channels: [],
     api_keys: [],
     releases: [],
@@ -290,6 +309,7 @@ export const createMongoTestHarness = () => {
             tables.bundle_patches = staged.bundle_patches;
             tables.bundles = staged.bundles;
             tables.bundle_events = staged.bundle_events;
+            tables.bundle_installations = staged.bundle_installations;
             tables.channels = staged.channels;
             tables.api_keys = staged.api_keys;
             tables.releases = staged.releases;
@@ -314,6 +334,7 @@ export const createMongoTestHarness = () => {
       tables.bundle_patches = [];
       tables.bundles = [];
       tables.bundle_events = [];
+      tables.bundle_installations = [];
       tables.channels = [];
       tables.api_keys = [];
       tables.releases = [];

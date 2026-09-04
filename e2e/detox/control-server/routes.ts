@@ -83,20 +83,16 @@ app.post("/e2e/screen-state", async (c) => {
 
 app.post("/e2e/verify-console-insights", async (c) => {
   const payload = (await c.req.json()) as {
-    bundleIds?: unknown;
     sinceMs?: unknown;
   };
   if (
-    !Array.isArray(payload.bundleIds) ||
-    !payload.bundleIds.every((value) => typeof value === "string") ||
     typeof payload.sinceMs !== "number" ||
     !Number.isFinite(payload.sinceMs)
   ) {
-    return c.json({ error: "bundleIds and sinceMs are required" }, 400);
+    return c.json({ error: "sinceMs is required" }, 400);
   }
   return c.json(
     await handleVerifyConsoleInsights({
-      bundleIds: payload.bundleIds,
       sinceMs: payload.sinceMs,
     }),
   );

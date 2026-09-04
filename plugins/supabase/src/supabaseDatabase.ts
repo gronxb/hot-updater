@@ -101,6 +101,25 @@ const createSupabaseImplementation = (
           }
           return data;
         }
+        case "bundle_installations": {
+          const query =
+            input.onConflict === "ignore"
+              ? supabase
+                  .from(SUPABASE_V1_TABLE_NAMES.bundleInstallations)
+                  .upsert(input.data, {
+                    onConflict: "install_id",
+                    ignoreDuplicates: true,
+                  })
+              : supabase
+                  .from(SUPABASE_V1_TABLE_NAMES.bundleInstallations)
+                  .insert(input.data);
+          const { data, error } = await query.select("*").maybeSingle();
+          throwSupabaseError("create bundle_installations", error);
+          if (data === null && input.onConflict !== "ignore") {
+            throw new SupabaseMissingDataError("create bundle_installations");
+          }
+          return data ?? input.data;
+        }
         case "releases": {
           const { data, error } = await supabase
             .from(SUPABASE_V1_TABLE_NAMES.releases)
@@ -174,6 +193,15 @@ const createSupabaseImplementation = (
         throwSupabaseError("update release_catalogs", error);
         return data;
       }
+      if (input.model === "bundle_installations") {
+        let query = supabase
+          .from(SUPABASE_V1_TABLE_NAMES.bundleInstallations)
+          .update(input.update);
+        if (filter !== undefined) query = query.or(filter);
+        const { data, error } = await query.select("*").maybeSingle();
+        throwSupabaseError("update bundle_installations", error);
+        return data;
+      }
       let query = supabase
         .from(SUPABASE_V1_TABLE_NAMES.bundles)
         .update(input.update);
@@ -231,6 +259,15 @@ const createSupabaseImplementation = (
           if (filter !== undefined) query = query.or(filter);
           const { count, error } = await query;
           throwSupabaseError("count bundles", error);
+          return count ?? 0;
+        }
+        case "bundle_installations": {
+          let query = supabase
+            .from(SUPABASE_V1_TABLE_NAMES.bundleInstallations)
+            .select("*", { count: "exact", head: true });
+          if (filter !== undefined) query = query.or(filter);
+          const { count, error } = await query;
+          throwSupabaseError("count bundle_installations", error);
           return count ?? 0;
         }
         case "bundle_patches": {
@@ -310,6 +347,15 @@ const createSupabaseImplementation = (
           throwSupabaseError("findOne release_catalogs", error);
           return data;
         }
+        case "bundle_installations": {
+          let query = supabase
+            .from(SUPABASE_V1_TABLE_NAMES.bundleInstallations)
+            .select("*");
+          if (filter !== undefined) query = query.or(filter);
+          const { data, error } = await query.limit(1).maybeSingle();
+          throwSupabaseError("findOne bundle_installations", error);
+          return data;
+        }
       }
     },
     async findMany(input: FindManyDatabaseImplementationInput) {
@@ -349,6 +395,21 @@ const createSupabaseImplementation = (
           }
           const { data, error } = await query.range(input.offset, rangeEnd);
           throwSupabaseError("findMany bundle_events", error);
+          return data ?? [];
+        }
+        case "bundle_installations": {
+          let query = supabase
+            .from(SUPABASE_V1_TABLE_NAMES.bundleInstallations)
+            .select("*");
+          if (filter !== undefined) query = query.or(filter);
+          for (const clause of orderBy) {
+            query = query.order(clause.field, {
+              ascending: clause.direction === "asc",
+              ...(clause.nulls ? { nullsFirst: clause.nulls === "first" } : {}),
+            });
+          }
+          const { data, error } = await query.range(input.offset, rangeEnd);
+          throwSupabaseError("findMany bundle_installations", error);
           return data ?? [];
         }
         case "api_keys": {

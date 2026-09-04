@@ -52,13 +52,13 @@ describe("Detox Insights HTTP client", () => {
     });
 
     // When
-    const overview = await client.getOverview();
+    const active = await client.getActiveOverview();
 
     // Then
-    expect(overview.trackedInstallations).toBe(0);
+    expect(active.activeInstallations).toBe(0);
     expect(standaloneRepositoryLike.findMany).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledWith(
-      "http://127.0.0.1:3007/hot-updater/admin/installations/overview",
+      "http://127.0.0.1:3007/hot-updater/admin/installations/active?window=24h",
       expect.objectContaining({
         headers: expect.any(Headers),
       }),
@@ -77,19 +77,18 @@ describe("Detox Insights HTTP client", () => {
         fetch: vi.fn(async () => new Response(null, { status })),
       });
 
-      await expect(client.getCapabilities()).rejects.toEqual(
-        expect.objectContaining<Partial<ConsoleInsightsHttpError>>({
-          status,
-        }),
+      await expect(client.pageEvents({ limit: 1 })).rejects.toEqual(
+        expect.objectContaining<Partial<ConsoleInsightsHttpError>>({ status }),
       );
     },
   );
 
-  it("encodes route parameters and query values", async () => {
+  it("encodes exact identities and cursor page parameters", async () => {
     const fetch = vi.fn(async () =>
       Response.json({
+        beforeReceivedAtMs: 10,
         data: [],
-        pagination: { limit: 50, offset: 0, total: 0 },
+        nextCursor: null,
       }),
     );
     const client = createConsoleInsightsHttpClient({
@@ -97,12 +96,23 @@ describe("Detox Insights HTTP client", () => {
       fetch,
     });
 
-    await client.searchInstallations("alias/a b");
-    await client.getHistory("install/a b");
+    await client.pageEvents({ cursor: "event/a b", limit: 25 });
+    await client.getInstallation("install/a b");
+    await client.pageInstallationsByCurrentUserId("user/a b", {
+      cursor: "user/a b",
+      limit: 25,
+    });
+    await client.pageInstallationEvents("install/a b", {
+      beforeReceivedAtMs: 10,
+      cursor: "movement/a b",
+      limit: 25,
+    });
 
     expect(fetch.mock.calls.map(([url]) => url)).toEqual([
-      "https://example.com/hot-updater/admin/installations?query=alias%2Fa%20b&limit=50&offset=0",
-      "https://example.com/hot-updater/admin/installations/install%2Fa%20b/events?limit=50&offset=0",
+      "https://example.com/hot-updater/admin/events?cursor=event%2Fa+b&limit=25",
+      "https://example.com/hot-updater/admin/installations/install%2Fa%20b",
+      "https://example.com/hot-updater/admin/installations?userId=user%2Fa+b&cursor=user%2Fa+b&limit=25",
+      "https://example.com/hot-updater/admin/installations/install%2Fa%20b/events?beforeReceivedAtMs=10&cursor=movement%2Fa+b&limit=25",
     ]);
   });
 });

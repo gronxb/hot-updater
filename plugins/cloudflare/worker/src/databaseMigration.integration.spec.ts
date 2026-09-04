@@ -47,6 +47,7 @@ it("creates the current schema with required artifact sizes", async () => {
   expect(tables.results.map(({ name }) => name)).toEqual(
     expect.arrayContaining([
       "bundle_events",
+      "bundle_installations",
       "bundle_patches",
       "bundles",
       "channels",
@@ -95,6 +96,44 @@ it("creates the current schema with required artifact sizes", async () => {
     archive_byte_size: 3_000_000_001,
     byte_size: 3_000_000_002,
   });
+
+  await env.DB.prepare(`
+    INSERT INTO bundle_installations (
+      install_id, id, user_id, username, to_bundle_id, type, platform,
+      app_version, channel, cohort, received_at_ms
+    ) VALUES (
+      'install-1', 'event-1', 'user-1', 'Demo User',
+      '00000000-0000-0000-0000-000000000001', 'UPDATE_APPLIED', 'ios',
+      '1.0.0', 'production', 'cohort-1', 100
+    )
+  `).run();
+  await expect(
+    env.DB.prepare(
+      "SELECT install_id, received_at_ms FROM bundle_installations",
+    ).first(),
+  ).resolves.toEqual({ install_id: "install-1", received_at_ms: 100 });
+
+  const installationIndexes = await env.DB.prepare(`
+    SELECT name FROM sqlite_master
+    WHERE type = 'index' AND tbl_name = 'bundle_installations'
+    ORDER BY name
+  `).all<{ name: string }>();
+  expect(installationIndexes.results.map(({ name }) => name)).toEqual(
+    expect.arrayContaining([
+      "bundle_installations_received_at_idx",
+      "bundle_installations_user_id_idx",
+    ]),
+  );
+
+  const movementIndex = await env.DB.prepare(
+    "PRAGMA index_info(bundle_events_install_idx)",
+  ).all<{ name: string }>();
+  expect(movementIndex.results.map(({ name }) => name)).toEqual([
+    "install_id",
+    "type",
+    "received_at_ms",
+    "id",
+  ]);
 
   for (const size of [-1, Number.MAX_SAFE_INTEGER + 1, null]) {
     await expect(

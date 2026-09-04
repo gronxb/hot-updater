@@ -9,48 +9,52 @@ import {
 
 const bundleId = "00000000-0000-7000-8000-000000000001";
 const event = {
-  appVersion: "1.0",
-  channel: "production",
-  cohort: "782",
   fromBundleId: "00000000-0000-0000-0000-000000000000",
   id: "event-1",
-  platform: "ios" as const,
+  installId: "install-1",
   receivedAtMs: Date.now(),
   toBundleId: bundleId,
   type: "UPDATE_APPLIED" as const,
-  userId: "detox-e2e",
-  username: "hot-updater-e2e",
 };
 const observedTransition = {
   fromBundleId: event.fromBundleId,
-  installId: "install-1",
-  observedAtMs: event.receivedAtMs - 1,
+  installId: event.installId,
+  observedAtMs: event.receivedAtMs + 1,
   toBundleId: event.toBundleId,
   type: event.type,
+  userId: "detox-e2e",
 } as const;
 
+const emptyEventPage = {
+  beforeReceivedAtMs: event.receivedAtMs + 1,
+  data: [],
+  nextCursor: null,
+};
+
 const createClient = (): ConsoleInsightsQaClient => ({
-  getActiveOverview: vi.fn(async () => ({
-    activeInstallations: 1,
-    bundles: [{ bundleId, installations: 1 }],
+  getActiveOverview: vi.fn(async () => ({ activeInstallations: 1 })),
+  getInstallation: vi.fn(async () => ({
+    installId: observedTransition.installId,
+    userId: observedTransition.userId,
   })),
-  getBundleInsights: vi.fn(async () => ({
-    recentEvents: {
-      data: [event],
-      pagination: { limit: 50, offset: 0, total: 1 },
-    },
-    summary: { installed: 1, recovered: 0 },
-  })),
-  getCapabilities: vi.fn(async () => ({ insights: true })),
-  getHistory: vi.fn(async () => ({
+  pageEvents: vi.fn(async () => ({
+    beforeReceivedAtMs: event.receivedAtMs + 1,
     data: [event],
-    pagination: { limit: 50, offset: 0, total: 1 },
+    nextCursor: null,
   })),
-  getOverview: vi.fn(async () => ({ trackedInstallations: 1 })),
-  getSummary: vi.fn(async () => ({ installed: 1, recovered: 0 })),
-  searchInstallations: vi.fn(async () => ({
-    data: [{ installId: observedTransition.installId }],
-    pagination: { limit: 50, offset: 0, total: 1 },
+  pageInstallationEvents: vi.fn(async () => ({
+    beforeReceivedAtMs: event.receivedAtMs + 1,
+    data: [event],
+    nextCursor: null,
+  })),
+  pageInstallationsByCurrentUserId: vi.fn(async () => ({
+    data: [
+      {
+        installId: observedTransition.installId,
+        userId: observedTransition.userId,
+      },
+    ],
+    nextCursor: null,
   })),
 });
 
@@ -63,148 +67,122 @@ describe("console insights E2E QA", () => {
           installId: observedTransition.installId,
           toBundleId: event.toBundleId,
           type: event.type,
+          userId: observedTransition.userId,
         },
         observedTransition.observedAtMs,
       ),
     ).toEqual(observedTransition);
   });
 
-  it("rejects transition events without a source bundle", () => {
+  it("rejects events without the current user identity", () => {
     expect(
       readObservedInsightsEvent(
         {
-          fromBundleId: null,
+          fromBundleId: event.fromBundleId,
           installId: observedTransition.installId,
           toBundleId: event.toBundleId,
-          type: "RECOVERED",
+          type: event.type,
         },
         observedTransition.observedAtMs,
       ),
     ).toBeNull();
   });
 
-  it("verifies the current bundle through every Console insights query", async () => {
-    // Given: the current E2E bundle has one persisted transition event.
+  it("verifies ingestion and the lean Console queries with cursors", async () => {
+    // Given: another shard fills the first event, user, and movement pages.
     const client = createClient();
-
-    // When: the Console insights QA checkpoint runs.
-    const evidence = await verifyConsoleInsights(client, [bundleId], {
-      observedEvents: [observedTransition],
-    });
-
-    // Then: bundle, overview, active installation, search, and history agree.
-    expect(evidence).toEqual({
-      activeInstallations: 1,
-      bundleId,
-      eventId: event.id,
-      installId: observedTransition.installId,
-      trackedInstallations: 1,
-    });
-    expect(client.searchInstallations).toHaveBeenCalledWith(
-      observedTransition.installId,
-    );
-    expect(client.getHistory).toHaveBeenCalledWith(
-      observedTransition.installId,
-    );
-  });
-
-  it("ignores a newer event from another parallel shard", async () => {
-    // Given: another shard reports a newer transition for the same bundle.
-    const client = createClient();
-    vi.mocked(client.getBundleInsights).mockResolvedValue({
-      recentEvents: {
+    vi.mocked(client.pageEvents)
+      .mockResolvedValueOnce({ ...emptyEventPage, nextCursor: "event-cursor" })
+      .mockResolvedValueOnce({
+        ...emptyEventPage,
+        data: [event],
+      });
+    vi.mocked(client.pageInstallationsByCurrentUserId)
+      .mockResolvedValueOnce({ data: [], nextCursor: "user-cursor" })
+      .mockResolvedValueOnce({
         data: [
           {
-            ...event,
-            fromBundleId: "other-shard-bundle",
-            id: "other-shard-event",
-            receivedAtMs: event.receivedAtMs + 1,
+            installId: observedTransition.installId,
+            userId: observedTransition.userId,
           },
-          event,
         ],
-        pagination: { limit: 50, offset: 0, total: 2 },
-      },
-      summary: { installed: 2, recovered: 0 },
-    });
+        nextCursor: null,
+      });
+    vi.mocked(client.pageInstallationEvents)
+      .mockResolvedValueOnce({
+        ...emptyEventPage,
+        nextCursor: "movement-cursor",
+      })
+      .mockResolvedValueOnce({
+        ...emptyEventPage,
+        data: [event],
+      });
 
-    // When: the current shard's observed transition is verified.
-    const evidence = await verifyConsoleInsights(client, [bundleId], {
+    // When: the current app report is checked against Console Insights.
+    const evidence = await verifyConsoleInsights(client, {
       observedEvents: [observedTransition],
+      sinceMs: event.receivedAtMs - 1,
     });
 
-    // Then: the matching event wins even though it is not the latest row.
-    expect(evidence).toMatchObject({ eventId: event.id });
-  });
-
-  it("fails when the configured profile does not expose Console insights", async () => {
-    // Given: an E2E profile marked for insights returns no capability.
-    const client = createClient();
-    vi.mocked(client.getCapabilities).mockResolvedValue({ insights: false });
-
-    // When / Then: the checkpoint rejects the unsupported profile.
-    await expect(verifyConsoleInsights(client, [bundleId])).rejects.toEqual(
-      expect.objectContaining<Partial<ConsoleInsightsQaError>>({
-        code: "unsupported",
-      }),
+    // Then: filter-free history, exact installation/current user, movement,
+    // and the active count all agree without offset or total-count queries.
+    expect(evidence).toEqual({
+      activeInstallations: 1,
+      eventId: event.id,
+      eventType: event.type,
+      installId: observedTransition.installId,
+      userId: observedTransition.userId,
+    });
+    expect(client.pageEvents).toHaveBeenNthCalledWith(2, {
+      cursor: "event-cursor",
+      limit: 50,
+    });
+    expect(client.getInstallation).toHaveBeenCalledWith(
+      observedTransition.installId,
+    );
+    expect(client.pageInstallationsByCurrentUserId).toHaveBeenNthCalledWith(
+      2,
+      observedTransition.userId,
+      { cursor: "user-cursor", limit: 50 },
+    );
+    expect(client.pageInstallationEvents).toHaveBeenNthCalledWith(
+      2,
+      observedTransition.installId,
+      { cursor: "movement-cursor", limit: 50 },
     );
   });
 
-  it("fails when none of the current E2E bundles has a persisted event", async () => {
-    // Given: Console insights is enabled but contains no current-run event.
+  it("verifies an unchanged report without inventing a movement", async () => {
+    // Given: the app reports activity without changing its bundle.
     const client = createClient();
-    vi.mocked(client.getBundleInsights).mockResolvedValue({
-      recentEvents: {
-        data: [],
-        pagination: { limit: 50, offset: 0, total: 0 },
-      },
-      summary: { installed: 0, recovered: 0 },
+    const unchanged = {
+      ...observedTransition,
+      fromBundleId: null,
+      type: "UNCHANGED" as const,
+    };
+    vi.mocked(client.pageEvents).mockResolvedValue({
+      ...emptyEventPage,
+      data: [{ ...event, fromBundleId: null, type: "UNCHANGED" }],
     });
 
-    // When / Then: stale insights from another run cannot satisfy the QA gate.
-    await expect(verifyConsoleInsights(client, [bundleId])).rejects.toEqual(
+    // When / Then: ingestion and current state are checked, while the
+    // transition-only movement endpoint is intentionally not queried.
+    await expect(
+      verifyConsoleInsights(client, { observedEvents: [unchanged] }),
+    ).resolves.toMatchObject({ eventType: "UNCHANGED" });
+    expect(client.pageInstallationEvents).not.toHaveBeenCalled();
+  });
+
+  it("fails when the filter-free history has no current app event", async () => {
+    const client = createClient();
+    vi.mocked(client.pageEvents).mockResolvedValue(emptyEventPage);
+
+    await expect(
+      verifyConsoleInsights(client, { observedEvents: [observedTransition] }),
+    ).rejects.toEqual(
       expect.objectContaining<Partial<ConsoleInsightsQaError>>({
         code: "event-not-found",
       }),
     );
-  });
-
-  it("verifies an observed UNCHANGED event through active installations", async () => {
-    // Given: the app reported a current-run UNCHANGED event, which transition
-    // insights intentionally excludes.
-    const client = createClient();
-    vi.mocked(client.getBundleInsights).mockResolvedValue({
-      recentEvents: {
-        data: [],
-        pagination: { limit: 50, offset: 0, total: 0 },
-      },
-      summary: { installed: 0, recovered: 0 },
-    });
-    vi.mocked(client.getActiveOverview).mockResolvedValue({
-      activeInstallations: 1,
-      bundles: [{ bundleId, installations: 1 }],
-    });
-
-    // When: the Console insights QA checkpoint runs with the observed event.
-    const evidence = await verifyConsoleInsights(client, [bundleId], {
-      observedEvents: [
-        {
-          fromBundleId: null,
-          installId: "install-unchanged",
-          observedAtMs: Date.now(),
-          toBundleId: bundleId,
-          type: "UNCHANGED",
-        },
-      ],
-    });
-
-    // Then: active-installation insights proves the app event was ingested.
-    expect(evidence).toMatchObject({
-      activeInstallations: 1,
-      bundleId,
-      installId: "install-unchanged",
-      mode: "active",
-    });
-    expect(client.getSummary).not.toHaveBeenCalled();
-    expect(client.getHistory).not.toHaveBeenCalled();
   });
 });

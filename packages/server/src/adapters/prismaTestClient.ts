@@ -4,6 +4,7 @@ import type {
   BundleRow,
   ChannelRow,
   ApiKeyRow,
+  InsightsInstallationRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -14,6 +15,7 @@ type Row =
   | BundleRow
   | ChannelRow
   | ApiKeyRow
+  | InsightsInstallationRow
   | ReleaseRow
   | ReleaseCatalogRow;
 type Table = Row[];
@@ -21,6 +23,7 @@ type Tables = {
   bundle_patches: Table;
   bundles: Table;
   bundle_events: Table;
+  bundle_installations: Table;
   channels: Table;
   api_keys: Table;
   releases: Table;
@@ -71,7 +74,12 @@ const normalize = (value: unknown, insensitive: boolean): unknown =>
 const readField = (row: Row, field: string): unknown =>
   Object.entries(row).find(([key]) => key === field)?.[1];
 
-const rowKey = (row: Row): string => ("id" in row ? row.id : row.scope_key);
+const rowKey = (model: keyof Tables, row: Row): string =>
+  model === "bundle_installations" && "install_id" in row
+    ? row.install_id
+    : "id" in row
+      ? row.id
+      : row.scope_key;
 
 const matchesCondition = (current: unknown, condition: unknown): boolean => {
   if (!isRecord(condition)) return Object.is(current, condition);
@@ -190,7 +198,9 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
   count: async (args?: QueryArgs): Promise<number> =>
     tables[model].filter((row) => matchesWhere(row, args?.where)).length,
   create: async ({ data }: CreateArgs): Promise<Row> => {
-    if (tables[model].some((row) => rowKey(row) === rowKey(data))) {
+    if (
+      tables[model].some((row) => rowKey(model, row) === rowKey(model, data))
+    ) {
       throw new PrismaTestConstraintError("duplicate id");
     }
     if (
@@ -220,7 +230,7 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
       matchesWhere(row, args?.where),
     );
     if (model === "bundles") {
-      const ids = new Set(selected.map(rowKey));
+      const ids = new Set(selected.map((row) => rowKey(model, row)));
       if (
         tables.releases.some(
           (row) =>
@@ -293,7 +303,9 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
       tables[model][index] = updated;
       return structuredClone(updated);
     }
-    if (tables[model].some((row) => rowKey(row) === rowKey(create))) {
+    if (
+      tables[model].some((row) => rowKey(model, row) === rowKey(model, create))
+    ) {
       throw new PrismaTestConstraintError("duplicate id");
     }
     assertReferences(tables, model, create);
@@ -304,6 +316,7 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
 
 const createClient = (tables: Tables, hooks: Hooks) => ({
   bundle_events: createDelegate(tables, "bundle_events", hooks),
+  bundle_installations: createDelegate(tables, "bundle_installations", hooks),
   bundle_patches: createDelegate(tables, "bundle_patches", hooks),
   bundles: createDelegate(tables, "bundles", hooks),
   channels: createDelegate(tables, "channels", hooks),
@@ -317,6 +330,7 @@ export const createPrismaTestHarness = () => {
     bundle_patches: [],
     bundles: [],
     bundle_events: [],
+    bundle_installations: [],
     channels: [],
     api_keys: [],
     releases: [],
@@ -347,6 +361,7 @@ export const createPrismaTestHarness = () => {
         tables.bundle_patches = transactionTables.bundle_patches;
         tables.bundles = transactionTables.bundles;
         tables.bundle_events = transactionTables.bundle_events;
+        tables.bundle_installations = transactionTables.bundle_installations;
         tables.channels = transactionTables.channels;
         tables.api_keys = transactionTables.api_keys;
         tables.releases = transactionTables.releases;
@@ -387,6 +402,7 @@ export const createPrismaTestHarness = () => {
       tables.bundle_patches = [];
       tables.bundles = [];
       tables.bundle_events = [];
+      tables.bundle_installations = [];
       tables.channels = [];
       tables.api_keys = [];
       tables.releases = [];

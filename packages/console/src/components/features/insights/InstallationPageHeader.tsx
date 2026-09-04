@@ -32,7 +32,7 @@ export function InstallationSearchPanel({
     >
       <Field className="gap-2">
         <FieldLabel className="sr-only" htmlFor="installation-history-search">
-          User ID or install ID
+          User ID or installation ID
         </FieldLabel>
         <div className="flex flex-wrap gap-2">
           <InputGroup className="h-11 w-auto min-w-0 flex-1 basis-44 lg:h-8">
@@ -46,7 +46,7 @@ export function InstallationSearchPanel({
               maxLength={1024}
               name="installation"
               onChange={(event) => onDraftQueryChange(event.target.value)}
-              placeholder="User ID or install ID"
+              placeholder="User ID or installation ID"
               spellCheck={false}
               type="search"
               value={draftQuery}

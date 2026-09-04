@@ -41,6 +41,18 @@ describe("Supabase v1 schema", () => {
       "CREATE TABLE public.hot_updater_v1_release_catalogs",
     );
     expect(sql).toContain("CREATE TABLE public.hot_updater_v1_bundle_events");
+    expect(sql).toContain(
+      "CREATE TABLE public.hot_updater_v1_bundle_installations",
+    );
+    expect(sql).toContain(
+      "hot_updater_v1_bundle_installations(user_id, install_id)",
+    );
+    expect(sql).toContain(
+      "hot_updater_v1_bundle_installations(received_at_ms)",
+    );
+    expect(sql).toContain(
+      "hot_updater_v1_bundle_events(install_id, type, received_at_ms, id)",
+    );
     expect(sql).toContain("CREATE TABLE public.hot_updater_v1_api_keys");
     expect(sql).toContain(
       "ALTER TABLE public.hot_updater_v1_bundles ENABLE ROW LEVEL SECURITY",
@@ -62,6 +74,8 @@ describe("Supabase v1 schema", () => {
     expect(sql).toContain("NOTIFY pgrst, 'reload schema'");
     expect(sql).not.toContain("get_update_info");
     expect(sql).not.toContain("ALTER TABLE public.bundles ADD COLUMN");
+    expect(sql).not.toContain("WHEN 'insights'");
+    expect(sql).not.toContain("v_event public.hot_updater_v1_bundle_events");
   });
 
   it("applies beside a v0 schema without modifying v0 data", async () => {
@@ -94,6 +108,7 @@ describe("Supabase v1 schema", () => {
         expect.arrayContaining([
           "hot_updater_v1_bundles",
           "hot_updater_v1_bundle_events",
+          "hot_updater_v1_bundle_installations",
           "hot_updater_v1_bundle_patches",
           "hot_updater_v1_channels",
           "hot_updater_v1_api_keys",

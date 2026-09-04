@@ -3,9 +3,11 @@ import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
 import type {
+  BundleEventRow,
   BundleRow,
   ChannelRow,
   ApiKeyRow,
+  InsightsInstallationRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
@@ -40,7 +42,7 @@ setupDatabasePluginTestSuite({
   createPlugin: () => postgres({ dialect: new PGliteDialect(getClient()) }),
   reset: async () => {
     await getClient().exec(
-      "DELETE FROM bundle_events; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
+      "DELETE FROM bundle_installations; DELETE FROM bundle_events; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
     );
   },
   dispose: async (plugin) => {
@@ -112,6 +114,47 @@ const apiKeyFixture = (): ApiKeyRow => ({
   revoked_at_ms: null,
 });
 
+const insightsEventFixture = (input: {
+  readonly id: string;
+  readonly installId: string;
+  readonly receivedAtMs: number;
+  readonly userId: string;
+}): BundleEventRow => ({
+  id: input.id,
+  type: "UPDATE_APPLIED",
+  install_id: input.installId,
+  user_id: input.userId,
+  username: null,
+  from_bundle_id: "00000000-0000-7000-8000-000000001001",
+  from_release_id: null,
+  to_bundle_id: "00000000-0000-7000-8000-000000001002",
+  to_release_id: null,
+  platform: "ios",
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "0",
+  update_strategy: "appVersion",
+  fingerprint_hash: null,
+  sdk_version: null,
+  received_at_ms: input.receivedAtMs,
+});
+
+const installationFixture = (
+  event: BundleEventRow,
+): InsightsInstallationRow => ({
+  id: event.id,
+  install_id: event.install_id,
+  user_id: event.user_id,
+  username: event.username,
+  to_bundle_id: event.to_bundle_id,
+  type: event.type,
+  platform: event.platform,
+  app_version: event.app_version,
+  channel: event.channel,
+  cohort: event.cohort,
+  received_at_ms: event.received_at_ms,
+});
+
 describe("PostgreSQL artifact byte-size constraints", () => {
   it("rejects negative archive and patch sizes at the database boundary", async () => {
     const { database, plugin } = await createPostgresTestPlugin();
@@ -142,6 +185,62 @@ describe("PostgreSQL artifact byte-size constraints", () => {
           )
         `),
       ).rejects.toThrow();
+    } finally {
+      await plugin.dispose?.();
+    }
+  });
+});
+
+describe("PostgreSQL Insights projection", () => {
+  it("keeps the latest installation row and counts active installations", async () => {
+    const { plugin } = await createPostgresTestPlugin();
+    const userId = "current-user";
+    const first = insightsEventFixture({
+      id: "00000000-0000-7000-8000-000000002001",
+      installId: "install-a",
+      receivedAtMs: 100,
+      userId,
+    });
+    const latestAtSameTime = insightsEventFixture({
+      id: "00000000-0000-7000-8000-000000002003",
+      installId: "install-a",
+      receivedAtMs: 100,
+      userId,
+    });
+    const staleAtSameTime = insightsEventFixture({
+      id: "00000000-0000-7000-8000-000000002002",
+      installId: "install-a",
+      receivedAtMs: 100,
+      userId,
+    });
+    const secondInstallation = insightsEventFixture({
+      id: "00000000-0000-7000-8000-000000002004",
+      installId: "install-b",
+      receivedAtMs: 200,
+      userId,
+    });
+
+    try {
+      await plugin.models.insights.append(first);
+      await plugin.models.insights.append(latestAtSameTime);
+      await plugin.models.insights.append(staleAtSameTime);
+      await plugin.models.insights.append(secondInstallation);
+
+      await expect(
+        plugin.models.insights.getInstallation("install-a"),
+      ).resolves.toEqual(installationFixture(latestAtSameTime));
+      await expect(
+        plugin.models.insights.pageInstallationsByCurrentUserId({
+          userId,
+          limit: 10,
+        }),
+      ).resolves.toEqual([
+        installationFixture(latestAtSameTime),
+        installationFixture(secondInstallation),
+      ]);
+      await expect(
+        plugin.models.insights.countActiveInstallations({ sinceMs: 101 }),
+      ).resolves.toBe(1);
     } finally {
       await plugin.dispose?.();
     }

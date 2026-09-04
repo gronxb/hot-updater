@@ -8,7 +8,6 @@ import {
   Sun,
 } from "lucide-react";
 
-import { useInsightsCapability } from "@/components/features/insights/InsightsCapabilityContext";
 import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
 import { useTheme } from "@/components/ThemeProvider";
 import {
@@ -26,7 +25,6 @@ import {
 import { useApiKeyCapabilityQuery } from "@/lib/api-keys-api";
 
 export function AppSidebar() {
-  const insightsCapability = useInsightsCapability();
   const apiKeyCapability = useApiKeyCapabilityQuery();
   const { theme, setTheme } = useTheme();
   const routerState = useRouterState();
@@ -98,18 +96,16 @@ export function AppSidebar() {
                   <span>Bundles</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              {insightsCapability.status === "supported" ? (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    isActive={isInsightsActive}
-                    render={<Link to="/insights" />}
-                    tooltip="Insights"
-                  >
-                    <ChartNoAxesCombined />
-                    <span>Insights</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ) : null}
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isInsightsActive}
+                  render={<Link to="/insights" />}
+                  tooltip="Insights"
+                >
+                  <ChartNoAxesCombined />
+                  <span>Insights</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               {apiKeyCapability.data?.apiKeys ? (
                 <SidebarMenuItem>
                   <SidebarMenuButton

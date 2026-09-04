@@ -2,6 +2,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   BundleEventRow,
+  InsightsInstallationRow,
   ChannelRow,
   ChannelDeleteResult,
   ApiKeyRow,
@@ -25,6 +26,8 @@ export type SupabaseBundlePatchRow = {
 };
 
 export type SupabaseBundleEventRow = BundleEventRow;
+
+export type SupabaseBundleInstallationRow = InsightsInstallationRow;
 
 export type SupabaseApiKeyRow = {
   [TField in keyof ApiKeyRow]: ApiKeyRow[TField];
@@ -56,6 +59,7 @@ export type Database = {
       [SUPABASE_V1_TABLE_NAMES.bundlePatches]: Table<SupabaseBundlePatchRow>;
       [SUPABASE_V1_TABLE_NAMES.channels]: Table<SupabaseChannelRow>;
       [SUPABASE_V1_TABLE_NAMES.bundleEvents]: Table<SupabaseBundleEventRow>;
+      [SUPABASE_V1_TABLE_NAMES.bundleInstallations]: Table<SupabaseBundleInstallationRow>;
       [SUPABASE_V1_TABLE_NAMES.apiKeys]: Table<SupabaseApiKeyRow>;
       [SUPABASE_V1_TABLE_NAMES.releaseCatalogs]: Table<SupabaseReleaseCatalogRow>;
       [SUPABASE_V1_TABLE_NAMES.releases]: Table<SupabaseReleaseRow>;

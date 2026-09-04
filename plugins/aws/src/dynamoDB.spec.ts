@@ -5,15 +5,28 @@ import {
 } from "@aws-sdk/client-cloudfront";
 import {
   DynamoDBDocumentClient,
+  GetCommand,
+  PutCommand,
   QueryCommand,
   ScanCommand,
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { bundleToRow, type BundleEventRow } from "@hot-updater/plugin-core";
+import {
+  bundleToRow,
+  type BundleEventRow,
+  type InsightsPageEventsInput,
+  type InsightsPageInstallationsByCurrentUserIdInput,
+  type InsightsInstallationRow,
+} from "@hot-updater/plugin-core";
 import { mockClient } from "aws-sdk-client-mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { dynamoDB } from "./dynamoDB";
+import {
+  DYNAMODB_INSIGHTS_ACTIVE_PARTITION,
+  DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+  DYNAMODB_UPDATE_INDEX_NAME,
+  dynamoDB,
+} from "./dynamoDB";
 
 const cloudFront = mockClient(CloudFrontClient);
 const documentClient = mockClient(DynamoDBDocumentClient);
@@ -73,11 +86,33 @@ const insightsEvent = (index: number): BundleEventRow => ({
   received_at_ms: index,
 });
 
+const insightsInstallation = (
+  index: number,
+  userId: string,
+): InsightsInstallationRow => {
+  const event = insightsEvent(index);
+  return {
+    id: event.id,
+    install_id: event.install_id,
+    user_id: userId,
+    username: event.username,
+    to_bundle_id: event.to_bundle_id,
+    type: event.type,
+    platform: event.platform,
+    app_version: event.app_version,
+    channel: event.channel,
+    cohort: event.cohort,
+    received_at_ms: event.received_at_ms,
+  };
+};
+
 describe("dynamoDB CloudFront lifecycle", () => {
   beforeEach(() => {
     cloudFront.reset();
     documentClient.reset();
     cloudFront.on(CreateInvalidationCommand).resolves({});
+    documentClient.on(GetCommand).resolves({});
+    documentClient.on(PutCommand).resolves({});
     documentClient.on(QueryCommand).resolves({ Items: [] });
     documentClient.on(ScanCommand).resolves({ Items: [] });
     documentClient.on(TransactWriteCommand).resolves({});
@@ -180,6 +215,83 @@ describe("dynamoDB CloudFront lifecycle", () => {
     await plugin.dispose?.();
   });
 
+  it("rejects invalid direct event-page queries", async () => {
+    const plugin = dynamoDB({
+      region: "us-east-1",
+      tableName: "hot-updater-metadata",
+    });
+    const valid: InsightsPageEventsInput = {
+      selector: { kind: "all" },
+      beforeReceivedAtMs: 100,
+      limit: 10,
+    };
+    const invalid: InsightsPageEventsInput[] = [
+      { ...valid, limit: 0 },
+      { ...valid, limit: 102 },
+      { ...valid, beforeReceivedAtMs: -1 },
+      { ...valid, after: { receivedAtMs: -1, id: "cursor" } },
+      { ...valid, after: { receivedAtMs: 100, id: "cursor" } },
+      {
+        ...valid,
+        selector: { kind: "installationMovement", installId: "" },
+      },
+    ];
+
+    for (const input of invalid) {
+      await expect(plugin.models.insights.pageEvents(input)).rejects.toEqual(
+        expect.objectContaining({
+          name: "DatabasePluginInputError",
+          code: "invalid-query",
+        }),
+      );
+    }
+    expect(documentClient.commandCalls(QueryCommand)).toHaveLength(0);
+
+    await plugin.dispose?.();
+  });
+
+  it("rejects invalid direct installation queries", async () => {
+    const plugin = dynamoDB({
+      region: "us-east-1",
+      tableName: "hot-updater-metadata",
+    });
+    const valid: InsightsPageInstallationsByCurrentUserIdInput = {
+      userId: "user-1",
+      limit: 10,
+    };
+    const invalid: InsightsPageInstallationsByCurrentUserIdInput[] = [
+      { ...valid, userId: "" },
+      { ...valid, limit: 0 },
+      { ...valid, limit: 102 },
+      { ...valid, afterInstallId: "" },
+    ];
+
+    for (const input of invalid) {
+      await expect(
+        plugin.models.insights.pageInstallationsByCurrentUserId(input),
+      ).rejects.toMatchObject({
+        name: "DatabasePluginInputError",
+        code: "invalid-query",
+      });
+    }
+    await expect(
+      plugin.models.insights.getInstallation(""),
+    ).rejects.toMatchObject({
+      name: "DatabasePluginInputError",
+      code: "invalid-query",
+    });
+    await expect(
+      plugin.models.insights.countActiveInstallations({ sinceMs: -1 }),
+    ).rejects.toMatchObject({
+      name: "DatabasePluginInputError",
+      code: "invalid-query",
+    });
+    expect(documentClient.commandCalls(QueryCommand)).toHaveLength(0);
+    expect(documentClient.commandCalls(GetCommand)).toHaveLength(0);
+
+    await plugin.dispose?.();
+  });
+
   it("lists channels from their dedicated partition without scanning", async () => {
     documentClient.on(QueryCommand).resolves({ Items: [] });
     const plugin = dynamoDB({
@@ -201,28 +313,6 @@ describe("dynamoDB CloudFront lifecycle", () => {
       "channels",
     );
     expect(documentClient.commandCalls(ScanCommand)).toHaveLength(0);
-    await plugin.dispose?.();
-  });
-
-  it("rejects a generic commit above DynamoDB's 100-action boundary", async () => {
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-
-    await expect(
-      plugin.commit({
-        changes: Array.from({ length: 101 }, (_, index) => ({
-          model: "insights" as const,
-          operation: "insert" as const,
-          row: insightsEvent(index),
-        })),
-      }),
-    ).rejects.toMatchObject({
-      name: "DynamoDBTransactionLimitError",
-      actionCount: 101,
-    });
-    expect(documentClient.commandCalls(TransactWriteCommand)).toHaveLength(0);
     await plugin.dispose?.();
   });
 
@@ -249,7 +339,8 @@ describe("dynamoDB CloudFront lifecycle", () => {
     });
 
     await expect(
-      plugin.models.insights.scan({
+      plugin.models.insights.pageEvents({
+        selector: { kind: "all" },
         beforeReceivedAtMs: 2,
         limit: 1,
       }),
@@ -276,11 +367,310 @@ describe("dynamoDB CloudFront lifecycle", () => {
     });
 
     await expect(
-      plugin.models.insights.scan({
+      plugin.models.insights.pageEvents({
+        selector: { kind: "all" },
         beforeReceivedAtMs: 2,
         limit: 1,
       }),
     ).resolves.toEqual([row]);
+
+    await plugin.dispose?.();
+  });
+
+  it("keeps event reads bounded after a cursor beyond 50,000 rows", async () => {
+    const row = insightsEvent(50_000);
+    documentClient.on(QueryCommand).resolves({
+      Items: [
+        {
+          pk: "bundle_events",
+          sk: "0000000000050000#event",
+          version: 1,
+          row,
+        },
+      ],
+    });
+    const plugin = dynamoDB({
+      region: "us-east-1",
+      tableName: "hot-updater-metadata",
+    });
+
+    await expect(
+      plugin.models.insights.pageEvents({
+        selector: { kind: "all" },
+        beforeReceivedAtMs: 60_000,
+        after: {
+          receivedAtMs: 50_001,
+          id: insightsEvent(50_001).id,
+        },
+        limit: 101,
+      }),
+    ).resolves.toEqual([row]);
+
+    const query = documentClient.commandCalls(QueryCommand)[0]?.args[0].input;
+    expect(query).toMatchObject({
+      ConsistentRead: true,
+      Limit: 101,
+      ScanIndexForward: false,
+    });
+    expect(query?.ExpressionAttributeValues).toMatchObject({
+      ":partition": "bundle_events",
+      ":upper": `0000000000050001#${insightsEvent(50_001).id}`,
+    });
+    expect(documentClient.commandCalls(ScanCommand)).toHaveLength(0);
+
+    await plugin.dispose?.();
+  });
+
+  it("continues an event page after DynamoDB's response-size boundary", async () => {
+    const rows = [insightsEvent(3), insightsEvent(2), insightsEvent(1)];
+    const lastEvaluatedKey = {
+      pk: "bundle_events",
+      sk: `0000000000000003#${rows[0]?.id}`,
+    };
+    documentClient
+      .on(QueryCommand)
+      .resolvesOnce({
+        Items: [
+          {
+            ...lastEvaluatedKey,
+            version: 1,
+            row: rows[0],
+          },
+        ],
+        LastEvaluatedKey: lastEvaluatedKey,
+      })
+      .resolvesOnce({
+        Items: rows.slice(1).map((row) => ({
+          pk: "bundle_events",
+          sk: `${String(row.received_at_ms).padStart(16, "0")}#${row.id}`,
+          version: 1,
+          row,
+        })),
+      });
+    const plugin = dynamoDB({
+      region: "us-east-1",
+      tableName: "hot-updater-metadata",
+    });
+
+    await expect(
+      plugin.models.insights.pageEvents({
+        selector: { kind: "all" },
+        beforeReceivedAtMs: 4,
+        limit: 3,
+      }),
+    ).resolves.toEqual(rows);
+
+    const queries = documentClient.commandCalls(QueryCommand);
+    expect(queries).toHaveLength(2);
+    expect(queries[1]?.args[0].input).toMatchObject({
+      ExclusiveStartKey: lastEvaluatedKey,
+      Limit: 2,
+    });
+
+    await plugin.dispose?.();
+  });
+
+  it("reads installation movement from the existing secondary index", async () => {
+    const row = insightsEvent(3);
+    documentClient.on(QueryCommand).resolves({
+      Items: [
+        {
+          pk: "bundle_events",
+          sk: "0000000000000003#event",
+          version: 1,
+          row,
+        },
+      ],
+    });
+    const plugin = dynamoDB({
+      region: "us-east-1",
+      tableName: "hot-updater-metadata",
+    });
+
+    await expect(
+      plugin.models.insights.pageEvents({
+        selector: {
+          kind: "installationMovement",
+          installId: row.install_id,
+        },
+        beforeReceivedAtMs: 4,
+        limit: 10,
+      }),
+    ).resolves.toEqual([row]);
+
+    expect(
+      documentClient.commandCalls(QueryCommand)[0]?.args[0].input,
+    ).toMatchObject({
+      IndexName: DYNAMODB_UPDATE_INDEX_NAME,
+      Limit: 10,
+      ScanIndexForward: false,
+      ExpressionAttributeValues: {
+        ":partition": `_hot-updater#insights-movement#${row.install_id}`,
+        ":upper": "0000000000000004#",
+      },
+    });
+
+    await plugin.dispose?.();
+  });
+
+  it("continues a user page after DynamoDB's response-size boundary", async () => {
+    const userId = "user-1";
+    const partition = `_hot-updater#insights-user#${userId}`;
+    const rows = [
+      insightsInstallation(1, userId),
+      insightsInstallation(2, userId),
+      insightsInstallation(3, userId),
+    ];
+    const toItem = (row: InsightsInstallationRow) => ({
+      pk: partition,
+      sk: row.install_id,
+      order_key: `${String(row.received_at_ms).padStart(16, "0")}#${row.id}`,
+      version: 1,
+      row,
+    });
+    const lastEvaluatedKey = {
+      pk: partition,
+      sk: rows[0]?.install_id,
+    };
+    documentClient
+      .on(QueryCommand)
+      .resolvesOnce({
+        Items: [toItem(rows[0]!)],
+        LastEvaluatedKey: lastEvaluatedKey,
+      })
+      .resolvesOnce({ Items: rows.slice(1).map(toItem) });
+    const plugin = dynamoDB({
+      region: "us-east-1",
+      tableName: "hot-updater-metadata",
+    });
+
+    await expect(
+      plugin.models.insights.pageInstallationsByCurrentUserId({
+        userId,
+        limit: 3,
+      }),
+    ).resolves.toEqual(rows);
+
+    const queries = documentClient.commandCalls(QueryCommand);
+    expect(queries).toHaveLength(2);
+    expect(queries[1]?.args[0].input).toMatchObject({
+      ExclusiveStartKey: lastEvaluatedKey,
+      Limit: 2,
+    });
+
+    await plugin.dispose?.();
+  });
+
+  it("atomically replaces latest, user, and active access rows", async () => {
+    const previousEvent = { ...insightsEvent(1), user_id: "old-user" };
+    const previous = {
+      id: previousEvent.id,
+      install_id: previousEvent.install_id,
+      user_id: previousEvent.user_id,
+      username: previousEvent.username,
+      to_bundle_id: previousEvent.to_bundle_id,
+      type: previousEvent.type,
+      platform: previousEvent.platform,
+      app_version: previousEvent.app_version,
+      channel: previousEvent.channel,
+      cohort: previousEvent.cohort,
+      received_at_ms: previousEvent.received_at_ms,
+    };
+    documentClient.on(GetCommand).resolves({
+      Item: {
+        pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+        sk: previous.install_id,
+        order_key: `0000000000000001#${previous.id}`,
+        version: 1,
+        row: previous,
+      },
+    });
+    const next = {
+      ...insightsEvent(2),
+      install_id: previous.install_id,
+      user_id: "new-user",
+    };
+    const plugin = dynamoDB({
+      region: "us-east-1",
+      tableName: "hot-updater-metadata",
+    });
+
+    await plugin.models.insights.append(next);
+
+    const transaction =
+      documentClient.commandCalls(TransactWriteCommand)[0]?.args[0].input
+        .TransactItems;
+    expect(transaction).toHaveLength(6);
+    expect(transaction).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          Delete: expect.objectContaining({
+            Key: {
+              pk: DYNAMODB_INSIGHTS_ACTIVE_PARTITION,
+              sk: `0000000000000001#${previous.id}`,
+            },
+          }),
+        }),
+        expect.objectContaining({
+          Delete: expect.objectContaining({
+            Key: {
+              pk: "_hot-updater#insights-user#old-user",
+              sk: previous.install_id,
+            },
+          }),
+        }),
+        expect.objectContaining({
+          Put: expect.objectContaining({
+            Item: expect.objectContaining({
+              pk: "_hot-updater#insights-user#new-user",
+              sk: previous.install_id,
+            }),
+          }),
+        }),
+      ]),
+    );
+
+    await plugin.dispose?.();
+  });
+
+  it("counts every compact active page without scanning raw events", async () => {
+    const queryMock = documentClient.on(QueryCommand);
+    for (let index = 1; index <= 11; index++) {
+      queryMock.resolvesOnce({
+        Count: 5_000,
+        LastEvaluatedKey: {
+          pk: DYNAMODB_INSIGHTS_ACTIVE_PARTITION,
+          sk: `active-page-${index}`,
+        },
+      });
+    }
+    queryMock.resolvesOnce({ Count: 1 });
+    const plugin = dynamoDB({
+      region: "us-east-1",
+      tableName: "hot-updater-metadata",
+    });
+
+    await expect(
+      plugin.models.insights.countActiveInstallations({ sinceMs: 1_000 }),
+    ).resolves.toBe(55_001);
+
+    const queries = documentClient.commandCalls(QueryCommand);
+    expect(queries).toHaveLength(12);
+    for (const query of queries) {
+      expect(query.args[0].input).toMatchObject({
+        ConsistentRead: true,
+        Select: "COUNT",
+        ExpressionAttributeValues: {
+          ":pk": DYNAMODB_INSIGHTS_ACTIVE_PARTITION,
+          ":since": "0000000000001000#",
+        },
+      });
+    }
+    expect(queries[1]?.args[0].input.ExclusiveStartKey).toEqual({
+      pk: DYNAMODB_INSIGHTS_ACTIVE_PARTITION,
+      sk: "active-page-1",
+    });
+    expect(documentClient.commandCalls(ScanCommand)).toHaveLength(0);
 
     await plugin.dispose?.();
   });

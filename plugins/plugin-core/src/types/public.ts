@@ -5,8 +5,10 @@ export type {
 } from "./databaseOperations";
 export type {
   InsightsModel,
-  InsightsScanCursor,
-  InsightsScanInput,
+  InsightsEventCursor,
+  InsightsEventSelector,
+  InsightsPageEventsInput,
+  InsightsPageInstallationsByCurrentUserIdInput,
   BundleModel,
   BundleModelQuery,
   BundlePatchModel,
@@ -31,6 +33,7 @@ export type {
 export type {
   BundleEventRow,
   BundleEventRowBase,
+  InsightsInstallationRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,

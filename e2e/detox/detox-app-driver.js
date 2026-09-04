@@ -170,21 +170,10 @@ class DetoxAppDriver {
   }
 
   async verifyConsoleInsights(sinceMs) {
-    const bundleIds = [
-      ...new Set(
-        Object.values(this.stageValues).filter(
-          (value) =>
-            typeof value === "string" &&
-            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-              value,
-            ),
-        ),
-      ),
-    ];
     const evidence = await this.controlClient.postJson(
       "verify Console Insights",
       "/e2e/verify-console-insights",
-      { bundleIds, sinceMs },
+      { sinceMs },
     );
     console.log(`[detox-console-insights] ${JSON.stringify(evidence)}`);
     return evidence;

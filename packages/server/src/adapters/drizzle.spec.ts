@@ -100,6 +100,19 @@ const bundleEvents = pgTable("bundle_events", {
   sdk_version: text("sdk_version"),
   received_at_ms: integer("received_at_ms").notNull(),
 });
+const bundleInstallations = pgTable("bundle_installations", {
+  install_id: varchar("install_id", { length: 255 }).primaryKey(),
+  id: text("id").notNull(),
+  user_id: text("user_id"),
+  username: text("username"),
+  to_bundle_id: text("to_bundle_id").notNull(),
+  type: text("type").notNull(),
+  platform: text("platform").notNull(),
+  app_version: text("app_version").notNull(),
+  channel: text("channel").notNull(),
+  cohort: text("cohort").notNull(),
+  received_at_ms: integer("received_at_ms").notNull(),
+});
 const apiKeys = pgTable("api_keys", {
   id: text("id").primaryKey(),
   hash: text("hash").notNull().unique(),
@@ -111,6 +124,7 @@ const apiKeys = pgTable("api_keys", {
 });
 const schema = {
   bundle_events: bundleEvents,
+  bundle_installations: bundleInstallations,
   bundle_patches: bundlePatches,
   bundles,
   channels,

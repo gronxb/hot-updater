@@ -3,71 +3,45 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  active: vi.fn(),
-  insights: vi.fn(),
-  capability: vi.fn(),
-  catalog: vi.fn(),
   controls: vi.fn(),
   overview: vi.fn(),
+  reporting: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (options: unknown) => ({ options }),
-  Link: ({
-    children,
-    to,
-    ...props
-  }: {
-    children: ReactNode;
-    to: string;
-    "aria-current"?: "page";
-  }) => (
-    <a href={to} aria-current={props["aria-current"]}>
-      {children}
-    </a>
+  Link: ({ children, to }: { children: ReactNode; to: string }) => (
+    <a href={to}>{children}</a>
   ),
 }));
 
-vi.mock("@/components/features/insights/InsightsCapabilityContext", () => ({
-  useInsightsCapability: mocks.capability,
-}));
 vi.mock("@/components/features/insights/InsightsControls", () => ({
   InsightsControls: (props: {
     onWindowChange: (window: "24h" | "7d" | "30d") => void;
+    window: "24h" | "7d" | "30d";
   }) => {
     mocks.controls(props);
     return (
-      <>
-        <button onClick={() => props.onWindowChange("7d")}>
-          Select window
-        </button>
-      </>
+      <button onClick={() => props.onWindowChange("7d")} type="button">
+        Select 7 days
+      </button>
     );
   },
 }));
+
 vi.mock("@/components/features/insights/InsightsOverview", () => ({
-  InsightsOverview: (props: {
-    onBundleChange?: (bundleId: string) => void;
-  }) => {
+  InsightsOverview: (props: unknown) => {
     mocks.overview(props);
-    return (
-      <div data-testid="insights-overview">
-        <button onClick={() => props.onBundleChange?.("bundle-b")}>
-          Select bundle
-        </button>
-      </div>
-    );
+    return <div>Reporting installations</div>;
   },
 }));
-vi.mock("@/components/ui/sidebar", () => ({
-  SidebarTrigger: () => null,
+
+vi.mock("@/components/features/insights/InsightsPageHeader", () => ({
+  InsightsPageHeader: () => <a href="/installations">Events</a>,
 }));
+
 vi.mock("@/lib/insights-api", () => ({
-  useActiveInstallationQuery: mocks.active,
-  useInsightsOverviewQuery: mocks.catalog,
-}));
-vi.mock("@/lib/api", () => ({
-  useBundleEventInsightsQuery: mocks.insights,
+  useReportingInstallationsQuery: mocks.reporting,
 }));
 
 import { Route } from "./insights";
@@ -75,77 +49,16 @@ import { Route } from "./insights";
 const InsightsPage = Route.options.component;
 if (!InsightsPage) throw new Error("Insights route component is required");
 
-const activeData = {
+const active = {
+  activeInstallations: 42,
   asOfMs: Date.UTC(2026, 6, 18),
-  window: "30d",
-  activeInstallations: 4,
-  series: [],
-  bundleSeries: [],
-  bundles: [{ bundleId: "bundle-a", installations: 4 }],
-};
-
-const catalogData = {
-  trackedInstallations: 4,
-  mostCommonLatestReportedBundle: null,
-  latestReportedBundles: [],
-  configuredRollouts: [
-    {
-      bundleId: "bundle-a",
-      configuredPercentage: 100,
-      trackedInstallations: 4,
-      bundle: {
-        platform: "ios",
-        channel: "production",
-        targetAppVersion: "1.0.0",
-        fingerprintHash: null,
-      },
-    },
-    {
-      bundleId: "bundle-b",
-      configuredPercentage: 25,
-      trackedInstallations: 0,
-      bundle: {
-        platform: "android",
-        channel: "production",
-        targetAppVersion: "1.0.0",
-        fingerprintHash: null,
-      },
-    },
-  ],
-};
-
-const insightsData = {
-  summary: { installed: 8, recovered: 2 },
-  series: {
-    installed: [{ bucketStartMs: Date.UTC(2026, 6, 17), value: 8 }],
-    recovered: [{ bucketStartMs: Date.UTC(2026, 6, 17), value: 2 }],
-  },
-  cohorts: { installed: [], recovered: [] },
-  recentEvents: {
-    data: [],
-    pagination: { total: 0, limit: 1, offset: 0 },
-  },
+  window: "30d" as const,
 };
 
 describe("InsightsPage", () => {
   beforeEach(() => {
-    mocks.capability.mockReturnValue({
-      status: "supported",
-      mode: "bounded",
-      maxMatchingRows: 50_000,
-    });
-    mocks.active.mockReturnValue({
-      data: activeData,
-      error: null,
-      isLoading: false,
-    });
-    mocks.catalog.mockReturnValue({
-      data: catalogData,
-      error: null,
-      isLoading: false,
-    });
-    mocks.insights.mockReturnValue({
-      data: insightsData,
+    mocks.reporting.mockReturnValue({
+      data: active,
       error: null,
       isLoading: false,
     });
@@ -156,59 +69,42 @@ describe("InsightsPage", () => {
     vi.clearAllMocks();
   });
 
-  it("requests insights for the selected bundle and reporting period", () => {
-    const { container } = render(<InsightsPage />);
-
-    expect(mocks.insights).toHaveBeenCalledWith(
-      {
-        bundleId: "bundle-a",
-        window: "30d",
-        limit: 1,
-        offset: 0,
-      },
-      true,
-    );
-    expect(mocks.active).toHaveBeenCalledWith(expect.anything(), {
-      window: "30d",
-    });
-    expect(mocks.overview).toHaveBeenCalledWith(
-      expect.objectContaining({
-        outcomes: {
-          status: "success",
-          bundleId: "bundle-a",
-          data: insightsData,
-        },
-      }),
-    );
-    expect(container.querySelector("main")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Select bundle" }));
-    fireEvent.click(screen.getByRole("button", { name: "Select window" }));
-
-    expect(mocks.insights).toHaveBeenLastCalledWith(
-      {
-        bundleId: "bundle-b",
-        window: "7d",
-        limit: 1,
-        offset: 0,
-      },
-      true,
-    );
-    expect(mocks.active).toHaveBeenLastCalledWith(expect.anything(), {
-      window: "7d",
-    });
-  });
-
-  it("shows Overview as the current view and a direct Events destination", () => {
+  it("loads only the reporting-installation headline for the selected window", () => {
     render(<InsightsPage />);
-    expect(
-      screen
-        .getByRole("link", { name: "Overview" })
-        .getAttribute("aria-current"),
-    ).toBe("page");
+
+    expect(mocks.reporting).toHaveBeenCalledWith("30d");
+    expect(mocks.overview).toHaveBeenLastCalledWith({
+      active,
+      status: "success",
+    });
     expect(
       screen.getByRole("link", { name: "Events" }).getAttribute("href"),
     ).toBe("/installations");
-    expect(screen.queryByRole("searchbox")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Select 7 days" }));
+
+    expect(mocks.reporting).toHaveBeenLastCalledWith("7d");
+    expect(mocks.controls).toHaveBeenLastCalledWith(
+      expect.objectContaining({ window: "7d" }),
+    );
+  });
+
+  it("keeps loading and failures inside the single metric surface", () => {
+    mocks.reporting.mockReturnValueOnce({
+      data: undefined,
+      error: null,
+      isLoading: true,
+    });
+    const view = render(<InsightsPage />);
+    expect(mocks.overview).toHaveBeenLastCalledWith({ status: "loading" });
+
+    const error = new Error("Database offline");
+    mocks.reporting.mockReturnValueOnce({
+      data: undefined,
+      error,
+      isLoading: false,
+    });
+    view.rerender(<InsightsPage />);
+    expect(mocks.overview).toHaveBeenLastCalledWith({ error, status: "error" });
   });
 });

@@ -6,6 +6,20 @@ import {
 } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { parseD1Row } from "./d1Rows";
 
+const installationD1Row = {
+  id: "event-1",
+  install_id: "install-1",
+  user_id: "user-1",
+  username: "Demo User",
+  to_bundle_id: "bundle-1",
+  type: "UPDATE_APPLIED",
+  platform: "ios",
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "cohort-1",
+  received_at_ms: 100,
+} as const;
+
 const bundleD1Row = {
   id: "bundle-1",
   platform: "android",
@@ -109,3 +123,21 @@ it.each([
     }),
   ).toThrow("D1 returned an invalid bundle_events row");
 });
+
+it("parses a current Insights installation", () => {
+  expect(parseD1Row("bundle_installations", installationD1Row)).toEqual(
+    installationD1Row,
+  );
+});
+
+it.each([{ type: "UNKNOWN" }, { platform: "web" }])(
+  "rejects an invalid current Insights installation",
+  (overrides) => {
+    expect(() =>
+      parseD1Row("bundle_installations", {
+        ...installationD1Row,
+        ...overrides,
+      }),
+    ).toThrow("D1 returned an invalid bundle_installations row");
+  },
+);

@@ -6,11 +6,10 @@ export const createConsoleInsightsProviderClient = (
 ): ConsoleInsightsQaClient => ({
   getActiveOverview: () =>
     provider.getActiveInstallationOverview({ window: "24h" }),
-  getBundleInsights: (bundleId) =>
-    provider.getBundleEventInsights(bundleId, "30d", 50, 0),
-  getCapabilities: async () => ({ insights: true }),
-  getHistory: (installId) => provider.getInstallationHistory(installId, 50, 0),
-  getOverview: () => provider.getBundleEventOverview(),
-  getSummary: (bundleId) => provider.getBundleEventSummary(bundleId),
-  searchInstallations: (query) => provider.searchInstallations(query, 50, 0),
+  getInstallation: (installId) => provider.getInstallation(installId),
+  pageEvents: (input = {}) => provider.pageEvents(input),
+  pageInstallationEvents: (installId, input = {}) =>
+    provider.pageInstallationEvents({ ...input, installId }),
+  pageInstallationsByCurrentUserId: (userId, input = {}) =>
+    provider.pageInstallationsByCurrentUserId({ ...input, userId }),
 });

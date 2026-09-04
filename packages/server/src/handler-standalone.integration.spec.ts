@@ -186,15 +186,13 @@ describe("Handler <-> Standalone Repository Integration", () => {
         }),
       }),
     );
-    const overview = await api.handlers.admin(
-      new Request(`${baseUrl}/installations/overview`),
-    );
+    const events = await api.handlers.admin(new Request(`${baseUrl}/events`));
 
     expect(ingestion.status).toBe(204);
-    expect(overview.status).toBe(200);
-    await expect(overview.json()).resolves.toEqual({
-      bundles: [{ bundleId, installations: 1 }],
-      trackedInstallations: 1,
+    expect(events.status).toBe(200);
+    await expect(events.json()).resolves.toMatchObject({
+      data: [{ installId, toBundleId: bundleId, type: "UPDATE_APPLIED" }],
+      nextCursor: null,
     });
   });
 

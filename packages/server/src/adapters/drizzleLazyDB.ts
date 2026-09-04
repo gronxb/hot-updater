@@ -3,6 +3,7 @@ import type {
   BundlePatchRow,
   ChannelRow,
   ApiKeyRow,
+  InsightsInstallationRow,
   ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
 
@@ -41,6 +42,7 @@ export type DrizzleDB = {
     readonly channels: DrizzleQuery<ChannelRow>;
     readonly bundle_patches: DrizzleQuery<BundlePatchRow>;
     readonly bundle_events: DrizzleQuery<BundleEventRow>;
+    readonly bundle_installations: DrizzleQuery<InsightsInstallationRow>;
     readonly api_keys: DrizzleQuery<ApiKeyRow>;
     readonly releases: DrizzleQuery<StoredReleaseRow>;
     readonly release_catalogs: DrizzleQuery<ReleaseCatalogRow>;
@@ -82,6 +84,7 @@ const isDrizzleDB = (value: unknown): value is DrizzleDB => {
   if (
     !isRecord(query) ||
     !isDrizzleQuery(query["bundle_events"]) ||
+    !isDrizzleQuery(query["bundle_installations"]) ||
     !isDrizzleQuery(query["bundle_patches"]) ||
     !isDrizzleQuery(query["bundles"]) ||
     !isDrizzleQuery(query["channels"]) ||
@@ -192,6 +195,12 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
           (await getDB()).query.bundle_events.findFirst(args),
         findMany: async (args) =>
           (await getDB()).query.bundle_events.findMany(args),
+      },
+      bundle_installations: {
+        findFirst: async (args) =>
+          (await getDB()).query.bundle_installations.findFirst(args),
+        findMany: async (args) =>
+          (await getDB()).query.bundle_installations.findMany(args),
       },
       bundle_patches: {
         findFirst: async (args) =>

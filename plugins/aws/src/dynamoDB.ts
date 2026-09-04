@@ -18,6 +18,7 @@ import {
   type BundleEventRow,
   type BundlePatchRow,
   type BundleRow,
+  type InsightsInstallationRow,
   type InsightsModel,
   type ChannelDeleteInput,
   type ChannelDeleteResult,
@@ -27,6 +28,7 @@ import {
   type ApiKeyRow,
   type ApiKeyModel,
   createDatabasePlugin,
+  DatabasePluginInputError,
   type DatabaseCommit,
   type DatabaseCommitResult,
   isDatabaseMetadataObject,
@@ -2358,7 +2360,6 @@ const compileAndCommitDynamoDBChanges = async (
   const originalApiKeys = new Map<string, VersionedApiKey>();
   const apiKeys = new Map<string, VersionedApiKey>();
   const apiKeyHashes = new Map<string, string>();
-  const insights = new Map<string, BundleEventRow>();
 
   const rememberApiKey = (value: VersionedApiKey | null): void => {
     if (value === null || apiKeys.has(value.row.id)) return;
@@ -2545,16 +2546,6 @@ const compileAndCommitDynamoDBChanges = async (
           }
         }
         break;
-      case "insights": {
-        const key = insightsSortKey(change.row);
-        if (insights.has(key)) {
-          throw new DynamoDBCommitStateError(
-            `Insights event "${change.row.id}" is duplicated`,
-          );
-        }
-        insights.set(key, change.row);
-        break;
-      }
       case "apiKeys":
         if (change.operation === "insert") {
           rememberApiKey(await loadApiKeyByHash(store, change.row.hash));
@@ -2872,22 +2863,6 @@ const compileAndCommitDynamoDBChanges = async (
   });
   if (counter !== undefined) actions.push(counter);
 
-  for (const [key, row] of insights) {
-    actions.push({
-      Put: {
-        TableName: store.tableName,
-        Item: boundedDynamoDBMetadataItem({
-          pk: DYNAMODB_INSIGHTS_PARTITION,
-          sk: key,
-          version: 1,
-          row,
-        }),
-        ConditionExpression: "attribute_not_exists(#pk)",
-        ExpressionAttributeNames: { "#pk": "pk" },
-      },
-    });
-  }
-
   for (const [id, current] of apiKeys) {
     const original = originalApiKeys.get(id);
     if (original !== undefined && rowsEqual(original.row, current.row)) {
@@ -2951,8 +2926,26 @@ const createDynamoDBCommit =
     }
   };
 export const DYNAMODB_INSIGHTS_PARTITION = "bundle_events";
+export const DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION =
+  "_hot-updater#insights-installations";
+export const DYNAMODB_INSIGHTS_ACTIVE_PARTITION =
+  "_hot-updater#insights-active";
 export const DYNAMODB_API_KEY_PARTITION = "api_keys";
 export const DYNAMODB_API_KEY_HASH_PARTITION = "_hot-updater#api-key-hashes";
+
+const DYNAMODB_INSIGHTS_MOVEMENT_PREFIX = "_hot-updater#insights-movement#";
+const DYNAMODB_INSIGHTS_USER_PREFIX = "_hot-updater#insights-user#";
+const DYNAMODB_INSIGHTS_APPEND_ATTEMPTS = 3;
+const DYNAMODB_INSIGHTS_PAGE_SIZE = 101;
+
+const isInsightsTimestamp = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+const isInsightsPageLimit = (value: unknown): value is number =>
+  typeof value === "number" &&
+  Number.isSafeInteger(value) &&
+  value >= 1 &&
+  value <= DYNAMODB_INSIGHTS_PAGE_SIZE;
 
 const hasValidBundleEventShape = (value: object): boolean => {
   const type = field(value, "type");
@@ -2980,6 +2973,27 @@ const isBundleEventRow = (value: unknown): value is BundleEventRow =>
     field(value, "platform") === "android") &&
   typeof field(value, "received_at_ms") === "number" &&
   hasValidBundleEventShape(value);
+
+const isInsightsInstallationRow = (
+  value: unknown,
+): value is InsightsInstallationRow =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof field(value, "id") === "string" &&
+  typeof field(value, "install_id") === "string" &&
+  isNullableString(field(value, "user_id")) &&
+  isNullableString(field(value, "username")) &&
+  typeof field(value, "to_bundle_id") === "string" &&
+  (field(value, "type") === "UPDATE_APPLIED" ||
+    field(value, "type") === "RECOVERED" ||
+    field(value, "type") === "RELEASE_ADOPTED" ||
+    field(value, "type") === "UNCHANGED") &&
+  (field(value, "platform") === "ios" ||
+    field(value, "platform") === "android") &&
+  typeof field(value, "app_version") === "string" &&
+  typeof field(value, "channel") === "string" &&
+  typeof field(value, "cohort") === "string" &&
+  typeof field(value, "received_at_ms") === "number";
 
 const isApiKeyRow = (value: unknown): value is ApiKeyRow =>
   typeof value === "object" &&
@@ -3016,71 +3030,381 @@ const insightsSortKey = (
   row: Pick<BundleEventRow, "id" | "received_at_ms">,
 ): string => `${timestampSortKey(row.received_at_ms)}#${row.id}`;
 
+const insightsMovementPartition = (installId: string): string =>
+  `${DYNAMODB_INSIGHTS_MOVEMENT_PREFIX}${installId}`;
+
+const insightsUserPartition = (userId: string): string =>
+  `${DYNAMODB_INSIGHTS_USER_PREFIX}${userId}`;
+
+const toInsightsInstallationRow = (
+  row: BundleEventRow,
+): InsightsInstallationRow => ({
+  id: row.id,
+  install_id: row.install_id,
+  user_id: row.user_id,
+  username: row.username,
+  to_bundle_id: row.to_bundle_id,
+  type: row.type,
+  platform: row.platform,
+  app_version: row.app_version,
+  channel: row.channel,
+  cohort: row.cohort,
+  received_at_ms: row.received_at_ms,
+});
+
+const isMovementEvent = (
+  row: BundleEventRow,
+): row is BundleEventRow & { readonly type: "UPDATE_APPLIED" | "RECOVERED" } =>
+  row.type === "UPDATE_APPLIED" || row.type === "RECOVERED";
+
+const toInsightsEventItem = (row: BundleEventRow): Record<string, unknown> => {
+  const orderKey = insightsSortKey(row);
+  return boundedDynamoDBMetadataItem({
+    pk: DYNAMODB_INSIGHTS_PARTITION,
+    sk: orderKey,
+    version: 1,
+    row,
+    ...(isMovementEvent(row)
+      ? {
+          gsi1pk: insightsMovementPartition(row.install_id),
+          gsi1sk: orderKey,
+        }
+      : {}),
+  });
+};
+
+type DynamoDBInsightsInstallationItem = {
+  readonly pk: string;
+  readonly sk: string;
+  readonly order_key: string;
+  readonly version: 1;
+  readonly row: InsightsInstallationRow;
+};
+
+const toInsightsInstallationItem = (
+  row: InsightsInstallationRow,
+): DynamoDBInsightsInstallationItem =>
+  boundedDynamoDBMetadataItem({
+    pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+    sk: row.install_id,
+    order_key: insightsSortKey(row),
+    version: 1,
+    row,
+  });
+
+const toInsightsUserItem = (
+  row: InsightsInstallationRow & { readonly user_id: string },
+): DynamoDBInsightsInstallationItem =>
+  boundedDynamoDBMetadataItem({
+    pk: insightsUserPartition(row.user_id),
+    sk: row.install_id,
+    order_key: insightsSortKey(row),
+    version: 1,
+    row,
+  });
+
+const toInsightsActiveItem = (
+  row: InsightsInstallationRow,
+): Record<string, unknown> => ({
+  pk: DYNAMODB_INSIGHTS_ACTIVE_PARTITION,
+  sk: insightsSortKey(row),
+  install_id: row.install_id,
+});
+
+const parseInsightsInstallationItem = (
+  value: Record<string, unknown>,
+  partition: string,
+): DynamoDBInsightsInstallationItem => {
+  const row = value.row;
+  if (
+    value.pk !== partition ||
+    typeof value.sk !== "string" ||
+    typeof value.order_key !== "string" ||
+    value.version !== 1 ||
+    !isInsightsInstallationRow(row) ||
+    value.sk !== row.install_id ||
+    value.order_key !== insightsSortKey(row)
+  ) {
+    throw new DynamoDBStoredItemError();
+  }
+  return value as DynamoDBInsightsInstallationItem;
+};
+
+const loadInsightsInstallationItem = async (
+  store: DynamoDBStore,
+  installId: string,
+): Promise<DynamoDBInsightsInstallationItem | null> => {
+  const { Item } = await store.client.send(
+    new GetCommand({
+      TableName: store.tableName,
+      Key: {
+        pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+        sk: installId,
+      },
+      ConsistentRead: true,
+    }),
+  );
+  return Item === undefined
+    ? null
+    : parseInsightsInstallationItem(
+        Item,
+        DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
+      );
+};
+
+const advancesInsightsInstallation = (
+  row: Pick<InsightsInstallationRow, "id" | "received_at_ms">,
+  current: Pick<InsightsInstallationRow, "id" | "received_at_ms">,
+): boolean =>
+  row.received_at_ms > current.received_at_ms ||
+  (row.received_at_ms === current.received_at_ms && row.id > current.id);
+
+const appendDynamoDBInsightsEvent = async (
+  store: DynamoDBStore,
+  row: BundleEventRow,
+): Promise<void> => {
+  const eventItem = toInsightsEventItem(row);
+  const next = toInsightsInstallationRow(row);
+
+  for (
+    let attempt = 0;
+    attempt < DYNAMODB_INSIGHTS_APPEND_ATTEMPTS;
+    attempt++
+  ) {
+    const current = await loadInsightsInstallationItem(store, row.install_id);
+    if (current !== null && !advancesInsightsInstallation(next, current.row)) {
+      await store.client.send(
+        new PutCommand({ TableName: store.tableName, Item: eventItem }),
+      );
+      return;
+    }
+
+    const actions: DynamoDBTransactItem[] = [
+      {
+        Put: {
+          TableName: store.tableName,
+          Item: eventItem,
+        },
+      },
+      {
+        Put: {
+          TableName: store.tableName,
+          Item: toInsightsInstallationItem(next),
+          ConditionExpression:
+            current === null
+              ? "attribute_not_exists(#pk)"
+              : "#orderKey = :currentOrderKey",
+          ExpressionAttributeNames:
+            current === null ? { "#pk": "pk" } : { "#orderKey": "order_key" },
+          ...(current === null
+            ? {}
+            : {
+                ExpressionAttributeValues: {
+                  ":currentOrderKey": current.order_key,
+                },
+              }),
+        },
+      },
+      ...(current === null
+        ? []
+        : [
+            {
+              Delete: {
+                TableName: store.tableName,
+                Key: {
+                  pk: DYNAMODB_INSIGHTS_ACTIVE_PARTITION,
+                  sk: current.order_key,
+                },
+              },
+            } satisfies DynamoDBTransactItem,
+          ]),
+      {
+        Put: {
+          TableName: store.tableName,
+          Item: toInsightsActiveItem(next),
+        },
+      },
+      ...(current !== null &&
+      current.row.user_id !== null &&
+      current.row.user_id !== next.user_id
+        ? [
+            {
+              Delete: {
+                TableName: store.tableName,
+                Key: {
+                  pk: insightsUserPartition(current.row.user_id),
+                  sk: current.row.install_id,
+                },
+              },
+            } satisfies DynamoDBTransactItem,
+          ]
+        : []),
+      ...(next.user_id === null
+        ? []
+        : [
+            {
+              Put: {
+                TableName: store.tableName,
+                Item: toInsightsUserItem({ ...next, user_id: next.user_id }),
+              },
+            } satisfies DynamoDBTransactItem,
+          ]),
+    ];
+
+    try {
+      await commitDynamoDBTransaction(store, actions);
+      return;
+    } catch (error) {
+      if (
+        attempt === DYNAMODB_INSIGHTS_APPEND_ATTEMPTS - 1 ||
+        !isDynamoDBTransactionConflict(error)
+      ) {
+        throw error;
+      }
+    }
+  }
+};
+
 export const createDynamoDBInsightsTable = (
   store: DynamoDBStore,
 ): InsightsModel => ({
-  async append(row) {
-    await store.client.send(
-      new PutCommand({
-        TableName: store.tableName,
-        Item: boundedDynamoDBMetadataItem({
-          pk: DYNAMODB_INSIGHTS_PARTITION,
-          sk: insightsSortKey(row),
-          version: 1,
-          row,
-        }),
-        ConditionExpression: "attribute_not_exists(#pk)",
-        ExpressionAttributeNames: { "#pk": "pk" },
-      }),
-    );
-  },
-  async scan(input) {
-    if (input.limit <= 0) return [];
+  append: (row) => appendDynamoDBInsightsEvent(store, row),
+  async pageEvents(input) {
     if (
-      input.after !== undefined &&
-      input.after.receivedAtMs >= input.beforeReceivedAtMs
+      !isInsightsPageLimit(input.limit) ||
+      !isInsightsTimestamp(input.beforeReceivedAtMs) ||
+      (input.after !== undefined &&
+        (!isInsightsTimestamp(input.after.receivedAtMs) ||
+          typeof input.after.id !== "string" ||
+          input.after.receivedAtMs >= input.beforeReceivedAtMs)) ||
+      (input.selector.kind !== "all" &&
+        (input.selector.kind !== "installationMovement" ||
+          input.selector.installId.length === 0))
     ) {
-      return [];
+      throw new DatabasePluginInputError("invalid-query");
     }
+    const upperKey = input.after
+      ? `${timestampSortKey(input.after.receivedAtMs)}#${input.after.id}`
+      : `${timestampSortKey(input.beforeReceivedAtMs)}#`;
+    const movement =
+      input.selector.kind === "installationMovement"
+        ? insightsMovementPartition(input.selector.installId)
+        : null;
     const rows: BundleEventRow[] = [];
-    const afterKey =
-      input.after === undefined
-        ? undefined
-        : `${timestampSortKey(input.after.receivedAtMs)}#${input.after.id}`;
     let exclusiveStartKey: Record<string, unknown> | undefined;
     do {
       const page = await store.client.send(
         new QueryCommand({
           TableName: store.tableName,
+          ...(movement === null
+            ? { ConsistentRead: true }
+            : { IndexName: DYNAMODB_UPDATE_INDEX_NAME }),
+          ExclusiveStartKey: exclusiveStartKey,
+          KeyConditionExpression: "#partition = :partition AND #order < :upper",
+          ExpressionAttributeNames: {
+            "#partition": movement === null ? "pk" : "gsi1pk",
+            "#order": movement === null ? "sk" : "gsi1sk",
+          },
+          ExpressionAttributeValues: {
+            ":partition": movement ?? DYNAMODB_INSIGHTS_PARTITION,
+            ":upper": upperKey,
+          },
+          Limit: input.limit - rows.length,
+          ScanIndexForward: false,
+        }),
+      );
+      const remaining = input.limit - rows.length;
+      rows.push(
+        ...(page.Items ?? [])
+          .slice(0, remaining)
+          .map(
+            (item) =>
+              parseOfficialRowItem(
+                item,
+                DYNAMODB_INSIGHTS_PARTITION,
+                isBundleEventRow,
+              ).row,
+          ),
+      );
+      exclusiveStartKey = page.LastEvaluatedKey;
+    } while (rows.length < input.limit && exclusiveStartKey !== undefined);
+    return rows;
+  },
+  async getInstallation(installId) {
+    if (installId.length === 0) {
+      throw new DatabasePluginInputError("invalid-query");
+    }
+    return (await loadInsightsInstallationItem(store, installId))?.row ?? null;
+  },
+  async pageInstallationsByCurrentUserId(input) {
+    if (
+      input.userId.length === 0 ||
+      !isInsightsPageLimit(input.limit) ||
+      input.afterInstallId === ""
+    ) {
+      throw new DatabasePluginInputError("invalid-query");
+    }
+    const partition = insightsUserPartition(input.userId);
+    const rows: InsightsInstallationRow[] = [];
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+    do {
+      const page = await store.client.send(
+        new QueryCommand({
+          TableName: store.tableName,
+          ConsistentRead: true,
           ExclusiveStartKey: exclusiveStartKey,
           KeyConditionExpression:
-            afterKey === undefined
-              ? "#pk = :pk AND #sk < :before"
-              : "#pk = :pk AND #sk BETWEEN :after AND :before",
+            input.afterInstallId === undefined
+              ? "#pk = :pk"
+              : "#pk = :pk AND #sk > :after",
           ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
           ExpressionAttributeValues: {
-            ":before": `${timestampSortKey(input.beforeReceivedAtMs)}#`,
-            ":pk": DYNAMODB_INSIGHTS_PARTITION,
-            ...(afterKey === undefined ? {} : { ":after": afterKey }),
+            ":pk": partition,
+            ...(input.afterInstallId === undefined
+              ? {}
+              : { ":after": input.afterInstallId }),
           },
-          Limit: input.limit - rows.length + (afterKey === undefined ? 0 : 1),
+          Limit: input.limit - rows.length,
           ScanIndexForward: true,
         }),
       );
-      for (const item of page.Items ?? []) {
-        if (item.sk === afterKey) continue;
-        rows.push(
-          parseOfficialRowItem(
-            item,
-            DYNAMODB_INSIGHTS_PARTITION,
-            isBundleEventRow,
-          ).row,
-        );
-        if (rows.length === input.limit) return rows;
+      const remaining = input.limit - rows.length;
+      for (const item of (page.Items ?? []).slice(0, remaining)) {
+        const stored = parseInsightsInstallationItem(item, partition);
+        if (stored.row.user_id !== input.userId) {
+          throw new DynamoDBStoredItemError();
+        }
+        rows.push(stored.row);
       }
       exclusiveStartKey = page.LastEvaluatedKey;
-    } while (exclusiveStartKey !== undefined);
+    } while (rows.length < input.limit && exclusiveStartKey !== undefined);
     return rows;
+  },
+  async countActiveInstallations({ sinceMs }) {
+    if (!isInsightsTimestamp(sinceMs)) {
+      throw new DatabasePluginInputError("invalid-query");
+    }
+    let count = 0;
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+    do {
+      const page = await store.client.send(
+        new QueryCommand({
+          TableName: store.tableName,
+          ConsistentRead: true,
+          ExclusiveStartKey: exclusiveStartKey,
+          KeyConditionExpression: "#pk = :pk AND #sk >= :since",
+          ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
+          ExpressionAttributeValues: {
+            ":pk": DYNAMODB_INSIGHTS_ACTIVE_PARTITION,
+            ":since": `${timestampSortKey(sinceMs)}#`,
+          },
+          Select: "COUNT",
+        }),
+      );
+      count += page.Count ?? 0;
+      exclusiveStartKey = page.LastEvaluatedKey;
+    } while (exclusiveStartKey !== undefined);
+    return count;
   },
 });
 

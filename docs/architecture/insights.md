@@ -27,20 +27,53 @@ Client update and Insights ingestion routes are always present on
 `handlers.client`, while mounting `handlers.admin` is the explicit opt-in for
 admin HTTP routes.
 
-The database plugin owns physical storage and migration for `bundle_events`.
-The server owns event input validation, bounded scans, aggregation, installation
-search, and HTTP responses. Every database provider therefore exposes the same
-logical persistence contract:
+The database plugin stores the immutable event log and a compact row containing
+the latest report for each installation. The server owns input validation,
+cursor encoding, page boundaries, and HTTP responses. Every database provider
+therefore exposes the same small persistence contract:
 
 ```ts
 models: {
   insights: {
     append(row): Promise<void>;
-    scan({ beforeReceivedAtMs, after, limit }): Promise<readonly BundleEventRow[]>;
+    pageEvents({ selector, beforeReceivedAtMs, after, limit }): Promise<readonly BundleEventRow[]>;
+    getInstallation(installId): Promise<InsightsInstallationRow | null>;
+    pageInstallationsByCurrentUserId({ userId, afterInstallId, limit }): Promise<readonly InsightsInstallationRow[]>;
+    countActiveInstallations({ sinceMs }): Promise<number>;
   },
 }
 ```
 
-Scans are ordered by `(received_at_ms, id)` and are capped at 50,000 matching
-rows to keep built-in aggregation bounded. The Console reads the same server
-domain and no longer binds a separate Insights package or provider.
+Event pages are ordered newest first by `(received_at_ms, id)`. The server asks
+for at most 101 rows at a time and returns an opaque keyset cursor, so browsing
+does not scan or materialize the preceding history. Installation history applies
+its movement filter in the database before the page limit.
+
+The Console keeps only the current cursor and fixed cutoff in the URL. Previous
+cursors live in route memory for the current browsing session, so moving through
+deep history does not make the URL grow with the number of pages.
+
+The latest-installation row is updated only when `(received_at_ms, id)` advances.
+It makes exact installation lookup, exact current user ID lookup, and active
+installation counts independent of the size of the raw event log. Generic
+adapters use a bounded best-effort event-plus-projection update; providers may
+make that write atomic when their native data model supports it without an
+unbounded read. A projection failure fails the request, and a subsequent
+successful report advances the row. There is no report job, checkpoint,
+publication, repair lifecycle, or 50,000-row application limit.
+
+The active count is a live measurement, not a cross-provider snapshot. It is
+exact once writes are quiescent; concurrent reports can affect a multi-page
+provider query while it is running.
+
+The Console intentionally presents only data with a clear operational use:
+
+- reporting installations over 24 hours, 7 days, or 30 days;
+- the filter-free event history;
+- exact installation or current user ID lookup;
+- bundle movement history for a selected installation.
+
+Bundle adoption charts, historical alias search, exact page totals, and
+historical time-series aggregation are outside the built-in Insights scope. They
+require different semantics or analytics infrastructure and are not inferred
+from partial event data.

@@ -18,6 +18,7 @@ import {
   extractTimestampFromUUIDv7,
   releaseRowToRelease,
   type BundleEventRow,
+  type InsightsInstallationRow,
   type ReleaseCatalogRow,
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -1044,6 +1045,26 @@ const bundleEvents: readonly BundleEventRow[] = [
 
 for (const row of bundleEvents) {
   databaseData.bundleEvents.set(row.id, row);
+  const current = databaseData.bundleInstallations.get(row.install_id);
+  if (
+    current === undefined ||
+    row.received_at_ms > current.received_at_ms ||
+    (row.received_at_ms === current.received_at_ms && row.id > current.id)
+  ) {
+    databaseData.bundleInstallations.set(row.install_id, {
+      id: row.id,
+      install_id: row.install_id,
+      user_id: row.user_id,
+      username: row.username,
+      to_bundle_id: row.to_bundle_id,
+      type: row.type,
+      platform: row.platform,
+      app_version: row.app_version,
+      channel: row.channel,
+      cohort: row.cohort,
+      received_at_ms: row.received_at_ms,
+    } satisfies InsightsInstallationRow);
+  }
 }
 
 const database = mockDatabase({

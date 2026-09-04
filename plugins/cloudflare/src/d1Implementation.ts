@@ -191,6 +191,7 @@ const insertQuery = (
       values = channelValues(input.data);
       break;
     case "bundle_events":
+    case "bundle_installations":
     case "api_keys":
     case "release_catalogs":
     case "releases":
@@ -210,7 +211,7 @@ const insertQuery = (
           ? conflictMode === "ignore"
             ? " ON CONFLICT(hash) DO NOTHING"
             : " ON CONFLICT(hash) DO UPDATE SET hash = excluded.hash"
-          : "";
+          : " ON CONFLICT(install_id) DO UPDATE SET install_id = excluded.install_id";
 
   return {
     sql: `INSERT INTO ${d1TableNames[input.model]} (${columns.join(", ")}) ${
@@ -439,8 +440,6 @@ const changeQuery = (change: DatabaseChange, guard: D1Guard): D1Statement => {
               ...guard.params,
             ],
           };
-    case "insights":
-      return insertQuery({ model: "bundle_events", data: change.row }, guard);
     case "apiKeys":
       return change.operation === "insert"
         ? insertQuery(
@@ -650,6 +649,8 @@ export const createD1Implementation = (
         return parseD1Row("channels", rows[0]);
       case "bundle_events":
         return parseD1Row("bundle_events", rows[0]);
+      case "bundle_installations":
+        return parseD1Row("bundle_installations", rows[0]);
       case "api_keys":
         return parseD1Row("api_keys", rows[0]);
       case "releases":
@@ -671,6 +672,8 @@ export const createD1Implementation = (
         return parseD1Row("releases", rows[0]);
       case "release_catalogs":
         return parseD1Row("release_catalogs", rows[0]);
+      case "bundle_installations":
+        return parseD1Row("bundle_installations", rows[0]);
     }
   },
   async delete(input) {
@@ -698,6 +701,8 @@ export const createD1Implementation = (
         return parseD1Row("releases", rows[0]);
       case "release_catalogs":
         return parseD1Row("release_catalogs", rows[0]);
+      case "bundle_installations":
+        return parseD1Row("bundle_installations", rows[0]);
     }
   },
   findMany: (input) => findManyD1Rows(executor, input),

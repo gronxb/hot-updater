@@ -4,6 +4,7 @@ import {
   type BundlePatchRow,
   type ChannelRow,
   type ApiKeyRow,
+  type InsightsInstallationRow,
   type ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
 import type {
@@ -298,6 +299,15 @@ export const createKyselyCrud = (
       case "bundle_events":
         await insertRow(executor, "bundle_events", input.data, provider);
         return input.data;
+      case "bundle_installations":
+        await insertRow(
+          executor,
+          "bundle_installations",
+          input.data,
+          provider,
+          input.onConflict,
+        );
+        return input.data;
       case "releases":
         await insertRow(
           executor,
@@ -330,6 +340,38 @@ export const createKyselyCrud = (
     }
   },
   async update(input) {
+    if (input.model === "bundle_installations") {
+      const installId = input.where.find(
+        (item) =>
+          item.field === "install_id" &&
+          (item.operator === undefined || item.operator === "eq") &&
+          typeof item.value === "string",
+      )?.value;
+      if (typeof installId !== "string") {
+        throw new KyselyAdapterInvariantError(
+          "bundle_installations.update.selector",
+        );
+      }
+      const assignments = Object.entries(input.update)
+        .filter(([, value]) => value !== undefined)
+        .map(([field, value]) => sql`${sql.ref(field)} = ${value}`);
+      const where = buildKyselyWhere(provider, input.where);
+      let updated = false;
+      if (assignments.length > 0 && where !== undefined) {
+        const result = await sql`update ${sql.table(
+          "bundle_installations",
+        )} set ${sql.join(assignments)} where ${where}`.execute(executor);
+        updated = Number(result.numAffectedRows ?? 0) > 0;
+      }
+      if (!updated) return null;
+      const result =
+        await sql<InsightsInstallationRow>`select * from ${sql.table(
+          "bundle_installations",
+        )} where ${sql.ref("install_id")} = ${installId} limit 1`.execute(
+          executor,
+        );
+      return result.rows[0] ?? null;
+    }
     const selector = input.where[0];
     if (selector === undefined || typeof selector.value !== "string") {
       throw new KyselyAdapterInvariantError(`${input.model}.update.selector`);
@@ -470,6 +512,12 @@ export const createKyselyCrud = (
           "releases",
           buildKyselyWhere(provider, input.where),
         );
+      case "bundle_installations":
+        return countRows(
+          executor,
+          "bundle_installations",
+          buildKyselyWhere(provider, input.where),
+        );
     }
   },
   async findOne(input) {
@@ -519,6 +567,14 @@ export const createKyselyCrud = (
         const row = result.rows[0];
         return row === undefined ? null : fromStoredReleaseCatalogRow(row);
       }
+      case "bundle_installations": {
+        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const result =
+          await sql<InsightsInstallationRow>`select * from ${sql.table(
+            "bundle_installations",
+          )}${where} limit 1`.execute(executor);
+        return result.rows[0] ?? null;
+      }
     }
   },
   async findMany(input) {
@@ -549,6 +605,15 @@ export const createKyselyCrud = (
         const result = await sql<BundleEventRow>`select * from ${sql.table(
           "bundle_events",
         )}${where}${order}${pagination}`.execute(executor);
+        return [...result.rows];
+      }
+      case "bundle_installations": {
+        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const order = orderClause(input);
+        const result =
+          await sql<InsightsInstallationRow>`select * from ${sql.table(
+            "bundle_installations",
+          )}${where}${order}${pagination}`.execute(executor);
         return [...result.rows];
       }
       case "api_keys": {

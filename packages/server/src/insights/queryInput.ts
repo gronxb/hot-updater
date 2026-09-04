@@ -1,102 +1,98 @@
-import type {
-  ActiveInstallationInput,
-  BundleEventInsightsWindow,
-} from "./domain";
+import type { ActiveInstallationWindow } from "./domain";
 import { InsightsBadRequestError } from "./errors";
+import type {
+  InsightsEventPageInput,
+  InsightsUserInstallationPageInput,
+} from "./types";
 
-type IntegerBounds = {
-  readonly defaultValue: number;
-  readonly minimum: number;
-  readonly maximum?: number;
+const MAX_PAGE_LIMIT = 100;
+const MAX_IDENTITY_LENGTH = 255;
+const MAX_CURSOR_LENGTH = 8 * 1_024;
+
+const readSingle = (url: URL, key: string): string | undefined => {
+  const values = url.searchParams.getAll(key);
+  if (values.length > 1) {
+    throw new InsightsBadRequestError(`Duplicate '${key}' query parameter.`);
+  }
+  return values[0];
 };
 
-const EVENT_LIST_BOUNDS = {
-  defaultValue: 50,
-  maximum: 100,
-  minimum: 1,
-} as const satisfies IntegerBounds;
-const EVENT_LIST_OFFSET_BOUNDS = {
-  defaultValue: 0,
-  minimum: 0,
-} as const satisfies IntegerBounds;
-const MAX_USER_ID_LENGTH = 1_024;
-
-export type PaginationInput = {
-  readonly limit: number;
-  readonly offset: number;
+const readPageLimit = (url: URL): number | undefined => {
+  const value = readSingle(url, "limit");
+  if (value === undefined) return undefined;
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_PAGE_LIMIT) {
+    throw new InsightsBadRequestError("Invalid 'limit' query parameter.");
+  }
+  return limit;
 };
 
-export type InsightsQueryInput = PaginationInput & {
-  readonly window: BundleEventInsightsWindow;
-};
-
-function parseInteger(url: URL, key: string, bounds: IntegerBounds): number {
-  const value = url.searchParams.get(key);
-  if (value === null) return bounds.defaultValue;
-  const parsed = Number(value);
+const readCursor = (url: URL): string | undefined => {
+  const cursor = readSingle(url, "cursor");
   if (
-    !Number.isSafeInteger(parsed) ||
-    parsed < bounds.minimum ||
-    (bounds.maximum !== undefined && parsed > bounds.maximum)
+    cursor !== undefined &&
+    (cursor.length === 0 || cursor.length > MAX_CURSOR_LENGTH)
+  ) {
+    throw new InsightsBadRequestError("Invalid 'cursor' query parameter.");
+  }
+  return cursor;
+};
+
+const readId = (url: URL, key: string): string => {
+  const value = readSingle(url, key);
+  if (
+    value === undefined ||
+    value.length === 0 ||
+    value.length > MAX_IDENTITY_LENGTH
   ) {
     throw new InsightsBadRequestError(`Invalid '${key}' query parameter.`);
   }
-  return parsed;
-}
+  return value;
+};
 
-export const parsePagination = (request: Request): PaginationInput => {
+export const parseEventPageInput = (
+  request: Request,
+): InsightsEventPageInput => {
   const url = new URL(request.url);
+  const before = readSingle(url, "beforeReceivedAtMs");
+  const cursor = readCursor(url);
+  const limit = readPageLimit(url);
+  let beforeReceivedAtMs: number | undefined;
+  if (before !== undefined) {
+    beforeReceivedAtMs = Number(before);
+    if (!Number.isSafeInteger(beforeReceivedAtMs) || beforeReceivedAtMs < 0) {
+      throw new InsightsBadRequestError(
+        "Invalid 'beforeReceivedAtMs' query parameter.",
+      );
+    }
+  }
   return {
-    limit: parseInteger(url, "limit", EVENT_LIST_BOUNDS),
-    offset: parseInteger(url, "offset", EVENT_LIST_OFFSET_BOUNDS),
+    ...(beforeReceivedAtMs === undefined ? {} : { beforeReceivedAtMs }),
+    ...(cursor === undefined ? {} : { cursor }),
+    ...(limit === undefined ? {} : { limit }),
   };
 };
 
-export const parseInsightsQuery = (request: Request): InsightsQueryInput => {
+export const parseUserInstallationPageInput = (
+  request: Request,
+): InsightsUserInstallationPageInput => {
   const url = new URL(request.url);
-  const window = url.searchParams.get("window") ?? "24h";
-  if (
-    window !== "24h" &&
-    window !== "7d" &&
-    window !== "30d" &&
-    window !== "all"
-  ) {
-    throw new InsightsBadRequestError("Invalid 'window' query parameter.");
-  }
-  return { ...parsePagination(request), window };
+  const cursor = readCursor(url);
+  const limit = readPageLimit(url);
+  return {
+    userId: readId(url, "userId"),
+    ...(cursor === undefined ? {} : { cursor }),
+    ...(limit === undefined ? {} : { limit }),
+  };
 };
 
 export const parseActiveInstallationInput = (
   request: Request,
-): ActiveInstallationInput => {
+): { readonly window: ActiveInstallationWindow } => {
   const url = new URL(request.url);
-  const windows = url.searchParams.getAll("window");
-  if (windows.length > 1) {
-    throw new InsightsBadRequestError("Duplicate 'window' query parameter.");
-  }
-  const window = windows[0] ?? "30d";
+  const window = readSingle(url, "window") ?? "30d";
   if (window !== "24h" && window !== "7d" && window !== "30d") {
     throw new InsightsBadRequestError("Invalid 'window' query parameter.");
   }
-  const userIds = url.searchParams.getAll("userId");
-  if (userIds.length > 1) {
-    throw new InsightsBadRequestError("Duplicate 'userId' query parameter.");
-  }
-  const userId = userIds[0];
-  if (
-    userId !== undefined &&
-    (userId.length === 0 || userId.length > MAX_USER_ID_LENGTH)
-  ) {
-    throw new InsightsBadRequestError("Invalid 'userId' query parameter.");
-  }
-  return userId === undefined ? { window } : { window, userId };
+  return { window };
 };
-
-export const parseSearchInput = (
-  request: Request,
-): PaginationInput & { readonly query: string } => ({
-  ...parsePagination(request),
-  query: new URL(request.url).searchParams.get("query")?.trim() ?? "",
-});
-
-export const parseEmptyInput = (): undefined => undefined;

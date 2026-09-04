@@ -59,7 +59,7 @@ describe("createHotUpdater API keys", () => {
     expect(
       (
         await hotUpdater.handlers.admin(
-          withApiKey("https://example.com/installations/overview"),
+          withApiKey("https://example.com/events"),
         )
       ).status,
     ).toBe(200);

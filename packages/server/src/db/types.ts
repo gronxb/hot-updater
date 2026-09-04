@@ -128,8 +128,15 @@ export function isDatabasePlugin(plugin: unknown): plugin is DatabasePlugin {
     plugin.models.insights !== null &&
     "append" in plugin.models.insights &&
     typeof plugin.models.insights.append === "function" &&
-    "scan" in plugin.models.insights &&
-    typeof plugin.models.insights.scan === "function" &&
+    "pageEvents" in plugin.models.insights &&
+    typeof plugin.models.insights.pageEvents === "function" &&
+    "getInstallation" in plugin.models.insights &&
+    typeof plugin.models.insights.getInstallation === "function" &&
+    "pageInstallationsByCurrentUserId" in plugin.models.insights &&
+    typeof plugin.models.insights.pageInstallationsByCurrentUserId ===
+      "function" &&
+    "countActiveInstallations" in plugin.models.insights &&
+    typeof plugin.models.insights.countActiveInstallations === "function" &&
     "apiKeys" in plugin.models &&
     typeof plugin.models.apiKeys === "object" &&
     plugin.models.apiKeys !== null &&

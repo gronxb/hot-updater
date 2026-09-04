@@ -3,6 +3,7 @@ import type {
   BundleRow,
   BundleEventRow,
   ChannelRow,
+  InsightsInstallationRow,
   ApiKeyRow,
   ReleaseCatalogRow,
   ReleaseRow,
@@ -188,6 +189,34 @@ const eventRow = (row: Record<string, unknown>): BundleEventRow => {
   } as BundleEventRow;
 };
 
+const installationRow = (
+  row: Record<string, unknown>,
+): InsightsInstallationRow => {
+  const type = stringValue(row, "type", "bundle_installations");
+  const platform = stringValue(row, "platform", "bundle_installations");
+  if (
+    !["UPDATE_APPLIED", "RECOVERED", "RELEASE_ADOPTED", "UNCHANGED"].includes(
+      type,
+    ) ||
+    (platform !== "ios" && platform !== "android")
+  ) {
+    throw new InvalidD1RowError("bundle_installations");
+  }
+  return {
+    id: stringValue(row, "id", "bundle_installations"),
+    install_id: stringValue(row, "install_id", "bundle_installations"),
+    user_id: nullableString(row, "user_id", "bundle_installations"),
+    username: nullableString(row, "username", "bundle_installations"),
+    to_bundle_id: stringValue(row, "to_bundle_id", "bundle_installations"),
+    type: type as InsightsInstallationRow["type"],
+    platform,
+    app_version: stringValue(row, "app_version", "bundle_installations"),
+    channel: stringValue(row, "channel", "bundle_installations"),
+    cohort: stringValue(row, "cohort", "bundle_installations"),
+    received_at_ms: numberValue(row, "received_at_ms", "bundle_installations"),
+  };
+};
+
 const apiKeyRow = (row: Record<string, unknown>): ApiKeyRow => {
   const role = stringValue(row, "role", "api_keys");
   if (role !== "client") throw new InvalidD1RowError("api_keys");
@@ -292,6 +321,10 @@ export function parseD1Row(
   model: "bundle_events",
   value: unknown,
 ): BundleEventRow;
+export function parseD1Row(
+  model: "bundle_installations",
+  value: unknown,
+): InsightsInstallationRow;
 export function parseD1Row(model: "api_keys", value: unknown): ApiKeyRow;
 export function parseD1Row(model: "releases", value: unknown): ReleaseRow;
 export function parseD1Row(
@@ -316,6 +349,8 @@ export function parseD1Row(
       return channelRow(value);
     case "bundle_events":
       return eventRow(value);
+    case "bundle_installations":
+      return installationRow(value);
     case "api_keys":
       return apiKeyRow(value);
     case "releases":

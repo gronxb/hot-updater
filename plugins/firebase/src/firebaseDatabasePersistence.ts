@@ -3,6 +3,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   ChannelRow,
+  InsightsInstallationRow,
   ApiKeyRow,
   ReleaseCatalogRow,
   ReleaseRow,
@@ -17,7 +18,6 @@ import {
 
 import {
   parseFirebaseBundleRow,
-  parseFirebaseBundleEventRow,
   parseFirebaseApiKeyRow,
   parseFirebaseChannelRow,
   parseFirebasePatchRow,
@@ -32,6 +32,7 @@ export interface FirebaseDatabaseCollections {
   readonly bundles: CollectionReference<DocumentData>;
   readonly bundlePatches: CollectionReference<DocumentData>;
   readonly bundleEvents: CollectionReference<DocumentData>;
+  readonly bundleInstallations: CollectionReference<DocumentData>;
   readonly channels: CollectionReference<DocumentData>;
   readonly apiKeys: CollectionReference<DocumentData>;
   readonly releaseCatalogs: CollectionReference<DocumentData>;
@@ -53,6 +54,9 @@ export const createFirebaseDatabaseCollections = (
   bundles: db.collection(FIREBASE_V1_COLLECTION_NAMES.bundles),
   bundlePatches: db.collection(FIREBASE_V1_COLLECTION_NAMES.bundlePatches),
   bundleEvents: db.collection(FIREBASE_V1_COLLECTION_NAMES.bundleEvents),
+  bundleInstallations: db.collection(
+    FIREBASE_V1_COLLECTION_NAMES.bundleInstallations,
+  ),
   channels: db.collection(FIREBASE_V1_COLLECTION_NAMES.channels),
   apiKeys: db.collection(FIREBASE_V1_COLLECTION_NAMES.apiKeys),
   releaseCatalogs: db.collection(FIREBASE_V1_COLLECTION_NAMES.releaseCatalogs),
@@ -62,6 +66,7 @@ export const createFirebaseDatabaseCollections = (
 
 type FixedRow =
   | BundleEventRow
+  | InsightsInstallationRow
   | BundlePatchRow
   | BundleRow
   | ChannelRow
@@ -70,6 +75,7 @@ type FixedRow =
   | ReleaseRow;
 type FixedModel =
   | "bundle_events"
+  | "bundle_installations"
   | "bundle_patches"
   | "bundles"
   | "channels"
@@ -93,7 +99,12 @@ export const requireFirebaseDocumentKey = <TRow extends FixedRow>(
   documentId: string,
   row: TRow,
 ): TRow => {
-  const key = "id" in row ? row.id : row.scope_key;
+  const key =
+    model === "bundle_installations"
+      ? (row as InsightsInstallationRow).install_id
+      : "id" in row
+        ? row.id
+        : row.scope_key;
   if (documentId !== key) {
     throw new FirebaseDatabaseConstraintError(`${model}.id.document-key`);
   }
@@ -106,7 +117,12 @@ const documentMap = <TRow extends FixedRow>(
 ): Map<string, TRow> => {
   const rows = new Map<string, TRow>();
   for (const { row } of documents) {
-    const key = "id" in row ? row.id : row.scope_key;
+    const key =
+      model === "bundle_installations"
+        ? (row as InsightsInstallationRow).install_id
+        : "id" in row
+          ? row.id
+          : row.scope_key;
     if (rows.has(key)) {
       throw new FirebaseDatabaseConstraintError(`${model}.id.unique`);
     }
@@ -139,20 +155,6 @@ const patchMap = (
       row: parseFirebasePatchRow(
         document.data(),
         `bundle_patches/${document.id}`,
-      ),
-    })),
-  );
-
-const eventMap = (
-  snapshot: QuerySnapshot<DocumentData>,
-): Map<string, BundleEventRow> =>
-  documentMap(
-    "bundle_events",
-    snapshot.docs.map((document) => ({
-      document,
-      row: parseFirebaseBundleEventRow(
-        document.data(),
-        `bundle_events/${document.id}`,
       ),
     })),
   );
@@ -231,7 +233,6 @@ type CoreSnapshotDocuments = readonly [
   QuerySnapshot<DocumentData>,
   QuerySnapshot<DocumentData>,
   QuerySnapshot<DocumentData>,
-  QuerySnapshot<DocumentData>,
 ];
 
 const toSnapshot = (
@@ -240,11 +241,12 @@ const toSnapshot = (
   const snapshot: FirebaseDatabaseSnapshot = {
     bundles: bundleMap(documents[0]),
     bundlePatches: patchMap(documents[1]),
-    bundleEvents: eventMap(documents[2]),
-    channels: channelMap(documents[3]),
-    apiKeys: apiKeyMap(documents[4]),
-    releases: releaseMap(documents[5]),
-    releaseCatalogs: releaseCatalogMap(documents[6]),
+    bundleEvents: new Map(),
+    bundleInstallations: new Map(),
+    channels: channelMap(documents[2]),
+    apiKeys: apiKeyMap(documents[3]),
+    releases: releaseMap(documents[4]),
+    releaseCatalogs: releaseCatalogMap(documents[5]),
   };
   return snapshot;
 };
@@ -252,27 +254,18 @@ const toSnapshot = (
 export const loadFirebaseDatabaseSnapshot = async (
   collections: FirebaseDatabaseCollections,
 ): Promise<FirebaseDatabaseSnapshot> => {
-  const [
-    bundles,
-    patches,
-    events,
-    channels,
-    apiKeys,
-    releases,
-    releaseCatalogs,
-  ] = await Promise.all([
-    collections.bundles.get(),
-    collections.bundlePatches.get(),
-    collections.bundleEvents.get(),
-    collections.channels.get(),
-    collections.apiKeys.get(),
-    collections.releases.get(),
-    collections.releaseCatalogs.get(),
-  ]);
+  const [bundles, patches, channels, apiKeys, releases, releaseCatalogs] =
+    await Promise.all([
+      collections.bundles.get(),
+      collections.bundlePatches.get(),
+      collections.channels.get(),
+      collections.apiKeys.get(),
+      collections.releases.get(),
+      collections.releaseCatalogs.get(),
+    ]);
   return toSnapshot([
     bundles,
     patches,
-    events,
     channels,
     apiKeys,
     releases,
@@ -284,27 +277,18 @@ export const loadFirebaseTransactionSnapshot = async (
   transaction: Transaction,
   collections: FirebaseDatabaseCollections,
 ): Promise<FirebaseDatabaseSnapshot> => {
-  const [
-    bundles,
-    patches,
-    events,
-    channels,
-    apiKeys,
-    releases,
-    releaseCatalogs,
-  ] = await Promise.all([
-    transaction.get(collections.bundles),
-    transaction.get(collections.bundlePatches),
-    transaction.get(collections.bundleEvents),
-    transaction.get(collections.channels),
-    transaction.get(collections.apiKeys),
-    transaction.get(collections.releases),
-    transaction.get(collections.releaseCatalogs),
-  ]);
+  const [bundles, patches, channels, apiKeys, releases, releaseCatalogs] =
+    await Promise.all([
+      transaction.get(collections.bundles),
+      transaction.get(collections.bundlePatches),
+      transaction.get(collections.channels),
+      transaction.get(collections.apiKeys),
+      transaction.get(collections.releases),
+      transaction.get(collections.releaseCatalogs),
+    ]);
   return toSnapshot([
     bundles,
     patches,
-    events,
     channels,
     apiKeys,
     releases,
@@ -362,13 +346,6 @@ export const persistFirebaseDatabaseSnapshot = ({
     collection: collections.bundlePatches,
     before: before.bundlePatches,
     after: after.bundlePatches,
-    documentId: (row) => row.id,
-  });
-  persistCollection({
-    transaction,
-    collection: collections.bundleEvents,
-    before: before.bundleEvents,
-    after: after.bundleEvents,
     documentId: (row) => row.id,
   });
   persistCollection({
@@ -436,6 +413,7 @@ export const migrateFirebaseDatabase = async (
     collections.channels.limit(1).get(),
     collections.releases.limit(1).get(),
     collections.releaseCatalogs.limit(1).get(),
+    collections.bundleInstallations.limit(1).get(),
   ]);
   if (existingCollections.some((snapshot) => !snapshot.empty)) {
     throw new FirebaseDatabaseAdapterVersionError("v0");

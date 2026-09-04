@@ -21,6 +21,18 @@ export class ConsoleInsightsHttpError extends Error {
 const routeUrl = (baseUrl: string, path: string): string =>
   `${baseUrl.replace(/\/+$/, "")}${path}`;
 
+const withQuery = (
+  path: string,
+  input: Readonly<Record<string, number | string | undefined>>,
+): string => {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined) query.set(key, String(value));
+  }
+  const value = query.toString();
+  return value.length === 0 ? path : `${path}?${value}`;
+};
+
 export const createConsoleInsightsHttpClient = ({
   baseUrl,
   fetch: fetchImplementation = globalThis.fetch,
@@ -40,38 +52,35 @@ export const createConsoleInsightsHttpClient = ({
     return (await response.json()) as T;
   };
 
-  const getOverview = () =>
-    requestJson<Awaited<ReturnType<ConsoleInsightsQaClient["getOverview"]>>>(
-      "/installations/overview",
-    );
-
   return {
     getActiveOverview: () =>
       requestJson<
         Awaited<ReturnType<ConsoleInsightsQaClient["getActiveOverview"]>>
       >("/installations/active?window=24h"),
-    getBundleInsights: (bundleId) =>
+    getInstallation: (installId) =>
       requestJson<
-        Awaited<ReturnType<ConsoleInsightsQaClient["getBundleInsights"]>>
+        Awaited<ReturnType<ConsoleInsightsQaClient["getInstallation"]>>
+      >(`/installations/${encodeURIComponent(installId)}`),
+    pageEvents: (input = {}) =>
+      requestJson<Awaited<ReturnType<ConsoleInsightsQaClient["pageEvents"]>>>(
+        withQuery("/events", input),
+      ),
+    pageInstallationEvents: (installId, input = {}) =>
+      requestJson<
+        Awaited<ReturnType<ConsoleInsightsQaClient["pageInstallationEvents"]>>
       >(
-        `/bundles/${encodeURIComponent(bundleId)}/events/insights?window=30d&limit=50&offset=0`,
+        withQuery(
+          `/installations/${encodeURIComponent(installId)}/events`,
+          input,
+        ),
       ),
-    getCapabilities: async () => {
-      await getOverview();
-      return { insights: true };
-    },
-    getHistory: (installId) =>
-      requestJson<Awaited<ReturnType<ConsoleInsightsQaClient["getHistory"]>>>(
-        `/installations/${encodeURIComponent(installId)}/events?limit=50&offset=0`,
-      ),
-    getOverview,
-    getSummary: (bundleId) =>
-      requestJson<Awaited<ReturnType<ConsoleInsightsQaClient["getSummary"]>>>(
-        `/bundles/${encodeURIComponent(bundleId)}/events/summary`,
-      ),
-    searchInstallations: (query) =>
+    pageInstallationsByCurrentUserId: (userId, input = {}) =>
       requestJson<
-        Awaited<ReturnType<ConsoleInsightsQaClient["searchInstallations"]>>
-      >(`/installations?query=${encodeURIComponent(query)}&limit=50&offset=0`),
+        Awaited<
+          ReturnType<
+            ConsoleInsightsQaClient["pageInstallationsByCurrentUserId"]
+          >
+        >
+      >(withQuery("/installations", { userId, ...input })),
   };
 };

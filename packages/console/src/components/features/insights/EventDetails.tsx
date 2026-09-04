@@ -1,25 +1,19 @@
-import {
-  Activity,
-  Check,
-  ChevronDown,
-  PackageCheck,
-  RotateCcw,
-} from "lucide-react";
+import { Activity, Check, ChevronDown, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { Badge } from "@/components/ui/badge";
-import type { EventHistoryResult } from "@/lib/api";
+import type { InsightsEventRow } from "@/lib/insights-view";
 
-type EventHistoryRow = EventHistoryResult["data"][number];
+type EventHistoryRow = InsightsEventRow;
 
 const eventTypes = {
   UPDATE_APPLIED: { label: "Bundle applied", variant: "success", icon: Check },
   RECOVERED: { label: "Recovered", variant: "warning", icon: RotateCcw },
   RELEASE_ADOPTED: {
-    label: "Bundle adopted",
+    label: "Bundle applied",
     variant: "success",
-    icon: PackageCheck,
+    icon: Check,
   },
   UNCHANGED: {
     label: "Activity reported",
@@ -35,6 +29,7 @@ export function useInsightsTimeFormat() {
   }, []);
   return new Intl.DateTimeFormat("en", {
     timeZone,
+    timeZoneName: "shortOffset",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -43,6 +38,19 @@ export function useInsightsTimeFormat() {
     second: "2-digit",
     hourCycle: "h23",
   });
+}
+
+export function formatInsightsTimestamp(
+  value: number,
+  formatter: Intl.DateTimeFormat,
+) {
+  const parts = Object.fromEntries(
+    formatter
+      .formatToParts(new Date(value))
+      .map(({ type, value }) => [type, value]),
+  );
+  const offset = parts.timeZoneName === "GMT" ? "GMT+0" : parts.timeZoneName;
+  return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}:${parts.second} ${offset}`;
 }
 
 export function EventTimestamp({
@@ -55,10 +63,7 @@ export function EventTimestamp({
   readonly touch?: boolean;
 }) {
   const date = new Date(value);
-  const parts = Object.fromEntries(
-    formatter.formatToParts(date).map(({ type, value }) => [type, value]),
-  );
-  const localTime = `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+  const localTime = formatInsightsTimestamp(value, formatter);
   return (
     <details className="group/time">
       <summary
@@ -95,7 +100,9 @@ export function EventTypeBadge({
       title={
         type === "UNCHANGED"
           ? "App activity reported on the current bundle without a bundle transition."
-          : undefined
+          : type === "RELEASE_ADOPTED"
+            ? "The app started reporting this bundle after a release changed."
+            : undefined
       }
     >
       <Icon aria-hidden="true" />

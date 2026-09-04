@@ -107,6 +107,14 @@ describe("createDatabasePlugin", () => {
     expect(plugin.models.channels.insert).toBeTypeOf("function");
     expect(plugin.models.channels.delete).toBeTypeOf("function");
     expect(plugin.models.insights.append).toBeTypeOf("function");
+    expect(plugin.models.insights.pageEvents).toBeTypeOf("function");
+    expect(plugin.models.insights.getInstallation).toBeTypeOf("function");
+    expect(plugin.models.insights.pageInstallationsByCurrentUserId).toBeTypeOf(
+      "function",
+    );
+    expect(plugin.models.insights.countActiveInstallations).toBeTypeOf(
+      "function",
+    );
     expect(plugin.models.apiKeys.findByHash).toBeTypeOf("function");
     expect(plugin.commit).toBeTypeOf("function");
     expect(Object.keys(plugin).sort()).toEqual(["commit", "models", "name"]);

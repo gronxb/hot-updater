@@ -1,6 +1,7 @@
-import type { ActiveInstallationOverview } from "@hot-updater/server";
-import type { ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
+import { ArrowUpRight } from "lucide-react";
 
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -9,95 +10,42 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { InsightsOverview as CatalogOverview } from "@/lib/insights-overview";
-import { cn } from "@/lib/utils";
+import type { ReportingInstallations } from "@/lib/insights-api";
 
-import { ActivityChart } from "./ActivityChart";
-import { BundleSelector } from "./BundleSelector";
 import { EventTimestamp, useInsightsTimeFormat } from "./EventDetails";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
-import { UpdateOutcomes, type UpdateOutcomeState } from "./UpdateOutcomes";
 
 type InsightsOverviewProps =
   | { readonly status: "loading" }
   | { readonly status: "error"; readonly error: Error }
   | {
       readonly status: "success";
-      readonly active: ActiveInstallationOverview;
-      readonly bundleId: string;
-      readonly bundles: readonly {
-        readonly bundleId: string;
-        readonly description: string;
-      }[];
-      readonly catalog: CatalogOverview;
-      readonly onBundleChange: (bundleId: string) => void;
-      readonly outcomes: UpdateOutcomeState;
+      readonly active: ReportingInstallations;
     };
 
-const activityWindowCopy = {
-  "24h": {
-    label: "Daily active installations",
-    period: "last 24 hours",
-  },
-  "7d": {
-    label: "Weekly active installations",
-    period: "last 7 days",
-  },
-  "30d": {
-    label: "Monthly active installations",
-    period: "last 30 days",
-  },
+const windowCopy = {
+  "24h": "the last 24 hours",
+  "7d": "the last 7 days",
+  "30d": "the last 30 days",
 } as const;
-
-function LoadingCard({
-  children,
-  className,
-  label,
-}: {
-  readonly children: ReactNode;
-  readonly className?: string;
-  readonly label: string;
-}) {
-  return (
-    <Card aria-label={label} className={cn("min-w-0", className)}>
-      <CardHeader>
-        <Skeleton className="h-4 w-32" />
-        <Skeleton className="h-3 w-4/5" />
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
-  );
-}
 
 export function InsightsOverview(props: InsightsOverviewProps) {
   const dateTimeFormat = useInsightsTimeFormat();
+
   if (props.status === "loading") {
     return (
-      <div
-        aria-label="Loading reporting insights"
-        className="flex min-w-0 flex-col gap-4 sm:gap-6"
-      >
-        <LoadingCard label="Loading installation activity">
-          <Skeleton className="h-10 w-24" />
-          <Skeleton className="mt-4 h-40 w-full sm:h-56" />
-          <div className="mt-4 grid grid-cols-2 gap-4 border-t pt-4">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
-        </LoadingCard>
-        <LoadingCard label="Loading bundle detail">
-          <div className="flex flex-col gap-4">
-            <Skeleton className="h-10 w-full max-w-md" />
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-              <Skeleton className="h-14 w-full" />
-              <Skeleton className="h-14 w-full" />
-              <Skeleton className="h-14 w-full" />
-              <Skeleton className="h-14 w-full" />
-            </div>
-            <Skeleton className="h-32 w-full" />
-          </div>
-        </LoadingCard>
-      </div>
+      <Card aria-label="Loading reporting installations" className="shadow-sm">
+        <CardHeader className="px-4 pt-4 pb-2 sm:px-6 sm:pt-6">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-3 w-full max-w-md" />
+        </CardHeader>
+        <CardContent className="px-4 pb-6 sm:px-6">
+          <Skeleton className="h-12 w-28" />
+        </CardContent>
+        <CardFooter className="border-t px-4 py-3 sm:px-6">
+          <Skeleton className="h-8 w-full max-w-sm" />
+        </CardFooter>
+      </Card>
     );
   }
 
@@ -105,85 +53,55 @@ export function InsightsOverview(props: InsightsOverviewProps) {
     return (
       <InsightsErrorAlert
         error={props.error}
-        fallbackTitle="Reporting insights unavailable"
+        fallbackTitle="Reporting installations unavailable"
       />
     );
   }
 
-  const { active, bundleId, bundles, catalog, onBundleChange, outcomes } =
-    props;
-  const activityCopy = activityWindowCopy[active.window];
-  const selectedBundleId =
-    outcomes.status === "idle" ? null : outcomes.bundleId;
-  const latestBundleInstallations =
-    active.bundles.find(({ bundleId }) => bundleId === selectedBundleId)
-      ?.installations ?? 0;
-  const configuredPercentage =
-    catalog.configuredRollouts.find(
-      ({ bundleId }) => bundleId === selectedBundleId,
-    )?.configuredPercentage ?? null;
+  const { active } = props;
 
   return (
-    <div className="flex min-w-0 flex-col gap-4 sm:gap-6">
-      <section aria-label="Installation activity">
-        <Card className="min-w-0 overflow-hidden shadow-sm">
-          <CardHeader className="px-4 pt-4 pb-2 sm:px-6 sm:pt-6">
-            <CardTitle className="text-sm font-medium">
-              <h2>{activityCopy.label}</h2>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4 px-4 pb-4 sm:px-6 sm:pb-6">
-            <p className="text-4xl font-semibold tracking-tight tabular-nums">
-              {active.activeInstallations.toLocaleString()}
-              <span className="sr-only">
-                {` unique installations that reported activity or an update in the ${activityCopy.period}`}
-              </span>
-            </p>
-            <ActivityChart series={active.series} window={active.window} />
-          </CardContent>
-          <CardFooter className="border-t bg-muted/15 p-0">
-            <dl className="grid w-full grid-cols-[auto_minmax(0,1fr)] gap-x-6 px-4 py-3 sm:px-6">
-              <div className="flex flex-col gap-1">
-                <dt className="text-xs text-muted-foreground">
-                  Reported bundles
-                </dt>
-                <dd className="text-lg font-semibold tabular-nums">
-                  {active.bundles.length.toLocaleString()}
-                </dd>
-              </div>
-              <div className="flex min-w-0 flex-col gap-1">
-                <dt className="text-xs text-muted-foreground">
-                  As of ({dateTimeFormat.resolvedOptions().timeZone})
-                </dt>
-                <dd className="text-xs font-medium tabular-nums">
-                  <EventTimestamp
-                    touch
-                    value={active.asOfMs}
-                    formatter={dateTimeFormat}
-                  />
-                </dd>
-              </div>
-            </dl>
-          </CardFooter>
-        </Card>
-      </section>
-
-      <section aria-labelledby="bundle-detail-heading">
-        <UpdateOutcomes
-          bundleSelector={
-            <BundleSelector
-              bundleId={bundleId}
-              bundles={bundles}
-              onBundleChange={onBundleChange}
-            />
-          }
-          configuredPercentage={configuredPercentage}
-          latestBundleInstallations={latestBundleInstallations}
-          reportingInstallations={active.activeInstallations}
-          state={outcomes}
-          window={active.window}
-        />
-      </section>
-    </div>
+    <section aria-labelledby="reporting-installations-heading">
+      <Card className="min-w-0 overflow-hidden shadow-sm">
+        <CardHeader className="gap-2 px-4 pt-4 pb-2 sm:px-6 sm:pt-6">
+          <CardTitle className="text-sm font-medium">
+            <h2 id="reporting-installations-heading">
+              Reporting installations
+            </h2>
+          </CardTitle>
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            Unique installations that reported app activity during{" "}
+            {windowCopy[active.window]}.
+          </p>
+        </CardHeader>
+        <CardContent className="px-4 pt-2 pb-5 sm:px-6 sm:pb-6">
+          <p className="text-4xl font-semibold tracking-tight tabular-nums sm:text-5xl">
+            {active.activeInstallations.toLocaleString()}
+          </p>
+        </CardContent>
+        <CardFooter className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/15 px-4 py-3 sm:px-6">
+          <dl className="min-w-0 text-xs">
+            <dt className="text-muted-foreground">Measured at</dt>
+            <dd className="font-medium tabular-nums">
+              <EventTimestamp
+                formatter={dateTimeFormat}
+                touch
+                value={active.asOfMs}
+              />
+            </dd>
+          </dl>
+          <Link
+            className={buttonVariants({
+              className: "h-11 px-3 lg:h-8",
+              variant: "outline",
+            })}
+            to="/installations"
+          >
+            View events
+            <ArrowUpRight aria-hidden="true" data-icon="inline-end" />
+          </Link>
+        </CardFooter>
+      </Card>
+    </section>
   );
 }

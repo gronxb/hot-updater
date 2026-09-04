@@ -1,5 +1,6 @@
 import {
   assertStorageOperations,
+  type InsightsModel,
   type StoragePlugin,
 } from "@hot-updater/plugin-core";
 
@@ -18,7 +19,7 @@ import {
   isDatabasePlugin,
 } from "./db/types";
 import { createHotUpdaterHandlers, type HotUpdaterHandlers } from "./handler";
-import { createInsightsProvider } from "./insights/bounded/provider";
+import { createInsightsProvider } from "./insights/provider";
 import type { InsightsProvider } from "./insights/types";
 import { createStorageAccess } from "./storageAccess";
 
@@ -168,16 +169,29 @@ export function createHotUpdaterCore(
     readStorageText,
   });
   const clientAccess = normalizeClientAccess(options.clientAccess);
-  const insights = createInsightsProvider({
+  const insightsModel: InsightsModel = {
     async append(row) {
       await assertSchemaReady();
       return plugin.models.insights.append(row);
     },
-    async scan(input) {
+    async countActiveInstallations(input) {
       await assertSchemaReady();
-      return plugin.models.insights.scan(input);
+      return plugin.models.insights.countActiveInstallations(input);
     },
-  });
+    async getInstallation(installId) {
+      await assertSchemaReady();
+      return plugin.models.insights.getInstallation(installId);
+    },
+    async pageEvents(input) {
+      await assertSchemaReady();
+      return plugin.models.insights.pageEvents(input);
+    },
+    async pageInstallationsByCurrentUserId(input) {
+      await assertSchemaReady();
+      return plugin.models.insights.pageInstallationsByCurrentUserId(input);
+    },
+  };
+  const insights = createInsightsProvider(insightsModel);
   const apiKeys = createApiKeyManagement({
     apiKeys: plugin.models.apiKeys,
     beforeOperation: assertSchemaReady,

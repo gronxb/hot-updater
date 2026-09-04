@@ -3,7 +3,6 @@ import type {
   ChannelInsertInput,
   ReleasePolicyPatch,
 } from "@hot-updater/plugin-core";
-import type { BundleEventInsightsWindow } from "@hot-updater/server";
 import {
   type QueryClient,
   type QueryKey,
@@ -21,20 +20,15 @@ import {
   getBundle,
   getBundleChildCounts,
   getBundleChildren,
-  getBundleEventInsights as getBundleEventInsightsApi,
-  getBundleEventSummary as getBundleEventSummaryApi,
   getBundles,
   getChannels,
   getConfig,
   getConfigLoaded,
-  getEventHistory as getEventHistoryApi,
-  getInstallationHistory as getInstallationHistoryApi,
   getRelease,
   getReleaseCatalogDiagnostics,
   getReleases,
   preflightRelease as preflightReleaseApi,
   promoteRelease as promoteReleaseApi,
-  searchInstallations as searchInstallationsApi,
   updateRelease as updateReleaseApi,
 } from "./api-rpc";
 
@@ -47,24 +41,6 @@ type BundleFilters = {
 };
 
 type BundlesQueryData = Awaited<ReturnType<typeof getBundles>>;
-
-const INSIGHTS_STALE_TIME_MS = 30_000;
-
-export type BundleEventSummary = Awaited<
-  ReturnType<typeof getBundleEventSummaryApi>
->;
-export type BundleEventInsights = Awaited<
-  ReturnType<typeof getBundleEventInsightsApi>
->;
-export type InstallationSearchResult = Awaited<
-  ReturnType<typeof searchInstallationsApi>
->;
-export type InstallationHistoryResult = Awaited<
-  ReturnType<typeof getInstallationHistoryApi>
->;
-export type InstallationSearchRow = InstallationSearchResult["data"][number];
-export type InstallationHistoryRow = InstallationHistoryResult["data"][number];
-export type EventHistoryResult = Awaited<ReturnType<typeof getEventHistoryApi>>;
 
 const bundleListQueryKey = ["bundles"] as const;
 const releaseListQueryKey = ["releases"] as const;
@@ -92,23 +68,6 @@ export const queryKeys = {
       ["bundle-children", "counts", ...bundleIds] as const,
   },
   bundle: (bundleId: string) => ["bundle", bundleId] as const,
-  bundleEventSummary: (bundleId: string) =>
-    ["bundle-event-summary", bundleId] as const,
-  bundleEventInsights: (input: {
-    bundleId: string;
-    window: BundleEventInsightsWindow;
-    limit?: number;
-    offset?: number;
-  }) => ["bundle-event-insights", input] as const,
-
-  installations: {
-    search: (input: { query: string; limit?: number; offset?: number }) =>
-      ["installations", "search", input] as const,
-    history: (input: { installId: string; limit?: number; offset?: number }) =>
-      ["installations", "history", input] as const,
-  },
-  eventHistory: (input: { limit?: number; offset?: number }) =>
-    ["event-history", input] as const,
 };
 
 export type ReleaseFilters = {
@@ -223,81 +182,6 @@ export function useBundleQuery(bundleId: string) {
     queryFn: () => getBundle({ data: { bundleId } }),
     staleTime: Infinity,
     enabled: !!bundleId,
-  });
-}
-
-export function useBundleEventSummaryQuery(bundleId: string, enabled: boolean) {
-  return useQuery({
-    queryKey: queryKeys.bundleEventSummary(bundleId),
-    queryFn: () => getBundleEventSummaryApi({ data: { bundleId } }),
-    staleTime: INSIGHTS_STALE_TIME_MS,
-    refetchOnWindowFocus: true,
-    enabled: enabled && bundleId.length > 0,
-  });
-}
-
-export function useBundleEventInsightsQuery(
-  input: {
-    bundleId: string;
-    window: BundleEventInsightsWindow;
-    limit?: number;
-    offset?: number;
-  },
-  enabled: boolean,
-) {
-  return useQuery({
-    queryKey: queryKeys.bundleEventInsights(input),
-    queryFn: () => getBundleEventInsightsApi({ data: input }),
-    staleTime: INSIGHTS_STALE_TIME_MS,
-    refetchOnWindowFocus: true,
-    enabled: enabled && input.bundleId.length > 0,
-  });
-}
-
-export function useInstallationSearchQuery(
-  input: {
-    query: string;
-    limit?: number;
-    offset?: number;
-  },
-  enabled: boolean,
-) {
-  return useQuery({
-    queryKey: queryKeys.installations.search(input),
-    queryFn: () => searchInstallationsApi({ data: input }),
-    staleTime: INSIGHTS_STALE_TIME_MS,
-    refetchOnWindowFocus: true,
-    enabled: enabled && input.query.trim().length > 0,
-  });
-}
-
-export function useEventHistoryQuery(
-  input: { limit?: number; offset?: number },
-  enabled: boolean,
-) {
-  return useQuery({
-    queryKey: queryKeys.eventHistory(input),
-    queryFn: () => getEventHistoryApi({ data: input }),
-    staleTime: INSIGHTS_STALE_TIME_MS,
-    refetchOnWindowFocus: true,
-    enabled,
-  });
-}
-
-export function useInstallationHistoryQuery(
-  input: {
-    installId: string;
-    limit?: number;
-    offset?: number;
-  },
-  enabled: boolean,
-) {
-  return useQuery({
-    queryKey: queryKeys.installations.history(input),
-    queryFn: () => getInstallationHistoryApi({ data: input }),
-    staleTime: INSIGHTS_STALE_TIME_MS,
-    refetchOnWindowFocus: true,
-    enabled: enabled && input.installId.length > 0,
   });
 }
 

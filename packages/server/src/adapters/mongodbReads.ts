@@ -19,6 +19,7 @@ import {
   createMongoChannelWhere,
   createMongoApiKeyWhere,
   createMongoEventWhere,
+  createMongoInstallationWhere,
   createMongoPatchWhere,
   createMongoReleaseCatalogWhere,
   createMongoReleaseWhere,
@@ -98,6 +99,32 @@ const findMongoRows = async (
       if (needsInMemoryOrder) {
         const rows = await collections.bundleEvents
           .find(createMongoEventWhere(input.where), {
+            projection: WITHOUT_MONGO_ID,
+            ...mongoSessionOptions(session),
+          })
+          .toArray();
+        return sortRowsByOrder(rows, rawOrderBy).slice(
+          input.offset,
+          input.offset + input.limit,
+        );
+      }
+      const sort = createMongoSort(input);
+      return sort === undefined
+        ? cursor.toArray()
+        : cursor.sort(sort).toArray();
+    }
+    case "bundle_installations": {
+      const cursor = collections.bundleInstallations
+        .find(createMongoInstallationWhere(input.where), {
+          projection: WITHOUT_MONGO_ID,
+          ...mongoSessionOptions(session),
+        })
+        .skip(input.offset)
+        .limit(input.limit);
+      if (rawOrderBy === undefined) return cursor.toArray();
+      if (needsInMemoryOrder) {
+        const rows = await collections.bundleInstallations
+          .find(createMongoInstallationWhere(input.where), {
             projection: WITHOUT_MONGO_ID,
             ...mongoSessionOptions(session),
           })
@@ -248,6 +275,11 @@ export const createMongoReads = (
           createMongoReleaseWhere(input.where),
           mongoSessionOptions(session),
         );
+      case "bundle_installations":
+        return collections.bundleInstallations.countDocuments(
+          createMongoInstallationWhere(input.where),
+          mongoSessionOptions(session),
+        );
     }
   },
   findOne: async (input) => {
@@ -295,6 +327,14 @@ export const createMongoReads = (
       case "release_catalogs":
         return collections.releaseCatalogs.findOne(
           createMongoReleaseCatalogWhere(input.where),
+          {
+            projection: WITHOUT_MONGO_ID,
+            ...mongoSessionOptions(session),
+          },
+        );
+      case "bundle_installations":
+        return collections.bundleInstallations.findOne(
+          createMongoInstallationWhere(input.where),
           {
             projection: WITHOUT_MONGO_ID,
             ...mongoSessionOptions(session),

@@ -5,6 +5,7 @@ import type {
   BundleRow,
   ChannelRow,
   ApiKeyRow,
+  InsightsInstallationRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "./databaseRows";
@@ -60,20 +61,43 @@ export interface ReleaseCatalogModel {
   }): Promise<readonly ReleaseCatalogRow[]>;
 }
 
-export interface InsightsScanCursor {
+export interface InsightsEventCursor {
   readonly receivedAtMs: number;
   readonly id: string;
 }
 
-export interface InsightsScanInput {
+export type InsightsEventSelector =
+  | { readonly kind: "all" }
+  | {
+      readonly kind: "installationMovement";
+      readonly installId: string;
+    };
+
+export interface InsightsPageEventsInput {
+  readonly selector: InsightsEventSelector;
   readonly beforeReceivedAtMs: number;
-  readonly after?: InsightsScanCursor;
+  readonly after?: InsightsEventCursor;
+  readonly limit: number;
+}
+
+export interface InsightsPageInstallationsByCurrentUserIdInput {
+  readonly userId: string;
+  readonly afterInstallId?: string;
   readonly limit: number;
 }
 
 export interface InsightsModel {
   append(row: BundleEventRow): Promise<void>;
-  scan(input: InsightsScanInput): Promise<readonly BundleEventRow[]>;
+  pageEvents(
+    input: InsightsPageEventsInput,
+  ): Promise<readonly BundleEventRow[]>;
+  getInstallation(installId: string): Promise<InsightsInstallationRow | null>;
+  pageInstallationsByCurrentUserId(
+    input: InsightsPageInstallationsByCurrentUserIdInput,
+  ): Promise<readonly InsightsInstallationRow[]>;
+  countActiveInstallations(input: {
+    readonly sinceMs: number;
+  }): Promise<number>;
 }
 
 export interface ApiKeyModel {
@@ -171,11 +195,6 @@ export type DatabaseChange =
       readonly model: "channels";
       readonly operation: "delete";
       readonly where: { readonly id: string };
-    }
-  | {
-      readonly model: "insights";
-      readonly operation: "insert";
-      readonly row: BundleEventRow;
     }
   | {
       readonly model: "apiKeys";

@@ -83,46 +83,6 @@ export const Route = createFileRoute("/")({
   validateSearch: validateReleaseSearch,
 });
 
-function BundleMovementSummary({
-  summary,
-}: {
-  readonly summary: ReleaseListRow["activity30d"];
-}) {
-  if (summary === null) {
-    return (
-      <span
-        aria-label="30-day Bundle activity unavailable"
-        className="text-sm text-muted-foreground"
-        title="Insights are unavailable for this Bundle."
-      >
-        —
-      </span>
-    );
-  }
-
-  return (
-    <div
-      aria-label="Bundle movement over 30 days, distinct installations"
-      className="flex min-w-[140px] items-baseline gap-3 whitespace-nowrap"
-      role="group"
-      title="Distinct installations over the last 30 days."
-    >
-      <span className="flex items-baseline gap-1.5">
-        <span className="text-xs text-muted-foreground">Applied</span>
-        <span className="text-sm font-medium tabular-nums">
-          {summary.installed}
-        </span>
-      </span>
-      <span className="flex items-baseline gap-1.5">
-        <span className="text-xs text-muted-foreground">Recovered</span>
-        <span className="text-sm font-medium tabular-nums">
-          {summary.recovered}
-        </span>
-      </span>
-    </div>
-  );
-}
-
 function BundleFilterToolbar({
   channels,
   onChange,
@@ -596,16 +556,6 @@ function BundlesPage() {
                                     : "—"}
                               </dd>
                             </div>
-                            <div className="col-span-2 rounded-md bg-muted/40 p-3">
-                              <dt className="text-muted-foreground">
-                                Activity · 30d
-                              </dt>
-                              <dd className="mt-1">
-                                <BundleMovementSummary
-                                  summary={release.activity30d}
-                                />
-                              </dd>
-                            </div>
                             <div className="col-span-2 flex flex-wrap items-center gap-2 rounded-md bg-muted/40 p-3">
                               <ReleaseStateBadge release={release} />
                               {release.should_force_update ? (
@@ -668,9 +618,6 @@ function BundlesPage() {
                     <TableHead>Enabled</TableHead>
                     <TableHead>Force update</TableHead>
                     <TableHead>Rollout</TableHead>
-                    <TableHead title="Distinct installations over the last 30 days.">
-                      Activity · 30d
-                    </TableHead>
                     <TableHead>Message</TableHead>
                     <TableHead>Created</TableHead>
                   </TableRow>
@@ -679,7 +626,7 @@ function BundlesPage() {
                   {releasesQuery.isPending
                     ? Array.from({ length: 7 }, (_, index) => (
                         <TableRow key={index}>
-                          <TableCell colSpan={11}>
+                          <TableCell colSpan={10}>
                             <Skeleton className="h-8 w-full" />
                           </TableCell>
                         </TableRow>
@@ -836,11 +783,6 @@ function BundlesPage() {
                                   percentage={release.rollout_cohort_count / 10}
                                 />
                               </TableCell>
-                              <TableCell>
-                                <BundleMovementSummary
-                                  summary={release.activity30d}
-                                />
-                              </TableCell>
                               <TableCell
                                 className="text-sm text-muted-foreground"
                                 title={release.message ?? undefined}
@@ -862,7 +804,7 @@ function BundlesPage() {
                               <TableRow className="hover:bg-transparent">
                                 <TableCell
                                   className="border-t-0 p-0"
-                                  colSpan={11}
+                                  colSpan={10}
                                 >
                                   <ReleaseBundleChildrenPanel
                                     onDetailClick={openChildBundle}
